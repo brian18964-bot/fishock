@@ -34,8 +34,8 @@ var current_noise_radius: float = 0.0
 var _prev_action_held: bool = false
 
 @onready var facing_indicator: ColorRect = $FacingIndicator
-@onready var _move_joystick: VirtualJoystick = get_tree().current_scene.get_node("HUD/Panel/MoveJoystick")
-@onready var _aim_joystick: VirtualJoystick = get_tree().current_scene.get_node("HUD/Panel/AimJoystick")
+@onready var _move_joystick: TouchJoystick = get_tree().current_scene.get_node("HUD/Panel/MoveJoystick")
+@onready var _aim_joystick: TouchJoystick = get_tree().current_scene.get_node("HUD/Panel/AimJoystick")
 
 
 func _ready() -> void:
