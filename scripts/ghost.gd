@@ -28,7 +28,7 @@ const SEARCH_TIME := 3.5
 const ALERT_GRACE_TIME := 1.5
 const CATCH_RADIUS := 20.0
 
-const ALTAR_SAFE_RADIUS := 85.0
+const FIXED_LIGHT_SAFE_RADIUS := 85.0
 
 const INTERFERENCE_RANGE := 140.0
 const INTERFERENCE_COOLDOWN := 8.0
@@ -52,8 +52,10 @@ var line_cut_windup: float = 0.0
 
 var player: Player
 var player_lantern: Lantern
-var altar: Node2D
 var escape_point: Node2D
+var escape_light: PointLight2D
+var fuel_station: FuelStation
+var fuel_light: PointLight2D
 var stun_timer: float = 0.0
 
 @onready var state_icon: Label = $StateIcon
@@ -65,8 +67,10 @@ func _ready() -> void:
 	move_target = home_position
 	player = get_tree().current_scene.get_node("Player")
 	player_lantern = player.get_node("Lantern")
-	altar = get_tree().current_scene.get_node("Altar")
 	escape_point = get_tree().current_scene.get_node("EscapePoint")
+	escape_light = escape_point.get_node("Light")
+	fuel_station = get_tree().current_scene.get_node("FuelStation")
+	fuel_light = fuel_station.get_node("Light")
 	state_changed.connect(_on_state_changed)
 	add_to_group("ghosts")
 	_set_state(GhostState.PATROL)
@@ -156,10 +160,8 @@ func _process_suspicious(delta: float, sense: Dictionary) -> void:
 
 
 func _process_alert(delta: float, sense: Dictionary) -> void:
-	if player.in_altar_zone:
-		_start_search(player.global_position)
-		return
-
+	# Design doc request: the altar no longer protects - only a fixed
+	# light that's actually still lit (checked inside _move_toward) does.
 	_move_toward(player.global_position, CHASE_SPEED, delta)
 
 	if sense.dist <= CATCH_RADIUS:
@@ -223,18 +225,23 @@ func _move_toward(target: Vector2, speed: float, delta: float) -> void:
 	if to_target.length() > 1.0:
 		next_position = global_position + to_target.normalized() * speed * delta
 
-	# Design doc §2.2: fixed light circles (altar, escape point) are hard
-	# walls a ghost can never cross, in any state.
-	next_position = _clamp_outside_safe_zone(next_position, altar.global_position)
-	next_position = _clamp_outside_safe_zone(next_position, escape_point.global_position)
+	# Design doc §2.2/request: fixed light circles are hard walls a ghost
+	# can't cross, but only while actually lit - the altar isn't one of
+	# these anymore (no protection function), and a fuel station or
+	# escape point that's gone dark (out of charges, or night) stops
+	# blocking too.
+	if escape_light.visible:
+		next_position = _clamp_outside_safe_zone(next_position, escape_point.global_position)
+	if fuel_light.visible:
+		next_position = _clamp_outside_safe_zone(next_position, fuel_station.global_position)
 
 	global_position = next_position
 
 
 func _clamp_outside_safe_zone(pos: Vector2, zone_center: Vector2) -> Vector2:
 	var offset := pos - zone_center
-	if offset.length() < ALTAR_SAFE_RADIUS:
-		return zone_center + offset.normalized() * ALTAR_SAFE_RADIUS
+	if offset.length() < FIXED_LIGHT_SAFE_RADIUS:
+		return zone_center + offset.normalized() * FIXED_LIGHT_SAFE_RADIUS
 	return pos
 
 

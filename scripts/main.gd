@@ -17,6 +17,9 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	if bobber.visible:
+		# Continuously tracks rather than a fixed point set once, so a
+		# lure being reeled in visibly moves back toward the player.
+		bobber.global_position = player.get_line_target_position()
 		line.points = PackedVector2Array([player.global_position, bobber.global_position])
 
 	# Debug convenience: Shift+R restarts the run without reopening Godot.

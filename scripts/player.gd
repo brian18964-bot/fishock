@@ -9,6 +9,7 @@ signal reel_progress(progress: float, tension: float)
 signal catch_success(fish: Dictionary)
 signal catch_failed(reason: String)
 signal line_cleared()
+signal sacrifice_progress_updated(progress: float)
 
 enum State { IDLE, CHARGING, WAITING, BITE, REELING }
 enum FishingMode { BOBBER, LURE }
@@ -35,8 +36,17 @@ var progress: float = 0.0
 var tension: float = 0.0
 var in_altar_zone: bool = false
 var in_escape_zone: bool = false
+var in_fuel_zone: bool = false
+var in_oil_drum_zone: bool = false
 var current_noise_radius: float = 0.0
 var cast_jittered: bool = false
+
+const SACRIFICE_DURATION := 0.6
+var sacrifice_progress: float = 0.0
+
+var _fuel_station: FuelStation
+var _oil_drum: OilDrum
+var _wait_duration: float = 1.0
 
 ## Design doc §4.2/§9.2: bobber is quiet, free, consumable bait; lure is a
 ## noisier, hands-busy active jig using durable gear you can't restock
@@ -86,6 +96,18 @@ func set_in_escape(value: bool) -> void:
 		_cancel_cast("escape_interrupt")
 
 
+func set_in_fuel_station(value: bool, station: FuelStation) -> void:
+	in_fuel_zone = value
+	_fuel_station = station if value else null
+	if value and state != State.IDLE:
+		_cancel_cast("fuel_interrupt")
+
+
+func set_in_oil_drum(value: bool, drum: OilDrum) -> void:
+	in_oil_drum_zone = value
+	_oil_drum = drum if value else null
+
+
 ## Design doc §3.3: a ghost lurking near a charging player scrambles the
 ## cast, so the eventual distance stops tracking hold time reliably.
 func apply_cast_jitter() -> void:
@@ -95,6 +117,16 @@ func apply_cast_jitter() -> void:
 
 func has_line_out() -> bool:
 	return state == State.WAITING or state == State.BITE or state == State.REELING
+
+
+## Design doc request: lure fishing should visibly retrieve toward the
+## player as it's reeled in, with the bite happening mid-retrieve, rather
+## than just sitting at the cast point. Bobber stays put (still water).
+func get_line_target_position() -> Vector2:
+	if state == State.WAITING and fishing_mode == FishingMode.LURE and _wait_duration > 0.0:
+		var retrieved: float = clamp(1.0 - (wait_timer / _wait_duration), 0.0, 1.0)
+		return cast_target.lerp(global_position, retrieved)
+	return cast_target
 
 
 ## Design doc §3.3: cutting the line always fails the catch; when it's a
@@ -158,10 +190,9 @@ func _handle_mode_toggle() -> void:
 		GameState.push_message("切換成浮標")
 
 
-## Design doc §9.1/§9.2: no shop UI yet, so gold spends through debug-style
-## keys instead - B buys a lure for the next run's loadout, 1/2/3 buy a
-## level of each permanent upgrade. Works anytime since none of it takes
-## effect until the next reset_gear() (a fresh run) anyway.
+## Legacy debug-key path to the same purchases the title screen's shop UI
+## now offers - kept working since it's harmless (nothing here takes
+## effect until the next reset_gear()), just no longer the primary way in.
 func _handle_shop_input() -> void:
 	if _key_just_pressed(KEY_B):
 		if Profile.buy_lure():
@@ -275,18 +306,31 @@ func _handle_action_input(delta: float) -> void:
 	var just_released := (not held) and _prev_action_held
 
 	if in_altar_zone:
-		if just_pressed:
-			var count := GameState.sacrifice_all()
-			if count > 0:
-				GameState.push_message("獻祭了 %d 條魚" % count)
-			else:
-				GameState.push_message("身上沒有可獻祭的漁獲")
+		_handle_sacrifice(held, delta)
 		_prev_action_held = held
 		return
 
 	if in_escape_zone:
 		if just_pressed and GameState.day_phase == GameState.DayPhase.ESCAPE:
 			GameState.escape()
+		_prev_action_held = held
+		return
+
+	if in_fuel_zone:
+		if just_pressed and _fuel_station != null:
+			var lantern: Lantern = get_node("Lantern")
+			if _fuel_station.try_refuel(lantern):
+				GameState.push_message("煤油加滿了！（煤油站剩 %d/%d 次）" % [_fuel_station.charges_remaining, _fuel_station.max_charges])
+			elif _fuel_station.charges_remaining <= 0:
+				GameState.push_message("煤油站次數用完了")
+			else:
+				GameState.push_message("燃油已經是滿的")
+		_prev_action_held = held
+		return
+
+	if in_oil_drum_zone:
+		if just_pressed and _oil_drum != null:
+			_oil_drum.use()
 		_prev_action_held = held
 		return
 
@@ -311,6 +355,21 @@ func _handle_action_input(delta: float) -> void:
 			pass
 
 	_prev_action_held = held
+
+
+## Design doc request: sacrificing is no longer instant-bulk - each fish
+## takes a short held progress bar, one at a time.
+func _handle_sacrifice(held: bool, delta: float) -> void:
+	if held and not GameState.carried_fish.is_empty():
+		sacrifice_progress += delta / SACRIFICE_DURATION
+		if sacrifice_progress >= 1.0:
+			sacrifice_progress = 0.0
+			var fish: Dictionary = GameState.sacrifice_one()
+			if not fish.is_empty():
+				GameState.push_message("獻祭了一條 %s" % fish.get("name", "魚"))
+	else:
+		sacrifice_progress = 0.0
+	sacrifice_progress_updated.emit(sacrifice_progress)
 
 
 func _update_fishing(delta: float) -> void:
@@ -364,6 +423,7 @@ func _launch_cast() -> void:
 	current_tier = FishData.tier_for_ratio(ratio)
 	tier_data = FishData.get_tier_data(current_tier)
 	wait_timer = randf_range(tier_data.wait_min, tier_data.wait_max)
+	_wait_duration = wait_timer
 	_roll_catch_outcome()
 	_set_state(State.WAITING)
 	cast_started.emit(cast_target, current_tier)

@@ -24,6 +24,7 @@ const STATE_TEXT := {
 @onready var heart_label: Label = $Panel/HeartLabel
 @onready var gold_label: Label = $Panel/GoldLabel
 @onready var back_to_title_button: Button = $Panel/BackToTitleButton
+@onready var sacrifice_bar: ProgressBar = $Panel/SacrificeBar
 
 const PHASE_TEXT := {
 	"FISHING": "階段：白天釣魚中",
@@ -41,6 +42,7 @@ func _ready() -> void:
 	_player = player
 	player.state_changed.connect(_on_state_changed)
 	player.reel_progress.connect(_on_reel_progress)
+	player.sacrifice_progress_updated.connect(_on_sacrifice_progress_updated)
 	GameState.quota_updated.connect(_on_quota_updated)
 	GameState.inventory_updated.connect(_on_inventory_updated)
 	GameState.message_posted.connect(_on_message)
@@ -91,6 +93,11 @@ func _on_state_changed(new_state: String) -> void:
 func _on_reel_progress(progress: float, tension: float) -> void:
 	progress_bar.value = progress
 	tension_bar.value = tension
+
+
+func _on_sacrifice_progress_updated(progress: float) -> void:
+	sacrifice_bar.visible = progress > 0.0
+	sacrifice_bar.value = progress
 
 
 func _on_quota_updated(progress: float, target: float) -> void:

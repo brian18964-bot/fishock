@@ -2,12 +2,13 @@ class_name Lantern
 extends PointLight2D
 
 ## Directional lantern (design doc §2.1). Brightness trades light reach for
-## fuel burn; standing in a fixed light (altar) refuels instead of draining.
-## `[` / `]` are desktop placeholders for a future HUD brightness control.
+## fuel burn. Refueling is a limited-use action at a fuel station (see
+## fuel_station.gd) now, not a passive drip while standing anywhere -
+## the altar is sacrifice-only. `[` / `]` are desktop placeholders for a
+## future HUD brightness control.
 
 const MAX_FUEL := 100.0
 const DRAIN_RATE := 7.0
-const REFUEL_RATE := 35.0
 const MIN_BRIGHTNESS := 0.35
 const MAX_BRIGHTNESS := 1.0
 const BRIGHTNESS_STEP := 0.5
@@ -55,10 +56,7 @@ func _process(delta: float) -> void:
 	_handle_brightness_input(delta)
 	_handle_flash_input(delta)
 
-	if _player.in_altar_zone:
-		fuel = min(fuel + REFUEL_RATE * delta, max_fuel)
-	else:
-		fuel = max(fuel - DRAIN_RATE * brightness * delta, 0.0)
+	fuel = max(fuel - DRAIN_RATE * brightness * delta, 0.0)
 
 	var out_of_fuel := fuel <= 0.0
 	visible = not out_of_fuel

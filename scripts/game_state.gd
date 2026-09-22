@@ -65,28 +65,27 @@ func add_carried_fish(fish: Dictionary) -> void:
 	inventory_updated.emit(carried_fish)
 
 
-func sacrifice_all() -> int:
+## Design doc request: sacrificing is per-fish (one small progress bar
+## each), not an instant bulk dump - see Player._handle_sacrifice().
+func sacrifice_one() -> Dictionary:
 	if carried_fish.is_empty():
-		return 0
-	var count := carried_fish.size()
-	var total_value := 0.0
-	for fish in carried_fish:
-		total_value += float(fish.value)
-	carried_fish.clear()
+		return {}
+	var fish: Dictionary = carried_fish.pop_front()
 	inventory_updated.emit(carried_fish)
 
-	quota_progress += total_value
+	var value := float(fish.value)
+	quota_progress += value
 	quota_updated.emit(quota_progress, quota_target)
 
 	if quota_progress >= quota_target and day_phase == DayPhase.FISHING:
 		_enter_escape_phase()
 	elif day_phase == DayPhase.ESCAPE:
-		_quota_since_offering += total_value
+		_quota_since_offering += value
 		if _quota_since_offering >= OFFERING_ADD_THRESHOLD:
 			_quota_since_offering -= OFFERING_ADD_THRESHOLD
 			_add_offering(true)
 
-	return count
+	return fish
 
 
 func drop_all_carried() -> int:
