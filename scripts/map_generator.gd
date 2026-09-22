@@ -64,8 +64,14 @@ func _generate_water_zones() -> void:
 func _spawn_zone(type: int, radius: float) -> void:
 	var pos := _pick_zone_position(radius)
 	var zone: WaterZone = WATER_ZONE_SCENE.instantiate()
-	get_parent().add_child(zone)
+	# Main is still mid-instantiation while this whole scene's _ready() chain
+	# is running (map_generator is a static child of it) - add_child() on it
+	# here fails outright ("Parent node is busy setting up children"), so
+	# this has to be deferred. setup() only touches the zone's own already-
+	# instantiated children, so it's safe to call before the zone is in the
+	# tree at all.
 	zone.setup(type, radius, pos)
+	get_parent().add_child.call_deferred(zone)
 	water_zones.append(zone)
 
 

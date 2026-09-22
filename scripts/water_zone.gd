@@ -16,10 +16,10 @@ var zone_type: int = ZoneType.COMMON
 var radius: float = 200.0
 
 
-## Called by map_generator.gd right after instantiate()+add_child() - before
-## this node's own _ready() has run, so this resolves the collision shape
-## directly via get_node() rather than an @onready var (which wouldn't be
-## assigned yet at this point).
+## Called by map_generator.gd right after instantiate(), before the zone is
+## even added to the tree (add_child there is deferred) - so this resolves
+## the collision shape directly via get_node() rather than an @onready var
+## (which wouldn't be assigned yet at this point).
 func setup(type: int, r: float, pos: Vector2) -> void:
 	zone_type = type
 	radius = r
