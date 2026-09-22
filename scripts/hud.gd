@@ -17,7 +17,7 @@ const STATE_TEXT := {
 @onready var fuel_bar: ProgressBar = $Panel/FuelBar
 
 var _message_timer: float = 0.0
-var _lantern: PointLight2D
+var _lantern: Lantern
 
 
 func _ready() -> void:

@@ -33,7 +33,7 @@ var wait_timer: float = 0.0
 var state_timer: float = 0.0
 
 var player: Node2D
-var player_lantern: PointLight2D
+var player_lantern: Lantern
 var altar: Node2D
 
 @onready var state_icon: Label = $StateIcon

@@ -1,3 +1,4 @@
+class_name Lantern
 extends PointLight2D
 
 ## Directional lantern (design doc §2.1). Brightness trades light reach for
