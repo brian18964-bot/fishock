@@ -17,6 +17,8 @@ const MAX_CHARGE_TIME := 1.2
 const MIN_CAST_DIST := 40.0
 const MAX_CAST_DIST := 340.0
 const MOVE_REEL_PENALTY := 0.5
+const WORLD_WIDTH := 2400.0
+const WORLD_HEIGHT := 1350.0
 
 var state: State = State.IDLE
 var aim_dir: Vector2 = Vector2.DOWN
@@ -116,8 +118,8 @@ func _update_movement() -> void:
 
 	velocity = input_dir * SPEED
 	move_and_slide()
-	position.x = clamp(position.x, 16.0, 944.0)
-	position.y = clamp(position.y, 16.0, 524.0)
+	position.x = clamp(position.x, 16.0, WORLD_WIDTH - 16.0)
+	position.y = clamp(position.y, 16.0, WORLD_HEIGHT - 16.0)
 
 
 func _update_noise() -> void:

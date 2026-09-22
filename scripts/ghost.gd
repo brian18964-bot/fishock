@@ -14,7 +14,7 @@ const SUSPICIOUS_SPEED := 95.0
 const CHASE_SPEED := 125.0
 const SEARCH_SPEED := 85.0
 
-const PATROL_RADIUS := 160.0
+const PATROL_RADIUS := 240.0
 const PATROL_WAIT_TIME := 1.5
 const ARRIVE_RADIUS := 12.0
 
@@ -46,8 +46,10 @@ var player: Player
 var player_lantern: Lantern
 var altar: Node2D
 var escape_point: Node2D
+var stun_timer: float = 0.0
 
 @onready var state_icon: Label = $StateIcon
+@onready var visual: ColorRect = $Visual
 
 
 func _ready() -> void:
@@ -58,10 +60,23 @@ func _ready() -> void:
 	altar = get_tree().current_scene.get_node("Altar")
 	escape_point = get_tree().current_scene.get_node("EscapePoint")
 	state_changed.connect(_on_state_changed)
+	add_to_group("ghosts")
 	_set_state(GhostState.PATROL)
 
 
+## Design doc §2.3: the strong-light skill briefly freezes the ghost solid -
+## no movement, no sensing, no interference - while it's stunned.
+func stun(duration: float) -> void:
+	stun_timer = max(stun_timer, duration)
+
+
 func _physics_process(delta: float) -> void:
+	if stun_timer > 0.0:
+		stun_timer -= delta
+		visual.color = Color(0.9, 0.85, 0.3, 1)
+		return
+	visual.color = Color(0.55, 0.08, 0.16, 1)
+
 	var sense := _sense_player()
 	match ghost_state:
 		GhostState.PATROL:

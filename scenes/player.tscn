@@ -28,3 +28,11 @@ shape = SubResource("RectangleShape2D_1")
 
 [node name="Lantern" type="PointLight2D" parent="."]
 script = ExtResource("2")
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position_smoothing_enabled = true
+position_smoothing_speed = 6.0
+limit_left = 0
+limit_top = 0
+limit_right = 2400
+limit_bottom = 1350

@@ -20,8 +20,18 @@ const MAX_SCALE := 2.6
 const CONE_HALF_ANGLE_DEG := 32.0
 const TEXTURE_HALF_SIZE := 128.0
 
+## Design doc §2.3: strong-light skill. Shorter reach than the ambient
+## cone, and only lands on a ghost that's both in range and lit.
+const FLASH_RANGE := 160.0
+const FLASH_FUEL_COST := 25.0
+const FLASH_COOLDOWN := 3.0
+const FLASH_STUN_DURATION := 1.75
+
 var fuel: float = MAX_FUEL
 var brightness: float = 0.75
+var flash_cooldown: float = 0.0
+
+var _flash_held: bool = false
 
 @onready var _player: Node2D = get_parent()
 
@@ -33,6 +43,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_handle_brightness_input(delta)
+	_handle_flash_input(delta)
 
 	if _player.in_altar_zone:
 		fuel = min(fuel + REFUEL_RATE * delta, MAX_FUEL)
@@ -51,6 +62,35 @@ func _handle_brightness_input(delta: float) -> void:
 		brightness = clamp(brightness - BRIGHTNESS_STEP * delta, MIN_BRIGHTNESS, MAX_BRIGHTNESS)
 	elif Input.is_key_pressed(KEY_BRACKETRIGHT):
 		brightness = clamp(brightness + BRIGHTNESS_STEP * delta, MIN_BRIGHTNESS, MAX_BRIGHTNESS)
+
+
+func _handle_flash_input(delta: float) -> void:
+	flash_cooldown = max(flash_cooldown - delta, 0.0)
+	var held := Input.is_key_pressed(KEY_F)
+	var just_pressed := held and not _flash_held
+	_flash_held = held
+	if just_pressed and flash_cooldown <= 0.0:
+		_try_flash()
+
+
+func _try_flash() -> void:
+	if fuel < FLASH_FUEL_COST:
+		GameState.push_message("燃油不足，無法使用強光")
+		return
+
+	flash_cooldown = FLASH_COOLDOWN
+	fuel -= FLASH_FUEL_COST
+
+	var hit_any := false
+	for ghost in get_tree().get_nodes_in_group("ghosts"):
+		if global_position.distance_to(ghost.global_position) <= FLASH_RANGE and illuminates(ghost.global_position):
+			ghost.stun(FLASH_STUN_DURATION)
+			hit_any = true
+
+	if hit_any:
+		GameState.push_message("強光把鬼定住了！")
+	else:
+		GameState.push_message("強光沒有照到任何鬼")
 
 
 ## True if `point` currently falls inside this cone (design doc §3.1: light
