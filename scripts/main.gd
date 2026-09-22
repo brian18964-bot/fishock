@@ -1,6 +1,6 @@
 extends Node2D
 
-@onready var player: CharacterBody2D = $Player
+@onready var player: Player = $Player
 @onready var bobber: Node2D = $Bobber
 @onready var line: Line2D = $Line
 
@@ -20,6 +20,7 @@ func _process(_delta: float) -> void:
 	var reset_combo := Input.is_key_pressed(KEY_SHIFT) and Input.is_key_pressed(KEY_R)
 	if reset_combo and not _reset_combo_held:
 		GameState.reset_run()
+		player.reset_gear()
 	_reset_combo_held = reset_combo
 
 

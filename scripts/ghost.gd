@@ -33,6 +33,7 @@ const ALTAR_SAFE_RADIUS := 85.0
 const INTERFERENCE_RANGE := 140.0
 const INTERFERENCE_COOLDOWN := 8.0
 const STEAL_RANGE := 60.0
+const BAIT_STEAL_RANGE := 45.0
 const LINE_CUT_RANGE := 45.0
 const LINE_CUT_WINDUP := 1.2
 
@@ -230,9 +231,9 @@ func _clamp_outside_safe_zone(pos: Vector2, zone_center: Vector2) -> Vector2:
 
 
 ## Design doc §3.3: while not actively chasing, the ghost harasses whatever
-## the player is doing instead - scrambling a cast, cutting the line, or
-## snatching a carried fish. Bait/lure-specific interference is skipped
-## since that gear split doesn't exist yet.
+## the player is doing instead - scrambling a cast, spoiling the bobber's
+## bait, cutting the line (knocking a lure off is a harsher variant of
+## this, handled inside Player.cut_line()), or snatching a carried fish.
 func _process_interference(delta: float, sense: Dictionary) -> void:
 	interference_cooldown = max(interference_cooldown - delta, 0.0)
 
@@ -248,6 +249,12 @@ func _process_interference(delta: float, sense: Dictionary) -> void:
 		player.apply_cast_jitter()
 		interference_cooldown = INTERFERENCE_COOLDOWN
 		line_cut_windup = 0.0
+		return
+
+	var bobber_waiting := player.fishing_mode == Player.FishingMode.BOBBER and player.state == Player.State.WAITING
+	if interference_cooldown <= 0.0 and bobber_waiting and global_position.distance_to(player.cast_target) <= BAIT_STEAL_RANGE:
+		player.spoil_bait()
+		interference_cooldown = INTERFERENCE_COOLDOWN
 		return
 
 	if interference_cooldown <= 0.0 and player.has_line_out():

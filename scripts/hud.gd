@@ -20,6 +20,7 @@ const STATE_TEXT := {
 @onready var offering_label: Label = $Panel/OfferingLabel
 @onready var run_end_label: Label = $Panel/RunEndLabel
 @onready var time_label: Label = $Panel/TimeLabel
+@onready var gear_label: Label = $Panel/GearLabel
 
 const PHASE_TEXT := {
 	"FISHING": "階段：白天釣魚中",
@@ -29,10 +30,12 @@ const PHASE_TEXT := {
 
 var _message_timer: float = 0.0
 var _lantern: Lantern
+var _player: Player
 
 
 func _ready() -> void:
-	var player := get_tree().current_scene.get_node("Player")
+	var player: Player = get_tree().current_scene.get_node("Player")
+	_player = player
 	player.state_changed.connect(_on_state_changed)
 	player.reel_progress.connect(_on_reel_progress)
 	GameState.quota_updated.connect(_on_quota_updated)
@@ -64,6 +67,11 @@ func _process(delta: float) -> void:
 	else:
 		var total: int = int(GameState.time_remaining)
 		time_label.text = "剩餘時間：%02d:%02d" % [total / 60, total % 60]
+
+	if _player.fishing_mode == Player.FishingMode.BOBBER:
+		gear_label.text = "釣法：浮標（餌 x%d）－Tab 切換" % _player.bait_count
+	else:
+		gear_label.text = "釣法：路亞（假餌 x%d）－Tab 切換" % _player.lure_count
 
 
 func _on_state_changed(new_state: String) -> void:

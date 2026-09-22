@@ -11,6 +11,7 @@ signal catch_failed(reason: String)
 signal line_cleared()
 
 enum State { IDLE, CHARGING, WAITING, BITE, REELING }
+enum FishingMode { BOBBER, LURE }
 
 const SPEED := 140.0
 const MAX_CHARGE_TIME := 1.2
@@ -19,6 +20,8 @@ const MAX_CAST_DIST := 340.0
 const MOVE_REEL_PENALTY := 0.5
 const WORLD_WIDTH := 2400.0
 const WORLD_HEIGHT := 1350.0
+const START_BAIT := 20
+const START_LURES := 5
 
 var state: State = State.IDLE
 var aim_dir: Vector2 = Vector2.DOWN
@@ -35,7 +38,15 @@ var in_escape_zone: bool = false
 var current_noise_radius: float = 0.0
 var cast_jittered: bool = false
 
+## Design doc §4.2/§9.2: bobber is quiet, free, consumable bait; lure is a
+## noisier, hands-busy active jig using durable gear you can't restock
+## mid-run and can lose to interference.
+var fishing_mode: FishingMode = FishingMode.BOBBER
+var bait_count: int = START_BAIT
+var lure_count: int = START_LURES
+
 var _prev_action_held: bool = false
+var _prev_mode_toggle_held: bool = false
 
 @onready var facing_indicator: ColorRect = $FacingIndicator
 @onready var _move_joystick: TouchJoystick = get_tree().current_scene.get_node("HUD/Panel/MoveJoystick")
@@ -69,9 +80,62 @@ func has_line_out() -> bool:
 	return state == State.WAITING or state == State.BITE or state == State.REELING
 
 
+## Design doc §3.3: cutting the line always fails the catch; when it's a
+## lure, the gear itself also gets knocked off and lost for good.
 func cut_line() -> void:
-	if has_line_out():
+	if not has_line_out():
+		return
+	if fishing_mode == FishingMode.LURE:
+		_lose_lure()
+		_fail_catch("lure_knocked")
+	else:
 		_fail_catch("line_cut")
+
+
+## Design doc §3.3: bobber-only - the ghost reaching the resting bobber
+## spoils that cast (bait already spent stays spent, nothing extra lost).
+func spoil_bait() -> void:
+	if state == State.WAITING and fishing_mode == FishingMode.BOBBER:
+		_fail_catch("bait_stolen")
+
+
+func reset_gear() -> void:
+	bait_count = START_BAIT
+	lure_count = START_LURES
+	fishing_mode = FishingMode.BOBBER
+
+
+func _can_start_cast() -> bool:
+	if fishing_mode == FishingMode.BOBBER:
+		return bait_count > 0
+	return lure_count > 0
+
+
+func _lose_lure() -> void:
+	lure_count = max(lure_count - 1, 0)
+	if lure_count <= 0:
+		fishing_mode = FishingMode.BOBBER
+		GameState.push_message("假餌都用完了，只能用浮標了")
+
+
+func _handle_mode_toggle() -> void:
+	if state != State.IDLE:
+		return
+	var held := Input.is_key_pressed(KEY_TAB)
+	var just_pressed := held and not _prev_mode_toggle_held
+	_prev_mode_toggle_held = held
+	if not just_pressed:
+		return
+
+	if fishing_mode == FishingMode.BOBBER:
+		if lure_count <= 0:
+			GameState.push_message("沒有假餌了，只能用浮標")
+			return
+		fishing_mode = FishingMode.LURE
+		GameState.push_message("切換成路亞")
+	else:
+		fishing_mode = FishingMode.BOBBER
+		GameState.push_message("切換成浮標")
 
 
 func _physics_process(delta: float) -> void:
@@ -79,6 +143,7 @@ func _physics_process(delta: float) -> void:
 	_update_movement()
 	_update_noise()
 	_update_fishing(delta)
+	_handle_mode_toggle()
 	_handle_action_input(delta)
 
 
@@ -89,6 +154,10 @@ func _update_aim() -> void:
 		var to_fish := cast_target - global_position
 		if to_fish.length() > 1.0:
 			aim_dir = to_fish.normalized()
+	elif fishing_mode == FishingMode.LURE and state == State.WAITING and _is_action_pressed():
+		# Design doc §4.2 "視野弱點": hands are busy jigging the lure, so
+		# aim just holds still instead of tracking mouse/stick input.
+		pass
 	elif _aim_joystick.is_pressed:
 		aim_dir = _aim_joystick.output.normalized()
 	else:
@@ -124,12 +193,18 @@ func _update_movement() -> void:
 
 func _update_noise() -> void:
 	# Design doc §3.1: casting/reeling/running are heard, not just seen.
+	# §4.2: lure is "捲線聲持續" (constant reel sound) while bobber is quiet.
 	var noise := 0.0
 	if velocity.length() > 1.0:
 		noise = max(noise, 90.0)
 	if state == State.REELING:
 		noise = max(noise, 110.0)
-	elif state == State.WAITING or state == State.BITE:
+	elif state == State.WAITING:
+		if fishing_mode == FishingMode.LURE and _is_action_pressed():
+			noise = max(noise, 110.0)
+		else:
+			noise = max(noise, 40.0)
+	elif state == State.BITE:
 		noise = max(noise, 40.0)
 	current_noise_radius = noise
 
@@ -164,8 +239,12 @@ func _handle_action_input(delta: float) -> void:
 	match state:
 		State.IDLE:
 			if just_pressed:
-				_set_state(State.CHARGING)
-				charge_time = 0.0
+				if _can_start_cast():
+					_set_state(State.CHARGING)
+					charge_time = 0.0
+				else:
+					var out_of := "餌" if fishing_mode == FishingMode.BOBBER else "假餌"
+					GameState.push_message("沒有%s了，按 Tab 換釣法" % out_of)
 		State.CHARGING:
 			if held:
 				charge_time = min(charge_time + delta, MAX_CHARGE_TIME)
@@ -183,7 +262,10 @@ func _handle_action_input(delta: float) -> void:
 func _update_fishing(delta: float) -> void:
 	match state:
 		State.WAITING:
-			wait_timer -= delta
+			# Design doc §4.2: bobber waits passively; lure only progresses
+			# toward a bite while actively jigged ("持續收線動作").
+			if fishing_mode == FishingMode.BOBBER or _is_action_pressed():
+				wait_timer -= delta
 			if wait_timer <= 0.0:
 				_start_bite()
 		State.BITE:
@@ -211,6 +293,9 @@ func _update_fishing(delta: float) -> void:
 
 
 func _launch_cast() -> void:
+	if fishing_mode == FishingMode.BOBBER:
+		bait_count = max(bait_count - 1, 0)
+
 	var ratio: float = charge_time / MAX_CHARGE_TIME
 	if cast_jittered:
 		ratio = clamp(ratio * randf_range(0.3, 1.4), 0.0, 1.0)
@@ -253,6 +338,10 @@ func _fail_catch(reason: String) -> void:
 		msg = "線斷了，魚跑了"
 	elif reason == "line_cut":
 		msg = "線被鬼剪斷了！"
+	elif reason == "lure_knocked":
+		msg = "假餌被鬼弄掉了！"
+	elif reason == "bait_stolen":
+		msg = "餌被鬼偷走了！"
 	GameState.push_message(msg)
 	_reset_line(State.IDLE)
 

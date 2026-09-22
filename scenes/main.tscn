@@ -176,12 +176,19 @@ step = 0.01
 show_percentage = false
 modulate = Color(1, 0.4, 0.4, 1)
 
+[node name="GearLabel" type="Label" parent="HUD/Panel"]
+offset_left = 410.0
+offset_top = 60.0
+offset_right = 700.0
+offset_bottom = 80.0
+text = "釣法：浮標"
+
 [node name="HelpLabel" type="Label" parent="HUD/Panel"]
 offset_left = 16.0
 offset_top = 510.0
 offset_right = 900.0
 offset_bottom = 534.0
-text = "左下搖桿移動／右下搖桿瞄準（桌面測試可用 WASD／滑鼠代替）／空白鍵：蓄力拋竿・提竿・收線；[ ] 調亮度；F：強光定身鬼；祭壇獻祭、逃離點逃離都按空白鍵；Shift+R 重來一輪"
+text = "左下搖桿移動／右下搖桿瞄準（桌面測試可用 WASD／滑鼠代替）／空白鍵：蓄力拋竿・提竿・收線；Tab 切換浮標/路亞（路亞要按住空白鍵持續操竿才會上魚）；[ ] 調亮度；F：強光定身鬼；祭壇獻祭、逃離點逃離都按空白鍵；Shift+R 重來一輪"
 
 [node name="TimeLabel" type="Label" parent="HUD/Panel"]
 offset_left = 700.0
