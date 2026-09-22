@@ -9,6 +9,7 @@ var _reset_combo_held := false
 
 func _ready() -> void:
 	player.cast_started.connect(_on_cast_started)
+	player.bite_started.connect(_on_bite_started)
 	player.line_cleared.connect(_on_line_cleared)
 	# Covers opening this scene directly (e.g. F6 in the editor) without
 	# going through the title screen's Start button.
@@ -34,7 +35,16 @@ func _process(_delta: float) -> void:
 func _on_cast_started(target_pos: Vector2, _tier: String) -> void:
 	bobber.global_position = target_pos
 	bobber.visible = true
+	bobber.modulate = Color.WHITE
 	line.visible = true
+
+
+## User feedback: species have a distinct color (FishData.SPECIES) as the
+## one "appearance" difference available without real art - reveal it on
+## the bobber only once the bite happens, keeping the same suspense as the
+## existing rare/heart bite messages.
+func _on_bite_started() -> void:
+	bobber.modulate = player.current_fish_color
 
 
 func _on_line_cleared() -> void:

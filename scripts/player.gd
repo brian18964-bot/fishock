@@ -76,6 +76,17 @@ const FISH_RUN_DURATION := 0.6
 const FISH_RUN_TENSION_MULT := 2.6
 const FISH_RUN_PROGRESS_PENALTY := 0.12
 
+## User feedback: each species' "trait" (see FishData.SPECIES) scales how
+## often/hard it runs - calm fish are an easier fight, wild ones harder.
+const TRAIT_RUN_INTERVAL_MULT := {"calm": 1.6, "normal": 1.0, "wild": 0.65}
+const TRAIT_RUN_TENSION_MULT := {"calm": 0.7, "normal": 1.0, "wild": 1.4}
+
+## User feedback: rarity should go a step further than common/rare - a
+## small chance for a rare catch to be upgraded to a legendary "epic" fish
+## (see FishData.SPECIES' "epic" pools), worth much more and fights harder
+## still on top of the normal rare-catch difficulty bump.
+const EPIC_CHANCE_OF_RARE := 0.18
+
 ## User feedback: bait flavor from roadside rummaging should actually do
 ## something, not just be a message string - each type biases the very
 ## next cast one way, then gets used up regardless of what happens.
@@ -118,6 +129,9 @@ var stolen_timer: float = 0.0
 var fish_run_timer: float = 0.0
 var fish_run_active_time: float = 0.0
 var pending_bait_flavor: String = ""
+var is_epic_catch: bool = false
+var fish_trait: String = "normal"
+var current_fish_color: Color = Color(1, 0.85, 0.2)
 
 ## Design doc §9.1/§9.2: base cast distance / reel speed plus the
 ## rod_distance / reel_power Profile upgrades, recomputed in reset_gear()
@@ -698,9 +712,9 @@ func _update_fishing(delta: float) -> void:
 			if in_run:
 				if held:
 					progress = max(progress - FISH_RUN_PROGRESS_PENALTY * delta / FISH_RUN_DURATION, 0.0)
-					tension += tier_data.tension_rise * FISH_RUN_TENSION_MULT * delta
+					tension += tier_data.tension_rise * FISH_RUN_TENSION_MULT * _trait_tension_mult() * delta
 				else:
-					tension += tier_data.tension_rise * 0.4 * delta
+					tension += tier_data.tension_rise * 0.4 * _trait_tension_mult() * delta
 			elif held:
 				progress += tier_data.reel_speed * rate_mult * reel_power_mult * delta
 				tension += tier_data.tension_rise * delta
@@ -763,6 +777,7 @@ func _launch_cast() -> void:
 func _roll_catch_outcome() -> void:
 	is_rare_catch = false
 	is_heart_catch = false
+	is_epic_catch = false
 	cast_outcome = CastOutcome.BITE
 	caught_in_hotspot = _hotspot.active and cast_target.distance_to(_hotspot.global_position) <= Hotspot.RADIUS
 	var in_rare_zone: bool = cast_water_zone != null and cast_water_zone.is_rare()
@@ -806,13 +821,37 @@ func _roll_catch_outcome() -> void:
 	elif randf() < rare_chance:
 		is_rare_catch = true
 
+	# User feedback: rarity goes a step further - a rare catch has a small
+	# chance to be upgraded again into a legendary "epic" fish.
+	if is_rare_catch and randf() < EPIC_CHANCE_OF_RARE:
+		is_epic_catch = true
+
+	# User feedback: named species (FishData.SPECIES) replace the old
+	# generic "稀有" + label - which zone type and rarity tier decide the
+	# pool this cast draws from.
 	tier_data = tier_data.duplicate()
+	if is_heart_catch:
+		# Not a real species - keep the fight gentle and give it its own
+		# color rather than reusing whatever the last real fish rolled.
+		fish_trait = "calm"
+		current_fish_color = Color(1, 0.4, 0.5)
+	else:
+		var zone_key := "rare" if in_rare_zone else "common"
+		var rarity_key := "epic" if is_epic_catch else ("rare" if is_rare_catch else "common")
+		var species: Dictionary = FishData.pick_species(current_tier, zone_key, rarity_key)
+		tier_data.label = species.name
+		tier_data.value = tier_data.value * float(species.value_mult)
+		fish_trait = species.trait
+		current_fish_color = species.color
+
 	if is_rare_catch:
-		tier_data.label = "稀有" + tier_data.label
-		tier_data.value = tier_data.value * 3.0
 		tier_data.reel_speed = tier_data.reel_speed * 0.6
 		tier_data.tension_rise = tier_data.tension_rise * 1.15
 		tier_data.bite_window = tier_data.bite_window * 1.2
+	if is_epic_catch:
+		tier_data.reel_speed = tier_data.reel_speed * 0.8
+		tier_data.tension_rise = tier_data.tension_rise * 1.15
+		tier_data.bite_window = tier_data.bite_window * 0.85
 
 	var zone_mult: float = RARE_ZONE_VALUE_MULT if in_rare_zone else COMMON_ZONE_VALUE_MULT
 	tier_data.value = tier_data.value * zone_mult
@@ -830,6 +869,8 @@ func _start_bite() -> void:
 	bite_started.emit()
 	if is_heart_catch:
 		GameState.push_message("水花特別亮、震動特別強...是心臟！")
+	elif is_epic_catch:
+		GameState.push_message("水面掀起巨浪，感覺上鉤的是隻大傢伙...傳說級的魚！")
 	elif is_rare_catch:
 		GameState.push_message("水花聲跟震動都變強了，是稀有魚！")
 
@@ -837,7 +878,7 @@ func _start_bite() -> void:
 func _hook_fish() -> void:
 	progress = 0.0
 	tension = 0.15
-	fish_run_timer = randf_range(FISH_RUN_INTERVAL_MIN, FISH_RUN_INTERVAL_MAX)
+	fish_run_timer = randf_range(FISH_RUN_INTERVAL_MIN, FISH_RUN_INTERVAL_MAX) * _trait_interval_mult()
 	fish_run_active_time = 0.0
 	if is_rare_catch:
 		rare_pull_dir = Vector2.RIGHT.rotated(randf() * TAU)
@@ -853,7 +894,7 @@ func _update_fish_run(delta: float) -> bool:
 	if fish_run_active_time > 0.0:
 		fish_run_active_time -= delta
 		if fish_run_active_time <= 0.0:
-			fish_run_timer = randf_range(FISH_RUN_INTERVAL_MIN, FISH_RUN_INTERVAL_MAX)
+			fish_run_timer = randf_range(FISH_RUN_INTERVAL_MIN, FISH_RUN_INTERVAL_MAX) * _trait_interval_mult()
 		return true
 	fish_run_timer -= delta
 	if fish_run_timer <= 0.0:
@@ -861,6 +902,14 @@ func _update_fish_run(delta: float) -> bool:
 		GameState.push_message("魚用力掙扎了一下！先放手別硬拉")
 		return true
 	return false
+
+
+func _trait_interval_mult() -> float:
+	return TRAIT_RUN_INTERVAL_MULT.get(fish_trait, 1.0)
+
+
+func _trait_tension_mult() -> float:
+	return TRAIT_RUN_TENSION_MULT.get(fish_trait, 1.0)
 
 
 ## Design doc §4.4: rare-fish direction resistance. Moving opposite the
