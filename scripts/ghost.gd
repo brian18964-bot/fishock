@@ -1,8 +1,9 @@
 extends Node2D
 
-## Basic patrol / suspicious / alert / search loop (design doc §3.2). No day
-## interference (steal bait, cut line, etc.) yet, and "catch" is simplified
-## to dropping carried fish rather than the full control/drag/rescue chain.
+## Basic patrol / suspicious / alert / search loop (design doc §3.2), plus a
+## simplified day-interference set (§3.3). "Catch" (night mode) is
+## simplified to dropping carried fish rather than the full
+## control/drag/rescue chain.
 
 signal state_changed(new_state: String)
 
@@ -26,15 +27,24 @@ const CATCH_RADIUS := 20.0
 
 const ALTAR_SAFE_RADIUS := 85.0
 
+const INTERFERENCE_RANGE := 140.0
+const INTERFERENCE_COOLDOWN := 8.0
+const STEAL_RANGE := 60.0
+const LINE_CUT_RANGE := 45.0
+const LINE_CUT_WINDUP := 1.2
+
 var ghost_state: GhostState = GhostState.PATROL
 var home_position: Vector2
 var move_target: Vector2
 var wait_timer: float = 0.0
 var state_timer: float = 0.0
+var interference_cooldown: float = 0.0
+var line_cut_windup: float = 0.0
 
 var player: Player
 var player_lantern: Lantern
 var altar: Node2D
+var escape_point: Node2D
 
 @onready var state_icon: Label = $StateIcon
 
@@ -45,6 +55,7 @@ func _ready() -> void:
 	player = get_tree().current_scene.get_node("Player")
 	player_lantern = player.get_node("Lantern")
 	altar = get_tree().current_scene.get_node("Altar")
+	escape_point = get_tree().current_scene.get_node("EscapePoint")
 	state_changed.connect(_on_state_changed)
 	_set_state(GhostState.PATROL)
 
@@ -60,6 +71,11 @@ func _physics_process(delta: float) -> void:
 			_process_alert(delta, sense)
 		GhostState.SEARCH:
 			_process_search(delta, sense)
+
+	if ghost_state == GhostState.ALERT:
+		line_cut_windup = 0.0
+	else:
+		_process_interference(delta, sense)
 
 
 func _sense_player() -> Dictionary:
@@ -156,13 +172,63 @@ func _move_toward(target: Vector2, speed: float, delta: float) -> void:
 	if to_target.length() > 1.0:
 		next_position = global_position + to_target.normalized() * speed * delta
 
-	# Design doc §2.2: a fixed light circle (the altar) is a hard wall a
-	# ghost can never cross, in any state.
-	var to_altar := next_position - altar.global_position
-	if to_altar.length() < ALTAR_SAFE_RADIUS:
-		next_position = altar.global_position + to_altar.normalized() * ALTAR_SAFE_RADIUS
+	# Design doc §2.2: fixed light circles (altar, escape point) are hard
+	# walls a ghost can never cross, in any state.
+	next_position = _clamp_outside_safe_zone(next_position, altar.global_position)
+	next_position = _clamp_outside_safe_zone(next_position, escape_point.global_position)
 
 	global_position = next_position
+
+
+func _clamp_outside_safe_zone(pos: Vector2, zone_center: Vector2) -> Vector2:
+	var offset := pos - zone_center
+	if offset.length() < ALTAR_SAFE_RADIUS:
+		return zone_center + offset.normalized() * ALTAR_SAFE_RADIUS
+	return pos
+
+
+## Design doc §3.3: while not actively chasing, the ghost harasses whatever
+## the player is doing instead - scrambling a cast, cutting the line, or
+## snatching a carried fish. Bait/lure-specific interference is skipped
+## since that gear split doesn't exist yet.
+func _process_interference(delta: float, sense: Dictionary) -> void:
+	interference_cooldown = max(interference_cooldown - delta, 0.0)
+
+	if interference_cooldown <= 0.0 and sense.dist <= STEAL_RANGE and not GameState.carried_fish.is_empty():
+		var stolen: Dictionary = GameState.steal_one_carried()
+		if not stolen.is_empty():
+			GameState.push_message("鬼摸走了一條 %s！" % stolen.get("name", "魚"))
+			interference_cooldown = INTERFERENCE_COOLDOWN
+			line_cut_windup = 0.0
+		return
+
+	if interference_cooldown <= 0.0 and sense.dist <= INTERFERENCE_RANGE and player.state == Player.State.CHARGING:
+		player.apply_cast_jitter()
+		interference_cooldown = INTERFERENCE_COOLDOWN
+		line_cut_windup = 0.0
+		return
+
+	if interference_cooldown <= 0.0 and player.has_line_out():
+		var line_dist := _distance_to_segment(global_position, player.global_position, player.cast_target)
+		if line_dist <= LINE_CUT_RANGE:
+			line_cut_windup += delta
+			if line_cut_windup >= LINE_CUT_WINDUP:
+				player.cut_line()
+				interference_cooldown = INTERFERENCE_COOLDOWN
+				line_cut_windup = 0.0
+			return
+
+	line_cut_windup = 0.0
+
+
+func _distance_to_segment(point: Vector2, seg_a: Vector2, seg_b: Vector2) -> float:
+	var seg := seg_b - seg_a
+	var len_sq := seg.length_squared()
+	if len_sq < 0.0001:
+		return point.distance_to(seg_a)
+	var t: float = clamp((point - seg_a).dot(seg) / len_sq, 0.0, 1.0)
+	var projection := seg_a + seg * t
+	return point.distance_to(projection)
 
 
 func _catch_player() -> void:

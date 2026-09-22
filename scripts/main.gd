@@ -4,6 +4,8 @@ extends Node2D
 @onready var bobber: Node2D = $Bobber
 @onready var line: Line2D = $Line
 
+var _reset_combo_held := false
+
 
 func _ready() -> void:
 	player.cast_started.connect(_on_cast_started)
@@ -13,6 +15,12 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if bobber.visible:
 		line.points = PackedVector2Array([player.global_position, bobber.global_position])
+
+	# Debug convenience: Shift+R restarts the run without reopening Godot.
+	var reset_combo := Input.is_key_pressed(KEY_SHIFT) and Input.is_key_pressed(KEY_R)
+	if reset_combo and not _reset_combo_held:
+		GameState.reset_run()
+	_reset_combo_held = reset_combo
 
 
 func _on_cast_started(target_pos: Vector2, _tier: String) -> void:

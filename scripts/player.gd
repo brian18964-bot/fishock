@@ -29,7 +29,9 @@ var bite_timer: float = 0.0
 var progress: float = 0.0
 var tension: float = 0.0
 var in_altar_zone: bool = false
+var in_escape_zone: bool = false
 var current_noise_radius: float = 0.0
+var cast_jittered: bool = false
 
 var _prev_action_held: bool = false
 
@@ -46,6 +48,28 @@ func set_in_altar(value: bool) -> void:
 	in_altar_zone = value
 	if value and state != State.IDLE:
 		_cancel_cast("altar_interrupt")
+
+
+func set_in_escape(value: bool) -> void:
+	in_escape_zone = value
+	if value and state != State.IDLE:
+		_cancel_cast("escape_interrupt")
+
+
+## Design doc §3.3: a ghost lurking near a charging player scrambles the
+## cast, so the eventual distance stops tracking hold time reliably.
+func apply_cast_jitter() -> void:
+	if state == State.CHARGING:
+		cast_jittered = true
+
+
+func has_line_out() -> bool:
+	return state == State.WAITING or state == State.BITE or state == State.REELING
+
+
+func cut_line() -> void:
+	if has_line_out():
+		_fail_catch("line_cut")
 
 
 func _physics_process(delta: float) -> void:
@@ -129,6 +153,12 @@ func _handle_action_input(delta: float) -> void:
 		_prev_action_held = held
 		return
 
+	if in_escape_zone:
+		if just_pressed and GameState.day_phase == GameState.DayPhase.ESCAPE:
+			GameState.escape()
+		_prev_action_held = held
+		return
+
 	match state:
 		State.IDLE:
 			if just_pressed:
@@ -180,6 +210,10 @@ func _update_fishing(delta: float) -> void:
 
 func _launch_cast() -> void:
 	var ratio: float = charge_time / MAX_CHARGE_TIME
+	if cast_jittered:
+		ratio = clamp(ratio * randf_range(0.3, 1.4), 0.0, 1.0)
+		cast_jittered = false
+		GameState.push_message("蓄力被干擾了，拋竿距離變得不可靠")
 	var dist: float = lerp(MIN_CAST_DIST, MAX_CAST_DIST, ratio)
 	cast_target = global_position + aim_dir * dist
 	current_tier = FishData.tier_for_ratio(ratio)
@@ -212,7 +246,11 @@ func _succeed_catch() -> void:
 
 func _fail_catch(reason: String) -> void:
 	catch_failed.emit(reason)
-	var msg := "魚跑掉了" if reason == "missed_bite" else "線斷了，魚跑了"
+	var msg := "魚跑掉了"
+	if reason == "line_break":
+		msg = "線斷了，魚跑了"
+	elif reason == "line_cut":
+		msg = "線被鬼剪斷了！"
 	GameState.push_message(msg)
 	_reset_line(State.IDLE)
 

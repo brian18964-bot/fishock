@@ -15,6 +15,16 @@ const STATE_TEXT := {
 @onready var progress_bar: ProgressBar = $Panel/ProgressBar
 @onready var tension_bar: ProgressBar = $Panel/TensionBar
 @onready var fuel_bar: ProgressBar = $Panel/FuelBar
+@onready var phase_label: Label = $Panel/PhaseLabel
+@onready var evil_label: Label = $Panel/EvilLabel
+@onready var offering_label: Label = $Panel/OfferingLabel
+@onready var run_end_label: Label = $Panel/RunEndLabel
+
+const PHASE_TEXT := {
+	"FISHING": "階段：白天釣魚中",
+	"ESCAPE": "階段：額度已滿！可逃離或繼續賭供品",
+	"DONE": "階段：本輪結束",
+}
 
 var _message_timer: float = 0.0
 var _lantern: Lantern
@@ -27,9 +37,13 @@ func _ready() -> void:
 	GameState.quota_updated.connect(_on_quota_updated)
 	GameState.inventory_updated.connect(_on_inventory_updated)
 	GameState.message_posted.connect(_on_message)
+	GameState.day_phase_changed.connect(_on_day_phase_changed)
+	GameState.offering_pool_updated.connect(_on_offering_pool_updated)
+	GameState.run_ended.connect(_on_run_ended)
 	_on_quota_updated(GameState.quota_progress, GameState.quota_target)
 	_on_inventory_updated(GameState.carried_fish)
 	_on_state_changed("IDLE")
+	_on_offering_pool_updated(GameState.offering_pool, GameState.evil_count)
 
 	_lantern = player.get_node("Lantern")
 	fuel_bar.max_value = _lantern.MAX_FUEL
@@ -67,3 +81,40 @@ func _on_inventory_updated(carried: Array) -> void:
 func _on_message(text: String) -> void:
 	message_label.text = text
 	_message_timer = 2.5
+
+
+func _on_day_phase_changed(phase: String) -> void:
+	phase_label.text = PHASE_TEXT.get(phase, phase)
+
+
+func _on_offering_pool_updated(pool: Array, evil_count: int) -> void:
+	evil_label.text = "邪惡供品：%d / 3" % evil_count
+	if pool.is_empty():
+		offering_label.text = "供品池：尚無供品"
+		return
+	var text := "供品池："
+	for o in pool:
+		if o.taken:
+			continue
+		if o.is_evil:
+			text += "[邪惡] "
+		else:
+			text += "[%s] " % _rarity_label(o.rarity)
+	offering_label.text = text
+
+
+func _on_run_ended(_success: bool, message: String) -> void:
+	run_end_label.text = message
+	run_end_label.visible = true
+
+
+func _rarity_label(rarity: String) -> String:
+	match rarity:
+		"common":
+			return "普通"
+		"rare":
+			return "稀有"
+		"epic":
+			return "史詩"
+		_:
+			return rarity

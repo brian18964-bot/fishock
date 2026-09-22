@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="2"]
@@ -6,6 +6,7 @@
 [ext_resource type="Script" path="res://scripts/hud.gd" id="4"]
 [ext_resource type="PackedScene" path="res://scenes/ghost.tscn" id="5"]
 [ext_resource type="PackedScene" path="res://addons/virtual_joystick/virtual_joystick_scene.tscn" id="6"]
+[ext_resource type="Script" path="res://scripts/escape_point.gd" id="7"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_altar"]
 size = Vector2(64, 64)
@@ -47,6 +48,31 @@ text = "祭壇"
 horizontal_alignment = 1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Altar"]
+shape = SubResource("RectangleShape2D_altar")
+
+[node name="EscapePoint" type="Area2D" parent="."]
+position = Vector2(840, 120)
+script = ExtResource("7")
+
+[node name="Light" type="PointLight2D" parent="EscapePoint"]
+
+[node name="Visual" type="ColorRect" parent="EscapePoint"]
+offset_left = -32.0
+offset_top = -32.0
+offset_right = 32.0
+offset_bottom = 32.0
+color = Color(0.2, 0.75, 0.6, 1)
+mouse_filter = 2
+
+[node name="Label" type="Label" parent="EscapePoint"]
+offset_left = -32.0
+offset_top = -54.0
+offset_right = 32.0
+offset_bottom = -32.0
+text = "逃離點"
+horizontal_alignment = 1
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="EscapePoint"]
 shape = SubResource("RectangleShape2D_altar")
 
 [node name="Player" parent="." instance=ExtResource("2")]
@@ -135,7 +161,7 @@ offset_left = 16.0
 offset_top = 510.0
 offset_right = 900.0
 offset_bottom = 534.0
-text = "左下搖桿移動／右下搖桿瞄準（桌面測試可用 WASD／滑鼠代替）／空白鍵：蓄力拋竿・提竿・收線；[ ] 調亮度；站在祭壇上按同一鍵獻祭"
+text = "左下搖桿移動／右下搖桿瞄準（桌面測試可用 WASD／滑鼠代替）／空白鍵：蓄力拋竿・提竿・收線；[ ] 調亮度；祭壇獻祭、逃離點逃離都按同一鍵；Shift+R 重來一輪"
 
 [node name="FuelLabel" type="Label" parent="HUD/Panel"]
 offset_left = 700.0
@@ -154,6 +180,39 @@ max_value = 100.0
 step = 0.1
 show_percentage = false
 modulate = Color(1, 0.8, 0.3, 1)
+
+[node name="PhaseLabel" type="Label" parent="HUD/Panel"]
+offset_left = 16.0
+offset_top = 128.0
+offset_right = 400.0
+offset_bottom = 148.0
+text = "階段：白天釣魚中"
+
+[node name="EvilLabel" type="Label" parent="HUD/Panel"]
+offset_left = 16.0
+offset_top = 148.0
+offset_right = 400.0
+offset_bottom = 168.0
+text = ""
+
+[node name="OfferingLabel" type="Label" parent="HUD/Panel"]
+offset_left = 16.0
+offset_top = 168.0
+offset_right = 920.0
+offset_bottom = 198.0
+text = "供品池：尚無供品"
+autowrap_mode = 2
+
+[node name="RunEndLabel" type="Label" parent="HUD/Panel"]
+visible = false
+offset_left = 130.0
+offset_top = 250.0
+offset_right = 830.0
+offset_bottom = 320.0
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+text = ""
 
 [node name="MoveJoystick" parent="HUD/Panel" instance=ExtResource("6")]
 use_input_actions = false
