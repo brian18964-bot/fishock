@@ -1,9 +1,11 @@
 extends Node2D
 
 ## Basic patrol / suspicious / alert / search loop (design doc §3.2), plus a
-## simplified day-interference set (§3.3). "Catch" (night mode) is
-## simplified to dropping carried fish rather than the full
-## control/drag/rescue chain.
+## simplified day-interference set (§3.3). Day "catch" (an ALERT chase
+## landing) is simplified to dropping carried fish rather than the full
+## control/drag/rescue chain. Night is a separate, simpler unescapable
+## hunt (§3.4) that ends the run outright on catch - see
+## _process_night_hunt().
 
 signal state_changed(new_state: String)
 
@@ -33,6 +35,11 @@ const INTERFERENCE_COOLDOWN := 8.0
 const STEAL_RANGE := 60.0
 const LINE_CUT_RANGE := 45.0
 const LINE_CUT_WINDUP := 1.2
+
+## Faster than the player's 140 - design doc §3.4: once night falls the
+## ghost "無視一切防禦" (ignores every defense), so this is meant to be
+## unescapable rather than a fair chase.
+const NIGHT_CHASE_SPEED := 155.0
 
 var ghost_state: GhostState = GhostState.PATROL
 var home_position: Vector2
@@ -71,6 +78,10 @@ func stun(duration: float) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if GameState.is_night:
+		_process_night_hunt(delta)
+		return
+
 	if stun_timer > 0.0:
 		stun_timer -= delta
 		visual.color = Color(0.9, 0.85, 0.3, 1)
@@ -178,6 +189,17 @@ func _process_search(delta: float, sense: Dictionary) -> void:
 		state_timer -= delta
 		if state_timer <= 0.0:
 			_set_state(GhostState.PATROL)
+
+
+## Design doc §3.4: ignores stun, fixed lights, and the whole day FSM - it
+## just beelines the player, unescapably fast, until it catches them.
+func _process_night_hunt(delta: float) -> void:
+	visual.color = Color(0.55, 0.08, 0.16, 1)
+	var to_player := player.global_position - global_position
+	if to_player.length() > 1.0:
+		global_position += to_player.normalized() * NIGHT_CHASE_SPEED * delta
+	if global_position.distance_to(player.global_position) <= CATCH_RADIUS:
+		GameState.end_run(false, "被鬼拖進水裡了，你沒能撐過夜晚")
 
 
 func _start_search(at: Vector2) -> void:

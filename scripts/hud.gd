@@ -19,6 +19,7 @@ const STATE_TEXT := {
 @onready var evil_label: Label = $Panel/EvilLabel
 @onready var offering_label: Label = $Panel/OfferingLabel
 @onready var run_end_label: Label = $Panel/RunEndLabel
+@onready var time_label: Label = $Panel/TimeLabel
 
 const PHASE_TEXT := {
 	"FISHING": "階段：白天釣魚中",
@@ -40,6 +41,7 @@ func _ready() -> void:
 	GameState.day_phase_changed.connect(_on_day_phase_changed)
 	GameState.offering_pool_updated.connect(_on_offering_pool_updated)
 	GameState.run_ended.connect(_on_run_ended)
+	GameState.night_fell.connect(_on_night_fell)
 	_on_quota_updated(GameState.quota_progress, GameState.quota_target)
 	_on_inventory_updated(GameState.carried_fish)
 	_on_state_changed("IDLE")
@@ -56,6 +58,12 @@ func _process(delta: float) -> void:
 		if _message_timer <= 0.0:
 			message_label.text = ""
 	fuel_bar.value = _lantern.fuel
+
+	if GameState.is_night or GameState.day_phase != GameState.DayPhase.FISHING:
+		time_label.text = ""
+	else:
+		var total: int = int(GameState.time_remaining)
+		time_label.text = "剩餘時間：%02d:%02d" % [total / 60, total % 60]
 
 
 func _on_state_changed(new_state: String) -> void:
@@ -106,6 +114,10 @@ func _on_offering_pool_updated(pool: Array, evil_count: int) -> void:
 func _on_run_ended(_success: bool, message: String) -> void:
 	run_end_label.text = message
 	run_end_label.visible = true
+
+
+func _on_night_fell() -> void:
+	phase_label.text = "階段：☠ 夜晚降臨！鬼已進入獵殺模式"
 
 
 func _rarity_label(rarity: String) -> String:

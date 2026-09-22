@@ -10,6 +10,12 @@ func _ready() -> void:
 	light.color = Color(1.0, 0.85, 0.55)
 	light.energy = 1.4
 
+func _process(_delta: float) -> void:
+	# Design doc §6/§3.4: the fixed light dies once night falls. The ghost's
+	# night hunt bypasses the day-state movement entirely, so it's already
+	# free to enter here regardless of this visual.
+	light.visible = not GameState.is_night
+
 func _on_body_entered(body: Node2D) -> void:
 	if body.has_method("set_in_altar"):
 		body.set_in_altar(true)

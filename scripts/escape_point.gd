@@ -10,6 +10,9 @@ func _ready() -> void:
 	light.color = Color(0.6, 1.0, 0.9)
 	light.energy = 1.4
 
+func _process(_delta: float) -> void:
+	light.visible = not GameState.is_night
+
 func _on_body_entered(body: Node2D) -> void:
 	if body.has_method("set_in_escape"):
 		body.set_in_escape(true)

@@ -12,6 +12,7 @@ signal message_posted(text: String)
 signal day_phase_changed(phase: String)
 signal offering_pool_updated(pool: Array, evil_count: int)
 signal run_ended(success: bool, message: String)
+signal night_fell()
 
 enum DayPhase { FISHING, ESCAPE, DONE }
 
@@ -21,6 +22,7 @@ const RARITY_VALUE := {"common": 10, "rare": 25, "epic": 60}
 const BASELINE_REWARD := 8
 const MAX_EVIL := 3
 const MAX_STARTING_EVIL := 2
+const DAY_DURATION := 180.0
 
 var quota_target: float = 30.0
 var quota_progress: float = 0.0
@@ -32,6 +34,17 @@ var offering_pool: Array = []
 var evil_count: int = 0
 var run_over: bool = false
 var _quota_since_offering: float = 0.0
+
+var time_remaining: float = DAY_DURATION
+var is_night: bool = false
+
+
+func _process(delta: float) -> void:
+	if run_over or is_night or day_phase != DayPhase.FISHING:
+		return
+	time_remaining = max(time_remaining - delta, 0.0)
+	if time_remaining <= 0.0:
+		_trigger_night()
 
 
 func add_carried_fish(fish: Dictionary) -> void:
@@ -96,10 +109,7 @@ func escape() -> void:
 		message = "成功逃離！拿到了一個%s供品（價值 %d）" % [_rarity_label(picked.rarity), picked.value]
 		offering_pool_updated.emit(offering_pool, evil_count)
 
-	run_over = true
-	day_phase = DayPhase.DONE
-	day_phase_changed.emit("DONE")
-	run_ended.emit(true, message)
+	end_run(true, message)
 
 
 func reset_run() -> void:
@@ -111,11 +121,30 @@ func reset_run() -> void:
 	evil_count = 0
 	run_over = false
 	_quota_since_offering = 0.0
+	time_remaining = DAY_DURATION
+	is_night = false
 	inventory_updated.emit(carried_fish)
 	quota_updated.emit(quota_progress, quota_target)
 	day_phase_changed.emit("FISHING")
 	offering_pool_updated.emit(offering_pool, evil_count)
 	push_message("重新開始新的一輪")
+
+
+## Single place every ending path (escape, evil wipe, night catch) funnels
+## through, so `run_over` only ever flips once and run_ended only fires once.
+func end_run(success: bool, message: String) -> void:
+	if run_over:
+		return
+	run_over = true
+	day_phase = DayPhase.DONE
+	day_phase_changed.emit("DONE")
+	run_ended.emit(success, message)
+
+
+func _trigger_night() -> void:
+	is_night = true
+	night_fell.emit()
+	push_message("時間到了，額度沒補滿...夜晚降臨，鬼進入獵殺模式！")
 
 
 func push_message(text: String) -> void:
@@ -157,10 +186,7 @@ func _add_offering(is_bonus: bool) -> void:
 
 
 func _fail_run() -> void:
-	run_over = true
-	day_phase = DayPhase.DONE
-	day_phase_changed.emit("DONE")
-	run_ended.emit(false, "邪惡供品累積到 3 個，你沒能逃出去，一無所獲")
+	end_run(false, "邪惡供品累積到 3 個，你沒能逃出去，一無所獲")
 
 
 func _rarity_label(rarity: String) -> String:
