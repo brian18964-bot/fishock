@@ -286,6 +286,20 @@ func reset_gear() -> void:
 	fishing_mode = FishingMode.BOBBER
 	max_cast_dist = MAX_CAST_DIST + Profile.get_upgrade_bonus("rod_distance")
 	reel_power_mult = 1.0 + Profile.get_upgrade_bonus("reel_power")
+	_force_drop_oil_drum()
+
+
+## Debug-reset safety net (main.gd's Shift+R restarts the run in place,
+## without reloading the scene): without this, an oil drum picked up right
+## before the reset would stay permanently "carried" by a player who no
+## longer has any way to deliver it, vanishing from the map for the rest
+## of the session. Deliver()-ing it sends it back through the normal
+## relocate-after-a-delay flow instead of leaving it stuck.
+func _force_drop_oil_drum() -> void:
+	if carrying_oil_drum and _carried_oil_drum != null:
+		_carried_oil_drum.deliver()
+	_carried_oil_drum = null
+	carrying_oil_drum = false
 
 
 func _can_start_cast() -> bool:
