@@ -23,7 +23,7 @@ static func make_cone_texture(size: int = 256, half_angle_deg: float = 32.0, fea
 					angle_falloff = 0.0
 				elif angle > half_angle - feather:
 					angle_falloff = 1.0 - (angle - (half_angle - feather)) / feather
-				var dist_falloff := 1.0 - pow(dist / max_radius, 1.4)
+				var dist_falloff: float = 1.0 - pow(dist / max_radius, 1.4)
 				alpha = clamp(angle_falloff * dist_falloff, 0.0, 1.0)
 			img.set_pixel(x, y, Color(1, 1, 1, alpha))
 	return ImageTexture.create_from_image(img)
@@ -36,7 +36,7 @@ static func make_radial_texture(size: int = 256, feather: float = 0.15) -> Image
 	for y in range(size):
 		for x in range(size):
 			var dist := (Vector2(x, y) - center).length() / max_radius
-			var alpha := clamp(1.0 - dist, 0.0, 1.0)
+			var alpha: float = clamp(1.0 - dist, 0.0, 1.0)
 			if dist > 1.0 - feather:
 				alpha *= (1.0 - dist) / feather
 			img.set_pixel(x, y, Color(1, 1, 1, alpha))
