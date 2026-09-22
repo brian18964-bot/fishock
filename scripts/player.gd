@@ -28,6 +28,7 @@ var bite_timer: float = 0.0
 var progress: float = 0.0
 var tension: float = 0.0
 var in_altar_zone: bool = false
+var current_noise_radius: float = 0.0
 
 # Polling raw Input instead of an Input Map action is a deliberate placeholder:
 # right-stick aim / action button will be swapped for virtual-joystick output
@@ -50,6 +51,7 @@ func set_in_altar(value: bool) -> void:
 func _physics_process(delta: float) -> void:
 	_update_aim()
 	_update_movement()
+	_update_noise()
 	_update_fishing(delta)
 	_handle_action_input(delta)
 
@@ -84,6 +86,18 @@ func _update_movement() -> void:
 	move_and_slide()
 	position.x = clamp(position.x, 16.0, 944.0)
 	position.y = clamp(position.y, 16.0, 524.0)
+
+
+func _update_noise() -> void:
+	# Design doc §3.1: casting/reeling/running are heard, not just seen.
+	var noise := 0.0
+	if velocity.length() > 1.0:
+		noise = max(noise, 90.0)
+	if state == State.REELING:
+		noise = max(noise, 110.0)
+	elif state == State.WAITING or state == State.BITE:
+		noise = max(noise, 40.0)
+	current_noise_radius = noise
 
 
 func _is_action_pressed() -> bool:

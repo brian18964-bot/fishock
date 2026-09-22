@@ -32,5 +32,13 @@ func sacrifice_all() -> int:
 		push_message("額度已滿！可以前往逃離點了（逃離流程尚未實作）")
 	return count
 
+func drop_all_carried() -> int:
+	if carried_fish.is_empty():
+		return 0
+	var count := carried_fish.size()
+	carried_fish.clear()
+	inventory_updated.emit(carried_fish)
+	return count
+
 func push_message(text: String) -> void:
 	message_posted.emit(text)

@@ -13,6 +13,12 @@ const BRIGHTNESS_STEP := 0.5
 const MIN_SCALE := 1.1
 const MAX_SCALE := 2.6
 
+# Must match LightTextureFactory.make_cone_texture()'s defaults below, since
+# illuminates() re-derives the cone's world-space shape from these instead
+# of reading pixels back out of the generated texture.
+const CONE_HALF_ANGLE_DEG := 32.0
+const TEXTURE_HALF_SIZE := 128.0
+
 var fuel: float = MAX_FUEL
 var brightness: float = 0.75
 
@@ -44,3 +50,18 @@ func _handle_brightness_input(delta: float) -> void:
 		brightness = clamp(brightness - BRIGHTNESS_STEP * delta, MIN_BRIGHTNESS, MAX_BRIGHTNESS)
 	elif Input.is_key_pressed(KEY_BRACKETRIGHT):
 		brightness = clamp(brightness + BRIGHTNESS_STEP * delta, MIN_BRIGHTNESS, MAX_BRIGHTNESS)
+
+
+## True if `point` currently falls inside this cone (design doc §3.1: light
+## aimed at the ghost gives the player away). Used by ghost perception and,
+## later, by the strong-light skill.
+func illuminates(point: Vector2) -> bool:
+	if not visible:
+		return false
+	var offset := point - global_position
+	var dist := offset.length()
+	var effective_radius := TEXTURE_HALF_SIZE * texture_scale
+	if dist > effective_radius:
+		return false
+	var relative_angle: float = abs(wrapf(offset.angle() - rotation, -PI, PI))
+	return relative_angle <= deg_to_rad(CONE_HALF_ANGLE_DEG)
