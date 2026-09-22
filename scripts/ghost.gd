@@ -20,6 +20,7 @@ const ARRIVE_RADIUS := 12.0
 
 const POINT_BLANK_RADIUS := 45.0
 const GHOST_BASE_SIGHT_RADIUS := 70.0
+const LIGHT_ALERT_RANGE := 150.0
 const SUSPICION_TIME := 3.0
 const SEARCH_TIME := 3.5
 const ALERT_GRACE_TIME := 1.5
@@ -81,8 +82,12 @@ func _physics_process(delta: float) -> void:
 func _sense_player() -> Dictionary:
 	var dist := global_position.distance_to(player.global_position)
 	var lit := player_lantern.illuminates(global_position)
-	var strong := lit or dist <= POINT_BLANK_RADIUS
-	var weak := dist <= GHOST_BASE_SIGHT_RADIUS or dist <= player.current_noise_radius
+	# Being lit from far off only makes the ghost curious, not an instant
+	# lock-on - the cone's visual reach is much longer than what should
+	# give the player away outright (design doc §3.1's "more easily
+	# discovered" reads as a speed/probability nudge, not a binary switch).
+	var strong := (lit and dist <= LIGHT_ALERT_RANGE) or dist <= POINT_BLANK_RADIUS
+	var weak := lit or dist <= GHOST_BASE_SIGHT_RADIUS or dist <= player.current_noise_radius
 	return {"strong": strong, "weak": weak, "dist": dist}
 
 
