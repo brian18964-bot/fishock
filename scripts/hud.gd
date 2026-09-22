@@ -15,6 +15,7 @@ const STATE_TEXT := {
 @onready var progress_bar: ProgressBar = $Panel/ProgressBar
 @onready var tension_bar: ProgressBar = $Panel/TensionBar
 @onready var fuel_bar: ProgressBar = $Panel/FuelBar
+@onready var fuel_label: Label = $Panel/FuelLabel
 @onready var phase_label: Label = $Panel/PhaseLabel
 @onready var evil_label: Label = $Panel/EvilLabel
 @onready var offering_label: Label = $Panel/OfferingLabel
@@ -26,6 +27,7 @@ const STATE_TEXT := {
 @onready var back_to_title_button: Button = $Panel/BackToTitleButton
 @onready var sacrifice_bar: ProgressBar = $Panel/SacrificeBar
 @onready var rummage_bar: ProgressBar = $Panel/RummageBar
+@onready var relight_bar: ProgressBar = $Panel/RelightBar
 
 const PHASE_TEXT := {
 	"FISHING": "階段：白天釣魚中",
@@ -58,6 +60,7 @@ func _ready() -> void:
 	_on_offering_pool_updated(GameState.offering_pool, GameState.evil_count)
 
 	_lantern = player.get_node("Lantern")
+	_lantern.relight_progress_updated.connect(_on_relight_progress_updated)
 	back_to_title_button.pressed.connect(_on_back_to_title_pressed)
 
 
@@ -68,6 +71,7 @@ func _process(delta: float) -> void:
 			message_label.text = ""
 	fuel_bar.max_value = _lantern.max_fuel
 	fuel_bar.value = _lantern.fuel
+	fuel_label.text = "燃油（已熄滅，按住 L 點燃）" if not _lantern.lit else "燃油（L 熄滅）"
 
 	if GameState.is_night or GameState.day_phase != GameState.DayPhase.FISHING:
 		time_label.text = ""
@@ -75,7 +79,9 @@ func _process(delta: float) -> void:
 		var total: int = int(GameState.time_remaining)
 		time_label.text = "剩餘時間：%02d:%02d" % [total / 60, total % 60]
 
-	if _player.fishing_mode == Player.FishingMode.BOBBER:
+	if _player.carrying_oil_drum:
+		gear_label.text = "提著油桶中，沒辦法釣魚，送去煤油站吧"
+	elif _player.fishing_mode == Player.FishingMode.BOBBER:
 		gear_label.text = "釣法：浮標（餌 x%d）－Tab 切換" % _player.bait_count
 	else:
 		gear_label.text = "釣法：路亞（假餌 x%d）－Tab 切換" % _player.lure_count
@@ -105,6 +111,11 @@ func _on_sacrifice_progress_updated(progress: float) -> void:
 func _on_rummage_progress_updated(progress: float) -> void:
 	rummage_bar.visible = progress > 0.0
 	rummage_bar.value = progress
+
+
+func _on_relight_progress_updated(progress: float) -> void:
+	relight_bar.visible = progress > 0.0
+	relight_bar.value = progress
 
 
 func _on_quota_updated(progress: float, target: float) -> void:

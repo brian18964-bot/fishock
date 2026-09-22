@@ -15,6 +15,12 @@ const BRIGHTNESS_STEP := 0.5
 const MIN_SCALE := 1.1
 const MAX_SCALE := 2.6
 
+## Design doc request: the flame can be put out at will (instant, e.g. to
+## stop burning fuel or to go dark near a ghost) but relighting takes a
+## short held progress bar, so the player is committing to being lit again
+## rather than it happening for free.
+const RELIGHT_DURATION := 1.2
+
 # Must match LightTextureFactory.make_cone_texture()'s defaults below, since
 # illuminates() re-derives the cone's world-space shape from these instead
 # of reading pixels back out of the generated texture.
@@ -37,7 +43,13 @@ var fuel: float = MAX_FUEL
 var brightness: float = 0.75
 var flash_cooldown: float = 0.0
 
+var lit: bool = true
+var relight_progress: float = 0.0
+
+signal relight_progress_updated(progress: float)
+
 var _flash_held: bool = false
+var _light_key_held: bool = false
 
 @onready var _player: Node2D = get_parent()
 
@@ -55,11 +67,14 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_handle_brightness_input(delta)
 	_handle_flash_input(delta)
+	_handle_light_toggle(delta)
 
-	fuel = max(fuel - DRAIN_RATE * brightness * delta, 0.0)
+	if lit:
+		fuel = max(fuel - DRAIN_RATE * brightness * delta, 0.0)
+		if fuel <= 0.0:
+			lit = false
 
-	var out_of_fuel := fuel <= 0.0
-	visible = not out_of_fuel
+	visible = lit and fuel > 0.0
 	rotation = _player.aim_dir.angle()
 	texture_scale = lerp(MIN_SCALE, MAX_SCALE, brightness)
 	energy = lerp(0.7, 1.3, brightness)
@@ -79,6 +94,36 @@ func _handle_flash_input(delta: float) -> void:
 	_flash_held = held
 	if just_pressed and flash_cooldown <= 0.0:
 		_try_flash()
+
+
+## Design doc request: L extinguishes instantly (free, deliberate control
+## over the flame), but relighting needs a held progress bar - meant to
+## read as the player confirming it's safe to be lit again.
+func _handle_light_toggle(delta: float) -> void:
+	var held := Input.is_key_pressed(KEY_L)
+	var just_pressed := held and not _light_key_held
+	_light_key_held = held
+
+	if lit:
+		if just_pressed:
+			lit = false
+			relight_progress = 0.0
+			GameState.push_message("熄滅了提燈")
+	elif held:
+		if fuel <= 0.0:
+			if just_pressed:
+				GameState.push_message("燃油用完了，得先加油才能點燃")
+			relight_progress = 0.0
+		else:
+			relight_progress += delta / RELIGHT_DURATION
+			if relight_progress >= 1.0:
+				relight_progress = 0.0
+				lit = true
+				GameState.push_message("提燈點燃了")
+	else:
+		relight_progress = 0.0
+
+	relight_progress_updated.emit(relight_progress)
 
 
 func _try_flash() -> void:

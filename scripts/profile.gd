@@ -16,7 +16,7 @@ const UPGRADE_DEFS := {
 	"fuel_capacity": {"label": "提燈燃油容量", "max_level": 3, "costs": [20, 40, 70], "bonus": 20.0},
 	"bait_capacity": {"label": "帶餌上限", "max_level": 3, "costs": [15, 30, 50], "bonus": 5.0},
 	"flash_cooldown": {"label": "強光冷卻縮短", "max_level": 3, "costs": [20, 40, 70], "bonus": 0.5},
-	"fuel_station_charges": {"label": "煤油站補充次數上限", "max_level": 3, "costs": [25, 45, 75], "bonus": 1.0},
+	"fuel_station_charges": {"label": "煤油站總量上限", "max_level": 3, "costs": [25, 45, 75], "bonus": 100.0},
 }
 const LURE_COST := 15
 

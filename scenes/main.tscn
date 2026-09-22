@@ -240,13 +240,24 @@ step = 0.01
 show_percentage = false
 modulate = Color(0.6, 0.8, 0.3, 1)
 
+[node name="RelightBar" type="ProgressBar" parent="HUD/Panel"]
+visible = false
+offset_left = 700.0
+offset_top = 90.0
+offset_right = 920.0
+offset_bottom = 104.0
+max_value = 1.0
+step = 0.01
+show_percentage = false
+modulate = Color(1, 0.85, 0.4, 1)
+
 [node name="HelpLabel" type="Label" parent="HUD/Panel"]
 offset_left = 16.0
 offset_top = 478.0
 offset_right = 944.0
 offset_bottom = 534.0
 autowrap_mode = 2
-text = "左下搖桿移動／右下搖桿瞄準（桌面測試可用 WASD／滑鼠代替）／空白鍵：蓄力拋竿・提竿・收線；Tab 切換浮標/路亞（路亞要按住空白鍵收線拉近才會上魚）；[ ] 調亮度；F：強光定身鬼；祭壇只能獻祭（按住空白鍵，一條一條跑進度條，不再補油也不保護）；煤油站（出生點附近）按空白鍵加滿油，次數有限；油桶按空白鍵可補滿所有煤油站次數；逃離點按空白鍵逃離；G：丟棄一條漁獲（變輕變快，掉在地上會隨時間腐敗貶值，走近按空白鍵撿回）；路邊雜物按住空白鍵翻找，有機會翻到餌料；身上魚越多走越慢；Shift+R 重來一輪"
+text = "左下搖桿移動／右下搖桿瞄準（桌面測試可用 WASD／滑鼠代替）／空白鍵：蓄力拋竿・提竿；路亞：按住空白鍵持續收線，或連點輕收，離水鬥魚會從中魚當下的位置開始；Tab 切換浮標/路亞；[ ] 調亮度；L：熄滅提燈／按住重新點燃（跑進度條）；F：強光定身鬼；祭壇只能獻祭（按住空白鍵，一條一條跑進度條，不再補油也不保護）；煤油站（出生點附近）按空白鍵加油，共用總量；油桶要撿起提回煤油站按空白鍵倒入（提著時不能釣魚）；逃離點按空白鍵逃離；G：丟棄一條漁獲（變輕變快，掉在地上會隨時間腐敗貶值，走近按空白鍵撿回）；路邊雜物按住空白鍵翻找，有機會翻到餌料；身上魚越多走越慢；Shift+R 重來一輪"
 
 [node name="TimeLabel" type="Label" parent="HUD/Panel"]
 offset_left = 700.0

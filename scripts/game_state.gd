@@ -31,6 +31,15 @@ const ROTTEN_FRENZY_CHANCE := 0.3
 ## remaining probability (1 - the two above) is the evil-offering outcome
 const ROTTEN_FRENZY_DURATION := 12.0
 
+## Design doc request: hitting quota shouldn't just be a reward moment -
+## escaping should carry real risk too, and lingering for extra offerings
+## should feel riskier than just leaving. Effectively "for the rest of the
+## run" rather than a real countdown.
+const ESCALATION_FRENZY_DURATION := 99999.0
+const GHOST_SCENE := preload("res://scenes/ghost.tscn")
+const GHOST_SPAWN_MARGIN := 200.0
+const GHOST_SPAWN_MIN_PLAYER_DIST := 400.0
+
 var quota_target: float = 30.0
 var quota_progress: float = 0.0
 var carried_fish: Array = []
@@ -44,6 +53,8 @@ var _quota_since_offering: float = 0.0
 
 var time_remaining: float = DAY_DURATION
 var is_night: bool = false
+
+var _extra_ghosts: Array = []
 
 ## Gates the day timer so it only runs once the player has actually
 ## pressed "Start" on the title screen - otherwise browsing the shop
@@ -156,6 +167,12 @@ func reset_run() -> void:
 	is_night = false
 	run_started = false
 	has_heart = false
+	for ghost in _extra_ghosts:
+		if is_instance_valid(ghost):
+			ghost.queue_free()
+	_extra_ghosts.clear()
+	for ghost in get_tree().get_nodes_in_group("ghosts"):
+		ghost.frenzy_timer = 0.0
 	inventory_updated.emit(carried_fish)
 	quota_updated.emit(quota_progress, quota_target)
 	day_phase_changed.emit("FISHING")
@@ -228,7 +245,41 @@ func _enter_escape_phase() -> void:
 	var count := randi_range(3, 5)
 	for _i in range(count):
 		_add_offering(false)
-	push_message("額度已滿！前往逃離點離開，或繼續釣魚賭更好的供品")
+	_escalate_threat()
+	push_message("額度已滿！鬼群警覺起來了 - 前往逃離點離開，或繼續釣魚賭更好的供品")
+
+
+## Design doc request: meeting quota also raises the stakes of staying -
+## another ghost joins the hunt and every ghost goes into a lasting
+## frenzy, so escaping isn't a formality and farming more offerings is a
+## real gamble, not a free lunch.
+func _escalate_threat() -> void:
+	_spawn_extra_ghost()
+	for ghost in get_tree().get_nodes_in_group("ghosts"):
+		ghost.enter_frenzy(ESCALATION_FRENZY_DURATION)
+
+
+func _spawn_extra_ghost() -> void:
+	var main: Node = get_tree().current_scene
+	if main == null:
+		return
+	var ghost: Node2D = GHOST_SCENE.instantiate()
+	var player: Node2D = main.get_node_or_null("Player")
+	var pos := Vector2(
+		randf_range(GHOST_SPAWN_MARGIN, Player.WORLD_WIDTH - GHOST_SPAWN_MARGIN),
+		randf_range(GHOST_SPAWN_MARGIN, Player.WORLD_HEIGHT - GHOST_SPAWN_MARGIN)
+	)
+	if player:
+		var tries := 0
+		while pos.distance_to(player.global_position) < GHOST_SPAWN_MIN_PLAYER_DIST and tries < 10:
+			pos = Vector2(
+				randf_range(GHOST_SPAWN_MARGIN, Player.WORLD_WIDTH - GHOST_SPAWN_MARGIN),
+				randf_range(GHOST_SPAWN_MARGIN, Player.WORLD_HEIGHT - GHOST_SPAWN_MARGIN)
+			)
+			tries += 1
+	ghost.position = pos
+	main.add_child(ghost)
+	_extra_ghosts.append(ghost)
 
 
 ## Design doc request: a rotten fish sacrificed at the altar gambles on one

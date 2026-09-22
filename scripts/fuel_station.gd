@@ -1,16 +1,17 @@
 class_name FuelStation
 extends Area2D
 
-## The player's spawn point doubles as a limited-use refuel point (moved
-## off the altar per design request). A fixed light circle like the
-## altar/escape point, but its charge count runs out, at which point the
-## light dies and its ghost-proof safe zone goes with it (see ghost.gd,
-## which only avoids this while the light is visible).
+## The player's spawn point doubles as a refuel point (moved off the altar
+## per design request). A fixed light circle like the altar/escape point,
+## but backed by a shared total fuel pool rather than discrete charges -
+## it runs out when the pool empties, at which point the light dies and
+## its ghost-proof safe zone goes with it (see ghost.gd, which only avoids
+## this while the light is visible).
 
-const BASE_MAX_CHARGES := 5
+const BASE_TOTAL_FUEL := 500.0
 
-var max_charges: int = BASE_MAX_CHARGES
-var charges_remaining: int = BASE_MAX_CHARGES
+var max_total_fuel: float = BASE_TOTAL_FUEL
+var total_fuel: float = BASE_TOTAL_FUEL
 
 @onready var light: PointLight2D = $Light
 @onready var charge_label: Label = $ChargeLabel
@@ -21,8 +22,8 @@ func _ready() -> void:
 	body_exited.connect(_on_body_exited)
 	add_to_group("fuel_stations")
 
-	max_charges = BASE_MAX_CHARGES + int(Profile.get_upgrade_bonus("fuel_station_charges"))
-	charges_remaining = max_charges
+	max_total_fuel = BASE_TOTAL_FUEL + Profile.get_upgrade_bonus("fuel_station_charges")
+	total_fuel = max_total_fuel
 
 	light.texture = LightTextureFactory.make_radial_texture()
 	light.texture_scale = 0.65
@@ -34,30 +35,38 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	light.visible = charges_remaining > 0 and not GameState.is_night
+	light.visible = total_fuel > 0.0 and not GameState.is_night
 
 
-## Refuels to full and spends one charge; refuses if already full (so
-## standing there doesn't waste charges) or out of charges.
+## Tops the lantern up by whatever it's missing, capped by what's left in
+## the shared pool - design doc request: no more discrete "charges" you
+## either have or don't, just a total that drains by the amount actually
+## used and that partial refuels are fine against.
 func try_refuel(lantern: Lantern) -> bool:
-	if charges_remaining <= 0:
+	if total_fuel <= 0.0:
 		return false
-	if lantern.fuel >= lantern.max_fuel - 0.01:
+	var needed: float = lantern.max_fuel - lantern.fuel
+	if needed <= 0.01:
 		return false
-	charges_remaining -= 1
-	lantern.fuel = lantern.max_fuel
+	var given: float = min(needed, total_fuel)
+	lantern.fuel += given
+	total_fuel -= given
 	_refresh_label()
 	return true
 
 
-## Design doc request: an oil drum can refill every fuel station's charges.
-func refill_charges() -> void:
-	charges_remaining = max_charges
+## Design doc request: an oil drum is carried here and dumped in rather
+## than refilling every station on the map at once - see OilDrum.deliver().
+func add_fuel(amount: float) -> float:
+	var space: float = max_total_fuel - total_fuel
+	var added: float = min(space, amount)
+	total_fuel += added
 	_refresh_label()
+	return added
 
 
 func _refresh_label() -> void:
-	charge_label.text = "煤油站 %d/%d" % [charges_remaining, max_charges]
+	charge_label.text = "煤油站 %d/%d" % [int(total_fuel), int(max_total_fuel)]
 
 
 func _on_body_entered(body: Node2D) -> void:

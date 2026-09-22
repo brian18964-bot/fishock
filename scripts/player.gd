@@ -31,6 +31,12 @@ const WEIGHT_SPEED_PENALTY := 0.05
 const MIN_SPEED_RATIO := 0.4
 const RUMMAGE_DURATION := 0.9
 
+## Design doc request: reeling a lure in is player-paced, not an automatic
+## countdown - holding retrieves steadily, each tap also nudges it a bit
+## for fine, "點收" control when you want to go slower.
+const LURE_HOLD_RATE := 0.55
+const LURE_CLICK_AMOUNT := 0.12
+
 const DROPPED_FISH_SCENE := preload("res://scenes/dropped_fish.tscn")
 
 var state: State = State.IDLE
@@ -51,13 +57,20 @@ var in_dropped_fish_zone: bool = false
 var in_roadside_zone: bool = false
 var current_noise_radius: float = 0.0
 var cast_jittered: bool = false
+var retrieve_progress: float = 0.0
 
 const SACRIFICE_DURATION := 0.6
 var sacrifice_progress: float = 0.0
 var rummage_progress: float = 0.0
 
+## Design doc request: the oil drum is carried back to a fuel station by
+## hand instead of refilling the whole map on the spot - see
+## _handle_action_input()'s oil-drum/fuel-station branches.
+var carrying_oil_drum: bool = false
+
 var _fuel_station: FuelStation
 var _oil_drum: OilDrum
+var _carried_oil_drum: OilDrum
 var _dropped_fish: DroppedFish
 var _roadside_item: RoadsideItem
 var _wait_duration: float = 1.0
@@ -157,10 +170,11 @@ func has_line_out() -> bool:
 ## Design doc request: lure fishing should visibly retrieve toward the
 ## player as it's reeled in, with the bite happening mid-retrieve, rather
 ## than just sitting at the cast point. Bobber stays put (still water).
+## Once hooked, _start_bite() freezes cast_target at this same point, so
+## the fight starts where the bite happened, not back at the original cast.
 func get_line_target_position() -> Vector2:
-	if state == State.WAITING and fishing_mode == FishingMode.LURE and _wait_duration > 0.0:
-		var retrieved: float = clamp(1.0 - (wait_timer / _wait_duration), 0.0, 1.0)
-		return cast_target.lerp(global_position, retrieved)
+	if state == State.WAITING and fishing_mode == FishingMode.LURE:
+		return cast_target.lerp(global_position, clamp(retrieve_progress, 0.0, 1.0))
 	return cast_target
 
 
@@ -372,19 +386,27 @@ func _handle_action_input(delta: float) -> void:
 
 	if in_fuel_zone:
 		if just_pressed and _fuel_station != null:
-			var lantern: Lantern = get_node("Lantern")
-			if _fuel_station.try_refuel(lantern):
-				GameState.push_message("煤油加滿了！（煤油站剩 %d/%d 次）" % [_fuel_station.charges_remaining, _fuel_station.max_charges])
-			elif _fuel_station.charges_remaining <= 0:
-				GameState.push_message("煤油站次數用完了")
+			if carrying_oil_drum:
+				_deliver_oil_drum()
 			else:
-				GameState.push_message("燃油已經是滿的")
+				var lantern: Lantern = get_node("Lantern")
+				if _fuel_station.try_refuel(lantern):
+					GameState.push_message("煤油加滿了！（煤油站剩 %d/%d）" % [int(_fuel_station.total_fuel), int(_fuel_station.max_total_fuel)])
+				elif _fuel_station.total_fuel <= 0.0:
+					GameState.push_message("煤油站的油用完了，帶油桶回來加吧")
+				else:
+					GameState.push_message("燃油已經是滿的")
 		_prev_action_held = held
 		return
 
 	if in_oil_drum_zone:
-		if just_pressed and _oil_drum != null:
-			_oil_drum.use()
+		if just_pressed and _oil_drum != null and not carrying_oil_drum:
+			_oil_drum.pick_up()
+			_carried_oil_drum = _oil_drum
+			carrying_oil_drum = true
+			in_oil_drum_zone = false
+			_oil_drum = null
+			GameState.push_message("提起了油桶，送去煤油站吧（提著沒辦法釣魚）")
 		_prev_action_held = held
 		return
 
@@ -402,7 +424,9 @@ func _handle_action_input(delta: float) -> void:
 	match state:
 		State.IDLE:
 			if just_pressed:
-				if _can_start_cast():
+				if carrying_oil_drum:
+					GameState.push_message("提著油桶沒辦法釣魚，先送到煤油站")
+				elif _can_start_cast():
 					_set_state(State.CHARGING)
 					charge_time = 0.0
 				else:
@@ -416,7 +440,13 @@ func _handle_action_input(delta: float) -> void:
 		State.BITE:
 			if just_pressed:
 				_hook_fish()
-		State.WAITING, State.REELING:
+		State.WAITING:
+			# Design doc request: each tap nudges the retrieve forward a bit
+			# on top of the steady per-delta rate in _update_fishing(), so
+			# quick taps give slow, precise "點收" control.
+			if fishing_mode == FishingMode.LURE and just_pressed:
+				retrieve_progress = min(retrieve_progress + LURE_CLICK_AMOUNT, 1.0)
+		State.REELING:
 			pass
 
 	_prev_action_held = held
@@ -466,15 +496,35 @@ func _handle_rummage(held: bool, delta: float) -> void:
 	rummage_progress_updated.emit(rummage_progress)
 
 
+func _deliver_oil_drum() -> void:
+	var added: float = _fuel_station.add_fuel(OilDrum.FUEL_AMOUNT)
+	if _carried_oil_drum != null:
+		_carried_oil_drum.deliver()
+	_carried_oil_drum = null
+	carrying_oil_drum = false
+	if added > 0.0:
+		GameState.push_message("把油桶倒進煤油站了！補充了 %d 燃油" % int(added))
+	else:
+		GameState.push_message("煤油站已經是滿的，油桶白提了一趟")
+
+
 func _update_fishing(delta: float) -> void:
 	match state:
 		State.WAITING:
-			# Design doc §4.2: bobber waits passively; lure only progresses
-			# toward a bite while actively jigged ("持續收線動作").
-			if fishing_mode == FishingMode.BOBBER or _is_action_pressed():
+			if fishing_mode == FishingMode.BOBBER:
+				# Design doc §4.2: bobber waits passively for a bite.
 				wait_timer -= delta
-			if wait_timer <= 0.0:
-				_start_bite()
+				if wait_timer <= 0.0:
+					_start_bite()
+			else:
+				# Design doc request: lure retrieval speed is player-paced -
+				# steady while held, plus click bumps from
+				# _handle_action_input() - rather than an automatic timer.
+				if _is_action_pressed():
+					retrieve_progress += LURE_HOLD_RATE * delta / max(_wait_duration, 0.1)
+				if retrieve_progress >= 1.0:
+					retrieve_progress = 1.0
+					_start_bite()
 		State.BITE:
 			bite_timer -= delta
 			if bite_timer <= 0.0:
@@ -518,6 +568,7 @@ func _launch_cast() -> void:
 	tier_data = FishData.get_tier_data(current_tier)
 	wait_timer = randf_range(tier_data.wait_min, tier_data.wait_max)
 	_wait_duration = wait_timer
+	retrieve_progress = 0.0
 	_roll_catch_outcome()
 	_set_state(State.WAITING)
 	cast_started.emit(cast_target, current_tier)
@@ -551,7 +602,13 @@ func _roll_catch_outcome() -> void:
 		tier_data.bite_window = tier_data.bite_window * 1.2
 
 
+## Design doc request: the fight should start from wherever the lure had
+## actually been retrieved to when it got bit, not snap back to the
+## original far-off cast point - freeze cast_target there before the
+## state change (get_line_target_position() still reads the old state).
 func _start_bite() -> void:
+	if fishing_mode == FishingMode.LURE:
+		cast_target = get_line_target_position()
 	bite_timer = tier_data.bite_window
 	_set_state(State.BITE)
 	bite_started.emit()
