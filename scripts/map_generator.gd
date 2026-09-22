@@ -31,12 +31,27 @@ const SPAWN_CLEAR_RADIUS := 220.0
 const FIXED_POINT_MARGIN := 150.0
 const FIXED_POINT_MIN_SEPARATION := 550.0
 
+## User feedback follow-up: obstacles/trees/bushes were still at fixed
+## main.tscn positions, so they could visually land inside a randomized
+## water zone (a tree "growing" out of a lake). Scattered here too, kept
+## clear of water and of each other - purely cosmetic (obstacles/tree
+## trunks are already solid, so overlapping a rare zone's collision was
+## never a functional bug, just an odd-looking one).
+const PROP_NAMES := [
+	"Obstacle1", "Obstacle2", "Obstacle3", "Obstacle4", "Obstacle5",
+	"Tree1", "Tree2", "Tree3", "Bush1", "Bush2", "Bush3",
+]
+const PROP_MARGIN := 80.0
+const PROP_MIN_SEPARATION := 90.0
+const PROP_AVOID_SPAWN_RADIUS := 180.0
+
 var water_zones: Array = []
 
 
 func _ready() -> void:
 	_generate_water_zones()
 	_place_altar_and_escape()
+	_scatter_props()
 
 
 func _generate_water_zones() -> void:
@@ -103,3 +118,42 @@ func _in_rare_zone(pos: Vector2) -> bool:
 		if zone.is_rare() and zone.contains(pos):
 			return true
 	return false
+
+
+func _in_any_water(pos: Vector2) -> bool:
+	for zone in water_zones:
+		if zone.contains(pos):
+			return true
+	return false
+
+
+func _scatter_props() -> void:
+	var placed: Array = []
+	for prop_name in PROP_NAMES:
+		var prop: Node2D = get_parent().get_node_or_null(prop_name)
+		if prop == null:
+			continue
+		var pos := _pick_prop_position(placed)
+		prop.global_position = pos
+		placed.append(pos)
+
+
+func _pick_prop_position(placed: Array) -> Vector2:
+	var pos := Vector2.ZERO
+	for _try in range(25):
+		pos = Vector2(
+			randf_range(PROP_MARGIN, Player.WORLD_WIDTH - PROP_MARGIN),
+			randf_range(PROP_MARGIN, Player.WORLD_HEIGHT - PROP_MARGIN)
+		)
+		if pos.distance_to(SPAWN_POS) < PROP_AVOID_SPAWN_RADIUS:
+			continue
+		if _in_any_water(pos):
+			continue
+		var too_close := false
+		for p in placed:
+			if pos.distance_to(p) < PROP_MIN_SEPARATION:
+				too_close = true
+				break
+		if not too_close:
+			break
+	return pos
