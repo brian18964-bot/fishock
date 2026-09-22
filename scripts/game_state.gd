@@ -38,6 +38,10 @@ var _quota_since_offering: float = 0.0
 var time_remaining: float = DAY_DURATION
 var is_night: bool = false
 
+## Design doc §5.3: hotspot-only pickup. Solo use is a single automatic
+## save from a night catch; multiplayer altar revival doesn't apply here.
+var has_heart: bool = false
+
 
 func _process(delta: float) -> void:
 	if run_over or is_night or day_phase != DayPhase.FISHING:
@@ -123,6 +127,7 @@ func reset_run() -> void:
 	_quota_since_offering = 0.0
 	time_remaining = DAY_DURATION
 	is_night = false
+	has_heart = false
 	inventory_updated.emit(carried_fish)
 	quota_updated.emit(quota_progress, quota_target)
 	day_phase_changed.emit("FISHING")
@@ -145,6 +150,18 @@ func _trigger_night() -> void:
 	is_night = true
 	night_fell.emit()
 	push_message("時間到了，額度沒補滿...夜晚降臨，鬼進入獵殺模式！")
+
+
+func grant_heart() -> void:
+	has_heart = true
+	push_message("拿到心臟了！關鍵時刻能救你一命")
+
+
+func use_heart() -> bool:
+	if not has_heart:
+		return false
+	has_heart = false
+	return true
 
 
 func push_message(text: String) -> void:

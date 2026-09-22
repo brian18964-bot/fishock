@@ -21,6 +21,7 @@ const STATE_TEXT := {
 @onready var run_end_label: Label = $Panel/RunEndLabel
 @onready var time_label: Label = $Panel/TimeLabel
 @onready var gear_label: Label = $Panel/GearLabel
+@onready var heart_label: Label = $Panel/HeartLabel
 
 const PHASE_TEXT := {
 	"FISHING": "階段：白天釣魚中",
@@ -72,6 +73,8 @@ func _process(delta: float) -> void:
 		gear_label.text = "釣法：浮標（餌 x%d）－Tab 切換" % _player.bait_count
 	else:
 		gear_label.text = "釣法：路亞（假餌 x%d）－Tab 切換" % _player.lure_count
+
+	heart_label.text = "❤ 已持有心臟" if GameState.has_heart else ""
 
 
 func _on_state_changed(new_state: String) -> void:

@@ -199,8 +199,16 @@ func _process_night_hunt(delta: float) -> void:
 	var to_player := player.global_position - global_position
 	if to_player.length() > 1.0:
 		global_position += to_player.normalized() * NIGHT_CHASE_SPEED * delta
+
 	if global_position.distance_to(player.global_position) <= CATCH_RADIUS:
-		GameState.end_run(false, "被鬼拖進水裡了，你沒能撐過夜晚")
+		if GameState.use_heart():
+			GameState.push_message("心臟救了你一命！鬼被震退了")
+			var away := global_position - player.global_position
+			if away.length() < 1.0:
+				away = Vector2.UP
+			global_position = player.global_position + away.normalized() * 260.0
+		else:
+			GameState.end_run(false, "被鬼拖進水裡了，你沒能撐過夜晚")
 
 
 func _start_search(at: Vector2) -> void:

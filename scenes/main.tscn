@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=12 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="2"]
@@ -9,6 +9,7 @@
 [ext_resource type="Script" path="res://scripts/escape_point.gd" id="7"]
 [ext_resource type="PackedScene" path="res://scenes/obstacle.tscn" id="8"]
 [ext_resource type="Script" path="res://scripts/darkness_controller.gd" id="9"]
+[ext_resource type="PackedScene" path="res://scenes/hotspot.tscn" id="10"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_altar"]
 size = Vector2(64, 64)
@@ -77,6 +78,8 @@ horizontal_alignment = 1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="EscapePoint"]
 shape = SubResource("RectangleShape2D_altar")
+
+[node name="Hotspot" parent="." instance=ExtResource("10")]
 
 [node name="Player" parent="." instance=ExtResource("2")]
 position = Vector2(1200, 700)
@@ -196,6 +199,15 @@ offset_top = 48.0
 offset_right = 920.0
 offset_bottom = 68.0
 horizontal_alignment = 2
+text = ""
+
+[node name="HeartLabel" type="Label" parent="HUD/Panel"]
+offset_left = 700.0
+offset_top = 68.0
+offset_right = 920.0
+offset_bottom = 88.0
+horizontal_alignment = 2
+modulate = Color(1, 0.4, 0.5, 1)
 text = ""
 
 [node name="FuelLabel" type="Label" parent="HUD/Panel"]

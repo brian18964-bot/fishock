@@ -45,12 +45,27 @@ var fishing_mode: FishingMode = FishingMode.BOBBER
 var bait_count: int = START_BAIT
 var lure_count: int = START_LURES
 
+## Design doc §5.2/§5.3: rolled at cast time, revealed at bite time.
+const NORMAL_RARE_CHANCE := 0.03
+const FAR_RARE_CHANCE := 0.06
+const HOTSPOT_RARE_CHANCE := 0.35
+const HOTSPOT_HEART_CHANCE_DAY := 0.08
+const HOTSPOT_HEART_CHANCE_NIGHT := 0.16
+const RARE_PULL_INTERVAL := 2.0
+
+var is_rare_catch: bool = false
+var is_heart_catch: bool = false
+var caught_in_hotspot: bool = false
+var rare_pull_dir: Vector2 = Vector2.ZERO
+var rare_pull_timer: float = 0.0
+
 var _prev_action_held: bool = false
 var _prev_mode_toggle_held: bool = false
 
 @onready var facing_indicator: ColorRect = $FacingIndicator
 @onready var _move_joystick: TouchJoystick = get_tree().current_scene.get_node("HUD/Panel/MoveJoystick")
 @onready var _aim_joystick: TouchJoystick = get_tree().current_scene.get_node("HUD/Panel/AimJoystick")
+@onready var _hotspot: Hotspot = get_tree().current_scene.get_node("Hotspot")
 
 
 func _ready() -> void:
@@ -274,8 +289,12 @@ func _update_fishing(delta: float) -> void:
 				_fail_catch("missed_bite")
 		State.REELING:
 			var held := _is_action_pressed()
-			var moving := velocity.length() > 1.0
-			var rate_mult := MOVE_REEL_PENALTY if moving else 1.0
+			var rate_mult := 1.0
+			if is_rare_catch:
+				rate_mult = _update_rare_pull(delta)
+			else:
+				var moving := velocity.length() > 1.0
+				rate_mult = MOVE_REEL_PENALTY if moving else 1.0
 			if held:
 				progress += tier_data.reel_speed * rate_mult * delta
 				tension += tier_data.tension_rise * delta
@@ -306,28 +325,96 @@ func _launch_cast() -> void:
 	current_tier = FishData.tier_for_ratio(ratio)
 	tier_data = FishData.get_tier_data(current_tier)
 	wait_timer = randf_range(tier_data.wait_min, tier_data.wait_max)
+	_roll_catch_outcome()
 	_set_state(State.WAITING)
 	cast_started.emit(cast_target, current_tier)
+
+
+## Design doc §5.2/§5.3: decides now (revealed only at bite time) whether
+## this cast lands a rare fish or, hotspot-only, a heart. Hotspots also
+## boost rare odds far above open water's "surprise" chance.
+func _roll_catch_outcome() -> void:
+	is_rare_catch = false
+	is_heart_catch = false
+	caught_in_hotspot = _hotspot.active and cast_target.distance_to(_hotspot.global_position) <= Hotspot.RADIUS
+
+	if caught_in_hotspot:
+		var heart_chance := HOTSPOT_HEART_CHANCE_NIGHT if GameState.is_night else HOTSPOT_HEART_CHANCE_DAY
+		if randf() < heart_chance:
+			is_heart_catch = true
+		elif randf() < HOTSPOT_RARE_CHANCE:
+			is_rare_catch = true
+	else:
+		var rare_chance := FAR_RARE_CHANCE if current_tier == "far" else NORMAL_RARE_CHANCE
+		if randf() < rare_chance:
+			is_rare_catch = true
+
+	if is_rare_catch:
+		tier_data = tier_data.duplicate()
+		tier_data.label = "稀有" + tier_data.label
+		tier_data.value = tier_data.value * 3.0
+		tier_data.reel_speed = tier_data.reel_speed * 0.6
+		tier_data.tension_rise = tier_data.tension_rise * 1.15
+		tier_data.bite_window = tier_data.bite_window * 1.2
 
 
 func _start_bite() -> void:
 	bite_timer = tier_data.bite_window
 	_set_state(State.BITE)
 	bite_started.emit()
+	if is_heart_catch:
+		GameState.push_message("水花特別亮、震動特別強...是心臟！")
+	elif is_rare_catch:
+		GameState.push_message("水花聲跟震動都變強了，是稀有魚！")
 
 
 func _hook_fish() -> void:
 	progress = 0.0
 	tension = 0.15
+	if is_rare_catch:
+		rare_pull_dir = Vector2.RIGHT.rotated(randf() * TAU)
+		rare_pull_timer = RARE_PULL_INTERVAL
+		GameState.push_message("稀有魚用力往%s拉，往反方向走可以拉近距離！" % _describe_pull(rare_pull_dir))
 	_set_state(State.REELING)
 	hook_success.emit()
 
 
+## Design doc §4.4: rare-fish direction resistance. Moving opposite the
+## fish's current pull speeds progress up (to 1.2x); moving with it drags
+## it down (to 0.2x); standing still is a middling 0.7x either way.
+func _update_rare_pull(delta: float) -> float:
+	rare_pull_timer -= delta
+	if rare_pull_timer <= 0.0:
+		rare_pull_dir = Vector2.RIGHT.rotated(randf() * TAU)
+		rare_pull_timer = RARE_PULL_INTERVAL
+		GameState.push_message("稀有魚換方向了，往%s拉！" % _describe_pull(rare_pull_dir))
+
+	var alignment := 0.0
+	if velocity.length() > 1.0:
+		alignment = velocity.normalized().dot(-rare_pull_dir)
+	var clamped: float = clamp(alignment, -1.0, 1.0)
+	return 0.7 + clamped * 0.5
+
+
+func _describe_pull(dir: Vector2) -> String:
+	if abs(dir.x) > abs(dir.y):
+		return "右" if dir.x > 0.0 else "左"
+	return "下" if dir.y > 0.0 else "上"
+
+
 func _succeed_catch() -> void:
-	var fish := {"name": tier_data.label, "value": tier_data.value, "tier": current_tier}
-	catch_success.emit(fish)
-	GameState.add_carried_fish(fish)
-	GameState.push_message("釣到了 %s！" % tier_data.label)
+	if caught_in_hotspot:
+		_hotspot.consume()
+
+	if is_heart_catch:
+		GameState.grant_heart()
+		catch_success.emit({"name": "心臟", "value": 0, "tier": current_tier})
+	else:
+		var fish := {"name": tier_data.label, "value": tier_data.value, "tier": current_tier}
+		catch_success.emit(fish)
+		GameState.add_carried_fish(fish)
+		GameState.push_message("釣到了 %s！" % tier_data.label)
+
 	_reset_line(State.IDLE)
 
 
