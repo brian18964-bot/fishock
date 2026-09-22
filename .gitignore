@@ -1,0 +1,9 @@
+# Godot 4 local imports and generated caches
+.godot/
+.import/
+export.cfg
+export_presets.cfg
+*.translation
+
+# OS / editor cruft
+.DS_Store
