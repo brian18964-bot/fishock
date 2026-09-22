@@ -43,11 +43,26 @@ func resolve() -> Dictionary:
 
 
 func _relocate() -> void:
-	global_position = Vector2(
-		randf_range(MARGIN, Player.WORLD_WIDTH - MARGIN),
-		randf_range(MARGIN, Player.WORLD_HEIGHT - MARGIN)
-	)
+	var pos := Vector2.ZERO
+	for _try in range(20):
+		pos = Vector2(
+			randf_range(MARGIN, Player.WORLD_WIDTH - MARGIN),
+			randf_range(MARGIN, Player.WORLD_HEIGHT - MARGIN)
+		)
+		if not _in_water(pos):
+			break
+	global_position = pos
 	active = true
+
+
+## Design doc request: a roadside item should never land inside a water
+## zone - a common one would just look wrong, a rare one would spawn it
+## inside solid, unreachable collision.
+func _in_water(pos: Vector2) -> bool:
+	for zone in get_tree().get_nodes_in_group("water_zones"):
+		if zone.contains(pos):
+			return true
+	return false
 
 
 func _on_body_entered(body: Node2D) -> void:

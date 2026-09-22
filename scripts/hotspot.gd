@@ -1,13 +1,13 @@
 class_name Hotspot
 extends Node2D
 
-## Design doc §5.2: only spawns away from fixed lights, ripples to mark
-## itself, and relocates once something's been caught from it.
+## Design doc §5.2: ripples to mark itself, and relocates once something's
+## been caught from it. Design doc request: now that the map has defined
+## water zones, it always lands inside a random common one (never a rare
+## zone or dry land) - a Hotspot is meant to be a walk-up-and-cast spot.
 
 const RADIUS := 70.0
 const RESPAWN_DELAY := 1.5
-const MARGIN := 150.0
-const MIN_DIST_FROM_FIXED_LIGHT := 300.0
 
 var active: bool = true
 
@@ -47,17 +47,17 @@ func force_relocate() -> void:
 
 
 func _relocate() -> void:
-	var altar := get_tree().current_scene.get_node("Altar")
-	var escape_point := get_tree().current_scene.get_node("EscapePoint")
-	var pos := Vector2.ZERO
-	for _i in range(20):
-		pos = Vector2(
-			randf_range(MARGIN, Player.WORLD_WIDTH - MARGIN),
-			randf_range(MARGIN, Player.WORLD_HEIGHT - MARGIN)
-		)
-		var far_from_altar := pos.distance_to(altar.global_position) > MIN_DIST_FROM_FIXED_LIGHT
-		var far_from_escape := pos.distance_to(escape_point.global_position) > MIN_DIST_FROM_FIXED_LIGHT
-		if far_from_altar and far_from_escape:
-			break
-	global_position = pos
+	var common_zones := get_tree().get_nodes_in_group("water_zones_common")
+	if common_zones.is_empty():
+		# Defensive fallback (e.g. this scene tested standalone, without
+		# MapGenerator ever running) so this never gets stuck uninitialized.
+		global_position = Vector2(Player.WORLD_WIDTH * 0.5, Player.WORLD_HEIGHT * 0.5)
+		active = true
+		return
+
+	var zone = common_zones[randi() % common_zones.size()]
+	var offset := Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0))
+	if offset.length() > 1.0:
+		offset = offset.normalized()
+	global_position = zone.global_position + offset * zone.radius * randf_range(0.0, 0.7)
 	active = true

@@ -37,6 +37,23 @@ const RUMMAGE_DURATION := 0.9
 const LURE_HOLD_RATE := 0.55
 const LURE_CLICK_AMOUNT := 0.12
 
+## Design doc request: common water is easy to reach and cast into but
+## pays worse; rare water pays much better for the precision (and risk -
+## it's solid ground you can't stand on, see water_zone.gd) it takes to
+## land a cast on it at all.
+const COMMON_ZONE_VALUE_MULT := 0.7
+const RARE_ZONE_VALUE_MULT := 2.2
+const RARE_ZONE_RARE_CHANCE_BONUS := 0.25
+
+## Design doc request: any cast can call up a "water ghost" that jumps a
+## player standing too close to the water's edge - lost gear, a stolen
+## fish, and a lingering status effect. Casting far from where you're
+## standing doesn't save you; standing far from any water does.
+const WATER_GHOST_CHANCE := 0.16
+const WATER_GHOST_RANGE := 130.0
+const WATER_GHOST_DEBUFF_DURATION := 4.0
+const WATER_GHOST_SPEED_MULT := 0.55
+
 const DROPPED_FISH_SCENE := preload("res://scenes/dropped_fish.tscn")
 
 var state: State = State.IDLE
@@ -58,6 +75,8 @@ var in_roadside_zone: bool = false
 var current_noise_radius: float = 0.0
 var cast_jittered: bool = false
 var retrieve_progress: float = 0.0
+var cast_water_zone: WaterZone
+var water_ghost_timer: float = 0.0
 
 const SACRIFICE_DURATION := 0.6
 var sacrifice_progress: float = 0.0
@@ -219,6 +238,54 @@ func _lose_lure() -> void:
 		GameState.push_message("假餌都用完了，只能用浮標了")
 
 
+## Design doc request: fishing only works if the cast actually lands in
+## water - rare zones checked first since a rare zone can sit close to a
+## common one and should win the value/odds bonus.
+func _find_water_zone(point: Vector2) -> WaterZone:
+	for zone in get_tree().get_nodes_in_group("water_zones_rare"):
+		if zone.contains(point):
+			return zone
+	for zone in get_tree().get_nodes_in_group("water_zones_common"):
+		if zone.contains(point):
+			return zone
+	return null
+
+
+func _nearest_water_edge_distance() -> float:
+	var best := INF
+	for zone in get_tree().get_nodes_in_group("water_zones"):
+		var d: float = zone.distance_to_edge(global_position)
+		best = min(best, d)
+	return best
+
+
+## Design doc request: discourage cheesing quick, close-range casts by
+## rolling a water-ghost attack on every cast, regardless of its distance -
+## it only actually lands if the PLAYER is standing close to the water,
+## since standing back out of its reach is what keeps you safe, not how
+## far you happened to cast.
+func _maybe_trigger_water_ghost() -> void:
+	if randf() >= WATER_GHOST_CHANCE:
+		return
+	if _nearest_water_edge_distance() > WATER_GHOST_RANGE:
+		return
+	_apply_water_ghost_attack()
+
+
+func _apply_water_ghost_attack() -> void:
+	water_ghost_timer = WATER_GHOST_DEBUFF_DURATION
+	cast_jittered = true
+	if fishing_mode == FishingMode.BOBBER:
+		bait_count = max(bait_count - 1, 0)
+	else:
+		_lose_lure()
+	var stolen: Dictionary = GameState.steal_one_carried()
+	var msg := "水鬼從水裡冒出來偷襲！身上狀態異常中"
+	if not stolen.is_empty():
+		msg = "水鬼冒出來偷襲，還搶走了一條 %s！身上狀態異常中" % stolen.get("name", "魚")
+	GameState.push_message(msg)
+
+
 func _handle_mode_toggle() -> void:
 	if state != State.IDLE:
 		return
@@ -289,6 +356,7 @@ func _try_buy_upgrade(upgrade_key: String) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	water_ghost_timer = max(water_ghost_timer - delta, 0.0)
 	_update_aim()
 	_update_movement()
 	_update_noise()
@@ -337,8 +405,14 @@ func _update_movement() -> void:
 			input_dir.y += 1.0
 		input_dir = input_dir.normalized()
 
+	# Design doc request: a water ghost hit scrambles steering for a bit -
+	# the input direction wobbles randomly instead of going where aimed.
+	if water_ghost_timer > 0.0 and input_dir.length() > 0.05:
+		input_dir = input_dir.rotated(randf_range(-1.2, 1.2))
+
 	var carry_ratio: float = carry_speed_ratio(GameState.carried_fish.size())
-	velocity = input_dir * SPEED * carry_ratio
+	var affliction_ratio: float = WATER_GHOST_SPEED_MULT if water_ghost_timer > 0.0 else 1.0
+	velocity = input_dir * SPEED * carry_ratio * affliction_ratio
 	move_and_slide()
 	position.x = clamp(position.x, 16.0, WORLD_WIDTH - 16.0)
 	position.y = clamp(position.y, 16.0, WORLD_HEIGHT - 16.0)
@@ -522,7 +596,13 @@ func _update_fishing(delta: float) -> void:
 				# _handle_action_input() - rather than an automatic timer.
 				if _is_action_pressed():
 					retrieve_progress += LURE_HOLD_RATE * delta / max(_wait_duration, 0.1)
-				if retrieve_progress >= 1.0:
+				# Design doc request: reeled out of a rare zone's boundary
+				# counts as fully retrieved outright - you don't have to
+				# drag it all the way back to shore.
+				var exited_rare_zone := false
+				if cast_water_zone != null and cast_water_zone.is_rare():
+					exited_rare_zone = not cast_water_zone.contains(get_line_target_position())
+				if retrieve_progress >= 1.0 or exited_rare_zone:
 					retrieve_progress = 1.0
 					_start_bite()
 		State.BITE:
@@ -557,13 +637,27 @@ func _launch_cast() -> void:
 	if fishing_mode == FishingMode.BOBBER:
 		bait_count = max(bait_count - 1, 0)
 
+	# Design doc request: any cast can call up a water ghost before it even
+	# lands - see _maybe_trigger_water_ghost(). It can set cast_jittered
+	# itself, so this check comes before the jitter is consumed below.
+	_maybe_trigger_water_ghost()
+
 	var ratio: float = charge_time / MAX_CHARGE_TIME
-	if cast_jittered:
+	if cast_jittered or water_ghost_timer > 0.0:
 		ratio = clamp(ratio * randf_range(0.3, 1.4), 0.0, 1.0)
 		cast_jittered = false
 		GameState.push_message("蓄力被干擾了，拋竿距離變得不可靠")
 	var dist: float = lerp(MIN_CAST_DIST, MAX_CAST_DIST, ratio)
 	cast_target = global_position + aim_dir * dist
+
+	# Design doc request: a cast that doesn't land in any water zone just
+	# comes up empty - fishing only works where there's actually water now.
+	cast_water_zone = _find_water_zone(cast_target)
+	if cast_water_zone == null:
+		GameState.push_message("這裡沒有水，這竿撲空了")
+		_reset_line(State.IDLE)
+		return
+
 	current_tier = FishData.tier_for_ratio(ratio)
 	tier_data = FishData.get_tier_data(current_tier)
 	wait_timer = randf_range(tier_data.wait_min, tier_data.wait_max)
@@ -576,11 +670,18 @@ func _launch_cast() -> void:
 
 ## Design doc §5.2/§5.3: decides now (revealed only at bite time) whether
 ## this cast lands a rare fish or, hotspot-only, a heart. Hotspots also
-## boost rare odds far above open water's "surprise" chance.
+## boost rare odds far above open water's "surprise" chance. Design doc
+## request: which water zone the cast landed in also scales the catch's
+## value on its own, on top of any rare-fish roll.
 func _roll_catch_outcome() -> void:
 	is_rare_catch = false
 	is_heart_catch = false
 	caught_in_hotspot = _hotspot.active and cast_target.distance_to(_hotspot.global_position) <= Hotspot.RADIUS
+	var in_rare_zone: bool = cast_water_zone != null and cast_water_zone.is_rare()
+
+	var rare_chance := FAR_RARE_CHANCE if current_tier == "far" else NORMAL_RARE_CHANCE
+	if in_rare_zone:
+		rare_chance += RARE_ZONE_RARE_CHANCE_BONUS
 
 	if caught_in_hotspot:
 		var heart_chance := HOTSPOT_HEART_CHANCE_NIGHT if GameState.is_night else HOTSPOT_HEART_CHANCE_DAY
@@ -588,18 +689,19 @@ func _roll_catch_outcome() -> void:
 			is_heart_catch = true
 		elif randf() < HOTSPOT_RARE_CHANCE:
 			is_rare_catch = true
-	else:
-		var rare_chance := FAR_RARE_CHANCE if current_tier == "far" else NORMAL_RARE_CHANCE
-		if randf() < rare_chance:
-			is_rare_catch = true
+	elif randf() < rare_chance:
+		is_rare_catch = true
 
+	tier_data = tier_data.duplicate()
 	if is_rare_catch:
-		tier_data = tier_data.duplicate()
 		tier_data.label = "稀有" + tier_data.label
 		tier_data.value = tier_data.value * 3.0
 		tier_data.reel_speed = tier_data.reel_speed * 0.6
 		tier_data.tension_rise = tier_data.tension_rise * 1.15
 		tier_data.bite_window = tier_data.bite_window * 1.2
+
+	var zone_mult: float = RARE_ZONE_VALUE_MULT if in_rare_zone else COMMON_ZONE_VALUE_MULT
+	tier_data.value = tier_data.value * zone_mult
 
 
 ## Design doc request: the fight should start from wherever the lure had

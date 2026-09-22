@@ -28,6 +28,7 @@ const STATE_TEXT := {
 @onready var sacrifice_bar: ProgressBar = $Panel/SacrificeBar
 @onready var rummage_bar: ProgressBar = $Panel/RummageBar
 @onready var relight_bar: ProgressBar = $Panel/RelightBar
+@onready var affliction_label: Label = $Panel/AfflictionLabel
 
 const PHASE_TEXT := {
 	"FISHING": "階段：白天釣魚中",
@@ -87,6 +88,7 @@ func _process(delta: float) -> void:
 		gear_label.text = "釣法：路亞（假餌 x%d）－Tab 切換" % _player.lure_count
 
 	heart_label.text = "❤ 已持有心臟" if GameState.has_heart else ""
+	affliction_label.text = "⚠ 水鬼異常狀態中" if _player.water_ghost_timer > 0.0 else ""
 
 	gold_label.text = "金幣：%d（庫存假餌 %d）" % [Profile.gold, Profile.loadout_lures]
 

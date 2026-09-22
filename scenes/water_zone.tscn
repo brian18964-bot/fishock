@@ -1,0 +1,9 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/water_zone.gd" id="1"]
+
+[node name="WaterZone" type="StaticBody2D"]
+z_index = -5
+script = ExtResource("1")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]

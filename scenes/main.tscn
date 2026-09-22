@@ -1,4 +1,4 @@
-[gd_scene load_steps=17 format=3]
+[gd_scene load_steps=18 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="2"]
@@ -15,6 +15,7 @@
 [ext_resource type="PackedScene" path="res://scenes/fuel_station.tscn" id="13"]
 [ext_resource type="PackedScene" path="res://scenes/oil_drum.tscn" id="14"]
 [ext_resource type="PackedScene" path="res://scenes/roadside_item.tscn" id="15"]
+[ext_resource type="Script" path="res://scripts/map_generator.gd" id="16"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_altar"]
 size = Vector2(64, 64)
@@ -22,12 +23,15 @@ size = Vector2(64, 64)
 [node name="Main" type="Node2D"]
 script = ExtResource("1")
 
-[node name="WaterBackground" type="ColorRect" parent="."]
+[node name="MapGenerator" type="Node2D" parent="."]
+script = ExtResource("16")
+
+[node name="GroundBackground" type="ColorRect" parent="."]
 offset_left = 0.0
 offset_top = 0.0
 offset_right = 2400.0
 offset_bottom = 1350.0
-color = Color(0.05, 0.08, 0.16, 1)
+color = Color(0.1, 0.13, 0.08, 1)
 mouse_filter = 2
 
 [node name="Darkness" type="CanvasModulate" parent="."]
@@ -251,13 +255,22 @@ step = 0.01
 show_percentage = false
 modulate = Color(1, 0.85, 0.4, 1)
 
+[node name="AfflictionLabel" type="Label" parent="HUD/Panel"]
+offset_left = 700.0
+offset_top = 106.0
+offset_right = 920.0
+offset_bottom = 126.0
+horizontal_alignment = 2
+modulate = Color(0.85, 0.35, 0.9, 1)
+text = ""
+
 [node name="HelpLabel" type="Label" parent="HUD/Panel"]
 offset_left = 16.0
 offset_top = 478.0
 offset_right = 944.0
 offset_bottom = 534.0
 autowrap_mode = 2
-text = "左下搖桿移動／右下搖桿瞄準（桌面測試可用 WASD／滑鼠代替）／空白鍵：蓄力拋竿・提竿；路亞：按住空白鍵持續收線，或連點輕收，離水鬥魚會從中魚當下的位置開始；Tab 切換浮標/路亞；[ ] 調亮度；L：熄滅提燈／按住重新點燃（跑進度條）；F：強光定身鬼；祭壇只能獻祭（按住空白鍵，一條一條跑進度條，不再補油也不保護）；煤油站（出生點附近）按空白鍵加油，共用總量；油桶要撿起提回煤油站按空白鍵倒入（提著時不能釣魚）；逃離點按空白鍵逃離；G：丟棄一條漁獲（變輕變快，掉在地上會隨時間腐敗貶值，走近按空白鍵撿回）；路邊雜物按住空白鍵翻找，有機會翻到餌料；身上魚越多走越慢；Shift+R 重來一輪"
+text = "地圖每輪隨機生成：藍圈是一般水域（可走進去、近距離拋竿也行，但魚較便宜）、紫圈是稀有水域（進不去，只能站外面精準拋竿命中，魚貴很多）；空白鍵：蓄力拋竿・提竿；路亞：按住空白鍵持續收線，或連點輕收，離水鬥魚會從中魚當下的位置開始，假餌只要收出稀有水域邊界就算完成；Tab 切換浮標/路亞；[ ] 調亮度；L：熄滅提燈／按住重新點燃（跑進度條）；F：強光定身鬼；祭壇只能獻祭（按住空白鍵，一條一條跑進度條，不再補油也不保護）；煤油站（出生點附近）按空白鍵加油，共用總量；油桶要撿起提回煤油站按空白鍵倒入（提著時不能釣魚）；逃離點按空白鍵逃離；G：丟棄一條漁獲（變輕變快，掉在地上會隨時間腐敗貶值，走近按空白鍵撿回）；路邊雜物按住空白鍵翻找，有機會翻到餌料；身上魚越多走越慢；站在水邊拋竿有機率被水鬼偷襲（掉餌/掉魚/短暫異常狀態），站遠一點比較安全；Shift+R 重來一輪"
 
 [node name="TimeLabel" type="Label" parent="HUD/Panel"]
 offset_left = 700.0
