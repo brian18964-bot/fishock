@@ -14,8 +14,10 @@ const STATE_TEXT := {
 @onready var message_label: Label = $Panel/MessageLabel
 @onready var progress_bar: ProgressBar = $Panel/ProgressBar
 @onready var tension_bar: ProgressBar = $Panel/TensionBar
+@onready var fuel_bar: ProgressBar = $Panel/FuelBar
 
 var _message_timer: float = 0.0
+var _lantern: PointLight2D
 
 
 func _ready() -> void:
@@ -29,12 +31,17 @@ func _ready() -> void:
 	_on_inventory_updated(GameState.carried_fish)
 	_on_state_changed("IDLE")
 
+	_lantern = player.get_node("Lantern")
+	fuel_bar.max_value = _lantern.MAX_FUEL
+	fuel_bar.value = _lantern.fuel
+
 
 func _process(delta: float) -> void:
 	if _message_timer > 0.0:
 		_message_timer -= delta
 		if _message_timer <= 0.0:
 			message_label.text = ""
+	fuel_bar.value = _lantern.fuel
 
 
 func _on_state_changed(new_state: String) -> void:

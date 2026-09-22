@@ -55,9 +55,16 @@ func _physics_process(delta: float) -> void:
 
 
 func _update_aim() -> void:
-	var to_mouse := get_global_mouse_position() - global_position
-	if to_mouse.length() > 4.0:
-		aim_dir = to_mouse.normalized()
+	if state == State.REELING:
+		# Design doc §4.4: while reeling, facing/light lock onto the fish
+		# instead of free mouse aim, so the player isn't fighting two things.
+		var to_fish := cast_target - global_position
+		if to_fish.length() > 1.0:
+			aim_dir = to_fish.normalized()
+	else:
+		var to_mouse := get_global_mouse_position() - global_position
+		if to_mouse.length() > 4.0:
+			aim_dir = to_mouse.normalized()
 	facing_indicator.position = aim_dir * 18.0 - Vector2(3.0, 3.0)
 
 
