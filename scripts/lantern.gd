@@ -27,6 +27,11 @@ const FLASH_FUEL_COST := 25.0
 const FLASH_COOLDOWN := 3.0
 const FLASH_STUN_DURATION := 1.75
 
+## Base values plus Profile upgrade bonuses (design doc §9.1), computed once
+## at _ready() since upgrades only change between runs, not mid-run.
+var max_fuel: float = MAX_FUEL
+var flash_cooldown_max: float = FLASH_COOLDOWN
+
 var fuel: float = MAX_FUEL
 var brightness: float = 0.75
 var flash_cooldown: float = 0.0
@@ -41,13 +46,17 @@ func _ready() -> void:
 	color = Color(1.0, 0.92, 0.75)
 	shadow_enabled = true
 
+	max_fuel = MAX_FUEL + Profile.get_upgrade_bonus("fuel_capacity")
+	flash_cooldown_max = max(FLASH_COOLDOWN - Profile.get_upgrade_bonus("flash_cooldown"), 1.0)
+	fuel = max_fuel
+
 
 func _process(delta: float) -> void:
 	_handle_brightness_input(delta)
 	_handle_flash_input(delta)
 
 	if _player.in_altar_zone:
-		fuel = min(fuel + REFUEL_RATE * delta, MAX_FUEL)
+		fuel = min(fuel + REFUEL_RATE * delta, max_fuel)
 	else:
 		fuel = max(fuel - DRAIN_RATE * brightness * delta, 0.0)
 
@@ -79,7 +88,7 @@ func _try_flash() -> void:
 		GameState.push_message("燃油不足，無法使用強光")
 		return
 
-	flash_cooldown = FLASH_COOLDOWN
+	flash_cooldown = flash_cooldown_max
 	fuel -= FLASH_FUEL_COST
 
 	var hit_any := false

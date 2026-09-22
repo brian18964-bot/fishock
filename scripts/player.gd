@@ -61,6 +61,7 @@ var rare_pull_timer: float = 0.0
 
 var _prev_action_held: bool = false
 var _prev_mode_toggle_held: bool = false
+var _key_prev_held: Dictionary = {}
 
 @onready var facing_indicator: ColorRect = $FacingIndicator
 @onready var _move_joystick: TouchJoystick = get_tree().current_scene.get_node("HUD/Panel/MoveJoystick")
@@ -69,6 +70,7 @@ var _prev_mode_toggle_held: bool = false
 
 
 func _ready() -> void:
+	reset_gear()
 	_set_state(State.IDLE)
 
 
@@ -114,9 +116,12 @@ func spoil_bait() -> void:
 		_fail_catch("bait_stolen")
 
 
+## Design doc §9.1/§9.2: starting bait scales with the bait_capacity
+## upgrade; lures come from whatever the player bought into their loadout
+## before this run started (consumed here, not reusable across runs).
 func reset_gear() -> void:
-	bait_count = START_BAIT
-	lure_count = START_LURES
+	bait_count = START_BAIT + int(Profile.get_upgrade_bonus("bait_capacity"))
+	lure_count = Profile.consume_loadout_lures()
 	fishing_mode = FishingMode.BOBBER
 
 
@@ -153,12 +158,46 @@ func _handle_mode_toggle() -> void:
 		GameState.push_message("切換成浮標")
 
 
+## Design doc §9.1/§9.2: no shop UI yet, so gold spends through debug-style
+## keys instead - B buys a lure for the next run's loadout, 1/2/3 buy a
+## level of each permanent upgrade. Works anytime since none of it takes
+## effect until the next reset_gear() (a fresh run) anyway.
+func _handle_shop_input() -> void:
+	if _key_just_pressed(KEY_B):
+		if Profile.buy_lure():
+			GameState.push_message("買了一個假餌（下輪庫存 %d），這輪不會生效" % Profile.loadout_lures)
+		else:
+			GameState.push_message("金幣不夠，買不起假餌（需要 %d）" % Profile.LURE_COST)
+	if _key_just_pressed(KEY_1):
+		_try_buy_upgrade("fuel_capacity")
+	if _key_just_pressed(KEY_2):
+		_try_buy_upgrade("bait_capacity")
+	if _key_just_pressed(KEY_3):
+		_try_buy_upgrade("flash_cooldown")
+
+
+func _key_just_pressed(key: int) -> bool:
+	var held := Input.is_key_pressed(key)
+	var was_held: bool = _key_prev_held.get(key, false)
+	_key_prev_held[key] = held
+	return held and not was_held
+
+
+func _try_buy_upgrade(upgrade_key: String) -> void:
+	var def: Dictionary = Profile.UPGRADE_DEFS[upgrade_key]
+	if Profile.buy_upgrade(upgrade_key):
+		GameState.push_message("升級了%s！（Lv.%d）" % [def.label, Profile.get_upgrade_level(upgrade_key)])
+	else:
+		GameState.push_message("升不了級（金幣不夠或已滿級）")
+
+
 func _physics_process(delta: float) -> void:
 	_update_aim()
 	_update_movement()
 	_update_noise()
 	_update_fishing(delta)
 	_handle_mode_toggle()
+	_handle_shop_input()
 	_handle_action_input(delta)
 
 

@@ -22,6 +22,7 @@ const STATE_TEXT := {
 @onready var time_label: Label = $Panel/TimeLabel
 @onready var gear_label: Label = $Panel/GearLabel
 @onready var heart_label: Label = $Panel/HeartLabel
+@onready var gold_label: Label = $Panel/GoldLabel
 
 const PHASE_TEXT := {
 	"FISHING": "階段：白天釣魚中",
@@ -52,8 +53,6 @@ func _ready() -> void:
 	_on_offering_pool_updated(GameState.offering_pool, GameState.evil_count)
 
 	_lantern = player.get_node("Lantern")
-	fuel_bar.max_value = _lantern.MAX_FUEL
-	fuel_bar.value = _lantern.fuel
 
 
 func _process(delta: float) -> void:
@@ -61,6 +60,7 @@ func _process(delta: float) -> void:
 		_message_timer -= delta
 		if _message_timer <= 0.0:
 			message_label.text = ""
+	fuel_bar.max_value = _lantern.max_fuel
 	fuel_bar.value = _lantern.fuel
 
 	if GameState.is_night or GameState.day_phase != GameState.DayPhase.FISHING:
@@ -75,6 +75,8 @@ func _process(delta: float) -> void:
 		gear_label.text = "釣法：路亞（假餌 x%d）－Tab 切換" % _player.lure_count
 
 	heart_label.text = "❤ 已持有心臟" if GameState.has_heart else ""
+
+	gold_label.text = "金幣：%d（庫存假餌 %d）" % [Profile.gold, Profile.loadout_lures]
 
 
 func _on_state_changed(new_state: String) -> void:

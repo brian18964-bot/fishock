@@ -12,6 +12,7 @@ run/main_scene="res://scenes/main.tscn"
 [autoload]
 
 GameState="*res://scripts/game_state.gd"
+Profile="*res://scripts/profile.gd"
 
 [display]
 

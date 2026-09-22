@@ -188,10 +188,11 @@ text = "釣法：浮標"
 
 [node name="HelpLabel" type="Label" parent="HUD/Panel"]
 offset_left = 16.0
-offset_top = 510.0
-offset_right = 900.0
+offset_top = 478.0
+offset_right = 944.0
 offset_bottom = 534.0
-text = "左下搖桿移動／右下搖桿瞄準（桌面測試可用 WASD／滑鼠代替）／空白鍵：蓄力拋竿・提竿・收線；Tab 切換浮標/路亞（路亞要按住空白鍵持續操竿才會上魚）；[ ] 調亮度；F：強光定身鬼；祭壇獻祭、逃離點逃離都按空白鍵；Shift+R 重來一輪"
+autowrap_mode = 2
+text = "左下搖桿移動／右下搖桿瞄準（桌面測試可用 WASD／滑鼠代替）／空白鍵：蓄力拋竿・提竿・收線；Tab 切換浮標/路亞（路亞要按住空白鍵持續操竿才會上魚）；[ ] 調亮度；F：強光定身鬼；祭壇獻祭、逃離點逃離都按空白鍵；B 買假餌／1/2/3 買永久升級（燃油/帶餌/強光冷卻，用金幣，還沒做商店UI先用按鍵）；Shift+R 重來一輪"
 
 [node name="TimeLabel" type="Label" parent="HUD/Panel"]
 offset_left = 700.0
@@ -249,6 +250,14 @@ offset_right = 920.0
 offset_bottom = 198.0
 text = "供品池：尚無供品"
 autowrap_mode = 2
+
+[node name="GoldLabel" type="Label" parent="HUD/Panel"]
+offset_left = 16.0
+offset_top = 198.0
+offset_right = 400.0
+offset_bottom = 218.0
+modulate = Color(1, 0.85, 0.3, 1)
+text = "金幣：0"
 
 [node name="RunEndLabel" type="Label" parent="HUD/Panel"]
 visible = false

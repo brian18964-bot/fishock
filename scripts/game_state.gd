@@ -143,7 +143,31 @@ func end_run(success: bool, message: String) -> void:
 	run_over = true
 	day_phase = DayPhase.DONE
 	day_phase_changed.emit("DONE")
-	run_ended.emit(success, message)
+
+	var final_message := message
+	if success:
+		var sold := _sell_carried_fish()
+		if sold > 0:
+			final_message += "\n順便賣掉身上剩下的漁獲，賺了 %d 金幣" % sold
+	else:
+		# Design doc §8: on failure, carried fish are lost outright, never sold.
+		carried_fish.clear()
+		inventory_updated.emit(carried_fish)
+
+	run_ended.emit(success, final_message)
+
+
+## Design doc §7/§9.1: excess catch you carried onto the "boat" (i.e. still
+## on hand when you escape) becomes sellable, permanent gold.
+func _sell_carried_fish() -> int:
+	var total := 0
+	for fish in carried_fish:
+		total += int(fish.value)
+	carried_fish.clear()
+	inventory_updated.emit(carried_fish)
+	if total > 0:
+		Profile.add_gold(total)
+	return total
 
 
 func _trigger_night() -> void:
