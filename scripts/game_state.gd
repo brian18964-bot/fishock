@@ -13,8 +13,10 @@ signal day_phase_changed(phase: String)
 signal offering_pool_updated(pool: Array, evil_count: int)
 signal run_ended(success: bool, message: String)
 signal night_fell()
+signal weather_changed(weather: String)
 
 enum DayPhase { FISHING, ESCAPE, DONE }
+enum Weather { CLEAR, FOG, STORM, FISH_RUN }
 
 const OFFERING_ADD_THRESHOLD := 15.0
 const RARITY_EVIL_CHANCE := {"common": 0.1, "rare": 0.25, "epic": 0.45}
@@ -40,6 +42,15 @@ const GHOST_SCENE := preload("res://scenes/ghost.tscn")
 const GHOST_SPAWN_MARGIN := 200.0
 const GHOST_SPAWN_MIN_PLAYER_DIST := 400.0
 
+## User feedback: each run should feel different beat-to-beat, not just in
+## its map layout - periodic weather that shifts visibility, ghost danger,
+## and fishing odds. Weighted so CLEAR is still the most common state.
+const WEATHER_MIN_DURATION := 40.0
+const WEATHER_MAX_DURATION := 75.0
+const WEATHER_FOG_WEIGHT := 0.2
+const WEATHER_STORM_WEIGHT := 0.2
+const WEATHER_FISH_RUN_WEIGHT := 0.2
+
 var quota_target: float = 30.0
 var quota_progress: float = 0.0
 var carried_fish: Array = []
@@ -55,6 +66,9 @@ var time_remaining: float = DAY_DURATION
 var is_night: bool = false
 
 var _extra_ghosts: Array = []
+
+var weather: int = Weather.CLEAR
+var weather_timer: float = 0.0
 
 ## Gates the day timer so it only runs once the player has actually
 ## pressed "Start" on the title screen - otherwise browsing the shop
@@ -72,6 +86,10 @@ func _process(delta: float) -> void:
 	time_remaining = max(time_remaining - delta, 0.0)
 	if time_remaining <= 0.0:
 		_trigger_night()
+
+	weather_timer -= delta
+	if weather_timer <= 0.0:
+		_roll_weather()
 
 
 func start_run() -> void:
@@ -167,6 +185,9 @@ func reset_run() -> void:
 	is_night = false
 	run_started = false
 	has_heart = false
+	weather = Weather.CLEAR
+	weather_timer = randf_range(WEATHER_MIN_DURATION, WEATHER_MAX_DURATION)
+	weather_changed.emit("CLEAR")
 	for ghost in _extra_ghosts:
 		if is_instance_valid(ghost):
 			ghost.queue_free()
@@ -213,6 +234,34 @@ func _sell_carried_fish() -> int:
 	if total > 0:
 		Profile.add_gold(total)
 	return total
+
+
+## User feedback: periodic weather - mostly clear, but fog (dims/shrinks
+## visibility), storms (ghosts more dangerous, water ghost more likely) and
+## fish runs (better odds map-wide) each take a turn for a while.
+func _roll_weather() -> void:
+	var roll := randf()
+	var new_weather := Weather.CLEAR
+	if roll < WEATHER_FOG_WEIGHT:
+		new_weather = Weather.FOG
+	elif roll < WEATHER_FOG_WEIGHT + WEATHER_STORM_WEIGHT:
+		new_weather = Weather.STORM
+	elif roll < WEATHER_FOG_WEIGHT + WEATHER_STORM_WEIGHT + WEATHER_FISH_RUN_WEIGHT:
+		new_weather = Weather.FISH_RUN
+
+	weather = new_weather
+	weather_timer = randf_range(WEATHER_MIN_DURATION, WEATHER_MAX_DURATION)
+	weather_changed.emit(Weather.keys()[weather])
+
+	match weather:
+		Weather.FOG:
+			push_message("起霧了，視野變差...")
+		Weather.STORM:
+			push_message("風雨變大，水鬼變得更加活躍！")
+		Weather.FISH_RUN:
+			push_message("魚汛來了！這段時間更容易釣到魚")
+		Weather.CLEAR:
+			push_message("天氣恢復平靜")
 
 
 func _trigger_night() -> void:

@@ -29,6 +29,14 @@ const STATE_TEXT := {
 @onready var rummage_bar: ProgressBar = $Panel/RummageBar
 @onready var relight_bar: ProgressBar = $Panel/RelightBar
 @onready var affliction_label: Label = $Panel/AfflictionLabel
+@onready var weather_label: Label = $Panel/WeatherLabel
+
+const WEATHER_TEXT := {
+	"CLEAR": "",
+	"FOG": "🌫 起霧了（視野變差）",
+	"STORM": "⛈ 暴風雨（鬼更活躍、水鬼更常出沒）",
+	"FISH_RUN": "🐟 魚汛（上魚率提升）",
+}
 
 const PHASE_TEXT := {
 	"FISHING": "階段：白天釣魚中",
@@ -55,6 +63,8 @@ func _ready() -> void:
 	GameState.offering_pool_updated.connect(_on_offering_pool_updated)
 	GameState.run_ended.connect(_on_run_ended)
 	GameState.night_fell.connect(_on_night_fell)
+	GameState.weather_changed.connect(_on_weather_changed)
+	_on_weather_changed("CLEAR")
 	_on_quota_updated(GameState.quota_progress, GameState.quota_target)
 	_on_inventory_updated(GameState.carried_fish)
 	_on_state_changed("IDLE")
@@ -91,6 +101,9 @@ func _process(delta: float) -> void:
 	affliction_label.text = "⚠ 水鬼異常狀態中" if _player.water_ghost_timer > 0.0 else ""
 
 	gold_label.text = "金幣：%d（庫存假餌 %d）" % [Profile.gold, Profile.loadout_lures]
+
+	if _player.pending_bait_flavor != "":
+		gear_label.text += "（下竿餌料：%s）" % _player.pending_bait_flavor
 
 
 func _on_state_changed(new_state: String) -> void:
@@ -166,6 +179,10 @@ func _on_back_to_title_pressed() -> void:
 
 func _on_night_fell() -> void:
 	phase_label.text = "階段：☠ 夜晚降臨！鬼已進入獵殺模式"
+
+
+func _on_weather_changed(weather: String) -> void:
+	weather_label.text = WEATHER_TEXT.get(weather, "")
 
 
 func _rarity_label(rarity: String) -> String:

@@ -55,11 +55,18 @@ offset_right = 580.0
 offset_bottom = 400.0
 text = "商店"
 
+[node name="FishLogButton" type="Button" parent="."]
+offset_left = 380.0
+offset_top = 412.0
+offset_right = 580.0
+offset_bottom = 456.0
+text = "魚類圖鑑"
+
 [node name="HintLabel" type="Label" parent="."]
 offset_left = 40.0
-offset_top = 460.0
+offset_top = 470.0
 offset_right = 920.0
-offset_bottom = 520.0
+offset_bottom = 530.0
 modulate = Color(0.7, 0.7, 0.75, 1)
 horizontal_alignment = 1
 autowrap_mode = 2

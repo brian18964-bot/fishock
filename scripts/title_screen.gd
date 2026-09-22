@@ -3,6 +3,7 @@ extends Control
 @onready var gold_label: Label = $GoldLabel
 @onready var start_button: Button = $StartButton
 @onready var shop_button: Button = $ShopButton
+@onready var fish_log_button: Button = $FishLogButton
 
 
 func _ready() -> void:
@@ -13,6 +14,7 @@ func _ready() -> void:
 
 	start_button.pressed.connect(_on_start_pressed)
 	shop_button.pressed.connect(_on_shop_pressed)
+	fish_log_button.pressed.connect(_on_fish_log_pressed)
 	Profile.gold_updated.connect(_on_gold_updated)
 	_refresh_gold()
 
@@ -32,3 +34,7 @@ func _on_start_pressed() -> void:
 
 func _on_shop_pressed() -> void:
 	get_tree().change_scene_to_file("res://scenes/shop.tscn")
+
+
+func _on_fish_log_pressed() -> void:
+	get_tree().change_scene_to_file("res://scenes/fish_log.tscn")

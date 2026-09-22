@@ -47,6 +47,11 @@ const NIGHT_CHASE_SPEED := 155.0
 const FRENZY_SPEED_MULT := 1.35
 const FRENZY_COOLDOWN_MULT := 2.0
 
+## User feedback: a storm should make the ghost(s) more dangerous too, on
+## top of the water-ghost chance bump (see player.gd).
+const STORM_SPEED_MULT := 1.15
+const STORM_COOLDOWN_MULT := 1.3
+
 var frenzy_timer: float = 0.0
 
 var ghost_state: GhostState = GhostState.PATROL
@@ -96,7 +101,12 @@ func enter_frenzy(duration: float) -> void:
 
 
 func _speed_mult() -> float:
-	return FRENZY_SPEED_MULT if frenzy_timer > 0.0 else 1.0
+	var mult := 1.0
+	if frenzy_timer > 0.0:
+		mult *= FRENZY_SPEED_MULT
+	if GameState.weather == GameState.Weather.STORM:
+		mult *= STORM_SPEED_MULT
+	return mult
 
 
 func _physics_process(delta: float) -> void:
@@ -271,6 +281,8 @@ func _clamp_outside_safe_zone(pos: Vector2, zone_center: Vector2) -> Vector2:
 ## this, handled inside Player.cut_line()), or snatching a carried fish.
 func _process_interference(delta: float, sense: Dictionary) -> void:
 	var cooldown_rate: float = FRENZY_COOLDOWN_MULT if frenzy_timer > 0.0 else 1.0
+	if GameState.weather == GameState.Weather.STORM:
+		cooldown_rate *= STORM_COOLDOWN_MULT
 	interference_cooldown = max(interference_cooldown - delta * cooldown_rate, 0.0)
 
 	if interference_cooldown <= 0.0 and sense.dist <= STEAL_RANGE and not GameState.carried_fish.is_empty():

@@ -76,6 +76,20 @@ const FISH_RUN_DURATION := 0.6
 const FISH_RUN_TENSION_MULT := 2.6
 const FISH_RUN_PROGRESS_PENALTY := 0.12
 
+## User feedback: bait flavor from roadside rummaging should actually do
+## something, not just be a message string - each type biases the very
+## next cast one way, then gets used up regardless of what happens.
+const BAIT_FLAVOR_WORM := "蚯蚓"
+const BAIT_FLAVOR_BUG := "蟲子"
+const BAIT_FLAVOR_FROG := "青蛙"
+
+## User feedback: weather (see GameState.Weather) should color the fishing
+## odds too - a fish run is a reliably better window, a storm makes the
+## water ghost more likely to actually catch someone standing too close.
+const FISH_RUN_WEATHER_NO_BITE_MULT := 0.5
+const FISH_RUN_WEATHER_RARE_BONUS := 0.08
+const STORM_WATER_GHOST_MULT := 1.6
+
 const DROPPED_FISH_SCENE := preload("res://scenes/dropped_fish.tscn")
 
 var state: State = State.IDLE
@@ -103,6 +117,13 @@ var cast_outcome: int = CastOutcome.BITE
 var stolen_timer: float = 0.0
 var fish_run_timer: float = 0.0
 var fish_run_active_time: float = 0.0
+var pending_bait_flavor: String = ""
+
+## Design doc §9.1/§9.2: base cast distance / reel speed plus the
+## rod_distance / reel_power Profile upgrades, recomputed in reset_gear()
+## since upgrades only change between runs.
+var max_cast_dist: float = MAX_CAST_DIST
+var reel_power_mult: float = 1.0
 
 const SACRIFICE_DURATION := 0.6
 var sacrifice_progress: float = 0.0
@@ -249,6 +270,8 @@ func reset_gear() -> void:
 	bait_count = START_BAIT + int(Profile.get_upgrade_bonus("bait_capacity"))
 	lure_count = Profile.consume_loadout_lures()
 	fishing_mode = FishingMode.BOBBER
+	max_cast_dist = MAX_CAST_DIST + Profile.get_upgrade_bonus("rod_distance")
+	reel_power_mult = 1.0 + Profile.get_upgrade_bonus("reel_power")
 
 
 func _can_start_cast() -> bool:
@@ -291,7 +314,10 @@ func _nearest_water_edge_distance() -> float:
 ## since standing back out of its reach is what keeps you safe, not how
 ## far you happened to cast.
 func _maybe_trigger_water_ghost() -> void:
-	if randf() >= WATER_GHOST_CHANCE:
+	var chance := WATER_GHOST_CHANCE
+	if GameState.weather == GameState.Weather.STORM:
+		chance *= STORM_WATER_GHOST_MULT
+	if randf() >= chance:
 		return
 	if _nearest_water_edge_distance() > WATER_GHOST_RANGE:
 		return
@@ -347,6 +373,10 @@ func _handle_shop_input() -> void:
 		_try_buy_upgrade("bait_capacity")
 	if _key_just_pressed(KEY_3):
 		_try_buy_upgrade("flash_cooldown")
+	if _key_just_pressed(KEY_4):
+		_try_buy_upgrade("rod_distance")
+	if _key_just_pressed(KEY_5):
+		_try_buy_upgrade("reel_power")
 
 
 ## Design doc request: dropping carried fish lightens the load (see
@@ -589,7 +619,9 @@ func _handle_rummage(held: bool, delta: float) -> void:
 			var result: Dictionary = _roadside_item.resolve()
 			if result.get("found", false):
 				bait_count += 1
-				GameState.push_message("翻到了%s，補充了一份餌料！" % result.get("flavor", "餌料"))
+				var flavor: String = result.get("flavor", "餌料")
+				pending_bait_flavor = flavor
+				GameState.push_message("翻到了%s，補充了一份餌料！（下一竿咬餌手感會不一樣）" % flavor)
 			else:
 				GameState.push_message("翻了半天，什麼都沒找到")
 	else:
@@ -670,7 +702,7 @@ func _update_fishing(delta: float) -> void:
 				else:
 					tension += tier_data.tension_rise * 0.4 * delta
 			elif held:
-				progress += tier_data.reel_speed * rate_mult * delta
+				progress += tier_data.reel_speed * rate_mult * reel_power_mult * delta
 				tension += tier_data.tension_rise * delta
 			else:
 				tension -= tier_data.tension_fall * delta
@@ -699,7 +731,7 @@ func _launch_cast() -> void:
 		ratio = clamp(ratio * randf_range(0.3, 1.4), 0.0, 1.0)
 		cast_jittered = false
 		GameState.push_message("蓄力被干擾了，拋竿距離變得不可靠")
-	var dist: float = lerp(MIN_CAST_DIST, MAX_CAST_DIST, ratio)
+	var dist: float = lerp(MIN_CAST_DIST, max_cast_dist, ratio)
 	cast_target = global_position + aim_dir * dist
 
 	# Design doc request: a cast that doesn't land in any water zone just
@@ -713,6 +745,9 @@ func _launch_cast() -> void:
 	current_tier = FishData.tier_for_ratio(ratio)
 	tier_data = FishData.get_tier_data(current_tier)
 	wait_timer = randf_range(tier_data.wait_min, tier_data.wait_max)
+	# User feedback: worm bait bites faster - trims the wait down.
+	if pending_bait_flavor == BAIT_FLAVOR_WORM:
+		wait_timer *= 0.7
 	_wait_duration = wait_timer
 	retrieve_progress = 0.0
 	_roll_catch_outcome()
@@ -731,14 +766,21 @@ func _roll_catch_outcome() -> void:
 	cast_outcome = CastOutcome.BITE
 	caught_in_hotspot = _hotspot.active and cast_target.distance_to(_hotspot.global_position) <= Hotspot.RADIUS
 	var in_rare_zone: bool = cast_water_zone != null and cast_water_zone.is_rare()
+	var flavor := pending_bait_flavor
+	pending_bait_flavor = ""
 
 	# User feedback: not every cast should land a fish. Roll this first and
 	# skip the rare/heart rolls entirely on a dud, so they're never wasted
 	# on a cast that was never going to bite anyway. A hotspot or rare zone
-	# is supposed to be a reliably good spot, so it's much less likely here.
+	# is supposed to be a reliably good spot, so it's much less likely here;
+	# a fish-run weather window and "蟲子" bait both cut it further.
 	var no_bite_chance := NO_BITE_CHANCE
 	if caught_in_hotspot or in_rare_zone:
 		no_bite_chance *= HOTSPOT_NO_BITE_MULT
+	if GameState.weather == GameState.Weather.FISH_RUN:
+		no_bite_chance *= FISH_RUN_WEATHER_NO_BITE_MULT
+	if flavor == BAIT_FLAVOR_BUG:
+		no_bite_chance *= 0.5
 	if randf() < no_bite_chance:
 		if fishing_mode == FishingMode.BOBBER and randf() < 0.5:
 			cast_outcome = CastOutcome.BAIT_STOLEN
@@ -750,6 +792,10 @@ func _roll_catch_outcome() -> void:
 	var rare_chance := FAR_RARE_CHANCE if current_tier == "far" else NORMAL_RARE_CHANCE
 	if in_rare_zone:
 		rare_chance += RARE_ZONE_RARE_CHANCE_BONUS
+	if GameState.weather == GameState.Weather.FISH_RUN:
+		rare_chance += FISH_RUN_WEATHER_RARE_BONUS
+	if flavor == BAIT_FLAVOR_FROG:
+		rare_chance *= 2.0
 
 	if caught_in_hotspot:
 		var heart_chance := HOTSPOT_HEART_CHANCE_NIGHT if GameState.is_night else HOTSPOT_HEART_CHANCE_DAY
@@ -847,10 +893,12 @@ func _succeed_catch() -> void:
 	if is_heart_catch:
 		GameState.grant_heart()
 		catch_success.emit({"name": "心臟", "value": 0, "tier": current_tier})
+		Profile.record_catch("心臟", 0.0)
 	else:
 		var fish := {"name": tier_data.label, "value": tier_data.value, "tier": current_tier}
 		catch_success.emit(fish)
 		GameState.add_carried_fish(fish)
+		Profile.record_catch(fish.name, fish.value)
 		GameState.push_message("釣到了 %s！" % tier_data.label)
 
 	_reset_line(State.IDLE)
