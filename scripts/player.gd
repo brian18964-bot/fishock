@@ -54,6 +54,28 @@ const WATER_GHOST_RANGE := 130.0
 const WATER_GHOST_DEBUFF_DURATION := 4.0
 const WATER_GHOST_SPEED_MULT := 0.55
 
+## User feedback: carrying the oil drum should slow you down, not just
+## block fishing.
+const OIL_DRUM_SPEED_MULT := 0.65
+
+## User feedback: a cast shouldn't guarantee a bite - most of the time
+## something takes it, but sometimes nothing's interested (a bobber just
+## sits there) or, bobber-only, a fish nibbles the bait clean off early
+## without ever giving a real bite to hook.
+enum CastOutcome { BITE, TIMEOUT, BAIT_STOLEN }
+const NO_BITE_CHANCE := 0.22
+const HOTSPOT_NO_BITE_MULT := 0.4
+
+## User feedback: the fight should have real back-and-forth pull, not just
+## "hold to win" - every fish (not just rare ones) now periodically
+## "runs": tension spikes hard and holding through it costs you progress,
+## so you have to ease off and let it tire itself out, then reel again.
+const FISH_RUN_INTERVAL_MIN := 1.2
+const FISH_RUN_INTERVAL_MAX := 2.6
+const FISH_RUN_DURATION := 0.6
+const FISH_RUN_TENSION_MULT := 2.6
+const FISH_RUN_PROGRESS_PENALTY := 0.12
+
 const DROPPED_FISH_SCENE := preload("res://scenes/dropped_fish.tscn")
 
 var state: State = State.IDLE
@@ -77,6 +99,10 @@ var cast_jittered: bool = false
 var retrieve_progress: float = 0.0
 var cast_water_zone: WaterZone
 var water_ghost_timer: float = 0.0
+var cast_outcome: int = CastOutcome.BITE
+var stolen_timer: float = 0.0
+var fish_run_timer: float = 0.0
+var fish_run_active_time: float = 0.0
 
 const SACRIFICE_DURATION := 0.6
 var sacrifice_progress: float = 0.0
@@ -412,7 +438,8 @@ func _update_movement() -> void:
 
 	var carry_ratio: float = carry_speed_ratio(GameState.carried_fish.size())
 	var affliction_ratio: float = WATER_GHOST_SPEED_MULT if water_ghost_timer > 0.0 else 1.0
-	velocity = input_dir * SPEED * carry_ratio * affliction_ratio
+	var drum_ratio: float = OIL_DRUM_SPEED_MULT if carrying_oil_drum else 1.0
+	velocity = input_dir * SPEED * carry_ratio * affliction_ratio * drum_ratio
 	move_and_slide()
 	position.x = clamp(position.x, 16.0, WORLD_WIDTH - 16.0)
 	position.y = clamp(position.y, 16.0, WORLD_HEIGHT - 16.0)
@@ -588,8 +615,16 @@ func _update_fishing(delta: float) -> void:
 			if fishing_mode == FishingMode.BOBBER:
 				# Design doc §4.2: bobber waits passively for a bite.
 				wait_timer -= delta
-				if wait_timer <= 0.0:
-					_start_bite()
+				# User feedback: a bobber cast isn't guaranteed to land a
+				# bite - it can come up empty at the end of the wait, or
+				# have its bait nibbled off early with no bite at all.
+				if cast_outcome == CastOutcome.BAIT_STOLEN and wait_timer <= stolen_timer:
+					_fail_catch("bait_nibbled")
+				elif wait_timer <= 0.0:
+					if cast_outcome == CastOutcome.TIMEOUT:
+						_fail_catch("no_bite")
+					else:
+						_start_bite()
 			else:
 				# Design doc request: lure retrieval speed is player-paced -
 				# steady while held, plus click bumps from
@@ -604,7 +639,12 @@ func _update_fishing(delta: float) -> void:
 					exited_rare_zone = not cast_water_zone.contains(get_line_target_position())
 				if retrieve_progress >= 1.0 or exited_rare_zone:
 					retrieve_progress = 1.0
-					_start_bite()
+					# User feedback: a lure retrieve isn't guaranteed a bite
+					# either - sometimes it just comes back empty.
+					if cast_outcome == CastOutcome.TIMEOUT:
+						_fail_catch("no_bite")
+					else:
+						_start_bite()
 		State.BITE:
 			bite_timer -= delta
 			if bite_timer <= 0.0:
@@ -617,7 +657,19 @@ func _update_fishing(delta: float) -> void:
 			else:
 				var moving := velocity.length() > 1.0
 				rate_mult = MOVE_REEL_PENALTY if moving else 1.0
-			if held:
+
+			# User feedback: every fish should fight back, not just rare
+			# ones - periodically it "runs": hold through it and you lose
+			# ground and spike tension hard; ease off and it mostly just
+			# costs you tension, not progress, until it tires out.
+			var in_run := _update_fish_run(delta)
+			if in_run:
+				if held:
+					progress = max(progress - FISH_RUN_PROGRESS_PENALTY * delta / FISH_RUN_DURATION, 0.0)
+					tension += tier_data.tension_rise * FISH_RUN_TENSION_MULT * delta
+				else:
+					tension += tier_data.tension_rise * 0.4 * delta
+			elif held:
 				progress += tier_data.reel_speed * rate_mult * delta
 				tension += tier_data.tension_rise * delta
 			else:
@@ -676,8 +728,24 @@ func _launch_cast() -> void:
 func _roll_catch_outcome() -> void:
 	is_rare_catch = false
 	is_heart_catch = false
+	cast_outcome = CastOutcome.BITE
 	caught_in_hotspot = _hotspot.active and cast_target.distance_to(_hotspot.global_position) <= Hotspot.RADIUS
 	var in_rare_zone: bool = cast_water_zone != null and cast_water_zone.is_rare()
+
+	# User feedback: not every cast should land a fish. Roll this first and
+	# skip the rare/heart rolls entirely on a dud, so they're never wasted
+	# on a cast that was never going to bite anyway. A hotspot or rare zone
+	# is supposed to be a reliably good spot, so it's much less likely here.
+	var no_bite_chance := NO_BITE_CHANCE
+	if caught_in_hotspot or in_rare_zone:
+		no_bite_chance *= HOTSPOT_NO_BITE_MULT
+	if randf() < no_bite_chance:
+		if fishing_mode == FishingMode.BOBBER and randf() < 0.5:
+			cast_outcome = CastOutcome.BAIT_STOLEN
+			stolen_timer = randf_range(_wait_duration * 0.2, _wait_duration * 0.7)
+		else:
+			cast_outcome = CastOutcome.TIMEOUT
+		return
 
 	var rare_chance := FAR_RARE_CHANCE if current_tier == "far" else NORMAL_RARE_CHANCE
 	if in_rare_zone:
@@ -723,12 +791,30 @@ func _start_bite() -> void:
 func _hook_fish() -> void:
 	progress = 0.0
 	tension = 0.15
+	fish_run_timer = randf_range(FISH_RUN_INTERVAL_MIN, FISH_RUN_INTERVAL_MAX)
+	fish_run_active_time = 0.0
 	if is_rare_catch:
 		rare_pull_dir = Vector2.RIGHT.rotated(randf() * TAU)
 		rare_pull_timer = RARE_PULL_INTERVAL
 		GameState.push_message("稀有魚用力往%s拉，往反方向走可以拉近距離！" % _describe_pull(rare_pull_dir))
 	_set_state(State.REELING)
 	hook_success.emit()
+
+
+## User feedback: the fight should feel like a real tug-of-war - every so
+## often the fish "runs" for a beat. Returns true while a run is active.
+func _update_fish_run(delta: float) -> bool:
+	if fish_run_active_time > 0.0:
+		fish_run_active_time -= delta
+		if fish_run_active_time <= 0.0:
+			fish_run_timer = randf_range(FISH_RUN_INTERVAL_MIN, FISH_RUN_INTERVAL_MAX)
+		return true
+	fish_run_timer -= delta
+	if fish_run_timer <= 0.0:
+		fish_run_active_time = FISH_RUN_DURATION
+		GameState.push_message("魚用力掙扎了一下！先放手別硬拉")
+		return true
+	return false
 
 
 ## Design doc §4.4: rare-fish direction resistance. Moving opposite the
@@ -781,6 +867,10 @@ func _fail_catch(reason: String) -> void:
 		msg = "假餌被鬼弄掉了！"
 	elif reason == "bait_stolen":
 		msg = "餌被鬼偷走了！"
+	elif reason == "bait_nibbled":
+		msg = "餌被小魚偷吃掉了，什麼都沒釣到"
+	elif reason == "no_bite":
+		msg = "等了老半天，這裡沒魚咬餌"
 	GameState.push_message(msg)
 	_reset_line(State.IDLE)
 
