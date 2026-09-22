@@ -25,6 +25,7 @@ const STATE_TEXT := {
 @onready var gold_label: Label = $Panel/GoldLabel
 @onready var back_to_title_button: Button = $Panel/BackToTitleButton
 @onready var sacrifice_bar: ProgressBar = $Panel/SacrificeBar
+@onready var rummage_bar: ProgressBar = $Panel/RummageBar
 
 const PHASE_TEXT := {
 	"FISHING": "階段：白天釣魚中",
@@ -43,6 +44,7 @@ func _ready() -> void:
 	player.state_changed.connect(_on_state_changed)
 	player.reel_progress.connect(_on_reel_progress)
 	player.sacrifice_progress_updated.connect(_on_sacrifice_progress_updated)
+	player.rummage_progress_updated.connect(_on_rummage_progress_updated)
 	GameState.quota_updated.connect(_on_quota_updated)
 	GameState.inventory_updated.connect(_on_inventory_updated)
 	GameState.message_posted.connect(_on_message)
@@ -100,12 +102,18 @@ func _on_sacrifice_progress_updated(progress: float) -> void:
 	sacrifice_bar.value = progress
 
 
+func _on_rummage_progress_updated(progress: float) -> void:
+	rummage_bar.visible = progress > 0.0
+	rummage_bar.value = progress
+
+
 func _on_quota_updated(progress: float, target: float) -> void:
 	quota_label.text = "獻祭額度：%.0f / %.0f" % [progress, target]
 
 
 func _on_inventory_updated(carried: Array) -> void:
-	inventory_label.text = "隨身漁獲：%d 條" % carried.size()
+	var speed_pct: int = int(Player.carry_speed_ratio(carried.size()) * 100.0)
+	inventory_label.text = "隨身漁獲：%d 條（移動速度 %d%%）" % [carried.size(), speed_pct]
 
 
 func _on_message(text: String) -> void:

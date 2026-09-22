@@ -10,6 +10,7 @@ signal catch_success(fish: Dictionary)
 signal catch_failed(reason: String)
 signal line_cleared()
 signal sacrifice_progress_updated(progress: float)
+signal rummage_progress_updated(progress: float)
 
 enum State { IDLE, CHARGING, WAITING, BITE, REELING }
 enum FishingMode { BOBBER, LURE }
@@ -23,6 +24,14 @@ const WORLD_WIDTH := 2400.0
 const WORLD_HEIGHT := 1350.0
 const START_BAIT := 20
 const START_LURES := 5
+
+## Design doc request: carrying more fish weighs the player down; each
+## fish drops speed a bit further, floored so it's slow, never frozen.
+const WEIGHT_SPEED_PENALTY := 0.05
+const MIN_SPEED_RATIO := 0.4
+const RUMMAGE_DURATION := 0.9
+
+const DROPPED_FISH_SCENE := preload("res://scenes/dropped_fish.tscn")
 
 var state: State = State.IDLE
 var aim_dir: Vector2 = Vector2.DOWN
@@ -38,14 +47,19 @@ var in_altar_zone: bool = false
 var in_escape_zone: bool = false
 var in_fuel_zone: bool = false
 var in_oil_drum_zone: bool = false
+var in_dropped_fish_zone: bool = false
+var in_roadside_zone: bool = false
 var current_noise_radius: float = 0.0
 var cast_jittered: bool = false
 
 const SACRIFICE_DURATION := 0.6
 var sacrifice_progress: float = 0.0
+var rummage_progress: float = 0.0
 
 var _fuel_station: FuelStation
 var _oil_drum: OilDrum
+var _dropped_fish: DroppedFish
+var _roadside_item: RoadsideItem
 var _wait_duration: float = 1.0
 
 ## Design doc §4.2/§9.2: bobber is quiet, free, consumable bait; lure is a
@@ -106,6 +120,27 @@ func set_in_fuel_station(value: bool, station: FuelStation) -> void:
 func set_in_oil_drum(value: bool, drum: OilDrum) -> void:
 	in_oil_drum_zone = value
 	_oil_drum = drum if value else null
+
+
+func set_in_dropped_fish(value: bool, fish_node: DroppedFish) -> void:
+	in_dropped_fish_zone = value
+	_dropped_fish = fish_node if value else null
+	if value and state != State.IDLE:
+		_cancel_cast("dropped_fish_interrupt")
+
+
+func set_in_roadside(value: bool, item: RoadsideItem) -> void:
+	in_roadside_zone = value
+	_roadside_item = item if value else null
+	if value and state != State.IDLE:
+		_cancel_cast("roadside_interrupt")
+
+
+## Design doc request: heavier weight from carried fish, dropping some
+## fish lightens the load - see _update_movement() for where this applies.
+static func carry_speed_ratio(carried_count: int) -> float:
+	var ratio: float = clamp(1.0 - carried_count * WEIGHT_SPEED_PENALTY, MIN_SPEED_RATIO, 1.0)
+	return ratio
 
 
 ## Design doc §3.3: a ghost lurking near a charging player scrambles the
@@ -207,6 +242,23 @@ func _handle_shop_input() -> void:
 		_try_buy_upgrade("flash_cooldown")
 
 
+## Design doc request: dropping carried fish lightens the load (see
+## carry_speed_ratio()) and leaves a pickup-able, decaying pile behind -
+## for someone else, or for yourself once a ghost stops watching this spot.
+func _handle_drop_input() -> void:
+	if not _key_just_pressed(KEY_G):
+		return
+	var fish: Dictionary = GameState.drop_one_carried()
+	if fish.is_empty():
+		GameState.push_message("身上沒有漁獲可以丟")
+		return
+	var dropped: DroppedFish = DROPPED_FISH_SCENE.instantiate()
+	get_tree().current_scene.add_child(dropped)
+	dropped.global_position = global_position
+	dropped.setup(fish)
+	GameState.push_message("丟掉了一條 %s，跑得更快了" % fish.get("name", "魚"))
+
+
 func _key_just_pressed(key: int) -> bool:
 	var held := Input.is_key_pressed(key)
 	var was_held: bool = _key_prev_held.get(key, false)
@@ -229,6 +281,7 @@ func _physics_process(delta: float) -> void:
 	_update_fishing(delta)
 	_handle_mode_toggle()
 	_handle_shop_input()
+	_handle_drop_input()
 	_handle_action_input(delta)
 
 
@@ -270,7 +323,8 @@ func _update_movement() -> void:
 			input_dir.y += 1.0
 		input_dir = input_dir.normalized()
 
-	velocity = input_dir * SPEED
+	var carry_ratio: float = carry_speed_ratio(GameState.carried_fish.size())
+	velocity = input_dir * SPEED * carry_ratio
 	move_and_slide()
 	position.x = clamp(position.x, 16.0, WORLD_WIDTH - 16.0)
 	position.y = clamp(position.y, 16.0, WORLD_HEIGHT - 16.0)
@@ -334,6 +388,17 @@ func _handle_action_input(delta: float) -> void:
 		_prev_action_held = held
 		return
 
+	if in_dropped_fish_zone:
+		if just_pressed and _dropped_fish != null:
+			_pick_up_dropped_fish()
+		_prev_action_held = held
+		return
+
+	if in_roadside_zone:
+		_handle_rummage(held, delta)
+		_prev_action_held = held
+		return
+
 	match state:
 		State.IDLE:
 			if just_pressed:
@@ -370,6 +435,35 @@ func _handle_sacrifice(held: bool, delta: float) -> void:
 	else:
 		sacrifice_progress = 0.0
 	sacrifice_progress_updated.emit(sacrifice_progress)
+
+
+func _pick_up_dropped_fish() -> void:
+	var fish: Dictionary = _dropped_fish.pick_up()
+	_dropped_fish = null
+	in_dropped_fish_zone = false
+	GameState.add_carried_fish(fish)
+	if fish.get("rotten", false):
+		GameState.push_message("撿回了一份腐敗的%s（獻祭它可能引發異變）" % fish.get("name", "魚獲"))
+	else:
+		GameState.push_message("撿回了%s（新鮮度打折，價值 %.0f）" % [fish.get("name", "魚"), fish.value])
+
+
+## Design doc request: rummaging a roadside pile takes a short held
+## progress bar and only sometimes turns up bait.
+func _handle_rummage(held: bool, delta: float) -> void:
+	if held and _roadside_item != null and _roadside_item.active:
+		rummage_progress += delta / RUMMAGE_DURATION
+		if rummage_progress >= 1.0:
+			rummage_progress = 0.0
+			var result: Dictionary = _roadside_item.resolve()
+			if result.get("found", false):
+				bait_count += 1
+				GameState.push_message("翻到了%s，補充了一份餌料！" % result.get("flavor", "餌料"))
+			else:
+				GameState.push_message("翻了半天，什麼都沒找到")
+	else:
+		rummage_progress = 0.0
+	rummage_progress_updated.emit(rummage_progress)
 
 
 func _update_fishing(delta: float) -> void:

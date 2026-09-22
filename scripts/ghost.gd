@@ -42,6 +42,13 @@ const LINE_CUT_WINDUP := 1.2
 ## unescapable rather than a fair chase.
 const NIGHT_CHASE_SPEED := 155.0
 
+## Design doc request: sacrificing a rotten offering can gamble on making
+## the ghost(s) more dangerous for a while instead of a normal payout.
+const FRENZY_SPEED_MULT := 1.35
+const FRENZY_COOLDOWN_MULT := 2.0
+
+var frenzy_timer: float = 0.0
+
 var ghost_state: GhostState = GhostState.PATROL
 var home_position: Vector2
 var move_target: Vector2
@@ -82,7 +89,20 @@ func stun(duration: float) -> void:
 	stun_timer = max(stun_timer, duration)
 
 
+## Design doc request: a rotten-offering sacrifice can roll this instead of
+## a normal payout - temporarily faster and more aggressive.
+func enter_frenzy(duration: float) -> void:
+	frenzy_timer = max(frenzy_timer, duration)
+
+
+func _speed_mult() -> float:
+	return FRENZY_SPEED_MULT if frenzy_timer > 0.0 else 1.0
+
+
 func _physics_process(delta: float) -> void:
+	if frenzy_timer > 0.0:
+		frenzy_timer -= delta
+
 	if GameState.is_night:
 		_process_night_hunt(delta)
 		return
@@ -91,7 +111,7 @@ func _physics_process(delta: float) -> void:
 		stun_timer -= delta
 		visual.color = Color(0.9, 0.85, 0.3, 1)
 		return
-	visual.color = Color(0.55, 0.08, 0.16, 1)
+	visual.color = Color(0.85, 0.15, 0.5, 1) if frenzy_timer > 0.0 else Color(0.55, 0.08, 0.16, 1)
 
 	var sense := _sense_player()
 	match ghost_state:
@@ -139,7 +159,7 @@ func _process_patrol(delta: float, sense: Dictionary) -> void:
 			move_target = home_position + offset
 			wait_timer = PATROL_WAIT_TIME
 	else:
-		_move_toward(move_target, PATROL_SPEED, delta)
+		_move_toward(move_target, PATROL_SPEED * _speed_mult(), delta)
 
 
 func _process_suspicious(delta: float, sense: Dictionary) -> void:
@@ -152,7 +172,7 @@ func _process_suspicious(delta: float, sense: Dictionary) -> void:
 	else:
 		state_timer -= delta
 
-	_move_toward(move_target, SUSPICIOUS_SPEED, delta)
+	_move_toward(move_target, SUSPICIOUS_SPEED * _speed_mult(), delta)
 
 	var arrived := global_position.distance_to(move_target) <= ARRIVE_RADIUS
 	if state_timer <= 0.0 or arrived:
@@ -162,7 +182,7 @@ func _process_suspicious(delta: float, sense: Dictionary) -> void:
 func _process_alert(delta: float, sense: Dictionary) -> void:
 	# Design doc request: the altar no longer protects - only a fixed
 	# light that's actually still lit (checked inside _move_toward) does.
-	_move_toward(player.global_position, CHASE_SPEED, delta)
+	_move_toward(player.global_position, CHASE_SPEED * _speed_mult(), delta)
 
 	if sense.dist <= CATCH_RADIUS:
 		_catch_player()
@@ -187,7 +207,7 @@ func _process_search(delta: float, sense: Dictionary) -> void:
 		return
 
 	if global_position.distance_to(move_target) > ARRIVE_RADIUS:
-		_move_toward(move_target, SEARCH_SPEED, delta)
+		_move_toward(move_target, SEARCH_SPEED * _speed_mult(), delta)
 	else:
 		state_timer -= delta
 		if state_timer <= 0.0:
@@ -250,7 +270,8 @@ func _clamp_outside_safe_zone(pos: Vector2, zone_center: Vector2) -> Vector2:
 ## bait, cutting the line (knocking a lure off is a harsher variant of
 ## this, handled inside Player.cut_line()), or snatching a carried fish.
 func _process_interference(delta: float, sense: Dictionary) -> void:
-	interference_cooldown = max(interference_cooldown - delta, 0.0)
+	var cooldown_rate: float = FRENZY_COOLDOWN_MULT if frenzy_timer > 0.0 else 1.0
+	interference_cooldown = max(interference_cooldown - delta * cooldown_rate, 0.0)
 
 	if interference_cooldown <= 0.0 and sense.dist <= STEAL_RANGE and not GameState.carried_fish.is_empty():
 		var stolen: Dictionary = GameState.steal_one_carried()

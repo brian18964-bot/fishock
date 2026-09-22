@@ -24,6 +24,13 @@ const MAX_EVIL := 3
 const MAX_STARTING_EVIL := 2
 const DAY_DURATION := 180.0
 
+## Design doc request: sacrificing a fully rotten fish doesn't add quota
+## value - instead it gambles on one of three outcomes.
+const ROTTEN_HOTSPOT_CHANCE := 0.5
+const ROTTEN_FRENZY_CHANCE := 0.3
+## remaining probability (1 - the two above) is the evil-offering outcome
+const ROTTEN_FRENZY_DURATION := 12.0
+
 var quota_target: float = 30.0
 var quota_progress: float = 0.0
 var carried_fish: Array = []
@@ -65,6 +72,14 @@ func add_carried_fish(fish: Dictionary) -> void:
 	inventory_updated.emit(carried_fish)
 
 
+func drop_one_carried() -> Dictionary:
+	if carried_fish.is_empty():
+		return {}
+	var fish: Dictionary = carried_fish.pop_back()
+	inventory_updated.emit(carried_fish)
+	return fish
+
+
 ## Design doc request: sacrificing is per-fish (one small progress bar
 ## each), not an instant bulk dump - see Player._handle_sacrifice().
 func sacrifice_one() -> Dictionary:
@@ -72,6 +87,10 @@ func sacrifice_one() -> Dictionary:
 		return {}
 	var fish: Dictionary = carried_fish.pop_front()
 	inventory_updated.emit(carried_fish)
+
+	if fish.get("rotten", false):
+		_trigger_rotten_sacrifice()
+		return fish
 
 	var value := float(fish.value)
 	quota_progress += value
@@ -212,7 +231,27 @@ func _enter_escape_phase() -> void:
 	push_message("額度已滿！前往逃離點離開，或繼續釣魚賭更好的供品")
 
 
-func _add_offering(is_bonus: bool) -> void:
+## Design doc request: a rotten fish sacrificed at the altar gambles on one
+## of three outcomes instead of normal quota value - an exclusive hotspot,
+## the ghosts turning more dangerous for a while, or a forced evil offering
+## dropped straight into the pool.
+func _trigger_rotten_sacrifice() -> void:
+	var roll := randf()
+	if roll < ROTTEN_HOTSPOT_CHANCE:
+		var hotspot: Node = get_tree().current_scene.get_node_or_null("Hotspot")
+		if hotspot:
+			hotspot.force_relocate()
+		push_message("腐敗供品引來了魚群，附近浮現一處限定漁場！")
+	elif roll < ROTTEN_HOTSPOT_CHANCE + ROTTEN_FRENZY_CHANCE:
+		for ghost in get_tree().get_nodes_in_group("ghosts"):
+			ghost.enter_frenzy(ROTTEN_FRENZY_DURATION)
+		push_message("腐敗供品讓鬼變得更加活躍、更快了...")
+	else:
+		_add_offering(false, true)
+		push_message("腐敗供品召喚出了一份邪惡供品...")
+
+
+func _add_offering(is_bonus: bool, force_evil: bool = false) -> void:
 	var rarity := "common"
 	if is_bonus:
 		rarity = "epic" if randf() < 0.35 else "rare"
@@ -220,8 +259,8 @@ func _add_offering(is_bonus: bool) -> void:
 		rarity = "rare"
 
 	var evil_chance: float = RARITY_EVIL_CHANCE[rarity]
-	var is_evil := randf() < evil_chance
-	if is_evil and not is_bonus and evil_count >= MAX_STARTING_EVIL:
+	var is_evil := force_evil or randf() < evil_chance
+	if is_evil and not is_bonus and not force_evil and evil_count >= MAX_STARTING_EVIL:
 		is_evil = false
 
 	var offering := {"rarity": rarity, "is_evil": is_evil, "value": RARITY_VALUE[rarity], "taken": false}

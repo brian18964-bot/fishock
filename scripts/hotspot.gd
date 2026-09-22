@@ -38,6 +38,14 @@ func consume() -> void:
 	_respawn_timer = RESPAWN_DELAY
 
 
+## Design doc request: a rotten-offering sacrifice can summon an exclusive
+## fishing ground on the spot instead of waiting out the normal respawn -
+## just an immediate relocate, since a Hotspot already carries boosted
+## rare/heart odds (§5.2/§5.3).
+func force_relocate() -> void:
+	_relocate()
+
+
 func _relocate() -> void:
 	var altar := get_tree().current_scene.get_node("Altar")
 	var escape_point := get_tree().current_scene.get_node("EscapePoint")
