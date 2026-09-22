@@ -30,12 +30,11 @@ var tension: float = 0.0
 var in_altar_zone: bool = false
 var current_noise_radius: float = 0.0
 
-# Polling raw Input instead of an Input Map action is a deliberate placeholder:
-# right-stick aim / action button will be swapped for virtual-joystick output
-# vectors later without touching the state machine below.
 var _prev_action_held: bool = false
 
 @onready var facing_indicator: ColorRect = $FacingIndicator
+@onready var _move_joystick: VirtualJoystick = get_tree().current_scene.get_node("HUD/Panel/MoveJoystick")
+@onready var _aim_joystick: VirtualJoystick = get_tree().current_scene.get_node("HUD/Panel/AimJoystick")
 
 
 func _ready() -> void:
@@ -59,11 +58,15 @@ func _physics_process(delta: float) -> void:
 func _update_aim() -> void:
 	if state == State.REELING:
 		# Design doc §4.4: while reeling, facing/light lock onto the fish
-		# instead of free mouse aim, so the player isn't fighting two things.
+		# instead of free aim, so the player isn't fighting two things.
 		var to_fish := cast_target - global_position
 		if to_fish.length() > 1.0:
 			aim_dir = to_fish.normalized()
+	elif _aim_joystick.is_pressed:
+		aim_dir = _aim_joystick.output.normalized()
 	else:
+		# Mouse aim is a desktop-testing fallback for when there's no
+		# touchscreen to drag the right stick with.
 		var to_mouse := get_global_mouse_position() - global_position
 		if to_mouse.length() > 4.0:
 			aim_dir = to_mouse.normalized()
@@ -71,16 +74,20 @@ func _update_aim() -> void:
 
 
 func _update_movement() -> void:
-	var input_dir := Vector2.ZERO
-	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
-		input_dir.x -= 1.0
-	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
-		input_dir.x += 1.0
-	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
-		input_dir.y -= 1.0
-	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
-		input_dir.y += 1.0
-	input_dir = input_dir.normalized()
+	var input_dir := _move_joystick.output
+	if input_dir.length() > 1.0:
+		input_dir = input_dir.normalized()
+	elif input_dir.length() < 0.05:
+		# Keyboard is a desktop-testing fallback for the left stick.
+		if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
+			input_dir.x -= 1.0
+		if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
+			input_dir.x += 1.0
+		if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
+			input_dir.y -= 1.0
+		if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
+			input_dir.y += 1.0
+		input_dir = input_dir.normalized()
 
 	velocity = input_dir * SPEED
 	move_and_slide()
@@ -101,7 +108,9 @@ func _update_noise() -> void:
 
 
 func _is_action_pressed() -> bool:
-	return Input.is_key_pressed(KEY_SPACE) or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+	# Mouse-left now drags the aim joystick on desktop, so the action button
+	# is keyboard-only here; on mobile this will be a dedicated screen button.
+	return Input.is_key_pressed(KEY_SPACE)
 
 
 func _handle_action_input(delta: float) -> void:

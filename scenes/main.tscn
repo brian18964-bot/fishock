@@ -1,10 +1,11 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="2"]
 [ext_resource type="Script" path="res://scripts/altar.gd" id="3"]
 [ext_resource type="Script" path="res://scripts/hud.gd" id="4"]
 [ext_resource type="PackedScene" path="res://scenes/ghost.tscn" id="5"]
+[ext_resource type="PackedScene" path="res://addons/virtual_joystick/virtual_joystick_scene.tscn" id="6"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_altar"]
 size = Vector2(64, 64)
@@ -109,10 +110,10 @@ text = ""
 
 [node name="ProgressBar" type="ProgressBar" parent="HUD/Panel"]
 visible = false
-offset_left = 16.0
-offset_top = 470.0
-offset_right = 300.0
-offset_bottom = 486.0
+offset_left = 410.0
+offset_top = 12.0
+offset_right = 680.0
+offset_bottom = 28.0
 max_value = 1.0
 step = 0.01
 show_percentage = false
@@ -120,10 +121,10 @@ modulate = Color(0.4, 1, 0.6, 1)
 
 [node name="TensionBar" type="ProgressBar" parent="HUD/Panel"]
 visible = false
-offset_left = 16.0
-offset_top = 490.0
-offset_right = 300.0
-offset_bottom = 506.0
+offset_left = 410.0
+offset_top = 32.0
+offset_right = 680.0
+offset_bottom = 48.0
 max_value = 1.0
 step = 0.01
 show_percentage = false
@@ -134,7 +135,7 @@ offset_left = 16.0
 offset_top = 510.0
 offset_right = 900.0
 offset_bottom = 534.0
-text = "WASD 移動／滑鼠瞄準／空白鍵或左鍵：蓄力拋竿・提竿・收線；[ ] 調亮度；站在祭壇上按同一鍵獻祭"
+text = "左下搖桿移動／右下搖桿瞄準（桌面測試可用 WASD／滑鼠代替）／空白鍵：蓄力拋竿・提竿・收線；[ ] 調亮度；站在祭壇上按同一鍵獻祭"
 
 [node name="FuelLabel" type="Label" parent="HUD/Panel"]
 offset_left = 700.0
@@ -153,3 +154,16 @@ max_value = 100.0
 step = 0.1
 show_percentage = false
 modulate = Color(1, 0.8, 0.3, 1)
+
+[node name="MoveJoystick" parent="HUD/Panel" instance=ExtResource("6")]
+use_input_actions = false
+
+[node name="AimJoystick" parent="HUD/Panel" instance=ExtResource("6")]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -308.0
+offset_top = -308.0
+offset_right = -8.0
+offset_bottom = -8.0
+use_input_actions = false
