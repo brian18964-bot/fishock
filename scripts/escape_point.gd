@@ -9,6 +9,7 @@ func _ready() -> void:
 	light.texture_scale = 0.65
 	light.color = Color(0.6, 1.0, 0.9)
 	light.energy = 1.4
+	light.shadow_enabled = true
 
 func _process(_delta: float) -> void:
 	light.visible = not GameState.is_night

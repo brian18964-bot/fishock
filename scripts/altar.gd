@@ -9,6 +9,7 @@ func _ready() -> void:
 	light.texture_scale = 0.65
 	light.color = Color(1.0, 0.85, 0.55)
 	light.energy = 1.4
+	light.shadow_enabled = true
 
 func _process(_delta: float) -> void:
 	# Design doc §6/§3.4: the fixed light dies once night falls. The ghost's

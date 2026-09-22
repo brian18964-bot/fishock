@@ -39,6 +39,7 @@ var _flash_held: bool = false
 func _ready() -> void:
 	texture = LightTextureFactory.make_cone_texture()
 	color = Color(1.0, 0.92, 0.75)
+	shadow_enabled = true
 
 
 func _process(delta: float) -> void:

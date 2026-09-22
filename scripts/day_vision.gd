@@ -5,13 +5,14 @@ extends PointLight2D
 ## reads through the daytime haze without needing to aim the lantern at it.
 ## Disappears entirely at night, leaving only the lantern.
 
-const RADIUS_SCALE := 2.2
+const RADIUS_SCALE := 1.1
 
 func _ready() -> void:
 	texture = LightTextureFactory.make_radial_texture(256, 0.45)
 	texture_scale = RADIUS_SCALE
 	color = Color(0.75, 0.8, 0.9)
 	energy = 0.55
+	shadow_enabled = true
 
 func _process(_delta: float) -> void:
 	visible = not GameState.is_night
