@@ -15,9 +15,11 @@ enum ZoneType { COMMON, RARE }
 var zone_type: int = ZoneType.COMMON
 var radius: float = 200.0
 
-@onready var collision_shape: CollisionShape2D = $CollisionShape2D
 
-
+## Called by map_generator.gd right after instantiate()+add_child() - before
+## this node's own _ready() has run, so this resolves the collision shape
+## directly via get_node() rather than an @onready var (which wouldn't be
+## assigned yet at this point).
 func setup(type: int, r: float, pos: Vector2) -> void:
 	zone_type = type
 	radius = r
@@ -25,6 +27,7 @@ func setup(type: int, r: float, pos: Vector2) -> void:
 
 	var shape := CircleShape2D.new()
 	shape.radius = r
+	var collision_shape: CollisionShape2D = get_node("CollisionShape2D")
 	collision_shape.shape = shape
 	collision_shape.disabled = (type == ZoneType.COMMON)
 
