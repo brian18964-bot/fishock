@@ -1,3 +1,4 @@
+class_name Player
 extends CharacterBody2D
 
 signal state_changed(new_state: String)
