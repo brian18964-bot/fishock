@@ -23,6 +23,7 @@ const STATE_TEXT := {
 @onready var gear_label: Label = $Panel/GearLabel
 @onready var heart_label: Label = $Panel/HeartLabel
 @onready var gold_label: Label = $Panel/GoldLabel
+@onready var back_to_title_button: Button = $Panel/BackToTitleButton
 
 const PHASE_TEXT := {
 	"FISHING": "階段：白天釣魚中",
@@ -53,6 +54,7 @@ func _ready() -> void:
 	_on_offering_pool_updated(GameState.offering_pool, GameState.evil_count)
 
 	_lantern = player.get_node("Lantern")
+	back_to_title_button.pressed.connect(_on_back_to_title_pressed)
 
 
 func _process(delta: float) -> void:
@@ -127,6 +129,11 @@ func _on_offering_pool_updated(pool: Array, evil_count: int) -> void:
 func _on_run_ended(_success: bool, message: String) -> void:
 	run_end_label.text = message
 	run_end_label.visible = true
+	back_to_title_button.visible = true
+
+
+func _on_back_to_title_pressed() -> void:
+	get_tree().change_scene_to_file("res://scenes/title_screen.tscn")
 
 
 func _on_night_fell() -> void:

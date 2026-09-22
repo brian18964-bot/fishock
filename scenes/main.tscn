@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="2"]
@@ -10,6 +10,8 @@
 [ext_resource type="PackedScene" path="res://scenes/obstacle.tscn" id="8"]
 [ext_resource type="Script" path="res://scripts/darkness_controller.gd" id="9"]
 [ext_resource type="PackedScene" path="res://scenes/hotspot.tscn" id="10"]
+[ext_resource type="PackedScene" path="res://scenes/tree.tscn" id="11"]
+[ext_resource type="PackedScene" path="res://scenes/bush.tscn" id="12"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_altar"]
 size = Vector2(64, 64)
@@ -103,6 +105,24 @@ position = Vector2(1550, 1000)
 [node name="Obstacle5" parent="." instance=ExtResource("8")]
 position = Vector2(2000, 800)
 scale = Vector2(0.8, 0.8)
+
+[node name="Tree1" parent="." instance=ExtResource("11")]
+position = Vector2(450, 700)
+
+[node name="Tree2" parent="." instance=ExtResource("11")]
+position = Vector2(1350, 300)
+
+[node name="Tree3" parent="." instance=ExtResource("11")]
+position = Vector2(2100, 1050)
+
+[node name="Bush1" parent="." instance=ExtResource("12")]
+position = Vector2(750, 550)
+
+[node name="Bush2" parent="." instance=ExtResource("12")]
+position = Vector2(1850, 700)
+
+[node name="Bush3" parent="." instance=ExtResource("12")]
+position = Vector2(1100, 1200)
 
 [node name="Bobber" type="Node2D" parent="."]
 visible = false
@@ -269,6 +289,14 @@ horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 2
 text = ""
+
+[node name="BackToTitleButton" type="Button" parent="HUD/Panel"]
+visible = false
+offset_left = 380.0
+offset_top = 330.0
+offset_right = 580.0
+offset_bottom = 366.0
+text = "返回主選單"
 
 [node name="MoveJoystick" parent="HUD/Panel" instance=ExtResource("6")]
 use_input_actions = false

@@ -38,17 +38,26 @@ var _quota_since_offering: float = 0.0
 var time_remaining: float = DAY_DURATION
 var is_night: bool = false
 
+## Gates the day timer so it only runs once the player has actually
+## pressed "Start" on the title screen - otherwise browsing the shop
+## would silently burn down the clock before the run even begins.
+var run_started: bool = false
+
 ## Design doc §5.3: hotspot-only pickup. Solo use is a single automatic
 ## save from a night catch; multiplayer altar revival doesn't apply here.
 var has_heart: bool = false
 
 
 func _process(delta: float) -> void:
-	if run_over or is_night or day_phase != DayPhase.FISHING:
+	if not run_started or run_over or is_night or day_phase != DayPhase.FISHING:
 		return
 	time_remaining = max(time_remaining - delta, 0.0)
 	if time_remaining <= 0.0:
 		_trigger_night()
+
+
+func start_run() -> void:
+	run_started = true
 
 
 func add_carried_fish(fish: Dictionary) -> void:
@@ -127,6 +136,7 @@ func reset_run() -> void:
 	_quota_since_offering = 0.0
 	time_remaining = DAY_DURATION
 	is_night = false
+	run_started = false
 	has_heart = false
 	inventory_updated.emit(carried_fish)
 	quota_updated.emit(quota_progress, quota_target)
