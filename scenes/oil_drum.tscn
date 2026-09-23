@@ -1,20 +1,23 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/oil_drum.gd" id="1"]
+[ext_resource type="Texture2D" path="res://assets/sprites/oil_drum/oil_barrel_55deg_albedo.png" id="2"]
+[ext_resource type="Texture2D" path="res://assets/sprites/oil_drum/oil_barrel_55deg_normal.png" id="3"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_drum"]
 size = Vector2(36, 36)
+
+[sub_resource type="CanvasTexture" id="CanvasTexture_drum"]
+diffuse_texture = ExtResource("2")
+normal_texture = ExtResource("3")
 
 [node name="OilDrum" type="Area2D"]
 script = ExtResource("1")
 z_index = 3
 
-[node name="Visual" type="ColorRect" parent="."]
-offset_left = -18.0
-offset_top = -18.0
-offset_right = 18.0
-offset_bottom = 18.0
-color = Color(0.75, 0.55, 0.1, 1)
+[node name="Visual" type="Sprite2D" parent="."]
+texture = SubResource("CanvasTexture_drum")
+scale = Vector2(0.075, 0.075)
 
 [node name="Label" type="Label" parent="."]
 offset_left = -30.0
