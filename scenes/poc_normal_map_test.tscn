@@ -1,0 +1,32 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/poc_normal_map_test.gd" id="1"]
+[ext_resource type="Texture2D" path="res://assets/sprites/oil_drum/oil_barrel_55deg_albedo.png" id="2"]
+[ext_resource type="Texture2D" path="res://assets/sprites/oil_drum/oil_barrel_55deg_normal.png" id="3"]
+
+[sub_resource type="CanvasTexture" id="CanvasTexture_1"]
+diffuse_texture = ExtResource("2")
+normal_texture = ExtResource("3")
+
+[node name="POCNormalMapTest" type="Node2D"]
+position = Vector2(480, 270)
+script = ExtResource("1")
+
+[node name="Background" type="ColorRect" parent="."]
+offset_left = -300.0
+offset_top = -300.0
+offset_right = 300.0
+offset_bottom = 300.0
+color = Color(0.05, 0.05, 0.05, 1)
+
+[node name="CanvasModulate" type="CanvasModulate" parent="."]
+color = Color(0.12, 0.12, 0.12, 1)
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture = SubResource("CanvasTexture_1")
+
+[node name="PointLight2D" type="PointLight2D" parent="."]
+position = Vector2(0, -40)
+energy = 1.6
+color = Color(1, 0.95, 0.85, 1)
+height = 60.0
