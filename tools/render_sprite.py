@@ -33,8 +33,10 @@ Sets rendered so far (see art_src/):
   bush, bush_flowers  x1.9 --foliage-normals, fern x0.41
                      --center-y 0.555 --ortho-scale 4.1316 --res 112 112
   ground_cover/clover_*  scale 1.5   --center-y 0.651 --ortho-scale 1.7707 --res 48 48
-  ground_cover/flower_group_*, flower_single_*, grass_wispy x1.0,
+  ground_cover/flower_group_*, flower_single_*, grass_wispy x1.0 (grass_wispy with --foliage-normals),
                flower_petal_* x1.5 (flower_petal_4 x3.0, a much smaller model)
+               grass_wispy_2 x1.0 --foliage-normals, grass x1.5 --foliage-normals,
+               mushroom x2.0, mushroom_laetiporus x0.75, pebble_round x2.0
                      --center-y 0.635 --ortho-scale 2.361 --res 64 64
 """
 import argparse

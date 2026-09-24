@@ -15,13 +15,15 @@ const CLOVER_OFFSET := Vector2(0, -17.65)
 const FLOWER_OFFSET := Vector2(0, -17.21)
 
 ## Picked kind-first, then variant, so kinds with many models (five petal
-## cards) don't crowd out kinds with one (grass).
+## cards) don't crowd out kinds with one (pebble).
 const KINDS := {
 	"clover": ["clover_1", "clover_2"],
 	"flower_group": ["flower_group_1", "flower_group_2"],
 	"flower_single": ["flower_single_1", "flower_single_2"],
 	"flower_petal": ["flower_petal_1", "flower_petal_2", "flower_petal_3", "flower_petal_4", "flower_petal_5"],
-	"grass": ["grass_wispy"],
+	"grass": ["grass_wispy", "grass_wispy_2", "grass"],
+	"mushroom": ["mushroom", "mushroom_laetiporus"],
+	"pebble": ["pebble_round"],
 }
 
 const TEXTURES := {
@@ -37,6 +39,11 @@ const TEXTURES := {
 	"flower_petal_4": [preload("res://assets/sprites/ground_cover/flower_petal_4_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/flower_petal_4_55deg_normal.png")],
 	"flower_petal_5": [preload("res://assets/sprites/ground_cover/flower_petal_5_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/flower_petal_5_55deg_normal.png")],
 	"grass_wispy": [preload("res://assets/sprites/ground_cover/grass_wispy_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/grass_wispy_55deg_normal.png")],
+	"grass_wispy_2": [preload("res://assets/sprites/ground_cover/grass_wispy_2_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/grass_wispy_2_55deg_normal.png")],
+	"grass": [preload("res://assets/sprites/ground_cover/grass_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/grass_55deg_normal.png")],
+	"mushroom": [preload("res://assets/sprites/ground_cover/mushroom_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/mushroom_55deg_normal.png")],
+	"mushroom_laetiporus": [preload("res://assets/sprites/ground_cover/mushroom_laetiporus_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/mushroom_laetiporus_55deg_normal.png")],
+	"pebble_round": [preload("res://assets/sprites/ground_cover/pebble_round_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/pebble_round_55deg_normal.png")],
 }
 
 
