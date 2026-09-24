@@ -7,8 +7,8 @@ shader_type canvas_item;
 // `albedo` takes a painted water texture later; left unset, the flat
 // base/deep colors are used.
 
-uniform vec4 base_color : source_color = vec4(0.16, 0.42, 0.55, 1.0);
-uniform vec4 deep_color : source_color = vec4(0.06, 0.2, 0.32, 1.0);
+uniform vec4 base_color : source_color = vec4(0.09, 0.27, 0.37, 1.0);
+uniform vec4 deep_color : source_color = vec4(0.02, 0.08, 0.15, 1.0);
 uniform vec4 foam_color : source_color = vec4(0.82, 0.93, 0.97, 1.0);
 uniform sampler2D albedo : source_color, repeat_enable, filter_linear;
 uniform bool use_albedo = false;
@@ -93,8 +93,9 @@ void fragment() {
 	NORMAL_MAP = n * 0.5 + 0.5;
 
 	vec3 col = use_albedo ? texture(albedo, w).rgb : base_color.rgb;
-	// Deeper away from the shore, lighter in the shallows.
-	col = mix(col, deep_color.rgb, smoothstep(20.0, 140.0, edge_px) * 0.7);
+	// Deeper away from the shore, lighter in the shallows (user feedback:
+	// darker, deeper-looking water).
+	col = mix(col, deep_color.rgb, smoothstep(16.0, 110.0, edge_px) * 0.88);
 	col = mix(col, foam_color.rgb, smoothstep(22.0, 0.0, edge_px) * 0.18);
 	// Broken foam line hugging the shore, nudged by the chop.
 	float wobble = (na.x + nb.y) * 1.5;

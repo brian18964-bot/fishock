@@ -3,7 +3,7 @@ extends Node2D
 @onready var player: Player = $Player
 @onready var bobber: Node2D = $Bobber
 @onready var line: Line2D = $Line
-@onready var lure: Sprite2D = $Bobber/Lure
+@onready var lure: LureVisual = $Bobber/Lure
 
 var _reset_combo_held := false
 
@@ -28,11 +28,12 @@ var _fish_offset := Vector2.ZERO
 var _fish_goal := Vector2.ZERO
 var _fish_goal_timer := 0.0
 
-## Now and then a fish leaps somewhere in the water near the player.
-const FISH_JUMP_INTERVAL := Vector2(5.0, 12.0)
+## Now and then a fish leaps somewhere in the water near the player
+## (user feedback: every 10-25 s, not 5-12).
+const FISH_JUMP_INTERVAL := Vector2(10.0, 25.0)
 const FISH_JUMP_RANGE := 420.0
 
-var _fish_jump_timer := 8.0
+var _fish_jump_timer := 12.0
 var _last_wake_pos := Vector2.INF
 var _last_wade_pos := Vector2.INF
 var _bob_timer := 0.0
@@ -45,8 +46,12 @@ func _ready() -> void:
 	add_child(TouchControls.new())
 	if DisplayServer.is_touchscreen_available():
 		$HUD/Panel/HelpLabel.visible = false
+		# User request: see-through controls, the sticks included.
+		for stick in [$HUD/Panel/MoveJoystick, $HUD/Panel/AimJoystick]:
+			stick.modulate.a = 0.45
 	player.cast_started.connect(_on_cast_started)
 	player.bite_started.connect(_on_bite_started)
+	player.hook_success.connect(func(): lure.float_state = LureVisual.FloatState.HOOKED)
 	player.line_cleared.connect(_on_line_cleared)
 	# Covers opening this scene directly (e.g. F6 in the editor) without
 	# going through the title screen's Start button.
@@ -58,7 +63,8 @@ func _process(delta: float) -> void:
 		# Continuously tracks rather than a fixed point set once, so a
 		# lure being reeled in visibly moves back toward the player.
 		bobber.global_position = _fish_motion(delta, player.get_line_target_position())
-		line.points = PackedVector2Array([player.global_position, bobber.global_position])
+		var rod: Node2D = player.get_node("Rod")
+		line.points = PackedVector2Array([rod.tip_position(), bobber.global_position])
 		if lure.is_lure:
 			lure.face(player.global_position)
 		_update_line_ripples(delta)
@@ -77,7 +83,7 @@ func _process(delta: float) -> void:
 func _on_cast_started(target_pos: Vector2, _tier: String) -> void:
 	bobber.global_position = target_pos
 	bobber.visible = true
-	# Lure mode shows a rendered lure; bobber mode the worm on the hook.
+	# Lure mode shows a rendered lure; bobber mode the float.
 	lure.pick(player.fishing_mode == Player.FishingMode.LURE)
 	_fish_offset = Vector2.ZERO
 	_fish_goal = Vector2.ZERO
@@ -98,6 +104,7 @@ func _on_cast_started(target_pos: Vector2, _tier: String) -> void:
 ## existing rare/heart bite messages.
 func _on_bite_started() -> void:
 	bobber.modulate = player.current_fish_color
+	lure.float_state = LureVisual.FloatState.BITING
 	SplashFx.play(self, "splash_bite", bobber.global_position)
 	# The fish yanks at the line: a quick burst of sharp rings.
 	for i in 3:

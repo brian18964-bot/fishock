@@ -29,6 +29,7 @@ func _ready() -> void:
 	light.texture_scale = 0.65
 	light.color = Color(1.0, 0.75, 0.4)
 	light.energy = 1.4
+	light.height = Lantern.LIGHT_HEIGHT
 	light.shadow_enabled = true
 
 	_refresh_label()

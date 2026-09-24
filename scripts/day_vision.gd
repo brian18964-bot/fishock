@@ -15,6 +15,7 @@ func _ready() -> void:
 	color = Color(0.75, 0.8, 0.9)
 	energy = 0.55
 	shadow_enabled = true
+	height = Lantern.LIGHT_HEIGHT
 
 func _process(_delta: float) -> void:
 	visible = not GameState.is_night

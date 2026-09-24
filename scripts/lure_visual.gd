@@ -1,15 +1,25 @@
+class_name LureVisual
 extends Sprite2D
 
 ## What hangs on the end of the line (Quaternius, CC0). Lure mode: one of
 ## Lure_1-6 picked per cast, pre-rendered lying flat with the nose toward
 ## -X (tools/render_sprite.py, x0.8 --recenter, 56x16 canvas centered on
 ## the lure) and kept nose-toward-the-player as it's reeled in. Bobber mode:
-## the worm on the hook (x1.2 --recenter, 32x24) - the packs have no float.
+## a red-and-white float (the packs have none - built by
+## tools/render_bobber.py, 24x40), the worm hanging out of sight under it.
+## User request: it rides the water, bobbing, and gets dragged under when a
+## fish bites - sinking is drawn by trimming the sprite from the bottom (the
+## waterline) while moving it down, so the float slips below the surface.
 
 const SPRITE_SCALE := 0.5
 const OFFSET := Vector2(0, 1.08)
-const WORM_OFFSET := Vector2(0, -3.39)
-const WORM := [preload("res://assets/sprites/lure/worm_55deg_albedo.png"), preload("res://assets/sprites/lure/worm_55deg_normal.png")]
+const FLOAT_OFFSET := Vector2(0, -8.26)
+const FLOAT := [preload("res://assets/sprites/lure/bobber_55deg_albedo.png"), preload("res://assets/sprites/lure/bobber_55deg_normal.png")]
+## How far under (texture px) the float sits: at rest, dunked by a bite,
+## and held down while a fish is on.
+const SINK_REST := 4.0
+const SINK_DUNK := 22.0
+const SINK_HOOKED := 16.0
 const LURES := [
 	[preload("res://assets/sprites/lure/lure_1_55deg_albedo.png"), preload("res://assets/sprites/lure/lure_1_55deg_normal.png")],
 	[preload("res://assets/sprites/lure/lure_2_55deg_albedo.png"), preload("res://assets/sprites/lure/lure_2_55deg_normal.png")],
@@ -22,6 +32,11 @@ const LURES := [
 
 var is_lure: bool = true
 
+enum FloatState { RESTING, BITING, HOOKED }
+var float_state: FloatState = FloatState.RESTING
+var _sink: float = SINK_REST
+var _time: float = 0.0
+
 
 func _ready() -> void:
 	scale = Vector2(SPRITE_SCALE, SPRITE_SCALE)
@@ -31,13 +46,36 @@ func _ready() -> void:
 ## A random lure, or the worm when `lure` is false.
 func pick(lure: bool) -> void:
 	is_lure = lure
-	var pair: Array = LURES.pick_random() if lure else WORM
+	var pair: Array = LURES.pick_random() if lure else FLOAT
 	var tex := CanvasTexture.new()
 	tex.diffuse_texture = pair[0]
 	tex.normal_texture = pair[1]
 	texture = tex
-	offset = OFFSET if lure else WORM_OFFSET
+	offset = OFFSET if lure else FLOAT_OFFSET
+	region_enabled = not lure
+	float_state = FloatState.RESTING
+	_sink = SINK_REST
 	rotation = 0.0
+
+
+func _process(delta: float) -> void:
+	if is_lure or texture == null:
+		return
+	_time += delta
+	var target := SINK_REST + sin(_time * 2.4) * 1.5
+	match float_state:
+		FloatState.BITING:
+			# Sharp tugs under and back up.
+			target = SINK_DUNK if fmod(_time, 0.45) < 0.22 else SINK_REST + 6.0
+		FloatState.HOOKED:
+			target = SINK_HOOKED + sin(_time * 13.0) * 3.0
+	_sink = move_toward(_sink, target, delta * 90.0)
+	var size: Vector2 = FLOAT[0].get_size()
+	var cut := clampf(_sink, 0.0, size.y - 4.0)
+	region_rect = Rect2(0.0, 0.0, size.x, size.y - cut)
+	# Trimming the bottom recentres the sprite; shift so the top drops by
+	# `cut` - the float slides down through the waterline.
+	offset = FLOAT_OFFSET + Vector2(0.0, cut * 0.5)
 
 
 ## Nose (-X) toward `target`.

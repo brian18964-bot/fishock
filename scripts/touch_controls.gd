@@ -7,32 +7,42 @@ extends CanvasLayer
 ## multi-touch next to the two virtual joysticks and hides itself where
 ## there's no touchscreen, so desktop play is unchanged.
 ##
-## Laid out in the strip between the two joysticks (which own the bottom
-## corners): the big cast/reel button right of centre, next to the aim
-## stick's thumb; the rest in a small grid to its left.
+## User request: laid out the way mobile games usually do it - the action
+## buttons fan round the right-hand control (the aim stick) so the right
+## thumb reaches them all: the big cast/reel button just left of the stick,
+## the others in an arc over it, brightness +/- smallest at the far end.
+## Everything is see-through so the field stays visible.
+
+## Aim stick center in the 960x540 layout (AimJoystick in main.tscn: a
+## 300x300 control at the bottom-right corner, 8 px in).
+const AIM_CENTER := Vector2(802, 382)
 
 const BUTTONS := [
-	# [label, key, center (960x540 layout), radius]
-	["拋竿\n收線", KEY_SPACE, Vector2(582, 452), 60.0],
-	["切換", KEY_TAB, Vector2(370, 418), 30.0],
-	["燈", KEY_L, Vector2(440, 418), 30.0],
-	["閃光", KEY_F, Vector2(370, 490), 30.0],
-	["丟魚", KEY_G, Vector2(440, 490), 30.0],
-	["暗", KEY_BRACKETLEFT, Vector2(378, 356), 20.0],
-	["亮", KEY_BRACKETRIGHT, Vector2(432, 356), 20.0],
+	# [label, key, angle around the aim stick (deg, clockwise from right), distance, radius]
+	["拋竿\n收線", KEY_SPACE, 165.0, 150.0, 42.0],
+	["切換", KEY_TAB, 205.0, 150.0, 26.0],
+	["燈", KEY_L, 232.0, 150.0, 26.0],
+	["閃光", KEY_F, 259.0, 150.0, 26.0],
+	["丟魚", KEY_G, 286.0, 150.0, 26.0],
+	["暗", KEY_BRACKETLEFT, 314.0, 140.0, 19.0],
+	["亮", KEY_BRACKETRIGHT, 338.0, 140.0, 19.0],
 ]
+const FILL := Color(1, 1, 1, 0.1)
+const FILL_PRESSED := Color(1, 1, 1, 0.38)
+const RIM_ALPHA := 0.45
 
 
 func _ready() -> void:
 	layer = 5
 	for spec in BUTTONS:
-		_add_button(spec[0], spec[1], spec[2], spec[3])
+		var center: Vector2 = AIM_CENTER + Vector2.RIGHT.rotated(deg_to_rad(spec[2])) * spec[3]
+		_add_button(spec[0], spec[1], center, spec[4])
 
 
 func _add_button(text: String, key: Key, center: Vector2, radius: float) -> void:
 	var button := TouchScreenButton.new()
-	button.texture_normal = _disc(radius, Color(1, 1, 1, 0.18))
-	button.texture_pressed = _disc(radius, Color(1, 1, 1, 0.42))
+	button.texture_normal = _disc(radius, FILL)
+	button.texture_pressed = _disc(radius, FILL_PRESSED)
 	var shape := CircleShape2D.new()
 	shape.radius = radius
 	button.shape = shape
@@ -46,7 +56,8 @@ func _add_button(text: String, key: Key, center: Vector2, radius: float) -> void
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	label.size = Vector2(radius, radius) * 2.0
-	label.add_theme_font_size_override("font_size", 18 if radius > 40.0 else 14)
+	label.add_theme_font_size_override("font_size", 18 if radius > 40.0 else (14 if radius > 20.0 else 13))
+	label.modulate.a = 0.85
 	label.add_theme_constant_override("outline_size", 4)
 	label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -72,7 +83,7 @@ static func _disc(radius: float, fill: Color) -> ImageTexture:
 			var d := Vector2(x + 0.5, y + 0.5).distance_to(c)
 			if d <= radius:
 				var rim := smoothstep(radius - 3.0, radius - 1.0, d)
-				var col := fill.lerp(Color(1, 1, 1, 0.75), rim)
+				var col := fill.lerp(Color(1, 1, 1, RIM_ALPHA), rim)
 				col.a *= 1.0 - smoothstep(radius - 1.0, radius, d)
 				img.set_pixel(x, y, col)
 	return ImageTexture.create_from_image(img)

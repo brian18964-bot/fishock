@@ -18,8 +18,8 @@ const GROUND_SQUASH := 0.819  # sin 55deg
 ## A ring of `radius` becomes a push of this much smaller footprint and
 ## strength in the simulation - the sim spreads it out on its own.
 const SIM_RADIUS := 0.22
-## User feedback: waves read too dramatic - pushes trimmed ~30%.
-const SIM_STRENGTH := 0.245
+## User feedback: waves read too dramatic - pushes trimmed ~30%, twice.
+const SIM_STRENGTH := 0.17
 
 var _life: float = 1.0
 var _age: float = 0.0

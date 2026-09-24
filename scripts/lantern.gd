@@ -21,6 +21,9 @@ const MAX_SCALE := 2.6
 ## rather than it happening for free.
 const RELIGHT_DURATION := 1.2
 
+## Normal-map light height in px (also used by the other lamps).
+const LIGHT_HEIGHT := 60.0
+
 # Must match LightTextureFactory.make_cone_texture()'s defaults below, since
 # illuminates() re-derives the cone's world-space shape from these instead
 # of reading pixels back out of the generated texture.
@@ -58,6 +61,9 @@ func _ready() -> void:
 	texture = LightTextureFactory.make_cone_texture()
 	color = Color(1.0, 0.92, 0.75)
 	shadow_enabled = true
+	# User decision: held up off the ground, so upward-facing surfaces
+	# (dock boards, plants, rock tops) catch the light, not just the sides.
+	height = LIGHT_HEIGHT
 
 	max_fuel = MAX_FUEL + Profile.get_upgrade_bonus("fuel_capacity")
 	flash_cooldown_max = max(FLASH_COOLDOWN - Profile.get_upgrade_bonus("flash_cooldown"), 1.0)
@@ -140,8 +146,18 @@ func _try_flash() -> void:
 			ghost.stun(FLASH_STUN_DURATION)
 			hit_any = true
 
+	# Wolves and meat-eating dinosaurs (see Critter) bolt from the flash.
+	var scared_any := false
+	for hunter in get_tree().get_nodes_in_group("hunters"):
+		if hunter.visible and global_position.distance_to(hunter.global_position) <= FLASH_RANGE \
+				and illuminates(hunter.global_position):
+			hunter.scare()
+			scared_any = true
+
 	if hit_any:
 		GameState.push_message("強光把鬼定住了！")
+	elif scared_any:
+		GameState.push_message("強光把野獸嚇跑了！")
 	else:
 		GameState.push_message("強光沒有照到任何鬼")
 

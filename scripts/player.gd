@@ -56,6 +56,10 @@ const RARE_ZONE_RARE_CHANCE_BONUS := 0.25
 const WATER_GHOST_CHANCE := 0.16
 const WATER_GHOST_RANGE := 130.0
 const WATER_GHOST_DEBUFF_DURATION := 4.0
+## User decision: out on a dock (walkway over the water) the ghost has a
+## harder time reaching you.
+const DOCK_WATER_GHOST_MULT := 0.35
+const ANIMAL_ATTACK_DEBUFF_DURATION := 2.5
 const WATER_GHOST_SPEED_MULT := 0.55
 
 ## User feedback: carrying the oil drum should slow you down, not just
@@ -132,6 +136,9 @@ var cast_jittered: bool = false
 var retrieve_progress: float = 0.0
 var cast_water_zone: WaterZone
 var water_ghost_timer: float = 0.0
+## What the HUD warning names while water_ghost_timer runs - the water
+## ghost, or an animal that caught up with you (see animal_attack()).
+var affliction_text: String = "水鬼異常狀態中"
 var cast_outcome: int = CastOutcome.BITE
 var stolen_timer: float = 0.0
 var fish_run_timer: float = 0.0
@@ -368,6 +375,8 @@ func _maybe_trigger_water_ghost() -> void:
 	var chance := WATER_GHOST_CHANCE
 	if GameState.weather == GameState.Weather.STORM:
 		chance *= STORM_WATER_GHOST_MULT
+	if Dock.on_walkway(get_tree(), global_position) and _find_water_zone(global_position) != null:
+		chance *= DOCK_WATER_GHOST_MULT
 	if randf() >= chance:
 		return
 	if _nearest_water_edge_distance() > WATER_GHOST_RANGE:
@@ -377,6 +386,7 @@ func _maybe_trigger_water_ghost() -> void:
 
 func _apply_water_ghost_attack() -> void:
 	water_ghost_timer = WATER_GHOST_DEBUFF_DURATION
+	affliction_text = "水鬼異常狀態中"
 	cast_jittered = true
 	if fishing_mode == FishingMode.BOBBER:
 		bait_count = max(bait_count - 1, 0)
@@ -387,6 +397,26 @@ func _apply_water_ghost_attack() -> void:
 	if not stolen.is_empty():
 		msg = "水鬼冒出來偷襲，還搶走了一條 %s！身上狀態異常中" % stolen.get("name", "魚")
 	GameState.push_message(msg)
+
+
+## User decision: wolves and the meat-eating dinosaurs chase the player
+## (see Critter); one that catches up knocks a carried fish to the ground
+## (it can be picked back up, like a G-dropped one), snaps the line if
+## you're fishing, and leaves you slowed for a moment.
+func animal_attack(attacker: String) -> void:
+	water_ghost_timer = maxf(water_ghost_timer, ANIMAL_ATTACK_DEBUFF_DURATION)
+	affliction_text = "被%s攻擊，行動變慢" % attacker
+	if state != State.IDLE:
+		_cancel_cast("animal_attack")
+	var fish: Dictionary = GameState.drop_one_carried()
+	if fish.is_empty():
+		GameState.push_message("%s撲了上來！" % attacker)
+		return
+	var dropped: DroppedFish = DROPPED_FISH_SCENE.instantiate()
+	get_tree().current_scene.add_child(dropped)
+	dropped.global_position = global_position + Vector2.RIGHT.rotated(randf() * TAU) * 40.0
+	dropped.setup(fish)
+	GameState.push_message("%s撲了上來，%s 掉在地上了！" % [attacker, fish.get("name", "魚")])
 
 
 func _handle_mode_toggle() -> void:

@@ -72,6 +72,7 @@ const THEMES := {
 		"tree_families": {"pine": 1.0},
 		"rock_pool": [0, 1, 2],
 		"ground_kinds": {"grass": 4.0, "clover": 2.0, "plant": 2.0, "mushroom": 3.0, "shrub": 2.0},
+		"animals": {"deer": 2.0, "stag": 1.5, "fox": 1.5, "wolf": 1.0, "husky": 1.0},
 	},
 	"forest_birch": {
 		"trees": 26, "rocks": 2, "bushes": 6, "ground": 120,
@@ -79,18 +80,21 @@ const THEMES := {
 		"rock_pool": [0, 1, 2],
 		"ground_kinds": {"grass": 3.0, "flower_group": 2.0, "flower_single": 2.0, "flower_clump": 2.0,
 			"flower_petal": 1.0, "shrub": 2.0, "plant": 1.0},
+		"animals": {"deer": 2.0, "stag": 1.0, "fox": 1.5, "shiba": 1.0, "white_horse": 1.0},
 	},
 	"forest_maple": {
 		"trees": 24, "rocks": 3, "bushes": 6, "ground": 110,
 		"tree_families": {"maple": 1.0},
 		"rock_pool": [0, 1, 2],
 		"ground_kinds": {"grass": 3.0, "clover": 2.0, "flower_bush": 2.0, "mushroom": 2.0, "shrub": 2.0, "plant": 1.0},
+		"animals": {"deer": 2.0, "stag": 1.5, "fox": 1.5, "shiba": 1.0, "wolf": 0.5},
 	},
 	"forest_green": {
 		"trees": 26, "rocks": 3, "bushes": 8, "ground": 120,
 		"tree_families": {"oak": 1.0, "leafy": 1.0},
 		"rock_pool": [0, 1, 2],
 		"ground_kinds": {"grass": 4.0, "clover": 2.0, "plant": 3.0, "shrub": 3.0, "flower_single": 1.0, "mushroom": 1.0},
+		"animals": {"cow": 1.5, "bull": 1.0, "horse": 1.0, "deer": 1.0, "shiba": 1.0, "husky": 1.0},
 	},
 	"deadwood": {
 		"trees": 22, "rocks": 5, "bushes": 2, "ground": 80,
@@ -98,18 +102,46 @@ const THEMES := {
 		"rock_pool": [0, 1, 2, 3, 4],
 		"ground_kinds": {"grass": 2.0, "mushroom": 3.0, "pebble": 2.0, "plant": 1.0},
 		"paths": true,
+		"animals": {"wolf": 2.0, "fox": 1.5, "stag": 1.0, "husky": 0.5},
 	},
 	"rocky": {
 		"trees": 6, "rocks": 26, "bushes": 1, "ground": 100,
 		"tree_families": {"dead": 1.0, "bare": 1.0},
 		"rock_pool": [0, 1, 2, 3, 4, 5, 6, 7],
 		"ground_kinds": {"pebble": 5.0, "grass": 2.0, "clover": 1.0},
+		"animals": {"alpaca": 2.0, "donkey": 1.5, "fox": 1.0, "wolf": 1.0},
+	},
+	# User decision: a tropical look - palms, flowers and sandy ground.
+	"tropical": {
+		"trees": 22, "rocks": 3, "bushes": 5, "ground": 120,
+		"tree_families": {"palm": 1.0},
+		"rock_pool": [0, 1, 2],
+		"ground_kinds": {"grass": 2.0, "flower_group": 2.0, "flower_single": 2.0, "flower_clump": 2.0,
+			"flower_petal": 2.0, "flower_bush": 1.0, "plant": 2.0, "pebble": 1.0},
+		"ground_color": Color(0.19, 0.16, 0.09),
+		"animals": {"horse": 1.0, "white_horse": 1.0, "alpaca": 1.0, "donkey": 1.0, "shiba": 1.0},
+	},
+	# User decision: dinosaurs only turn up here, a rare prehistoric look -
+	# palms and conifers, ferny plants, boulders.
+	"prehistoric": {
+		"trees": 20, "rocks": 12, "bushes": 4, "ground": 110,
+		"tree_families": {"palm": 2.0, "pine": 1.0, "leafy": 0.5},
+		"rock_pool": [0, 1, 2, 3, 4, 5, 6, 7],
+		"ground_kinds": {"plant": 5.0, "grass": 3.0, "mushroom": 1.0, "pebble": 2.0, "shrub": 1.0},
+		"ground_color": Color(0.11, 0.12, 0.06),
+		"animals": {"stegosaurus": 1.0, "apatosaurus": 1.0, "parasaurolophus": 1.0, "triceratops": 1.0,
+			"trex": 0.6, "velociraptor": 1.0},
 	},
 }
-## Forest looks share one pick with the other styles, so each style comes
-## up equally often.
-const STYLES := {"forest": ["forest_pine", "forest_birch", "forest_maple", "forest_green"],
-	"deadwood": ["deadwood"], "rocky": ["rocky"]}
+## Forest looks share one pick with the other styles. User decision: the
+## three main styles ~28% each, tropical 12%, prehistoric (dinosaurs) 4%.
+const STYLES := {
+	"forest": {"weight": 28.0, "themes": ["forest_pine", "forest_birch", "forest_maple", "forest_green"]},
+	"deadwood": {"weight": 28.0, "themes": ["deadwood"]},
+	"rocky": {"weight": 28.0, "themes": ["rocky"]},
+	"tropical": {"weight": 12.0, "themes": ["tropical"]},
+	"prehistoric": {"weight": 4.0, "themes": ["prehistoric"]},
+}
 
 ## User feedback: the water's edge is grass, small shrubs, pebbles and
 ## boardwalks (no big trees or boulders there), with bugs and frogs about.
@@ -130,20 +162,30 @@ const PATH_STYLES := [
 const SHORE_SPACING := 26.0
 const SHORE_CLEAR_OF_SPAWN := 160.0
 
+## Testing hook: set before Main loads to force a theme (screenshot tools).
+static var forced_theme := ""
+
 var theme_name := ""
 var theme: Dictionary = {}
 var _walk_rects: Array[Rect2] = []
 var _path_points: Array[Vector2] = []
 const CRITTER_SCENE := preload("res://scenes/critter.tscn")
-const CRITTER_COUNT := 10
-const AMBIENT_ANIMAL_COUNT := 6
+## User decision: 6 catchable critters by day, more come out at night.
+const CRITTER_COUNT := 6
+const NIGHT_CRITTER_COUNT := 6
+## User decision: ambient animals follow the map style, ~8 per map.
+const AMBIENT_ANIMAL_COUNT := 8
 
 var water_zones: Array = []
 
 
 func _ready() -> void:
-	theme_name = STYLES[STYLES.keys().pick_random()].pick_random()
+	theme_name = forced_theme if forced_theme != "" else _pick_theme()
 	theme = THEMES[theme_name]
+	var ground: ColorRect = get_parent().get_node_or_null("GroundBackground")
+	if ground != null and theme.has("ground_color"):
+		ground.color = theme.ground_color
+	GameState.night_fell.connect(_on_night_fell)
 	_generate_water_zones()
 	_place_docks()
 	_place_altar_and_escape()
@@ -154,6 +196,18 @@ func _ready() -> void:
 	_scatter_themed_props()
 	_scatter_ground_cover()
 	_scatter_critters()
+
+
+func _pick_theme() -> String:
+	var total := 0.0
+	for style in STYLES.values():
+		total += style.weight
+	var roll := randf() * total
+	for style in STYLES.values():
+		roll -= style.weight
+		if roll <= 0.0:
+			return style.themes.pick_random()
+	return STYLES.forest.themes.pick_random()
 
 
 func _generate_water_zones() -> void:
@@ -511,12 +565,40 @@ func _scatter_critters() -> void:
 		critter.position = pos
 		# Main is still mid-setup here; see _spawn_zone().
 		get_parent().add_child.call_deferred(critter)
-	# User request: larger ambient animals (cows, a deer...) as scenery.
+	# User request: larger ambient animals (cows, a deer...) as scenery,
+	# the kinds picked by the map style.
 	for _i in range(AMBIENT_ANIMAL_COUNT):
 		var animal: Critter = CRITTER_SCENE.instantiate()
 		animal.ambient = true
+		animal.species = _weighted_pick(theme.animals)
 		animal.position = _pick_prop_position([])
 		get_parent().add_child.call_deferred(animal)
+
+
+## Extra catchable critters come out at nightfall, away from the player.
+func _on_night_fell() -> void:
+	var player: Node2D = get_tree().get_first_node_in_group("player")
+	for _i in range(NIGHT_CRITTER_COUNT):
+		var pos := _pick_prop_position([])
+		for _try in range(6):
+			if player == null or pos.distance_to(player.global_position) > 250.0:
+				break
+			pos = _pick_prop_position([])
+		var critter: Node2D = CRITTER_SCENE.instantiate()
+		critter.position = pos
+		get_parent().add_child(critter)
+
+
+func _weighted_pick(weights: Dictionary) -> String:
+	var total := 0.0
+	for k in weights:
+		total += weights[k]
+	var roll := randf() * total
+	for k in weights:
+		roll -= weights[k]
+		if roll <= 0.0:
+			return k
+	return weights.keys()[0]
 
 
 func _pick_prop_position(placed: Array) -> Vector2:

@@ -22,8 +22,8 @@ enum ZoneType { COMMON, RARE }
 ## the shore. Rare zones keep their purple read. The two wave normal maps
 ## are generated once (seamless noise baked to normals) and shared.
 const WATER_SHADER := preload("res://shaders/water.gdshader")
-const RARE_BASE := Color(0.36, 0.2, 0.5)
-const RARE_DEEP := Color(0.16, 0.06, 0.26)
+const RARE_BASE := Color(0.27, 0.13, 0.4)
+const RARE_DEEP := Color(0.08, 0.02, 0.16)
 const RARE_FOAM := Color(0.86, 0.72, 0.95)
 ## Lobes the surface shader can take (own + overlapping zones').
 const MAX_SHADER_LOBES := 16

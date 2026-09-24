@@ -13,6 +13,7 @@ func _ready() -> void:
 	light.texture_scale = 0.4
 	light.color = Color(1.0, 0.85, 0.55)
 	light.energy = 0.5
+	light.height = Lantern.LIGHT_HEIGHT
 	light.shadow_enabled = true
 
 func _process(_delta: float) -> void:

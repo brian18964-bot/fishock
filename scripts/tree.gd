@@ -20,6 +20,9 @@ const TREE_OFFSET := Vector2(0, -73.19)
 const TWISTED_OFFSET := Vector2(3.39, -172.68)
 const TWISTED_LEANING_OFFSET := Vector2(124.15, -143.54)
 const SPRITE_SCALE := 0.5
+## User feedback: trees a bit bigger - every variant drawn 1.2x (the nature
+## pack ones end up ~x1.8 of model scale).
+const TREE_SIZE := 1.2
 
 ## fade_rect: the branch area (node-local px) where the player counts as
 ## "behind" the tree, from each model's projected bounds; stops just above
@@ -235,11 +238,12 @@ func apply_variant(index: int) -> void:
 	tex.normal_texture = variant.normal
 	sprite.texture = tex
 	sprite.offset = variant.offset
-	sprite.scale = Vector2(SPRITE_SCALE, SPRITE_SCALE)
+	sprite.scale = Vector2.ONE * SPRITE_SCALE * TREE_SIZE
 
 	# Built per instance: a shape resource from the .tscn would be shared by
 	# every tree, so resizing it for one variant would resize all of them.
-	var rect: Rect2 = variant.fade_rect
+	var fade: Rect2 = variant.fade_rect
+	var rect := Rect2(fade.position * TREE_SIZE, fade.size * TREE_SIZE)
 	var shape := RectangleShape2D.new()
 	shape.size = rect.size
 	fade_shape.shape = shape
