@@ -487,9 +487,10 @@ func _update_aim() -> void:
 		pass
 	elif _aim_joystick.is_pressed:
 		aim_dir = _aim_joystick.output.normalized()
-	else:
+	elif not DisplayServer.is_touchscreen_available():
 		# Mouse aim is a desktop-testing fallback for when there's no
-		# touchscreen to drag the right stick with.
+		# touchscreen to drag the right stick with. (On a phone the emulated
+		# mouse sits wherever the last touch was, so it'd yank the aim.)
 		var to_mouse := get_global_mouse_position() - global_position
 		if to_mouse.length() > 4.0:
 			aim_dir = to_mouse.normalized()

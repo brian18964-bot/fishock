@@ -1,0 +1,69 @@
+# Builds the Web (HTML5) export and publishes it on GitHub Pages so the game
+# can be played from a phone browser. One-time setup: Settings -> Pages ->
+# Source: "GitHub Actions".
+name: Web build
+
+on:
+  push:
+    branches: [claude/focused-fermi-96pp3r]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.7.2
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Godot
+        run: |
+          curl -sSL -o godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip -d "$RUNNER_TEMP/godot"
+          echo "GODOT=$RUNNER_TEMP/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" >> "$GITHUB_ENV"
+          rm godot.zip
+
+      - name: Install web export templates
+        run: python3 tools/fetch_web_templates.py "$GODOT_VERSION"
+
+      # Browsers have no CJK system font; rebuild the bundled subset so any
+      # new Chinese text in scripts/scenes is covered.
+      - name: Rebuild Chinese font subset
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fonts-noto-cjk
+          python3 -m pip install --quiet fonttools
+          python3 tools/subset_font.py /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
+
+      - name: Import and export
+        run: |
+          mkdir -p build/web
+          touch build/.gdignore
+          "$GODOT" --headless --import || true
+          "$GODOT" --headless --import
+          "$GODOT" --headless --export-release "Web" build/web/index.html
+          test -f build/web/index.wasm
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

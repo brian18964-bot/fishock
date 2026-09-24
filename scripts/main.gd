@@ -40,6 +40,11 @@ var _bob_timer := 0.0
 
 func _ready() -> void:
 	add_child(WaterSim.new())
+	# Phones (the web build on iPhone): on-screen buttons for the keys, and
+	# the long keyboard help text would sit right under them.
+	add_child(TouchControls.new())
+	if DisplayServer.is_touchscreen_available():
+		$HUD/Panel/HelpLabel.visible = false
 	player.cast_started.connect(_on_cast_started)
 	player.bite_started.connect(_on_bite_started)
 	player.line_cleared.connect(_on_line_cleared)

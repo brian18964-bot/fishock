@@ -2,7 +2,8 @@
 .godot/
 .import/
 export.cfg
-export_presets.cfg
+# Web export output (built by CI for GitHub Pages)
+build/
 *.translation
 
 # OS / editor cruft
