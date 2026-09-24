@@ -47,7 +47,7 @@ const PROP_MIN_SEPARATION := 90.0
 const PROP_AVOID_SPAWN_RADIUS := 180.0
 
 const GROUND_COVER_SCENE := preload("res://scenes/ground_cover.tscn")
-const GROUND_COVER_COUNT := 70
+const GROUND_COVER_COUNT := 80
 
 var water_zones: Array = []
 

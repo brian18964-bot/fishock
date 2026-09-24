@@ -40,6 +40,8 @@ Sets rendered so far (see art_src/):
   pine/*         scale 1.0   --center-y 2.70 --ortho-scale 7.968 --res 200 216
   bush/plant_big_2  x1.2      --center-y 1.873 --ortho-scale 4.427 --res 120 120
   rock/rock_medium  x1.45     --center-y 0.67 --ortho-scale 5.312 --res 144 120
+  rock/rock_medium_2, _3  x1.45 --recenter --center-y 0.75 --ortho-scale 5.312 --res 144 144
+  ground_cover/rock_path_*  x1.0  --center-y 0.0 --ortho-scale 1.7707 --res 48 48
   ground_cover/plant_1 x1.3, plant_2 x1.4, plant_big_1 x1.4 (64x64 flower camera)
                      --center-y 0.635 --ortho-scale 2.361 --res 64 64
 """
@@ -57,16 +59,35 @@ UP = Vector((0.0, math.sin(ELEV), math.cos(ELEV)))
 BACK = -FORWARD
 
 
-def load_model(path, scale=1.0):
+def base_footprint(meshes):
+    """X/Y bounds of the bottom quarter of the model's height (its ground contact)."""
+    pts = [o.matrix_world @ v.co for o in meshes for v in o.data.vertices]
+    zmin = min(p.z for p in pts)
+    zmax = max(p.z for p in pts)
+    base = [p for p in pts if p.z < zmin + 0.25 * (zmax - zmin)]
+    return (min(p.x for p in base), max(p.x for p in base),
+            min(p.y for p in base), max(p.y for p in base))
+
+
+def load_model(path, scale=1.0, recenter=False):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=path)
+    roots = [o for o in bpy.context.scene.objects if o.parent is None]
     # Scale about the world origin so the model's ground point stays the anchor.
-    for o in bpy.context.scene.objects:
-        if o.parent is None:
-            o.location *= scale
-            o.scale *= scale
+    for o in roots:
+        o.location *= scale
+        o.scale *= scale
     bpy.context.view_layer.update()
-    return [o for o in bpy.context.scene.objects if o.type == 'MESH']
+    meshes = [o for o in bpy.context.scene.objects if o.type == 'MESH']
+    if recenter:
+        # For models whose origin isn't at their base: slide them so the
+        # ground footprint is centered on the origin (height untouched).
+        x0, x1, y0, y1 = base_footprint(meshes)
+        shift = Vector((-(x0 + x1) / 2, -(y0 + y1) / 2, 0.0))
+        for o in roots:
+            o.location += shift
+        bpy.context.view_layer.update()
+    return meshes
 
 
 def screen_bounds(meshes):
@@ -215,11 +236,15 @@ def main():
     for p in (m, r):
         p.add_argument("--scale", type=float, default=1.0,
                        help="uniform model scale about the origin, for models authored at a different scale")
+        p.add_argument("--recenter", action="store_true",
+                       help="center the model's ground footprint on the origin (for off-center origins)")
     args = parser.parse_args()
 
-    meshes = load_model(args.model, args.scale)
+    meshes = load_model(args.model, args.scale, args.recenter)
     if args.cmd == "measure":
-        print(json.dumps(screen_bounds(meshes)))
+        bounds = screen_bounds(meshes)
+        bounds["footprint_xy"] = base_footprint(meshes)
+        print(json.dumps(bounds))
         return
     setup_scene(args.center_y, args.ortho_scale, *args.res)
     for mode in ("albedo", "normal"):

@@ -8,11 +8,15 @@ extends Sprite2D
 
 const SPRITE_SCALE := 0.5
 
-## offset: where the ground point sits relative to the texture center.
-## Clovers: 48x48 canvas, center_y 0.651. Everything else: 64x64,
-## center_y 0.635. Both at 27.108 px/unit, so offset.y = -center_y * 27.108.
-const CLOVER_OFFSET := Vector2(0, -17.65)
-const FLOWER_OFFSET := Vector2(0, -17.21)
+## offset: where the ground point sits relative to the texture center,
+## -center_y * 27.108 px/unit. Clovers: 48x48 canvas, center_y 0.651. Path
+## stones: 48x48, center_y 0 (flat, centered). Everything else: 64x64,
+## center_y 0.635.
+const DEFAULT_OFFSET := Vector2(0, -17.21)
+const KIND_OFFSETS := {
+	"clover": Vector2(0, -17.65),
+	"path_stone": Vector2.ZERO,
+}
 
 ## Picked kind-first, then variant, so kinds with many models (five petal
 ## cards) don't crowd out kinds with fewer.
@@ -24,6 +28,7 @@ const KINDS := {
 	"grass": ["grass_wispy", "grass_wispy_2", "grass"],
 	"mushroom": ["mushroom", "mushroom_laetiporus"],
 	"plant": ["plant_1", "plant_2", "plant_big_1"],
+	"path_stone": ["rock_path_1", "rock_path_2", "rock_path_3"],
 	"pebble": ["pebble_round", "pebble_round_2", "pebble_round_3", "pebble_round_4", "pebble_round_5",
 		"pebble_square", "pebble_square_2", "pebble_square_3", "pebble_square_4", "pebble_square_5", "pebble_square_6"],
 }
@@ -48,6 +53,9 @@ const TEXTURES := {
 	"plant_1": [preload("res://assets/sprites/ground_cover/plant_1_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/plant_1_55deg_normal.png")],
 	"plant_2": [preload("res://assets/sprites/ground_cover/plant_2_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/plant_2_55deg_normal.png")],
 	"plant_big_1": [preload("res://assets/sprites/ground_cover/plant_big_1_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/plant_big_1_55deg_normal.png")],
+	"rock_path_1": [preload("res://assets/sprites/ground_cover/rock_path_1_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/rock_path_1_55deg_normal.png")],
+	"rock_path_2": [preload("res://assets/sprites/ground_cover/rock_path_2_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/rock_path_2_55deg_normal.png")],
+	"rock_path_3": [preload("res://assets/sprites/ground_cover/rock_path_3_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/rock_path_3_55deg_normal.png")],
 	"pebble_round": [preload("res://assets/sprites/ground_cover/pebble_round_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/pebble_round_55deg_normal.png")],
 	"pebble_square": [preload("res://assets/sprites/ground_cover/pebble_square_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/pebble_square_55deg_normal.png")],
 	"pebble_square_2": [preload("res://assets/sprites/ground_cover/pebble_square_2_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/pebble_square_2_55deg_normal.png")],
@@ -69,5 +77,5 @@ func _ready() -> void:
 	tex.diffuse_texture = TEXTURES[variant][0]
 	tex.normal_texture = TEXTURES[variant][1]
 	texture = tex
-	offset = CLOVER_OFFSET if kind == "clover" else FLOWER_OFFSET
+	offset = KIND_OFFSETS.get(kind, DEFAULT_OFFSET)
 	scale = Vector2(SPRITE_SCALE, SPRITE_SCALE)
