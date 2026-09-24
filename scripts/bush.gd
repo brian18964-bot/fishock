@@ -1,0 +1,47 @@
+extends "res://scripts/foliage_occluder.gd"
+
+## Bush variants pre-rendered from Quaternius' Stylized Nature MegaKit (CC0)
+## through tools/render_sprite.py, at the same pixel density as the dead
+## trees. Scaled up from true model size (bushes x1.9, the fern x0.41 since
+## it's authored far larger than the rest of the pack) so each one is about
+## the old 50px placeholder and still big enough to hide the player in.
+
+## Where the ground point lands in the 112x112 renders, from the texture
+## center (render camera center_y 0.555 units, 27.108 px/unit).
+const SPRITE_OFFSET := Vector2(0, -15.04)
+const SPRITE_SCALE := 0.5
+
+## hide_rect: node-local area counting as "inside the bush", from each
+## model's projected bounds.
+const VARIANTS := [
+	{"albedo": preload("res://assets/sprites/bush/bush_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/bush/bush_55deg_normal.png"),
+	 "hide_rect": Rect2(-24, -33, 50, 48)},
+	{"albedo": preload("res://assets/sprites/bush/bush_flowers_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/bush/bush_flowers_55deg_normal.png"),
+	 "hide_rect": Rect2(-24, -33, 50, 48)},
+	{"albedo": preload("res://assets/sprites/bush/fern_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/bush/fern_55deg_normal.png"),
+	 "hide_rect": Rect2(-25, -21, 51, 39)},
+]
+
+
+func _ready() -> void:
+	super()
+	var variant: Dictionary = VARIANTS[randi() % VARIANTS.size()]
+
+	var tex := CanvasTexture.new()
+	tex.diffuse_texture = variant.albedo
+	tex.normal_texture = variant.normal
+	var sprite: Sprite2D = visual
+	sprite.texture = tex
+	sprite.offset = SPRITE_OFFSET
+	sprite.scale = Vector2(SPRITE_SCALE, SPRITE_SCALE)
+
+	# Per instance: a .tscn shape resource would be shared by every bush.
+	var rect: Rect2 = variant.hide_rect
+	var shape := RectangleShape2D.new()
+	shape.size = rect.size
+	var collision: CollisionShape2D = area.get_node("CollisionShape2D")
+	collision.shape = shape
+	collision.position = rect.get_center()

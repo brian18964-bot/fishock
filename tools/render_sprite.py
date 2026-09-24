@@ -18,9 +18,21 @@ Needs Blender's Python module (pip install "bpy==4.2.*", Python 3.11).
       --center-y 5.265 --ortho-scale 13.28 --res 270 360
 
 Pick --center-y / --ortho-scale from the union of the measured bounds:
-center-y = (min_y + max_y) / 2, ortho-scale = (max_y - min_y) * ~1.06 for a
-portrait canvas (ortho-scale spans the longer image side). The model origin
-then sits at pixel (res_x / 2, res_y / 2 + center_y * res_y / ortho_scale).
+center-y = (min_y + max_y) / 2, and keep every asset at the same pixel
+density so sizes stay consistent across sets: ortho-scale = max(W, H) /
+27.108 (ortho-scale spans the longer image side). The model origin then sits
+at pixel (W / 2, H / 2 + center_y * 27.108). Sprites are shown in Godot at
+scale 0.5 (2x density for high-DPI screens).
+
+--scale resizes a model about its origin before rendering, for gameplay
+sizing or models authored at a different scale than the rest of a pack.
+Pass the same --scale to measure and render.
+
+Sets rendered so far (see art_src/):
+  dead_tree/*    scale 1.0   --center-y 5.265 --ortho-scale 13.28  --res 270 360
+  bush, bush_flowers  x1.9, fern x0.41
+                     --center-y 0.555 --ortho-scale 4.1316 --res 112 112
+  ground_cover/* scale 1.5   --center-y 0.651 --ortho-scale 1.7707 --res 48 48
 """
 import argparse
 import json
@@ -36,9 +48,15 @@ UP = Vector((0.0, math.sin(ELEV), math.cos(ELEV)))
 BACK = -FORWARD
 
 
-def load_model(path):
+def load_model(path, scale=1.0):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=path)
+    # Scale about the world origin so the model's ground point stays the anchor.
+    for o in bpy.context.scene.objects:
+        if o.parent is None:
+            o.location *= scale
+            o.scale *= scale
+    bpy.context.view_layer.update()
     return [o for o in bpy.context.scene.objects if o.type == 'MESH']
 
 
@@ -73,13 +91,27 @@ def rewire_materials(meshes, mode):
             elif src is not None:
                 emit.inputs['Color'].default_value = src.default_value
         else:
+            geo = nt.nodes.new('ShaderNodeNewGeometry')
+            geo.name = "__sprite_geo"
             nsrc = bsdf.inputs['Normal'] if bsdf else None
             if nsrc is not None and nsrc.is_linked:
                 normal = nsrc.links[0].from_socket  # keeps the model's own bump detail
             else:
-                geo = nt.nodes.new('ShaderNodeNewGeometry')
-                geo.name = "__sprite_geo"
                 normal = geo.outputs['Normal']
+            # Two-sided leaf cards show their back faces, whose normals point
+            # away from the camera; flip those (n * (1 - 2 * backfacing)).
+            sign = nt.nodes.new('ShaderNodeMath')
+            sign.name = "__sprite_sign"
+            sign.operation = 'MULTIPLY_ADD'
+            sign.inputs[1].default_value = -2.0
+            sign.inputs[2].default_value = 1.0
+            nt.links.new(geo.outputs['Backfacing'], sign.inputs[0])
+            flip = nt.nodes.new('ShaderNodeVectorMath')
+            flip.name = "__sprite_flip"
+            flip.operation = 'SCALE'
+            nt.links.new(normal, flip.inputs[0])
+            nt.links.new(sign.outputs['Value'], flip.inputs['Scale'])
+            normal = flip.outputs['Vector']
             # World -> camera space by explicit dot products with the camera's
             # axes, sidestepping Cycles' own camera-space axis conventions.
             comb = nt.nodes.new('ShaderNodeCombineXYZ')
@@ -98,7 +130,24 @@ def rewire_materials(meshes, mode):
             enc.inputs[2].default_value = (0.5, 0.5, 0.5)
             nt.links.new(comb.outputs['Vector'], enc.inputs[0])
             nt.links.new(enc.outputs['Vector'], emit.inputs['Color'])
-        nt.links.new(emit.outputs['Emission'], out.inputs['Surface'])
+
+        surface = emit.outputs['Emission']
+        alpha = bsdf.inputs['Alpha'] if bsdf else None
+        if alpha is not None and (alpha.is_linked or alpha.default_value < 1.0):
+            # Alpha-cutout foliage cards: keep the cut-out in both passes, or
+            # every leaf renders as a solid quad.
+            clear = nt.nodes.new('ShaderNodeBsdfTransparent')
+            clear.name = "__sprite_clear"
+            mix = nt.nodes.new('ShaderNodeMixShader')
+            mix.name = "__sprite_mix"
+            if alpha.is_linked:
+                nt.links.new(alpha.links[0].from_socket, mix.inputs['Fac'])
+            else:
+                mix.inputs['Fac'].default_value = alpha.default_value
+            nt.links.new(clear.outputs['BSDF'], mix.inputs[1])
+            nt.links.new(surface, mix.inputs[2])
+            surface = mix.outputs['Shader']
+        nt.links.new(surface, out.inputs['Surface'])
 
 
 def setup_scene(center_y, ortho_scale, res_x, res_y):
@@ -148,9 +197,12 @@ def main():
     r.add_argument("--center-y", type=float, required=True)
     r.add_argument("--ortho-scale", type=float, required=True)
     r.add_argument("--res", type=int, nargs=2, metavar=("W", "H"), required=True)
+    for p in (m, r):
+        p.add_argument("--scale", type=float, default=1.0,
+                       help="uniform model scale about the origin, for models authored at a different scale")
     args = parser.parse_args()
 
-    meshes = load_model(args.model)
+    meshes = load_model(args.model, args.scale)
     if args.cmd == "measure":
         print(json.dumps(screen_bounds(meshes)))
         return

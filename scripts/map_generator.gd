@@ -45,6 +45,9 @@ const PROP_MARGIN := 80.0
 const PROP_MIN_SEPARATION := 90.0
 const PROP_AVOID_SPAWN_RADIUS := 180.0
 
+const GROUND_COVER_SCENE := preload("res://scenes/ground_cover.tscn")
+const GROUND_COVER_COUNT := 45
+
 var water_zones: Array = []
 
 
@@ -52,6 +55,7 @@ func _ready() -> void:
 	_generate_water_zones()
 	_place_altar_and_escape()
 	_scatter_props()
+	_scatter_ground_cover()
 
 
 func _generate_water_zones() -> void:
@@ -142,6 +146,23 @@ func _scatter_props() -> void:
 		var pos := _pick_prop_position(placed)
 		prop.global_position = pos
 		placed.append(pos)
+
+
+## Decorative only, so no spacing rules beyond staying out of the water.
+func _scatter_ground_cover() -> void:
+	for _i in range(GROUND_COVER_COUNT):
+		var pos := Vector2.ZERO
+		for _try in range(15):
+			pos = Vector2(
+				randf_range(PROP_MARGIN, Player.WORLD_WIDTH - PROP_MARGIN),
+				randf_range(PROP_MARGIN, Player.WORLD_HEIGHT - PROP_MARGIN)
+			)
+			if not _in_any_water(pos):
+				break
+		var plant: Node2D = GROUND_COVER_SCENE.instantiate()
+		plant.position = pos
+		# Main is still mid-setup here; see _spawn_zone().
+		get_parent().add_child.call_deferred(plant)
 
 
 func _pick_prop_position(placed: Array) -> Vector2:
