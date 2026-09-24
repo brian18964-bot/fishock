@@ -88,6 +88,11 @@ rows = clips x dirs down/left/right/up, x-symmetric camera per animal):
   animal/fox        x0.29 Walk Idle Gallop --frames 12  cell 56x56 --center-y 0.289
   animal/husky      x0.42 Walk Idle --frames 12  cell 64x64 --center-y 0.383
   animal/shiba      x0.32 Walk Idle --frames 12  cell 48x56 --center-y 0.304
+  animal/wolf       x0.42 Walk Idle Gallop --frames 12  cell 72x72 --center-y 0.396
+  animal/white_horse  x0.54 Walk Eating --frames 12  cell 120x112 --center-y 0.814
+  animal/stegosaurus  x0.25 Stegosaurus_Walk Stegosaurus_Idle  cell 216x192 --center-y 0.37
+  animal/apatosaurus  x0.195 Apatosaurus_Walk Apatosaurus_Idle  cell 288x248 --center-y 0.572
+  animal/parasaurolophus  x0.32 Parasaurolophus_Walk Parasaurolophus_Idle  cell 152x136 --center-y 0.574
   (ortho-scale = max(cell W, H) / 27.108)
 """
 import argparse

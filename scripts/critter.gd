@@ -56,7 +56,7 @@ const SPECIES := {
 		"wander_speed": 40.0, "flee_speed": 115.0, "hover": 14.0},
 
 	# Ambient animals: not catchable. Grazers and dogs ignore the player
-	# (flee_speed 0); deer, stag and fox bolt at a gallop, faster than the
+	# (flee_speed 0); deer, stag, fox and wolf bolt at a gallop, faster than the
 	# player can follow.
 	"cow": {"label": "牛", "ambient": true, "frames": 12,
 		"albedo": preload("res://assets/sprites/animal/cow_55deg_albedo.png"),
@@ -112,6 +112,34 @@ const SPECIES := {
 		"normal": preload("res://assets/sprites/animal/shiba_55deg_normal.png"),
 		"clips": 2, "offset": Vector2(0, -8.24), "move_fps": 11.5, "idle_fps": 3.6,
 		"wander_speed": 34.0, "flee_speed": 0.0, "idle_time": Vector2(2, 6)},
+	"wolf": {"label": "狼", "ambient": true, "frames": 12,
+		"albedo": preload("res://assets/sprites/animal/wolf_55deg_albedo.png"),
+		"normal": preload("res://assets/sprites/animal/wolf_55deg_normal.png"),
+		"clips": 3, "offset": Vector2(0, -10.73), "move_fps": 11.5, "idle_fps": 3.6,
+		"flee_fps": 22.2, "flee_clip": 2, "flee_radius": 110.0, "calm_radius": 240.0,
+		"wander_speed": 32.0, "flee_speed": 160.0, "idle_time": Vector2(2, 6)},
+	"white_horse": {"label": "白馬", "ambient": true, "frames": 12,
+		"albedo": preload("res://assets/sprites/animal/white_horse_55deg_albedo.png"),
+		"normal": preload("res://assets/sprites/animal/white_horse_55deg_normal.png"),
+		"clips": 2, "offset": Vector2(0, -22.07), "move_fps": 10.3, "idle_fps": 2.0,
+		"wander_speed": 22.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
+	# Dinosaurs: scaled well below life size so they fit the screen; slow,
+	# unbothered wanderers. The sauropod's 125-frame walk plays ~1.7x fast.
+	"stegosaurus": {"label": "劍龍", "ambient": true, "frames": 12,
+		"albedo": preload("res://assets/sprites/animal/stegosaurus_55deg_albedo.png"),
+		"normal": preload("res://assets/sprites/animal/stegosaurus_55deg_normal.png"),
+		"clips": 2, "offset": Vector2(0, -10.03), "move_fps": 4.1, "idle_fps": 4.7,
+		"wander_speed": 16.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
+	"apatosaurus": {"label": "迷惑龍", "ambient": true, "frames": 12,
+		"albedo": preload("res://assets/sprites/animal/apatosaurus_55deg_albedo.png"),
+		"normal": preload("res://assets/sprites/animal/apatosaurus_55deg_normal.png"),
+		"clips": 2, "offset": Vector2(0, -15.51), "move_fps": 4.0, "idle_fps": 2.8,
+		"wander_speed": 14.0, "flee_speed": 0.0, "idle_time": Vector2(5, 12)},
+	"parasaurolophus": {"label": "副櫛龍", "ambient": true, "frames": 12,
+		"albedo": preload("res://assets/sprites/animal/parasaurolophus_55deg_albedo.png"),
+		"normal": preload("res://assets/sprites/animal/parasaurolophus_55deg_normal.png"),
+		"clips": 2, "offset": Vector2(0, -15.56), "move_fps": 10.3, "idle_fps": 4.8,
+		"wander_speed": 24.0, "flee_speed": 0.0, "idle_time": Vector2(3, 8)},
 }
 
 enum Mode { IDLE, WANDER, FLEE }
