@@ -1,7 +1,8 @@
 extends Node2D
 
 ## Dead-tree, pine, leafy and twisted tree variants pre-rendered from Quaternius' Stylized Nature
-## MegaKit (CC0) through the same 55deg orthographic pipeline as the oil
+## MegaKit (CC0), plus birch and bare trees from Quaternius' nature collections
+## (x1.5, that pack is modelled smaller), through the same 55deg orthographic pipeline as the oil
 ## barrel (see tools/render_sprite.py), all at true scale and the same pixel
 ## density. One variant is picked per tree each run.
 
@@ -11,6 +12,8 @@ extends Node2D
 ## Twisted trees: 384x424 renders, center (0.125, 6.37); the lopsided one:
 ## 384x376, center (4.58, 5.295). offset.x = +center_x * 27.108: the canvas
 ## shifted right, so the texture moves right to bring the trunk onto the node.
+## Birch and bare trees each have their own tight camera, so their offsets are
+## per variant: (center_x, -center_y) * 27.108 (see tools/render_sprite.py).
 const DEAD_TREE_OFFSET := Vector2(0, -142.73)
 const TREE_OFFSET := Vector2(0, -73.19)
 const TWISTED_OFFSET := Vector2(3.39, -172.68)
@@ -81,6 +84,51 @@ const VARIANTS := [
 	{"albedo": preload("res://assets/sprites/twisted_tree/twisted_tree_5_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/twisted_tree/twisted_tree_5_55deg_normal.png"),
 	 "family": "twisted", "offset": TWISTED_OFFSET, "fade_rect": Rect2(-90, -175, 143, 165)},
+	{"albedo": preload("res://assets/sprites/birch_tree/birch_tree_1_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/birch_tree/birch_tree_1_55deg_normal.png"),
+	 "family": "birch", "offset": Vector2(0.49, -63.19), "fade_rect": Rect2(-27, -66, 55, 56)},
+	{"albedo": preload("res://assets/sprites/birch_tree/birch_tree_2_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/birch_tree/birch_tree_2_55deg_normal.png"),
+	 "family": "birch", "offset": Vector2(-1.14, -97.32), "fade_rect": Rect2(-35, -100, 68, 90)},
+	{"albedo": preload("res://assets/sprites/birch_tree/birch_tree_3_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/birch_tree/birch_tree_3_55deg_normal.png"),
+	 "family": "birch", "offset": Vector2(2.14, -68.2), "fade_rect": Rect2(-34, -71, 70, 61)},
+	{"albedo": preload("res://assets/sprites/birch_tree/birch_tree_4_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/birch_tree/birch_tree_4_55deg_normal.png"),
+	 "family": "birch", "offset": Vector2(1.44, -56.28), "fade_rect": Rect2(-28, -58, 57, 48)},
+	{"albedo": preload("res://assets/sprites/birch_tree/birch_tree_5_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/birch_tree/birch_tree_5_55deg_normal.png"),
+	 "family": "birch", "offset": Vector2(4.01, -70.05), "fade_rect": Rect2(-34, -73, 72, 63)},
+	{"albedo": preload("res://assets/sprites/bare_tree/bare_tree_1_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/bare_tree/bare_tree_1_55deg_normal.png"),
+	 "family": "bare", "offset": Vector2(-4.31, -72.68), "fade_rect": Rect2(-34, -76, 63, 66)},
+	{"albedo": preload("res://assets/sprites/bare_tree/bare_tree_2_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/bare_tree/bare_tree_2_55deg_normal.png"),
+	 "family": "bare", "offset": Vector2(-3.09, -71.59), "fade_rect": Rect2(-36, -73, 69, 63)},
+	{"albedo": preload("res://assets/sprites/bare_tree/bare_tree_3_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/bare_tree/bare_tree_3_55deg_normal.png"),
+	 "family": "bare", "offset": Vector2(30.77, -59.42), "fade_rect": Rect2(-27, -61, 85, 51)},
+	{"albedo": preload("res://assets/sprites/bare_tree/bare_tree_4_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/bare_tree/bare_tree_4_55deg_normal.png"),
+	 "family": "bare", "offset": Vector2(-22.09, -56.49), "fade_rect": Rect2(-60, -59, 98, 49)},
+	{"albedo": preload("res://assets/sprites/bare_tree/bare_tree_5_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/bare_tree/bare_tree_5_55deg_normal.png"),
+	 "family": "bare", "offset": Vector2(2.25, -33.94), "fade_rect": Rect2(-14, -36, 30, 26)},
+	{"albedo": preload("res://assets/sprites/bare_tree/bare_tree_6_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/bare_tree/bare_tree_6_55deg_normal.png"),
+	 "family": "bare", "offset": Vector2(43.26, -86.64), "fade_rect": Rect2(-33, -92, 110, 82)},
+	{"albedo": preload("res://assets/sprites/bare_tree/bare_tree_7_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/bare_tree/bare_tree_7_55deg_normal.png"),
+	 "family": "bare", "offset": Vector2(-43.86, -88.67), "fade_rect": Rect2(-84, -94, 124, 84)},
+	{"albedo": preload("res://assets/sprites/bare_tree/bare_tree_8_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/bare_tree/bare_tree_8_55deg_normal.png"),
+	 "family": "bare", "offset": Vector2(2.66, -112.34), "fade_rect": Rect2(-82, -118, 166, 108)},
+	{"albedo": preload("res://assets/sprites/bare_tree/bare_tree_9_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/bare_tree/bare_tree_9_55deg_normal.png"),
+	 "family": "bare", "offset": Vector2(11.58, -36.03), "fade_rect": Rect2(-15, -38, 42, 28)},
+	{"albedo": preload("res://assets/sprites/bare_tree/bare_tree_10_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/bare_tree/bare_tree_10_55deg_normal.png"),
+	 "family": "bare", "offset": Vector2(-11.74, -98.54), "fade_rect": Rect2(-61, -104, 111, 94)},
 ]
 
 @onready var sprite: Sprite2D = $Canopy/Visual

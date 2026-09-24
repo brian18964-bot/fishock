@@ -51,6 +51,16 @@ Sets rendered so far (see art_src/):
   ground_cover/tall_grass  x1.0 --foliage-normals (64x64 flower camera)
   ground_cover/plant_1 x1.3, plant_2 x1.4, plant_big_1 x1.4 (64x64 flower camera)
                      --center-y 0.635 --ortho-scale 2.361 --res 64 64
+  Quaternius nature collections (several models per file, picked with --object;
+  modelled smaller than the MegaKit), one tight camera per model: bounds padded
+  by 0.12 units, W/H rounded up to multiples of 8, center = bounds center:
+  birch_tree/*   BirchTree_1..5 x1.5 --foliage-normals --base-slice 0.05
+  bare_tree/1..5 DeadTree_1..5 (dead_trees_a.glb), 6..10 DeadTree_6..10
+                 (dead_trees_b.glb)  x1.5 --base-slice 0.05
+  ground_cover/shrub, shrub_flowers  Bush, Bush_Flowers x1.5
+  ground_cover/flower_bush_1  Plant_1 (bushes.glb) x1.0 --recenter
+  ground_cover/flower_bush_2, _3  Plant_2, Plant_Flowers x1.0
+  ground_cover/flower_petal_6  Petals_1 x1.5
 """
 import argparse
 import json
