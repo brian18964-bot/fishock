@@ -48,6 +48,8 @@ const PROP_AVOID_SPAWN_RADIUS := 180.0
 
 const GROUND_COVER_SCENE := preload("res://scenes/ground_cover.tscn")
 const GROUND_COVER_COUNT := 80
+const CRITTER_SCENE := preload("res://scenes/critter.tscn")
+const CRITTER_COUNT := 10
 
 var water_zones: Array = []
 
@@ -57,6 +59,7 @@ func _ready() -> void:
 	_place_altar_and_escape()
 	_scatter_props()
 	_scatter_ground_cover()
+	_scatter_critters()
 
 
 func _generate_water_zones() -> void:
@@ -164,6 +167,17 @@ func _scatter_ground_cover() -> void:
 		plant.position = pos
 		# Main is still mid-setup here; see _spawn_zone().
 		get_parent().add_child.call_deferred(plant)
+
+
+## User request: small animals to catch as bait, spread around the map
+## (kept off the spawn point so the first few seconds aren't a chase).
+func _scatter_critters() -> void:
+	for _i in range(CRITTER_COUNT):
+		var pos := _pick_prop_position([])
+		var critter: Node2D = CRITTER_SCENE.instantiate()
+		critter.position = pos
+		# Main is still mid-setup here; see _spawn_zone().
+		get_parent().add_child.call_deferred(critter)
 
 
 func _pick_prop_position(placed: Array) -> Vector2:

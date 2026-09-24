@@ -93,6 +93,9 @@ const EPIC_CHANCE_OF_RARE := 0.18
 const BAIT_FLAVOR_WORM := "蚯蚓"
 const BAIT_FLAVOR_BUG := "蟲子"
 const BAIT_FLAVOR_FROG := "青蛙"
+## User request: critters (see Critter) can be caught as bait. Rats and
+## snakes are "big bait": a rare catch is twice as likely to turn epic.
+const BIG_BAIT_FLAVORS := ["老鼠", "蛇"]
 
 ## User feedback: weather (see GameState.Weather) should color the fishing
 ## odds too - a fish run is a reliably better window, a storm makes the
@@ -119,6 +122,7 @@ var in_fuel_zone: bool = false
 var in_oil_drum_zone: bool = false
 var in_dropped_fish_zone: bool = false
 var in_roadside_zone: bool = false
+var in_critter_zone: bool = false
 var current_noise_radius: float = 0.0
 var cast_jittered: bool = false
 var retrieve_progress: float = 0.0
@@ -153,6 +157,8 @@ var _oil_drum: OilDrum
 var _carried_oil_drum: OilDrum
 var _dropped_fish: DroppedFish
 var _roadside_item: RoadsideItem
+var _critter: Critter
+var _critter_hint_shown: bool = false
 var _wait_duration: float = 1.0
 
 ## Design doc §4.2/§9.2: bobber is quiet, free, consumable bait; lure is a
@@ -187,6 +193,7 @@ var _key_prev_held: Dictionary = {}
 
 
 func _ready() -> void:
+	add_to_group("player")
 	reset_gear()
 	_set_state(State.IDLE)
 
@@ -220,6 +227,18 @@ func set_in_dropped_fish(value: bool, fish_node: DroppedFish) -> void:
 	_dropped_fish = fish_node if value else null
 	if value and state != State.IDLE:
 		_cancel_cast("dropped_fish_interrupt")
+
+
+func set_in_critter(value: bool, critter: Critter) -> void:
+	if value:
+		in_critter_zone = true
+		_critter = critter
+		if not _critter_hint_shown:
+			_critter_hint_shown = true
+			GameState.push_message("按空白鍵可以抓%s當餌料" % critter.get_label())
+	elif critter == _critter:
+		in_critter_zone = false
+		_critter = null
 
 
 func set_in_roadside(value: bool, item: RoadsideItem) -> void:
@@ -575,6 +594,12 @@ func _handle_action_input(delta: float) -> void:
 		_prev_action_held = held
 		return
 
+	if in_critter_zone and _critter != null and _critter.active and state == State.IDLE:
+		if just_pressed:
+			_catch_critter()
+		_prev_action_held = held
+		return
+
 	if in_roadside_zone:
 		_handle_rummage(held, delta)
 		_prev_action_held = held
@@ -635,6 +660,16 @@ func _pick_up_dropped_fish() -> void:
 		GameState.push_message("撿回了一份腐敗的%s（獻祭它可能引發異變）" % fish.get("name", "魚獲"))
 	else:
 		GameState.push_message("撿回了%s（新鮮度打折，價值 %.0f）" % [fish.get("name", "魚"), fish.value])
+
+
+func _catch_critter() -> void:
+	var label: String = _critter.get_label()
+	var flavor: String = _critter.catch()
+	_critter = null
+	in_critter_zone = false
+	bait_count += 1
+	pending_bait_flavor = flavor
+	GameState.push_message("抓到了%s，當作一份餌料！（下一竿餌料：%s）" % [label, flavor])
 
 
 ## Design doc request: rummaging a roadside pile takes a short held
@@ -837,7 +872,10 @@ func _roll_catch_outcome() -> void:
 
 	# User feedback: rarity goes a step further - a rare catch has a small
 	# chance to be upgraded again into a legendary "epic" fish.
-	if is_rare_catch and randf() < EPIC_CHANCE_OF_RARE:
+	var epic_chance := EPIC_CHANCE_OF_RARE
+	if flavor in BIG_BAIT_FLAVORS:
+		epic_chance *= 2.0
+	if is_rare_catch and randf() < epic_chance:
 		is_epic_catch = true
 
 	# User feedback: named species (FishData.SPECIES) replace the old

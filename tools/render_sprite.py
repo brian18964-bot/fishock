@@ -71,13 +71,22 @@ Sets rendered so far (see art_src/):
   ground_cover/grass_large, grass_small  Grass_Large_Extruded, Grass_Small x2.0
   oak_tree/*     NormalTree_1..5 x1.5 --foliage-normals --base-slice 0.05
   rock/boulder_*  Rock_1..5 x3.5 --recenter
+
+Animated sheets (anim / measure-anim; --drop Icosphere, 8 frames per clip,
+rows = clips x dirs down/left/right/up, x-symmetric camera per animal):
+  critter/rat     x0.35 Rat_Run Rat_Idle          cell 104x88 --center-y 0.258
+  critter/frog    x0.34 Frog_Jump Frog_Idle       cell 64x64  --center-y 0.109
+  critter/snake   x0.44 Snake_Walk Snake_Idle     cell 56x56  --center-y 0.43
+  critter/spider  x0.28 Spider_Walk Spider_Idle   cell 56x48  --center-y 0.041
+  critter/wasp    x0.26 Wasp_Flying --facing -90  cell 48x40  --center-y 0.456
+  (ortho-scale = max(cell W, H) / 27.108)
 """
 import argparse
 import json
 import math
 
 import bpy
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 ELEV = math.radians(55.0)
 FORWARD = Vector((0.0, math.cos(ELEV), -math.sin(ELEV)))
@@ -98,9 +107,13 @@ def base_footprint(meshes, base_slice=0.25):
             min(p.y for p in base), max(p.y for p in base))
 
 
-def load_model(path, scale=1.0, recenter=False, base_slice=0.25, only=None):
+def load_model(path, scale=1.0, recenter=False, base_slice=0.25, only=None, drop=()):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=path)
+    for name in drop:
+        # Stray helper meshes some exports carry (e.g. the animal pack's
+        # unit Icosphere sitting at the origin).
+        bpy.data.objects.remove(bpy.data.objects[name], do_unlink=True)
     if only:
         # Collection files lay several models out in a row; keep just one and
         # bring its origin to the world origin (keeping its height).
@@ -274,6 +287,111 @@ def render_pass(path_out, mode):
     bpy.ops.render.render(write_still=True)
 
 
+# Screen directions for animated sheets: yaw applied to a model that faces
+# the camera (-Y). Rotating +90deg about Z turns -Y toward +X (screen right).
+DIRS = {"down": 0.0, "right": 90.0, "up": 180.0, "left": -90.0}
+
+
+def find_action(name):
+    for a in bpy.data.actions:
+        short = a.name.split("|")[-1]
+        if short == name or short.startswith(name + "_"):
+            return a
+    raise SystemExit(f"no action {name!r}; have {[a.name for a in bpy.data.actions]}")
+
+
+def set_pose(action, frame):
+    arm = next(o for o in bpy.context.scene.objects if o.type == 'ARMATURE')
+    ad = arm.animation_data or arm.animation_data_create()
+    for t in ad.nla_tracks:
+        t.mute = True  # the importer stacks every clip as NLA strips
+    ad.action = action
+    whole = math.floor(frame)
+    bpy.context.scene.frame_set(int(whole), subframe=frame - whole)
+    bpy.context.view_layer.update()
+
+
+def loop_frames(action, count):
+    # Loops end on their first pose, so sample [start, end) evenly.
+    start, end = action.frame_range
+    return [start + i * (end - start) / count for i in range(count)]
+
+
+class Yaw:
+    """Turns the whole model about the world Z axis (through the origin)."""
+
+    def __init__(self, facing=0.0):
+        self.facing = facing
+        bpy.context.view_layer.update()
+        self.base = {o: o.matrix_world.copy() for o in bpy.context.scene.objects
+                     if o.parent is None and o.type != 'CAMERA'}
+
+    def set(self, deg):
+        rot = Matrix.Rotation(math.radians(deg + self.facing), 4, 'Z')
+        for o, m in self.base.items():
+            o.matrix_world = rot @ m
+        bpy.context.view_layer.update()
+
+
+def anim_cells(args):
+    """(action, dir name, frame) for every cell, rows = actions x dirs."""
+    for name in args.actions:
+        action = find_action(name)
+        for d in args.dirs:
+            for f in loop_frames(action, args.frames):
+                yield action, d, f
+
+
+def measure_anim(meshes, args):
+    yaw = Yaw(args.facing)
+    total = None
+    for action, d, f in anim_cells(args):
+        yaw.set(DIRS[d])
+        set_pose(action, f)
+        b = screen_bounds(meshes)
+        if total is None:
+            total = b
+        else:
+            total = {"min_x": min(total["min_x"], b["min_x"]), "max_x": max(total["max_x"], b["max_x"]),
+                     "min_y": min(total["min_y"], b["min_y"]), "max_y": max(total["max_y"], b["max_y"])}
+    return total
+
+
+def render_sheet(meshes, args):
+    """Renders every cell and packs them into OUT_PREFIX_{albedo,normal}.png:
+    one row per (action, direction), one column per frame."""
+    import os
+    import tempfile
+    import numpy as np
+    yaw = Yaw(args.facing)
+    w, h = args.res
+    cells = list(anim_cells(args))
+    rows = len(args.actions) * len(args.dirs)
+    tmp = tempfile.mkdtemp()
+    for mode in ("albedo", "normal"):
+        rewire_materials(meshes, mode)
+        sheet = np.zeros((rows * h, args.frames * w, 4), dtype=np.float32)
+        for i, (action, d, f) in enumerate(cells):
+            yaw.set(DIRS[d])
+            set_pose(action, f)
+            path = os.path.join(tmp, f"{mode}_{i}.png")
+            render_pass(path, mode)
+            img = bpy.data.images.load(path)
+            img.colorspace_settings.name = 'Non-Color'  # copy stored bytes untouched
+            px = np.empty(w * h * 4, dtype=np.float32)
+            img.pixels.foreach_get(px)
+            bpy.data.images.remove(img)
+            row, col = divmod(i, args.frames)
+            # Blender images are bottom-up; build the sheet top-down.
+            sheet[row * h:(row + 1) * h, col * w:(col + 1) * w] = np.flipud(px.reshape(h, w, 4))
+        out = bpy.data.images.new(f"sheet_{mode}", args.frames * w, rows * h, alpha=True)
+        out.colorspace_settings.name = 'Non-Color'
+        out.pixels.foreach_set(np.flipud(sheet).ravel())
+        out.filepath_raw = f"{args.out_prefix}_{mode}.png"
+        out.file_format = 'PNG'
+        out.save()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -291,18 +409,42 @@ def main():
                    help="keep authored normals on back faces (foliage cards with custom rounded normals)")
     r.add_argument("--fold-normals", action="store_true",
                    help="mirror away-facing normals toward the viewer (canopies with tree-wide rounded normals)")
-    for p in (m, r):
+    ma = sub.add_parser("measure-anim", help="union screen bounds over every sheet cell")
+    ma.add_argument("model")
+    a = sub.add_parser("anim", help="render animation sprite sheets (rows = actions x dirs)")
+    a.add_argument("model")
+    a.add_argument("out_prefix")
+    a.add_argument("--center-y", type=float, required=True)
+    a.add_argument("--center-x", type=float, default=0.0)
+    a.add_argument("--ortho-scale", type=float, required=True)
+    a.add_argument("--res", type=int, nargs=2, metavar=("W", "H"), required=True, help="size of ONE cell")
+    for p in (ma, a):
+        p.add_argument("--actions", nargs="+", required=True, help="clip names, e.g. Rat_Run Rat_Idle")
+        p.add_argument("--frames", type=int, default=8, help="frames sampled per clip loop")
+        p.add_argument("--dirs", nargs="+", default=["down", "left", "right", "up"], choices=list(DIRS))
+        p.add_argument("--facing", type=float, default=0.0,
+                       help="extra yaw (deg) that turns the model to face the camera (-Y)")
+    for p in (m, r, ma, a):
         p.add_argument("--scale", type=float, default=1.0,
                        help="uniform model scale about the origin, for models authored at a different scale")
         p.add_argument("--recenter", action="store_true",
                        help="center the model's ground footprint on the origin (for off-center origins)")
         p.add_argument("--object", default=None,
                        help="render only this named object from a multi-model file (moved to the origin)")
+        p.add_argument("--drop", action="append", default=[],
+                       help="delete this named object after import (repeatable)")
         p.add_argument("--base-slice", type=float, default=0.25,
                        help="fraction of model height counted as its base for --recenter/footprint (0.05 for leaning trees)")
     args = parser.parse_args()
 
-    meshes = load_model(args.model, args.scale, args.recenter, args.base_slice, args.object)
+    meshes = load_model(args.model, args.scale, args.recenter, args.base_slice, args.object, args.drop)
+    if args.cmd == "measure-anim":
+        print(json.dumps(measure_anim(meshes, args)))
+        return
+    if args.cmd == "anim":
+        setup_scene(args.center_y, args.ortho_scale, *args.res, args.center_x)
+        render_sheet(meshes, args)
+        return
     if args.cmd == "measure":
         bounds = screen_bounds(meshes)
         bounds["footprint_xy"] = base_footprint(meshes, args.base_slice)
