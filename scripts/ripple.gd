@@ -9,10 +9,16 @@ extends ColorRect
 ## as the art, and clipped to the water zone it started in.
 ##
 ## Spawned via Ripple.spawn(): bobber/lure landing and bobbing, the lure's
-## wake while reeled, bites, the player wading, moored boats rocking.
+## wake while reeled, bites, the player wading, moored boats rocking. When
+## the live wave simulation (WaterSim) is running, spawn() pushes the water
+## there instead and draws no ring.
 
 const SHADER := preload("res://shaders/ripple.gdshader")
 const GROUND_SQUASH := 0.819  # sin 55deg
+## A ring of `radius` becomes a push of this much smaller footprint and
+## strength in the simulation - the sim spreads it out on its own.
+const SIM_RADIUS := 0.22
+const SIM_STRENGTH := 0.35
 
 var _life: float = 1.0
 var _age: float = 0.0
@@ -24,6 +30,8 @@ var _material: ShaderMaterial
 static func spawn(parent: Node, pos: Vector2, radius: float, strength: float = 1.0, life: float = 1.4) -> Ripple:
 	var zone: WaterZone = water_at(parent.get_tree(), pos)
 	if zone == null:
+		return null
+	if WaterSim.impulse(pos, radius * SIM_RADIUS, strength * SIM_STRENGTH):
 		return null
 	var ripple := Ripple.new()
 	ripple._setup(pos, radius, strength, life, zone)

@@ -21,6 +21,7 @@ var _bob_timer := 0.0
 
 
 func _ready() -> void:
+	add_child(WaterSim.new())
 	player.cast_started.connect(_on_cast_started)
 	player.bite_started.connect(_on_bite_started)
 	player.line_cleared.connect(_on_line_cleared)
