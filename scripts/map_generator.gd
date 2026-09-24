@@ -46,6 +46,10 @@ const PROP_MARGIN := 80.0
 const PROP_MIN_SEPARATION := 90.0
 const PROP_AVOID_SPAWN_RADIUS := 180.0
 
+const DOCK_SCENE := preload("res://scenes/dock.tscn")
+const DOCK_COUNT := 3
+const DOCK_SHORE_MARGIN := 60.0
+
 const GROUND_COVER_SCENE := preload("res://scenes/ground_cover.tscn")
 const GROUND_COVER_COUNT := 80
 const CRITTER_SCENE := preload("res://scenes/critter.tscn")
@@ -57,6 +61,7 @@ var water_zones: Array = []
 
 func _ready() -> void:
 	_generate_water_zones()
+	_place_docks()
 	_place_altar_and_escape()
 	_scatter_props()
 	_scatter_ground_cover()
@@ -82,6 +87,36 @@ func _spawn_zone(type: int, radius: float) -> void:
 	zone.setup(type, radius, pos)
 	get_parent().add_child.call_deferred(zone)
 	water_zones.append(zone)
+
+
+## User request: docks out into a few common zones. Each picks one of the
+## four directions whose shore point is on open land (inside the map, not in
+## another zone) and lays the dock along it toward the zone's center.
+func _place_docks() -> void:
+	var commons: Array = water_zones.filter(func(z): return not z.is_rare())
+	commons.shuffle()
+	var placed := 0
+	for zone in commons:
+		if placed >= DOCK_COUNT:
+			break
+		var dirs := [Vector2.DOWN, Vector2.UP, Vector2.LEFT, Vector2.RIGHT]
+		dirs.shuffle()
+		for d in dirs:
+			var vertical: bool = d.x == 0.0
+			var half: float = Dock.half_length(vertical)
+			var shore: Vector2 = zone.global_position + d * (zone.radius + half * 0.6)
+			if shore.x < DOCK_SHORE_MARGIN or shore.x > Player.WORLD_WIDTH - DOCK_SHORE_MARGIN \
+					or shore.y < DOCK_SHORE_MARGIN or shore.y > Player.WORLD_HEIGHT - DOCK_SHORE_MARGIN:
+				continue
+			if _in_any_water(shore):
+				continue
+			var dock: Dock = DOCK_SCENE.instantiate()
+			# Shore end 30% of the length past the edge, the rest over water.
+			dock.position = zone.global_position + d * (zone.radius - half * 0.4)
+			dock.setup(vertical, randf() < 0.5)
+			get_parent().add_child.call_deferred(dock)
+			placed += 1
+			break
 
 
 func _pick_zone_position(radius: float) -> Vector2:

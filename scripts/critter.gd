@@ -140,6 +140,21 @@ const SPECIES := {
 		"normal": preload("res://assets/sprites/animal/parasaurolophus_55deg_normal.png"),
 		"clips": 2, "offset": Vector2(0, -15.56), "move_fps": 10.3, "idle_fps": 4.8,
 		"wander_speed": 24.0, "flee_speed": 0.0, "idle_time": Vector2(3, 8)},
+	"trex": {"label": "暴龍", "ambient": true, "frames": 12,
+		"albedo": preload("res://assets/sprites/animal/trex_55deg_albedo.png"),
+		"normal": preload("res://assets/sprites/animal/trex_55deg_normal.png"),
+		"clips": 2, "offset": Vector2(0, -35.7), "move_fps": 8.7, "idle_fps": 4.8,
+		"wander_speed": 20.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
+	"triceratops": {"label": "三角龍", "ambient": true, "frames": 12,
+		"albedo": preload("res://assets/sprites/animal/triceratops_55deg_albedo.png"),
+		"normal": preload("res://assets/sprites/animal/triceratops_55deg_normal.png"),
+		"clips": 2, "offset": Vector2(0, -11.44), "move_fps": 4.1, "idle_fps": 4.7,
+		"wander_speed": 14.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
+	"velociraptor": {"label": "迅猛龍", "ambient": true, "frames": 12,
+		"albedo": preload("res://assets/sprites/animal/velociraptor_55deg_albedo.png"),
+		"normal": preload("res://assets/sprites/animal/velociraptor_55deg_normal.png"),
+		"clips": 2, "offset": Vector2(0, -12.69), "move_fps": 8.0, "idle_fps": 4.8,
+		"wander_speed": 30.0, "flee_speed": 0.0, "idle_time": Vector2(2, 6)},
 }
 
 enum Mode { IDLE, WANDER, FLEE }

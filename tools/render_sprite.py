@@ -71,6 +71,8 @@ Sets rendered so far (see art_src/):
   ground_cover/grass_large, grass_small  Grass_Large_Extruded, Grass_Small x2.0
   oak_tree/*     NormalTree_1..5 x1.5 --foliage-normals --base-slice 0.05
   rock/boulder_*  Rock_1..5 x3.5 --recenter
+  dock/dock_long*_vertical    x0.34 --yaw 0   --center-y 0.69  --ortho-scale 6.7877 --res 96 184
+  dock/dock_long*_horizontal  x0.34 --yaw 90  --center-y 0.715 --ortho-scale 7.673  --res 208 120
 
 Animated sheets (anim / measure-anim; --drop Icosphere, 8 frames per clip,
 rows = clips x dirs down/left/right/up, x-symmetric camera per animal):
@@ -93,6 +95,9 @@ rows = clips x dirs down/left/right/up, x-symmetric camera per animal):
   animal/stegosaurus  x0.25 Stegosaurus_Walk Stegosaurus_Idle  cell 216x192 --center-y 0.37
   animal/apatosaurus  x0.195 Apatosaurus_Walk Apatosaurus_Idle  cell 288x248 --center-y 0.572
   animal/parasaurolophus  x0.32 Parasaurolophus_Walk Parasaurolophus_Idle  cell 152x136 --center-y 0.574
+  animal/trex       x0.26 TRex_Walk TRex_Idle  cell 248x224 --center-y 1.317
+  animal/triceratops  x0.26 Triceratops_Walk Triceratops_Idle  cell 176x152 --center-y 0.422
+  animal/velociraptor x0.24 Velociraptor_Walk Velociraptor_Idle  cell 120x104 --center-y 0.468
   (ortho-scale = max(cell W, H) / 27.108)
 """
 import argparse
@@ -454,6 +459,8 @@ def main():
                        help="center the model's ground footprint on the origin (for off-center origins)")
         p.add_argument("--object", default=None,
                        help="render only this named object from a multi-model file (moved to the origin)")
+        p.add_argument("--yaw", type=float, default=0.0,
+                       help="turn the model about Z first (deg; +90 turns a camera-facing model to face right)")
         p.add_argument("--drop", action="append", default=[],
                        help="delete this named object after import (repeatable)")
         p.add_argument("--base-slice", type=float, default=0.25,
@@ -461,6 +468,8 @@ def main():
     args = parser.parse_args()
 
     meshes = load_model(args.model, args.scale, args.recenter, args.base_slice, args.object, args.drop)
+    if args.yaw:
+        Yaw().set(args.yaw)
     if args.cmd == "measure-anim":
         print(json.dumps(measure_anim(meshes, args)))
         return
