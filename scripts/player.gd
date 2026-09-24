@@ -11,6 +11,12 @@ signal catch_failed(reason: String)
 signal line_cleared()
 signal sacrifice_progress_updated(progress: float)
 signal rummage_progress_updated(progress: float)
+## A test nibble on the bait before the real bite (fake: a full-looking dunk
+## meant to bait an early strike) - see the fishing difficulty plan.
+signal nibble(fake: bool)
+## Something happened in the fight (FishFight event: run, side_run, jump,
+## dive, dive_saved, enrage).
+signal fight_event(kind: String)
 
 enum State { IDLE, CHARGING, WAITING, BITE, REELING }
 enum FishingMode { BOBBER, LURE }
@@ -75,20 +81,12 @@ enum CastOutcome { BITE, TIMEOUT, BAIT_STOLEN }
 const NO_BITE_CHANCE := 0.22
 const HOTSPOT_NO_BITE_MULT := 0.4
 
-## User feedback: the fight should have real back-and-forth pull, not just
-## "hold to win" - every fish (not just rare ones) now periodically
-## "runs": tension spikes hard and holding through it costs you progress,
-## so you have to ease off and let it tire itself out, then reel again.
-const FISH_RUN_INTERVAL_MIN := 1.2
-const FISH_RUN_INTERVAL_MAX := 2.6
-const FISH_RUN_DURATION := 0.6
-const FISH_RUN_TENSION_MULT := 2.6
-const FISH_RUN_PROGRESS_PENALTY := 0.12
-
-## User feedback: each species' "trait" (see FishData.SPECIES) scales how
-## often/hard it runs - calm fish are an easier fight, wild ones harder.
-const TRAIT_RUN_INTERVAL_MULT := {"calm": 1.6, "normal": 1.0, "wild": 0.65}
-const TRAIT_RUN_TENSION_MULT := {"calm": 0.7, "normal": 1.0, "wild": 1.4}
+## User decision (fishing difficulty plan): each species fights at a
+## difficulty (FishData.DIFFICULTY) - test nibbles before the real bite,
+## the strike window, and the whole fight (FishFight: stamina, runs
+## straight or sideways, leaps, dashes for cover, berserk masters).
+## Seconds between nibbles:
+const NIBBLE_GAP := Vector2(0.55, 1.2)
 
 ## User feedback: rarity should go a step further than common/rare - a
 ## small chance for a rare catch to be upgraded to a legendary "epic" fish
@@ -145,8 +143,14 @@ var affliction_text: String = "水鬼異常狀態中"
 var touch_aim := Vector2.ZERO
 var cast_outcome: int = CastOutcome.BITE
 var stolen_timer: float = 0.0
-var fish_run_timer: float = 0.0
+## While a run is on (seconds left) - the rod and camera shake with it.
 var fish_run_active_time: float = 0.0
+var fight: FishFight
+var difficulty_key := "novice"
+var fish_habit := ""
+var nibbles_left := 0
+var _nibbled := false
+var _lure_nibbles: Array = []
 var pending_bait_flavor: String = ""
 var is_epic_catch: bool = false
 var fish_trait: String = "normal"
@@ -189,13 +193,9 @@ const FAR_RARE_CHANCE := 0.06
 const HOTSPOT_RARE_CHANCE := 0.35
 const HOTSPOT_HEART_CHANCE_DAY := 0.08
 const HOTSPOT_HEART_CHANCE_NIGHT := 0.16
-const RARE_PULL_INTERVAL := 2.0
-
 var is_rare_catch: bool = false
 var is_heart_catch: bool = false
 var caught_in_hotspot: bool = false
-var rare_pull_dir: Vector2 = Vector2.ZERO
-var rare_pull_timer: float = 0.0
 
 var _prev_action_held: bool = false
 var _prev_mode_toggle_held: bool = false
@@ -704,6 +704,9 @@ func _handle_action_input(delta: float) -> void:
 			# quick taps give slow, precise "點收" control.
 			if fishing_mode == FishingMode.LURE and just_pressed:
 				retrieve_progress = min(retrieve_progress + LURE_CLICK_AMOUNT, 1.0)
+			elif fishing_mode == FishingMode.BOBBER and just_pressed and _nibbled:
+				# Struck at a nibble (or a fake dunk): the fish is gone.
+				_fail_catch("spooked")
 		State.REELING:
 			pass
 
@@ -792,6 +795,14 @@ func _update_fishing(delta: float) -> void:
 				elif wait_timer <= 0.0:
 					if cast_outcome == CastOutcome.TIMEOUT:
 						_fail_catch("no_bite")
+					elif nibbles_left > 0:
+						# Test nibbles first - the float twitches (or, on
+						# harder fish, dunks right under without the splash)
+						# and striking now scares the fish off.
+						nibbles_left -= 1
+						_nibbled = true
+						nibble.emit(randf() < FishData.DIFFICULTY[difficulty_key].fake)
+						wait_timer = randf_range(NIBBLE_GAP.x, NIBBLE_GAP.y)
 					else:
 						_start_bite()
 			else:
@@ -800,6 +811,10 @@ func _update_fishing(delta: float) -> void:
 				# _handle_action_input() - rather than an automatic timer.
 				if _is_action_pressed():
 					retrieve_progress += LURE_HOLD_RATE * delta / max(_wait_duration, 0.1)
+				# Nibbles on a lure are just a tell (taps on the line).
+				if not _lure_nibbles.is_empty() and retrieve_progress >= _lure_nibbles[0]:
+					_lure_nibbles.pop_front()
+					nibble.emit(false)
 				# Design doc request: reeled out of a rare zone's boundary
 				# counts as fully retrieved outright - you don't have to
 				# drag it all the way back to shore.
@@ -819,37 +834,22 @@ func _update_fishing(delta: float) -> void:
 			if bite_timer <= 0.0:
 				_fail_catch("missed_bite")
 		State.REELING:
+			# The fight itself lives in FishFight (see its rules).
 			var held := _is_action_pressed()
-			var rate_mult := 1.0
-			if is_rare_catch:
-				rate_mult = _update_rare_pull(delta)
-			else:
-				var moving := velocity.length() > 1.0
-				rate_mult = MOVE_REEL_PENALTY if moving else 1.0
-
-			# User feedback: every fish should fight back, not just rare
-			# ones - periodically it "runs": hold through it and you lose
-			# ground and spike tension hard; ease off and it mostly just
-			# costs you tension, not progress, until it tires out.
-			var in_run := _update_fish_run(delta)
-			if in_run:
-				if held:
-					progress = max(progress - FISH_RUN_PROGRESS_PENALTY * delta / FISH_RUN_DURATION, 0.0)
-					tension += tier_data.tension_rise * FISH_RUN_TENSION_MULT * _trait_tension_mult() * delta
-				else:
-					tension += tier_data.tension_rise * 0.4 * _trait_tension_mult() * delta
-			elif held:
-				progress += tier_data.reel_speed * rate_mult * reel_power_mult * delta
-				tension += tier_data.tension_rise * delta
-			else:
-				tension -= tier_data.tension_fall * delta
-			tension = clamp(tension, 0.0, 1.0)
-			progress = clamp(progress, 0.0, 1.0)
+			var moving := velocity.length() > 1.0
+			var reel_mult := MOVE_REEL_PENALTY if moving and fight.run_side == Vector2.ZERO else 1.0
+			var line_dir := (cast_target - global_position).normalized()
+			for ev in fight.update(delta, held, _counter_dir(), line_dir, reel_mult):
+				_on_fight_event(ev)
+			progress = fight.progress
+			tension = fight.tension
+			fish_run_active_time = fight.run_left
 			reel_progress.emit(progress, tension)
-			if tension >= 1.0:
-				_fail_catch("line_break")
-			elif progress >= 1.0:
-				_succeed_catch()
+			match fight.result:
+				"landed":
+					_succeed_catch()
+				"line_break", "shook_off", "cover":
+					_fail_catch(fight.result)
 		_:
 			pass
 
@@ -961,6 +961,8 @@ func _roll_catch_outcome() -> void:
 		# color rather than reusing whatever the last real fish rolled.
 		fish_trait = "calm"
 		current_fish_color = Color(1, 0.4, 0.5)
+		difficulty_key = "novice"
+		fish_habit = ""
 	else:
 		var zone_key := "rare" if in_rare_zone else "common"
 		var rarity_key := "epic" if is_epic_catch else ("rare" if is_rare_catch else "common")
@@ -969,15 +971,19 @@ func _roll_catch_outcome() -> void:
 		tier_data.value = tier_data.value * float(species.value_mult)
 		fish_trait = species.trait
 		current_fish_color = species.color
+		difficulty_key = FishData.difficulty_for(rarity_key, fish_trait)
+		fish_habit = FishData.habit_for(species.name)
 
-	if is_rare_catch:
-		tier_data.reel_speed = tier_data.reel_speed * 0.6
-		tier_data.tension_rise = tier_data.tension_rise * 1.15
-		tier_data.bite_window = tier_data.bite_window * 1.2
-	if is_epic_catch:
-		tier_data.reel_speed = tier_data.reel_speed * 0.8
-		tier_data.tension_rise = tier_data.tension_rise * 1.15
-		tier_data.bite_window = tier_data.bite_window * 0.85
+	# How long you get to strike: the difficulty's window, a little longer
+	# close in and shorter far out (the cast tier's own window, 0.7 = mid).
+	var diff: Dictionary = FishData.DIFFICULTY[difficulty_key]
+	tier_data.bite_window = clampf(diff.window * tier_data.bite_window / 0.7, 0.3, 1.3)
+	nibbles_left = randi_range(diff.nibbles.x, diff.nibbles.y)
+	_nibbled = false
+	_lure_nibbles.clear()
+	for _i in nibbles_left:
+		_lure_nibbles.append(randf_range(0.35, 0.95))
+	_lure_nibbles.sort()
 
 	var zone_mult: float = RARE_ZONE_VALUE_MULT if in_rare_zone else COMMON_ZONE_VALUE_MULT
 	tier_data.value = tier_data.value * zone_mult
@@ -1002,63 +1008,42 @@ func _start_bite() -> void:
 
 
 func _hook_fish() -> void:
+	fight = FishFight.new(difficulty_key, fish_habit, tier_data, reel_power_mult)
 	progress = 0.0
-	tension = 0.15
-	fish_run_timer = randf_range(FISH_RUN_INTERVAL_MIN, FISH_RUN_INTERVAL_MAX) * _trait_interval_mult()
+	tension = fight.tension
 	fish_run_active_time = 0.0
-	if is_rare_catch:
-		rare_pull_dir = Vector2.RIGHT.rotated(randf() * TAU)
-		rare_pull_timer = RARE_PULL_INTERVAL
-		GameState.push_message("稀有魚用力往%s拉，往反方向走可以拉近距離！" % _describe_pull(rare_pull_dir))
+	GameState.push_message("上鉤了！（難度：%s）" % fight.label())
 	_set_state(State.REELING)
 	hook_success.emit()
 
 
-## User feedback: the fight should feel like a real tug-of-war - every so
-## often the fish "runs" for a beat. Returns true while a run is active.
-func _update_fish_run(delta: float) -> bool:
-	if fish_run_active_time > 0.0:
-		fish_run_active_time -= delta
-		if fish_run_active_time <= 0.0:
-			fish_run_timer = randf_range(FISH_RUN_INTERVAL_MIN, FISH_RUN_INTERVAL_MAX) * _trait_interval_mult()
-		return true
-	fish_run_timer -= delta
-	if fish_run_timer <= 0.0:
-		fish_run_active_time = FISH_RUN_DURATION
-		GameState.push_message("魚用力掙扎了一下！先放手別硬拉")
-		return true
-	return false
-
-
-func _trait_interval_mult() -> float:
-	return TRAIT_RUN_INTERVAL_MULT.get(fish_trait, 1.0)
-
-
-func _trait_tension_mult() -> float:
-	return TRAIT_RUN_TENSION_MULT.get(fish_trait, 1.0)
-
-
-## Design doc §4.4: rare-fish direction resistance. Moving opposite the
-## fish's current pull speeds progress up (to 1.2x); moving with it drags
-## it down (to 0.2x); standing still is a middling 0.7x either way.
-func _update_rare_pull(delta: float) -> float:
-	rare_pull_timer -= delta
-	if rare_pull_timer <= 0.0:
-		rare_pull_dir = Vector2.RIGHT.rotated(randf() * TAU)
-		rare_pull_timer = RARE_PULL_INTERVAL
-		GameState.push_message("稀有魚換方向了，往%s拉！" % _describe_pull(rare_pull_dir))
-
-	var alignment := 0.0
+## Which way the rod is being pulled, for answering a sideways run: the
+## cast button being dragged, else the aim stick, else the way you walk.
+func _counter_dir() -> Vector2:
+	if touch_aim != Vector2.ZERO:
+		return touch_aim
+	if _aim_joystick.is_pressed:
+		return _aim_joystick.output.normalized()
 	if velocity.length() > 1.0:
-		alignment = velocity.normalized().dot(-rare_pull_dir)
-	var clamped: float = clamp(alignment, -1.0, 1.0)
-	return 0.7 + clamped * 0.5
+		return velocity.normalized()
+	return Vector2.ZERO
 
 
-func _describe_pull(dir: Vector2) -> String:
-	if abs(dir.x) > abs(dir.y):
-		return "右" if dir.x > 0.0 else "左"
-	return "下" if dir.y > 0.0 else "上"
+func _on_fight_event(kind: String) -> void:
+	match kind:
+		"run":
+			GameState.push_message("魚往外衝！先放手放線")
+		"side_run":
+			GameState.push_message("魚往%s邊衝！往%s拉竿頂住" % [FishFight.describe(fight.run_side), FishFight.describe(-fight.run_side)])
+		"jump":
+			GameState.push_message("魚跳出水面！快放手！")
+		"dive":
+			GameState.push_message("魚往岸邊石縫鑽！按住收線把牠拉回來！")
+		"dive_saved":
+			GameState.push_message("把魚從石縫邊拉回來了")
+		"enrage":
+			GameState.push_message("魚暴走了！先放線撐住！")
+	fight_event.emit(kind)
 
 
 func _succeed_catch() -> void:
@@ -1094,6 +1079,12 @@ func _fail_catch(reason: String) -> void:
 		msg = "餌被小魚偷吃掉了，什麼都沒釣到"
 	elif reason == "no_bite":
 		msg = "等了老半天，這裡沒魚咬餌"
+	elif reason == "spooked":
+		msg = "太早揚竿，把魚嚇跑了（等浮標整個沉下去、水花濺起再拉）"
+	elif reason == "shook_off":
+		msg = "魚在空中甩掉了魚鉤（跳起來時要放手）"
+	elif reason == "cover":
+		msg = "魚鑽進石縫，線被磨斷了"
 	GameState.push_message(msg)
 	_reset_line(State.IDLE)
 

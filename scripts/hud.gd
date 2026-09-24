@@ -45,11 +45,15 @@ const PHASE_TEXT := {
 }
 
 var _message_timer: float = 0.0
+var _stamina_label: Label
+var _tension_label: Label
 var _lantern: Lantern
 var _player: Player
 
 
 func _ready() -> void:
+	_stamina_label = _bar_label(progress_bar, "魚體力")
+	_tension_label = _bar_label(tension_bar, "張力")
 	var player: Player = get_tree().current_scene.get_node("Player")
 	_player = player
 	player.state_changed.connect(_on_state_changed)
@@ -119,11 +123,19 @@ func _on_state_changed(new_state: String) -> void:
 	var reeling := new_state == "REELING"
 	progress_bar.visible = reeling
 	tension_bar.visible = reeling
+	_stamina_label.visible = reeling
+	_tension_label.visible = reeling
 
 
+## User decision (fishing difficulty plan): the top bar is the fish's
+## stamina running down, labelled with its difficulty; the one under it is
+## line tension.
 func _on_reel_progress(progress: float, tension: float) -> void:
-	progress_bar.value = progress
+	progress_bar.value = 1.0 - progress
 	tension_bar.value = tension
+	if _player.fight != null:
+		_stamina_label.text = "魚體力・%s" % _player.fight.label()
+	_tension_label.modulate = Color(1, 0.35, 0.3) if tension > 0.8 else Color(1, 1, 1)
 
 
 func _on_sacrifice_progress_updated(progress: float) -> void:
@@ -203,3 +215,16 @@ func _rarity_label(rarity: String) -> String:
 			return "史詩"
 		_:
 			return rarity
+
+
+## A small caption left of a bar.
+func _bar_label(bar: Control, text: String) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	label.position = bar.position + Vector2(-110.0, -4.0)
+	label.size = Vector2(104.0, 20.0)
+	label.add_theme_font_size_override("font_size", 13)
+	label.visible = false
+	bar.get_parent().add_child(label)
+	return label

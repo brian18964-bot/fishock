@@ -22,6 +22,19 @@ const FLOAT := [preload("res://assets/sprites/lure/bobber_55deg_albedo.png"), pr
 const SINK_REST := 4.0
 const SINK_DUNK := 22.0
 const SINK_HOOKED := 16.0
+## Test nibbles before the real bite: a little twitch, or (harder fish) a
+## fake dunk right under that pops straight back up - no splash.
+const DIP_NIBBLE := 9.0
+const DIP_FAKE := 22.0
+const DIP_TIME := 0.22
+
+var _dip := 0.0
+var _dip_timer := 0.0
+
+
+func dip(depth: float) -> void:
+	_dip = depth
+	_dip_timer = DIP_TIME
 const LURES := [
 	[preload("res://assets/sprites/lure/lure_1_55deg_albedo.png"), preload("res://assets/sprites/lure/lure_1_55deg_normal.png")],
 	[preload("res://assets/sprites/lure/lure_2_55deg_albedo.png"), preload("res://assets/sprites/lure/lure_2_55deg_normal.png")],
@@ -72,7 +85,10 @@ func _process(delta: float) -> void:
 			target = SINK_DUNK if fmod(_time, 0.45) < 0.22 else SINK_REST + 6.0
 		FloatState.HOOKED:
 			target = SINK_HOOKED + sin(_time * 13.0) * 3.0
-	_sink = move_toward(_sink, target, delta * 90.0)
+	if _dip_timer > 0.0:
+		_dip_timer -= delta
+		target = maxf(target, _dip)
+	_sink = move_toward(_sink, target, delta * 140.0)
 	var size: Vector2 = FLOAT[0].get_size()
 	var cut := clampf(_sink, 0.0, size.y - 4.0)
 	region_rect = Rect2(0.0, 0.0, size.x, size.y - cut)

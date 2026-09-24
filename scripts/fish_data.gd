@@ -39,7 +39,7 @@ const TIERS := {
 
 ## User feedback: named fish species per tier x zone type x rarity, instead
 ## of a generic label + flat multiplier. "trait" feeds the fight's periodic
-## "run" (see Player._update_fish_run()/TRAIT_RUN_*): calm fish run less
+## difficulty (see difficulty_for() / FishFight): calm fish run less
 ## often and gentler, wild fish run more often and harder. "color" tints
 ## the bobber once the bite is revealed (main.gd), the only "appearance"
 ## difference available without real art.
@@ -150,3 +150,61 @@ static func pick_species(tier: String, zone_key: String, rarity_key: String) -> 
 		var fallback: Dictionary = TIERS[tier]
 		return {"name": fallback.label, "value_mult": 1.0, "trait": "normal", "color": Color(1, 0.85, 0.2)}
 	return pool[randi() % pool.size()]
+
+
+## User decision (fishing difficulty plan): every species fights at one of
+## four difficulties, from how rare it is and its temperament - calm
+## commons are 入門, legendary fish 大師. Read at the bite and through the
+## fight by Player and FishFight.
+##   nibbles: how many test nibbles (float twitches you must NOT strike
+##     at) come before the real bite, [min, max]; fake: chance each one is
+##     a full-looking dunk (no splash, no shake) meant to bait a strike
+##   window: seconds to strike once it really bites (scaled by the cast
+##     tier's own window)
+##   stamina: how long the fish takes to tire (divides reel speed)
+##   pull: tension multiplier
+##   run_interval / run_time: seconds between runs / how long one lasts
+##   side: chance a run goes sideways (pull the rod the other way) rather
+##     than straight out (give line)
+##   jump: chance per second of leaping mid-fight (give slack while it's up)
+##   phases: 2 = goes berserk at half stamina
+const DIFFICULTY := {
+	"novice": {"label": "入門", "nibbles": Vector2i(0, 0), "fake": 0.0, "window": 1.1,
+		"stamina": 1.0, "pull": 0.8, "run_interval": Vector2(3.5, 5.5), "run_time": 0.5,
+		"side": 0.0, "jump": 0.0, "phases": 1},
+	"normal": {"label": "普通", "nibbles": Vector2i(0, 1), "fake": 0.0, "window": 0.8,
+		"stamina": 1.3, "pull": 1.0, "run_interval": Vector2(2.2, 3.6), "run_time": 0.6,
+		"side": 0.2, "jump": 0.06, "phases": 1},
+	"advanced": {"label": "進階", "nibbles": Vector2i(1, 3), "fake": 0.15, "window": 0.55,
+		"stamina": 1.7, "pull": 1.15, "run_interval": Vector2(1.7, 2.8), "run_time": 0.7,
+		"side": 0.5, "jump": 0.12, "phases": 1},
+	"master": {"label": "大師", "nibbles": Vector2i(2, 4), "fake": 0.35, "window": 0.38,
+		"stamina": 1.9, "pull": 1.3, "run_interval": Vector2(1.3, 2.3), "run_time": 0.8,
+		"side": 0.6, "jump": 0.16, "phases": 2},
+}
+const RARITY_SCORE := {"common": 0.0, "rare": 1.0, "epic": 2.5}
+const TRAIT_SCORE := {"calm": 0.0, "normal": 0.6, "wild": 1.2}
+
+## Species habits (plan phase 4): reef and eel types bolt for cover near the
+## bank; the fast open-water hunters leap far more often.
+const COVER_SPECIES := ["石斑幼魚", "黃金石斑", "巨石斑", "深海鰻", "紅目鰻", "曲紋唇魚（蘇眉）"]
+const JUMPER_SPECIES := ["鬼頭刀", "銀色巨旗魚", "白皮旗魚幼體", "紅甘將軍", "野生紅甘", "黑鮪幼魚", "花飛（鯖魚）"]
+
+
+static func difficulty_for(rarity_key: String, trait_name: String) -> String:
+	var score: float = RARITY_SCORE.get(rarity_key, 0.0) + TRAIT_SCORE.get(trait_name, 0.6)
+	if score < 0.5:
+		return "novice"
+	if score < 1.2:
+		return "normal"
+	if score < 2.4:
+		return "advanced"
+	return "master"
+
+
+static func habit_for(species_name: String) -> String:
+	if species_name in COVER_SPECIES:
+		return "cover"
+	if species_name in JUMPER_SPECIES:
+		return "jumper"
+	return ""

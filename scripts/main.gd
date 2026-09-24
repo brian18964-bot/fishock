@@ -27,6 +27,7 @@ const PLAYER_FEET := Vector2(0, 8)
 const FISH_ROAM := 7.0
 const FISH_RUN_ROAM := 15.0
 const FISH_PULL_IN := 0.85
+const FISH_DIVE_REACH := 40.0
 
 ## User request: a hooked fish is felt, not just read in the top-left log -
 ## the camera kicks at the bite and at the hook-set, and trembles slightly
@@ -84,6 +85,8 @@ func _ready() -> void:
 	player.cast_started.connect(_on_cast_started)
 	player.bite_started.connect(_on_bite_started)
 	player.hook_success.connect(_on_hook_success)
+	player.nibble.connect(_on_nibble)
+	player.fight_event.connect(_on_fight_event)
 	player.line_cleared.connect(_on_line_cleared)
 	# Covers opening this scene directly (e.g. F6 in the editor) without
 	# going through the title screen's Start button.
@@ -233,6 +236,42 @@ func _update_fish_jumps(delta: float) -> void:
 		return
 
 
+## Toward the nearest bank from `from` (for a fish dashing for cover).
+func _cover_dir(from: Vector2) -> Vector2:
+	var zone: WaterZone = Ripple.water_at(get_tree(), from)
+	if zone == null:
+		return Vector2.ZERO
+	var best := Vector2.ZERO
+	var best_d := INF
+	for i in 12:
+		var d := Vector2.RIGHT.rotated(i * TAU / 12.0)
+		for step in range(1, 30):
+			if not zone.contains(from + d * step * 6.0):
+				if step < best_d:
+					best_d = step
+					best = d
+				break
+	return best
+
+
+func _on_nibble(fake: bool) -> void:
+	lure.dip(LureVisual.DIP_FAKE if fake else LureVisual.DIP_NIBBLE)
+	Ripple.spawn(self, bobber.global_position, 10.0 if not fake else 16.0, 0.3, 0.8)
+
+
+func _on_fight_event(kind: String) -> void:
+	match kind:
+		"jump":
+			var right := randf() < 0.5
+			SplashFx.play(self, "fish_jump_right" if right else "fish_jump_left", bobber.global_position)
+			Ripple.spawn(self, bobber.global_position, 26.0, 0.9)
+			_shake = maxf(_shake, SHAKE_HOOK)
+		"enrage":
+			_shake = maxf(_shake, SHAKE_BITE)
+		"run", "side_run", "dive":
+			Ripple.spawn(self, bobber.global_position, 20.0, 0.7)
+
+
 func _fish_motion(delta: float, base: Vector2) -> Vector2:
 	match player.state:
 		Player.State.BITE:
@@ -243,19 +282,25 @@ func _fish_motion(delta: float, base: Vector2) -> Vector2:
 				_fish_goal = Vector2.RIGHT.rotated(randf() * TAU) * randf_range(1.5, 4.0)
 			_fish_offset = _fish_offset.lerp(_fish_goal, minf(1.0, delta * 20.0))
 		Player.State.REELING:
-			var running: bool = player.fish_run_active_time > 0.0
+			var fight: FishFight = player.fight
+			var running: bool = fight.run_left > 0.0
 			_shown_progress = lerpf(_shown_progress, player.progress, minf(1.0, delta * 2.0))
 			base = base.lerp(player.global_position, _shown_progress * FISH_PULL_IN)
+			var away := (base - player.global_position).normalized()
 			_fish_goal_timer -= delta
-			if _fish_goal_timer <= 0.0:
+			if fight.dive_active:
+				# Dashing for the bank: slides toward the nearest shore as
+				# the dive gains ground.
+				_fish_goal = _cover_dir(base) * fight.dive * FISH_DIVE_REACH
+			elif running and fight.run_side != Vector2.ZERO:
+				_fish_goal = fight.run_side * FISH_RUN_ROAM
+			elif _fish_goal_timer <= 0.0:
 				_fish_goal_timer = randf_range(0.2, 0.45) if running else randf_range(0.5, 1.1)
 				var dir := Vector2.RIGHT.rotated(randf() * TAU)
-				if player.is_rare_catch:
-					dir = (dir + player.rare_pull_dir * 1.5).normalized()
-				elif running:
-					dir = (dir + (base - player.global_position).normalized() * 1.2).normalized()
+				if running:
+					dir = (dir + away * 1.2).normalized()
 				_fish_goal = dir * randf_range(0.5, 1.0) * (FISH_RUN_ROAM if running else FISH_ROAM)
-			_fish_offset = _fish_offset.lerp(_fish_goal, minf(1.0, delta * (6.0 if running else 2.5)))
+			_fish_offset = _fish_offset.lerp(_fish_goal, minf(1.0, delta * (6.0 if running or fight.dive_active else 2.5)))
 		_:
 			_fish_offset = Vector2.ZERO
 			_shown_progress = 0.0

@@ -53,6 +53,7 @@ func _ready() -> void:
 	Profile.profile_changed.connect(_apply_tier)
 	_player.cast_started.connect(_on_cast)
 	_player.bite_started.connect(_on_bite)
+	_player.nibble.connect(func(_fake): _tween_swing([[0.12, 0.04], [0.0, 0.1]]))
 	_apply_tier()
 
 
@@ -77,6 +78,11 @@ func _process(delta: float) -> void:
 			if _player.fish_run_active_time > 0.0:
 				shake = 0.14
 			extra += FIGHT_ANGLE + sin(_time * 31.0) * shake + sin(_time * 17.0) * shake * 0.5
+			# Leaning the rod the way it's being pulled (against a sideways
+			# run - see FishFight).
+			var pull: Vector2 = _player._counter_dir()
+			if pull != Vector2.ZERO:
+				extra = clampf(angle_difference(aim.angle(), pull.angle()), -0.7, 0.7)
 	rotation = aim.angle() + extra
 	# Pointing away from the camera, the rod belongs behind the player.
 	var pointing: Vector2 = Vector2.RIGHT.rotated(rotation)
