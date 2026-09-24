@@ -15,7 +15,7 @@ const CLOVER_OFFSET := Vector2(0, -17.65)
 const FLOWER_OFFSET := Vector2(0, -17.21)
 
 ## Picked kind-first, then variant, so kinds with many models (five petal
-## cards) don't crowd out kinds with one (pebble).
+## cards) don't crowd out kinds with fewer.
 const KINDS := {
 	"clover": ["clover_1", "clover_2"],
 	"flower_group": ["flower_group_1", "flower_group_2"],
@@ -23,7 +23,7 @@ const KINDS := {
 	"flower_petal": ["flower_petal_1", "flower_petal_2", "flower_petal_3", "flower_petal_4", "flower_petal_5"],
 	"grass": ["grass_wispy", "grass_wispy_2", "grass"],
 	"mushroom": ["mushroom", "mushroom_laetiporus"],
-	"pebble": ["pebble_round"],
+	"pebble": ["pebble_round", "pebble_round_2", "pebble_round_3", "pebble_round_4", "pebble_round_5", "pebble_square"],
 }
 
 const TEXTURES := {
@@ -44,6 +44,11 @@ const TEXTURES := {
 	"mushroom": [preload("res://assets/sprites/ground_cover/mushroom_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/mushroom_55deg_normal.png")],
 	"mushroom_laetiporus": [preload("res://assets/sprites/ground_cover/mushroom_laetiporus_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/mushroom_laetiporus_55deg_normal.png")],
 	"pebble_round": [preload("res://assets/sprites/ground_cover/pebble_round_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/pebble_round_55deg_normal.png")],
+	"pebble_square": [preload("res://assets/sprites/ground_cover/pebble_square_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/pebble_square_55deg_normal.png")],
+	"pebble_round_2": [preload("res://assets/sprites/ground_cover/pebble_round_2_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/pebble_round_2_55deg_normal.png")],
+	"pebble_round_3": [preload("res://assets/sprites/ground_cover/pebble_round_3_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/pebble_round_3_55deg_normal.png")],
+	"pebble_round_4": [preload("res://assets/sprites/ground_cover/pebble_round_4_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/pebble_round_4_55deg_normal.png")],
+	"pebble_round_5": [preload("res://assets/sprites/ground_cover/pebble_round_5_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/pebble_round_5_55deg_normal.png")],
 }
 
 

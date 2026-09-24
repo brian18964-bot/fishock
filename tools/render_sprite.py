@@ -36,7 +36,7 @@ Sets rendered so far (see art_src/):
   ground_cover/flower_group_*, flower_single_*, grass_wispy x1.0 (grass_wispy with --foliage-normals),
                flower_petal_* x1.5 (flower_petal_4 x3.0, a much smaller model)
                grass_wispy_2 x1.0 --foliage-normals, grass x1.5 --foliage-normals,
-               mushroom x2.0, mushroom_laetiporus x0.75, pebble_round x2.0
+               mushroom x2.0, mushroom_laetiporus x0.75, pebble_* x2.0
                      --center-y 0.635 --ortho-scale 2.361 --res 64 64
 """
 import argparse
