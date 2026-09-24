@@ -15,7 +15,8 @@ signal rummage_progress_updated(progress: float)
 enum State { IDLE, CHARGING, WAITING, BITE, REELING }
 enum FishingMode { BOBBER, LURE }
 
-const SPEED := 140.0
+## User feedback: 20% slower (was 140).
+const SPEED := 112.0
 ## User request: common water is only wadeable at the edge - the player can
 ## step this far in from the shore and no further, except out along docks
 ## and their stairs (Dock walkways). Rare zones stay fully solid.
@@ -139,6 +140,9 @@ var water_ghost_timer: float = 0.0
 ## What the HUD warning names while water_ghost_timer runs - the water
 ## ghost, or an animal that caught up with you (see animal_attack()).
 var affliction_text: String = "水鬼異常狀態中"
+## Set by TouchControls while the cast button is dragged; wins over the aim
+## stick. Zero when not in use.
+var touch_aim := Vector2.ZERO
 var cast_outcome: int = CastOutcome.BITE
 var stolen_timer: float = 0.0
 var fish_run_timer: float = 0.0
@@ -515,6 +519,9 @@ func _update_aim() -> void:
 		# Design doc §4.2 "視野弱點": hands are busy jigging the lure, so
 		# aim just holds still instead of tracking mouse/stick input.
 		pass
+	elif touch_aim != Vector2.ZERO:
+		# Dragging the cast button (see TouchControls) steers the cast.
+		aim_dir = touch_aim
 	elif _aim_joystick.is_pressed:
 		aim_dir = _aim_joystick.output.normalized()
 	elif not DisplayServer.is_touchscreen_available():

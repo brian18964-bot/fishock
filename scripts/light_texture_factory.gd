@@ -29,6 +29,31 @@ static func make_cone_texture(size: int = 256, half_angle_deg: float = 32.0, fea
 	return ImageTexture.create_from_image(img)
 
 
+## User request: the oil lamp throws a wide, umbrella-shaped spread in
+## front (half_angle_deg each side of +X, softly feathered) and a small glow
+## all round the holder's feet.
+static func make_fan_texture(size: int = 256, half_angle_deg: float = 80.0, feather_deg: float = 30.0) -> ImageTexture:
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	var center := Vector2(size / 2.0, size / 2.0)
+	var max_radius := size / 2.0
+	var half_angle := deg_to_rad(half_angle_deg)
+	var feather := deg_to_rad(feather_deg)
+	for y in range(size):
+		for x in range(size):
+			var offset := Vector2(x, y) - center
+			var d := offset.length() / max_radius
+			var alpha := 0.0
+			if d <= 1.0:
+				var angle: float = abs(offset.angle())
+				var spread := clampf((half_angle - angle) / feather + 0.5, 0.0, 1.0)
+				spread = spread * spread * (3.0 - 2.0 * spread)
+				var fan := spread * (1.0 - pow(d, 1.6))
+				var glow := pow(clampf(1.0 - d / 0.22, 0.0, 1.0), 1.5) * 0.9
+				alpha = maxf(fan, glow)
+			img.set_pixel(x, y, Color(1, 1, 1, alpha))
+	return ImageTexture.create_from_image(img)
+
+
 static func make_radial_texture(size: int = 256, feather: float = 0.15) -> ImageTexture:
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	var center := Vector2(size / 2.0, size / 2.0)

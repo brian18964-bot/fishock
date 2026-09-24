@@ -80,9 +80,17 @@ func _process(delta: float) -> void:
 		_message_timer -= delta
 		if _message_timer <= 0.0:
 			message_label.text = ""
-	fuel_bar.max_value = _lantern.max_fuel
-	fuel_bar.value = _lantern.fuel
-	fuel_label.text = "燃油（已熄滅，按住 L 點燃）" if not _lantern.lit else "燃油（L 熄滅）"
+	if _lantern.tool == Lantern.Tool.LAMP:
+		fuel_bar.max_value = _lantern.max_fuel
+		fuel_bar.value = _lantern.fuel
+		fuel_label.text = "煤燈燃油（已熄滅，按住 L 點燃）" if not _lantern.lit else "煤燈燃油（L 熄滅）"
+	else:
+		fuel_bar.max_value = 100.0
+		fuel_bar.value = _lantern.charge
+		if _lantern.charge <= 0.0:
+			fuel_label.text = "手電筒沒電（電池 %d，按住 L 換）" % Profile.batteries
+		else:
+			fuel_label.text = "手電筒電量（電池 %d）" % Profile.batteries
 
 	if GameState.is_night or GameState.day_phase != GameState.DayPhase.FISHING:
 		time_label.text = ""

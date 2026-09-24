@@ -137,6 +137,35 @@ func _set_walkway(half: Vector2) -> void:
 	add_to_group("walkways")
 
 
+## User request: once on a dock or boardwalk you can't just step off its
+## side - you get on and off at its entrance only. Walls run along the
+## walkway's edges except on the `open` ends (unit axis directions: the
+## land end, plus where stairs join on). Built in world space (top_level),
+## as the sprite itself is scaled.
+func add_walls(open: Array) -> void:
+	var body := StaticBody2D.new()
+	body.name = "Rails"
+	body.top_level = true
+	var r := walk_rect
+	var edges := {
+		Vector2.UP: [r.position, Vector2(r.end.x, r.position.y)],
+		Vector2.DOWN: [Vector2(r.position.x, r.end.y), r.end],
+		Vector2.LEFT: [r.position, Vector2(r.position.x, r.end.y)],
+		Vector2.RIGHT: [Vector2(r.end.x, r.position.y), r.end],
+	}
+	for side in edges:
+		if open.any(func(o): return o.is_equal_approx(side)):
+			continue
+		var seg := SegmentShape2D.new()
+		seg.a = edges[side][0]
+		seg.b = edges[side][1]
+		var shape := CollisionShape2D.new()
+		shape.shape = seg
+		body.add_child(shape)
+	add_child(body)
+	body.position = Vector2.ZERO  # top_level: this is the world origin
+
+
 func _apply(variant: Dictionary) -> void:
 	var tex := CanvasTexture.new()
 	tex.diffuse_texture = variant.textures[0]

@@ -312,6 +312,9 @@ func _place_docks() -> void:
 			dock.position = edge - d * half * 0.4
 			var kind: String = ["long_rope", "long", "wide"].pick_random()
 			dock.setup(vertical, kind)
+			var stairs_too := randf() < DOCK_STAIRS_CHANCE
+			# In from the land end only (and on through to the stairs).
+			dock.add_walls([d, -d] if stairs_too else [d])
 			get_parent().add_child.call_deferred(dock)
 			_walk_rects.append(dock.walk_rect)
 			if randf() < DOCK_BOAT_CHANCE:
@@ -322,11 +325,12 @@ func _place_docks() -> void:
 						+ side * (Dock.half_width(vertical, kind) + Dock.boat_half_beam(vertical) + 3.0)
 				boat.setup_boat(_dir_name(-d))
 				get_parent().add_child.call_deferred(boat)
-			if randf() < DOCK_STAIRS_CHANCE:
+			if stairs_too:
 				# Steps off the water end, leading on toward the center.
 				var stairs: Dock = DOCK_SCENE.instantiate()
 				stairs.position = dock.position - d * (half + Dock.stairs_half_length(vertical))
 				stairs.setup_stairs(_dir_name(-d))
+				stairs.add_walls([d, -d])
 				get_parent().add_child.call_deferred(stairs)
 				_walk_rects.append(stairs.walk_rect)
 			placed += 1
@@ -390,6 +394,12 @@ func _shore_distance(pos: Vector2) -> float:
 	for zone in water_zones:
 		best = minf(best, zone.distance_to_edge(pos))
 	return best
+
+
+## How far up the bank a point is: negative in the water.
+func _land_score(pos: Vector2) -> float:
+	var d := _shore_distance(pos)
+	return -d if _in_any_water(pos) else d
 
 
 func _in_any_water(pos: Vector2) -> bool:
@@ -546,6 +556,12 @@ func _add_boardwalk(zone: WaterZone) -> void:
 		var walk: Dock = DOCK_SCENE.instantiate()
 		walk.position = pos
 		walk.setup(not along_x, ["long", "long_rope"].pick_random())
+		# One way on: whichever end sits further up the bank.
+		var axis := Vector2.RIGHT if along_x else Vector2.DOWN
+		var reach: float = Dock.half_length(not along_x)
+		var end_a := pos + axis * reach
+		var end_b := pos - axis * reach
+		walk.add_walls([axis if _land_score(end_a) >= _land_score(end_b) else -axis])
 		get_parent().add_child.call_deferred(walk)
 		_walk_rects.append(walk.walk_rect)
 		return

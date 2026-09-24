@@ -33,6 +33,28 @@ uniform vec3 lobes[16];
 uniform int lobe_count = 0;
 uniform int own_lobe_count = 0;
 
+// User feedback: the union of circles still read as circles. The lobes are
+// blended with a smooth union (no pinched joins) and the shoreline is
+// pushed in and out by two octaves of a shared noise image - WaterZone
+// evaluates exactly the same function for gameplay (see shore_depth()).
+uniform sampler2D shore_noise : repeat_enable, filter_linear;
+uniform float shore_blend = 30.0;
+uniform float warp_scale_a = 600.0;
+uniform float warp_amp_a = 18.0;
+uniform float warp_scale_b = 150.0;
+uniform float warp_amp_b = 5.0;
+
+float smax(float a, float b, float k) {
+	float h = clamp(0.5 + 0.5 * (a - b) / k, 0.0, 1.0);
+	return mix(b, a, h) + k * h * (1.0 - h);
+}
+
+float shore_warp(vec2 p) {
+	float a = texture(shore_noise, p / warp_scale_a).r;
+	float b = texture(shore_noise, p / warp_scale_b + vec2(0.37, 0.61)).r;
+	return (a - 0.5) * 2.0 * warp_amp_a + (b - 0.5) * 2.0 * warp_amp_b;
+}
+
 const float SQUASH = 0.819;  // sin 55deg: ripples lie on the art's ground plane
 
 varying vec2 world_pos;
@@ -67,11 +89,14 @@ void fragment() {
 	float edge_px = -1e6;  // distance to the shore of the merged water, px
 	for (int i = 0; i < lobe_count; i++) {
 		float d = lobes[i].z - distance(world_pos, lobes[i].xy);
-		edge_px = max(edge_px, d);
+		edge_px = smax(edge_px, d, shore_blend);
 		if (i < own_lobe_count) {
-			own = max(own, d);
+			own = smax(own, d, shore_blend);
 		}
 	}
+	float warp = shore_warp(world_pos);
+	edge_px += warp;
+	own += warp;
 	if (own < 0.0) {
 		discard;
 	}

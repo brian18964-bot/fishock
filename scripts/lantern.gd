@@ -1,48 +1,76 @@
 class_name Lantern
 extends PointLight2D
 
-## Directional lantern (design doc §2.1). Brightness trades light reach for
-## fuel burn. Refueling is a limited-use action at a fuel station (see
-## fuel_station.gd) now, not a passive drip while standing anywhere -
-## the altar is sacrifice-only. `[` / `]` are desktop placeholders for a
-## future HUD brightness control.
+## The light the player carries (design doc §2.1). Brightness trades light
+## reach for what it burns. `[` / `]` step brightness.
+##
+## User request: two tools.
+## - The oil lamp (煤燈), what every run starts with: a wide, umbrella-shaped
+##   spread of warm light in front of the player (plus a little glow at their
+##   feet), shorter reach. Burns fuel, refilled only at a fuel station (see
+##   fuel_station.gd).
+## - The flashlight (手電筒), bought once in the shop: the long, narrow cone.
+##   Runs on batteries - also bought in the shop - and a flat one is swapped
+##   anywhere on the map (hold L), no trip back to a station.
+## K switches between them once the flashlight is owned.
+
+enum Tool { LAMP, FLASHLIGHT }
 
 const MAX_FUEL := 100.0
 const DRAIN_RATE := 7.0
 const MIN_BRIGHTNESS := 0.35
 const MAX_BRIGHTNESS := 1.0
 const BRIGHTNESS_STEP := 0.5
-const MIN_SCALE := 1.1
-const MAX_SCALE := 2.6
+
+## Per tool: spread (half angle, deg - must match the texture), reach
+## (texture_scale range), colour and energy range.
+const TOOLS := {
+	Tool.LAMP: {"half_angle": 80.0, "min_scale": 0.85, "max_scale": 1.6,
+		"color": Color(1.0, 0.8, 0.52), "energy": Vector2(0.8, 1.25)},
+	Tool.FLASHLIGHT: {"half_angle": 24.0, "min_scale": 1.3, "max_scale": 3.0,
+		"color": Color(0.92, 0.96, 1.0), "energy": Vector2(0.9, 1.45)},
+}
+
+## Flashlight: a full battery lasts BATTERY_LIFE s at full brightness;
+## holding L on a flat one swaps in a fresh battery over BATTERY_SWAP_DURATION.
+const BATTERY_LIFE := 90.0
+const BATTERY_SWAP_DURATION := 1.0
 
 ## Design doc request: the flame can be put out at will (instant, e.g. to
 ## stop burning fuel or to go dark near a ghost) but relighting takes a
 ## short held progress bar, so the player is committing to being lit again
-## rather than it happening for free.
+## rather than it happening for free. (The flashlight just clicks on.)
 const RELIGHT_DURATION := 1.2
 
 ## Normal-map light height in px (also used by the other lamps).
 const LIGHT_HEIGHT := 60.0
 
-# Must match LightTextureFactory.make_cone_texture()'s defaults below, since
-# illuminates() re-derives the cone's world-space shape from these instead
-# of reading pixels back out of the generated texture.
-const CONE_HALF_ANGLE_DEG := 32.0
+## The light textures are TEXTURE_HALF_SIZE px in radius before scaling;
+## illuminates() re-derives the lit shape from this and the tool's angle
+## instead of reading pixels back out of the texture.
 const TEXTURE_HALF_SIZE := 128.0
 
 ## Design doc §2.3: strong-light skill. Shorter reach than the ambient
-## cone, and only lands on a ghost that's both in range and lit.
+## light, and only lands on a ghost that's both in range and lit. Paid
+## for from whichever tool is out.
 const FLASH_RANGE := 160.0
 const FLASH_FUEL_COST := 25.0
+const FLASH_CHARGE_COST := 20.0
 const FLASH_COOLDOWN := 3.0
 const FLASH_STUN_DURATION := 1.75
+
+static var _lamp_texture: ImageTexture
+static var _flashlight_texture: ImageTexture
 
 ## Base values plus Profile upgrade bonuses (design doc §9.1), computed once
 ## at _ready() since upgrades only change between runs, not mid-run.
 var max_fuel: float = MAX_FUEL
 var flash_cooldown_max: float = FLASH_COOLDOWN
 
+var tool: Tool = Tool.LAMP
 var fuel: float = MAX_FUEL
+## Flashlight battery, 0-100 (a fresh one goes in when first switched to).
+var charge: float = 0.0
 var brightness: float = 0.75
 var flash_cooldown: float = 0.0
 
@@ -53,17 +81,20 @@ signal relight_progress_updated(progress: float)
 
 var _flash_held: bool = false
 var _light_key_held: bool = false
+var _switch_key_held: bool = false
 
 @onready var _player: Node2D = get_parent()
 
 
 func _ready() -> void:
-	texture = LightTextureFactory.make_cone_texture()
-	color = Color(1.0, 0.92, 0.75)
+	if _lamp_texture == null:
+		_lamp_texture = LightTextureFactory.make_fan_texture(256, TOOLS[Tool.LAMP].half_angle, 30.0)
+		_flashlight_texture = LightTextureFactory.make_cone_texture(256, TOOLS[Tool.FLASHLIGHT].half_angle, 8.0)
 	shadow_enabled = true
 	# User decision: held up off the ground, so upward-facing surfaces
 	# (dock boards, plants, rock tops) catch the light, not just the sides.
 	height = LIGHT_HEIGHT
+	_apply_tool()
 	LightTwin.attach(self)
 
 	max_fuel = MAX_FUEL + Profile.get_upgrade_bonus("fuel_capacity")
@@ -72,19 +103,62 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	_handle_tool_switch()
 	_handle_brightness_input(delta)
 	_handle_flash_input(delta)
 	_handle_light_toggle(delta)
 
 	if lit:
-		fuel = max(fuel - DRAIN_RATE * brightness * delta, 0.0)
-		if fuel <= 0.0:
+		if tool == Tool.LAMP:
+			fuel = max(fuel - DRAIN_RATE * brightness * delta, 0.0)
+		else:
+			charge = max(charge - 100.0 / BATTERY_LIFE * brightness * delta, 0.0)
+		if power() <= 0.0:
 			lit = false
+			GameState.push_message("煤燈的油燒完了" if tool == Tool.LAMP else "手電筒沒電了，按住 L 換電池")
 
-	visible = lit and fuel > 0.0
+	visible = lit and power() > 0.0
 	rotation = _player.aim_dir.angle()
-	texture_scale = lerp(MIN_SCALE, MAX_SCALE, brightness)
-	energy = lerp(0.7, 1.3, brightness)
+	var spec: Dictionary = TOOLS[tool]
+	texture_scale = lerp(spec.min_scale, spec.max_scale, brightness)
+	energy = lerp(spec.energy.x, spec.energy.y, brightness)
+
+
+## What the current tool has left: lamp fuel, or flashlight charge.
+func power() -> float:
+	return fuel if tool == Tool.LAMP else charge
+
+
+func tool_name() -> String:
+	return "煤燈" if tool == Tool.LAMP else "手電筒"
+
+
+func _apply_tool() -> void:
+	texture = _lamp_texture if tool == Tool.LAMP else _flashlight_texture
+	color = TOOLS[tool].color
+
+
+func _handle_tool_switch() -> void:
+	var held := Input.is_key_pressed(KEY_K)
+	var just_pressed := held and not _switch_key_held
+	_switch_key_held = held
+	if not just_pressed:
+		return
+	if not Profile.has_flashlight:
+		GameState.push_message("還沒有手電筒，可以在商店購買")
+		return
+	tool = Tool.FLASHLIGHT if tool == Tool.LAMP else Tool.LAMP
+	relight_progress = 0.0
+	if tool == Tool.FLASHLIGHT and charge <= 0.0 and Profile.use_battery():
+		charge = 100.0
+	_apply_tool()
+	lit = power() > 0.0
+	if tool == Tool.LAMP:
+		GameState.push_message("換回煤燈")
+	elif charge > 0.0:
+		GameState.push_message("換成手電筒（電量 %d%%，備用電池 %d）" % [int(charge), Profile.batteries])
+	else:
+		GameState.push_message("換成手電筒，但沒有電池了")
 
 
 func _handle_brightness_input(delta: float) -> void:
@@ -103,9 +177,10 @@ func _handle_flash_input(delta: float) -> void:
 		_try_flash()
 
 
-## Design doc request: L extinguishes instantly (free, deliberate control
-## over the flame), but relighting needs a held progress bar - meant to
-## read as the player confirming it's safe to be lit again.
+## Design doc request: L puts the light out instantly (free, deliberate
+## control), but relighting needs a held progress bar - meant to read as
+## the player confirming it's safe to be lit again. The flashlight clicks
+## on at once; flat, holding L swaps in a battery.
 func _handle_light_toggle(delta: float) -> void:
 	var held := Input.is_key_pressed(KEY_L)
 	var just_pressed := held and not _light_key_held
@@ -115,7 +190,26 @@ func _handle_light_toggle(delta: float) -> void:
 		if just_pressed:
 			lit = false
 			relight_progress = 0.0
-			GameState.push_message("熄滅了提燈")
+			GameState.push_message("熄滅了%s" % tool_name())
+	elif tool == Tool.FLASHLIGHT:
+		if charge > 0.0:
+			if just_pressed:
+				lit = true
+				GameState.push_message("打開了手電筒")
+		elif held:
+			if Profile.batteries <= 0:
+				if just_pressed:
+					GameState.push_message("沒有電池了，到商店買電池")
+				relight_progress = 0.0
+			else:
+				relight_progress += delta / BATTERY_SWAP_DURATION
+				if relight_progress >= 1.0 and Profile.use_battery():
+					relight_progress = 0.0
+					charge = 100.0
+					lit = true
+					GameState.push_message("換上新電池（還剩 %d 顆）" % Profile.batteries)
+		else:
+			relight_progress = 0.0
 	elif held:
 		if fuel <= 0.0:
 			if just_pressed:
@@ -126,7 +220,7 @@ func _handle_light_toggle(delta: float) -> void:
 			if relight_progress >= 1.0:
 				relight_progress = 0.0
 				lit = true
-				GameState.push_message("提燈點燃了")
+				GameState.push_message("煤燈點燃了")
 	else:
 		relight_progress = 0.0
 
@@ -134,12 +228,18 @@ func _handle_light_toggle(delta: float) -> void:
 
 
 func _try_flash() -> void:
-	if fuel < FLASH_FUEL_COST:
-		GameState.push_message("燃油不足，無法使用強光")
-		return
+	if tool == Tool.LAMP:
+		if fuel < FLASH_FUEL_COST:
+			GameState.push_message("燃油不足，無法使用強光")
+			return
+		fuel -= FLASH_FUEL_COST
+	else:
+		if charge < FLASH_CHARGE_COST:
+			GameState.push_message("電量不足，無法使用強光")
+			return
+		charge -= FLASH_CHARGE_COST
 
 	flash_cooldown = flash_cooldown_max
-	fuel -= FLASH_FUEL_COST
 
 	var hit_any := false
 	for ghost in get_tree().get_nodes_in_group("ghosts"):
@@ -163,9 +263,9 @@ func _try_flash() -> void:
 		GameState.push_message("強光沒有照到任何鬼")
 
 
-## True if `point` currently falls inside this cone (design doc §3.1: light
-## aimed at the ghost gives the player away). Used by ghost perception and,
-## later, by the strong-light skill.
+## True if `point` currently falls inside the lit area (design doc §3.1:
+## light aimed at the ghost gives the player away). Used by ghost
+## perception and by the strong-light skill.
 func illuminates(point: Vector2) -> bool:
 	if not visible:
 		return false
@@ -175,4 +275,4 @@ func illuminates(point: Vector2) -> bool:
 	if dist > effective_radius:
 		return false
 	var relative_angle: float = abs(wrapf(offset.angle() - rotation, -PI, PI))
-	return relative_angle <= deg_to_rad(CONE_HALF_ANGLE_DEG)
+	return relative_angle <= deg_to_rad(TOOLS[tool].half_angle)

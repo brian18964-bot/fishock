@@ -8,10 +8,20 @@ const DAY_COLOR := Color(0.32, 0.34, 0.4, 1)
 const FOG_COLOR := Color(0.22, 0.24, 0.28, 1)
 const NIGHT_COLOR := Color(0.035, 0.035, 0.06, 1)
 
-func _process(_delta: float) -> void:
+## User request: the dark breathes - the whole scene's light swells and
+## fades by a few percent on a slow cycle.
+const BREATH_PERIOD := 7.0
+const BREATH_AMOUNT := 0.06
+
+var _time := 0.0
+
+
+func _process(delta: float) -> void:
+	_time += delta
+	var base := DAY_COLOR
 	if GameState.is_night:
-		color = NIGHT_COLOR
+		base = NIGHT_COLOR
 	elif GameState.weather == GameState.Weather.FOG:
-		color = FOG_COLOR
-	else:
-		color = DAY_COLOR
+		base = FOG_COLOR
+	var breath := 1.0 + BREATH_AMOUNT * sin(_time * TAU / BREATH_PERIOD)
+	color = Color(base.r * breath, base.g * breath, base.b * breath, 1.0)

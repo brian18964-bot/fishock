@@ -20,6 +20,10 @@ const UPGRADE_DEFS := {
 	"reel_power": {"label": "捲線器力道", "max_level": 3, "costs": [25, 50, 85], "bonus": 0.12},
 }
 const LURE_COST := 15
+## User request: the flashlight is a shop item (bought once) that runs on
+## batteries, also bought here and kept in stock until used (see Lantern).
+const FLASHLIGHT_COST := 120
+const BATTERY_COST := 12
 
 var gold: int = 0
 var upgrade_levels: Dictionary = {
@@ -30,6 +34,9 @@ var upgrade_levels: Dictionary = {
 ## Design doc §9.2: lures bought "賽前" (before the match) - queued here,
 ## then handed to the player and cleared the moment a run actually starts.
 var loadout_lures: int = 0
+
+var has_flashlight: bool = false
+var batteries: int = 0
 
 ## User feedback: a fish log to give players a long-term goal beyond just
 ## gold - name -> {"count": int, "best_value": float}. See fish_log.gd for
@@ -94,6 +101,38 @@ func buy_lure() -> bool:
 	return true
 
 
+func buy_flashlight() -> bool:
+	if has_flashlight or gold < FLASHLIGHT_COST:
+		return false
+	gold -= FLASHLIGHT_COST
+	has_flashlight = true
+	gold_updated.emit(gold)
+	profile_changed.emit()
+	_save()
+	return true
+
+
+func buy_battery() -> bool:
+	if gold < BATTERY_COST:
+		return false
+	gold -= BATTERY_COST
+	batteries += 1
+	gold_updated.emit(gold)
+	profile_changed.emit()
+	_save()
+	return true
+
+
+## Takes one battery out of stock; false if there are none.
+func use_battery() -> bool:
+	if batteries <= 0:
+		return false
+	batteries -= 1
+	profile_changed.emit()
+	_save()
+	return true
+
+
 func consume_loadout_lures() -> int:
 	var count := loadout_lures
 	loadout_lures = 0
@@ -109,6 +148,8 @@ func _save() -> void:
 			"upgrade_levels": upgrade_levels,
 			"loadout_lures": loadout_lures,
 			"fish_log": fish_log,
+			"has_flashlight": has_flashlight,
+			"batteries": batteries,
 		})
 
 
@@ -123,3 +164,5 @@ func _load() -> void:
 			upgrade_levels = data.get("upgrade_levels", upgrade_levels)
 			loadout_lures = data.get("loadout_lures", 0)
 			fish_log = data.get("fish_log", {})
+			has_flashlight = data.get("has_flashlight", false)
+			batteries = data.get("batteries", 0)

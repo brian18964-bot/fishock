@@ -11,6 +11,9 @@ signal state_changed(new_state: String)
 
 enum GhostState { PATROL, SUSPICIOUS, ALERT, SEARCH }
 
+## User feedback: everything moved too fast - the player and every creature
+## slowed 20%, ghosts with them so the chase balance holds.
+const PACE := 0.8
 const PATROL_SPEED := 55.0
 const SUSPICIOUS_SPEED := 95.0
 const CHASE_SPEED := 125.0
@@ -101,7 +104,7 @@ func enter_frenzy(duration: float) -> void:
 
 
 func _speed_mult() -> float:
-	var mult := 1.0
+	var mult := PACE
 	if frenzy_timer > 0.0:
 		mult *= FRENZY_SPEED_MULT
 	if GameState.weather == GameState.Weather.STORM:
@@ -230,7 +233,7 @@ func _process_night_hunt(delta: float) -> void:
 	visual.color = Color(0.55, 0.08, 0.16, 1)
 	var to_player := player.global_position - global_position
 	if to_player.length() > 1.0:
-		global_position += to_player.normalized() * NIGHT_CHASE_SPEED * delta
+		global_position += to_player.normalized() * NIGHT_CHASE_SPEED * PACE * delta
 
 	if global_position.distance_to(player.global_position) <= CATCH_RADIUS:
 		if GameState.use_heart():

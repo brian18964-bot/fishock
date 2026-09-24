@@ -65,6 +65,9 @@ func _process(delta: float) -> void:
 		Player.State.CHARGING:
 			extra = -SWING_BACK * _player.charge_time / Player.MAX_CHARGE_TIME
 			_swing = extra
+		Player.State.BITE:
+			# The fish keeps tugging until the hook is set.
+			extra += pow(maxf(0.0, sin(_time * 13.0)), 6.0) * 0.35
 		Player.State.REELING:
 			var shake := 0.03
 			if _player._is_action_pressed():
@@ -90,8 +93,9 @@ func _on_cast(_target: Vector2, _tier: String) -> void:
 	_tween_swing([[WHIP_OVERSHOOT, WHIP_TIME], [0.0, SETTLE_TIME]])
 
 
+## User request: the rod is visibly yanked when a fish takes the bait.
 func _on_bite() -> void:
-	_tween_swing([[0.35, 0.06], [-0.1, 0.08], [0.0, 0.15]])
+	_tween_swing([[0.7, 0.05], [-0.25, 0.08], [0.5, 0.06], [-0.1, 0.08], [0.0, 0.2]])
 
 
 func _tween_swing(steps: Array) -> void:

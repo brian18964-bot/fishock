@@ -169,6 +169,16 @@ const SPECIES := {
 
 enum Mode { IDLE, WANDER, FLEE, FOLLOW, CHASE }
 
+## User feedback: the player and every creature 20% slower - applied to all
+## the per-species speeds below and to the animation rates with them, so
+## feet don't slide.
+const PACE := 0.8
+## Steering: reaches full speed in 1 / ACCEL_RATE s, eases in over the last
+## ARRIVE_DIST px; below MOVING_SPEED it counts as standing (idle clip).
+const ACCEL_RATE := 3.5
+const ARRIVE_DIST := 24.0
+const MOVING_SPEED := 5.0
+
 ## Dogs: start following within FOLLOW_RADIUS, for FOLLOW_TIME seconds,
 ## then lose interest for FOLLOW_COOLDOWN.
 const FOLLOW_RADIUS := 90.0
@@ -196,6 +206,7 @@ var _mode_timer: float = 0.0
 var _target: Vector2 = Vector2.ZERO
 var _dir: int = 0
 var _anim_time: float = 0.0
+var _anim_phase: float = 0.0
 var _respawn_timer: float = 0.0
 var _player: Node2D
 ## Counts down between follows (dogs) / hunts (wolves, carnivores).
@@ -215,6 +226,7 @@ func _ready() -> void:
 		add_to_group("hunters")
 	_player = get_tree().get_first_node_in_group("player")
 	_anim_time = randf() * 2.0
+	_anim_phase = randf() * 8.0
 	_cooldown = randf_range(4.0, 10.0)
 	_enter_idle()
 
@@ -242,21 +254,28 @@ func _physics_process(delta: float) -> void:
 	_update_mode(delta)
 	var speed := _speed()
 	var to_target := _target - global_position
+	# User feedback: the animals moved stiffly. They now steer - speed up,
+	# ease in to where they're going and turn through an arc - instead of
+	# snapping between full speed and a dead stop.
+	var desired := Vector2.ZERO
 	if speed > 0.0 and to_target.length() > 4.0:
-		velocity = to_target.normalized() * speed
+		desired = to_target.normalized() * speed * clampf(to_target.length() / ARRIVE_DIST, 0.35, 1.0)
+	elif _mode == Mode.WANDER:
+		_enter_idle()
+	var accel := maxf(speed, _data.wander_speed * PACE) * ACCEL_RATE
+	velocity = velocity.move_toward(desired, accel * delta)
+	if velocity.length() > 1.0:
 		var before := global_position
 		move_and_slide()
 		if _in_water(global_position):
 			global_position = before
 			if not _skirt_water(delta):
+				velocity *= 0.5
 				_pick_target(_mode == Mode.FLEE)
 		global_position.x = clamp(global_position.x, 16.0, Player.WORLD_WIDTH - 16.0)
 		global_position.y = clamp(global_position.y, 16.0, Player.WORLD_HEIGHT - 16.0)
-		_dir = _dir_index(velocity)
-	elif _mode == Mode.WANDER:
-		_enter_idle()
-	else:
-		velocity = Vector2.ZERO
+		if velocity.length() > MOVING_SPEED:
+			_dir = _dir_index(velocity)
 	_animate(delta)
 
 
@@ -279,13 +298,13 @@ func _skirt_water(delta: float) -> bool:
 func _speed() -> float:
 	match _mode:
 		Mode.WANDER:
-			return _data.wander_speed
+			return _data.wander_speed * PACE
 		Mode.FLEE:
-			return _data.flee_speed
+			return _data.flee_speed * PACE
 		Mode.FOLLOW:
-			return FOLLOW_SPEED
+			return FOLLOW_SPEED * PACE
 		Mode.CHASE:
-			return _data.chase_speed
+			return _data.chase_speed * PACE
 	return 0.0
 
 
@@ -399,7 +418,6 @@ func _enter_idle() -> void:
 	_mode = Mode.IDLE
 	var idle_time: Vector2 = _data.get("idle_time", Vector2(1.5, 4.0))
 	_mode_timer = randf_range(idle_time.x, idle_time.y)
-	velocity = Vector2.ZERO
 
 
 ## Wandering: a random point nearby. Fleeing: straight away from the player,
@@ -424,26 +442,36 @@ func _pick_target(fleeing: bool) -> void:
 	_target = global_position
 
 
+## Facing, with some hysteresis: a diagonal heading doesn't flick between
+## the side and front views every frame - the other axis has to clearly win.
 func _dir_index(v: Vector2) -> int:
-	if absf(v.x) > absf(v.y):
+	var horizontal_now := _dir == 1 or _dir == 2
+	var horizontal := absf(v.x) > absf(v.y) * (0.75 if horizontal_now else 1.33)
+	if horizontal:
 		return 2 if v.x > 0.0 else 1
 	return 0 if v.y > 0.0 else 3
 
 
 func _animate(delta: float) -> void:
 	_anim_time += delta
-	var moving := _mode != Mode.IDLE and velocity != Vector2.ZERO
+	var spd := velocity.length()
+	var moving := spd > MOVING_SPEED
 	var clip := 0 if (moving or _data.clips == 1) else 1
-	var fps: float = _data.move_fps if moving else _data.idle_fps
-	var running := _mode == Mode.FLEE or _mode == Mode.CHASE or _mode == Mode.FOLLOW
-	if moving and running:
-		if _data.has("flee_clip"):
+	var fps: float = _data.idle_fps
+	if moving:
+		# Legs keep pace with the actual speed (easing in and out included),
+		# so feet don't slide while it accelerates or slows.
+		var gait_speed: float = _data.wander_speed * PACE
+		fps = _data.move_fps
+		var running := spd > gait_speed * 1.6
+		if running and _data.has("flee_clip"):
 			clip = _data.flee_clip
 			fps = _data.flee_fps
-		else:
-			fps = _data.move_fps * clampf(_speed() / _data.wander_speed, 1.0, 3.0)
+			gait_speed = _data.flee_speed * PACE
+		fps *= clampf(spd / gait_speed, 0.5, 3.0)
+	_anim_phase += delta * fps
 	var frames: int = _data.get("frames", 8)
-	sprite.frame = (clip * DIRS.size() + _dir) * frames + int(_anim_time * fps) % frames
+	sprite.frame = (clip * DIRS.size() + _dir) * frames + int(_anim_phase) % frames
 	var hover: float = _data.get("hover", 0.0)
 	if hover > 0.0:
 		sprite.position.y = -hover + sin(_anim_time * 3.0) * 2.0
@@ -473,6 +501,7 @@ func _respawn() -> void:
 			break
 	global_position = pos
 	set_species(_pick_species())
+	velocity = Vector2.ZERO
 	active = true
 	visible = true
 	catch_area.monitoring = true

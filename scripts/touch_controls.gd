@@ -12,31 +12,96 @@ extends CanvasLayer
 ## thumb reaches them all: the big cast/reel button just left of the stick,
 ## the others in an arc over it, brightness +/- smallest at the far end.
 ## Everything is see-through so the field stays visible.
+##
+## User request: casting has a direction, and it's the same thumb that
+## aims the light - so the cast button doubles as a stick. Press and hold
+## to charge, drag to aim the cast (the light turns with it), let go to
+## cast. A short tap still works as before.
 
 ## Aim stick center in the 960x540 layout (AimJoystick in main.tscn: a
 ## 300x300 control at the bottom-right corner, 8 px in).
 const AIM_CENTER := Vector2(802, 382)
 
+const CAST_ANGLE := 165.0
+const CAST_DISTANCE := 150.0
+const CAST_RADIUS := 42.0
+## Drag this far off the button's center before it steers the aim; the knob
+## shows the direction, clamped to the rim.
+const DRAG_DEADZONE := 10.0
+## Keep steering this long after letting go, so the cast launched on
+## release still goes the way the thumb pointed.
+const AIM_HOLD_AFTER_RELEASE := 0.15
+
 const BUTTONS := [
 	# [label, key, angle around the aim stick (deg, clockwise from right), distance, radius]
-	["拋竿\n收線", KEY_SPACE, 165.0, 150.0, 42.0],
-	["切換", KEY_TAB, 205.0, 150.0, 26.0],
-	["燈", KEY_L, 232.0, 150.0, 26.0],
-	["閃光", KEY_F, 259.0, 150.0, 26.0],
-	["丟魚", KEY_G, 286.0, 150.0, 26.0],
-	["暗", KEY_BRACKETLEFT, 314.0, 140.0, 19.0],
-	["亮", KEY_BRACKETRIGHT, 338.0, 140.0, 19.0],
+	["切換", KEY_TAB, 200.0, 150.0, 25.0],
+	["燈", KEY_L, 225.0, 150.0, 25.0],
+	["換燈", KEY_K, 250.0, 150.0, 22.0],
+	["閃光", KEY_F, 275.0, 150.0, 25.0],
+	["丟魚", KEY_G, 300.0, 150.0, 25.0],
+	["暗", KEY_BRACKETLEFT, 325.0, 140.0, 19.0],
+	["亮", KEY_BRACKETRIGHT, 348.0, 140.0, 19.0],
 ]
 const FILL := Color(1, 1, 1, 0.1)
 const FILL_PRESSED := Color(1, 1, 1, 0.38)
 const RIM_ALPHA := 0.45
 
+var _cast_center := Vector2.ZERO
+var _cast_touch := -1
+var _cast_drag := Vector2.ZERO
+var _aim_release_timer := 0.0
+var _cast_view: CastButtonView
+
 
 func _ready() -> void:
 	layer = 5
+	visible = DisplayServer.is_touchscreen_available()
 	for spec in BUTTONS:
 		var center: Vector2 = AIM_CENTER + Vector2.RIGHT.rotated(deg_to_rad(spec[2])) * spec[3]
 		_add_button(spec[0], spec[1], center, spec[4])
+	_cast_center = AIM_CENTER + Vector2.RIGHT.rotated(deg_to_rad(CAST_ANGLE)) * CAST_DISTANCE
+	_cast_view = CastButtonView.new()
+	_cast_view.position = _cast_center
+	_cast_view.radius = CAST_RADIUS
+	add_child(_cast_view)
+
+
+func _process(delta: float) -> void:
+	if _cast_touch == -1 and _aim_release_timer > 0.0:
+		_aim_release_timer -= delta
+		if _aim_release_timer <= 0.0:
+			_set_player_aim(Vector2.ZERO)
+
+
+func _input(event: InputEvent) -> void:
+	if not visible:
+		return
+	if event is InputEventScreenTouch:
+		if event.pressed and _cast_touch == -1 and event.position.distance_to(_cast_center) <= CAST_RADIUS:
+			_cast_touch = event.index
+			_cast_drag = Vector2.ZERO
+			_cast_view.set_state(true, Vector2.ZERO)
+			_send(KEY_SPACE, true)
+			get_viewport().set_input_as_handled()
+		elif not event.pressed and event.index == _cast_touch:
+			_cast_touch = -1
+			_cast_view.set_state(false, Vector2.ZERO)
+			_send(KEY_SPACE, false)
+			_aim_release_timer = AIM_HOLD_AFTER_RELEASE
+			get_viewport().set_input_as_handled()
+	elif event is InputEventScreenDrag and event.index == _cast_touch:
+		_cast_drag = event.position - _cast_center
+		var steering := _cast_drag.length() > DRAG_DEADZONE
+		_cast_view.set_state(true, _cast_drag.limit_length(CAST_RADIUS) if steering else Vector2.ZERO)
+		if steering:
+			_set_player_aim(_cast_drag.normalized())
+		get_viewport().set_input_as_handled()
+
+
+func _set_player_aim(dir: Vector2) -> void:
+	var player := get_tree().get_first_node_in_group("player")
+	if player != null:
+		player.touch_aim = dir
 
 
 func _add_button(text: String, key: Key, center: Vector2, radius: float) -> void:
@@ -51,18 +116,22 @@ func _add_button(text: String, key: Key, center: Vector2, radius: float) -> void
 	button.visibility_mode = TouchScreenButton.VISIBILITY_TOUCHSCREEN_ONLY
 	button.pressed.connect(_send.bind(key, true))
 	button.released.connect(_send.bind(key, false))
+	button.add_child(_label(text, radius))
+	add_child(button)
+
+
+static func _label(text: String, radius: float) -> Label:
 	var label := Label.new()
 	label.text = text
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	label.size = Vector2(radius, radius) * 2.0
 	label.add_theme_font_size_override("font_size", 18 if radius > 40.0 else (14 if radius > 20.0 else 13))
-	label.modulate.a = 0.85
 	label.add_theme_constant_override("outline_size", 4)
 	label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	button.add_child(label)
-	add_child(button)
+	label.modulate.a = 0.85
+	return label
 
 
 func _send(key: Key, down: bool) -> void:
@@ -87,3 +156,36 @@ static func _disc(radius: float, fill: Color) -> ImageTexture:
 				col.a *= 1.0 - smoothstep(radius - 1.0, radius, d)
 				img.set_pixel(x, y, col)
 	return ImageTexture.create_from_image(img)
+
+
+## The cast/reel button: the disc and label, plus - while it's dragged - a
+## knob and a pointer toward where the cast will go.
+class CastButtonView extends Node2D:
+	var radius := 42.0
+	var _pressed := false
+	var _knob := Vector2.ZERO
+	var _normal: ImageTexture
+	var _down: ImageTexture
+
+	func _ready() -> void:
+		_normal = TouchControls._disc(radius, TouchControls.FILL)
+		_down = TouchControls._disc(radius, TouchControls.FILL_PRESSED)
+		var label := TouchControls._label("拋竿\n收線", radius)
+		label.position = -Vector2(radius, radius)
+		add_child(label)
+
+	func set_state(pressed: bool, knob: Vector2) -> void:
+		_pressed = pressed
+		_knob = knob
+		queue_redraw()
+
+	func _draw() -> void:
+		var tex := _down if _pressed else _normal
+		draw_texture(tex, -Vector2(radius, radius))
+		if _pressed and _knob != Vector2.ZERO:
+			var dir := _knob.normalized()
+			draw_line(Vector2.ZERO, dir * (radius + 26.0), Color(1, 0.9, 0.5, 0.75), 3.0)
+			draw_circle(_knob, 13.0, Color(1, 1, 1, 0.45))
+			var tip := dir * (radius + 32.0)
+			draw_colored_polygon(PackedVector2Array([tip, tip - dir * 12.0 + dir.orthogonal() * 7.0,
+				tip - dir * 12.0 - dir.orthogonal() * 7.0]), Color(1, 0.9, 0.5, 0.85))

@@ -21,8 +21,24 @@ const PLAYER_FEET := Vector2(0, 8)
 ## a run (away from the angler, or the way a rare fish is pulling), and is
 ## dragged in as the reel progress climbs. Purely visual - the fight's
 ## rules live in Player.
-const FISH_ROAM := 34.0
-const FISH_RUN_ROAM := 72.0
+## User feedback: that was far too wild - the fish only shifts about a little
+## around where it bit, and comes in closer as its stamina (the reel
+## progress) runs down.
+const FISH_ROAM := 7.0
+const FISH_RUN_ROAM := 15.0
+const FISH_PULL_IN := 0.85
+
+## User request: a hooked fish is felt, not just read in the top-left log -
+## the camera kicks at the bite and at the hook-set, and trembles slightly
+## all through the fight (harder while the fish runs).
+const SHAKE_BITE := 5.0
+const SHAKE_HOOK := 4.0
+const SHAKE_FIGHT := 0.8
+const SHAKE_RUN := 2.0
+const SHAKE_DECAY := 14.0
+
+var _shake := 0.0
+var _shown_progress := 0.0
 const FISH_WAKE_SPACING := 16.0
 
 var _fish_offset := Vector2.ZERO
@@ -42,6 +58,9 @@ var _bob_timer := 0.0
 
 func _ready() -> void:
 	add_child(WaterSim.new())
+	add_child(Atmosphere.new())
+	# Above the breathing-darkness vignette (Atmosphere, layer 1).
+	$HUD.layer = 2
 	# Phones (the web build on iPhone): on-screen buttons for the keys, and
 	# the long keyboard help text would sit right under them.
 	add_child(TouchControls.new())
@@ -52,7 +71,7 @@ func _ready() -> void:
 			stick.modulate.a = 0.45
 	player.cast_started.connect(_on_cast_started)
 	player.bite_started.connect(_on_bite_started)
-	player.hook_success.connect(func(): lure.float_state = LureVisual.FloatState.HOOKED)
+	player.hook_success.connect(_on_hook_success)
 	player.line_cleared.connect(_on_line_cleared)
 	# Covers opening this scene directly (e.g. F6 in the editor) without
 	# going through the title screen's Start button.
@@ -71,6 +90,7 @@ func _process(delta: float) -> void:
 		_update_line_ripples(delta)
 	_update_wading_ripples()
 	_update_fish_jumps(delta)
+	_update_camera_shake(delta)
 
 	# Debug convenience: Shift+R restarts the run without reopening Godot.
 	var reset_combo := Input.is_key_pressed(KEY_SHIFT) and Input.is_key_pressed(KEY_R)
@@ -106,11 +126,26 @@ func _on_cast_started(target_pos: Vector2, _tier: String) -> void:
 func _on_bite_started() -> void:
 	bobber.modulate = player.current_fish_color
 	lure.float_state = LureVisual.FloatState.BITING
+	_shake = maxf(_shake, SHAKE_BITE)
 	SplashFx.play(self, "splash_bite", bobber.global_position)
 	# The fish yanks at the line: a quick burst of sharp rings.
 	for i in 3:
 		get_tree().create_timer(i * 0.15).timeout.connect(
 			func(): Ripple.spawn(self, bobber.global_position, 26.0, 1.2, 1.0))
+
+
+func _on_hook_success() -> void:
+	lure.float_state = LureVisual.FloatState.HOOKED
+	_shake = maxf(_shake, SHAKE_HOOK)
+
+
+func _update_camera_shake(delta: float) -> void:
+	var floor_amount := 0.0
+	if player.state == Player.State.REELING:
+		floor_amount = SHAKE_RUN if player.fish_run_active_time > 0.0 else SHAKE_FIGHT
+	_shake = maxf(move_toward(_shake, 0.0, SHAKE_DECAY * delta), floor_amount)
+	var cam: Camera2D = player.get_node("Camera2D")
+	cam.offset = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _shake if _shake > 0.05 else Vector2.ZERO
 
 
 func _on_line_cleared() -> void:
@@ -170,11 +205,12 @@ func _fish_motion(delta: float, base: Vector2) -> Vector2:
 			_fish_goal_timer -= delta
 			if _fish_goal_timer <= 0.0:
 				_fish_goal_timer = randf_range(0.08, 0.2)
-				_fish_goal = Vector2.RIGHT.rotated(randf() * TAU) * randf_range(3.0, 9.0)
+				_fish_goal = Vector2.RIGHT.rotated(randf() * TAU) * randf_range(1.5, 4.0)
 			_fish_offset = _fish_offset.lerp(_fish_goal, minf(1.0, delta * 20.0))
 		Player.State.REELING:
 			var running: bool = player.fish_run_active_time > 0.0
-			base = base.lerp(player.global_position, player.progress * 0.8)
+			_shown_progress = lerpf(_shown_progress, player.progress, minf(1.0, delta * 2.0))
+			base = base.lerp(player.global_position, _shown_progress * FISH_PULL_IN)
 			_fish_goal_timer -= delta
 			if _fish_goal_timer <= 0.0:
 				_fish_goal_timer = randf_range(0.2, 0.45) if running else randf_range(0.5, 1.1)
@@ -187,6 +223,7 @@ func _fish_motion(delta: float, base: Vector2) -> Vector2:
 			_fish_offset = _fish_offset.lerp(_fish_goal, minf(1.0, delta * (6.0 if running else 2.5)))
 		_:
 			_fish_offset = Vector2.ZERO
+			_shown_progress = 0.0
 			return base
 	var pos := base + _fish_offset
 	if Ripple.water_at(get_tree(), pos) == null:

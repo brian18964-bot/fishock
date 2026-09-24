@@ -9,6 +9,8 @@ func _ready() -> void:
 	back_button.pressed.connect(_on_back_pressed)
 	Profile.gold_updated.connect(_on_profile_changed)
 	Profile.profile_changed.connect(_on_profile_changed)
+	# Two more rows (flashlight, batteries) than the scene was laid out for.
+	rows_container.add_theme_constant_override("separation", 6)
 	_refresh_gold()
 	_rebuild_rows()
 
@@ -30,6 +32,12 @@ func _rebuild_rows() -> void:
 		rows_container.add_child(_make_upgrade_row(key))
 
 	rows_container.add_child(_make_lure_row())
+	rows_container.add_child(_make_item_row(
+		"手電筒（遠距離窄光束，用電池）：%s" % ("已擁有" if Profile.has_flashlight else "%d 金幣" % Profile.FLASHLIGHT_COST),
+		"購買", Profile.has_flashlight or Profile.gold < Profile.FLASHLIGHT_COST, Profile.buy_flashlight))
+	rows_container.add_child(_make_item_row(
+		"電池（庫存 %d，沒電時隨地換上）：每顆 %d 金幣" % [Profile.batteries, Profile.BATTERY_COST],
+		"購買", Profile.gold < Profile.BATTERY_COST, Profile.buy_battery))
 
 
 func _make_upgrade_row(key: String) -> Control:
@@ -76,6 +84,21 @@ func _make_lure_row() -> Control:
 	button.pressed.connect(_buy_lure)
 	row.add_child(button)
 
+	return row
+
+
+func _make_item_row(text: String, button_text: String, disabled: bool, action: Callable) -> Control:
+	var row := HBoxContainer.new()
+	var label := Label.new()
+	label.text = text
+	label.custom_minimum_size = Vector2(440, 32)
+	row.add_child(label)
+	var button := Button.new()
+	button.text = button_text
+	button.custom_minimum_size = Vector2(80, 32)
+	button.disabled = disabled
+	button.pressed.connect(func(): action.call())
+	row.add_child(button)
 	return row
 
 

@@ -20,9 +20,10 @@ const TREE_OFFSET := Vector2(0, -73.19)
 const TWISTED_OFFSET := Vector2(3.39, -172.68)
 const TWISTED_LEANING_OFFSET := Vector2(124.15, -143.54)
 const SPRITE_SCALE := 0.5
-## User feedback: trees bigger - every variant drawn 1.2x, then another
-## 1.3x on top (~1.56x).
-const TREE_SIZE := 1.56
+## User feedback: trees bigger - every variant drawn 1.2x, then 1.3x, then
+## 1.2x again (~1.87x). The trunk's collision grows with it, more gently.
+const TREE_SIZE := 1.87
+const TRUNK_SIZE := 1.4
 
 ## fade_rect: the branch area (node-local px) where the player counts as
 ## "behind" the tree, from each model's projected bounds; stops just above
@@ -242,6 +243,16 @@ func apply_variant(index: int) -> void:
 
 	# Built per instance: a shape resource from the .tscn would be shared by
 	# every tree, so resizing it for one variant would resize all of them.
+	# The trunk's footprint grows with the tree (fresh resources - the
+	# scene's are shared by every tree).
+	var trunk := RectangleShape2D.new()
+	trunk.size = Vector2(16, 12) * TRUNK_SIZE
+	$TrunkBody/CollisionShape2D.shape = trunk
+	var occ := OccluderPolygon2D.new()
+	var h := trunk.size / 2.0
+	occ.polygon = PackedVector2Array([Vector2(-h.x, -h.y), Vector2(h.x, -h.y), Vector2(h.x, h.y), Vector2(-h.x, h.y)])
+	$TrunkBody/LightOccluder2D.occluder = occ
+
 	var fade: Rect2 = variant.fade_rect
 	var rect := Rect2(fade.position * TREE_SIZE, fade.size * TREE_SIZE)
 	var shape := RectangleShape2D.new()

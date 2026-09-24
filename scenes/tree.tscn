@@ -23,7 +23,6 @@ occluder = SubResource("TrunkOccluder")
 
 [node name="Canopy" type="Node2D" parent="."]
 script = ExtResource("2")
-z_index = 10
 
 [node name="Visual" type="Sprite2D" parent="Canopy"]
 

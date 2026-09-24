@@ -308,7 +308,7 @@ modulate = Color(1, 0.4, 0.5, 1)
 text = ""
 
 [node name="FuelLabel" type="Label" parent="HUD/Panel"]
-offset_left = 700.0
+offset_left = 600.0
 offset_top = 12.0
 offset_right = 920.0
 offset_bottom = 28.0
