@@ -23,7 +23,8 @@ const KINDS := {
 	"flower_petal": ["flower_petal_1", "flower_petal_2", "flower_petal_3", "flower_petal_4", "flower_petal_5"],
 	"grass": ["grass_wispy", "grass_wispy_2", "grass"],
 	"mushroom": ["mushroom", "mushroom_laetiporus"],
-	"pebble": ["pebble_round", "pebble_round_2", "pebble_round_3", "pebble_round_4", "pebble_round_5", "pebble_square"],
+	"pebble": ["pebble_round", "pebble_round_2", "pebble_round_3", "pebble_round_4", "pebble_round_5",
+		"pebble_square", "pebble_square_2", "pebble_square_3", "pebble_square_4", "pebble_square_5", "pebble_square_6"],
 }
 
 const TEXTURES := {
@@ -45,6 +46,11 @@ const TEXTURES := {
 	"mushroom_laetiporus": [preload("res://assets/sprites/ground_cover/mushroom_laetiporus_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/mushroom_laetiporus_55deg_normal.png")],
 	"pebble_round": [preload("res://assets/sprites/ground_cover/pebble_round_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/pebble_round_55deg_normal.png")],
 	"pebble_square": [preload("res://assets/sprites/ground_cover/pebble_square_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/pebble_square_55deg_normal.png")],
+	"pebble_square_2": [preload("res://assets/sprites/ground_cover/pebble_square_2_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/pebble_square_2_55deg_normal.png")],
+	"pebble_square_3": [preload("res://assets/sprites/ground_cover/pebble_square_3_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/pebble_square_3_55deg_normal.png")],
+	"pebble_square_4": [preload("res://assets/sprites/ground_cover/pebble_square_4_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/pebble_square_4_55deg_normal.png")],
+	"pebble_square_5": [preload("res://assets/sprites/ground_cover/pebble_square_5_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/pebble_square_5_55deg_normal.png")],
+	"pebble_square_6": [preload("res://assets/sprites/ground_cover/pebble_square_6_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/pebble_square_6_55deg_normal.png")],
 	"pebble_round_2": [preload("res://assets/sprites/ground_cover/pebble_round_2_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/pebble_round_2_55deg_normal.png")],
 	"pebble_round_3": [preload("res://assets/sprites/ground_cover/pebble_round_3_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/pebble_round_3_55deg_normal.png")],
 	"pebble_round_4": [preload("res://assets/sprites/ground_cover/pebble_round_4_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/pebble_round_4_55deg_normal.png")],
