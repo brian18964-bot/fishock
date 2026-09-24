@@ -39,7 +39,9 @@ Sets rendered so far (see art_src/):
                mushroom x2.0, mushroom_laetiporus x0.75, pebble_* x2.0
   pine/*         scale 1.0   --center-y 2.70 --ortho-scale 7.968 --res 200 216
   leafy_tree/*   scale 1.0 --foliage-normals, same camera as pine/*
-  twisted_tree/* scale 1.0 --foliage-normals --recenter --center-y 5.26 --ortho-scale 16.231 --res 352 440
+  twisted_tree/1,2,3,5  x1.0 --foliage-normals --center-x 0.125 --center-y 6.37 --ortho-scale 15.641 --res 384 424
+  twisted_tree/4        x1.0 --foliage-normals --center-x 4.58 --center-y 5.295 --ortho-scale 14.166 --res 384 376
+                 (origins already sit at the trunk base; no --recenter)
   bush/plant_big_2  x1.2      --center-y 1.873 --ortho-scale 4.427 --res 120 120
   rock/rock_medium  x1.45     --center-y 0.67 --ortho-scale 5.312 --res 144 120
   rock/rock_medium_2, _3  x1.45 --recenter --center-y 0.75 --ortho-scale 5.312 --res 144 144
@@ -64,17 +66,19 @@ UP = Vector((0.0, math.sin(ELEV), math.cos(ELEV)))
 BACK = -FORWARD
 
 
-def base_footprint(meshes):
-    """X/Y bounds of the bottom quarter of the model's height (its ground contact)."""
+def base_footprint(meshes, base_slice=0.25):
+    """X/Y bounds of the bottom `base_slice` of the model's height (its ground
+    contact). A quarter suits rocks; leaning trees need a thin slice (0.05) or
+    low canopy gets counted as part of the trunk base."""
     pts = [o.matrix_world @ v.co for o in meshes for v in o.data.vertices]
     zmin = min(p.z for p in pts)
     zmax = max(p.z for p in pts)
-    base = [p for p in pts if p.z < zmin + 0.25 * (zmax - zmin)]
+    base = [p for p in pts if p.z < zmin + base_slice * (zmax - zmin)]
     return (min(p.x for p in base), max(p.x for p in base),
             min(p.y for p in base), max(p.y for p in base))
 
 
-def load_model(path, scale=1.0, recenter=False):
+def load_model(path, scale=1.0, recenter=False, base_slice=0.25):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=path)
     roots = [o for o in bpy.context.scene.objects if o.parent is None]
@@ -87,7 +91,7 @@ def load_model(path, scale=1.0, recenter=False):
     if recenter:
         # For models whose origin isn't at their base: slide them so the
         # ground footprint is centered on the origin (height untouched).
-        x0, x1, y0, y1 = base_footprint(meshes)
+        x0, x1, y0, y1 = base_footprint(meshes, base_slice)
         shift = Vector((-(x0 + x1) / 2, -(y0 + y1) / 2, 0.0))
         for o in roots:
             o.location += shift
@@ -189,7 +193,7 @@ def rewire_materials(meshes, mode, foliage_normals=False):
         nt.links.new(surface, out.inputs['Surface'])
 
 
-def setup_scene(center_y, ortho_scale, res_x, res_y):
+def setup_scene(center_y, ortho_scale, res_x, res_y, center_x=0.0):
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'
     scene.cycles.device = 'CPU'
@@ -209,7 +213,7 @@ def setup_scene(center_y, ortho_scale, res_x, res_y):
     cam_data.clip_end = 1000.0
     cam = bpy.data.objects.new("SpriteCam", cam_data)
     scene.collection.objects.link(cam)
-    cam.location = UP * center_y - FORWARD * 200.0
+    cam.location = RIGHT * center_x + UP * center_y - FORWARD * 200.0
     cam.rotation_euler = (math.radians(90.0) - ELEV, 0.0, 0.0)
     scene.camera = cam
 
@@ -234,6 +238,8 @@ def main():
     r.add_argument("model")
     r.add_argument("out_prefix", help="writes OUT_PREFIX_albedo.png and OUT_PREFIX_normal.png")
     r.add_argument("--center-y", type=float, required=True)
+    r.add_argument("--center-x", type=float, default=0.0,
+                   help="shift the canvas sideways, for lopsided models; sprite offset.x = +center_x * 27.108")
     r.add_argument("--ortho-scale", type=float, required=True)
     r.add_argument("--res", type=int, nargs=2, metavar=("W", "H"), required=True)
     r.add_argument("--foliage-normals", action="store_true",
@@ -243,15 +249,17 @@ def main():
                        help="uniform model scale about the origin, for models authored at a different scale")
         p.add_argument("--recenter", action="store_true",
                        help="center the model's ground footprint on the origin (for off-center origins)")
+        p.add_argument("--base-slice", type=float, default=0.25,
+                       help="fraction of model height counted as its base for --recenter/footprint (0.05 for leaning trees)")
     args = parser.parse_args()
 
-    meshes = load_model(args.model, args.scale, args.recenter)
+    meshes = load_model(args.model, args.scale, args.recenter, args.base_slice)
     if args.cmd == "measure":
         bounds = screen_bounds(meshes)
-        bounds["footprint_xy"] = base_footprint(meshes)
+        bounds["footprint_xy"] = base_footprint(meshes, args.base_slice)
         print(json.dumps(bounds))
         return
-    setup_scene(args.center_y, args.ortho_scale, *args.res)
+    setup_scene(args.center_y, args.ortho_scale, *args.res, args.center_x)
     for mode in ("albedo", "normal"):
         rewire_materials(meshes, mode, args.foliage_normals)
         render_pass(f"{args.out_prefix}_{mode}.png", mode)

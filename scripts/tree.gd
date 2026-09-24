@@ -8,10 +8,13 @@ extends Node2D
 ## offset: where the trunk base lands relative to the texture center,
 ## -center_y * 27.108 px/unit. Dead trees: 270x360 renders, center_y 5.265.
 ## Pines and leafy trees: 200x216 renders, center_y 2.70.
-## Twisted trees: 352x440 renders, center_y 5.26.
+## Twisted trees: 384x424 renders, center (0.125, 6.37); the lopsided one:
+## 384x376, center (4.58, 5.295). offset.x = +center_x * 27.108: the canvas
+## shifted right, so the texture moves right to bring the trunk onto the node.
 const DEAD_TREE_OFFSET := Vector2(0, -142.73)
 const TREE_OFFSET := Vector2(0, -73.19)
-const TWISTED_OFFSET := Vector2(0, -142.59)
+const TWISTED_OFFSET := Vector2(3.39, -172.68)
+const TWISTED_LEANING_OFFSET := Vector2(124.15, -143.54)
 const SPRITE_SCALE := 0.5
 
 ## fade_rect: the branch area (node-local px) where the player counts as
@@ -68,7 +71,16 @@ const VARIANTS := [
 	 "offset": TWISTED_OFFSET, "fade_rect": Rect2(-51, -177, 129, 167)},
 	{"albedo": preload("res://assets/sprites/twisted_tree/twisted_tree_2_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/twisted_tree/twisted_tree_2_55deg_normal.png"),
-	 "offset": TWISTED_OFFSET, "fade_rect": Rect2(-58, -169, 141, 159)},
+	 "offset": TWISTED_OFFSET, "fade_rect": Rect2(-59, -188, 141, 178)},
+	{"albedo": preload("res://assets/sprites/twisted_tree/twisted_tree_3_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/twisted_tree/twisted_tree_3_55deg_normal.png"),
+	 "offset": TWISTED_OFFSET, "fade_rect": Rect2(-61, -166, 154, 156)},
+	{"albedo": preload("res://assets/sprites/twisted_tree/twisted_tree_4_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/twisted_tree/twisted_tree_4_55deg_normal.png"),
+	 "offset": TWISTED_LEANING_OFFSET, "fade_rect": Rect2(-30, -161, 184, 151)},
+	{"albedo": preload("res://assets/sprites/twisted_tree/twisted_tree_5_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/twisted_tree/twisted_tree_5_55deg_normal.png"),
+	 "offset": TWISTED_OFFSET, "fade_rect": Rect2(-90, -175, 143, 165)},
 ]
 
 @onready var sprite: Sprite2D = $Canopy/Visual
@@ -76,7 +88,11 @@ const VARIANTS := [
 
 
 func _ready() -> void:
-	var variant: Dictionary = VARIANTS[randi() % VARIANTS.size()]
+	apply_variant(randi() % VARIANTS.size())
+
+
+func apply_variant(index: int) -> void:
+	var variant: Dictionary = VARIANTS[index]
 
 	var tex := CanvasTexture.new()
 	tex.diffuse_texture = variant.albedo
