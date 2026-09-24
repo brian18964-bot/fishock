@@ -196,16 +196,34 @@ const VARIANTS := [
 @onready var fade_shape: CollisionShape2D = $Canopy/Area2D/CollisionShape2D
 
 
+## Map theme (map_generator.gd): family -> weight. Empty = every family
+## equally likely. Set before the tree enters the tree.
+var family_weights: Dictionary = {}
+
+
 func _ready() -> void:
 	apply_variant(_pick_variant())
 
 
 ## Family first, then a variant within it, so families with many models
 ## (ten bare trees) don't crowd out the ones with few.
-static func _pick_variant() -> int:
+func _pick_variant() -> int:
 	var families := {}
 	for i in VARIANTS.size():
 		families.get_or_add(VARIANTS[i].family, []).append(i)
+	if family_weights.is_empty():
+		return families.values().pick_random().pick_random()
+	var total := 0.0
+	for f in family_weights:
+		if families.has(f):
+			total += family_weights[f]
+	var roll := randf() * total
+	for f in family_weights:
+		if not families.has(f):
+			continue
+		roll -= family_weights[f]
+		if roll <= 0.0:
+			return families[f].pick_random()
 	return families.values().pick_random().pick_random()
 
 

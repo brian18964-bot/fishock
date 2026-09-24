@@ -45,8 +45,13 @@ const VARIANTS := [
 @onready var occluder: LightOccluder2D = $LightOccluder2D
 
 
+## Map theme (map_generator.gd): VARIANTS indices to choose from. Empty =
+## any. Set before the rock enters the tree.
+var variant_pool: Array = []
+
+
 func _ready() -> void:
-	apply_variant(randi() % VARIANTS.size())
+	apply_variant(variant_pool.pick_random() if not variant_pool.is_empty() else randi() % VARIANTS.size())
 
 
 func apply_variant(index: int) -> void:

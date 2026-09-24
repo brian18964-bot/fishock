@@ -117,8 +117,15 @@ const TEXTURES := {
 }
 
 
+## Map theme (map_generator.gd): kind -> weight, or one forced kind (shore
+## reeds, pebbles). Both empty = every kind equally likely. Set before the
+## plant enters the tree.
+var kind_weights: Dictionary = {}
+var kind_override := ""
+
+
 func _ready() -> void:
-	var kind: String = KINDS.keys().pick_random()
+	var kind: String = kind_override if kind_override != "" else _pick_kind()
 	var variant: String = KINDS[kind].pick_random()
 	var tex := CanvasTexture.new()
 	tex.diffuse_texture = TEXTURES[variant][0]
@@ -126,3 +133,17 @@ func _ready() -> void:
 	texture = tex
 	offset = VARIANT_OFFSETS.get(variant, KIND_OFFSETS.get(kind, DEFAULT_OFFSET))
 	scale = Vector2(SPRITE_SCALE, SPRITE_SCALE)
+
+
+func _pick_kind() -> String:
+	if kind_weights.is_empty():
+		return KINDS.keys().pick_random()
+	var total := 0.0
+	for k in kind_weights:
+		total += kind_weights[k]
+	var roll := randf() * total
+	for k in kind_weights:
+		roll -= kind_weights[k]
+		if roll <= 0.0:
+			return k
+	return kind_weights.keys()[0]
