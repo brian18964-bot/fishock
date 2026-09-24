@@ -11,6 +11,25 @@ signal state_changed(new_state: String)
 
 enum GhostState { PATROL, SUSPICIOUS, ALERT, SEARCH }
 
+## User request: the ghost model (Ghoooooost by Nikki Morin) pre-rendered
+## facing down/left/right/up (tools/render_dirs.py, x1.3 --facing 39,
+## 120x96 cells, origin at its head). It floats - hovering and bobbing over
+## a soft shadow - faces the way it drifts, and its state reads as a tint
+## on the pale sheet: stunned yellow, frenzied pink, the night hunt red.
+const GHOST_SHEET := [preload("res://assets/sprites/ghost/ghost_55deg_albedo.png"), preload("res://assets/sprites/ghost/ghost_55deg_normal.png")]
+const GHOST_OFFSET := Vector2(0.0, 15.52)
+const GHOST_DIRS := 4  # sheet columns: down, left, right, up
+const HOVER := 18.0
+const BOB := 3.0
+const TINT_NORMAL := Color(0.92, 0.86, 0.95, 0.82)
+const TINT_STUNNED := Color(1.0, 0.95, 0.5, 0.85)
+const TINT_FRENZY := Color(1.0, 0.5, 0.75, 0.9)
+const TINT_NIGHT := Color(1.0, 0.35, 0.4, 0.95)
+
+var _tint := TINT_NORMAL
+var _bob_time := 0.0
+var _last_pos := Vector2.ZERO
+
 ## User feedback: everything moved too fast - the player and every creature
 ## slowed 20%, ghosts with them so the chase balance holds.
 const PACE := 0.8
@@ -74,10 +93,11 @@ var fuel_light: PointLight2D
 var stun_timer: float = 0.0
 
 @onready var state_icon: Label = $StateIcon
-@onready var visual: ColorRect = $Visual
+@onready var visual: Sprite2D = $Visual
 
 
 func _ready() -> void:
+	_setup_visual()
 	home_position = global_position
 	move_target = home_position
 	player = get_tree().current_scene.get_node("Player")
@@ -122,9 +142,9 @@ func _physics_process(delta: float) -> void:
 
 	if stun_timer > 0.0:
 		stun_timer -= delta
-		visual.color = Color(0.9, 0.85, 0.3, 1)
+		_tint = TINT_STUNNED
 		return
-	visual.color = Color(0.85, 0.15, 0.5, 1) if frenzy_timer > 0.0 else Color(0.55, 0.08, 0.16, 1)
+	_tint = TINT_FRENZY if frenzy_timer > 0.0 else TINT_NORMAL
 
 	var sense := _sense_player()
 	match ghost_state:
@@ -230,7 +250,7 @@ func _process_search(delta: float, sense: Dictionary) -> void:
 ## Design doc §3.4: ignores stun, fixed lights, and the whole day FSM - it
 ## just beelines the player, unescapably fast, until it catches them.
 func _process_night_hunt(delta: float) -> void:
-	visual.color = Color(0.55, 0.08, 0.16, 1)
+	_tint = TINT_NIGHT
 	var to_player := player.global_position - global_position
 	if to_player.length() > 1.0:
 		global_position += to_player.normalized() * NIGHT_CHASE_SPEED * PACE * delta
@@ -347,3 +367,39 @@ func _set_state(new_state: GhostState) -> void:
 
 func _on_state_changed(new_state: String) -> void:
 	state_icon.text = {"PATROL": "", "SUSPICIOUS": "?", "ALERT": "!", "SEARCH": "…"}.get(new_state, "")
+
+
+func _process(delta: float) -> void:
+	_bob_time += delta
+	visual.position.y = -HOVER + sin(_bob_time * 2.3) * BOB
+	visual.modulate = visual.modulate.lerp(_tint, minf(1.0, delta * 6.0))
+	var moved := global_position - _last_pos
+	_last_pos = global_position
+	if moved.length() > 0.2:
+		var dir := 0
+		if absf(moved.x) > absf(moved.y):
+			dir = 2 if moved.x > 0.0 else 1
+		else:
+			dir = 0 if moved.y > 0.0 else 3
+		visual.frame = dir
+
+
+func _setup_visual() -> void:
+	var tex := CanvasTexture.new()
+	tex.diffuse_texture = GHOST_SHEET[0]
+	tex.normal_texture = GHOST_SHEET[1]
+	visual.texture = tex
+	visual.hframes = GHOST_DIRS
+	visual.scale = Vector2(0.5, 0.5)
+	visual.offset = GHOST_OFFSET
+	visual.modulate = _tint
+	_last_pos = global_position
+	_bob_time = randf() * TAU
+	# A soft shadow on the ground under it.
+	var shadow := Sprite2D.new()
+	shadow.name = "Shadow"
+	shadow.texture = LightTextureFactory.make_radial_texture(64, 0.5)
+	shadow.scale = Vector2(0.55, 0.22)
+	shadow.modulate = Color(0, 0, 0, 0.35)
+	shadow.show_behind_parent = true
+	add_child(shadow)

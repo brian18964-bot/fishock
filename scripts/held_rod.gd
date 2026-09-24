@@ -10,8 +10,10 @@ extends Sprite2D
 const SPRITE_SCALE := 0.5
 ## User feedback: the rod was a thin dark sliver on a phone screen - drawn
 ## longer, much thicker, and brighter.
-const LENGTH_SCALE := 1.15
-const THICKNESS_SCALE := 2.2
+## With the mannequin in place (and the camera close) it's back to about a
+## 3 m rod.
+const LENGTH_SCALE := 0.8
+const THICKNESS_SCALE := 1.6
 const BRIGHTNESS := 1.6
 
 ## User request: the rod moves. Charging swings it back over the shoulder

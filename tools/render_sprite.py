@@ -107,6 +107,11 @@ rows = clips x dirs down/left/right/up, x-symmetric camera per animal):
   animal/triceratops  x0.26 Triceratops_Walk Triceratops_Idle  cell 176x152 --center-y 0.422
   animal/velociraptor x0.24 Velociraptor_Walk Velociraptor_Idle  cell 120x104 --center-y 0.468
   (ortho-scale = max(cell W, H) / 27.108)
+  player/player  art_src/player/ual1_standard.glb (Universal Animation Library
+                 mannequin) x1.3 --drop Icosphere --actions Idle_Torch_Loop
+                 Jog_Fwd_Loop Sword_Attack Pistol_Idle_Loop Interact --frames 8
+                 --dirs down down_left left up_left up up_right right down_right
+                 cell 72x80 --center-y 0.615 --ortho-scale 2.9512
 """
 import argparse
 import json
@@ -134,9 +139,9 @@ def base_footprint(meshes, base_slice=0.25):
             min(p.y for p in base), max(p.y for p in base))
 
 
-def load_model(path, scale=1.0, recenter=False, base_slice=0.25, only=None, drop=()):
+def load_model(path, scale=1.0, recenter=False, base_slice=0.25, only=None, drop=(), import_opts=None):
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    bpy.ops.import_scene.gltf(filepath=path)
+    bpy.ops.import_scene.gltf(filepath=path, **(import_opts or {}))
     for name in drop:
         # Stray helper meshes some exports carry (e.g. the animal pack's
         # unit Icosphere sitting at the origin).
@@ -316,7 +321,8 @@ def render_pass(path_out, mode):
 
 # Screen directions for animated sheets: yaw applied to a model that faces
 # the camera (-Y). Rotating +90deg about Z turns -Y toward +X (screen right).
-DIRS = {"down": 0.0, "right": 90.0, "up": 180.0, "left": -90.0}
+DIRS = {"down": 0.0, "right": 90.0, "up": 180.0, "left": -90.0,
+        "down_right": 45.0, "up_right": 135.0, "up_left": -135.0, "down_left": -45.0}
 
 
 def find_action(name):
@@ -483,11 +489,20 @@ def main():
                        help="turn the model about Z first (deg; +90 turns a camera-facing model to face right)")
         p.add_argument("--drop", action="append", default=[],
                        help="delete this named object after import (repeatable)")
+        p.add_argument("--no-bind-guess", action="store_true",
+                       help="glTF import: don't guess the original bind pose")
+        p.add_argument("--bone-heuristic", default=None, choices=["BLENDER", "TEMPERANCE", "FORTUNE"],
+                       help="glTF import bone orientation heuristic")
         p.add_argument("--base-slice", type=float, default=0.25,
                        help="fraction of model height counted as its base for --recenter/footprint (0.05 for leaning trees)")
     args = parser.parse_args()
 
-    meshes = load_model(args.model, args.scale, args.recenter, args.base_slice, args.object, args.drop)
+    opts = {}
+    if args.no_bind_guess:
+        opts["guess_original_bind_pose"] = False
+    if args.bone_heuristic:
+        opts["bone_heuristic"] = args.bone_heuristic
+    meshes = load_model(args.model, args.scale, args.recenter, args.base_slice, args.object, args.drop, opts)
     if args.tip:
         tip = Matrix.Rotation(math.radians(args.tip), 4, 'Y')
         for o in [o for o in bpy.context.scene.objects if o.parent is None]:

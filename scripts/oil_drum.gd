@@ -1,6 +1,8 @@
 class_name OilDrum
 extends Area2D
 
+## User request: shown as a hand-carried gas can (Quaternius, x0.28,
+## tools/render_dirs.py, 24x24) instead of the old oil barrel.
 ## Design doc request: a world pickup that's carried by hand back to a fuel
 ## station and dumped in (see Player._deliver_oil_drum() /
 ## FuelStation.add_fuel()) rather than refilling the whole map on the spot.

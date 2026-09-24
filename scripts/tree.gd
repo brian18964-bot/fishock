@@ -20,10 +20,11 @@ const TREE_OFFSET := Vector2(0, -73.19)
 const TWISTED_OFFSET := Vector2(3.39, -172.68)
 const TWISTED_LEANING_OFFSET := Vector2(124.15, -143.54)
 const SPRITE_SCALE := 0.5
-## User feedback: trees bigger - every variant drawn 1.2x, then 1.3x, then
-## 1.2x again (~1.87x). The trunk's collision grows with it, more gently.
-const TREE_SIZE := 1.87
-const TRUNK_SIZE := 1.4
+## User feedback: trees were enlarged step by step (to ~1.87x) while the
+## camera sat far back; with the Diablo-style close camera they're back to
+## a natural 1.2x. The trunk's collision grows with them.
+const TREE_SIZE := 1.2
+const TRUNK_SIZE := 1.2
 
 ## fade_rect: the branch area (node-local px) where the player counts as
 ## "behind" the tree, from each model's projected bounds; stops just above

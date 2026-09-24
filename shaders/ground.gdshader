@@ -16,6 +16,7 @@ uniform float macro_px = 1300.0;   // world px per macro-noise tile
 uniform float blend_b = 0.3;       // share of the ground covered by B
 uniform float brightness = 0.65;
 uniform vec3 tint = vec3(1.0);
+uniform float detail = 0.55;       // 1 = full-contrast texture detail
 
 varying vec2 world;
 
@@ -31,8 +32,13 @@ void fragment() {
 	vec2 uv = world / tile_px;
 	// B on its own offset so the two tile grids never line up.
 	vec2 uvb = world / (tile_px * 1.07) + vec2(0.37, 0.61);
-	vec3 col = mix(texture(albedo_a, uv).rgb, texture(albedo_b, uvb).rgb, t);
+	// Close up (the Diablo-style camera) the full-detail tiles read as busy:
+	// fold some of a blurrier mip back in to soften the pattern.
+	vec3 ca = mix(textureLod(albedo_a, uv, 2.5).rgb, texture(albedo_a, uv).rgb, detail);
+	vec3 cb = mix(textureLod(albedo_b, uvb, 2.5).rgb, texture(albedo_b, uvb).rgb, detail);
+	vec3 col = mix(ca, cb, t);
 	col *= (0.86 + 0.28 * m2) * brightness * tint;
 	COLOR = vec4(col, 1.0);
-	NORMAL_MAP = mix(texture(normal_a, uv).rgb, texture(normal_b, uvb).rgb, t);
+	vec3 n = mix(texture(normal_a, uv).rgb, texture(normal_b, uvb).rgb, t);
+	NORMAL_MAP = mix(vec3(0.5, 0.5, 1.0), n, detail);
 }

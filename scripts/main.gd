@@ -39,6 +39,18 @@ const SHAKE_DECAY := 14.0
 
 var _shake := 0.0
 var _shown_progress := 0.0
+
+## User decision (Diablo II as the reference for scale): walking about, the
+## camera sits close; the moment fishing starts - charging, waiting, the
+## fight - it eases out just enough to keep the player and where the line
+## is going both on screen, framed between them, then eases back in.
+const WALK_ZOOM := 2.6
+const MIN_ZOOM := 1.0
+const FRAME_MARGIN := Vector2(70.0, 60.0)
+const ZOOM_EASE := 2.2
+const FRAME_EASE := 3.0
+
+var _frame_offset := Vector2.ZERO
 const FISH_WAKE_SPACING := 16.0
 
 var _fish_offset := Vector2.ZERO
@@ -90,7 +102,7 @@ func _process(delta: float) -> void:
 		_update_line_ripples(delta)
 	_update_wading_ripples()
 	_update_fish_jumps(delta)
-	_update_camera_shake(delta)
+	_update_camera(delta)
 
 	# Debug convenience: Shift+R restarts the run without reopening Godot.
 	var reset_combo := Input.is_key_pressed(KEY_SHIFT) and Input.is_key_pressed(KEY_R)
@@ -139,13 +151,36 @@ func _on_hook_success() -> void:
 	_shake = maxf(_shake, SHAKE_HOOK)
 
 
-func _update_camera_shake(delta: float) -> void:
+func _update_camera(delta: float) -> void:
+	var cam: Camera2D = player.get_node("Camera2D")
+	# Framing: what the shot has to include besides the player.
+	var focus := Vector2.ZERO
+	var fishing := true
+	match player.state:
+		Player.State.CHARGING:
+			var ratio: float = player.charge_time / Player.MAX_CHARGE_TIME
+			focus = player.aim_dir * lerpf(Player.MIN_CAST_DIST, player.max_cast_dist, ratio)
+		Player.State.WAITING, Player.State.BITE, Player.State.REELING:
+			focus = bobber.global_position - player.global_position
+		_:
+			fishing = false
+	var zoom := WALK_ZOOM
+	var frame := Vector2.ZERO
+	if fishing:
+		var view := get_viewport().get_visible_rect().size
+		var need := focus.abs() * 0.5 + FRAME_MARGIN
+		zoom = clampf(minf(view.x * 0.5 / need.x, view.y * 0.5 / need.y), MIN_ZOOM, WALK_ZOOM)
+		frame = focus * 0.5
+	var z := lerpf(cam.zoom.x, zoom, minf(1.0, delta * ZOOM_EASE))
+	cam.zoom = Vector2(z, z)
+	_frame_offset = _frame_offset.lerp(frame, minf(1.0, delta * FRAME_EASE))
+
 	var floor_amount := 0.0
 	if player.state == Player.State.REELING:
 		floor_amount = SHAKE_RUN if player.fish_run_active_time > 0.0 else SHAKE_FIGHT
 	_shake = maxf(move_toward(_shake, 0.0, SHAKE_DECAY * delta), floor_amount)
-	var cam: Camera2D = player.get_node("Camera2D")
-	cam.offset = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _shake if _shake > 0.05 else Vector2.ZERO
+	var shake := Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _shake if _shake > 0.05 else Vector2.ZERO
+	cam.offset = _frame_offset + shake
 
 
 func _on_line_cleared() -> void:

@@ -121,12 +121,12 @@ void fragment() {
 	// Deeper away from the shore, lighter in the shallows (user feedback:
 	// darker, deeper-looking water).
 	col = mix(col, deep_color.rgb, smoothstep(16.0, 110.0, edge_px) * 0.88);
-	col = mix(col, foam_color.rgb, smoothstep(22.0, 0.0, edge_px) * 0.18);
+	col = mix(col, foam_color.rgb, smoothstep(14.0, 0.0, edge_px) * 0.1);
 	// Broken foam line hugging the shore, nudged by the chop.
 	float wobble = (na.x + nb.y) * 1.5;
 	float foam = smoothstep(3.5, 1.0, abs(edge_px - 4.5 + wobble));
 	foam *= smoothstep(-0.25, 0.25, na.y + nb.x * 0.5 + 0.1);
-	col = mix(col, foam_color.rgb, foam * 0.6);
+	col = mix(col, foam_color.rgb, foam * 0.32);
 	// Live wave crests pick up a little foam colour.
 	col = mix(col, foam_color.rgb, clamp(sim_h * 2.5, 0.0, 0.35));
 

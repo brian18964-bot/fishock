@@ -209,6 +209,18 @@ var _key_prev_held: Dictionary = {}
 
 func _ready() -> void:
 	add_to_group("player")
+	# The gas can in hand while it's being carried (see OilDrum).
+	var can := Sprite2D.new()
+	can.name = "CarriedCan"
+	var tex := CanvasTexture.new()
+	tex.diffuse_texture = preload("res://assets/sprites/gas_can/gas_can_55deg_albedo.png")
+	tex.normal_texture = preload("res://assets/sprites/gas_can/gas_can_55deg_normal.png")
+	can.texture = tex
+	can.scale = Vector2(0.5, 0.5)
+	can.position = Vector2(9, 4)
+	can.offset = Vector2(0, -5.56)
+	can.visible = false
+	add_child(can)
 	reset_gear()
 	_set_state(State.IDLE)
 
@@ -558,6 +570,7 @@ func _update_movement() -> void:
 	var carry_ratio: float = carry_speed_ratio(GameState.carried_fish.size())
 	var affliction_ratio: float = WATER_GHOST_SPEED_MULT if water_ghost_timer > 0.0 else 1.0
 	var drum_ratio: float = OIL_DRUM_SPEED_MULT if carrying_oil_drum else 1.0
+	$CarriedCan.visible = carrying_oil_drum
 	velocity = input_dir * SPEED * carry_ratio * affliction_ratio * drum_ratio
 	var before := position
 	move_and_slide()
@@ -632,7 +645,7 @@ func _handle_action_input(delta: float) -> void:
 				if _fuel_station.try_refuel(lantern):
 					GameState.push_message("煤油加滿了！（煤油站剩 %d/%d）" % [int(_fuel_station.total_fuel), int(_fuel_station.max_total_fuel)])
 				elif _fuel_station.total_fuel <= 0.0:
-					GameState.push_message("煤油站的油用完了，帶油桶回來加吧")
+					GameState.push_message("煤油站的油用完了，帶油箱回來加吧")
 				else:
 					GameState.push_message("燃油已經是滿的")
 		_prev_action_held = held
@@ -645,7 +658,7 @@ func _handle_action_input(delta: float) -> void:
 			carrying_oil_drum = true
 			in_oil_drum_zone = false
 			_oil_drum = null
-			GameState.push_message("提起了油桶，送去煤油站吧（提著沒辦法釣魚）")
+			GameState.push_message("提起了油箱，送去煤油站吧（提著沒辦法釣魚）")
 		_prev_action_held = held
 		return
 
@@ -670,7 +683,7 @@ func _handle_action_input(delta: float) -> void:
 		State.IDLE:
 			if just_pressed:
 				if carrying_oil_drum:
-					GameState.push_message("提著油桶沒辦法釣魚，先送到煤油站")
+					GameState.push_message("提著油箱沒辦法釣魚，先送到煤油站")
 				elif _can_start_cast():
 					_set_state(State.CHARGING)
 					charge_time = 0.0
@@ -760,9 +773,9 @@ func _deliver_oil_drum() -> void:
 	_carried_oil_drum = null
 	carrying_oil_drum = false
 	if added > 0.0:
-		GameState.push_message("把油桶倒進煤油站了！補充了 %d 燃油" % int(added))
+		GameState.push_message("把油箱倒進煤油站了！補充了 %d 燃油" % int(added))
 	else:
-		GameState.push_message("煤油站已經是滿的，油桶白提了一趟")
+		GameState.push_message("煤油站已經是滿的，油箱白提了一趟")
 
 
 func _update_fishing(delta: float) -> void:
