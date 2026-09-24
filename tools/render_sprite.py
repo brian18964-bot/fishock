@@ -37,6 +37,9 @@ Sets rendered so far (see art_src/):
                flower_petal_* x1.5 (flower_petal_4 x3.0, a much smaller model)
                grass_wispy_2 x1.0 --foliage-normals, grass x1.5 --foliage-normals,
                mushroom x2.0, mushroom_laetiporus x0.75, pebble_* x2.0
+  pine/*         scale 1.0   --center-y 2.70 --ortho-scale 7.968 --res 200 216
+                 (library only, not placed in a scene yet; trunk base offset
+                 from texture center is (0, -73.19) px)
                      --center-y 0.635 --ortho-scale 2.361 --res 64 64
 """
 import argparse
