@@ -15,6 +15,11 @@ const BOB_INTERVAL := 1.6
 const WADE_SPACING := 16.0
 const PLAYER_FEET := Vector2(0, 8)
 
+## Now and then a fish leaps somewhere in the water near the player.
+const FISH_JUMP_INTERVAL := Vector2(5.0, 12.0)
+const FISH_JUMP_RANGE := 420.0
+
+var _fish_jump_timer := 8.0
 var _last_wake_pos := Vector2.INF
 var _last_wade_pos := Vector2.INF
 var _bob_timer := 0.0
@@ -40,6 +45,7 @@ func _process(delta: float) -> void:
 			lure.face(player.global_position)
 		_update_line_ripples(delta)
 	_update_wading_ripples()
+	_update_fish_jumps(delta)
 
 	# Debug convenience: Shift+R restarts the run without reopening Godot.
 	var reset_combo := Input.is_key_pressed(KEY_SHIFT) and Input.is_key_pressed(KEY_R)
@@ -59,6 +65,8 @@ func _on_cast_started(target_pos: Vector2, _tier: String) -> void:
 	_last_wake_pos = target_pos
 	_bob_timer = BOB_INTERVAL
 	Ripple.spawn(self, target_pos, 36.0, 1.0, 1.7)
+	if Ripple.water_at(get_tree(), target_pos) != null:
+		SplashFx.play(self, "splash_land", target_pos)
 	get_tree().create_timer(0.3).timeout.connect(func(): Ripple.spawn(self, target_pos, 22.0, 0.7, 1.4))
 	bobber.modulate = Color.WHITE
 	line.visible = true
@@ -70,6 +78,7 @@ func _on_cast_started(target_pos: Vector2, _tier: String) -> void:
 ## existing rare/heart bite messages.
 func _on_bite_started() -> void:
 	bobber.modulate = player.current_fish_color
+	SplashFx.play(self, "splash_bite", bobber.global_position)
 	# The fish yanks at the line: a quick burst of sharp rings.
 	for i in 3:
 		get_tree().create_timer(i * 0.15).timeout.connect(
@@ -100,3 +109,22 @@ func _update_wading_ripples() -> void:
 	if _last_wade_pos.distance_to(feet) >= WADE_SPACING:
 		_last_wade_pos = feet
 		Ripple.spawn(self, feet, 22.0, 0.7, 1.2)
+
+
+func _update_fish_jumps(delta: float) -> void:
+	_fish_jump_timer -= delta
+	if _fish_jump_timer > 0.0:
+		return
+	_fish_jump_timer = randf_range(FISH_JUMP_INTERVAL.x, FISH_JUMP_INTERVAL.y)
+	# A spot well inside some water near the player, if there is one.
+	for _try in 12:
+		var pos := player.global_position + Vector2.RIGHT.rotated(randf() * TAU) * randf_range(60.0, FISH_JUMP_RANGE)
+		var zone: WaterZone = Ripple.water_at(get_tree(), pos)
+		if zone == null or not zone.is_deep(pos, 30.0):
+			continue
+		var right := randf() < 0.5
+		SplashFx.play(self, "fish_jump_right" if right else "fish_jump_left", pos)
+		var dx := SplashFx.FISH_HALF_SPAN * (1.0 if right else -1.0)
+		Ripple.spawn(self, pos - Vector2(dx, 0), 20.0, 0.7)
+		get_tree().create_timer(0.6).timeout.connect(func(): Ripple.spawn(self, pos + Vector2(dx, 0), 26.0, 0.9))
+		return

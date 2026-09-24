@@ -16,6 +16,10 @@ enum State { IDLE, CHARGING, WAITING, BITE, REELING }
 enum FishingMode { BOBBER, LURE }
 
 const SPEED := 140.0
+## User request: common water is only wadeable at the edge - the player can
+## step this far in from the shore and no further, except out along docks
+## and their stairs (Dock walkways). Rare zones stay fully solid.
+const WADE_DEPTH := 26.0
 const MAX_CHARGE_TIME := 1.2
 const MIN_CAST_DIST := 40.0
 const MAX_CAST_DIST := 340.0
@@ -517,9 +521,28 @@ func _update_movement() -> void:
 	var affliction_ratio: float = WATER_GHOST_SPEED_MULT if water_ghost_timer > 0.0 else 1.0
 	var drum_ratio: float = OIL_DRUM_SPEED_MULT if carrying_oil_drum else 1.0
 	velocity = input_dir * SPEED * carry_ratio * affliction_ratio * drum_ratio
+	var before := position
 	move_and_slide()
 	position.x = clamp(position.x, 16.0, WORLD_WIDTH - 16.0)
 	position.y = clamp(position.y, 16.0, WORLD_HEIGHT - 16.0)
+	# Keep out of deep water, sliding along the shallows' edge. (Only
+	# blocks stepping deeper - never traps someone already out there.)
+	if _too_deep(position) and not _too_deep(before):
+		var moved := position - before
+		position = before
+		if not _too_deep(before + Vector2(moved.x, 0.0)):
+			position = before + Vector2(moved.x, 0.0)
+		elif not _too_deep(before + Vector2(0.0, moved.y)):
+			position = before + Vector2(0.0, moved.y)
+
+
+func _too_deep(pos: Vector2) -> bool:
+	if Dock.on_walkway(get_tree(), pos):
+		return false
+	for zone in get_tree().get_nodes_in_group("water_zones_common"):
+		if zone.is_deep(pos, WADE_DEPTH):
+			return true
+	return false
 
 
 func _update_noise() -> void:

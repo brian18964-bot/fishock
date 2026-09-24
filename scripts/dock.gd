@@ -62,7 +62,13 @@ const STAIRS := {
 ## A moored boat rocks: a faint ring off its hull every few seconds.
 const BOAT_RIPPLE_INTERVAL := Vector2(2.5, 4.5)
 
+## Stairs' half extents across/along in world px (8.7 x 9.5 units x 0.34).
+const STAIRS_HALF_WIDTH := 20.0
+
 var _is_boat := false
+## World-space area the player can walk on over deep water (docks and
+## stairs; empty for boats).
+var walk_rect := Rect2()
 var _ripple_timer := 0.0
 
 
@@ -86,8 +92,19 @@ static func stairs_half_length(vertical: bool) -> float:
 	return STAIRS_HALF_VERTICAL if vertical else STAIRS_HALF_HORIZONTAL
 
 
+## Whether `pos` is on any dock or stairs (see Player's wading limit).
+static func on_walkway(tree: SceneTree, pos: Vector2) -> bool:
+	for node in tree.get_nodes_in_group("walkways"):
+		if node.walk_rect.has_point(pos):
+			return true
+	return false
+
+
 func setup(vertical: bool, kind: String) -> void:
 	_apply(VARIANTS["vertical" if vertical else "horizontal"][kind])
+	var along := half_length(vertical)
+	var across := half_width(vertical, kind)
+	_set_walkway(Vector2(across, along) if vertical else Vector2(along, across))
 
 
 static func half_width(vertical: bool, kind: String) -> float:
@@ -107,6 +124,17 @@ func setup_boat(bow: String) -> void:
 ## descend: "down", "up", "left" or "right" - the way the steps lead.
 func setup_stairs(descend: String) -> void:
 	_apply(STAIRS[descend])
+	var vertical := descend == "up" or descend == "down"
+	var along := stairs_half_length(vertical)
+	var across := STAIRS_HALF_WIDTH * (1.0 if vertical else sin(deg_to_rad(55.0)))
+	_set_walkway(Vector2(across, along) if vertical else Vector2(along, across))
+
+
+## `position` must already be set (map_generator sets it before setup).
+func _set_walkway(half: Vector2) -> void:
+	# A little slack so walking off the end onto the stairs isn't snagged.
+	walk_rect = Rect2(position - half - Vector2(2, 2), half * 2.0 + Vector2(4, 4))
+	add_to_group("walkways")
 
 
 func _apply(variant: Dictionary) -> void:

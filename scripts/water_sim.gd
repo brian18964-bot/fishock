@@ -13,7 +13,7 @@ const SIM_SHADER := preload("res://shaders/water_sim.gdshader")
 const CELL := 4.0            # world px per texel across
 const GROUND_SQUASH := 0.819  # sin 55deg: rows cover fewer world px
 const MAX_IMPULSES := 16
-const MAX_ZONES := 16
+const MAX_LOBES := 32
 
 static var instance: WaterSim
 
@@ -71,10 +71,11 @@ func _exit_tree() -> void:
 func _process(_delta: float) -> void:
 	var zones: Array[Vector4] = []
 	for zone in get_tree().get_nodes_in_group("water_zones"):
-		if zones.size() < MAX_ZONES:
-			zones.append(Vector4(zone.global_position.x, zone.global_position.y, zone.radius, 0.0))
+		for lobe in zone.world_lobes():
+			if zones.size() < MAX_LOBES:
+				zones.append(Vector4(lobe.x, lobe.y, lobe.z, 0.0))
 	var zone_count := zones.size()
-	while zones.size() < MAX_ZONES:
+	while zones.size() < MAX_LOBES:
 		zones.append(Vector4.ZERO)
 	var impulse_count := _impulses.size()
 	var impulses := _impulses.duplicate()

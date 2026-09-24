@@ -20,7 +20,9 @@ var _respawn_timer: float = 0.0
 func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
-	_relocate()
+	# Water zones are added in a deferred batch - wait for them, or this
+	# can land in the middle of a pond.
+	_relocate.call_deferred()
 
 
 func _process(delta: float) -> void:

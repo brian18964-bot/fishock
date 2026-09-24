@@ -17,7 +17,7 @@ uniform vec2 cell_px;              // world px per texel (x, y)
 uniform float wave_speed = 0.45;   // c^2 in cells/step, < 0.75 for stability
 uniform float damping = 0.988;
 uniform bool reset = false;
-uniform vec4 zones[16];            // world center xy, radius z (w unused)
+uniform vec4 zones[32];            // water lobes: world center xy, radius z
 uniform int zone_count = 0;
 uniform vec4 impulses[16];         // world xy, radius px z, strength w
 uniform int impulse_count = 0;

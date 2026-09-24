@@ -10,17 +10,19 @@ extends Node2D
 
 const WATER_ZONE_SCENE := preload("res://scenes/water_zone.tscn")
 
-## User feedback: the original 5 common + 2 rare zones left far too much of
-## the map as dry, unfishable land - bumped both the count and radii so
-## there's always water within easy reach wherever you are.
-const COMMON_ZONE_COUNT := 9
-const RARE_ZONE_COUNT := 3
-const COMMON_RADIUS_MIN := 170.0
-const COMMON_RADIUS_MAX := 280.0
-const RARE_RADIUS_MIN := 100.0
-const RARE_RADIUS_MAX := 160.0
-const ZONE_MARGIN := 100.0
-const ZONE_MIN_GAP := 25.0
+## User request: 3-4 common zones and a single rare one per run, each an
+## irregular pond - a main circle plus a few overlapping lobes (see
+## WaterZone) - kept apart so each is its own lake with a shore to dress.
+const COMMON_ZONE_COUNT := Vector2i(3, 4)
+const RARE_ZONE_COUNT := 1
+const COMMON_RADIUS_MIN := 130.0
+const COMMON_RADIUS_MAX := 175.0
+const COMMON_EXTRA_LOBES := Vector2i(2, 4)
+const RARE_RADIUS_MIN := 90.0
+const RARE_RADIUS_MAX := 115.0
+const RARE_EXTRA_LOBES := Vector2i(1, 2)
+const ZONE_MARGIN := 60.0
+const ZONE_MIN_GAP := 90.0
 
 ## Design doc request: rare zones are placed without regard to the altar -
 ## no distance-from-altar logic here, just kept clear of the shared spawn
@@ -71,14 +73,32 @@ func _ready() -> void:
 
 
 func _generate_water_zones() -> void:
-	for _i in range(COMMON_ZONE_COUNT):
-		_spawn_zone(WaterZone.ZoneType.COMMON, randf_range(COMMON_RADIUS_MIN, COMMON_RADIUS_MAX))
+	# The rare one first: it's smaller and solid, so it gets its pick.
 	for _i in range(RARE_ZONE_COUNT):
-		_spawn_zone(WaterZone.ZoneType.RARE, randf_range(RARE_RADIUS_MIN, RARE_RADIUS_MAX))
+		_spawn_zone(WaterZone.ZoneType.RARE, randf_range(RARE_RADIUS_MIN, RARE_RADIUS_MAX), RARE_EXTRA_LOBES)
+	for _i in range(randi_range(COMMON_ZONE_COUNT.x, COMMON_ZONE_COUNT.y)):
+		_spawn_zone(WaterZone.ZoneType.COMMON, randf_range(COMMON_RADIUS_MIN, COMMON_RADIUS_MAX), COMMON_EXTRA_LOBES)
 
 
-func _spawn_zone(type: int, radius: float) -> void:
-	var pos := _pick_zone_position(radius)
+## Lobes spread around the main circle, overlapping it, for a wobbly shore.
+func _make_lobes(radius: float, count_range: Vector2i) -> Array[Vector3]:
+	var lobes: Array[Vector3] = []
+	var n := randi_range(count_range.x, count_range.y)
+	var base := randf() * TAU
+	for k in n:
+		var a := base + (k + randf_range(-0.25, 0.25)) / n * TAU
+		var dist := radius * randf_range(0.55, 0.85)
+		var r := radius * randf_range(0.45, 0.72)
+		lobes.append(Vector3(cos(a) * dist, sin(a) * dist, r))
+	return lobes
+
+
+func _spawn_zone(type: int, radius: float, lobe_range: Vector2i) -> void:
+	var lobes := _make_lobes(radius, lobe_range)
+	var bounds := radius
+	for lobe in lobes:
+		bounds = maxf(bounds, Vector2(lobe.x, lobe.y).length() + lobe.z)
+	var pos := _pick_zone_position(bounds)
 	var zone: WaterZone = WATER_ZONE_SCENE.instantiate()
 	# Main is still mid-instantiation while this whole scene's _ready() chain
 	# is running (map_generator is a static child of it) - add_child() on it
@@ -86,15 +106,16 @@ func _spawn_zone(type: int, radius: float) -> void:
 	# this has to be deferred. setup() only touches the zone's own already-
 	# instantiated children, so it's safe to call before the zone is in the
 	# tree at all.
-	zone.setup(type, radius, pos)
+	zone.setup(type, radius, pos, lobes)
 	get_parent().add_child.call_deferred(zone)
 	water_zones.append(zone)
 
 
 ## User request: docks out into a few common zones, some with stairs off
-## the water end and some with a rowboat moored alongside. Each picks one of the
-## four directions whose shore point is on open land (inside the map, not in
-## another zone) and lays the dock along it toward the zone's center.
+## the water end and some with a rowboat moored alongside. Each picks one of
+## the four directions whose shore point (where a ray from the zone's origin
+## leaves the water) is on open land - inside the map, not in another zone -
+## and lays the dock across it, pointing back toward the zone's origin.
 func _place_docks() -> void:
 	var commons: Array = water_zones.filter(func(z): return not z.is_rare())
 	commons.shuffle()
@@ -107,15 +128,19 @@ func _place_docks() -> void:
 		for d in dirs:
 			var vertical: bool = d.x == 0.0
 			var half: float = Dock.half_length(vertical)
-			var shore: Vector2 = zone.global_position + d * (zone.radius + half * 0.6)
+			var edge: Vector2 = zone.shore_point(d)
+			var shore: Vector2 = edge + d * half * 0.6
 			if shore.x < DOCK_SHORE_MARGIN or shore.x > Player.WORLD_WIDTH - DOCK_SHORE_MARGIN \
 					or shore.y < DOCK_SHORE_MARGIN or shore.y > Player.WORLD_HEIGHT - DOCK_SHORE_MARGIN:
 				continue
 			if _in_any_water(shore):
 				continue
+			# The water end must reach past the shallows, or the dock is pointless.
+			if not zone.is_deep(edge - d * half * 1.4, 10.0):
+				continue
 			var dock: Dock = DOCK_SCENE.instantiate()
 			# Shore end 30% of the length past the edge, the rest over water.
-			dock.position = zone.global_position + d * (zone.radius - half * 0.4)
+			dock.position = edge - d * half * 0.4
 			var kind: String = ["long_rope", "long", "wide"].pick_random()
 			dock.setup(vertical, kind)
 			get_parent().add_child.call_deferred(dock)

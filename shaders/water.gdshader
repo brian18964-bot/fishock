@@ -14,7 +14,6 @@ uniform sampler2D albedo : source_color, repeat_enable, filter_linear;
 uniform bool use_albedo = false;
 uniform sampler2D wave_a : repeat_enable, filter_linear;
 uniform sampler2D wave_b : repeat_enable, filter_linear;
-uniform float radius = 200.0;       // world px (the rect is 2r x 2r)
 uniform float wave_scale = 260.0;   // world px per normal-map tile
 uniform float wave_strength = 0.45;
 uniform vec2 drift_a = vec2(0.012, 0.006);
@@ -26,11 +25,13 @@ uniform bool sim_active = false;
 uniform vec2 sim_grid;
 uniform vec2 sim_cell;             // world px per texel
 uniform float sim_strength = 14.0;
-// Same-type zones overlapping this one (world center xy, radius z): the
-// shore is traced along the merged outline, not through the middle of a
-// lake made of several circles.
-uniform vec3 neighbors[8];
-uniform int neighbor_count = 0;
+// The water body as circles (world center xy, radius z): this zone's own
+// lobes first (own_lobe_count), then overlapping same-type zones' lobes.
+// The zone draws only inside its own lobes; the shore line follows the
+// outline of all of them merged.
+uniform vec3 lobes[16];
+uniform int lobe_count = 0;
+uniform int own_lobe_count = 0;
 
 const float SQUASH = 0.819;  // sin 55deg: ripples lie on the art's ground plane
 
@@ -62,15 +63,17 @@ float sim_at(vec2 world) {
 }
 
 void fragment() {
-	vec2 p = UV * 2.0 - 1.0;
-	float r = length(p);
-	if (r > 1.0) {
-		discard;
+	float own = -1e6;
+	float edge_px = -1e6;  // distance to the shore of the merged water, px
+	for (int i = 0; i < lobe_count; i++) {
+		float d = lobes[i].z - distance(world_pos, lobes[i].xy);
+		edge_px = max(edge_px, d);
+		if (i < own_lobe_count) {
+			own = max(own, d);
+		}
 	}
-	// Distance to the shore of the merged water body, in px.
-	float edge_px = (1.0 - r) * radius;
-	for (int i = 0; i < neighbor_count; i++) {
-		edge_px = max(edge_px, neighbors[i].z - distance(world_pos, neighbors[i].xy));
+	if (own < 0.0) {
+		discard;
 	}
 
 	// World-anchored, foreshortened wave coordinates.

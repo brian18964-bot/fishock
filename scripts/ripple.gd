@@ -55,8 +55,14 @@ func _setup(pos: Vector2, radius: float, strength: float, life: float, zone: Wat
 	_material = ShaderMaterial.new()
 	_material.shader = SHADER
 	_material.set_shader_parameter("strength", strength)
-	_material.set_shader_parameter("zone_center", zone.global_position)
-	_material.set_shader_parameter("zone_radius", zone.radius)
+	# Clip to the lobe the ring starts in (the fallback look only).
+	var lobe := Vector3(zone.global_position.x, zone.global_position.y, zone.radius)
+	for l in zone.world_lobes():
+		if Vector2(l.x, l.y).distance_to(pos) < l.z:
+			lobe = l
+			break
+	_material.set_shader_parameter("zone_center", Vector2(lobe.x, lobe.y))
+	_material.set_shader_parameter("zone_radius", lobe.z)
 	material = _material
 
 

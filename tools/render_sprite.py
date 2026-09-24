@@ -390,24 +390,22 @@ def measure_anim(meshes, args):
     return total
 
 
-def render_sheet(meshes, args):
-    """Renders every cell and packs them into OUT_PREFIX_{albedo,normal}.png:
-    one row per (action, direction), one column per frame. Both passes of a
-    cell are rendered back to back from the same pose, so the two sheets
-    always line up (posing each pass separately let the deer's walk drift by
-    a pixel between them)."""
+def pack_sheet(meshes, cells, pose, res, cols, out_prefix):
+    """Renders every cell and packs them into OUT_PREFIX_{albedo,normal}.png,
+    `cols` cells per row. pose(cell) sets the scene up for one cell; both
+    passes of a cell are rendered back to back from that same pose, so the
+    two sheets always line up (posing each pass separately let the deer's
+    walk drift by a pixel between them)."""
     import os
     import tempfile
     import numpy as np
-    yaw = Yaw(args.facing)
-    w, h = args.res
-    rows = len(args.actions) * len(args.dirs)
+    w, h = res
+    rows = math.ceil(len(cells) / cols)
     tmp = tempfile.mkdtemp()
-    sheets = {mode: np.zeros((rows * h, args.frames * w, 4), dtype=np.float32) for mode in ("albedo", "normal")}
-    for i, (action, d, f) in enumerate(anim_cells(args)):
-        yaw.set(DIRS[d])
-        set_pose(action, f)
-        row, col = divmod(i, args.frames)
+    sheets = {mode: np.zeros((rows * h, cols * w, 4), dtype=np.float32) for mode in ("albedo", "normal")}
+    for i, cell in enumerate(cells):
+        pose(cell)
+        row, col = divmod(i, cols)
         for mode, sheet in sheets.items():
             rewire_materials(meshes, mode)
             path = os.path.join(tmp, f"{mode}_{i}.png")
@@ -420,12 +418,24 @@ def render_sheet(meshes, args):
             # Blender images are bottom-up; build the sheet top-down.
             sheet[row * h:(row + 1) * h, col * w:(col + 1) * w] = np.flipud(px.reshape(h, w, 4))
     for mode, sheet in sheets.items():
-        out = bpy.data.images.new(f"sheet_{mode}", args.frames * w, rows * h, alpha=True)
+        out = bpy.data.images.new(f"sheet_{mode}", cols * w, rows * h, alpha=True)
         out.colorspace_settings.name = 'Non-Color'
         out.pixels.foreach_set(np.flipud(sheet).ravel())
-        out.filepath_raw = f"{args.out_prefix}_{mode}.png"
+        out.filepath_raw = f"{out_prefix}_{mode}.png"
         out.file_format = 'PNG'
         out.save()
+
+
+def render_sheet(meshes, args):
+    """Animation sheet: one row per (action, direction), one column per frame."""
+    yaw = Yaw(args.facing)
+
+    def pose(cell):
+        action, d, f = cell
+        yaw.set(DIRS[d])
+        set_pose(action, f)
+
+    pack_sheet(meshes, list(anim_cells(args)), pose, args.res, args.frames, args.out_prefix)
 
 
 def main():

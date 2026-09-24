@@ -55,9 +55,6 @@ func _relocate() -> void:
 		active = true
 		return
 
-	var zone = common_zones[randi() % common_zones.size()]
-	var offset := Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0))
-	if offset.length() > 1.0:
-		offset = offset.normalized()
-	global_position = zone.global_position + offset * zone.radius * randf_range(0.0, 0.7)
+	var zone: WaterZone = common_zones[randi() % common_zones.size()]
+	global_position = zone.random_point(40.0)
 	active = true
