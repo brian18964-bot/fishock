@@ -69,6 +69,8 @@ Sets rendered so far (see art_src/):
   ground_cover/flower_single_3, _4  Flower_1, Flower_2 x2.5
   ground_cover/flower_clump_1..5  Flower_1_Clump..Flower_5_Clump x2.5
   ground_cover/grass_large, grass_small  Grass_Large_Extruded, Grass_Small x2.0
+  oak_tree/*     NormalTree_1..5 x1.5 --foliage-normals --base-slice 0.05
+  rock/boulder_*  Rock_1..5 x3.5 --recenter
 """
 import argparse
 import json

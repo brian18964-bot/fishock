@@ -1,7 +1,7 @@
 extends Node2D
 
 ## Dead-tree, pine, leafy and twisted tree variants pre-rendered from Quaternius' Stylized Nature
-## MegaKit (CC0), plus birch, bare, pine (6-10), maple and palm trees from
+## MegaKit (CC0), plus birch, bare, pine (6-10), maple, palm and oak trees from
 ## Quaternius' nature collections
 ## (x1.5, that pack is modelled smaller), through the same 55deg orthographic pipeline as the oil
 ## barrel (see tools/render_sprite.py), all at true scale and the same pixel
@@ -13,7 +13,7 @@ extends Node2D
 ## Twisted trees: 384x424 renders, center (0.125, 6.37); the lopsided one:
 ## 384x376, center (4.58, 5.295). offset.x = +center_x * 27.108: the canvas
 ## shifted right, so the texture moves right to bring the trunk onto the node.
-## Birch, bare, pine 6-10, maple and palm trees each have their own tight camera, so their offsets are
+## Birch, bare, pine 6-10, maple, palm and oak trees each have their own tight camera, so their offsets are
 ## per variant: (center_x, -center_y) * 27.108 (see tools/render_sprite.py).
 const DEAD_TREE_OFFSET := Vector2(0, -142.73)
 const TREE_OFFSET := Vector2(0, -73.19)
@@ -175,6 +175,21 @@ const VARIANTS := [
 	{"albedo": preload("res://assets/sprites/palm_tree/palm_tree_5_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/palm_tree/palm_tree_5_55deg_normal.png"),
 	 "family": "palm", "offset": Vector2(-4.07, -16.51), "fade_rect": Rect2(-38, -39, 71, 29)},
+	{"albedo": preload("res://assets/sprites/oak_tree/oak_tree_1_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/oak_tree/oak_tree_1_55deg_normal.png"),
+	 "family": "oak", "offset": Vector2(-4.28, -86.56), "fade_rect": Rect2(-43, -90, 82, 80)},
+	{"albedo": preload("res://assets/sprites/oak_tree/oak_tree_2_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/oak_tree/oak_tree_2_55deg_normal.png"),
+	 "family": "oak", "offset": Vector2(-3.85, -85.5), "fade_rect": Rect2(-48, -87, 92, 77)},
+	{"albedo": preload("res://assets/sprites/oak_tree/oak_tree_3_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/oak_tree/oak_tree_3_55deg_normal.png"),
+	 "family": "oak", "offset": Vector2(25.64, -66.74), "fade_rect": Rect2(-38, -69, 102, 59)},
+	{"albedo": preload("res://assets/sprites/oak_tree/oak_tree_4_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/oak_tree/oak_tree_4_55deg_normal.png"),
+	 "family": "oak", "offset": Vector2(-9.65, -65.66), "fade_rect": Rect2(-62, -68, 115, 58)},
+	{"albedo": preload("res://assets/sprites/oak_tree/oak_tree_5_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/oak_tree/oak_tree_5_55deg_normal.png"),
+	 "family": "oak", "offset": Vector2(-0.22, -43.62), "fade_rect": Rect2(-32, -48, 63, 38)},
 ]
 
 @onready var sprite: Sprite2D = $Canopy/Visual
