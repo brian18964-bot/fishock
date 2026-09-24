@@ -78,9 +78,22 @@ def base_footprint(meshes, base_slice=0.25):
             min(p.y for p in base), max(p.y for p in base))
 
 
-def load_model(path, scale=1.0, recenter=False, base_slice=0.25):
+def load_model(path, scale=1.0, recenter=False, base_slice=0.25, only=None):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=path)
+    if only:
+        # Collection files lay several models out in a row; keep just one and
+        # bring its origin to the world origin (keeping its height).
+        keep = bpy.data.objects[only]
+        world = keep.matrix_world.copy()
+        keep.parent = None
+        keep.matrix_world = world
+        keep.location.x = 0.0
+        keep.location.y = 0.0
+        for o in list(bpy.context.scene.objects):
+            if o is not keep:
+                bpy.data.objects.remove(o, do_unlink=True)
+        bpy.context.view_layer.update()
     roots = [o for o in bpy.context.scene.objects if o.parent is None]
     # Scale about the world origin so the model's ground point stays the anchor.
     for o in roots:
@@ -249,11 +262,13 @@ def main():
                        help="uniform model scale about the origin, for models authored at a different scale")
         p.add_argument("--recenter", action="store_true",
                        help="center the model's ground footprint on the origin (for off-center origins)")
+        p.add_argument("--object", default=None,
+                       help="render only this named object from a multi-model file (moved to the origin)")
         p.add_argument("--base-slice", type=float, default=0.25,
                        help="fraction of model height counted as its base for --recenter/footprint (0.05 for leaning trees)")
     args = parser.parse_args()
 
-    meshes = load_model(args.model, args.scale, args.recenter, args.base_slice)
+    meshes = load_model(args.model, args.scale, args.recenter, args.base_slice, args.object)
     if args.cmd == "measure":
         bounds = screen_bounds(meshes)
         bounds["footprint_xy"] = base_footprint(meshes, args.base_slice)

@@ -23,64 +23,64 @@ const SPRITE_SCALE := 0.5
 const VARIANTS := [
 	{"albedo": preload("res://assets/sprites/dead_tree/dead_tree_1_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/dead_tree/dead_tree_1_55deg_normal.png"),
-	 "offset": DEAD_TREE_OFFSET, "fade_rect": Rect2(-52, -118, 86, 108)},
+	 "family": "dead", "offset": DEAD_TREE_OFFSET, "fade_rect": Rect2(-52, -118, 86, 108)},
 	{"albedo": preload("res://assets/sprites/dead_tree/dead_tree_2_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/dead_tree/dead_tree_2_55deg_normal.png"),
-	 "offset": DEAD_TREE_OFFSET, "fade_rect": Rect2(-54, -156, 113, 146)},
+	 "family": "dead", "offset": DEAD_TREE_OFFSET, "fade_rect": Rect2(-54, -156, 113, 146)},
 	{"albedo": preload("res://assets/sprites/dead_tree/dead_tree_3_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/dead_tree/dead_tree_3_55deg_normal.png"),
-	 "offset": DEAD_TREE_OFFSET, "fade_rect": Rect2(-32, -94, 91, 84)},
+	 "family": "dead", "offset": DEAD_TREE_OFFSET, "fade_rect": Rect2(-32, -94, 91, 84)},
 	{"albedo": preload("res://assets/sprites/dead_tree/dead_tree_4_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/dead_tree/dead_tree_4_55deg_normal.png"),
-	 "offset": DEAD_TREE_OFFSET, "fade_rect": Rect2(-35, -98, 83, 88)},
+	 "family": "dead", "offset": DEAD_TREE_OFFSET, "fade_rect": Rect2(-35, -98, 83, 88)},
 	{"albedo": preload("res://assets/sprites/dead_tree/dead_tree_5_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/dead_tree/dead_tree_5_55deg_normal.png"),
-	 "offset": DEAD_TREE_OFFSET, "fade_rect": Rect2(-46, -112, 108, 102)},
+	 "family": "dead", "offset": DEAD_TREE_OFFSET, "fade_rect": Rect2(-46, -112, 108, 102)},
 	{"albedo": preload("res://assets/sprites/pine/pine_1_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/pine/pine_1_55deg_normal.png"),
-	 "offset": TREE_OFFSET, "fade_rect": Rect2(-41, -87, 88, 77)},
+	 "family": "pine", "offset": TREE_OFFSET, "fade_rect": Rect2(-41, -87, 88, 77)},
 	{"albedo": preload("res://assets/sprites/pine/pine_2_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/pine/pine_2_55deg_normal.png"),
-	 "offset": TREE_OFFSET, "fade_rect": Rect2(-39, -64, 78, 54)},
+	 "family": "pine", "offset": TREE_OFFSET, "fade_rect": Rect2(-39, -64, 78, 54)},
 	{"albedo": preload("res://assets/sprites/pine/pine_3_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/pine/pine_3_55deg_normal.png"),
-	 "offset": TREE_OFFSET, "fade_rect": Rect2(-39, -87, 79, 77)},
+	 "family": "pine", "offset": TREE_OFFSET, "fade_rect": Rect2(-39, -87, 79, 77)},
 	{"albedo": preload("res://assets/sprites/pine/pine_4_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/pine/pine_4_55deg_normal.png"),
-	 "offset": TREE_OFFSET, "fade_rect": Rect2(-29, -64, 49, 54)},
+	 "family": "pine", "offset": TREE_OFFSET, "fade_rect": Rect2(-29, -64, 49, 54)},
 	{"albedo": preload("res://assets/sprites/pine/pine_5_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/pine/pine_5_55deg_normal.png"),
-	 "offset": TREE_OFFSET, "fade_rect": Rect2(-33, -64, 67, 54)},
+	 "family": "pine", "offset": TREE_OFFSET, "fade_rect": Rect2(-33, -64, 67, 54)},
 	{"albedo": preload("res://assets/sprites/leafy_tree/leafy_tree_1_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/leafy_tree/leafy_tree_1_55deg_normal.png"),
-	 "offset": TREE_OFFSET, "fade_rect": Rect2(-24, -88, 52, 78)},
+	 "family": "leafy", "offset": TREE_OFFSET, "fade_rect": Rect2(-24, -88, 52, 78)},
 	{"albedo": preload("res://assets/sprites/leafy_tree/leafy_tree_2_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/leafy_tree/leafy_tree_2_55deg_normal.png"),
-	 "offset": TREE_OFFSET, "fade_rect": Rect2(-30, -67, 61, 57)},
+	 "family": "leafy", "offset": TREE_OFFSET, "fade_rect": Rect2(-30, -67, 61, 57)},
 	{"albedo": preload("res://assets/sprites/leafy_tree/leafy_tree_3_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/leafy_tree/leafy_tree_3_55deg_normal.png"),
-	 "offset": TREE_OFFSET, "fade_rect": Rect2(-27, -85, 55, 75)},
+	 "family": "leafy", "offset": TREE_OFFSET, "fade_rect": Rect2(-27, -85, 55, 75)},
 	{"albedo": preload("res://assets/sprites/leafy_tree/leafy_tree_4_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/leafy_tree/leafy_tree_4_55deg_normal.png"),
-	 "offset": TREE_OFFSET, "fade_rect": Rect2(-30, -66, 59, 56)},
+	 "family": "leafy", "offset": TREE_OFFSET, "fade_rect": Rect2(-30, -66, 59, 56)},
 	{"albedo": preload("res://assets/sprites/leafy_tree/leafy_tree_5_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/leafy_tree/leafy_tree_5_55deg_normal.png"),
-	 "offset": TREE_OFFSET, "fade_rect": Rect2(-26, -70, 50, 60)},
+	 "family": "leafy", "offset": TREE_OFFSET, "fade_rect": Rect2(-26, -70, 50, 60)},
 	{"albedo": preload("res://assets/sprites/twisted_tree/twisted_tree_1_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/twisted_tree/twisted_tree_1_55deg_normal.png"),
-	 "offset": TWISTED_OFFSET, "fade_rect": Rect2(-51, -177, 129, 167)},
+	 "family": "twisted", "offset": TWISTED_OFFSET, "fade_rect": Rect2(-51, -177, 129, 167)},
 	{"albedo": preload("res://assets/sprites/twisted_tree/twisted_tree_2_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/twisted_tree/twisted_tree_2_55deg_normal.png"),
-	 "offset": TWISTED_OFFSET, "fade_rect": Rect2(-59, -188, 141, 178)},
+	 "family": "twisted", "offset": TWISTED_OFFSET, "fade_rect": Rect2(-59, -188, 141, 178)},
 	{"albedo": preload("res://assets/sprites/twisted_tree/twisted_tree_3_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/twisted_tree/twisted_tree_3_55deg_normal.png"),
-	 "offset": TWISTED_OFFSET, "fade_rect": Rect2(-61, -166, 154, 156)},
+	 "family": "twisted", "offset": TWISTED_OFFSET, "fade_rect": Rect2(-61, -166, 154, 156)},
 	{"albedo": preload("res://assets/sprites/twisted_tree/twisted_tree_4_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/twisted_tree/twisted_tree_4_55deg_normal.png"),
-	 "offset": TWISTED_LEANING_OFFSET, "fade_rect": Rect2(-30, -161, 184, 151)},
+	 "family": "twisted", "offset": TWISTED_LEANING_OFFSET, "fade_rect": Rect2(-30, -161, 184, 151)},
 	{"albedo": preload("res://assets/sprites/twisted_tree/twisted_tree_5_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/twisted_tree/twisted_tree_5_55deg_normal.png"),
-	 "offset": TWISTED_OFFSET, "fade_rect": Rect2(-90, -175, 143, 165)},
+	 "family": "twisted", "offset": TWISTED_OFFSET, "fade_rect": Rect2(-90, -175, 143, 165)},
 ]
 
 @onready var sprite: Sprite2D = $Canopy/Visual
@@ -88,7 +88,16 @@ const VARIANTS := [
 
 
 func _ready() -> void:
-	apply_variant(randi() % VARIANTS.size())
+	apply_variant(_pick_variant())
+
+
+## Family first, then a variant within it, so families with many models
+## (ten bare trees) don't crowd out the ones with few.
+static func _pick_variant() -> int:
+	var families := {}
+	for i in VARIANTS.size():
+		families.get_or_add(VARIANTS[i].family, []).append(i)
+	return families.values().pick_random().pick_random()
 
 
 func apply_variant(index: int) -> void:
