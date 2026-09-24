@@ -79,6 +79,10 @@ rows = clips x dirs down/left/right/up, x-symmetric camera per animal):
   critter/snake   x0.44 Snake_Walk Snake_Idle     cell 56x56  --center-y 0.43
   critter/spider  x0.28 Spider_Walk Spider_Idle   cell 56x48  --center-y 0.041
   critter/wasp    x0.26 Wasp_Flying --facing -90  cell 48x40  --center-y 0.456
+  animal/cow, bull  x0.40 Walk Eating --frames 12  cell 120x112 --center-y 0.679 / 0.682
+  animal/donkey     x0.45 Walk Eating --frames 12  cell 88x80   --center-y 0.552
+  animal/alpaca     x0.42 Walk Eating --frames 12  cell 104x96  --center-y 0.576
+  animal/deer       x0.48 Walk Eating Gallop --frames 12  cell 104x96 --center-y 0.706
   (ortho-scale = max(cell W, H) / 27.108)
 """
 import argparse
@@ -293,10 +297,16 @@ DIRS = {"down": 0.0, "right": 90.0, "up": 180.0, "left": -90.0}
 
 
 def find_action(name):
-    for a in bpy.data.actions:
+    # Clips are named "<Armature>|<Clip>_<Armature>" (some exports add a bare
+    # "<Clip>_<Armature>" duplicate). Match the clip name exactly, so "Idle"
+    # doesn't pick up "Idle_2" or "Idle_Headlow".
+    def clip(a):
         short = a.name.split("|")[-1]
-        if short == name or short.startswith(name + "_"):
-            return a
+        head, _, tail = short.rpartition("_")
+        return head if tail.endswith("Armature") else short
+    matches = [a for a in bpy.data.actions if clip(a) == name]
+    if matches:
+        return next((a for a in matches if "|" in a.name), matches[0])
     raise SystemExit(f"no action {name!r}; have {[a.name for a in bpy.data.actions]}")
 
 
@@ -359,21 +369,24 @@ def measure_anim(meshes, args):
 
 def render_sheet(meshes, args):
     """Renders every cell and packs them into OUT_PREFIX_{albedo,normal}.png:
-    one row per (action, direction), one column per frame."""
+    one row per (action, direction), one column per frame. Both passes of a
+    cell are rendered back to back from the same pose, so the two sheets
+    always line up (posing each pass separately let the deer's walk drift by
+    a pixel between them)."""
     import os
     import tempfile
     import numpy as np
     yaw = Yaw(args.facing)
     w, h = args.res
-    cells = list(anim_cells(args))
     rows = len(args.actions) * len(args.dirs)
     tmp = tempfile.mkdtemp()
-    for mode in ("albedo", "normal"):
-        rewire_materials(meshes, mode)
-        sheet = np.zeros((rows * h, args.frames * w, 4), dtype=np.float32)
-        for i, (action, d, f) in enumerate(cells):
-            yaw.set(DIRS[d])
-            set_pose(action, f)
+    sheets = {mode: np.zeros((rows * h, args.frames * w, 4), dtype=np.float32) for mode in ("albedo", "normal")}
+    for i, (action, d, f) in enumerate(anim_cells(args)):
+        yaw.set(DIRS[d])
+        set_pose(action, f)
+        row, col = divmod(i, args.frames)
+        for mode, sheet in sheets.items():
+            rewire_materials(meshes, mode)
             path = os.path.join(tmp, f"{mode}_{i}.png")
             render_pass(path, mode)
             img = bpy.data.images.load(path)
@@ -381,9 +394,9 @@ def render_sheet(meshes, args):
             px = np.empty(w * h * 4, dtype=np.float32)
             img.pixels.foreach_get(px)
             bpy.data.images.remove(img)
-            row, col = divmod(i, args.frames)
             # Blender images are bottom-up; build the sheet top-down.
             sheet[row * h:(row + 1) * h, col * w:(col + 1) * w] = np.flipud(px.reshape(h, w, 4))
+    for mode, sheet in sheets.items():
         out = bpy.data.images.new(f"sheet_{mode}", args.frames * w, rows * h, alpha=True)
         out.colorspace_settings.name = 'Non-Color'
         out.pixels.foreach_set(np.flipud(sheet).ravel())

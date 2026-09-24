@@ -50,6 +50,7 @@ const GROUND_COVER_SCENE := preload("res://scenes/ground_cover.tscn")
 const GROUND_COVER_COUNT := 80
 const CRITTER_SCENE := preload("res://scenes/critter.tscn")
 const CRITTER_COUNT := 10
+const AMBIENT_ANIMAL_COUNT := 6
 
 var water_zones: Array = []
 
@@ -178,6 +179,12 @@ func _scatter_critters() -> void:
 		critter.position = pos
 		# Main is still mid-setup here; see _spawn_zone().
 		get_parent().add_child.call_deferred(critter)
+	# User request: larger ambient animals (cows, a deer...) as scenery.
+	for _i in range(AMBIENT_ANIMAL_COUNT):
+		var animal: Critter = CRITTER_SCENE.instantiate()
+		animal.ambient = true
+		animal.position = _pick_prop_position([])
+		get_parent().add_child.call_deferred(animal)
 
 
 func _pick_prop_position(placed: Array) -> Vector2:

@@ -2,18 +2,20 @@ class_name Critter
 extends CharacterBody2D
 
 ## User request: small animals (Quaternius animal pack, CC0) that wander the
-## map and can be caught as bait. They idle, amble about, and run from the
+## map and can be caught as bait, plus larger ambient animals (farm animals
+## and a deer) that are just scenery - `ambient` picks which pool a node
+## draws from. They idle, amble about, and run from the
 ## player once they get close; stand on one and press the action key to
 ## catch it (see Player._catch_critter()), which also sets the next cast's
 ## bait flavor. A caught critter reappears elsewhere after RESPAWN_DELAY.
 ##
 ## Art: 55deg sprite sheets from tools/render_sprite.py's "anim" command -
-## 8 frames per row, rows = clips x directions (down, left, right, up). Never
+## `frames` per row (8 critters, 12 ambient), rows = clips x directions
+## (down, left, right, up); clip 0 moves, clip 1 idles, `flee_clip` runs. Never
 ## flip_h a direction: the normal map's X channel would stay mirrored.
 
 const SPRITE_SCALE := 0.5
 const DIRS := ["down", "left", "right", "up"]
-const FRAMES := 8
 
 const FLEE_RADIUS := 70.0
 const CALM_RADIUS := 140.0
@@ -52,12 +54,43 @@ const SPECIES := {
 		"normal": preload("res://assets/sprites/critter/wasp_55deg_normal.png"),
 		"clips": 1, "offset": Vector2(0, -12.36), "move_fps": 10.7, "idle_fps": 10.7,
 		"wander_speed": 40.0, "flee_speed": 115.0, "hover": 14.0},
+
+	# Ambient animals: not catchable. Grazers ignore the player (flee_speed
+	# 0); the deer bolts at a gallop, faster than the player can follow.
+	"cow": {"label": "牛", "ambient": true, "frames": 12,
+		"albedo": preload("res://assets/sprites/animal/cow_55deg_albedo.png"),
+		"normal": preload("res://assets/sprites/animal/cow_55deg_normal.png"),
+		"clips": 2, "offset": Vector2(0, -18.41), "move_fps": 10.3, "idle_fps": 2.0,
+		"wander_speed": 18.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
+	"bull": {"label": "公牛", "ambient": true, "frames": 12,
+		"albedo": preload("res://assets/sprites/animal/bull_55deg_albedo.png"),
+		"normal": preload("res://assets/sprites/animal/bull_55deg_normal.png"),
+		"clips": 2, "offset": Vector2(0, -18.49), "move_fps": 10.3, "idle_fps": 2.0,
+		"wander_speed": 18.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
+	"donkey": {"label": "驢子", "ambient": true, "frames": 12,
+		"albedo": preload("res://assets/sprites/animal/donkey_55deg_albedo.png"),
+		"normal": preload("res://assets/sprites/animal/donkey_55deg_normal.png"),
+		"clips": 2, "offset": Vector2(0, -14.96), "move_fps": 10.3, "idle_fps": 2.0,
+		"wander_speed": 20.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
+	"alpaca": {"label": "羊駝", "ambient": true, "frames": 12,
+		"albedo": preload("res://assets/sprites/animal/alpaca_55deg_albedo.png"),
+		"normal": preload("res://assets/sprites/animal/alpaca_55deg_normal.png"),
+		"clips": 2, "offset": Vector2(0, -15.61), "move_fps": 8.2, "idle_fps": 1.6,
+		"wander_speed": 20.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
+	"deer": {"label": "鹿", "ambient": true, "frames": 12,
+		"albedo": preload("res://assets/sprites/animal/deer_55deg_albedo.png"),
+		"normal": preload("res://assets/sprites/animal/deer_55deg_normal.png"),
+		"clips": 3, "offset": Vector2(0, -19.14), "move_fps": 10.3, "idle_fps": 2.0,
+		"flee_fps": 24.0, "flee_clip": 2, "flee_radius": 120.0, "calm_radius": 260.0,
+		"wander_speed": 28.0, "flee_speed": 170.0, "idle_time": Vector2(3, 8)},
 }
 
 enum Mode { IDLE, WANDER, FLEE }
 
 var species: String = ""
 var active: bool = true
+## Draw from the ambient (scenery) animals instead of the catchable ones.
+@export var ambient: bool = false
 
 var _data: Dictionary
 var _mode: Mode = Mode.IDLE
@@ -76,7 +109,7 @@ func _ready() -> void:
 	catch_area.body_entered.connect(_on_body_entered)
 	catch_area.body_exited.connect(_on_body_exited)
 	if species == "":
-		species = SPECIES.keys().pick_random()
+		species = _pick_species()
 	set_species(species)
 	_player = get_tree().get_first_node_in_group("player")
 	_anim_time = randf() * 2.0
@@ -90,7 +123,7 @@ func set_species(name: String) -> void:
 	tex.diffuse_texture = _data.albedo
 	tex.normal_texture = _data.normal
 	sprite.texture = tex
-	sprite.hframes = FRAMES
+	sprite.hframes = _data.get("frames", 8)
 	sprite.vframes = _data.clips * DIRS.size()
 	sprite.scale = Vector2(SPRITE_SCALE, SPRITE_SCALE)
 	sprite.offset = _data.offset
@@ -126,14 +159,15 @@ func _physics_process(delta: float) -> void:
 
 
 func _update_mode(delta: float) -> void:
-	var near := _player != null and global_position.distance_to(_player.global_position) < FLEE_RADIUS
+	var near: bool = _data.flee_speed > 0.0 and _player != null \
+		and global_position.distance_to(_player.global_position) < _data.get("flee_radius", FLEE_RADIUS)
 	if near:
 		if _mode != Mode.FLEE:
 			_mode = Mode.FLEE
 		_pick_target(true)
 		return
 	if _mode == Mode.FLEE:
-		if _player == null or global_position.distance_to(_player.global_position) > CALM_RADIUS:
+		if _player == null or global_position.distance_to(_player.global_position) > _data.get("calm_radius", CALM_RADIUS):
 			_enter_idle()
 		return
 	_mode_timer -= delta
@@ -144,7 +178,8 @@ func _update_mode(delta: float) -> void:
 
 func _enter_idle() -> void:
 	_mode = Mode.IDLE
-	_mode_timer = randf_range(1.5, 4.0)
+	var idle_time: Vector2 = _data.get("idle_time", Vector2(1.5, 4.0))
+	_mode_timer = randf_range(idle_time.x, idle_time.y)
 	velocity = Vector2.ZERO
 
 
@@ -181,7 +216,11 @@ func _animate(delta: float) -> void:
 	var moving := _mode != Mode.IDLE and velocity != Vector2.ZERO
 	var clip := 0 if (moving or _data.clips == 1) else 1
 	var fps: float = _data.move_fps if moving else _data.idle_fps
-	sprite.frame = (clip * DIRS.size() + _dir) * FRAMES + int(_anim_time * fps) % FRAMES
+	if moving and _mode == Mode.FLEE and _data.has("flee_clip"):
+		clip = _data.flee_clip
+		fps = _data.flee_fps
+	var frames: int = _data.get("frames", 8)
+	sprite.frame = (clip * DIRS.size() + _dir) * frames + int(_anim_time * fps) % frames
 	var hover: float = _data.get("hover", 0.0)
 	if hover > 0.0:
 		sprite.position.y = -hover + sin(_anim_time * 3.0) * 2.0
@@ -210,11 +249,19 @@ func _respawn() -> void:
 		if not _in_water(pos) and (_player == null or pos.distance_to(_player.global_position) > 300.0):
 			break
 	global_position = pos
-	set_species(SPECIES.keys().pick_random())
+	set_species(_pick_species())
 	active = true
 	visible = true
 	catch_area.monitoring = true
 	_enter_idle()
+
+
+func _pick_species() -> String:
+	var pool := []
+	for key in SPECIES:
+		if SPECIES[key].get("ambient", false) == ambient:
+			pool.append(key)
+	return pool.pick_random()
 
 
 func _in_water(pos: Vector2) -> bool:
@@ -225,7 +272,7 @@ func _in_water(pos: Vector2) -> bool:
 
 
 func _on_body_entered(body: Node2D) -> void:
-	if active and body.has_method("set_in_critter"):
+	if active and not _data.get("ambient", false) and body.has_method("set_in_critter"):
 		body.set_in_critter(true, self)
 
 
