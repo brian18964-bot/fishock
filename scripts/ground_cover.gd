@@ -23,6 +23,7 @@ const KINDS := {
 	"flower_petal": ["flower_petal_1", "flower_petal_2", "flower_petal_3", "flower_petal_4", "flower_petal_5"],
 	"grass": ["grass_wispy", "grass_wispy_2", "grass"],
 	"mushroom": ["mushroom", "mushroom_laetiporus"],
+	"plant": ["plant_1", "plant_2", "plant_big_1"],
 	"pebble": ["pebble_round", "pebble_round_2", "pebble_round_3", "pebble_round_4", "pebble_round_5",
 		"pebble_square", "pebble_square_2", "pebble_square_3", "pebble_square_4", "pebble_square_5", "pebble_square_6"],
 }
@@ -44,6 +45,9 @@ const TEXTURES := {
 	"grass": [preload("res://assets/sprites/ground_cover/grass_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/grass_55deg_normal.png")],
 	"mushroom": [preload("res://assets/sprites/ground_cover/mushroom_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/mushroom_55deg_normal.png")],
 	"mushroom_laetiporus": [preload("res://assets/sprites/ground_cover/mushroom_laetiporus_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/mushroom_laetiporus_55deg_normal.png")],
+	"plant_1": [preload("res://assets/sprites/ground_cover/plant_1_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/plant_1_55deg_normal.png")],
+	"plant_2": [preload("res://assets/sprites/ground_cover/plant_2_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/plant_2_55deg_normal.png")],
+	"plant_big_1": [preload("res://assets/sprites/ground_cover/plant_big_1_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/plant_big_1_55deg_normal.png")],
 	"pebble_round": [preload("res://assets/sprites/ground_cover/pebble_round_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/pebble_round_55deg_normal.png")],
 	"pebble_square": [preload("res://assets/sprites/ground_cover/pebble_square_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/pebble_square_55deg_normal.png")],
 	"pebble_square_2": [preload("res://assets/sprites/ground_cover/pebble_square_2_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/pebble_square_2_55deg_normal.png")],

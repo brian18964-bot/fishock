@@ -2,13 +2,15 @@ extends "res://scripts/foliage_occluder.gd"
 
 ## Bush variants pre-rendered from Quaternius' Stylized Nature MegaKit (CC0)
 ## through tools/render_sprite.py, at the same pixel density as the dead
-## trees. Scaled up from true model size (bushes x1.9, the fern x0.41 since
-## it's authored far larger than the rest of the pack) so each one is about
-## the old 50px placeholder and still big enough to hide the player in.
+## trees. Scaled from true model size (bushes x1.9, the big plant x1.2, the
+## fern x0.41 since it's authored far larger than the rest of the pack) so
+## each is about the old 50px placeholder and still big enough to hide in.
 
-## Where the ground point lands in the 112x112 renders, from the texture
-## center (render camera center_y 0.555 units, 27.108 px/unit).
-const SPRITE_OFFSET := Vector2(0, -15.04)
+## offset: where the ground point lands relative to the texture center,
+## -center_y * 27.108 px/unit. Bushes/fern: 112x112 renders, center_y 0.555.
+## Big plant: 120x120, center_y 1.873.
+const BUSH_OFFSET := Vector2(0, -15.04)
+const BIG_PLANT_OFFSET := Vector2(0, -50.77)
 const SPRITE_SCALE := 0.5
 
 ## hide_rect: node-local area counting as "inside the bush", from each
@@ -16,13 +18,16 @@ const SPRITE_SCALE := 0.5
 const VARIANTS := [
 	{"albedo": preload("res://assets/sprites/bush/bush_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/bush/bush_55deg_normal.png"),
-	 "hide_rect": Rect2(-24, -33, 50, 48)},
+	 "offset": BUSH_OFFSET, "hide_rect": Rect2(-24, -33, 50, 48)},
 	{"albedo": preload("res://assets/sprites/bush/bush_flowers_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/bush/bush_flowers_55deg_normal.png"),
-	 "hide_rect": Rect2(-24, -33, 50, 48)},
+	 "offset": BUSH_OFFSET, "hide_rect": Rect2(-24, -33, 50, 48)},
 	{"albedo": preload("res://assets/sprites/bush/fern_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/bush/fern_55deg_normal.png"),
-	 "hide_rect": Rect2(-25, -21, 51, 39)},
+	 "offset": BUSH_OFFSET, "hide_rect": Rect2(-25, -21, 51, 39)},
+	{"albedo": preload("res://assets/sprites/bush/plant_big_2_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/bush/plant_big_2_55deg_normal.png"),
+	 "offset": BIG_PLANT_OFFSET, "hide_rect": Rect2(-23, -52, 48, 50)},
 ]
 
 
@@ -35,7 +40,7 @@ func _ready() -> void:
 	tex.normal_texture = variant.normal
 	var sprite: Sprite2D = visual
 	sprite.texture = tex
-	sprite.offset = SPRITE_OFFSET
+	sprite.offset = variant.offset
 	sprite.scale = Vector2(SPRITE_SCALE, SPRITE_SCALE)
 
 	# Per instance: a .tscn shape resource would be shared by every bush.

@@ -39,7 +39,8 @@ const FIXED_POINT_MIN_SEPARATION := 550.0
 ## never a functional bug, just an odd-looking one).
 const PROP_NAMES := [
 	"Obstacle1", "Obstacle2", "Obstacle3", "Obstacle4", "Obstacle5",
-	"Tree1", "Tree2", "Tree3", "Bush1", "Bush2", "Bush3",
+	"Tree1", "Tree2", "Tree3", "Tree4", "Tree5", "Tree6",
+	"Bush1", "Bush2", "Bush3",
 ]
 const PROP_MARGIN := 80.0
 const PROP_MIN_SEPARATION := 90.0

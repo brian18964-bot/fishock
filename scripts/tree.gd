@@ -1,14 +1,15 @@
 extends Node2D
 
-## Dead-tree variants pre-rendered from Quaternius' Stylized Nature MegaKit
-## (CC0) through the same 55deg orthographic pipeline as the oil barrel (see
-## tools/render_sprite.py). All five share one render camera, so the trunk
-## base sits on the same texture pixel in every sprite and relative sizes are
-## true to the models. One variant is picked per tree each run.
+## Dead-tree and pine variants pre-rendered from Quaternius' Stylized Nature
+## MegaKit (CC0) through the same 55deg orthographic pipeline as the oil
+## barrel (see tools/render_sprite.py), all at true scale and the same pixel
+## density. One variant is picked per tree each run.
 
-## Where the trunk base lands in the 270x360 renders, measured from the
-## texture center (render camera center_y 5.265 units, 27.108 px/unit).
-const SPRITE_OFFSET := Vector2(0, -142.73)
+## offset: where the trunk base lands relative to the texture center,
+## -center_y * 27.108 px/unit. Dead trees: 270x360 renders, center_y 5.265.
+## Pines: 200x216 renders, center_y 2.70.
+const DEAD_TREE_OFFSET := Vector2(0, -142.73)
+const PINE_OFFSET := Vector2(0, -73.19)
 const SPRITE_SCALE := 0.5
 
 ## fade_rect: the branch area (node-local px) where the player counts as
@@ -17,19 +18,34 @@ const SPRITE_SCALE := 0.5
 const VARIANTS := [
 	{"albedo": preload("res://assets/sprites/dead_tree/dead_tree_1_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/dead_tree/dead_tree_1_55deg_normal.png"),
-	 "fade_rect": Rect2(-52, -118, 86, 108)},
+	 "offset": DEAD_TREE_OFFSET, "fade_rect": Rect2(-52, -118, 86, 108)},
 	{"albedo": preload("res://assets/sprites/dead_tree/dead_tree_2_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/dead_tree/dead_tree_2_55deg_normal.png"),
-	 "fade_rect": Rect2(-54, -156, 113, 146)},
+	 "offset": DEAD_TREE_OFFSET, "fade_rect": Rect2(-54, -156, 113, 146)},
 	{"albedo": preload("res://assets/sprites/dead_tree/dead_tree_3_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/dead_tree/dead_tree_3_55deg_normal.png"),
-	 "fade_rect": Rect2(-32, -94, 91, 84)},
+	 "offset": DEAD_TREE_OFFSET, "fade_rect": Rect2(-32, -94, 91, 84)},
 	{"albedo": preload("res://assets/sprites/dead_tree/dead_tree_4_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/dead_tree/dead_tree_4_55deg_normal.png"),
-	 "fade_rect": Rect2(-35, -98, 83, 88)},
+	 "offset": DEAD_TREE_OFFSET, "fade_rect": Rect2(-35, -98, 83, 88)},
 	{"albedo": preload("res://assets/sprites/dead_tree/dead_tree_5_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/dead_tree/dead_tree_5_55deg_normal.png"),
-	 "fade_rect": Rect2(-46, -112, 108, 102)},
+	 "offset": DEAD_TREE_OFFSET, "fade_rect": Rect2(-46, -112, 108, 102)},
+	{"albedo": preload("res://assets/sprites/pine/pine_1_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/pine/pine_1_55deg_normal.png"),
+	 "offset": PINE_OFFSET, "fade_rect": Rect2(-41, -87, 88, 77)},
+	{"albedo": preload("res://assets/sprites/pine/pine_2_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/pine/pine_2_55deg_normal.png"),
+	 "offset": PINE_OFFSET, "fade_rect": Rect2(-39, -64, 78, 54)},
+	{"albedo": preload("res://assets/sprites/pine/pine_3_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/pine/pine_3_55deg_normal.png"),
+	 "offset": PINE_OFFSET, "fade_rect": Rect2(-39, -87, 79, 77)},
+	{"albedo": preload("res://assets/sprites/pine/pine_4_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/pine/pine_4_55deg_normal.png"),
+	 "offset": PINE_OFFSET, "fade_rect": Rect2(-29, -64, 49, 54)},
+	{"albedo": preload("res://assets/sprites/pine/pine_5_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/pine/pine_5_55deg_normal.png"),
+	 "offset": PINE_OFFSET, "fade_rect": Rect2(-33, -64, 67, 54)},
 ]
 
 @onready var sprite: Sprite2D = $Canopy/Visual
@@ -43,7 +59,7 @@ func _ready() -> void:
 	tex.diffuse_texture = variant.albedo
 	tex.normal_texture = variant.normal
 	sprite.texture = tex
-	sprite.offset = SPRITE_OFFSET
+	sprite.offset = variant.offset
 	sprite.scale = Vector2(SPRITE_SCALE, SPRITE_SCALE)
 
 	# Built per instance: a shape resource from the .tscn would be shared by

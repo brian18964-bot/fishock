@@ -1,22 +1,24 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=6 format=3]
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_obstacle"]
-size = Vector2(60, 60)
+[ext_resource type="Texture2D" path="res://assets/sprites/rock/rock_medium_55deg_albedo.png" id="1"]
+[ext_resource type="Texture2D" path="res://assets/sprites/rock/rock_medium_55deg_normal.png" id="2"]
 
-[sub_resource type="OccluderPolygon2D" id="OccluderPolygon2D_obstacle"]
-polygon = PackedVector2Array(-30, -30, 30, -30, 30, 30, -30, 30)
+[sub_resource type="CanvasTexture" id="RockTexture"]
+diffuse_texture = ExtResource("1")
+normal_texture = ExtResource("2")
+
+[sub_resource type="OccluderPolygon2D" id="RockFootprint"]
+polygon = PackedVector2Array(26, 1, 17.2, 15.1, -4, 21, -25.2, 15.1, -34, 1, -25.2, -13.1, -4, -19, 17.2, -13.1)
 
 [node name="Obstacle" type="StaticBody2D"]
 
-[node name="Visual" type="ColorRect" parent="."]
-offset_left = -30.0
-offset_top = -30.0
-offset_right = 30.0
-offset_bottom = 30.0
-color = Color(0.24, 0.21, 0.19, 1)
+[node name="Visual" type="Sprite2D" parent="."]
+texture = SubResource("RockTexture")
+offset = Vector2(0, -18.16)
+scale = Vector2(0.5, 0.5)
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
-shape = SubResource("RectangleShape2D_obstacle")
+[node name="CollisionPolygon2D" type="CollisionPolygon2D" parent="."]
+polygon = PackedVector2Array(26, 1, 17.2, 15.1, -4, 21, -25.2, 15.1, -34, 1, -25.2, -13.1, -4, -19, 17.2, -13.1)
 
 [node name="LightOccluder2D" type="LightOccluder2D" parent="."]
-occluder = SubResource("OccluderPolygon2D_obstacle")
+occluder = SubResource("RockFootprint")
