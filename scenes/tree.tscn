@@ -1,27 +1,19 @@
 [gd_scene load_steps=5 format=3]
 
-[ext_resource type="Script" path="res://scripts/foliage_occluder.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/tree.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/foliage_occluder.gd" id="2"]
 
 [sub_resource type="RectangleShape2D" id="TrunkShape"]
-size = Vector2(14, 20)
+size = Vector2(16, 12)
 
 [sub_resource type="OccluderPolygon2D" id="TrunkOccluder"]
-polygon = PackedVector2Array(-7, -10, 7, -10, 7, 10, -7, 10)
-
-[sub_resource type="CircleShape2D" id="CanopyShape"]
-radius = 40.0
+polygon = PackedVector2Array(-8, -6, 8, -6, 8, 6, -8, 6)
 
 [node name="Tree" type="Node2D"]
-
-[node name="TrunkVisual" type="ColorRect" parent="."]
-offset_left = -7.0
-offset_top = -4.0
-offset_right = 7.0
-offset_bottom = 16.0
-color = Color(0.32, 0.22, 0.14, 1)
+script = ExtResource("1")
 
 [node name="TrunkBody" type="StaticBody2D" parent="."]
-position = Vector2(0, 6)
+position = Vector2(0, -5)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="TrunkBody"]
 shape = SubResource("TrunkShape")
@@ -30,18 +22,11 @@ shape = SubResource("TrunkShape")
 occluder = SubResource("TrunkOccluder")
 
 [node name="Canopy" type="Node2D" parent="."]
-script = ExtResource("1")
-position = Vector2(0, -30)
+script = ExtResource("2")
 z_index = 10
 
-[node name="Visual" type="ColorRect" parent="Canopy"]
-offset_left = -42.0
-offset_top = -42.0
-offset_right = 42.0
-offset_bottom = 42.0
-color = Color(0.15, 0.42, 0.2, 1)
+[node name="Visual" type="Sprite2D" parent="Canopy"]
 
 [node name="Area2D" type="Area2D" parent="Canopy"]
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Canopy/Area2D"]
-shape = SubResource("CanopyShape")
