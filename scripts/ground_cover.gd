@@ -26,6 +26,15 @@ const VARIANT_OFFSETS := {
 	"flower_bush_2": Vector2(-0.08, -2.36),
 	"flower_bush_3": Vector2(-0.08, -2.77),
 	"flower_petal_6": Vector2(0.54, -0.87),
+	"flower_single_3": Vector2(-0.16, -9.49),
+	"flower_single_4": Vector2(5.37, -8.57),
+	"flower_clump_1": Vector2(-0.22, -16.05),
+	"flower_clump_2": Vector2(1.6, -8.81),
+	"flower_clump_3": Vector2(1.6, -8.81),
+	"flower_clump_4": Vector2(1.6, -8.81),
+	"flower_clump_5": Vector2(1.6, -8.81),
+	"grass_large": Vector2(0.98, -10.55),
+	"grass_small": Vector2(-0.81, -6.02),
 }
 
 ## Picked kind-first, then variant, so kinds with many models (five petal
@@ -33,9 +42,10 @@ const VARIANT_OFFSETS := {
 const KINDS := {
 	"clover": ["clover_1", "clover_2"],
 	"flower_group": ["flower_group_1", "flower_group_2"],
-	"flower_single": ["flower_single_1", "flower_single_2"],
+	"flower_single": ["flower_single_1", "flower_single_2", "flower_single_3", "flower_single_4"],
+	"flower_clump": ["flower_clump_1", "flower_clump_2", "flower_clump_3", "flower_clump_4", "flower_clump_5"],
 	"flower_petal": ["flower_petal_1", "flower_petal_2", "flower_petal_3", "flower_petal_4", "flower_petal_5", "flower_petal_6"],
-	"grass": ["grass_wispy", "grass_wispy_2", "grass", "tall_grass"],
+	"grass": ["grass_wispy", "grass_wispy_2", "grass", "tall_grass", "grass_large", "grass_small"],
 	"mushroom": ["mushroom", "mushroom_laetiporus"],
 	"shrub": ["shrub", "shrub_flowers"],
 	"flower_bush": ["flower_bush_1", "flower_bush_2", "flower_bush_3"],
@@ -95,6 +105,15 @@ const TEXTURES := {
 	"flower_bush_2": [preload("res://assets/sprites/ground_cover/flower_bush_2_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/flower_bush_2_55deg_normal.png")],
 	"flower_bush_3": [preload("res://assets/sprites/ground_cover/flower_bush_3_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/flower_bush_3_55deg_normal.png")],
 	"flower_petal_6": [preload("res://assets/sprites/ground_cover/flower_petal_6_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/flower_petal_6_55deg_normal.png")],
+	"flower_single_3": [preload("res://assets/sprites/ground_cover/flower_single_3_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/flower_single_3_55deg_normal.png")],
+	"flower_single_4": [preload("res://assets/sprites/ground_cover/flower_single_4_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/flower_single_4_55deg_normal.png")],
+	"flower_clump_1": [preload("res://assets/sprites/ground_cover/flower_clump_1_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/flower_clump_1_55deg_normal.png")],
+	"flower_clump_2": [preload("res://assets/sprites/ground_cover/flower_clump_2_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/flower_clump_2_55deg_normal.png")],
+	"flower_clump_3": [preload("res://assets/sprites/ground_cover/flower_clump_3_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/flower_clump_3_55deg_normal.png")],
+	"flower_clump_4": [preload("res://assets/sprites/ground_cover/flower_clump_4_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/flower_clump_4_55deg_normal.png")],
+	"flower_clump_5": [preload("res://assets/sprites/ground_cover/flower_clump_5_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/flower_clump_5_55deg_normal.png")],
+	"grass_large": [preload("res://assets/sprites/ground_cover/grass_large_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/grass_large_55deg_normal.png")],
+	"grass_small": [preload("res://assets/sprites/ground_cover/grass_small_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/grass_small_55deg_normal.png")],
 }
 
 

@@ -61,6 +61,14 @@ Sets rendered so far (see art_src/):
   ground_cover/flower_bush_1  Plant_1 (bushes.glb) x1.0 --recenter
   ground_cover/flower_bush_2, _3  Plant_2, Plant_Flowers x1.0
   ground_cover/flower_petal_6  Petals_1 x1.5
+  pine/pine_6..10  PineTree_1..5 x1.5 --base-slice 0.05
+  maple_tree/1,3,4,5  MapleTree_* x1.5 --foliage-normals --base-slice 0.05
+  maple_tree/2        MapleTree_2 x1.5 --foliage-normals --fold-normals (its back
+                      clump's normals point away from the viewer)
+  palm_tree/*    PalmTree_1..5 x1.5 --base-slice 0.05
+  ground_cover/flower_single_3, _4  Flower_1, Flower_2 x2.5
+  ground_cover/flower_clump_1..5  Flower_1_Clump..Flower_5_Clump x2.5
+  ground_cover/grass_large, grass_small  Grass_Large_Extruded, Grass_Small x2.0
 """
 import argparse
 import json
@@ -134,7 +142,7 @@ def screen_bounds(meshes):
     return {"min_x": min(xs), "max_x": max(xs), "min_y": min(ys), "max_y": max(ys)}
 
 
-def rewire_materials(meshes, mode, foliage_normals=False):
+def rewire_materials(meshes, mode, foliage_normals=False, fold_normals=False):
     """Route every material's surface to an emission of albedo or encoded normal."""
     for mat in {s.material for o in meshes for s in o.material_slots if s.material}:
         nt = mat.node_tree
@@ -188,7 +196,19 @@ def rewire_materials(meshes, mode, foliage_normals=False):
                 dot.operation = 'DOT_PRODUCT'
                 dot.inputs[1].default_value = axis
                 nt.links.new(normal, dot.inputs[0])
-                nt.links.new(dot.outputs['Value'], comb.inputs[i])
+                value = dot.outputs['Value']
+                if i == 2 and fold_normals:
+                    # Mirror normals that point away from the viewer back
+                    # across the view plane, keeping their left/right and
+                    # up/down lean: for canopies whose authored normals point
+                    # out from the whole tree, a clump behind the trunk would
+                    # otherwise face away and stay dark whatever the light.
+                    fold = nt.nodes.new('ShaderNodeMath')
+                    fold.name = "__sprite_fold"
+                    fold.operation = 'ABSOLUTE'
+                    nt.links.new(value, fold.inputs[0])
+                    value = fold.outputs['Value']
+                nt.links.new(value, comb.inputs[i])
             enc = nt.nodes.new('ShaderNodeVectorMath')
             enc.name = "__sprite_enc"
             enc.operation = 'MULTIPLY_ADD'
@@ -267,6 +287,8 @@ def main():
     r.add_argument("--res", type=int, nargs=2, metavar=("W", "H"), required=True)
     r.add_argument("--foliage-normals", action="store_true",
                    help="keep authored normals on back faces (foliage cards with custom rounded normals)")
+    r.add_argument("--fold-normals", action="store_true",
+                   help="mirror away-facing normals toward the viewer (canopies with tree-wide rounded normals)")
     for p in (m, r):
         p.add_argument("--scale", type=float, default=1.0,
                        help="uniform model scale about the origin, for models authored at a different scale")
@@ -286,7 +308,7 @@ def main():
         return
     setup_scene(args.center_y, args.ortho_scale, *args.res, args.center_x)
     for mode in ("albedo", "normal"):
-        rewire_materials(meshes, mode, args.foliage_normals)
+        rewire_materials(meshes, mode, args.foliage_normals, args.fold_normals)
         render_pass(f"{args.out_prefix}_{mode}.png", mode)
 
 

@@ -1,7 +1,8 @@
 extends Node2D
 
 ## Dead-tree, pine, leafy and twisted tree variants pre-rendered from Quaternius' Stylized Nature
-## MegaKit (CC0), plus birch and bare trees from Quaternius' nature collections
+## MegaKit (CC0), plus birch, bare, pine (6-10), maple and palm trees from
+## Quaternius' nature collections
 ## (x1.5, that pack is modelled smaller), through the same 55deg orthographic pipeline as the oil
 ## barrel (see tools/render_sprite.py), all at true scale and the same pixel
 ## density. One variant is picked per tree each run.
@@ -12,7 +13,7 @@ extends Node2D
 ## Twisted trees: 384x424 renders, center (0.125, 6.37); the lopsided one:
 ## 384x376, center (4.58, 5.295). offset.x = +center_x * 27.108: the canvas
 ## shifted right, so the texture moves right to bring the trunk onto the node.
-## Birch and bare trees each have their own tight camera, so their offsets are
+## Birch, bare, pine 6-10, maple and palm trees each have their own tight camera, so their offsets are
 ## per variant: (center_x, -center_y) * 27.108 (see tools/render_sprite.py).
 const DEAD_TREE_OFFSET := Vector2(0, -142.73)
 const TREE_OFFSET := Vector2(0, -73.19)
@@ -129,6 +130,51 @@ const VARIANTS := [
 	{"albedo": preload("res://assets/sprites/bare_tree/bare_tree_10_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/bare_tree/bare_tree_10_55deg_normal.png"),
 	 "family": "bare", "offset": Vector2(-11.74, -98.54), "fade_rect": Rect2(-61, -104, 111, 94)},
+	{"albedo": preload("res://assets/sprites/pine/pine_6_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/pine/pine_6_55deg_normal.png"),
+	 "family": "pine", "offset": Vector2(0.03, -56.06), "fade_rect": Rect2(-30, -63, 60, 53)},
+	{"albedo": preload("res://assets/sprites/pine/pine_7_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/pine/pine_7_55deg_normal.png"),
+	 "family": "pine", "offset": Vector2(3.44, -84.41), "fade_rect": Rect2(-32, -86, 67, 76)},
+	{"albedo": preload("res://assets/sprites/pine/pine_8_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/pine/pine_8_55deg_normal.png"),
+	 "family": "pine", "offset": Vector2(1.55, -29.87), "fade_rect": Rect2(-17, -34, 36, 24)},
+	{"albedo": preload("res://assets/sprites/pine/pine_9_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/pine/pine_9_55deg_normal.png"),
+	 "family": "pine", "offset": Vector2(49.26, -48.52), "fade_rect": Rect2(-25, -61, 99, 51)},
+	{"albedo": preload("res://assets/sprites/pine/pine_10_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/pine/pine_10_55deg_normal.png"),
+	 "family": "pine", "offset": Vector2(2.77, -52.59), "fade_rect": Rect2(-32, -56, 67, 46)},
+	{"albedo": preload("res://assets/sprites/maple_tree/maple_tree_1_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/maple_tree/maple_tree_1_55deg_normal.png"),
+	 "family": "maple", "offset": Vector2(42.23, -98.35), "fade_rect": Rect2(-42, -104, 126, 94)},
+	{"albedo": preload("res://assets/sprites/maple_tree/maple_tree_2_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/maple_tree/maple_tree_2_55deg_normal.png"),
+	 "family": "maple", "offset": Vector2(-40.31, -102.63), "fade_rect": Rect2(-88, -108, 136, 98)},
+	{"albedo": preload("res://assets/sprites/maple_tree/maple_tree_3_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/maple_tree/maple_tree_3_55deg_normal.png"),
+	 "family": "maple", "offset": Vector2(3.23, -128.03), "fade_rect": Rect2(-90, -133, 183, 123)},
+	{"albedo": preload("res://assets/sprites/maple_tree/maple_tree_4_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/maple_tree/maple_tree_4_55deg_normal.png"),
+	 "family": "maple", "offset": Vector2(10.44, -50.61), "fade_rect": Rect2(-23, -53, 56, 43)},
+	{"albedo": preload("res://assets/sprites/maple_tree/maple_tree_5_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/maple_tree/maple_tree_5_55deg_normal.png"),
+	 "family": "maple", "offset": Vector2(-4.17, -106.26), "fade_rect": Rect2(-73, -111, 142, 101)},
+	{"albedo": preload("res://assets/sprites/palm_tree/palm_tree_1_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/palm_tree/palm_tree_1_55deg_normal.png"),
+	 "family": "palm", "offset": Vector2(-7.67, -90.08), "fade_rect": Rect2(-56, -93, 104, 83)},
+	{"albedo": preload("res://assets/sprites/palm_tree/palm_tree_2_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/palm_tree/palm_tree_2_55deg_normal.png"),
+	 "family": "palm", "offset": Vector2(56.6, -91.11), "fade_rect": Rect2(-28, -98, 113, 88)},
+	{"albedo": preload("res://assets/sprites/palm_tree/palm_tree_3_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/palm_tree/palm_tree_3_55deg_normal.png"),
+	 "family": "palm", "offset": Vector2(-10.0, -80.56), "fade_rect": Rect2(-50, -84, 90, 74)},
+	{"albedo": preload("res://assets/sprites/palm_tree/palm_tree_4_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/palm_tree/palm_tree_4_55deg_normal.png"),
+	 "family": "palm", "offset": Vector2(67.82, -56.41), "fade_rect": Rect2(-14, -79, 96, 69)},
+	{"albedo": preload("res://assets/sprites/palm_tree/palm_tree_5_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/palm_tree/palm_tree_5_55deg_normal.png"),
+	 "family": "palm", "offset": Vector2(-4.07, -16.51), "fade_rect": Rect2(-38, -39, 71, 29)},
 ]
 
 @onready var sprite: Sprite2D = $Canopy/Visual
