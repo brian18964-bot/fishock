@@ -32,7 +32,9 @@ Sets rendered so far (see art_src/):
   dead_tree/*    scale 1.0   --center-y 5.265 --ortho-scale 13.28  --res 270 360
   bush, bush_flowers  x1.9, fern x0.41
                      --center-y 0.555 --ortho-scale 4.1316 --res 112 112
-  ground_cover/* scale 1.5   --center-y 0.651 --ortho-scale 1.7707 --res 48 48
+  ground_cover/clover_*  scale 1.5   --center-y 0.651 --ortho-scale 1.7707 --res 48 48
+  ground_cover/flower_group_* x1.0, flower_petal_* x1.5
+                     --center-y 0.635 --ortho-scale 2.361 --res 64 64
 """
 import argparse
 import json
