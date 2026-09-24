@@ -38,11 +38,14 @@ Sets rendered so far (see art_src/):
                grass_wispy_2 x1.0 --foliage-normals, grass x1.5 --foliage-normals,
                mushroom x2.0, mushroom_laetiporus x0.75, pebble_* x2.0
   pine/*         scale 1.0   --center-y 2.70 --ortho-scale 7.968 --res 200 216
+  leafy_tree/*   scale 1.0 --foliage-normals, same camera as pine/*
   bush/plant_big_2  x1.2      --center-y 1.873 --ortho-scale 4.427 --res 120 120
   rock/rock_medium  x1.45     --center-y 0.67 --ortho-scale 5.312 --res 144 120
   rock/rock_medium_2, _3  x1.45 --recenter --center-y 0.75 --ortho-scale 5.312 --res 144 144
   ground_cover/rock_path_1..3, rock_path_square_*  x1.0  --center-y 0.0 --ortho-scale 1.7707 --res 48 48
-  ground_cover/rock_path_round_thin, _wide  x1.0  --center-y 0.0 --ortho-scale 2.361 --res 64 64
+  ground_cover/rock_path_round_thin, _wide, rock_path_square_thin, _wide
+                 x1.0  --center-y 0.0 --ortho-scale 2.361 --res 64 64
+  ground_cover/tall_grass  x1.0 --foliage-normals (64x64 flower camera)
   ground_cover/plant_1 x1.3, plant_2 x1.4, plant_big_1 x1.4 (64x64 flower camera)
                      --center-y 0.635 --ortho-scale 2.361 --res 64 64
 """
