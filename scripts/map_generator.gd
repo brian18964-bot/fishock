@@ -62,46 +62,78 @@ const BUSH_SCENE := preload("res://scenes/bush.tscn")
 ## User request: each run is dressed in one of a few looks, all from the
 ## existing art. A theme sets how many extra trees/rocks/bushes/plants get
 ## scattered and which kinds (tree families, rock variants - obstacle.gd
-## VARIANTS indices, 3-7 are the boulders - and ground-cover kinds), and how
-## the pond shores are dressed: per shore sample, the chance of a reed
-## clump, pebbles, a boulder or a tree, plus the chance a pond gets a
-## boardwalk along its bank.
+## VARIANTS indices, 3-7 are the boulders - and ground-cover kinds).
+## User feedback: a forest is one look, not every tree at once - it comes
+## in single-colour variants; dead wood gets stone footpaths; the rock pile
+## is mostly rocks with a few dead trees.
 const THEMES := {
-	"forest": {
-		"trees": 26, "rocks": 3, "bushes": 8, "ground": 120,
-		"tree_families": {"leafy": 3.0, "pine": 3.0, "oak": 3.0, "birch": 2.0, "maple": 2.0, "twisted": 1.0},
+	"forest_pine": {
+		"trees": 28, "rocks": 3, "bushes": 6, "ground": 110,
+		"tree_families": {"pine": 1.0},
 		"rock_pool": [0, 1, 2],
-		"ground_kinds": {"grass": 4.0, "clover": 2.0, "plant": 3.0, "shrub": 3.0, "flower_group": 2.0,
-			"flower_single": 2.0, "flower_clump": 2.0, "flower_bush": 2.0, "flower_petal": 1.0, "mushroom": 2.0},
-		"shore": {"reeds": 0.7, "pebbles": 0.15, "boulder": 0.04, "tree": 0.14},
-		"shore_trees": {"leafy": 1.0, "birch": 1.0, "maple": 1.0, "oak": 1.0},
-		"boardwalk": 0.6,
+		"ground_kinds": {"grass": 4.0, "clover": 2.0, "plant": 2.0, "mushroom": 3.0, "shrub": 2.0},
+	},
+	"forest_birch": {
+		"trees": 26, "rocks": 2, "bushes": 6, "ground": 120,
+		"tree_families": {"birch": 1.0},
+		"rock_pool": [0, 1, 2],
+		"ground_kinds": {"grass": 3.0, "flower_group": 2.0, "flower_single": 2.0, "flower_clump": 2.0,
+			"flower_petal": 1.0, "shrub": 2.0, "plant": 1.0},
+	},
+	"forest_maple": {
+		"trees": 24, "rocks": 3, "bushes": 6, "ground": 110,
+		"tree_families": {"maple": 1.0},
+		"rock_pool": [0, 1, 2],
+		"ground_kinds": {"grass": 3.0, "clover": 2.0, "flower_bush": 2.0, "mushroom": 2.0, "shrub": 2.0, "plant": 1.0},
+	},
+	"forest_green": {
+		"trees": 26, "rocks": 3, "bushes": 8, "ground": 120,
+		"tree_families": {"oak": 1.0, "leafy": 1.0},
+		"rock_pool": [0, 1, 2],
+		"ground_kinds": {"grass": 4.0, "clover": 2.0, "plant": 3.0, "shrub": 3.0, "flower_single": 1.0, "mushroom": 1.0},
 	},
 	"deadwood": {
-		"trees": 22, "rocks": 6, "bushes": 3, "ground": 90,
-		"tree_families": {"dead": 3.0, "bare": 3.0, "twisted": 2.0},
-		"rock_pool": [0, 1, 2, 3, 4, 5],
-		"ground_kinds": {"grass": 2.0, "mushroom": 3.0, "pebble": 3.0, "path_stone": 1.0, "plant": 1.0, "shrub": 1.0},
-		"shore": {"reeds": 0.45, "pebbles": 0.35, "boulder": 0.07, "tree": 0.1},
-		"shore_trees": {"dead": 1.0, "bare": 2.0},
-		"boardwalk": 0.45,
+		"trees": 22, "rocks": 5, "bushes": 2, "ground": 80,
+		"tree_families": {"dead": 1.0, "bare": 1.0},
+		"rock_pool": [0, 1, 2, 3, 4],
+		"ground_kinds": {"grass": 2.0, "mushroom": 3.0, "pebble": 2.0, "plant": 1.0},
+		"paths": true,
 	},
 	"rocky": {
-		"trees": 8, "rocks": 18, "bushes": 2, "ground": 100,
-		"tree_families": {"pine": 2.0, "dead": 1.0, "bare": 1.0},
+		"trees": 6, "rocks": 26, "bushes": 1, "ground": 100,
+		"tree_families": {"dead": 1.0, "bare": 1.0},
 		"rock_pool": [0, 1, 2, 3, 4, 5, 6, 7],
-		"ground_kinds": {"pebble": 4.0, "path_stone": 3.0, "grass": 2.0, "clover": 1.0},
-		"shore": {"reeds": 0.25, "pebbles": 0.55, "boulder": 0.18, "tree": 0.03},
-		"shore_trees": {"pine": 1.0},
-		"boardwalk": 0.3,
+		"ground_kinds": {"pebble": 5.0, "grass": 2.0, "clover": 1.0},
 	},
 }
+## Forest looks share one pick with the other styles, so each style comes
+## up equally often.
+const STYLES := {"forest": ["forest_pine", "forest_birch", "forest_maple", "forest_green"],
+	"deadwood": ["deadwood"], "rocky": ["rocky"]}
+
+## User feedback: the water's edge is grass, small shrubs, pebbles and
+## boardwalks (no big trees or boulders there), with bugs and frogs about.
+## Per shore sample: chance of a grass clump / low shrub / pebbles.
+const SHORE_ODDS := {"grass": 0.5, "shrub": 0.16, "pebbles": 0.2}
+const SHORE_HIDE_BUSH_CHANCE := 0.25  # of shrubs: a bush you can hide in
+const BOARDWALK_CHANCE := 0.8
+const SHORE_CRITTERS := ["frog", "frog", "spider", "wasp"]
+const SHORE_CRITTER_COUNT := 5
+
+## Dead-wood footpaths: stepping stones every PATH_STEP px, meandering.
+const PATH_STEP := 17.0
+const PATH_CLEARANCE := 24.0
+const PATH_STYLES := [
+	["rock_path_1", "rock_path_2", "rock_path_3", "rock_path_round_thin", "rock_path_round_wide"],
+	["rock_path_square_1", "rock_path_square_2", "rock_path_square_3", "rock_path_square_thin", "rock_path_square_wide"],
+]
 const SHORE_SPACING := 26.0
 const SHORE_CLEAR_OF_SPAWN := 160.0
 
 var theme_name := ""
 var theme: Dictionary = {}
 var _walk_rects: Array[Rect2] = []
+var _path_points: Array[Vector2] = []
 const CRITTER_SCENE := preload("res://scenes/critter.tscn")
 const CRITTER_COUNT := 10
 const AMBIENT_ANIMAL_COUNT := 6
@@ -110,11 +142,13 @@ var water_zones: Array = []
 
 
 func _ready() -> void:
-	theme_name = THEMES.keys().pick_random()
+	theme_name = STYLES[STYLES.keys().pick_random()].pick_random()
 	theme = THEMES[theme_name]
 	_generate_water_zones()
 	_place_docks()
 	_place_altar_and_escape()
+	if theme.get("paths", false):
+		_lay_stone_paths()
 	_scatter_props()
 	_dress_shores()
 	_scatter_themed_props()
@@ -313,45 +347,100 @@ func _scatter_themed_props() -> void:
 			get_parent().add_child.call_deferred(prop)
 
 
-## User request: pond edges dressed from the existing art - reed clumps
-## (some standing in the shallows), pebbles, the odd boulder and trees along
-## the bank, kept off docks and the spawn point; and, now and then, a
-## boardwalk laid along a straight-ish stretch of bank.
+## User request: pond edges dressed from the existing art. User feedback:
+## grass clumps (some standing in the shallows), low shrubs and pebbles,
+## kept off docks, paths and the spawn point; most common ponds also get a
+## boardwalk along a straight stretch of bank; frogs and bugs about.
 func _dress_shores() -> void:
-	var odds: Dictionary = theme.shore
 	for zone in water_zones:
 		for sample in zone.shore_samples(SHORE_SPACING):
 			var p: Vector2 = sample[0]
 			var n: Vector2 = sample[1]
-			if p.distance_to(SPAWN_POS) < SHORE_CLEAR_OF_SPAWN or not _inside_map(p, 24.0) or _near_walkway(p, 26.0):
+			if p.distance_to(SPAWN_POS) < SHORE_CLEAR_OF_SPAWN or not _inside_map(p, 24.0) \
+					or _near_walkway(p, 26.0) or _near_path(p, PATH_CLEARANCE):
 				continue
 			var roll := randf()
-			if roll < odds.reeds:
+			if roll < SHORE_ODDS.grass:
 				for _k in randi_range(2, 4):
-					var q := p + n * randf_range(-10.0, 12.0) + n.orthogonal() * randf_range(-10.0, 10.0)
-					_add_ground_cover(q, "grass")
-			elif roll < odds.reeds + odds.pebbles:
+					_add_ground_cover(p + n * randf_range(-10.0, 12.0) + n.orthogonal() * randf_range(-10.0, 10.0), "grass")
+			elif roll < SHORE_ODDS.grass + SHORE_ODDS.shrub:
+				var pos := p + n * randf_range(10.0, 26.0)
+				if _shore_distance(pos) < 6.0:
+					continue
+				if randf() < SHORE_HIDE_BUSH_CHANCE:
+					var bush: Node2D = BUSH_SCENE.instantiate()
+					bush.position = pos + n * 10.0
+					get_parent().add_child.call_deferred(bush)
+				else:
+					_add_ground_cover(pos, ["shrub", "flower_bush"].pick_random())
+			elif roll < SHORE_ODDS.grass + SHORE_ODDS.shrub + SHORE_ODDS.pebbles:
 				for _k in randi_range(1, 3):
 					_add_ground_cover(p + n * randf_range(-4.0, 16.0) + n.orthogonal() * randf_range(-12.0, 12.0), "pebble")
-			elif roll < odds.reeds + odds.pebbles + odds.boulder:
-				var rock_pos := p + n * randf_range(26.0, 40.0)
-				# On an inward bend "outward" can point into another lobe.
-				if _shore_distance(rock_pos) < 20.0 or not _inside_map(rock_pos, 40.0):
-					continue
-				var rock: Node2D = OBSTACLE_SCENE.instantiate()
-				rock.position = rock_pos
-				rock.variant_pool = theme.rock_pool
-				get_parent().add_child.call_deferred(rock)
-			elif roll < odds.reeds + odds.pebbles + odds.boulder + odds.tree:
-				var pos := p + n * randf_range(40.0, 70.0)
-				if _shore_distance(pos) < 25.0 or not _inside_map(pos, 40.0):
-					continue
-				var tree: Node2D = TREE_SCENE.instantiate()
-				tree.position = pos
-				tree.family_weights = theme.shore_trees
-				get_parent().add_child.call_deferred(tree)
-		if not zone.is_rare() and randf() < theme.boardwalk:
+		if not zone.is_rare() and randf() < BOARDWALK_CHANCE:
 			_add_boardwalk(zone)
+	_add_shore_critters()
+
+
+## Catchable frogs and bugs hanging about the water's edge.
+func _add_shore_critters() -> void:
+	var zones: Array = water_zones.filter(func(z): return not z.is_rare())
+	if zones.is_empty():
+		return
+	for _i in SHORE_CRITTER_COUNT:
+		var zone: WaterZone = zones.pick_random()
+		var samples: Array = zone.shore_samples(60.0)
+		if samples.is_empty():
+			continue
+		var sample: Array = samples.pick_random()
+		var pos: Vector2 = sample[0] + sample[1] * randf_range(14.0, 30.0)
+		if _shore_distance(pos) < 6.0 or pos.distance_to(SPAWN_POS) < SHORE_CLEAR_OF_SPAWN:
+			continue
+		var critter: Critter = CRITTER_SCENE.instantiate()
+		critter.species = SHORE_CRITTERS.pick_random()
+		critter.position = pos
+		get_parent().add_child.call_deferred(critter)
+
+
+## User feedback: dead wood gets proper footpaths - a meandering line of
+## stepping stones in one style from the spawn clearing to the bank of
+## each common pond, not stray stones.
+func _lay_stone_paths() -> void:
+	for zone in water_zones:
+		if zone.is_rare():
+			continue
+		var style: Array = PATH_STYLES.pick_random()
+		var dir: Vector2 = (zone.global_position - SPAWN_POS).normalized()
+		var start := SPAWN_POS + dir * 70.0
+		# End on the bank just short of the water, facing the spawn.
+		var end: Vector2 = zone.shore_point(-dir) - dir * 12.0
+		var length := start.distance_to(end)
+		if length < 60.0:
+			continue
+		var side := dir.orthogonal()
+		var amp := randf_range(18.0, 45.0)
+		var waves := randf_range(1.0, 2.5)
+		var phase := randf() * TAU
+		var steps := int(length / PATH_STEP)
+		for i in range(steps + 1):
+			var t := float(i) / steps
+			# Meander, pinned straight at both ends.
+			var sway := sin(t * PI * waves + phase) * amp * sin(t * PI)
+			var p := start.lerp(end, t) + side * sway
+			if _shore_distance(p) < 4.0 or not _inside_map(p, 20.0):
+				continue
+			_path_points.append(p)
+			var stone: Node2D = GROUND_COVER_SCENE.instantiate()
+			stone.position = p + Vector2(randf_range(-2.5, 2.5), randf_range(-2.5, 2.5))
+			stone.kind_override = "path_stone"
+			stone.variant_choices = style
+			get_parent().add_child.call_deferred(stone)
+
+
+func _near_path(pos: Vector2, margin: float) -> bool:
+	for p in _path_points:
+		if p.distance_to(pos) < margin:
+			return true
+	return false
 
 
 ## A dock piece laid along the bank where the shore faces nearly straight
@@ -366,7 +455,8 @@ func _add_boardwalk(zone: WaterZone) -> void:
 		if not along_x and absf(n.x) < 0.92:
 			continue
 		var pos := p + n * 6.0
-		if pos.distance_to(SPAWN_POS) < SHORE_CLEAR_OF_SPAWN or not _inside_map(pos, 70.0) or _near_walkway(pos, 70.0):
+		if pos.distance_to(SPAWN_POS) < SHORE_CLEAR_OF_SPAWN or not _inside_map(pos, 70.0) or _near_walkway(pos, 70.0) \
+				or _near_path(pos, 40.0):
 			continue
 		var walk: Dock = DOCK_SCENE.instantiate()
 		walk.position = pos
@@ -403,7 +493,7 @@ func _scatter_ground_cover() -> void:
 				randf_range(PROP_MARGIN, Player.WORLD_WIDTH - PROP_MARGIN),
 				randf_range(PROP_MARGIN, Player.WORLD_HEIGHT - PROP_MARGIN)
 			)
-			if not _in_any_water(pos):
+			if not _in_any_water(pos) and not _near_path(pos, 14.0):
 				break
 		var plant: Node2D = GROUND_COVER_SCENE.instantiate()
 		plant.position = pos
@@ -438,8 +528,9 @@ func _pick_prop_position(placed: Array) -> Vector2:
 		)
 		if pos.distance_to(SPAWN_POS) < PROP_AVOID_SPAWN_RADIUS:
 			continue
-		# Clear of the water with room for a rock's footprint or a trunk.
-		if _shore_distance(pos) < 30.0:
+		# Clear of the water with room for a rock's footprint or a trunk,
+		# and off any footpath.
+		if _shore_distance(pos) < 30.0 or _near_path(pos, PATH_CLEARANCE + 10.0):
 			continue
 		if fallback.x < 0.0:
 			fallback = pos

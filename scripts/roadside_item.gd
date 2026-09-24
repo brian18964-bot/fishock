@@ -46,7 +46,7 @@ func resolve() -> Dictionary:
 
 func _relocate() -> void:
 	var pos := Vector2.ZERO
-	for _try in range(20):
+	for _try in range(40):
 		pos = Vector2(
 			randf_range(MARGIN, Player.WORLD_WIDTH - MARGIN),
 			randf_range(MARGIN, Player.WORLD_HEIGHT - MARGIN)
@@ -61,8 +61,10 @@ func _relocate() -> void:
 ## zone - a common one would just look wrong, a rare one would spawn it
 ## inside solid, unreachable collision.
 func _in_water(pos: Vector2) -> bool:
+	# Not just outside the water: clear of the bank too, so the sprite
+	# doesn't sit half in a pond.
 	for zone in get_tree().get_nodes_in_group("water_zones"):
-		if zone.contains(pos):
+		if zone.distance_to_edge(pos) < 30.0:
 			return true
 	return false
 

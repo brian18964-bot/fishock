@@ -122,11 +122,13 @@ const TEXTURES := {
 ## plant enters the tree.
 var kind_weights: Dictionary = {}
 var kind_override := ""
+## Optional subset of the kind's variants (a stone path keeps one style).
+var variant_choices: Array = []
 
 
 func _ready() -> void:
 	var kind: String = kind_override if kind_override != "" else _pick_kind()
-	var variant: String = KINDS[kind].pick_random()
+	var variant: String = variant_choices.pick_random() if not variant_choices.is_empty() else KINDS[kind].pick_random()
 	var tex := CanvasTexture.new()
 	tex.diffuse_texture = TEXTURES[variant][0]
 	tex.normal_texture = TEXTURES[variant][1]
