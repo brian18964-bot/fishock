@@ -1,6 +1,6 @@
 extends Node2D
 
-## Dead-tree, pine and leafy-tree variants pre-rendered from Quaternius' Stylized Nature
+## Dead-tree, pine, leafy and twisted tree variants pre-rendered from Quaternius' Stylized Nature
 ## MegaKit (CC0) through the same 55deg orthographic pipeline as the oil
 ## barrel (see tools/render_sprite.py), all at true scale and the same pixel
 ## density. One variant is picked per tree each run.
@@ -8,8 +8,10 @@ extends Node2D
 ## offset: where the trunk base lands relative to the texture center,
 ## -center_y * 27.108 px/unit. Dead trees: 270x360 renders, center_y 5.265.
 ## Pines and leafy trees: 200x216 renders, center_y 2.70.
+## Twisted trees: 352x440 renders, center_y 5.26.
 const DEAD_TREE_OFFSET := Vector2(0, -142.73)
 const TREE_OFFSET := Vector2(0, -73.19)
+const TWISTED_OFFSET := Vector2(0, -142.59)
 const SPRITE_SCALE := 0.5
 
 ## fade_rect: the branch area (node-local px) where the player counts as
@@ -52,6 +54,21 @@ const VARIANTS := [
 	{"albedo": preload("res://assets/sprites/leafy_tree/leafy_tree_2_55deg_albedo.png"),
 	 "normal": preload("res://assets/sprites/leafy_tree/leafy_tree_2_55deg_normal.png"),
 	 "offset": TREE_OFFSET, "fade_rect": Rect2(-30, -67, 61, 57)},
+	{"albedo": preload("res://assets/sprites/leafy_tree/leafy_tree_3_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/leafy_tree/leafy_tree_3_55deg_normal.png"),
+	 "offset": TREE_OFFSET, "fade_rect": Rect2(-27, -85, 55, 75)},
+	{"albedo": preload("res://assets/sprites/leafy_tree/leafy_tree_4_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/leafy_tree/leafy_tree_4_55deg_normal.png"),
+	 "offset": TREE_OFFSET, "fade_rect": Rect2(-30, -66, 59, 56)},
+	{"albedo": preload("res://assets/sprites/leafy_tree/leafy_tree_5_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/leafy_tree/leafy_tree_5_55deg_normal.png"),
+	 "offset": TREE_OFFSET, "fade_rect": Rect2(-26, -70, 50, 60)},
+	{"albedo": preload("res://assets/sprites/twisted_tree/twisted_tree_1_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/twisted_tree/twisted_tree_1_55deg_normal.png"),
+	 "offset": TWISTED_OFFSET, "fade_rect": Rect2(-51, -177, 129, 167)},
+	{"albedo": preload("res://assets/sprites/twisted_tree/twisted_tree_2_55deg_albedo.png"),
+	 "normal": preload("res://assets/sprites/twisted_tree/twisted_tree_2_55deg_normal.png"),
+	 "offset": TWISTED_OFFSET, "fade_rect": Rect2(-58, -169, 141, 159)},
 ]
 
 @onready var sprite: Sprite2D = $Canopy/Visual

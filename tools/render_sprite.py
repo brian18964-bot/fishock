@@ -39,6 +39,7 @@ Sets rendered so far (see art_src/):
                mushroom x2.0, mushroom_laetiporus x0.75, pebble_* x2.0
   pine/*         scale 1.0   --center-y 2.70 --ortho-scale 7.968 --res 200 216
   leafy_tree/*   scale 1.0 --foliage-normals, same camera as pine/*
+  twisted_tree/* scale 1.0 --foliage-normals --recenter --center-y 5.26 --ortho-scale 16.231 --res 352 440
   bush/plant_big_2  x1.2      --center-y 1.873 --ortho-scale 4.427 --res 120 120
   rock/rock_medium  x1.45     --center-y 0.67 --ortho-scale 5.312 --res 144 120
   rock/rock_medium_2, _3  x1.45 --recenter --center-y 0.75 --ortho-scale 5.312 --res 144 144
