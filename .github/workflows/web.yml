@@ -33,7 +33,15 @@ jobs:
           echo "GODOT=$RUNNER_TEMP/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" >> "$GITHUB_ENV"
           rm godot.zip
 
+      - name: Cache web export templates
+        id: templates
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/godot/export_templates
+          key: godot-web-templates-${{ env.GODOT_VERSION }}
+
       - name: Install web export templates
+        if: steps.templates.outputs.cache-hit != 'true'
         run: python3 tools/fetch_web_templates.py "$GODOT_VERSION"
 
       # Browsers have no CJK system font; rebuild the bundled subset so any

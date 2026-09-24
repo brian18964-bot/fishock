@@ -21,11 +21,22 @@ DEST = os.path.expanduser(
 WANTED = ("web_nothreads_release.zip", "web_nothreads_debug.zip")
 
 
+def _retry(fn, attempts=6):
+    """GitHub's release CDN throws the odd 5xx; back off and try again."""
+    for attempt in range(attempts):
+        try:
+            return fn()
+        except OSError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(2 ** attempt)
+
+
 class RangeFile(io.RawIOBase):
     """Seekable read-only view of a remote file, one range request per read."""
 
     def __init__(self, url):
-        r = urllib.request.urlopen(urllib.request.Request(url, method="HEAD"))
+        r = _retry(lambda: urllib.request.urlopen(urllib.request.Request(url, method="HEAD")))
         self.url = r.geturl()
         self.size = int(r.headers["Content-Length"])
         self.pos = 0
@@ -48,14 +59,7 @@ class RangeFile(io.RawIOBase):
         end = min(self.pos + n, self.size) - 1
         req = urllib.request.Request(
             self.url, headers={"Range": f"bytes={self.pos}-{end}"})
-        for attempt in range(5):
-            try:
-                data = urllib.request.urlopen(req).read()
-                break
-            except OSError:
-                if attempt == 4:
-                    raise
-                time.sleep(2 ** attempt)
+        data = _retry(lambda: urllib.request.urlopen(req).read())
         self.pos += len(data)
         return data
 
