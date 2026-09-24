@@ -49,6 +49,7 @@ const PROP_AVOID_SPAWN_RADIUS := 180.0
 const DOCK_SCENE := preload("res://scenes/dock.tscn")
 const DOCK_COUNT := 3
 const DOCK_SHORE_MARGIN := 60.0
+const DOCK_STAIRS_CHANCE := 0.5
 
 const GROUND_COVER_SCENE := preload("res://scenes/ground_cover.tscn")
 const GROUND_COVER_COUNT := 80
@@ -113,10 +114,22 @@ func _place_docks() -> void:
 			var dock: Dock = DOCK_SCENE.instantiate()
 			# Shore end 30% of the length past the edge, the rest over water.
 			dock.position = zone.global_position + d * (zone.radius - half * 0.4)
-			dock.setup(vertical, randf() < 0.5)
+			dock.setup(vertical, ["long_rope", "long", "wide"].pick_random())
 			get_parent().add_child.call_deferred(dock)
+			if randf() < DOCK_STAIRS_CHANCE:
+				# Steps off the water end, leading on toward the center.
+				var stairs: Dock = DOCK_SCENE.instantiate()
+				stairs.position = dock.position - d * (half + Dock.stairs_half_length(vertical))
+				stairs.setup_stairs(_dir_name(-d))
+				get_parent().add_child.call_deferred(stairs)
 			placed += 1
 			break
+
+
+func _dir_name(v: Vector2) -> String:
+	if absf(v.x) < 0.5:
+		return "down" if v.y > 0.0 else "up"
+	return "right" if v.x > 0.0 else "left"
 
 
 func _pick_zone_position(radius: float) -> Vector2:

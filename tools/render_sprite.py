@@ -73,6 +73,10 @@ Sets rendered so far (see art_src/):
   rock/boulder_*  Rock_1..5 x3.5 --recenter
   dock/dock_long*_vertical    x0.34 --yaw 0   --center-y 0.69  --ortho-scale 6.7877 --res 96 184
   dock/dock_long*_horizontal  x0.34 --yaw 90  --center-y 0.715 --ortho-scale 7.673  --res 208 120
+  dock/dock_wide_*, dock_stairs_*  x0.34, one tight camera per --yaw (stairs: 0 down,
+                 90 right, 180 up, -90 left = the way they step down); offsets in dock.gd
+  rod/rod_lvl1, _lvl2, _lvl4  x0.42 --tip 90 --center-x 1.105 --center-y 0.06
+                 --ortho-scale 3.5415 --res 96 16 (lying along +X, grip at the origin)
 
 Animated sheets (anim / measure-anim; --drop Icosphere, 8 frames per clip,
 rows = clips x dirs down/left/right/up, x-symmetric camera per animal):
@@ -459,6 +463,8 @@ def main():
                        help="center the model's ground footprint on the origin (for off-center origins)")
         p.add_argument("--object", default=None,
                        help="render only this named object from a multi-model file (moved to the origin)")
+        p.add_argument("--tip", type=float, default=0.0,
+                       help="tip the model over about the world Y axis first (deg; +90 lays an upright rod along +X)")
         p.add_argument("--yaw", type=float, default=0.0,
                        help="turn the model about Z first (deg; +90 turns a camera-facing model to face right)")
         p.add_argument("--drop", action="append", default=[],
@@ -468,6 +474,11 @@ def main():
     args = parser.parse_args()
 
     meshes = load_model(args.model, args.scale, args.recenter, args.base_slice, args.object, args.drop)
+    if args.tip:
+        tip = Matrix.Rotation(math.radians(args.tip), 4, 'Y')
+        for o in [o for o in bpy.context.scene.objects if o.parent is None]:
+            o.matrix_world = tip @ o.matrix_world
+        bpy.context.view_layer.update()
     if args.yaw:
         Yaw().set(args.yaw)
     if args.cmd == "measure-anim":

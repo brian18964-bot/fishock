@@ -1,8 +1,9 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/player.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/lantern.gd" id="2"]
 [ext_resource type="Script" path="res://scripts/day_vision.gd" id="3"]
+[ext_resource type="Script" path="res://scripts/held_rod.gd" id="4"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_1"]
 size = Vector2(24, 24)
@@ -23,6 +24,10 @@ offset_top = -16.0
 offset_right = 3.0
 offset_bottom = -10.0
 color = Color(1, 1, 0.3, 1)
+
+[node name="Rod" type="Sprite2D" parent="."]
+position = Vector2(5, 2)
+script = ExtResource("4")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("RectangleShape2D_1")
