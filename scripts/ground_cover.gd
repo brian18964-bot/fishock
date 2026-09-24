@@ -10,8 +10,8 @@ const SPRITE_SCALE := 0.5
 
 ## offset: where the ground point sits relative to the texture center,
 ## -center_y * 27.108 px/unit. Clovers: 48x48 canvas, center_y 0.651. Path
-## stones: 48x48, center_y 0 (flat, centered). Everything else: 64x64,
-## center_y 0.635.
+## stones: 48x48 or 64x64, center_y 0 (flat, centered). Everything else:
+## 64x64, center_y 0.635.
 const DEFAULT_OFFSET := Vector2(0, -17.21)
 const KIND_OFFSETS := {
 	"clover": Vector2(0, -17.65),
@@ -28,7 +28,8 @@ const KINDS := {
 	"grass": ["grass_wispy", "grass_wispy_2", "grass"],
 	"mushroom": ["mushroom", "mushroom_laetiporus"],
 	"plant": ["plant_1", "plant_2", "plant_big_1"],
-	"path_stone": ["rock_path_1", "rock_path_2", "rock_path_3"],
+	"path_stone": ["rock_path_1", "rock_path_2", "rock_path_3",
+		"rock_path_square_1", "rock_path_square_2", "rock_path_square_3", "rock_path_round_thin", "rock_path_round_wide"],
 	"pebble": ["pebble_round", "pebble_round_2", "pebble_round_3", "pebble_round_4", "pebble_round_5",
 		"pebble_square", "pebble_square_2", "pebble_square_3", "pebble_square_4", "pebble_square_5", "pebble_square_6"],
 }
@@ -56,6 +57,11 @@ const TEXTURES := {
 	"rock_path_1": [preload("res://assets/sprites/ground_cover/rock_path_1_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/rock_path_1_55deg_normal.png")],
 	"rock_path_2": [preload("res://assets/sprites/ground_cover/rock_path_2_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/rock_path_2_55deg_normal.png")],
 	"rock_path_3": [preload("res://assets/sprites/ground_cover/rock_path_3_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/rock_path_3_55deg_normal.png")],
+	"rock_path_square_1": [preload("res://assets/sprites/ground_cover/rock_path_square_1_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/rock_path_square_1_55deg_normal.png")],
+	"rock_path_square_2": [preload("res://assets/sprites/ground_cover/rock_path_square_2_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/rock_path_square_2_55deg_normal.png")],
+	"rock_path_square_3": [preload("res://assets/sprites/ground_cover/rock_path_square_3_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/rock_path_square_3_55deg_normal.png")],
+	"rock_path_round_thin": [preload("res://assets/sprites/ground_cover/rock_path_round_thin_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/rock_path_round_thin_55deg_normal.png")],
+	"rock_path_round_wide": [preload("res://assets/sprites/ground_cover/rock_path_round_wide_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/rock_path_round_wide_55deg_normal.png")],
 	"pebble_round": [preload("res://assets/sprites/ground_cover/pebble_round_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/pebble_round_55deg_normal.png")],
 	"pebble_square": [preload("res://assets/sprites/ground_cover/pebble_square_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/pebble_square_55deg_normal.png")],
 	"pebble_square_2": [preload("res://assets/sprites/ground_cover/pebble_square_2_55deg_albedo.png"), preload("res://assets/sprites/ground_cover/pebble_square_2_55deg_normal.png")],
