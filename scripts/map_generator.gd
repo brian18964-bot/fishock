@@ -50,6 +50,7 @@ const DOCK_SCENE := preload("res://scenes/dock.tscn")
 const DOCK_COUNT := 3
 const DOCK_SHORE_MARGIN := 60.0
 const DOCK_STAIRS_CHANCE := 0.5
+const DOCK_BOAT_CHANCE := 0.4
 
 const GROUND_COVER_SCENE := preload("res://scenes/ground_cover.tscn")
 const GROUND_COVER_COUNT := 80
@@ -90,7 +91,8 @@ func _spawn_zone(type: int, radius: float) -> void:
 	water_zones.append(zone)
 
 
-## User request: docks out into a few common zones. Each picks one of the
+## User request: docks out into a few common zones, some with stairs off
+## the water end and some with a rowboat moored alongside. Each picks one of the
 ## four directions whose shore point is on open land (inside the map, not in
 ## another zone) and lays the dock along it toward the zone's center.
 func _place_docks() -> void:
@@ -114,8 +116,17 @@ func _place_docks() -> void:
 			var dock: Dock = DOCK_SCENE.instantiate()
 			# Shore end 30% of the length past the edge, the rest over water.
 			dock.position = zone.global_position + d * (zone.radius - half * 0.4)
-			dock.setup(vertical, ["long_rope", "long", "wide"].pick_random())
+			var kind: String = ["long_rope", "long", "wide"].pick_random()
+			dock.setup(vertical, kind)
 			get_parent().add_child.call_deferred(dock)
+			if randf() < DOCK_BOAT_CHANCE:
+				# Moored alongside the water half, bow out toward open water.
+				var side := Vector2(d.y, -d.x) * (1.0 if randf() < 0.5 else -1.0)
+				var boat: Dock = DOCK_SCENE.instantiate()
+				boat.position = dock.position - d * half * 0.35 \
+						+ side * (Dock.half_width(vertical, kind) + Dock.boat_half_beam(vertical) + 3.0)
+				boat.setup_boat(_dir_name(-d))
+				get_parent().add_child.call_deferred(boat)
 			if randf() < DOCK_STAIRS_CHANCE:
 				# Steps off the water end, leading on toward the center.
 				var stairs: Dock = DOCK_SCENE.instantiate()

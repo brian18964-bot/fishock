@@ -77,7 +77,10 @@ Sets rendered so far (see art_src/):
                  90 right, 180 up, -90 left = the way they step down); offsets in dock.gd
   rod/rod_lvl1.._lvl5  x0.42 --tip 90 --center-x 1.18 --center-y 0.06
                  --ortho-scale 3.8365 --res 104 16 (lying along +X, grip at the origin)
-  lure/lure_1, _3, _5  x0.8 --recenter --center-y -0.04 --ortho-scale 2.0658 --res 56 16
+  lure/lure_1.._6  x0.8 --recenter --center-y -0.04 --ortho-scale 2.0658 --res 56 16
+  lure/worm        x1.2 --recenter --center-y 0.125 --ortho-scale 1.1805 --res 32 24
+  dock/boat_*      x0.4, one tight camera per --yaw (0 down, 90 right, 180 up,
+                   -90 left = the way the bow points); offsets in dock.gd
 
 Animated sheets (anim / measure-anim; --drop Icosphere, 8 frames per clip,
 rows = clips x dirs down/left/right/up, x-symmetric camera per animal):

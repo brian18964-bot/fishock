@@ -3,7 +3,6 @@ extends Node2D
 @onready var player: Player = $Player
 @onready var bobber: Node2D = $Bobber
 @onready var line: Line2D = $Line
-@onready var bobber_square: ColorRect = $Bobber/Visual
 @onready var lure: Sprite2D = $Bobber/Lure
 
 var _reset_combo_held := false
@@ -24,7 +23,7 @@ func _process(_delta: float) -> void:
 		# lure being reeled in visibly moves back toward the player.
 		bobber.global_position = player.get_line_target_position()
 		line.points = PackedVector2Array([player.global_position, bobber.global_position])
-		if lure.visible:
+		if lure.is_lure:
 			lure.face(player.global_position)
 
 	# Debug convenience: Shift+R restarts the run without reopening Godot.
@@ -39,12 +38,8 @@ func _process(_delta: float) -> void:
 func _on_cast_started(target_pos: Vector2, _tier: String) -> void:
 	bobber.global_position = target_pos
 	bobber.visible = true
-	# Lure mode shows a rendered lure; bobber mode keeps the plain float.
-	var is_lure: bool = player.fishing_mode == Player.FishingMode.LURE
-	lure.visible = is_lure
-	bobber_square.visible = not is_lure
-	if is_lure:
-		lure.pick()
+	# Lure mode shows a rendered lure; bobber mode the worm on the hook.
+	lure.pick(player.fishing_mode == Player.FishingMode.LURE)
 	bobber.modulate = Color.WHITE
 	line.visible = true
 
