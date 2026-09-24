@@ -55,8 +55,9 @@ const SPECIES := {
 		"clips": 1, "offset": Vector2(0, -12.36), "move_fps": 10.7, "idle_fps": 10.7,
 		"wander_speed": 40.0, "flee_speed": 115.0, "hover": 14.0},
 
-	# Ambient animals: not catchable. Grazers ignore the player (flee_speed
-	# 0); the deer bolts at a gallop, faster than the player can follow.
+	# Ambient animals: not catchable. Grazers and dogs ignore the player
+	# (flee_speed 0); deer, stag and fox bolt at a gallop, faster than the
+	# player can follow.
 	"cow": {"label": "牛", "ambient": true, "frames": 12,
 		"albedo": preload("res://assets/sprites/animal/cow_55deg_albedo.png"),
 		"normal": preload("res://assets/sprites/animal/cow_55deg_normal.png"),
@@ -83,6 +84,34 @@ const SPECIES := {
 		"clips": 3, "offset": Vector2(0, -19.14), "move_fps": 10.3, "idle_fps": 2.0,
 		"flee_fps": 24.0, "flee_clip": 2, "flee_radius": 120.0, "calm_radius": 260.0,
 		"wander_speed": 28.0, "flee_speed": 170.0, "idle_time": Vector2(3, 8)},
+	"horse": {"label": "馬", "ambient": true, "frames": 12,
+		"albedo": preload("res://assets/sprites/animal/horse_55deg_albedo.png"),
+		"normal": preload("res://assets/sprites/animal/horse_55deg_normal.png"),
+		"clips": 2, "offset": Vector2(0, -22.07), "move_fps": 10.3, "idle_fps": 2.0,
+		"wander_speed": 22.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
+	"stag": {"label": "雄鹿", "ambient": true, "frames": 12,
+		"albedo": preload("res://assets/sprites/animal/stag_55deg_albedo.png"),
+		"normal": preload("res://assets/sprites/animal/stag_55deg_normal.png"),
+		"clips": 3, "offset": Vector2(0, -22.31), "move_fps": 10.3, "idle_fps": 3.6,
+		"flee_fps": 24.0, "flee_clip": 2, "flee_radius": 120.0, "calm_radius": 260.0,
+		"wander_speed": 28.0, "flee_speed": 170.0, "idle_time": Vector2(3, 8)},
+	"fox": {"label": "狐狸", "ambient": true, "frames": 12,
+		"albedo": preload("res://assets/sprites/animal/fox_55deg_albedo.png"),
+		"normal": preload("res://assets/sprites/animal/fox_55deg_normal.png"),
+		"clips": 3, "offset": Vector2(0, -7.83), "move_fps": 11.5, "idle_fps": 3.6,
+		"flee_fps": 22.2, "flee_clip": 2, "flee_radius": 100.0, "calm_radius": 220.0,
+		"wander_speed": 32.0, "flee_speed": 160.0, "idle_time": Vector2(2, 6)},
+	# Dogs just roam; they neither flee nor follow the player.
+	"husky": {"label": "哈士奇", "ambient": true, "frames": 12,
+		"albedo": preload("res://assets/sprites/animal/husky_55deg_albedo.png"),
+		"normal": preload("res://assets/sprites/animal/husky_55deg_normal.png"),
+		"clips": 2, "offset": Vector2(0, -10.38), "move_fps": 11.5, "idle_fps": 3.6,
+		"wander_speed": 34.0, "flee_speed": 0.0, "idle_time": Vector2(2, 6)},
+	"shiba": {"label": "柴犬", "ambient": true, "frames": 12,
+		"albedo": preload("res://assets/sprites/animal/shiba_55deg_albedo.png"),
+		"normal": preload("res://assets/sprites/animal/shiba_55deg_normal.png"),
+		"clips": 2, "offset": Vector2(0, -8.24), "move_fps": 11.5, "idle_fps": 3.6,
+		"wander_speed": 34.0, "flee_speed": 0.0, "idle_time": Vector2(2, 6)},
 }
 
 enum Mode { IDLE, WANDER, FLEE }

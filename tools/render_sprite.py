@@ -83,6 +83,11 @@ rows = clips x dirs down/left/right/up, x-symmetric camera per animal):
   animal/donkey     x0.45 Walk Eating --frames 12  cell 88x80   --center-y 0.552
   animal/alpaca     x0.42 Walk Eating --frames 12  cell 104x96  --center-y 0.576
   animal/deer       x0.48 Walk Eating Gallop --frames 12  cell 104x96 --center-y 0.706
+  animal/horse      x0.54 Walk Eating --frames 12  cell 120x112 --center-y 0.814
+  animal/stag       x0.52 Walk Idle Gallop --frames 12  cell 112x104 --center-y 0.823
+  animal/fox        x0.29 Walk Idle Gallop --frames 12  cell 56x56 --center-y 0.289
+  animal/husky      x0.42 Walk Idle --frames 12  cell 64x64 --center-y 0.383
+  animal/shiba      x0.32 Walk Idle --frames 12  cell 48x56 --center-y 0.304
   (ortho-scale = max(cell W, H) / 27.108)
 """
 import argparse
