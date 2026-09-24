@@ -59,6 +59,25 @@ const STAIRS := {
 }
 
 
+## A moored boat rocks: a faint ring off its hull every few seconds.
+const BOAT_RIPPLE_INTERVAL := Vector2(2.5, 4.5)
+
+var _is_boat := false
+var _ripple_timer := 0.0
+
+
+func _ready() -> void:
+	set_process(_is_boat)
+	_ripple_timer = randf_range(0.0, BOAT_RIPPLE_INTERVAL.y)
+
+
+func _process(delta: float) -> void:
+	_ripple_timer -= delta
+	if _ripple_timer <= 0.0:
+		_ripple_timer = randf_range(BOAT_RIPPLE_INTERVAL.x, BOAT_RIPPLE_INTERVAL.y)
+		Ripple.spawn(get_parent(), global_position + Vector2(randf_range(-10.0, 10.0), randf_range(-6.0, 6.0)), 30.0, 0.35, 2.2)
+
+
 static func half_length(vertical: bool) -> float:
 	return HALF_LENGTH_VERTICAL if vertical else HALF_LENGTH_HORIZONTAL
 
@@ -81,6 +100,7 @@ static func boat_half_beam(vertical: bool) -> float:
 
 ## bow: "down", "up", "left" or "right".
 func setup_boat(bow: String) -> void:
+	_is_boat = true
 	_apply(BOATS[bow])
 
 
