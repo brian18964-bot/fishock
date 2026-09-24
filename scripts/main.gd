@@ -10,9 +10,10 @@ var _reset_combo_held := false
 ## Water ripples (see Ripple): a lure leaves a wake ring every WAKE_SPACING
 ## px it's reeled, a waiting bobber bobs one out every BOB_INTERVAL s, and
 ## the player sends one out every WADE_SPACING px walked through water.
-const WAKE_SPACING := 14.0
-const BOB_INTERVAL := 1.6
-const WADE_SPACING := 16.0
+## User feedback: too many ripples - spaced out ~1.6x.
+const WAKE_SPACING := 22.0
+const BOB_INTERVAL := 2.6
+const WADE_SPACING := 26.0
 const PLAYER_FEET := Vector2(0, 8)
 
 ## User feedback: once a fish is on, the line end mustn't sit still. It
@@ -22,7 +23,7 @@ const PLAYER_FEET := Vector2(0, 8)
 ## rules live in Player.
 const FISH_ROAM := 34.0
 const FISH_RUN_ROAM := 72.0
-const FISH_WAKE_SPACING := 10.0
+const FISH_WAKE_SPACING := 16.0
 
 var _fish_offset := Vector2.ZERO
 var _fish_goal := Vector2.ZERO

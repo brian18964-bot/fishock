@@ -151,6 +151,7 @@ func _build_surface() -> void:
 	surface.size = Vector2(radius, radius) * 2.0
 	surface.position = -surface.size / 2.0
 	surface.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	surface.light_mask = LightTwin.GROUND_LAYER
 	var mat := ShaderMaterial.new()
 	mat.shader = WATER_SHADER
 	mat.set_shader_parameter("wave_a", _wave_a)

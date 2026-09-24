@@ -15,6 +15,7 @@ func _ready() -> void:
 	light.energy = 0.5
 	light.height = Lantern.LIGHT_HEIGHT
 	light.shadow_enabled = true
+	LightTwin.attach(light)
 
 func _process(_delta: float) -> void:
 	light.visible = not GameState.is_night

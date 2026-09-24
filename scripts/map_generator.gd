@@ -55,6 +55,7 @@ const DOCK_STAIRS_CHANCE := 0.5
 const DOCK_BOAT_CHANCE := 0.4
 
 const GROUND_COVER_SCENE := preload("res://scenes/ground_cover.tscn")
+const GROUND_SHADER := preload("res://shaders/ground.gdshader")
 const TREE_SCENE := preload("res://scenes/tree.tscn")
 const OBSTACLE_SCENE := preload("res://scenes/obstacle.tscn")
 const BUSH_SCENE := preload("res://scenes/bush.tscn")
@@ -68,6 +69,7 @@ const BUSH_SCENE := preload("res://scenes/bush.tscn")
 ## is mostly rocks with a few dead trees.
 const THEMES := {
 	"forest_pine": {
+		"floor": ["forest_floor", "grass", 0.35],
 		"trees": 28, "rocks": 3, "bushes": 6, "ground": 110,
 		"tree_families": {"pine": 1.0},
 		"rock_pool": [0, 1, 2],
@@ -75,6 +77,7 @@ const THEMES := {
 		"animals": {"deer": 2.0, "stag": 1.5, "fox": 1.5, "wolf": 1.0, "husky": 1.0},
 	},
 	"forest_birch": {
+		"floor": ["grass_light", "grass", 0.3],
 		"trees": 26, "rocks": 2, "bushes": 6, "ground": 120,
 		"tree_families": {"birch": 1.0},
 		"rock_pool": [0, 1, 2],
@@ -83,6 +86,7 @@ const THEMES := {
 		"animals": {"deer": 2.0, "stag": 1.0, "fox": 1.5, "shiba": 1.0, "white_horse": 1.0},
 	},
 	"forest_maple": {
+		"floor": ["grass", "leaf_litter", 0.45],
 		"trees": 24, "rocks": 3, "bushes": 6, "ground": 110,
 		"tree_families": {"maple": 1.0},
 		"rock_pool": [0, 1, 2],
@@ -90,6 +94,7 @@ const THEMES := {
 		"animals": {"deer": 2.0, "stag": 1.5, "fox": 1.5, "shiba": 1.0, "wolf": 0.5},
 	},
 	"forest_green": {
+		"floor": ["grass", "dirt", 0.2],
 		"trees": 26, "rocks": 3, "bushes": 8, "ground": 120,
 		"tree_families": {"oak": 1.0, "leafy": 1.0},
 		"rock_pool": [0, 1, 2],
@@ -97,6 +102,7 @@ const THEMES := {
 		"animals": {"cow": 1.5, "bull": 1.0, "horse": 1.0, "deer": 1.0, "shiba": 1.0, "husky": 1.0},
 	},
 	"deadwood": {
+		"floor": ["dirt", "gravel", 0.2],
 		"trees": 22, "rocks": 5, "bushes": 2, "ground": 80,
 		"tree_families": {"dead": 1.0, "bare": 1.0},
 		"rock_pool": [0, 1, 2, 3, 4],
@@ -105,6 +111,7 @@ const THEMES := {
 		"animals": {"wolf": 2.0, "fox": 1.5, "stag": 1.0, "husky": 0.5},
 	},
 	"rocky": {
+		"floor": ["gravel", "dirt", 0.4],
 		"trees": 6, "rocks": 26, "bushes": 1, "ground": 100,
 		"tree_families": {"dead": 1.0, "bare": 1.0},
 		"rock_pool": [0, 1, 2, 3, 4, 5, 6, 7],
@@ -113,22 +120,22 @@ const THEMES := {
 	},
 	# User decision: a tropical look - palms, flowers and sandy ground.
 	"tropical": {
+		"floor": ["sand", "grass", 0.25],
 		"trees": 22, "rocks": 3, "bushes": 5, "ground": 120,
 		"tree_families": {"palm": 1.0},
 		"rock_pool": [0, 1, 2],
 		"ground_kinds": {"grass": 2.0, "flower_group": 2.0, "flower_single": 2.0, "flower_clump": 2.0,
 			"flower_petal": 2.0, "flower_bush": 1.0, "plant": 2.0, "pebble": 1.0},
-		"ground_color": Color(0.19, 0.16, 0.09),
 		"animals": {"horse": 1.0, "white_horse": 1.0, "alpaca": 1.0, "donkey": 1.0, "shiba": 1.0},
 	},
 	# User decision: dinosaurs only turn up here, a rare prehistoric look -
 	# palms and conifers, ferny plants, boulders.
 	"prehistoric": {
+		"floor": ["moss_soil", "dirt", 0.3],
 		"trees": 20, "rocks": 12, "bushes": 4, "ground": 110,
 		"tree_families": {"palm": 2.0, "pine": 1.0, "leafy": 0.5},
 		"rock_pool": [0, 1, 2, 3, 4, 5, 6, 7],
 		"ground_kinds": {"plant": 5.0, "grass": 3.0, "mushroom": 1.0, "pebble": 2.0, "shrub": 1.0},
-		"ground_color": Color(0.11, 0.12, 0.06),
 		"animals": {"stegosaurus": 1.0, "apatosaurus": 1.0, "parasaurolophus": 1.0, "triceratops": 1.0,
 			"trex": 0.6, "velociraptor": 1.0},
 	},
@@ -182,9 +189,9 @@ var water_zones: Array = []
 func _ready() -> void:
 	theme_name = forced_theme if forced_theme != "" else _pick_theme()
 	theme = THEMES[theme_name]
-	var ground: ColorRect = get_parent().get_node_or_null("GroundBackground")
-	if ground != null and theme.has("ground_color"):
-		ground.color = theme.ground_color
+	var ground: CanvasItem = get_parent().get_node_or_null("GroundBackground")
+	if ground != null:
+		ground.material = _ground_material()
 	GameState.night_fell.connect(_on_night_fell)
 	_generate_water_zones()
 	_place_docks()
@@ -196,6 +203,30 @@ func _ready() -> void:
 	_scatter_themed_props()
 	_scatter_ground_cover()
 	_scatter_critters()
+
+
+## User request: the ground itself follows the style - "floor" is
+## [texture A, texture B, share of B] from assets/sprites/ground (made by
+## tools/make_ground.py), blended by shaders/ground.gdshader.
+func _ground_material() -> ShaderMaterial:
+	var spec: Array = theme.floor
+	var mat := ShaderMaterial.new()
+	mat.shader = GROUND_SHADER
+	for slot in [["a", spec[0]], ["b", spec[1]]]:
+		mat.set_shader_parameter("albedo_" + slot[0], load("res://assets/sprites/ground/%s_albedo.png" % slot[1]))
+		mat.set_shader_parameter("normal_" + slot[0], load("res://assets/sprites/ground/%s_normal.png" % slot[1]))
+	mat.set_shader_parameter("blend_b", spec[2])
+	var noise := FastNoiseLite.new()
+	noise.seed = randi()
+	noise.frequency = 0.012
+	noise.fractal_octaves = 3
+	var macro := NoiseTexture2D.new()
+	macro.width = 256
+	macro.height = 256
+	macro.seamless = true
+	macro.noise = noise
+	mat.set_shader_parameter("macro", macro)
+	return mat
 
 
 func _pick_theme() -> String:

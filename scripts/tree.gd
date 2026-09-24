@@ -20,9 +20,9 @@ const TREE_OFFSET := Vector2(0, -73.19)
 const TWISTED_OFFSET := Vector2(3.39, -172.68)
 const TWISTED_LEANING_OFFSET := Vector2(124.15, -143.54)
 const SPRITE_SCALE := 0.5
-## User feedback: trees a bit bigger - every variant drawn 1.2x (the nature
-## pack ones end up ~x1.8 of model scale).
-const TREE_SIZE := 1.2
+## User feedback: trees bigger - every variant drawn 1.2x, then another
+## 1.3x on top (~1.56x).
+const TREE_SIZE := 1.56
 
 ## fade_rect: the branch area (node-local px) where the player counts as
 ## "behind" the tree, from each model's projected bounds; stops just above

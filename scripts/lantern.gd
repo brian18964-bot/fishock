@@ -64,6 +64,7 @@ func _ready() -> void:
 	# User decision: held up off the ground, so upward-facing surfaces
 	# (dock boards, plants, rock tops) catch the light, not just the sides.
 	height = LIGHT_HEIGHT
+	LightTwin.attach(self)
 
 	max_fuel = MAX_FUEL + Profile.get_upgrade_bonus("fuel_capacity")
 	flash_cooldown_max = max(FLASH_COOLDOWN - Profile.get_upgrade_bonus("flash_cooldown"), 1.0)

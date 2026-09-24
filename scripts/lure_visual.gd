@@ -12,6 +12,8 @@ extends Sprite2D
 ## waterline) while moving it down, so the float slips below the surface.
 
 const SPRITE_SCALE := 0.5
+## User feedback: the float read too big - drawn at 70%.
+const FLOAT_SCALE := 0.7
 const OFFSET := Vector2(0, 1.08)
 const FLOAT_OFFSET := Vector2(0, -8.26)
 const FLOAT := [preload("res://assets/sprites/lure/bobber_55deg_albedo.png"), preload("res://assets/sprites/lure/bobber_55deg_normal.png")]
@@ -52,6 +54,7 @@ func pick(lure: bool) -> void:
 	tex.normal_texture = pair[1]
 	texture = tex
 	offset = OFFSET if lure else FLOAT_OFFSET
+	scale = Vector2.ONE * SPRITE_SCALE * (1.0 if lure else FLOAT_SCALE)
 	region_enabled = not lure
 	float_state = FloatState.RESTING
 	_sink = SINK_REST

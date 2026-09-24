@@ -127,6 +127,8 @@ var variant_choices: Array = []
 
 
 func _ready() -> void:
+	# Lies on the ground: takes cast shadows (see LightTwin).
+	light_mask = LightTwin.GROUND_LAYER
 	var kind: String = kind_override if kind_override != "" else _pick_kind()
 	var variant: String = variant_choices.pick_random() if not variant_choices.is_empty() else KINDS[kind].pick_random()
 	var tex := CanvasTexture.new()

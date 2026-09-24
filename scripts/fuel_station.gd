@@ -31,6 +31,7 @@ func _ready() -> void:
 	light.energy = 1.4
 	light.height = Lantern.LIGHT_HEIGHT
 	light.shadow_enabled = true
+	LightTwin.attach(light)
 
 	_refresh_label()
 
