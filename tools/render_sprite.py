@@ -30,10 +30,11 @@ Pass the same --scale to measure and render.
 
 Sets rendered so far (see art_src/):
   dead_tree/*    scale 1.0   --center-y 5.265 --ortho-scale 13.28  --res 270 360
-  bush, bush_flowers  x1.9, fern x0.41
+  bush, bush_flowers  x1.9 --foliage-normals, fern x0.41
                      --center-y 0.555 --ortho-scale 4.1316 --res 112 112
   ground_cover/clover_*  scale 1.5   --center-y 0.651 --ortho-scale 1.7707 --res 48 48
-  ground_cover/flower_group_* x1.0, flower_petal_* x1.5
+  ground_cover/flower_group_*, flower_single_*, grass_wispy x1.0,
+               flower_petal_* x1.5 (flower_petal_4 x3.0, a much smaller model)
                      --center-y 0.635 --ortho-scale 2.361 --res 64 64
 """
 import argparse
@@ -74,7 +75,7 @@ def screen_bounds(meshes):
     return {"min_x": min(xs), "max_x": max(xs), "min_y": min(ys), "max_y": max(ys)}
 
 
-def rewire_materials(meshes, mode):
+def rewire_materials(meshes, mode, foliage_normals=False):
     """Route every material's surface to an emission of albedo or encoded normal."""
     for mat in {s.material for o in meshes for s in o.material_slots if s.material}:
         nt = mat.node_tree
@@ -100,20 +101,24 @@ def rewire_materials(meshes, mode):
                 normal = nsrc.links[0].from_socket  # keeps the model's own bump detail
             else:
                 normal = geo.outputs['Normal']
-            # Two-sided leaf cards show their back faces, whose normals point
-            # away from the camera; flip those (n * (1 - 2 * backfacing)).
-            sign = nt.nodes.new('ShaderNodeMath')
-            sign.name = "__sprite_sign"
-            sign.operation = 'MULTIPLY_ADD'
-            sign.inputs[1].default_value = -2.0
-            sign.inputs[2].default_value = 1.0
-            nt.links.new(geo.outputs['Backfacing'], sign.inputs[0])
-            flip = nt.nodes.new('ShaderNodeVectorMath')
-            flip.name = "__sprite_flip"
-            flip.operation = 'SCALE'
-            nt.links.new(normal, flip.inputs[0])
-            nt.links.new(sign.outputs['Value'], flip.inputs['Scale'])
-            normal = flip.outputs['Vector']
+            # Cycles negates the shading normal on back-face hits so it faces
+            # the viewer, which is right for ordinary meshes. Foliage clumps
+            # built from cards carrying custom "rounded" normals (the bushes)
+            # need their authored normals kept regardless of which side of a
+            # card is visible, so undo the negation for those.
+            if foliage_normals:
+                sign = nt.nodes.new('ShaderNodeMath')
+                sign.name = "__sprite_sign"
+                sign.operation = 'MULTIPLY_ADD'
+                sign.inputs[1].default_value = -2.0
+                sign.inputs[2].default_value = 1.0
+                nt.links.new(geo.outputs['Backfacing'], sign.inputs[0])
+                flip = nt.nodes.new('ShaderNodeVectorMath')
+                flip.name = "__sprite_flip"
+                flip.operation = 'SCALE'
+                nt.links.new(normal, flip.inputs[0])
+                nt.links.new(sign.outputs['Value'], flip.inputs['Scale'])
+                normal = flip.outputs['Vector']
             # World -> camera space by explicit dot products with the camera's
             # axes, sidestepping Cycles' own camera-space axis conventions.
             comb = nt.nodes.new('ShaderNodeCombineXYZ')
@@ -199,6 +204,8 @@ def main():
     r.add_argument("--center-y", type=float, required=True)
     r.add_argument("--ortho-scale", type=float, required=True)
     r.add_argument("--res", type=int, nargs=2, metavar=("W", "H"), required=True)
+    r.add_argument("--foliage-normals", action="store_true",
+                   help="keep authored normals on back faces (foliage cards with custom rounded normals)")
     for p in (m, r):
         p.add_argument("--scale", type=float, default=1.0,
                        help="uniform model scale about the origin, for models authored at a different scale")
@@ -210,7 +217,7 @@ def main():
         return
     setup_scene(args.center_y, args.ortho_scale, *args.res)
     for mode in ("albedo", "normal"):
-        rewire_materials(meshes, mode)
+        rewire_materials(meshes, mode, args.foliage_normals)
         render_pass(f"{args.out_prefix}_{mode}.png", mode)
 
 
