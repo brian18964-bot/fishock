@@ -47,3 +47,16 @@ void fragment() {
 	vec4 dark = vec4(0.0, 0.05, 0.09, trough * 0.35 * k);
 	COLOR = crest > 0.0 ? lit : dark;
 }
+
+// The lantern sits at height 0, so a flat, upward-facing surface would
+// catch almost none of its light. Treat the light as held a little above
+// the water, and add a specular glint off the chop.
+const float LIGHT_LIFT = 0.9;
+
+void light() {
+	vec3 l = normalize(LIGHT_DIRECTION + vec3(0.0, 0.0, LIGHT_LIFT));
+	float ndl = max(dot(NORMAL, l), 0.0);
+	vec3 hv = normalize(l + vec3(0.0, 0.0, 1.0));
+	float spec = pow(max(dot(NORMAL, hv), 0.0), 30.0) * 0.35;
+	LIGHT = vec4(LIGHT_COLOR.rgb * LIGHT_ENERGY * (COLOR.rgb * ndl + vec3(spec)), LIGHT_COLOR.a);
+}
