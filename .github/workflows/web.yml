@@ -53,12 +53,20 @@ jobs:
           python3 -m pip install --quiet fonttools
           python3 tools/subset_font.py /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
 
-      - name: Import and export
+      - name: Import
         run: |
           mkdir -p build/web
           touch build/.gdignore
           "$GODOT" --headless --import || true
           "$GODOT" --headless --import
+
+      # Scenario tests (tests/scenarios.gd): the real game scene, scripted
+      # play, checked outcomes. A failure stops the build and the deploy.
+      - name: Tests
+        run: timeout 900 "$GODOT" --headless --fixed-fps 60 -s tests/run_tests.gd
+
+      - name: Export
+        run: |
           "$GODOT" --headless --export-release "Web" build/web/index.html
           test -f build/web/index.wasm
 
