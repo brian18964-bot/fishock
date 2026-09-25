@@ -224,9 +224,8 @@ func _ready() -> void:
 	tex.diffuse_texture = preload("res://assets/sprites/gas_can/gas_can_55deg_albedo.png")
 	tex.normal_texture = preload("res://assets/sprites/gas_can/gas_can_55deg_normal.png")
 	can.texture = tex
-	can.scale = Vector2(0.5, 0.5)
+	Art.place(can, Vector2(0, -5.56), 0.5)
 	can.position = Vector2(9, 4)
-	can.offset = Vector2(0, -5.56)
 	can.visible = false
 	add_child(can)
 	reset_gear()

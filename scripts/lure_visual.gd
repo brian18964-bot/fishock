@@ -54,7 +54,6 @@ var _time: float = 0.0
 
 
 func _ready() -> void:
-	scale = Vector2(SPRITE_SCALE, SPRITE_SCALE)
 	pick(true)
 
 
@@ -69,8 +68,7 @@ func pick(lure: bool, index: int = -1) -> void:
 	tex.diffuse_texture = pair[0]
 	tex.normal_texture = pair[1]
 	texture = tex
-	offset = OFFSET if lure else FLOAT_OFFSET
-	scale = Vector2.ONE * SPRITE_SCALE * (1.0 if lure else FLOAT_SCALE)
+	Art.place(self, OFFSET if lure else FLOAT_OFFSET, SPRITE_SCALE * (1.0 if lure else FLOAT_SCALE))
 	region_enabled = not lure
 	float_state = FloatState.RESTING
 	_sink = SINK_REST
@@ -92,12 +90,13 @@ func _process(delta: float) -> void:
 		_dip_timer -= delta
 		target = maxf(target, _dip)
 	_sink = move_toward(_sink, target, delta * 140.0)
+	# _sink is in original-density px (Art); the texture has DENSITY x as many.
 	var size: Vector2 = FLOAT[0].get_size()
-	var cut := clampf(_sink, 0.0, size.y - 4.0)
+	var cut := clampf(_sink * Art.DENSITY, 0.0, size.y - 4.0 * Art.DENSITY)
 	region_rect = Rect2(0.0, 0.0, size.x, size.y - cut)
 	# Trimming the bottom recentres the sprite; shift so the top drops by
 	# `cut` - the float slides down through the waterline.
-	offset = FLOAT_OFFSET + Vector2(0.0, cut * 0.5)
+	offset = FLOAT_OFFSET * Art.DENSITY + Vector2(0.0, cut * 0.5)
 
 
 ## Nose (-X) toward `target`.

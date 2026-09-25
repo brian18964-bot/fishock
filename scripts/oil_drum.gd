@@ -22,8 +22,7 @@ var _respawn_timer: float = 0.0
 func _ready() -> void:
 	# User request: soft shadows in the object's own shape, not the hard
 	# wedge an occluder extrudes.
-	var visual := $Visual as Sprite2D
-	SilhouetteShadow.attach(self, (visual.texture as CanvasTexture).diffuse_texture, visual.offset, visual.scale.x)
+	SilhouetteShadow.attach(self, $Visual)
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
 	# Water zones are added in a deferred batch - wait for them, or this

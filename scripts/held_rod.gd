@@ -45,8 +45,8 @@ var _time: float = 0.0
 
 
 func _ready() -> void:
-	offset = OFFSET
-	scale = Vector2(SPRITE_SCALE * LENGTH_SCALE, SPRITE_SCALE * THICKNESS_SCALE)
+	offset = OFFSET * Art.DENSITY
+	scale = Vector2(SPRITE_SCALE * LENGTH_SCALE, SPRITE_SCALE * THICKNESS_SCALE) / Art.DENSITY
 	self_modulate = Color(BRIGHTNESS, BRIGHTNESS, BRIGHTNESS)
 	Profile.profile_changed.connect(_apply_tier)
 	_player.cast_started.connect(_on_cast)
@@ -91,7 +91,7 @@ func _process(delta: float) -> void:
 ## follows the rod through its swing and shudder.
 func tip_position() -> Vector2:
 	var half_width: float = texture.get_width() * 0.5 if texture != null else 0.0
-	return to_global(offset + Vector2(half_width - 2.0, 0.0))
+	return to_global(offset + Vector2(half_width - 2.0 * Art.DENSITY, 0.0))
 
 
 ## Whip forward past the aim, then settle back onto it.

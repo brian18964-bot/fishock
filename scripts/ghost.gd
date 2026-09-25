@@ -390,8 +390,7 @@ func _setup_visual() -> void:
 	tex.normal_texture = GHOST_SHEET[1]
 	visual.texture = tex
 	visual.hframes = GHOST_DIRS
-	visual.scale = Vector2(0.5, 0.5)
-	visual.offset = GHOST_OFFSET
+	Art.place(visual, GHOST_OFFSET, 0.5)
 	visual.modulate = _tint
 	_last_pos = global_position
 	_bob_time = randf() * TAU

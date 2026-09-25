@@ -4,14 +4,18 @@ User request: each map style gets its own ground (grass, gravel, dirt,
 sand...) instead of one flat colour. The texture sites are out of reach from
 the build machine, so they're generated here: periodic noise (FFT-filtered,
 so it wraps), jittered-grid Voronoi stones with wrap-around neighbours, and
-strokes/ellipses stamped with wrap-around. Every tile is TILE texels square
-and covers TILE / 2 world px (2 texels per world px, like the sprites), with
-shapes squashed vertically by sin 55deg to match the camera.
+strokes/ellipses stamped with wrap-around. Every tile covers TILE / 2 = 256
+world px, with shapes squashed vertically by sin 55deg to match the camera.
+All sizes and positions below are in "design" texels (TILE per tile, 2 per
+world px); the images are rendered DENSITY times finer - N = TILE * DENSITY
+texels square (user request: a sharper picture - 2, i.e. 4 texels per
+world px like the sprites, see scripts/art.gd). Normal maps are written at
+TILE square: lighting doesn't need the extra detail.
 
 Normals use the sprites' encoding: n * 0.5 + 0.5, X right, Y up the screen,
 Z toward the viewer; flat ground is (0, 0, 1).
 
-  python tools/make_ground.py OUT_DIR
+  python tools/make_ground.py [--density D] OUT_DIR
 
 writes OUT_DIR/<name>_albedo.png and <name>_normal.png for every entry of
 MAKERS.
@@ -23,35 +27,39 @@ import sys
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
-TILE = 512
+TILE = 512  # design texels per tile
+DENSITY = 2  # rendered texels per design texel (--density)
+N = TILE * DENSITY
 SQUASH = 0.819  # sin 55deg
 
 
 # --- helpers -----------------------------------------------------------------
 
 def periodic_noise(rng, feature, beta=1.0):
-    """Tileable noise in 0..1; `feature` ~ blob size in texels."""
-    k = np.sqrt(np.fft.fftfreq(TILE)[:, None] ** 2 + (np.fft.fftfreq(TILE)[None, :] * SQUASH) ** 2)
+    """Tileable noise in 0..1; `feature` ~ blob size in design texels."""
+    k = np.sqrt(np.fft.fftfreq(N)[:, None] ** 2 + (np.fft.fftfreq(N)[None, :] * SQUASH) ** 2)
     k[0, 0] = 1.0
-    env = np.exp(-(k * feature / 2.0) ** 2) / k ** beta
+    env = np.exp(-(k * feature * DENSITY / 2.0) ** 2) / k ** beta
     env[0, 0] = 0.0
-    spec = (rng.normal(size=(TILE, TILE)) + 1j * rng.normal(size=(TILE, TILE))) * env
+    spec = (rng.normal(size=(N, N)) + 1j * rng.normal(size=(N, N))) * env
     f = np.real(np.fft.ifft2(spec))
     f -= f.min()
     return f / max(f.max(), 1e-9)
 
 
 def voronoi(rng, cell, jitter=0.9):
-    """Jittered-grid Voronoi on the torus. Returns (F1, F2, id) per texel."""
+    """Jittered-grid Voronoi on the torus. Returns (F1, F2, id) per texel,
+    distances in design texels."""
     n = TILE // cell
     gx0, gy0 = np.meshgrid(np.arange(n), np.arange(n))
     pts = np.stack([gx0 + 0.5 + (rng.random((n, n)) - 0.5) * jitter,
                     gy0 + 0.5 + (rng.random((n, n)) - 0.5) * jitter], -1) * cell
-    ys, xs = np.mgrid[0:TILE, 0:TILE].astype(np.float32)
+    # Texel centres, in design texels (texel i sits at i when DENSITY is 1).
+    ys, xs = (np.mgrid[0:N, 0:N].astype(np.float32) + 0.5) / DENSITY - 0.5
     cx, cy = (xs // cell).astype(int), (ys // cell).astype(int)
-    f1 = np.full((TILE, TILE), 1e9, np.float32)
-    f2 = np.full((TILE, TILE), 1e9, np.float32)
-    ident = np.zeros((TILE, TILE), np.int32)
+    f1 = np.full((N, N), 1e9, np.float32)
+    f2 = np.full((N, N), 1e9, np.float32)
+    ident = np.zeros((N, N), np.int32)
     for dy in (-1, 0, 1):
         for dx in (-1, 0, 1):
             gx, gy = cx + dx, cy + dy
@@ -69,23 +77,24 @@ def voronoi(rng, cell, jitter=0.9):
 
 class Canvas:
     """Stamps shapes into a colour layer and a height layer, wrapping at the
-    tile edges (every shape is drawn at its 3x3 torus copies)."""
+    tile edges (every shape is drawn at its 3x3 torus copies). Takes design
+    texels, draws DENSITY x finer."""
 
     def __init__(self):
-        self.col = Image.new("RGBA", (TILE, TILE), (0, 0, 0, 0))
-        self.h = Image.new("L", (TILE, TILE), 0)
+        self.col = Image.new("RGBA", (N, N), (0, 0, 0, 0))
+        self.h = Image.new("L", (N, N), 0)
         self.dc = ImageDraw.Draw(self.col)
         self.dh = ImageDraw.Draw(self.h)
 
     def _copies(self, pts):
         for ox in (-TILE, 0, TILE):
             for oy in (-TILE, 0, TILE):
-                yield [(x + ox, y + oy) for x, y in pts]
+                yield [((x + ox) * DENSITY, (y + oy) * DENSITY) for x, y in pts]
 
     def line(self, p0, p1, color, width, height):
         for c in self._copies([p0, p1]):
-            self.dc.line(c, fill=color, width=width)
-            self.dh.line(c, fill=height, width=width)
+            self.dc.line(c, fill=color, width=width * DENSITY)
+            self.dh.line(c, fill=height, width=width * DENSITY)
 
     def poly(self, pts, color, height):
         for c in self._copies(pts):
@@ -121,8 +130,9 @@ def jitter_color(rng, c, amount=0.12):
 
 
 def normal_from_height(h, strength):
-    dx = (np.roll(h, -1, 1) - np.roll(h, 1, 1)) * 0.5
-    dy = (np.roll(h, -1, 0) - np.roll(h, 1, 0)) * 0.5
+    # Slopes per design texel, so the relief reads the same at any density.
+    dx = (np.roll(h, -1, 1) - np.roll(h, 1, 1)) * 0.5 * DENSITY
+    dy = (np.roll(h, -1, 0) - np.roll(h, 1, 0)) * 0.5 * DENSITY
     n = np.stack([-dx * strength, dy * strength, np.ones_like(h)], -1)
     n /= np.linalg.norm(n, axis=-1, keepdims=True)
     return n * 0.5 + 0.5
@@ -131,12 +141,12 @@ def normal_from_height(h, strength):
 def blur(h, r):
     img = Image.fromarray(np.clip(h * 255, 0, 255).astype(np.uint8))
     # Blur a 3x3 tiling so the edges stay seamless.
-    big = Image.new("L", (TILE * 3, TILE * 3))
+    big = Image.new("L", (N * 3, N * 3))
     for ox in range(3):
         for oy in range(3):
-            big.paste(img, (ox * TILE, oy * TILE))
-    big = big.filter(ImageFilter.GaussianBlur(r))
-    return np.asarray(big.crop((TILE, TILE, 2 * TILE, 2 * TILE)), np.float32) / 255.0
+            big.paste(img, (ox * N, oy * N))
+    big = big.filter(ImageFilter.GaussianBlur(r * DENSITY))
+    return np.asarray(big.crop((N, N, 2 * N, 2 * N)), np.float32) / 255.0
 
 
 def blades(rng, cv, count, colors, length=(5, 11), width=2, lean=0.35, height=(150, 255)):
@@ -253,7 +263,7 @@ def sand(rng):
     n = periodic_noise(rng, 90)
     grit = periodic_noise(rng, 1.8)
     col = lerp((0.42, 0.35, 0.22), (0.52, 0.44, 0.28), n)
-    ys, xs = np.mgrid[0:TILE, 0:TILE].astype(np.float32)
+    ys, xs = np.mgrid[0:N, 0:N].astype(np.float32) / DENSITY
     warp = periodic_noise(rng, 70) * 5.0
     ripple = np.sin(2 * np.pi * (3 * xs + 7 * ys) / TILE * 1.0 + warp) * 0.5 + 0.5
     col = col * (0.93 + ripple[..., None] * 0.1) * (0.92 + grit[..., None] * 0.16)
@@ -308,11 +318,20 @@ MAKERS = {
 
 
 def main():
+    global DENSITY, N
+    if "--density" in sys.argv:
+        DENSITY = int(sys.argv[sys.argv.index("--density") + 1])
+        N = TILE * DENSITY
     out_dir = sys.argv[-1]
     os.makedirs(out_dir, exist_ok=True)
     for i, (name, maker) in enumerate(MAKERS.items()):
         rng = np.random.default_rng(1000 + i)
         col, nrm = maker(rng)
+        if DENSITY > 1:
+            # Lighting doesn't need the extra detail (and it'd double the
+            # download): the normal map is box-filtered back to TILE square.
+            nrm = nrm.reshape(TILE, DENSITY, TILE, DENSITY, 3).mean(axis=(1, 3)) * 2.0 - 1.0
+            nrm = nrm / np.linalg.norm(nrm, axis=-1, keepdims=True) * 0.5 + 0.5
         Image.fromarray((np.clip(col, 0, 1) * 255).astype(np.uint8), "RGB").save(os.path.join(out_dir, f"{name}_albedo.png"), optimize=True)
         Image.fromarray((np.clip(nrm, 0, 1) * 255).astype(np.uint8), "RGB").save(os.path.join(out_dir, f"{name}_normal.png"), optimize=True)
         print("wrote", name)

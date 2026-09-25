@@ -61,15 +61,14 @@ func apply_variant(index: int) -> void:
 	tex.diffuse_texture = variant.albedo
 	tex.normal_texture = variant.normal
 	sprite.texture = tex
-	sprite.offset = variant.offset
-	sprite.scale = Vector2(SPRITE_SCALE, SPRITE_SCALE)
+	Art.place(sprite, variant.offset, SPRITE_SCALE)
 
 	var outline := _octagon(variant.footprint)
 	collision.polygon = outline
 	# User request: shadows take the rock's own shape (SilhouetteShadow)
 	# instead of a wedge extruded from its footprint.
 	occluder.occluder = null
-	SilhouetteShadow.attach(self, variant.albedo, variant.offset, SPRITE_SCALE)
+	SilhouetteShadow.attach(self, sprite)
 
 
 func _octagon(r: Rect2) -> PackedVector2Array:

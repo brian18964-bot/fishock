@@ -48,8 +48,7 @@ func _ready() -> void:
 	texture = tex
 	hframes = FRAMES
 	vframes = 5 * DIRS
-	scale = Vector2(SPRITE_SCALE, SPRITE_SCALE)
-	offset = OFFSET
+	Art.place(self, OFFSET, SPRITE_SCALE)
 	_player.cast_started.connect(func(_t, _tier): _whip = 0.0)
 
 

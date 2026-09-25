@@ -21,16 +21,17 @@ var _player: Node2D
 
 
 ## Gives `owner_node` (whose origin is the object's base) a shadow made
-## from `albedo`, drawn with the object's own sprite offset and scale.
-static func attach(owner_node: Node2D, albedo: Texture2D, sprite_offset: Vector2, sprite_scale: float) -> SilhouetteShadow:
+## from `sprite` - its albedo, drawn at the sprite's own offset and scale.
+static func attach(owner_node: Node2D, sprite: Sprite2D) -> SilhouetteShadow:
 	var old := owner_node.get_node_or_null("SilhouetteShadow")
 	if old != null:
 		old.free()
 	var shadow := SilhouetteShadow.new()
 	shadow.name = "SilhouetteShadow"
-	shadow.texture = albedo
-	shadow.offset = sprite_offset
-	shadow.set_meta("sprite_scale", sprite_scale)
+	var tex := sprite.texture
+	shadow.texture = (tex as CanvasTexture).diffuse_texture if tex is CanvasTexture else tex
+	shadow.offset = sprite.offset
+	shadow.set_meta("sprite_scale", sprite.scale.x)
 	owner_node.add_child(shadow)
 	return shadow
 

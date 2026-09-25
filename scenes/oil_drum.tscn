@@ -17,8 +17,8 @@ z_index = 3
 
 [node name="Visual" type="Sprite2D" parent="."]
 texture = SubResource("CanvasTexture_drum")
-scale = Vector2(0.5, 0.5)
-offset = Vector2(0, -5.56)
+scale = Vector2(0.25, 0.25)
+offset = Vector2(0, -11.12)
 
 [node name="Label" type="Label" parent="."]
 offset_left = -30.0

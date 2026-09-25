@@ -39,8 +39,7 @@ static func play(parent: Node, kind: String, pos: Vector2) -> SplashFx:
 	tex.normal_texture = data.normal
 	fx.texture = tex
 	fx.hframes = data.frames
-	fx.offset = data.offset
-	fx.scale = Vector2(SPRITE_SCALE, SPRITE_SCALE)
+	Art.place(fx, data.offset, SPRITE_SCALE)
 	fx.position = pos
 	fx.z_index = 5
 	fx._frames = data.frames

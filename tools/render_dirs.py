@@ -12,6 +12,9 @@ prints the cell size and the sprite offset ((0, -center_y) * 27.108).
 
 Rendered so far:
   ghost/ghost  art_src/ghost/ghost.glb x1.3 --facing 39  (dirs down left right up)
+  gas_can/gas_can  art_src/gas_can/gas_can.glb x0.28 --dirs down
+  (both with --density 2: twice the pixels, same printed cell and offset -
+  see scripts/art.gd)
 """
 import argparse
 import json
@@ -35,6 +38,7 @@ def main():
     p.add_argument("--dirs", nargs="+", default=["down", "left", "right", "up"], choices=list(rs.DIRS))
     p.add_argument("--recenter", action="store_true")
     p.add_argument("--drop", action="append", default=[])
+    p.add_argument("--density", type=int, default=1, help="render at this multiple of the usual pixel density")
     args = p.parse_args()
 
     meshes = rs.load_model(args.model, args.scale, args.recenter, 0.25, None, args.drop)
@@ -51,8 +55,9 @@ def main():
     w = math.ceil(2 * hx * DENSITY / 8) * 8
     h = math.ceil((y1 - y0) * DENSITY / 8) * 8
     cy = (y0 + y1) / 2
-    rs.setup_scene(cy, max(w, h) / DENSITY, w, h)
-    rs.pack_sheet(meshes, list(args.dirs), lambda d: yaw.set(rs.DIRS[d]), (w, h), len(args.dirs), args.out_prefix)
+    d = args.density
+    rs.setup_scene(cy, max(w, h) / DENSITY, w * d, h * d)
+    rs.pack_sheet(meshes, list(args.dirs), lambda dr: yaw.set(rs.DIRS[dr]), (w * d, h * d), len(args.dirs), args.out_prefix)
     print(json.dumps({"cell": [w, h], "dirs": args.dirs, "offset": [0.0, round(-cy * DENSITY, 2)]}))
 
 

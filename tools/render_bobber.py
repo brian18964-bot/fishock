@@ -5,7 +5,9 @@ The asset packs have no float, so it's built here: a ball, red on top and
 white underneath, sitting on the water line (z=0), with a thin stick and a
 yellow tip. Drawn a little larger than life so it reads on a phone.
 
-  python tools/render_bobber.py OUT_DIR
+  SPRITE_DENSITY=2 python tools/render_bobber.py OUT_DIR
+    (SPRITE_DENSITY=2: twice the pixels, same printed cell and offset - the
+    committed sheets are rendered this way, see scripts/art.gd)
 
 writes OUT_DIR/bobber_55deg_{albedo,normal}.png and prints its cell size and
 sprite offset ((center_x, -center_y) * 27.108).

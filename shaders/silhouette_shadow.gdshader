@@ -8,7 +8,8 @@ render_mode unshaded;
 uniform float strength = 0.5;
 
 void fragment() {
-	vec2 px = TEXTURE_PIXEL_SIZE * 2.5;
+	// 5 texels: 1.25 world px at the sprites' 4 texels per world px.
+	vec2 px = TEXTURE_PIXEL_SIZE * 5.0;
 	float a = texture(TEXTURE, UV).a * 2.0;
 	a += texture(TEXTURE, UV + vec2(px.x, 0.0)).a;
 	a += texture(TEXTURE, UV - vec2(px.x, 0.0)).a;

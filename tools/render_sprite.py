@@ -24,6 +24,15 @@ density so sizes stay consistent across sets: ortho-scale = max(W, H) /
 at pixel (W / 2, H / 2 + center_y * 27.108). Sprites are shown in Godot at
 scale 0.5 (2x density for high-DPI screens).
 
+User request (a sharper picture): every static set below and the player
+sheet are now rendered with --density 2 - the same camera, twice the
+pixels (4 texels per world px) - and drawn at scale 0.25 (scripts/art.gd).
+Only the _albedo.png of those renders is committed: the normal maps stay
+the original-density ones (sampled by UV, so they line up).
+The --res, offsets and sizes listed here stay the original-density ones;
+the code's offsets too (Art.place doubles them). Animals and critters are
+still at the original density.
+
 --scale resizes a model about its origin before rendering, for gameplay
 sizing or models authored at a different scale than the rest of a pack.
 Pass the same --scale to measure and render.
@@ -35,7 +44,7 @@ Sets rendered so far (see art_src/):
   ground_cover/clover_*  scale 1.5   --center-y 0.651 --ortho-scale 1.7707 --res 48 48
   ground_cover/flower_group_*, flower_single_*, grass_wispy x1.0 (grass_wispy with --foliage-normals),
                flower_petal_* x1.5 (flower_petal_4 x3.0, a much smaller model)
-               grass_wispy_2 x1.0 --foliage-normals, grass x1.5 --foliage-normals,
+               grass_wispy_2 x1.0 --foliage-normals, grass (grass_blades.glb) x1.5 --foliage-normals,
                mushroom x2.0, mushroom_laetiporus x0.75, pebble_* x2.0
   pine/*         scale 1.0   --center-y 2.70 --ortho-scale 7.968 --res 200 216
   leafy_tree/*   scale 1.0 --foliage-normals, same camera as pine/*
@@ -470,6 +479,9 @@ def main():
     a.add_argument("--center-x", type=float, default=0.0)
     a.add_argument("--ortho-scale", type=float, required=True)
     a.add_argument("--res", type=int, nargs=2, metavar=("W", "H"), required=True, help="size of ONE cell")
+    for p in (r, a):
+        p.add_argument("--density", type=int, default=1,
+                       help="pixels per unit x this (same camera): 2 renders the same sprite at double resolution")
     for p in (ma, a):
         p.add_argument("--actions", nargs="+", required=True, help="clip names, e.g. Rat_Run Rat_Idle")
         p.add_argument("--frames", type=int, default=8, help="frames sampled per clip loop")
@@ -496,6 +508,8 @@ def main():
         p.add_argument("--base-slice", type=float, default=0.25,
                        help="fraction of model height counted as its base for --recenter/footprint (0.05 for leaning trees)")
     args = parser.parse_args()
+    if getattr(args, "density", 1) != 1:
+        args.res = [v * args.density for v in args.res]
 
     opts = {}
     if args.no_bind_guess:

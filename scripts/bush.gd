@@ -40,8 +40,7 @@ func _ready() -> void:
 	tex.normal_texture = variant.normal
 	var sprite: Sprite2D = visual
 	sprite.texture = tex
-	sprite.offset = variant.offset
-	sprite.scale = Vector2(SPRITE_SCALE, SPRITE_SCALE)
+	Art.place(sprite, variant.offset, SPRITE_SCALE)
 
 	# Per instance: a .tscn shape resource would be shared by every bush.
 	var rect: Rect2 = variant.hide_rect

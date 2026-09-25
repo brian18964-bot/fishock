@@ -165,5 +165,4 @@ func _apply(variant: Dictionary) -> void:
 	tex.diffuse_texture = variant.textures[0]
 	tex.normal_texture = variant.textures[1]
 	texture = tex
-	offset = variant.offset
-	scale = Vector2(SPRITE_SCALE, SPRITE_SCALE)
+	Art.place(self, variant.offset, SPRITE_SCALE)

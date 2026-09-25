@@ -239,8 +239,7 @@ func apply_variant(index: int) -> void:
 	tex.diffuse_texture = variant.albedo
 	tex.normal_texture = variant.normal
 	sprite.texture = tex
-	sprite.offset = variant.offset
-	sprite.scale = Vector2.ONE * SPRITE_SCALE * TREE_SIZE
+	Art.place(sprite, variant.offset, SPRITE_SCALE * TREE_SIZE)
 
 	# Built per instance: a shape resource from the .tscn would be shared by
 	# every tree, so resizing it for one variant would resize all of them.
@@ -252,7 +251,7 @@ func apply_variant(index: int) -> void:
 	# User request: a lit tree throws a tree-shaped shadow, not the hard
 	# wedge an occluder extrudes from the trunk.
 	$TrunkBody/LightOccluder2D.occluder = null
-	SilhouetteShadow.attach(self, variant.albedo, variant.offset, SPRITE_SCALE * TREE_SIZE)
+	SilhouetteShadow.attach(self, sprite)
 
 	var fade: Rect2 = variant.fade_rect
 	var rect := Rect2(fade.position * TREE_SIZE, fade.size * TREE_SIZE)

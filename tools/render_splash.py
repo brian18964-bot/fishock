@@ -7,7 +7,9 @@ spout, and for fish_jump a small low-poly fish leaping in an arc. One row
 of frames per sheet; all sheets share the density, so in-game sizes stay
 consistent.
 
-  python tools/render_splash.py OUT_DIR
+  SPRITE_DENSITY=2 python tools/render_splash.py OUT_DIR
+    (SPRITE_DENSITY=2: twice the pixels, same printed cell and offset - the
+    committed sheets are rendered this way, see scripts/art.gd)
 
 writes OUT_DIR/splash_land_55deg_*, splash_bite_55deg_*, fish_jump_right_55deg_*,
 fish_jump_left_55deg_* and OUT_DIR/splash_meta.json (cell size, frames,
@@ -180,8 +182,9 @@ def build(name, maker, out_dir):
     w = math.ceil(2 * hx * DENSITY / 8) * 8
     h = math.ceil((y1 - y0) * DENSITY / 8) * 8
     cy = (y0 + y1) / 2
-    rs.setup_scene(cy, max(w, h) / DENSITY, w, h)
-    rs.pack_sheet(meshes, list(range(frames)), pose, (w, h), frames, os.path.join(out_dir, f"{name}_55deg"))
+    d = int(os.environ.get("SPRITE_DENSITY", "1"))  # render at d x the usual pixel density
+    rs.setup_scene(cy, max(w, h) / DENSITY, w * d, h * d)
+    rs.pack_sheet(meshes, list(range(frames)), pose, (w * d, h * d), frames, os.path.join(out_dir, f"{name}_55deg"))
     return {"cell": [w, h], "frames": frames, "offset": [0.0, round(-cy * DENSITY, 2)]}
 
 

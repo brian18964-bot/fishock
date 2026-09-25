@@ -135,8 +135,7 @@ func _ready() -> void:
 	tex.diffuse_texture = TEXTURES[variant][0]
 	tex.normal_texture = TEXTURES[variant][1]
 	texture = tex
-	offset = VARIANT_OFFSETS.get(variant, KIND_OFFSETS.get(kind, DEFAULT_OFFSET))
-	scale = Vector2(SPRITE_SCALE, SPRITE_SCALE)
+	Art.place(self, VARIANT_OFFSETS.get(variant, KIND_OFFSETS.get(kind, DEFAULT_OFFSET)), SPRITE_SCALE)
 
 
 func _pick_kind() -> String:
