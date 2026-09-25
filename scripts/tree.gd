@@ -249,10 +249,10 @@ func apply_variant(index: int) -> void:
 	var trunk := RectangleShape2D.new()
 	trunk.size = Vector2(16, 12) * TRUNK_SIZE
 	$TrunkBody/CollisionShape2D.shape = trunk
-	var occ := OccluderPolygon2D.new()
-	var h := trunk.size / 2.0
-	occ.polygon = PackedVector2Array([Vector2(-h.x, -h.y), Vector2(h.x, -h.y), Vector2(h.x, h.y), Vector2(-h.x, h.y)])
-	$TrunkBody/LightOccluder2D.occluder = occ
+	# User request: a lit tree throws a tree-shaped shadow, not the hard
+	# wedge an occluder extrudes from the trunk.
+	$TrunkBody/LightOccluder2D.occluder = null
+	SilhouetteShadow.attach(self, variant.albedo, variant.offset, SPRITE_SCALE * TREE_SIZE)
 
 	var fade: Rect2 = variant.fade_rect
 	var rect := Rect2(fade.position * TREE_SIZE, fade.size * TREE_SIZE)

@@ -13,6 +13,7 @@ signal day_phase_changed(phase: String)
 signal offering_pool_updated(pool: Array, evil_count: int)
 signal run_ended(success: bool, message: String)
 signal night_fell()
+signal light_stage_changed(stage: int)
 signal weather_changed(weather: String)
 
 enum DayPhase { FISHING, ESCAPE, DONE }
@@ -25,6 +26,18 @@ const BASELINE_REWARD := 8
 const MAX_EVIL := 3
 const MAX_STARTING_EVIL := 2
 const DAY_DURATION := 180.0
+## User request: the day darkens in four stages (quarters of the day) - at
+## first the lamp at its lowest setting is enough to see ahead; by the last
+## you have to turn it right up. See light_stage(), DarknessController and
+## Lantern.
+const LIGHT_STAGES := 4
+const LIGHT_STAGE_MESSAGES := [
+	"",
+	"天色暗了下來，燈光照得沒那麼遠了",
+	"越來越暗了，把燈調亮一點吧（亮）",
+	"快入夜了，燈要開到很亮才看得清楚",
+]
+var _light_stage := 0
 
 ## Design doc request: sacrificing a fully rotten fish doesn't add quota
 ## value - instead it gambles on one of three outcomes.
@@ -84,12 +97,25 @@ func _process(delta: float) -> void:
 	if not run_started or run_over or is_night or day_phase != DayPhase.FISHING:
 		return
 	time_remaining = max(time_remaining - delta, 0.0)
+	var stage := light_stage()
+	if stage != _light_stage:
+		_light_stage = stage
+		light_stage_changed.emit(stage)
+		push_message(LIGHT_STAGE_MESSAGES[stage])
 	if time_remaining <= 0.0:
 		_trigger_night()
 
 	weather_timer -= delta
 	if weather_timer <= 0.0:
 		_roll_weather()
+
+
+## 0 at the start of the day ... LIGHT_STAGES - 1 in its last quarter (and
+## through the night).
+func light_stage() -> int:
+	if is_night:
+		return LIGHT_STAGES - 1
+	return clampi(int((1.0 - time_remaining / DAY_DURATION) * LIGHT_STAGES), 0, LIGHT_STAGES - 1)
 
 
 func start_run() -> void:
@@ -182,6 +208,7 @@ func reset_run() -> void:
 	run_over = false
 	_quota_since_offering = 0.0
 	time_remaining = DAY_DURATION
+	_light_stage = 0
 	is_night = false
 	run_started = false
 	has_heart = false

@@ -27,8 +27,9 @@ const SPEED := 112.0
 ## land, except out along docks, stairs and boardwalks (Dock walkways).
 ## Rare zones stay fully solid.
 const FEET := Vector2(0, 8)
-## User feedback: charging was too quick - 30% slower (was 1.2 s).
-const MAX_CHARGE_TIME := 1.56
+## User feedback: charging was too quick - 30% slower (was 1.2 s), then
+## another 50% slower.
+const MAX_CHARGE_TIME := 2.34
 const MIN_CAST_DIST := 40.0
 const MAX_CAST_DIST := 340.0
 const MOVE_REEL_PENALTY := 0.5
@@ -392,7 +393,7 @@ func _maybe_trigger_water_ghost() -> void:
 	var chance := WATER_GHOST_CHANCE
 	if GameState.weather == GameState.Weather.STORM:
 		chance *= STORM_WATER_GHOST_MULT
-	if Dock.on_walkway(get_tree(), global_position) and _find_water_zone(global_position) != null:
+	if Dock.on_walkway(get_tree(), global_position + FEET) and _find_water_zone(global_position + FEET) != null:
 		chance *= DOCK_WATER_GHOST_MULT
 	if randf() >= chance:
 		return
@@ -589,7 +590,7 @@ func _update_movement() -> void:
 
 
 func _too_deep(pos: Vector2) -> bool:
-	if Dock.on_walkway(get_tree(), pos):
+	if Dock.on_walkway(get_tree(), pos + FEET):
 		return false
 	for zone in get_tree().get_nodes_in_group("water_zones_common"):
 		if zone.contains(pos + FEET):

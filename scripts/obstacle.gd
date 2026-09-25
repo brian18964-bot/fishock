@@ -66,10 +66,10 @@ func apply_variant(index: int) -> void:
 
 	var outline := _octagon(variant.footprint)
 	collision.polygon = outline
-	# Per instance: a shared .tscn occluder would reshape every rock at once.
-	var poly := OccluderPolygon2D.new()
-	poly.polygon = outline
-	occluder.occluder = poly
+	# User request: shadows take the rock's own shape (SilhouetteShadow)
+	# instead of a wedge extruded from its footprint.
+	occluder.occluder = null
+	SilhouetteShadow.attach(self, variant.albedo, variant.offset, SPRITE_SCALE)
 
 
 func _octagon(r: Rect2) -> PackedVector2Array:

@@ -4,10 +4,18 @@ extends CanvasModulate
 ## night collapses visibility down to near-nothing outside the lantern.
 ## User feedback: a fog weather event darkens things further on top of that.
 
-## User feedback: the day read murky and grey - lighter and nearly neutral
-## now (was 0.32, 0.34, 0.4), fog weather likewise.
-const DAY_COLOR := Color(0.5, 0.5, 0.53, 1)
-const FOG_COLOR := Color(0.34, 0.35, 0.39, 1)
+## User request: the day darkens in four stages (GameState.light_stage()) -
+## dark enough from the start that you need the lamp, darker each quarter.
+## Near-neutral, not the old murky blue-grey. Fog weather darkens a step.
+const STAGE_COLORS := [
+	Color(0.26, 0.26, 0.28, 1),
+	Color(0.19, 0.19, 0.21, 1),
+	Color(0.13, 0.13, 0.15, 1),
+	Color(0.085, 0.085, 0.1, 1),
+]
+const FOG_MULT := 0.8
+## Seconds to ease from one stage into the next.
+const STAGE_EASE := 6.0
 const NIGHT_COLOR := Color(0.035, 0.035, 0.06, 1)
 
 ## User request: the dark breathes - the whole scene's light swells and
@@ -16,14 +24,16 @@ const BREATH_PERIOD := 7.0
 const BREATH_AMOUNT := 0.06
 
 var _time := 0.0
+var _base: Color = STAGE_COLORS[0]
 
 
 func _process(delta: float) -> void:
 	_time += delta
-	var base := DAY_COLOR
+	var target: Color = STAGE_COLORS[GameState.light_stage()]
 	if GameState.is_night:
-		base = NIGHT_COLOR
+		target = NIGHT_COLOR
 	elif GameState.weather == GameState.Weather.FOG:
-		base = FOG_COLOR
+		target = target * FOG_MULT
+	_base = _base.lerp(target, minf(1.0, delta / STAGE_EASE * 3.0))
 	var breath := 1.0 + BREATH_AMOUNT * sin(_time * TAU / BREATH_PERIOD)
-	color = Color(base.r * breath, base.g * breath, base.b * breath, 1.0)
+	color = Color(_base.r * breath, _base.g * breath, _base.b * breath, 1.0)

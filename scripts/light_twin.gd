@@ -20,7 +20,11 @@ const GROUND_LAYER := 2
 
 
 ## Splits `light` as above. Call once its texture/colour are set up.
-static func attach(light: PointLight2D) -> void:
+## `silhouettes`: also lets it throw trees' and rocks' shaped shadows
+## (SilhouetteShadow) - off for the faint daytime halo.
+static func attach(light: PointLight2D, silhouettes := true) -> void:
+	if silhouettes:
+		light.add_to_group("shadow_lights")
 	light.range_item_cull_mask = GROUND_LAYER
 	# User bug report: with the light moved to the ground layer its shadows
 	# vanished - the shadow mask also picks which lit items receive shadows,

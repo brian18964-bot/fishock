@@ -1,12 +1,10 @@
 extends Node2D
 
 ## User request: the direction a cast will go has to be visible up front.
-## A small arrow on the ground in front of the player's feet always points
-## where they're aiming; while charging, a dotted line runs out to where
-## the cast will land (Player.landing_point) and a ring marks the spot -
-## red when there's no water that way.
+## While charging, a dotted line runs out to where the cast will land
+## (Player.landing_point) and a ring marks the spot - red when there's no
+## water that way. (User feedback: no standing arrow in front of the feet.)
 
-const ARROW_DISTANCE := 20.0
 const SQUASH := 0.819  # sin 55deg: drawn lying on the ground
 const COLOR_AIM := Color(1.0, 0.92, 0.6, 0.55)
 const COLOR_OK := Color(0.85, 0.95, 1.0, 0.8)
@@ -26,12 +24,8 @@ func _process(_delta: float) -> void:
 
 
 func _draw() -> void:
-	if _player.state != Player.State.IDLE and _player.state != Player.State.CHARGING:
+	if _player.state != Player.State.CHARGING:
 		return
-	var dir: Vector2 = _player.aim_dir
-	var ground := Vector2(dir.x, dir.y * SQUASH).normalized()
-	var tip := ground * (ARROW_DISTANCE + 7.0)
-	var side := ground.orthogonal()
 	var color := COLOR_AIM
 	if _player.state == Player.State.CHARGING:
 		var ratio: float = _player.charge_time / Player.MAX_CHARGE_TIME
@@ -48,5 +42,3 @@ func _draw() -> void:
 			var a := i * TAU / 24.0
 			ring.append(land + Vector2(cos(a) * 7.0, sin(a) * 7.0 * SQUASH))
 		draw_polyline(ring, color, 1.5, true)
-	draw_colored_polygon(PackedVector2Array([tip, ground * ARROW_DISTANCE + side * 5.0,
-		ground * (ARROW_DISTANCE + 2.5), ground * ARROW_DISTANCE - side * 5.0]), color)

@@ -112,13 +112,22 @@ func setup_stairs(descend: String) -> void:
 	var vertical := descend == "up" or descend == "down"
 	var along := stairs_half_length(vertical)
 	var across := STAIRS_HALF_WIDTH * (1.0 if vertical else sin(deg_to_rad(55.0)))
-	_set_walkway(Vector2(across, along) if vertical else Vector2(along, across))
+	_set_walkway(Vector2(across, along) if vertical else Vector2(along, across), STAIRS_LIFT)
 
 
 ## `position` must already be set (map_generator sets it before setup).
-func _set_walkway(half: Vector2) -> void:
+## User bug report: the walkable area sat ~10 px below the drawn deck (the
+## deck stands up on its posts, so the render draws it higher than the
+## node's ground point) - you had to come at it from above, and could only
+## use part of it. The rect is lifted to match the boards.
+const DECK_LIFT := 9.5
+const STAIRS_LIFT := 9.5  # same as the deck, so dock and stairs rects meet
+
+
+func _set_walkway(half: Vector2, lift: float = DECK_LIFT) -> void:
 	# A little slack so walking off the end onto the stairs isn't snagged.
-	walk_rect = Rect2(position - half - Vector2(2, 2), half * 2.0 + Vector2(4, 4))
+	var center := position - Vector2(0.0, lift)
+	walk_rect = Rect2(center - half - Vector2(2, 2), half * 2.0 + Vector2(4, 4))
 	add_to_group("walkways")
 
 

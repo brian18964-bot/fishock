@@ -16,8 +16,15 @@ func _ready() -> void:
 	energy = 0.55
 	shadow_enabled = true
 	height = Lantern.LIGHT_HEIGHT
-	LightTwin.attach(self)
+	LightTwin.attach(self, false)
 
-func _process(_delta: float) -> void:
+## User request: even at the start of the day this faint halo only shows
+## your immediate surroundings (the lamp is what shows the way ahead), and
+## it fades further each darkness stage (GameState.light_stage()).
+const STAGE_ENERGY := [0.35, 0.22, 0.12, 0.05]
+
+
+func _process(delta: float) -> void:
 	visible = not GameState.is_night
 	texture_scale = FOG_RADIUS_SCALE if GameState.weather == GameState.Weather.FOG else RADIUS_SCALE
+	energy = lerpf(energy, STAGE_ENERGY[GameState.light_stage()], minf(1.0, delta))

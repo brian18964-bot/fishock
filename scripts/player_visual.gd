@@ -58,8 +58,11 @@ func _process(delta: float) -> void:
 	var moving := speed > 8.0
 	# User feedback: which way a cast will go has to read on the character -
 	# it faces its aim whenever it's fishing, and when standing still.
-	var fishing := _player.state != Player.State.IDLE
-	var face := _player.velocity if moving and not fishing else _player.aim_dir
+	# While charging it faces the aim; otherwise walking faces the way it
+	# walks (legs and all - user feedback: walking with a fish on used to
+	# glide in the rod stance).
+	var charging := _player.state == Player.State.CHARGING
+	var face := _player.velocity if moving and not charging else _player.aim_dir
 	if face.length() > 0.01:
 		var sector := posmod(roundi(face.angle() / (PI / 4.0)), 8)
 		_dir = SECTOR_TO_DIR[sector]
@@ -78,12 +81,12 @@ func _process(delta: float) -> void:
 		clip = CLIP_CAST
 		frame_in_clip = mini(int(_player.charge_time / Player.MAX_CHARGE_TIME * 4.0), 3)
 	else:
-		if _player.state != Player.State.IDLE:
+		if moving:
+			clip = CLIP_MOVE
+		elif _player.state != Player.State.IDLE:
 			clip = CLIP_FISH
 		elif _player.sacrifice_progress > 0.0 or _player.rummage_progress > 0.0:
 			clip = CLIP_BUSY
-		elif moving:
-			clip = CLIP_MOVE
 		var fps: float = FPS[clip]
 		if clip == CLIP_MOVE:
 			fps *= speed / JOG_PACE

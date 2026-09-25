@@ -17,7 +17,8 @@ extends PointLight2D
 enum Tool { LAMP, FLASHLIGHT }
 
 const MAX_FUEL := 100.0
-const DRAIN_RATE := 7.0
+## User feedback: lights last 40% longer (was 7 fuel/s at full brightness).
+const DRAIN_RATE := 5.0
 const MIN_BRIGHTNESS := 0.35
 const MAX_BRIGHTNESS := 1.0
 const BRIGHTNESS_STEP := 0.5
@@ -33,7 +34,7 @@ const TOOLS := {
 
 ## Flashlight: a full battery lasts BATTERY_LIFE s at full brightness;
 ## holding L on a flat one swaps in a fresh battery over BATTERY_SWAP_DURATION.
-const BATTERY_LIFE := 90.0
+const BATTERY_LIFE := 126.0
 const BATTERY_SWAP_DURATION := 1.0
 
 ## Design doc request: the flame can be put out at will (instant, e.g. to
@@ -120,8 +121,49 @@ func _process(delta: float) -> void:
 	visible = lit and power() > 0.0
 	rotation = _player.aim_dir.angle()
 	var spec: Dictionary = TOOLS[tool]
-	texture_scale = lerp(spec.min_scale, spec.max_scale, brightness)
-	energy = lerp(spec.energy.x, spec.energy.y, brightness)
+	# User request: as the day darkens (GameState.light_stage()) the same
+	# setting reaches less far and less bright - late on you must turn it up
+	# to see what the lowest setting showed at first.
+	var stage := GameState.light_stage()
+	_stage_reach = lerpf(_stage_reach, STAGE_REACH[stage], minf(1.0, delta))
+	_stage_power = lerpf(_stage_power, STAGE_POWER[stage], minf(1.0, delta))
+	texture_scale = lerp(spec.min_scale, spec.max_scale, brightness) * _stage_reach
+	energy = lerp(spec.energy.x, spec.energy.y, brightness) * _stage_power
+	if tool == Tool.LAMP:
+		energy *= _flame(delta)
+
+
+const STAGE_REACH := [1.0, 0.9, 0.8, 0.7]
+const STAGE_POWER := [1.0, 0.85, 0.72, 0.62]
+var _stage_reach := 1.0
+var _stage_power := 1.0
+
+## User request: a flame isn't a steady bulb - a faint constant waver, and
+## every few seconds a brief dip before it catches again.
+const FLICKER_GAP := Vector2(1.5, 4.0)
+const FLICKER_DIP := Vector2(0.12, 0.25)
+const FLICKER_TIME := Vector2(0.08, 0.3)
+
+var _flame_time := 0.0
+var _flicker_timer := 2.0
+var _dip_left := 0.0
+var _dip_depth := 0.0
+var _dip := 0.0
+
+
+func _flame(delta: float) -> float:
+	_flame_time += delta
+	_flicker_timer -= delta
+	if _flicker_timer <= 0.0:
+		_flicker_timer = randf_range(FLICKER_GAP.x, FLICKER_GAP.y)
+		_dip_left = randf_range(FLICKER_TIME.x, FLICKER_TIME.y)
+		_dip_depth = randf_range(FLICKER_DIP.x, FLICKER_DIP.y)
+	var target := 0.0
+	if _dip_left > 0.0:
+		_dip_left -= delta
+		target = _dip_depth
+	_dip = move_toward(_dip, target, delta * 3.0)
+	return 1.0 + sin(_flame_time * 9.3) * 0.015 + sin(_flame_time * 23.7) * 0.01 - _dip
 
 
 ## What the current tool has left: lamp fuel, or flashlight charge.
