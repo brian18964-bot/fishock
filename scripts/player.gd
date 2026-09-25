@@ -23,11 +23,12 @@ enum FishingMode { BOBBER, LURE }
 
 ## User feedback: 20% slower (was 140).
 const SPEED := 112.0
-## User request: common water is only wadeable at the edge - the player can
-## step this far in from the shore and no further, except out along docks
-## and their stairs (Dock walkways). Rare zones stay fully solid.
-const WADE_DEPTH := 26.0
-const MAX_CHARGE_TIME := 1.2
+## User request: no wading at all any more - the player's feet stay on dry
+## land, except out along docks, stairs and boardwalks (Dock walkways).
+## Rare zones stay fully solid.
+const FEET := Vector2(0, 8)
+## User feedback: charging was too quick - 30% slower (was 1.2 s).
+const MAX_CHARGE_TIME := 1.56
 const MIN_CAST_DIST := 40.0
 const MAX_CAST_DIST := 340.0
 const MOVE_REEL_PENALTY := 0.5
@@ -591,7 +592,7 @@ func _too_deep(pos: Vector2) -> bool:
 	if Dock.on_walkway(get_tree(), pos):
 		return false
 	for zone in get_tree().get_nodes_in_group("water_zones_common"):
-		if zone.is_deep(pos, WADE_DEPTH):
+		if zone.contains(pos + FEET):
 			return true
 	return false
 
@@ -854,6 +855,26 @@ func _update_fishing(delta: float) -> void:
 			pass
 
 
+## Where a cast at `ratio` of full charge lands. User feedback: overshooting
+## the water used to fail the cast - now it drops in at the far edge of the
+## last water it flew over (a line that crosses no water still misses).
+func landing_point(ratio: float) -> Vector2:
+	var dist: float = lerp(MIN_CAST_DIST, max_cast_dist, ratio)
+	var target := global_position + aim_dir * dist
+	if _find_water_zone(target) != null:
+		return target
+	var step := 6.0
+	var d := dist - step
+	while d > MIN_CAST_DIST * 0.5:
+		var p := global_position + aim_dir * d
+		var zone := _find_water_zone(p)
+		if zone != null:
+			# A little way in from that far bank.
+			return global_position + aim_dir * maxf(d - 6.0, MIN_CAST_DIST * 0.5)
+		d -= step
+	return target
+
+
 func _launch_cast() -> void:
 	if fishing_mode == FishingMode.BOBBER:
 		bait_count = max(bait_count - 1, 0)
@@ -868,14 +889,13 @@ func _launch_cast() -> void:
 		ratio = clamp(ratio * randf_range(0.3, 1.4), 0.0, 1.0)
 		cast_jittered = false
 		GameState.push_message("蓄力被干擾了，拋竿距離變得不可靠")
-	var dist: float = lerp(MIN_CAST_DIST, max_cast_dist, ratio)
-	cast_target = global_position + aim_dir * dist
+	cast_target = landing_point(ratio)
 
 	# Design doc request: a cast that doesn't land in any water zone just
 	# comes up empty - fishing only works where there's actually water now.
 	cast_water_zone = _find_water_zone(cast_target)
 	if cast_water_zone == null:
-		GameState.push_message("這裡沒有水，這竿撲空了")
+		GameState.push_message("這個方向沒有水，這竿撲空了")
 		_reset_line(State.IDLE)
 		return
 

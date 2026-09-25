@@ -12,8 +12,8 @@ extends Sprite2D
 ## waterline) while moving it down, so the float slips below the surface.
 
 const SPRITE_SCALE := 0.5
-## User feedback: the float read too big - drawn at 70%.
-const FLOAT_SCALE := 0.7
+## User feedback: the float read too big - drawn at 70%, then half that.
+const FLOAT_SCALE := 0.35
 const OFFSET := Vector2(0, 1.08)
 const FLOAT_OFFSET := Vector2(0, -8.26)
 const FLOAT := [preload("res://assets/sprites/lure/bobber_55deg_albedo.png"), preload("res://assets/sprites/lure/bobber_55deg_normal.png")]

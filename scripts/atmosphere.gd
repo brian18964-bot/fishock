@@ -6,8 +6,12 @@ extends Node2D
 ## screen edges (shaders/vignette.gdshader). Both thicken at night and in
 ## fog weather.
 
-const FOG_DENSITY := {"day": 0.14, "fog": 0.34, "night": 0.2}
-const VIGNETTE := {"day": 0.42, "fog": 0.55, "night": 0.68}
+## User feedback: the picture looked hazy and old - day fog is now barely
+## there, night and fog weather keep theirs lighter too, and a final grade
+## pass (shaders/grade.gdshader) sharpens and saturates the world.
+const FOG_DENSITY := {"day": 0.04, "fog": 0.26, "night": 0.1}
+const VIGNETTE := {"day": 0.28, "fog": 0.45, "night": 0.6}
+const GRADE_LAYER := 1
 const FOG_Z := 30
 const VIGNETTE_LAYER := 1
 
@@ -30,6 +34,19 @@ func _ready() -> void:
 	_fog_mat.set_shader_parameter("density", FOG_DENSITY.day)
 	fog.material = _fog_mat
 	add_child(fog)
+
+	# The grade reads the finished world, so it sits on its own layer under
+	# the vignette (same layer number, added first) and the HUD.
+	var grade_layer := CanvasLayer.new()
+	grade_layer.layer = GRADE_LAYER
+	var grade := ColorRect.new()
+	grade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	grade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var grade_mat := ShaderMaterial.new()
+	grade_mat.shader = preload("res://shaders/grade.gdshader")
+	grade.material = grade_mat
+	grade_layer.add_child(grade)
+	add_child(grade_layer)
 
 	var layer := CanvasLayer.new()
 	layer.layer = VIGNETTE_LAYER

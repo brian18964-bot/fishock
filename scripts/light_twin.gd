@@ -22,6 +22,10 @@ const GROUND_LAYER := 2
 ## Splits `light` as above. Call once its texture/colour are set up.
 static func attach(light: PointLight2D) -> void:
 	light.range_item_cull_mask = GROUND_LAYER
+	# User bug report: with the light moved to the ground layer its shadows
+	# vanished - the shadow mask also picks which lit items receive shadows,
+	# and it was still layer 1 only. Occluders stay on layer 1.
+	light.shadow_item_cull_mask = GROUND_LAYER | PROP_LAYER
 	var twin := LightTwin.new()
 	twin.name = "PropLight"
 	light.add_child(twin)

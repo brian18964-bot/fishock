@@ -56,7 +56,10 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	var speed := _player.velocity.length()
 	var moving := speed > 8.0
-	var face := _player.velocity if moving else _player.aim_dir
+	# User feedback: which way a cast will go has to read on the character -
+	# it faces its aim whenever it's fishing, and when standing still.
+	var fishing := _player.state != Player.State.IDLE
+	var face := _player.velocity if moving and not fishing else _player.aim_dir
 	if face.length() > 0.01:
 		var sector := posmod(roundi(face.angle() / (PI / 4.0)), 8)
 		_dir = SECTOR_TO_DIR[sector]

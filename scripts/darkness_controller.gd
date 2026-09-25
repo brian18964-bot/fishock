@@ -4,8 +4,10 @@ extends CanvasModulate
 ## night collapses visibility down to near-nothing outside the lantern.
 ## User feedback: a fog weather event darkens things further on top of that.
 
-const DAY_COLOR := Color(0.32, 0.34, 0.4, 1)
-const FOG_COLOR := Color(0.22, 0.24, 0.28, 1)
+## User feedback: the day read murky and grey - lighter and nearly neutral
+## now (was 0.32, 0.34, 0.4), fog weather likewise.
+const DAY_COLOR := Color(0.5, 0.5, 0.53, 1)
+const FOG_COLOR := Color(0.34, 0.35, 0.39, 1)
 const NIGHT_COLOR := Color(0.035, 0.035, 0.06, 1)
 
 ## User request: the dark breathes - the whole scene's light swells and

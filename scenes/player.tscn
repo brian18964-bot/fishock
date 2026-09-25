@@ -1,10 +1,11 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scripts/player.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/lantern.gd" id="2"]
 [ext_resource type="Script" path="res://scripts/day_vision.gd" id="3"]
 [ext_resource type="Script" path="res://scripts/held_rod.gd" id="4"]
 [ext_resource type="Script" path="res://scripts/player_visual.gd" id="5"]
+[ext_resource type="Script" path="res://scripts/cast_guide.gd" id="6"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_1"]
 size = Vector2(24, 24)
@@ -12,6 +13,9 @@ size = Vector2(24, 24)
 [node name="Player" type="CharacterBody2D"]
 motion_mode = 1
 script = ExtResource("1")
+
+[node name="CastGuide" type="Node2D" parent="."]
+script = ExtResource("6")
 
 [node name="Body" type="Sprite2D" parent="."]
 position = Vector2(0, 10)

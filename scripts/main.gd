@@ -7,14 +7,8 @@ extends Node2D
 
 var _reset_combo_held := false
 
-## Water ripples (see Ripple): a lure leaves a wake ring every WAKE_SPACING
-## px it's reeled, a waiting bobber bobs one out every BOB_INTERVAL s, and
-## the player sends one out every WADE_SPACING px walked through water.
-## User feedback: too many ripples - spaced out ~1.6x.
-const WAKE_SPACING := 22.0
-const BOB_INTERVAL := 2.6
-const WADE_SPACING := 26.0
-const PLAYER_FEET := Vector2(0, 8)
+## User feedback: the only ripple left is a small ring where a cast lands.
+const CAST_RING_RADIUS := 20.0
 
 ## User feedback: once a fish is on, the line end mustn't sit still. It
 ## jerks at the bite; while reeled it swims about the line end, bolts during
@@ -52,7 +46,6 @@ const ZOOM_EASE := 2.2
 const FRAME_EASE := 3.0
 
 var _frame_offset := Vector2.ZERO
-const FISH_WAKE_SPACING := 16.0
 
 var _fish_offset := Vector2.ZERO
 var _fish_goal := Vector2.ZERO
@@ -64,13 +57,9 @@ const FISH_JUMP_INTERVAL := Vector2(10.0, 25.0)
 const FISH_JUMP_RANGE := 420.0
 
 var _fish_jump_timer := 12.0
-var _last_wake_pos := Vector2.INF
-var _last_wade_pos := Vector2.INF
-var _bob_timer := 0.0
 
 
 func _ready() -> void:
-	add_child(WaterSim.new())
 	add_child(Atmosphere.new())
 	# Above the breathing-darkness vignette (Atmosphere, layer 1).
 	$HUD.layer = 2
@@ -102,8 +91,6 @@ func _process(delta: float) -> void:
 		line.points = PackedVector2Array([rod.tip_position(), bobber.global_position])
 		if lure.is_lure:
 			lure.face(player.global_position)
-		_update_line_ripples(delta)
-	_update_wading_ripples()
 	_update_fish_jumps(delta)
 	_update_camera(delta)
 
@@ -123,13 +110,11 @@ func _on_cast_started(target_pos: Vector2, _tier: String) -> void:
 	lure.pick(player.fishing_mode == Player.FishingMode.LURE)
 	_fish_offset = Vector2.ZERO
 	_fish_goal = Vector2.ZERO
-	# Splashdown: a big ring, then a smaller echo.
-	_last_wake_pos = target_pos
-	_bob_timer = BOB_INTERVAL
-	Ripple.spawn(self, target_pos, 36.0, 1.0, 1.7)
+	# User feedback: no more rolling waves - just a small ring where the
+	# cast lands.
+	Ripple.spawn(self, target_pos, CAST_RING_RADIUS, 0.55, 1.2)
 	if Ripple.water_at(get_tree(), target_pos) != null:
 		SplashFx.play(self, "splash_land", target_pos)
-	get_tree().create_timer(0.3).timeout.connect(func(): Ripple.spawn(self, target_pos, 22.0, 0.7, 1.4))
 	bobber.modulate = Color.WHITE
 	line.visible = true
 
@@ -143,10 +128,6 @@ func _on_bite_started() -> void:
 	lure.float_state = LureVisual.FloatState.BITING
 	_shake = maxf(_shake, SHAKE_BITE)
 	SplashFx.play(self, "splash_bite", bobber.global_position)
-	# The fish yanks at the line: a quick burst of sharp rings.
-	for i in 3:
-		get_tree().create_timer(i * 0.15).timeout.connect(
-			func(): Ripple.spawn(self, bobber.global_position, 26.0, 1.2, 1.0))
 
 
 func _on_hook_success() -> void:
@@ -192,31 +173,6 @@ func _on_line_cleared() -> void:
 	line.points = PackedVector2Array()
 
 
-func _update_line_ripples(delta: float) -> void:
-	var pos := bobber.global_position
-	if player.state == Player.State.BITE or player.state == Player.State.REELING:
-		# A hooked fish leaves a wake wherever it thrashes.
-		if _last_wake_pos.distance_to(pos) >= FISH_WAKE_SPACING:
-			_last_wake_pos = pos
-			Ripple.spawn(self, pos, 16.0, 0.8, 1.0)
-	elif player.fishing_mode == Player.FishingMode.LURE:
-		if _last_wake_pos.distance_to(pos) >= WAKE_SPACING:
-			_last_wake_pos = pos
-			Ripple.spawn(self, pos, 16.0, 0.6, 1.1)
-	elif player.state == Player.State.WAITING:
-		_bob_timer -= delta
-		if _bob_timer <= 0.0:
-			_bob_timer = BOB_INTERVAL
-			Ripple.spawn(self, pos, 14.0, 0.45, 1.3)
-
-
-func _update_wading_ripples() -> void:
-	var feet := player.global_position + PLAYER_FEET
-	if _last_wade_pos.distance_to(feet) >= WADE_SPACING:
-		_last_wade_pos = feet
-		Ripple.spawn(self, feet, 22.0, 0.7, 1.2)
-
-
 func _update_fish_jumps(delta: float) -> void:
 	_fish_jump_timer -= delta
 	if _fish_jump_timer > 0.0:
@@ -230,9 +186,6 @@ func _update_fish_jumps(delta: float) -> void:
 			continue
 		var right := randf() < 0.5
 		SplashFx.play(self, "fish_jump_right" if right else "fish_jump_left", pos)
-		var dx := SplashFx.FISH_HALF_SPAN * (1.0 if right else -1.0)
-		Ripple.spawn(self, pos - Vector2(dx, 0), 20.0, 0.7)
-		get_tree().create_timer(0.6).timeout.connect(func(): Ripple.spawn(self, pos + Vector2(dx, 0), 26.0, 0.9))
 		return
 
 
@@ -256,7 +209,6 @@ func _cover_dir(from: Vector2) -> Vector2:
 
 func _on_nibble(fake: bool) -> void:
 	lure.dip(LureVisual.DIP_FAKE if fake else LureVisual.DIP_NIBBLE)
-	Ripple.spawn(self, bobber.global_position, 10.0 if not fake else 16.0, 0.3, 0.8)
 
 
 func _on_fight_event(kind: String) -> void:
@@ -264,12 +216,9 @@ func _on_fight_event(kind: String) -> void:
 		"jump":
 			var right := randf() < 0.5
 			SplashFx.play(self, "fish_jump_right" if right else "fish_jump_left", bobber.global_position)
-			Ripple.spawn(self, bobber.global_position, 26.0, 0.9)
 			_shake = maxf(_shake, SHAKE_HOOK)
 		"enrage":
 			_shake = maxf(_shake, SHAKE_BITE)
-		"run", "side_run", "dive":
-			Ripple.spawn(self, bobber.global_position, 20.0, 0.7)
 
 
 func _fish_motion(delta: float, base: Vector2) -> Vector2:
@@ -304,13 +253,29 @@ func _fish_motion(delta: float, base: Vector2) -> Vector2:
 		_:
 			_fish_offset = Vector2.ZERO
 			_shown_progress = 0.0
-			return base
+			return _keep_in_water(base)
 	var pos := base + _fish_offset
 	if Ripple.water_at(get_tree(), pos) == null:
 		# Hit the shore: turn back toward open water.
 		_fish_offset *= 0.6
 		_fish_goal = -_fish_goal * 0.5
-		pos = base + _fish_offset
-		if Ripple.water_at(get_tree(), pos) == null:
-			pos = base
-	return pos
+	return _keep_in_water(pos)
+
+
+## User bug report: a fish being fought (or a lure reeled in) could cross
+## the bank. Anything past the shore is pulled back along the line to the
+## last point still inside the water it was cast into.
+func _keep_in_water(pos: Vector2) -> Vector2:
+	var anchor: Vector2 = player.cast_target
+	var zone: WaterZone = Ripple.water_at(get_tree(), anchor)
+	if zone == null or zone.contains(pos):
+		return pos
+	var inside := anchor
+	var outside := pos
+	for _i in 12:
+		var mid := (inside + outside) * 0.5
+		if zone.contains(mid):
+			inside = mid
+		else:
+			outside = mid
+	return inside + (anchor - inside).limit_length(3.0)

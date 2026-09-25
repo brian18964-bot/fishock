@@ -256,7 +256,7 @@ func _build_surface() -> void:
 		mat.set_shader_parameter("base_color", RARE_BASE)
 		mat.set_shader_parameter("deep_color", RARE_DEEP)
 		mat.set_shader_parameter("foam_color", RARE_FOAM)
-		mat.set_shader_parameter("wave_strength", 0.75)
+		mat.set_shader_parameter("wave_strength", 0.2)
 	_ensure_shore_noise()
 	mat.set_shader_parameter("shore_noise", _shore_noise_tex)
 	mat.set_shader_parameter("shore_blend", SHORE_BLEND)
@@ -295,14 +295,6 @@ func _link_lobes() -> void:
 	_surface_material.set_shader_parameter("own_lobe_count", mini(own.size(), MAX_SHADER_LOBES))
 
 
-## Called every frame by WaterSim with the latest wave field.
-func set_sim_texture(tex: Texture2D, grid: Vector2, cell: Vector2) -> void:
-	if _surface_material == null:
-		return
-	_surface_material.set_shader_parameter("sim_height", tex)
-	_surface_material.set_shader_parameter("sim_grid", grid)
-	_surface_material.set_shader_parameter("sim_cell", cell)
-	_surface_material.set_shader_parameter("sim_active", true)
 
 
 ## Seamless noise baked straight to a normal map by Godot.

@@ -175,6 +175,9 @@ static var forced_theme := ""
 var theme_name := ""
 var theme: Dictionary = {}
 var _walk_rects: Array[Rect2] = []
+## Just outside each walkway's way on - kept clear of trees and rocks.
+var _entrances: Array[Vector2] = []
+const ENTRANCE_CLEARANCE := 60.0
 var _path_points: Array[Vector2] = []
 const CRITTER_SCENE := preload("res://scenes/critter.tscn")
 ## User decision: 6 catchable critters by day, more come out at night.
@@ -198,8 +201,10 @@ func _ready() -> void:
 	_place_altar_and_escape()
 	if theme.get("paths", false):
 		_lay_stone_paths()
-	_scatter_props()
+	# Shores (and their boardwalks) before the trees and rocks, so those can
+	# keep clear of every walkway entrance.
 	_dress_shores()
+	_scatter_props()
 	_scatter_themed_props()
 	_scatter_ground_cover()
 	_scatter_critters()
@@ -315,6 +320,7 @@ func _place_docks() -> void:
 			var stairs_too := randf() < DOCK_STAIRS_CHANCE
 			# In from the land end only (and on through to the stairs).
 			dock.add_walls([d, -d] if stairs_too else [d])
+			_add_entrance(dock.walk_rect, d)
 			get_parent().add_child.call_deferred(dock)
 			_walk_rects.append(dock.walk_rect)
 			if randf() < DOCK_BOAT_CHANCE:
@@ -394,6 +400,18 @@ func _shore_distance(pos: Vector2) -> float:
 	for zone in water_zones:
 		best = minf(best, zone.distance_to_edge(pos))
 	return best
+
+
+func _add_entrance(rect: Rect2, side: Vector2) -> void:
+	var c := rect.get_center()
+	_entrances.append(c + side * (absf(side.x) * rect.size.x + absf(side.y) * rect.size.y) * 0.5 + side * 20.0)
+
+
+func _near_entrance(pos: Vector2, margin: float) -> bool:
+	for e in _entrances:
+		if e.distance_to(pos) < margin:
+			return true
+	return false
 
 
 ## How far up the bank a point is: negative in the water.
@@ -561,7 +579,9 @@ func _add_boardwalk(zone: WaterZone) -> void:
 		var reach: float = Dock.half_length(not along_x)
 		var end_a := pos + axis * reach
 		var end_b := pos - axis * reach
-		walk.add_walls([axis if _land_score(end_a) >= _land_score(end_b) else -axis])
+		var way_on := axis if _land_score(end_a) >= _land_score(end_b) else -axis
+		walk.add_walls([way_on])
+		_add_entrance(walk.walk_rect, way_on)
 		get_parent().add_child.call_deferred(walk)
 		_walk_rects.append(walk.walk_rect)
 		return
@@ -660,6 +680,9 @@ func _pick_prop_position(placed: Array) -> Vector2:
 		# Clear of the water with room for a rock's footprint or a trunk,
 		# and off any footpath.
 		if _shore_distance(pos) < 30.0 or _near_path(pos, PATH_CLEARANCE + 10.0):
+			continue
+		# User bug report: rocks were landing across a boardwalk's way on.
+		if _near_entrance(pos, ENTRANCE_CLEARANCE) or _near_walkway(pos, 30.0):
 			continue
 		if fallback.x < 0.0:
 			fallback = pos
