@@ -164,7 +164,16 @@ func _update_camera(delta: float) -> void:
 		floor_amount = SHAKE_RUN if player.fish_run_active_time > 0.0 else SHAKE_FIGHT
 	_shake = maxf(move_toward(_shake, 0.0, SHAKE_DECAY * delta), floor_amount)
 	var shake := Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _shake if _shake > 0.05 else Vector2.ZERO
-	cam.offset = _frame_offset + shake
+	# The camera's limits clamp its own position before the offset is
+	# added, so fishing near the map's edge the framing offset shoved the
+	# player off screen. Aim the view's center instead, kept inside the
+	# limits, offset from where the clamped camera actually sits.
+	var half := get_viewport().get_visible_rect().size * 0.5 / z
+	var lo := Vector2(cam.limit_left, cam.limit_top) + half
+	var hi := Vector2(cam.limit_right, cam.limit_bottom) - half
+	var base := player.global_position.clamp(lo, hi)
+	var center := (player.global_position + _frame_offset).clamp(lo, hi)
+	cam.offset = center - base + shake
 
 
 func _on_line_cleared() -> void:

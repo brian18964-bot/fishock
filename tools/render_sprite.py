@@ -116,11 +116,13 @@ rows = clips x dirs down/left/right/up, x-symmetric camera per animal):
   animal/triceratops  x0.26 Triceratops_Walk Triceratops_Idle  cell 176x152 --center-y 0.422
   animal/velociraptor x0.24 Velociraptor_Walk Velociraptor_Idle  cell 120x104 --center-y 0.468
   (ortho-scale = max(cell W, H) / 27.108)
-  player/player  art_src/player/ual1_standard.glb (Universal Animation Library
-                 mannequin) x1.3 --drop Icosphere --actions Idle_Torch_Loop
-                 Jog_Fwd_Loop Sword_Attack Pistol_Idle_Loop Interact --frames 8
-                 --dirs down down_left left up_left up up_right right down_right
-                 cell 72x80 --center-y 0.615 --ortho-scale 2.9512
+  player/player  now tools/render_player.py (Mixamo Y Bot, with rod data).
+                 Before that: art_src/player/ual1_standard.glb (Universal
+                 Animation Library mannequin) x1.3 --drop Icosphere --actions
+                 Idle_Torch_Loop Jog_Fwd_Loop Sword_Attack Pistol_Idle_Loop
+                 Interact --frames 8 --dirs down down_left left up_left up
+                 up_right right down_right cell 72x80 --center-y 0.615
+                 --ortho-scale 2.9512
 """
 import argparse
 import json
