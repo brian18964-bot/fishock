@@ -141,15 +141,34 @@ static func get_tier_data(tier: String) -> Dictionary:
 	return TIERS[tier]
 
 
+## How much more often a lure's preferred kind of fish is picked, when the
+## pool has one (see Profile.LURES "prefer").
+const PREFER_WEIGHT := 4.0
+
+
 ## zone_key: "common"/"rare" water zone. rarity_key: "common"/"rare"/"epic".
-## Falls back to the tier's generic label if a bucket somehow has no
-## entries, so this never returns an empty dict.
-static func pick_species(tier: String, zone_key: String, rarity_key: String) -> Dictionary:
+## prefer: a habit ("cover"/"jumper") the lure draws - those species weigh
+## PREFER_WEIGHT times more. Falls back to the tier's generic label if a
+## bucket somehow has no entries, so this never returns an empty dict.
+static func pick_species(tier: String, zone_key: String, rarity_key: String, prefer: String = "") -> Dictionary:
 	var pool: Array = SPECIES.get(tier, {}).get(zone_key, {}).get(rarity_key, [])
 	if pool.is_empty():
 		var fallback: Dictionary = TIERS[tier]
 		return {"name": fallback.label, "value_mult": 1.0, "trait": "normal", "color": Color(1, 0.85, 0.2)}
-	return pool[randi() % pool.size()]
+	if prefer == "":
+		return pool[randi() % pool.size()]
+	var weights := []
+	var total := 0.0
+	for species in pool:
+		var w := PREFER_WEIGHT if habit_for(species.name) == prefer else 1.0
+		weights.append(w)
+		total += w
+	var roll := randf() * total
+	for i in pool.size():
+		roll -= weights[i]
+		if roll <= 0.0:
+			return pool[i]
+	return pool[-1]
 
 
 ## User decision (fishing difficulty plan): every species fights at one of

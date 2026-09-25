@@ -107,12 +107,12 @@ func _process(delta: float) -> void:
 	elif _player.fishing_mode == Player.FishingMode.BOBBER:
 		gear_label.text = "釣法：浮標（餌 x%d）－Tab 切換" % _player.bait_count
 	else:
-		gear_label.text = "釣法：路亞（假餌 x%d）－Tab 切換" % _player.lure_count
+		gear_label.text = "釣法：路亞 %s－Tab 切換" % _player.lure_label(_player.current_lure)
 
 	heart_label.text = "❤ 已持有心臟" if GameState.has_heart else ""
 	affliction_label.text = "⚠ " + _player.affliction_text if _player.water_ghost_timer > 0.0 else ""
 
-	gold_label.text = "金幣：%d（庫存假餌 %d）" % [Profile.gold, Profile.loadout_lures]
+	gold_label.text = "金幣：%d（庫存假餌 %d）" % [Profile.gold, Profile.loadout_lure_total()]
 
 	if _player.pending_bait_flavor != "":
 		gear_label.text += "（下竿餌料：%s）" % _player.pending_bait_flavor

@@ -19,7 +19,37 @@ const UPGRADE_DEFS := {
 	"rod_distance": {"label": "釣竿拋投距離", "max_level": 3, "costs": [20, 40, 70], "bonus": 40.0},
 	"reel_power": {"label": "捲線器力道", "max_level": 3, "costs": [25, 50, 85], "bonus": 0.12},
 }
-const LURE_COST := 15
+## User request (shop linkage): the rod is its own upgrade line, one tier
+## per rod in the pack (Lvl1 = the starting rod). Each tier raises the
+## line's tension cap (how much strain it takes before snapping); the
+## better ones also give a touch more time to strike and take the sting
+## out of a leaping fish.
+##   strength: divides every tension gain in FishFight
+##   window: strike-time multiplier; jump: tension from holding a leap
+const ROD_TIERS := [
+	{"name": "木竿", "cost": 0, "strength": 1.0, "window": 1.0, "jump": 1.0},
+	{"name": "玻纖竿", "cost": 50, "strength": 1.15, "window": 1.0, "jump": 1.0},
+	{"name": "碳纖竿", "cost": 100, "strength": 1.3, "window": 1.1, "jump": 1.0},
+	{"name": "海釣竿", "cost": 180, "strength": 1.45, "window": 1.15, "jump": 0.75},
+	{"name": "黃金竿", "cost": 300, "strength": 1.6, "window": 1.2, "jump": 0.6},
+]
+
+## User request (shop linkage): each lure is its own shop item with its own
+## effect, and fishing with it shows that lure (LureVisual.LURES[sprite]).
+## Bought before a run into stock; the run takes the whole stock along.
+##   wait: bite-wait multiplier; prefer: species habit it draws (see
+##   FishData.pick_species); nibbles: fewer test nibbles, fake: fake-dunk
+##   chance multiplier; rare / epic: rare-fish and legendary-upgrade
+##   chance multipliers; no_bite: empty-cast chance multiplier
+const LURES := {
+	"minnow": {"name": "綠米諾", "sprite": 0, "cost": 10, "desc": "基本款，魚咬得比較快", "wait": 0.75},
+	"redhead": {"name": "紅頭", "sprite": 1, "cost": 18, "desc": "愛跳的魚（鬼頭刀、旗魚、紅甘、鮪、鯖）較常上鉤", "prefer": "jumper"},
+	"zebra": {"name": "斑馬", "sprite": 2, "cost": 18, "desc": "躲石縫的魚（石斑、鰻、蘇眉）較常上鉤", "prefer": "cover"},
+	"clown": {"name": "小丑", "sprite": 3, "cost": 22, "desc": "試探咬口少一次、假咬減半，咬口更乾脆", "nibbles": 1, "fake": 0.5},
+	"bluegold": {"name": "藍金", "sprite": 4, "cost": 30, "desc": "稀有魚機率 x1.5", "rare": 1.5},
+	"rainbow": {"name": "彩虹", "sprite": 5, "cost": 45, "desc": "傳說魚機率 x2，但比較常空竿", "epic": 2.0, "no_bite": 1.5},
+}
+const LURE_ORDER := ["minnow", "redhead", "zebra", "clown", "bluegold", "rainbow"]
 ## User request: the flashlight is a shop item (bought once) that runs on
 ## batteries, also bought here and kept in stock until used (see Lantern).
 const FLASHLIGHT_COST := 120
@@ -33,7 +63,10 @@ var upgrade_levels: Dictionary = {
 
 ## Design doc §9.2: lures bought "賽前" (before the match) - queued here,
 ## then handed to the player and cleared the moment a run actually starts.
-var loadout_lures: int = 0
+## Lure id (LURES) -> count.
+var lure_stock: Dictionary = {}
+## Index into ROD_TIERS.
+var rod_tier: int = 0
 
 var has_flashlight: bool = false
 var batteries: int = 0
@@ -90,11 +123,40 @@ func buy_upgrade(key: String) -> bool:
 	return true
 
 
-func buy_lure() -> bool:
-	if gold < LURE_COST:
+func buy_lure(id: String) -> bool:
+	var cost: int = LURES[id].cost
+	if gold < cost:
 		return false
-	gold -= LURE_COST
-	loadout_lures += 1
+	gold -= cost
+	lure_stock[id] = int(lure_stock.get(id, 0)) + 1
+	gold_updated.emit(gold)
+	profile_changed.emit()
+	_save()
+	return true
+
+
+func loadout_lure_total() -> int:
+	var total := 0
+	for id in lure_stock:
+		total += int(lure_stock[id])
+	return total
+
+
+func rod() -> Dictionary:
+	return ROD_TIERS[rod_tier]
+
+
+## The next rod up, or {} once at the top.
+func next_rod() -> Dictionary:
+	return ROD_TIERS[rod_tier + 1] if rod_tier + 1 < ROD_TIERS.size() else {}
+
+
+func buy_rod() -> bool:
+	var next := next_rod()
+	if next.is_empty() or gold < int(next.cost):
+		return false
+	gold -= int(next.cost)
+	rod_tier += 1
 	gold_updated.emit(gold)
 	profile_changed.emit()
 	_save()
@@ -133,11 +195,12 @@ func use_battery() -> bool:
 	return true
 
 
-func consume_loadout_lures() -> int:
-	var count := loadout_lures
-	loadout_lures = 0
+## Hands the whole lure stock to a starting run (id -> count).
+func consume_loadout_lures() -> Dictionary:
+	var stock := lure_stock
+	lure_stock = {}
 	_save()
-	return count
+	return stock
 
 
 func _save() -> void:
@@ -146,7 +209,8 @@ func _save() -> void:
 		file.store_var({
 			"gold": gold,
 			"upgrade_levels": upgrade_levels,
-			"loadout_lures": loadout_lures,
+			"lure_stock": lure_stock,
+			"rod_tier": rod_tier,
 			"fish_log": fish_log,
 			"has_flashlight": has_flashlight,
 			"batteries": batteries,
@@ -162,7 +226,12 @@ func _load() -> void:
 		if data is Dictionary:
 			gold = data.get("gold", 0)
 			upgrade_levels = data.get("upgrade_levels", upgrade_levels)
-			loadout_lures = data.get("loadout_lures", 0)
+			lure_stock = data.get("lure_stock", {})
+			# Saves from before lure types: those lures become minnows.
+			var old_lures: int = data.get("loadout_lures", 0)
+			if old_lures > 0:
+				lure_stock["minnow"] = int(lure_stock.get("minnow", 0)) + old_lures
+			rod_tier = clampi(data.get("rod_tier", 0), 0, ROD_TIERS.size() - 1)
 			fish_log = data.get("fish_log", {})
 			has_flashlight = data.get("has_flashlight", false)
 			batteries = data.get("batteries", 0)

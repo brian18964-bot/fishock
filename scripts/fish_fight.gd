@@ -45,6 +45,10 @@ var habit: String
 var reel_speed: float
 var tension_rise: float
 var tension_fall: float
+## The rod (Profile.ROD_TIERS): its line strength divides every tension
+## gain (the tension cap), and `jump` scales the strain of holding a leap.
+var line_strength := 1.0
+var jump_strain := 1.0
 
 var progress := 0.0
 var tension := 0.15
@@ -63,12 +67,14 @@ var _jump_cooldown := 0.0
 var _dive_timer := 0.0
 
 
-func _init(difficulty: String, fish_habit: String, tier: Dictionary, reel_power: float) -> void:
+func _init(difficulty: String, fish_habit: String, tier: Dictionary, reel_power: float, rod: Dictionary = {}) -> void:
 	difficulty_key = difficulty
 	diff = FishData.DIFFICULTY[difficulty]
 	habit = fish_habit
 	reel_speed = tier.reel_speed * reel_power / diff.stamina
-	tension_rise = tier.tension_rise
+	line_strength = rod.get("strength", 1.0)
+	jump_strain = rod.get("jump", 1.0)
+	tension_rise = tier.tension_rise / line_strength
 	tension_fall = tier.tension_fall
 	_run_timer = randf_range(diff.run_interval.x, diff.run_interval.y)
 	_jump_cooldown = JUMP_COOLDOWN
@@ -94,7 +100,7 @@ func update(delta: float, held: bool, counter: Vector2, line_dir: Vector2, reel_
 	if jump_left > 0.0:
 		jump_left -= delta
 		if held:
-			tension += JUMP_HELD_TENSION * delta
+			tension += JUMP_HELD_TENSION * jump_strain / line_strength * delta
 		else:
 			tension -= tension_fall * delta
 	elif dive_active:

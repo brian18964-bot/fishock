@@ -1,8 +1,8 @@
 class_name LureVisual
 extends Sprite2D
 
-## What hangs on the end of the line (Quaternius, CC0). Lure mode: one of
-## Lure_1-6 picked per cast, pre-rendered lying flat with the nose toward
+## What hangs on the end of the line (Quaternius, CC0). Lure mode: the
+## lure on the line (Profile.LURES "sprite" picks one of Lure_1-6), pre-rendered lying flat with the nose toward
 ## -X (tools/render_sprite.py, x0.8 --recenter, 56x16 canvas centered on
 ## the lure) and kept nose-toward-the-player as it's reeled in. Bobber mode:
 ## a red-and-white float (the packs have none - built by
@@ -58,10 +58,13 @@ func _ready() -> void:
 	pick(true)
 
 
-## A random lure, or the worm when `lure` is false.
-func pick(lure: bool) -> void:
+## Lure `index` (LURES; -1 for a random one), or the float when `lure` is
+## false.
+func pick(lure: bool, index: int = -1) -> void:
 	is_lure = lure
-	var pair: Array = LURES.pick_random() if lure else FLOAT
+	var pair: Array = FLOAT
+	if lure:
+		pair = LURES[index] if index >= 0 and index < LURES.size() else LURES.pick_random()
 	var tex := CanvasTexture.new()
 	tex.diffuse_texture = pair[0]
 	tex.normal_texture = pair[1]

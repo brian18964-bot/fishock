@@ -107,7 +107,7 @@ func _on_cast_started(target_pos: Vector2, _tier: String) -> void:
 	bobber.global_position = target_pos
 	bobber.visible = true
 	# Lure mode shows a rendered lure; bobber mode the float.
-	lure.pick(player.fishing_mode == Player.FishingMode.LURE)
+	lure.pick(player.fishing_mode == Player.FishingMode.LURE, int(player.lure_def().get("sprite", -1)))
 	_fish_offset = Vector2.ZERO
 	_fish_goal = Vector2.ZERO
 	# User feedback: no more rolling waves - just a small ring where the

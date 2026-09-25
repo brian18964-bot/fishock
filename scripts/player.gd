@@ -151,6 +151,8 @@ var fight: FishFight
 var difficulty_key := "novice"
 var fish_habit := ""
 var nibbles_left := 0
+## Chance each test nibble is a fake dunk (the difficulty's, times the lure's).
+var fake_chance := 0.0
 var _nibbled := false
 var _lure_nibbles: Array = []
 var pending_bait_flavor: String = ""
@@ -188,6 +190,10 @@ var _wait_duration: float = 1.0
 var fishing_mode: FishingMode = FishingMode.BOBBER
 var bait_count: int = START_BAIT
 var lure_count: int = START_LURES
+## User request (shop linkage): lure id (Profile.LURES) -> how many this run
+## carries, and which one is on the line in lure mode.
+var lure_stock: Dictionary = {}
+var current_lure: String = ""
 
 ## Design doc §5.2/§5.3: rolled at cast time, revealed at bite time.
 const NORMAL_RARE_CHANCE := 0.03
@@ -330,7 +336,8 @@ func spoil_bait() -> void:
 ## before this run started (consumed here, not reusable across runs).
 func reset_gear() -> void:
 	bait_count = START_BAIT + int(Profile.get_upgrade_bonus("bait_capacity"))
-	lure_count = Profile.consume_loadout_lures()
+	lure_stock = Profile.consume_loadout_lures()
+	_sync_lures()
 	fishing_mode = FishingMode.BOBBER
 	max_cast_dist = MAX_CAST_DIST + Profile.get_upgrade_bonus("rod_distance")
 	reel_power_mult = 1.0 + Profile.get_upgrade_bonus("reel_power")
@@ -357,10 +364,46 @@ func _can_start_cast() -> bool:
 
 
 func _lose_lure() -> void:
-	lure_count = max(lure_count - 1, 0)
+	if current_lure != "":
+		lure_stock[current_lure] = maxi(int(lure_stock.get(current_lure, 0)) - 1, 0)
+	_sync_lures()
 	if lure_count <= 0:
 		fishing_mode = FishingMode.BOBBER
 		GameState.push_message("假餌都用完了，只能用浮標了")
+	elif fishing_mode == FishingMode.LURE and int(lure_stock.get(current_lure, 0)) <= 0:
+		current_lure = _next_lure("")
+		GameState.push_message("這款假餌沒了，換上%s" % lure_label(current_lure))
+
+
+## Recounts lure_count, and keeps current_lure on a lure that's in stock.
+func _sync_lures() -> void:
+	lure_count = 0
+	for id in lure_stock:
+		lure_count += int(lure_stock[id])
+	if current_lure == "" or int(lure_stock.get(current_lure, 0)) <= 0:
+		current_lure = _next_lure("")
+
+
+## The next lure in shop order after `after` that's in stock ("" for the
+## first; "" back if there's none after it).
+func _next_lure(after: String) -> String:
+	var start := Profile.LURE_ORDER.find(after) + 1
+	for i in range(start, Profile.LURE_ORDER.size()):
+		var id: String = Profile.LURE_ORDER[i]
+		if int(lure_stock.get(id, 0)) > 0:
+			return id
+	return ""
+
+
+## The lure on the line, as its shop entry ({} in bobber mode).
+func lure_def() -> Dictionary:
+	if fishing_mode != FishingMode.LURE or current_lure == "":
+		return {}
+	return Profile.LURES[current_lure]
+
+
+func lure_label(id: String) -> String:
+	return "%s（x%d）" % [Profile.LURES[id].name, int(lure_stock.get(id, 0))] if id != "" else ""
 
 
 ## Design doc request: fishing only works if the cast actually lands in
@@ -446,15 +489,18 @@ func _handle_mode_toggle() -> void:
 	if not just_pressed:
 		return
 
-	if fishing_mode == FishingMode.BOBBER:
-		if lure_count <= 0:
-			GameState.push_message("沒有假餌了，只能用浮標")
+	# Bobber -> each lure in stock, in shop order -> back to the bobber.
+	var next := _next_lure("" if fishing_mode == FishingMode.BOBBER else current_lure)
+	if next == "":
+		if fishing_mode == FishingMode.BOBBER:
+			GameState.push_message("沒有假餌了，只能用浮標（假餌在商店買）")
 			return
-		fishing_mode = FishingMode.LURE
-		GameState.push_message("切換成路亞")
-	else:
 		fishing_mode = FishingMode.BOBBER
 		GameState.push_message("切換成浮標")
+	else:
+		fishing_mode = FishingMode.LURE
+		current_lure = next
+		GameState.push_message("切換成路亞：%s－%s" % [lure_label(next), Profile.LURES[next].desc])
 
 
 ## Legacy debug-key path to the same purchases the title screen's shop UI
@@ -462,10 +508,10 @@ func _handle_mode_toggle() -> void:
 ## effect until the next reset_gear()), just no longer the primary way in.
 func _handle_shop_input() -> void:
 	if _key_just_pressed(KEY_B):
-		if Profile.buy_lure():
-			GameState.push_message("買了一個假餌（下輪庫存 %d），這輪不會生效" % Profile.loadout_lures)
+		if Profile.buy_lure("minnow"):
+			GameState.push_message("買了一個假餌（下輪庫存 %d），這輪不會生效" % Profile.loadout_lure_total())
 		else:
-			GameState.push_message("金幣不夠，買不起假餌（需要 %d）" % Profile.LURE_COST)
+			GameState.push_message("金幣不夠，買不起假餌（需要 %d）" % Profile.LURES.minnow.cost)
 	if _key_just_pressed(KEY_1):
 		_try_buy_upgrade("fuel_capacity")
 	if _key_just_pressed(KEY_2):
@@ -803,7 +849,7 @@ func _update_fishing(delta: float) -> void:
 						# and striking now scares the fish off.
 						nibbles_left -= 1
 						_nibbled = true
-						nibble.emit(randf() < FishData.DIFFICULTY[difficulty_key].fake)
+						nibble.emit(randf() < fake_chance)
 						wait_timer = randf_range(NIBBLE_GAP.x, NIBBLE_GAP.y)
 					else:
 						_start_bite()
@@ -906,6 +952,7 @@ func _launch_cast() -> void:
 	# User feedback: worm bait bites faster - trims the wait down.
 	if pending_bait_flavor == BAIT_FLAVOR_WORM:
 		wait_timer *= 0.7
+	wait_timer *= float(lure_def().get("wait", 1.0))
 	_wait_duration = wait_timer
 	retrieve_progress = 0.0
 	_roll_catch_outcome()
@@ -926,6 +973,7 @@ func _roll_catch_outcome() -> void:
 	caught_in_hotspot = _hotspot.active and cast_target.distance_to(_hotspot.global_position) <= Hotspot.RADIUS
 	var in_rare_zone: bool = cast_water_zone != null and cast_water_zone.is_rare()
 	var flavor := pending_bait_flavor
+	var lure := lure_def()
 	pending_bait_flavor = ""
 
 	# User feedback: not every cast should land a fish. Roll this first and
@@ -940,6 +988,7 @@ func _roll_catch_outcome() -> void:
 		no_bite_chance *= FISH_RUN_WEATHER_NO_BITE_MULT
 	if flavor == BAIT_FLAVOR_BUG:
 		no_bite_chance *= 0.5
+	no_bite_chance *= float(lure.get("no_bite", 1.0))
 	if randf() < no_bite_chance:
 		if fishing_mode == FishingMode.BOBBER and randf() < 0.5:
 			cast_outcome = CastOutcome.BAIT_STOLEN
@@ -955,6 +1004,7 @@ func _roll_catch_outcome() -> void:
 		rare_chance += FISH_RUN_WEATHER_RARE_BONUS
 	if flavor == BAIT_FLAVOR_FROG:
 		rare_chance *= 2.0
+	rare_chance *= float(lure.get("rare", 1.0))
 
 	if caught_in_hotspot:
 		var heart_chance := HOTSPOT_HEART_CHANCE_NIGHT if GameState.is_night else HOTSPOT_HEART_CHANCE_DAY
@@ -970,6 +1020,7 @@ func _roll_catch_outcome() -> void:
 	var epic_chance := EPIC_CHANCE_OF_RARE
 	if flavor in BIG_BAIT_FLAVORS:
 		epic_chance *= 2.0
+	epic_chance *= float(lure.get("epic", 1.0))
 	if is_rare_catch and randf() < epic_chance:
 		is_epic_catch = true
 
@@ -987,7 +1038,7 @@ func _roll_catch_outcome() -> void:
 	else:
 		var zone_key := "rare" if in_rare_zone else "common"
 		var rarity_key := "epic" if is_epic_catch else ("rare" if is_rare_catch else "common")
-		var species: Dictionary = FishData.pick_species(current_tier, zone_key, rarity_key)
+		var species: Dictionary = FishData.pick_species(current_tier, zone_key, rarity_key, lure.get("prefer", ""))
 		tier_data.label = species.name
 		tier_data.value = tier_data.value * float(species.value_mult)
 		fish_trait = species.trait
@@ -998,8 +1049,10 @@ func _roll_catch_outcome() -> void:
 	# How long you get to strike: the difficulty's window, a little longer
 	# close in and shorter far out (the cast tier's own window, 0.7 = mid).
 	var diff: Dictionary = FishData.DIFFICULTY[difficulty_key]
-	tier_data.bite_window = clampf(diff.window * tier_data.bite_window / 0.7, 0.3, 1.3)
-	nibbles_left = randi_range(diff.nibbles.x, diff.nibbles.y)
+	# A better rod (Profile.ROD_TIERS) gives a little longer.
+	tier_data.bite_window = clampf(diff.window * tier_data.bite_window / 0.7 * float(Profile.rod().window), 0.3, 1.5)
+	nibbles_left = maxi(randi_range(diff.nibbles.x, diff.nibbles.y) - int(lure.get("nibbles", 0)), 0)
+	fake_chance = diff.fake * float(lure.get("fake", 1.0))
 	_nibbled = false
 	_lure_nibbles.clear()
 	for _i in nibbles_left:
@@ -1029,7 +1082,7 @@ func _start_bite() -> void:
 
 
 func _hook_fish() -> void:
-	fight = FishFight.new(difficulty_key, fish_habit, tier_data, reel_power_mult)
+	fight = FishFight.new(difficulty_key, fish_habit, tier_data, reel_power_mult, Profile.rod())
 	progress = 0.0
 	tension = fight.tension
 	fish_run_active_time = 0.0
@@ -1088,6 +1141,10 @@ func _succeed_catch() -> void:
 func _fail_catch(reason: String) -> void:
 	catch_failed.emit(reason)
 	var msg := "魚跑掉了"
+	# A snapped or frayed line takes the lure with it.
+	var lure_gone: bool = reason in ["line_break", "cover"] and fishing_mode == FishingMode.LURE
+	if lure_gone:
+		_lose_lure()
 	if reason == "line_break":
 		msg = "線斷了，魚跑了"
 	elif reason == "line_cut":
@@ -1106,6 +1163,8 @@ func _fail_catch(reason: String) -> void:
 		msg = "魚在空中甩掉了魚鉤（跳起來時要放手）"
 	elif reason == "cover":
 		msg = "魚鑽進石縫，線被磨斷了"
+	if lure_gone:
+		msg += "，假餌也沒了"
 	GameState.push_message(msg)
 	_reset_line(State.IDLE)
 
