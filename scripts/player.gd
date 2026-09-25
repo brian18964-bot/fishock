@@ -578,18 +578,29 @@ const FISH_TOSS := 36.0
 func _handle_drop_input() -> void:
 	if not _key_just_pressed(KEY_G):
 		return
-	var fish: Dictionary = GameState.drop_one_carried()
-	if fish.is_empty():
+	if GameState.carried_fish.is_empty():
 		GameState.push_message("身上沒有漁獲可以丟")
 		return
+	throw_fish(GameState.carried_fish.size() - 1)
+
+
+## Tosses carried fish `index` a little way ahead (also from the backpack):
+## thrown to the big ghost, it stops to eat it (BigGhost). Into the water
+## it isn't - then at your feet.
+func throw_fish(index: int) -> void:
+	var fish: Dictionary = GameState.drop_carried_at(index)
+	if fish.is_empty():
+		return
+	var toss := global_position + aim_dir.normalized() * FISH_TOSS
+	_put_fish_down(fish, global_position if Ripple.water_at(get_tree(), toss + FEET) != null else toss)
+	GameState.push_message("丟出了一條 %s，跑得更快了（大鬼會被魚引開）" % fish.get("name", "魚"))
+
+
+func _put_fish_down(fish: Dictionary, at: Vector2) -> void:
 	var dropped: DroppedFish = DROPPED_FISH_SCENE.instantiate()
 	get_tree().current_scene.add_child(dropped)
-	# User request: tossed a little way ahead - thrown to the big ghost, it
-	# stops to eat it (BigGhost). Into the water it isn't: then at your feet.
-	var toss := global_position + aim_dir.normalized() * FISH_TOSS
-	dropped.global_position = global_position if Ripple.water_at(get_tree(), toss + FEET) != null else toss
+	dropped.global_position = at
 	dropped.setup(fish)
-	GameState.push_message("丟出了一條 %s，跑得更快了（大鬼會被魚引開）" % fish.get("name", "魚"))
 
 
 func _key_just_pressed(key: int) -> bool:
@@ -636,16 +647,47 @@ func _update_aim() -> void:
 	elif touch_aim != Vector2.ZERO:
 		# Dragging the cast button (see TouchControls) steers the cast.
 		aim_dir = touch_aim
-	elif _aim_joystick.is_pressed:
+	elif _aim_joystick.is_pressed and _aim_joystick.output.length() > 0.15:
 		aim_dir = _aim_joystick.output.normalized()
-	elif not DisplayServer.is_touchscreen_available():
-		# Mouse aim is a desktop-testing fallback for when there's no
-		# touchscreen to drag the right stick with. (On a phone the emulated
-		# mouse sits wherever the last touch was, so it'd yank the aim.)
+	elif _mouse_aiming():
 		var to_mouse := get_global_mouse_position() - global_position
 		if to_mouse.length() > 4.0:
 			aim_dir = to_mouse.normalized()
+	elif state == State.IDLE and velocity.length() > 5.0:
+		# User request: left alone, the light points the way you walk.
+		aim_dir = velocity.normalized()
+	_update_light_skill()
 	facing_indicator.position = aim_dir * 18.0 - Vector2(3.0, 3.0)
+
+
+## User request: the light is aimed like a skill in Brawl Stars - drag the
+## right stick to swing it round (it otherwise follows your walk), and on
+## letting go, if a ghost is in the light it gets the strong flash. A quick
+## tap aims it at the nearest ghost in reach and flashes. (Desktop: hold
+## the right mouse button to aim.)
+const AIM_TAP_TIME := 0.22
+var _was_aiming := false
+var _aim_time := 0.0
+
+
+func _mouse_aiming() -> bool:
+	return not DisplayServer.is_touchscreen_available() and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
+
+
+func _update_light_skill() -> void:
+	# A finger on the stick at all (its is_pressed only turns on past the
+	# deadzone, which a tap never gets to).
+	var aiming: bool = _aim_joystick._touch_index != -1 or _mouse_aiming()
+	if aiming:
+		_aim_time = 0.0 if not _was_aiming else _aim_time + get_physics_process_delta_time()
+	elif _was_aiming and not held:
+		var lantern: Lantern = get_node("Lantern")
+		if _aim_time < AIM_TAP_TIME:
+			var ghost := lantern.nearest_ghost()
+			if ghost != null:
+				aim_dir = (ghost.global_position - global_position).normalized()
+		lantern.release_flash()
+	_was_aiming = aiming
 
 
 func _update_movement() -> void:
@@ -861,6 +903,9 @@ func _handle_sacrifice(held: bool, delta: float) -> void:
 
 
 func _pick_up_dropped_fish() -> void:
+	if not Inventory.fits_with(self, [Inventory.fish_item(_dropped_fish.as_fish())]):
+		GameState.push_message("背包滿了，放不下這條魚")
+		return
 	var fish: Dictionary = _dropped_fish.pick_up()
 	_dropped_fish = null
 	in_dropped_fish_zone = false
@@ -872,6 +917,9 @@ func _pick_up_dropped_fish() -> void:
 
 
 func _catch_critter() -> void:
+	if not Inventory.fits_bait(self, 1):
+		GameState.push_message("背包滿了，放不下餌料")
+		return
 	var label: String = _critter.get_label()
 	var flavor: String = _critter.catch()
 	_critter = null
@@ -889,7 +937,9 @@ func _handle_rummage(held: bool, delta: float) -> void:
 		if rummage_progress >= 1.0:
 			rummage_progress = 0.0
 			var result: Dictionary = _rock.turn_over(global_position)
-			if result.get("found", false):
+			if result.get("found", false) and not Inventory.fits_bait(self, 1):
+				GameState.push_message("石頭底下有%s，但背包滿了放不下" % result.get("flavor", "餌料"))
+			elif result.get("found", false):
 				bait_count += 1
 				var flavor: String = result.get("flavor", "餌料")
 				pending_bait_flavor = flavor
@@ -1209,15 +1259,25 @@ func _succeed_catch() -> void:
 		_hotspot.consume()
 
 	if is_heart_catch:
-		GameState.grant_heart()
-		catch_success.emit({"name": "心臟", "value": 0, "tier": current_tier})
-		Profile.record_catch("心臟", 0.0)
+		if GameState.has_heart or Inventory.fits_with(self, [{"kind": "heart", "size": Vector2i(1, 1)}]):
+			GameState.grant_heart()
+			catch_success.emit({"name": "心臟", "value": 0, "tier": current_tier})
+			Profile.record_catch("心臟", 0.0)
+		else:
+			GameState.push_message("背包滿了，放不下心臟，眼睜睜看它沉回水裡...")
 	else:
-		var fish := {"name": tier_data.label, "value": tier_data.value, "tier": current_tier}
+		var fish := {"name": tier_data.label, "value": tier_data.value, "tier": current_tier,
+			"size": Inventory.size_for_catch(current_tier, is_epic_catch)}
 		catch_success.emit(fish)
-		GameState.add_carried_fish(fish)
 		Profile.record_catch(fish.name, fish.value)
-		GameState.push_message("釣到了 %s！" % tier_data.label)
+		if Inventory.fits_with(self, [Inventory.fish_item(fish)]):
+			GameState.add_carried_fish(fish)
+			GameState.push_message("釣到了 %s（%s型）！" % [tier_data.label, Inventory.SIZE_NAMES[fish.size]])
+		else:
+			# User request: a full backpack takes nothing more - it's left
+			# at your feet.
+			_put_fish_down(fish, global_position)
+			GameState.push_message("釣到了 %s，但背包滿了，只好放在地上" % tier_data.label)
 
 	_reset_line(State.IDLE)
 

@@ -1,28 +1,46 @@
 class_name Backpack
 extends CanvasLayer
 
-## User request: a backpack button in place of the old switch-fishing-mode
-## and switch-light buttons - open it and tap what to use: the bobber or
-## one of the lures in stock, the oil lamp or the flashlight. The oil drum
-## isn't in it (it's carried in the hands, and fishing waits till it's
-## delivered). I on a keyboard; Tab and K still step through as before.
+## User request: the backpack button opens a Diablo-style bag - a grid
+## where everything carried takes up cells (Inventory): fish by size, the
+## heart, bait bundles, lures, batteries. Tap a thing to see it and what
+## can be done with it: throw a fish (the big ghost goes for it), put a
+## lure on, go back to the bobber. The light (oil lamp / flashlight) is
+## picked in the row above the grid. The oil drum isn't in the bag - it's
+## carried in the hands. I on a keyboard; Tab and K still step through as
+## before.
 ##
 ## Plain for now: the whole UI is to be redesigned later.
 
-const PANEL_SIZE := Vector2(380, 330)
+const CELL := 46.0
+const PANEL_SIZE := Vector2(420, 400)
 const FONT := 15
+const KIND_COLORS := {
+	"fish": Color(0.32, 0.45, 0.55),
+	"heart": Color(0.62, 0.16, 0.2),
+	"bait": Color(0.45, 0.34, 0.2),
+	"lure": Color(0.25, 0.5, 0.4),
+	"battery": Color(0.6, 0.55, 0.2),
+}
+const ROTTEN_COLOR := Color(0.36, 0.3, 0.18)
 
 var _panel: PanelContainer
-var _list: VBoxContainer
+var _used: Label
+var _light_row: HBoxContainer
+var _mode: Label
+var _grid: GridView
+var _detail: Label
+var _actions: HBoxContainer
 var _key_held := false
 var _refresh := 0.0
+var _selected := {}  # {kind, index} of the tapped item
 
 
 func _ready() -> void:
 	layer = 6
 	_panel = PanelContainer.new()
 	var box := StyleBoxFlat.new()
-	box.bg_color = Color(0.07, 0.06, 0.05, 0.9)
+	box.bg_color = Color(0.07, 0.06, 0.05, 0.92)
 	box.border_color = Color(1.0, 0.85, 0.55, 0.7)
 	box.set_border_width_all(1)
 	box.set_corner_radius_all(10)
@@ -32,9 +50,39 @@ func _ready() -> void:
 	_panel.position = (Vector2(960, 540) - PANEL_SIZE) * 0.5
 	_panel.visible = false
 	add_child(_panel)
-	_list = VBoxContainer.new()
-	_list.add_theme_constant_override("separation", 6)
-	_panel.add_child(_list)
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 8)
+	_panel.add_child(list)
+
+	var top := HBoxContainer.new()
+	var title := _label("背包", 20, Color(1.0, 0.9, 0.7))
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(title)
+	_used = _label("", 13, Color(1, 1, 1, 0.7))
+	top.add_child(_used)
+	var close := _button("✕")
+	close.pressed.connect(toggle)
+	top.add_child(close)
+	list.add_child(top)
+
+	_light_row = HBoxContainer.new()
+	_light_row.add_theme_constant_override("separation", 6)
+	list.add_child(_light_row)
+	_mode = _label("", 13, Color(1.0, 0.85, 0.55, 0.9))
+	list.add_child(_mode)
+
+	_grid = GridView.new()
+	_grid.owner_bag = self
+	_grid.custom_minimum_size = Vector2(Inventory.COLS, Inventory.ROWS) * CELL
+	_grid.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	list.add_child(_grid)
+
+	_detail = _label("點一下格子裡的東西", 14, Color(1, 1, 1, 0.85))
+	_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	list.add_child(_detail)
+	_actions = HBoxContainer.new()
+	_actions.add_theme_constant_override("separation", 8)
+	list.add_child(_actions)
 
 
 func is_open() -> bool:
@@ -43,6 +91,7 @@ func is_open() -> bool:
 
 func toggle() -> void:
 	_panel.visible = not _panel.visible
+	_selected = {}
 	if _panel.visible:
 		_rebuild()
 
@@ -58,73 +107,107 @@ func _process(delta: float) -> void:
 			_rebuild()
 
 
+func _player() -> Player:
+	return get_tree().get_first_node_in_group("player") as Player
+
+
 func _rebuild() -> void:
-	_refresh = 0.5
-	for c in _list.get_children():
-		c.queue_free()
-	var player := get_tree().get_first_node_in_group("player") as Player
+	_refresh = 0.4
+	var player := _player()
 	if player == null:
 		return
+	var items := Inventory.items(player)
+	var placed := Inventory.pack(items)
+	_grid.items = items
+	_grid.placed = placed
+	_grid.selected = _selected
+	_grid.queue_redraw()
+	_used.text = "%d / %d 格　" % [Inventory.used_cells(player), Inventory.COLS * Inventory.ROWS]
+
+	# The light, picked straight from here.
+	for c in _light_row.get_children():
+		c.queue_free()
 	var lantern: Lantern = player.get_node("Lantern")
-	var busy := player.state != Player.State.IDLE
-
-	_title("背包")
-	_heading("釣法" + ("（收線後才能換）" if busy else ""))
-	var bobber := player.fishing_mode == Player.FishingMode.BOBBER
-	_item("浮標　餌 x%d" % player.bait_count, bobber, busy, player.choose_bobber)
-	for id in Profile.LURE_ORDER:
-		var count := int(player.lure_stock.get(id, 0))
-		if count <= 0:
-			continue
-		var on: bool = not bobber and player.current_lure == id
-		_item("路亞・%s x%d" % [Profile.LURES[id].name, count], on, busy, player.choose_lure.bind(id))
-
-	_heading("燈具")
-	var lamp_on := lantern.tool == Lantern.Tool.LAMP
-	_item("煤燈　燃油 %d%%" % int(lantern.fuel / lantern.max_fuel * 100.0), lamp_on, false,
-		lantern.switch_tool.bind(Lantern.Tool.LAMP))
+	_light_row.add_child(_label("燈具", 13, Color(1.0, 0.85, 0.55, 0.9)))
+	_light_row.add_child(_choice("煤燈 %d%%" % int(lantern.fuel / lantern.max_fuel * 100.0),
+		lantern.tool == Lantern.Tool.LAMP, false, lantern.switch_tool.bind(Lantern.Tool.LAMP)))
 	if Profile.has_flashlight:
-		_item("手電筒　電量 %d%%・備用電池 %d" % [int(lantern.charge), Profile.batteries], not lamp_on, false,
-			lantern.switch_tool.bind(Lantern.Tool.FLASHLIGHT))
+		_light_row.add_child(_choice("手電筒 %d%%" % int(lantern.charge), lantern.tool == Lantern.Tool.FLASHLIGHT,
+			false, lantern.switch_tool.bind(Lantern.Tool.FLASHLIGHT)))
 	else:
-		_item("手電筒（商店購買）", false, true, Callable())
+		_light_row.add_child(_choice("手電筒（商店）", false, true, Callable()))
 
-	_heading("身上")
-	var notes := "漁獲 %d 條" % GameState.carried_fish.size()
-	if player.carrying_oil_drum:
-		notes += "　・手上提著油箱（不佔背包）"
-	_label(notes, 14, Color(1, 1, 1, 0.8))
-
-	var close := Button.new()
-	close.text = "關閉"
-	close.add_theme_font_size_override("font_size", FONT)
-	close.pressed.connect(toggle)
-	_list.add_child(close)
+	var using: String = "浮標" if player.fishing_mode == Player.FishingMode.BOBBER else "路亞・" + Profile.LURES[player.current_lure].name
+	_mode.text = "釣法：%s%s" % [using, "　（油箱提在手上，不佔背包）" if player.carrying_oil_drum else ""]
+	_show_selected(player, items)
 
 
-func _title(text: String) -> void:
-	_label(text, 20, Color(1.0, 0.9, 0.7))
+func _show_selected(player: Player, items: Array) -> void:
+	for c in _actions.get_children():
+		c.queue_free()
+	var item := {}
+	for it in items:
+		if not _selected.is_empty() and it.kind == _selected.kind and it.index == _selected.index:
+			item = it
+	if item.is_empty():
+		_selected = {}
+		_detail.text = "點一下格子裡的東西"
+		return
+	var busy := player.state != Player.State.IDLE
+	match item.kind:
+		"fish":
+			var fish: Dictionary = GameState.carried_fish[item.index]
+			if fish.get("rotten", false):
+				_detail.text = "腐敗的%s（%s型）：拿去獻祭會賭一把" % [item.label, item.grade]
+			else:
+				_detail.text = "%s（%s型，價值 %.0f）" % [item.label, item.grade, fish.get("value", 0.0)]
+			_actions.add_child(_action("丟出（大鬼會去吃）", func():
+				player.throw_fish(item.index)
+				_selected = {}
+				_rebuild()))
+		"heart":
+			_detail.text = "心臟：被大鬼關進籠子時會救你一命"
+		"bait":
+			_detail.text = "餌料 x%d（全部 %d）：浮標用" % [item.count, player.bait_count]
+			if player.fishing_mode != Player.FishingMode.BOBBER:
+				_actions.add_child(_action("改用浮標", func():
+					player.choose_bobber()
+					_rebuild(), busy))
+		"lure":
+			var def: Dictionary = Profile.LURES[item.index]
+			_detail.text = "路亞・%s x%d：%s" % [def.name, item.count, def.desc]
+			if player.fishing_mode != Player.FishingMode.LURE or player.current_lure != item.index:
+				_actions.add_child(_action("裝上", func():
+					player.choose_lure(item.index)
+					_rebuild(), busy))
+		"battery":
+			_detail.text = "電池 x%d（全部 %d）：手電筒沒電時按住燈鈕換上" % [item.count, Profile.batteries]
+	if busy and item.kind in ["bait", "lure"]:
+		_detail.text += "（收線後才能換）"
 
 
-func _heading(text: String) -> void:
-	_label(text, 13, Color(1.0, 0.85, 0.55, 0.85))
+func select(kind: String, index) -> void:
+	_selected = {"kind": kind, "index": index}
+	_rebuild()
 
 
-func _label(text: String, size: int, color: Color) -> void:
+func _label(text: String, size: int, color: Color) -> Label:
 	var l := Label.new()
 	l.text = text
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", color)
-	_list.add_child(l)
+	return l
 
 
-## One choice: ✓ when it's the one in use; greyed out when it can't be
-## picked right now.
-func _item(text: String, current: bool, disabled: bool, pick: Callable) -> void:
+func _button(text: String) -> Button:
 	var b := Button.new()
-	b.text = ("✓ " if current else "　 ") + text
-	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.text = text
 	b.add_theme_font_size_override("font_size", FONT)
+	return b
+
+
+func _choice(text: String, current: bool, disabled: bool, pick: Callable) -> Button:
+	var b := _button(("✓ " if current else "") + text)
 	b.disabled = disabled or current
 	if current:
 		b.add_theme_color_override("font_disabled_color", Color(1.0, 0.9, 0.6))
@@ -132,4 +215,53 @@ func _item(text: String, current: bool, disabled: bool, pick: Callable) -> void:
 		b.pressed.connect(func():
 			pick.call()
 			_rebuild())
-	_list.add_child(b)
+	return b
+
+
+func _action(text: String, act: Callable, disabled := false) -> Button:
+	var b := _button(text)
+	b.disabled = disabled
+	b.pressed.connect(act)
+	return b
+
+
+## The grid: cells, and each item as a tile over the cells it takes.
+class GridView extends Control:
+	var owner_bag: Backpack
+	var items: Array = []
+	var placed: Array = []
+	var selected := {}
+
+	func _gui_input(event: InputEvent) -> void:
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			var cell := Vector2i(event.position / Backpack.CELL)
+			for i in placed.size():
+				var r: Rect2i = placed[i]
+				if r.has_point(cell):
+					owner_bag.select(items[i].kind, items[i].index)
+					accept_event()
+					return
+
+	func _draw() -> void:
+		var font := get_theme_default_font()
+		for x in Inventory.COLS:
+			for y in Inventory.ROWS:
+				var r := Rect2(Vector2(x, y) * Backpack.CELL, Vector2.ONE * Backpack.CELL).grow(-1.5)
+				draw_rect(r, Color(1, 1, 1, 0.05))
+				draw_rect(r, Color(1, 1, 1, 0.12), false, 1.0)
+		for i in placed.size():
+			var item: Dictionary = items[i]
+			var cells: Rect2i = placed[i]
+			var r := Rect2(Vector2(cells.position) * Backpack.CELL, Vector2(cells.size) * Backpack.CELL).grow(-3.0)
+			var col: Color = Backpack.ROTTEN_COLOR if item.get("rotten", false) else Backpack.KIND_COLORS.get(item.kind, Color.GRAY)
+			draw_rect(r, col)
+			var is_sel: bool = not selected.is_empty() and selected.kind == item.kind and selected.index == item.index
+			draw_rect(r, Color(1.0, 0.9, 0.6) if is_sel else Color(1, 1, 1, 0.3), false, 2.0 if is_sel else 1.0)
+			var name: String = item.label
+			var fs := 12 if cells.size.x > 1 else 11
+			var text_w := r.size.x - 6.0
+			draw_string(font, r.position + Vector2(3, 14), name, HORIZONTAL_ALIGNMENT_LEFT, text_w, fs, Color(1, 1, 1, 0.95))
+			if item.kind == "fish":
+				draw_string(font, r.position + Vector2(3, r.size.y - 5), item.grade, HORIZONTAL_ALIGNMENT_LEFT, text_w, 11, Color(1, 1, 1, 0.6))
+			elif item.count > 0:
+				draw_string(font, r.position + Vector2(0, r.size.y - 5), "x%d" % item.count, HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 3.0, 12, Color(1, 1, 1, 0.9))

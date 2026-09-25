@@ -1,7 +1,7 @@
 extends Area2D
 
 ## Sacrifice-only now: no refuel, and its light is just a faint marker
-## with no ghost-proof safe zone (see ghost.gd - it's not in the
+## (always on) with no ghost-proof safe zone (see ghost.gd - it's not in the
 ## avoidance list). The fuel station is the actual safe spot.
 ##
 ## User request: drawn from the user's ancient altar model (a round stone
@@ -26,15 +26,20 @@ func _ready() -> void:
 	visual.texture = tex
 	Art.place(visual, OFFSET, SPRITE_SCALE)
 	light.texture = LightTextureFactory.make_radial_texture()
-	light.texture_scale = 0.4
-	light.color = Color(1.0, 0.85, 0.55)
-	light.energy = 0.5
+	light.texture_scale = 0.55
+	light.color = Color(1.0, 0.82, 0.55)
+	light.energy = 0.6
 	light.height = Lantern.LIGHT_HEIGHT
 	light.shadow_enabled = true
 	LightTwin.attach(light)
 
-func _process(_delta: float) -> void:
-	light.visible = not GameState.is_night
+## User request: a faint glow, day and night, so it can be found - it
+## breathes a little.
+var _time := 0.0
+
+func _process(delta: float) -> void:
+	_time += delta
+	light.energy = 0.6 + sin(_time * 1.6) * 0.1
 
 func _on_body_entered(body: Node2D) -> void:
 	if body.has_method("set_in_altar"):

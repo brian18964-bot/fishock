@@ -284,6 +284,36 @@ func _handle_light_toggle(delta: float) -> void:
 	relight_progress_updated.emit(relight_progress)
 
 
+## The ghost nearest the player within the flash's reach, if any.
+func nearest_ghost() -> Node2D:
+	var best: Node2D = null
+	var best_d := FLASH_RANGE
+	for ghost in get_tree().get_nodes_in_group("ghosts"):
+		var d := global_position.distance_to(ghost.global_position)
+		if d <= best_d:
+			best_d = d
+			best = ghost
+	return best
+
+
+## User request: letting go of the aimed light (Player._update_light_skill)
+## flashes it - if there's a ghost in the light to flash.
+func release_flash() -> void:
+	rotation = _player.aim_dir.angle()
+	if not lit or power() <= 0.0:
+		return
+	var target := false
+	for ghost in get_tree().get_nodes_in_group("ghosts"):
+		if global_position.distance_to(ghost.global_position) <= FLASH_RANGE and illuminates(ghost.global_position):
+			target = true
+	if not target:
+		return
+	if flash_cooldown > 0.0:
+		GameState.push_message("強光還在冷卻（%.0f 秒）" % ceilf(flash_cooldown))
+		return
+	_try_flash()
+
+
 func _try_flash() -> void:
 	if tool == Tool.LAMP:
 		if fuel < FLASH_FUEL_COST:

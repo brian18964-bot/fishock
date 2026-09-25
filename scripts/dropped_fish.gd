@@ -13,6 +13,8 @@ const MIN_VALUE_RATIO := 0.15
 
 var fish_name: String = "魚"
 var base_value: float = 0.0
+## Its size in the backpack (Inventory).
+var size: String = "small"
 var age: float = 0.0
 
 @onready var visual: ColorRect = $Visual
@@ -32,6 +34,7 @@ func _ready() -> void:
 func setup(fish: Dictionary) -> void:
 	fish_name = fish.get("name", "魚")
 	base_value = float(fish.get("value", 0))
+	size = Inventory.fish_size(fish)
 
 
 func _process(delta: float) -> void:
@@ -58,13 +61,16 @@ func current_value() -> float:
 ## dict for GameState.add_carried_fish() - rotten pickups carry no normal
 ## value, only the "rotten" flag that unlocks the sacrifice gamble.
 func pick_up() -> Dictionary:
-	var fish: Dictionary
-	if is_rotten():
-		fish = {"name": fish_name, "value": 0.0, "tier": "rotten", "rotten": true}
-	else:
-		fish = {"name": fish_name, "value": current_value(), "tier": "dropped", "rotten": false}
+	var fish := as_fish()
 	queue_free()
 	return fish
+
+
+## What it'd be back in the backpack.
+func as_fish() -> Dictionary:
+	if is_rotten():
+		return {"name": fish_name, "value": 0.0, "tier": "rotten", "rotten": true, "size": size}
+	return {"name": fish_name, "value": current_value(), "tier": "dropped", "rotten": false, "size": size}
 
 
 ## Eaten by the big ghost: gone, and no longer on offer to a player

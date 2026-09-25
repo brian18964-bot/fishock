@@ -149,6 +149,15 @@ func add_carried_fish(fish: Dictionary) -> void:
 	inventory_updated.emit(carried_fish)
 
 
+func drop_carried_at(index: int) -> Dictionary:
+	if index < 0 or index >= carried_fish.size():
+		return {}
+	var fish: Dictionary = carried_fish[index]
+	carried_fish.remove_at(index)
+	inventory_updated.emit(carried_fish)
+	return fish
+
+
 func drop_one_carried() -> Dictionary:
 	if carried_fish.is_empty():
 		return {}
