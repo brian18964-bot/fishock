@@ -17,6 +17,11 @@ extends CanvasLayer
 ## aims the light - so the cast button doubles as a stick. Press and hold
 ## to charge, drag to aim the cast (the light turns with it), let go to
 ## cast. A short tap still works as before.
+##
+## User request: the lamp's brightness is a slider like iPhone's screen
+## brightness in Control Center - drag up on it to brighten, down to dim.
+## It moves with the finger (it doesn't jump to where you touch), and its
+## fill shows the current brightness.
 
 ## Aim stick center in the 960x540 layout (AimJoystick in main.tscn: a
 ## 300x300 control at the bottom-right corner, 8 px in).
@@ -39,9 +44,11 @@ const BUTTONS := [
 	["換燈", KEY_K, 250.0, 150.0, 22.0],
 	["閃光", KEY_F, 275.0, 150.0, 25.0],
 	["丟魚", KEY_G, 300.0, 150.0, 25.0],
-	["暗", KEY_BRACKETLEFT, 325.0, 140.0, 19.0],
-	["亮", KEY_BRACKETRIGHT, 348.0, 140.0, 19.0],
 ]
+## Top right, under the fuel bar and above the aim stick.
+const SLIDER_RECT := Rect2(920, 62, 34, 160)
+## Touches this far outside the slider still grab it.
+const SLIDER_GRAB := 10.0
 const FILL := Color(1, 1, 1, 0.1)
 const FILL_PRESSED := Color(1, 1, 1, 0.38)
 const RIM_ALPHA := 0.45
@@ -51,6 +58,9 @@ var _cast_touch := -1
 var _cast_drag := Vector2.ZERO
 var _aim_release_timer := 0.0
 var _cast_view: CastButtonView
+var _slider: BrightnessSlider
+var _slider_touch := -1
+var _slider_y := 0.0
 
 
 func _ready() -> void:
@@ -64,9 +74,16 @@ func _ready() -> void:
 	_cast_view.position = _cast_center
 	_cast_view.radius = CAST_RADIUS
 	add_child(_cast_view)
+	_slider = BrightnessSlider.new()
+	_slider.position = SLIDER_RECT.position
+	_slider.size = SLIDER_RECT.size
+	add_child(_slider)
 
 
 func _process(delta: float) -> void:
+	var lantern := _lantern()
+	if lantern != null:
+		_slider.set_value(inverse_lerp(Lantern.MIN_BRIGHTNESS, Lantern.MAX_BRIGHTNESS, lantern.brightness))
 	if _cast_touch == -1 and _aim_release_timer > 0.0:
 		_aim_release_timer -= delta
 		if _aim_release_timer <= 0.0:
@@ -77,6 +94,17 @@ func _input(event: InputEvent) -> void:
 	if not visible:
 		return
 	if event is InputEventScreenTouch:
+		if event.pressed and _slider_touch == -1 and SLIDER_RECT.grow(SLIDER_GRAB).has_point(event.position):
+			_slider_touch = event.index
+			_slider_y = event.position.y
+			_slider.set_active(true)
+			get_viewport().set_input_as_handled()
+			return
+		if not event.pressed and event.index == _slider_touch:
+			_slider_touch = -1
+			_slider.set_active(false)
+			get_viewport().set_input_as_handled()
+			return
 		if event.pressed and _cast_touch == -1 and event.position.distance_to(_cast_center) <= CAST_RADIUS:
 			_cast_touch = event.index
 			_cast_drag = Vector2.ZERO
@@ -89,6 +117,14 @@ func _input(event: InputEvent) -> void:
 			_send(KEY_SPACE, false)
 			_aim_release_timer = AIM_HOLD_AFTER_RELEASE
 			get_viewport().set_input_as_handled()
+	elif event is InputEventScreenDrag and event.index == _slider_touch:
+		var lantern := _lantern()
+		if lantern != null:
+			var step: float = (_slider_y - event.position.y) / SLIDER_RECT.size.y
+			lantern.brightness = clampf(lantern.brightness + step * (Lantern.MAX_BRIGHTNESS - Lantern.MIN_BRIGHTNESS),
+				Lantern.MIN_BRIGHTNESS, Lantern.MAX_BRIGHTNESS)
+		_slider_y = event.position.y
+		get_viewport().set_input_as_handled()
 	elif event is InputEventScreenDrag and event.index == _cast_touch:
 		_cast_drag = event.position - _cast_center
 		var steering := _cast_drag.length() > DRAG_DEADZONE
@@ -96,6 +132,11 @@ func _input(event: InputEvent) -> void:
 		if steering:
 			_set_player_aim(_cast_drag.normalized())
 		get_viewport().set_input_as_handled()
+
+
+func _lantern() -> Lantern:
+	var player := get_tree().get_first_node_in_group("player")
+	return player.get_node_or_null("Lantern") as Lantern if player != null else null
 
 
 func _set_player_aim(dir: Vector2) -> void:
@@ -189,3 +230,41 @@ class CastButtonView extends Node2D:
 			var tip := dir * (radius + 32.0)
 			draw_colored_polygon(PackedVector2Array([tip, tip - dir * 12.0 + dir.orthogonal() * 7.0,
 				tip - dir * 12.0 - dir.orthogonal() * 7.0]), Color(1, 0.9, 0.5, 0.85))
+
+
+## The brightness slider: a rounded bar filled from the bottom up to the
+## lamp's brightness, with a sun at its foot.
+class BrightnessSlider extends Node2D:
+	var size := Vector2(34, 160)
+	var _value := 0.5
+	var _active := false
+
+	func set_value(v: float) -> void:
+		if absf(v - _value) > 0.001:
+			_value = v
+			queue_redraw()
+
+	func set_active(active: bool) -> void:
+		_active = active
+		queue_redraw()
+
+	func _draw() -> void:
+		var radius := size.x * 0.5
+		var back := StyleBoxFlat.new()
+		back.bg_color = Color(0, 0, 0, 0.35 if _active else 0.25)
+		back.border_color = Color(1, 1, 1, 0.45)
+		back.set_border_width_all(1)
+		back.set_corner_radius_all(int(radius))
+		draw_style_box(back, Rect2(Vector2.ZERO, size))
+		var fill_h := maxf(size.y * clampf(_value, 0.0, 1.0), 2.0)
+		var fill := StyleBoxFlat.new()
+		fill.bg_color = Color(1, 0.93, 0.75, 0.75 if _active else 0.55)
+		fill.set_corner_radius_all(int(minf(radius, fill_h * 0.5)))
+		draw_style_box(fill, Rect2(0, size.y - fill_h, size.x, fill_h))
+		# The sun.
+		var c := Vector2(radius, size.y - radius)
+		var ink := Color(0.15, 0.12, 0.08, 0.85) if _value > 0.12 else Color(1, 1, 1, 0.8)
+		draw_circle(c, 4.5, ink)
+		for i in 8:
+			var d := Vector2.RIGHT.rotated(i * TAU / 8.0)
+			draw_line(c + d * 7.0, c + d * 10.0, ink, 1.5)

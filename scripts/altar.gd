@@ -3,12 +3,28 @@ extends Area2D
 ## Sacrifice-only now: no refuel, and its light is just a faint marker
 ## with no ghost-proof safe zone (see ghost.gd - it's not in the
 ## avoidance list). The fuel station is the actual safe spot.
+##
+## User request: drawn from the user's ancient altar model (a round stone
+## dais, tools/render_props.py) - low enough to stand on, so it lies under
+## everything like the docks do (z_index -3 in main.tscn).
+
+const SHEET := [preload("res://assets/sprites/altar/altar_55deg_albedo.png"),
+	preload("res://assets/sprites/altar/altar_55deg_normal.png")]
+const SPRITE_SCALE := 0.5
+## (0, -center_y) * 27.108 for the render's camera (render_props.py).
+const OFFSET := Vector2(0.0, -8.8)
 
 @onready var light: PointLight2D = $Light
 
 func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
+	var tex := CanvasTexture.new()
+	tex.diffuse_texture = SHEET[0]
+	tex.normal_texture = SHEET[1]
+	var visual: Sprite2D = $Visual
+	visual.texture = tex
+	Art.place(visual, OFFSET, SPRITE_SCALE)
 	light.texture = LightTextureFactory.make_radial_texture()
 	light.texture_scale = 0.4
 	light.color = Color(1.0, 0.85, 0.55)

@@ -280,9 +280,9 @@ func _move_toward(target: Vector2, speed: float, delta: float) -> void:
 
 	# Design doc §2.2/request: fixed light circles are hard walls a ghost
 	# can't cross, but only while actually lit - the altar isn't one of
-	# these anymore (no protection function), and a fuel station or
-	# escape point that's gone dark (out of charges, or night) stops
-	# blocking too.
+	# these anymore (no protection function), and a fuel station whose
+	# lamp has gone dark (run dry) or an escape point that's out (night)
+	# stops blocking too.
 	if escape_light.visible:
 		next_position = _clamp_outside_safe_zone(next_position, escape_point.global_position)
 	if fuel_light.visible:

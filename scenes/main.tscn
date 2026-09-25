@@ -48,13 +48,8 @@ script = ExtResource("3")
 
 [node name="Light" type="PointLight2D" parent="Altar"]
 
-[node name="Visual" type="ColorRect" parent="Altar"]
-offset_left = -32.0
-offset_top = -32.0
-offset_right = 32.0
-offset_bottom = 32.0
-color = Color(0.9, 0.55, 0.15, 1)
-mouse_filter = 2
+[node name="Visual" type="Sprite2D" parent="Altar"]
+z_index = -3
 
 [node name="Label" type="Label" parent="Altar"]
 offset_left = -32.0
@@ -162,8 +157,9 @@ script = ExtResource("lure_visual")
 
 [node name="Line" type="Line2D" parent="."]
 z_index = 5
-width = 1.5
+width = 0.45
 default_color = Color(1, 1, 1, 0.6)
+antialiased = true
 
 [node name="HUD" type="CanvasLayer" parent="."]
 script = ExtResource("4")

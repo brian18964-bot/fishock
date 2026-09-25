@@ -49,10 +49,12 @@ func force_relocate() -> void:
 func _relocate() -> void:
 	var common_zones := get_tree().get_nodes_in_group("water_zones_common")
 	if common_zones.is_empty():
-		# Defensive fallback (e.g. this scene tested standalone, without
-		# MapGenerator ever running) so this never gets stuck uninitialized.
-		global_position = Vector2(Player.WORLD_WIDTH * 0.5, Player.WORLD_HEIGHT * 0.5)
-		active = true
+		# The map's water zones are added in a deferred batch after this
+		# runs at startup: wait for them. (This used to park it at the map's
+		# center - on dry land at the spawn point - until something was
+		# caught from it, which never happened.)
+		active = false
+		_respawn_timer = 0.1
 		return
 
 	var zone: WaterZone = common_zones[randi() % common_zones.size()]
