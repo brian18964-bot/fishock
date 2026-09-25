@@ -28,6 +28,7 @@ shape = SubResource("RectangleShape2D_drums")
 z_index = 1
 
 [node name="Label" type="Label" parent="."]
+visible = false
 z_index = 5
 offset_left = -32.0
 offset_top = -86.0
@@ -37,6 +38,7 @@ text = "煤油站"
 horizontal_alignment = 1
 
 [node name="ChargeLabel" type="Label" parent="."]
+visible = false
 z_index = 5
 offset_left = -40.0
 offset_top = 34.0

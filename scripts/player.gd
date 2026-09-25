@@ -130,7 +130,7 @@ var in_escape_zone: bool = false
 var in_fuel_zone: bool = false
 var in_oil_drum_zone: bool = false
 var in_dropped_fish_zone: bool = false
-var in_roadside_zone: bool = false
+var in_rock_zone: bool = false
 var in_critter_zone: bool = false
 var current_noise_radius: float = 0.0
 var cast_jittered: bool = false
@@ -183,7 +183,7 @@ var _fuel_station: FuelStation
 var _oil_drum: OilDrum
 var _carried_oil_drum: OilDrum
 var _dropped_fish: DroppedFish
-var _roadside_item: RoadsideItem
+var _rock: FlipRock
 var _critter: Critter
 var _critter_hint_shown: bool = false
 var _wait_duration: float = 1.0
@@ -210,6 +210,7 @@ var is_heart_catch: bool = false
 var caught_in_hotspot: bool = false
 
 var _prev_action_held: bool = false
+var _prev_use_held: bool = false
 var _prev_mode_toggle_held: bool = false
 var _key_prev_held: Dictionary = {}
 
@@ -273,17 +274,19 @@ func set_in_critter(value: bool, critter: Critter) -> void:
 		_critter = critter
 		if not _critter_hint_shown:
 			_critter_hint_shown = true
-			GameState.push_message("按空白鍵可以抓%s當餌料" % critter.get_label())
+			GameState.push_message("可以抓%s當餌料（點牠旁邊的「抓餌」）" % critter.get_label())
 	elif critter == _critter:
 		in_critter_zone = false
 		_critter = null
 
 
-func set_in_roadside(value: bool, item: RoadsideItem) -> void:
-	in_roadside_zone = value
-	_roadside_item = item if value else null
-	if value and state != State.IDLE:
-		_cancel_cast("roadside_interrupt")
+func set_in_rock(value: bool, rock: FlipRock) -> void:
+	if value:
+		in_rock_zone = true
+		_rock = rock
+	elif rock == _rock:
+		in_rock_zone = false
+		_rock = null
 
 
 ## Design doc request: heavier weight from carried fish, dropping some
@@ -688,64 +691,94 @@ func _is_action_pressed() -> bool:
 	return Input.is_key_pressed(KEY_SPACE)
 
 
+## User request: the action button only fishes. Everything else - offering
+## fish at the altar, refuelling, the oil drum, picking a dropped fish back
+## up, catching a critter for bait, turning a rock, escaping - is offered
+## by a button at the thing itself whenever it can be done (ActionPrompt,
+## from interaction() below), held or tapped like before; E on a keyboard.
+func interaction() -> Dictionary:
+	if held or state != State.IDLE or GameState.run_over:
+		return {}
+	if in_altar_zone and not GameState.carried_fish.is_empty():
+		return _offer(get_parent().get_node("Altar"), "祭壇", "獻祭", true, -34.0)
+	if in_escape_zone and GameState.day_phase == GameState.DayPhase.ESCAPE:
+		return _offer(get_parent().get_node("EscapePoint"), "符文石柱", "逃離", false, -30.0)
+	if in_fuel_zone and _fuel_station != null:
+		var station := "煤油站 %d/%d" % [int(_fuel_station.total_fuel), int(_fuel_station.max_total_fuel)]
+		if carrying_oil_drum:
+			return _offer(_fuel_station, station, "倒入油箱", false, -42.0)
+		var lantern: Lantern = get_node("Lantern")
+		if _fuel_station.total_fuel > 0.0 and lantern.fuel < lantern.max_fuel - 0.5:
+			return _offer(_fuel_station, station, "加油", false, -42.0)
+	if in_oil_drum_zone and _oil_drum != null and not carrying_oil_drum:
+		return _offer(_oil_drum, "油箱", "提起", false, -30.0)
+	if in_dropped_fish_zone and _dropped_fish != null:
+		return _offer(_dropped_fish, _dropped_fish.label.text, "撿回", false, -22.0)
+	if in_critter_zone and _critter != null and _critter.active:
+		return _offer(_critter, _critter.get_label(), "抓餌", false, -20.0)
+	if in_rock_zone and _rock != null and _rock.active:
+		return {"at": _rock.prompt_anchor(), "name": "石頭", "verb": "翻開", "hold": true}
+	return {}
+
+
+func _offer(node: Node2D, title: String, verb: String, hold: bool, lift: float) -> Dictionary:
+	return {"at": node.global_position + Vector2(0, lift), "name": title, "verb": verb, "hold": hold}
+
+
+func _is_use_pressed() -> bool:
+	return Input.is_key_pressed(KEY_E)
+
+
+func _handle_interaction(delta: float) -> void:
+	var use_held := _is_use_pressed()
+	var use_pressed := use_held and not _prev_use_held
+	_prev_use_held = use_held
+	var offer := interaction()
+	var verb: String = offer.get("verb", "")
+	if verb != "獻祭" and sacrifice_progress > 0.0:
+		sacrifice_progress = 0.0
+		sacrifice_progress_updated.emit(0.0)
+	if verb != "翻開" and rummage_progress > 0.0:
+		rummage_progress = 0.0
+		rummage_progress_updated.emit(0.0)
+	match verb:
+		"獻祭":
+			_handle_sacrifice(use_held, delta)
+		"翻開":
+			_handle_rummage(use_held, delta)
+		"逃離":
+			if use_pressed:
+				GameState.escape()
+		"倒入油箱":
+			if use_pressed:
+				_deliver_oil_drum()
+		"加油":
+			if use_pressed:
+				var lantern: Lantern = get_node("Lantern")
+				if _fuel_station.try_refuel(lantern):
+					GameState.push_message("煤油加滿了！（煤油站剩 %d/%d）" % [int(_fuel_station.total_fuel), int(_fuel_station.max_total_fuel)])
+		"提起":
+			if use_pressed:
+				_oil_drum.pick_up()
+				_carried_oil_drum = _oil_drum
+				carrying_oil_drum = true
+				in_oil_drum_zone = false
+				_oil_drum = null
+				GameState.push_message("提起了油箱，送去煤油站吧（提著沒辦法釣魚）")
+		"撿回":
+			if use_pressed:
+				_pick_up_dropped_fish()
+		"抓餌":
+			if use_pressed:
+				_catch_critter()
+
+
 func _handle_action_input(delta: float) -> void:
 	var held := _is_action_pressed()
 	var just_pressed := held and not _prev_action_held
 	var just_released := (not held) and _prev_action_held
 
-	if in_altar_zone:
-		_handle_sacrifice(held, delta)
-		_prev_action_held = held
-		return
-
-	if in_escape_zone:
-		if just_pressed and GameState.day_phase == GameState.DayPhase.ESCAPE:
-			GameState.escape()
-		_prev_action_held = held
-		return
-
-	if in_fuel_zone:
-		if just_pressed and _fuel_station != null:
-			if carrying_oil_drum:
-				_deliver_oil_drum()
-			else:
-				var lantern: Lantern = get_node("Lantern")
-				if _fuel_station.try_refuel(lantern):
-					GameState.push_message("煤油加滿了！（煤油站剩 %d/%d）" % [int(_fuel_station.total_fuel), int(_fuel_station.max_total_fuel)])
-				elif _fuel_station.total_fuel <= 0.0:
-					GameState.push_message("煤油站的油用完了，帶油箱回來加吧")
-				else:
-					GameState.push_message("燃油已經是滿的")
-		_prev_action_held = held
-		return
-
-	if in_oil_drum_zone:
-		if just_pressed and _oil_drum != null and not carrying_oil_drum:
-			_oil_drum.pick_up()
-			_carried_oil_drum = _oil_drum
-			carrying_oil_drum = true
-			in_oil_drum_zone = false
-			_oil_drum = null
-			GameState.push_message("提起了油箱，送去煤油站吧（提著沒辦法釣魚）")
-		_prev_action_held = held
-		return
-
-	if in_dropped_fish_zone:
-		if just_pressed and _dropped_fish != null:
-			_pick_up_dropped_fish()
-		_prev_action_held = held
-		return
-
-	if in_critter_zone and _critter != null and _critter.active and state == State.IDLE:
-		if just_pressed:
-			_catch_critter()
-		_prev_action_held = held
-		return
-
-	if in_roadside_zone:
-		_handle_rummage(held, delta)
-		_prev_action_held = held
-		return
+	_handle_interaction(delta)
 
 	match state:
 		State.IDLE:
@@ -817,21 +850,21 @@ func _catch_critter() -> void:
 	GameState.push_message("抓到了%s，當作一份餌料！（下一竿餌料：%s）" % [label, flavor])
 
 
-## Design doc request: rummaging a roadside pile takes a short held
-## progress bar and only sometimes turns up bait.
+## Design doc request: turning a rock (was: rummaging a roadside pile)
+## takes a short held progress bar and only sometimes turns up bait.
 func _handle_rummage(held: bool, delta: float) -> void:
-	if held and _roadside_item != null and _roadside_item.active:
+	if held and _rock != null and _rock.active:
 		rummage_progress += delta / RUMMAGE_DURATION
 		if rummage_progress >= 1.0:
 			rummage_progress = 0.0
-			var result: Dictionary = _roadside_item.resolve()
+			var result: Dictionary = _rock.turn_over(global_position)
 			if result.get("found", false):
 				bait_count += 1
 				var flavor: String = result.get("flavor", "餌料")
 				pending_bait_flavor = flavor
-				GameState.push_message("翻到了%s，補充了一份餌料！（下一竿咬餌手感會不一樣）" % flavor)
+				GameState.push_message("石頭底下有%s，補充了一份餌料！（下一竿咬餌手感會不一樣）" % flavor)
 			else:
-				GameState.push_message("翻了半天，什麼都沒找到")
+				GameState.push_message("石頭底下什麼都沒有")
 	else:
 		rummage_progress = 0.0
 	rummage_progress_updated.emit(rummage_progress)

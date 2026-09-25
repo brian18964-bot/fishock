@@ -219,6 +219,16 @@ func _handle_flash_input(delta: float) -> void:
 		_try_flash()
 
 
+## Out at once (L, or on a phone a tap on the lamp button or its
+## brightness slider pulled right down - see TouchControls).
+func put_out() -> void:
+	if not lit:
+		return
+	lit = false
+	relight_progress = 0.0
+	GameState.push_message("熄滅了%s" % tool_name())
+
+
 ## Design doc request: L puts the light out instantly (free, deliberate
 ## control), but relighting needs a held progress bar - meant to read as
 ## the player confirming it's safe to be lit again. The flashlight clicks
@@ -230,9 +240,7 @@ func _handle_light_toggle(delta: float) -> void:
 
 	if lit:
 		if just_pressed:
-			lit = false
-			relight_progress = 0.0
-			GameState.push_message("熄滅了%s" % tool_name())
+			put_out()
 	elif tool == Tool.FLASHLIGHT:
 		if charge > 0.0:
 			if just_pressed:

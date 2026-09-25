@@ -59,6 +59,9 @@ const GROUND_COVER_SCENE := preload("res://scenes/ground_cover.tscn")
 const GROUND_SHADER := preload("res://shaders/ground.gdshader")
 const TREE_SCENE := preload("res://scenes/tree.tscn")
 const OBSTACLE_SCENE := preload("res://scenes/obstacle.tscn")
+const FLIP_ROCK_SCENE := preload("res://scenes/flip_rock.tscn")
+## User request: rocks the player can turn over for bait, per run.
+const FLIP_ROCKS := Vector2i(8, 10)
 const BUSH_SCENE := preload("res://scenes/bush.tscn")
 
 ## User request: each run is dressed in one of a few looks, all from the
@@ -207,6 +210,7 @@ func _ready() -> void:
 	_dress_shores()
 	_scatter_props()
 	_scatter_themed_props()
+	_scatter_flip_rocks()
 	_scatter_ground_cover()
 	_scatter_critters()
 
@@ -450,6 +454,19 @@ func _scatter_props() -> void:
 		_theme_prop(prop)
 
 
+## Spots taken by the themed props (the flip rocks keep clear of them too).
+var _themed_spots: Array = []
+
+
+func _scatter_flip_rocks() -> void:
+	for _i in randi_range(FLIP_ROCKS.x, FLIP_ROCKS.y):
+		var rock: Node2D = FLIP_ROCK_SCENE.instantiate()
+		rock.position = _pick_prop_position(_themed_spots)
+		_themed_spots.append(rock.position)
+		rock.variant_pool = theme.rock_pool
+		get_parent().add_child.call_deferred(rock)
+
+
 func _theme_prop(prop: Node) -> void:
 	if "family_weights" in prop:
 		prop.family_weights = theme.tree_families
@@ -459,7 +476,7 @@ func _theme_prop(prop: Node) -> void:
 
 ## The theme's extra trees, rocks and bushes, spaced like the scene props.
 func _scatter_themed_props() -> void:
-	var placed: Array = []
+	var placed: Array = _themed_spots
 	for spec in [[TREE_SCENE, theme.trees], [OBSTACLE_SCENE, theme.rocks], [BUSH_SCENE, theme.bushes]]:
 		for _i in spec[1]:
 			var prop: Node2D = spec[0].instantiate()

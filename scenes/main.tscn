@@ -1,4 +1,4 @@
-[gd_scene load_steps=22 format=3]
+[gd_scene load_steps=23 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="2"]
@@ -14,15 +14,18 @@
 [ext_resource type="PackedScene" path="res://scenes/bush.tscn" id="12"]
 [ext_resource type="PackedScene" path="res://scenes/fuel_station.tscn" id="13"]
 [ext_resource type="PackedScene" path="res://scenes/oil_drum.tscn" id="14"]
-[ext_resource type="PackedScene" path="res://scenes/roadside_item.tscn" id="15"]
 [ext_resource type="Script" path="res://scripts/map_generator.gd" id="16"]
 [ext_resource type="Script" path="res://scripts/lure_visual.gd" id="lure_visual"]
 [ext_resource type="PackedScene" path="res://scenes/ghost_cage.tscn" id="ghost_cage"]
 [ext_resource type="PackedScene" path="res://scenes/big_ghost.tscn" id="big_ghost"]
 [ext_resource type="PackedScene" path="res://scenes/willow.tscn" id="willow"]
+[ext_resource type="Script" path="res://scripts/action_prompt.gd" id="action_prompt"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_altar"]
 size = Vector2(64, 64)
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_rune"]
+radius = 8.0
 
 [node name="Main" type="Node2D"]
 y_sort_enabled = true
@@ -54,14 +57,6 @@ script = ExtResource("3")
 [node name="Visual" type="Sprite2D" parent="Altar"]
 z_index = -3
 
-[node name="Label" type="Label" parent="Altar"]
-offset_left = -32.0
-offset_top = -54.0
-offset_right = 32.0
-offset_bottom = -32.0
-text = "祭壇"
-horizontal_alignment = 1
-
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Altar"]
 shape = SubResource("RectangleShape2D_altar")
 
@@ -71,21 +66,19 @@ script = ExtResource("7")
 
 [node name="Light" type="PointLight2D" parent="EscapePoint"]
 
-[node name="Visual" type="ColorRect" parent="EscapePoint"]
-offset_left = -32.0
-offset_top = -32.0
-offset_right = 32.0
-offset_bottom = 32.0
-color = Color(0.2, 0.75, 0.6, 1)
-mouse_filter = 2
+[node name="Visual" type="Sprite2D" parent="EscapePoint"]
 
-[node name="Label" type="Label" parent="EscapePoint"]
-offset_left = -32.0
-offset_top = -54.0
-offset_right = 32.0
-offset_bottom = -32.0
-text = "逃離點"
-horizontal_alignment = 1
+[node name="Glow" type="Sprite2D" parent="EscapePoint"]
+
+[node name="Stones" type="StaticBody2D" parent="EscapePoint"]
+
+[node name="Left" type="CollisionShape2D" parent="EscapePoint/Stones"]
+position = Vector2(-22.2, -1.7)
+shape = SubResource("CircleShape2D_rune")
+
+[node name="Right" type="CollisionShape2D" parent="EscapePoint/Stones"]
+position = Vector2(22.5, -1.7)
+shape = SubResource("CircleShape2D_rune")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="EscapePoint"]
 shape = SubResource("RectangleShape2D_altar")
@@ -97,9 +90,6 @@ position = Vector2(1200, 700)
 
 [node name="OilDrum" parent="." instance=ExtResource("14")]
 position = Vector2(1650, 1200)
-
-[node name="RoadsideItem" parent="." instance=ExtResource("15")]
-position = Vector2(500, 1100)
 
 [node name="Player" parent="." instance=ExtResource("2")]
 position = Vector2(1200, 700)
@@ -172,6 +162,9 @@ z_index = 5
 width = 0.45
 default_color = Color(1, 1, 1, 0.6)
 antialiased = true
+
+[node name="ActionPrompt" type="CanvasLayer" parent="."]
+script = ExtResource("action_prompt")
 
 [node name="HUD" type="CanvasLayer" parent="."]
 script = ExtResource("4")
@@ -296,7 +289,7 @@ offset_top = 478.0
 offset_right = 944.0
 offset_bottom = 534.0
 autowrap_mode = 2
-text = "地圖每輪隨機生成：藍圈是一般水域（可走進去、近距離拋竿也行，但魚較便宜）、紫圈是稀有水域（進不去，只能站外面精準拋竿命中，魚貴很多）；空白鍵：蓄力拋竿・提竿；路亞：按住空白鍵持續收線，或連點輕收，離水鬥魚會從中魚當下的位置開始，假餌只要收出稀有水域邊界就算完成；Tab 切換浮標/路亞；[ ] 調亮度；L：熄滅煤燈／按住重新點燃（跑進度條；手電筒沒電時按住換電池）；K：切換煤燈／手電筒（商店購買）；F：強光定身鬼；祭壇只能獻祭（按住空白鍵，一條一條跑進度條，不再補油也不保護）；煤油站（出生點附近）按空白鍵加油，共用總量；手提油箱要撿起提回煤油站按空白鍵倒入（提著時不能釣魚）；逃離點按空白鍵逃離；G：丟棄一條漁獲（變輕變快，掉在地上會隨時間腐敗貶值，走近按空白鍵撿回）；路邊雜物按住空白鍵翻找，有機會翻到餌料；身上魚越多走越慢；站在水邊拋竿有機率被水鬼偷襲（掉餌/掉魚/短暫異常狀態），站遠一點比較安全；釣法：浮標輕點、或整個沉下去卻沒有水花都是試探，這時拉竿會把魚嚇跑，要等水花濺起、畫面震動才揚竿；拉魚時魚往外衝要放手，往側邊衝要往反方向拉（拖曳拋竿鈕或往那邊走），跳出水面要放手，往石縫鑽要按住拉回；魚越稀有越兇難度越高（入門／普通／進階／大師）；Shift+R 重來一輪"
+text = "地圖每輪隨機生成：藍圈是一般水域（可走進去、近距離拋竿也行，但魚較便宜）、紫圈是稀有水域（進不去，只能站外面精準拋竿命中，魚貴很多）；空白鍵：蓄力拋竿・提竿；路亞：按住空白鍵持續收線，或連點輕收，離水鬥魚會從中魚當下的位置開始，假餌只要收出稀有水域邊界就算完成；Tab 切換浮標/路亞；[ ] 調亮度；L：熄滅煤燈／按住重新點燃（跑進度條；手電筒沒電時按住換電池）；K：切換煤燈／手電筒（商店購買）；F：強光定身鬼；空白鍵只用來釣魚；其他動作（獻祭、加油、提油箱、撿魚、抓餌、翻石頭、逃離）走到東西旁邊就會跳出按鈕，點它或按 E（獻祭、翻石頭要按住）；祭壇：身上有魚就能獻祭，一條一條跑進度條；煤油站（出生點附近）加油，共用總量，油燈熄了就代表沒油；手提油箱要提回煤油站倒入（提著時不能釣魚）；獻祭額度滿了，符文石柱才會亮起，走過去就能逃離；G：丟棄一條漁獲（變輕變快，掉在地上會隨時間腐敗貶值，走近撿回）；地圖上有 8-10 顆小石頭可以翻，有機會翻到餌料；身上魚越多走越慢；站在水邊拋竿有機率被水鬼偷襲（掉餌/掉魚/短暫異常狀態），站遠一點比較安全；釣法：浮標輕點、或整個沉下去卻沒有水花都是試探，這時拉竿會把魚嚇跑，要等水花濺起、畫面震動才揚竿；拉魚時魚往外衝要放手，往側邊衝要往反方向拉（拖曳拋竿鈕或往那邊走），跳出水面要放手，往石縫鑽要按住拉回；魚越稀有越兇難度越高（入門／普通／進階／大師）；Shift+R 重來一輪"
 
 [node name="TimeLabel" type="Label" parent="HUD/Panel"]
 offset_left = 700.0
