@@ -117,7 +117,8 @@ func _ready() -> void:
 
 
 func stun(duration: float) -> void:
-	if mode in [Mode.WANDER, Mode.SUSPICIOUS, Mode.CHASE, Mode.SEARCH]:
+	# Not while it has the player in hand or caged, nor asleep.
+	if mode not in [Mode.ASLEEP, Mode.CARRY, Mode.CAGED]:
 		stun_timer = maxf(stun_timer, duration)
 
 

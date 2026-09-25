@@ -110,10 +110,11 @@ func _process(delta: float) -> void:
 	_handle_light_toggle(delta)
 
 	if lit:
+		var burn := brightness * (1.0 + boost)  # charging burns faster
 		if tool == Tool.LAMP:
-			fuel = max(fuel - DRAIN_RATE * brightness * delta, 0.0)
+			fuel = max(fuel - DRAIN_RATE * burn * delta, 0.0)
 		else:
-			charge = max(charge - 100.0 / BATTERY_LIFE * brightness * delta, 0.0)
+			charge = max(charge - 100.0 / BATTERY_LIFE * burn * delta, 0.0)
 		if power() <= 0.0:
 			lit = false
 			GameState.push_message("煤燈的油燒完了" if tool == Tool.LAMP else "手電筒沒電了，按住 L 換電池")
@@ -127,11 +128,20 @@ func _process(delta: float) -> void:
 	var stage := GameState.light_stage()
 	_stage_reach = lerpf(_stage_reach, STAGE_REACH[stage], minf(1.0, delta))
 	_stage_power = lerpf(_stage_power, STAGE_POWER[stage], minf(1.0, delta))
-	texture_scale = lerp(spec.min_scale, spec.max_scale, brightness) * _stage_reach
-	energy = lerp(spec.energy.x, spec.energy.y, brightness) * _stage_power
+	texture_scale = lerp(spec.min_scale, spec.max_scale, brightness) * _stage_reach * (1.0 + BOOST_REACH * boost)
+	energy = lerp(spec.energy.x, spec.energy.y, brightness) * _stage_power * (1.0 + BOOST_POWER * boost)
 	if tool == Tool.LAMP:
 		energy *= _flame(delta)
 
+
+## User request: holding the aimed light charges it up (Player's light
+## skill) - brighter and reaching further as `boost` goes 0 -> 1 - and the
+## flash on letting go is stronger for it: longer reach and a longer stun.
+const BOOST_REACH := 0.3
+const BOOST_POWER := 1.0
+const BOOST_FLASH_RANGE := 0.6
+const BOOST_STUN := 0.8
+var boost := 0.0
 
 const STAGE_REACH := [1.0, 0.9, 0.8, 0.7]
 const STAGE_POWER := [1.0, 0.85, 0.72, 0.62]
@@ -297,24 +307,47 @@ func nearest_ghost() -> Node2D:
 
 
 ## User request: letting go of the aimed light (Player._update_light_skill)
-## flashes it - if there's a ghost in the light to flash.
+## flashes it - if there's a ghost in the light to flash. The charge built
+## up (`boost`) makes it reach further and hold them longer.
 func release_flash() -> void:
+	var charged := boost
+	boost = 0.0
 	rotation = _player.aim_dir.angle()
 	if not lit or power() <= 0.0:
 		return
+	var reach := FLASH_RANGE * (1.0 + BOOST_FLASH_RANGE * charged)
 	var target := false
 	for ghost in get_tree().get_nodes_in_group("ghosts"):
-		if global_position.distance_to(ghost.global_position) <= FLASH_RANGE and illuminates(ghost.global_position):
+		if _flash_hits(ghost, reach):
 			target = true
 	if not target:
 		return
 	if flash_cooldown > 0.0:
 		GameState.push_message("強光還在冷卻（%.0f 秒）" % ceilf(flash_cooldown))
 		return
-	_try_flash()
+	_try_flash(reach, FLASH_STUN_DURATION * (1.0 + BOOST_STUN * charged))
 
 
-func _try_flash() -> void:
+## In the flash: within `reach` and in the light - its feet or its body (the
+## big ghost stands tall, its middle well above its feet).
+func _flash_hits(ghost: Node2D, reach: float) -> bool:
+	for p in [ghost.global_position, ghost.global_position + Vector2(0, -22)]:
+		if global_position.distance_to(p) <= reach and _in_beam(p, reach):
+			return true
+	return false
+
+
+## In the beam's angle, and within `reach` even past the light's glow.
+func _in_beam(point: Vector2, reach: float) -> bool:
+	if not visible:
+		return false
+	var offset := point - global_position
+	if offset.length() > maxf(reach, TEXTURE_HALF_SIZE * texture_scale):
+		return false
+	return absf(wrapf(offset.angle() - rotation, -PI, PI)) <= deg_to_rad(TOOLS[tool].half_angle)
+
+
+func _try_flash(reach: float = FLASH_RANGE, stun: float = FLASH_STUN_DURATION) -> void:
 	if tool == Tool.LAMP:
 		if fuel < FLASH_FUEL_COST:
 			GameState.push_message("燃油不足，無法使用強光")
@@ -329,10 +362,12 @@ func _try_flash() -> void:
 	flash_cooldown = flash_cooldown_max
 
 	var hit_any := false
+	var hit_big := false
 	for ghost in get_tree().get_nodes_in_group("ghosts"):
-		if global_position.distance_to(ghost.global_position) <= FLASH_RANGE and illuminates(ghost.global_position):
-			ghost.stun(FLASH_STUN_DURATION)
+		if _flash_hits(ghost, reach):
+			ghost.stun(stun)
 			hit_any = true
+			hit_big = hit_big or ghost is BigGhost
 
 	# Wolves and meat-eating dinosaurs (see Critter) bolt from the flash.
 	var scared_any := false
@@ -342,7 +377,9 @@ func _try_flash() -> void:
 			hunter.scare()
 			scared_any = true
 
-	if hit_any:
+	if hit_big:
+		GameState.push_message("強光把大鬼定住了！趁現在快跑")
+	elif hit_any:
 		GameState.push_message("強光把鬼定住了！")
 	elif scared_any:
 		GameState.push_message("強光把野獸嚇跑了！")

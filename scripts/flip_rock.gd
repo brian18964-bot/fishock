@@ -2,8 +2,8 @@ class_name FlipRock
 extends Node2D
 
 ## User request: no more roadside junk pile - instead 8-10 of each run's
-## rocks are small ones the player can turn over (hold the action, see
-## Player._handle_rummage()) for a chance at bait. Turned over, the rock
+## rocks are small ones the player can turn over (a tap, see
+## Player._turn_rock()) for a chance at bait. Turned over, the rock
 ## rolls off to the side and leaves a bare, damp patch where it lay; each
 ## one can be turned once a run. Same rock art as the obstacles
 ## (obstacle.gd), smaller.

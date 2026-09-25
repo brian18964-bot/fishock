@@ -63,7 +63,9 @@ const RARE_ZONE_RARE_CHANCE_BONUS := 0.25
 ## fish, and a lingering status effect. Casting far from where you're
 ## standing doesn't save you; standing far from any water does.
 const WATER_GHOST_CHANCE := 0.16
-const WATER_GHOST_RANGE := 130.0
+const WATER_GHOST_RANGE := 40.0
+## ...and only when the cast lands this close in to the bank.
+const WATER_GHOST_BOBBER_RANGE := 60.0
 const WATER_GHOST_DEBUFF_DURATION := 4.0
 ## User decision: out on a dock (walkway over the water) the ghost has a
 ## harder time reaching you.
@@ -448,10 +450,9 @@ func _nearest_water_edge_distance() -> float:
 
 
 ## Design doc request: discourage cheesing quick, close-range casts by
-## rolling a water-ghost attack on every cast, regardless of its distance -
-## it only actually lands if the PLAYER is standing close to the water,
-## since standing back out of its reach is what keeps you safe, not how
-## far you happened to cast.
+## rolling a water-ghost attack on every cast. User request: stricter - it
+## only lands on a player standing right at the water's edge whose cast
+## also drops close in by the bank.
 func _maybe_trigger_water_ghost() -> void:
 	var chance := WATER_GHOST_CHANCE
 	if GameState.weather == GameState.Weather.STORM:
@@ -460,7 +461,11 @@ func _maybe_trigger_water_ghost() -> void:
 		chance *= DOCK_WATER_GHOST_MULT
 	if randf() >= chance:
 		return
+	# User request: only for someone right at the water's edge whose float
+	# lands close in by the bank too.
 	if _nearest_water_edge_distance() > WATER_GHOST_RANGE:
+		return
+	if cast_water_zone == null or cast_water_zone.depth(cast_target) > WATER_GHOST_BOBBER_RANGE:
 		return
 	_apply_water_ghost_attack()
 
@@ -663,9 +668,11 @@ func _update_aim() -> void:
 ## User request: the light is aimed like a skill in Brawl Stars - drag the
 ## right stick to swing it round (it otherwise follows your walk), and on
 ## letting go, if a ghost is in the light it gets the strong flash. A quick
-## tap aims it at the nearest ghost in reach and flashes. (Desktop: hold
-## the right mouse button to aim.)
+## tap aims it at the nearest ghost in reach and flashes. Held on, it
+## charges up - brighter, and a stronger flash on letting go. (Desktop:
+## hold the right mouse button to aim.)
 const AIM_TAP_TIME := 0.22
+const LIGHT_CHARGE_TIME := 1.2
 var _was_aiming := false
 var _aim_time := 0.0
 
@@ -678,10 +685,12 @@ func _update_light_skill() -> void:
 	# A finger on the stick at all (its is_pressed only turns on past the
 	# deadzone, which a tap never gets to).
 	var aiming: bool = _aim_joystick._touch_index != -1 or _mouse_aiming()
+	var lantern: Lantern = get_node("Lantern")
 	if aiming:
 		_aim_time = 0.0 if not _was_aiming else _aim_time + get_physics_process_delta_time()
+		# User request: held on, the light charges up - brighter and brighter.
+		lantern.boost = clampf((_aim_time - AIM_TAP_TIME) / LIGHT_CHARGE_TIME, 0.0, 1.0) if lantern.lit else 0.0
 	elif _was_aiming and not held:
-		var lantern: Lantern = get_node("Lantern")
 		if _aim_time < AIM_TAP_TIME:
 			var ghost := lantern.nearest_ghost()
 			if ghost != null:
@@ -789,9 +798,40 @@ func interaction() -> Dictionary:
 		return _offer(_dropped_fish, _dropped_fish.label.text, "撿回", false, -22.0)
 	if in_critter_zone and _critter != null and _critter.active:
 		return _offer(_critter, _critter.get_label(), "抓餌", false, -20.0)
+	# User request: once the quota's met, Willow (before the altar) can be
+	# talked to - it tells what offerings turned up.
+	var willow := get_tree().get_first_node_in_group("willow") as Node2D
+	if willow != null and willow.can_talk() and global_position.distance_to(willow.global_position) < TALK_RANGE:
+		return _offer(willow, "Willow", "對話", false, -34.0)
 	if in_rock_zone and _rock != null and _rock.active:
-		return {"at": _rock.prompt_anchor(), "name": "石頭", "verb": "翻開", "hold": true}
+		return {"at": _rock.prompt_anchor(), "name": "石頭", "verb": "翻開", "hold": false}
 	return {}
+
+
+const TALK_RANGE := 40.0
+
+
+func _talk_to_willow() -> void:
+	var box: DialogBox = null
+	for c in get_parent().get_children():
+		if c is DialogBox:
+			box = c
+	if box == null:
+		return
+	var lines := ["「祭品我都收下了。這次祭壇回應的供品有這些……」", ""]
+	for o in GameState.offering_pool:
+		var label: String = GameState._rarity_label(o.rarity)
+		if o.is_evil:
+			lines.append("・%s供品（價值 %d）——散發著不祥的氣息，是邪惡的" % [label, o.value])
+		elif o.taken:
+			lines.append("・%s供品（價值 %d）——已經被拿走了" % [label, o.value])
+		else:
+			lines.append("・%s供品（價值 %d）" % [label, o.value])
+	if GameState.offering_pool.is_empty():
+		lines.append("・（什麼都沒有）")
+	lines.append("")
+	lines.append("「去符文石柱吧，離開時會帶走其中一個不是邪惡的供品。」")
+	box.say("Willow", "\n".join(lines))
 
 
 func _offer(node: Node2D, title: String, verb: String, hold: bool, lift: float) -> Dictionary:
@@ -818,7 +858,8 @@ func _handle_interaction(delta: float) -> void:
 		"獻祭":
 			_handle_sacrifice(use_held, delta)
 		"翻開":
-			_handle_rummage(use_held, delta)
+			if use_pressed:
+				_turn_rock()
 		"逃離":
 			if use_pressed:
 				GameState.escape()
@@ -844,6 +885,9 @@ func _handle_interaction(delta: float) -> void:
 		"抓餌":
 			if use_pressed:
 				_catch_critter()
+		"對話":
+			if use_pressed:
+				_talk_to_willow()
 
 
 func _handle_action_input(delta: float) -> void:
@@ -929,26 +973,21 @@ func _catch_critter() -> void:
 	GameState.push_message("抓到了%s，當作一份餌料！（下一竿餌料：%s）" % [label, flavor])
 
 
-## Design doc request: turning a rock (was: rummaging a roadside pile)
-## takes a short held progress bar and only sometimes turns up bait.
-func _handle_rummage(held: bool, delta: float) -> void:
-	if held and _rock != null and _rock.active:
-		rummage_progress += delta / RUMMAGE_DURATION
-		if rummage_progress >= 1.0:
-			rummage_progress = 0.0
-			var result: Dictionary = _rock.turn_over(global_position)
-			if result.get("found", false) and not Inventory.fits_bait(self, 1):
-				GameState.push_message("石頭底下有%s，但背包滿了放不下" % result.get("flavor", "餌料"))
-			elif result.get("found", false):
-				bait_count += 1
-				var flavor: String = result.get("flavor", "餌料")
-				pending_bait_flavor = flavor
-				GameState.push_message("石頭底下有%s，補充了一份餌料！（下一竿咬餌手感會不一樣）" % flavor)
-			else:
-				GameState.push_message("石頭底下什麼都沒有")
+## Turning a rock over (was: rummaging a roadside pile) only sometimes
+## turns up bait. User request: at once - no progress bar.
+func _turn_rock() -> void:
+	if _rock == null or not _rock.active:
+		return
+	var result: Dictionary = _rock.turn_over(global_position)
+	if result.get("found", false) and not Inventory.fits_bait(self, 1):
+		GameState.push_message("石頭底下有%s，但背包滿了放不下" % result.get("flavor", "餌料"))
+	elif result.get("found", false):
+		bait_count += 1
+		var flavor: String = result.get("flavor", "餌料")
+		pending_bait_flavor = flavor
+		GameState.push_message("石頭底下有%s，補充了一份餌料！（下一竿咬餌手感會不一樣）" % flavor)
 	else:
-		rummage_progress = 0.0
-	rummage_progress_updated.emit(rummage_progress)
+		GameState.push_message("石頭底下什麼都沒有")
 
 
 func _deliver_oil_drum() -> void:
@@ -1060,11 +1099,6 @@ func _launch_cast() -> void:
 	if fishing_mode == FishingMode.BOBBER:
 		bait_count = max(bait_count - 1, 0)
 
-	# Design doc request: any cast can call up a water ghost before it even
-	# lands - see _maybe_trigger_water_ghost(). It can set cast_jittered
-	# itself, so this check comes before the jitter is consumed below.
-	_maybe_trigger_water_ghost()
-
 	var ratio: float = charge_time / MAX_CHARGE_TIME
 	if cast_jittered or water_ghost_timer > 0.0:
 		ratio = clamp(ratio * randf_range(0.3, 1.4), 0.0, 1.0)
@@ -1079,6 +1113,10 @@ func _launch_cast() -> void:
 		GameState.push_message("這個方向沒有水，這竿撲空了")
 		_reset_line(State.IDLE)
 		return
+
+	# Design doc request: a cast can call up a water ghost - see
+	# _maybe_trigger_water_ghost() for when.
+	_maybe_trigger_water_ghost()
 
 	current_tier = FishData.tier_for_ratio(ratio)
 	tier_data = FishData.get_tier_data(current_tier)

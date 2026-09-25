@@ -50,7 +50,6 @@ const BUTTONS := [
 	# buttons (Backpack).
 	["背包", KEY_I, 200.0, 150.0, 25.0],
 	["丟魚", KEY_G, 234.0, 150.0, 25.0],
-	["閃光", KEY_F, 305.0, 150.0, 25.0],
 ]
 ## The lamp button: straight above the aim stick.
 const LAMP_CENTER := Vector2(802, 232)
@@ -123,7 +122,7 @@ func _process(delta: float) -> void:
 
 
 func _input(event: InputEvent) -> void:
-	if not visible:
+	if not visible or _bag_open():
 		return
 	if event is InputEventScreenTouch:
 		if event.pressed and _lamp_touch == -1 and event.position.distance_to(LAMP_CENTER) <= LAMP_RADIUS + 4.0:
@@ -192,6 +191,13 @@ func _lamp_release() -> void:
 	_lamp_key_down = false
 	_slider.visible = false
 	_slider.set_active(false)
+
+
+func _bag_open() -> bool:
+	for bag in get_tree().current_scene.get_children():
+		if (bag is Backpack or bag is DialogBox) and bag.is_open():
+			return true
+	return false
 
 
 func _lantern() -> Lantern:

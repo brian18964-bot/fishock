@@ -13,7 +13,7 @@ extends CanvasLayer
 ## Plain for now: the whole UI is to be redesigned later.
 
 const CELL := 46.0
-const PANEL_SIZE := Vector2(420, 400)
+const PANEL_SIZE := Vector2(420, 440)
 const FONT := 15
 const KIND_COLORS := {
 	"fish": Color(0.32, 0.45, 0.55),
@@ -25,6 +25,7 @@ const KIND_COLORS := {
 const ROTTEN_COLOR := Color(0.36, 0.3, 0.18)
 
 var _panel: PanelContainer
+var _backdrop: ColorRect
 var _used: Label
 var _light_row: HBoxContainer
 var _mode: Label
@@ -38,6 +39,16 @@ var _selected := {}  # {kind, index} of the tapped item
 
 func _ready() -> void:
 	layer = 6
+	# User request: tapping anywhere outside the bag closes it.
+	_backdrop = ColorRect.new()
+	_backdrop.color = Color(0, 0, 0, 0.35)
+	_backdrop.size = Vector2(960, 540)
+	_backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
+	_backdrop.visible = false
+	_backdrop.gui_input.connect(func(event: InputEvent):
+		if event is InputEventMouseButton and event.pressed:
+			toggle())
+	add_child(_backdrop)
 	_panel = PanelContainer.new()
 	var box := StyleBoxFlat.new()
 	box.bg_color = Color(0.07, 0.06, 0.05, 0.92)
@@ -83,6 +94,9 @@ func _ready() -> void:
 	_actions = HBoxContainer.new()
 	_actions.add_theme_constant_override("separation", 8)
 	list.add_child(_actions)
+	var bottom := _button("關閉背包")
+	bottom.pressed.connect(toggle)
+	list.add_child(bottom)
 
 
 func is_open() -> bool:
@@ -91,6 +105,7 @@ func is_open() -> bool:
 
 func toggle() -> void:
 	_panel.visible = not _panel.visible
+	_backdrop.visible = _panel.visible
 	_selected = {}
 	if _panel.visible:
 		_rebuild()

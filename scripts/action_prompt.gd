@@ -45,6 +45,10 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	var player := get_tree().get_first_node_in_group("player")
 	_offer = player.interaction() if player != null and player.has_method("interaction") else {}
+	# Not while a window (the backpack, a dialog) is up.
+	for c in get_parent().get_children():
+		if (c is Backpack or c is DialogBox) and c.is_open():
+			_offer = {}
 	if _offer.is_empty() and (_touch != -1 or _mouse):
 		_release()
 	_view.queue_redraw()
