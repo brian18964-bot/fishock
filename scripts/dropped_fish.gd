@@ -23,6 +23,8 @@ const ROTTEN_COLOR := Color(0.35, 0.3, 0.15, 1)
 
 
 func _ready() -> void:
+	# The big ghost goes for these (BigGhost._check_fish()).
+	add_to_group("dropped_fish")
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
 
@@ -63,6 +65,16 @@ func pick_up() -> Dictionary:
 		fish = {"name": fish_name, "value": current_value(), "tier": "dropped", "rotten": false}
 	queue_free()
 	return fish
+
+
+## Eaten by the big ghost: gone, and no longer on offer to a player
+## standing over it.
+func eaten() -> void:
+	remove_from_group("dropped_fish")
+	for body in get_overlapping_bodies():
+		if body.has_method("set_in_dropped_fish"):
+			body.set_in_dropped_fish(false, self)
+	queue_free()
 
 
 func _freshness() -> float:

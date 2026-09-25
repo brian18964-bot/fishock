@@ -482,6 +482,13 @@ func _apply_water_ghost_attack() -> void:
 	GameState.push_message(msg)
 
 
+## User request: a floating ghost passing through the player leaves them
+## dizzy - the same muddled steering and slow feet as a water-ghost hit.
+func ghost_confuse(duration: float) -> void:
+	water_ghost_timer = maxf(water_ghost_timer, duration)
+	affliction_text = "被鬼纏過，頭昏眼花"
+
+
 ## User decision: wolves and the meat-eating dinosaurs chase the player
 ## (see Critter); one that catches up knocks a carried fish to the ground
 ## (it can be picked back up, like a G-dropped one), snaps the line if
@@ -517,12 +524,28 @@ func _handle_mode_toggle() -> void:
 		if fishing_mode == FishingMode.BOBBER:
 			GameState.push_message("沒有假餌了，只能用浮標（假餌在商店買）")
 			return
-		fishing_mode = FishingMode.BOBBER
-		GameState.push_message("切換成浮標")
+		choose_bobber()
 	else:
-		fishing_mode = FishingMode.LURE
-		current_lure = next
-		GameState.push_message("切換成路亞：%s－%s" % [lure_label(next), Profile.LURES[next].desc])
+		choose_lure(next)
+
+
+## User request: picked straight from the backpack (Backpack), or stepped
+## through with Tab. Only between casts.
+func choose_bobber() -> void:
+	if state != State.IDLE or fishing_mode == FishingMode.BOBBER:
+		return
+	fishing_mode = FishingMode.BOBBER
+	GameState.push_message("切換成浮標")
+
+
+func choose_lure(id: String) -> void:
+	if state != State.IDLE or int(lure_stock.get(id, 0)) <= 0:
+		return
+	if fishing_mode == FishingMode.LURE and current_lure == id:
+		return
+	fishing_mode = FishingMode.LURE
+	current_lure = id
+	GameState.push_message("切換成路亞：%s－%s" % [lure_label(id), Profile.LURES[id].desc])
 
 
 ## Legacy debug-key path to the same purchases the title screen's shop UI
@@ -549,6 +572,9 @@ func _handle_shop_input() -> void:
 ## Design doc request: dropping carried fish lightens the load (see
 ## carry_speed_ratio()) and leaves a pickup-able, decaying pile behind -
 ## for someone else, or for yourself once a ghost stops watching this spot.
+const FISH_TOSS := 36.0
+
+
 func _handle_drop_input() -> void:
 	if not _key_just_pressed(KEY_G):
 		return
@@ -558,9 +584,12 @@ func _handle_drop_input() -> void:
 		return
 	var dropped: DroppedFish = DROPPED_FISH_SCENE.instantiate()
 	get_tree().current_scene.add_child(dropped)
-	dropped.global_position = global_position
+	# User request: tossed a little way ahead - thrown to the big ghost, it
+	# stops to eat it (BigGhost). Into the water it isn't: then at your feet.
+	var toss := global_position + aim_dir.normalized() * FISH_TOSS
+	dropped.global_position = global_position if Ripple.water_at(get_tree(), toss + FEET) != null else toss
 	dropped.setup(fish)
-	GameState.push_message("丟掉了一條 %s，跑得更快了" % fish.get("name", "魚"))
+	GameState.push_message("丟出了一條 %s，跑得更快了（大鬼會被魚引開）" % fish.get("name", "魚"))
 
 
 func _key_just_pressed(key: int) -> bool:
@@ -708,13 +737,13 @@ func interaction() -> Dictionary:
 	if in_fuel_zone and _fuel_station != null:
 		var station := "煤油站 %d/%d" % [int(_fuel_station.total_fuel), int(_fuel_station.max_total_fuel)]
 		if carrying_oil_drum:
-			return _offer(_fuel_station, station, "倒入油箱", false, -42.0)
+			return _offer(_fuel_station, station, "補充站點", false, -42.0)
 		var lantern: Lantern = get_node("Lantern")
 		if _fuel_station.total_fuel > 0.0 and lantern.fuel < lantern.max_fuel - 0.5:
-			return _offer(_fuel_station, station, "加油", false, -42.0)
+			return _offer(_fuel_station, station, "補充", false, -42.0)
 	if in_oil_drum_zone and _oil_drum != null and not carrying_oil_drum:
 		return _offer(_oil_drum, "油箱", "提起", false, -30.0)
-	if in_dropped_fish_zone and _dropped_fish != null:
+	if in_dropped_fish_zone and is_instance_valid(_dropped_fish):
 		return _offer(_dropped_fish, _dropped_fish.label.text, "撿回", false, -22.0)
 	if in_critter_zone and _critter != null and _critter.active:
 		return _offer(_critter, _critter.get_label(), "抓餌", false, -20.0)
@@ -751,10 +780,10 @@ func _handle_interaction(delta: float) -> void:
 		"逃離":
 			if use_pressed:
 				GameState.escape()
-		"倒入油箱":
+		"補充站點":
 			if use_pressed:
 				_deliver_oil_drum()
-		"加油":
+		"補充":
 			if use_pressed:
 				var lantern: Lantern = get_node("Lantern")
 				if _fuel_station.try_refuel(lantern):

@@ -46,9 +46,10 @@ const AIM_HOLD_AFTER_RELEASE := 0.15
 
 const BUTTONS := [
 	# [label, key, angle around the aim stick (deg, clockwise from right), distance, radius]
-	["切換", KEY_TAB, 190.0, 150.0, 25.0],
-	["丟魚", KEY_G, 216.0, 150.0, 25.0],
-	["換燈", KEY_K, 242.0, 150.0, 22.0],
+	# User request: a backpack in place of the switch-mode and switch-light
+	# buttons (Backpack).
+	["背包", KEY_I, 200.0, 150.0, 25.0],
+	["丟魚", KEY_G, 234.0, 150.0, 25.0],
 	["閃光", KEY_F, 305.0, 150.0, 25.0],
 ]
 ## The lamp button: straight above the aim stick.

@@ -10,16 +10,19 @@ extends Node2D
 ## and the run is over.
 ##
 ## Asleep in its cage for the first quarter of the day, it then wanders the
-## map, and chases the player once it sees them - close by, or lit up by
-## their lamp from further off. It's slower than a player travelling light
-## (fish carried slow you down), gives up a daytime chase when left far
-## behind, and at night it hunts the player wherever they are. It can't
-## cross into a lit fuel station's or escape point's circle, and the strong
-## light stuns it like any ghost. Its own lantern glows, so it's seen coming.
+## map. User request: it doesn't hound the player - it's the light that
+## draws it. Walk close past it and it comes over to look (and grabs you if
+## you let it reach you); keep your lamp on it and it charges, and keeps
+## coming as long as the light stays on it. Out of the light for a couple
+## of seconds, it loses you, searches about, and goes back to wandering.
+## It can't cross into a lit fuel station's or escape point's circle, and
+## the strong light stuns it like any ghost. User request: or throw it a
+## fish (the drop-fish button tosses one ahead): it goes and eats it, and
+## leaves you be for a while. Its own lantern glows, so it's seen coming.
 
 signal mode_changed(mode: String)
 
-enum Mode { ASLEEP, WANDER, CHASE, CARRY, CAGED, REST }
+enum Mode { ASLEEP, WANDER, SUSPICIOUS, CHASE, SEARCH, EAT, CARRY, CAGED, REST }
 
 const SHEET := [preload("res://assets/sprites/big_ghost/big_ghost_55deg_albedo.png"), preload("res://assets/sprites/big_ghost/big_ghost_55deg_normal.png")]
 ## Drawn larger than the render: it towers over the player.
@@ -39,14 +42,25 @@ const BOB := 2.0
 
 const ACTIVE_FROM_STAGE := 1
 const WANDER_SPEED := 34.0
+const LOOK_SPEED := 46.0
 const CHASE_SPEED := 70.0
-const NIGHT_SPEED := 88.0
+const NIGHT_SPEED := 84.0
 const CARRY_SPEED := 64.0
-const SIGHT := 140.0
-const LIT_SIGHT := 250.0
-const LOSE_RANGE := 330.0
-const LOSE_TIME := 3.0
+## Walk this close past it and it comes over to look.
+const NOTICE := 90.0
+const NIGHT_NOTICE := 130.0
+## Lit by the player's lamp within this range, it charges.
+const LIT_SIGHT := 260.0
+## Out of the light this long, it has lost the player.
+const LOSE_TIME := 2.0
+const LOOK_TIME := 3.0
+const SEARCH_TIME := 3.5
 const CATCH_RADIUS := 16.0
+## A dropped fish this near draws it off to eat.
+const FISH_SMELL := 240.0
+const EAT_TIME := 4.0
+## Full, it leaves the player alone this long.
+const FED_TIME := 14.0
 const CAGE_TIME := 3.2
 ## After a heart breaks the cage open it keeps away this long.
 const REST_TIME := 18.0
@@ -64,6 +78,7 @@ var stun_timer := 0.0
 var _target := Vector2.ZERO
 var _repick := 0.0
 var _lost := 0.0
+var _fish: Node2D
 var _timer := 0.0
 var _dir := 0
 var _bob := 0.0
@@ -102,7 +117,7 @@ func _ready() -> void:
 
 
 func stun(duration: float) -> void:
-	if mode in [Mode.WANDER, Mode.CHASE]:
+	if mode in [Mode.WANDER, Mode.SUSPICIOUS, Mode.CHASE, Mode.SEARCH]:
 		stun_timer = maxf(stun_timer, duration)
 
 
@@ -128,15 +143,44 @@ func _physics_process(delta: float) -> void:
 				_timer -= delta
 				if _timer <= 0.0:
 					_set_mode(Mode.WANDER)
-			_repick -= delta
-			if _repick <= 0.0 or global_position.distance_to(_target) < 12.0:
-				_pick_wander_target()
-			_move_toward(_target, WANDER_SPEED, delta)
-			if mode == Mode.WANDER and _sees_player():
-				_set_mode(Mode.CHASE)
-				GameState.push_message("大鬼發現你了！快逃，或躲進煤油站的燈光裡")
+			_roam(delta)
+			if mode == Mode.WANDER:
+				_watch()
+		Mode.SUSPICIOUS:
+			_timer -= delta
+			if _near_player():
+				_target = _player.global_position
+				_timer = LOOK_TIME
+			_move_toward(_target, LOOK_SPEED, delta)
+			_try_catch()
+			if mode == Mode.SUSPICIOUS:
+				if _lit():
+					_start_chase()
+				elif _timer <= 0.0 or global_position.distance_to(_target) < 8.0:
+					_start_search(_target)
+			if mode == Mode.SUSPICIOUS:
+				_check_fish()
 		Mode.CHASE:
 			_chase(delta)
+			if mode == Mode.CHASE:
+				_check_fish()
+		Mode.SEARCH:
+			_timer -= delta
+			_move_toward(_target, LOOK_SPEED, delta)
+			_watch()
+			if mode == Mode.SEARCH and _timer <= 0.0:
+				_set_mode(Mode.WANDER)
+		Mode.EAT:
+			if not is_instance_valid(_fish):
+				_fed()
+			elif global_position.distance_to(_fish.global_position) > 6.0:
+				_move_toward(_fish.global_position, CHASE_SPEED, delta, false)
+			else:
+				_timer -= delta
+				_bob += delta * 3.0  # gnawing
+				if _timer <= 0.0:
+					_fish.eaten()
+					_fed()
 		Mode.CARRY:
 			var to_cage := _cage.global_position + HOME - global_position
 			if to_cage.length() < 6.0:
@@ -163,30 +207,102 @@ func _physics_process(delta: float) -> void:
 					GameState.end_run(false, "被大鬼關進籠子殺死了")
 
 
+## Charging - for as long as the lamp stays on it.
 func _chase(delta: float) -> void:
-	var dist := global_position.distance_to(_player.global_position)
 	var speed := NIGHT_SPEED if GameState.is_night else CHASE_SPEED
 	if frenzy_timer > 0.0:
 		speed *= 1.25
-	_move_toward(_player.global_position, speed, delta)
-	if not GameState.is_night:
-		_lost = _lost + delta if dist > LOSE_RANGE else 0.0
-		if _lost >= LOSE_TIME:
-			_set_mode(Mode.WANDER)
-			GameState.push_message("大鬼跟丟你了")
-			return
-	if dist <= CATCH_RADIUS and not _player.held and not _in_safe_zone(_player.global_position):
+	# Only while the light is on it does it home in on the player; out of
+	# it, it slows to a prowl towards where the light last was.
+	if _lit():
+		_lost = 0.0
+		_target = _player.global_position
+		_move_toward(_target, speed, delta)
+	else:
+		_lost += delta
+		_move_toward(_target, LOOK_SPEED, delta)
+	_try_catch()
+	if mode == Mode.CHASE and _lost >= LOSE_TIME:
+		GameState.push_message("大鬼失去了你的蹤影")
+		_start_search(_target)
+
+
+func _start_chase() -> void:
+	_target = _player.global_position
+	_lost = 0.0
+	_set_mode(Mode.CHASE)
+	GameState.push_message("大鬼被燈光吸引，衝過來了！把燈移開或熄掉就能甩掉牠")
+
+
+func _start_search(at: Vector2) -> void:
+	_target = at
+	_timer = SEARCH_TIME
+	_set_mode(Mode.SEARCH)
+
+
+## Wandering or searching: the lamp on it sets it charging; passing close
+## makes it come and look.
+func _watch() -> void:
+	if _check_fish():
+		return
+	if _lit():
+		_start_chase()
+	elif _near_player():
+		_target = _player.global_position
+		_timer = LOOK_TIME
+		_set_mode(Mode.SUSPICIOUS)
+		GameState.push_message("大鬼注意到附近有動靜...")
+
+
+func _lit() -> bool:
+	var lamp: Lantern = _player.get_node("Lantern")
+	return lamp.lit and global_position.distance_to(_player.global_position) <= LIT_SIGHT \
+		and lamp.illuminates(global_position)
+
+
+func _near_player() -> bool:
+	var reach := NIGHT_NOTICE if GameState.is_night else NOTICE
+	return global_position.distance_to(_player.global_position) <= reach
+
+
+func _try_catch() -> void:
+	if global_position.distance_to(_player.global_position) <= CATCH_RADIUS and not _player.held \
+			and not _in_safe_zone(_player.global_position):
 		_player.seize()
 		_set_mode(Mode.CARRY)
 		GameState.push_message("大鬼抓住你了！牠要把你拖回籠子！")
 
 
-func _sees_player() -> bool:
-	if GameState.is_night:
-		return true
-	var dist := global_position.distance_to(_player.global_position)
-	var lamp: Lantern = _player.get_node("Lantern")
-	return dist <= SIGHT or (dist <= LIT_SIGHT and lamp.illuminates(global_position))
+## User request: a fish thrown its way (the drop-fish button) draws it off.
+func _check_fish() -> bool:
+	var best: Node2D = null
+	var best_d := FISH_SMELL
+	for fish in get_tree().get_nodes_in_group("dropped_fish"):
+		var d := global_position.distance_to(fish.global_position)
+		if d < best_d:
+			best_d = d
+			best = fish
+	if best == null:
+		return false
+	_fish = best
+	_timer = EAT_TIME
+	_set_mode(Mode.EAT)
+	GameState.push_message("大鬼被丟下的魚吸引過去，大口啃了起來...")
+	return true
+
+
+func _fed() -> void:
+	_fish = null
+	_timer = FED_TIME
+	_set_mode(Mode.REST)
+	_pick_wander_target(true)
+
+
+func _roam(delta: float) -> void:
+	_repick -= delta
+	if _repick <= 0.0 or global_position.distance_to(_target) < 12.0:
+		_pick_wander_target()
+	_move_toward(_target, WANDER_SPEED, delta)
 
 
 func _move_toward(target: Vector2, speed: float, delta: float, keep_out := true) -> void:

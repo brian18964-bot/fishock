@@ -92,8 +92,30 @@ var run_started: bool = false
 ## save from a night catch; multiplayer altar revival doesn't apply here.
 var has_heart: bool = false
 
+## User request: the floating ghosts only now and then get in the way - at
+## least GHOST_INTERFERENCE_GAP s apart and GHOST_INTERFERENCE_MAX times a
+## run between all of them; the rest of the time they drift about the map.
+const GHOST_INTERFERENCE_GAP := 20.0
+const GHOST_INTERFERENCE_MAX := 4
+var ghost_interferences: int = 0
+var _ghost_quiet: float = 0.0
+## The one ghost currently on its way to the player, if any.
+var ghost_haunter: Node = null
+
+
+func ghost_may_interfere() -> bool:
+	return run_started and not run_over and ghost_interferences < GHOST_INTERFERENCE_MAX \
+		and _ghost_quiet >= GHOST_INTERFERENCE_GAP
+
+
+func ghost_interfered() -> void:
+	ghost_interferences += 1
+	_ghost_quiet = 0.0
+
 
 func _process(delta: float) -> void:
+	if run_started and not run_over:
+		_ghost_quiet += delta
 	if not run_started or run_over or is_night or day_phase != DayPhase.FISHING:
 		return
 	time_remaining = max(time_remaining - delta, 0.0)
@@ -212,6 +234,9 @@ func reset_run() -> void:
 	is_night = false
 	run_started = false
 	has_heart = false
+	ghost_interferences = 0
+	_ghost_quiet = 0.0
+	ghost_haunter = null
 	weather = Weather.CLEAR
 	weather_timer = randf_range(WEATHER_MIN_DURATION, WEATHER_MAX_DURATION)
 	weather_changed.emit("CLEAR")

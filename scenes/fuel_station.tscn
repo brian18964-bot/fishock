@@ -2,8 +2,8 @@
 
 [ext_resource type="Script" path="res://scripts/fuel_station.gd" id="1"]
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_fuel"]
-size = Vector2(64, 64)
+[sub_resource type="CircleShape2D" id="RectangleShape2D_fuel"]
+radius = 58.0
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_drums"]
 size = Vector2(40, 22)
@@ -48,4 +48,5 @@ horizontal_alignment = 1
 text = "煤油站 5/5"
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, -24)
 shape = SubResource("RectangleShape2D_fuel")

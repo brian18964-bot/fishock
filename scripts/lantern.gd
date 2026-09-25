@@ -186,10 +186,17 @@ func _handle_tool_switch() -> void:
 	_switch_key_held = held
 	if not just_pressed:
 		return
-	if not Profile.has_flashlight:
+	switch_tool(Tool.FLASHLIGHT if tool == Tool.LAMP else Tool.LAMP)
+
+
+## User request: also picked straight from the backpack (Backpack).
+func switch_tool(to: Tool) -> void:
+	if to == tool:
+		return
+	if to == Tool.FLASHLIGHT and not Profile.has_flashlight:
 		GameState.push_message("還沒有手電筒，可以在商店購買")
 		return
-	tool = Tool.FLASHLIGHT if tool == Tool.LAMP else Tool.LAMP
+	tool = to
 	relight_progress = 0.0
 	if tool == Tool.FLASHLIGHT and charge <= 0.0 and Profile.use_battery():
 		charge = 100.0

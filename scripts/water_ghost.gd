@@ -3,10 +3,12 @@ extends Node2D
 
 ## User request: the water ghost is the user's zombie (Zombie.FBX, rendered
 ## by tools/render_water_ghost.py) - when its ambush fires (see
-## Player._maybe_trigger_water_ghost()) it actually shows up: it rises out
-## of the water nearest the player with a splash, lurches over with its
-## arms out, clings to them for a moment - that's when the bait, a fish and
-## their footing go - then wades back and sinks out of sight.
+## Player._maybe_trigger_water_ghost()) it actually shows up: its head
+## breaks the surface out in the water nearest the player with a splash,
+## and it walks out of the water - rising out of it step by step as it
+## gets shallower - lurches over with its arms out, clings to them for a
+## moment (that's when the bait, a fish and their footing go), then wades
+## back in and sinks out of sight.
 
 const SHEET := [preload("res://assets/sprites/water_ghost/water_ghost_55deg_albedo.png"),
 	preload("res://assets/sprites/water_ghost/water_ghost_55deg_normal.png")]
@@ -18,16 +20,19 @@ const DIRS := 8
 ## Sheet row by 45deg sector clockwise from +X (same order as the player).
 const SECTOR_TO_DIR := [6, 7, 0, 1, 2, 3, 4, 5]
 const WALK_FPS := 8.0
-## How far in from the shore it comes up.
-const IN_FROM_SHORE := 12.0
-const RISE_TIME := 0.7
+## How far out in the water it comes up (less in a narrow pond).
+const IN_FROM_SHORE := 44.0
+const RISE_TIME := 0.5
 const SINK_TIME := 0.8
-const LUNGE_SPEED := 125.0
+## User request: 20% slower than it was (125 / 80).
+const LUNGE_SPEED := 100.0
 const CLING_TIME := 1.6
 const CLING_GAP := 9.0
-const RETREAT_SPEED := 80.0
-## Taller than it'll ever stand, so the clip only cuts at the water line.
-const CLIP_SIZE := Vector2(90, 100)
+const RETREAT_SPEED := 64.0
+## How much of it the water hides per px of depth, and at most.
+const SUBMERGE_PER_PX := 0.85
+const MAX_SUBMERGE := 40.0
+const WATER_LINE := preload("res://shaders/water_line.gdshader")
 const TINT := Color(0.78, 0.95, 0.9, 0.92)
 
 enum Phase { RISE, LUNGE, CLING, RETREAT, SINK }
@@ -38,7 +43,7 @@ var _phase := Phase.RISE
 var _t := 0.0
 var _dir := 0
 var _anim := 0.0
-var _clip: Control
+var _water_line: ShaderMaterial
 var _visual: Sprite2D
 
 
@@ -70,18 +75,17 @@ static func _water_spot(player: Node2D):
 		var d := shore.distance_to(player.global_position)
 		if d < best_d:
 			best_d = d
-			best = shore - dir.normalized() * IN_FROM_SHORE
+			best = shore - dir.normalized() * 8.0
+			for back in [IN_FROM_SHORE, IN_FROM_SHORE * 0.6, IN_FROM_SHORE * 0.35]:
+				var p: Vector2 = shore - dir.normalized() * back
+				if zone.is_deep(p, back * 0.6):
+					best = p
+					break
 	return best
 
 
 func _ready() -> void:
 	add_to_group("water_ghosts")
-	_clip = Control.new()
-	_clip.clip_contents = true
-	_clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_clip.size = CLIP_SIZE
-	_clip.position = Vector2(-CLIP_SIZE.x * 0.5, -CLIP_SIZE.y)
-	add_child(_clip)
 	_visual = Sprite2D.new()
 	var tex := CanvasTexture.new()
 	tex.diffuse_texture = SHEET[0]
@@ -91,9 +95,12 @@ func _ready() -> void:
 	_visual.vframes = DIRS
 	_visual.modulate = TINT
 	Art.place(_visual, OFFSET, SPRITE_SCALE)
-	_clip.add_child(_visual)
+	_water_line = ShaderMaterial.new()
+	_water_line.shader = WATER_LINE
+	_visual.material = _water_line
+	add_child(_visual)
 	_face(_player.global_position - global_position)
-	_set_depth(1.0)
+	_submerge(MAX_SUBMERGE + 30.0)
 	SplashFx.play(get_parent(), "splash_bite", global_position)
 	Ripple.spawn(get_parent(), global_position, 30.0, 1.3)
 
@@ -105,29 +112,35 @@ func _process(delta: float) -> void:
 	_t += delta
 	match _phase:
 		Phase.RISE:
+			# Its head comes up to the surface where it stands.
 			_face(_player.global_position - global_position)
-			_set_depth(1.0 - smoothstep(0.0, 1.0, _t / RISE_TIME))
+			var k := smoothstep(0.0, 1.0, _t / RISE_TIME)
+			_submerge(lerpf(MAX_SUBMERGE + 30.0, _water_cover(), k))
 			if _t >= RISE_TIME:
 				_next(Phase.LUNGE)
 		Phase.LUNGE:
 			var target := _cling_spot()
 			_walk_to(target, LUNGE_SPEED, delta)
+			_submerge(_water_cover())
 			if global_position.distance_to(target) < 2.0:
 				_next(Phase.CLING)
 		Phase.CLING:
 			# Hangs on as they stagger about.
 			global_position = global_position.lerp(_cling_spot(), minf(delta * 8.0, 1.0))
+			_submerge(_water_cover())
 			_face(_player.global_position - global_position)
 			_anim += delta * WALK_FPS * 0.5
 			if _t >= CLING_TIME:
 				_next(Phase.RETREAT)
 		Phase.RETREAT:
 			_walk_to(_home, RETREAT_SPEED, delta)
+			_submerge(_water_cover())
 			if global_position.distance_to(_home) < 1.5:
 				Ripple.spawn(get_parent(), global_position, 24.0, 1.0)
 				_next(Phase.SINK)
 		Phase.SINK:
-			_set_depth(smoothstep(0.0, 1.0, _t / SINK_TIME))
+			var k := smoothstep(0.0, 1.0, _t / SINK_TIME)
+			_submerge(lerpf(_water_cover(), MAX_SUBMERGE + 30.0, k))
 			if _t >= SINK_TIME:
 				queue_free()
 	_visual.frame = _dir * FRAMES + int(_anim) % FRAMES
@@ -158,8 +171,15 @@ func _face(to: Vector2) -> void:
 		_dir = SECTOR_TO_DIR[posmod(roundi(to.angle() / (PI / 4.0)), 8)]
 
 
-## 0 standing clear, 1 under the surface: it's lowered below the water
-## line, and only drawn above it.
-func _set_depth(depth: float) -> void:
-	_clip.clip_contents = depth > 0.0
-	_visual.position = Vector2(CLIP_SIZE.x * 0.5, CLIP_SIZE.y + depth * 40.0)
+## How much of it the water where it stands hides (world px).
+func _water_cover() -> float:
+	var zone := Ripple.water_at(get_tree(), global_position)
+	if zone == null:
+		return 0.0
+	return minf(zone.depth(global_position) * SUBMERGE_PER_PX, MAX_SUBMERGE)
+
+
+## Lowered `px` below the water line (its feet), and only drawn above it.
+func _submerge(px: float) -> void:
+	_visual.position = Vector2(0.0, px)
+	_water_line.set_shader_parameter("cut_y", -px / _visual.scale.y if px > 0.0 else 100000.0)

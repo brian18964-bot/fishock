@@ -105,9 +105,9 @@ func _process(delta: float) -> void:
 	if _player.carrying_oil_drum:
 		gear_label.text = "提著油箱中，沒辦法釣魚，送去煤油站吧"
 	elif _player.fishing_mode == Player.FishingMode.BOBBER:
-		gear_label.text = "釣法：浮標（餌 x%d）－Tab 切換" % _player.bait_count
+		gear_label.text = "釣法：浮標（餌 x%d）－背包裡切換" % _player.bait_count
 	else:
-		gear_label.text = "釣法：路亞 %s－Tab 切換" % _player.lure_label(_player.current_lure)
+		gear_label.text = "釣法：路亞 %s－背包裡切換" % _player.lure_label(_player.current_lure)
 
 	heart_label.text = "❤ 已持有心臟" if GameState.has_heart else ""
 	affliction_label.text = "⚠ " + _player.affliction_text if _player.water_ghost_timer > 0.0 else ""
