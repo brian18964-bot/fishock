@@ -473,6 +473,8 @@ func _apply_water_ghost_attack() -> void:
 		bait_count = max(bait_count - 1, 0)
 	else:
 		_lose_lure()
+	# User request: and it's seen doing it (WaterGhost).
+	WaterGhost.summon(self)
 	var stolen: Dictionary = GameState.steal_one_carried()
 	var msg := "水鬼從水裡冒出來偷襲！身上狀態異常中"
 	if not stolen.is_empty():
