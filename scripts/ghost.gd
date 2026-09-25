@@ -3,9 +3,10 @@ extends Node2D
 ## Basic patrol / suspicious / alert / search loop (design doc §3.2), plus a
 ## simplified day-interference set (§3.3). Day "catch" (an ALERT chase
 ## landing) is simplified to dropping carried fish rather than the full
-## control/drag/rescue chain. Night is a separate, simpler unescapable
-## hunt (§3.4) that ends the run outright on catch - see
-## _process_night_hunt().
+## control/drag/rescue chain. Night is a separate, simpler hunt (§3.4) -
+## user request: the floating ghosts only harass, so a night catch steals a
+## fish rather than ending the run; the big ghost (BigGhost) is the killer.
+## See _process_night_hunt().
 
 signal state_changed(new_state: String)
 
@@ -256,14 +257,17 @@ func _process_night_hunt(delta: float) -> void:
 		global_position += to_player.normalized() * NIGHT_CHASE_SPEED * PACE * delta
 
 	if global_position.distance_to(player.global_position) <= CATCH_RADIUS:
-		if GameState.use_heart():
-			GameState.push_message("心臟救了你一命！鬼被震退了")
-			var away := global_position - player.global_position
-			if away.length() < 1.0:
-				away = Vector2.UP
-			global_position = player.global_position + away.normalized() * 260.0
+		# User request: the floating ghosts only harass - the killing is the
+		# big ghost's (BigGhost). A night catch grabs a fish and it's gone.
+		var stolen: Dictionary = GameState.steal_one_carried()
+		if stolen.is_empty():
+			GameState.push_message("鬼從你身上穿過，一陣寒意...")
 		else:
-			GameState.end_run(false, "被鬼拖進水裡了，你沒能撐過夜晚")
+			GameState.push_message("鬼撲過來搶走了一條 %s！" % stolen.get("name", "魚"))
+		var away := global_position - player.global_position
+		if away.length() < 1.0:
+			away = Vector2.UP
+		global_position = player.global_position + away.normalized() * 260.0
 
 
 func _start_search(at: Vector2) -> void:

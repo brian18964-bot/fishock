@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/willow.gd" id="1"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_willow"]
+radius = 8.0
+
+[node name="Willow" type="Node2D"]
+script = ExtResource("1")
+
+[node name="Visual" type="Sprite2D" parent="."]
+
+[node name="Body" type="StaticBody2D" parent="."]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Body"]
+shape = SubResource("CircleShape2D_willow")

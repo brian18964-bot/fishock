@@ -32,6 +32,7 @@ const SPAWN_CLEAR_RADIUS := 220.0
 
 const FIXED_POINT_MARGIN := 150.0
 const FIXED_POINT_MIN_SEPARATION := 550.0
+const WILLOW_BESIDE_ALTAR := Vector2(72.0, 16.0)
 
 ## User feedback follow-up: obstacles/trees/bushes were still at fixed
 ## main.tscn positions, so they could visually land inside a randomized
@@ -374,6 +375,14 @@ func _place_altar_and_escape() -> void:
 
 	altar.global_position = _pick_fixed_point_position([SPAWN_POS])
 	escape_point.global_position = _pick_fixed_point_position([SPAWN_POS, altar.global_position])
+	# User request: Willow, the harmless NPC, stands beside the altar; the
+	# big ghost's cage is a fixed point of its own, away from the rest.
+	var willow: Node2D = get_parent().get_node_or_null("Willow")
+	if willow != null:
+		willow.global_position = altar.global_position + WILLOW_BESIDE_ALTAR
+	var cage: Node2D = get_parent().get_node_or_null("GhostCage")
+	if cage != null:
+		cage.global_position = _pick_fixed_point_position([SPAWN_POS, altar.global_position, escape_point.global_position])
 
 
 func _pick_fixed_point_position(avoid: Array) -> Vector2:

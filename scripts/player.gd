@@ -174,6 +174,10 @@ var rummage_progress: float = 0.0
 ## hand instead of refilling the whole map on the spot - see
 ## _handle_action_input()'s oil-drum/fuel-station branches.
 var carrying_oil_drum: bool = false
+## User request: the big ghost drags the player off to its cage. While
+## held (carried, then caged) the player can't move or fish; whoever holds
+## them places them (BigGhost).
+var held: bool = false
 
 var _fuel_station: FuelStation
 var _oil_drum: OilDrum
@@ -354,6 +358,20 @@ func _force_drop_oil_drum() -> void:
 		_carried_oil_drum.deliver()
 	_carried_oil_drum = null
 	carrying_oil_drum = false
+
+
+## Grabbed by the big ghost: whatever was going on is dropped.
+func seize() -> void:
+	held = true
+	velocity = Vector2.ZERO
+	charge_time = 0.0
+	if state != State.IDLE:
+		_reset_line(State.IDLE)
+	_force_drop_oil_drum()
+
+
+func release() -> void:
+	held = false
 
 
 func _can_start_cast() -> bool:
@@ -557,6 +575,9 @@ func _try_buy_upgrade(upgrade_key: String) -> void:
 
 func _physics_process(delta: float) -> void:
 	water_ghost_timer = max(water_ghost_timer - delta, 0.0)
+	if held:
+		velocity = Vector2.ZERO
+		return
 	_update_aim()
 	_update_movement()
 	_update_noise()
