@@ -66,6 +66,9 @@ func _ready() -> void:
 	# Phones (the web build on iPhone): on-screen buttons for the keys, and
 	# the long keyboard help text would sit right under them.
 	add_child(TouchControls.new())
+	# The object buttons (ActionPrompt) take a touch before the sticks and
+	# the on-screen buttons do: input goes to the last in the tree first.
+	move_child($ActionPrompt, -1)
 	if DisplayServer.is_touchscreen_available():
 		$HUD/Panel/HelpLabel.visible = false
 		# User request: see-through controls, the sticks included.

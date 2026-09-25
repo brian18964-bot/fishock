@@ -61,6 +61,7 @@ func current_value() -> float:
 ## dict for GameState.add_carried_fish() - rotten pickups carry no normal
 ## value, only the "rotten" flag that unlocks the sacrifice gamble.
 func pick_up() -> Dictionary:
+	remove_from_group("dropped_fish")
 	var fish := as_fish()
 	queue_free()
 	return fish

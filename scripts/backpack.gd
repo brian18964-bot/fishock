@@ -106,6 +106,7 @@ func is_open() -> bool:
 func toggle() -> void:
 	_panel.visible = not _panel.visible
 	_backdrop.visible = _panel.visible
+	set_sticks_enabled(get_tree(), not _panel.visible)
 	_selected = {}
 	if _panel.visible:
 		_rebuild()
@@ -280,3 +281,17 @@ class GridView extends Control:
 				draw_string(font, r.position + Vector2(3, r.size.y - 5), item.grade, HORIZONTAL_ALIGNMENT_LEFT, text_w, 11, Color(1, 1, 1, 0.6))
 			elif item.count > 0:
 				draw_string(font, r.position + Vector2(0, r.size.y - 5), "x%d" % item.count, HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 3.0, 12, Color(1, 1, 1, 0.9))
+
+
+## While a window's up, the sticks leave its touches alone (they'd walk the
+## player, or swing and flash the light).
+static func set_sticks_enabled(tree: SceneTree, enabled: bool) -> void:
+	var scene := tree.current_scene
+	if scene == null:
+		return
+	for path in ["HUD/Panel/MoveJoystick", "HUD/Panel/AimJoystick"]:
+		var stick := scene.get_node_or_null(path)
+		if stick != null:
+			if not enabled:
+				stick._reset()  # let go of any touch it holds, or it'd stay pushed
+			stick.process_mode = Node.PROCESS_MODE_INHERIT if enabled else Node.PROCESS_MODE_DISABLED

@@ -26,7 +26,6 @@ const STATE_TEXT := {
 @onready var gold_label: Label = $Panel/GoldLabel
 @onready var back_to_title_button: Button = $Panel/BackToTitleButton
 @onready var sacrifice_bar: ProgressBar = $Panel/SacrificeBar
-@onready var rummage_bar: ProgressBar = $Panel/RummageBar
 @onready var relight_bar: ProgressBar = $Panel/RelightBar
 @onready var affliction_label: Label = $Panel/AfflictionLabel
 @onready var weather_label: Label = $Panel/WeatherLabel
@@ -59,7 +58,6 @@ func _ready() -> void:
 	player.state_changed.connect(_on_state_changed)
 	player.reel_progress.connect(_on_reel_progress)
 	player.sacrifice_progress_updated.connect(_on_sacrifice_progress_updated)
-	player.rummage_progress_updated.connect(_on_rummage_progress_updated)
 	GameState.quota_updated.connect(_on_quota_updated)
 	GameState.inventory_updated.connect(_on_inventory_updated)
 	GameState.message_posted.connect(_on_message)
@@ -141,11 +139,6 @@ func _on_reel_progress(progress: float, tension: float) -> void:
 func _on_sacrifice_progress_updated(progress: float) -> void:
 	sacrifice_bar.visible = progress > 0.0
 	sacrifice_bar.value = progress
-
-
-func _on_rummage_progress_updated(progress: float) -> void:
-	rummage_bar.visible = progress > 0.0
-	rummage_bar.value = progress
 
 
 func _on_relight_progress_updated(progress: float) -> void:

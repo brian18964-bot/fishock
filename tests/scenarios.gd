@@ -15,6 +15,7 @@ const TESTS := [
 	"test_big_ghost_heart_frees",
 	"test_big_ghost_follows_the_light",
 	"test_big_ghost_eats_thrown_fish",
+	"test_big_ghost_fish_taken_back",
 	"test_light_flash_stuns",
 	"test_floating_ghost_budget",
 	"test_backpack_grid",
@@ -273,6 +274,24 @@ func test_big_ghost_eats_thrown_fish() -> void:
 	check(main.get_tree().get_nodes_in_group("dropped_fish").is_empty(), "fish eaten")
 
 
+func test_big_ghost_fish_taken_back() -> void:
+	var bg = main.get_node("BigGhost")
+	gs.time_remaining = gs.DAY_DURATION * 0.7
+	await frames(5)
+	bg.global_position = Vector2(1500, 300)
+	bg.mode = bg.Mode.CHASE
+	await put(bg.global_position + Vector2(-200, 0))
+	player().aim_dir = Vector2.RIGHT
+	gs.add_carried_fish(fish())
+	player().throw_fish(0)
+	await frames(3)
+	var dropped: Node = main.get_tree().get_first_node_in_group("dropped_fish")
+	check(bg.mode == bg.Mode.EAT, "goes for the fish")
+	dropped.pick_up()
+	await frames(3)
+	check(bg.mode == bg.Mode.WANDER, "picked back up: nothing eaten, back to wandering (mode %s)" % bg.Mode.keys()[bg.mode])
+
+
 func test_light_flash_stuns() -> void:
 	var lantern: Lantern = player().get_node("Lantern")
 	var bg = main.get_node("BigGhost")
@@ -340,8 +359,11 @@ func test_backpack_grid() -> void:
 			bag = c
 	await tap(KEY_I)
 	check(bag.is_open(), "backpack opens")
+	var stick: Node = main.get_node("HUD/Panel/AimJoystick")
+	check(stick.process_mode == Node.PROCESS_MODE_DISABLED, "the sticks ignore touches under the open bag")
 	bag.toggle()
 	check(not bag.is_open(), "backpack closes")
+	check(stick.process_mode != Node.PROCESS_MODE_DISABLED, "the sticks work again")
 
 
 func test_water_ghost() -> void:

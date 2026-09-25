@@ -10,7 +10,6 @@ signal catch_success(fish: Dictionary)
 signal catch_failed(reason: String)
 signal line_cleared()
 signal sacrifice_progress_updated(progress: float)
-signal rummage_progress_updated(progress: float)
 ## A test nibble on the bait before the real bite (fake: a full-looking dunk
 ## meant to bait an early strike) - see the fishing difficulty plan.
 signal nibble(fake: bool)
@@ -42,7 +41,6 @@ const START_LURES := 5
 ## fish drops speed a bit further, floored so it's slow, never frozen.
 const WEIGHT_SPEED_PENALTY := 0.05
 const MIN_SPEED_RATIO := 0.4
-const RUMMAGE_DURATION := 0.9
 
 ## Design doc request: reeling a lure in is player-paced, not an automatic
 ## countdown - holding retrieves steadily, each tap also nudges it a bit
@@ -170,7 +168,6 @@ var reel_power_mult: float = 1.0
 
 const SACRIFICE_DURATION := 0.6
 var sacrifice_progress: float = 0.0
-var rummage_progress: float = 0.0
 
 ## Design doc request: the oil drum is carried back to a fuel station by
 ## hand instead of refilling the whole map on the spot - see
@@ -851,9 +848,6 @@ func _handle_interaction(delta: float) -> void:
 	if verb != "獻祭" and sacrifice_progress > 0.0:
 		sacrifice_progress = 0.0
 		sacrifice_progress_updated.emit(0.0)
-	if verb != "翻開" and rummage_progress > 0.0:
-		rummage_progress = 0.0
-		rummage_progress_updated.emit(0.0)
 	match verb:
 		"獻祭":
 			_handle_sacrifice(use_held, delta)

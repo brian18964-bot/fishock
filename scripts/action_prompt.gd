@@ -132,6 +132,4 @@ func _progress() -> float:
 	match _offer.get("verb", ""):
 		"獻祭":
 			return player.sacrifice_progress
-		"翻開":
-			return player.rummage_progress
 	return 0.0

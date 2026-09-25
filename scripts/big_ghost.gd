@@ -172,8 +172,10 @@ func _physics_process(delta: float) -> void:
 			if mode == Mode.SEARCH and _timer <= 0.0:
 				_set_mode(Mode.WANDER)
 		Mode.EAT:
-			if not is_instance_valid(_fish):
-				_fed()
+			if not is_instance_valid(_fish) or not _fish.is_in_group("dropped_fish"):
+				# Picked back up before it got there: nothing eaten.
+				_fish = null
+				_set_mode(Mode.WANDER)
 			elif global_position.distance_to(_fish.global_position) > 6.0:
 				_move_toward(_fish.global_position, CHASE_SPEED, delta, false)
 			else:

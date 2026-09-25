@@ -110,7 +110,7 @@ func _process(delta: float) -> void:
 			clip = CLIP_REEL  # retrieving the lure
 		elif fishing:
 			clip = CLIP_HOLD
-		elif _player.sacrifice_progress > 0.0 or _player.rummage_progress > 0.0:
+		elif _player.sacrifice_progress > 0.0:
 			clip = CLIP_BUSY
 		else:
 			clip = CLIP_IDLE

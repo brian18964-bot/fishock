@@ -61,11 +61,13 @@ func say(who: String, text: String) -> void:
 	_text.text = text
 	_panel.visible = true
 	_backdrop.visible = true
+	Backpack.set_sticks_enabled(get_tree(), false)
 
 
 func close() -> void:
 	_panel.visible = false
 	_backdrop.visible = false
+	Backpack.set_sticks_enabled(get_tree(), true)
 
 
 func is_open() -> bool:
