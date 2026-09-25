@@ -90,6 +90,13 @@ def import_fbx(path):
     return [o for o in bpy.data.objects if o not in objs], [a for a in bpy.data.actions if a not in acts]
 
 
+def fold_halves(path):
+    """Moves the bottom half of a sheet's rows beside the top half."""
+    img = np.asarray(Image.open(path).convert("RGBA"))
+    half = img.shape[0] // 2
+    Image.fromarray(np.concatenate([img[:half], img[half:]], axis=1), "RGBA").save(path)
+
+
 def load(mixamo):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     objs, acts = import_fbx(os.path.join(mixamo, "Fishing Idle.fbx"))
@@ -307,6 +314,13 @@ def main():
         n /= np.maximum(np.linalg.norm(n, axis=-1, keepdims=True), 1e-6)
         img[..., :3] = n * 0.5 + 0.5
         Image.fromarray((np.clip(img, 0, 1) * 255 + 0.5).astype(np.uint8), "RGBA").save(path)
+
+    # Performance on phones: 64 rows of cells made the sheet over 8192 px
+    # tall, past what many phone GPUs take; the second half of the rows sits
+    # beside the first instead (scripts/player_visual.gd, SHEET_HALVES).
+    if not args.dry:
+        for mode in ("albedo", "normal"):
+            fold_halves(f"{args.out_prefix}_{mode}.png")
 
     meta = {"cell": [w, h], "frames": FRAMES, "clips": CLIPS, "dirs": DIRS,
             "offset": [0.0, round(-cy * DENSITY, 2)], "rod_length": round(ROD_TIP * DENSITY, 2),

@@ -5,7 +5,7 @@ shader_type canvas_item;
 // stretches every sprite texel over a few screen pixels), more saturation,
 // and contrast pivoted low so the dark night stays dark.
 
-uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
+uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
 uniform float sharpen = 0.45;
 uniform float radius_px = 2.0;
 uniform float saturation = 1.22;

@@ -47,11 +47,20 @@ func _process(_delta: float) -> void:
 
 func _sync() -> void:
 	var src := get_parent() as PointLight2D
-	texture = src.texture
-	texture_scale = src.texture_scale
-	offset = src.offset
-	color = src.color
-	energy = src.energy
-	height = src.height
-	blend_mode = src.blend_mode
-	enabled = src.enabled
+	# Only what changed: each set goes to the renderer (phones).
+	if texture != src.texture:
+		texture = src.texture
+	if texture_scale != src.texture_scale:
+		texture_scale = src.texture_scale
+	if offset != src.offset:
+		offset = src.offset
+	if color != src.color:
+		color = src.color
+	if energy != src.energy:
+		energy = src.energy
+	if height != src.height:
+		height = src.height
+	if blend_mode != src.blend_mode:
+		blend_mode = src.blend_mode
+	if enabled != src.enabled:
+		enabled = src.enabled

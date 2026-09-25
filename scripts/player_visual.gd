@@ -19,6 +19,10 @@ extends Sprite2D
 const SHEET := [preload("res://assets/sprites/player/player_55deg_albedo.png"), preload("res://assets/sprites/player/player_55deg_normal.png")]
 const FRAMES := 8
 const DIRS := 8
+## Performance on phones: the rows are split into halves side by side (the
+## second four clips to the right of the first four) - one tall column was
+## over 8192 px, more than many phone GPUs take. See render_player.py.
+const SHEET_HALVES := 2
 const SPRITE_SCALE := 0.5
 ## (0, -center_y * 27.108) for the sheet's camera; the feet sit at the
 ## node origin, which is placed at the bottom of the player's collision box.
@@ -60,8 +64,8 @@ func _ready() -> void:
 	tex.diffuse_texture = SHEET[0]
 	tex.normal_texture = SHEET[1]
 	texture = tex
-	hframes = FRAMES
-	vframes = CLIPS * DIRS
+	hframes = FRAMES * SHEET_HALVES
+	vframes = CLIPS * DIRS / SHEET_HALVES
 	Art.place(self, OFFSET, SPRITE_SCALE)
 	_player.cast_started.connect(func(_t, _tier): _whip = 0.0)
 
@@ -115,4 +119,6 @@ func _process(delta: float) -> void:
 			fps *= speed / RUN_PACE
 		_phase += delta * fps
 		frame_in_clip = int(_phase) % FRAMES
-	frame = (clip * DIRS + dir) * FRAMES + frame_in_clip
+	var row := clip * DIRS + dir
+	var rows_per_half := CLIPS * DIRS / SHEET_HALVES
+	frame = (row % rows_per_half) * hframes + (row / rows_per_half) * FRAMES + frame_in_clip

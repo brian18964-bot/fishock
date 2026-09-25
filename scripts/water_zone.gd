@@ -22,6 +22,9 @@ enum ZoneType { COMMON, RARE }
 ## the shore. Rare zones keep their purple read. The two wave normal maps
 ## are generated once (seamless noise baked to normals) and shared.
 const WATER_SHADER := preload("res://shaders/water.gdshader")
+const SHORE_BAKE_SHADER := preload("res://shaders/shore_bake.gdshader")
+## World px per texel of the baked shoreline (see _bake_shore_field()).
+const FIELD_TEXEL := 1.0
 const RARE_BASE := Color(0.27, 0.13, 0.4)
 const RARE_DEEP := Color(0.08, 0.02, 0.16)
 const RARE_FOAM := Color(0.86, 0.72, 0.95)
@@ -257,13 +260,6 @@ func _build_surface() -> void:
 		mat.set_shader_parameter("deep_color", RARE_DEEP)
 		mat.set_shader_parameter("foam_color", RARE_FOAM)
 		mat.set_shader_parameter("wave_strength", 0.2)
-	_ensure_shore_noise()
-	mat.set_shader_parameter("shore_noise", _shore_noise_tex)
-	mat.set_shader_parameter("shore_blend", SHORE_BLEND)
-	mat.set_shader_parameter("warp_scale_a", WARP_SCALE_A)
-	mat.set_shader_parameter("warp_amp_a", WARP_AMP_A)
-	mat.set_shader_parameter("warp_scale_b", WARP_SCALE_B)
-	mat.set_shader_parameter("warp_amp_b", WARP_AMP_B)
 	surface.material = mat
 	add_child(surface)
 	_surface_material = mat
@@ -290,9 +286,44 @@ func _link_lobes() -> void:
 		all.append_array(zone.world_lobes())
 	var count := mini(all.size(), MAX_SHADER_LOBES)
 	all.resize(MAX_SHADER_LOBES)
-	_surface_material.set_shader_parameter("lobes", all)
-	_surface_material.set_shader_parameter("lobe_count", count)
-	_surface_material.set_shader_parameter("own_lobe_count", mini(own.size(), MAX_SHADER_LOBES))
+	_bake_shore_field(all, count, mini(own.size(), MAX_SHADER_LOBES))
+
+
+## Performance (user report: the phone ran hot): the shoreline never
+## changes, so it's worked out once - rendered by shaders/shore_bake.gdshader
+## into a small texture (FIELD_TEXEL world px a texel) - and the surface
+## shader samples that rather than evaluating every lobe and the noise for
+## every pixel of every frame.
+func _bake_shore_field(all: Array[Vector3], count: int, own_count: int) -> void:
+	var surface := get_node("Surface") as ColorRect
+	var texels := Vector2i((surface.size / FIELD_TEXEL).ceil())
+	var viewport := SubViewport.new()
+	viewport.name = "ShoreField"
+	viewport.size = texels
+	viewport.disable_3d = true
+	viewport.transparent_bg = true
+	viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
+	viewport.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_LINEAR
+	var rect := ColorRect.new()
+	rect.size = Vector2(texels)
+	var bake := ShaderMaterial.new()
+	bake.shader = SHORE_BAKE_SHADER
+	_ensure_shore_noise()
+	bake.set_shader_parameter("lobes", all)
+	bake.set_shader_parameter("lobe_count", count)
+	bake.set_shader_parameter("own_lobe_count", own_count)
+	bake.set_shader_parameter("shore_noise", _shore_noise_tex)
+	bake.set_shader_parameter("shore_blend", SHORE_BLEND)
+	bake.set_shader_parameter("warp_scale_a", WARP_SCALE_A)
+	bake.set_shader_parameter("warp_amp_a", WARP_AMP_A)
+	bake.set_shader_parameter("warp_scale_b", WARP_SCALE_B)
+	bake.set_shader_parameter("warp_amp_b", WARP_AMP_B)
+	bake.set_shader_parameter("origin", surface.global_position)
+	bake.set_shader_parameter("world_size", surface.size)
+	rect.material = bake
+	viewport.add_child(rect)
+	add_child(viewport)
+	_surface_material.set_shader_parameter("shore_field", viewport.get_texture())
 
 
 

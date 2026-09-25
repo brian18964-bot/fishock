@@ -17,18 +17,24 @@ var _target_alpha: float = 1.0
 func _ready() -> void:
 	area.body_entered.connect(_on_body_entered)
 	area.body_exited.connect(_on_body_exited)
+	set_process(false)
 
 
 func _process(delta: float) -> void:
 	var next: float = move_toward(visual.modulate.a, _target_alpha, FADE_SPEED * delta)
 	visual.modulate.a = next
+	# Settled: nothing to do until the player comes or goes (phones).
+	if is_equal_approx(next, _target_alpha):
+		set_process(false)
 
 
 func _on_body_entered(body: Node2D) -> void:
 	if body is Player:
 		_target_alpha = OCCLUDED_ALPHA
+		set_process(true)
 
 
 func _on_body_exited(body: Node2D) -> void:
 	if body is Player:
 		_target_alpha = 1.0
+		set_process(true)

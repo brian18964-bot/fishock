@@ -19,35 +19,15 @@ uniform float wave_strength = 0.12;  // user feedback: a calm surface
 uniform vec2 drift_a = vec2(0.012, 0.006);
 uniform vec2 drift_b = vec2(-0.008, 0.010);
 uniform float opacity = 1.0;
-// The water body as circles (world center xy, radius z): this zone's own
-// lobes first (own_lobe_count), then overlapping same-type zones' lobes.
-// The zone draws only inside its own lobes; the shore line follows the
-// outline of all of them merged.
-uniform vec3 lobes[16];
-uniform int lobe_count = 0;
-uniform int own_lobe_count = 0;
-
-// User feedback: the union of circles still read as circles. The lobes are
-// blended with a smooth union (no pinched joins) and the shoreline is
-// pushed in and out by two octaves of a shared noise image - WaterZone
-// evaluates exactly the same function for gameplay (see shore_depth()).
-uniform sampler2D shore_noise : repeat_enable, filter_linear;
-uniform float shore_blend = 30.0;
-uniform float warp_scale_a = 600.0;
-uniform float warp_amp_a = 18.0;
-uniform float warp_scale_b = 150.0;
-uniform float warp_amp_b = 5.0;
-
-float smax(float a, float b, float k) {
-	float h = clamp(0.5 + 0.5 * (a - b) / k, 0.0, 1.0);
-	return mix(b, a, h) + k * h * (1.0 - h);
-}
-
-float shore_warp(vec2 p) {
-	float a = texture(shore_noise, p / warp_scale_a).r;
-	float b = texture(shore_noise, p / warp_scale_b + vec2(0.37, 0.61)).r;
-	return (a - 0.5) * 2.0 * warp_amp_a + (b - 0.5) * 2.0 * warp_amp_b;
-}
+// The shoreline, baked once per zone (shaders/shore_bake.gdshader,
+// WaterZone): R the distance to the shore of the merged water near the
+// shore (fine), B the same over the whole range, G the same for this zone's
+// own outline (it draws only inside that) - world px over these ranges.
+// Worked out per pixel every frame before - too much for a phone.
+uniform sampler2D shore_field : filter_linear;
+uniform vec2 near_range = vec2(-8.0, 24.0);
+uniform vec2 field_range = vec2(-8.0, 120.0);
+uniform vec2 own_range = vec2(-8.0, 8.0);
 
 const float SQUASH = 0.819;  // sin 55deg: ripples lie on the art's ground plane
 
@@ -62,21 +42,13 @@ vec3 decode(vec4 t) {
 }
 
 void fragment() {
-	float own = -1e6;
-	float edge_px = -1e6;  // distance to the shore of the merged water, px
-	for (int i = 0; i < lobe_count; i++) {
-		float d = lobes[i].z - distance(world_pos, lobes[i].xy);
-		edge_px = smax(edge_px, d, shore_blend);
-		if (i < own_lobe_count) {
-			own = smax(own, d, shore_blend);
-		}
-	}
-	float warp = shore_warp(world_pos);
-	edge_px += warp;
-	own += warp;
+	vec3 field = texture(shore_field, UV).rgb;
+	float own = mix(own_range.x, own_range.y, field.g);
 	if (own < 0.0) {
 		discard;
 	}
+	float edge_px = field.r < 0.99 ? mix(near_range.x, near_range.y, field.r)
+			: mix(field_range.x, field_range.y, field.b);
 
 	// World-anchored, foreshortened wave coordinates.
 	vec2 w = vec2(world_pos.x, world_pos.y / SQUASH) / wave_scale;
