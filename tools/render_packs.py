@@ -193,6 +193,21 @@ for i in range(3):
                     builder="driftwood", seed=51 + i, paint="driftwood"))
 
 
+# Folk-horror props (rocks, as far as the game is concerned: solid, with a
+# footprint), by family.
+for i, style in enumerate(["round", "slab", "round"]):
+    MODELS.append(m("grave_%d" % (i + 1), None, [], "props", "rock", "grave", height=1.5 - 0.15 * i,
+                    builder="grave", seed=71 + i, style=style))
+for i in range(2):
+    MODELS.append(m("cross_%d" % (i + 1), None, [], "props", "rock", "grave", height=1.7,
+                    builder="cross", seed=81 + i))
+for i, tall in enumerate([True, False]):
+    MODELS.append(m("stone_lantern_%d" % (i + 1), None, [], "props", "rock", "lantern",
+                    height=2.6 if tall else 1.9, builder="stone_lantern", seed=91 + i, tall=tall))
+MODELS.append(m("shrine_1", None, [], "props", "rock", "shrine", height=2.4, builder="shrine", seed=95))
+MODELS.append(m("well_1", None, [], "props", "rock", "well", height=2.4, builder="well", seed=97))
+
+
 def make_palette(leaf, bark):
     """The collection's palette, rebuilt: bark swatches for v >= 52/64 (lighter
     up the swatch), leaf swatches below (all one hue, lighter up the swatch)."""
@@ -440,7 +455,117 @@ def build_driftwood(spec):
     return obs
 
 
-BUILDERS = {"reeds": build_reeds, "lilypads": build_lilypads, "driftwood": build_driftwood}
+def _box(size, loc, mat, rot=(0.0, 0.0, 0.0)):
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=loc)
+    ob = bpy.context.active_object
+    ob.scale = size
+    ob.rotation_euler = rot
+    ob.data.materials.append(mat)
+    return ob
+
+
+def _cyl(r, depth, loc, mat, verts=12, rot=(0.0, 0.0, 0.0), r2=None):
+    if r2 is None:
+        bpy.ops.mesh.primitive_cylinder_add(vertices=verts, radius=r, depth=depth, location=loc)
+    else:
+        bpy.ops.mesh.primitive_cone_add(vertices=verts, radius1=r, radius2=r2, depth=depth, location=loc)
+    ob = bpy.context.active_object
+    ob.rotation_euler = rot
+    ob.data.materials.append(mat)
+    return ob
+
+
+def build_grave(spec):
+    """User request (map styles, left to me): folk-horror props - old
+    headstones, leaning."""
+    rng = np.random.default_rng(spec["seed"])
+    stone = paint("grave_stone", (0.24, 0.24, 0.23), (0.06, 0.09, 0.05), scale=5.0, amount=0.7)
+    tilt = (rng.uniform(-0.12, 0.12), rng.uniform(-0.1, 0.1), rng.uniform(-0.3, 0.3))
+    obs = []
+    style = spec.get("style", "round")
+    if style == "round":
+        obs.append(_box((0.62, 0.16, 0.8), (0, 0, 0.4), stone))
+        obs.append(_cyl(0.31, 0.16, (0, 0, 0.8), stone, 16, (math.radians(90), 0, 0)))
+    elif style == "slab":
+        obs.append(_box((0.7, 0.2, 1.05), (0, 0, 0.52), stone))
+        obs.append(_box((0.8, 0.28, 0.12), (0, 0, 1.08), stone))
+    obs.append(_box((0.9, 0.5, 0.12), (0, -0.1, 0.06), stone))
+    for o in obs:
+        o.rotation_euler = (o.rotation_euler[0] + tilt[0], o.rotation_euler[1] + tilt[1], o.rotation_euler[2] + tilt[2])
+    return obs
+
+
+def build_cross(spec):
+    rng = np.random.default_rng(spec["seed"])
+    wood = paint("grave_wood", (0.16, 0.11, 0.07), (0.05, 0.04, 0.03), scale=8.0, amount=0.6)
+    lean = (rng.uniform(-0.2, 0.2), rng.uniform(-0.15, 0.15), rng.uniform(-0.4, 0.4))
+    obs = [_box((0.11, 0.09, 1.3), (0, 0, 0.62), wood), _box((0.62, 0.09, 0.1), (0, 0, 0.95), wood),
+           _box((0.7, 0.5, 0.1), (0, 0, 0.03), paint("grave_mound", (0.12, 0.1, 0.07), (0.05, 0.05, 0.03)))]
+    for o in obs[:2]:
+        o.rotation_euler = lean
+    return obs
+
+
+def build_stone_lantern(spec):
+    """A tall stone lantern (like a toro): base, pillar, firebox, roof."""
+    stone = paint("lantern_stone", (0.27, 0.27, 0.25), (0.07, 0.1, 0.05), scale=4.0, amount=0.65)
+    glow = _mat("lantern_glow", (1.0, 0.62, 0.2))
+    tall = spec.get("tall", True)
+    h = 1.0 if tall else 0.45
+    obs = [_cyl(0.42, 0.18, (0, 0, 0.09), stone, 6),
+           _cyl(0.14, h, (0, 0, 0.18 + h / 2), stone, 8),
+           _cyl(0.36, 0.14, (0, 0, 0.25 + h), stone, 6)]
+    z = 0.32 + h
+    obs.append(_box((0.46, 0.46, 0.34), (0, 0, z + 0.17), stone))
+    obs.append(_box((0.28, 0.52, 0.22), (0, 0, z + 0.17), glow))
+    obs.append(_box((0.52, 0.28, 0.22), (0, 0, z + 0.17), glow))
+    obs.append(_cyl(0.52, 0.28, (0, 0, z + 0.48), stone, 6, r2=0.08))
+    obs.append(_cyl(0.07, 0.14, (0, 0, z + 0.68), stone, 8, r2=0.0))
+    return obs
+
+
+def build_shrine(spec):
+    """A tiny wayside shrine: a stone plinth, red posts, a dark tiled roof,
+    an incense burner in front."""
+    stone = paint("shrine_stone", (0.26, 0.25, 0.23), (0.08, 0.08, 0.06), scale=4.0, amount=0.6)
+    red = paint("shrine_red", (0.42, 0.05, 0.03), (0.15, 0.03, 0.02), scale=6.0, amount=0.5)
+    roof = paint("shrine_roof", (0.1, 0.1, 0.12), (0.04, 0.04, 0.05), scale=6.0, amount=0.5)
+    gold = _mat("shrine_gold", (0.7, 0.5, 0.12))
+    obs = [_box((1.4, 1.1, 0.35), (0, 0, 0.175), stone)]
+    for x in (-0.5, 0.5):
+        for y in (-0.35, 0.35):
+            obs.append(_cyl(0.06, 0.9, (x, y, 0.8), red, 8))
+    obs.append(_box((0.95, 0.65, 0.6), (0, 0.08, 0.65), red))
+    obs.append(_box((0.5, 0.05, 0.32), (0, -0.25, 0.62), gold))
+    for side in (-1, 1):
+        obs.append(_box((1.55, 0.72, 0.08), (0, side * 0.3, 1.36), roof, (side * math.radians(-28), 0, 0)))
+    obs.append(_box((1.6, 0.12, 0.1), (0, 0, 1.55), roof))
+    obs.append(_cyl(0.16, 0.2, (0, -0.85, 0.1), gold, 10))
+    for k in range(3):
+        obs.append(_cyl(0.012, 0.28, (-0.06 + k * 0.06, -0.85, 0.34), _mat("incense", (0.5, 0.2, 0.1)), 4))
+    return obs
+
+
+def build_well(spec):
+    stone = paint("well_stone", (0.25, 0.24, 0.22), (0.07, 0.09, 0.05), scale=5.0, amount=0.7)
+    wood = paint("well_wood", (0.2, 0.13, 0.08), (0.06, 0.05, 0.03), scale=8.0, amount=0.5)
+    water = _mat("well_dark", (0.01, 0.02, 0.03))
+    obs = []
+    for k in range(12):
+        a = k / 12 * math.tau
+        obs.append(_box((0.34, 0.2, 0.62), (math.cos(a) * 0.62, math.sin(a) * 0.62, 0.31), stone, (0, 0, a + math.pi / 2)))
+    obs.append(_cyl(0.55, 0.05, (0, 0, 0.4), water, 16))
+    for x in (-0.72, 0.72):
+        obs.append(_box((0.1, 0.1, 1.5), (x, 0, 0.75), wood))
+    obs.append(_box((1.6, 0.1, 0.1), (0, 0, 1.45), wood))
+    for side in (-1, 1):
+        obs.append(_box((1.7, 0.55, 0.06), (0, side * 0.22, 1.62), wood, (side * math.radians(-30), 0, 0)))
+    return obs
+
+
+BUILDERS = {"reeds": build_reeds, "lilypads": build_lilypads, "driftwood": build_driftwood,
+            "grave": build_grave, "cross": build_cross, "stone_lantern": build_stone_lantern,
+            "shrine": build_shrine, "well": build_well}
 
 
 def import_pack(src):

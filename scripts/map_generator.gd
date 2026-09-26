@@ -62,6 +62,7 @@ const OBSTACLE_SCENE := preload("res://scenes/obstacle.tscn")
 const FLIP_ROCK_SCENE := preload("res://scenes/flip_rock.tscn")
 ## User request: rocks the player can turn over for bait, per run.
 const FLIP_ROCKS := Vector2i(8, 10)
+const NOT_FLIPPABLE := ["pillar", "grave", "lantern", "shrine", "well"]
 const BUSH_SCENE := preload("res://scenes/bush.tscn")
 
 ## User request: each run is dressed in one of a few looks, all from the
@@ -110,7 +111,7 @@ const THEMES := {
 		"floor": ["dirt", "gravel", 0.2],
 		"trees": 22, "rocks": 5, "bushes": 2, "ground": 80,
 		"tree_families": {"dead": 1.0, "bare": 1.0},
-		"rock_pool": [0, 1, 2, 3, 4],
+		"rock_pool": [0, 1, 2, 3, 4, "grave", "well"],
 		"ground_kinds": {"grass": 2.0, "mushroom": 3.0, "pebble": 2.0, "plant": 1.0},
 		"paths": true,
 		"animals": {"wolf": 2.0, "fox": 1.5, "stag": 1.0, "husky": 0.5},
@@ -165,7 +166,7 @@ const THEMES := {
 		"floor": ["leaf_litter", "grass", 0.25],
 		"trees": 26, "rocks": 3, "bushes": 5, "ground": 110,
 		"tree_families": {"autumn": 3.0, "maple": 1.0},
-		"rock_pool": [0, 1, 2, "mossy"],
+		"rock_pool": [0, 1, 2, "mossy", "lantern", "shrine"],
 		"ground_kinds": {"mushroom": 3.0, "grass": 2.0, "clover": 2.0, "shrub": 2.0, "flower_bush": 1.0},
 		"animals": {"deer": 2.0, "stag": 1.5, "fox": 2.0, "wolf": 0.5},
 		"tint": Color(1.1, 0.98, 0.86),
@@ -176,7 +177,7 @@ const THEMES := {
 		"floor": ["snow", "gravel", 0.12],
 		"trees": 24, "rocks": 6, "bushes": 0, "ground": 40,
 		"tree_families": {"snow_pine": 3.0, "snow_bare": 1.2},
-		"rock_pool": ["grey", "stone", "granite"],
+		"rock_pool": ["grey", "stone", "granite", "grave"],
 		"ground_kinds": {"pebble": 4.0, "grass": 1.0},
 		"shore": {"grass": 0.12, "shrub": 0.0, "pebbles": 0.45},
 		"animals": {"wolf": 2.0, "husky": 2.0, "stag": 1.0, "white_horse": 0.5, "fox": 1.0},
@@ -225,7 +226,7 @@ const THEMES := {
 		"floor": ["moss_soil", "gravel", 0.45],
 		"trees": 14, "rocks": 22, "bushes": 2, "ground": 90,
 		"tree_families": {"bonsai": 1.0},
-		"rock_pool": ["pillar", "granite", "grey", 5, 6, 7],
+		"rock_pool": ["pillar", "granite", "grey", 5, 6, 7, "lantern", "shrine"],
 		"ground_kinds": {"grass": 3.0, "pebble": 3.0, "plant": 1.0, "mushroom": 1.0},
 		"animals": {"stag": 1.5, "fox": 1.0, "white_horse": 1.0, "wolf": 1.0},
 		"tint": Color(0.92, 1.0, 0.98),
@@ -236,7 +237,7 @@ const THEMES := {
 		"floor": ["mud", "moss_soil", 0.35],
 		"trees": 22, "rocks": 6, "bushes": 4, "ground": 90,
 		"tree_families": {"dead": 1.0, "twisted": 1.0, "bare": 1.0},
-		"rock_pool": ["mossy", 0, 1],
+		"rock_pool": ["mossy", 0, 1, "grave"],
 		"ground_kinds": {"grass": 3.0, "mushroom": 3.0, "plant": 2.0},
 		"animals": {"wolf": 1.5, "fox": 1.0},
 		"animal_count": 4,
@@ -580,8 +581,8 @@ func _scatter_flip_rocks() -> void:
 		var rock: Node2D = FLIP_ROCK_SCENE.instantiate()
 		rock.position = _pick_prop_position(_themed_spots)
 		_themed_spots.append(rock.position)
-		# Small stones to turn over - not the standing slabs.
-		rock.variant_pool = theme.rock_pool.filter(func(e): return not (e is String and e == "pillar"))
+		# Small stones to turn over - not the standing slabs or the props.
+		rock.variant_pool = theme.rock_pool.filter(func(e): return not (e is String and e in NOT_FLIPPABLE))
 		get_parent().add_child.call_deferred(rock)
 
 
