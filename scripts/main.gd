@@ -84,6 +84,7 @@ func _ready() -> void:
 	add_child(AudioDirector.new())
 	# Rain, snow, falling leaves, fireflies (WeatherFx).
 	add_child(WeatherFx.new())
+	add_child(SoundToggle.new())
 	# Covers opening this scene directly (e.g. F6 in the editor) without
 	# going through the title screen's Start button.
 	GameState.start_run()

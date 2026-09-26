@@ -13,4 +13,10 @@ func _initialize() -> void:
 
 
 func _start() -> void:
-	root.add_child(load("res://tests/scenarios.gd").new())
+	var scenarios: GDScript = load("res://tests/scenarios.gd")
+	if scenarios == null or not scenarios.can_instantiate():
+		# A script error: fail rather than hang (CI would wait forever).
+		printerr("tests/scenarios.gd failed to compile")
+		quit(1)
+		return
+	root.add_child(scenarios.new())

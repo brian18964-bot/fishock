@@ -19,10 +19,17 @@ const FADE := 1.5
 const AMBIENCE_DB := -9.0
 const MUSIC_DB := -15.0
 
+const SETTINGS := "user://settings.cfg"
+
+## Remembered between sessions (SoundToggle, the M key).
 var muted := false:
 	set(v):
 		muted = v
 		AudioServer.set_bus_mute(0, v)
+		var cfg := ConfigFile.new()
+		cfg.load(SETTINGS)
+		cfg.set_value("audio", "muted", v)
+		cfg.save(SETTINGS)
 
 var _voices: Array[AudioStreamPlayer] = []
 var _voices_2d: Array[AudioStreamPlayer2D] = []
@@ -37,6 +44,9 @@ var _streams := {}
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	var cfg := ConfigFile.new()
+	if cfg.load(SETTINGS) == OK and cfg.get_value("audio", "muted", false):
+		muted = true
 	for i in VOICES:
 		var p := AudioStreamPlayer.new()
 		add_child(p)

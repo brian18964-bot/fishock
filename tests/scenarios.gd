@@ -212,6 +212,18 @@ func test_catalog_and_sounds() -> void:
 		"amb_rain", "amb_wind", "amb_swamp", "amb_jungle", "music_day", "music_night"]
 	var lost := sounds.filter(func(n): return Sfx.stream(n) == null)
 	check(lost.is_empty(), "every sound loads %s" % str(lost))
+	var toggle: SoundToggle = null
+	for c in main.get_children():
+		if c is SoundToggle:
+			toggle = c
+	var tap := InputEventScreenTouch.new()
+	tap.pressed = true
+	tap.position = SoundToggle.CENTER
+	var was: bool = Sfx.muted
+	toggle._input(tap)
+	check(Sfx.muted != was, "the speaker mutes")
+	toggle._input(tap)
+	check(Sfx.muted == was, "and unmutes")
 	var loop := Sfx.stream("amb_rain") as AudioStreamWAV
 	check(loop != null and loop.loop_mode == AudioStreamWAV.LOOP_FORWARD, "ambience loops")
 

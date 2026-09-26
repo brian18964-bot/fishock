@@ -206,7 +206,7 @@ func _is_empty_spot(pos: Vector2) -> bool:
 		if stick != null and stick.get_global_rect().has_point(pos):
 			return false
 	for c in scene.get_children():
-		if c is StatusCard and c.contains(pos):
+		if (c is StatusCard or c is SoundToggle) and c.contains(pos):
 			return false
 		if c is ActionPrompt and not c._offer.is_empty() and c._rect.grow(8.0).has_point(pos):
 			return false
