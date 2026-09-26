@@ -63,6 +63,9 @@ var _press_key_down := false
 var _press_y := 0.0
 var _level := 0.0
 var _start_brightness := 0.75
+## User request: with the lamp out, holding the light skill button relights
+## it (L held, like the long press on an empty spot) instead of flashing.
+var _skill_relight := false
 
 
 func _ready() -> void:
@@ -108,6 +111,11 @@ func _process(delta: float) -> void:
 			_slider.visible = true
 			_slider.set_active(true)
 		_slider.set_value(_level if lantern.lit else 0.0)
+	elif _skill_relight:
+		_ring.position = _skill_center
+		_ring.progress = lantern.relight_progress
+		_ring.visible = not lantern.lit
+		_ring.queue_redraw()
 
 
 func _input(event: InputEvent) -> void:
@@ -116,12 +124,22 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		if event.pressed and _skill_touch == -1 and event.position.distance_to(_skill_center) <= SKILL_RADIUS:
 			_skill_touch = event.index
-			_set_skill(true, Vector2.ZERO, false)
+			var lantern := _lantern()
+			if lantern != null and not lantern.lit:
+				_skill_relight = true
+				_send(KEY_L, true)
+			else:
+				_set_skill(true, Vector2.ZERO, false)
 			get_viewport().set_input_as_handled()
 		elif not event.pressed and event.index == _skill_touch:
 			_skill_touch = -1
 			_skill_view.set_knob(Vector2.ZERO)
-			_set_skill(false, Vector2.ZERO, false)
+			if _skill_relight:
+				_skill_relight = false
+				_send(KEY_L, false)
+				_ring.visible = false
+			else:
+				_set_skill(false, Vector2.ZERO, false)
 			get_viewport().set_input_as_handled()
 		elif event.pressed and _press_touch == -1 and _is_empty_spot(event.position):
 			_press_touch = event.index
@@ -134,6 +152,9 @@ func _input(event: InputEvent) -> void:
 		elif not event.pressed and event.index == _press_touch:
 			_end_press()
 	elif event is InputEventScreenDrag and event.index == _skill_touch:
+		if _skill_relight:
+			get_viewport().set_input_as_handled()
+			return
 		var drag: Vector2 = event.position - _skill_center
 		var steering := drag.length() > DRAG_DEADZONE
 		_skill_view.set_knob(drag.limit_length(SKILL_RADIUS) if steering else Vector2.ZERO)

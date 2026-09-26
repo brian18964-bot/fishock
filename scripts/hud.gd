@@ -11,8 +11,6 @@ const STATE_TEXT := {
 @onready var state_label: Label = $Panel/StateLabel
 @onready var quota_label: Label = $Panel/QuotaLabel
 @onready var message_label: Label = $Panel/MessageLabel
-@onready var progress_bar: ProgressBar = $Panel/ProgressBar
-@onready var tension_bar: ProgressBar = $Panel/TensionBar
 @onready var fuel_bar: ProgressBar = $Panel/FuelBar
 @onready var fuel_label: Label = $Panel/FuelLabel
 @onready var phase_label: Label = $Panel/PhaseLabel
@@ -43,19 +41,14 @@ const PHASE_TEXT := {
 }
 
 var _message_timer: float = 0.0
-var _stamina_label: Label
-var _tension_label: Label
 var _lantern: Lantern
 var _player: Player
 
 
 func _ready() -> void:
-	_stamina_label = _bar_label(progress_bar, "魚體力")
-	_tension_label = _bar_label(tension_bar, "張力")
 	var player: Player = get_tree().current_scene.get_node("Player")
 	_player = player
 	player.state_changed.connect(_on_state_changed)
-	player.reel_progress.connect(_on_reel_progress)
 	player.sacrifice_progress_updated.connect(_on_sacrifice_progress_updated)
 	GameState.quota_updated.connect(_on_quota_updated)
 	GameState.inventory_updated.connect(_on_inventory_updated)
@@ -85,14 +78,14 @@ func _process(delta: float) -> void:
 		fuel_bar.max_value = _lantern.max_fuel
 		fuel_bar.value = _lantern.fuel
 		if DisplayServer.is_touchscreen_available():
-			fuel_label.text = "煤燈燃油（已熄滅，長按畫面空白處點燃）" if not _lantern.lit else "煤燈燃油"
+			fuel_label.text = "煤燈燃油（已熄滅，長按燈鈕或畫面空白處點燃）" if not _lantern.lit else "煤燈燃油"
 		else:
 			fuel_label.text = "煤燈燃油（已熄滅，按住 L 點燃）" if not _lantern.lit else "煤燈燃油（L 熄滅）"
 	else:
 		fuel_bar.max_value = 100.0
 		fuel_bar.value = _lantern.charge
 		if _lantern.charge <= 0.0:
-			var how := "長按畫面空白處換" if DisplayServer.is_touchscreen_available() else "按住 L 換"
+			var how := "長按燈鈕或畫面空白處換" if DisplayServer.is_touchscreen_available() else "按住 L 換"
 			fuel_label.text = "手電筒沒電（電池 %d，%s）" % [Profile.batteries, how]
 		else:
 			fuel_label.text = "手電筒電量（電池 %d）" % Profile.batteries
@@ -121,22 +114,8 @@ func _process(delta: float) -> void:
 
 func _on_state_changed(new_state: String) -> void:
 	state_label.text = "狀態：%s" % STATE_TEXT.get(new_state, new_state)
-	var reeling := new_state == "REELING"
-	progress_bar.visible = reeling
-	tension_bar.visible = reeling
-	_stamina_label.visible = reeling
-	_tension_label.visible = reeling
-
-
-## User decision (fishing difficulty plan): the top bar is the fish's
-## stamina running down, labelled with its difficulty; the one under it is
-## line tension.
-func _on_reel_progress(progress: float, tension: float) -> void:
-	progress_bar.value = 1.0 - progress
-	tension_bar.value = tension
-	if _player.fight != null:
-		_stamina_label.text = "魚體力・%s" % _player.fight.label()
-	_tension_label.modulate = Color(1, 0.35, 0.3) if tension > 0.8 else Color(1, 1, 1)
+	# The fight panel (FightPanel) takes the middle of the top while a fish is on.
+	gear_label.visible = new_state != "REELING"
 
 
 func _on_sacrifice_progress_updated(progress: float) -> void:
@@ -210,16 +189,3 @@ func _rarity_label(rarity: String) -> String:
 			return "史詩"
 		_:
 			return rarity
-
-
-## A small caption left of a bar.
-func _bar_label(bar: Control, text: String) -> Label:
-	var label := Label.new()
-	label.text = text
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	label.position = bar.position + Vector2(-110.0, -4.0)
-	label.size = Vector2(104.0, 20.0)
-	label.add_theme_font_size_override("font_size", 13)
-	label.visible = false
-	bar.get_parent().add_child(label)
-	return label

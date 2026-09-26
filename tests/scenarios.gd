@@ -18,7 +18,11 @@ const TESTS := [
 	"test_big_ghost_fish_taken_back",
 	"test_light_flash_stuns",
 	"test_right_stick_casts",
+	"test_right_stick_tap_cast",
+	"test_fight_swipe",
+	"test_fight_enrage_tension",
 	"test_light_button_tap_and_hold",
+	"test_light_button_relights",
 	"test_long_press_brightness",
 	"test_status_card_opens_bag",
 	"test_floating_ghost_budget",
@@ -329,11 +333,74 @@ func test_right_stick_casts() -> void:
 	stick.output = Vector2(0, -0.5)
 	await frames(10)
 	check(player().state == Player.State.CHARGING, "a finger on the right stick starts the cast")
+	check(player().charge_time / Player.MAX_CHARGE_TIME < 0.15, "the charge builds up gradually (%.2f)" % (player().charge_time / Player.MAX_CHARGE_TIME))
+	await seconds(2.3)
 	check(absf(player().charge_time / Player.MAX_CHARGE_TIME - 0.5) < 0.05, "half pulled, half the charge (%.2f)" % (player().charge_time / Player.MAX_CHARGE_TIME))
 	check(player().aim_dir.dot(Vector2.UP) > 0.95, "the cast aims where the stick points")
 	stick._reset()
 	await frames(5)
 	check(player().state != Player.State.CHARGING and player().state != Player.State.IDLE, "letting go casts")
+
+
+## A tap on the right stick (no drag) casts out the usual distance.
+func test_right_stick_tap_cast() -> void:
+	var zone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
+	var shore: Vector2 = zone.shore_point(Vector2.DOWN)
+	await put(shore + Vector2(0, 60))
+	player().aim_dir = Vector2.UP
+	var stick = main.get_node("HUD/Panel/AimJoystick")
+	stick._touch_index = 7
+	await frames(4)
+	check(player().state == Player.State.CHARGING, "a tap starts the cast")
+	stick._reset()
+	await frames(1)
+	check(absf(player().charge_time / Player.MAX_CHARGE_TIME - Player.CAST_TAP_RATIO) < 0.01, "a tap casts at the usual distance (%.2f)" % (player().charge_time / Player.MAX_CHARGE_TIME))
+
+
+## A sideways dash: flick the stick the other way in time and the fish
+## loses stamina; too late and it's a miss.
+func test_fight_swipe() -> void:
+	var tier: Dictionary = FishData.TIERS["mid"] if FishData.TIERS.has("mid") else FishData.TIERS.values()[0]
+	var fight := FishFight.new("advanced", "", tier, 1.0)
+	fight._jump_cooldown = 99.0
+	fight._run_timer = 99.0
+	fight.run_left = 1.0
+	fight.run_side = Vector2.RIGHT
+	fight.swipe_left = FishFight.SWIPE_WINDOW
+	fight._swipe_armed = false
+	check(fight.mood() == "side_run", "the fish reads as dashing sideways")
+	var before := fight.progress
+	var events := fight.update(0.05, false, Vector2.LEFT, Vector2.UP)
+	check(not events.has("swipe_hit"), "a stick already held that way isn't a flick")
+	events = fight.update(0.05, false, Vector2.ZERO, Vector2.UP)
+	events = fight.update(0.05, false, Vector2.LEFT, Vector2.UP)
+	check(events.has("swipe_hit"), "flicking against the dash hits")
+	check(absf(fight.progress - before - FishFight.SWIPE_DAMAGE) < 0.01, "the fish loses stamina (%.2f)" % (fight.progress - before))
+	check(fight.run_left == 0.0 and fight.swipe_left == 0.0, "the dash is broken")
+	fight.run_left = 1.0
+	fight.run_side = Vector2.LEFT
+	fight.swipe_left = FishFight.SWIPE_WINDOW
+	var missed := false
+	for i in 25:
+		if fight.update(0.05, false, Vector2.LEFT, Vector2.UP).has("swipe_miss"):
+			missed = true
+	check(missed, "flicking the wrong way runs out the time")
+	check(fight.swipe_left == 0.0, "the window closes")
+
+
+## A berserk fish drives the tension up much faster.
+func test_fight_enrage_tension() -> void:
+	var tier: Dictionary = FishData.TIERS.values()[0]
+	var calm := FishFight.new("master", "", tier, 1.0)
+	var mad := FishFight.new("master", "", tier, 1.0)
+	mad.enraged = true
+	for f in [calm, mad]:
+		f._jump_cooldown = 99.0
+		f._run_timer = 99.0
+		f.tension = 0.1
+		f.update(0.2, true, Vector2.ZERO, Vector2.UP)
+	check(mad.tension - 0.1 > (calm.tension - 0.1) * 1.5, "berserk, the line tightens fast (%.3f vs %.3f)" % [mad.tension, calm.tension])
+	check(mad.mood() == "enraged", "and it reads as berserk")
 
 
 ## The light button: a tap stuns a ghost close by briefly; held, it charges.
@@ -362,6 +429,35 @@ func test_light_button_tap_and_hold() -> void:
 	await frames(3)
 	check(ghost.stun_timer > Lantern.FLASH_STUN_DURATION, "a charged flash holds it longer (%.2f)" % ghost.stun_timer)
 	ghost.set_physics_process(true)
+
+
+## The light button, held with the lamp out, relights it (no flash).
+func test_light_button_relights() -> void:
+	var tc: TouchControls = null
+	for c in main.get_children():
+		if c is TouchControls:
+			tc = c
+	tc.visible = true
+	var lantern: Lantern = player().get_node("Lantern")
+	lantern.put_out()
+	lantern.fuel = maxf(lantern.fuel, 50.0)
+	var down := InputEventScreenTouch.new()
+	down.index = 4
+	down.position = tc._skill_center
+	down.pressed = true
+	tc._input(down)
+	await frames(2)
+	check(not player().skill_held, "held while out, it doesn't charge a flash")
+	await seconds(Lantern.RELIGHT_DURATION + 0.3)
+	check(lantern.lit, "held, the lamp relights")
+	var up := InputEventScreenTouch.new()
+	up.index = 4
+	up.position = tc._skill_center
+	up.pressed = false
+	tc._input(up)
+	await frames(2)
+	check(lantern.lit and not Input.is_key_pressed(KEY_L), "letting go leaves it lit")
+	tc.visible = false
 
 
 ## Long-pressing an empty spot brings up the brightness slider.

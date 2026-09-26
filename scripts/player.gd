@@ -5,7 +5,6 @@ signal state_changed(new_state: String)
 signal cast_started(target_pos: Vector2, tier: String)
 signal bite_started()
 signal hook_success()
-signal reel_progress(progress: float, tension: float)
 signal catch_success(fish: Dictionary)
 signal catch_failed(reason: String)
 signal line_cleared()
@@ -792,6 +791,13 @@ func _update_noise() -> void:
 ## (the landing mark shows where). A tap casts ahead at CAST_TAP_RATIO.
 ## Space on a keyboard (held to charge).
 const CAST_TAP_RATIO := 0.55
+## User request: the cast charges 40% slower than it used to (full charge
+## took MAX_CHARGE_TIME seconds) so it's easier to stop where you want.
+## The stick's pull sets where the charge is heading; it gets there at this
+## pace (and backs off twice as fast).
+const CHARGE_RATE := 0.6
+var _cast_dragged := false
+var _cast_by_stick := false
 
 
 func _cast_stick_touched() -> bool:
@@ -931,17 +937,27 @@ func _handle_action_input(delta: float) -> void:
 				elif _can_start_cast():
 					_set_state(State.CHARGING)
 					charge_time = 0.0
+					_cast_dragged = false
+					_cast_by_stick = false
 				else:
 					var out_of := "餌" if fishing_mode == FishingMode.BOBBER else "假餌"
 					GameState.push_message("沒有%s了，按 Tab 換釣法" % out_of)
 		State.CHARGING:
 			if held and _cast_stick_touched():
-				# Pulled this far: this far out.
+				# Pulled this far: heading this far out.
+				_cast_by_stick = true
+				if _aim_joystick.is_pressed:
+					_cast_dragged = true
 				var pull: float = _aim_joystick.output.length() if _aim_joystick.is_pressed else CAST_TAP_RATIO
-				charge_time = clampf(pull, 0.0, 1.0) * MAX_CHARGE_TIME
+				var target := clampf(pull, 0.0, 1.0) * MAX_CHARGE_TIME
+				var rate := CHARGE_RATE * (1.0 if target > charge_time else 2.0)
+				charge_time = move_toward(charge_time, target, rate * delta)
 			elif held:
-				charge_time = min(charge_time + delta, MAX_CHARGE_TIME)
+				charge_time = min(charge_time + delta * CHARGE_RATE, MAX_CHARGE_TIME)
 			elif just_released:
+				if _cast_by_stick and not _cast_dragged:
+					# A tap: out ahead at the usual distance.
+					charge_time = CAST_TAP_RATIO * MAX_CHARGE_TIME
 				_launch_cast()
 		State.BITE:
 			if just_pressed:
@@ -1095,7 +1111,6 @@ func _update_fishing(delta: float) -> void:
 			progress = fight.progress
 			tension = fight.tension
 			fish_run_active_time = fight.run_left
-			reel_progress.emit(progress, tension)
 			match fight.result:
 				"landed":
 					_succeed_catch()
@@ -1310,7 +1325,11 @@ func _on_fight_event(kind: String) -> void:
 		"run":
 			GameState.push_message("魚往外衝！先放手放線")
 		"side_run":
-			GameState.push_message("魚往%s邊衝！往%s拉竿頂住" % [FishFight.describe(fight.run_side), FishFight.describe(-fight.run_side)])
+			GameState.push_message("魚往%s邊衝！快把右搖桿往%s一甩" % [FishFight.describe(fight.run_side), FishFight.describe(-fight.run_side)])
+		"swipe_hit":
+			GameState.push_message("反甩成功！魚掉了一截體力")
+		"swipe_miss":
+			GameState.push_message("沒來得及反甩，往%s拉竿頂住！" % FishFight.describe(-fight.run_side))
 		"jump":
 			GameState.push_message("魚跳出水面！快放手！")
 		"dive":
