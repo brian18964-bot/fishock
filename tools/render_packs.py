@@ -76,6 +76,7 @@ STONE = {
     "granite": ((0.30, 0.29, 0.27), (0.12, 0.11, 0.10)),
     "sandstone": ((0.45, 0.30, 0.17), (0.20, 0.12, 0.07)),
     "moss": ((0.22, 0.24, 0.19), (0.08, 0.14, 0.05)),
+    "driftwood": ((0.26, 0.21, 0.16), (0.1, 0.08, 0.06)),
 }
 
 
@@ -177,6 +178,19 @@ for i, (obj, look, w) in enumerate([("AR01", "sandstone", 4.2), ("AR05", "sandst
                                     ("AR25", "sandstone", 3.8), ("AR31", "granite", 3.6)]):
     MODELS.append(m("boulder2_%d" % (i + 1), ASSORTED, [obj], "rock2", "rock",
                     "sand" if look == "sandstone" else "granite", width=w, paint=look))
+
+
+# Shore plants, built here (no source pack).
+for i in range(4):
+    MODELS.append(m("reeds_%d" % (i + 1), None, [], "shore", "cover", "reeds", height=1.9 + 0.2 * (i % 2),
+                    builder="reeds", seed=11 + i, blades=38 + 5 * i, cattails=3 + i % 3))
+for i, (petal, flowers) in enumerate([((0.9, 0.6, 0.7), 1), ((0.95, 0.95, 0.9), 1), ((0.9, 0.6, 0.7), 0),
+                                       ((0.95, 0.95, 0.9), 2)]):
+    MODELS.append(m("lilypads_%d" % (i + 1), None, [], "shore", "cover", "lilypad", width=2.2,
+                    builder="lilypads", seed=31 + i, pads=4 + i % 3, flowers=flowers, petal=petal))
+for i in range(3):
+    MODELS.append(m("driftwood_%d" % (i + 1), None, [], "shore", "cover", "driftwood", width=2.6,
+                    builder="driftwood", seed=51 + i, paint="driftwood"))
 
 
 def make_palette(leaf, bark):
@@ -284,6 +298,151 @@ def shade_over(mat, ao_distance):
     nt.links.new(mul.outputs[2], base)
 
 
+# --- procedural shore plants (User request: water plants for the ponds) ----
+
+def _mat(name, rgb):
+    mat = bpy.data.materials.get(name)
+    if mat is None:
+        mat = bpy.data.materials.new(name)
+        mat.use_nodes = True
+        bsdf = next(n for n in mat.node_tree.nodes if n.type == 'BSDF_PRINCIPLED')
+        bsdf.inputs['Base Color'].default_value = (*rgb, 1.0)
+    return mat
+
+
+def _blade(name, base, height, width, lean, yaw, mat, bend=0.25):
+    """A tapered, slightly bent blade (a reed leaf) standing at `base`."""
+    import bmesh
+    me = bpy.data.meshes.new(name)
+    bm = bmesh.new()
+    segs = 5
+    prev = None
+    for k in range(segs + 1):
+        t = k / segs
+        w = width * (1 - t) ** 0.8
+        x = math.sin(lean) * height * t + bend * height * t * t * math.sin(lean)
+        z = math.cos(lean) * height * t
+        a = bm.verts.new((x - w, 0.0, z))
+        b = bm.verts.new((x + w, 0.0, z))
+        if prev:
+            bm.faces.new((prev[0], prev[1], b, a))
+        prev = (a, b)
+    bm.to_mesh(me)
+    bm.free()
+    ob = bpy.data.objects.new(name, me)
+    bpy.context.scene.collection.objects.link(ob)
+    ob.data.materials.append(mat)
+    ob.location = base
+    ob.rotation_euler = (0.0, 0.0, yaw)
+    return ob
+
+
+def build_reeds(spec):
+    rng = np.random.default_rng(spec["seed"])
+    greens = [_mat("reed_%d" % i, c) for i, c in enumerate([(0.07, 0.17, 0.04), (0.11, 0.22, 0.05),
+                                                            (0.17, 0.2, 0.06), (0.22, 0.18, 0.07)])]
+    brown = _mat("cattail", (0.2, 0.09, 0.03))
+    stem = _mat("stem", (0.22, 0.28, 0.1))
+    obs = []
+    for i in range(int(spec.get("blades", 26))):
+        r = rng.uniform(0, 0.5) ** 0.8
+        a = rng.uniform(0, math.tau)
+        base = (math.cos(a) * r, math.sin(a) * r, 0.0)
+        obs.append(_blade("b%d" % i, base, rng.uniform(1.0, 2.1), rng.uniform(0.055, 0.09),
+                          rng.uniform(0.05, 0.45), rng.uniform(0, math.tau), greens[rng.integers(4)]))
+    for i in range(int(spec.get("cattails", 5))):
+        r = rng.uniform(0, 0.3)
+        a = rng.uniform(0, math.tau)
+        h = rng.uniform(1.6, 2.3)
+        lean = rng.uniform(0, 0.12)
+        x, y = math.cos(a) * r, math.sin(a) * r
+        bpy.ops.mesh.primitive_cylinder_add(vertices=6, radius=0.012, depth=h, location=(x, y, h / 2))
+        s1 = bpy.context.active_object
+        s1.data.materials.append(stem)
+        bpy.ops.mesh.primitive_cylinder_add(vertices=8, radius=0.08, depth=0.38, location=(x, y, h - 0.28))
+        head = bpy.context.active_object
+        head.data.materials.append(brown)
+        for o in (s1, head):
+            o.rotation_euler = (lean, 0.0, a)
+        obs += [s1, head]
+    return obs
+
+
+def build_lilypads(spec):
+    import bmesh
+    rng = np.random.default_rng(spec["seed"])
+    pads = [_mat("pad_%d" % i, c) for i, c in enumerate([(0.05, 0.15, 0.03), (0.08, 0.19, 0.05), (0.07, 0.14, 0.04)])]
+    petal = _mat("petal", spec.get("petal", (0.85, 0.55, 0.65)))
+    heart = _mat("heart", (0.9, 0.7, 0.15))
+    obs = []
+    placed = []
+    for i in range(int(spec.get("pads", 5))):
+        for _try in range(20):
+            p = (rng.uniform(-0.9, 0.9), rng.uniform(-0.6, 0.6))
+            rad = rng.uniform(0.22, 0.42)
+            if all(math.hypot(p[0] - q[0], p[1] - q[1]) > rad + qr - 0.05 for q, qr in placed):
+                break
+        placed.append((p, rad))
+        me = bpy.data.meshes.new("pad%d" % i)
+        bm = bmesh.new()
+        c = bm.verts.new((0, 0, 0.012))
+        a0 = rng.uniform(0, math.tau)
+        ring = [bm.verts.new((math.cos(a0 + 0.35 + k / 20 * (math.tau - 0.7)) * rad,
+                              math.sin(a0 + 0.35 + k / 20 * (math.tau - 0.7)) * rad, 0.0)) for k in range(21)]
+        for k in range(20):
+            bm.faces.new((c, ring[k], ring[k + 1]))
+        bm.to_mesh(me)
+        bm.free()
+        ob = bpy.data.objects.new("pad%d" % i, me)
+        bpy.context.scene.collection.objects.link(ob)
+        ob.data.materials.append(pads[rng.integers(3)])
+        ob.location = (p[0], p[1], 0.0)
+        obs.append(ob)
+    for f in range(int(spec.get("flowers", 1))):
+        (px, py), _ = placed[f]
+        for k in range(8):
+            a = k / 8 * math.tau
+            bpy.ops.mesh.primitive_uv_sphere_add(segments=8, ring_count=4, radius=0.07,
+                                                 location=(px + math.cos(a) * 0.08, py + math.sin(a) * 0.08, 0.06))
+            pe = bpy.context.active_object
+            pe.scale = (1.6, 0.6, 0.5)
+            pe.rotation_euler = (0.0, -0.5, a)
+            pe.data.materials.append(petal)
+            obs.append(pe)
+        bpy.ops.mesh.primitive_uv_sphere_add(segments=8, ring_count=4, radius=0.05, location=(px, py, 0.09))
+        h = bpy.context.active_object
+        h.data.materials.append(heart)
+        obs.append(h)
+    return obs
+
+
+def build_driftwood(spec):
+    rng = np.random.default_rng(spec["seed"])
+    obs = []
+    length = rng.uniform(2.0, 2.8)
+    bpy.ops.mesh.primitive_cylinder_add(vertices=8, radius=0.2, depth=length, location=(0, 0, 0.16))
+    log = bpy.context.active_object
+    log.rotation_euler = (0.0, math.radians(90), rng.uniform(-0.5, 0.5))
+    log.scale = (1.0, 0.85, 1.0)
+    obs.append(log)
+    for k in range(int(rng.integers(2, 4))):
+        t = rng.uniform(-0.35, 0.35) * length
+        a = rng.choice([-1, 1]) * rng.uniform(0.5, 1.1)
+        bl = rng.uniform(0.4, 0.8)
+        bpy.ops.mesh.primitive_cylinder_add(vertices=6, radius=0.08, depth=bl)
+        br = bpy.context.active_object
+        br.rotation_euler = (math.radians(90) + rng.uniform(-0.3, 0.3), 0.0, log.rotation_euler.z + a)
+        br.location = (math.cos(log.rotation_euler.z) * t + math.cos(log.rotation_euler.z + a) * bl * 0.45,
+                       math.sin(log.rotation_euler.z) * t + math.sin(log.rotation_euler.z + a) * bl * 0.45, 0.12)
+        obs.append(br)
+    for o in obs:
+        o.data.shade_smooth() if hasattr(o.data, "shade_smooth") else None
+    return obs
+
+
+BUILDERS = {"reeds": build_reeds, "lilypads": build_lilypads, "driftwood": build_driftwood}
+
+
 def import_pack(src):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.fbx(filepath=os.path.join(PACKS, src))
@@ -386,8 +545,13 @@ def dress(meshes, spec):
 
 
 def render_model(spec):
-    import_pack(spec["src"])
-    meshes = keep_only(spec["objects"])
+    if spec.get("builder"):
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+        meshes = BUILDERS[spec["builder"]](spec)
+        bpy.context.view_layer.update()
+    else:
+        import_pack(spec["src"])
+        meshes = keep_only(spec["objects"])
     normalize(meshes, spec)
     dress(meshes, spec)
     b = rs.screen_bounds(meshes)
@@ -438,7 +602,7 @@ def rect(x, y, w, h):
 
 
 def write_catalog(records):
-    by_kind = {"tree": [], "rock": [], "bush": []}
+    by_kind = {"tree": [], "rock": [], "bush": [], "cover": []}
     for r in records:
         by_kind[r["kind"]].append(r)
     lines = [
@@ -486,6 +650,13 @@ def write_catalog(records):
                     (b["max_y"] - max(b["min_y"], -0.4)) * NODE_PX)
         lines.append('\t{"name": "%s", %s,\n\t "family": "%s", "offset": %s, "hide_rect": %s},'
                      % (r["name"], paths(r), r["family"], off(r), hide))
+    lines.append("]")
+    lines.append("")
+    lines.append("## Decorative ground cover (GroundCover), by family: shore reeds, lily")
+    lines.append("## pads (they float on the water), driftwood.")
+    lines.append("const COVER := [")
+    for r in by_kind["cover"]:
+        lines.append('\t{"name": "%s", %s,\n\t "family": "%s", "offset": %s},' % (r["name"], paths(r), r["family"], off(r)))
     lines.append("]")
     lines.append("")
     lines.append("")

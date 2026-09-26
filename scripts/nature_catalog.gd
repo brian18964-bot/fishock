@@ -254,6 +254,33 @@ const BUSHES := [
 	 "family": "monstera", "offset": Vector2(2.12, -36.77), "hide_rect": Rect2(-17.1, -39.7, 36.4, 42.7)},
 ]
 
+## Decorative ground cover (GroundCover), by family: shore reeds, lily
+## pads (they float on the water), driftwood.
+const COVER := [
+	{"name": "reeds_1", "albedo": "res://assets/sprites/shore/reeds_1_55deg_albedo.png", "normal": "res://assets/sprites/shore/reeds_1_55deg_normal.png",
+	 "family": "reeds", "offset": Vector2(-3.28, -13.50)},
+	{"name": "reeds_2", "albedo": "res://assets/sprites/shore/reeds_2_55deg_albedo.png", "normal": "res://assets/sprites/shore/reeds_2_55deg_normal.png",
+	 "family": "reeds", "offset": Vector2(1.08, -15.08)},
+	{"name": "reeds_3", "albedo": "res://assets/sprites/shore/reeds_3_55deg_albedo.png", "normal": "res://assets/sprites/shore/reeds_3_55deg_normal.png",
+	 "family": "reeds", "offset": Vector2(-0.64, -14.71)},
+	{"name": "reeds_4", "albedo": "res://assets/sprites/shore/reeds_4_55deg_albedo.png", "normal": "res://assets/sprites/shore/reeds_4_55deg_normal.png",
+	 "family": "reeds", "offset": Vector2(-2.75, -21.89)},
+	{"name": "lilypads_1", "albedo": "res://assets/sprites/shore/lilypads_1_55deg_albedo.png", "normal": "res://assets/sprites/shore/lilypads_1_55deg_normal.png",
+	 "family": "lilypad", "offset": Vector2(0.00, -0.00)},
+	{"name": "lilypads_2", "albedo": "res://assets/sprites/shore/lilypads_2_55deg_albedo.png", "normal": "res://assets/sprites/shore/lilypads_2_55deg_normal.png",
+	 "family": "lilypad", "offset": Vector2(-0.00, -0.00)},
+	{"name": "lilypads_3", "albedo": "res://assets/sprites/shore/lilypads_3_55deg_albedo.png", "normal": "res://assets/sprites/shore/lilypads_3_55deg_normal.png",
+	 "family": "lilypad", "offset": Vector2(0.00, -0.00)},
+	{"name": "lilypads_4", "albedo": "res://assets/sprites/shore/lilypads_4_55deg_albedo.png", "normal": "res://assets/sprites/shore/lilypads_4_55deg_normal.png",
+	 "family": "lilypad", "offset": Vector2(0.00, -0.00)},
+	{"name": "driftwood_1", "albedo": "res://assets/sprites/shore/driftwood_1_55deg_albedo.png", "normal": "res://assets/sprites/shore/driftwood_1_55deg_normal.png",
+	 "family": "driftwood", "offset": Vector2(0.00, -3.48)},
+	{"name": "driftwood_2", "albedo": "res://assets/sprites/shore/driftwood_2_55deg_albedo.png", "normal": "res://assets/sprites/shore/driftwood_2_55deg_normal.png",
+	 "family": "driftwood", "offset": Vector2(0.00, -1.28)},
+	{"name": "driftwood_3", "albedo": "res://assets/sprites/shore/driftwood_3_55deg_albedo.png", "normal": "res://assets/sprites/shore/driftwood_3_55deg_normal.png",
+	 "family": "driftwood", "offset": Vector2(0.64, -4.52)},
+]
+
 
 ## The entries of `table` in these families (all when empty).
 static func of_families(table: Array, families: Array) -> Array:

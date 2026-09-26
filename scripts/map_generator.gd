@@ -106,6 +106,7 @@ const THEMES := {
 		"animals": {"cow": 1.5, "bull": 1.0, "horse": 1.0, "deer": 1.0, "shiba": 1.0, "husky": 1.0},
 	},
 	"deadwood": {
+		"shore_extras": {"reeds": 0.14, "lilypad": 0.06, "driftwood": 0.05},
 		"floor": ["dirt", "gravel", 0.2],
 		"trees": 22, "rocks": 5, "bushes": 2, "ground": 80,
 		"tree_families": {"dead": 1.0, "bare": 1.0},
@@ -115,6 +116,7 @@ const THEMES := {
 		"animals": {"wolf": 2.0, "fox": 1.5, "stag": 1.0, "husky": 0.5},
 	},
 	"rocky": {
+		"shore_extras": {"reeds": 0.05, "lilypad": 0.03, "driftwood": 0.03},
 		"floor": ["gravel", "dirt", 0.4],
 		"trees": 6, "rocks": 26, "bushes": 1, "ground": 100,
 		"tree_families": {"dead": 1.0, "bare": 1.0},
@@ -124,6 +126,7 @@ const THEMES := {
 	},
 	# User decision: a tropical look - palms, flowers and sandy ground.
 	"tropical": {
+		"shore_extras": {"reeds": 0.04, "lilypad": 0.02, "driftwood": 0.07},
 		"floor": ["sand", "grass", 0.25],
 		"trees": 22, "rocks": 3, "bushes": 5, "ground": 120,
 		"tree_families": {"palm": 1.0, "palm2": 1.0},
@@ -158,6 +161,7 @@ const THEMES := {
 		"tint": Color(0.94, 1.0, 1.02),
 	},
 	"autumn": {
+		"shore_extras": {"reeds": 0.12, "lilypad": 0.12, "driftwood": 0.02},
 		"floor": ["leaf_litter", "grass", 0.25],
 		"trees": 26, "rocks": 3, "bushes": 5, "ground": 110,
 		"tree_families": {"autumn": 3.0, "maple": 1.0},
@@ -168,6 +172,7 @@ const THEMES := {
 		"water": {"base": Color(0.12, 0.22, 0.24), "deep": Color(0.04, 0.07, 0.08)},
 	},
 	"snow": {
+		"shore_extras": {"reeds": 0.05, "lilypad": 0.0, "driftwood": 0.05},
 		"floor": ["snow", "gravel", 0.12],
 		"trees": 24, "rocks": 6, "bushes": 0, "ground": 40,
 		"tree_families": {"snow_pine": 3.0, "snow_bare": 1.2},
@@ -179,6 +184,7 @@ const THEMES := {
 		"water": {"base": Color(0.14, 0.28, 0.36), "deep": Color(0.03, 0.08, 0.14)},
 	},
 	"jungle": {
+		"shore_extras": {"reeds": 0.16, "lilypad": 0.2, "driftwood": 0.02},
 		"floor": ["moss_soil", "grass", 0.4],
 		"trees": 26, "rocks": 3, "bushes": 10, "ground": 140,
 		"tree_families": {"banana": 2.0, "palm2": 1.5, "sago": 1.2, "banyan": 0.5},
@@ -191,6 +197,7 @@ const THEMES := {
 		"water": {"base": Color(0.07, 0.25, 0.2), "deep": Color(0.02, 0.08, 0.06)},
 	},
 	"savanna": {
+		"shore_extras": {"reeds": 0.08, "lilypad": 0.03, "driftwood": 0.05},
 		"floor": ["red_earth", "sand", 0.3],
 		"trees": 12, "rocks": 8, "bushes": 4, "ground": 70,
 		"tree_families": {"baobab": 3.0, "sago": 0.6, "palm": 0.4},
@@ -202,6 +209,7 @@ const THEMES := {
 		"water": {"base": Color(0.18, 0.22, 0.16), "deep": Color(0.06, 0.07, 0.04)},
 	},
 	"meadow": {
+		"shore_extras": {"reeds": 0.12, "lilypad": 0.16, "driftwood": 0.01},
 		"floor": ["grass_light", "grass", 0.35],
 		"trees": 14, "rocks": 2, "bushes": 6, "ground": 180,
 		"tree_families": {"meadow": 2.0, "round": 2.0},
@@ -213,6 +221,7 @@ const THEMES := {
 		"tint": Color(1.04, 1.06, 0.98),
 	},
 	"stone_forest": {
+		"shore_extras": {"reeds": 0.1, "lilypad": 0.22, "driftwood": 0.02},
 		"floor": ["moss_soil", "gravel", 0.45],
 		"trees": 14, "rocks": 22, "bushes": 2, "ground": 90,
 		"tree_families": {"bonsai": 1.0},
@@ -223,6 +232,7 @@ const THEMES := {
 		"water": {"base": Color(0.1, 0.28, 0.26), "deep": Color(0.02, 0.08, 0.08)},
 	},
 	"swamp": {
+		"shore_extras": {"reeds": 0.4, "lilypad": 0.28, "driftwood": 0.05},
 		"floor": ["mud", "moss_soil", 0.35],
 		"trees": 22, "rocks": 6, "bushes": 4, "ground": 90,
 		"tree_families": {"dead": 1.0, "twisted": 1.0, "bare": 1.0},
@@ -257,6 +267,10 @@ const STYLES := {
 ## boardwalks (no big trees or boulders there), with bugs and frogs about.
 ## Per shore sample: chance of a grass clump / low shrub / pebbles.
 const SHORE_ODDS := {"grass": 0.5, "shrub": 0.16, "pebbles": 0.2}
+## User request (water plants): per shore sample, on top of the above - a
+## reed clump at the waterline, lily pads out on the water, a washed-up
+## log. Themes override with "shore_extras".
+const SHORE_EXTRAS := {"reeds": 0.12, "lilypad": 0.08, "driftwood": 0.015}
 const SHORE_HIDE_BUSH_CHANCE := 0.25  # of shrubs: a bush you can hide in
 const BOARDWALK_CHANCE := 0.8
 const SHORE_CRITTERS := ["frog", "frog", "spider", "wasp"]
@@ -604,6 +618,17 @@ func _dress_shores() -> void:
 			if p.distance_to(SPAWN_POS) < SHORE_CLEAR_OF_SPAWN or not _inside_map(p, 24.0) \
 					or _near_walkway(p, 26.0) or _near_path(p, PATH_CLEARANCE):
 				continue
+			var extras: Dictionary = theme.get("shore_extras", SHORE_EXTRAS)
+			if not zone.is_rare() and randf() < extras.get("lilypad", 0.0):
+				var pad := p - n * randf_range(16.0, 44.0) + n.orthogonal() * randf_range(-10.0, 10.0)
+				if zone.contains(pad) and not _near_walkway(pad, 20.0):
+					_add_ground_cover(pad, "lilypad")
+			if randf() < extras.get("reeds", 0.0):
+				_add_ground_cover(p + n * randf_range(-10.0, 6.0) + n.orthogonal() * randf_range(-6.0, 6.0), "reeds")
+			if randf() < extras.get("driftwood", 0.0):
+				var log_pos := p + n * randf_range(8.0, 20.0)
+				if _shore_distance(log_pos) > 4.0:
+					_add_ground_cover(log_pos, "driftwood")
 			var roll := randf()
 			var odds: Dictionary = theme.get("shore", SHORE_ODDS)
 			if roll < odds.grass:

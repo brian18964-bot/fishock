@@ -2072,5 +2072,181 @@
    -1.7375025749206543,
    1.2129875421524048
   ]
+ },
+ {
+  "name": "reeds_1",
+  "dir": "shore",
+  "kind": "cover",
+  "family": "reeds",
+  "offset": [
+   -3.28,
+   -13.5
+  ],
+  "bounds": {
+   "min_x": -0.9954,
+   "max_x": 0.7533,
+   "min_y": -0.3991,
+   "max_y": 1.3948
+  }
+ },
+ {
+  "name": "lilypads_1",
+  "dir": "shore",
+  "kind": "cover",
+  "family": "lilypad",
+  "offset": [
+   0.0,
+   -0.0
+  ],
+  "bounds": {
+   "min_x": -1.1,
+   "max_x": 1.1,
+   "min_y": -0.6892,
+   "max_y": 0.6892
+  }
+ },
+ {
+  "name": "driftwood_1",
+  "dir": "shore",
+  "kind": "cover",
+  "family": "driftwood",
+  "offset": [
+   0.0,
+   -3.48
+  ],
+  "bounds": {
+   "min_x": -1.3,
+   "max_x": 1.3,
+   "min_y": -0.3399,
+   "max_y": 0.5964
+  }
+ },
+ {
+  "name": "reeds_2",
+  "dir": "shore",
+  "kind": "cover",
+  "family": "reeds",
+  "offset": [
+   1.08,
+   -15.08
+  ],
+  "bounds": {
+   "min_x": -0.7649,
+   "max_x": 0.8446,
+   "min_y": -0.4305,
+   "max_y": 1.5428
+  }
+ },
+ {
+  "name": "reeds_3",
+  "dir": "shore",
+  "kind": "cover",
+  "family": "reeds",
+  "offset": [
+   -0.64,
+   -14.71
+  ],
+  "bounds": {
+   "min_x": -0.8745,
+   "max_x": 0.8269,
+   "min_y": -0.327,
+   "max_y": 1.412
+  }
+ },
+ {
+  "name": "reeds_4",
+  "dir": "shore",
+  "kind": "cover",
+  "family": "reeds",
+  "offset": [
+   -2.75,
+   -21.89
+  ],
+  "bounds": {
+   "min_x": -1.1374,
+   "max_x": 0.9343,
+   "min_y": -0.4399,
+   "max_y": 2.0552
+  }
+ },
+ {
+  "name": "lilypads_2",
+  "dir": "shore",
+  "kind": "cover",
+  "family": "lilypad",
+  "offset": [
+   -0.0,
+   -0.0
+  ],
+  "bounds": {
+   "min_x": -1.1,
+   "max_x": 1.1,
+   "min_y": -0.7759,
+   "max_y": 0.7759
+  }
+ },
+ {
+  "name": "lilypads_3",
+  "dir": "shore",
+  "kind": "cover",
+  "family": "lilypad",
+  "offset": [
+   0.0,
+   -0.0
+  ],
+  "bounds": {
+   "min_x": -1.1,
+   "max_x": 1.1,
+   "min_y": -0.5842,
+   "max_y": 0.5842
+  }
+ },
+ {
+  "name": "lilypads_4",
+  "dir": "shore",
+  "kind": "cover",
+  "family": "lilypad",
+  "offset": [
+   0.0,
+   -0.0
+  ],
+  "bounds": {
+   "min_x": -1.1,
+   "max_x": 1.1,
+   "min_y": -0.7088,
+   "max_y": 0.7088
+  }
+ },
+ {
+  "name": "driftwood_2",
+  "dir": "shore",
+  "kind": "cover",
+  "family": "driftwood",
+  "offset": [
+   0.0,
+   -1.28
+  ],
+  "bounds": {
+   "min_x": -1.3,
+   "max_x": 1.3,
+   "min_y": -0.4459,
+   "max_y": 0.54
+  }
+ },
+ {
+  "name": "driftwood_3",
+  "dir": "shore",
+  "kind": "cover",
+  "family": "driftwood",
+  "offset": [
+   0.64,
+   -4.52
+  ],
+  "bounds": {
+   "min_x": -1.2764,
+   "max_x": 1.3236,
+   "min_y": -0.2798,
+   "max_y": 0.6133
+  }
  }
 ]

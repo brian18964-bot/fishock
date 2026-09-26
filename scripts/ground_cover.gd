@@ -126,9 +126,27 @@ var kind_override := ""
 var variant_choices: Array = []
 
 
+## The user's-request shore plants (NatureCatalog.COVER): reeds, lily pads
+## floating on the water, driftwood - asked for by family as kind_override.
+const CATALOG_KINDS := ["reeds", "lilypad", "driftwood"]
+## Lily pads lie on the water: above its surface (-5), under ripples,
+## docks and everything else.
+const ON_WATER_Z := -4
+
+
 func _ready() -> void:
 	# Lies on the ground: takes cast shadows (see LightTwin).
 	light_mask = LightTwin.GROUND_LAYER
+	if kind_override in CATALOG_KINDS:
+		var entry: Dictionary = NatureCatalog.of_families(NatureCatalog.COVER, [kind_override]).pick_random()
+		var ctex := CanvasTexture.new()
+		ctex.diffuse_texture = Art.tex(entry.albedo)
+		ctex.normal_texture = Art.tex(entry.normal)
+		texture = ctex
+		Art.place(self, entry.offset, SPRITE_SCALE)
+		if kind_override == "lilypad":
+			z_index = ON_WATER_Z
+		return
 	var kind: String = kind_override if kind_override != "" else _pick_kind()
 	var variant: String = variant_choices.pick_random() if not variant_choices.is_empty() else KINDS[kind].pick_random()
 	var tex := CanvasTexture.new()
