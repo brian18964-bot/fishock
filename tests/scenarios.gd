@@ -21,6 +21,9 @@ const TESTS := [
 	"test_right_stick_tap_cast",
 	"test_fight_swipe",
 	"test_fight_enrage_tension",
+	"test_fight_sweet_spot",
+	"test_perfect_hook",
+	"test_light_lure",
 	"test_light_button_tap_and_hold",
 	"test_light_button_relights",
 	"test_long_press_brightness",
@@ -429,6 +432,82 @@ func test_light_button_tap_and_hold() -> void:
 	await frames(3)
 	check(ghost.stun_timer > Lantern.FLASH_STUN_DURATION, "a charged flash holds it longer (%.2f)" % ghost.stun_timer)
 	ghost.set_physics_process(true)
+
+
+## Reeling with the tension in the sweet spot gains line faster.
+func test_fight_sweet_spot() -> void:
+	var tier: Dictionary = FishData.TIERS.values()[0]
+	var inside := FishFight.new("normal", "", tier, 1.0)
+	var outside := FishFight.new("normal", "", tier, 1.0)
+	inside.tension = FishFight.SWEET_CENTER
+	outside.tension = 0.1
+	for f in [inside, outside]:
+		f._jump_cooldown = 99.0
+		f._run_timer = 99.0
+		f.update(0.05, true, Vector2.ZERO, Vector2.UP)
+	check(inside.progress > outside.progress * 1.4, "in the sweet spot, reeling gains faster (%.4f vs %.4f)" % [inside.progress, outside.progress])
+	var r := inside.sweet_range()
+	check(r.x < FishFight.SWEET_CENTER and r.y > FishFight.SWEET_CENTER, "the sweet spot sits around the middle")
+
+
+## Striking right as the float goes under is a perfect strike.
+func test_perfect_hook() -> void:
+	var stick = main.get_node("HUD/Panel/AimJoystick")
+	for late in [false, true]:
+		player().tier_data = FishData.get_tier_data("mid").duplicate()
+		player().tier_data.bite_window = 1.0
+		player().difficulty_key = "normal"
+		player().fish_habit = ""
+		player().is_heart_catch = false
+		player()._start_bite()
+		check(player().perfect_hook_left() > 0.0, "the perfect moment opens with the bite")
+		if late:
+			await seconds(player().perfect_hook_window() + 0.1)
+			check(player().perfect_hook_left() == 0.0, "and passes")
+		stick._touch_index = 7
+		await frames(2)
+		stick._reset()
+		check(player().state == Player.State.REELING, "the strike hooks it")
+		if late:
+			check(not player().fight.perfect and player().fight.progress < 0.05, "a late strike is an ordinary one")
+		else:
+			check(player().fight.perfect and player().fight.progress >= FishFight.PERFECT_HOOK_STAMINA - 0.01, "a quick strike is perfect: the fish starts worn (%.2f)" % player().fight.progress)
+		player()._set_state(Player.State.IDLE)
+		player().fight = null
+		await frames(2)
+
+
+## Holding a charged light on the float brings a bite sooner.
+func test_light_lure() -> void:
+	var zone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
+	var shore: Vector2 = zone.shore_point(Vector2.DOWN)
+	await put(shore + Vector2(0, 60))
+	player().aim_dir = Vector2.UP
+	player().fishing_mode = Player.FishingMode.BOBBER
+	player().bait_count = 5
+	var stick = main.get_node("HUD/Panel/AimJoystick")
+	stick._touch_index = 7
+	await frames(4)
+	stick._reset()
+	await frames(2)
+	check(player().state == Player.State.WAITING, "cast and waiting")
+	player().cast_target = player().global_position + Vector2(0, -90)
+	player().cast_outcome = Player.CastOutcome.BITE
+	player().nibbles_left = 0
+	player().wait_timer = 30.0
+	var lantern: Lantern = player().get_node("Lantern")
+	lantern.lit = true
+	await seconds(1.0)
+	check(player().light_lure == 0.0, "the lamp alone doesn't lure")
+	var before: float = player().wait_timer
+	player().skill_held = true
+	await seconds(2.0)
+	check(player().light_lure > 0.5, "held on the float, the charged light lures (%.2f)" % player().light_lure)
+	check(before - player().wait_timer > 3.0, "the bite comes sooner (%.2f s off in 2 s)" % (before - player().wait_timer))
+	player().skill_held = false
+	await frames(3)
+	check(player().light_lure == 0.0, "let go, it stops")
+	player()._set_state(Player.State.IDLE)
 
 
 ## The light button, held with the lamp out, relights it (no flash).

@@ -187,19 +187,20 @@ static func pick_species(tier: String, zone_key: String, rarity_key: String, pre
 ##     than straight out (give line)
 ##   jump: chance per second of leaping mid-fight (give slack while it's up)
 ##   phases: 2 = goes berserk at half stamina
+##   sweet: how wide the tension sweet spot is (reel faster inside it)
 const DIFFICULTY := {
 	"novice": {"label": "入門", "nibbles": Vector2i(0, 0), "fake": 0.0, "window": 1.1,
 		"stamina": 1.0, "pull": 0.8, "run_interval": Vector2(3.5, 5.5), "run_time": 0.5,
-		"side": 0.0, "jump": 0.0, "phases": 1},
+		"side": 0.0, "jump": 0.0, "phases": 1, "sweet": 0.4},
 	"normal": {"label": "普通", "nibbles": Vector2i(0, 1), "fake": 0.0, "window": 0.8,
 		"stamina": 1.3, "pull": 1.0, "run_interval": Vector2(2.2, 3.6), "run_time": 0.6,
-		"side": 0.2, "jump": 0.06, "phases": 1},
+		"side": 0.2, "jump": 0.06, "phases": 1, "sweet": 0.34},
 	"advanced": {"label": "進階", "nibbles": Vector2i(1, 3), "fake": 0.15, "window": 0.55,
 		"stamina": 1.7, "pull": 1.15, "run_interval": Vector2(1.7, 2.8), "run_time": 0.7,
-		"side": 0.5, "jump": 0.12, "phases": 1},
+		"side": 0.5, "jump": 0.12, "phases": 1, "sweet": 0.28},
 	"master": {"label": "大師", "nibbles": Vector2i(2, 4), "fake": 0.35, "window": 0.38,
 		"stamina": 1.9, "pull": 1.3, "run_interval": Vector2(1.3, 2.3), "run_time": 0.8,
-		"side": 0.6, "jump": 0.16, "phases": 2},
+		"side": 0.6, "jump": 0.16, "phases": 2, "sweet": 0.22},
 }
 const RARITY_SCORE := {"common": 0.0, "rare": 1.0, "epic": 2.5}
 const TRAIT_SCORE := {"calm": 0.0, "normal": 0.6, "wild": 1.2}

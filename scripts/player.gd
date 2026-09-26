@@ -466,7 +466,7 @@ func _maybe_trigger_water_ghost() -> void:
 	_apply_water_ghost_attack()
 
 
-func _apply_water_ghost_attack() -> void:
+func _apply_water_ghost_attack(cause := "") -> void:
 	water_ghost_timer = WATER_GHOST_DEBUFF_DURATION
 	affliction_text = "水鬼異常狀態中"
 	cast_jittered = true
@@ -480,7 +480,7 @@ func _apply_water_ghost_attack() -> void:
 	var msg := "水鬼從水裡冒出來偷襲！身上狀態異常中"
 	if not stolen.is_empty():
 		msg = "水鬼冒出來偷襲，還搶走了一條 %s！身上狀態異常中" % stolen.get("name", "魚")
-	GameState.push_message(msg)
+	GameState.push_message(cause + msg)
 
 
 ## User request: a floating ghost passing through the player leaves them
@@ -799,6 +799,25 @@ const CHARGE_RATE := 0.6
 var _cast_dragged := false
 var _cast_by_stick := false
 
+## User request: a perfect strike - right as the float goes under, the
+## first part of the bite window (this share of it, within these bounds)
+## - starts the fight with the fish already worn (FishFight.perfect_hook).
+const PERFECT_HOOK_SHARE := 0.45
+const PERFECT_HOOK_TIME := Vector2(0.2, 0.35)
+## User request: shine the light on the float and fish come to it. Hold
+## the light button aimed at the float (charging the light - the lamp
+## already points at the float after a cast, so it's the focused beam that
+## lures): the wait for a bite runs up to LIGHT_LURE_MULT times as fast
+## with the charge. Letting go with no ghost in the light flashes nothing.
+## But the light on the water can draw the water ghost up too, for someone
+## standing at the edge (a chance per second, at most once a cast).
+const LIGHT_LURE_MULT := 2.2
+const LIGHT_LURE_GHOST_CHANCE := 0.04
+## How strongly the light is luring (0 = not): the charge, on the float.
+var light_lure := 0.0
+var _lured_this_cast := false
+var _lure_ghost_came := false
+
 
 func _cast_stick_touched() -> bool:
 	return _aim_joystick._touch_index != -1
@@ -961,7 +980,7 @@ func _handle_action_input(delta: float) -> void:
 				_launch_cast()
 		State.BITE:
 			if just_pressed:
-				_hook_fish()
+				_hook_fish(perfect_hook_left() > 0.0)
 		State.WAITING:
 			# Design doc request: each tap nudges the retrieve forward a bit
 			# on top of the steady per-delta rate in _update_fishing(), so
@@ -1053,7 +1072,8 @@ func _update_fishing(delta: float) -> void:
 		State.WAITING:
 			if fishing_mode == FishingMode.BOBBER:
 				# Design doc §4.2: bobber waits passively for a bite.
-				wait_timer -= delta
+				_update_light_lure(delta)
+				wait_timer -= delta * (1.0 + (LIGHT_LURE_MULT - 1.0) * light_lure)
 				# User feedback: a bobber cast isn't guaranteed to land a
 				# bite - it can come up empty at the end of the wait, or
 				# have its bait nibbled off early with no bite at all.
@@ -1172,6 +1192,9 @@ func _launch_cast() -> void:
 	wait_timer *= float(lure_def().get("wait", 1.0))
 	_wait_duration = wait_timer
 	retrieve_progress = 0.0
+	light_lure = 0.0
+	_lured_this_cast = false
+	_lure_ghost_came = false
 	_roll_catch_outcome()
 	_set_state(State.WAITING)
 	cast_started.emit(cast_target, current_tier)
@@ -1298,12 +1321,48 @@ func _start_bite() -> void:
 		GameState.push_message("水花聲跟震動都變強了，是稀有魚！")
 
 
-func _hook_fish() -> void:
+## How long the perfect strike lasts on this bite.
+func perfect_hook_window() -> float:
+	var window: float = tier_data.get("bite_window", 1.0)
+	return minf(clampf(window * PERFECT_HOOK_SHARE, PERFECT_HOOK_TIME.x, PERFECT_HOOK_TIME.y), window * 0.7)
+
+
+## Time left for a perfect strike (0 once it's passed, or not biting).
+func perfect_hook_left() -> float:
+	if state != State.BITE:
+		return 0.0
+	var window: float = tier_data.get("bite_window", 1.0)
+	return maxf(perfect_hook_window() - (window - bite_timer), 0.0)
+
+
+## Is a charged light on the float? (bobber fishing, waiting for a bite)
+func _update_light_lure(delta: float) -> void:
+	var lantern: Lantern = get_node("Lantern")
+	var on_float := lantern.lit and lantern.illuminates(cast_target)
+	light_lure = lantern.boost if on_float else 0.0
+	if light_lure <= 0.0:
+		return
+	if not _lured_this_cast:
+		_lured_this_cast = true
+		GameState.push_message("燈光照在浮標上，魚被吸引過來了…水裡好像也有東西在看")
+	if not _lure_ghost_came and water_ghost_timer <= 0.0 \
+			and _nearest_water_edge_distance() <= WATER_GHOST_RANGE \
+			and randf() < LIGHT_LURE_GHOST_CHANCE * light_lure * delta:
+		_lure_ghost_came = true
+		_apply_water_ghost_attack("水面的燈光把水鬼引來了！")
+
+
+func _hook_fish(perfect := false) -> void:
 	fight = FishFight.new(difficulty_key, fish_habit, tier_data, reel_power_mult, Profile.rod())
-	progress = 0.0
+	if perfect:
+		fight.perfect_hook()
+	progress = fight.progress
 	tension = fight.tension
 	fish_run_active_time = 0.0
-	GameState.push_message("上鉤了！（難度：%s）" % fight.label())
+	if perfect:
+		GameState.push_message("完美揚竿！魚一上鉤就掉了一截體力（難度：%s）" % fight.label())
+	else:
+		GameState.push_message("上鉤了！（難度：%s）" % fight.label())
 	_set_state(State.REELING)
 	hook_success.emit()
 
@@ -1412,4 +1471,6 @@ func _reset_line(next_state: State) -> void:
 
 func _set_state(new_state: State) -> void:
 	state = new_state
+	if new_state != State.WAITING:
+		light_lure = 0.0
 	state_changed.emit(State.keys()[state])

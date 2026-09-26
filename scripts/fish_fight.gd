@@ -25,6 +25,13 @@ extends RefCounted
 ##   dash is broken; missed, the dash drags on and costs as before.
 ## - "cover" habit: it bolts for the bank; hold hard to haul it back before
 ##   it reaches the rocks and frays the line.
+## - User request: a sweet spot on the tension gauge (diff.sweet wide,
+##   around SWEET_CENTER) - reeling while the tension sits in it gains line
+##   SWEET_REEL_MULT times as fast, so it pays to ease on and off rather
+##   than just hold.
+## - User request: a perfect strike (Player, right as the float goes under)
+##   starts the fight with the fish PERFECT_HOOK_STAMINA down and the line
+##   slack.
 
 const RUN_TENSION_MULT := 1.8
 ## Giving line to a run: the drag holds tension nearly level.
@@ -51,6 +58,10 @@ const SWIPE_DAMAGE := 0.12
 const SWIPE_THRESHOLD := 0.6
 ## Below this stamina the fish reads as tired.
 const TIRED_AT := 0.25
+const SWEET_CENTER := 0.5
+const SWEET_REEL_MULT := 1.6
+const PERFECT_HOOK_STAMINA := 0.15
+const PERFECT_HOOK_TENSION := 0.05
 
 var diff: Dictionary
 var difficulty_key: String
@@ -79,6 +90,10 @@ var swipe_left := 0.0
 ## The flick has to be a fresh one: the stick must not already be held
 ## that way when the dash starts (or it has to come back first).
 var _swipe_armed := false
+## Struck perfectly (for the panel's call-out).
+var perfect := false
+## Seconds since the fish was hooked.
+var age := 0.0
 
 var _run_timer := 0.0
 var _jump_cooldown := 0.0
@@ -113,6 +128,7 @@ func update(delta: float, held: bool, counter: Vector2, line_dir: Vector2, reel_
 	if result != "":
 		return events
 	var pull: float = diff.pull * (ENRAGE_PULL if enraged else 1.0)
+	age += delta
 	_jump_cooldown -= delta
 
 	if jump_left > 0.0:
@@ -160,7 +176,7 @@ func update(delta: float, held: bool, counter: Vector2, line_dir: Vector2, reel_
 			swipe_left = 0.0
 	else:
 		if held:
-			progress += reel_speed * reel_mult * delta
+			progress += reel_speed * reel_mult * (SWEET_REEL_MULT if in_sweet() else 1.0) * delta
 			tension += tension_rise * pull * (ENRAGE_REEL_TENSION if enraged else 1.0) * delta
 		else:
 			tension -= tension_fall * delta
@@ -252,6 +268,25 @@ func mood() -> String:
 	if stamina() < TIRED_AT:
 		return "tired"
 	return ""
+
+
+## The tension gauge's sweet spot, low to high.
+func sweet_range() -> Vector2:
+	var half: float = diff.get("sweet", 0.3) * 0.5
+	return Vector2(SWEET_CENTER - half, SWEET_CENTER + half)
+
+
+func in_sweet() -> bool:
+	var r := sweet_range()
+	return tension >= r.x and tension <= r.y
+
+
+## Struck right as the float went under: the fish starts worn and the
+## line slack.
+func perfect_hook() -> void:
+	perfect = true
+	progress = minf(progress + PERFECT_HOOK_STAMINA, 0.9)
+	tension = PERFECT_HOOK_TENSION
 
 
 ## The fish's stamina as shown on the HUD (1 fresh -> 0 spent).
