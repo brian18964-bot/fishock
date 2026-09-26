@@ -10,7 +10,6 @@ const STATE_TEXT := {
 
 @onready var state_label: Label = $Panel/StateLabel
 @onready var quota_label: Label = $Panel/QuotaLabel
-@onready var inventory_label: Label = $Panel/InventoryLabel
 @onready var message_label: Label = $Panel/MessageLabel
 @onready var progress_bar: ProgressBar = $Panel/ProgressBar
 @onready var tension_bar: ProgressBar = $Panel/TensionBar
@@ -85,12 +84,16 @@ func _process(delta: float) -> void:
 	if _lantern.tool == Lantern.Tool.LAMP:
 		fuel_bar.max_value = _lantern.max_fuel
 		fuel_bar.value = _lantern.fuel
-		fuel_label.text = "煤燈燃油（已熄滅，按住 L 點燃）" if not _lantern.lit else "煤燈燃油（L 熄滅）"
+		if DisplayServer.is_touchscreen_available():
+			fuel_label.text = "煤燈燃油（已熄滅，長按畫面空白處點燃）" if not _lantern.lit else "煤燈燃油"
+		else:
+			fuel_label.text = "煤燈燃油（已熄滅，按住 L 點燃）" if not _lantern.lit else "煤燈燃油（L 熄滅）"
 	else:
 		fuel_bar.max_value = 100.0
 		fuel_bar.value = _lantern.charge
 		if _lantern.charge <= 0.0:
-			fuel_label.text = "手電筒沒電（電池 %d，按住 L 換）" % Profile.batteries
+			var how := "長按畫面空白處換" if DisplayServer.is_touchscreen_available() else "按住 L 換"
+			fuel_label.text = "手電筒沒電（電池 %d，%s）" % [Profile.batteries, how]
 		else:
 			fuel_label.text = "手電筒電量（電池 %d）" % Profile.batteries
 
@@ -150,9 +153,8 @@ func _on_quota_updated(progress: float, target: float) -> void:
 	quota_label.text = "獻祭額度：%.0f / %.0f" % [progress, target]
 
 
-func _on_inventory_updated(carried: Array) -> void:
-	var speed_pct: int = int(Player.carry_speed_ratio(carried.size()) * 100.0)
-	inventory_label.text = "隨身漁獲：%d 條（移動速度 %d%%）" % [carried.size(), speed_pct]
+func _on_inventory_updated(_carried: Array) -> void:
+	pass  # the fish carried and the speed are on the character card now (StatusCard)
 
 
 func _on_message(text: String) -> void:

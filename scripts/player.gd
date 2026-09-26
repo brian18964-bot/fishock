@@ -647,9 +647,12 @@ func _update_aim() -> void:
 		# aim just holds still instead of tracking mouse/stick input.
 		pass
 	elif touch_aim != Vector2.ZERO:
-		# Dragging the cast button (see TouchControls) steers the cast.
 		aim_dir = touch_aim
+	elif skill_held and skill_aim != Vector2.ZERO:
+		# The light skill being aimed (TouchControls).
+		aim_dir = skill_aim
 	elif _aim_joystick.is_pressed and _aim_joystick.output.length() > 0.15:
+		# The right stick aims the cast (and the light with it).
 		aim_dir = _aim_joystick.output.normalized()
 	elif _mouse_aiming():
 		var to_mouse := get_global_mouse_position() - global_position
@@ -662,14 +665,22 @@ func _update_aim() -> void:
 	facing_indicator.position = aim_dir * 18.0 - Vector2(3.0, 3.0)
 
 
-## User request: the light is aimed like a skill in Brawl Stars - drag the
-## right stick to swing it round (it otherwise follows your walk), and on
-## letting go, if a ghost is in the light it gets the strong flash. A quick
-## tap aims it at the nearest ghost in reach and flashes. Held on, it
-## charges up - brighter, and a stronger flash on letting go. (Desktop:
-## hold the right mouse button to aim.)
+## User request: the light is a skill, Brawl Stars' super as the model -
+## its own button (TouchControls) next to the right stick, which fishes.
+## Drag the button to aim the light (left alone it follows your walk), hold
+## it to charge the light up - brighter, further, a longer stun - and let
+## go: a ghost in the light is flashed. A quick tap flashes the nearest
+## ghost close by for a short stun - for when one's about to grab you.
+## (Desktop: hold the right mouse button to aim; F flashes.)
 const AIM_TAP_TIME := 0.22
 const LIGHT_CHARGE_TIME := 1.2
+## A tap only reaches a ghost this close, and holds it this much less long.
+const TAP_FLASH_REACH := 90.0
+const TAP_STUN_SCALE := 0.6
+## Set by TouchControls while the light button is held / dragged.
+var skill_held := false
+var skill_aim := Vector2.ZERO
+var skill_dragged := false
 var _was_aiming := false
 var _aim_time := 0.0
 
@@ -679,21 +690,31 @@ func _mouse_aiming() -> bool:
 
 
 func _update_light_skill() -> void:
-	# A finger on the stick at all (its is_pressed only turns on past the
-	# deadzone, which a tap never gets to).
-	var aiming: bool = _aim_joystick._touch_index != -1 or _mouse_aiming()
+	var aiming: bool = skill_held or _mouse_aiming()
 	var lantern: Lantern = get_node("Lantern")
 	if aiming:
 		_aim_time = 0.0 if not _was_aiming else _aim_time + get_physics_process_delta_time()
 		# User request: held on, the light charges up - brighter and brighter.
 		lantern.boost = clampf((_aim_time - AIM_TAP_TIME) / LIGHT_CHARGE_TIME, 0.0, 1.0) if lantern.lit else 0.0
 	elif _was_aiming and not held:
-		if _aim_time < AIM_TAP_TIME:
-			var ghost := lantern.nearest_ghost()
-			if ghost != null:
-				aim_dir = (ghost.global_position - global_position).normalized()
-		lantern.release_flash()
+		if _aim_time < AIM_TAP_TIME and not skill_dragged:
+			_tap_flash(lantern)
+		else:
+			lantern.release_flash()
+		skill_aim = Vector2.ZERO
+		skill_dragged = false
 	_was_aiming = aiming
+
+
+## A quick tap: the nearest ghost close by, if any, gets a short flash.
+func _tap_flash(lantern: Lantern) -> void:
+	lantern.boost = 0.0
+	var ghost := lantern.nearest_ghost()
+	if ghost == null or ghost.global_position.distance_to(global_position) > TAP_FLASH_REACH:
+		GameState.push_message("身邊沒有鬼")
+		return
+	aim_dir = (ghost.global_position - global_position).normalized()
+	lantern.release_flash(TAP_STUN_SCALE)
 
 
 func _update_movement() -> void:
@@ -764,10 +785,21 @@ func _update_noise() -> void:
 	current_noise_radius = noise
 
 
+## User request: the right stick fishes (Brawl Stars' attack stick as the
+## model): a finger on it is the fishing action held - so it casts, strikes
+## and reels - its direction aims the cast (and answers a fish's sideways
+## run) and, while casting, how far it's pulled sets how far the cast goes
+## (the landing mark shows where). A tap casts ahead at CAST_TAP_RATIO.
+## Space on a keyboard (held to charge).
+const CAST_TAP_RATIO := 0.55
+
+
+func _cast_stick_touched() -> bool:
+	return _aim_joystick._touch_index != -1
+
+
 func _is_action_pressed() -> bool:
-	# Mouse-left now drags the aim joystick on desktop, so the action button
-	# is keyboard-only here; on mobile this will be a dedicated screen button.
-	return Input.is_key_pressed(KEY_SPACE)
+	return Input.is_key_pressed(KEY_SPACE) or _cast_stick_touched()
 
 
 ## User request: the action button only fishes. Everything else - offering
@@ -903,7 +935,11 @@ func _handle_action_input(delta: float) -> void:
 					var out_of := "餌" if fishing_mode == FishingMode.BOBBER else "假餌"
 					GameState.push_message("沒有%s了，按 Tab 換釣法" % out_of)
 		State.CHARGING:
-			if held:
+			if held and _cast_stick_touched():
+				# Pulled this far: this far out.
+				var pull: float = _aim_joystick.output.length() if _aim_joystick.is_pressed else CAST_TAP_RATIO
+				charge_time = clampf(pull, 0.0, 1.0) * MAX_CHARGE_TIME
+			elif held:
 				charge_time = min(charge_time + delta, MAX_CHARGE_TIME)
 			elif just_released:
 				_launch_cast()
@@ -1258,7 +1294,7 @@ func _hook_fish() -> void:
 
 
 ## Which way the rod is being pulled, for answering a sideways run: the
-## cast button being dragged, else the aim stick, else the way you walk.
+## right stick, else the way you walk.
 func _counter_dir() -> Vector2:
 	if touch_aim != Vector2.ZERO:
 		return touch_aim

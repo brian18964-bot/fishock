@@ -309,7 +309,7 @@ func nearest_ghost() -> Node2D:
 ## User request: letting go of the aimed light (Player._update_light_skill)
 ## flashes it - if there's a ghost in the light to flash. The charge built
 ## up (`boost`) makes it reach further and hold them longer.
-func release_flash() -> void:
+func release_flash(stun_scale: float = 1.0) -> void:
 	var charged := boost
 	boost = 0.0
 	rotation = _player.aim_dir.angle()
@@ -325,7 +325,7 @@ func release_flash() -> void:
 	if flash_cooldown > 0.0:
 		GameState.push_message("強光還在冷卻（%.0f 秒）" % ceilf(flash_cooldown))
 		return
-	_try_flash(reach, FLASH_STUN_DURATION * (1.0 + BOOST_STUN * charged))
+	_try_flash(reach, FLASH_STUN_DURATION * (1.0 + BOOST_STUN * charged) * stun_scale)
 
 
 ## In the flash: within `reach` and in the light - its feet or its body (the

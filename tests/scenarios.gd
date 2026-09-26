@@ -17,6 +17,10 @@ const TESTS := [
 	"test_big_ghost_eats_thrown_fish",
 	"test_big_ghost_fish_taken_back",
 	"test_light_flash_stuns",
+	"test_right_stick_casts",
+	"test_light_button_tap_and_hold",
+	"test_long_press_brightness",
+	"test_status_card_opens_bag",
 	"test_floating_ghost_budget",
 	"test_backpack_grid",
 	"test_water_ghost",
@@ -312,6 +316,111 @@ func test_light_flash_stuns() -> void:
 	check(lantern.boost == 0.0, "the charge is spent")
 	bg.set_physics_process(true)
 	player().set_physics_process(true)
+
+
+## The right stick fishes: its pull sets how far the cast goes.
+func test_right_stick_casts() -> void:
+	var zone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
+	var shore: Vector2 = zone.shore_point(Vector2.DOWN)
+	await put(shore + Vector2(0, 60))
+	var stick = main.get_node("HUD/Panel/AimJoystick")
+	stick._touch_index = 7
+	stick.is_pressed = true
+	stick.output = Vector2(0, -0.5)
+	await frames(10)
+	check(player().state == Player.State.CHARGING, "a finger on the right stick starts the cast")
+	check(absf(player().charge_time / Player.MAX_CHARGE_TIME - 0.5) < 0.05, "half pulled, half the charge (%.2f)" % (player().charge_time / Player.MAX_CHARGE_TIME))
+	check(player().aim_dir.dot(Vector2.UP) > 0.95, "the cast aims where the stick points")
+	stick._reset()
+	await frames(5)
+	check(player().state != Player.State.CHARGING and player().state != Player.State.IDLE, "letting go casts")
+
+
+## The light button: a tap stuns a ghost close by briefly; held, it charges.
+func test_light_button_tap_and_hold() -> void:
+	var lantern: Lantern = player().get_node("Lantern")
+	var ghost: Node2D = main.get_node("Ghost")
+	ghost.set_physics_process(false)
+	await put(Vector2(1300, 400))
+	ghost.global_position = player().global_position + Vector2(50, 10)
+	lantern.lit = true
+	lantern.flash_cooldown = 0.0
+	player().skill_held = true
+	await frames(3)
+	player().skill_held = false
+	await frames(3)
+	check(ghost.stun_timer > 0.5 and ghost.stun_timer < Lantern.FLASH_STUN_DURATION, "a tap stuns the ghost close by, briefly (%.2f)" % ghost.stun_timer)
+	ghost.stun_timer = 0.0
+	ghost.global_position = player().global_position + Vector2(0, 140)
+	lantern.flash_cooldown = 0.0
+	player().skill_held = true
+	player().skill_aim = Vector2.DOWN
+	player().skill_dragged = true
+	await seconds(1.5)
+	check(lantern.boost > 0.9, "held, the light charges (%.2f)" % lantern.boost)
+	player().skill_held = false
+	await frames(3)
+	check(ghost.stun_timer > Lantern.FLASH_STUN_DURATION, "a charged flash holds it longer (%.2f)" % ghost.stun_timer)
+	ghost.set_physics_process(true)
+
+
+## Long-pressing an empty spot brings up the brightness slider.
+func test_long_press_brightness() -> void:
+	var tc: TouchControls = null
+	for c in main.get_children():
+		if c is TouchControls:
+			tc = c
+	tc.visible = true
+	var spot := Vector2(470, 200)
+	check(tc._is_empty_spot(spot), "an empty spot counts as empty")
+	check(not tc._is_empty_spot(Vector2(802, 382)), "the right stick doesn't")
+	check(not tc._is_empty_spot(tc._skill_center), "the light button doesn't")
+	check(not tc._is_empty_spot(Vector2(40, 30)), "the character card doesn't")
+	var down := InputEventScreenTouch.new()
+	down.index = 3
+	down.position = spot
+	down.pressed = true
+	tc._input(down)
+	await seconds(0.6)
+	check(tc._slider.visible, "the slider comes up after a long press")
+	var lantern: Lantern = player().get_node("Lantern")
+	var before := lantern.brightness
+	var drag := InputEventScreenDrag.new()
+	drag.index = 3
+	drag.position = spot + Vector2(0, -40)
+	tc._input(drag)
+	check(lantern.brightness > before, "sliding up brightens")
+	drag.position = spot + Vector2(0, 200)
+	tc._input(drag)
+	check(not lantern.lit, "slid to the bottom, the lamp's out")
+	var up := InputEventScreenTouch.new()
+	up.index = 3
+	up.position = spot
+	up.pressed = false
+	tc._input(up)
+	check(not tc._slider.visible, "letting go hides it")
+	tc.visible = false
+
+
+func test_status_card_opens_bag() -> void:
+	var card: StatusCard = null
+	var bag: Backpack = null
+	for c in main.get_children():
+		if c is StatusCard:
+			card = c
+		if c is Backpack:
+			bag = c
+	check(card != null, "there's a character card")
+	var tap := InputEventScreenTouch.new()
+	tap.position = Vector2(40, 30)
+	tap.pressed = true
+	card._input(tap)
+	check(bag.is_open(), "tapping it opens the backpack")
+	bag.toggle()
+	check(StatusCard.speed_share(player()) > 0.99, "full speed when unladen")
+	player().ghost_confuse(3.0)
+	check(StatusCard.speed_share(player()) < 0.7, "slowed when dizzy")
+	check(StatusCard.conditions(player()).size() > 0, "and it says why")
 
 
 func test_floating_ghost_budget() -> void:
