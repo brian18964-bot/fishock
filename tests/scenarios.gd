@@ -14,11 +14,14 @@ const TESTS := [
 	"test_big_ghost_caged_without_heart",
 	"test_big_ghost_heart_frees",
 	"test_big_ghost_follows_the_light",
+	"test_big_ghost_night_hunt",
 	"test_big_ghost_eats_thrown_fish",
 	"test_big_ghost_fish_taken_back",
 	"test_light_flash_stuns",
 	"test_right_stick_casts",
 	"test_right_stick_tap_cast",
+	"test_cast_only_near_water",
+	"test_walking_off_reels_in",
 	"test_fight_swipe",
 	"test_fight_enrage_tension",
 	"test_fight_sweet_spot",
@@ -118,6 +121,19 @@ func put(pos: Vector2) -> void:
 	player().global_position = pos
 	player().get_node("Camera2D").reset_smoothing()
 	await frames(3)
+
+
+## Somewhere at least `d` from any water's edge.
+func away_from_water(d: float) -> Vector2:
+	for y in range(120, int(Player.WORLD_HEIGHT) - 120, 40):
+		for x in range(120, int(Player.WORLD_WIDTH) - 120, 40):
+			var p := Vector2(x, y)
+			var nearest := INF
+			for z in main.get_tree().get_nodes_in_group("water_zones"):
+				nearest = minf(nearest, z.distance_to_edge(p))
+			if nearest > d and nearest < d + 60.0:
+				return p
+	return Vector2.ZERO
 
 
 func first(group: String) -> Node:
@@ -268,6 +284,31 @@ func test_big_ghost_follows_the_light() -> void:
 	player().set_physics_process(true)
 
 
+## Time's up: night falls and the big ghost hunts the player down, lamp
+## or no lamp.
+func test_big_ghost_night_hunt() -> void:
+	var bg = main.get_node("BigGhost")
+	var lantern: Lantern = player().get_node("Lantern")
+	player().set_physics_process(false)
+	await put(Vector2(1300, 400))
+	lantern.lit = false
+	bg.global_position = player().global_position + Vector2(260, 120)
+	bg.mode = bg.Mode.WANDER
+	await frames(10)
+	check(bg.mode == bg.Mode.WANDER, "by day, unlit, it leaves you be")
+	gs.time_remaining = 0.0
+	await frames(3)
+	check(gs.is_night, "time's up: night")
+	await frames(3)
+	check(bg.mode == bg.Mode.CHASE, "at night it comes for you (mode %s)" % bg.Mode.keys()[bg.mode])
+	var before: float = bg.global_position.distance_to(player().global_position)
+	await seconds(1.5)
+	var after: float = bg.global_position.distance_to(player().global_position)
+	check(after < before - 60.0, "straight at you (%.0f -> %.0f)" % [before, after])
+	check(bg.mode in [bg.Mode.CHASE, bg.Mode.CARRY], "without losing you in the dark")
+	player().set_physics_process(true)
+
+
 func test_big_ghost_eats_thrown_fish() -> void:
 	var bg = main.get_node("BigGhost")
 	gs.time_remaining = gs.DAY_DURATION * 0.7
@@ -358,6 +399,39 @@ func test_right_stick_tap_cast() -> void:
 	stick._reset()
 	await frames(1)
 	check(absf(player().charge_time / Player.MAX_CHARGE_TIME - Player.CAST_TAP_RATIO) < 0.01, "a tap casts at the usual distance (%.2f)" % (player().charge_time / Player.MAX_CHARGE_TIME))
+
+
+## Too far from the water, the stick doesn't cast.
+func test_cast_only_near_water() -> void:
+	var zone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
+	var shore: Vector2 = zone.shore_point(Vector2.DOWN)
+	await put(away_from_water(Player.CAST_SHORE_RANGE + 10.0))
+	check(player()._nearest_water_edge_distance() > Player.CAST_SHORE_RANGE, "standing back from the water")
+	var stick = main.get_node("HUD/Panel/AimJoystick")
+	stick._touch_index = 7
+	await frames(4)
+	check(player().state == Player.State.IDLE, "no cast from back there")
+	stick._reset()
+	await frames(2)
+
+
+## With a line out, walking off from the water reels it in.
+func test_walking_off_reels_in() -> void:
+	var zone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
+	var shore: Vector2 = zone.shore_point(Vector2.DOWN)
+	await put(shore + Vector2(0, 60))
+	player().aim_dir = Vector2.UP
+	player().bait_count = 5
+	var stick = main.get_node("HUD/Panel/AimJoystick")
+	stick._touch_index = 7
+	await frames(4)
+	stick._reset()
+	await frames(2)
+	check(player().state == Player.State.WAITING, "cast from the bank")
+	await put(shore + Vector2(0, 80))
+	check(player().state == Player.State.WAITING, "a step or two back is fine")
+	await put(away_from_water(Player.REEL_IN_SHORE_RANGE + 10.0))
+	check(player().state == Player.State.IDLE, "too far off, the line comes in")
 
 
 ## A sideways dash: flick the stick the other way in time and the fish
@@ -452,6 +526,8 @@ func test_fight_sweet_spot() -> void:
 
 ## Striking right as the float goes under is a perfect strike.
 func test_perfect_hook() -> void:
+	var zone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
+	await put(zone.shore_point(Vector2.DOWN) + Vector2(0, 60))
 	var stick = main.get_node("HUD/Panel/AimJoystick")
 	for late in [false, true]:
 		player().tier_data = FishData.get_tier_data("mid").duplicate()

@@ -29,6 +29,11 @@ const FEET := Vector2(0, 8)
 ## another 50% slower.
 const MAX_CHARGE_TIME := 2.34
 const MIN_CAST_DIST := 40.0
+## User request: only cast from near the water - no further than this from
+## its edge; and with a line out, walk further than REEL_IN_SHORE_RANGE
+## from it and the line is reeled in (a fish on it gets away).
+const CAST_SHORE_RANGE := 90.0
+const REEL_IN_SHORE_RANGE := 150.0
 const MAX_CAST_DIST := 340.0
 const MOVE_REEL_PENALTY := 0.5
 const WORLD_WIDTH := 2400.0
@@ -953,6 +958,8 @@ func _handle_action_input(delta: float) -> void:
 			if just_pressed:
 				if carrying_oil_drum:
 					GameState.push_message("提著油箱沒辦法釣魚，先送到煤油站")
+				elif _nearest_water_edge_distance() > CAST_SHORE_RANGE:
+					GameState.push_message("離水邊太遠了，走近岸邊再拋竿")
 				elif _can_start_cast():
 					_set_state(State.CHARGING)
 					charge_time = 0.0
@@ -1068,6 +1075,10 @@ func _deliver_oil_drum() -> void:
 
 
 func _update_fishing(delta: float) -> void:
+	if state in [State.WAITING, State.BITE, State.REELING] \
+			and _nearest_water_edge_distance() > REEL_IN_SHORE_RANGE:
+		_fail_catch("walked_off")
+		return
 	match state:
 		State.WAITING:
 			if fishing_mode == FishingMode.BOBBER:
@@ -1453,6 +1464,8 @@ func _fail_catch(reason: String) -> void:
 		msg = "魚在空中甩掉了魚鉤（跳起來時要放手）"
 	elif reason == "cover":
 		msg = "魚鑽進石縫，線被磨斷了"
+	elif reason == "walked_off":
+		msg = "拉著魚走離岸邊太遠，魚脫鉤跑了" if state == State.REELING else "離岸邊太遠，自動收竿了"
 	if lure_gone:
 		msg += "，假餌也沒了"
 	GameState.push_message(msg)

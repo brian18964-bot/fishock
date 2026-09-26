@@ -25,7 +25,8 @@ const RARITY_VALUE := {"common": 10, "rare": 25, "epic": 60}
 const BASELINE_REWARD := 8
 const MAX_EVIL := 3
 const MAX_STARTING_EVIL := 2
-const DAY_DURATION := 180.0
+## User request: a five-minute day.
+const DAY_DURATION := 300.0
 ## User request: the day darkens in four stages (quarters of the day) - at
 ## first the lamp at its lowest setting is enough to see ahead; by the last
 ## you have to turn it right up. See light_stage(), DarknessController and

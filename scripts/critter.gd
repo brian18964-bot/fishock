@@ -22,6 +22,8 @@ const CALM_RADIUS := 140.0
 const WANDER_RADIUS := 90.0
 const RESPAWN_DELAY := 30.0
 const MARGIN := 80.0
+## User request: the ones you can catch for bait drawn 20% smaller.
+const BAIT_SIZE := 0.8
 
 ## offset: ground point relative to one cell's center (-center_y * 27.108).
 ## move_fps / idle_fps: 8 samples over each clip's 24fps loop length.
@@ -243,7 +245,7 @@ func set_species(name: String) -> void:
 	sprite.texture = tex
 	sprite.hframes = _data.get("frames", 8)
 	sprite.vframes = _data.clips * DIRS.size()
-	sprite.scale = Vector2.ONE * SPRITE_SCALE * _data.get("size", 1.0)
+	sprite.scale = Vector2.ONE * SPRITE_SCALE * _data.get("size", 1.0) * (1.0 if _data.get("ambient", false) else BAIT_SIZE)
 	sprite.offset = _data.offset
 
 

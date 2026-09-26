@@ -19,6 +19,9 @@ extends Node2D
 ## the strong light stuns it like any ghost. User request: or throw it a
 ## fish (the drop-fish button tosses one ahead): it goes and eats it, and
 ## leaves you be for a while. Its own lantern glows, so it's seen coming.
+## User request: when the time runs out and night falls, it comes for you -
+## it hunts the player down wherever they are, light or no light (a thrown
+## fish or the strong light still hold it off for a while).
 
 signal mode_changed(mode: String)
 
@@ -78,6 +81,8 @@ var stun_timer := 0.0
 var _target := Vector2.ZERO
 var _repick := 0.0
 var _lost := 0.0
+## The night hunt's been announced (once a night).
+var _hunt_announced := false
 var _fish: Node2D
 var _timer := 0.0
 var _dir := 0
@@ -133,6 +138,10 @@ func _physics_process(delta: float) -> void:
 	if stun_timer > 0.0:
 		stun_timer -= delta
 		return
+	if not GameState.is_night:
+		_hunt_announced = false
+	elif mode in [Mode.WANDER, Mode.SEARCH, Mode.SUSPICIOUS]:
+		_start_hunt()
 	match mode:
 		Mode.ASLEEP:
 			global_position = _cage.global_position + HOME
@@ -215,6 +224,12 @@ func _chase(delta: float) -> void:
 	var speed := NIGHT_SPEED if GameState.is_night else CHASE_SPEED
 	if frenzy_timer > 0.0:
 		speed *= 1.25
+	if GameState.is_night:
+		# The night hunt: straight for the player, never losing them.
+		_target = _player.global_position
+		_move_toward(_target, speed, delta)
+		_try_catch()
+		return
 	# Only while the light is on it does it home in on the player; out of
 	# it, it slows to a prowl towards where the light last was.
 	if _lit():
@@ -235,6 +250,15 @@ func _start_chase() -> void:
 	_lost = 0.0
 	_set_mode(Mode.CHASE)
 	GameState.push_message("大鬼被燈光吸引，衝過來了！把燈移開或熄掉就能甩掉牠")
+
+
+func _start_hunt() -> void:
+	_target = _player.global_position
+	_lost = 0.0
+	_set_mode(Mode.CHASE)
+	if not _hunt_announced:
+		_hunt_announced = true
+		GameState.push_message("大鬼循著你的氣味直直追過來了！丟魚或強光能拖住牠")
 
 
 func _start_search(at: Vector2) -> void:
