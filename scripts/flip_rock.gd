@@ -17,7 +17,7 @@ const REACH := 26.0
 const ROLL_DISTANCE := Vector2(22.0, 32.0)
 const ROLL_TIME := 0.8
 
-## Map theme (map_generator.gd): obstacle VARIANTS indices to choose from.
+## Map theme (map_generator.gd): obstacle rock pool (Obstacle.resolve_pool).
 var variant_pool: Array = []
 var active := true
 
@@ -31,8 +31,9 @@ var _scar_alpha := 0.0
 
 func _ready() -> void:
 	y_sort_enabled = true
-	var index: int = variant_pool.pick_random() if not variant_pool.is_empty() else randi() % ROCK.VARIANTS.size()
-	var variant: Dictionary = ROCK.VARIANTS[index]
+	var pool: Array = ROCK.resolve_pool(variant_pool)
+	var index: int = pool.pick_random() if not pool.is_empty() else randi() % ROCK.VARIANTS.size()
+	var variant: Dictionary = ROCK.variants()[index]
 	var footprint: Rect2 = variant.footprint
 	_patch = footprint.get_center() * SIZE
 	_patch_radius = maxf(minf(footprint.size.x, footprint.size.y) * 0.5 * SIZE, 5.0)
@@ -46,8 +47,8 @@ func _ready() -> void:
 	add_child(_roller)
 	_visual = Sprite2D.new()
 	var tex := CanvasTexture.new()
-	tex.diffuse_texture = variant.albedo
-	tex.normal_texture = variant.normal
+	tex.diffuse_texture = Art.tex(variant.albedo)
+	tex.normal_texture = Art.tex(variant.normal)
 	_visual.texture = tex
 	_visual.flip_h = randf() < 0.5
 	Art.place(_visual, variant.offset, 0.5 * SIZE)
@@ -86,6 +87,7 @@ func prompt_anchor() -> Vector2:
 ## whether there was bait under it.
 func turn_over(from: Vector2) -> Dictionary:
 	active = false
+	Sfx.play_at("rock_flip", global_position, -2.0)
 	var away := global_position - from
 	if away.length() < 1.0:
 		away = Vector2.RIGHT.rotated(randf() * TAU)

@@ -100,7 +100,7 @@ const THEMES := {
 	"forest_green": {
 		"floor": ["grass", "dirt", 0.2],
 		"trees": 26, "rocks": 3, "bushes": 8, "ground": 120,
-		"tree_families": {"oak": 1.0, "leafy": 1.0},
+		"tree_families": {"oak": 1.0, "leafy": 1.0, "round": 0.5},
 		"rock_pool": [0, 1, 2],
 		"ground_kinds": {"grass": 4.0, "clover": 2.0, "plant": 3.0, "shrub": 3.0, "flower_single": 1.0, "mushroom": 1.0},
 		"animals": {"cow": 1.5, "bull": 1.0, "horse": 1.0, "deer": 1.0, "shiba": 1.0, "husky": 1.0},
@@ -118,7 +118,7 @@ const THEMES := {
 		"floor": ["gravel", "dirt", 0.4],
 		"trees": 6, "rocks": 26, "bushes": 1, "ground": 100,
 		"tree_families": {"dead": 1.0, "bare": 1.0},
-		"rock_pool": [0, 1, 2, 3, 4, 5, 6, 7],
+		"rock_pool": [0, 1, 2, 3, 4, 5, 6, 7, "grey", "granite", "sand"],
 		"ground_kinds": {"pebble": 5.0, "grass": 2.0, "clover": 1.0},
 		"animals": {"alpaca": 2.0, "donkey": 1.5, "fox": 1.0, "wolf": 1.0},
 	},
@@ -126,7 +126,7 @@ const THEMES := {
 	"tropical": {
 		"floor": ["sand", "grass", 0.25],
 		"trees": 22, "rocks": 3, "bushes": 5, "ground": 120,
-		"tree_families": {"palm": 1.0},
+		"tree_families": {"palm": 1.0, "palm2": 1.0},
 		"rock_pool": [0, 1, 2],
 		"ground_kinds": {"grass": 2.0, "flower_group": 2.0, "flower_single": 2.0, "flower_clump": 2.0,
 			"flower_petal": 2.0, "flower_bush": 1.0, "plant": 2.0, "pebble": 1.0},
@@ -143,15 +143,114 @@ const THEMES := {
 		"animals": {"stegosaurus": 1.0, "apatosaurus": 1.0, "parasaurolophus": 1.0, "triceratops": 1.0,
 			"trex": 0.6, "velociraptor": 1.0},
 	},
+	# User request: many more map styles so the picture isn't monotonous,
+	# from the user's packs (NatureCatalog, tools/render_packs.py). Each has
+	# its own ground, light ("tint", multiplying the day's darkness), pond
+	# colour ("water"), trees, rocks (catalog rock families by name),
+	# bushes ("bush_families") and animals.
+	"forest_conifer": {
+		"floor": ["forest_floor", "moss_soil", 0.3],
+		"trees": 28, "rocks": 4, "bushes": 5, "ground": 110,
+		"tree_families": {"conifer": 2.0, "pine": 1.0},
+		"rock_pool": [0, 1, 2, "stone"],
+		"ground_kinds": {"grass": 3.0, "mushroom": 3.0, "plant": 2.0, "shrub": 2.0, "clover": 1.0},
+		"animals": {"deer": 2.0, "stag": 1.5, "wolf": 1.0, "fox": 1.0},
+		"tint": Color(0.94, 1.0, 1.02),
+	},
+	"autumn": {
+		"floor": ["leaf_litter", "grass", 0.25],
+		"trees": 26, "rocks": 3, "bushes": 5, "ground": 110,
+		"tree_families": {"autumn": 3.0, "maple": 1.0},
+		"rock_pool": [0, 1, 2, "mossy"],
+		"ground_kinds": {"mushroom": 3.0, "grass": 2.0, "clover": 2.0, "shrub": 2.0, "flower_bush": 1.0},
+		"animals": {"deer": 2.0, "stag": 1.5, "fox": 2.0, "wolf": 0.5},
+		"tint": Color(1.1, 0.98, 0.86),
+		"water": {"base": Color(0.12, 0.22, 0.24), "deep": Color(0.04, 0.07, 0.08)},
+	},
+	"snow": {
+		"floor": ["snow", "gravel", 0.12],
+		"trees": 24, "rocks": 6, "bushes": 0, "ground": 40,
+		"tree_families": {"snow_pine": 3.0, "snow_bare": 1.2},
+		"rock_pool": ["grey", "stone", "granite"],
+		"ground_kinds": {"pebble": 4.0, "grass": 1.0},
+		"shore": {"grass": 0.12, "shrub": 0.0, "pebbles": 0.45},
+		"animals": {"wolf": 2.0, "husky": 2.0, "stag": 1.0, "white_horse": 0.5, "fox": 1.0},
+		"tint": Color(0.86, 0.95, 1.16),
+		"water": {"base": Color(0.14, 0.28, 0.36), "deep": Color(0.03, 0.08, 0.14)},
+	},
+	"jungle": {
+		"floor": ["moss_soil", "grass", 0.4],
+		"trees": 26, "rocks": 3, "bushes": 10, "ground": 140,
+		"tree_families": {"banana": 2.0, "palm2": 1.5, "sago": 1.2, "banyan": 0.5},
+		"rock_pool": ["mossy", "stone"],
+		"bush_families": ["monstera"],
+		"ground_kinds": {"plant": 5.0, "grass": 3.0, "flower_single": 1.0, "flower_clump": 1.0, "mushroom": 1.0},
+		"animals": {"fox": 1.0},
+		"animal_count": 2,
+		"tint": Color(0.9, 1.06, 0.94),
+		"water": {"base": Color(0.07, 0.25, 0.2), "deep": Color(0.02, 0.08, 0.06)},
+	},
+	"savanna": {
+		"floor": ["red_earth", "sand", 0.3],
+		"trees": 12, "rocks": 8, "bushes": 4, "ground": 70,
+		"tree_families": {"baobab": 3.0, "sago": 0.6, "palm": 0.4},
+		"rock_pool": ["red", "sand"],
+		"bush_families": ["rock_bush"],
+		"ground_kinds": {"grass": 3.0, "pebble": 3.0, "plant": 1.0},
+		"animals": {"alpaca": 1.5, "donkey": 1.5, "horse": 1.0, "bull": 1.0},
+		"tint": Color(1.12, 1.0, 0.84),
+		"water": {"base": Color(0.18, 0.22, 0.16), "deep": Color(0.06, 0.07, 0.04)},
+	},
+	"meadow": {
+		"floor": ["grass_light", "grass", 0.35],
+		"trees": 14, "rocks": 2, "bushes": 6, "ground": 180,
+		"tree_families": {"meadow": 2.0, "round": 2.0},
+		"rock_pool": ["stone"],
+		"bush_families": ["rock_bush"],
+		"ground_kinds": {"grass": 4.0, "flower_group": 3.0, "flower_single": 3.0, "flower_clump": 3.0,
+			"flower_petal": 2.0, "clover": 2.0, "flower_bush": 1.0},
+		"animals": {"cow": 1.5, "horse": 1.0, "white_horse": 1.0, "alpaca": 1.0, "shiba": 1.0},
+		"tint": Color(1.04, 1.06, 0.98),
+	},
+	"stone_forest": {
+		"floor": ["moss_soil", "gravel", 0.45],
+		"trees": 14, "rocks": 22, "bushes": 2, "ground": 90,
+		"tree_families": {"bonsai": 1.0},
+		"rock_pool": ["pillar", "granite", "grey", 5, 6, 7],
+		"ground_kinds": {"grass": 3.0, "pebble": 3.0, "plant": 1.0, "mushroom": 1.0},
+		"animals": {"stag": 1.5, "fox": 1.0, "white_horse": 1.0, "wolf": 1.0},
+		"tint": Color(0.92, 1.0, 0.98),
+		"water": {"base": Color(0.1, 0.28, 0.26), "deep": Color(0.02, 0.08, 0.08)},
+	},
+	"swamp": {
+		"floor": ["mud", "moss_soil", 0.35],
+		"trees": 22, "rocks": 6, "bushes": 4, "ground": 90,
+		"tree_families": {"dead": 1.0, "twisted": 1.0, "bare": 1.0},
+		"rock_pool": ["mossy", 0, 1],
+		"ground_kinds": {"grass": 3.0, "mushroom": 3.0, "plant": 2.0},
+		"animals": {"wolf": 1.5, "fox": 1.0},
+		"animal_count": 4,
+		"tint": Color(0.92, 1.04, 0.84),
+		"water": {"base": Color(0.1, 0.15, 0.08), "deep": Color(0.03, 0.05, 0.02)},
+	},
 }
 ## Forest looks share one pick with the other styles. User decision: the
 ## three main styles ~28% each, tropical 12%, prehistoric (dinosaurs) 4%.
+## User request (more styles): the new ones share the odds now - every
+## style about as likely, dinosaurs still rare.
 const STYLES := {
-	"forest": {"weight": 28.0, "themes": ["forest_pine", "forest_birch", "forest_maple", "forest_green"]},
-	"deadwood": {"weight": 28.0, "themes": ["deadwood"]},
-	"rocky": {"weight": 28.0, "themes": ["rocky"]},
-	"tropical": {"weight": 12.0, "themes": ["tropical"]},
-	"prehistoric": {"weight": 4.0, "themes": ["prehistoric"]},
+	"forest": {"weight": 14.0, "themes": ["forest_pine", "forest_birch", "forest_maple", "forest_green", "forest_conifer"]},
+	"deadwood": {"weight": 10.0, "themes": ["deadwood"]},
+	"rocky": {"weight": 9.0, "themes": ["rocky"]},
+	"tropical": {"weight": 7.0, "themes": ["tropical"]},
+	"prehistoric": {"weight": 3.0, "themes": ["prehistoric"]},
+	"autumn": {"weight": 11.0, "themes": ["autumn"]},
+	"snow": {"weight": 11.0, "themes": ["snow"]},
+	"jungle": {"weight": 9.0, "themes": ["jungle"]},
+	"savanna": {"weight": 7.0, "themes": ["savanna"]},
+	"meadow": {"weight": 8.0, "themes": ["meadow"]},
+	"stone_forest": {"weight": 7.0, "themes": ["stone_forest"]},
+	"swamp": {"weight": 6.0, "themes": ["swamp"]},
 }
 
 ## User feedback: the water's edge is grass, small shrubs, pebbles and
@@ -199,6 +298,10 @@ func _ready() -> void:
 	var ground: CanvasItem = get_parent().get_node_or_null("GroundBackground")
 	if ground != null:
 		ground.material = _ground_material()
+	var darkness := get_parent().get_node_or_null("Darkness")
+	if darkness != null and "tint" in darkness:
+		darkness.tint = theme.get("tint", Color.WHITE)
+	WaterZone.theme_water = theme.get("water", {})
 	GameState.night_fell.connect(_on_night_fell)
 	_generate_water_zones()
 	_place_docks()
@@ -463,7 +566,8 @@ func _scatter_flip_rocks() -> void:
 		var rock: Node2D = FLIP_ROCK_SCENE.instantiate()
 		rock.position = _pick_prop_position(_themed_spots)
 		_themed_spots.append(rock.position)
-		rock.variant_pool = theme.rock_pool
+		# Small stones to turn over - not the standing slabs.
+		rock.variant_pool = theme.rock_pool.filter(func(e): return not (e is String and e == "pillar"))
 		get_parent().add_child.call_deferred(rock)
 
 
@@ -472,6 +576,8 @@ func _theme_prop(prop: Node) -> void:
 		prop.family_weights = theme.tree_families
 	elif "variant_pool" in prop:
 		prop.variant_pool = theme.rock_pool
+	elif "families" in prop:
+		prop.families = theme.get("bush_families", [])
 
 
 ## The theme's extra trees, rocks and bushes, spaced like the scene props.
@@ -499,20 +605,22 @@ func _dress_shores() -> void:
 					or _near_walkway(p, 26.0) or _near_path(p, PATH_CLEARANCE):
 				continue
 			var roll := randf()
-			if roll < SHORE_ODDS.grass:
+			var odds: Dictionary = theme.get("shore", SHORE_ODDS)
+			if roll < odds.grass:
 				for _k in randi_range(2, 4):
 					_add_ground_cover(p + n * randf_range(-10.0, 12.0) + n.orthogonal() * randf_range(-10.0, 10.0), "grass")
-			elif roll < SHORE_ODDS.grass + SHORE_ODDS.shrub:
+			elif roll < odds.grass + odds.shrub:
 				var pos := p + n * randf_range(10.0, 26.0)
 				if _shore_distance(pos) < 6.0:
 					continue
 				if randf() < SHORE_HIDE_BUSH_CHANCE:
 					var bush: Node2D = BUSH_SCENE.instantiate()
 					bush.position = pos + n * 10.0
+					_theme_prop(bush)
 					get_parent().add_child.call_deferred(bush)
 				else:
 					_add_ground_cover(pos, ["shrub", "flower_bush"].pick_random())
-			elif roll < SHORE_ODDS.grass + SHORE_ODDS.shrub + SHORE_ODDS.pebbles:
+			elif roll < odds.grass + odds.shrub + odds.pebbles:
 				for _k in randi_range(1, 3):
 					_add_ground_cover(p + n * randf_range(-4.0, 16.0) + n.orthogonal() * randf_range(-12.0, 12.0), "pebble")
 		if not zone.is_rare() and randf() < BOARDWALK_CHANCE:
@@ -660,7 +768,7 @@ func _scatter_critters() -> void:
 		get_parent().add_child.call_deferred(critter)
 	# User request: larger ambient animals (cows, a deer...) as scenery,
 	# the kinds picked by the map style.
-	for _i in range(AMBIENT_ANIMAL_COUNT):
+	for _i in range(theme.get("animal_count", AMBIENT_ANIMAL_COUNT)):
 		var animal: Critter = CRITTER_SCENE.instantiate()
 		animal.ambient = true
 		animal.species = _weighted_pick(theme.animals)

@@ -60,6 +60,7 @@ static func summon(player: Node2D) -> WaterGhost:
 	ghost._home = spot
 	ghost.position = spot
 	player.get_parent().add_child(ghost)
+	Sfx.play_at("emerge", spot)
 	return ghost
 
 

@@ -16,28 +16,36 @@ const SPRITE_SCALE := 0.5
 ## hide_rect: node-local area counting as "inside the bush", from each
 ## model's projected bounds.
 const VARIANTS := [
-	{"albedo": preload("res://assets/sprites/bush/bush_55deg_albedo.png"),
-	 "normal": preload("res://assets/sprites/bush/bush_55deg_normal.png"),
+	{"albedo": "res://assets/sprites/bush/bush_55deg_albedo.png",
+	 "normal": "res://assets/sprites/bush/bush_55deg_normal.png",
 	 "offset": BUSH_OFFSET, "hide_rect": Rect2(-24, -33, 50, 48)},
-	{"albedo": preload("res://assets/sprites/bush/bush_flowers_55deg_albedo.png"),
-	 "normal": preload("res://assets/sprites/bush/bush_flowers_55deg_normal.png"),
+	{"albedo": "res://assets/sprites/bush/bush_flowers_55deg_albedo.png",
+	 "normal": "res://assets/sprites/bush/bush_flowers_55deg_normal.png",
 	 "offset": BUSH_OFFSET, "hide_rect": Rect2(-24, -33, 50, 48)},
-	{"albedo": preload("res://assets/sprites/bush/fern_55deg_albedo.png"),
-	 "normal": preload("res://assets/sprites/bush/fern_55deg_normal.png"),
+	{"albedo": "res://assets/sprites/bush/fern_55deg_albedo.png",
+	 "normal": "res://assets/sprites/bush/fern_55deg_normal.png",
 	 "offset": BUSH_OFFSET, "hide_rect": Rect2(-25, -21, 51, 39)},
-	{"albedo": preload("res://assets/sprites/bush/plant_big_2_55deg_albedo.png"),
-	 "normal": preload("res://assets/sprites/bush/plant_big_2_55deg_normal.png"),
+	{"albedo": "res://assets/sprites/bush/plant_big_2_55deg_albedo.png",
+	 "normal": "res://assets/sprites/bush/plant_big_2_55deg_normal.png",
 	 "offset": BIG_PLANT_OFFSET, "hide_rect": Rect2(-23, -52, 48, 50)},
 ]
 
 
+## Map theme (map_generator.gd): NatureCatalog bush families this map's
+## bushes come from; empty = the original four. Set before it enters the tree.
+var families: Array = []
+
+
 func _ready() -> void:
 	super()
-	var variant: Dictionary = VARIANTS[randi() % VARIANTS.size()]
+	var pool: Array = NatureCatalog.of_families(NatureCatalog.BUSHES, families) if not families.is_empty() else VARIANTS
+	if pool.is_empty():
+		pool = VARIANTS
+	var variant: Dictionary = pool.pick_random()
 
 	var tex := CanvasTexture.new()
-	tex.diffuse_texture = variant.albedo
-	tex.normal_texture = variant.normal
+	tex.diffuse_texture = Art.tex(variant.albedo)
+	tex.normal_texture = Art.tex(variant.normal)
 	var sprite: Sprite2D = visual
 	sprite.texture = tex
 	Art.place(sprite, variant.offset, SPRITE_SCALE)

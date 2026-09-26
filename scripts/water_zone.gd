@@ -31,6 +31,10 @@ const RARE_FOAM := Color(0.86, 0.72, 0.95)
 ## Lobes the surface shader can take (own + overlapping zones').
 const MAX_SHADER_LOBES := 16
 
+## User request (map styles): the map's theme can tint its common ponds -
+## {"base": Color, "deep": Color} (see MapGenerator.THEMES "water"). Set
+## before the zones are built.
+static var theme_water: Dictionary = {}
 static var _wave_a: NoiseTexture2D
 static var _wave_b: NoiseTexture2D
 
@@ -255,6 +259,9 @@ func _build_surface() -> void:
 	mat.shader = WATER_SHADER
 	mat.set_shader_parameter("wave_a", _wave_a)
 	mat.set_shader_parameter("wave_b", _wave_b)
+	if not is_rare() and not theme_water.is_empty():
+		mat.set_shader_parameter("base_color", theme_water.base)
+		mat.set_shader_parameter("deep_color", theme_water.deep)
 	if is_rare():
 		mat.set_shader_parameter("base_color", RARE_BASE)
 		mat.set_shader_parameter("deep_color", RARE_DEEP)

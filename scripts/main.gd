@@ -80,6 +80,8 @@ func _ready() -> void:
 	player.nibble.connect(_on_nibble)
 	player.fight_event.connect(_on_fight_event)
 	player.line_cleared.connect(_on_line_cleared)
+	# User request: sound (AudioDirector plays the game through Sfx).
+	add_child(AudioDirector.new())
 	# Covers opening this scene directly (e.g. F6 in the editor) without
 	# going through the title screen's Start button.
 	GameState.start_run()

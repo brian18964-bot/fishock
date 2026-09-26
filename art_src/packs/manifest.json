@@ -1,0 +1,2076 @@
+[
+ {
+  "name": "autumn_1",
+  "dir": "autumn_tree",
+  "kind": "tree",
+  "family": "autumn",
+  "offset": [
+   2.7,
+   -80.6
+  ],
+  "bounds": {
+   "min_x": -3.3863,
+   "max_x": 3.5853,
+   "min_y": -0.3815,
+   "max_y": 6.3281
+  }
+ },
+ {
+  "name": "autumn_2",
+  "dir": "autumn_tree",
+  "kind": "tree",
+  "family": "autumn",
+  "offset": [
+   4.62,
+   -70.09
+  ],
+  "bounds": {
+   "min_x": -3.3296,
+   "max_x": 3.6704,
+   "min_y": -0.2921,
+   "max_y": 5.4632
+  }
+ },
+ {
+  "name": "autumn_3",
+  "dir": "autumn_tree",
+  "kind": "tree",
+  "family": "autumn",
+  "offset": [
+   22.76,
+   -60.8
+  ],
+  "bounds": {
+   "min_x": -2.6605,
+   "max_x": 4.3395,
+   "min_y": -0.2785,
+   "max_y": 4.7645
+  }
+ },
+ {
+  "name": "autumn_4",
+  "dir": "autumn_tree",
+  "kind": "tree",
+  "family": "autumn",
+  "offset": [
+   1.49,
+   -76.52
+  ],
+  "bounds": {
+   "min_x": -2.52,
+   "max_x": 2.6296,
+   "min_y": -0.0995,
+   "max_y": 5.7451
+  }
+ },
+ {
+  "name": "autumn_5",
+  "dir": "autumn_tree",
+  "kind": "tree",
+  "family": "autumn",
+  "offset": [
+   5.46,
+   -73.33
+  ],
+  "bounds": {
+   "min_x": -3.2985,
+   "max_x": 3.7015,
+   "min_y": -0.7133,
+   "max_y": 6.1235
+  }
+ },
+ {
+  "name": "autumn_6",
+  "dir": "autumn_tree",
+  "kind": "tree",
+  "family": "autumn",
+  "offset": [
+   25.09,
+   -54.07
+  ],
+  "bounds": {
+   "min_x": -2.5744,
+   "max_x": 4.4256,
+   "min_y": -0.7459,
+   "max_y": 4.7347
+  }
+ },
+ {
+  "name": "autumn_7",
+  "dir": "autumn_tree",
+  "kind": "tree",
+  "family": "autumn",
+  "offset": [
+   2.51,
+   -50.71
+  ],
+  "bounds": {
+   "min_x": -3.4074,
+   "max_x": 3.5926,
+   "min_y": -1.2275,
+   "max_y": 4.9691
+  }
+ },
+ {
+  "name": "autumn_8",
+  "dir": "autumn_tree",
+  "kind": "tree",
+  "family": "autumn",
+  "offset": [
+   15.98,
+   -75.4
+  ],
+  "bounds": {
+   "min_x": -2.7039,
+   "max_x": 3.8829,
+   "min_y": -0.3763,
+   "max_y": 5.939
+  }
+ },
+ {
+  "name": "autumn_9",
+  "dir": "autumn_tree",
+  "kind": "tree",
+  "family": "autumn",
+  "offset": [
+   8.76,
+   -74.66
+  ],
+  "bounds": {
+   "min_x": -2.7904,
+   "max_x": 3.4364,
+   "min_y": -0.4327,
+   "max_y": 5.9411
+  }
+ },
+ {
+  "name": "autumn_10",
+  "dir": "autumn_tree",
+  "kind": "tree",
+  "family": "autumn",
+  "offset": [
+   18.3,
+   -79.27
+  ],
+  "bounds": {
+   "min_x": -1.9131,
+   "max_x": 3.263,
+   "min_y": -0.4509,
+   "max_y": 6.2991
+  }
+ },
+ {
+  "name": "autumn_11",
+  "dir": "autumn_tree",
+  "kind": "tree",
+  "family": "autumn",
+  "offset": [
+   -4.94,
+   -70.26
+  ],
+  "bounds": {
+   "min_x": -3.6822,
+   "max_x": 3.3178,
+   "min_y": -0.6697,
+   "max_y": 5.8533
+  }
+ },
+ {
+  "name": "autumn_12",
+  "dir": "autumn_tree",
+  "kind": "tree",
+  "family": "autumn",
+  "offset": [
+   4.08,
+   -69.0
+  ],
+  "bounds": {
+   "min_x": -2.4372,
+   "max_x": 2.7382,
+   "min_y": -0.1736,
+   "max_y": 5.2645
+  }
+ },
+ {
+  "name": "meadow_1",
+  "dir": "meadow_tree",
+  "kind": "tree",
+  "family": "meadow",
+  "offset": [
+   10.93,
+   -65.42
+  ],
+  "bounds": {
+   "min_x": -1.2034,
+   "max_x": 2.0097,
+   "min_y": -0.1678,
+   "max_y": 4.9946
+  }
+ },
+ {
+  "name": "meadow_2",
+  "dir": "meadow_tree",
+  "kind": "tree",
+  "family": "meadow",
+  "offset": [
+   5.34,
+   -67.62
+  ],
+  "bounds": {
+   "min_x": -1.2207,
+   "max_x": 1.6147,
+   "min_y": -0.1474,
+   "max_y": 5.1364
+  }
+ },
+ {
+  "name": "meadow_3",
+  "dir": "meadow_tree",
+  "kind": "tree",
+  "family": "meadow",
+  "offset": [
+   -2.87,
+   -60.02
+  ],
+  "bounds": {
+   "min_x": -2.0885,
+   "max_x": 1.8765,
+   "min_y": -0.223,
+   "max_y": 4.6516
+  }
+ },
+ {
+  "name": "meadow_4",
+  "dir": "meadow_tree",
+  "kind": "tree",
+  "family": "meadow",
+  "offset": [
+   0.11,
+   -60.52
+  ],
+  "bounds": {
+   "min_x": -2.2228,
+   "max_x": 2.2308,
+   "min_y": -0.2596,
+   "max_y": 4.725
+  }
+ },
+ {
+  "name": "meadow_5",
+  "dir": "meadow_tree",
+  "kind": "tree",
+  "family": "meadow",
+  "offset": [
+   6.37,
+   -63.25
+  ],
+  "bounds": {
+   "min_x": -2.9135,
+   "max_x": 3.3837,
+   "min_y": -0.559,
+   "max_y": 5.2253
+  }
+ },
+ {
+  "name": "meadow_6",
+  "dir": "meadow_tree",
+  "kind": "tree",
+  "family": "meadow",
+  "offset": [
+   0.08,
+   -61.11
+  ],
+  "bounds": {
+   "min_x": -1.9509,
+   "max_x": 1.9568,
+   "min_y": -0.3206,
+   "max_y": 4.8289
+  }
+ },
+ {
+  "name": "meadow_7",
+  "dir": "meadow_tree",
+  "kind": "tree",
+  "family": "meadow",
+  "offset": [
+   2.0,
+   -72.5
+  ],
+  "bounds": {
+   "min_x": -2.0035,
+   "max_x": 2.1509,
+   "min_y": -0.3314,
+   "max_y": 5.6803
+  }
+ },
+ {
+  "name": "meadow_8",
+  "dir": "meadow_tree",
+  "kind": "tree",
+  "family": "meadow",
+  "offset": [
+   -7.93,
+   -80.22
+  ],
+  "bounds": {
+   "min_x": -3.5353,
+   "max_x": 2.9503,
+   "min_y": -0.4786,
+   "max_y": 6.3969
+  }
+ },
+ {
+  "name": "bonsai_1",
+  "dir": "bonsai_tree",
+  "kind": "tree",
+  "family": "bonsai",
+  "offset": [
+   -3.3,
+   -54.66
+  ],
+  "bounds": {
+   "min_x": -3.6219,
+   "max_x": 3.3781,
+   "min_y": -0.2324,
+   "max_y": 4.2654
+  }
+ },
+ {
+  "name": "bonsai_2",
+  "dir": "bonsai_tree",
+  "kind": "tree",
+  "family": "bonsai",
+  "offset": [
+   -2.98,
+   -83.51
+  ],
+  "bounds": {
+   "min_x": -2.5018,
+   "max_x": 2.2819,
+   "min_y": -0.2203,
+   "max_y": 6.3815
+  }
+ },
+ {
+  "name": "bonsai_3",
+  "dir": "bonsai_tree",
+  "kind": "tree",
+  "family": "bonsai",
+  "offset": [
+   0.49,
+   -75.06
+  ],
+  "bounds": {
+   "min_x": -3.482,
+   "max_x": 3.518,
+   "min_y": -0.678,
+   "max_y": 6.2159
+  }
+ },
+ {
+  "name": "bonsai_4",
+  "dir": "bonsai_tree",
+  "kind": "tree",
+  "family": "bonsai",
+  "offset": [
+   -38.07,
+   -45.45
+  ],
+  "bounds": {
+   "min_x": -4.9042,
+   "max_x": 2.0958,
+   "min_y": -0.7342,
+   "max_y": 4.0873
+  }
+ },
+ {
+  "name": "bonsai_5",
+  "dir": "bonsai_tree",
+  "kind": "tree",
+  "family": "bonsai",
+  "offset": [
+   21.56,
+   -60.19
+  ],
+  "bounds": {
+   "min_x": -2.7048,
+   "max_x": 4.2952,
+   "min_y": -0.9507,
+   "max_y": 5.3914
+  }
+ },
+ {
+  "name": "bonsai_6",
+  "dir": "bonsai_tree",
+  "kind": "tree",
+  "family": "bonsai",
+  "offset": [
+   19.74,
+   -45.44
+  ],
+  "bounds": {
+   "min_x": -2.7719,
+   "max_x": 4.2281,
+   "min_y": -0.8829,
+   "max_y": 4.2356
+  }
+ },
+ {
+  "name": "bonsai_7",
+  "dir": "bonsai_tree",
+  "kind": "tree",
+  "family": "bonsai",
+  "offset": [
+   2.51,
+   -50.71
+  ],
+  "bounds": {
+   "min_x": -3.4074,
+   "max_x": 3.5926,
+   "min_y": -1.2275,
+   "max_y": 4.9691
+  }
+ },
+ {
+  "name": "snow_pine_1",
+  "dir": "snow_tree",
+  "kind": "tree",
+  "family": "snow_pine",
+  "offset": [
+   0.97,
+   -71.17
+  ],
+  "bounds": {
+   "min_x": -2.3462,
+   "max_x": 2.4179,
+   "min_y": -0.5674,
+   "max_y": 5.8183
+  }
+ },
+ {
+  "name": "snow_pine_2",
+  "dir": "snow_tree",
+  "kind": "tree",
+  "family": "snow_pine",
+  "offset": [
+   2.98,
+   -65.69
+  ],
+  "bounds": {
+   "min_x": -2.4519,
+   "max_x": 2.6715,
+   "min_y": -0.9896,
+   "max_y": 5.8361
+  }
+ },
+ {
+  "name": "snow_pine_3",
+  "dir": "snow_tree",
+  "kind": "tree",
+  "family": "snow_pine",
+  "offset": [
+   1.56,
+   -81.88
+  ],
+  "bounds": {
+   "min_x": -2.8141,
+   "max_x": 2.9292,
+   "min_y": -0.6501,
+   "max_y": 6.6913
+  }
+ },
+ {
+  "name": "snow_pine_4",
+  "dir": "snow_tree",
+  "kind": "tree",
+  "family": "snow_pine",
+  "offset": [
+   0.0,
+   -64.14
+  ],
+  "bounds": {
+   "min_x": -2.0487,
+   "max_x": 2.0487,
+   "min_y": -1.017,
+   "max_y": 5.7491
+  }
+ },
+ {
+  "name": "snow_pine_5",
+  "dir": "snow_tree",
+  "kind": "tree",
+  "family": "snow_pine",
+  "offset": [
+   0.0,
+   -68.79
+  ],
+  "bounds": {
+   "min_x": -2.0625,
+   "max_x": 2.0625,
+   "min_y": -0.7102,
+   "max_y": 5.7852
+  }
+ },
+ {
+  "name": "snow_pine_6",
+  "dir": "snow_tree",
+  "kind": "tree",
+  "family": "snow_pine",
+  "offset": [
+   0.0,
+   -62.17
+  ],
+  "bounds": {
+   "min_x": -2.0126,
+   "max_x": 2.0126,
+   "min_y": -1.1688,
+   "max_y": 5.7558
+  }
+ },
+ {
+  "name": "snow_pine_7",
+  "dir": "snow_tree",
+  "kind": "tree",
+  "family": "snow_pine",
+  "offset": [
+   -3.14,
+   -72.93
+  ],
+  "bounds": {
+   "min_x": -2.3819,
+   "max_x": 2.1501,
+   "min_y": -0.4178,
+   "max_y": 5.7988
+  }
+ },
+ {
+  "name": "snow_pine_8",
+  "dir": "snow_tree",
+  "kind": "tree",
+  "family": "snow_pine",
+  "offset": [
+   -1.32,
+   -67.38
+  ],
+  "bounds": {
+   "min_x": -2.4372,
+   "max_x": 2.3396,
+   "min_y": -0.7801,
+   "max_y": 5.7514
+  }
+ },
+ {
+  "name": "snow_pine_9",
+  "dir": "snow_tree",
+  "kind": "tree",
+  "family": "snow_pine",
+  "offset": [
+   2.13,
+   -69.21
+  ],
+  "bounds": {
+   "min_x": -2.2617,
+   "max_x": 2.4188,
+   "min_y": -0.6383,
+   "max_y": 5.7449
+  }
+ },
+ {
+  "name": "snow_pine_10",
+  "dir": "snow_tree",
+  "kind": "tree",
+  "family": "snow_pine",
+  "offset": [
+   -4.32,
+   -60.97
+  ],
+  "bounds": {
+   "min_x": -2.5614,
+   "max_x": 2.2429,
+   "min_y": -1.2396,
+   "max_y": 5.7381
+  }
+ },
+ {
+  "name": "snow_bare_1",
+  "dir": "snow_tree",
+  "kind": "tree",
+  "family": "snow_bare",
+  "offset": [
+   24.03,
+   -77.76
+  ],
+  "bounds": {
+   "min_x": -1.056,
+   "max_x": 2.8291,
+   "min_y": -0.2178,
+   "max_y": 5.9549
+  }
+ },
+ {
+  "name": "snow_bare_2",
+  "dir": "snow_tree",
+  "kind": "tree",
+  "family": "snow_bare",
+  "offset": [
+   -0.56,
+   -70.8
+  ],
+  "bounds": {
+   "min_x": -1.4162,
+   "max_x": 1.3749,
+   "min_y": -0.2926,
+   "max_y": 5.5159
+  }
+ },
+ {
+  "name": "snow_bare_3",
+  "dir": "snow_tree",
+  "kind": "tree",
+  "family": "snow_bare",
+  "offset": [
+   16.27,
+   -80.21
+  ],
+  "bounds": {
+   "min_x": -2.3776,
+   "max_x": 3.5777,
+   "min_y": -0.5518,
+   "max_y": 6.4699
+  }
+ },
+ {
+  "name": "snow_bare_4",
+  "dir": "snow_tree",
+  "kind": "tree",
+  "family": "snow_bare",
+  "offset": [
+   -49.68,
+   -37.04
+  ],
+  "bounds": {
+   "min_x": -5.3328,
+   "max_x": 1.6672,
+   "min_y": -1.0576,
+   "max_y": 3.7904
+  }
+ },
+ {
+  "name": "snow_bare_5",
+  "dir": "snow_tree",
+  "kind": "tree",
+  "family": "snow_bare",
+  "offset": [
+   17.87,
+   -87.83
+  ],
+  "bounds": {
+   "min_x": -2.4415,
+   "max_x": 3.7598,
+   "min_y": -0.5047,
+   "max_y": 6.985
+  }
+ },
+ {
+  "name": "snow_bare_6",
+  "dir": "snow_tree",
+  "kind": "tree",
+  "family": "snow_bare",
+  "offset": [
+   8.94,
+   -43.4
+  ],
+  "bounds": {
+   "min_x": -3.1701,
+   "max_x": 3.8299,
+   "min_y": -1.26,
+   "max_y": 4.4616
+  }
+ },
+ {
+  "name": "snow_bare_7",
+  "dir": "snow_tree",
+  "kind": "tree",
+  "family": "snow_bare",
+  "offset": [
+   -5.78,
+   -52.75
+  ],
+  "bounds": {
+   "min_x": -3.5959,
+   "max_x": 3.1693,
+   "min_y": -1.5716,
+   "max_y": 5.4635
+  }
+ },
+ {
+  "name": "conifer_1",
+  "dir": "conifer",
+  "kind": "tree",
+  "family": "conifer",
+  "offset": [
+   26.37,
+   -68.87
+  ],
+  "bounds": {
+   "min_x": -1.6118,
+   "max_x": 3.5577,
+   "min_y": -1.2931,
+   "max_y": 6.3739
+  }
+ },
+ {
+  "name": "conifer_2",
+  "dir": "conifer",
+  "kind": "tree",
+  "family": "conifer",
+  "offset": [
+   33.74,
+   -61.16
+  ],
+  "bounds": {
+   "min_x": -2.0617,
+   "max_x": 4.5507,
+   "min_y": -1.8796,
+   "max_y": 6.3919
+  }
+ },
+ {
+  "name": "conifer_3",
+  "dir": "conifer",
+  "kind": "tree",
+  "family": "conifer",
+  "offset": [
+   27.86,
+   -51.98
+  ],
+  "bounds": {
+   "min_x": -1.6757,
+   "max_x": 3.7309,
+   "min_y": -1.9814,
+   "max_y": 5.8161
+  }
+ },
+ {
+  "name": "conifer_4",
+  "dir": "conifer",
+  "kind": "tree",
+  "family": "conifer",
+  "offset": [
+   -0.29,
+   -20.96
+  ],
+  "bounds": {
+   "min_x": -3.2915,
+   "max_x": 3.2704,
+   "min_y": -3.0552,
+   "max_y": 4.6013
+  }
+ },
+ {
+  "name": "conifer_5",
+  "dir": "conifer",
+  "kind": "tree",
+  "family": "conifer",
+  "offset": [
+   -3.14,
+   -31.34
+  ],
+  "bounds": {
+   "min_x": -3.4953,
+   "max_x": 3.2635,
+   "min_y": -3.0413,
+   "max_y": 5.3536
+  }
+ },
+ {
+  "name": "conifer_6",
+  "dir": "conifer",
+  "kind": "tree",
+  "family": "conifer",
+  "offset": [
+   2.08,
+   -80.24
+  ],
+  "bounds": {
+   "min_x": -2.5517,
+   "max_x": 2.7053,
+   "min_y": -0.3892,
+   "max_y": 6.3093
+  }
+ },
+ {
+  "name": "conifer_7",
+  "dir": "conifer",
+  "kind": "tree",
+  "family": "conifer",
+  "offset": [
+   -1.93,
+   -80.09
+  ],
+  "bounds": {
+   "min_x": -2.7837,
+   "max_x": 2.6414,
+   "min_y": -0.4007,
+   "max_y": 6.3093
+  }
+ },
+ {
+  "name": "conifer_8",
+  "dir": "conifer",
+  "kind": "tree",
+  "family": "conifer",
+  "offset": [
+   -4.72,
+   -59.77
+  ],
+  "bounds": {
+   "min_x": -3.4648,
+   "max_x": 3.1168,
+   "min_y": -1.9026,
+   "max_y": 6.3125
+  }
+ },
+ {
+  "name": "snow_conifer_1",
+  "dir": "snow_tree",
+  "kind": "tree",
+  "family": "snow_pine",
+  "offset": [
+   6.04,
+   -80.14
+  ],
+  "bounds": {
+   "min_x": -2.6005,
+   "max_x": 3.0461,
+   "min_y": -0.3967,
+   "max_y": 6.3093
+  }
+ },
+ {
+  "name": "snow_conifer_2",
+  "dir": "snow_tree",
+  "kind": "tree",
+  "family": "snow_pine",
+  "offset": [
+   -2.57,
+   -61.51
+  ],
+  "bounds": {
+   "min_x": -3.3123,
+   "max_x": 3.1225,
+   "min_y": -1.5677,
+   "max_y": 6.1062
+  }
+ },
+ {
+  "name": "palm2_1",
+  "dir": "jungle_tree",
+  "kind": "tree",
+  "family": "palm2",
+  "offset": [
+   -40.38,
+   -108.79
+  ],
+  "bounds": {
+   "min_x": -4.8448,
+   "max_x": 1.8658,
+   "min_y": -0.3014,
+   "max_y": 8.3278
+  }
+ },
+ {
+  "name": "palm2_2",
+  "dir": "jungle_tree",
+  "kind": "tree",
+  "family": "palm2",
+  "offset": [
+   7.82,
+   -83.24
+  ],
+  "bounds": {
+   "min_x": -3.0838,
+   "max_x": 3.6608,
+   "min_y": -0.2917,
+   "max_y": 6.4329
+  }
+ },
+ {
+  "name": "palm2_3",
+  "dir": "jungle_tree",
+  "kind": "tree",
+  "family": "palm2",
+  "offset": [
+   5.9,
+   -98.43
+  ],
+  "bounds": {
+   "min_x": -2.581,
+   "max_x": 3.0165,
+   "min_y": -0.2178,
+   "max_y": 7.4802
+  }
+ },
+ {
+  "name": "palm2_4",
+  "dir": "jungle_tree",
+  "kind": "tree",
+  "family": "palm2",
+  "offset": [
+   44.52,
+   -100.77
+  ],
+  "bounds": {
+   "min_x": -1.5637,
+   "max_x": 4.8486,
+   "min_y": -0.3113,
+   "max_y": 7.7459
+  }
+ },
+ {
+  "name": "palm2_5",
+  "dir": "jungle_tree",
+  "kind": "tree",
+  "family": "palm2",
+  "offset": [
+   -14.61,
+   -64.12
+  ],
+  "bounds": {
+   "min_x": -4.0389,
+   "max_x": 2.9611,
+   "min_y": -0.1714,
+   "max_y": 4.9025
+  }
+ },
+ {
+  "name": "palm2_6",
+  "dir": "jungle_tree",
+  "kind": "tree",
+  "family": "palm2",
+  "offset": [
+   78.21,
+   -68.67
+  ],
+  "bounds": {
+   "min_x": -0.6149,
+   "max_x": 6.3851,
+   "min_y": -0.1492,
+   "max_y": 5.2156
+  }
+ },
+ {
+  "name": "sago_1",
+  "dir": "jungle_tree",
+  "kind": "tree",
+  "family": "sago",
+  "offset": [
+   -3.58,
+   -87.46
+  ],
+  "bounds": {
+   "min_x": -3.2503,
+   "max_x": 2.9864,
+   "min_y": -0.3309,
+   "max_y": 6.7838
+  }
+ },
+ {
+  "name": "sago_2",
+  "dir": "jungle_tree",
+  "kind": "tree",
+  "family": "sago",
+  "offset": [
+   10.18,
+   -75.78
+  ],
+  "bounds": {
+   "min_x": -3.1246,
+   "max_x": 3.8754,
+   "min_y": -0.4419,
+   "max_y": 6.0332
+  }
+ },
+ {
+  "name": "baobab_1",
+  "dir": "jungle_tree",
+  "kind": "tree",
+  "family": "baobab",
+  "offset": [
+   -5.03,
+   -105.14
+  ],
+  "bounds": {
+   "min_x": -3.3218,
+   "max_x": 2.9507,
+   "min_y": -0.9104,
+   "max_y": 8.6672
+  }
+ },
+ {
+  "name": "baobab_2",
+  "dir": "jungle_tree",
+  "kind": "tree",
+  "family": "baobab",
+  "offset": [
+   -1.28,
+   -95.27
+  ],
+  "bounds": {
+   "min_x": -2.3648,
+   "max_x": 2.2703,
+   "min_y": -0.9338,
+   "max_y": 7.963
+  }
+ },
+ {
+  "name": "baobab_3",
+  "dir": "jungle_tree",
+  "kind": "tree",
+  "family": "baobab",
+  "offset": [
+   1.47,
+   -79.38
+  ],
+  "bounds": {
+   "min_x": -2.1062,
+   "max_x": 2.2144,
+   "min_y": -1.0768,
+   "max_y": 6.933
+  }
+ },
+ {
+  "name": "banana_1",
+  "dir": "jungle_tree",
+  "kind": "tree",
+  "family": "banana",
+  "offset": [
+   -30.41,
+   -79.25
+  ],
+  "bounds": {
+   "min_x": -4.0478,
+   "max_x": 1.8041,
+   "min_y": -0.0044,
+   "max_y": 5.8517
+  }
+ },
+ {
+  "name": "banana_2",
+  "dir": "jungle_tree",
+  "kind": "tree",
+  "family": "banana",
+  "offset": [
+   9.03,
+   -59.71
+  ],
+  "bounds": {
+   "min_x": -2.1827,
+   "max_x": 2.8488,
+   "min_y": -0.0542,
+   "max_y": 4.4597
+  }
+ },
+ {
+  "name": "banana_3",
+  "dir": "jungle_tree",
+  "kind": "tree",
+  "family": "banana",
+  "offset": [
+   -4.9,
+   -41.13
+  ],
+  "bounds": {
+   "min_x": -1.7071,
+   "max_x": 1.3456,
+   "min_y": -0.1777,
+   "max_y": 3.2125
+  }
+ },
+ {
+  "name": "banyan_1",
+  "dir": "jungle_tree",
+  "kind": "tree",
+  "family": "banyan",
+  "offset": [
+   15.54,
+   -115.91
+  ],
+  "bounds": {
+   "min_x": -5.4267,
+   "max_x": 6.5733,
+   "min_y": -0.6313,
+   "max_y": 9.183
+  }
+ },
+ {
+  "name": "banyan_2",
+  "dir": "jungle_tree",
+  "kind": "tree",
+  "family": "banyan",
+  "offset": [
+   -19.03,
+   -113.37
+  ],
+  "bounds": {
+   "min_x": -6.7021,
+   "max_x": 5.2979,
+   "min_y": -0.5089,
+   "max_y": 8.8735
+  }
+ },
+ {
+  "name": "banyan_3",
+  "dir": "jungle_tree",
+  "kind": "tree",
+  "family": "banyan",
+  "offset": [
+   12.03,
+   -158.86
+  ],
+  "bounds": {
+   "min_x": -3.9057,
+   "max_x": 4.7934,
+   "min_y": -0.4829,
+   "max_y": 12.2035
+  }
+ },
+ {
+  "name": "round_1",
+  "dir": "meadow_tree",
+  "kind": "tree",
+  "family": "round",
+  "offset": [
+   -9.06,
+   -63.34
+  ],
+  "bounds": {
+   "min_x": -2.8729,
+   "max_x": 2.2046,
+   "min_y": -0.3238,
+   "max_y": 4.9968
+  }
+ },
+ {
+  "name": "round_2",
+  "dir": "meadow_tree",
+  "kind": "tree",
+  "family": "round",
+  "offset": [
+   5.18,
+   -76.33
+  ],
+  "bounds": {
+   "min_x": -2.8784,
+   "max_x": 3.2605,
+   "min_y": -0.3608,
+   "max_y": 5.9922
+  }
+ },
+ {
+  "name": "round_3",
+  "dir": "meadow_tree",
+  "kind": "tree",
+  "family": "round",
+  "offset": [
+   -2.34,
+   -75.12
+  ],
+  "bounds": {
+   "min_x": -2.6771,
+   "max_x": 2.5048,
+   "min_y": -0.3276,
+   "max_y": 5.8697
+  }
+ },
+ {
+  "name": "round_4",
+  "dir": "meadow_tree",
+  "kind": "tree",
+  "family": "round",
+  "offset": [
+   -5.05,
+   -74.95
+  ],
+  "bounds": {
+   "min_x": -2.8004,
+   "max_x": 2.4276,
+   "min_y": -0.2852,
+   "max_y": 5.8148
+  }
+ },
+ {
+  "name": "round_5",
+  "dir": "meadow_tree",
+  "kind": "tree",
+  "family": "round",
+  "offset": [
+   2.11,
+   -83.97
+  ],
+  "bounds": {
+   "min_x": -3.3331,
+   "max_x": 3.4891,
+   "min_y": -0.3784,
+   "max_y": 6.5734
+  }
+ },
+ {
+  "name": "round_6",
+  "dir": "meadow_tree",
+  "kind": "tree",
+  "family": "round",
+  "offset": [
+   3.57,
+   -77.7
+  ],
+  "bounds": {
+   "min_x": -2.6126,
+   "max_x": 2.8757,
+   "min_y": -0.4214,
+   "max_y": 6.1539
+  }
+ },
+ {
+  "name": "round_7",
+  "dir": "meadow_tree",
+  "kind": "tree",
+  "family": "round",
+  "offset": [
+   3.95,
+   -74.05
+  ],
+  "bounds": {
+   "min_x": -2.7122,
+   "max_x": 3.0033,
+   "min_y": -0.2624,
+   "max_y": 5.7257
+  }
+ },
+ {
+  "name": "rock_bush_1",
+  "dir": "bush2",
+  "kind": "bush",
+  "family": "rock_bush",
+  "offset": [
+   -4.87,
+   -37.85
+  ],
+  "bounds": {
+   "min_x": -1.9797,
+   "max_x": 1.6203,
+   "min_y": -0.1876,
+   "max_y": 2.9804
+  }
+ },
+ {
+  "name": "rock_bush_2",
+  "dir": "bush2",
+  "kind": "bush",
+  "family": "rock_bush",
+  "offset": [
+   0.09,
+   -16.28
+  ],
+  "bounds": {
+   "min_x": -1.7968,
+   "max_x": 1.8032,
+   "min_y": -1.0784,
+   "max_y": 2.2792
+  }
+ },
+ {
+  "name": "rock_bush_3",
+  "dir": "bush2",
+  "kind": "bush",
+  "family": "rock_bush",
+  "offset": [
+   0.58,
+   -34.77
+  ],
+  "bounds": {
+   "min_x": -1.7786,
+   "max_x": 1.8214,
+   "min_y": -0.2268,
+   "max_y": 2.7923
+  }
+ },
+ {
+  "name": "rock_bush_4",
+  "dir": "bush2",
+  "kind": "bush",
+  "family": "rock_bush",
+  "offset": [
+   -3.55,
+   -24.49
+  ],
+  "bounds": {
+   "min_x": -1.9311,
+   "max_x": 1.6689,
+   "min_y": -0.6713,
+   "max_y": 2.4784
+  }
+ },
+ {
+  "name": "rock_bush_5",
+  "dir": "bush2",
+  "kind": "bush",
+  "family": "rock_bush",
+  "offset": [
+   -2.62,
+   -23.12
+  ],
+  "bounds": {
+   "min_x": -1.611,
+   "max_x": 1.4177,
+   "min_y": -0.781,
+   "max_y": 2.4871
+  }
+ },
+ {
+  "name": "rock_bush_6",
+  "dir": "bush2",
+  "kind": "bush",
+  "family": "rock_bush",
+  "offset": [
+   0.33,
+   -24.83
+  ],
+  "bounds": {
+   "min_x": -1.7878,
+   "max_x": 1.8122,
+   "min_y": -0.5728,
+   "max_y": 2.405
+  }
+ },
+ {
+  "name": "monstera_1",
+  "dir": "bush2",
+  "kind": "bush",
+  "family": "monstera",
+  "offset": [
+   -5.04,
+   -46.9
+  ],
+  "bounds": {
+   "min_x": -2.1063,
+   "max_x": 1.7348,
+   "min_y": -0.3793,
+   "max_y": 3.8395
+  }
+ },
+ {
+  "name": "monstera_2",
+  "dir": "bush2",
+  "kind": "bush",
+  "family": "monstera",
+  "offset": [
+   3.49,
+   -46.6
+  ],
+  "bounds": {
+   "min_x": -1.6851,
+   "max_x": 1.9423,
+   "min_y": -0.071,
+   "max_y": 3.5092
+  }
+ },
+ {
+  "name": "monstera_3",
+  "dir": "bush2",
+  "kind": "bush",
+  "family": "monstera",
+  "offset": [
+   2.12,
+   -36.77
+  ],
+  "bounds": {
+   "min_x": -1.2632,
+   "max_x": 1.4197,
+   "min_y": -0.2183,
+   "max_y": 2.9314
+  }
+ },
+ {
+  "name": "grey_rock_1",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "grey",
+  "offset": [
+   -0.0,
+   -9.23
+  ],
+  "bounds": {
+   "min_x": -1.2,
+   "max_x": 1.2,
+   "min_y": -0.7965,
+   "max_y": 1.4776
+  },
+  "footprint": [
+   -1.200000286102295,
+   1.199999451637268,
+   -0.9723516702651978,
+   0.9723490476608276
+  ]
+ },
+ {
+  "name": "grey_rock_2",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "grey",
+  "offset": [
+   -6.33,
+   -15.37
+  ],
+  "bounds": {
+   "min_x": -2.2853,
+   "max_x": 1.8181,
+   "min_y": -1.5089,
+   "max_y": 2.6427
+  },
+  "footprint": [
+   -1.5566867589950562,
+   1.5566855669021606,
+   -2.242863655090332,
+   1.62161123752594
+  ]
+ },
+ {
+  "name": "grey_rock_3",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "grey",
+  "offset": [
+   -11.33,
+   -22.65
+  ],
+  "bounds": {
+   "min_x": -2.1178,
+   "max_x": 1.2822,
+   "min_y": -0.8966,
+   "max_y": 2.568
+  },
+  "footprint": [
+   -1.7857660055160522,
+   1.2821556329727173,
+   -1.2497835159301758,
+   1.2497837543487549
+  ]
+ },
+ {
+  "name": "grey_rock_4",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "grey",
+  "offset": [
+   -0.0,
+   -3.88
+  ],
+  "bounds": {
+   "min_x": -1.6843,
+   "max_x": 1.6843,
+   "min_y": -1.3926,
+   "max_y": 1.6792
+  },
+  "footprint": [
+   -1.684261441230774,
+   1.6842588186264038,
+   -1.699997067451477,
+   1.7000030279159546
+  ]
+ },
+ {
+  "name": "grey_rock_5",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "grey",
+  "offset": [
+   -0.0,
+   -6.29
+  ],
+  "bounds": {
+   "min_x": -1.8725,
+   "max_x": 1.8725,
+   "min_y": -1.6947,
+   "max_y": 2.1587
+  },
+  "footprint": [
+   -1.8725141286849976,
+   1.8725141286849976,
+   -2.0999999046325684,
+   2.1000001430511475
+  ]
+ },
+ {
+  "name": "grey_rock_6",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "grey",
+  "offset": [
+   6.85,
+   -19.42
+  ],
+  "bounds": {
+   "min_x": -1.8474,
+   "max_x": 2.3526,
+   "min_y": -1.4455,
+   "max_y": 2.8784
+  },
+  "footprint": [
+   -1.7808036804199219,
+   1.7808020114898682,
+   -1.7805997133255005,
+   1.7805993556976318
+  ]
+ },
+ {
+  "name": "red_rock_1",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "red",
+  "offset": [
+   0.0,
+   -10.07
+  ],
+  "bounds": {
+   "min_x": -2.2,
+   "max_x": 2.2,
+   "min_y": -1.4124,
+   "max_y": 2.1556
+  },
+  "footprint": [
+   -2.19999623298645,
+   2.2000043392181396,
+   -1.7619013786315918,
+   1.7619014978408813
+  ]
+ },
+ {
+  "name": "red_rock_2",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "red",
+  "offset": [
+   -5.9,
+   -15.25
+  ],
+  "bounds": {
+   "min_x": -2.3178,
+   "max_x": 1.8822,
+   "min_y": -1.3373,
+   "max_y": 2.4625
+  },
+  "footprint": [
+   -2.317828893661499,
+   1.5104941129684448,
+   -2.065124273300171,
+   1.9788912534713745
+  ]
+ },
+ {
+  "name": "red_rock_3",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "red",
+  "offset": [
+   -3.02,
+   -20.57
+  ],
+  "bounds": {
+   "min_x": -1.6501,
+   "max_x": 1.4273,
+   "min_y": -0.7243,
+   "max_y": 2.2417
+  },
+  "footprint": [
+   -0.8209502696990967,
+   0.8788348436355591,
+   -0.8380717635154724,
+   1.5819652080535889
+  ]
+ },
+ {
+  "name": "red_rock_4",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "red",
+  "offset": [
+   -1.99,
+   -3.74
+  ],
+  "bounds": {
+   "min_x": -1.0682,
+   "max_x": 0.9214,
+   "min_y": -1.0649,
+   "max_y": 1.3405
+  },
+  "footprint": [
+   -0.9213765263557434,
+   0.9213771224021912,
+   -1.2999987602233887,
+   1.3000013828277588
+  ]
+ },
+ {
+  "name": "moss_stone_1",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "mossy",
+  "offset": [
+   -0.0,
+   -2.67
+  ],
+  "bounds": {
+   "min_x": -2.2,
+   "max_x": 2.2,
+   "min_y": -1.5307,
+   "max_y": 1.7276
+  },
+  "footprint": [
+   -2.200002431869507,
+   2.1999974250793457,
+   -1.8685877323150635,
+   1.868583083152771
+  ]
+ },
+ {
+  "name": "moss_stone_2",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "mossy",
+  "offset": [
+   0.0,
+   -3.67
+  ],
+  "bounds": {
+   "min_x": -2.3,
+   "max_x": 2.3,
+   "min_y": -1.3706,
+   "max_y": 1.6417
+  },
+  "footprint": [
+   -2.2999978065490723,
+   2.300002098083496,
+   -1.673182487487793,
+   1.673180103302002
+  ]
+ },
+ {
+  "name": "moss_stone_3",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "mossy",
+  "offset": [
+   -0.0,
+   -7.0
+  ],
+  "bounds": {
+   "min_x": -1.7136,
+   "max_x": 1.7136,
+   "min_y": -1.5564,
+   "max_y": 2.0728
+  },
+  "footprint": [
+   -1.7135801315307617,
+   1.713578224182129,
+   -1.9000005722045898,
+   1.8999990224838257
+  ]
+ },
+ {
+  "name": "moss_stone_4",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "mossy",
+  "offset": [
+   0.44,
+   -5.39
+  ],
+  "bounds": {
+   "min_x": -1.4838,
+   "max_x": 1.5162,
+   "min_y": -0.8266,
+   "max_y": 1.2243
+  },
+  "footprint": [
+   -1.4838473796844482,
+   1.516152262687683,
+   -1.009107232093811,
+   1.026496171951294
+  ]
+ },
+ {
+  "name": "stone_1",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "stone",
+  "offset": [
+   -0.0,
+   -2.67
+  ],
+  "bounds": {
+   "min_x": -2.2,
+   "max_x": 2.2,
+   "min_y": -1.5307,
+   "max_y": 1.7276
+  },
+  "footprint": [
+   -2.200002431869507,
+   2.1999974250793457,
+   -1.8685877323150635,
+   1.868583083152771
+  ]
+ },
+ {
+  "name": "stone_2",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "stone",
+  "offset": [
+   0.0,
+   -3.67
+  ],
+  "bounds": {
+   "min_x": -2.3,
+   "max_x": 2.3,
+   "min_y": -1.3706,
+   "max_y": 1.6417
+  },
+  "footprint": [
+   -2.2999978065490723,
+   2.300002098083496,
+   -1.673182487487793,
+   1.673180103302002
+  ]
+ },
+ {
+  "name": "stone_3",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "stone",
+  "offset": [
+   -0.0,
+   -7.0
+  ],
+  "bounds": {
+   "min_x": -1.7136,
+   "max_x": 1.7136,
+   "min_y": -1.5564,
+   "max_y": 2.0728
+  },
+  "footprint": [
+   -1.713586449623108,
+   1.7135719060897827,
+   -1.8999990224838257,
+   1.9000006914138794
+  ]
+ },
+ {
+  "name": "pillar_1",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "pillar",
+  "offset": [
+   0.87,
+   -8.42
+  ],
+  "bounds": {
+   "min_x": -3.068,
+   "max_x": 3.132,
+   "min_y": -1.7817,
+   "max_y": 2.4027
+  },
+  "footprint": [
+   -3.0099925994873047,
+   2.9933393001556396,
+   -2.269512414932251,
+   2.2962255477905273
+  ]
+ },
+ {
+  "name": "pillar_2",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "pillar",
+  "offset": [
+   2.36,
+   -47.15
+  ],
+  "bounds": {
+   "min_x": -3.0131,
+   "max_x": 3.1869,
+   "min_y": -1.6455,
+   "max_y": 5.124
+  },
+  "footprint": [
+   -3.0130717754364014,
+   3.090022563934326,
+   -2.357259750366211,
+   2.357259511947632
+  ]
+ },
+ {
+  "name": "pillar_3",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "pillar",
+  "offset": [
+   3.17,
+   -43.3
+  ],
+  "bounds": {
+   "min_x": -1.5917,
+   "max_x": 1.8253,
+   "min_y": -1.0327,
+   "max_y": 4.2276
+  },
+  "footprint": [
+   -1.5324034690856934,
+   1.5324034690856934,
+   -1.431505799293518,
+   1.4290962219238281
+  ]
+ },
+ {
+  "name": "pillar_4",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "pillar",
+  "offset": [
+   -0.64,
+   -20.53
+  ],
+  "bounds": {
+   "min_x": -1.5915,
+   "max_x": 1.5445,
+   "min_y": -1.0989,
+   "max_y": 2.6135
+  },
+  "footprint": [
+   -1.59153413772583,
+   1.533534049987793,
+   -1.589158296585083,
+   1.5654869079589844
+  ]
+ },
+ {
+  "name": "pillar_5",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "pillar",
+  "offset": [
+   0.0,
+   -25.18
+  ],
+  "bounds": {
+   "min_x": -1.1537,
+   "max_x": 1.1537,
+   "min_y": -0.447,
+   "max_y": 2.3048
+  },
+  "footprint": [
+   -1.1536731719970703,
+   1.1536736488342285,
+   -0.6276791095733643,
+   0.6276793479919434
+  ]
+ },
+ {
+  "name": "pillar_6",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "pillar",
+  "offset": [
+   8.98,
+   -27.55
+  ],
+  "bounds": {
+   "min_x": -0.6488,
+   "max_x": 1.3112,
+   "min_y": -0.21,
+   "max_y": 2.243
+  },
+  "footprint": [
+   -0.6389224529266357,
+   0.8331086039543152,
+   -0.5493184924125671,
+   0.7485992312431335
+  ]
+ },
+ {
+  "name": "boulder2_1",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "sand",
+  "offset": [
+   -1.58,
+   -21.49
+  ],
+  "bounds": {
+   "min_x": -2.1585,
+   "max_x": 2.0415,
+   "min_y": -1.3606,
+   "max_y": 2.9459
+  },
+  "footprint": [
+   -2.0712966918945312,
+   2.041545867919922,
+   -2.0161547660827637,
+   1.9724935293197632
+  ]
+ },
+ {
+  "name": "boulder2_2",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "sand",
+  "offset": [
+   -2.49,
+   -20.64
+  ],
+  "bounds": {
+   "min_x": -1.792,
+   "max_x": 1.608,
+   "min_y": -0.8758,
+   "max_y": 2.3988
+  },
+  "footprint": [
+   -1.7920277118682861,
+   1.6079721450805664,
+   -1.3785330057144165,
+   1.3354886770248413
+  ]
+ },
+ {
+  "name": "boulder2_3",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "granite",
+  "offset": [
+   0.2,
+   -18.17
+  ],
+  "bounds": {
+   "min_x": -1.951,
+   "max_x": 1.9658,
+   "min_y": -1.2609,
+   "max_y": 2.6017
+  },
+  "footprint": [
+   -1.9510078430175781,
+   1.8896770477294922,
+   -1.9531742334365845,
+   1.9966901540756226
+  ]
+ },
+ {
+  "name": "boulder2_4",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "granite",
+  "offset": [
+   6.82,
+   -15.97
+  ],
+  "bounds": {
+   "min_x": -1.5332,
+   "max_x": 2.0364,
+   "min_y": -1.5072,
+   "max_y": 2.6853
+  },
+  "footprint": [
+   -1.5332183837890625,
+   1.794332504272461,
+   -2.0783727169036865,
+   2.12162709236145
+  ]
+ },
+ {
+  "name": "boulder2_5",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "sand",
+  "offset": [
+   1.25,
+   -15.39
+  ],
+  "bounds": {
+   "min_x": -2.354,
+   "max_x": 2.446,
+   "min_y": -1.6058,
+   "max_y": 2.7412
+  },
+  "footprint": [
+   -2.158304214477539,
+   2.3619613647460938,
+   -2.217736005783081,
+   1.955597996711731
+  ]
+ },
+ {
+  "name": "boulder2_6",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "granite",
+  "offset": [
+   -2.4,
+   -9.54
+  ],
+  "bounds": {
+   "min_x": -1.0656,
+   "max_x": 0.8884,
+   "min_y": -0.984,
+   "max_y": 1.6879
+  },
+  "footprint": [
+   -0.7018642425537109,
+   0.7018623352050781,
+   -1.3256325721740723,
+   1.3256335258483887
+  ]
+ },
+ {
+  "name": "boulder2_7",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "sand",
+  "offset": [
+   -2.39,
+   -9.82
+  ],
+  "bounds": {
+   "min_x": -1.6619,
+   "max_x": 1.4855,
+   "min_y": -1.2477,
+   "max_y": 1.972
+  },
+  "footprint": [
+   -1.4591336250305176,
+   1.4573473930358887,
+   -1.436002254486084,
+   1.6321444511413574
+  ]
+ },
+ {
+  "name": "boulder2_8",
+  "dir": "rock2",
+  "kind": "rock",
+  "family": "granite",
+  "offset": [
+   1.56,
+   -14.89
+  ],
+  "bounds": {
+   "min_x": -1.7424,
+   "max_x": 1.8576,
+   "min_y": -1.144,
+   "max_y": 2.2425
+  },
+  "footprint": [
+   -1.5198421478271484,
+   1.8576030731201172,
+   -1.7375025749206543,
+   1.2129875421524048
+  ]
+ }
+]

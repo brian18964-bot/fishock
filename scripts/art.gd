@@ -18,3 +18,9 @@ const DENSITY := 2.0
 static func place(sprite: Sprite2D, offset: Vector2, scale: float) -> void:
 	sprite.offset = offset * DENSITY
 	sprite.scale = Vector2.ONE * scale / DENSITY
+
+
+## A variant table's texture: a path (loaded when first used, so a map only
+## holds the textures it shows) or an already loaded texture.
+static func tex(v: Variant) -> Texture2D:
+	return v if v is Texture2D else load(v)

@@ -14,6 +14,7 @@ run/main_scene="res://scenes/title_screen.tscn"
 GameState="*res://scripts/game_state.gd"
 Profile="*res://scripts/profile.gd"
 Perf="*res://scripts/perf_governor.gd"
+Sfx="*res://scripts/sfx.gd"
 
 [display]
 

@@ -7,6 +7,8 @@ extends Node
 
 const TESTS := [
 	"test_map_generation",
+	"test_all_themes",
+	"test_catalog_and_sounds",
 	"test_refuel",
 	"test_sacrifice_and_altar_stages",
 	"test_turn_rock",
@@ -167,6 +169,51 @@ func test_map_generation() -> void:
 	var escape: Node2D = main.get_node("EscapePoint")
 	check(altar.global_position.distance_to(escape.global_position) > 300.0, "altar and escape apart")
 	check(escape.get_node("Light").visible == false, "escape dark before the quota")
+
+
+## Every map style builds: trees, rocks and bushes from its families, its
+## ground, light and pond colour.
+func test_all_themes() -> void:
+	var gen_script = load("res://scripts/map_generator.gd")
+	for theme in gen_script.THEMES:
+		gen_script.forced_theme = theme
+		await _fresh_game()
+		var gen = main.get_node("MapGenerator")
+		check(gen.theme_name == theme, "%s: picked" % theme)
+		var trees := of_script("tree.gd")
+		var ok := trees.size() > 0
+		for t in trees:
+			ok = ok and t.sprite.texture != null
+		check(ok, "%s: %d trees, all drawn" % [theme, trees.size()])
+		var rocks := of_script("obstacle.gd")
+		check(rocks.all(func(r): return r.sprite.texture != null), "%s: rocks drawn" % theme)
+		var tint: Color = main.get_node("Darkness").tint
+		check(tint == gen.theme.get("tint", Color.WHITE), "%s: its light" % theme)
+		if gen.theme.has("water"):
+			var zone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
+			var base: Color = zone._surface_material.get_shader_parameter("base_color")
+			check(base.is_equal_approx(gen.theme.water.base), "%s: its pond colour" % theme)
+	gen_script.forced_theme = ""
+
+
+## The generated catalog's textures and every sound the game asks for exist.
+func test_catalog_and_sounds() -> void:
+	var missing := []
+	for table in [NatureCatalog.TREES, NatureCatalog.ROCKS, NatureCatalog.BUSHES]:
+		for v in table:
+			for key in ["albedo", "normal"]:
+				if not ResourceLoader.exists(v[key]):
+					missing.append(v[key])
+	check(missing.is_empty(), "catalog textures all there %s" % str(missing))
+	var sounds := ["cast", "plop", "nibble", "splash", "splash_small", "reel_loop", "creak_loop", "snap",
+		"perfect", "catch", "fail", "ignite", "extinguish", "flash", "step_soft", "step_hard", "step_wood",
+		"step_snow", "chain_loop", "whisper", "moan", "emerge", "cage", "heartbeat_loop", "offering",
+		"rock_flip", "tap", "swipe_hit", "flop", "thunder", "escape", "amb_night", "amb_day", "amb_water",
+		"amb_rain", "amb_wind", "amb_swamp", "amb_jungle", "music_day", "music_night"]
+	var lost := sounds.filter(func(n): return Sfx.stream(n) == null)
+	check(lost.is_empty(), "every sound loads %s" % str(lost))
+	var loop := Sfx.stream("amb_rain") as AudioStreamWAV
+	check(loop != null and loop.loop_mode == AudioStreamWAV.LOOP_FORWARD, "ambience loops")
 
 
 func test_refuel() -> void:

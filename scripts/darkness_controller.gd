@@ -23,6 +23,10 @@ const NIGHT_COLOR := Color(0.035, 0.035, 0.06, 1)
 const BREATH_PERIOD := 7.0
 const BREATH_AMOUNT := 0.06
 
+## User request (map styles): the theme's light - cool on snow, warm in
+## autumn, sickly in the swamp (MapGenerator.THEMES "tint"). Multiplies the
+## day's colour; night stays night.
+var tint := Color.WHITE
 var _time := 0.0
 var _base: Color = STAGE_COLORS[0]
 
@@ -34,6 +38,8 @@ func _process(delta: float) -> void:
 		target = NIGHT_COLOR
 	elif GameState.weather == GameState.Weather.FOG:
 		target = target * FOG_MULT
+	if not GameState.is_night:
+		target = Color(target.r * tint.r, target.g * tint.g, target.b * tint.b, 1.0)
 	_base = _base.lerp(target, minf(1.0, delta / STAGE_EASE * 3.0))
 	var breath := 1.0 + BREATH_AMOUNT * sin(_time * TAU / BREATH_PERIOD)
 	color = Color(_base.r * breath, _base.g * breath, _base.b * breath, 1.0)
