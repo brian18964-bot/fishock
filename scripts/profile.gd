@@ -43,8 +43,8 @@ const ROD_TIERS := [
 ##   chance multipliers; no_bite: empty-cast chance multiplier
 const LURES := {
 	"minnow": {"name": "綠米諾", "sprite": 0, "cost": 10, "desc": "基本款，魚咬得比較快", "wait": 0.75},
-	"redhead": {"name": "紅頭", "sprite": 1, "cost": 18, "desc": "愛跳的魚（鬼頭刀、旗魚、紅甘、鮪、鯖）較常上鉤", "prefer": "jumper"},
-	"zebra": {"name": "斑馬", "sprite": 2, "cost": 18, "desc": "躲石縫的魚（石斑、鰻、蘇眉）較常上鉤", "prefer": "cover"},
+	"redhead": {"name": "紅頭", "sprite": 1, "cost": 18, "desc": "愛跳的魚（鱒、鱸、鮪、旗魚、鯖）較常上鉤", "prefer": "jumper"},
+	"zebra": {"name": "斑馬", "sprite": 2, "cost": 18, "desc": "躲藏的魚（鯰、鰻、石斑、狗魚）較常上鉤", "prefer": "cover"},
 	"clown": {"name": "小丑", "sprite": 3, "cost": 22, "desc": "試探咬口少一次、假咬減半，咬口更乾脆", "nibbles": 1, "fake": 0.5},
 	"bluegold": {"name": "藍金", "sprite": 4, "cost": 30, "desc": "稀有魚機率 x1.5", "rare": 1.5},
 	"rainbow": {"name": "彩虹", "sprite": 5, "cost": 45, "desc": "傳說魚機率 x2，但比較常空竿", "epic": 2.0, "no_bite": 1.5},

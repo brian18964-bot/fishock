@@ -101,7 +101,7 @@ const NIBBLE_GAP := Vector2(0.55, 1.2)
 
 ## User feedback: rarity should go a step further than common/rare - a
 ## small chance for a rare catch to be upgraded to a legendary "epic" fish
-## (see FishData.SPECIES' "epic" pools), worth much more and fights harder
+## (see FishData.pool_for()'s "epic" pools), worth much more and fights harder
 ## still on top of the normal rare-catch difficulty bump.
 const EPIC_CHANCE_OF_RARE := 0.18
 
@@ -171,6 +171,8 @@ var pending_bait_flavor: String = ""
 var is_epic_catch: bool = false
 var fish_trait: String = "normal"
 var current_fish_color: Color = Color(1, 0.85, 0.2)
+## The species on the line (FishData.FISH id; "" for the heart).
+var fish_id := ""
 
 ## Design doc §9.1/§9.2: base cast distance / reel speed plus the
 ## rod_distance / reel_power Profile upgrades, recomputed in reset_gear()
@@ -1290,10 +1292,11 @@ func _roll_catch_outcome() -> void:
 	if is_rare_catch and randf() < epic_chance:
 		is_epic_catch = true
 
-	# User feedback: named species (FishData.SPECIES) replace the old
+	# User feedback: named species (FishData.FISH) replace the old
 	# generic "稀有" + label - which zone type and rarity tier decide the
 	# pool this cast draws from.
 	tier_data = tier_data.duplicate()
+	fish_id = ""
 	if is_heart_catch:
 		# Not a real species - keep the fight gentle and give it its own
 		# color rather than reusing whatever the last real fish rolled.
@@ -1306,11 +1309,12 @@ func _roll_catch_outcome() -> void:
 		var rarity_key := "epic" if is_epic_catch else ("rare" if is_rare_catch else "common")
 		var species: Dictionary = FishData.pick_species(current_tier, zone_key, rarity_key, lure.get("prefer", ""))
 		tier_data.label = species.name
+		fish_id = species.id
 		tier_data.value = tier_data.value * float(species.value_mult)
 		fish_trait = species.trait
 		current_fish_color = species.color
 		difficulty_key = FishData.difficulty_for(rarity_key, fish_trait)
-		fish_habit = FishData.habit_for(species.name)
+		fish_habit = species.habit
 
 	# How long you get to strike: the difficulty's window, a little longer
 	# close in and shorter far out (the cast tier's own window, 0.7 = mid).
@@ -1440,7 +1444,7 @@ func _succeed_catch() -> void:
 		else:
 			GameState.push_message("背包滿了，放不下心臟，眼睜睜看它沉回水裡...")
 	else:
-		var fish := {"name": tier_data.label, "value": tier_data.value, "tier": current_tier,
+		var fish := {"name": tier_data.label, "id": fish_id, "value": tier_data.value, "tier": current_tier,
 			"size": Inventory.size_for_catch(current_tier, is_epic_catch)}
 		catch_success.emit(fish)
 		Profile.record_catch(fish.name, fish.value)

@@ -34,6 +34,7 @@ const TESTS := [
 	"test_perfect_hook",
 	"test_light_lure",
 	"test_lure_retrieve",
+	"test_fish_by_style",
 	"test_light_button_tap_and_hold",
 	"test_light_button_relights",
 	"test_long_press_brightness",
@@ -155,7 +156,7 @@ func of_script(file: String) -> Array:
 	return out
 
 
-func fish(name := "臭肚魚", tier := "near") -> Dictionary:
+func fish(name := "鯉魚", tier := "near") -> Dictionary:
 	return {"name": name, "value": 4.0, "tier": tier, "size": Inventory.size_for_catch(tier, false)}
 
 
@@ -949,6 +950,57 @@ func test_lure_retrieve() -> void:
 		bites.append(player()._lure_bite_at)
 	check(bites.min() < 0.3 and bites.max() > 0.7, "anywhere along the retrieve (%.2f-%.2f)" % [bites.min(), bites.max()])
 	player()._set_state(Player.State.IDLE)
+
+
+## User request: each map style has its fish - the shared freshwater ones,
+## its own four and its rarest; the sea its own. A cast only brings up fish
+## of the map's waters, the rare pools only the style's own and better,
+## small fish close in and big ones far out.
+func test_fish_by_style() -> void:
+	check(FishData.COMMON_FRESH.size() == 10, "10 shared freshwater fish")
+	check(FishData.SEA_COMMON.size() >= 15 and FishData.SEA_COMMON.size() <= 20, "15-20 sea fish")
+	var sea_rare: int = FishData.SEA_RARE.size() + FishData.SEA_LEGEND.size()
+	check(sea_rare >= 5 and sea_rare <= 8, "5-8 rare sea fish")
+	var ids := {}
+	for style in FishData.STYLE_FISH:
+		var own: Array = FishData.STYLE_FISH[style][0]
+		check(own.size() >= 3 and own.size() <= 5, "%s: 3-5 fish of its own" % style)
+		for id in own + [FishData.STYLE_FISH[style][1]]:
+			check(not ids.has(id), "%s: %s belongs to one style only" % [style, id])
+			ids[id] = true
+	var gen_script = load("res://scripts/map_generator.gd")
+	for theme in gen_script.STYLES.values().map(func(st): return st.themes).reduce(func(a, b): return a + b, []):
+		check(FishData.THEME_WATERS.has(theme), "%s: has waters" % theme)
+	# Sampling: the forest's fish stay in the forest, the sea's in the sea.
+	for water in ["forest", "ruins", "sea"]:
+		var seen := {}
+		for tier in ["near", "mid", "far"]:
+			for rarity in ["common", "rare", "epic"]:
+				for zone in ["common", "rare"]:
+					for _i in 30:
+						var f: Dictionary = FishData.pick_species(tier, zone, rarity, "", water)
+						seen[f.id] = rarity
+						check(f.id in FishData.FISH, "a real species")
+		var allowed: Array = FishData.SEA_COMMON + FishData.SEA_RARE + FishData.SEA_LEGEND if water == "sea" \
+			else FishData.COMMON_FRESH + FishData.STYLE_FISH[water][0] + [FishData.STYLE_FISH[water][1]]
+		var strays: Array = seen.keys().filter(func(id): return not id in allowed)
+		check(strays.is_empty(), "%s: only its own fish %s" % [water, str(strays)])
+		if water != "sea":
+			check(seen.has(FishData.STYLE_FISH[water][1]), "%s: its rarest can turn up" % water)
+			check(FishData.pick_species("mid", "common", "epic", "", water).id == FishData.STYLE_FISH[water][1],
+				"%s: a legendary catch is its rarest" % water)
+	# The map sets the waters.
+	gen_script.forced_theme = "beach_sandy"
+	await _fresh_game()
+	check(FishData.waters == "sea", "a beach fishes the sea")
+	gen_script.forced_theme = "ruins"
+	await _fresh_game()
+	check(FishData.waters == "ruins", "the ruined town fishes its own")
+	gen_script.forced_theme = ""
+	# Reach: the sardine only close in, the swordfish only far out.
+	check(FishData.FISH.sardine.reach == ["near"] and FishData.FISH.swordfish.reach == ["far"], "reach")
+	for _i in 40:
+		check(FishData.pick_species("near", "common", "common", "", "sea").id != "cod", "no cod close in")
 
 
 ## The light button, held with the lamp out, relights it (no flash).

@@ -520,6 +520,7 @@ func _ready() -> void:
 	if darkness != null and "tint" in darkness:
 		darkness.tint = theme.get("tint", Color.WHITE)
 	WaterZone.theme_water = theme.get("water", {})
+	FishData.waters = FishData.waters_for_theme(theme_name)
 	GameState.night_fell.connect(_on_night_fell)
 	_generate_water_zones()
 	if theme.get("docks", true):

@@ -127,7 +127,7 @@ func _on_cast_started(target_pos: Vector2, _tier: String) -> void:
 	line.visible = true
 
 
-## User feedback: species have a distinct color (FishData.SPECIES) as the
+## User feedback: species have a distinct color (FishData.FISH) as the
 ## one "appearance" difference available without real art - reveal it on
 ## the bobber only once the bite happens, keeping the same suspense as the
 ## existing rare/heart bite messages.
