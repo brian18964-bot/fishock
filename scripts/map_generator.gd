@@ -229,17 +229,18 @@ const THEMES := {
 		"look": "detailed",
 		"sea": true,
 		"docks": false,
-		"coast": {"sand": "beach_sand", "stones": "cobbles", "sand_width": 140.0, "stones_width": 75.0,
-			"patches": 0.7},
+		"coast": {"sand": "sea_sand", "stones": "sea_pebbles", "stones_tile": 1.5, "sand_width": 140.0,
+			"stones_width": 75.0, "patches": 0.7},
 		"shore_extras": {"reeds": 0.0, "lilypad": 0.0, "driftwood": 0.06},
 		"floor": ["grass", "grass_light", 0.35],
 		"trees": 14, "rocks": 8, "bushes": 8, "ground": 80,
 		"ridges": 3,
 		"sea_stacks": 7,
 		"ridge_pool": [3, 4, 5, 6, 7],
+		"stack_pool": ["sea", 3, 5],
 		"rock_tint": Color(1.0, 0.8, 0.68),
 		"tree_families": {"leafy": 1.0},
-		"rock_pool": [3, 4, 5, 6, 7],
+		"rock_pool": ["sea", 3, 5],
 		"bush_families": ["fern", "plant"],
 		"ground_kinds": {"grass": 3.0, "plant": 2.0, "pebble": 2.0},
 		"cover": {"shrub": "plant", "flower_bush": "plant"},
@@ -259,14 +260,17 @@ const THEMES := {
 		"look": "detailed",
 		"sea": true,
 		"docks": false,
-		"coast": {"sand": "beach_sand", "stones": "cobbles", "sand_width": 300.0, "stones_width": 22.0,
-			"patches": 0.0},
+		"coast": {"sand": "sea_sand", "stones": "sea_pebbles", "stones_tile": 1.2, "sand_width": 300.0,
+			"stones_width": 26.0, "patches": 0.0},
+		# The user's ocean scene: dark wet rocks along the water line.
+		"sea_stacks": 9, "stack_reach": [-12.0, 22.0], "stack_size": [1.0, 1.6],
 		"shore_extras": {"reeds": 0.0, "lilypad": 0.0, "driftwood": 0.12},
 		"floor": ["grass_light", "grass", 0.3],
 		"trees": 6, "rocks": 3, "bushes": 0, "ground": 50,
 		"beach_trees": 22,
 		"tree_families": {"coconut": 1.0},
-		"rock_pool": [3, 4, 5, 6, 7],
+		"rock_pool": ["sea"],
+		"stack_pool": ["sea"],
 		"bush_families": ["plant", "fern"],
 		"ground_kinds": {"shells": 2.0, "pebble": 2.0, "grass": 1.0},
 		"cover": {"shrub": "shells", "flower_bush": "shells"},
@@ -677,6 +681,7 @@ func _lay_coast(ground: CanvasItem) -> void:
 	mat.set_shader_parameter("sand_width", coast.sand_width)
 	mat.set_shader_parameter("stones_width", coast.stones_width)
 	mat.set_shader_parameter("sand_patches", coast.patches)
+	mat.set_shader_parameter("stones_tile", coast.get("stones_tile", 0.42))
 	for slot in [["road", coast.sand], ["walk", coast.stones]]:
 		mat.set_shader_parameter("albedo_" + slot[0], load("res://assets/sprites/ground/%s_albedo.png" % slot[1]))
 		mat.set_shader_parameter("normal_" + slot[0], load("res://assets/sprites/ground/%s_normal.png" % slot[1]))
@@ -718,7 +723,9 @@ func _line_the_beach() -> void:
 
 
 ## User request (a rocky coast): sea stacks - big rocks standing out in
-## the shallows off the coast.
+## the shallows off the coast ("stack_reach": how far out, px; below 0 up on
+## the beach). On the palm beach, the ocean scene's wet rocks along the
+## water line.
 func _place_sea_stacks() -> void:
 	var seas: Array = water_zones.filter(func(z): return not z.is_rare())
 	if seas.is_empty():
@@ -732,15 +739,21 @@ func _place_sea_stacks() -> void:
 		if samples.is_empty():
 			continue
 		var sample: Array = samples.pick_random()
-		var pos: Vector2 = sample[0] - (sample[1] as Vector2) * randf_range(40.0, 140.0)
-		if not _inside_map(pos, 40.0) or not _in_any_water(pos) \
+		# Not a seam between the sea's zones (out in the other's water).
+		if water_zones.any(func(z): return z != zone and z.depth(sample[0]) > 2.0):
+			continue
+		var reach: Array = theme.get("stack_reach", [40.0, 140.0])
+		var size: Array = theme.get("stack_size", [1.5, 2.3])
+		var pos: Vector2 = sample[0] - (sample[1] as Vector2) * randf_range(reach[0], reach[1])
+		if not _inside_map(pos, 40.0) or (reach[0] >= 0.0 and not _in_any_water(pos)) \
+				or pos.distance_to(SPAWN_POS) < PROP_AVOID_SPAWN_RADIUS \
 				or _themed_spots.any(func(s): return s.distance_to(pos) < 90.0):
 			continue
 		for k in randi_range(1, 3):
 			var rock: Node2D = OBSTACLE_SCENE.instantiate()
 			rock.position = pos + Vector2(randf_range(-30.0, 30.0), randf_range(-18.0, 18.0)) * float(k)
-			rock.size = randf_range(1.5, 2.3) / (1.0 + 0.3 * k)
-			rock.variant_pool = theme.get("ridge_pool", theme.get("rock_pool", []))
+			rock.size = randf_range(size[0], size[1]) / (1.0 + 0.3 * k)
+			rock.variant_pool = theme.get("stack_pool", theme.get("ridge_pool", theme.get("rock_pool", [])))
 			rock.modulate = theme.get("rock_tint", Color.WHITE)
 			get_parent().add_child.call_deferred(rock)
 			_themed_spots.append(rock.position)

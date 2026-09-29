@@ -349,7 +349,7 @@ func _art_look(path: String) -> String:
 	var file := path.get_file()
 	if dir == "shore":
 		return "" if file.begins_with("lilypads") else "detailed"
-	if dir == "rock2" and file.begins_with("boulder2_"):
+	if dir == "rock2" and (file.begins_with("boulder2_") or file.begins_with("sea_rock_")):
 		return "detailed"
 	if dir in DETAILED_DIRS:
 		return "detailed"

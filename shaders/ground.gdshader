@@ -34,7 +34,7 @@ uniform vec3 paint_color : source_color = vec3(0.62, 0.58, 0.46);
 // User request (the sea styles): a beach along the coast. The same slots
 // as the streets (phones have few texture units): `streets` holds the
 // distance from the sea (0..coast_range px, MapGenerator), "road" is the
-// sand, "walk" the cobbles or pebbles at the water's edge. The bands'
+// sand, "walk" the pebbles at the water's edge. The bands'
 // edges wander with the macro noise; `sand_patches` 1 leaves the sand only
 // in patches (a rocky coast).
 uniform bool coast_on = false;
@@ -42,6 +42,7 @@ uniform float coast_range = 400.0;
 uniform float sand_width = 200.0;
 uniform float stones_width = 30.0;
 uniform float sand_patches = 0.0;
+uniform float stones_tile = 0.42;  // the stones' tile, in ground tiles
 
 varying vec2 world;
 
@@ -87,7 +88,7 @@ void fragment() {
 		vec2 uvc = world / (tile_px * 1.1) + vec2(0.13, 0.71);
 		col = mix(col, texture(albedo_road, uvc).rgb, beach);
 		n = mix(n, texture(normal_road, uvc).rgb, beach);
-		vec2 uvs = world / (tile_px * 0.42) + vec2(0.52, 0.08);
+		vec2 uvs = world / (tile_px * stones_tile) + vec2(0.52, 0.08);
 		col = mix(col, texture(albedo_walk, uvs).rgb, stones);
 		n = mix(n, texture(normal_walk, uvs).rgb, stones);
 		// Wet and darker where the surf reaches.

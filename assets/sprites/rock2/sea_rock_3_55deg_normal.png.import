@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://ba7w4vn7kp3b1"
-path="res://.godot/imported/cobbles_albedo.png-b20712080c8f27f0485368f5205da173.ctex"
+uid="uid://oki2envemyl1"
+path="res://.godot/imported/sea_rock_3_55deg_normal.png-9726361185fb90a1b4e5915716e2c146.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/sprites/ground/cobbles_albedo.png"
-dest_files=["res://.godot/imported/cobbles_albedo.png-b20712080c8f27f0485368f5205da173.ctex"]
+source_file="res://assets/sprites/rock2/sea_rock_3_55deg_normal.png"
+dest_files=["res://.godot/imported/sea_rock_3_55deg_normal.png-9726361185fb90a1b4e5915716e2c146.ctex"]
 
 [params]
 

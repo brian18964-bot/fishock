@@ -58,6 +58,10 @@ SIN55 = math.sin(math.radians(55.0))
 COLLECTION = "lowpoly_tree_collection_01.fbx"
 LOWPOLY = "low_poly_set.fbx"
 BEACH_PALMS = "beach_palms.glb"
+# The stones of the user's ocean-water scene (Asset2, OCEAN+WATER.rar -
+# oceanwater.FBX, HighPoly.Stone_001-005, decimated; their textures didn't
+# come with it: painted).
+SEA_STONES = "sea_stones.glb"
 STYLIZED = "rocks_stylized.fbx"
 ASSORTED = "assorted_rocks.fbx"
 
@@ -78,6 +82,8 @@ STONE = {
     "sandstone": ((0.45, 0.30, 0.17), (0.20, 0.12, 0.07)),
     "moss": ((0.22, 0.24, 0.19), (0.08, 0.14, 0.05)),
     "driftwood": ((0.26, 0.21, 0.16), (0.1, 0.08, 0.06)),
+    # The user's ocean-water scene: dark, sea-wet rock.
+    "basalt": ((0.3, 0.3, 0.31), (0.12, 0.12, 0.12)),
 }
 
 
@@ -180,6 +186,12 @@ for i, (obj, look, w) in enumerate([("AR01", "sandstone", 4.2), ("AR05", "sandst
     MODELS.append(m("boulder2_%d" % (i + 1), ASSORTED, [obj], "rock2", "rock",
                     "sand" if look == "sandstone" else "granite", width=w, paint=look))
 
+# Sea rocks (the user's ocean scene): low, rounded, wet-dark shore boulders;
+# the two that lay in the water weed-grown.
+for i, (w, moss) in enumerate([(3.6, 0.0), (3.0, 0.0), (2.6, 0.2), (3.4, 0.9), (3.0, 0.9)]):
+    MODELS.append(m("sea_rock_%d" % (i + 1), SEA_STONES, ["sea_stone_%d" % (i + 1)], "rock2", "rock", "sea",
+                    width=w, paint="basalt", tall=1.9, grain=9.0, grime=0.7,
+                    relief={"moss": moss, "seed": i}))
 
 # Shore plants, built here (no source pack).
 for i in range(4):
@@ -936,6 +948,10 @@ def normalize(meshes, spec):
     cy = (min(p.y for p in base) + max(p.y for p in base)) / 2
     for o in meshes:
         o.location -= Vector((cx, cy, z0))
+        if spec.get("tall"):
+            # Heightened (a scan's flat stones would read as stains from above).
+            o.location.z *= spec["tall"]
+            o.scale.z *= spec["tall"]
     bpy.context.view_layer.update()
     pts = world_points(meshes)
     h = max(p.z for p in pts)
@@ -966,7 +982,10 @@ def dress(meshes, spec):
                     n.interpolation = 'Closest'
     if spec.get("paint"):
         base, grime = STONE[spec["paint"]]
-        mat = paint("stone_" + spec["paint"], base, grime, scale=3.0, amount=0.6)
+        mat = paint("stone_" + spec["paint"], base, grime, scale=spec.get("grain", 3.0),
+                    amount=spec.get("grime", 0.6))
+        if spec.get("shade"):
+            shade_over(mat, spec["shade"])
         for o in meshes:
             o.data.materials.clear()
             o.data.materials.append(mat)
@@ -1010,6 +1029,8 @@ def render_model(spec):
     scene.render.resolution_y = h * HD
     rs.rewire_materials(meshes, "albedo")
     rs.render_pass(prefix + "_albedo.png", "albedo")
+    if spec.get("relief"):
+        _relief(prefix, **spec["relief"])
     grade = spec.get("grade", (0.78, 0.82) if spec["src"] == LOWPOLY else None)
     if grade:
         _grade(prefix + "_albedo.png", *grade)
@@ -1023,6 +1044,37 @@ def render_model(spec):
         record["footprint"] = [min(p.x for p in base), max(p.x for p in base),
                                min(p.y for p in base), max(p.y for p in base)]
     return record
+
+
+def _relief(prefix, moss=0.0, seed=0):
+    """Painted light and shade for stones with no texture of their own, to
+    sit with the pack rocks' hand-painted look: light from above and the
+    upper left out of the normal map, darker undersides, bright rims on the
+    ridges, mottling; weed on the tops of the ones from the water."""
+    from PIL import Image
+    alb = np.asarray(Image.open(prefix + "_albedo.png").convert("RGBA")).astype(np.float32) / 255.0
+    nrm = Image.open(prefix + "_normal.png").convert("RGB").resize(alb.shape[1::-1], Image.BILINEAR)
+    n = np.asarray(nrm).astype(np.float32) / 255.0 * 2.0 - 1.0
+    light = np.array([-0.45, 0.55, 0.7])
+    light /= np.linalg.norm(light)
+    lam = np.clip(n @ light, 0.0, 1.0)
+    up = np.clip(n[..., 1], 0.0, 1.0)
+    rgb = alb[..., :3]
+    rng = np.random.default_rng(seed)
+    blot = np.asarray(Image.fromarray((rng.random(alb.shape[:2]) * 255).astype(np.uint8)).resize(
+        (alb.shape[1] // 12, alb.shape[0] // 12)).resize(alb.shape[1::-1], Image.BICUBIC)).astype(np.float32) / 255.0
+    fine = np.asarray(Image.fromarray((rng.random(alb.shape[:2]) * 255).astype(np.uint8)).resize(
+        (alb.shape[1] // 3, alb.shape[0] // 3)).resize(alb.shape[1::-1], Image.BICUBIC)).astype(np.float32) / 255.0
+    shade = 0.3 + 0.62 * lam ** 1.3
+    rgb = rgb * shade[..., None] * (0.72 + 0.4 * blot[..., None]) * (0.86 + 0.28 * fine[..., None])
+    rim = np.clip((lam - 0.85) / 0.15, 0.0, 1.0) ** 2
+    rgb = rgb + rim[..., None] * 0.08
+    if moss:
+        weed = np.clip((up - 0.35) / 0.3, 0.0, 1.0) * np.clip((blot - 0.35) / 0.25, 0.0, 1.0) * moss
+        green = np.array([0.22, 0.32, 0.12]) * (0.5 + 0.8 * lam[..., None])
+        rgb = rgb * (1 - weed[..., None]) + green * weed[..., None]
+    alb[..., :3] = np.clip(rgb, 0.0, 1.0)
+    Image.fromarray((alb * 255 + 0.5).astype(np.uint8)).save(prefix + "_albedo.png")
 
 
 def _grade(path, sat, val):
