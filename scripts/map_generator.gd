@@ -50,7 +50,8 @@ const PROP_MIN_SEPARATION := 90.0
 const PROP_AVOID_SPAWN_RADIUS := 180.0
 
 const DOCK_SCENE := preload("res://scenes/dock.tscn")
-const DOCK_COUNT := 3
+## Every common pond gets one, and this share of them a second.
+const SECOND_DOCK_CHANCE := 0.5
 const DOCK_SHORE_MARGIN := 60.0
 const DOCK_STAIRS_CHANCE := 0.5
 const DOCK_BOAT_CHANCE := 0.4
@@ -273,7 +274,6 @@ const SHORE_ODDS := {"grass": 0.5, "shrub": 0.16, "pebbles": 0.2}
 ## log. Themes override with "shore_extras".
 const SHORE_EXTRAS := {"reeds": 0.12, "lilypad": 0.08, "driftwood": 0.015}
 const SHORE_HIDE_BUSH_CHANCE := 0.25  # of shrubs: a bush you can hide in
-const BOARDWALK_CHANCE := 0.8
 const SHORE_CRITTERS := ["frog", "frog", "spider", "wasp"]
 const SHORE_CRITTER_COUNT := 5
 
@@ -323,8 +323,8 @@ func _ready() -> void:
 	_place_altar_and_escape()
 	if theme.get("paths", false):
 		_lay_stone_paths()
-	# Shores (and their boardwalks) before the trees and rocks, so those can
-	# keep clear of every walkway entrance.
+	# Docks and shores before the trees and rocks, so those can keep clear
+	# of every walkway entrance.
 	_dress_shores()
 	_scatter_props()
 	_scatter_themed_props()
@@ -392,10 +392,23 @@ func _make_lobes(radius: float, count_range: Vector2i) -> Array[Vector3]:
 
 func _spawn_zone(type: int, radius: float, lobe_range: Vector2i) -> void:
 	var lobes := _make_lobes(radius, lobe_range)
-	var bounds := radius
-	for lobe in lobes:
-		bounds = maxf(bounds, Vector2(lobe.x, lobe.y).length() + lobe.z)
-	var pos := _pick_zone_position(bounds)
+	# User bug report: the spawn point ended up under water (about 1 map in
+	# 25) - when no spot was found, the last random one was used anyway. Now
+	# a pond that doesn't fit shrinks and tries again, and is left out if it
+	# still doesn't.
+	var pos := Vector2.INF
+	for _shrink in 3:
+		var bounds := radius
+		for lobe in lobes:
+			bounds = maxf(bounds, Vector2(lobe.x, lobe.y).length() + lobe.z)
+		pos = _pick_zone_position(bounds)
+		if pos != Vector2.INF:
+			break
+		radius *= 0.85
+		for k in lobes.size():
+			lobes[k] = Vector3(lobes[k].x * 0.85, lobes[k].y * 0.85, lobes[k].z * 0.85)
+	if pos == Vector2.INF:
+		return
 	var zone: WaterZone = WATER_ZONE_SCENE.instantiate()
 	# Main is still mid-instantiation while this whole scene's _ready() chain
 	# is running (map_generator is a static child of it) - add_child() on it
@@ -416,13 +429,21 @@ func _spawn_zone(type: int, radius: float, lobe_range: Vector2i) -> void:
 func _place_docks() -> void:
 	var commons: Array = water_zones.filter(func(z): return not z.is_rare())
 	commons.shuffle()
-	var placed := 0
+	# User request: every common pond gets a dock out into deep water (some
+	# get two, on different sides) - no boardwalks lying along the bank.
+	var jobs := []
 	for zone in commons:
-		if placed >= DOCK_COUNT:
-			break
+		jobs.append(zone)
+	for zone in commons:
+		if randf() < SECOND_DOCK_CHANCE:
+			jobs.append(zone)
+	var used := {}
+	for zone in jobs:
 		var dirs := [Vector2.DOWN, Vector2.UP, Vector2.LEFT, Vector2.RIGHT]
 		dirs.shuffle()
 		for d in dirs:
+			if d in used.get(zone, []):
+				continue
 			var vertical: bool = d.x == 0.0
 			var half: float = Dock.half_length(vertical)
 			var edge: Vector2 = zone.shore_point(d)
@@ -462,7 +483,7 @@ func _place_docks() -> void:
 				stairs.add_walls([d, -d])
 				get_parent().add_child.call_deferred(stairs)
 				_walk_rects.append(stairs.walk_rect)
-			placed += 1
+			used.get_or_add(zone, []).append(d)
 			break
 
 
@@ -472,10 +493,11 @@ func _dir_name(v: Vector2) -> String:
 	return "right" if v.x > 0.0 else "left"
 
 
+## A spot for a pond this big, clear of the spawn point and the other
+## ponds; Vector2.INF if there's none.
 func _pick_zone_position(radius: float) -> Vector2:
-	var pos := Vector2.ZERO
-	for _try in range(30):
-		pos = Vector2(
+	for _try in range(60):
+		var pos := Vector2(
 			randf_range(ZONE_MARGIN + radius, Player.WORLD_WIDTH - ZONE_MARGIN - radius),
 			randf_range(ZONE_MARGIN + radius, Player.WORLD_HEIGHT - ZONE_MARGIN - radius)
 		)
@@ -487,8 +509,8 @@ func _pick_zone_position(radius: float) -> Vector2:
 				overlaps = true
 				break
 		if not overlaps:
-			break
-	return pos
+			return pos
+	return Vector2.INF
 
 
 func _place_altar_and_escape() -> void:
@@ -508,21 +530,28 @@ func _place_altar_and_escape() -> void:
 
 
 func _pick_fixed_point_position(avoid: Array) -> Vector2:
-	var pos := Vector2.ZERO
-	for _try in range(30):
-		pos = Vector2(
+	# Clear of all water (a common pond's middle is too deep to wade) and
+	# far from the other fixed points. If nothing meets both, the spot that
+	# comes closest - never one at the water's edge (it used to take the
+	# last random try, which could be in a pond).
+	var best := Vector2(Player.WORLD_WIDTH * 0.5, FIXED_POINT_MARGIN)
+	var best_score := -INF
+	for _try in range(60):
+		var pos := Vector2(
 			randf_range(FIXED_POINT_MARGIN, Player.WORLD_WIDTH - FIXED_POINT_MARGIN),
 			randf_range(FIXED_POINT_MARGIN, Player.WORLD_HEIGHT - FIXED_POINT_MARGIN)
 		)
-		var far_enough := true
+		var spread := INF
 		for p in avoid:
-			if pos.distance_to(p) < FIXED_POINT_MIN_SEPARATION:
-				far_enough = false
-				break
-		# Clear of all water now: a common pond's middle is too deep to wade.
-		if far_enough and _shore_distance(pos) > 50.0:
-			break
-	return pos
+			spread = minf(spread, pos.distance_to(p))
+		var shore := _shore_distance(pos)
+		if spread >= FIXED_POINT_MIN_SEPARATION and shore > 50.0:
+			return pos
+		var score := minf(spread / FIXED_POINT_MIN_SEPARATION, 1.0) + (1.0 if shore > 50.0 else -2.0)
+		if score > best_score:
+			best_score = score
+			best = pos
+	return best
 
 
 ## Distance to the nearest water (0 when inside it).
@@ -610,7 +639,7 @@ func _scatter_themed_props() -> void:
 ## User request: pond edges dressed from the existing art. User feedback:
 ## grass clumps (some standing in the shallows), low shrubs and pebbles,
 ## kept off docks, paths and the spawn point; most common ponds also get a
-## boardwalk along a straight stretch of bank; frogs and bugs about.
+## dock out into deep water (see _place_docks); frogs and bugs about.
 func _dress_shores() -> void:
 	for zone in water_zones:
 		for sample in zone.shore_samples(SHORE_SPACING):
@@ -649,8 +678,6 @@ func _dress_shores() -> void:
 			elif roll < odds.grass + odds.shrub + odds.pebbles:
 				for _k in randi_range(1, 3):
 					_add_ground_cover(p + n * randf_range(-4.0, 16.0) + n.orthogonal() * randf_range(-12.0, 12.0), "pebble")
-		if not zone.is_rare() and randf() < BOARDWALK_CHANCE:
-			_add_boardwalk(zone)
 	_add_shore_critters()
 
 
@@ -714,37 +741,6 @@ func _near_path(pos: Vector2, margin: float) -> bool:
 		if p.distance_to(pos) < margin:
 			return true
 	return false
-
-
-## A dock piece laid along the bank where the shore faces nearly straight
-## up/down/left/right, straddling the waterline.
-func _add_boardwalk(zone: WaterZone) -> void:
-	var samples: Array = zone.shore_samples(SHORE_SPACING)
-	samples.shuffle()
-	for sample in samples:
-		var p: Vector2 = sample[0]
-		var n: Vector2 = sample[1]
-		var along_x := absf(n.y) > 0.92  # shore faces up/down: runs sideways
-		if not along_x and absf(n.x) < 0.92:
-			continue
-		var pos := p + n * 6.0
-		if pos.distance_to(SPAWN_POS) < SHORE_CLEAR_OF_SPAWN or not _inside_map(pos, 70.0) or _near_walkway(pos, 70.0) \
-				or _near_path(pos, 40.0):
-			continue
-		var walk: Dock = DOCK_SCENE.instantiate()
-		walk.position = pos
-		walk.setup(not along_x, ["long", "long_rope"].pick_random())
-		# One way on: whichever end sits further up the bank.
-		var axis := Vector2.RIGHT if along_x else Vector2.DOWN
-		var reach: float = Dock.half_length(not along_x)
-		var end_a := pos + axis * reach
-		var end_b := pos - axis * reach
-		var way_on := axis if _land_score(end_a) >= _land_score(end_b) else -axis
-		walk.add_walls([way_on])
-		_add_entrance(walk.walk_rect, way_on)
-		get_parent().add_child.call_deferred(walk)
-		_walk_rects.append(walk.walk_rect)
-		return
 
 
 func _add_ground_cover(pos: Vector2, kind: String) -> void:

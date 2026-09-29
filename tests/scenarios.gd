@@ -8,6 +8,7 @@ extends Node
 const TESTS := [
 	"test_map_generation",
 	"test_all_themes",
+	"test_spawn_on_land_docks_out",
 	"test_catalog_and_sounds",
 	"test_refuel",
 	"test_sacrifice_and_altar_stages",
@@ -196,6 +197,33 @@ func test_all_themes() -> void:
 	gen_script.forced_theme = ""
 
 
+## User bug report: the spawn point was under water on some maps. Across
+## many maps it's on dry land, and every common pond has a dock reaching
+## out into it (none lying along the bank).
+func test_spawn_on_land_docks_out() -> void:
+	var wet := 0
+	var dockless := 0
+	for s in range(1, 41):
+		seed(s * 7919)
+		gs.reset_run()
+		get_tree().change_scene_to_file("res://scenes/main.tscn")
+		await frames(3)
+		main = get_tree().current_scene
+		var spawn := Vector2(1200, 700)
+		for z in main.get_tree().get_nodes_in_group("water_zones"):
+			if z.distance_to_edge(spawn) < 80.0:
+				wet += 1
+		for z in main.get_tree().get_nodes_in_group("water_zones_common"):
+			var has := false
+			for w in main.get_tree().get_nodes_in_group("walkways"):
+				if z.contains(w.walk_rect.get_center()) or z.distance_to_edge(w.walk_rect.get_center()) < 1.0:
+					has = true
+			if not has:
+				dockless += 1
+	check(wet == 0, "the spawn point is on dry land on every map (%d wet)" % wet)
+	check(dockless <= 4, "(nearly) every pond has a dock out into it (%d without)" % dockless)
+
+
 ## The generated catalog's textures and every sound the game asks for exist.
 func test_catalog_and_sounds() -> void:
 	var missing := []
@@ -294,6 +322,9 @@ func _big_ghost_catch() -> Node:
 	player().set_physics_process(false)
 	await put(cage.global_position + Vector2(-60, 50))
 	player().set_physics_process(true)
+	# Close enough that it notices (not left to where it wanders).
+	bg.global_position = player().global_position + Vector2(50, 0)
+	bg.mode = bg.Mode.WANDER
 	return bg
 
 
