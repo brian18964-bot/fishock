@@ -24,6 +24,7 @@ const SEA_RADIUS := 320.0
 const SEA_WOBBLE := 50.0
 const SEA_LOBES := Vector2i(2, 3)
 const SEA_FIELD_TEXEL := 2.0
+const SEA_BACKING_RADIUS := 20000.0
 ## The beach map (ground shader): px a texel, the farthest distance kept.
 const COAST_TEXEL := 16.0
 const COAST_RANGE := 400.0
@@ -242,13 +243,15 @@ const THEMES := {
 		"bush_families": ["fern", "plant"],
 		"ground_kinds": {"grass": 3.0, "plant": 2.0, "pebble": 2.0},
 		"cover": {"shrub": "plant", "flower_bush": "plant"},
-		"shore": {"grass": 0.0, "shrub": 0.0, "pebbles": 0.35},
+		"shore": {"grass": 0.0, "shrub": 0.0, "pebbles": 0.08},
 		"shore_critters": ["crab"],
 		"shore_critter_count": 7,
 		"animals": {"fox": 1.0, "shiba": 0.6, "deer": 0.6},
 		"animal_count": 2,
 		"tint": Color(1.02, 1.02, 0.98),
-		"water": {"base": Color(0.1, 0.42, 0.42), "deep": Color(0.03, 0.16, 0.22)},
+		"water": {"base": Color(0.1, 0.42, 0.44), "deep": Color(0.03, 0.15, 0.24),
+			"sea": {"shallow_color": Color(0.3, 0.66, 0.6), "seabed_color": Color(0.6, 0.58, 0.46),
+				"reef_color": Color(0.08, 0.2, 0.12), "reef_amount": 0.7}},
 	},
 	# A palm beach (Hualien-Taitung): a wide sand beach, coconut palms
 	# along it, a strip of pebbles at the water, grass behind.
@@ -267,13 +270,15 @@ const THEMES := {
 		"bush_families": ["plant", "fern"],
 		"ground_kinds": {"shells": 2.0, "pebble": 2.0, "grass": 1.0},
 		"cover": {"shrub": "shells", "flower_bush": "shells"},
-		"shore": {"grass": 0.0, "shrub": 0.0, "pebbles": 0.3},
+		"shore": {"grass": 0.0, "shrub": 0.0, "pebbles": 0.08},
 		"shore_critters": ["crab"],
 		"shore_critter_count": 9,
 		"animals": {"shiba": 1.0, "white_horse": 0.6, "husky": 0.5},
 		"animal_count": 2,
 		"tint": Color(1.08, 1.03, 0.94),
-		"water": {"base": Color(0.07, 0.38, 0.44), "deep": Color(0.02, 0.13, 0.22)},
+		"water": {"base": Color(0.07, 0.42, 0.5), "deep": Color(0.02, 0.14, 0.28),
+			"sea": {"shallow_color": Color(0.38, 0.76, 0.7), "seabed_color": Color(0.76, 0.72, 0.54),
+				"reef_color": Color(0.1, 0.24, 0.15), "reef_amount": 0.4}},
 	},
 
 	# User request: a post-apocalyptic town, taken back by nature - its
@@ -587,6 +592,7 @@ func _pick_theme() -> String:
 
 
 func _generate_water_zones() -> void:
+	WaterZone.sea_backing = []
 	if theme.get("sea", false):
 		_generate_sea()
 	# The rare one first: it's smaller and solid, so it gets its pick.
@@ -612,6 +618,11 @@ func _generate_sea() -> void:
 	var reach := randf_range(SEA_REACH.x, SEA_REACH.y) * (h if across else w)
 	var r := maxf(SEA_RADIUS, reach * 0.62)
 	var n := int(ceil(length / (r * 1.3))) + 1
+	# The open sea behind the coast, for the shading: one huge circle whose
+	# edge runs along the band every zone's water surely covers.
+	var edge_mid := Vector2(w, h) / 2.0 + sea_side * ((h if across else w) / 2.0)
+	var backing := edge_mid - sea_side * (reach - 0.45 * r) + sea_side * SEA_BACKING_RADIUS
+	WaterZone.sea_backing = [Vector3(backing.x, backing.y, SEA_BACKING_RADIUS)]
 	for i in n:
 		var t := (float(i) + randf_range(-0.15, 0.15)) * length / float(n - 1)
 		var inland := reach - r + randf_range(-SEA_WOBBLE, SEA_WOBBLE)
@@ -634,6 +645,7 @@ func _generate_sea() -> void:
 				lobes.append(lobe)
 		var zone: WaterZone = WATER_ZONE_SCENE.instantiate()
 		zone.field_texel = SEA_FIELD_TEXEL
+		zone.sea = true
 		zone.setup(WaterZone.ZoneType.COMMON, r, pos, lobes)
 		get_parent().add_child.call_deferred(zone)
 		water_zones.append(zone)

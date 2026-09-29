@@ -35,6 +35,10 @@ const MAX_SHADER_LOBES := 16
 ## {"base": Color, "deep": Color} (see MapGenerator.THEMES "water"). Set
 ## before the zones are built.
 static var theme_water: Dictionary = {}
+## A sea's open water beyond its coast (MapGenerator): lobes that only the
+## shoreline bake sees, so the depth is measured from the real coast - not
+## from the far side of each of the sea's circles, off the map.
+static var sea_backing: Array[Vector3] = []
 static var _wave_a: NoiseTexture2D
 static var _wave_b: NoiseTexture2D
 
@@ -63,6 +67,12 @@ var zone_type: int = ZoneType.COMMON
 ## World px per texel of the baked shore field: a sea's big zones bake
 ## coarser (set before setup()).
 var field_texel := FIELD_TEXEL
+## Part of a sea (MapGenerator, a "sea" theme): drawn as one (set before
+## setup()) - a wider depth range, the theme's "water"."sea" colours.
+var sea := false
+const SEA_FOAM := preload("res://assets/sprites/water/sea_foam.png")
+## A sea's depth gradient reaches this far out from the shore (px).
+const SEA_FIELD_FAR := 420.0
 ## Bounding radius around the zone's origin (covers every lobe).
 var radius: float = 200.0
 var lobes: Array[Vector3] = []
@@ -265,6 +275,16 @@ func _build_surface() -> void:
 	if not is_rare() and not theme_water.is_empty():
 		mat.set_shader_parameter("base_color", theme_water.base)
 		mat.set_shader_parameter("deep_color", theme_water.deep)
+	if sea and not is_rare():
+		var look: Dictionary = theme_water.get("sea", {})
+		mat.set_shader_parameter("sea", true)
+		mat.set_shader_parameter("foam_tex", SEA_FOAM)
+		_ensure_shore_noise()
+		mat.set_shader_parameter("blot_tex", _shore_noise_tex)
+		mat.set_shader_parameter("field_range", Vector2(-8.0, SEA_FIELD_FAR))
+		for key in ["shallow_color", "seabed_color", "reef_color", "reef_amount"]:
+			if look.has(key):
+				mat.set_shader_parameter(key, look[key])
 	if is_rare():
 		mat.set_shader_parameter("base_color", RARE_BASE)
 		mat.set_shader_parameter("deep_color", RARE_DEEP)
@@ -289,6 +309,8 @@ func _link_lobes() -> void:
 		return
 	var own := world_lobes()
 	var all: Array[Vector3] = own.duplicate()
+	if sea:
+		all.append_array(sea_backing)
 	var group := "water_zones_rare" if is_rare() else "water_zones_common"
 	for zone in get_tree().get_nodes_in_group(group):
 		if zone == self or zone.global_position.distance_to(global_position) >= zone.radius + radius:
@@ -330,6 +352,8 @@ func _bake_shore_field(all: Array[Vector3], count: int, own_count: int) -> void:
 	bake.set_shader_parameter("warp_amp_b", WARP_AMP_B)
 	bake.set_shader_parameter("origin", surface.global_position)
 	bake.set_shader_parameter("world_size", surface.size)
+	if sea:
+		bake.set_shader_parameter("field_range", Vector2(-8.0, SEA_FIELD_FAR))
 	rect.material = bake
 	viewport.add_child(rect)
 	add_child(viewport)

@@ -81,15 +81,17 @@ void fragment() {
 	if (coast_on) {
 		float d = texture(streets, world / world_size).r * coast_range;
 		d += (m2 - 0.5) * 90.0 + (texture(macro, world / 210.0).r - 0.5) * 50.0;
-		float beach = 1.0 - smoothstep(sand_width - 35.0, sand_width + 35.0, d);
-		beach *= mix(1.0, smoothstep(0.42, 0.58, cover), sand_patches);
-		float stones = 1.0 - smoothstep(stones_width - 14.0, stones_width + 14.0, d);
+		float beach = 1.0 - smoothstep(sand_width - 18.0, sand_width + 18.0, d);
+		beach *= mix(1.0, smoothstep(0.44, 0.56, cover), sand_patches);
+		float stones = 1.0 - smoothstep(stones_width - 9.0, stones_width + 9.0, d);
 		vec2 uvc = world / (tile_px * 1.1) + vec2(0.13, 0.71);
 		col = mix(col, texture(albedo_road, uvc).rgb, beach);
 		n = mix(n, texture(normal_road, uvc).rgb, beach);
 		vec2 uvs = world / (tile_px * 0.42) + vec2(0.52, 0.08);
 		col = mix(col, texture(albedo_walk, uvs).rgb, stones);
 		n = mix(n, texture(normal_walk, uvs).rgb, stones);
+		// Wet and darker where the surf reaches.
+		col *= 1.0 - 0.15 * (1.0 - smoothstep(4.0, 22.0, texture(streets, world / world_size).r * coast_range));
 	}
 	col *= (0.86 + 0.28 * m2) * brightness * tint;
 	COLOR = vec4(col, 1.0);
