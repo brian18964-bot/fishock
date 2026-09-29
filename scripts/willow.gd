@@ -33,6 +33,7 @@ var _target := Vector2.ZERO
 var _pause := 1.0
 var _walking := false
 var _dir := 0
+var _rite := 0.0  # 0..1, easing into and out of the rite
 
 @onready var visual: Sprite2D = $Visual
 
@@ -100,6 +101,19 @@ func _process(delta: float) -> void:
 	var hop := absf(sin(_time * 9.0)) * 1.5 if _walking else 0.0
 	visual.position.y = -hop
 	var s := 1.0 + sin(_time * 2.1) * 0.02
+	# User request: tending the altar it performs a rite - swaying side to
+	# side as if chanting, with a bow every few beats.
+	var rite := 0.0
+	if mode == "tend" and not _walking:
+		_rite = minf(_rite + delta * 1.5, 1.0)
+	else:
+		_rite = maxf(_rite - delta * 3.0, 0.0)
+	if _rite > 0.0:
+		rite = sin(_time * 2.6) * 0.09 + sin(_time * 5.2 + 0.7) * 0.025
+		var bow := pow(maxf(0.0, sin(_time * 0.9)), 8.0)
+		s -= bow * 0.12 * _rite
+		visual.position.y -= absf(sin(_time * 2.6)) * 0.8 * _rite
+	visual.rotation = rite * _rite
 	visual.scale = Vector2(SPRITE_SCALE / Art.DENSITY, SPRITE_SCALE / Art.DENSITY * s)
 
 

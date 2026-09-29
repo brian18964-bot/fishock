@@ -92,10 +92,17 @@ func _process(delta: float) -> void:
 		frame_in_clip = mini(4 + int(_whip / WHIP_TIME * 4.0), FRAMES - 1)
 		if _whip >= WHIP_TIME:
 			_whip = -1.0
-	elif charging:
+	elif charging and not moving:
 		# Winding back with the charge.
 		clip = CLIP_CAST
 		frame_in_clip = mini(int(_player.charge_time / Player.MAX_CHARGE_TIME * 4.0), 3)
+	elif charging:
+		# User feedback: walking while holding the cast froze the legs (the
+		# wind-up is one still frame) - it runs with the rod out instead,
+		# still facing the aim.
+		clip = CLIP_HOLD_RUN
+		_phase += delta * FPS[clip] * speed / RUN_PACE
+		frame_in_clip = int(_phase) % FRAMES
 	else:
 		var fishing := state != Player.State.IDLE
 		var cranking := _player._is_action_pressed()

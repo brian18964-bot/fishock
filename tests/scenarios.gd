@@ -33,6 +33,7 @@ const TESTS := [
 	"test_fight_sweet_spot",
 	"test_perfect_hook",
 	"test_light_lure",
+	"test_lure_retrieve",
 	"test_light_button_tap_and_hold",
 	"test_light_button_relights",
 	"test_long_press_brightness",
@@ -904,6 +905,49 @@ func test_light_lure() -> void:
 	player().skill_held = false
 	await frames(3)
 	check(player().light_lure == 0.0, "let go, it stops")
+	player()._set_state(Player.State.IDLE)
+
+
+## User feedback: a lure came in far too fast a tap, and every fish struck
+## right at the end by the player. A tap reels in a little; the strike
+## comes partway along.
+func test_lure_retrieve() -> void:
+	var zone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
+	await put(zone.shore_point(Vector2.DOWN) + Vector2(0, 60))
+	player().aim_dir = Vector2.UP
+	player().lure_stock = {"minnow": 3}
+	player()._sync_lures()
+	player().fishing_mode = Player.FishingMode.LURE
+	var stick = main.get_node("HUD/Panel/AimJoystick")
+	stick._touch_index = 7
+	await frames(4)
+	stick._reset()
+	await frames(2)
+	check(player().state == Player.State.WAITING, "lure cast and retrieving")
+	player().cast_outcome = Player.CastOutcome.BITE
+	player()._lure_nibbles.clear()
+	player()._lure_bite_at = 0.5
+	player()._wait_duration = 6.0
+	player().retrieve_progress = 0.0
+	for _i in 3:
+		stick._touch_index = 7
+		await frames(1)
+		stick._reset()
+		await frames(1)
+	var tapped: float = player().retrieve_progress
+	check(tapped > 0.05 and tapped < 0.15, "three taps reel it in a little (%.2f)" % tapped)
+	check(player().state == Player.State.WAITING, "no strike yet")
+	player().retrieve_progress = 0.49
+	stick._touch_index = 7
+	await frames(2)
+	stick._reset()
+	await frames(2)
+	check(player().state == Player.State.BITE, "the strike comes partway in")
+	var bites := []
+	for _i in 200:
+		player()._roll_catch_outcome()
+		bites.append(player()._lure_bite_at)
+	check(bites.min() < 0.3 and bites.max() > 0.7, "anywhere along the retrieve (%.2f-%.2f)" % [bites.min(), bites.max()])
 	player()._set_state(Player.State.IDLE)
 
 

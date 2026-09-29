@@ -145,7 +145,8 @@ const THEMES := {
 		"tree_families": {"dead": 1.0, "bare": 1.0},
 		"rock_pool": [0, 1, 2, 3, 4, "grave", "well"],
 		"ground_kinds": {"grass": 2.0, "mushroom": 3.0, "pebble": 2.0, "plant": 1.0},
-		"paths": true,
+		# User feedback: the stone paths clashed with the ground - gone
+		# (the code stays; "paths": true brings them back).
 		"animals": {"wolf": 2.0, "fox": 1.5, "stag": 1.0, "husky": 0.5},
 	},
 	"rocky": {

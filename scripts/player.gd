@@ -49,8 +49,13 @@ const MIN_SPEED_RATIO := 0.4
 ## Design doc request: reeling a lure in is player-paced, not an automatic
 ## countdown - holding retrieves steadily, each tap also nudges it a bit
 ## for fine, "點收" control when you want to go slower.
-const LURE_HOLD_RATE := 0.55
-const LURE_CLICK_AMOUNT := 0.12
+## User feedback: each tap reeled in far too much to feel like fishing -
+## both cut to about a quarter.
+const LURE_HOLD_RATE := 0.25
+const LURE_CLICK_AMOUNT := 0.03
+## User feedback: lure bites all came right at the end, by the player -
+## a fish strikes somewhere along the retrieve (this share of the way in).
+const LURE_BITE_RANGE := Vector2(0.15, 0.85)
 
 ## Design doc request: common water is easy to reach and cast into but
 ## pays worse; rare water pays much better for the precision (and risk -
@@ -160,6 +165,8 @@ var nibbles_left := 0
 var fake_chance := 0.0
 var _nibbled := false
 var _lure_nibbles: Array = []
+## Where along this retrieve the fish strikes (a share of the way in).
+var _lure_bite_at := 1.0
 var pending_bait_flavor: String = ""
 var is_epic_catch: bool = false
 var fish_trait: String = "normal"
@@ -227,16 +234,20 @@ var _key_prev_held: Dictionary = {}
 func _ready() -> void:
 	add_to_group("player")
 	# The gas can in hand while it's being carried (see OilDrum).
+	# User feedback: held in the hand, swinging with the walk (carried_can.gd).
+	var hand := Node2D.new()
+	hand.name = "CarriedCan"
 	var can := Sprite2D.new()
-	can.name = "CarriedCan"
+	can.name = "Can"
 	var tex := CanvasTexture.new()
 	tex.diffuse_texture = preload("res://assets/sprites/gas_can/gas_can_55deg_albedo.png")
 	tex.normal_texture = preload("res://assets/sprites/gas_can/gas_can_55deg_normal.png")
 	can.texture = tex
 	Art.place(can, Vector2(0, -5.56), 0.5)
-	can.position = Vector2(9, 4)
-	can.visible = false
-	add_child(can)
+	hand.add_child(can)
+	hand.set_script(preload("res://scripts/carried_can.gd"))
+	hand.visible = false
+	add_child(hand)
 	reset_gear()
 	_set_state(State.IDLE)
 
@@ -1120,8 +1131,11 @@ func _update_fishing(delta: float) -> void:
 				var exited_rare_zone := false
 				if cast_water_zone != null and cast_water_zone.is_rare():
 					exited_rare_zone = not cast_water_zone.contains(get_line_target_position())
-				if retrieve_progress >= 1.0 or exited_rare_zone:
-					retrieve_progress = 1.0
+				if cast_outcome != CastOutcome.TIMEOUT and retrieve_progress >= _lure_bite_at:
+					# The strike, wherever along the retrieve it comes.
+					_start_bite()
+				elif retrieve_progress >= 1.0 or exited_rare_zone:
+					retrieve_progress = minf(retrieve_progress, 1.0)
 					# User feedback: a lure retrieve isn't guaranteed a bite
 					# either - sometimes it just comes back empty.
 					if cast_outcome == CastOutcome.TIMEOUT:
@@ -1306,9 +1320,11 @@ func _roll_catch_outcome() -> void:
 	nibbles_left = maxi(randi_range(diff.nibbles.x, diff.nibbles.y) - int(lure.get("nibbles", 0)), 0)
 	fake_chance = diff.fake * float(lure.get("fake", 1.0))
 	_nibbled = false
+	_lure_bite_at = randf_range(LURE_BITE_RANGE.x, LURE_BITE_RANGE.y)
 	_lure_nibbles.clear()
 	for _i in nibbles_left:
-		_lure_nibbles.append(randf_range(0.35, 0.95))
+		# The tells come before the strike.
+		_lure_nibbles.append(randf_range(0.05, maxf(_lure_bite_at - 0.04, 0.06)))
 	_lure_nibbles.sort()
 
 	var zone_mult: float = RARE_ZONE_VALUE_MULT if in_rare_zone else COMMON_ZONE_VALUE_MULT
