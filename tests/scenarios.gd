@@ -207,6 +207,14 @@ func test_all_themes() -> void:
 			var base: Color = zone._surface_material.get_shader_parameter("base_color")
 			check(base.is_equal_approx(gen.theme.water.base), "%s: its pond colour" % theme)
 	gen_script.forced_theme = ""
+	# User decision: only the detailed look is dealt to players for now.
+	var gen = main.get_node("MapGenerator")
+	var dealt := {}
+	for i in 400:
+		dealt[gen._pick_theme()] = true
+	check(dealt.keys().all(func(t): return gen_script.THEMES[t].look == "detailed"),
+		"only detailed styles are played %s" % str(dealt.keys()))
+	check(dealt.size() >= 8, "and all of them turn up (%d)" % dealt.size())
 
 
 ## User feedback: the finely drawn and the flat-coloured art don't mix.

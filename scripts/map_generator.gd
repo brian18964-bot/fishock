@@ -292,20 +292,28 @@ const THEMES := {
 ## Forest looks share one pick with the other styles. User decision: the
 ## three main styles ~28% each, tropical 12%, prehistoric (dinosaurs) 4%.
 ## User request (more styles): the new ones share the odds now - every
-## style about as likely, dinosaurs still rare.
+## style about as likely, dinosaurs still rare. User decision: only the
+## detailed look is played for now (forest ~29%, dead wood ~20%, rocky
+## ~18%, tropical ~14%, swamp ~12%, prehistoric ~6%).
 const STYLES := {
-	"forest": {"weight": 14.0, "themes": ["forest_pine", "forest_birch", "forest_maple", "forest_green", "forest_conifer"]},
+	"forest": {"weight": 14.0, "themes": ["forest_pine", "forest_birch", "forest_maple", "forest_green"]},
 	"deadwood": {"weight": 10.0, "themes": ["deadwood"]},
 	"rocky": {"weight": 9.0, "themes": ["rocky"]},
 	"tropical": {"weight": 7.0, "themes": ["tropical"]},
 	"prehistoric": {"weight": 3.0, "themes": ["prehistoric"]},
+	"swamp": {"weight": 6.0, "themes": ["swamp"]},
+}
+## User decision: the low-poly styles are kept in reserve - built and
+## tested (forced_theme still reaches them) but never dealt to a player.
+## Move one into STYLES (with a weight) to put it back in play.
+const RESERVE_STYLES := {
+	"forest_conifer": {"weight": 5.0, "themes": ["forest_conifer"]},
 	"autumn": {"weight": 11.0, "themes": ["autumn"]},
 	"snow": {"weight": 11.0, "themes": ["snow"]},
 	"jungle": {"weight": 9.0, "themes": ["jungle"]},
 	"savanna": {"weight": 7.0, "themes": ["savanna"]},
 	"meadow": {"weight": 8.0, "themes": ["meadow"]},
 	"stone_forest": {"weight": 7.0, "themes": ["stone_forest"]},
-	"swamp": {"weight": 6.0, "themes": ["swamp"]},
 }
 
 ## User feedback: the water's edge is grass, small shrubs, pebbles and
