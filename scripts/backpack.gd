@@ -271,6 +271,13 @@ class GridView extends Control:
 			var r := Rect2(Vector2(cells.position) * Backpack.CELL, Vector2(cells.size) * Backpack.CELL).grow(-3.0)
 			var col: Color = Backpack.ROTTEN_COLOR if item.get("rotten", false) else Backpack.KIND_COLORS.get(item.kind, Color.GRAY)
 			draw_rect(r, col)
+			if item.kind == "fish":
+				# Its picture, fitted in (2:1), under the name.
+				var tex := FishData.icon(item.get("id", ""), item.label)
+				if tex != null:
+					var fit := minf(r.size.x / 2.0, r.size.y) * 0.95
+					var pic := Rect2(r.get_center() - Vector2(fit, fit / 2.0) + Vector2(0, 3), Vector2(fit * 2.0, fit))
+					draw_texture_rect(tex, pic, false, Color(0.55, 0.5, 0.35) if item.get("rotten", false) else Color.WHITE)
 			var is_sel: bool = not selected.is_empty() and selected.kind == item.kind and selected.index == item.index
 			draw_rect(r, Color(1.0, 0.9, 0.6) if is_sel else Color(1, 1, 1, 0.3), false, 2.0 if is_sel else 1.0)
 			var name: String = item.label

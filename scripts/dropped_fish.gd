@@ -12,16 +12,21 @@ const ROT_TIME := 70.0
 const MIN_VALUE_RATIO := 0.15
 
 var fish_name: String = "魚"
+var fish_id := ""
 var base_value: float = 0.0
 ## Its size in the backpack (Inventory).
 var size: String = "small"
 var age: float = 0.0
 
-@onready var visual: ColorRect = $Visual
+@onready var visual: Sprite2D = $Visual
 @onready var label: Label = $Label
 
-const FRESH_COLOR := Color(0.9, 0.75, 0.2, 1)
-const ROTTEN_COLOR := Color(0.35, 0.3, 0.15, 1)
+## User request: the fish itself on the ground (FishData.icon), going
+## grey-brown as it rots.
+const FRESH_COLOR := Color(1, 1, 1, 1)
+const ROTTEN_COLOR := Color(0.5, 0.45, 0.3, 1)
+## Its length on the ground (world px), by size.
+const LENGTH := {"small": 22.0, "medium": 30.0, "large": 40.0}
 
 
 func _ready() -> void:
@@ -33,18 +38,26 @@ func _ready() -> void:
 
 func setup(fish: Dictionary) -> void:
 	fish_name = fish.get("name", "魚")
+	fish_id = fish.get("id", FishData.id_for(fish_name))
 	base_value = float(fish.get("value", 0))
 	size = Inventory.fish_size(fish)
+	var tex := FishData.icon(fish_id, fish_name)
+	if tex != null:
+		visual.texture = tex
+		visual.scale = Vector2.ONE * LENGTH.get(size, 26.0) / tex.get_width()
+		# Lying there at an angle, flipped either way.
+		visual.rotation = randf_range(-0.5, 0.5)
+		visual.flip_h = randf() < 0.5
 
 
 func _process(delta: float) -> void:
 	age += delta
 	var freshness: float = _freshness()
 	if is_rotten():
-		visual.color = ROTTEN_COLOR
+		visual.modulate = ROTTEN_COLOR
 		label.text = "腐敗的%s" % fish_name
 	else:
-		visual.color = FRESH_COLOR.lerp(ROTTEN_COLOR, 1.0 - freshness)
+		visual.modulate = FRESH_COLOR.lerp(ROTTEN_COLOR, 1.0 - freshness)
 		label.text = "%s（%.0f）" % [fish_name, current_value()]
 
 
@@ -70,8 +83,8 @@ func pick_up() -> Dictionary:
 ## What it'd be back in the backpack.
 func as_fish() -> Dictionary:
 	if is_rotten():
-		return {"name": fish_name, "value": 0.0, "tier": "rotten", "rotten": true, "size": size}
-	return {"name": fish_name, "value": current_value(), "tier": "dropped", "rotten": false, "size": size}
+		return {"name": fish_name, "id": fish_id, "value": 0.0, "tier": "rotten", "rotten": true, "size": size}
+	return {"name": fish_name, "id": fish_id, "value": current_value(), "tier": "dropped", "rotten": false, "size": size}
 
 
 ## Eaten by the big ghost: gone, and no longer on offer to a player

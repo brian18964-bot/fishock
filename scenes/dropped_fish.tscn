@@ -9,13 +9,7 @@ size = Vector2(24, 24)
 script = ExtResource("1")
 z_index = 3
 
-[node name="Visual" type="ColorRect" parent="."]
-offset_left = -12.0
-offset_top = -12.0
-offset_right = 12.0
-offset_bottom = 12.0
-color = Color(0.9, 0.75, 0.2, 1)
-mouse_filter = 2
+[node name="Visual" type="Sprite2D" parent="."]
 
 [node name="Label" type="Label" parent="."]
 visible = false

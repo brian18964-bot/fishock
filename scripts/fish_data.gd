@@ -404,3 +404,18 @@ static func id_for(species_name: String) -> String:
 		if FISH[id].name == species_name:
 			return id
 	return ""
+
+
+static var _icons := {}
+
+
+## A species' picture (tools/render_fish.py, or the photo-built one): by id
+## or, failing that, by name. Null for what isn't a fish (the heart).
+static func icon(id: String, species_name: String = "") -> Texture2D:
+	if id == "" and species_name != "":
+		id = id_for(species_name)
+	if id == "" or not FISH.has(id):
+		return null
+	if not _icons.has(id):
+		_icons[id] = load("res://assets/sprites/fish/%s.png" % id)
+	return _icons[id]

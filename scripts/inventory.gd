@@ -42,7 +42,8 @@ static func items(player: Node) -> Array:
 		var fish: Dictionary = GameState.carried_fish[i]
 		var size := fish_size(fish)
 		out.append({"kind": "fish", "label": fish.get("name", "魚"), "count": 0,
-			"size": SIZES[size], "index": i, "rotten": fish.get("rotten", false), "grade": SIZE_NAMES[size]})
+			"size": SIZES[size], "index": i, "rotten": fish.get("rotten", false), "grade": SIZE_NAMES[size],
+			"id": fish.get("id", "")})
 	if GameState.has_heart:
 		out.append({"kind": "heart", "label": "心臟", "count": 0, "size": Vector2i(1, 1), "index": -1})
 	if player != null:

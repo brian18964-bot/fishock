@@ -85,6 +85,10 @@ func _ready() -> void:
 	# Rain, snow, falling leaves, fireflies (WeatherFx).
 	add_child(WeatherFx.new())
 	add_child(SoundToggle.new())
+	# User request: a landed fish shows itself (CatchCard).
+	var card := CatchCard.new()
+	add_child(card)
+	player.catch_success.connect(func(fish): card.show_catch(fish, player.is_epic_catch))
 	# Covers opening this scene directly (e.g. F6 in the editor) without
 	# going through the title screen's Start button.
 	GameState.start_run()
