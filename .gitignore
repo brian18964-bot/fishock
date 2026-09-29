@@ -11,3 +11,4 @@ build/
 
 # Python bytecode from tools/
 __pycache__/
+art_src/fish_tex/
