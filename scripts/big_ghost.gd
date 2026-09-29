@@ -28,16 +28,24 @@ signal mode_changed(mode: String)
 enum Mode { ASLEEP, WANDER, SUSPICIOUS, CHASE, SEARCH, EAT, CARRY, CAGED, REST }
 
 const SHEET := [preload("res://assets/sprites/big_ghost/big_ghost_55deg_albedo.png"), preload("res://assets/sprites/big_ghost/big_ghost_55deg_normal.png")]
+## User feedback: it was stiff - one still pose per facing. It moves now
+## (tools/render_big_ghost.py - clips from the user's animation library
+## laid over the sculpt's own pose): swaying and lolling as it floats about,
+## lurching forward when it charges or carries you off, gnawing a thrown
+## fish, its smoke churning all the while. Cells run clip by clip, facing by
+## facing (Art.facing8), frame by frame, COLS to a row.
+const CLIPS := {"float": 8, "chase": 8, "eat": 6}
+const CLIP_FPS := {"float": 7.0, "chase": 11.0, "eat": 9.0}
+const COLS := 16
+## Its lantern per cell (world px from its origin at scale 0.5), from the
+## render - it swings with the hand that holds it.
+const META := "res://assets/sprites/big_ghost/big_ghost_meta.json"
 ## Drawn larger than the render: it towers over the player.
 const SIZE := 1.25
 const SPRITE_SCALE := 0.5 * SIZE
 ## (0, -center_y) * 27.108 for the render's camera.
-const OFFSET := Vector2(0.0, -30.39)
-## Its lantern per facing (world px from its origin), from the render.
-const LAMP := [Vector2(-7.16, -0.88), Vector2(-21.14, -10.48), Vector2(-22.74, -25.37), Vector2(-11.02, -36.82), Vector2(7.16, -38.13), Vector2(21.14, -28.53), Vector2(22.74, -13.64), Vector2(11.02, -2.19)]
+const OFFSET := Vector2(0.0, -26.11)
 const DIRS := 8
-## Sheet column by 45deg sector clockwise from +X (same order as the player).
-const SECTOR_TO_DIR := [6, 7, 0, 1, 2, 3, 4, 5]
 const HOVER := 4.0
 ## Where it waits by its cage: beside it, so the cage stays in view.
 const HOME := Vector2(40.0, 12.0)
@@ -87,6 +95,10 @@ var _fish: Node2D
 var _timer := 0.0
 var _dir := 0
 var _bob := 0.0
+var _anim := 0.0
+var _speed := 0.0
+var _last_pos := Vector2.ZERO
+static var _lamps: Array = []
 var _cage: GhostCage
 var _player: Player
 
@@ -102,7 +114,16 @@ func _ready() -> void:
 	tex.diffuse_texture = SHEET[0]
 	tex.normal_texture = SHEET[1]
 	visual.texture = tex
-	visual.hframes = DIRS
+	var cells := 0
+	for n in CLIPS.values():
+		cells += n * DIRS
+	visual.hframes = COLS
+	visual.vframes = ceili(float(cells) / COLS)
+	if _lamps.is_empty():
+		var meta = JSON.parse_string(FileAccess.get_file_as_string(META))
+		for p in meta.lamp:
+			_lamps.append(Vector2(p[0], p[1]))
+	_last_pos = global_position
 	Art.place(visual, OFFSET, SPRITE_SCALE)
 	lamp_light.texture = LightTextureFactory.make_radial_texture()
 	lamp_light.texture_scale = 0.45
@@ -189,7 +210,6 @@ func _physics_process(delta: float) -> void:
 				_move_toward(_fish.global_position, CHASE_SPEED, delta, false)
 			else:
 				_timer -= delta
-				_bob += delta * 3.0  # gnawing
 				if _timer <= 0.0:
 					_fish.eaten()
 					_fed()
@@ -349,8 +369,7 @@ func _move_toward(target: Vector2, speed: float, delta: float, keep_out := true)
 	next.y = clampf(next.y, 20.0, Player.WORLD_HEIGHT - 20.0)
 	var moved := next - global_position
 	if moved.length() > 0.01:
-		var sector := posmod(roundi(moved.angle() / (PI / 4.0)), 8)
-		_dir = SECTOR_TO_DIR[sector]
+		_dir = Art.facing8(moved, _dir)
 	global_position = next
 
 
@@ -401,11 +420,33 @@ func _on_day_phase(phase: String) -> void:
 
 func _process(delta: float) -> void:
 	_bob += delta
+	# Smoothed: it moves on physics ticks, which don't line up with frames.
+	var step := global_position.distance_to(_last_pos) / maxf(delta, 0.001)
+	_last_pos = global_position
+	_speed = lerpf(_speed, minf(step, NIGHT_SPEED * 2.0), minf(delta * 6.0, 1.0))
+	var clip := "float"
+	if mode == Mode.EAT:
+		var at_fish := is_instance_valid(_fish) and global_position.distance_to(_fish.global_position) <= 6.5
+		clip = "eat" if at_fish else "chase"
+	elif mode in [Mode.CHASE, Mode.CARRY]:
+		clip = "chase"
+	var fps: float = CLIP_FPS[clip]
+	if clip == "chase":
+		# The lurch keeps pace with how fast it's actually going.
+		fps *= clampf(_speed / CHASE_SPEED, 0.6, 1.4)
+	_anim += delta * fps
+	var cell := 0
+	for name in CLIPS:
+		if name == clip:
+			break
+		cell += CLIPS[name] * DIRS
+	var frames: int = CLIPS[clip]
+	cell += _dir * frames + int(_anim) % frames
 	var lift := -HOVER - sin(_bob * 1.7) * BOB
-	visual.frame = _dir
+	visual.frame = cell
 	visual.position = Vector2(0, lift)
 	visual.modulate = TINT_STUNNED if stun_timer > 0.0 else TINT
-	var lamp: Vector2 = LAMP[_dir] * SIZE + Vector2(0, lift)
+	var lamp: Vector2 = _lamps[cell] * SIZE + Vector2(0, lift)
 	lamp_light.position = lamp
 	glow.position = lamp
 	var flicker := 1.0 + sin(_bob * 9.0) * 0.06 + sin(_bob * 23.0) * 0.04

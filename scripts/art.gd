@@ -24,3 +24,22 @@ static func place(sprite: Sprite2D, offset: Vector2, scale: float) -> void:
 ## holds the textures it shows) or an already loaded texture.
 static func tex(v: Variant) -> Texture2D:
 	return v if v is Texture2D else load(v)
+
+
+## Sheet row/column of the 8 facings (tools/render_characters.py DIRS:
+## down, down_left, left, up_left, up, up_right, right, down_right) by 45deg
+## sector clockwise from +X.
+const SECTOR_TO_DIR := [6, 7, 0, 1, 2, 3, 4, 5]
+## How far past a sector's edge a heading has to swing before the facing
+## changes - so a heading near a diagonal doesn't flick between two frames.
+const FACING_SLACK := 0.14
+
+
+## The 8-way facing for heading `v`, sticking with `current` until the
+## heading has clearly left its sector.
+static func facing8(v: Vector2, current: int) -> int:
+	var angle := v.angle()
+	var sector := SECTOR_TO_DIR.find(current)
+	if sector >= 0 and absf(angle_difference(sector * PI / 4.0, angle)) < PI / 8.0 + FACING_SLACK:
+		return current
+	return SECTOR_TO_DIR[posmod(roundi(angle / (PI / 4.0)), 8)]

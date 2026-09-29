@@ -1,17 +1,19 @@
 """The water ghost - the user's zombie (Zombie.FBX, a Mixamo-rigged model
-with no animation or textures), through the 55deg pipeline: a lurching
-walk, arms reaching out in front, in 8 facings.
+with no animation or textures), through the 55deg pipeline, in 8 facings.
 
-The walk is Mixamo's Y Bot walk (same skeleton - Kevin-Kwan's
-Unity3D-FishingRodMotion, as for the player) kept in place; the arms are
-posed straight out ahead instead of swinging. Neither model is kept in the
-repo.
+User feedback: it moved stiffly (a borrowed walk with the arms posed out
+by hand). Its motion now comes from Quaternius' Universal Animation
+Library 2 (CC0, supplied by the user; not kept in the repo), carried over
+to the Mixamo skeleton by tools/retarget.py:
 
-  python tools/render_water_ghost.py ZOMBIE_FBX YBOT_WALK_FBX OUT_DIR
+  walk   Zombie_Walk_Fwd_Loop   rising, lurching out of the water, wading back
+  claw   Zombie_Scratch         clinging to the player, clawing at them
 
-writes OUT_DIR/water_ghost_55deg_{albedo,normal}.png (rows = facings, in
-render_characters.DIRS order; columns = walk frames) and prints the cell
-size and sprite offset.
+  python tools/render_water_ghost.py ZOMBIE_FBX UAL2_GLB OUT_DIR
+
+writes OUT_DIR/water_ghost_55deg_{albedo,normal}.png (rows = clip x facing,
+in render_characters.DIRS order; COLS columns = frames, the claw row
+using the first CLAW of them) and prints the cell size and sprite offset.
 """
 import json
 import math
@@ -25,11 +27,23 @@ from mathutils import Matrix, Vector
 sys.path.insert(0, os.path.dirname(__file__))
 import render_sprite as rs  # noqa: E402
 import render_characters as rc  # noqa: E402
+import retarget  # noqa: E402
 
 HEIGHT = 2.5      # units: a little taller than the player (2.38)
-FRAMES = 6        # walk frames per facing
-ARM_BONES = ["mixamorig:%s%s" % (side, b) for side in ("Left", "Right")
-             for b in ("Shoulder", "Arm", "ForeArm", "Hand")]
+WALK = 10         # frames per facing
+CLAW = 8
+COLS = WALK
+MIXAMO = {"pelvis": "Hips", "spine_01": "Spine", "spine_02": "Spine1", "spine_03": "Spine2",
+          "neck_01": "Neck", "Head": "Head"}
+for _s, _side in (("l", "Left"), ("r", "Right")):
+    MIXAMO.update({f"clavicle_{_s}": f"{_side}Shoulder", f"upperarm_{_s}": f"{_side}Arm",
+                   f"lowerarm_{_s}": f"{_side}ForeArm", f"hand_{_s}": f"{_side}Hand",
+                   f"thigh_{_s}": f"{_side}UpLeg", f"calf_{_s}": f"{_side}Leg",
+                   f"foot_{_s}": f"{_side}Foot", f"ball_{_s}": f"{_side}ToeBase"})
+MIXAMO = {k: "mixamorig:" + v for k, v in MIXAMO.items()}
+# Limbs are pointed the way the source's point: the zombie was modelled
+# arms down, the library's mannequin in a T-pose.
+AIMED = [b for b in MIXAMO if b.split("_")[0] in ("upperarm", "lowerarm", "hand", "thigh", "calf", "foot", "ball")]
 
 
 def noise_paint(name, base, dark, scale=9.0, amount=0.6):
@@ -56,7 +70,7 @@ def noise_paint(name, base, dark, scale=9.0, amount=0.6):
     return mat
 
 
-def build(zombie_path, walk_path):
+def build(zombie_path):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.fbx(filepath=zombie_path)
     arm = next(o for o in bpy.data.objects if o.type == 'ARMATURE')
@@ -72,85 +86,61 @@ def build(zombie_path, walk_path):
     for a in list(bpy.data.actions):
         bpy.data.actions.remove(a)
 
-    # The walk, from Y Bot; its own objects go.
-    before = set(bpy.data.objects)
-    bpy.ops.import_scene.fbx(filepath=walk_path)
-    for o in set(bpy.data.objects) - before:
-        bpy.data.objects.remove(o, do_unlink=True)
-    walk = max(bpy.data.actions, key=lambda a: len(a.fcurves))
-    for fc in list(walk.fcurves):
-        # In place (no root motion or hip travel - Y Bot's are in its own
-        # scale anyway), and the arms are posed by hand.
-        if fc.data_path.endswith(".location") or any(f'"{b}"' in fc.data_path for b in ARM_BONES):
-            walk.fcurves.remove(fc)
-    ad = arm.animation_data_create()
-    ad.action = walk
-
     # Stood HEIGHT tall on the ground, centred (the meshes hang off the
     # armature, so it's the armature that's scaled and moved).
-    bpy.context.scene.frame_set(int(walk.frame_range[0]))
     pts = np.concatenate([rc.world_points(o) for o in meshes])
     lo, hi = pts.min(0), pts.max(0)
     s = HEIGHT / (hi[2] - lo[2])
     cx, cy = (lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2
     arm.matrix_world = Matrix.Scale(s, 4) @ Matrix.Translation((-cx, -cy, -lo[2])) @ arm.matrix_world
     bpy.context.view_layer.update()
-    return arm, meshes, walk
-
-
-def aim(arm, name, world_dir):
-    """Turns pose bone `name` so it points along `world_dir`."""
-    pb = arm.pose.bones[name]
-    to_arm = arm.matrix_world.to_3x3().normalized().inverted()
-    d = (to_arm @ world_dir).normalized()
-    cur = pb.matrix.copy()
-    rot = cur.col[1].xyz.normalized().rotation_difference(d).to_matrix().to_4x4()
-    new = rot @ cur
-    new.translation = cur.translation
-    pb.matrix = new
-    bpy.context.view_layer.update()
-
-
-def reach(arm, sway, facing=0.0):
-    """Both arms out in front (the model faces -Y before it's turned to
-    `facing`), a little apart and hanging at the wrists; `sway` swings them
-    a touch with the step."""
-    turn = Matrix.Rotation(math.radians(facing), 3, 'Z')
-    for side, sx in (("Left", 1.0), ("Right", -1.0)):
-        lift = 0.08 + 0.06 * sway * sx
-        aim(arm, f"mixamorig:{side}Arm", turn @ Vector((0.22 * sx, -1.0, lift)))
-        aim(arm, f"mixamorig:{side}ForeArm", turn @ Vector((0.05 * sx, -1.0, lift + 0.08)))
-        aim(arm, f"mixamorig:{side}Hand", turn @ Vector((0.0, -1.0, -0.45)))
+    return arm, meshes
 
 
 def main():
-    zombie, walk_path, out = sys.argv[-3], sys.argv[-2], sys.argv[-1]
+    zombie, glb, out = sys.argv[-3], sys.argv[-2], sys.argv[-1]
     os.makedirs(out, exist_ok=True)
-    arm, meshes, walk = build(zombie, walk_path)
-    start, end = walk.frame_range
-    frames = [start + (end - start) * i / FRAMES for i in range(FRAMES)]
+    arm, meshes = build(zombie)
+    src = retarget.load_library(glb)
+    bones = list(MIXAMO)
+    clips = [retarget.Clip(src, "Zombie_Walk_Fwd_Loop", bones, WALK, loop=True, ref="rest"),
+             retarget.Clip(src, "Zombie_Scratch", bones, CLAW, loop=True, ref="rest")]
+    # The hips' bob, in the zombie's size.
+    hips = arm.matrix_world @ arm.data.bones[MIXAMO["pelvis"]].head_local
+    lift = hips.z / clips[0].rest_head.z
     yaw = rs.Yaw(0.0)
 
     def pose(cell):
-        d, i = cell
+        c, d, i = cell
+        clip = clips[c]
+        yaw.set(0.0)
+        retarget.apply(arm, clip.delta(i), MIXAMO, 1.0, aim={b: v for b, v in clip.dirs(i).items() if b in AIMED},
+                       offset=clip.offset(i) * lift)
         yaw.set(rs.DIRS[d])
-        whole = math.floor(frames[i])
-        bpy.context.scene.frame_set(int(whole), subframe=frames[i] - whole)
-        bpy.context.view_layer.update()
-        reach(arm, math.sin(i / FRAMES * math.tau), rs.DIRS[d])
 
+    cells = [(c, d, i) for c, n in enumerate((WALK, CLAW)) for d in rc.DIRS for i in range(n)]
     bs = []
-    for d in rc.DIRS:
-        for i in range(FRAMES):
-            pose((d, i))
-            bs.append(rs.screen_bounds(meshes))
+    for cell in cells:
+        pose(cell)
+        bs.append(rs.screen_bounds(meshes))
     w, h, cx, cy = rc.fit(rc.union(bs))
     rs.setup_scene(cy, max(w, h) / rc.DENSITY, w * rc.HD, h * rc.HD, cx)
     prefix = os.path.join(out, "water_ghost_55deg")
-    cells = [(d, i) for d in rc.DIRS for i in range(FRAMES)]
-    rs.pack_sheet(meshes, cells, pose, (w * rc.HD, h * rc.HD), FRAMES, prefix)
+    # The claw rows are shorter: padded to COLS with blank cells.
+    grid = []
+    for c, n in enumerate((WALK, CLAW)):
+        for d in rc.DIRS:
+            grid += [(c, d, i) for i in range(n)] + [None] * (COLS - n)
+
+    def pose_or_hide(cell):
+        for o in meshes:
+            o.hide_render = cell is None
+        if cell is not None:
+            pose(cell)
+    rs.pack_sheet(meshes, grid, pose_or_hide, (w * rc.HD, h * rc.HD), COLS, prefix)
     rc.downsample_normal(f"{prefix}_normal.png")
-    meta = {"cell": [w, h], "offset": [round(cx * rc.DENSITY, 2), round(-cy * rc.DENSITY, 2)], "frames": FRAMES}
+    meta = {"cell": [w, h], "offset": [round(cx * rc.DENSITY, 2), round(-cy * rc.DENSITY, 2)],
+            "walk": WALK, "claw": CLAW, "cols": COLS}
     print(json.dumps({"water_ghost": meta}))
 
 

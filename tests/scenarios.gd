@@ -10,6 +10,7 @@ const TESTS := [
 	"test_all_themes",
 	"test_spawn_on_land_docks_out",
 	"test_catalog_and_sounds",
+	"test_creature_animation",
 	"test_refuel",
 	"test_sacrifice_and_altar_stages",
 	"test_turn_rock",
@@ -254,6 +255,54 @@ func test_catalog_and_sounds() -> void:
 	check(Sfx.muted == was, "and unmutes")
 	var loop := Sfx.stream("amb_rain") as AudioStreamWAV
 	check(loop != null and loop.loop_mode == AudioStreamWAV.LOOP_FORWARD, "ambience loops")
+
+
+## User feedback: the big and small ghosts were stiff, the animals walked
+## stiffly - they animate and turn through 8 facings now.
+func test_creature_animation() -> void:
+	check(Art.facing8(Vector2(1, 0.5), 6) == 6, "a heading near the facing keeps it")
+	check(Art.facing8(Vector2(1, 1), 6) == 7, "a diagonal turns it")
+	check(Art.facing8(Vector2(-1, 0), 0) == 2, "left faces left")
+	var bg = main.get_node("BigGhost")
+	gs.time_remaining = gs.DAY_DURATION * 0.7
+	bg.global_position = Vector2(1500, 300)
+	bg.mode = bg.Mode.CHASE
+	await put(bg.global_position + Vector2(-220, 0))
+	var chase_from: int = bg.CLIPS.float * bg.DIRS
+	var seen := {}
+	for i in 30:
+		await frames(2)
+		seen[bg.visual.frame] = true
+	check(seen.size() >= 4, "the big ghost moves (%d frames seen)" % seen.size())
+	check(seen.keys().all(func(f): return f >= chase_from and f < chase_from + bg.CLIPS.chase * bg.DIRS),
+		"lurching through its chase frames %s" % str(seen.keys()))
+	check(bg.lamp_light.position != Vector2.ZERO, "its lantern is placed")
+	var ghost: Node2D = of_script("/ghost.gd")[0]
+	seen = {}
+	for i in 30:
+		await frames(2)
+		seen[ghost.visual.frame] = true
+	check(seen.size() >= 4, "a floating ghost flutters (%d frames seen)" % seen.size())
+	check(seen.keys().all(func(f): return f < ghost.visual.hframes * ghost.visual.vframes), "within its sheet")
+	var wg := WaterGhost.summon(player())
+	check(wg != null, "a water ghost comes up")
+	if wg != null:
+		await frames(40)
+		check(wg._visual.frame < WaterGhost.DIRS * WaterGhost.COLS, "it walks on its walk rows")
+		wg._next(WaterGhost.Phase.CLING)
+		await frames(10)
+		check(wg._visual.frame >= WaterGhost.DIRS * WaterGhost.COLS, "and claws on its claw rows (frame %d)" % wg._visual.frame)
+		wg.queue_free()
+	for c in of_script("/critter.gd"):
+		c._dir = Art.facing8(Vector2.RIGHT, 0)
+		c.velocity = Vector2.ZERO
+		c._animate(0.1)
+		var sprite: Sprite2D = c.sprite
+		check(sprite.flip_h and sprite.frame < sprite.hframes * sprite.vframes,
+			"%s facing right: mirrored, frame %d of %d" % [c.species, sprite.frame, sprite.hframes * sprite.vframes])
+		c._dir = Art.facing8(Vector2.LEFT, 0)
+		c._animate(0.1)
+		check(not sprite.flip_h, "%s facing left: as rendered" % c.species)
 
 
 func test_refuel() -> void:

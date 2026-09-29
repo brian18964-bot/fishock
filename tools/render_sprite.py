@@ -92,7 +92,9 @@ Sets rendered so far (see art_src/):
                    -90 left = the way the bow points); offsets in dock.gd
 
 Animated sheets (anim / measure-anim; --drop Icosphere, 8 frames per clip,
-rows = clips x dirs down/left/right/up, x-symmetric camera per animal):
+rows = clips x dirs down/left/right/up, x-symmetric camera per animal).
+The animals and critters are now rendered by tools/render_animals.py (8
+facings, more frames); the list below is how they were first made:
   critter/rat     x0.35 Rat_Run Rat_Idle          cell 104x88 --center-y 0.258
   critter/frog    x0.34 Frog_Jump Frog_Idle       cell 64x64  --center-y 0.109
   critter/snake   x0.44 Snake_Walk Snake_Idle     cell 56x56  --center-y 0.43

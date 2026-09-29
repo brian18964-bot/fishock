@@ -11,7 +11,8 @@ facing's bounds, x-symmetric so the model origin sits mid-cell.
 prints the cell size and the sprite offset ((0, -center_y) * 27.108).
 
 Rendered so far:
-  ghost/ghost  art_src/ghost/ghost.glb x1.3 --facing 39  (dirs down left right up)
+  ghost/ghost  art_src/ghost/ghost.glb x1.3 --facing 39  (dirs down left right up;
+               now animated by tools/render_ghost_anim.py)
   gas_can/gas_can  art_src/gas_can/gas_can.glb x0.28 --dirs down
   (both with --density 2: twice the pixels, same printed cell and offset -
   see scripts/art.gd)

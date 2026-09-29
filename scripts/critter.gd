@@ -9,13 +9,18 @@ extends CharacterBody2D
 ## catch it (see Player._catch_critter()), which also sets the next cast's
 ## bait flavor. A caught critter reappears elsewhere after RESPAWN_DELAY.
 ##
-## Art: 55deg sprite sheets from tools/render_sprite.py's "anim" command -
-## `frames` per row (8 critters, 12 ambient), rows = clips x directions
-## (down, left, right, up); clip 0 moves, clip 1 idles, `flee_clip` runs. Never
-## flip_h a direction: the normal map's X channel would stay mirrored.
+## Art: 55deg sprite sheets from tools/render_animals.py - `frames` a clip
+## (12 critters, 16 ambient), cells clip by clip, facing by facing, frame
+## by frame, `cols` to a row; clip 0 moves, clip 1 idles, `flee_clip` runs.
+## User feedback: they walked stiffly - they turn through 8 facings now: 5
+## rendered (ROWS), the right-hand three drawn as the left-hand ones
+## mirrored (flip_h mirrors the normal map with the picture, so the light
+## still falls right).
 
 const SPRITE_SCALE := 0.5
-const DIRS := ["down", "left", "right", "up"]
+const ROWS := 5
+## Art.facing8 index -> [rendered row, mirrored].
+const FACING_ROW := [[0, false], [1, false], [2, false], [3, false], [4, false], [3, true], [2, true], [1, true]]
 
 const FLEE_RADIUS := 70.0
 const CALM_RADIUS := 140.0
@@ -35,136 +40,136 @@ const SPECIES := {
 	"rat": {"label": "老鼠", "flavor": "老鼠",
 		"albedo": preload("res://assets/sprites/critter/rat_55deg_albedo.png"),
 		"normal": preload("res://assets/sprites/critter/rat_55deg_normal.png"),
-		"clips": 2, "offset": Vector2(0, -6.99), "move_fps": 16.0, "idle_fps": 3.4,
+		"frames": 12, "cols": 39, "clips": 2, "offset": Vector2(0, -6.82), "move_fps": 24.0, "idle_fps": 5.05,
 		"wander_speed": 45.0, "flee_speed": 120.0},
 	"frog": {"label": "青蛙", "flavor": "青蛙",
 		"albedo": preload("res://assets/sprites/critter/frog_55deg_albedo.png"),
 		"normal": preload("res://assets/sprites/critter/frog_55deg_normal.png"),
-		"clips": 2, "offset": Vector2(0, -2.95), "move_fps": 9.1, "idle_fps": 3.2, "size": 1.3,
+		"frames": 12, "cols": 56, "clips": 2, "offset": Vector2(0, -2.58), "move_fps": 13.71, "idle_fps": 4.8, "size": 1.3,
 		"wander_speed": 35.0, "flee_speed": 95.0},
 	"snake": {"label": "蛇", "flavor": "蛇",
 		"albedo": preload("res://assets/sprites/critter/snake_55deg_albedo.png"),
 		"normal": preload("res://assets/sprites/critter/snake_55deg_normal.png"),
-		"clips": 2, "offset": Vector2(0, -11.66), "move_fps": 9.6, "idle_fps": 3.8,
+		"frames": 12, "cols": 73, "clips": 2, "offset": Vector2(0, -10.93), "move_fps": 14.4, "idle_fps": 5.76,
 		"wander_speed": 30.0, "flee_speed": 85.0},
 	"spider": {"label": "蜘蛛", "flavor": "蟲子",
 		"albedo": preload("res://assets/sprites/critter/spider_55deg_albedo.png"),
 		"normal": preload("res://assets/sprites/critter/spider_55deg_normal.png"),
-		"clips": 2, "offset": Vector2(0, -1.11), "move_fps": 9.6, "idle_fps": 1.9, "size": 1.3,
+		"frames": 12, "cols": 73, "clips": 2, "offset": Vector2(0, -0.81), "move_fps": 14.4, "idle_fps": 2.88, "size": 1.3,
 		"wander_speed": 40.0, "flee_speed": 110.0},
 	# One clip (flying) for both moving and hovering; floats above the ground.
 	"wasp": {"label": "黃蜂", "flavor": "蟲子",
 		"albedo": preload("res://assets/sprites/critter/wasp_55deg_albedo.png"),
 		"normal": preload("res://assets/sprites/critter/wasp_55deg_normal.png"),
-		"clips": 1, "offset": Vector2(0, -12.36), "move_fps": 10.7, "idle_fps": 10.7, "size": 1.6,
+		"frames": 12, "cols": 60, "clips": 1, "offset": Vector2(0, -12.37), "move_fps": 8.0, "idle_fps": 8.0, "size": 1.6,
 		"wander_speed": 40.0, "flee_speed": 115.0, "hover": 14.0},
 
 	# Ambient animals: not catchable. Grazers and dogs ignore the player
 	# (flee_speed 0); deer, stag, fox and wolf bolt at a gallop, faster than the
 	# player can follow.
-	"cow": {"label": "牛", "ambient": true, "frames": 12,
+	"cow": {"label": "牛", "ambient": true, "frames": 16, "cols": 34,
 		"albedo": "res://assets/sprites/animal/cow_55deg_albedo.png",
 		"normal": "res://assets/sprites/animal/cow_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -18.41), "move_fps": 10.3, "idle_fps": 2.0,
+		"clips": 2, "offset": Vector2(0, -18.25), "move_fps": 13.71, "idle_fps": 2.67,
 		"wander_speed": 18.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
-	"bull": {"label": "公牛", "ambient": true, "frames": 12,
+	"bull": {"label": "公牛", "ambient": true, "frames": 16, "cols": 34,
 		"albedo": "res://assets/sprites/animal/bull_55deg_albedo.png",
 		"normal": "res://assets/sprites/animal/bull_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -18.49), "move_fps": 10.3, "idle_fps": 2.0,
+		"clips": 2, "offset": Vector2(0, -18.42), "move_fps": 13.71, "idle_fps": 2.67,
 		"wander_speed": 18.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
-	"donkey": {"label": "驢子", "ambient": true, "frames": 12,
+	"donkey": {"label": "驢子", "ambient": true, "frames": 16, "cols": 46,
 		"albedo": "res://assets/sprites/animal/donkey_55deg_albedo.png",
 		"normal": "res://assets/sprites/animal/donkey_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -14.96), "move_fps": 10.3, "idle_fps": 2.0,
+		"clips": 2, "offset": Vector2(0, -15.13), "move_fps": 13.71, "idle_fps": 2.67,
 		"wander_speed": 20.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
-	"alpaca": {"label": "羊駝", "ambient": true, "frames": 12,
+	"alpaca": {"label": "羊駝", "ambient": true, "frames": 16, "cols": 39,
 		"albedo": "res://assets/sprites/animal/alpaca_55deg_albedo.png",
 		"normal": "res://assets/sprites/animal/alpaca_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -15.61), "move_fps": 8.2, "idle_fps": 1.6,
+		"clips": 2, "offset": Vector2(0, -15.24), "move_fps": 10.97, "idle_fps": 2.13,
 		"wander_speed": 20.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
-	"deer": {"label": "鹿", "ambient": true, "frames": 12,
+	"deer": {"label": "鹿", "ambient": true, "frames": 16, "cols": 42,
 		"albedo": "res://assets/sprites/animal/deer_55deg_albedo.png",
 		"normal": "res://assets/sprites/animal/deer_55deg_normal.png",
-		"clips": 3, "offset": Vector2(0, -19.14), "move_fps": 10.3, "idle_fps": 2.0,
-		"flee_fps": 24.0, "flee_clip": 2, "flee_radius": 120.0, "calm_radius": 260.0,
+		"clips": 3, "offset": Vector2(0, -19.1), "move_fps": 13.71, "idle_fps": 2.67,
+		"flee_fps": 32.0, "flee_clip": 2, "flee_radius": 120.0, "calm_radius": 260.0,
 		"wander_speed": 28.0, "flee_speed": 170.0, "idle_time": Vector2(3, 8)},
-	"horse": {"label": "馬", "ambient": true, "frames": 12,
+	"horse": {"label": "馬", "ambient": true, "frames": 16, "cols": 34,
 		"albedo": "res://assets/sprites/animal/horse_55deg_albedo.png",
 		"normal": "res://assets/sprites/animal/horse_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -22.07), "move_fps": 10.3, "idle_fps": 2.0,
+		"clips": 2, "offset": Vector2(0, -21.77), "move_fps": 13.71, "idle_fps": 2.67,
 		"wander_speed": 22.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
-	"stag": {"label": "雄鹿", "ambient": true, "frames": 12,
+	"stag": {"label": "雄鹿", "ambient": true, "frames": 16, "cols": 39,
 		"albedo": "res://assets/sprites/animal/stag_55deg_albedo.png",
 		"normal": "res://assets/sprites/animal/stag_55deg_normal.png",
-		"clips": 3, "offset": Vector2(0, -22.31), "move_fps": 10.3, "idle_fps": 3.6,
-		"flee_fps": 24.0, "flee_clip": 2, "flee_radius": 120.0, "calm_radius": 260.0,
+		"clips": 3, "offset": Vector2(0, -22.28), "move_fps": 13.71, "idle_fps": 4.8,
+		"flee_fps": 32.0, "flee_clip": 2, "flee_radius": 120.0, "calm_radius": 260.0,
 		"wander_speed": 28.0, "flee_speed": 170.0, "idle_time": Vector2(3, 8)},
-	"fox": {"label": "狐狸", "ambient": true, "frames": 12,
+	"fox": {"label": "狐狸", "ambient": true, "frames": 16, "cols": 73,
 		"albedo": "res://assets/sprites/animal/fox_55deg_albedo.png",
 		"normal": "res://assets/sprites/animal/fox_55deg_normal.png",
-		"clips": 3, "offset": Vector2(0, -7.83), "move_fps": 11.5, "idle_fps": 3.6,
-		"flee_fps": 22.2, "flee_clip": 2, "flee_radius": 100.0, "calm_radius": 220.0,
+		"clips": 3, "offset": Vector2(0, -7.87), "move_fps": 15.36, "idle_fps": 4.8,
+		"flee_fps": 29.54, "flee_clip": 2, "flee_radius": 100.0, "calm_radius": 220.0,
 		"wander_speed": 32.0, "flee_speed": 160.0, "idle_time": Vector2(2, 6)},
 	# User decision: dogs trot after the player for a little while when
 	# they come close (just company - no game effect).
-	"husky": {"label": "哈士奇", "ambient": true, "frames": 12, "follow": true,
+	"husky": {"label": "哈士奇", "ambient": true, "frames": 16, "cols": 64, "follow": true,
 		"albedo": "res://assets/sprites/animal/husky_55deg_albedo.png",
 		"normal": "res://assets/sprites/animal/husky_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -10.38), "move_fps": 11.5, "idle_fps": 3.6,
+		"clips": 2, "offset": Vector2(0, -10.38), "move_fps": 15.36, "idle_fps": 4.8,
 		"wander_speed": 34.0, "flee_speed": 0.0, "idle_time": Vector2(2, 6)},
-	"shiba": {"label": "柴犬", "ambient": true, "frames": 12, "follow": true,
+	"shiba": {"label": "柴犬", "ambient": true, "frames": 16, "cols": 85, "follow": true,
 		"albedo": "res://assets/sprites/animal/shiba_55deg_albedo.png",
 		"normal": "res://assets/sprites/animal/shiba_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -8.24), "move_fps": 11.5, "idle_fps": 3.6,
+		"clips": 2, "offset": Vector2(0, -8.23), "move_fps": 15.36, "idle_fps": 4.8,
 		"wander_speed": 34.0, "flee_speed": 0.0, "idle_time": Vector2(2, 6)},
 	# User decision: wolves (and the meat-eating dinosaurs below) hunt the
 	# player - see Mode.CHASE. flee_speed is only used when scared off.
-	"wolf": {"label": "狼", "ambient": true, "frames": 12,
+	"wolf": {"label": "狼", "ambient": true, "frames": 16, "cols": 56,
 		"albedo": "res://assets/sprites/animal/wolf_55deg_albedo.png",
 		"normal": "res://assets/sprites/animal/wolf_55deg_normal.png",
-		"clips": 3, "offset": Vector2(0, -10.73), "move_fps": 11.5, "idle_fps": 3.6,
-		"flee_fps": 22.2, "flee_clip": 2,
+		"clips": 3, "offset": Vector2(0, -10.74), "move_fps": 15.36, "idle_fps": 4.8,
+		"flee_fps": 29.54, "flee_clip": 2,
 		"chase_radius": 150.0, "chase_speed": 118.0,
 		"wander_speed": 32.0, "flee_speed": 160.0, "idle_time": Vector2(2, 6)},
-	"white_horse": {"label": "白馬", "ambient": true, "frames": 12,
+	"white_horse": {"label": "白馬", "ambient": true, "frames": 16, "cols": 34,
 		"albedo": "res://assets/sprites/animal/white_horse_55deg_albedo.png",
 		"normal": "res://assets/sprites/animal/white_horse_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -22.07), "move_fps": 10.3, "idle_fps": 2.0,
+		"clips": 2, "offset": Vector2(0, -21.77), "move_fps": 13.71, "idle_fps": 2.67,
 		"wander_speed": 22.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
 	# Dinosaurs (prehistoric maps only): scaled well below life size so they
 	# fit the screen. Plant-eaters are slow, unbothered wanderers; the T-rex
 	# and raptor hunt like wolves. The sauropod's 125-frame walk plays ~1.7x
 	# fast.
-	"stegosaurus": {"label": "劍龍", "ambient": true, "frames": 12,
+	"stegosaurus": {"label": "劍龍", "ambient": true, "frames": 16, "cols": 18,
 		"albedo": "res://assets/sprites/animal/stegosaurus_55deg_albedo.png",
 		"normal": "res://assets/sprites/animal/stegosaurus_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -10.03), "move_fps": 4.1, "idle_fps": 4.7,
+		"clips": 2, "offset": Vector2(0, -10.16), "move_fps": 5.49, "idle_fps": 6.3,
 		"wander_speed": 16.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
-	"apatosaurus": {"label": "迷惑龍", "ambient": true, "frames": 12,
+	"apatosaurus": {"label": "迷惑龍", "ambient": true, "frames": 16, "cols": 14,
 		"albedo": "res://assets/sprites/animal/apatosaurus_55deg_albedo.png",
 		"normal": "res://assets/sprites/animal/apatosaurus_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -15.51), "move_fps": 4.0, "idle_fps": 2.8,
+		"clips": 2, "offset": Vector2(0, -15.42), "move_fps": 3.07, "idle_fps": 3.76,
 		"wander_speed": 14.0, "flee_speed": 0.0, "idle_time": Vector2(5, 12)},
-	"parasaurolophus": {"label": "副櫛龍", "ambient": true, "frames": 12,
+	"parasaurolophus": {"label": "副櫛龍", "ambient": true, "frames": 16, "cols": 28,
 		"albedo": "res://assets/sprites/animal/parasaurolophus_55deg_albedo.png",
 		"normal": "res://assets/sprites/animal/parasaurolophus_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -15.56), "move_fps": 10.3, "idle_fps": 4.8,
+		"clips": 2, "offset": Vector2(0, -15.57), "move_fps": 13.71, "idle_fps": 6.4,
 		"wander_speed": 24.0, "flee_speed": 0.0, "idle_time": Vector2(3, 8)},
-	"trex": {"label": "暴龍", "ambient": true, "frames": 12,
+	"trex": {"label": "暴龍", "ambient": true, "frames": 16, "cols": 16,
 		"albedo": "res://assets/sprites/animal/trex_55deg_albedo.png",
 		"normal": "res://assets/sprites/animal/trex_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -35.7), "move_fps": 8.7, "idle_fps": 4.8,
+		"clips": 2, "offset": Vector2(0, -35.69), "move_fps": 11.64, "idle_fps": 6.4,
 		"chase_radius": 170.0, "chase_speed": 96.0,
 		"wander_speed": 20.0, "flee_speed": 110.0, "idle_time": Vector2(4, 10)},
-	"triceratops": {"label": "三角龍", "ambient": true, "frames": 12,
+	"triceratops": {"label": "三角龍", "ambient": true, "frames": 16, "cols": 23,
 		"albedo": "res://assets/sprites/animal/triceratops_55deg_albedo.png",
 		"normal": "res://assets/sprites/animal/triceratops_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -11.44), "move_fps": 4.1, "idle_fps": 4.7,
+		"clips": 2, "offset": Vector2(0, -11.39), "move_fps": 5.49, "idle_fps": 6.3,
 		"wander_speed": 14.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
-	"velociraptor": {"label": "迅猛龍", "ambient": true, "frames": 12,
+	"velociraptor": {"label": "迅猛龍", "ambient": true, "frames": 16, "cols": 34,
 		"albedo": "res://assets/sprites/animal/velociraptor_55deg_albedo.png",
 		"normal": "res://assets/sprites/animal/velociraptor_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -12.69), "move_fps": 8.0, "idle_fps": 4.8,
+		"clips": 2, "offset": Vector2(0, -12.69), "move_fps": 6.62, "idle_fps": 6.4,
 		"chase_radius": 170.0, "chase_speed": 126.0,
 		"wander_speed": 30.0, "flee_speed": 150.0, "idle_time": Vector2(2, 6)},
 }
@@ -243,8 +248,9 @@ func set_species(name: String) -> void:
 	tex.diffuse_texture = _data.albedo if _data.albedo is Texture2D else load(_data.albedo)
 	tex.normal_texture = _data.normal if _data.normal is Texture2D else load(_data.normal)
 	sprite.texture = tex
-	sprite.hframes = _data.get("frames", 8)
-	sprite.vframes = _data.clips * DIRS.size()
+	var cells: int = _data.get("frames", 12) * _data.clips * ROWS
+	sprite.hframes = _data.cols
+	sprite.vframes = ceili(float(cells) / _data.cols)
 	sprite.scale = Vector2.ONE * SPRITE_SCALE * _data.get("size", 1.0) * (1.0 if _data.get("ambient", false) else BAIT_SIZE)
 	sprite.offset = _data.offset
 
@@ -280,7 +286,7 @@ func _physics_process(delta: float) -> void:
 		global_position.x = clamp(global_position.x, 16.0, Player.WORLD_WIDTH - 16.0)
 		global_position.y = clamp(global_position.y, 16.0, Player.WORLD_HEIGHT - 16.0)
 		if velocity.length() > MOVING_SPEED:
-			_dir = _dir_index(velocity)
+			_dir = Art.facing8(velocity, _dir)
 	_animate(delta)
 
 
@@ -447,16 +453,6 @@ func _pick_target(fleeing: bool) -> void:
 	_target = global_position
 
 
-## Facing, with some hysteresis: a diagonal heading doesn't flick between
-## the side and front views every frame - the other axis has to clearly win.
-func _dir_index(v: Vector2) -> int:
-	var horizontal_now := _dir == 1 or _dir == 2
-	var horizontal := absf(v.x) > absf(v.y) * (0.75 if horizontal_now else 1.33)
-	if horizontal:
-		return 2 if v.x > 0.0 else 1
-	return 0 if v.y > 0.0 else 3
-
-
 func _animate(delta: float) -> void:
 	_anim_time += delta
 	var spd := velocity.length()
@@ -475,8 +471,10 @@ func _animate(delta: float) -> void:
 			gait_speed = _data.flee_speed * PACE
 		fps *= clampf(spd / gait_speed, 0.5, 3.0)
 	_anim_phase += delta * fps
-	var frames: int = _data.get("frames", 8)
-	sprite.frame = (clip * DIRS.size() + _dir) * frames + int(_anim_phase) % frames
+	var frames: int = _data.get("frames", 12)
+	var facing: Array = FACING_ROW[_dir]
+	sprite.frame = (clip * ROWS + facing[0]) * frames + int(_anim_phase) % frames
+	sprite.flip_h = facing[1]
 	var hover: float = _data.get("hover", 0.0)
 	if hover > 0.0:
 		sprite.position.y = -hover + sin(_anim_time * 3.0) * 2.0

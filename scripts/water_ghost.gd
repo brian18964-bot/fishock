@@ -8,18 +8,23 @@ extends Node2D
 ## and it walks out of the water - rising out of it step by step as it
 ## gets shallower - lurches over with its arms out, clings to them for a
 ## moment (that's when the bait, a fish and their footing go), then wades
-## back in and sinks out of sight.
+## back in and sinks out of sight. User feedback: it moved stiffly - its
+## walk and its clawing now come from the user's animation library (a
+## zombie's lurch, a zombie's scratch; see the render script).
 
 const SHEET := [preload("res://assets/sprites/water_ghost/water_ghost_55deg_albedo.png"),
 	preload("res://assets/sprites/water_ghost/water_ghost_55deg_normal.png")]
 const SPRITE_SCALE := 0.5
 ## (0, -center_y) * 27.108 for the render's camera.
-const OFFSET := Vector2(0.0, -17.76)
-const FRAMES := 6
+const OFFSET := Vector2(0.0, -17.0)
+## Rows: walk x the 8 facings (Art.facing8), then claw x the 8 facings;
+## COLS columns, the claw rows using the first CLAW_FRAMES.
+const WALK_FRAMES := 10
+const CLAW_FRAMES := 8
+const COLS := 10
 const DIRS := 8
-## Sheet row by 45deg sector clockwise from +X (same order as the player).
-const SECTOR_TO_DIR := [6, 7, 0, 1, 2, 3, 4, 5]
-const WALK_FPS := 8.0
+const WALK_FPS := 9.0
+const CLAW_FPS := 10.0
 ## How far out in the water it comes up (less in a narrow pond).
 const IN_FROM_SHORE := 44.0
 const RISE_TIME := 0.5
@@ -92,8 +97,8 @@ func _ready() -> void:
 	tex.diffuse_texture = SHEET[0]
 	tex.normal_texture = SHEET[1]
 	_visual.texture = tex
-	_visual.hframes = FRAMES
-	_visual.vframes = DIRS
+	_visual.hframes = COLS
+	_visual.vframes = DIRS * 2
 	_visual.modulate = TINT
 	Art.place(_visual, OFFSET, SPRITE_SCALE)
 	_water_line = ShaderMaterial.new()
@@ -130,7 +135,7 @@ func _process(delta: float) -> void:
 			global_position = global_position.lerp(_cling_spot(), minf(delta * 8.0, 1.0))
 			_submerge(_water_cover())
 			_face(_player.global_position - global_position)
-			_anim += delta * WALK_FPS * 0.5
+			_anim += delta * CLAW_FPS
 			if _t >= CLING_TIME:
 				_next(Phase.RETREAT)
 		Phase.RETREAT:
@@ -144,12 +149,17 @@ func _process(delta: float) -> void:
 			_submerge(lerpf(_water_cover(), MAX_SUBMERGE + 30.0, k))
 			if _t >= SINK_TIME:
 				queue_free()
-	_visual.frame = _dir * FRAMES + int(_anim) % FRAMES
+	if _phase == Phase.CLING:
+		_visual.frame = (DIRS + _dir) * COLS + int(_anim) % CLAW_FRAMES
+	else:
+		_visual.frame = _dir * COLS + int(_anim) % WALK_FRAMES
 
 
 func _next(phase: Phase) -> void:
 	_phase = phase
 	_t = 0.0
+	if phase == Phase.CLING or phase == Phase.RETREAT:
+		_anim = 0.0
 
 
 ## Right up against the player, on the side it came from.
@@ -169,7 +179,7 @@ func _walk_to(target: Vector2, speed: float, delta: float) -> void:
 
 func _face(to: Vector2) -> void:
 	if to.length() > 0.5:
-		_dir = SECTOR_TO_DIR[posmod(roundi(to.angle() / (PI / 4.0)), 8)]
+		_dir = Art.facing8(to, _dir)
 
 
 ## How much of it the water where it stands hides (world px).

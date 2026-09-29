@@ -14,13 +14,20 @@ signal state_changed(new_state: String)
 enum GhostState { WANDER, HAUNT, LEAVE }
 
 ## User request: the ghost model (Ghoooooost by Nikki Morin) pre-rendered
-## facing down/left/right/up (tools/render_dirs.py, x1.3 --facing 39,
-## 120x96 cells, origin at its head). It floats - hovering and bobbing over
-## a soft shadow - faces the way it drifts, and its state reads as a tint
-## on the pale sheet: stunned yellow, frenzied pink, the night hunt red.
+## (tools/render_ghost_anim.py, 120x104 cells, origin at its head). User
+## feedback: it was stiff - one still pose per facing - so now it faces 8
+## ways and flutters (FRAMES per facing: its tail ripples, its claws paw
+## the air), faster when it hurries. It floats - hovering and bobbing over
+## a soft shadow - and its state reads as a tint on the pale sheet: stunned
+## yellow, frenzied pink, the night hunt red.
 const GHOST_SHEET := [preload("res://assets/sprites/ghost/ghost_55deg_albedo.png"), preload("res://assets/sprites/ghost/ghost_55deg_normal.png")]
-const GHOST_OFFSET := Vector2(0.0, 15.52)
-const GHOST_DIRS := 4  # sheet columns: down, left, right, up
+const GHOST_OFFSET := Vector2(0.0, 14.13)
+## Sheet rows: the 8 facings (Art.facing8).
+const GHOST_DIRS := 8
+const FRAMES := 8
+## Flutter rate (frames/s) drifting, and at full haunting speed.
+const FLUTTER_FPS := 6.5
+const FLUTTER_FPS_FAST := 12.0
 const HOVER := 18.0
 const BOB := 3.0
 const TINT_NORMAL := Color(0.92, 0.86, 0.95, 0.82)
@@ -31,6 +38,8 @@ const TINT_NIGHT := Color(1.0, 0.35, 0.4, 0.95)
 var _tint := TINT_NORMAL
 var _bob_time := 0.0
 var _last_pos := Vector2.ZERO
+var _dir := 0
+var _flutter := 0.0
 
 ## User feedback: everything moved too fast - the player and every creature
 ## slowed 20%, ghosts with them.
@@ -243,12 +252,10 @@ func _process(delta: float) -> void:
 	var moved := global_position - _last_pos
 	_last_pos = global_position
 	if moved.length() > 0.2:
-		var dir := 0
-		if absf(moved.x) > absf(moved.y):
-			dir = 2 if moved.x > 0.0 else 1
-		else:
-			dir = 0 if moved.y > 0.0 else 3
-		visual.frame = dir
+		_dir = Art.facing8(moved, _dir)
+	var speed := moved.length() / maxf(delta, 0.001)
+	_flutter += delta * lerpf(FLUTTER_FPS, FLUTTER_FPS_FAST, clampf(speed / (HAUNT_SPEED * PACE), 0.0, 1.0))
+	visual.frame = _dir * FRAMES + int(_flutter) % FRAMES
 
 
 func _setup_visual() -> void:
@@ -256,11 +263,13 @@ func _setup_visual() -> void:
 	tex.diffuse_texture = GHOST_SHEET[0]
 	tex.normal_texture = GHOST_SHEET[1]
 	visual.texture = tex
-	visual.hframes = GHOST_DIRS
+	visual.hframes = FRAMES
+	visual.vframes = GHOST_DIRS
 	Art.place(visual, GHOST_OFFSET, 0.5)
 	visual.modulate = _tint
 	_last_pos = global_position
 	_bob_time = randf() * TAU
+	_flutter = randf() * FRAMES
 	# A soft shadow on the ground under it.
 	var shadow := Sprite2D.new()
 	shadow.name = "Shadow"
