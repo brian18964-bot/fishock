@@ -303,6 +303,34 @@ def beach_sand(rng):
     return col, normal_from_height(h, 2.6)
 
 
+def cobbles(rng):
+    """User request (a rocky coast): a storm beach - rounded, sea-worn
+    cobbles, pale grey, cream and warm grey, lying on sand."""
+    cell = 30
+    f1, f2, ident = voronoi(rng, cell, 0.85)
+    k = ident.max() + 1
+    pick = np.random.default_rng(int(rng.integers(1 << 30)))
+    tone, warm = pick.random(k)[ident], pick.random(k)[ident]
+    radius = (cell * (0.45 + pick.random(k) * 0.2))[ident]
+    # Packed: each stone rounded off where it meets its neighbour, a thin
+    # line of sand between.
+    inside = np.minimum(radius - f1, (f2 - f1) * 0.5 - 1.2)
+    stone = np.clip(inside / 1.8, 0, 1)
+    dome = np.sqrt(np.clip(inside / (radius * 0.55), 0, 1))
+    g = 0.5 + tone * 0.3
+    rock = np.stack([g * (1.0 + warm * 0.1), g * (0.98 + warm * 0.05), g * (0.95 - warm * 0.05)], -1)
+    # Lit from above: a bright top, the lower rim in shade.
+    rock = rock * (0.62 + 0.45 * dome[..., None])
+    grit = periodic_noise(rng, 1.8)
+    sand_col = lerp((0.44, 0.39, 0.29), (0.55, 0.49, 0.37), periodic_noise(rng, 60))
+    sand_col = sand_col * (0.9 + grit[..., None] * 0.2)
+    col = lerp(sand_col, rock * (0.95 + grit[..., None] * 0.1), stone)
+    # A little shadow on the sand just outside each stone.
+    col = col * (1.0 - 0.35 * np.clip((inside + 3.0) / 3.0, 0, 1) * (1.0 - stone))[..., None]
+    h = dome * stone * 1.0 + grit * 0.05
+    return col, normal_from_height(blur(h, 0.8), 9.0)
+
+
 def asphalt(rng):
     """User request (a ruined town): old asphalt - grey aggregate, worn
     lighter where the wheels ran, cracked into slabs, patched here and
@@ -505,6 +533,7 @@ MAKERS = {
     "beach_sand": beach_sand,
     "asphalt": asphalt,
     "sidewalk": sidewalk,
+    "cobbles": cobbles,
 }
 
 

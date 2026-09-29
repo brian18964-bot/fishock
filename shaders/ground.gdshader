@@ -31,6 +31,18 @@ uniform sampler2D albedo_walk : source_color, repeat_enable, filter_linear_mipma
 uniform sampler2D normal_walk : repeat_enable, filter_linear_mipmap;
 uniform vec3 paint_color : source_color = vec3(0.62, 0.58, 0.46);
 
+// User request (the sea styles): a beach along the coast. The same slots
+// as the streets (phones have few texture units): `streets` holds the
+// distance from the sea (0..coast_range px, MapGenerator), "road" is the
+// sand, "walk" the cobbles or pebbles at the water's edge. The bands'
+// edges wander with the macro noise; `sand_patches` 1 leaves the sand only
+// in patches (a rocky coast).
+uniform bool coast_on = false;
+uniform float coast_range = 400.0;
+uniform float sand_width = 200.0;
+uniform float stones_width = 30.0;
+uniform float sand_patches = 0.0;
+
 varying vec2 world;
 
 void vertex() {
@@ -65,6 +77,19 @@ void fragment() {
 		n = mix(n, texture(normal_road, uv).rgb, road);
 		float worn = smoothstep(0.25, 0.6, texture(macro, world / 90.0).r);
 		col = mix(col, paint_color, smoothstep(0.4, 0.7, s.b) * road * worn * 0.8);
+	}
+	if (coast_on) {
+		float d = texture(streets, world / world_size).r * coast_range;
+		d += (m2 - 0.5) * 90.0 + (texture(macro, world / 210.0).r - 0.5) * 50.0;
+		float beach = 1.0 - smoothstep(sand_width - 35.0, sand_width + 35.0, d);
+		beach *= mix(1.0, smoothstep(0.42, 0.58, cover), sand_patches);
+		float stones = 1.0 - smoothstep(stones_width - 14.0, stones_width + 14.0, d);
+		vec2 uvc = world / (tile_px * 1.1) + vec2(0.13, 0.71);
+		col = mix(col, texture(albedo_road, uvc).rgb, beach);
+		n = mix(n, texture(normal_road, uvc).rgb, beach);
+		vec2 uvs = world / (tile_px * 0.42) + vec2(0.52, 0.08);
+		col = mix(col, texture(albedo_walk, uvs).rgb, stones);
+		n = mix(n, texture(normal_walk, uvs).rgb, stones);
 	}
 	col *= (0.86 + 0.28 * m2) * brightness * tint;
 	COLOR = vec4(col, 1.0);

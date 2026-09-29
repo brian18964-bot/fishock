@@ -24,6 +24,9 @@ const SEA_RADIUS := 320.0
 const SEA_WOBBLE := 50.0
 const SEA_LOBES := Vector2i(2, 3)
 const SEA_FIELD_TEXEL := 2.0
+## The beach map (ground shader): px a texel, the farthest distance kept.
+const COAST_TEXEL := 16.0
+const COAST_RANGE := 400.0
 ## Rock ridges: length (share of the land between the coast and the far
 ## edge), boulder size (smallest, biggest).
 const RIDGE_LENGTH := Vector2(0.3, 0.5)
@@ -214,25 +217,57 @@ const THEMES := {
 	# User request: a beach - the user's coconut palms and crabs. Sand, a
 	# turquoise lagoon, driftwood, sandstone boulders; crabs scuttle along
 	# the water's edge instead of frogs and bugs, the surf in the air.
-	"beach": {
+	# User request: the sea styles, from the user's photos - both a big
+	# sweep of sea along one side of the map (no ponds, no docks), a beach
+	# along it painted into the ground ("coast": its sand, the stones at the
+	# water's edge, how wide each, 1 = sand only in patches).
+	# A rocky coast (Akiya, Shimane): red-brown rock ridges running out into
+	# the sea and sea stacks off them, a cobble beach with a little sand,
+	# green scrub and trees behind.
+	"beach_rocky": {
 		"look": "detailed",
-		"shore_extras": {"reeds": 0.0, "lilypad": 0.0, "driftwood": 0.12},
-		"floor": ["beach_sand", "sand", 0.15],
-		# User feedback: too many plants - coconut palms and rocks, then
-		# shells and pebbles; no bushes, weeds or grass on the bank.
-		"trees": 22, "rocks": 8, "bushes": 0, "ground": 70,
-		# User request: the sea, not ponds - a big sweep of it along one
-		# edge, big rocks running in from it to break up the way; no docks.
 		"sea": true,
 		"docks": false,
+		"coast": {"sand": "beach_sand", "stones": "cobbles", "sand_width": 140.0, "stones_width": 75.0,
+			"patches": 0.7},
+		"shore_extras": {"reeds": 0.0, "lilypad": 0.0, "driftwood": 0.06},
+		"floor": ["grass", "grass_light", 0.35],
+		"trees": 14, "rocks": 8, "bushes": 8, "ground": 80,
 		"ridges": 3,
+		"sea_stacks": 7,
 		"ridge_pool": [3, 4, 5, 6, 7],
+		"rock_tint": Color(1.0, 0.8, 0.68),
+		"tree_families": {"leafy": 1.0},
+		"rock_pool": [3, 4, 5, 6, 7],
+		"bush_families": ["fern", "plant"],
+		"ground_kinds": {"grass": 3.0, "plant": 2.0, "pebble": 2.0},
+		"cover": {"shrub": "plant", "flower_bush": "plant"},
+		"shore": {"grass": 0.0, "shrub": 0.0, "pebbles": 0.35},
+		"shore_critters": ["crab"],
+		"shore_critter_count": 7,
+		"animals": {"fox": 1.0, "shiba": 0.6, "deer": 0.6},
+		"animal_count": 2,
+		"tint": Color(1.02, 1.02, 0.98),
+		"water": {"base": Color(0.1, 0.42, 0.42), "deep": Color(0.03, 0.16, 0.22)},
+	},
+	# A palm beach (Hualien-Taitung): a wide sand beach, coconut palms
+	# along it, a strip of pebbles at the water, grass behind.
+	"beach_sandy": {
+		"look": "detailed",
+		"sea": true,
+		"docks": false,
+		"coast": {"sand": "beach_sand", "stones": "cobbles", "sand_width": 300.0, "stones_width": 22.0,
+			"patches": 0.0},
+		"shore_extras": {"reeds": 0.0, "lilypad": 0.0, "driftwood": 0.12},
+		"floor": ["grass_light", "grass", 0.3],
+		"trees": 6, "rocks": 3, "bushes": 0, "ground": 50,
+		"beach_trees": 22,
 		"tree_families": {"coconut": 1.0},
 		"rock_pool": [3, 4, 5, 6, 7],
 		"bush_families": ["plant", "fern"],
-		"ground_kinds": {"shells": 3.0, "pebble": 2.0},
-		"cover": {"shrub": "shells", "flower_bush": "shells", "grass": "pebble"},
-		"shore": {"grass": 0.0, "shrub": 0.0, "pebbles": 0.35},
+		"ground_kinds": {"shells": 2.0, "pebble": 2.0, "grass": 1.0},
+		"cover": {"shrub": "shells", "flower_bush": "shells"},
+		"shore": {"grass": 0.0, "shrub": 0.0, "pebbles": 0.3},
 		"shore_critters": ["crab"],
 		"shore_critter_count": 9,
 		"animals": {"shiba": 1.0, "white_horse": 0.6, "husky": 0.5},
@@ -403,7 +438,7 @@ const STYLES := {
 	"swamp": {"weight": 6.0, "themes": ["swamp"]},
 	"snow": {"weight": 10.0, "themes": ["snow"]},
 	"autumn": {"weight": 10.0, "themes": ["autumn"]},
-	"beach": {"weight": 9.0, "themes": ["beach"]},
+	"beach": {"weight": 9.0, "themes": ["beach_rocky", "beach_sandy"]},
 	"ruins": {"weight": 10.0, "themes": ["ruins"]},
 }
 ## User decision: the low-poly styles are kept in reserve - built and
@@ -484,11 +519,15 @@ func _ready() -> void:
 		town = TownBuilder.new(self)
 		town.build(get_parent())
 		_lay_streets(ground)
+	if theme.has("coast"):
+		_lay_coast(ground)
 	if theme.get("paths", false):
 		_lay_stone_paths()
 	# Docks and shores before the trees and rocks, so those can keep clear
 	# of every walkway entrance.
 	_place_rock_ridges()
+	_place_sea_stacks()
+	_line_the_beach()
 	_dress_shores()
 	_scatter_props()
 	_scatter_themed_props()
@@ -600,6 +639,102 @@ func _generate_sea() -> void:
 		water_zones.append(zone)
 
 
+## The ground shader's beach: a map of the distance from the sea (the
+## common zones), COAST_TEXEL px a texel, 0..COAST_RANGE; the sand and the
+## stones from the theme's "coast". (About 0.1 s.)
+func _lay_coast(ground: CanvasItem) -> void:
+	if ground == null or not (ground.material is ShaderMaterial):
+		return
+	var seas: Array = water_zones.filter(func(z): return not z.is_rare())
+	var size := Vector2i(ceili(Player.WORLD_WIDTH / COAST_TEXEL), ceili(Player.WORLD_HEIGHT / COAST_TEXEL))
+	var img := Image.create(size.x, size.y, false, Image.FORMAT_L8)
+	for y in size.y:
+		for x in size.x:
+			var p := (Vector2(x, y) + Vector2(0.5, 0.5)) * COAST_TEXEL
+			var d := COAST_RANGE
+			for zone in seas:
+				if zone.global_position.distance_to(p) - zone.radius < d:
+					d = minf(d, zone.distance_to_edge(p))
+			img.set_pixel(x, y, Color(d / COAST_RANGE, 0.0, 0.0))
+	var coast: Dictionary = theme.coast
+	var mat: ShaderMaterial = ground.material
+	mat.set_shader_parameter("coast_on", true)
+	mat.set_shader_parameter("streets", ImageTexture.create_from_image(img))
+	mat.set_shader_parameter("world_size", Vector2(Player.WORLD_WIDTH, Player.WORLD_HEIGHT))
+	mat.set_shader_parameter("coast_range", COAST_RANGE)
+	mat.set_shader_parameter("sand_width", coast.sand_width)
+	mat.set_shader_parameter("stones_width", coast.stones_width)
+	mat.set_shader_parameter("sand_patches", coast.patches)
+	for slot in [["road", coast.sand], ["walk", coast.stones]]:
+		mat.set_shader_parameter("albedo_" + slot[0], load("res://assets/sprites/ground/%s_albedo.png" % slot[1]))
+		mat.set_shader_parameter("normal_" + slot[0], load("res://assets/sprites/ground/%s_normal.png" % slot[1]))
+
+
+## How far `pos` is from the sea (the common zones).
+func _sea_distance(pos: Vector2) -> float:
+	var best := INF
+	for zone in water_zones:
+		if not zone.is_rare():
+			best = minf(best, zone.distance_to_edge(pos))
+	return best
+
+
+## User request (a palm beach): the coconut palms stand along the beach,
+## between the pebbles at the water and the grass behind.
+func _line_the_beach() -> void:
+	var count: int = theme.get("beach_trees", 0)
+	if count == 0:
+		return
+	var band: float = theme.coast.sand_width
+	var made := 0
+	for _try in count * 40:
+		if made >= count:
+			break
+		var pos := Vector2(randf_range(PROP_MARGIN, Player.WORLD_WIDTH - PROP_MARGIN),
+			randf_range(PROP_MARGIN, Player.WORLD_HEIGHT - PROP_MARGIN))
+		var d := _sea_distance(pos)
+		if d < 45.0 or d > band - 30.0 or pos.distance_to(SPAWN_POS) < PROP_AVOID_SPAWN_RADIUS:
+			continue
+		if _in_any_water(pos) or _themed_spots.any(func(s): return s.distance_to(pos) < 70.0):
+			continue
+		var tree: Node2D = TREE_SCENE.instantiate()
+		tree.position = pos
+		_theme_prop(tree)
+		get_parent().add_child.call_deferred(tree)
+		_themed_spots.append(pos)
+		made += 1
+
+
+## User request (a rocky coast): sea stacks - big rocks standing out in
+## the shallows off the coast.
+func _place_sea_stacks() -> void:
+	var seas: Array = water_zones.filter(func(z): return not z.is_rare())
+	if seas.is_empty():
+		return
+	var made := 0
+	for _try in 80:
+		if made >= theme.get("sea_stacks", 0):
+			break
+		var zone: WaterZone = seas.pick_random()
+		var samples: Array = zone.shore_samples(50.0)
+		if samples.is_empty():
+			continue
+		var sample: Array = samples.pick_random()
+		var pos: Vector2 = sample[0] - (sample[1] as Vector2) * randf_range(40.0, 140.0)
+		if not _inside_map(pos, 40.0) or not _in_any_water(pos) \
+				or _themed_spots.any(func(s): return s.distance_to(pos) < 90.0):
+			continue
+		for k in randi_range(1, 3):
+			var rock: Node2D = OBSTACLE_SCENE.instantiate()
+			rock.position = pos + Vector2(randf_range(-30.0, 30.0), randf_range(-18.0, 18.0)) * float(k)
+			rock.size = randf_range(1.5, 2.3) / (1.0 + 0.3 * k)
+			rock.variant_pool = theme.get("ridge_pool", theme.get("rock_pool", []))
+			rock.modulate = theme.get("rock_tint", Color.WHITE)
+			get_parent().add_child.call_deferred(rock)
+			_themed_spots.append(rock.position)
+		made += 1
+
+
 ## User request: big rocks across the beach break up the way along it, so
 ## it reads as a coastline: ridges of large boulders running in from the
 ## sea (starting in the shallows), each open at its landward end so there's
@@ -654,6 +789,7 @@ func _place_rock_ridges() -> void:
 			# Biggest out by the water, smaller toward the land.
 			rock.size = lerpf(RIDGE_SIZE.y, RIDGE_SIZE.x, t) * randf_range(0.9, 1.1)
 			rock.variant_pool = theme.get("ridge_pool", theme.get("rock_pool", []))
+			rock.modulate = theme.get("rock_tint", Color.WHITE)
 			get_parent().add_child.call_deferred(rock)
 			_themed_spots.append(rock.position)
 			d += randf_range(34.0, 46.0) * rock.size / RIDGE_SIZE.y
@@ -903,6 +1039,7 @@ func _theme_prop(prop: Node) -> void:
 		prop.family_weights = theme.tree_families
 	elif "variant_pool" in prop:
 		prop.variant_pool = theme.rock_pool
+		prop.modulate = theme.get("rock_tint", Color.WHITE)
 	elif "families" in prop:
 		prop.families = theme.get("bush_families", [])
 

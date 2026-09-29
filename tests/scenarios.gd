@@ -285,12 +285,13 @@ func test_ruined_town() -> void:
 
 
 ## User request: the beach's water is the sea - a big sweep of it along
-## one side, no docks, big rock ridges running in from it; the spawn point
-## dry. And every leafless tree in one weathered colour.
+## one side, no docks; the rocky coast with rock ridges running in from
+## it, the palm beach with its palms along the sand; the spawn point dry. And every leafless tree in one weathered colour.
 func test_beach_sea() -> void:
 	var gen_script = load("res://scripts/map_generator.gd")
-	for s in [7, 21, 99]:
-		gen_script.forced_theme = "beach"
+	for run in [[7, "beach_rocky"], [21, "beach_sandy"], [99, "beach_rocky"], [5, "beach_sandy"]]:
+		var s: int = run[0]
+		gen_script.forced_theme = run[1]
 		await _fresh_game(s)
 		var gen = main.get_node("MapGenerator")
 		var commons := get_tree().get_nodes_in_group("water_zones_common")
@@ -303,8 +304,12 @@ func test_beach_sea() -> void:
 					wet += 1
 		check(float(wet) / total > 0.25, "seed %d: the sea covers a good part of the map (%d%%)" % [s, 100 * wet / total])
 		check(get_tree().get_nodes_in_group("walkways").is_empty(), "seed %d: no docks on the beach" % s)
-		var big := of_script("obstacle.gd").filter(func(r): return r.size > 1.2)
-		check(big.size() >= 10, "seed %d: rock ridges (%d boulders)" % [s, big.size()])
+		if gen.theme.get("ridges", 0) > 0:
+			var big := of_script("obstacle.gd").filter(func(r): return r.size > 1.2)
+			check(big.size() >= 10, "seed %d: rock ridges (%d boulders)" % [s, big.size()])
+		if gen.theme.get("beach_trees", 0) > 0:
+			var palms := of_script("tree.gd").filter(func(t): return gen._sea_distance(t.position) < gen.theme.coast.sand_width)
+			check(palms.size() >= 12, "seed %d: palms along the beach (%d)" % [s, palms.size()])
 		check(not get_tree().get_nodes_in_group("water_zones").any(
 			func(z): return z.distance_to_edge(MapGenerator.SPAWN_POS) < 80.0), "seed %d: the spawn point is dry" % s)
 	gen_script.forced_theme = ""
