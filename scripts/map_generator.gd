@@ -165,6 +165,39 @@ const THEMES := {
 		"animals": {"stegosaurus": 1.0, "apatosaurus": 1.0, "parasaurolophus": 1.0, "triceratops": 1.0,
 			"trex": 0.6, "velociraptor": 1.0},
 	},
+	# User request: a detailed snowfield and a detailed autumn wood - the
+	# detailed trees, rocks and bushes made over for the season
+	# (DerivedArt: pine_snow, oak_autumn, rock_snow, bush_autumn...).
+	"snow": {
+		"look": "detailed",
+		"shore_extras": {"reeds": 0.06, "lilypad": 0.0, "driftwood": 0.06},
+		"floor": ["snow", "gravel", 0.1],
+		"trees": 24, "rocks": 7, "bushes": 3, "ground": 60,
+		"tree_families": {"pine_snow": 3.0, "dead_snow": 1.0, "bare_snow": 1.5},
+		"rock_pool": ["rock_snow"],
+		"bush_families": ["bush_snow"],
+		"ground_kinds": {"pebble": 4.0, "grass": 1.0},
+		"shore": {"grass": 0.05, "shrub": 0.0, "pebbles": 0.45},
+		"animals": {"wolf": 2.0, "husky": 2.0, "stag": 1.0, "white_horse": 0.5, "fox": 1.0},
+		"tint": Color(0.86, 0.95, 1.16),
+		"water": {"base": Color(0.14, 0.28, 0.36), "deep": Color(0.03, 0.08, 0.14)},
+	},
+	"autumn": {
+		"look": "detailed",
+		"shore_extras": {"reeds": 0.14, "lilypad": 0.12, "driftwood": 0.03},
+		"floor": ["leaf_litter", "grass", 0.3],
+		"trees": 26, "rocks": 3, "bushes": 6, "ground": 110,
+		"tree_families": {"maple": 2.0, "oak_autumn": 1.5, "birch": 1.2, "leafy_autumn": 1.0, "twisted": 0.5,
+			"bare": 0.4},
+		"rock_pool": [0, 1, 2],
+		"bush_families": ["bush_autumn"],
+		"ground_kinds": {"mushroom": 3.0, "grass": 2.0},
+		# No green shrubs or flower bushes on the bank: mushrooms and grass.
+		"cover": {"shrub": "mushroom", "flower_bush": "grass"},
+		"animals": {"deer": 2.0, "stag": 1.5, "fox": 2.0, "wolf": 0.5},
+		"tint": Color(1.1, 0.98, 0.86),
+		"water": {"base": Color(0.12, 0.22, 0.24), "deep": Color(0.04, 0.07, 0.08)},
+	},
 	# User request: many more map styles so the picture isn't monotonous,
 	# from the user's packs (NatureCatalog, tools/render_packs.py). Each has
 	# its own ground, light ("tint", multiplying the day's darkness), pond
@@ -184,7 +217,7 @@ const THEMES := {
 		"animals": {"deer": 2.0, "stag": 1.5, "wolf": 1.0, "fox": 1.0},
 		"tint": Color(0.94, 1.0, 1.02),
 	},
-	"autumn": {
+	"autumn_lowpoly": {
 		"look": "lowpoly",
 		"shore_extras": {"reeds": 0.12, "lilypad": 0.12, "driftwood": 0.02},
 		"floor": ["lp_autumn", "lp_meadow", 0.15],
@@ -199,7 +232,7 @@ const THEMES := {
 		"tint": Color(1.1, 0.98, 0.86),
 		"water": {"base": Color(0.12, 0.22, 0.24), "deep": Color(0.04, 0.07, 0.08)},
 	},
-	"snow": {
+	"snow_lowpoly": {
 		"look": "lowpoly",
 		"shore_extras": {"reeds": 0.05, "lilypad": 0.0, "driftwood": 0.05},
 		"floor": ["lp_snow", "lp_stone", 0.08],
@@ -293,8 +326,9 @@ const THEMES := {
 ## three main styles ~28% each, tropical 12%, prehistoric (dinosaurs) 4%.
 ## User request (more styles): the new ones share the odds now - every
 ## style about as likely, dinosaurs still rare. User decision: only the
-## detailed look is played for now (forest ~29%, dead wood ~20%, rocky
-## ~18%, tropical ~14%, swamp ~12%, prehistoric ~6%).
+## detailed look is played for now (forest ~20%, dead wood, snow and
+## autumn ~14% each, rocky ~13%, tropical ~10%, swamp ~9%, prehistoric
+## ~4%).
 const STYLES := {
 	"forest": {"weight": 14.0, "themes": ["forest_pine", "forest_birch", "forest_maple", "forest_green"]},
 	"deadwood": {"weight": 10.0, "themes": ["deadwood"]},
@@ -302,14 +336,16 @@ const STYLES := {
 	"tropical": {"weight": 7.0, "themes": ["tropical"]},
 	"prehistoric": {"weight": 3.0, "themes": ["prehistoric"]},
 	"swamp": {"weight": 6.0, "themes": ["swamp"]},
+	"snow": {"weight": 10.0, "themes": ["snow"]},
+	"autumn": {"weight": 10.0, "themes": ["autumn"]},
 }
 ## User decision: the low-poly styles are kept in reserve - built and
 ## tested (forced_theme still reaches them) but never dealt to a player.
 ## Move one into STYLES (with a weight) to put it back in play.
 const RESERVE_STYLES := {
 	"forest_conifer": {"weight": 5.0, "themes": ["forest_conifer"]},
-	"autumn": {"weight": 11.0, "themes": ["autumn"]},
-	"snow": {"weight": 11.0, "themes": ["snow"]},
+	"autumn_lowpoly": {"weight": 11.0, "themes": ["autumn_lowpoly"]},
+	"snow_lowpoly": {"weight": 11.0, "themes": ["snow_lowpoly"]},
 	"jungle": {"weight": 9.0, "themes": ["jungle"]},
 	"savanna": {"weight": 7.0, "themes": ["savanna"]},
 	"meadow": {"weight": 8.0, "themes": ["meadow"]},

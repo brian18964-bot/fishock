@@ -31,14 +31,19 @@ const VARIANTS := [
 ]
 
 
-## Map theme (map_generator.gd): NatureCatalog bush families this map's
-## bushes come from; empty = the original four. Set before it enters the tree.
+## Map theme (map_generator.gd): bush families this map's bushes come
+## from - the catalog's, or bush_snow / bush_autumn (these four made over,
+## DerivedArt); empty = the original four. Set before it enters the tree.
 var families: Array = []
+
+static var _families_pool: Array = []
 
 
 func _ready() -> void:
 	super()
-	var pool: Array = NatureCatalog.of_families(NatureCatalog.BUSHES, families) if not families.is_empty() else VARIANTS
+	if _families_pool.is_empty():
+		_families_pool = NatureCatalog.BUSHES + DerivedArt.derive(VARIANTS, "bush")
+	var pool: Array = NatureCatalog.of_families(_families_pool, families) if not families.is_empty() else VARIANTS
 	if pool.is_empty():
 		pool = VARIANTS
 	var variant: Dictionary = pool.pick_random()

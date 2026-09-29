@@ -18,7 +18,7 @@ const HAUNT := 1
 const HEART_RANGE := 280.0
 const WATER_HEAR := 160.0
 const THUNDER_GAP := Vector2(9.0, 22.0)
-const THEME_AMBIENCE := {"snow": "amb_wind", "swamp": "amb_swamp", "jungle": "amb_jungle",
+const THEME_AMBIENCE := {"snow": "amb_wind", "snow_lowpoly": "amb_wind", "swamp": "amb_swamp", "jungle": "amb_jungle",
 	"prehistoric": "amb_jungle", "tropical": "amb_jungle"}
 
 var _player: Player
@@ -74,7 +74,7 @@ func _bobber() -> Vector2:
 
 func _bed_for_time() -> void:
 	if GameState.is_night:
-		Sfx.ambience("amb_wind" if _theme == "snow" else "amb_night")
+		Sfx.ambience("amb_wind" if _theme.begins_with("snow") else "amb_night")
 		Sfx.music("music_night")
 	else:
 		Sfx.ambience(THEME_AMBIENCE.get(_theme, "amb_day"))
@@ -124,7 +124,7 @@ func _update_steps(delta: float) -> void:
 	var kind := "step_soft"
 	if Dock.on_walkway(get_tree(), feet):
 		kind = "step_wood"
-	elif _theme == "snow":
+	elif _theme.begins_with("snow"):
 		kind = "step_snow"
 	elif _theme in ["rocky", "stone_forest", "deadwood"]:
 		kind = "step_hard"

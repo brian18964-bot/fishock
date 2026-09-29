@@ -40,18 +40,19 @@ const VARIANTS := [
 	 "offset": Vector2(0.0, -24.15), "footprint": Rect2(-30.6, -25.6, 61.2, 51.2)},
 ]
 
-## Plus the user's packs (NatureCatalog.ROCKS), after these.
+## Plus the user's packs (NatureCatalog.ROCKS), then these under snow
+## (DerivedArt, family "rock_snow"), after these.
 static var _all: Array = []
 
 
 static func variants() -> Array:
 	if _all.is_empty():
-		_all = VARIANTS + NatureCatalog.ROCKS
+		_all = VARIANTS + NatureCatalog.ROCKS + DerivedArt.derive(VARIANTS, "rock")
 	return _all
 
 
-## A theme's rock pool: VARIANTS indices, and/or NatureCatalog rock family
-## names standing for every rock of that family.
+## A theme's rock pool: VARIANTS indices, and/or family names (the
+## catalog's, or rock_snow) standing for every rock of that family.
 static func resolve_pool(pool: Array) -> Array:
 	var out := []
 	var all := variants()

@@ -15,7 +15,6 @@ const LEAVES := 12
 const FIREFLIES := 22
 const AREA := Vector2(340.0, 230.0)
 const FIREFLY_THEMES_BY_DAY := ["swamp", "jungle"]
-const NO_FIREFLIES := ["snow"]
 
 var _theme := ""
 var _rain: CPUParticles2D
@@ -37,13 +36,13 @@ func _ready() -> void:
 	_rain.initial_velocity_min = 520.0
 	_rain.initial_velocity_max = 640.0
 	_rain.gravity = Vector2.ZERO
-	if _theme == "snow":
+	if _theme.begins_with("snow"):
 		_snow = _snowfall(SNOW, 0.85)
 		_blizzard = _snowfall(BLIZZARD, 1.0)
 		_blizzard.initial_velocity_min = 60.0
 		_blizzard.initial_velocity_max = 110.0
 		_blizzard.direction = Vector2(0.9, 0.6)
-	if _theme == "autumn":
+	if _theme.begins_with("autumn"):
 		_leaves = _emitter(LEAVES, 7.0, _leaf_texture(), Color.WHITE)
 		_leaves.direction = Vector2(0.5, 1.0)
 		_leaves.spread = 40.0
@@ -58,7 +57,7 @@ func _ready() -> void:
 		tints.offsets = PackedFloat32Array([0.0, 0.5, 1.0])
 		_leaves.color_initial_ramp = tints
 		_leaves.emitting = true
-	if _theme not in NO_FIREFLIES:
+	if not _theme.begins_with("snow"):
 		_fly_layer = CanvasLayer.new()
 		_fly_layer.layer = 1
 		_fly_layer.follow_viewport_enabled = true
@@ -89,7 +88,7 @@ func _process(_delta: float) -> void:
 		if e != null:
 			e.global_position = center
 	var storm := GameState.weather == GameState.Weather.STORM
-	_rain.emitting = storm and _theme != "snow"
+	_rain.emitting = storm and not _theme.begins_with("snow")
 	if _snow != null:
 		_snow.emitting = not storm
 		_blizzard.emitting = storm

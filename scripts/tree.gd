@@ -197,13 +197,14 @@ const VARIANTS := [
 	 "family": "oak", "offset": Vector2(-0.22, -43.62), "fade_rect": Rect2(-32, -48, 63, 38)},
 ]
 
-## Plus the user's packs (NatureCatalog.TREES), after these.
+## Plus the user's packs (NatureCatalog.TREES), then these in snow and
+## autumn colours (DerivedArt), after these.
 static var _all: Array = []
 
 
 static func variants() -> Array:
 	if _all.is_empty():
-		_all = VARIANTS + NatureCatalog.TREES
+		_all = VARIANTS + NatureCatalog.TREES + DerivedArt.derive(VARIANTS, "tree")
 	return _all
 
 
