@@ -12,6 +12,15 @@ nature, fishing in its flooded streets". The user's models (the repo's
   carwreckScan.rar          a scanned wrecked hatchback
   blender_5.0.1.blend       rusty cars under ivy: a van, a sports car, a
                             motorbike, a car seat, an engine (Blender 5)
+and the "Asset2" release (street furniture the user found on request):
+  Abandoned_gas_station.blender.zip + Textures.rar
+                            a derelict gas station: office, canopy, pumps
+  Benches.fbx.zip + Benches_texture.zip
+                            wood-and-concrete benches, whole and broken
+  Mailbox.fbx + Textures.zip
+                            a US mail drop box (the rusty skin)
+  Traffic+signal+FBX.rar    a cantilevered traffic signal (its textures
+                            didn't come with it: painted)
 Needs Blender 5's Python module (pip install bpy==5.0.1) - the ivy file
 is Blender 5; render_sprite.py's helpers work there too.
 
@@ -83,6 +92,21 @@ MODELS = {
     "seat": ("blender_5.0.1.blend", SEAT, "junk", ("height", 1.1), [0, 120, 240], {}),
     "seat_ivy": ("blender_5.0.1.blend", SEAT + SEAT_IVY, "junk", ("height", 1.1), [0, 120, 240], {"scale_by": SEAT}),
     "engine": ("blender_5.0.1.blend", ["SM_asset_02"], "junk", ("length", 0.9), [0, 120, 240], {}),
+    # The user's second batch (Asset2).
+    "gas_station": ("Abandoned_gas_station.blend", "gas_station_low", "building", ("scale", 1.0), SIDES,
+                    {"maps": {m: "Textures/%s/Abandoned_Gas_Station_%s" % (d, f) for m, d, f in [
+                        ("slab", "Slab", "slab"), ("pump", "Gas_pump", "pump"), ("bulding", "Building", "bulding"),
+                        ("dust_bin_small", "Dust_bin_small", "dust_bin_small"),
+                        ("dust_bin_big", "Dust_bin_big", "dust_bin_big")]}}),
+    "bench": ("Benches.fbx", ["Bench_Back"], "junk", ("length", 1.8), SIDES, {}),
+    "bench_broken": ("Benches.fbx", ["Bench_Back_Damaged"], "junk", ("length", 1.8), SIDES, {}),
+    "mailbox": ("Mailbox.fbx", ["Mailbox_LOD0"], "junk", ("height", 1.2), SIDES,
+                {"maps": {"*": "Textures/Mailbox2"}}),
+    # The file is a kit laid out in a row (poles, heads, signs, a bin): just
+    # the cantilevered signal - its pole, arm and the heads on them.
+    "traffic_light": ("Traffic signal.fbx", None, "prop", ("height", 5.6), SIDES,
+                      {"paint": "traffic_light",
+                       "keep": lambda lo, hi: lo[0] >= -1.05 and hi[0] <= 2.4 and (hi[2] > 3.0 or lo[0] >= 1.95)}),
     # Built here (BUILDERS): the street's furniture and junk, wooden houses.
     "street_lamp": ("@street_lamp", None, "prop", ("height", 6.5), SIDES, {}),
     "street_lamp_bent": ("@street_lamp_bent", None, "prop", ("height", 6.5), SIDES, {}),
@@ -481,9 +505,10 @@ def load(release, spec):
         bpy.ops.wm.open_mainfile(filepath=path)
     else:
         bpy.ops.wm.read_factory_settings(use_empty=True)
-        bpy.ops.import_scene.fbx(filepath=path)
+        _import_fbx(path)
     for o in list(bpy.data.objects):
-        if o.type != 'MESH' or (objects is not None and o.name not in objects):
+        wanted = objects is None or (o.name.startswith(objects) if isinstance(objects, str) else o.name in objects)
+        if o.type != 'MESH' or not wanted:
             bpy.data.objects.remove(o, do_unlink=True)
     meshes = [o for o in bpy.data.objects if o.type == 'MESH']
     for o in meshes:
@@ -491,6 +516,8 @@ def load(release, spec):
         o.parent = None
         o.matrix_world = w
     bpy.context.view_layer.update()
+    if extra.get("keep"):
+        keep_parts(meshes, extra["keep"])
     if extra.get("trim_ground"):
         trim_ground(meshes, extra["trim_ground"])
     if extra.get("texture"):
@@ -502,14 +529,55 @@ def load(release, spec):
             t = nt.nodes.new('ShaderNodeTexImage')
             t.image = img
             nt.links.new(t.outputs['Color'], bsdf.inputs['Base Color'])
+    if extra.get("maps"):
+        apply_maps(release, meshes, extra["maps"])
     if extra.get("paint") == "bus_stop":
         for o in meshes:
             o.data.materials.clear()
             o.data.materials.append(_shelter_material())
+    if extra.get("paint") == "traffic_light":
+        from render_props import paint
+        steel = paint("signal_steel", (0.1, 0.11, 0.1), (0.22, 0.1, 0.04), scale=9.0, amount=0.5)
+        for o in meshes:
+            o.data.materials.clear()
+            o.data.materials.append(steel)
     if extra.get("roof"):
         meshes += flat_roof(meshes)
     bpy.context.view_layer.update()
     return meshes
+
+
+def keep_parts(meshes, keep):
+    """Deletes every loose part whose bounding box (lo, hi: world xyz, as
+    loaded) `keep` turns down."""
+    import bmesh
+    for o in meshes:
+        mw = o.matrix_world
+        bm = bmesh.new()
+        bm.from_mesh(o.data)
+        bm.verts.ensure_lookup_table()
+        seen = set()
+        doomed = []
+        for v in bm.verts:
+            if v.index in seen:
+                continue
+            part, stack = [], [v]
+            seen.add(v.index)
+            while stack:
+                a = stack.pop()
+                part.append(a)
+                for e in a.link_edges:
+                    b = e.other_vert(a)
+                    if b.index not in seen:
+                        seen.add(b.index)
+                        stack.append(b)
+            p = np.array([tuple(mw @ a.co) for a in part])
+            if not keep(p.min(0), p.max(0)):
+                doomed += part
+        bmesh.ops.delete(bm, geom=doomed, context='VERTS')
+        bm.to_mesh(o.data)
+        bm.free()
+    bpy.context.view_layer.update()
 
 
 def trim_ground(meshes, fraction):
@@ -526,6 +594,70 @@ def trim_ground(meshes, fraction):
         bm.to_mesh(o.data)
         bm.free()
     bpy.context.view_layer.update()
+
+
+def _import_fbx(path):
+    """Blender 5's FBX importer trips over a lamp in the file (a Cycles
+    setting it no longer has) - the lamps are thrown away anyway."""
+    from io_scene_fbx import import_fbx
+    real = import_fbx.blen_read_light
+
+    def lamp(*args):
+        try:
+            return real(*args)
+        except AttributeError:
+            return bpy.data.lights.new("lamp", 'POINT')
+
+    import_fbx.blen_read_light = lamp
+    try:
+        bpy.ops.import_scene.fbx(filepath=path)
+    finally:
+        import_fbx.blen_read_light = real
+
+
+def apply_maps(release, meshes, maps):
+    """Wires texture sets that came loose from their model into its
+    materials: {material name (or "*" for every mesh, given a fresh
+    material): path prefix}, the prefix + "_BaseColor.png" or
+    "_AlbedoTransparency.tga", and its "_Normal" map beside it."""
+    def find(prefix, names):
+        for n in names:
+            if os.path.exists(os.path.join(release, prefix + n)):
+                return os.path.join(release, prefix + n)
+        return None
+
+    def wire(mat, prefix):
+        mat.use_nodes = True
+        nt = mat.node_tree
+        bsdf = next((n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED'), None)
+        if bsdf is None:
+            return
+        base = find(prefix, ["_BaseColor.png", "_AlbedoTransparency.tga"])
+        normal = find(prefix, ["_Normal.png", "_Normal.tga"])
+        assert base, prefix
+        t = nt.nodes.new('ShaderNodeTexImage')
+        t.image = bpy.data.images.load(base, check_existing=True)
+        nt.links.new(t.outputs['Color'], bsdf.inputs['Base Color'])
+        if normal:
+            n = nt.nodes.new('ShaderNodeTexImage')
+            n.image = bpy.data.images.load(normal, check_existing=True)
+            n.image.colorspace_settings.name = 'Non-Color'
+            nm = nt.nodes.new('ShaderNodeNormalMap')
+            nt.links.new(n.outputs['Color'], nm.inputs['Color'])
+            nt.links.new(nm.outputs['Normal'], bsdf.inputs['Normal'])
+
+    if "*" in maps:
+        mat = bpy.data.materials.new("skin")
+        mat.use_nodes = True
+        wire(mat, maps["*"])
+        for o in meshes:
+            o.data.materials.clear()
+            o.data.materials.append(mat)
+        return
+    for mat in {sl.material for o in meshes for sl in o.material_slots if sl.material}:
+        key = mat.name.split(".")[0]
+        if key in maps:
+            wire(mat, maps[key])
 
 
 def _shelter_material():
@@ -598,7 +730,9 @@ def normalize(meshes, spec):
     ref = [o for o in meshes if o.name in extra["scale_by"]] if extra.get("scale_by") else meshes
     p = points(ref)
     lo, hi = p.min(0), p.max(0)
-    if axis == "height":
+    if axis == "scale":
+        s = metres * M  # already in metres
+    elif axis == "height":
         s = metres * M / (hi[2] - lo[2])
     else:
         s = metres * M / max(hi[0] - lo[0], hi[1] - lo[1])

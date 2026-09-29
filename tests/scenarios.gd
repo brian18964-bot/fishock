@@ -223,7 +223,8 @@ func test_all_themes() -> void:
 	check(dealt.size() >= 8, "and all of them turn up (%d)" % dealt.size())
 
 
-## User request: a ruined town, fishing in its flooded streets. Its streets
+## User request: a ruined town, fishing in its flooded streets - its old
+## gas station behind the spawn point, signals at the crossings. Its streets
 ## are painted into the ground (no wooden docks: user feedback); buildings line them, clear of the ponds,
 ## the landmarks and each other, their walls never rising over a road;
 ## wrecked cars stand on the roads; everything built is solid.
@@ -247,6 +248,8 @@ func test_ruined_town() -> void:
 		var wrecks := props.filter(func(p): return p.entry.kind == "wreck")
 		check(buildings.size() >= 10, "seed %d: buildings line the streets (%d)" % [s, buildings.size()])
 		check(wrecks.size() >= 5, "seed %d: wrecked cars (%d)" % [s, wrecks.size()])
+		check(buildings.any(func(b): return b.entry.family == "gas_station"), "seed %d: the old gas station" % s)
+		check(props.any(func(p): return p.entry.family == "traffic_light"), "seed %d: traffic signals" % s)
 		var fixed := [MapGenerator.SPAWN_POS, main.get_node("Altar").global_position,
 			main.get_node("EscapePoint").global_position]
 		var bad := []
@@ -257,6 +260,11 @@ func test_ruined_town() -> void:
 				if z.contains(r.get_center()):
 					bad.append("%s in water" % b.entry.name)
 			for f in fixed:
+				# The gas station stands behind the spawn point's drums on purpose.
+				if b.entry.family == "gas_station" and f == MapGenerator.SPAWN_POS:
+					if r.grow(20.0).has_point(f):
+						bad.append("gas station over the spawn point")
+					continue
 				if r.grow(TownBuilder.CLEAR_OF_FIXED - 1.0).has_point(f):
 					bad.append("%s on a landmark" % b.entry.name)
 			for j in range(i + 1, buildings.size()):

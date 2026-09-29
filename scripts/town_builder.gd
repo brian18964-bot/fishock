@@ -38,6 +38,7 @@ var h_roads: Array = []
 var v_roads: Array = []
 var road_rects: Array[Rect2] = []
 var walk_rects: Array[Rect2] = []
+var paved_rects: Array[Rect2] = []  # paved but not pavement (the forecourt)
 var _taken: Array[Rect2] = []      # footprints placed so far (grown a little)
 var _behind: Array[Rect2] = []     # what the buildings' walls and roofs cover
 var _fixed: Array[Vector2] = []
@@ -56,6 +57,8 @@ func build(parent: Node) -> void:
 		if n != null:
 			_fixed.append(n.global_position)
 	_lay_streets()
+	_open_gas_station(parent)
+	_signal_crossings(parent)
 	_line_streets_with_buildings(parent)
 	_abandon_cars(parent)
 	_furnish_pavements(parent)
@@ -114,7 +117,7 @@ func street_map() -> ImageTexture:
 	var size := Vector2i(world * MASK_SCALE)
 	var img := Image.create(size.x, size.y, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 1))
-	for r in walk_rects:
+	for r in walk_rects + paved_rects:
 		img.fill_rect(_mask_rect(r), Color(0, 1, 0, 1))
 	for r in road_rects:
 		img.fill_rect(_mask_rect(r), Color(1, 0, 0, 1))
@@ -143,7 +146,7 @@ func _mask_rect(r: Rect2) -> Rect2i:
 # --- Placing things ---------------------------------------------------------------
 
 ## Is a footprint (world rect) clear to build on?
-func _clear(rect: Rect2, keep_off_roads := true) -> bool:
+func _clear(rect: Rect2, keep_off_roads := true, near_spawn := false) -> bool:
 	if rect.position.x < 8.0 or rect.position.y < 8.0 or rect.end.x > world.x - 8.0 or rect.end.y > world.y - 8.0:
 		return false
 	if keep_off_roads:
@@ -154,6 +157,8 @@ func _clear(rect: Rect2, keep_off_roads := true) -> bool:
 		if r.intersects(rect):
 			return false
 	for p in _fixed:
+		if near_spawn and p == MapGenerator.SPAWN_POS:
+			continue
 		if rect.grow(CLEAR_OF_FIXED).has_point(p):
 			return false
 	for pt in [rect.position, rect.end, Vector2(rect.position.x, rect.end.y), Vector2(rect.end.x, rect.position.y),
@@ -178,10 +183,11 @@ func _spawn(parent: Node, e: Dictionary, pos: Vector2) -> Node2D:
 
 ## Tries to put `e` with its base's bounding box at `rect_at` (a function
 ## of the base rect giving the node position); records it if it fits.
-func _try_place(parent: Node, e: Dictionary, pos: Vector2, keep_off_roads := true, pad := 4.0) -> bool:
+func _try_place(parent: Node, e: Dictionary, pos: Vector2, keep_off_roads := true, pad := 4.0,
+		near_spawn := false) -> bool:
 	var fp := RuinProp.footprint_rect(e)
 	var rect := Rect2(fp.position + pos, fp.size)
-	if not _clear(rect.grow(pad), keep_off_roads):
+	if not _clear(rect.grow(pad), keep_off_roads, near_spawn):
 		return false
 	if e.kind == "building" and _hangs_over_road(e, pos):
 		return false
@@ -239,6 +245,40 @@ func _entry(family: String, yaw: int) -> Dictionary:
 static func _yaw_gap(a: int, b: int) -> int:
 	var d := absi(a - b) % 360
 	return mini(d, 360 - d)
+
+
+# --- Landmarks -------------------------------------------------------------------
+
+## User request: the town's old gas station (the user's model) stands
+## behind the spawn point's oil drums - the refuel point is its forecourt -
+## fronting the main street.
+func _open_gas_station(parent: Node) -> void:
+	var e := _entry("gas_station", 270)
+	var fp := RuinProp.footprint_rect(e)
+	var spawn := MapGenerator.SPAWN_POS
+	var pos := Vector2(spawn.x - fp.get_center().x, spawn.y - 26.0 - fp.end.y)
+	if _try_place(parent, e, pos, true, 4.0, true):
+		# Its concrete forecourt, out to the main street.
+		var main: Array = h_roads[0]
+		var top := pos.y + fp.position.y - 10.0
+		paved_rects.append(Rect2(pos.x + fp.position.x - 24.0, top, fp.size.x + 48.0,
+			main[2] - main[3] / 2.0 - top))
+
+
+## Traffic signals where the side streets cross the main street: one on
+## the far corner, its arm out over the main street; one on the near
+## corner, its arm over the side street.
+func _signal_crossings(parent: Node) -> void:
+	var main: Array = h_roads[0]
+	for v in v_roads:
+		if absf(v[0] - main[2]) >= 1.0 and absf(v[1] - main[2]) >= 1.0:
+			continue
+		var dx: float = v[3] / 2.0 + PAVEMENT * 0.5
+		var dy: float = main[3] / 2.0 + PAVEMENT * 0.5
+		if absf(v[1] - main[2]) < 1.0 or randf() < 0.5:
+			_try_place(parent, _entry("traffic_light", 270), Vector2(v[2] + dx, main[2] + dy), false, 2.0)
+		if absf(v[1] - main[2]) < 1.0:
+			_try_place(parent, _entry("traffic_light", 180), Vector2(v[2] - dx, main[2] - dy), false, 2.0)
 
 
 # --- Buildings --------------------------------------------------------------------
@@ -339,8 +379,8 @@ func _in_water(pos: Vector2) -> bool:
 
 # --- Street furniture -----------------------------------------------------------
 
-## Lamps along both pavements, a line of utility poles, hydrants, bus
-## stops on the main street, signs at the corners, bins by the buildings.
+## Lamps along both pavements, a line of utility poles, hydrants, benches
+## and mailboxes, bus stops on the main street, signs at the corners.
 func _furnish_pavements(parent: Node) -> void:
 	for i in h_roads.size():
 		var r: Array = h_roads[i]
@@ -370,16 +410,22 @@ func _along(parent: Node, from: float, to: float, step: float, at: Callable, lam
 		var pos: Vector2 = at.call(t)
 		var roll := randf()
 		var family := ""
-		if roll < 0.55:
+		if roll < 0.48:
 			family = "street_lamp" if randf() < 0.8 else "street_lamp_bent"
-		elif roll < 0.72:
+		elif roll < 0.62:
 			family = "utility_pole"
-		elif roll < 0.8:
+		elif roll < 0.68:
 			family = "hydrant"
+		elif roll < 0.76:
+			family = "bench" if randf() < 0.6 else "bench_broken"
+		elif roll < 0.81:
+			family = "mailbox"
 		elif roll < 0.9:
 			family = ["trash", "barrels", "tires"].pick_random()
 		if family != "":
-			var yaw := lamp_yaw if family.begins_with("street_lamp") else randi_range(0, 3) * 90
+			# Lamps, benches and mailboxes face the street.
+			var yaw := lamp_yaw if family.begins_with("street_lamp") or family.begins_with("bench") \
+				or family == "mailbox" else randi_range(0, 3) * 90
 			if not _in_water(pos) and gen._shore_distance(pos) > 6.0:
 				_try_place(parent, _entry(family, yaw), pos, false, 2.0)
 		t += step * randf_range(0.7, 1.2)
