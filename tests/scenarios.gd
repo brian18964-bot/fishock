@@ -198,6 +198,11 @@ func test_all_themes() -> void:
 				if art != "" and art != look:
 					strays[path.get_file()] = true
 		check(strays.is_empty(), "%s (%s): no art of the other look %s" % [theme, look, str(strays.keys())])
+		if gen.theme.has("shore_critters"):
+			var kinds := {}
+			for c in of_script("/critter.gd"):
+				kinds[c.species] = true
+			check(gen.theme.shore_critters.all(func(k): return kinds.has(k)), "%s: its shore creatures %s" % [theme, str(kinds.keys())])
 		var floors: Array = gen.theme.floor.slice(0, 2)
 		check(floors.all(func(f): return f.begins_with("lp_") == (look == "lowpoly")), "%s: its look's floor" % theme)
 		var tint: Color = main.get_node("Darkness").tint
@@ -221,7 +226,7 @@ func test_all_themes() -> void:
 ## Which look a scenery texture belongs to ("" for the shared art - the
 ## player, the landmarks, animals, lily pads).
 const DETAILED_DIRS := ["bare_tree", "birch_tree", "bush", "dead_tree", "ground_cover", "leafy_tree", "maple_tree",
-	"oak_tree", "palm_tree", "pine", "rock", "twisted_tree", "props"]
+	"oak_tree", "palm_tree", "pine", "rock", "twisted_tree", "props", "beach_palm"]
 const LOWPOLY_DIRS := ["autumn_tree", "bonsai_tree", "bush2", "conifer", "jungle_tree", "lowpoly", "meadow_tree",
 	"snow_tree", "rock2"]
 
@@ -287,7 +292,7 @@ func test_catalog_and_sounds() -> void:
 		"perfect", "catch", "fail", "ignite", "extinguish", "flash", "step_soft", "step_hard", "step_wood",
 		"step_snow", "chain_loop", "whisper", "moan", "emerge", "cage", "heartbeat_loop", "offering",
 		"rock_flip", "tap", "swipe_hit", "flop", "thunder", "escape", "amb_night", "amb_day", "amb_water",
-		"amb_rain", "amb_wind", "amb_swamp", "amb_jungle", "music_day", "music_night"]
+		"amb_rain", "amb_wind", "amb_swamp", "amb_jungle", "amb_surf", "music_day", "music_night"]
 	var lost := sounds.filter(func(n): return Sfx.stream(n) == null)
 	check(lost.is_empty(), "every sound loads %s" % str(lost))
 	var toggle: SoundToggle = null
@@ -352,6 +357,20 @@ func test_creature_animation() -> void:
 		c._dir = Art.facing8(Vector2.LEFT, 0)
 		c._animate(0.1)
 		check(not sprite.flip_h, "%s facing left: as rendered" % c.species)
+	# User request (beach): crabs walk side-on, and never turn up at random.
+	var crab: Critter = load("res://scenes/critter.tscn").instantiate()
+	crab.species = "crab"
+	main.add_child(crab)
+	crab.global_position = player().global_position + Vector2(200, 0)
+	crab._mode = crab.Mode.WANDER
+	crab._target = crab.global_position + Vector2(300, 0)
+	await frames(20)
+	check(crab._dir == 0 or crab._dir == 4, "a crab walking right faces across its way (facing %d)" % crab._dir)
+	var dealt := {}
+	for i in 200:
+		dealt[crab._pick_species()] = true
+	check(not dealt.has("crab"), "crabs aren't dealt at random")
+	crab.queue_free()
 
 
 func test_refuel() -> void:

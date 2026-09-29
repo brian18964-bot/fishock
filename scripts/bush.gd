@@ -18,22 +18,23 @@ const SPRITE_SCALE := 0.5
 const VARIANTS := [
 	{"albedo": "res://assets/sprites/bush/bush_55deg_albedo.png",
 	 "normal": "res://assets/sprites/bush/bush_55deg_normal.png",
-	 "offset": BUSH_OFFSET, "hide_rect": Rect2(-24, -33, 50, 48)},
+	 "family": "bush", "offset": BUSH_OFFSET, "hide_rect": Rect2(-24, -33, 50, 48)},
 	{"albedo": "res://assets/sprites/bush/bush_flowers_55deg_albedo.png",
 	 "normal": "res://assets/sprites/bush/bush_flowers_55deg_normal.png",
-	 "offset": BUSH_OFFSET, "hide_rect": Rect2(-24, -33, 50, 48)},
+	 "family": "bush", "offset": BUSH_OFFSET, "hide_rect": Rect2(-24, -33, 50, 48)},
 	{"albedo": "res://assets/sprites/bush/fern_55deg_albedo.png",
 	 "normal": "res://assets/sprites/bush/fern_55deg_normal.png",
-	 "offset": BUSH_OFFSET, "hide_rect": Rect2(-25, -21, 51, 39)},
+	 "family": "fern", "offset": BUSH_OFFSET, "hide_rect": Rect2(-25, -21, 51, 39)},
 	{"albedo": "res://assets/sprites/bush/plant_big_2_55deg_albedo.png",
 	 "normal": "res://assets/sprites/bush/plant_big_2_55deg_normal.png",
-	 "offset": BIG_PLANT_OFFSET, "hide_rect": Rect2(-23, -52, 48, 50)},
+	 "family": "plant", "offset": BIG_PLANT_OFFSET, "hide_rect": Rect2(-23, -52, 48, 50)},
 ]
 
 
 ## Map theme (map_generator.gd): bush families this map's bushes come
-## from - the catalog's, or bush_snow / bush_autumn (these four made over,
-## DerivedArt); empty = the original four. Set before it enters the tree.
+## from - these four (bush, fern, plant), the catalog's, or these made
+## over for the season (DerivedArt: bush_snow, fern_autumn...); empty =
+## the original four. Set before it enters the tree.
 var families: Array = []
 
 static var _families_pool: Array = []
@@ -42,7 +43,7 @@ static var _families_pool: Array = []
 func _ready() -> void:
 	super()
 	if _families_pool.is_empty():
-		_families_pool = NatureCatalog.BUSHES + DerivedArt.derive(VARIANTS, "bush")
+		_families_pool = VARIANTS + NatureCatalog.BUSHES + DerivedArt.derive(VARIANTS, "bush")
 	var pool: Array = NatureCatalog.of_families(_families_pool, families) if not families.is_empty() else VARIANTS
 	if pool.is_empty():
 		pool = VARIANTS

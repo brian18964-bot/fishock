@@ -494,6 +494,31 @@ def amb_jungle():
     return norm(loopify(x + reverb(birds, 0.6, 1.2, 0.5)[:len(x)] * 0.6, 1.0), 0.45)
 
 
+def amb_surf():
+    """User request (a beach style): surf - three waves a loop swelling,
+    breaking and washing back up the sand, a gull or two far off."""
+    d = 16.0
+    t = t_axis(d)
+    x = lowpass(pink(d), 500) * 0.25
+    period = d / 3
+    for k in range(3):
+        u = ((t - k * period - 0.4) % d) / period
+        swell = np.clip(u / 0.35, 0, 1) ** 2 * (u < 0.35)
+        crash = np.exp(-np.clip(u - 0.35, 0, None) / 0.12) * (u >= 0.35)
+        wash = np.exp(-np.clip(u - 0.4, 0, None) / 0.35) * (u >= 0.4)
+        x += lowpass(pink(d), 400) * swell * 0.6
+        x += highpass(pink(d), 900) * crash * 0.55
+        x += bandpass(white(d), 2500, 1800) * wash * 0.25
+    for _ in range(2):
+        at = RNG.uniform(1.0, d - 2.0)
+        for k in range(RNG.integers(2, 4)):
+            b = 0.28
+            n = int(b * SR)
+            call = sum(tone(glide(1350 * h, 950 * h, b), b) / h for h in (1, 2, 3)) * np.hanning(n)
+            place(x, lowpass(call, 3500) * 0.06, at + k * 0.33)
+    return norm(loopify(x, 1.2), 0.5)
+
+
 # --- music ---------------------------------------------------------------------
 
 def pad(freqs, d, vib=0.004, bright=1400):
@@ -553,7 +578,7 @@ SOUNDS = {
     "rock_flip": rock_flip, "tap": tap, "swipe_hit": whoosh_hit, "flop": flop, "thunder": thunder,
     "escape": escape_sparkle,
     "amb_night": amb_night, "amb_day": amb_day, "amb_water": amb_water, "amb_rain": amb_rain,
-    "amb_wind": amb_wind, "amb_swamp": amb_swamp, "amb_jungle": amb_jungle,
+    "amb_wind": amb_wind, "amb_swamp": amb_swamp, "amb_jungle": amb_jungle, "amb_surf": amb_surf,
     "music_day": music_day, "music_night": music_night,
 }
 

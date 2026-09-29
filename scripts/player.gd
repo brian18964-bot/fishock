@@ -106,9 +106,10 @@ const EPIC_CHANCE_OF_RARE := 0.18
 const BAIT_FLAVOR_WORM := "蚯蚓"
 const BAIT_FLAVOR_BUG := "蟲子"
 const BAIT_FLAVOR_FROG := "青蛙"
-## User request: critters (see Critter) can be caught as bait. Rats and
-## snakes are "big bait": a rare catch is twice as likely to turn epic.
-const BIG_BAIT_FLAVORS := ["老鼠", "蛇"]
+## User request: critters (see Critter) can be caught as bait. Rats,
+## snakes and the beach's crabs are "big bait": a rare catch is twice as
+## likely to turn epic.
+const BIG_BAIT_FLAVORS := ["老鼠", "蛇", "螃蟹"]
 
 ## User feedback: weather (see GameState.Weather) should color the fishing
 ## odds too - a fish run is a reliably better window, a storm makes the

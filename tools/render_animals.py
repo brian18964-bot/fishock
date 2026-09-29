@@ -107,6 +107,18 @@ def render(name, out):
         yaw.set(rs.DIRS[d])
         rs.set_pose(a, f)
 
+    meta = sheet(name, out, meshes, cells, pose)
+    fps = []
+    for a in actions:
+        start, end = a.frame_range
+        fps.append(round(frames / ((end - start) / 24.0), 2))
+    meta.update({"frames": frames, "clips": len(clips), "fps": fps})
+    return meta
+
+
+def sheet(name, out, meshes, cells, pose):
+    """Renders `cells` (posed by `pose`) into OUT/<name>_55deg_* with one
+    camera fitted to them all; returns the cell size, cols and offset."""
     x1 = y1 = -1e9
     y0 = 1e9
     for cell in cells:
@@ -125,12 +137,7 @@ def render(name, out):
     prefix = os.path.join(out, f"{name}_55deg")
     rs.pack_sheet(meshes, cells, pose, (w, h), cols, prefix)
     half_normal(f"{prefix}_normal.png")
-    fps = []
-    for a in actions:
-        start, end = a.frame_range
-        fps.append(round(frames / ((end - start) / 24.0), 2))
-    return {"cell": [w, h], "cols": cols, "frames": frames, "clips": len(clips),
-            "offset": [0.0, round(-cy * DENSITY, 2)], "fps": fps}
+    return {"cell": [w, h], "cols": cols, "offset": [0.0, round(-cy * DENSITY, 2)]}
 
 
 def main():

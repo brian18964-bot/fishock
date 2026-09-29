@@ -3656,5 +3656,197 @@
    -0.9688918590545654,
    0.9688918590545654
   ]
+ },
+ {
+  "name": "coconut_1",
+  "dir": "beach_palm",
+  "kind": "tree",
+  "family": "coconut",
+  "offset": [
+   43.21,
+   -101.92
+  ],
+  "bounds": {
+   "min_x": -1.2923,
+   "max_x": 4.4801,
+   "min_y": -0.251,
+   "max_y": 7.7703
+  }
+ },
+ {
+  "name": "coconut_2",
+  "dir": "beach_palm",
+  "kind": "tree",
+  "family": "coconut",
+  "offset": [
+   1.92,
+   -92.93
+  ],
+  "bounds": {
+   "min_x": -2.4331,
+   "max_x": 2.5749,
+   "min_y": -0.2948,
+   "max_y": 7.1508
+  }
+ },
+ {
+  "name": "coconut_3",
+  "dir": "beach_palm",
+  "kind": "tree",
+  "family": "coconut",
+  "offset": [
+   1.9,
+   -99.98
+  ],
+  "bounds": {
+   "min_x": -2.432,
+   "max_x": 2.5719,
+   "min_y": -0.2903,
+   "max_y": 7.6667
+  }
+ },
+ {
+  "name": "coconut_4",
+  "dir": "beach_palm",
+  "kind": "tree",
+  "family": "coconut",
+  "offset": [
+   14.68,
+   -106.84
+  ],
+  "bounds": {
+   "min_x": -2.6175,
+   "max_x": 3.7009,
+   "min_y": -0.2855,
+   "max_y": 8.168
+  }
+ },
+ {
+  "name": "coconut_5",
+  "dir": "beach_palm",
+  "kind": "tree",
+  "family": "coconut",
+  "offset": [
+   35.47,
+   -116.27
+  ],
+  "bounds": {
+   "min_x": -1.4489,
+   "max_x": 4.0661,
+   "min_y": -0.2398,
+   "max_y": 8.8182
+  }
+ },
+ {
+  "name": "coconut_6",
+  "dir": "beach_palm",
+  "kind": "tree",
+  "family": "coconut",
+  "offset": [
+   6.92,
+   -93.29
+  ],
+  "bounds": {
+   "min_x": -2.2564,
+   "max_x": 2.7673,
+   "min_y": -0.2294,
+   "max_y": 7.112
+  }
+ },
+ {
+  "name": "coconut_7",
+  "dir": "beach_palm",
+  "kind": "tree",
+  "family": "coconut",
+  "offset": [
+   14.68,
+   -106.84
+  ],
+  "bounds": {
+   "min_x": -2.6175,
+   "max_x": 3.7009,
+   "min_y": -0.2855,
+   "max_y": 8.168
+  }
+ },
+ {
+  "name": "shells_1",
+  "dir": "shore",
+  "kind": "cover",
+  "family": "shells",
+  "offset": [
+   5.74,
+   -1.93
+  ],
+  "bounds": {
+   "min_x": -0.3384,
+   "max_x": 0.7616,
+   "min_y": -0.2116,
+   "max_y": 0.354
+  }
+ },
+ {
+  "name": "shells_2",
+  "dir": "shore",
+  "kind": "cover",
+  "family": "shells",
+  "offset": [
+   -0.33,
+   -0.28
+  ],
+  "bounds": {
+   "min_x": -0.5622,
+   "max_x": 0.5378,
+   "min_y": -0.2175,
+   "max_y": 0.2383
+  }
+ },
+ {
+  "name": "shells_3",
+  "dir": "shore",
+  "kind": "cover",
+  "family": "shells",
+  "offset": [
+   0.35,
+   -1.78
+  ],
+  "bounds": {
+   "min_x": -0.3856,
+   "max_x": 0.4115,
+   "min_y": -0.4053,
+   "max_y": 0.5369
+  }
+ },
+ {
+  "name": "shells_4",
+  "dir": "shore",
+  "kind": "cover",
+  "family": "shells",
+  "offset": [
+   1.48,
+   -3.28
+  ],
+  "bounds": {
+   "min_x": -0.4954,
+   "max_x": 0.6046,
+   "min_y": -0.1709,
+   "max_y": 0.4131
+  }
+ },
+ {
+  "name": "shells_5",
+  "dir": "shore",
+  "kind": "cover",
+  "family": "shells",
+  "offset": [
+   -4.36,
+   1.58
+  ],
+  "bounds": {
+   "min_x": -0.7108,
+   "max_x": 0.3892,
+   "min_y": -0.3159,
+   "max_y": 0.1991
+  }
  }
 ]

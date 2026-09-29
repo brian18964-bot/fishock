@@ -57,6 +57,7 @@ SIN55 = math.sin(math.radians(55.0))
 
 COLLECTION = "lowpoly_tree_collection_01.fbx"
 LOWPOLY = "low_poly_set.fbx"
+BEACH_PALMS = "beach_palms.glb"
 STYLIZED = "rocks_stylized.fbx"
 ASSORTED = "assorted_rocks.fbx"
 
@@ -192,6 +193,10 @@ for i in range(3):
     MODELS.append(m("driftwood_%d" % (i + 1), None, [], "shore", "cover", "driftwood", width=2.6,
                     builder="driftwood", seed=51 + i, paint="driftwood"))
 
+for i in range(5):
+    MODELS.append(m("shells_%d" % (i + 1), None, [], "shore", "cover", "shells", width=1.1,
+                    builder="shells", seed=61 + i, count=2 + i % 3, starfish=i in (1, 3), detailed=True))
+
 
 # Folk-horror props (rocks, as far as the game is concerned: solid, with a
 # footprint), by family.
@@ -314,6 +319,16 @@ def shade_over(mat, ao_distance):
 
 
 # --- procedural shore plants (User request: water plants for the ponds) ----
+
+# User request (a beach style): the user's textured coconut palms
+# (LowPoly_Palms.blend, trimmed to art_src/packs/beach_palms.glb) - finely
+# textured fronds, so they belong with the detailed art: rendered like it,
+# authored leaf normals, no baked shading.
+for i, (obj, h) in enumerate([("Palm1_VAR1", 9.6), ("Palm1_VAR2", 9.3), ("Palm1_VAR3", 10.2), ("Palm1_VAR4", 10.4),
+                              ("Palm1_VAR5", 11.5), ("Palm1_VARCol1", 11.5), ("Palm1_VARCol2", 10.4)]):
+    MODELS.append(m("coconut_%d" % (i + 1), BEACH_PALMS, [obj], "beach_palm", "tree", "coconut", height=h,
+                    max_width=7.5, detailed=True))
+
 
 # Low-poly set (builders below): colours in linear RGB, several per model.
 LP_GREENS = {
@@ -818,9 +833,46 @@ def build_lp_driftwood(spec):
     return obs
 
 
+def build_shells(spec):
+    """User request (a beach style): shells washed up on the sand - fan
+    scallops, a spiral whelk or two, now and then a starfish. Painted, for
+    the detailed look."""
+    rng = np.random.default_rng(spec["seed"])
+    cream = paint("shell_cream", (0.62, 0.55, 0.45), (0.3, 0.22, 0.16), scale=14.0, amount=0.5)
+    pink = paint("shell_pink", (0.7, 0.42, 0.38), (0.35, 0.18, 0.15), scale=14.0, amount=0.5)
+    star = paint("starfish", (0.62, 0.22, 0.06), (0.3, 0.08, 0.02), scale=18.0, amount=0.6)
+    obs = []
+    placed = []
+    for i in range(int(spec.get("count", 4))):
+        for _try in range(20):
+            p = (rng.uniform(-0.45, 0.45), rng.uniform(-0.3, 0.3))
+            if all(math.hypot(p[0] - q[0], p[1] - q[1]) > 0.2 for q in placed):
+                break
+        placed.append(p)
+        kind = rng.choice(["scallop", "scallop", "whelk"])
+        mat = cream if rng.random() < 0.6 else pink
+        if kind == "scallop":
+            ob = _cyl(rng.uniform(0.1, 0.15), 0.05, (p[0], p[1], 0.025), mat, 14, r2=0.015)
+            ob.scale = (1.0, 0.85, 1.0)
+            ob.rotation_euler = (rng.uniform(-0.2, 0.2), rng.uniform(-0.2, 0.2), rng.uniform(0, math.tau))
+        else:
+            ob = _cyl(0.06, 0.24, (p[0], p[1], 0.05), mat, 10, (math.radians(90), 0.0, rng.uniform(0, math.tau)), r2=0.0)
+        obs.append(ob)
+    if spec.get("starfish"):
+        c = (rng.uniform(-0.3, 0.3), rng.uniform(-0.2, 0.2))
+        base = rng.uniform(0, math.tau)
+        for k in range(5):
+            a = base + k / 5 * math.tau
+            arm = _cyl(0.06, 0.24, (c[0] + math.cos(a) * 0.11, c[1] + math.sin(a) * 0.11, 0.025), star, 6,
+                       (math.radians(90), 0.0, a + math.pi / 2), r2=0.012)
+            arm.scale = (1.0, 0.45, 1.0)
+            obs.append(arm)
+    return obs
+
+
 BUILDERS = {"reeds": build_reeds, "lilypads": build_lilypads, "driftwood": build_driftwood,
             "grave": build_grave, "cross": build_cross, "stone_lantern": build_stone_lantern,
-            "shrine": build_shrine, "well": build_well,
+            "shrine": build_shrine, "well": build_well, "shells": build_shells,
             "lp_grass": build_lp_grass, "lp_flowers": build_lp_flowers, "lp_mushroom": build_lp_mushroom,
             "lp_pebbles": build_lp_pebbles, "lp_fern": build_lp_fern, "lp_leaves": build_lp_leaves,
             "lp_bush": build_lp_bush, "lp_reeds": build_lp_reeds, "lp_driftwood": build_lp_driftwood}
@@ -828,6 +880,11 @@ BUILDERS = {"reeds": build_reeds, "lilypads": build_lilypads, "driftwood": build
 
 def import_pack(src):
     bpy.ops.wm.read_factory_settings(use_empty=True)
+    if src.endswith(".glb"):
+        # Textured models with alpha-cut leaves: materials kept as they are.
+        bpy.ops.import_scene.gltf(filepath=os.path.join(PACKS, src))
+        bpy.context.view_layer.update()
+        return
     bpy.ops.import_scene.fbx(filepath=os.path.join(PACKS, src))
     for o in bpy.context.scene.objects:
         o.animation_data_clear()
@@ -920,7 +977,7 @@ def dress(meshes, spec):
     if spec.get("snow"):
         for mat in {s.material for o in meshes for s in o.material_slots if s.material}:
             snow_over(mat)
-    if not spec.get("paint"):
+    if not spec.get("paint") and not spec.get("detailed"):
         pts = world_points(meshes)
         size = max(max(p.z for p in pts), 1.0)
         for mat in {s.material for o in meshes for s in o.material_slots if s.material}:
@@ -946,7 +1003,7 @@ def render_model(spec):
     out_dir = os.path.join(SPRITES, spec["dir"])
     os.makedirs(out_dir, exist_ok=True)
     prefix = os.path.join(out_dir, spec["name"] + "_55deg")
-    rs.rewire_materials(meshes, "normal")
+    rs.rewire_materials(meshes, "normal", foliage_normals=spec.get("detailed", False))
     rs.render_pass(prefix + "_normal.png", "normal")
     scene = bpy.context.scene
     scene.render.resolution_x = w * HD

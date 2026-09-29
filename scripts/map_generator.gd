@@ -175,7 +175,7 @@ const THEMES := {
 		"trees": 24, "rocks": 7, "bushes": 3, "ground": 60,
 		"tree_families": {"pine_snow": 3.0, "dead_snow": 1.0, "bare_snow": 1.5},
 		"rock_pool": ["rock_snow"],
-		"bush_families": ["bush_snow"],
+		"bush_families": ["bush_snow", "fern_snow"],
 		"ground_kinds": {"pebble": 4.0, "grass": 1.0},
 		"shore": {"grass": 0.05, "shrub": 0.0, "pebbles": 0.45},
 		"animals": {"wolf": 2.0, "husky": 2.0, "stag": 1.0, "white_horse": 0.5, "fox": 1.0},
@@ -190,7 +190,7 @@ const THEMES := {
 		"tree_families": {"maple": 2.0, "oak_autumn": 1.5, "birch": 1.2, "leafy_autumn": 1.0, "twisted": 0.5,
 			"bare": 0.4},
 		"rock_pool": [0, 1, 2],
-		"bush_families": ["bush_autumn"],
+		"bush_families": ["bush_autumn", "fern_autumn", "plant_autumn"],
 		"ground_kinds": {"mushroom": 3.0, "grass": 2.0},
 		# No green shrubs or flower bushes on the bank: mushrooms and grass.
 		"cover": {"shrub": "mushroom", "flower_bush": "grass"},
@@ -198,6 +198,28 @@ const THEMES := {
 		"tint": Color(1.1, 0.98, 0.86),
 		"water": {"base": Color(0.12, 0.22, 0.24), "deep": Color(0.04, 0.07, 0.08)},
 	},
+	# User request: a beach - the user's coconut palms and crabs. Sand, a
+	# turquoise lagoon, driftwood, sandstone boulders; crabs scuttle along
+	# the water's edge instead of frogs and bugs, the surf in the air.
+	"beach": {
+		"look": "detailed",
+		"shore_extras": {"reeds": 0.0, "lilypad": 0.0, "driftwood": 0.12},
+		"floor": ["beach_sand", "sand", 0.15],
+		"trees": 22, "rocks": 6, "bushes": 3, "ground": 90,
+		"tree_families": {"coconut": 1.0},
+		"rock_pool": ["sand", 3, 4],
+		"bush_families": ["plant", "fern"],
+		"ground_kinds": {"shells": 3.0, "pebble": 2.0, "grass": 1.0},
+		"cover": {"shrub": "shells", "flower_bush": "shells"},
+		"shore": {"grass": 0.1, "shrub": 0.12, "pebbles": 0.3},
+		"shore_critters": ["crab"],
+		"shore_critter_count": 9,
+		"animals": {"shiba": 1.0, "white_horse": 0.6, "husky": 0.5},
+		"animal_count": 2,
+		"tint": Color(1.08, 1.03, 0.94),
+		"water": {"base": Color(0.07, 0.38, 0.44), "deep": Color(0.02, 0.13, 0.22)},
+	},
+
 	# User request: many more map styles so the picture isn't monotonous,
 	# from the user's packs (NatureCatalog, tools/render_packs.py). Each has
 	# its own ground, light ("tint", multiplying the day's darkness), pond
@@ -326,9 +348,9 @@ const THEMES := {
 ## three main styles ~28% each, tropical 12%, prehistoric (dinosaurs) 4%.
 ## User request (more styles): the new ones share the odds now - every
 ## style about as likely, dinosaurs still rare. User decision: only the
-## detailed look is played for now (forest ~20%, dead wood, snow and
-## autumn ~14% each, rocky ~13%, tropical ~10%, swamp ~9%, prehistoric
-## ~4%).
+## detailed look is played for now (forest ~18%, dead wood, snow and
+## autumn ~13% each, beach and rocky ~11% each, tropical ~9%, swamp ~8%,
+## prehistoric ~4%).
 const STYLES := {
 	"forest": {"weight": 14.0, "themes": ["forest_pine", "forest_birch", "forest_maple", "forest_green"]},
 	"deadwood": {"weight": 10.0, "themes": ["deadwood"]},
@@ -338,6 +360,7 @@ const STYLES := {
 	"swamp": {"weight": 6.0, "themes": ["swamp"]},
 	"snow": {"weight": 10.0, "themes": ["snow"]},
 	"autumn": {"weight": 10.0, "themes": ["autumn"]},
+	"beach": {"weight": 9.0, "themes": ["beach"]},
 }
 ## User decision: the low-poly styles are kept in reserve - built and
 ## tested (forced_theme still reaches them) but never dealt to a player.
@@ -773,7 +796,7 @@ func _add_shore_critters() -> void:
 	var zones: Array = water_zones.filter(func(z): return not z.is_rare())
 	if zones.is_empty():
 		return
-	for _i in SHORE_CRITTER_COUNT:
+	for _i in theme.get("shore_critter_count", SHORE_CRITTER_COUNT):
 		var zone: WaterZone = zones.pick_random()
 		var samples: Array = zone.shore_samples(60.0)
 		if samples.is_empty():
@@ -783,7 +806,7 @@ func _add_shore_critters() -> void:
 		if _shore_distance(pos) < 6.0 or pos.distance_to(SPAWN_POS) < SHORE_CLEAR_OF_SPAWN:
 			continue
 		var critter: Critter = CRITTER_SCENE.instantiate()
-		critter.species = SHORE_CRITTERS.pick_random()
+		critter.species = theme.get("shore_critters", SHORE_CRITTERS).pick_random()
 		critter.position = pos
 		get_parent().add_child.call_deferred(critter)
 

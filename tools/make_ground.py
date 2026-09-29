@@ -278,6 +278,31 @@ def sand(rng):
     return col, normal_from_height(h, 3.0)
 
 
+def beach_sand(rng):
+    """User request (a beach style): pale, fine beach sand - wind ripples,
+    a scatter of shell grit and a few dark flecks of weed."""
+    n = periodic_noise(rng, 110)
+    grit = periodic_noise(rng, 1.6)
+    col = lerp((0.66, 0.58, 0.42), (0.76, 0.69, 0.52), n)
+    ys, xs = np.mgrid[0:N, 0:N].astype(np.float32) / DENSITY
+    warp = periodic_noise(rng, 80) * 6.0
+    ripple = np.sin(2 * np.pi * (2 * xs + 9 * ys) / TILE + warp) * 0.5 + 0.5
+    col = col * (0.95 + ripple[..., None] * 0.07) * (0.94 + grit[..., None] * 0.12)
+    cv = Canvas()
+    for _ in range(220):  # shell grit
+        c = [(0.95, 0.92, 0.86), (0.92, 0.8, 0.74), (0.85, 0.82, 0.76)][rng.integers(3)]
+        cv.ellipse(rng.random() * TILE, rng.random() * TILE, rng.uniform(0.8, 2.0), rng.uniform(0.6, 1.4),
+                   rng.random() * 3, jitter_color(rng, c, 0.05), 190, 6)
+    for _ in range(60):  # dried weed
+        x, y = rng.random() * TILE, rng.random() * TILE
+        a, ln = rng.random() * math.pi, rng.uniform(3, 7)
+        cv.line((x, y), (x + math.cos(a) * ln, y + math.sin(a) * ln * SQUASH), jitter_color(rng, (0.3, 0.26, 0.16), 0.15), 1, 120)
+    lc, la, lh = cv.layers()
+    col = over(col, lc, la)
+    h = ripple * 0.3 + grit * 0.06 + lh * 0.4
+    return col, normal_from_height(h, 2.6)
+
+
 def moss_soil(rng):
     n = periodic_noise(rng, 60)
     col = lerp((0.08, 0.07, 0.05), (0.13, 0.11, 0.07), n)
@@ -418,6 +443,7 @@ MAKERS = {
     "lp_savanna": lambda r: facets(r, (0.55, 0.37, 0.22), (0.61, 0.49, 0.28)),
     "lp_jungle": lambda r: facets(r, (0.15, 0.32, 0.15), (0.19, 0.36, 0.13)),
     "lp_stone": lambda r: facets(r, (0.29, 0.35, 0.29), (0.35, 0.38, 0.35)),
+    "beach_sand": beach_sand,
 }
 
 

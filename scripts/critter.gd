@@ -35,7 +35,10 @@ const BAIT_SIZE := 0.8
 ## size: extra draw scale - user feedback: the small ones (frog, spider,
 ## wasp) were hard to spot on a phone, drawn at least ~20 px now.
 ## flavor: the bait flavor it becomes - 青蛙 and 蟲子 reuse the roadside
-## flavors' effects; 老鼠 and 蛇 are "big bait" (see Player).
+## flavors' effects; 老鼠, 蛇 and 螃蟹 are "big bait" (see Player).
+## shore_only: only turns up where a map style puts it along the water
+## (MapGenerator "shore_critters") - never dealt at random, and comes back
+## as itself, on a shore. sideways: walks side-on, as crabs do.
 const SPECIES := {
 	"rat": {"label": "老鼠", "flavor": "老鼠",
 		"albedo": preload("res://assets/sprites/critter/rat_55deg_albedo.png"),
@@ -57,6 +60,12 @@ const SPECIES := {
 		"normal": preload("res://assets/sprites/critter/spider_55deg_normal.png"),
 		"frames": 12, "cols": 73, "clips": 2, "offset": Vector2(0, -0.81), "move_fps": 14.4, "idle_fps": 2.88, "size": 1.3,
 		"wander_speed": 40.0, "flee_speed": 110.0},
+	# User request: the beach style's crab (tools/render_crab.py).
+	"crab": {"label": "螃蟹", "flavor": "螃蟹", "shore_only": true, "sideways": true,
+		"albedo": preload("res://assets/sprites/critter/crab_55deg_albedo.png"),
+		"normal": preload("res://assets/sprites/critter/crab_55deg_normal.png"),
+		"frames": 8, "cols": 73, "clips": 2, "offset": Vector2(0, -5.02), "move_fps": 16.0, "idle_fps": 5.71,
+		"size": 1.25, "wander_speed": 34.0, "flee_speed": 100.0},
 	# One clip (flying) for both moving and hovering; floats above the ground.
 	"wasp": {"label": "黃蜂", "flavor": "蟲子",
 		"albedo": preload("res://assets/sprites/critter/wasp_55deg_albedo.png"),
@@ -286,7 +295,8 @@ func _physics_process(delta: float) -> void:
 		global_position.x = clamp(global_position.x, 16.0, Player.WORLD_WIDTH - 16.0)
 		global_position.y = clamp(global_position.y, 16.0, Player.WORLD_HEIGHT - 16.0)
 		if velocity.length() > MOVING_SPEED:
-			_dir = Art.facing8(velocity, _dir)
+			# A crab faces across the way it goes (it walks side-on).
+			_dir = Art.facing8(-velocity.orthogonal() if _data.get("sideways", false) else velocity, _dir)
 	_animate(delta)
 
 
@@ -494,6 +504,9 @@ func catch() -> String:
 
 
 func _respawn() -> void:
+	if _data.get("shore_only", false):
+		_respawn_on_shore()
+		return
 	var pos := global_position
 	for _try in range(20):
 		pos = Vector2(
@@ -514,9 +527,31 @@ func _respawn() -> void:
 func _pick_species() -> String:
 	var pool := []
 	for key in SPECIES:
-		if SPECIES[key].get("ambient", false) == ambient:
+		if SPECIES[key].get("ambient", false) == ambient and not SPECIES[key].get("shore_only", false):
 			pool.append(key)
 	return pool.pick_random()
+
+
+## A shore creature comes back as itself, somewhere along a pond's edge
+## out of the player's sight.
+func _respawn_on_shore() -> void:
+	var zones := get_tree().get_nodes_in_group("water_zones_common")
+	for _try in range(20):
+		if zones.is_empty():
+			break
+		var samples: Array = zones.pick_random().shore_samples(60.0)
+		if samples.is_empty():
+			continue
+		var sample: Array = samples.pick_random()
+		var pos: Vector2 = sample[0] + sample[1] * randf_range(14.0, 30.0)
+		if not _in_water(pos) and (_player == null or pos.distance_to(_player.global_position) > 300.0):
+			global_position = pos
+			break
+	velocity = Vector2.ZERO
+	active = true
+	visible = true
+	catch_area.monitoring = true
+	_enter_idle()
 
 
 func _in_water(pos: Vector2) -> bool:
