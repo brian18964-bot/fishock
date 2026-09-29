@@ -303,6 +303,65 @@ def beach_sand(rng):
     return col, normal_from_height(h, 2.6)
 
 
+def asphalt(rng):
+    """User request (a ruined town): old asphalt - grey aggregate, worn
+    lighter where the wheels ran, cracked into slabs, patched here and
+    there, oil stains, weeds in the cracks."""
+    n = periodic_noise(rng, 120)
+    grit = periodic_noise(rng, 1.4)
+    col = lerp((0.15, 0.15, 0.155), (0.23, 0.225, 0.22), n)
+    col = col * (0.88 + grit[..., None] * 0.24)
+    f1, f2, ident = voronoi(rng, 96, 1.0)
+    edge = np.clip(1.0 - (f2 - f1) / 1.2, 0, 1)
+    wiggle = periodic_noise(rng, 18)
+    crack = edge * (periodic_noise(rng, 60) > 0.42) * (0.6 + 0.4 * wiggle)
+    col = col * (1 - crack[..., None] * 0.65)
+    # Patches of newer, darker tarmac on some slabs.
+    cells = (TILE // 96) ** 2
+    patch = (rng.random(cells) < 0.12)[ident]
+    col = np.where(patch[..., None], col * 0.72, col)
+    stain = np.clip((periodic_noise(rng, 30) - 0.72) * 4.0, 0, 1)
+    col = col * (1 - stain[..., None] * 0.35)
+    cv = Canvas()
+    ys, xs = np.nonzero(crack[::DENSITY * 3, ::DENSITY * 3] > 0.5)
+    for y, x in zip(ys[::3], xs[::3]):  # weeds in the cracks
+        if rng.random() < 0.45:
+            px, py = x * 3 + rng.uniform(-1, 1), y * 3 + rng.uniform(-1, 1)
+            for _ in range(rng.integers(2, 5)):
+                a, ln = rng.uniform(0, math.tau), rng.uniform(2, 5)
+                cv.line((px, py), (px + math.cos(a) * ln, py + math.sin(a) * ln * SQUASH),
+                        jitter_color(rng, (0.22, 0.32, 0.1), 0.2), 1, 200)
+    lc, la, lh = cv.layers()
+    col = over(col, lc, la)
+    h = grit * 0.1 - crack * 0.5 + np.where(patch, 0.08, 0.0) + lh * 0.4
+    return col, normal_from_height(h, 3.5)
+
+
+def sidewalk(rng):
+    """Concrete paving slabs, stained and cracked, moss in the joints, a
+    few slabs broken or sunk."""
+    slab = 64  # design texels (32 world px)
+    ys, xs = (np.mgrid[0:N, 0:N].astype(np.float32) + 0.5) / DENSITY
+    gx, gy = xs % slab, (ys * 1.0) % slab
+    joint = np.clip(1.0 - np.minimum(np.minimum(gx, slab - gx), np.minimum(gy, slab - gy)) / 1.6, 0, 1)
+    ident = (xs // slab).astype(int) + (ys // slab).astype(int) * (TILE // slab)
+    cells = (TILE // slab) ** 2
+    shade = (0.92 + rng.random(cells) * 0.16)[ident]
+    n = periodic_noise(rng, 80)
+    grit = periodic_noise(rng, 1.3)
+    col = lerp((0.36, 0.35, 0.33), (0.46, 0.45, 0.42), n) * shade[..., None] * (0.92 + grit[..., None] * 0.14)
+    moss = joint * (periodic_noise(rng, 40) > 0.45)
+    col = col * (1 - joint[..., None] * 0.5)
+    col = col * (1 - moss[..., None] * 0.5) + np.array([0.12, 0.18, 0.06]) * moss[..., None] * 0.5
+    f1, f2, _ = voronoi(rng, 70, 1.0)
+    crack = np.clip(1.0 - (f2 - f1) / 1.0, 0, 1) * (periodic_noise(rng, 50) > 0.6)
+    col = col * (1 - crack[..., None] * 0.55)
+    sunk = (rng.random(cells) < 0.08)[ident]
+    col = np.where(sunk[..., None], col * 0.8, col)
+    h = -joint * 0.5 - crack * 0.4 - np.where(sunk, 0.15, 0.0) + grit * 0.06
+    return col, normal_from_height(h, 3.0)
+
+
 def moss_soil(rng):
     n = periodic_noise(rng, 60)
     col = lerp((0.08, 0.07, 0.05), (0.13, 0.11, 0.07), n)
@@ -444,6 +503,8 @@ MAKERS = {
     "lp_jungle": lambda r: facets(r, (0.15, 0.32, 0.15), (0.19, 0.36, 0.13)),
     "lp_stone": lambda r: facets(r, (0.29, 0.35, 0.29), (0.35, 0.38, 0.35)),
     "beach_sand": beach_sand,
+    "asphalt": asphalt,
+    "sidewalk": sidewalk,
 }
 
 

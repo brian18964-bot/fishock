@@ -1,3 +1,4 @@
+class_name MapGenerator
 extends Node2D
 
 ## Design doc request: each run gets a freshly randomized layout instead of
@@ -220,6 +221,26 @@ const THEMES := {
 		"water": {"base": Color(0.07, 0.38, 0.44), "deep": Color(0.02, 0.13, 0.22)},
 	},
 
+	# User request: a post-apocalyptic town, taken back by nature - its
+	# streets, buildings, wrecks and junk laid out by TownBuilder; weeds,
+	# trees and bushes in the empty lots, stray dogs, murky flooded
+	# streets for ponds.
+	"ruins": {
+		"look": "detailed",
+		"town": true,
+		"shore_extras": {"reeds": 0.12, "lilypad": 0.06, "driftwood": 0.03},
+		"floor": ["grass", "dirt", 0.45],
+		# Weeds and scrub, not a garden: no red bushes or bright shrubs.
+		"trees": 14, "rocks": 2, "bushes": 8, "ground": 120,
+		"tree_families": {"leafy": 1.0, "bare": 1.0, "dead": 0.7},
+		"rock_pool": [0, 1, 2],
+		"bush_families": ["fern", "plant"],
+		"ground_kinds": {"grass": 5.0, "plant": 2.0, "pebble": 2.0, "clover": 1.0},
+		"cover": {"shrub": "plant"},
+		"animals": {"husky": 1.5, "shiba": 1.5, "fox": 1.0, "wolf": 0.6},
+		"tint": Color(0.94, 0.98, 1.0),
+		"water": {"base": Color(0.12, 0.17, 0.14), "deep": Color(0.04, 0.06, 0.05)},
+	},
 	# User request: many more map styles so the picture isn't monotonous,
 	# from the user's packs (NatureCatalog, tools/render_packs.py). Each has
 	# its own ground, light ("tint", multiplying the day's darkness), pond
@@ -361,6 +382,7 @@ const STYLES := {
 	"snow": {"weight": 10.0, "themes": ["snow"]},
 	"autumn": {"weight": 10.0, "themes": ["autumn"]},
 	"beach": {"weight": 9.0, "themes": ["beach"]},
+	"ruins": {"weight": 10.0, "themes": ["ruins"]},
 }
 ## User decision: the low-poly styles are kept in reserve - built and
 ## tested (forced_theme still reaches them) but never dealt to a player.
@@ -402,6 +424,8 @@ static var forced_theme := ""
 
 var theme_name := ""
 var theme: Dictionary = {}
+## The ruined town's streets and buildings (a theme with "town").
+var town: TownBuilder
 var _walk_rects: Array[Rect2] = []
 ## Just outside each walkway's way on - kept clear of trees and rocks.
 var _entrances: Array[Vector2] = []
@@ -431,6 +455,10 @@ func _ready() -> void:
 	_generate_water_zones()
 	_place_docks()
 	_place_altar_and_escape()
+	if theme.get("town", false):
+		town = TownBuilder.new(self)
+		town.build(get_parent())
+		_lay_streets(ground)
 	if theme.get("paths", false):
 		_lay_stone_paths()
 	# Docks and shores before the trees and rocks, so those can keep clear
@@ -465,6 +493,20 @@ func _ground_material() -> ShaderMaterial:
 	macro.noise = noise
 	mat.set_shader_parameter("macro", macro)
 	return mat
+
+
+## The town's streets over the ground: asphalt and paving where
+## TownBuilder's street map says (see shaders/ground.gdshader).
+func _lay_streets(ground: CanvasItem) -> void:
+	if ground == null or not (ground.material is ShaderMaterial):
+		return
+	var mat: ShaderMaterial = ground.material
+	mat.set_shader_parameter("streets_on", true)
+	mat.set_shader_parameter("streets", town.street_map())
+	mat.set_shader_parameter("world_size", Vector2(Player.WORLD_WIDTH, Player.WORLD_HEIGHT))
+	for slot in [["road", "asphalt"], ["walk", "sidewalk"]]:
+		mat.set_shader_parameter("albedo_" + slot[0], load("res://assets/sprites/ground/%s_albedo.png" % slot[1]))
+		mat.set_shader_parameter("normal_" + slot[0], load("res://assets/sprites/ground/%s_normal.png" % slot[1]))
 
 
 func _pick_theme() -> String:
@@ -943,6 +985,9 @@ func _pick_prop_position(placed: Array) -> Vector2:
 			randf_range(PROP_MARGIN, Player.WORLD_HEIGHT - PROP_MARGIN)
 		)
 		if pos.distance_to(SPAWN_POS) < PROP_AVOID_SPAWN_RADIUS:
+			continue
+		# Not in the town's streets or buildings.
+		if town != null and town.blocked(pos, 24.0):
 			continue
 		# Clear of the water with room for a rock's footprint or a trunk,
 		# and off any footpath.

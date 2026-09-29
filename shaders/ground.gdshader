@@ -18,6 +18,19 @@ uniform float brightness = 0.65;
 uniform vec3 tint = vec3(1.0);
 uniform float detail = 0.55;       // normal-map detail (1 = full); the albedo's is baked in (tools/soften_ground.py)
 
+// User request (a ruined town): streets laid over the ground. `streets` is
+// a map of the whole world (TownBuilder): red = road, green = pavement,
+// blue = road paint (lane dashes, crossings). Weeds take the edges and
+// patches of both (the macro noise), and the paint is worn.
+uniform bool streets_on = false;
+uniform sampler2D streets : filter_linear;
+uniform vec2 world_size = vec2(2400.0, 1350.0);
+uniform sampler2D albedo_road : source_color, repeat_enable, filter_linear_mipmap;
+uniform sampler2D normal_road : repeat_enable, filter_linear_mipmap;
+uniform sampler2D albedo_walk : source_color, repeat_enable, filter_linear_mipmap;
+uniform sampler2D normal_walk : repeat_enable, filter_linear_mipmap;
+uniform vec3 paint_color : source_color = vec3(0.62, 0.58, 0.46);
+
 varying vec2 world;
 
 void vertex() {
@@ -39,8 +52,21 @@ void fragment() {
 	vec3 ca = texture(albedo_a, uv).rgb;
 	vec3 cb = texture(albedo_b, uvb).rgb;
 	vec3 col = mix(ca, cb, t);
+	vec3 n = mix(texture(normal_a, uv).rgb, texture(normal_b, uvb).rgb, t);
+	if (streets_on) {
+		vec4 s = texture(streets, world / world_size);
+		float weeds = smoothstep(0.72, 0.86, cover);
+		float road = smoothstep(0.35, 0.65, s.r) * (1.0 - weeds);
+		float walk = smoothstep(0.35, 0.65, s.g) * (1.0 - weeds * 0.7);
+		vec2 uvs = world / tile_px * 1.3;
+		col = mix(col, texture(albedo_walk, uvs).rgb, walk);
+		n = mix(n, texture(normal_walk, uvs).rgb, walk);
+		col = mix(col, texture(albedo_road, uv).rgb, road);
+		n = mix(n, texture(normal_road, uv).rgb, road);
+		float worn = smoothstep(0.25, 0.6, texture(macro, world / 90.0).r);
+		col = mix(col, paint_color, smoothstep(0.4, 0.7, s.b) * road * worn * 0.8);
+	}
 	col *= (0.86 + 0.28 * m2) * brightness * tint;
 	COLOR = vec4(col, 1.0);
-	vec3 n = mix(texture(normal_a, uv).rgb, texture(normal_b, uvb).rgb, t);
 	NORMAL_MAP = mix(vec3(0.5, 0.5, 1.0), n, detail);
 }

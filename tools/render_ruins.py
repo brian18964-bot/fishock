@@ -68,7 +68,11 @@ MODELS = {
     # One wall standing on its own (the rest fallen): front and back only.
     "facade": ("Old+Building+.1.blend", None, "building", ("height", 7.5), [0, 180], {}),
     "bus_stop": ("Bus+Stop.fbx", None, "prop", ("height", 2.7), SIDES, {"paint": "bus_stop"}),
-    "hatchback": ("carwreckScan/carMesh.fbx", None, "wreck", ("length", 4.0), HEADINGS, {}),
+    # The scan lies across its length axis: turned to face down the screen
+    # like the rest at yaw 0.
+    # It was scanned standing on a patch of ground: that's cut away.
+    "hatchback": ("carwreckScan/carMesh.fbx", None, "wreck", ("length", 4.0), HEADINGS,
+                  {"facing": 90.0, "trim_ground": 0.05}),
     "van": ("blender_5.0.1.blend", VAN, "wreck", ("length", 4.6), HEADINGS, {}),
     "van_ivy": ("blender_5.0.1.blend", VAN + VAN_IVY, "wreck", ("length", 4.6), HEADINGS, {"scale_by": VAN}),
     "sports": ("blender_5.0.1.blend", SPORTS, "wreck", ("length", 4.3), HEADINGS, {}),
@@ -487,6 +491,8 @@ def load(release, spec):
         o.parent = None
         o.matrix_world = w
     bpy.context.view_layer.update()
+    if extra.get("trim_ground"):
+        trim_ground(meshes, extra["trim_ground"])
     if extra.get("texture"):
         img = bpy.data.images.load(os.path.join(release, extra["texture"]))
         for m in {s.material for o in meshes for s in o.material_slots if s.material}:
@@ -504,6 +510,22 @@ def load(release, spec):
         meshes += flat_roof(meshes)
     bpy.context.view_layer.update()
     return meshes
+
+
+def trim_ground(meshes, fraction):
+    """Deletes what lies in the bottom `fraction` of the model's height -
+    the ground a scan was made standing on."""
+    import bmesh
+    p = points(meshes)
+    cut = p[:, 2].min() + fraction * np.ptp(p[:, 2])
+    for o in meshes:
+        mw = o.matrix_world
+        bm = bmesh.new()
+        bm.from_mesh(o.data)
+        bmesh.ops.delete(bm, geom=[v for v in bm.verts if (mw @ v.co).z < cut], context='VERTS')
+        bm.to_mesh(o.data)
+        bm.free()
+    bpy.context.view_layer.update()
 
 
 def _shelter_material():
@@ -641,7 +663,8 @@ def render(release, name):
     base = root.matrix_world.copy()
     records = []
     for yaw in spec[4]:
-        root.matrix_world = Matrix.Rotation(math.radians(yaw), 4, 'Z') @ base
+        turn = yaw + spec[5].get("facing", 0.0)
+        root.matrix_world = Matrix.Rotation(math.radians(turn), 4, 'Z') @ base
         bpy.context.view_layer.update()
         b = screen_bounds(meshes)
         w = math.ceil((b["max_x"] - b["min_x"] + 2 * PAD) * DENSITY / 8) * 8
@@ -691,7 +714,7 @@ def write_catalog(records):
         lines.append('\t "albedo": "%s_albedo.png", "normal": "%s_normal.png",' % (base, base))
         lines.append('\t "offset": Vector2(%.2f, %.2f), "fade": Rect2(%.1f, %.1f, %.1f, %.1f),'
                      % (tuple(r["offset"]) + tuple(r["fade"])))
-        lines.append('\t "footprint": PackedVector2Array([%s])},' % fp)
+        lines.append('\t "footprint": [%s]},' % fp)
     lines += ["]", "", "",
               "## The entries of these families (and kind, if given).",
               "static func of(families: Array, kind := \"\") -> Array:",

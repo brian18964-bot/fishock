@@ -8,6 +8,7 @@ extends Node
 const TESTS := [
 	"test_map_generation",
 	"test_all_themes",
+	"test_ruined_town",
 	"test_spawn_on_land_docks_out",
 	"test_catalog_and_sounds",
 	"test_creature_animation",
@@ -91,8 +92,8 @@ func seconds(s: float) -> void:
 	await frames(int(s * 60.0))
 
 
-func _fresh_game() -> void:
-	seed(7)
+func _fresh_game(rng_seed := 7) -> void:
+	seed(rng_seed)
 	gs.reset_run()
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
 	await frames(3)
@@ -222,11 +223,62 @@ func test_all_themes() -> void:
 	check(dealt.size() >= 8, "and all of them turn up (%d)" % dealt.size())
 
 
+## User request: a ruined town, fishing in its flooded streets. Its streets
+## are painted into the ground; buildings line them, clear of the ponds,
+## the landmarks and each other, their walls never rising over a road;
+## wrecked cars stand on the roads; everything built is solid.
+func test_ruined_town() -> void:
+	var gen_script = load("res://scripts/map_generator.gd")
+	for s in [7, 21, 99]:
+		gen_script.forced_theme = "ruins"
+		await _fresh_game(s)
+		var gen = main.get_node("MapGenerator")
+		var town: TownBuilder = gen.town
+		check(town != null, "seed %d: a town was built" % s)
+		if town == null:
+			continue
+		var streets := false
+		for n in _all_nodes(main):
+			if n is CanvasItem and n.material is ShaderMaterial and n.material.get_shader_parameter("streets_on"):
+				streets = n.material.get_shader_parameter("streets") != null
+		check(streets, "seed %d: streets painted into the ground" % s)
+		var props := of_script("ruin_prop.gd")
+		var buildings := props.filter(func(p): return p.entry.kind == "building")
+		var wrecks := props.filter(func(p): return p.entry.kind == "wreck")
+		check(buildings.size() >= 10, "seed %d: buildings line the streets (%d)" % [s, buildings.size()])
+		check(wrecks.size() >= 5, "seed %d: wrecked cars (%d)" % [s, wrecks.size()])
+		var fixed := [MapGenerator.SPAWN_POS, main.get_node("Altar").global_position,
+			main.get_node("EscapePoint").global_position]
+		var bad := []
+		for i in buildings.size():
+			var b: RuinProp = buildings[i]
+			var r := b.base_rect()
+			for z in get_tree().get_nodes_in_group("water_zones"):
+				if z.contains(r.get_center()):
+					bad.append("%s in water" % b.entry.name)
+			for f in fixed:
+				if r.grow(TownBuilder.CLEAR_OF_FIXED - 1.0).has_point(f):
+					bad.append("%s on a landmark" % b.entry.name)
+			for j in range(i + 1, buildings.size()):
+				if r.grow(-1.0).intersects(buildings[j].base_rect()):
+					bad.append("%s overlaps %s" % [b.entry.name, buildings[j].entry.name])
+			if town._hangs_over_road(b.entry, b.position):
+				bad.append("%s over a road" % b.entry.name)
+		check(bad.is_empty(), "seed %d: buildings placed clear %s" % [s, str(bad.slice(0, 4))])
+		var off_road := wrecks.filter(func(w): return not town.road_rects.any(
+			func(r: Rect2): return r.grow(4.0).has_point(w.position)))
+		check(off_road.is_empty(), "seed %d: the cars are on the roads" % s)
+		check(props.all(func(p): return p.get_children().any(func(c): return c is CollisionPolygon2D)),
+			"seed %d: all solid" % s)
+		check(props.all(func(p): return p.sprite.texture != null), "seed %d: all drawn" % s)
+	gen_script.forced_theme = ""
+
+
 ## User feedback: the finely drawn and the flat-coloured art don't mix.
 ## Which look a scenery texture belongs to ("" for the shared art - the
 ## player, the landmarks, animals, lily pads).
 const DETAILED_DIRS := ["bare_tree", "birch_tree", "bush", "dead_tree", "ground_cover", "leafy_tree", "maple_tree",
-	"oak_tree", "palm_tree", "pine", "rock", "twisted_tree", "props", "beach_palm"]
+	"oak_tree", "palm_tree", "pine", "rock", "twisted_tree", "props", "beach_palm", "ruins"]
 const LOWPOLY_DIRS := ["autumn_tree", "bonsai_tree", "bush2", "conifer", "jungle_tree", "lowpoly", "meadow_tree",
 	"snow_tree", "rock2"]
 
