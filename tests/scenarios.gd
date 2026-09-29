@@ -224,7 +224,7 @@ func test_all_themes() -> void:
 
 
 ## User request: a ruined town, fishing in its flooded streets. Its streets
-## are painted into the ground; buildings line them, clear of the ponds,
+## are painted into the ground (no wooden docks: user feedback); buildings line them, clear of the ponds,
 ## the landmarks and each other, their walls never rising over a road;
 ## wrecked cars stand on the roads; everything built is solid.
 func test_ruined_town() -> void:
@@ -271,6 +271,7 @@ func test_ruined_town() -> void:
 		check(props.all(func(p): return p.get_children().any(func(c): return c is CollisionPolygon2D)),
 			"seed %d: all solid" % s)
 		check(props.all(func(p): return p.sprite.texture != null), "seed %d: all drawn" % s)
+		check(get_tree().get_nodes_in_group("walkways").is_empty(), "seed %d: no wooden docks in town" % s)
 	gen_script.forced_theme = ""
 
 
@@ -316,6 +317,7 @@ func test_spawn_on_land_docks_out() -> void:
 		get_tree().change_scene_to_file("res://scenes/main.tscn")
 		await frames(3)
 		main = get_tree().current_scene
+		var docked: bool = main.get_node("MapGenerator").theme.get("docks", true)
 		var spawn := Vector2(1200, 700)
 		for z in main.get_tree().get_nodes_in_group("water_zones"):
 			if z.distance_to_edge(spawn) < 80.0:
@@ -325,7 +327,7 @@ func test_spawn_on_land_docks_out() -> void:
 			for w in main.get_tree().get_nodes_in_group("walkways"):
 				if z.contains(w.walk_rect.get_center()) or z.distance_to_edge(w.walk_rect.get_center()) < 1.0:
 					has = true
-			if not has:
+			if docked and not has:
 				dockless += 1
 	check(wet == 0, "the spawn point is on dry land on every map (%d wet)" % wet)
 	check(dockless <= 4, "(nearly) every pond has a dock out into it (%d without)" % dockless)

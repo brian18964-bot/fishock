@@ -228,6 +228,8 @@ const THEMES := {
 	"ruins": {
 		"look": "detailed",
 		"town": true,
+		# User feedback: wooden jetties make no sense in a flooded town.
+		"docks": false,
 		"shore_extras": {"reeds": 0.12, "lilypad": 0.06, "driftwood": 0.03},
 		"floor": ["grass", "dirt", 0.45],
 		# Weeds and scrub, not a garden: no red bushes or bright shrubs.
@@ -453,7 +455,8 @@ func _ready() -> void:
 	WaterZone.theme_water = theme.get("water", {})
 	GameState.night_fell.connect(_on_night_fell)
 	_generate_water_zones()
-	_place_docks()
+	if theme.get("docks", true):
+		_place_docks()
 	_place_altar_and_escape()
 	if theme.get("town", false):
 		town = TownBuilder.new(self)

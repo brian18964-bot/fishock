@@ -39,6 +39,7 @@ var v_roads: Array = []
 var road_rects: Array[Rect2] = []
 var walk_rects: Array[Rect2] = []
 var _taken: Array[Rect2] = []      # footprints placed so far (grown a little)
+var _behind: Array[Rect2] = []     # what the buildings' walls and roofs cover
 var _fixed: Array[Vector2] = []
 var props: Array = []
 
@@ -70,6 +71,10 @@ func blocked(pos: Vector2, margin: float) -> bool:
 			return true
 	for r in _taken:
 		if r.grow(margin).has_point(pos):
+			return true
+	# A tree or bush behind a building would poke out over its roof.
+	for r in _behind:
+		if r.has_point(pos):
 			return true
 	return false
 
@@ -181,21 +186,34 @@ func _try_place(parent: Node, e: Dictionary, pos: Vector2, keep_off_roads := tru
 	if e.kind == "building" and _hangs_over_road(e, pos):
 		return false
 	_taken.append(rect.grow(pad))
+	if e.kind == "building":
+		_behind.append(_above(e, pos))
 	_spawn(parent, e, pos)
 	return true
 
 
 ## Would a building's walls and roof, rising up the screen from its base,
-## cover a road (the pavement's fine)? A building at a street's end, or
-## backing onto one.
+## cover a road (the pavement's fine) or a pond? A building at a street's
+## end, backing onto one, or standing just below the water.
 func _hangs_over_road(e: Dictionary, pos: Vector2) -> bool:
-	var fade: Rect2 = e.fade
-	var fp := RuinProp.footprint_rect(e)
-	var above := Rect2(pos.x + fade.position.x, pos.y + fade.position.y, fade.size.x, fp.position.y - fade.position.y)
+	var above := _above(e, pos)
 	for r in road_rects:
 		if r.intersects(above.grow(-2.0)):
 			return true
+	# Nor hide a pond behind it.
+	for fx in [0.1, 0.5, 0.9]:
+		for fy in [0.0, 0.5]:
+			if _in_water(above.position + above.size * Vector2(fx, fy)):
+				return true
 	return false
+
+
+## The ground a building at `pos` hides: from the top of its sprite down
+## to the back of its base.
+static func _above(e: Dictionary, pos: Vector2) -> Rect2:
+	var fade: Rect2 = e.fade
+	var fp := RuinProp.footprint_rect(e)
+	return Rect2(pos.x + fade.position.x, pos.y + fade.position.y, fade.size.x, fp.position.y - fade.position.y)
 
 
 func _pick(families: Dictionary) -> String:
