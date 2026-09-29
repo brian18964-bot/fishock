@@ -9,7 +9,7 @@ const TITLE_SIZE := 15
 const DESC_SIZE := 12
 const DESC_COLOR := Color(0.72, 0.74, 0.8)
 const HEADER_COLOR := Color(1.0, 0.8, 0.45)
-const LABEL_WIDTH := 330.0
+const LABEL_WIDTH := 300.0
 
 @onready var gold_label: Label = $GoldLabel
 @onready var left: VBoxContainer = $Scroll/Columns/Left
@@ -18,6 +18,7 @@ const LABEL_WIDTH := 330.0
 
 
 func _ready() -> void:
+	_restyle()
 	back_button.pressed.connect(_on_back_pressed)
 	Profile.gold_updated.connect(_on_profile_changed)
 	Profile.profile_changed.connect(_on_profile_changed)
@@ -30,8 +31,42 @@ func _on_profile_changed(_arg = null) -> void:
 	_rebuild_rows()
 
 
+## The main screen's look (MenuStyle): back at the top left, the title
+## beside it, gold in a purse at the right, the rows on dark panels.
+func _restyle() -> void:
+	$Background.color = Color(0.04, 0.045, 0.07)
+	var title: Label = $TitleLabel
+	title.text = "商城"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	title.position = Vector2(130, 14)
+	title.size = Vector2(200, 36)
+	title.add_theme_font_size_override("font_size", 26)
+	title.add_theme_color_override("font_color", MenuStyle.GOLD)
+	var styled := MenuStyle.button("‹ 返回", 16)
+	for s in ["normal", "hover", "pressed"]:
+		back_button.add_theme_stylebox_override(s, styled.get_theme_stylebox(s))
+	back_button.add_theme_font_size_override("font_size", 16)
+	back_button.focus_mode = Control.FOCUS_NONE
+	back_button.text = "‹ 返回"
+	back_button.position = Vector2(16, 12)
+	back_button.size = Vector2(96, 40)
+	styled.free()
+	var purse := MenuStyle.panel()
+	purse.position = Vector2(800, 12)
+	purse.custom_minimum_size = Vector2(140, 0)
+	add_child(purse)
+	gold_label.reparent(purse)
+	gold_label.modulate = Color.WHITE
+	gold_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	gold_label.add_theme_font_size_override("font_size", 18)
+	gold_label.add_theme_color_override("font_color", MenuStyle.GOLD)
+	var scroll: ScrollContainer = $Scroll
+	scroll.position = Vector2(16, 64)
+	scroll.size = Vector2(928, 468)
+
+
 func _refresh_gold() -> void:
-	gold_label.text = "金幣：%d" % Profile.gold
+	gold_label.text = "金幣  %d" % Profile.gold
 
 
 func _rebuild_rows() -> void:
@@ -46,7 +81,7 @@ func _rebuild_rows() -> void:
 	for key in Profile.UPGRADE_DEFS.keys():
 		left.add_child(_upgrade_row(key))
 
-	right.add_child(_header("路亞假餌（買了下一輪帶去，按「切換」輪流換）"))
+	right.add_child(_header("路亞假餌（買了下一輪全部帶去）"))
 	for id in Profile.LURE_ORDER:
 		var def: Dictionary = Profile.LURES[id]
 		right.add_child(_row("%s（庫存 %d）｜%d 金幣" % [def.name, int(Profile.lure_stock.get(id, 0)), def.cost],
@@ -97,7 +132,9 @@ func _header(text: String) -> Control:
 
 
 func _row(title: String, desc: String, button_text: String, disabled: bool, action: Callable) -> Control:
+	var card := MenuStyle.panel(Color(0.09, 0.085, 0.08, 0.9))
 	var row := HBoxContainer.new()
+	card.add_child(row)
 	var text := VBoxContainer.new()
 	text.custom_minimum_size = Vector2(LABEL_WIDTH, 0)
 	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -115,14 +152,13 @@ func _row(title: String, desc: String, button_text: String, disabled: bool, acti
 		sub.add_theme_color_override("font_color", DESC_COLOR)
 		text.add_child(sub)
 	row.add_child(text)
-	var button := Button.new()
-	button.text = button_text
-	button.custom_minimum_size = Vector2(64, 32)
+	var button := MenuStyle.button(button_text, 15, not disabled)
+	button.custom_minimum_size = Vector2(72, 36)
 	button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	button.disabled = disabled
 	button.pressed.connect(func(): action.call())
 	row.add_child(button)
-	return row
+	return card
 
 
 func _on_back_pressed() -> void:

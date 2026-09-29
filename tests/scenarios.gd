@@ -35,6 +35,7 @@ const TESTS := [
 	"test_light_lure",
 	"test_lure_retrieve",
 	"test_fish_by_style",
+	"test_main_menu",
 	"test_light_button_tap_and_hold",
 	"test_light_button_relights",
 	"test_long_press_brightness",
@@ -1001,6 +1002,46 @@ func test_fish_by_style() -> void:
 	check(FishData.FISH.sardine.reach == ["near"] and FishData.FISH.swordfish.reach == ["far"], "reach")
 	for _i in 40:
 		check(FishData.pick_species("near", "common", "common", "", "sea").id != "cod", "no cod close in")
+
+
+## User request: a mobile-game main screen - the player's own character in
+## 3D, the shop, the equipment page, single player and multiplayer - and
+## the equipment page and the fish log it leads to.
+func test_main_menu() -> void:
+	var title: Control = load("res://scenes/title_screen.tscn").instantiate()
+	get_tree().root.add_child(title)
+	await frames(3)
+	var viewer: CharacterViewer = title.find_children("*", "CharacterViewer", true, false)[0]
+	check(viewer != null, "the character stands on the main screen")
+	var hand: BoneAttachment3D = viewer._attachments.get("hand_r")
+	check(hand != null and hand.get_child_count() == 1, "it holds the rod")
+	check(viewer._anim != null and viewer._anim.is_playing(), "it breathes (idle)")
+	var labels := {}
+	for b in title.find_children("*", "Button", true, false):
+		labels[(b as Button).text] = true
+	for want in ["單機模式", "多人連線", "商城", "裝備", "圖鑑"]:
+		check(labels.has(want), "main screen has " + want)
+	title.queue_free()
+	await frames(1)
+
+	var equip: Control = load("res://scenes/equipment.tscn").instantiate()
+	get_tree().root.add_child(equip)
+	await frames(3)
+	for key in ["rod", "light", "lure", "hat", "top", "pack"]:
+		check(equip.find_child("Slot_" + key, true, false) != null, "equipment slot " + key)
+	(equip.find_child("Slot_lure", true, false) as Button).pressed.emit()
+	await frames(1)
+	check(equip._selected == "lure" and equip.find_child("ToShop", true, false) != null, "a slot opens its detail")
+	equip.queue_free()
+	await frames(1)
+
+	var book: Control = load("res://scenes/fish_log.tscn").instantiate()
+	get_tree().root.add_child(book)
+	await frames(2)
+	var cells := book.find_children("Fish_*", "Button", true, false)
+	check(cells.size() == FishData.FISH.size(), "the fish log shows every species (%d)" % cells.size())
+	book.queue_free()
+	await frames(1)
 
 
 ## The light button, held with the lamp out, relights it (no flash).
