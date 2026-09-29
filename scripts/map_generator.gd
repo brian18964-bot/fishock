@@ -206,13 +206,15 @@ const THEMES := {
 		"look": "detailed",
 		"shore_extras": {"reeds": 0.0, "lilypad": 0.0, "driftwood": 0.12},
 		"floor": ["beach_sand", "sand", 0.15],
-		"trees": 22, "rocks": 6, "bushes": 3, "ground": 90,
+		# User feedback: too many plants - coconut palms and rocks, then
+		# shells and pebbles; no bushes, weeds or grass on the bank.
+		"trees": 22, "rocks": 12, "bushes": 0, "ground": 70,
 		"tree_families": {"coconut": 1.0},
 		"rock_pool": ["sand", 3, 4],
 		"bush_families": ["plant", "fern"],
-		"ground_kinds": {"shells": 3.0, "pebble": 2.0, "grass": 1.0},
-		"cover": {"shrub": "shells", "flower_bush": "shells"},
-		"shore": {"grass": 0.1, "shrub": 0.12, "pebbles": 0.3},
+		"ground_kinds": {"shells": 3.0, "pebble": 2.0},
+		"cover": {"shrub": "shells", "flower_bush": "shells", "grass": "pebble"},
+		"shore": {"grass": 0.0, "shrub": 0.0, "pebbles": 0.35},
 		"shore_critters": ["crab"],
 		"shore_critter_count": 9,
 		"animals": {"shiba": 1.0, "white_horse": 0.6, "husky": 0.5},
@@ -233,7 +235,7 @@ const THEMES := {
 		"shore_extras": {"reeds": 0.12, "lilypad": 0.06, "driftwood": 0.03},
 		"floor": ["grass", "dirt", 0.45],
 		# Weeds and scrub, not a garden: no red bushes or bright shrubs.
-		"trees": 14, "rocks": 2, "bushes": 8, "ground": 120,
+		"trees": 12, "rocks": 2, "bushes": 5, "ground": 80,
 		"tree_families": {"leafy": 1.0, "bare": 1.0, "dead": 0.7},
 		"rock_pool": [0, 1, 2],
 		"bush_families": ["fern", "plant"],

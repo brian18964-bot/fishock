@@ -306,8 +306,9 @@ func _fill_frontage(parent: Node, families: Dictionary, yaw: int, horizontal: bo
 		from: float, to: float) -> void:
 	var t := from + randf_range(20.0, 90.0)
 	while t < to - 40.0:
-		if randf() < (0.15 if families == MAIN_BUILDINGS else 0.25):
-			t += randf_range(90.0, 180.0)  # an empty lot
+		# User feedback: not too much at once - plenty of empty lots.
+		if randf() < (0.3 if families == MAIN_BUILDINGS else 0.45):
+			t += randf_range(110.0, 220.0)  # an empty lot
 			continue
 		var e := _entry(_pick(families), yaw)
 		if e.yaw != yaw:
@@ -327,7 +328,7 @@ func _fill_frontage(parent: Node, families: Dictionary, yaw: int, horizontal: bo
 			pos = Vector2(x, t - fp.position.y)
 			t += fp.size.y
 		if _try_place(parent, e, pos):
-			t += randf_range(8.0, 50.0) if families == MAIN_BUILDINGS else randf_range(24.0, 90.0)
+			t += randf_range(20.0, 70.0) if families == MAIN_BUILDINGS else randf_range(50.0, 140.0)
 		else:
 			t += 30.0 - (fp.size.x if horizontal else fp.size.y)
 
@@ -347,18 +348,18 @@ func _abandon_cars(parent: Node) -> void:
 	for r in h_roads:
 		_jam(parent, r, true)
 	for r in v_roads:
-		if randf() < 0.6:
+		if randf() < 0.35:
 			_jam(parent, r, false)
 
 
 func _jam(parent: Node, r: Array, horizontal: bool) -> void:
 	var length: float = r[1] - r[0]
-	var queues := int(length / 450.0) + (1 if randf() < 0.5 else 0)
+	var queues := int(length / 800.0) + (1 if randf() < 0.5 else 0)
 	for _q in queues:
 		var lane: float = randf_range(-0.22, 0.22) * r[3]
 		var heading := (90 if randf() < 0.5 else 270) if horizontal else (0 if randf() < 0.5 else 180)
 		var t := randf_range(r[0] + 40.0, r[1] - 40.0)
-		for _c in randi_range(1, 5):
+		for _c in randi_range(1, 3):
 			var yaw: int = heading + ([0, 0, 0, 30, -30, 60].pick_random() if randf() < 0.45 else 0)
 			var e := _entry(CARS.pick_random(), (yaw + 360) % 360)
 			var pos := Vector2(t, r[2] + lane) if horizontal else Vector2(r[2] + lane, t)
@@ -387,7 +388,7 @@ func _furnish_pavements(parent: Node) -> void:
 		for side in [-1, 1]:
 			var y: float = r[2] + side * (r[3] / 2.0 + PAVEMENT * 0.5)
 			var lamp_yaw := 0 if side < 0 else 180
-			_along(parent, r[0], r[1], 170.0, func(t): return Vector2(t, y), lamp_yaw, side)
+			_along(parent, r[0], r[1], 260.0, func(t): return Vector2(t, y), lamp_yaw, side)
 		if i == 0:
 			for _b in randi_range(1, 2):
 				var bx := randf_range(200.0, world.x - 200.0)
@@ -396,10 +397,10 @@ func _furnish_pavements(parent: Node) -> void:
 		for side in [-1, 1]:
 			var x: float = r[2] + side * (r[3] / 2.0 + PAVEMENT * 0.5)
 			var lamp_yaw := 90 if side < 0 else 270
-			_along(parent, r[0], r[1], 200.0, func(t): return Vector2(x, t), lamp_yaw, side)
+			_along(parent, r[0], r[1], 300.0, func(t): return Vector2(x, t), lamp_yaw, side)
 		# A sign at the corner where it meets a cross street.
 		for end in [r[0], r[1]]:
-			if end > 1.0 and end < world.y - 1.0 and randf() < 0.6:
+			if end > 1.0 and end < world.y - 1.0 and randf() < 0.35:
 				var e := _entry(["stop_sign", "warn_sign"].pick_random(), [0, 90, 270].pick_random())
 				_try_place(parent, e, Vector2(r[2] + r[3] / 2.0 + PAVEMENT * 0.5, end - 50.0 * signf(end - world.y / 2.0)), false)
 
@@ -454,7 +455,7 @@ func _set_up_checkpoint(parent: Node) -> void:
 func _fill_empty_lots(parent: Node) -> void:
 	var tries := 0
 	var placed := 0
-	while placed < 26 and tries < 400:
+	while placed < 12 and tries < 400:
 		tries += 1
 		var pos := Vector2(randf_range(60.0, world.x - 60.0), randf_range(60.0, world.y - 60.0))
 		var family: String = ["fence", "fence", "fence_broken", "rubble", "rubble", "dumpster", "trash", "bike",
