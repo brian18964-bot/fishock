@@ -9,6 +9,7 @@ const TESTS := [
 	"test_map_generation",
 	"test_all_themes",
 	"test_ruined_town",
+	"test_beach_sea",
 	"test_spawn_on_land_docks_out",
 	"test_catalog_and_sounds",
 	"test_creature_animation",
@@ -281,6 +282,52 @@ func test_ruined_town() -> void:
 		check(props.all(func(p): return p.sprite.texture != null), "seed %d: all drawn" % s)
 		check(get_tree().get_nodes_in_group("walkways").is_empty(), "seed %d: no wooden docks in town" % s)
 	gen_script.forced_theme = ""
+
+
+## User request: the beach's water is the sea - a big sweep of it along
+## one side, no docks, big rock ridges running in from it; the spawn point
+## dry. And every leafless tree in one weathered colour.
+func test_beach_sea() -> void:
+	var gen_script = load("res://scripts/map_generator.gd")
+	for s in [7, 21, 99]:
+		gen_script.forced_theme = "beach"
+		await _fresh_game(s)
+		var gen = main.get_node("MapGenerator")
+		var commons := get_tree().get_nodes_in_group("water_zones_common")
+		var wet := 0
+		var total := 0
+		for x in range(20, int(Player.WORLD_WIDTH), 40):
+			for y in range(20, int(Player.WORLD_HEIGHT), 40):
+				total += 1
+				if commons.any(func(z): return z.contains(Vector2(x, y))):
+					wet += 1
+		check(float(wet) / total > 0.25, "seed %d: the sea covers a good part of the map (%d%%)" % [s, 100 * wet / total])
+		check(get_tree().get_nodes_in_group("walkways").is_empty(), "seed %d: no docks on the beach" % s)
+		var big := of_script("obstacle.gd").filter(func(r): return r.size > 1.2)
+		check(big.size() >= 10, "seed %d: rock ridges (%d boulders)" % [s, big.size()])
+		check(not get_tree().get_nodes_in_group("water_zones").any(
+			func(z): return z.distance_to_edge(MapGenerator.SPAWN_POS) < 80.0), "seed %d: the spawn point is dry" % s)
+	gen_script.forced_theme = ""
+	var colours := []
+	for name in ["dead_tree/dead_tree_%d", "bare_tree/bare_tree_%d"]:
+		for i in range(1, 11 if name.begins_with("bare") else 6):
+			var img: Image = load("res://assets/sprites/%s_55deg_albedo.png" % (name % i)).get_image()
+			if img.is_compressed():
+				img.decompress()
+			var sum := Vector3.ZERO
+			var n := 0
+			for y in range(0, img.get_height(), 4):
+				for x in range(0, img.get_width(), 4):
+					var c := img.get_pixel(x, y)
+					if c.a > 0.5:
+						sum += Vector3(c.r, c.g, c.b)
+						n += 1
+			colours.append(sum / maxf(n, 1))
+	var spread := 0.0
+	for a in colours:
+		for b in colours:
+			spread = maxf(spread, (a - b).length())
+	check(spread < 0.12, "leafless trees all one colour (spread %.2f)" % spread)
 
 
 ## User feedback: the finely drawn and the flat-coloured art don't mix.

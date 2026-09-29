@@ -75,6 +75,9 @@ static func resolve_pool(pool: Array) -> Array:
 ## families to choose from (resolve_pool). Empty = any of VARIANTS. Set
 ## before the rock enters the tree.
 var variant_pool: Array = []
+## Drawn and solid this much bigger (a beach's rock ridges). Set before it
+## enters the tree.
+var size := 1.0
 
 
 func _ready() -> void:
@@ -89,9 +92,10 @@ func apply_variant(index: int) -> void:
 	tex.diffuse_texture = Art.tex(variant.albedo)
 	tex.normal_texture = Art.tex(variant.normal)
 	sprite.texture = tex
-	Art.place(sprite, variant.offset, SPRITE_SCALE)
+	Art.place(sprite, variant.offset, SPRITE_SCALE * size)
 
-	var outline := _octagon(variant.footprint)
+	var fp: Rect2 = variant.footprint
+	var outline := _octagon(Rect2(fp.position * size, fp.size * size))
 	collision.polygon = outline
 	# User request: shadows take the rock's own shape (SilhouetteShadow)
 	# instead of a wedge extruded from its footprint.

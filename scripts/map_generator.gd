@@ -16,6 +16,18 @@ const WATER_ZONE_SCENE := preload("res://scenes/water_zone.tscn")
 ## WaterZone) - kept apart so each is its own lake with a shore to dress.
 const COMMON_ZONE_COUNT := Vector2i(3, 4)
 const RARE_ZONE_COUNT := 1
+## A "sea" theme: how far in the sea reaches (share of the map across
+## it), the zones' least radius, how much the coast wanders, lobes a zone,
+## the baked shore's coarseness.
+const SEA_REACH := Vector2(0.33, 0.42)
+const SEA_RADIUS := 320.0
+const SEA_WOBBLE := 50.0
+const SEA_LOBES := Vector2i(2, 3)
+const SEA_FIELD_TEXEL := 2.0
+## Rock ridges: length (share of the land between the coast and the far
+## edge), boulder size (smallest, biggest).
+const RIDGE_LENGTH := Vector2(0.3, 0.5)
+const RIDGE_SIZE := Vector2(1.3, 1.9)
 const COMMON_RADIUS_MIN := 130.0
 const COMMON_RADIUS_MAX := 175.0
 const COMMON_EXTRA_LOBES := Vector2i(2, 4)
@@ -208,9 +220,15 @@ const THEMES := {
 		"floor": ["beach_sand", "sand", 0.15],
 		# User feedback: too many plants - coconut palms and rocks, then
 		# shells and pebbles; no bushes, weeds or grass on the bank.
-		"trees": 22, "rocks": 12, "bushes": 0, "ground": 70,
+		"trees": 22, "rocks": 8, "bushes": 0, "ground": 70,
+		# User request: the sea, not ponds - a big sweep of it along one
+		# edge, big rocks running in from it to break up the way; no docks.
+		"sea": true,
+		"docks": false,
+		"ridges": 3,
+		"ridge_pool": [3, 4, 5, 6, 7],
 		"tree_families": {"coconut": 1.0},
-		"rock_pool": ["sand", 3, 4],
+		"rock_pool": [3, 4, 5, 6, 7],
 		"bush_families": ["plant", "fern"],
 		"ground_kinds": {"shells": 3.0, "pebble": 2.0},
 		"cover": {"shrub": "shells", "flower_bush": "shells", "grass": "pebble"},
@@ -443,6 +461,8 @@ const NIGHT_CRITTER_COUNT := 6
 const AMBIENT_ANIMAL_COUNT := 8
 
 var water_zones: Array = []
+## Which map edge a "sea" theme's sea lies along.
+var sea_side := Vector2.ZERO
 
 
 func _ready() -> void:
@@ -468,6 +488,7 @@ func _ready() -> void:
 		_lay_stone_paths()
 	# Docks and shores before the trees and rocks, so those can keep clear
 	# of every walkway entrance.
+	_place_rock_ridges()
 	_dress_shores()
 	_scatter_props()
 	_scatter_themed_props()
@@ -527,11 +548,116 @@ func _pick_theme() -> String:
 
 
 func _generate_water_zones() -> void:
+	if theme.get("sea", false):
+		_generate_sea()
 	# The rare one first: it's smaller and solid, so it gets its pick.
 	for _i in range(RARE_ZONE_COUNT):
 		_spawn_zone(WaterZone.ZoneType.RARE, randf_range(RARE_RADIUS_MIN, RARE_RADIUS_MAX), RARE_EXTRA_LOBES)
+	if theme.get("sea", false):
+		return
 	for _i in range(randi_range(COMMON_ZONE_COUNT.x, COMMON_ZONE_COUNT.y)):
 		_spawn_zone(WaterZone.ZoneType.COMMON, randf_range(COMMON_RADIUS_MIN, COMMON_RADIUS_MAX), COMMON_EXTRA_LOBES)
+
+
+## User request: the beach's water is the sea - one great sweep of it
+## along one side of the map, a good third of the view, its coast one long
+## wavy line. Made of big common zones in a row along that edge, reaching
+## off the map, overlapping so their shores merge (and baked coarser).
+func _generate_sea() -> void:
+	var w := Player.WORLD_WIDTH
+	var h := Player.WORLD_HEIGHT
+	sea_side = [Vector2.DOWN, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT, Vector2.UP].pick_random()
+	var across := sea_side.y != 0.0  # the coast runs across the map
+	var length := w if across else h
+	# How far in from the edge the water comes.
+	var reach := randf_range(SEA_REACH.x, SEA_REACH.y) * (h if across else w)
+	var r := maxf(SEA_RADIUS, reach * 0.62)
+	var n := int(ceil(length / (r * 1.3))) + 1
+	for i in n:
+		var t := (float(i) + randf_range(-0.15, 0.15)) * length / float(n - 1)
+		var inland := reach - r + randf_range(-SEA_WOBBLE, SEA_WOBBLE)
+		var pos: Vector2
+		match sea_side:
+			Vector2.DOWN: pos = Vector2(t, h - inland)
+			Vector2.UP: pos = Vector2(t, inland)
+			Vector2.LEFT: pos = Vector2(inland, t)
+			_: pos = Vector2(w - inland, t)
+		# Near the spawn point the sea draws back (a bay) rather than leave
+		# a gap in the coast.
+		for _step in 12:
+			if pos.distance_to(SPAWN_POS) - r >= SPAWN_CLEAR_RADIUS:
+				break
+			pos += sea_side * 40.0
+		# Lobes for a ragged coast - none reaching up to the spawn point.
+		var lobes: Array[Vector3] = []
+		for lobe in _make_lobes(r, SEA_LOBES):
+			if (pos + Vector2(lobe.x, lobe.y)).distance_to(SPAWN_POS) - lobe.z >= SPAWN_CLEAR_RADIUS:
+				lobes.append(lobe)
+		var zone: WaterZone = WATER_ZONE_SCENE.instantiate()
+		zone.field_texel = SEA_FIELD_TEXEL
+		zone.setup(WaterZone.ZoneType.COMMON, r, pos, lobes)
+		get_parent().add_child.call_deferred(zone)
+		water_zones.append(zone)
+
+
+## User request: big rocks across the beach break up the way along it, so
+## it reads as a coastline: ridges of large boulders running in from the
+## sea (starting in the shallows), each open at its landward end so there's
+## always a way round.
+func _place_rock_ridges() -> void:
+	var seas: Array = water_zones.filter(func(z): return not z.is_rare())
+	if seas.is_empty():
+		return
+	var fixed := [SPAWN_POS]
+	for name in ["Altar", "EscapePoint", "GhostCage"]:
+		var node: Node2D = get_parent().get_node_or_null(name)
+		if node != null:
+			fixed.append(node.global_position)
+	var made := 0
+	for _try in 60:
+		if made >= theme.get("ridges", 0):
+			break
+		var zone: WaterZone = seas.pick_random()
+		var samples: Array = zone.shore_samples(40.0)
+		if samples.is_empty():
+			continue
+		var sample: Array = samples.pick_random()
+		var shore: Vector2 = sample[0]
+		if not _inside_map(shore, 80.0) or _in_any_water(shore + sample[1] * 20.0):
+			continue
+		# Inland, roughly away from the sea.
+		var dir: Vector2 = (sample[1] as Vector2 - sea_side).normalized().rotated(randf_range(-0.4, 0.4))
+		var land := (Player.WORLD_HEIGHT if sea_side.y != 0.0 else Player.WORLD_WIDTH) \
+				- absf(shore.dot(sea_side)) if sea_side.x + sea_side.y < 0.0 else absf(shore.dot(sea_side))
+		var length := randf_range(RIDGE_LENGTH.x, RIDGE_LENGTH.y) * land
+		var start := shore - dir * 50.0
+		var end := shore + dir * length
+		# Room to walk round its landward end.
+		if not _inside_map(end, 160.0):
+			continue
+		var clear := true
+		for f in fixed:
+			var closest := Geometry2D.get_closest_point_to_segment(f, start, end)
+			if closest.distance_to(f) < (SPAWN_CLEAR_RADIUS if f == SPAWN_POS else 120.0):
+				clear = false
+		for spot in _themed_spots:
+			if Geometry2D.get_closest_point_to_segment(spot, start, end).distance_to(spot) < 90.0:
+				clear = false
+		if not clear:
+			continue
+		var d := 0.0
+		var total := start.distance_to(end)
+		while d <= total:
+			var t := d / total
+			var rock: Node2D = OBSTACLE_SCENE.instantiate()
+			rock.position = start + dir * d + dir.orthogonal() * randf_range(-14.0, 14.0)
+			# Biggest out by the water, smaller toward the land.
+			rock.size = lerpf(RIDGE_SIZE.y, RIDGE_SIZE.x, t) * randf_range(0.9, 1.1)
+			rock.variant_pool = theme.get("ridge_pool", theme.get("rock_pool", []))
+			get_parent().add_child.call_deferred(rock)
+			_themed_spots.append(rock.position)
+			d += randf_range(34.0, 46.0) * rock.size / RIDGE_SIZE.y
+		made += 1
 
 
 ## Lobes spread around the main circle, overlapping it, for a wobbly shore.
@@ -804,6 +930,10 @@ func _dress_shores() -> void:
 			var n: Vector2 = sample[1]
 			if p.distance_to(SPAWN_POS) < SHORE_CLEAR_OF_SPAWN or not _inside_map(p, 24.0) \
 					or _near_walkway(p, 26.0) or _near_path(p, PATH_CLEARANCE):
+				continue
+			# Where zones overlap (the sea's), a zone's own shore can lie
+			# out in the other's water.
+			if water_zones.any(func(z): return z != zone and z.depth(p) > 2.0):
 				continue
 			var extras: Dictionary = theme.get("shore_extras", SHORE_EXTRAS)
 			if not zone.is_rare() and randf() < extras.get("lilypad", 0.0):

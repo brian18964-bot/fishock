@@ -60,6 +60,9 @@ static var _shore_noise_tex: ImageTexture
 var outline: Array[PackedVector2Array] = []
 
 var zone_type: int = ZoneType.COMMON
+## World px per texel of the baked shore field: a sea's big zones bake
+## coarser (set before setup()).
+var field_texel := FIELD_TEXEL
 ## Bounding radius around the zone's origin (covers every lobe).
 var radius: float = 200.0
 var lobes: Array[Vector3] = []
@@ -303,7 +306,7 @@ func _link_lobes() -> void:
 ## every pixel of every frame.
 func _bake_shore_field(all: Array[Vector3], count: int, own_count: int) -> void:
 	var surface := get_node("Surface") as ColorRect
-	var texels := Vector2i((surface.size / FIELD_TEXEL).ceil())
+	var texels := Vector2i((surface.size / field_texel).ceil())
 	var viewport := SubViewport.new()
 	viewport.name = "ShoreField"
 	viewport.size = texels
