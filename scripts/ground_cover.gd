@@ -126,28 +126,38 @@ var kind_override := ""
 var variant_choices: Array = []
 
 
-## The user's-request shore plants (NatureCatalog.COVER): reeds, lily pads
-## floating on the water, driftwood - asked for by family as kind_override.
-const CATALOG_KINDS := ["reeds", "lilypad", "driftwood"]
+## NatureCatalog.COVER families are kinds too, asked for by name: the
+## user's-request shore plants (reeds, lily pads floating on the water,
+## driftwood), and the low-poly map styles' own ground cover (lp_grass,
+## lp_flowers, lp_pebbles... - see tools/render_packs.py).
 ## Lily pads lie on the water: above its surface (-5), under ripples,
 ## docks and everything else.
 const ON_WATER_Z := -4
+
+static var _catalog_families: Dictionary = {}
+
+
+static func is_catalog_kind(kind: String) -> bool:
+	if _catalog_families.is_empty():
+		for v in NatureCatalog.COVER:
+			_catalog_families[v.family] = true
+	return _catalog_families.has(kind)
 
 
 func _ready() -> void:
 	# Lies on the ground: takes cast shadows (see LightTwin).
 	light_mask = LightTwin.GROUND_LAYER
-	if kind_override in CATALOG_KINDS:
-		var entry: Dictionary = NatureCatalog.of_families(NatureCatalog.COVER, [kind_override]).pick_random()
+	var kind: String = kind_override if kind_override != "" else _pick_kind()
+	if is_catalog_kind(kind):
+		var entry: Dictionary = NatureCatalog.of_families(NatureCatalog.COVER, [kind]).pick_random()
 		var ctex := CanvasTexture.new()
 		ctex.diffuse_texture = Art.tex(entry.albedo)
 		ctex.normal_texture = Art.tex(entry.normal)
 		texture = ctex
 		Art.place(self, entry.offset, SPRITE_SCALE)
-		if kind_override == "lilypad":
+		if kind == "lilypad":
 			z_index = ON_WATER_Z
 		return
-	var kind: String = kind_override if kind_override != "" else _pick_kind()
 	var variant: String = variant_choices.pick_random() if not variant_choices.is_empty() else KINDS[kind].pick_random()
 	var tex := CanvasTexture.new()
 	tex.diffuse_texture = Art.tex(TEXTURES[variant][0])

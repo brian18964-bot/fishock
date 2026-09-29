@@ -369,6 +369,34 @@ def red_earth(rng):
     return col, normal_from_height(h, 5.0)
 
 
+def facets(rng, base, alt, cell=36, patch=140, shade=0.03, tilt=0.1, speck=None):
+    """User request: the simple, flat-coloured (low-poly) map styles get a
+    ground to match instead of the painted textures - faceted terrain: the
+    ground broken into polygons (Voronoi cells), each one flat colour (the
+    base, or the alternate in broad patches, in three steps) and each tilted
+    a little in the normal map, so the game's lights pick the facets out.
+    `speck`: optional (colour, share) - a few cells in a third colour
+    (flowers in a meadow, fallen leaves)."""
+    f1, f2, ident = voronoi(rng, cell, 1.0)
+    cells = (TILE // cell) ** 2
+    flat = ident.ravel()
+    counts = np.maximum(np.bincount(flat, minlength=cells), 1)
+    patches = periodic_noise(rng, patch)
+    mean = np.bincount(flat, patches.ravel(), cells) / counts
+    t = np.round(np.clip((mean - 0.3) * 2.4, 0, 1) * 2) / 2
+    colour = np.asarray(base, np.float32) + (np.asarray(alt, np.float32) - np.asarray(base, np.float32)) * t[:, None]
+    if speck is not None:
+        pick = rng.random(cells) < speck[1]
+        colour[pick] = speck[0]
+    colour *= (1.0 + (rng.random(cells) - 0.5) * 2 * shade)[:, None]
+    col = colour[ident]
+    ang = rng.random(cells) * math.tau
+    mag = rng.random(cells) * tilt
+    n = np.stack([np.cos(ang) * mag, np.sin(ang) * mag, np.ones(cells)], -1)
+    n /= np.linalg.norm(n, axis=-1, keepdims=True)
+    return col, n[ident] * 0.5 + 0.5
+
+
 MAKERS = {
     "grass": lambda r: grass(r),
     "grass_light": lambda r: grass(r, light=True),
@@ -381,6 +409,15 @@ MAKERS = {
     "snow": snow,
     "mud": mud,
     "red_earth": red_earth,
+    # Low-poly styles (facets): fresh meadow, dark forest, autumn, snow,
+    # savanna, jungle, ink-and-stone.
+    "lp_meadow": lambda r: facets(r, (0.33, 0.52, 0.2), (0.39, 0.56, 0.22), speck=((0.42, 0.57, 0.24), 0.05)),
+    "lp_forest": lambda r: facets(r, (0.18, 0.3, 0.15), (0.24, 0.28, 0.16)),
+    "lp_autumn": lambda r: facets(r, (0.37, 0.34, 0.18), (0.45, 0.32, 0.16), speck=((0.5, 0.3, 0.14), 0.05)),
+    "lp_snow": lambda r: facets(r, (0.8, 0.84, 0.9), (0.74, 0.79, 0.87), shade=0.02),
+    "lp_savanna": lambda r: facets(r, (0.55, 0.37, 0.22), (0.61, 0.49, 0.28)),
+    "lp_jungle": lambda r: facets(r, (0.15, 0.32, 0.15), (0.19, 0.36, 0.13)),
+    "lp_stone": lambda r: facets(r, (0.29, 0.35, 0.29), (0.35, 0.38, 0.35)),
 }
 
 

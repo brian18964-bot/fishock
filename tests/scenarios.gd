@@ -189,6 +189,17 @@ func test_all_themes() -> void:
 		check(ok, "%s: %d trees, all drawn" % [theme, trees.size()])
 		var rocks := of_script("obstacle.gd")
 		check(rocks.all(func(r): return r.sprite.texture != null), "%s: rocks drawn" % theme)
+		var look: String = gen.theme.look
+		var strays := {}
+		for n in _all_nodes(main):
+			if n is Sprite2D and n.texture is CanvasTexture and n.texture.diffuse_texture != null:
+				var path: String = n.texture.diffuse_texture.resource_path
+				var art := _art_look(path)
+				if art != "" and art != look:
+					strays[path.get_file()] = true
+		check(strays.is_empty(), "%s (%s): no art of the other look %s" % [theme, look, str(strays.keys())])
+		var floors: Array = gen.theme.floor.slice(0, 2)
+		check(floors.all(func(f): return f.begins_with("lp_") == (look == "lowpoly")), "%s: its look's floor" % theme)
 		var tint: Color = main.get_node("Darkness").tint
 		check(tint == gen.theme.get("tint", Color.WHITE), "%s: its light" % theme)
 		if gen.theme.has("water"):
@@ -196,6 +207,36 @@ func test_all_themes() -> void:
 			var base: Color = zone._surface_material.get_shader_parameter("base_color")
 			check(base.is_equal_approx(gen.theme.water.base), "%s: its pond colour" % theme)
 	gen_script.forced_theme = ""
+
+
+## User feedback: the finely drawn and the flat-coloured art don't mix.
+## Which look a scenery texture belongs to ("" for the shared art - the
+## player, the landmarks, animals, lily pads).
+const DETAILED_DIRS := ["bare_tree", "birch_tree", "bush", "dead_tree", "ground_cover", "leafy_tree", "maple_tree",
+	"oak_tree", "palm_tree", "pine", "rock", "twisted_tree", "props"]
+const LOWPOLY_DIRS := ["autumn_tree", "bonsai_tree", "bush2", "conifer", "jungle_tree", "lowpoly", "meadow_tree",
+	"snow_tree", "rock2"]
+
+
+func _art_look(path: String) -> String:
+	var dir := path.get_base_dir().get_file()
+	var file := path.get_file()
+	if dir == "shore":
+		return "" if file.begins_with("lilypads") else "detailed"
+	if dir == "rock2" and file.begins_with("boulder2_"):
+		return "detailed"
+	if dir in DETAILED_DIRS:
+		return "detailed"
+	if dir in LOWPOLY_DIRS:
+		return "lowpoly"
+	return ""
+
+
+func _all_nodes(n: Node) -> Array:
+	var out := [n]
+	for c in n.get_children():
+		out.append_array(_all_nodes(c))
+	return out
 
 
 ## User bug report: the spawn point was under water on some maps. Across

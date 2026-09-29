@@ -63,7 +63,7 @@ const OBSTACLE_SCENE := preload("res://scenes/obstacle.tscn")
 const FLIP_ROCK_SCENE := preload("res://scenes/flip_rock.tscn")
 ## User request: rocks the player can turn over for bait, per run.
 const FLIP_ROCKS := Vector2i(8, 10)
-const NOT_FLIPPABLE := ["pillar", "grave", "lantern", "shrine", "well"]
+const NOT_FLIPPABLE := ["pillar", "grave", "lantern", "shrine", "well", "lp_grave", "lp_lantern", "lp_shrine", "lp_well"]
 const BUSH_SCENE := preload("res://scenes/bush.tscn")
 
 ## User request: each run is dressed in one of a few looks, all from the
@@ -73,8 +73,18 @@ const BUSH_SCENE := preload("res://scenes/bush.tscn")
 ## User feedback: a forest is one look, not every tree at once - it comes
 ## in single-colour variants; dead wood gets stone footpaths; the rock pile
 ## is mostly rocks with a few dead trees.
+## User feedback: don't mix art styles - a finely drawn pine beside a
+## flat-coloured low-poly one looks like a jumble. Every theme has a
+## "look": "detailed" (the painted, finely modelled art) or "lowpoly" (the
+## flat-coloured packs, and low-poly ground cover, bushes, props and a
+## faceted floor made to match - tools/render_packs.py, make_ground.py),
+## and draws only on art of that look. "cover" maps the shore and ground
+## plants the generator asks for by generic name (grass, shrub,
+## flower_bush, pebble, reeds, driftwood) to the look's own. The low-poly
+## floors carry no painted detail, so those themes scatter more plants.
 const THEMES := {
 	"forest_pine": {
+		"look": "detailed",
 		"floor": ["forest_floor", "grass", 0.35],
 		"trees": 28, "rocks": 3, "bushes": 6, "ground": 110,
 		"tree_families": {"pine": 1.0},
@@ -83,6 +93,7 @@ const THEMES := {
 		"animals": {"deer": 2.0, "stag": 1.5, "fox": 1.5, "wolf": 1.0, "husky": 1.0},
 	},
 	"forest_birch": {
+		"look": "detailed",
 		"floor": ["grass_light", "grass", 0.3],
 		"trees": 26, "rocks": 2, "bushes": 6, "ground": 120,
 		"tree_families": {"birch": 1.0},
@@ -92,6 +103,7 @@ const THEMES := {
 		"animals": {"deer": 2.0, "stag": 1.0, "fox": 1.5, "shiba": 1.0, "white_horse": 1.0},
 	},
 	"forest_maple": {
+		"look": "detailed",
 		"floor": ["grass", "leaf_litter", 0.45],
 		"trees": 24, "rocks": 3, "bushes": 6, "ground": 110,
 		"tree_families": {"maple": 1.0},
@@ -100,14 +112,16 @@ const THEMES := {
 		"animals": {"deer": 2.0, "stag": 1.5, "fox": 1.5, "shiba": 1.0, "wolf": 0.5},
 	},
 	"forest_green": {
+		"look": "detailed",
 		"floor": ["grass", "dirt", 0.2],
 		"trees": 26, "rocks": 3, "bushes": 8, "ground": 120,
-		"tree_families": {"oak": 1.0, "leafy": 1.0, "round": 0.5},
+		"tree_families": {"oak": 1.0, "leafy": 1.0},
 		"rock_pool": [0, 1, 2],
 		"ground_kinds": {"grass": 4.0, "clover": 2.0, "plant": 3.0, "shrub": 3.0, "flower_single": 1.0, "mushroom": 1.0},
 		"animals": {"cow": 1.5, "bull": 1.0, "horse": 1.0, "deer": 1.0, "shiba": 1.0, "husky": 1.0},
 	},
 	"deadwood": {
+		"look": "detailed",
 		"shore_extras": {"reeds": 0.14, "lilypad": 0.06, "driftwood": 0.05},
 		"floor": ["dirt", "gravel", 0.2],
 		"trees": 22, "rocks": 5, "bushes": 2, "ground": 80,
@@ -118,20 +132,22 @@ const THEMES := {
 		"animals": {"wolf": 2.0, "fox": 1.5, "stag": 1.0, "husky": 0.5},
 	},
 	"rocky": {
+		"look": "detailed",
 		"shore_extras": {"reeds": 0.05, "lilypad": 0.03, "driftwood": 0.03},
 		"floor": ["gravel", "dirt", 0.4],
 		"trees": 6, "rocks": 26, "bushes": 1, "ground": 100,
 		"tree_families": {"dead": 1.0, "bare": 1.0},
-		"rock_pool": [0, 1, 2, 3, 4, 5, 6, 7, "grey", "granite", "sand"],
+		"rock_pool": [0, 1, 2, 3, 4, 5, 6, 7, "granite", "sand"],
 		"ground_kinds": {"pebble": 5.0, "grass": 2.0, "clover": 1.0},
 		"animals": {"alpaca": 2.0, "donkey": 1.5, "fox": 1.0, "wolf": 1.0},
 	},
 	# User decision: a tropical look - palms, flowers and sandy ground.
 	"tropical": {
+		"look": "detailed",
 		"shore_extras": {"reeds": 0.04, "lilypad": 0.02, "driftwood": 0.07},
 		"floor": ["sand", "grass", 0.25],
 		"trees": 22, "rocks": 3, "bushes": 5, "ground": 120,
-		"tree_families": {"palm": 1.0, "palm2": 1.0},
+		"tree_families": {"palm": 1.0},
 		"rock_pool": [0, 1, 2],
 		"ground_kinds": {"grass": 2.0, "flower_group": 2.0, "flower_single": 2.0, "flower_clump": 2.0,
 			"flower_petal": 2.0, "flower_bush": 1.0, "plant": 2.0, "pebble": 1.0},
@@ -140,6 +156,7 @@ const THEMES := {
 	# User decision: dinosaurs only turn up here, a rare prehistoric look -
 	# palms and conifers, ferny plants, boulders.
 	"prehistoric": {
+		"look": "detailed",
 		"floor": ["moss_soil", "dirt", 0.3],
 		"trees": 20, "rocks": 12, "bushes": 4, "ground": 110,
 		"tree_families": {"palm": 2.0, "pine": 1.0, "leafy": 0.5},
@@ -154,91 +171,117 @@ const THEMES := {
 	# colour ("water"), trees, rocks (catalog rock families by name),
 	# bushes ("bush_families") and animals.
 	"forest_conifer": {
-		"floor": ["forest_floor", "moss_soil", 0.3],
-		"trees": 28, "rocks": 4, "bushes": 5, "ground": 110,
-		"tree_families": {"conifer": 2.0, "pine": 1.0},
-		"rock_pool": [0, 1, 2, "stone"],
-		"ground_kinds": {"grass": 3.0, "mushroom": 3.0, "plant": 2.0, "shrub": 2.0, "clover": 1.0},
+		"look": "lowpoly",
+		"floor": ["lp_forest", "lp_stone", 0.25],
+		"trees": 28, "rocks": 4, "bushes": 5, "ground": 160,
+		"tree_families": {"conifer": 1.0},
+		"rock_pool": ["stone", "grey", "mossy"],
+		"bush_families": ["lp_bush_dark"],
+		"ground_kinds": {"lp_grass_dark": 4.0, "lp_fern_dark": 3.0, "lp_mushroom": 2.0, "lp_shrub_dark": 2.0,
+			"lp_pebbles_moss": 1.0},
+		"cover": {"grass": "lp_grass_dark", "shrub": "lp_shrub_dark", "flower_bush": "lp_fern_dark",
+			"pebble": "lp_pebbles_moss", "reeds": "lp_reeds", "driftwood": "lp_driftwood"},
 		"animals": {"deer": 2.0, "stag": 1.5, "wolf": 1.0, "fox": 1.0},
 		"tint": Color(0.94, 1.0, 1.02),
 	},
 	"autumn": {
+		"look": "lowpoly",
 		"shore_extras": {"reeds": 0.12, "lilypad": 0.12, "driftwood": 0.02},
-		"floor": ["leaf_litter", "grass", 0.25],
-		"trees": 26, "rocks": 3, "bushes": 5, "ground": 110,
-		"tree_families": {"autumn": 3.0, "maple": 1.0},
-		"rock_pool": [0, 1, 2, "mossy", "lantern", "shrine"],
-		"ground_kinds": {"mushroom": 3.0, "grass": 2.0, "clover": 2.0, "shrub": 2.0, "flower_bush": 1.0},
+		"floor": ["lp_autumn", "lp_meadow", 0.15],
+		"trees": 26, "rocks": 3, "bushes": 5, "ground": 160,
+		"tree_families": {"autumn": 1.0},
+		"rock_pool": ["stone", "mossy", "lp_lantern", "lp_shrine"],
+		"bush_families": ["lp_bush_autumn"],
+		"ground_kinds": {"lp_leaves": 4.0, "lp_grass_autumn": 3.0, "lp_mushroom": 2.0, "lp_shrub_autumn": 2.0},
+		"cover": {"grass": "lp_grass_autumn", "shrub": "lp_shrub_autumn", "flower_bush": "lp_leaves",
+			"pebble": "lp_pebbles", "reeds": "lp_reeds", "driftwood": "lp_driftwood"},
 		"animals": {"deer": 2.0, "stag": 1.5, "fox": 2.0, "wolf": 0.5},
 		"tint": Color(1.1, 0.98, 0.86),
 		"water": {"base": Color(0.12, 0.22, 0.24), "deep": Color(0.04, 0.07, 0.08)},
 	},
 	"snow": {
+		"look": "lowpoly",
 		"shore_extras": {"reeds": 0.05, "lilypad": 0.0, "driftwood": 0.05},
-		"floor": ["snow", "gravel", 0.12],
-		"trees": 24, "rocks": 6, "bushes": 0, "ground": 40,
+		"floor": ["lp_snow", "lp_stone", 0.08],
+		"trees": 24, "rocks": 6, "bushes": 3, "ground": 80,
 		"tree_families": {"snow_pine": 3.0, "snow_bare": 1.2},
-		"rock_pool": ["grey", "stone", "granite", "grave"],
-		"ground_kinds": {"pebble": 4.0, "grass": 1.0},
+		"rock_pool": ["grey", "stone", "lp_grave"],
+		"bush_families": ["lp_bush_snow"],
+		"ground_kinds": {"lp_pebbles_snow": 4.0, "lp_grass_dry": 2.0},
+		"cover": {"grass": "lp_grass_dry", "shrub": "lp_pebbles_snow", "flower_bush": "lp_grass_dry",
+			"pebble": "lp_pebbles_snow", "reeds": "lp_reeds", "driftwood": "lp_driftwood"},
 		"shore": {"grass": 0.12, "shrub": 0.0, "pebbles": 0.45},
 		"animals": {"wolf": 2.0, "husky": 2.0, "stag": 1.0, "white_horse": 0.5, "fox": 1.0},
 		"tint": Color(0.86, 0.95, 1.16),
 		"water": {"base": Color(0.14, 0.28, 0.36), "deep": Color(0.03, 0.08, 0.14)},
 	},
 	"jungle": {
+		"look": "lowpoly",
 		"shore_extras": {"reeds": 0.16, "lilypad": 0.2, "driftwood": 0.02},
-		"floor": ["moss_soil", "grass", 0.4],
-		"trees": 26, "rocks": 3, "bushes": 10, "ground": 140,
+		"floor": ["lp_jungle", "lp_forest", 0.3],
+		"trees": 26, "rocks": 3, "bushes": 10, "ground": 190,
 		"tree_families": {"banana": 2.0, "palm2": 1.5, "sago": 1.2, "banyan": 0.5},
 		"rock_pool": ["mossy", "stone"],
-		"bush_families": ["monstera"],
-		"ground_kinds": {"plant": 5.0, "grass": 3.0, "flower_single": 1.0, "flower_clump": 1.0, "mushroom": 1.0},
+		"bush_families": ["monstera", "lp_bush_dark"],
+		"ground_kinds": {"lp_fern": 4.0, "lp_grass_dark": 3.0, "lp_flowers": 1.0, "lp_mushroom": 1.0},
+		"cover": {"grass": "lp_grass_dark", "shrub": "lp_fern", "flower_bush": "lp_flowers",
+			"pebble": "lp_pebbles_moss", "reeds": "lp_reeds", "driftwood": "lp_driftwood"},
 		"animals": {"fox": 1.0},
 		"animal_count": 2,
 		"tint": Color(0.9, 1.06, 0.94),
 		"water": {"base": Color(0.07, 0.25, 0.2), "deep": Color(0.02, 0.08, 0.06)},
 	},
 	"savanna": {
+		"look": "lowpoly",
 		"shore_extras": {"reeds": 0.08, "lilypad": 0.03, "driftwood": 0.05},
-		"floor": ["red_earth", "sand", 0.3],
-		"trees": 12, "rocks": 8, "bushes": 4, "ground": 70,
-		"tree_families": {"baobab": 3.0, "sago": 0.6, "palm": 0.4},
-		"rock_pool": ["red", "sand"],
-		"bush_families": ["rock_bush"],
-		"ground_kinds": {"grass": 3.0, "pebble": 3.0, "plant": 1.0},
+		"floor": ["lp_savanna", "lp_autumn", 0.12],
+		"trees": 12, "rocks": 8, "bushes": 4, "ground": 130,
+		"tree_families": {"baobab": 3.0, "sago": 0.6},
+		"rock_pool": ["red"],
+		"bush_families": ["rock_bush", "lp_bush_dry"],
+		"ground_kinds": {"lp_grass_dry": 5.0, "lp_pebbles_red": 3.0, "lp_shrub_dry": 1.0},
+		"cover": {"grass": "lp_grass_dry", "shrub": "lp_shrub_dry", "flower_bush": "lp_grass_dry",
+			"pebble": "lp_pebbles_red", "reeds": "lp_reeds", "driftwood": "lp_driftwood"},
 		"animals": {"alpaca": 1.5, "donkey": 1.5, "horse": 1.0, "bull": 1.0},
 		"tint": Color(1.12, 1.0, 0.84),
 		"water": {"base": Color(0.18, 0.22, 0.16), "deep": Color(0.06, 0.07, 0.04)},
 	},
 	"meadow": {
+		"look": "lowpoly",
 		"shore_extras": {"reeds": 0.12, "lilypad": 0.16, "driftwood": 0.01},
-		"floor": ["grass_light", "grass", 0.35],
-		"trees": 14, "rocks": 2, "bushes": 6, "ground": 180,
+		"floor": ["lp_meadow", "lp_forest", 0.1],
+		"trees": 14, "rocks": 2, "bushes": 6, "ground": 240,
 		"tree_families": {"meadow": 2.0, "round": 2.0},
-		"rock_pool": ["stone"],
-		"bush_families": ["rock_bush"],
-		"ground_kinds": {"grass": 4.0, "flower_group": 3.0, "flower_single": 3.0, "flower_clump": 3.0,
-			"flower_petal": 2.0, "clover": 2.0, "flower_bush": 1.0},
+		"rock_pool": ["stone", "grey"],
+		"bush_families": ["rock_bush", "lp_bush"],
+		"ground_kinds": {"lp_grass": 4.0, "lp_flowers": 4.0, "lp_shrub": 1.0, "lp_mushroom": 0.5},
+		"cover": {"grass": "lp_grass", "shrub": "lp_shrub", "flower_bush": "lp_flowers",
+			"pebble": "lp_pebbles", "reeds": "lp_reeds", "driftwood": "lp_driftwood"},
 		"animals": {"cow": 1.5, "horse": 1.0, "white_horse": 1.0, "alpaca": 1.0, "shiba": 1.0},
 		"tint": Color(1.04, 1.06, 0.98),
 	},
 	"stone_forest": {
+		"look": "lowpoly",
 		"shore_extras": {"reeds": 0.1, "lilypad": 0.22, "driftwood": 0.02},
-		"floor": ["moss_soil", "gravel", 0.45],
-		"trees": 14, "rocks": 22, "bushes": 2, "ground": 90,
+		"floor": ["lp_stone", "lp_forest", 0.3],
+		"trees": 14, "rocks": 22, "bushes": 2, "ground": 140,
 		"tree_families": {"bonsai": 1.0},
-		"rock_pool": ["pillar", "granite", "grey", 5, 6, 7, "lantern", "shrine"],
-		"ground_kinds": {"grass": 3.0, "pebble": 3.0, "plant": 1.0, "mushroom": 1.0},
+		"rock_pool": ["pillar", "grey", "stone", "lp_lantern", "lp_shrine"],
+		"bush_families": ["lp_bush_dark"],
+		"ground_kinds": {"lp_grass_dark": 3.0, "lp_pebbles_moss": 3.0, "lp_fern_dark": 1.0, "lp_mushroom": 1.0},
+		"cover": {"grass": "lp_grass_dark", "shrub": "lp_shrub_dark", "flower_bush": "lp_fern_dark",
+			"pebble": "lp_pebbles_moss", "reeds": "lp_reeds", "driftwood": "lp_driftwood"},
 		"animals": {"stag": 1.5, "fox": 1.0, "white_horse": 1.0, "wolf": 1.0},
 		"tint": Color(0.92, 1.0, 0.98),
 		"water": {"base": Color(0.1, 0.28, 0.26), "deep": Color(0.02, 0.08, 0.08)},
 	},
 	"swamp": {
+		"look": "detailed",
 		"shore_extras": {"reeds": 0.4, "lilypad": 0.28, "driftwood": 0.05},
 		"floor": ["mud", "moss_soil", 0.35],
 		"trees": 22, "rocks": 6, "bushes": 4, "ground": 90,
 		"tree_families": {"dead": 1.0, "twisted": 1.0, "bare": 1.0},
-		"rock_pool": ["mossy", 0, 1, "grave"],
+		"rock_pool": [0, 1, 2, "grave"],
 		"ground_kinds": {"grass": 3.0, "mushroom": 3.0, "plant": 2.0},
 		"animals": {"wolf": 1.5, "fox": 1.0},
 		"animal_count": 4,
@@ -746,7 +789,8 @@ func _near_path(pos: Vector2, margin: float) -> bool:
 func _add_ground_cover(pos: Vector2, kind: String) -> void:
 	var plant: Node2D = GROUND_COVER_SCENE.instantiate()
 	plant.position = pos
-	plant.kind_override = kind
+	# The theme's look's own version of a generic plant (see THEMES).
+	plant.kind_override = theme.get("cover", {}).get(kind, kind)
 	get_parent().add_child.call_deferred(plant)
 
 

@@ -315,6 +315,69 @@ def shade_over(mat, ao_distance):
 
 # --- procedural shore plants (User request: water plants for the ponds) ----
 
+# Low-poly set (builders below): colours in linear RGB, several per model.
+LP_GREENS = {
+    "": [(0.1, 0.26, 0.05), (0.14, 0.32, 0.06), (0.2, 0.36, 0.07)],          # fresh
+    "_dark": [(0.04, 0.13, 0.05), (0.06, 0.17, 0.06), (0.09, 0.2, 0.06)],    # forest, jungle, stone
+    "_dry": [(0.4, 0.3, 0.1), (0.33, 0.28, 0.1), (0.46, 0.38, 0.14)],       # savanna, snow
+    "_autumn": [(0.42, 0.22, 0.05), (0.3, 0.26, 0.06), (0.5, 0.3, 0.06)],
+}
+for tone, colours in LP_GREENS.items():
+    for i in range(3):
+        MODELS.append(m("lp_grass%s_%d" % (tone, i + 1), None, [], "lowpoly", "cover", "lp_grass" + tone, height=1.2,
+                        builder="lp_grass", seed=200 + i + 10 * len(tone), colours=colours, blades=13 + 3 * i))
+    for i in range(2):
+        MODELS.append(m("lp_shrub%s_%d" % (tone, i + 1), None, [], "lowpoly", "cover", "lp_shrub" + tone, width=1.5,
+                        builder="lp_bush", seed=260 + i + 10 * len(tone), colours=colours, balls=3))
+    for i in range(3):
+        MODELS.append(m("lp_bush%s_%d" % (tone, i + 1), None, [], "lowpoly", "bush", "lp_bush" + tone, width=3.4,
+                        builder="lp_bush", seed=300 + i + 10 * len(tone), colours=colours, balls=4 + i))
+# Snowy bushes and shrubs for the snow style.
+for i in range(3):
+    MODELS.append(m("lp_bush_snow_%d" % (i + 1), None, [], "lowpoly", "bush", "lp_bush_snow", width=3.4,
+                    builder="lp_bush", seed=340 + i, colours=LP_GREENS["_dark"], balls=4 + i, snow=True))
+for i, colours in enumerate([[(0.8, 0.25, 0.35), (0.85, 0.8, 0.75)], [(0.85, 0.6, 0.05), (0.85, 0.8, 0.75)],
+                             [(0.35, 0.2, 0.7), (0.8, 0.25, 0.35)], [(0.85, 0.8, 0.75), (0.85, 0.6, 0.05)]]):
+    MODELS.append(m("lp_flowers_%d" % (i + 1), None, [], "lowpoly", "cover", "lp_flowers", height=1.0,
+                    builder="lp_flowers", seed=400 + i, colours=colours, leaves=LP_GREENS[""], stems=3 + i % 3))
+for i, (cap, count) in enumerate([((0.55, 0.05, 0.03), 2), ((0.3, 0.16, 0.07), 3), ((0.62, 0.5, 0.3), 1)]):
+    MODELS.append(m("lp_mushroom_%d" % (i + 1), None, [], "lowpoly", "cover", "lp_mushroom", height=0.65,
+                    builder="lp_mushroom", seed=420 + i, cap=cap, count=count))
+for tone, colours in {"": [(0.2, 0.2, 0.21), (0.26, 0.26, 0.26)], "_red": [(0.4, 0.14, 0.06), (0.32, 0.12, 0.06)],
+                      "_moss": [(0.2, 0.22, 0.17), (0.13, 0.2, 0.08)]}.items():
+    for i in range(3):
+        MODELS.append(m("lp_pebbles%s_%d" % (tone, i + 1), None, [], "lowpoly", "cover", "lp_pebbles" + tone,
+                        width=1.2, builder="lp_pebbles", seed=440 + i + 10 * len(tone), colours=colours, count=2 + i))
+for i in range(3):
+    MODELS.append(m("lp_pebbles_snow_%d" % (i + 1), None, [], "lowpoly", "cover", "lp_pebbles_snow", width=1.2,
+                    builder="lp_pebbles", seed=470 + i, colours=[(0.2, 0.2, 0.22)], count=2 + i, snow=True))
+for tone, colours in {"": LP_GREENS[""], "_dark": LP_GREENS["_dark"]}.items():
+    for i in range(2):
+        MODELS.append(m("lp_fern%s_%d" % (tone, i + 1), None, [], "lowpoly", "cover", "lp_fern" + tone, width=1.8,
+                        builder="lp_fern", seed=500 + i + 10 * len(tone), colours=colours, fronds=6 + i))
+for i in range(3):
+    MODELS.append(m("lp_leaves_%d" % (i + 1), None, [], "lowpoly", "cover", "lp_leaves", width=1.6,
+                    builder="lp_leaves", seed=520 + i, count=10 + 3 * i,
+                    colours=[(0.62, 0.2, 0.03), (0.48, 0.07, 0.03), (0.62, 0.4, 0.05), (0.4, 0.13, 0.04)]))
+for i in range(3):
+    MODELS.append(m("lp_reeds_%d" % (i + 1), None, [], "lowpoly", "cover", "lp_reeds", height=2.0,
+                    builder="lp_reeds", seed=540 + i, colours=LP_GREENS[""] + [(0.3, 0.3, 0.08)],
+                    blades=9 + 2 * i, cattails=2 + i))
+for i in range(2):
+    MODELS.append(m("lp_driftwood_%d" % (i + 1), None, [], "lowpoly", "cover", "lp_driftwood", width=2.6,
+                    builder="lp_driftwood", seed=560 + i))
+# Flat-coloured folk props (the same builders, no painted grain).
+for i, style in enumerate(["round", "slab"]):
+    MODELS.append(m("lp_grave_%d" % (i + 1), None, [], "lowpoly", "rock", "lp_grave", height=1.5 - 0.15 * i,
+                    builder="grave", seed=71 + i, style=style, flat=True))
+MODELS.append(m("lp_cross_1", None, [], "lowpoly", "rock", "lp_grave", height=1.7, builder="cross", seed=81, flat=True))
+for i, tall in enumerate([True, False]):
+    MODELS.append(m("lp_lantern_%d" % (i + 1), None, [], "lowpoly", "rock", "lp_lantern",
+                    height=2.6 if tall else 1.9, builder="stone_lantern", seed=91 + i, tall=tall, flat=True))
+MODELS.append(m("lp_shrine_1", None, [], "lowpoly", "rock", "lp_shrine", height=2.4, builder="shrine", seed=95, flat=True))
+MODELS.append(m("lp_well_1", None, [], "lowpoly", "rock", "lp_well", height=2.4, builder="well", seed=97, flat=True))
+
+
 def _mat(name, rgb):
     mat = bpy.data.materials.get(name)
     if mat is None:
@@ -475,11 +538,19 @@ def _cyl(r, depth, loc, mat, verts=12, rot=(0.0, 0.0, 0.0), r2=None):
     return ob
 
 
+def _look(spec, name, base, grime, **kw):
+    """A prop's material: painted (stone grain, grime) for the detailed map
+    styles, or one flat colour (spec "flat") for the low-poly ones."""
+    if spec.get("flat"):
+        return _mat(name + "_flat", tuple(min(1.0, c * 1.25) for c in base))
+    return paint(name, base, grime, **kw)
+
+
 def build_grave(spec):
     """User request (map styles, left to me): folk-horror props - old
     headstones, leaning."""
     rng = np.random.default_rng(spec["seed"])
-    stone = paint("grave_stone", (0.24, 0.24, 0.23), (0.06, 0.09, 0.05), scale=5.0, amount=0.7)
+    stone = _look(spec, "grave_stone", (0.24, 0.24, 0.23), (0.06, 0.09, 0.05), scale=5.0, amount=0.7)
     tilt = (rng.uniform(-0.12, 0.12), rng.uniform(-0.1, 0.1), rng.uniform(-0.3, 0.3))
     obs = []
     style = spec.get("style", "round")
@@ -497,10 +568,10 @@ def build_grave(spec):
 
 def build_cross(spec):
     rng = np.random.default_rng(spec["seed"])
-    wood = paint("grave_wood", (0.16, 0.11, 0.07), (0.05, 0.04, 0.03), scale=8.0, amount=0.6)
+    wood = _look(spec, "grave_wood", (0.16, 0.11, 0.07), (0.05, 0.04, 0.03), scale=8.0, amount=0.6)
     lean = (rng.uniform(-0.2, 0.2), rng.uniform(-0.15, 0.15), rng.uniform(-0.4, 0.4))
     obs = [_box((0.11, 0.09, 1.3), (0, 0, 0.62), wood), _box((0.62, 0.09, 0.1), (0, 0, 0.95), wood),
-           _box((0.7, 0.5, 0.1), (0, 0, 0.03), paint("grave_mound", (0.12, 0.1, 0.07), (0.05, 0.05, 0.03)))]
+           _box((0.7, 0.5, 0.1), (0, 0, 0.03), _look(spec, "grave_mound", (0.12, 0.1, 0.07), (0.05, 0.05, 0.03)))]
     for o in obs[:2]:
         o.rotation_euler = lean
     return obs
@@ -508,7 +579,7 @@ def build_cross(spec):
 
 def build_stone_lantern(spec):
     """A tall stone lantern (like a toro): base, pillar, firebox, roof."""
-    stone = paint("lantern_stone", (0.27, 0.27, 0.25), (0.07, 0.1, 0.05), scale=4.0, amount=0.65)
+    stone = _look(spec, "lantern_stone", (0.27, 0.27, 0.25), (0.07, 0.1, 0.05), scale=4.0, amount=0.65)
     glow = _mat("lantern_glow", (1.0, 0.62, 0.2))
     tall = spec.get("tall", True)
     h = 1.0 if tall else 0.45
@@ -527,9 +598,9 @@ def build_stone_lantern(spec):
 def build_shrine(spec):
     """A tiny wayside shrine: a stone plinth, red posts, a dark tiled roof,
     an incense burner in front."""
-    stone = paint("shrine_stone", (0.26, 0.25, 0.23), (0.08, 0.08, 0.06), scale=4.0, amount=0.6)
-    red = paint("shrine_red", (0.42, 0.05, 0.03), (0.15, 0.03, 0.02), scale=6.0, amount=0.5)
-    roof = paint("shrine_roof", (0.1, 0.1, 0.12), (0.04, 0.04, 0.05), scale=6.0, amount=0.5)
+    stone = _look(spec, "shrine_stone", (0.26, 0.25, 0.23), (0.08, 0.08, 0.06), scale=4.0, amount=0.6)
+    red = _look(spec, "shrine_red", (0.42, 0.05, 0.03), (0.15, 0.03, 0.02), scale=6.0, amount=0.5)
+    roof = _look(spec, "shrine_roof", (0.1, 0.1, 0.12), (0.04, 0.04, 0.05), scale=6.0, amount=0.5)
     gold = _mat("shrine_gold", (0.7, 0.5, 0.12))
     obs = [_box((1.4, 1.1, 0.35), (0, 0, 0.175), stone)]
     for x in (-0.5, 0.5):
@@ -547,8 +618,8 @@ def build_shrine(spec):
 
 
 def build_well(spec):
-    stone = paint("well_stone", (0.25, 0.24, 0.22), (0.07, 0.09, 0.05), scale=5.0, amount=0.7)
-    wood = paint("well_wood", (0.2, 0.13, 0.08), (0.06, 0.05, 0.03), scale=8.0, amount=0.5)
+    stone = _look(spec, "well_stone", (0.25, 0.24, 0.22), (0.07, 0.09, 0.05), scale=5.0, amount=0.7)
+    wood = _look(spec, "well_wood", (0.2, 0.13, 0.08), (0.06, 0.05, 0.03), scale=8.0, amount=0.5)
     water = _mat("well_dark", (0.01, 0.02, 0.03))
     obs = []
     for k in range(12):
@@ -563,9 +634,196 @@ def build_well(spec):
     return obs
 
 
+# --- Low-poly ground cover, bushes and shore plants --------------------------
+# User request: the flat-coloured map styles are one look throughout - no
+# painted grass or textured rocks among low-poly trees. The packs have no
+# small plants, so these are built here in the packs' manner: few faces,
+# flat shaded, one flat colour each (colours in linear RGB).
+
+def _mesh(name, verts, faces, mat):
+    me = bpy.data.meshes.new(name)
+    me.from_pydata(verts, [], faces)
+    me.update()
+    ob = bpy.data.objects.new(name, me)
+    bpy.context.scene.collection.objects.link(ob)
+    ob.data.materials.append(mat)
+    return ob
+
+
+def _rock_blob(name, radius, loc, mat, rng, squash=0.6, subdiv=1):
+    """A faceted lump: an icosphere with its vertices knocked about."""
+    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=subdiv, radius=radius, location=loc)
+    ob = bpy.context.active_object
+    for v in ob.data.vertices:
+        v.co *= rng.uniform(0.8, 1.15)
+    ob.scale = (rng.uniform(0.9, 1.2), rng.uniform(0.9, 1.2), squash)
+    ob.rotation_euler = (0.0, 0.0, rng.uniform(0, math.tau))
+    ob.data.materials.append(mat)
+    return ob
+
+
+def _mats(prefix, colours):
+    return [_mat("%s_%d" % (prefix, i), c) for i, c in enumerate(colours)]
+
+
+def build_lp_grass(spec):
+    """A tuft: flat triangular blades leaning out from a small patch."""
+    rng = np.random.default_rng(spec["seed"])
+    mats = _mats("lpg_" + spec["name"], spec["colours"])
+    obs = []
+    for i in range(int(spec.get("blades", 9))):
+        r = rng.uniform(0, 0.4)
+        a = rng.uniform(0, math.tau)
+        bx, by = math.cos(a) * r, math.sin(a) * r
+        h = rng.uniform(0.45, 1.0)
+        w = rng.uniform(0.08, 0.14)
+        lean = rng.uniform(0.1, 0.5)
+        yaw = rng.uniform(0, math.tau)
+        out = (bx + math.cos(a) * lean * h * 0.6, by + math.sin(a) * lean * h * 0.6)
+        verts = [(bx - w * math.sin(yaw), by + w * math.cos(yaw), 0.0),
+                 (bx + w * math.sin(yaw), by - w * math.cos(yaw), 0.0),
+                 (out[0], out[1], h)]
+        obs.append(_mesh("blade%d" % i, verts, [(0, 1, 2)], mats[rng.integers(len(mats))]))
+    return obs
+
+
+def build_lp_flowers(spec):
+    """A few stems, each topped with a faceted blossom, over a leaf tuft."""
+    rng = np.random.default_rng(spec["seed"])
+    obs = build_lp_grass(dict(spec, blades=5, colours=spec["leaves"]))
+    stem = _mat("lp_stem", (0.06, 0.16, 0.04))
+    petals = _mats("lpf_" + spec["name"], spec["colours"])
+    heart = _mat("lp_heart", (0.8, 0.55, 0.05))
+    for i in range(int(spec.get("stems", 4))):
+        r = rng.uniform(0, 0.3)
+        a = rng.uniform(0, math.tau)
+        x, y = math.cos(a) * r, math.sin(a) * r
+        h = rng.uniform(0.55, 0.95)
+        obs.append(_cyl(0.02, h, (x, y, h / 2), stem, 4))
+        obs.append(_cyl(0.16, 0.07, (x, y, h + 0.02), petals[i % len(petals)], 5))
+        obs.append(_cyl(0.06, 0.05, (x, y, h + 0.07), heart, 5))
+    return obs
+
+
+def build_lp_mushroom(spec):
+    rng = np.random.default_rng(spec["seed"])
+    cap = _mat("lpm_cap_" + spec["name"], spec["cap"])
+    stalk = _mat("lpm_stalk", (0.62, 0.58, 0.48))
+    obs = []
+    for i in range(int(spec.get("count", 2))):
+        r = 0 if i == 0 else rng.uniform(0.25, 0.4)
+        a = rng.uniform(0, math.tau)
+        x, y = math.cos(a) * r, math.sin(a) * r
+        k = 1.0 if i == 0 else rng.uniform(0.55, 0.75)
+        h = 0.5 * k
+        obs.append(_cyl(0.07 * k, h, (x, y, h / 2), stalk, 6))
+        obs.append(_cyl(0.3 * k, 0.24 * k, (x, y, h + 0.08 * k), cap, 7, r2=0.04 * k))
+    return obs
+
+
+def build_lp_pebbles(spec):
+    rng = np.random.default_rng(spec["seed"])
+    mats = _mats("lpp_" + spec["name"], spec["colours"])
+    obs = []
+    for i in range(int(spec.get("count", 3))):
+        r = 0 if i == 0 else rng.uniform(0.3, 0.55)
+        a = rng.uniform(0, math.tau)
+        rad = rng.uniform(0.18, 0.32) * (1.3 if i == 0 else 1.0)
+        obs.append(_rock_blob("peb%d" % i, rad, (math.cos(a) * r, math.sin(a) * r, rad * 0.3),
+                              mats[rng.integers(len(mats))], rng, squash=0.55))
+    return obs
+
+
+def build_lp_fern(spec):
+    """Fronds: long flat diamonds arching out from the middle."""
+    rng = np.random.default_rng(spec["seed"])
+    mats = _mats("lpfern_" + spec["name"], spec["colours"])
+    obs = []
+    n = int(spec.get("fronds", 7))
+    for i in range(n):
+        a = i / n * math.tau + rng.uniform(-0.3, 0.3)
+        ln = rng.uniform(0.8, 1.15)
+        w = rng.uniform(0.13, 0.19)
+        ca, sa = math.cos(a), math.sin(a)
+        mid = (ca * ln * 0.5, sa * ln * 0.5, 0.42)
+        verts = [(0, 0, 0.05), (mid[0] - sa * w, mid[1] + ca * w, mid[2]), (ca * ln, sa * ln, 0.15),
+                 (mid[0] + sa * w, mid[1] - ca * w, mid[2]), (mid[0], mid[1], mid[2] + 0.05)]
+        obs.append(_mesh("frond%d" % i, verts, [(0, 1, 4), (1, 2, 4), (2, 3, 4), (3, 0, 4)],
+                         mats[rng.integers(len(mats))]))
+    return obs
+
+
+def build_lp_leaves(spec):
+    """Fallen leaves: a scatter of small flat diamonds on the ground."""
+    rng = np.random.default_rng(spec["seed"])
+    mats = _mats("lpl_" + spec["name"], spec["colours"])
+    obs = []
+    for i in range(int(spec.get("count", 12))):
+        r = rng.uniform(0, 0.7) ** 0.8
+        a = rng.uniform(0, math.tau)
+        x, y = math.cos(a) * r, math.sin(a) * r
+        ln, w, yaw = rng.uniform(0.14, 0.22), rng.uniform(0.06, 0.1), rng.uniform(0, math.tau)
+        cy, sy = math.cos(yaw), math.sin(yaw)
+        z = 0.01 + i * 0.002
+        verts = [(x - cy * ln, y - sy * ln, z), (x - sy * w, y + cy * w, z + 0.02), (x + cy * ln, y + sy * ln, z),
+                 (x + sy * w, y - cy * w, z + 0.02)]
+        obs.append(_mesh("leaf%d" % i, verts, [(0, 1, 2, 3)], mats[rng.integers(len(mats))]))
+    return obs
+
+
+def build_lp_bush(spec):
+    """A clump of faceted foliage balls (a small shrub, or a bush big enough
+    to hide in)."""
+    rng = np.random.default_rng(spec["seed"])
+    mats = _mats("lpb_" + spec["name"], spec["colours"])
+    obs = []
+    n = int(spec.get("balls", 4))
+    for i in range(n):
+        r = 0 if i == 0 else rng.uniform(0.35, 0.6)
+        a = i / n * math.tau + rng.uniform(-0.4, 0.4)
+        rad = rng.uniform(0.45, 0.6) * (1.25 if i == 0 else 1.0)
+        obs.append(_rock_blob("ball%d" % i, rad, (math.cos(a) * r, math.sin(a) * r, rad * 0.75),
+                              mats[i % len(mats)], rng, squash=0.85))
+    return obs
+
+
+def build_lp_reeds(spec):
+    rng = np.random.default_rng(spec["seed"])
+    obs = build_lp_grass(dict(spec, blades=spec.get("blades", 10)))
+    for o in obs:
+        o.scale = (1.0, 1.0, rng.uniform(1.6, 2.1))
+    brown = _mat("lp_cattail", (0.2, 0.08, 0.03))
+    stem = _mat("lp_reed_stem", (0.12, 0.2, 0.05))
+    for i in range(int(spec.get("cattails", 3))):
+        r = rng.uniform(0, 0.22)
+        a = rng.uniform(0, math.tau)
+        x, y = math.cos(a) * r, math.sin(a) * r
+        h = rng.uniform(1.5, 2.0)
+        obs.append(_cyl(0.02, h, (x, y, h / 2), stem, 4))
+        obs.append(_cyl(0.07, 0.34, (x, y, h - 0.2), brown, 6))
+    return obs
+
+
+def build_lp_driftwood(spec):
+    rng = np.random.default_rng(spec["seed"])
+    wood = _mat("lp_drift", (0.24, 0.18, 0.12))
+    length = rng.uniform(2.0, 2.6)
+    yaw = rng.uniform(-0.5, 0.5)
+    obs = [_cyl(0.2, length, (0, 0, 0.17), wood, 6, (0.0, math.radians(90), yaw))]
+    bl = rng.uniform(0.5, 0.8)
+    t = rng.uniform(-0.3, 0.3) * length
+    a = yaw + rng.choice([-1, 1]) * 0.8
+    obs.append(_cyl(0.08, bl, (math.cos(yaw) * t + math.cos(a) * bl * 0.45, math.sin(yaw) * t + math.sin(a) * bl * 0.45,
+                               0.13), wood, 5, (math.radians(90), 0.0, a + math.pi / 2)))
+    return obs
+
+
 BUILDERS = {"reeds": build_reeds, "lilypads": build_lilypads, "driftwood": build_driftwood,
             "grave": build_grave, "cross": build_cross, "stone_lantern": build_stone_lantern,
-            "shrine": build_shrine, "well": build_well}
+            "shrine": build_shrine, "well": build_well,
+            "lp_grass": build_lp_grass, "lp_flowers": build_lp_flowers, "lp_mushroom": build_lp_mushroom,
+            "lp_pebbles": build_lp_pebbles, "lp_fern": build_lp_fern, "lp_leaves": build_lp_leaves,
+            "lp_bush": build_lp_bush, "lp_reeds": build_lp_reeds, "lp_driftwood": build_lp_driftwood}
 
 
 def import_pack(src):
