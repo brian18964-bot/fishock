@@ -808,29 +808,47 @@ func _tank() -> void:
 	var holder := Node3D.new()
 	holder.position = Vector3(0, 1.0, 0.0)
 	table.add_child(holder)
+	# The player's fish (the first six), as their 3D models (FishModel) -
+	# or their pictures where a species has none.
 	var shown := Profile.tank.slice(0, 6)
 	for i in shown.size():
 		var f: Dictionary = shown[i]
-		var tex := FishData.icon(f.get("id", ""), f.get("name", ""))
-		if tex == null:
-			continue
-		var sprite := Sprite3D.new()
-		sprite.texture = tex
-		sprite.pixel_size = 0.26 / maxf(tex.get_width(), 1.0)
-		sprite.shaded = false
-		sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISABLED
-		sprite.position = Vector3(_rng.randf_range(-0.35, 0.35), _rng.randf_range(-0.14, 0.14), _rng.randf_range(-0.1, 0.1))
-		holder.add_child(sprite)
-		_fish.append([sprite, _rng.randf_range(0.08, 0.18), _rng.randf() * TAU, sprite.position])
+		var cm := float(f.get("length", 30.0))
+		var long := lerpf(0.09, 0.26, clampf(log(maxf(cm, 1.0) / 5.0) / log(60.0), 0.0, 1.0))
+		var body: Node3D = FishModel.make(f.get("id", ""))
+		if body != null:
+			body.scale = Vector3.ONE * long / 1.15
+		else:
+			var tex := FishData.icon(f.get("id", ""), f.get("name", ""))
+			if tex == null:
+				continue
+			var sprite := Sprite3D.new()
+			sprite.texture = tex
+			sprite.pixel_size = long / maxf(tex.get_width(), 1.0)
+			sprite.shaded = false
+			sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISABLED
+			body = sprite
+		var at := Vector3(_rng.randf_range(-0.33, 0.33), _rng.randf_range(-0.13, 0.12), _rng.randf_range(-0.1, 0.1))
+		body.position = at
+		holder.add_child(body)
+		_fish.append([body, _rng.randf_range(0.08, 0.18), _rng.randf() * TAU, at])
 
 
+## The tank's fish swim back and forth along it, turning at the ends.
 func _swim(delta: float) -> void:
 	for f in _fish:
-		var s: Sprite3D = f[0]
+		var body: Node3D = f[0]
 		f[2] += delta * f[1] * 4.0
-		var x := sin(f[2]) * 0.36
-		s.flip_h = cos(f[2]) < 0.0
-		s.position = Vector3(x, f[3].y + sin(f[2] * 2.3) * 0.03, f[3].z)
+		var x := sin(f[2]) * 0.34
+		var heading := cos(f[2])
+		body.position = Vector3(x, f[3].y + sin(f[2] * 2.3) * 0.03, f[3].z)
+		if body is Sprite3D:
+			(body as Sprite3D).flip_h = heading < 0.0
+		else:
+			# Facing its way along the tank (+x or -x), turning through the
+			# glass's depth at the ends.
+			body.rotation.y = lerpf(0.0, PI, smoothstep(0.25, -0.25, heading))
+			FishModel.swim(body as MeshInstance3D, delta, absf(heading) * 0.6 + 0.2)
 
 
 ## A dock into the lake, planks on posts.

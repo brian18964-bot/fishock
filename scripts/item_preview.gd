@@ -17,6 +17,8 @@ var _camera: Camera3D
 var _spin := 0.0
 var _drag := false
 var _id := ""
+var _fish: MeshInstance3D
+var _sway := 0.0
 
 
 func _ready() -> void:
@@ -38,7 +40,9 @@ func _ready() -> void:
 	_stage()
 	resized.connect(_fit_viewport)
 	_fit_viewport()
-	if _id != "":
+	if _id.begins_with("fish:"):
+		show_fish(_id.substr(5))
+	elif _id != "":
 		show_item(_id)
 
 
@@ -90,20 +94,49 @@ func show_item(id: String) -> bool:
 	_id = id
 	if _holder == null:
 		return Items.model_path(id) != ""
-	for c in _holder.get_children():
-		_holder.remove_child(c)
-		c.queue_free()
+	_clear()
 	var path := Items.model_path(id)
 	if path == "" or not ResourceLoader.exists(path):
 		return false
 	var scene: PackedScene = load(path)
 	var inst: Node3D = scene.instantiate()
 	_holder.add_child(inst)
-	# Long things (rods) lean across the frame; the rest stand up.
+	_fit(inst, true)
+	return true
+
+
+## Shows species `id` as its 3D fish (FishModel), swimming where it is;
+## false when it has no model.
+func show_fish(id: String) -> bool:
+	_id = "fish:" + id
+	if _holder == null:
+		return FishModel.has_model(id)
+	_clear()
+	_fish = FishModel.make(id)
+	if _fish == null:
+		return false
+	_holder.add_child(_fish)
+	_fit(_fish, false)
+	# Side-on first, then it turns.
+	_spin = -0.2
+	_sway = 0.0
+	return true
+
+
+func _clear() -> void:
+	_fish = null
+	for c in _holder.get_children():
+		_holder.remove_child(c)
+		c.queue_free()
+
+
+## Sizes and centres a shown thing; long things (rods) lean across the
+## frame when `lean`, the rest stand as they are.
+func _fit(inst: Node3D, lean: bool) -> void:
 	var box := _bounds(inst)
 	var long_axis := box.get_longest_axis_index()
 	_holder.transform = Transform3D.IDENTITY
-	if box.size[long_axis] > 3.0 * box.size[(long_axis + 1) % 3]:
+	if lean and box.size[long_axis] > 3.0 * box.size[(long_axis + 1) % 3]:
 		_holder.rotation = Vector3(0, 0, deg_to_rad(-55)) if long_axis == Vector3.AXIS_Y else Vector3(0, 0, deg_to_rad(30))
 	box = _bounds(inst)
 	var k := 1.7 / maxf(box.get_longest_axis_size(), 0.001)
@@ -111,7 +144,6 @@ func show_item(id: String) -> bool:
 	box = _bounds(inst)
 	_holder.position -= box.get_center()
 	_spin = 0.0
-	return true
 
 
 ## The model's bounds in the pivot's space.
@@ -119,7 +151,10 @@ func _bounds(n: Node3D) -> AABB:
 	var out := AABB()
 	var first := true
 	var to_pivot := _pivot.global_transform.affine_inverse()
-	for mi in n.find_children("*", "MeshInstance3D", true, false):
+	var meshes := n.find_children("*", "MeshInstance3D", true, false)
+	if n is MeshInstance3D:
+		meshes.append(n)
+	for mi in meshes:
 		var box: AABB = (to_pivot * (mi as MeshInstance3D).global_transform) * (mi as MeshInstance3D).get_aabb()
 		out = box if first else out.merge(box)
 		first = false
@@ -127,10 +162,19 @@ func _bounds(n: Node3D) -> AABB:
 
 
 func _process(delta: float) -> void:
-	if not _drag and _pivot != null:
+	if _pivot == null:
+		return
+	if _fish != null and is_instance_valid(_fish):
+		# A fish swims where it is, swinging from one three-quarter view to
+		# the other (turned all the way round it's only a sliver).
+		FishModel.swim(_fish, delta, 0.3)
+		if not _drag:
+			_sway += delta * 0.5
+		_pivot.rotation.y = _spin + sin(_sway) * 0.75
+		return
+	if not _drag:
 		_spin += delta * 0.7
-	if _pivot != null:
-		_pivot.rotation.y = _spin
+	_pivot.rotation.y = _spin
 
 
 func _gui_input(event: InputEvent) -> void:

@@ -1357,14 +1357,21 @@ func test_fish_tank() -> void:
 	check(tank.fish().size() == 2, "both swim in the tank")
 	var inside := true
 	for s in tank.fish():
-		inside = inside and tank.water().grow(2).has_point(s.position)
+		inside = inside and tank.inside(s)
 	check(inside, "and stay in the water")
+	# User request (3D out of the game): the tank is 3D; a tap on a fish
+	# picks it.
+	check(tank is Aquarium, "the tank is 3D")
+	if tank is Aquarium:
+		var s: Node3D = tank.fish()[0]
+		check(tank.pick(tank.camera.unproject_position(s.global_position)) >= 0, "a tap on a fish in the 3D tank picks it")
 	check(page.find_child("Fish_0", true, false) != null and page.find_child("Fish_1", true, false) != null, "the list")
 	check(page.find_child("FishLog", true, false) != null, "the fish log is reached from the tank")
 	tank.feed()
 	check(tank.food().size() > 0, "food goes in")
 	page._card_for(0)
 	await frames(1)
+	check(page.find_child("Preview", true, false) is ItemPreview, "the fish's card shows it in 3D")
 	(page.find_child("Sell", true, false) as Button).pressed.emit()
 	await frames(2)
 	check(Profile.tank.size() == 1 and Profile.gold == 6, "sold for its value (gold %d)" % Profile.gold)
@@ -1424,6 +1431,10 @@ func test_main_menu() -> void:
 	await frames(2)
 	var cells := book.find_children("Fish_*", "Button", true, false)
 	check(cells.size() == FishData.FISH.size(), "the fish log shows every species (%d)" % cells.size())
+	book._card("golden_koi", {"count": 1, "best_value": 30.0})
+	await frames(1)
+	var turn: ItemPreview = book.find_child("Preview", true, false)
+	check(turn != null and turn._fish != null, "a caught fish's card turns it in 3D")
 	book.queue_free()
 	await frames(1)
 

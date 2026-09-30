@@ -8,6 +8,8 @@ extends Control
 ## ones go for the others now and then, bottom dwellers keep low, shy ones
 ## by the weed, lazy ones barely move, jumpers leap, gluttons get to the
 ## food first. Tap a fish, in the tank or the list, for its card.
+## User request (3D out of the game): the tank is 3D (Aquarium) - the 2D
+## one (TankView) stays for when the 3D camp is turned off.
 
 const TANK := Rect2(24, 66, 580, 454)
 ## The water inside the glass (tank-local).
@@ -16,7 +18,7 @@ const SAND_H := 44.0
 const WATER_TOP := Color(0.1, 0.3, 0.38)
 const WATER_BOTTOM := Color(0.03, 0.1, 0.16)
 
-var _tank: TankView
+var _tank  # Aquarium, or TankView when the 3D camp is off
 var _list: VBoxContainer
 var _count: Label
 var _purse: PanelContainer
@@ -53,7 +55,7 @@ func _build() -> void:
 	frame.size = TANK.size + Vector2(20, 20)
 	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(frame)
-	_tank = TankView.new()
+	_tank = Aquarium.new() if Profile.settings.get("camp_3d", true) else TankView.new()
 	_tank.name = "Tank"
 	_tank.position = TANK.position
 	_tank.size = TANK.size
@@ -162,12 +164,20 @@ func _card_for(i: int) -> void:
 	panel.custom_minimum_size = Vector2(420, 0)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 5)
-	var pic := TextureRect.new()
-	pic.texture = FishData.icon(f.get("id", ""), f.get("name", ""))
-	pic.custom_minimum_size = Vector2(0, 110)
-	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	col.add_child(pic)
+	# The fish in 3D, turning (user request), or its picture.
+	if FishModel.has_model(f.get("id", "")):
+		var turn := ItemPreview.new()
+		turn.name = "Preview"
+		turn.custom_minimum_size = Vector2(0, 150)
+		col.add_child(turn)
+		turn.show_fish(f.get("id", ""))
+	else:
+		var pic := TextureRect.new()
+		pic.texture = FishData.icon(f.get("id", ""), f.get("name", ""))
+		pic.custom_minimum_size = Vector2(0, 110)
+		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		col.add_child(pic)
 	col.add_child(UiKit.label(f.get("name", "魚"), 22, UiKit.rarity_color(rarity), true))
 	col.add_child(UiKit.label(UiKit.rarity_name(rarity) + " 魚", 14, UiKit.rarity_color(rarity)))
 	col.add_child(UiKit.divider(360))
@@ -206,12 +216,16 @@ func _card_for(i: int) -> void:
 	shade.add_child(panel)
 	panel.reset_size()
 	panel.position = (size - panel.size) / 2.0
+	if _tank.has_method("highlight"):
+		_tank.highlight(i)
 
 
 func _close() -> void:
 	if _card != null:
 		_card.queue_free()
 		_card = null
+	if _tank.has_method("highlight"):
+		_tank.highlight(-1)
 
 
 ## A fish's picture in a slot ringed by its rarity.
@@ -279,6 +293,9 @@ class TankView extends Control:
 
 	func water() -> Rect2:
 		return Rect2(WATER.position + Vector2(8, 16), WATER.size - Vector2(16, SAND_H + 20))
+
+	func inside(s: Swimmer) -> bool:
+		return water().grow(2).has_point(s.position)
 
 	func weed_x() -> Array:
 		return _weed.map(func(w): return w[0])

@@ -137,7 +137,17 @@ func _card(id: String, entry: Dictionary) -> void:
 	lines.append("特性：%s（%s）" % [FishData.trait_name(usual), FishData.TANK_TRAITS[usual][1]])
 	if HABIT_NAMES.has(def.habit):
 		lines.append("習性：" + HABIT_NAMES[def.habit])
-	MenuStyle.notice(self, def.name, lines)
+	var note := MenuStyle.notice(self, def.name, lines)
+	# User request (3D out of the game): the fish itself, turning in 3D,
+	# under the title.
+	if FishModel.has_model(id):
+		var col: VBoxContainer = note.get_child(0).get_child(0)
+		var pic := ItemPreview.new()
+		pic.name = "Preview"
+		pic.custom_minimum_size = Vector2(400, 170)
+		col.add_child(pic)
+		col.move_child(pic, 1)
+		pic.show_fish(id)
 
 
 func _on_back_pressed() -> void:
