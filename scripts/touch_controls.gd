@@ -341,6 +341,35 @@ func _send(key: Key, down: bool) -> void:
 	Input.parse_input_event(ev)
 
 
+## An MMO-style action button at `r`: a dark slot, a glow of `tint`
+## behind the picture, the gold frame; darker while pressed, dim when off.
+static func draw_action(ci: CanvasItem, r: Rect2, tint: Color, pressed: bool, on: bool) -> void:
+	var inner := r.grow(-5.0)
+	ci.draw_rect(inner, Color(0.03, 0.03, 0.04, 0.72))
+	ci.draw_texture_rect(UiKit.glow(), inner.grow(4.0), false, Color(tint, 0.55 if on else 0.2))
+	ci.draw_texture_rect(UiKit.tex("action_frame"), r, false, Color(1, 1, 1, 0.95 if on else 0.6))
+	if pressed:
+		ci.draw_rect(inner, Color(0, 0, 0, 0.35))
+
+
+## A cooldown's dark sweep over `r`: `left` (1..0) of the way round still
+## to go, clockwise from the top.
+static func draw_sweep(ci: CanvasItem, r: Rect2, left: float) -> void:
+	var c := r.get_center()
+	var reach := r.size.length()
+	var pts := PackedVector2Array([c])
+	var from := -PI / 2.0 + TAU * (1.0 - left)
+	var steps := 24
+	for i in steps + 1:
+		var a := lerpf(from, 1.5 * PI, float(i) / steps)
+		pts.append(c + Vector2(cos(a), sin(a)) * reach)
+	# Clip the pie to the square.
+	var clipped := Geometry2D.intersect_polygons(pts, PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end,
+		Vector2(r.position.x, r.end.y)]))
+	for poly in clipped:
+		ci.draw_colored_polygon(poly, Color(0, 0, 0, 0.6))
+
+
 ## A soft filled circle with a brighter rim.
 static func _disc(radius: float, fill: Color) -> ImageTexture:
 	var size := int(ceil(radius * 2.0))
@@ -368,13 +397,6 @@ class SkillButtonView extends Node2D:
 	var _cooldown := 0.0
 	var _lit := true
 	var _knob := Vector2.ZERO
-	var _normal: ImageTexture
-	var _down: ImageTexture
-
-	func _ready() -> void:
-		_normal = TouchControls._disc(radius, TouchControls.FILL)
-		_down = TouchControls._disc(radius, TouchControls.FILL_PRESSED)
-
 	func set_state(pressed: bool, flashlight: bool, charge: float, cooldown: float, lit: bool) -> void:
 		if pressed == _pressed and flashlight == _flashlight and absf(charge - _charge) < 0.01 \
 				and absf(cooldown - _cooldown) < 0.01 and lit == _lit:
@@ -390,18 +412,25 @@ class SkillButtonView extends Node2D:
 		_knob = knob
 		queue_redraw()
 
+	## Dressed as an MMO action button (user request): a square in a gold
+	## frame over a warm picture of the light; a dark sweep while the flash
+	## cools down, a golden glow as the light charges.
 	func _draw() -> void:
-		draw_texture(_down if _pressed else _normal, -Vector2(radius, radius))
-		var ink := Color(1.0, 0.92, 0.7, 0.9 if _lit else 0.4)
+		var r := Rect2(-Vector2(radius, radius), Vector2(radius, radius) * 2.0)
+		TouchControls.draw_action(self, r, Color(1.0, 0.6, 0.2) if not _flashlight else Color(0.45, 0.65, 1.0), _pressed, _lit)
+		var ink := Color(1.0, 0.94, 0.75, 0.95 if _lit else 0.45)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE * 1.5)
 		if _flashlight:
 			_draw_flashlight(ink)
 		else:
 			_draw_lamp(ink)
+		draw_set_transform(Vector2.ZERO)
 		if _cooldown > 0.0:
-			# The flash recharging: a dark sweep going round.
-			draw_arc(Vector2.ZERO, radius - 5.0, -PI / 2.0, -PI / 2.0 + TAU * _cooldown, 40, Color(0, 0, 0, 0.45), 8.0)
+			TouchControls.draw_sweep(self, r.grow(-5.0), _cooldown)
 		if _charge > 0.0:
-			draw_arc(Vector2.ZERO, radius - 2.0, -PI / 2.0, -PI / 2.0 + TAU * _charge, 48, Color(1.0, 0.85, 0.4, 0.95), 4.0)
+			draw_texture_rect(UiKit.tex("action_glow"), r.grow(radius * 0.22), false, Color(1.0, 0.85, 0.35, _charge))
+			var fill := Rect2(r.position + Vector2(6, r.size.y - 11), Vector2((r.size.x - 12) * _charge, 5))
+			draw_rect(fill, Color(1.0, 0.85, 0.4, 0.95))
 		if _pressed and _knob != Vector2.ZERO:
 			var dir := _knob.normalized()
 			draw_line(Vector2.ZERO, dir * (radius + 26.0), Color(1, 0.9, 0.5, 0.75), 3.0)
@@ -438,13 +467,6 @@ class LureButtonView extends Node2D:
 	var _pressed := false
 	var _charge := 0.0
 	var _knob := Vector2.ZERO
-	var _normal: ImageTexture
-	var _down: ImageTexture
-
-	func _ready() -> void:
-		_normal = TouchControls._disc(radius, TouchControls.FILL)
-		_down = TouchControls._disc(radius, TouchControls.FILL_PRESSED)
-
 	func set_state(fish: Dictionary, pressed: bool, charge: float) -> void:
 		if fish.get("uid", -1) == _fish.get("uid", -1) and pressed == _pressed and absf(charge - _charge) < 0.01:
 			return
@@ -460,24 +482,23 @@ class LureButtonView extends Node2D:
 	func has_fish() -> bool:
 		return not _fish.is_empty()
 
+	## A square action button: the lure fish's picture (or the word, with
+	## none picked) in a gold frame; a bar along its foot shows how far
+	## it'll go while it's dragged.
 	func _draw() -> void:
-		draw_texture(_down if _pressed else _normal, -Vector2(radius, radius))
-		var font := ThemeDB.fallback_font
-		var custom: String = ProjectSettings.get_setting("gui/theme/custom_font", "")
-		if custom != "":
-			font = load(custom)
+		var r := Rect2(-Vector2(radius, radius), Vector2(radius, radius) * 2.0)
+		TouchControls.draw_action(self, r, Color(0.3, 0.7, 0.45), _pressed, true)
 		if _fish.is_empty():
-			draw_string_outline(font, Vector2(-radius, 5), "誘惑", HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, 14, 4, Color(0, 0, 0, 0.8))
-			draw_string(font, Vector2(-radius, 5), "誘惑", HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, 14, Color(1, 1, 1, 0.85))
+			UiKit.draw_text(self, Vector2(-radius, 6), "誘惑", 15, UiKit.GOLD_BRIGHT, HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, true)
 			return
 		var tex := FishData.icon(_fish.get("id", ""), _fish.get("name", ""))
 		if tex != null:
 			var w := radius * 1.6
-			draw_texture_rect(tex, Rect2(Vector2(-w / 2.0, -w / 4.0 - 3.0), Vector2(w, w / 2.0)), false)
-		draw_string_outline(font, Vector2(-radius, radius - 5.0), "誘惑", HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, 10, 3, Color(0, 0, 0, 0.8))
-		draw_string(font, Vector2(-radius, radius - 5.0), "誘惑", HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, 10, Color(1, 0.85, 0.7))
+			draw_texture_rect(tex, Rect2(Vector2(-w / 2.0, -w / 4.0 - 5.0), Vector2(w, w / 2.0)), false)
+		UiKit.draw_text(self, Vector2(-radius, radius - 7.0), "誘惑", 11, UiKit.GOLD_BRIGHT, HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, true)
 		if _charge > 0.0:
-			draw_arc(Vector2.ZERO, radius - 2.0, -PI / 2.0, -PI / 2.0 + TAU * _charge, 40, Color(1.0, 0.6, 0.4, 0.95), 4.0)
+			draw_texture_rect(UiKit.tex("action_glow"), r.grow(radius * 0.22), false, Color(1.0, 0.55, 0.35, _charge))
+			draw_rect(Rect2(r.position + Vector2(5, r.size.y - 9), Vector2((r.size.x - 10) * _charge, 4)), Color(1.0, 0.6, 0.4, 0.95))
 		if _pressed and _knob != Vector2.ZERO:
 			draw_line(Vector2.ZERO, _knob.normalized() * (radius + 22.0), Color(1, 0.7, 0.5, 0.8), 3.0)
 

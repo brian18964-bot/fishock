@@ -5,7 +5,8 @@ extends CanvasLayer
 ## Player's 對話): a box with who's talking and what they say. Closes with
 ## its button or a tap anywhere outside it.
 ##
-## Plain for now: the whole UI is to be redesigned later.
+## Dressed as an MMO's quest-giver window (user request): parchment, the
+## speaker's name in dark red, the words in brown ink.
 
 const PANEL_SIZE := Vector2(460, 300)
 
@@ -26,13 +27,7 @@ func _ready() -> void:
 			close())
 	add_child(_backdrop)
 	_panel = PanelContainer.new()
-	var box := StyleBoxFlat.new()
-	box.bg_color = Color(0.07, 0.06, 0.05, 0.94)
-	box.border_color = Color(0.75, 0.95, 0.6, 0.7)
-	box.set_border_width_all(1)
-	box.set_corner_radius_all(10)
-	box.set_content_margin_all(16)
-	_panel.add_theme_stylebox_override("panel", box)
+	_panel.add_theme_stylebox_override("panel", UiKit.parchment_box())
 	_panel.size = PANEL_SIZE
 	_panel.position = Vector2((960 - PANEL_SIZE.x) * 0.5, 540 - PANEL_SIZE.y - 24)
 	_panel.visible = false
@@ -40,18 +35,16 @@ func _ready() -> void:
 	var list := VBoxContainer.new()
 	list.add_theme_constant_override("separation", 8)
 	_panel.add_child(list)
-	_who = Label.new()
-	_who.add_theme_font_size_override("font_size", 18)
-	_who.add_theme_color_override("font_color", Color(0.75, 0.95, 0.6))
+	_who = UiKit.label("", 22, Color(0.45, 0.08, 0.04), true, 0)
 	list.add_child(_who)
-	_text = Label.new()
-	_text.add_theme_font_size_override("font_size", 15)
+	list.add_child(UiKit.divider(300))
+	_text = UiKit.label("", 17, Color(0.23, 0.14, 0.06), false, 0)
 	_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_text.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	list.add_child(_text)
-	var ok := Button.new()
-	ok.text = "關閉"
-	ok.add_theme_font_size_override("font_size", 15)
+	var ok := UiKit.button("再見", 16)
+	ok.custom_minimum_size = Vector2(140, 42)
+	ok.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	ok.pressed.connect(close)
 	list.add_child(ok)
 

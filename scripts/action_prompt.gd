@@ -9,9 +9,9 @@ extends CanvasLayer
 ## what's on offer (Player.interaction()); the button holds E down while
 ## pressed, so held actions (offering, turning a rock) fill its bar.
 
-const FONT_NAME := 12
-const FONT_VERB := 16
-const PAD := Vector2(14, 7)
+const FONT_NAME := 13
+const FONT_VERB := 18
+const PAD := Vector2(20, 10)
 const GAP := 3.0
 const INK := Color(1.0, 0.96, 0.88)
 const FILL := Color(0.08, 0.07, 0.05, 0.62)
@@ -89,6 +89,8 @@ func _send(down: bool) -> void:
 	Input.parse_input_event(ev)
 
 
+## Dressed as an MMO's action button that lights up when it can be used
+## (user request): red lacquer in a gold rim, a gold glow pulsing round it.
 func _draw_prompt() -> void:
 	if _offer.is_empty():
 		return
@@ -97,32 +99,24 @@ func _draw_prompt() -> void:
 	var verb: String = _offer.verb
 	if not _touchscreen:
 		verb = "E  " + verb
-	var verb_size := _font.get_string_size(verb, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_VERB)
-	var size := verb_size + PAD * 2.0
+	var verb_size := UiKit.font(true).get_string_size(verb, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_VERB)
+	var size := Vector2(maxf(verb_size.x + PAD.x * 2.0, 84.0), 44.0)
 	_rect = Rect2(at - Vector2(size.x * 0.5, size.y), size)
 	var down := _touch != -1 or _mouse or Input.is_key_pressed(KEY_E)
-	var box := StyleBoxFlat.new()
-	box.bg_color = FILL_DOWN if down else FILL
-	box.border_color = RIM
-	box.set_border_width_all(1)
-	box.set_corner_radius_all(int(size.y * 0.5))
-	_view.draw_style_box(box, _rect)
+	var pulse := 0.45 + 0.3 * sin(Time.get_ticks_msec() / 1000.0 * 5.0)
+	_view.draw_texture_rect(UiKit.tex("action_glow"), _rect.grow(14.0), false, Color(1.0, 0.82, 0.3, pulse))
+	UiKit.button_box("red", "pressed" if down else "normal").draw(_view.get_canvas_item(), _rect)
 	# A held action's progress fills the button.
 	var progress := _progress()
 	if progress > 0.0:
-		var bar := StyleBoxFlat.new()
-		bar.bg_color = BAR
-		bar.set_corner_radius_all(int(size.y * 0.5))
-		_view.draw_style_box(bar, Rect2(_rect.position, Vector2(maxf(size.x * progress, size.y), size.y)))
-	var base := _rect.position + Vector2(PAD.x, PAD.y + _font.get_ascent(FONT_VERB))
-	_view.draw_string_outline(_font, base, verb, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_VERB, 3, Color(0, 0, 0, 0.6))
-	_view.draw_string(_font, base, verb, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_VERB, INK)
+		var inner := _rect.grow(-5.0)
+		_view.draw_rect(Rect2(inner.position, Vector2(inner.size.x * progress, inner.size.y)), Color(1.0, 0.8, 0.35, 0.45))
+	UiKit.draw_text(_view, Vector2(_rect.position.x, _rect.position.y + 29), verb, FONT_VERB, UiKit.GOLD_BRIGHT,
+		HORIZONTAL_ALIGNMENT_CENTER, _rect.size.x, true)
 	var title: String = _offer.name
 	if title != "":
-		var tw := _font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_NAME).x
-		var tpos := Vector2(at.x - tw * 0.5, _rect.position.y - GAP - _font.get_descent(FONT_NAME))
-		_view.draw_string_outline(_font, tpos, title, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_NAME, 3, Color(0, 0, 0, 0.7))
-		_view.draw_string(_font, tpos, title, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_NAME, Color(INK, 0.85))
+		UiKit.draw_text(_view, Vector2(at.x - 150, _rect.position.y - GAP - 4), title, FONT_NAME, UiKit.TEXT,
+			HORIZONTAL_ALIGNMENT_CENTER, 300)
 
 
 func _progress() -> float:

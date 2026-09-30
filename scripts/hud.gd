@@ -102,8 +102,8 @@ func _build_top() -> void:
 	message_label.add_theme_font_size_override("font_size", 14)
 	message_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
 	message_label.add_theme_constant_override("outline_size", 4)
-	relight_bar.position = Vector2(790, 72)
-	relight_bar.size = Vector2(150, 8)
+	relight_bar.position = Vector2(762, 84)
+	relight_bar.size = Vector2(190, 8)
 	_sticks = [$Panel/MoveJoystick, $Panel/AimJoystick]
 	for stick in _sticks:
 		stick.modulate.a = 0.0
@@ -209,10 +209,42 @@ func _on_offering_pool_updated(pool: Array, evil_count: int) -> void:
 	offering_label.text = text
 
 
-func _on_run_ended(_success: bool, message: String) -> void:
+## The run's end (user request: the MMO look): a parchment scroll - how it
+## went, what came home - and the way back to the main screen.
+func _on_run_ended(success: bool, message: String) -> void:
 	run_end_label.text = message
-	run_end_label.visible = true
-	back_to_title_button.visible = true
+	run_end_label.visible = false
+	back_to_title_button.visible = false
+	var shade := ColorRect.new()
+	shade.name = "RunEnd"
+	shade.color = Color(0, 0, 0, 0.55)
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	$Panel.add_child(shade)
+	var scroll := PanelContainer.new()
+	scroll.add_theme_stylebox_override("panel", UiKit.parchment_box())
+	scroll.custom_minimum_size = Vector2(520, 0)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 10)
+	var title := UiKit.label("成功逃離" if success else "本輪失敗", 28, Color(0.36, 0.1, 0.04) if success else Color(0.45, 0.06, 0.04), true, 0)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(title)
+	col.add_child(UiKit.divider(360))
+	var body := UiKit.label(message, 17, Color(0.23, 0.14, 0.06), false, 0)
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.custom_minimum_size.x = 460
+	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(body)
+	var home := UiKit.button("回主畫面", 18, "red")
+	home.name = "BackHome"
+	home.custom_minimum_size = Vector2(200, 48)
+	home.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	home.pressed.connect(_on_back_to_title_pressed)
+	col.add_child(home)
+	scroll.add_child(col)
+	shade.add_child(scroll)
+	scroll.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
+	scroll.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	scroll.grow_vertical = Control.GROW_DIRECTION_BOTH
 
 
 func _on_back_to_title_pressed() -> void:
@@ -239,34 +271,32 @@ func _rarity_label(rarity: String) -> String:
 			return rarity
 
 
-## The quota, top middle: a bar filling toward the target, the time left
-## (or the phase) under it.
+## The quota, top middle: an ornate bar filling toward the target (gold
+## once it's full), the time left (or the phase) under it.
 class QuotaView extends Control:
 	const W := 300.0
-	const H := 14.0
-	const FILL := Color(0.85, 0.62, 0.28)
-	const FULL := Color(1.0, 0.85, 0.4)
+	const H := 20.0
+	const FILL := Color(0.78, 0.5, 0.2)
+	const FULL := Color(1.0, 0.8, 0.3)
 
 	func _ready() -> void:
-		position = Vector2(480.0 - W / 2.0, 8)
-		size = Vector2(W, 40)
+		position = Vector2(480.0 - W / 2.0, 6)
+		size = Vector2(W, 48)
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	func _draw() -> void:
-		var font := get_theme_default_font()
 		var share := clampf(GameState.quota_progress / maxf(GameState.quota_target, 1.0), 0.0, 1.0)
 		var bar := Rect2(0, 0, W, H)
-		draw_rect(bar, Color(0.05, 0.04, 0.03, 0.6))
-		draw_rect(Rect2(0, 0, W * share, H), FULL if share >= 1.0 else FILL)
-		draw_rect(bar, Color(1.0, 0.85, 0.55, 0.55), false, 1.0)
-		var text := "獻祭額度  %d / %d" % [int(GameState.quota_progress), int(GameState.quota_target)]
-		draw_string_outline(font, Vector2(0, 11.5), text, HORIZONTAL_ALIGNMENT_CENTER, W, 11, 3, Color(0, 0, 0, 0.8))
-		draw_string(font, Vector2(0, 11.5), text, HORIZONTAL_ALIGNMENT_CENTER, W, 11, Color(1, 0.97, 0.9))
+		UiKit.draw_bar(self, bar, share, FULL if share >= 1.0 else FILL)
+		for x in [-2.0, W + 2.0]:
+			_gem(Vector2(x, H * 0.5))
+		var text := "獻祭  %d / %d" % [int(GameState.quota_progress), int(GameState.quota_target)]
+		UiKit.draw_text(self, Vector2(0, 15), text, 13, Color(1, 0.96, 0.86), HORIZONTAL_ALIGNMENT_CENTER, W, true)
 		var under := ""
-		var col := Color(1, 0.97, 0.9)
+		var col := UiKit.TEXT
 		if GameState.is_night:
 			under = "夜晚降臨"
-			col = Color(1.0, 0.45, 0.4)
+			col = UiKit.DANGER
 		elif GameState.day_phase == GameState.DayPhase.ESCAPE:
 			under = "額度已滿！去發光的符文石柱逃離"
 			col = FULL
@@ -274,10 +304,16 @@ class QuotaView extends Control:
 			var total: int = int(GameState.time_remaining)
 			under = "%02d:%02d" % [total / 60, total % 60]
 			if total < 60:
-				col = Color(1.0, 0.6, 0.45)
+				col = Color(1.0, 0.55, 0.4)
 		if under != "":
-			draw_string_outline(font, Vector2(0, 33), under, HORIZONTAL_ALIGNMENT_CENTER, W, 16, 4, Color(0, 0, 0, 0.8))
-			draw_string(font, Vector2(0, 33), under, HORIZONTAL_ALIGNMENT_CENTER, W, 16, col)
+			UiKit.draw_text(self, Vector2(0, 42), under, 18, col, HORIZONTAL_ALIGNMENT_CENTER, W, true)
+
+	## A small gold diamond capping the bar's end.
+	func _gem(c: Vector2) -> void:
+		var pts := PackedVector2Array([c + Vector2(0, -8), c + Vector2(7, 0), c + Vector2(0, 8), c + Vector2(-7, 0)])
+		draw_colored_polygon(pts, Color(0.05, 0.03, 0.02))
+		var inner := PackedVector2Array([c + Vector2(0, -6), c + Vector2(5, 0), c + Vector2(0, 6), c + Vector2(-5, 0)])
+		draw_polygon(inner, PackedColorArray([Color(1.0, 0.9, 0.55), Color(0.8, 0.6, 0.2), Color(0.45, 0.3, 0.08), Color(0.8, 0.6, 0.2)]))
 
 
 ## The light, top right (user request): above all, how much fuel is left -
@@ -286,15 +322,15 @@ class QuotaView extends Control:
 ## across the panel to turn it up or down). The light dims by itself once
 ## the fuel's low (Lantern.AUTO_DIM_BELOW); brighter burns faster.
 class EnergyView extends Control:
-	const W := 190.0
-	const BAR := Rect2(10, 24, 170, 14)
+	const W := 200.0
+	const BAR := Rect2(14, 28, 172, 18)
 	var lantern: Lantern
 	var _dragging := false
 	var _drag_x := 0.0
 
 	func _ready() -> void:
-		position = Vector2(960.0 - W - 12.0, 6)
-		size = Vector2(W, 60)
+		position = Vector2(960.0 - W - 8.0, 4)
+		size = Vector2(W, 74)
 		mouse_filter = Control.MOUSE_FILTER_STOP
 		add_to_group("hud_block")
 
@@ -320,30 +356,21 @@ class EnergyView extends Control:
 	func _draw() -> void:
 		if lantern == null:
 			return
-		var font := get_theme_default_font()
-		var box := StyleBoxFlat.new()
-		box.bg_color = Color(0.06, 0.05, 0.04, 0.5)
-		box.border_color = Color(1.0, 0.85, 0.55, 0.35)
-		box.set_border_width_all(1)
-		box.set_corner_radius_all(10)
-		draw_style_box(box, Rect2(Vector2.ZERO, size))
-		var ink := Color(1, 0.97, 0.9)
-		var low := Color(1.0, 0.45, 0.4)
+		UiKit.frame_box(true).draw(get_canvas_item(), Rect2(Vector2.ZERO, size))
+		var ink := UiKit.TEXT
+		var low := UiKit.DANGER
 		var share := lantern.energy_share()
 		var name := "煤燈燃料" if lantern.tool == Lantern.Tool.LAMP else "手電筒電量"
-		draw_string(font, Vector2(10, 18), name, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(ink, 0.8))
+		UiKit.draw_text(self, Vector2(16, 21), name, 13, UiKit.GOLD, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 		if lantern.tool == Lantern.Tool.FLASHLIGHT:
-			draw_string(font, Vector2(0, 18), "電池 ×%d" % Profile.batteries, HORIZONTAL_ALIGNMENT_RIGHT, W - 10.0, 11, Color(ink, 0.6))
+			UiKit.draw_text(self, Vector2(0, 21), "電池 ×%d" % Profile.batteries, 12, UiKit.DIM, HORIZONTAL_ALIGNMENT_RIGHT, W - 16.0)
 		# The fuel: the main thing.
-		var col := Color(0.45, 0.85, 0.5)
+		var col := Color(1.0, 0.68, 0.22)
 		if share < Lantern.AUTO_DIM_BELOW:
-			col = Color(1.0, 0.7, 0.3) if share >= 0.12 else low
-		draw_rect(BAR, Color(0, 0, 0, 0.55))
-		draw_rect(Rect2(BAR.position, Vector2(BAR.size.x * share, BAR.size.y)), col)
-		draw_rect(BAR, Color(1, 1, 1, 0.35), false, 1.0)
+			col = Color(1.0, 0.45, 0.15) if share >= 0.12 else low
+		UiKit.draw_bar(self, BAR, share, col)
 		var pct := "%d%%" % roundi(share * 100.0)
-		draw_string_outline(font, BAR.position + Vector2(0, 12), pct, HORIZONTAL_ALIGNMENT_CENTER, BAR.size.x, 12, 3, Color(0, 0, 0, 0.8))
-		draw_string(font, BAR.position + Vector2(0, 12), pct, HORIZONTAL_ALIGNMENT_CENTER, BAR.size.x, 12, ink)
+		UiKit.draw_text(self, BAR.position + Vector2(0, 14), pct, 13, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, BAR.size.x, true)
 		# The light's output, small.
 		var out := "熄滅（長按燈鈕點燃）" if not lantern.lit else "亮度 %d%%　←拖曳調整→" % output_percent()
-		draw_string(font, Vector2(10, 54), out, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, low if not lantern.lit else Color(ink, 0.6))
+		UiKit.draw_text(self, Vector2(16, 62), out, 12, low if not lantern.lit else UiKit.DIM)

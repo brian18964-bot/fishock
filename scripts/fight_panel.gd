@@ -13,13 +13,14 @@ extends CanvasLayer
 ## for the perfect strike's moment; while a charged light lures fish to it,
 ## a glow spreading on the water.
 ##
-## Plain for now: the whole UI is to be redesigned later.
+## Dressed as an MMO's target frame (user request): a dark iron frame,
+## the fish's name and mood, framed bars for its stamina and the tension.
 
 const CENTER_X := 480.0
-const TOP := 64.0
-const SIZE := Vector2(280, 66)
-const BAR_W := 180.0
-const BAR_H := 9.0
+const TOP := 60.0
+const SIZE := Vector2(320, 92)
+const BAR_W := 200.0
+const BAR_H := 14.0
 const CUE_Y := 170.0
 const CUE_RADIUS := 24.0
 const INK := Color(1.0, 0.96, 0.88)
@@ -113,41 +114,38 @@ func _draw_panel() -> void:
 	if fight == null:
 		return
 	var rect := Rect2(Vector2(CENTER_X - SIZE.x * 0.5, TOP), SIZE)
-	_view.draw_rect(rect, FILL)
-	var rim := RIM
+	UiKit.frame_box(true).draw(_view.get_canvas_item(), rect)
 	if fight.enraged:
-		rim = RAGE
-		rim.a = 0.55 + 0.4 * sin(_pulse * 10.0)
-	_view.draw_rect(rect, rim, false, 2.0 if fight.enraged else 1.0)
+		var rim := RAGE
+		rim.a = 0.45 + 0.4 * sin(_pulse * 10.0)
+		_view.draw_rect(rect.grow(-3.0), rim, false, 3.0)
 
-	var x := rect.position.x + 12.0
+	var x := rect.position.x + 18.0
 	var mood := mood_text(fight)
-	_view.draw_string(_font, Vector2(x, rect.position.y + 17), "魚・%s" % fight.label(), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, DIM)
-	_view.draw_string(_font, Vector2(rect.end.x - 12.0 - 150.0, rect.position.y + 19), mood[0], HORIZONTAL_ALIGNMENT_RIGHT, 150.0, 16, mood[1])
+	UiKit.draw_text(_view, Vector2(x, rect.position.y + 25), fight.label(), 15, UiKit.GOLD, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	UiKit.draw_text(_view, Vector2(rect.end.x - 18.0 - 170.0, rect.position.y + 25), mood[0], 16, mood[1],
+		HORIZONTAL_ALIGNMENT_RIGHT, 170.0, true)
 
-	var bar_x := rect.end.x - 12.0 - BAR_W
-	_row(Vector2(x, rect.position.y + 38), bar_x, "體力", fight.stamina(), STAMINA)
+	var bar_x := rect.end.x - 18.0 - BAR_W
+	_row(Vector2(x, rect.position.y + 50), bar_x, "體力", fight.stamina(), STAMINA)
 	var sweet := fight.in_sweet()
 	var tension_color := RAGE if fight.tension > TENSION_HIGH else (SWEET if sweet else TENSION)
-	var at := Vector2(x, rect.position.y + 56)
-	var zone := fight.sweet_range()
-	var band := Rect2(bar_x + BAR_W * zone.x, at.y - BAR_H - 1.0, BAR_W * (zone.y - zone.x), BAR_H + 4.0)
-	_view.draw_rect(band, Color(SWEET, 0.22))
+	var at := Vector2(x, rect.position.y + 74)
 	_row(at, bar_x, "張力", fight.tension, tension_color, SWEET if sweet else DIM)
-	_view.draw_rect(band, Color(SWEET, 0.9 if sweet else 0.5), false, 1.0)
+	var zone := fight.sweet_range()
+	var band := Rect2(bar_x + 3.0 + (BAR_W - 6.0) * zone.x, at.y - BAR_H + 1.0, (BAR_W - 6.0) * (zone.y - zone.x), BAR_H)
+	_view.draw_rect(band, Color(SWEET, 0.9 if sweet else 0.55), false, 1.5)
 
 	if fight.swipe_left > 0.0:
 		_draw_swipe_cue(fight)
 	elif fight.perfect and fight.age < CALLOUT_TIME:
 		var a := clampf((CALLOUT_TIME - fight.age) / 0.4, 0.0, 1.0)
-		_view.draw_string(_font, Vector2(CENTER_X - 100, CUE_Y + 6), "完美揚竿！", HORIZONTAL_ALIGNMENT_CENTER, 200, 22, Color(PERFECT, a))
+		UiKit.draw_text(_view, Vector2(CENTER_X - 100, CUE_Y + 6), "完美揚竿！", 24, Color(PERFECT, a), HORIZONTAL_ALIGNMENT_CENTER, 200, true)
 
 
 func _row(at: Vector2, bar_x: float, text: String, value: float, color: Color, ink := DIM) -> void:
-	_view.draw_string(_font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, ink)
-	var bar := Rect2(bar_x, at.y - BAR_H + 1.0, BAR_W, BAR_H)
-	_view.draw_rect(bar, Color(1, 1, 1, 0.12))
-	_view.draw_rect(Rect2(bar.position, Vector2(BAR_W * clampf(value, 0.0, 1.0), BAR_H)), color)
+	UiKit.draw_text(_view, at, text, 13, ink)
+	UiKit.draw_bar(_view, Rect2(bar_x, at.y - BAR_H + 1.0, BAR_W, BAR_H), value, color)
 
 
 ## Which way to flick, and how long is left to do it.

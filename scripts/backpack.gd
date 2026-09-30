@@ -10,7 +10,8 @@ extends CanvasLayer
 ## carried in the hands. I on a keyboard; Tab and K still step through as
 ## before.
 ##
-## Plain for now: the whole UI is to be redesigned later.
+## Dressed as an MMO bag (user request): an iron-and-gold window with its
+## title plate and round close button, sunken slots ringed by rarity.
 
 const CELL := 46.0
 const PANEL_SIZE := Vector2(420, 440)
@@ -58,13 +59,7 @@ func _ready() -> void:
 			toggle())
 	add_child(_backdrop)
 	_panel = PanelContainer.new()
-	var box := StyleBoxFlat.new()
-	box.bg_color = Color(0.07, 0.06, 0.05, 0.92)
-	box.border_color = Color(1.0, 0.85, 0.55, 0.7)
-	box.set_border_width_all(1)
-	box.set_corner_radius_all(10)
-	box.set_content_margin_all(14)
-	_panel.add_theme_stylebox_override("panel", box)
+	_panel.add_theme_stylebox_override("panel", UiKit.frame_box())
 	_panel.size = PANEL_SIZE
 	_panel.position = (Vector2(960, 540) - PANEL_SIZE) * 0.5
 	_panel.visible = false
@@ -74,13 +69,18 @@ func _ready() -> void:
 	_panel.add_child(list)
 
 	var top := HBoxContainer.new()
-	var title := _label("背包", 20, Color(1.0, 0.9, 0.7))
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	top.add_child(title)
+	top.add_theme_constant_override("separation", 8)
+	var plate := PanelContainer.new()
+	plate.add_theme_stylebox_override("panel", UiKit.plate_box())
+	plate.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var title := UiKit.label("背包", 18, UiKit.GOLD, true)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	plate.add_child(title)
+	top.add_child(plate)
 	_title = title
-	_used = _label("", 13, Color(1, 1, 1, 0.7))
+	_used = _label("", 13, UiKit.DIM)
 	top.add_child(_used)
-	var close := _button("✕")
+	var close := UiKit.close_button()
 	close.pressed.connect(toggle)
 	top.add_child(close)
 	list.add_child(top)
@@ -88,7 +88,7 @@ func _ready() -> void:
 	_light_row = HBoxContainer.new()
 	_light_row.add_theme_constant_override("separation", 6)
 	list.add_child(_light_row)
-	_mode = _label("", 13, Color(1.0, 0.85, 0.55, 0.9))
+	_mode = _label("", 14, UiKit.GOLD)
 	list.add_child(_mode)
 
 	_grid = GridView.new()
@@ -97,7 +97,7 @@ func _ready() -> void:
 	_grid.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	list.add_child(_grid)
 
-	_detail = _label("點一下格子裡的東西", 14, Color(1, 1, 1, 0.85))
+	_detail = _label("點一下格子裡的東西", 15, UiKit.TEXT)
 	_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	list.add_child(_detail)
 	_actions = HBoxContainer.new()
@@ -175,7 +175,7 @@ func _rebuild() -> void:
 	for c in _light_row.get_children():
 		c.queue_free()
 	var lantern: Lantern = player.get_node("Lantern")
-	_light_row.add_child(_label("燈具", 13, Color(1.0, 0.85, 0.55, 0.9)))
+	_light_row.add_child(_label("燈具", 14, UiKit.GOLD))
 	_light_row.add_child(_choice("煤燈 %d%%" % int(lantern.fuel / lantern.max_fuel * 100.0),
 		lantern.tool == Lantern.Tool.LAMP, false, lantern.switch_tool.bind(Lantern.Tool.LAMP)))
 	if Profile.has_flashlight:
@@ -352,22 +352,17 @@ func _ask_drop(item: Dictionary) -> void:
 	shade.size = Vector2(960, 540)
 	add_child(shade)
 	_confirm = shade
-	var box := PanelContainer.new()
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.08, 0.07, 0.06, 0.97)
-	style.border_color = Color(1.0, 0.85, 0.55, 0.7)
-	style.set_border_width_all(1)
-	style.set_corner_radius_all(10)
-	style.set_content_margin_all(14)
-	box.add_theme_stylebox_override("panel", style)
-	var col := VBoxContainer.new()
+	var made := UiKit.window("丟在地上")
+	var box: PanelContainer = made[0]
+	var col: VBoxContainer = made[1]
 	col.add_theme_constant_override("separation", 10)
-	col.add_child(_label("確定把 %s 丟在地上？" % item.label, 17, Color(1.0, 0.9, 0.7)))
-	col.add_child(_label("這是稀有或重要的東西，丟了可能會被鬼吃掉或被別人撿走。", 13, Color(1, 1, 1, 0.7)))
+	col.add_child(_label("確定把 %s 丟在地上？" % item.label, 18, UiKit.GOLD_BRIGHT))
+	col.add_child(_label("這是稀有或重要的東西，丟了可能會被鬼吃掉或被別人撿走。", 14, UiKit.DIM))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	var yes := _button("丟掉")
+	UiKit.style_button(yes, "red", FONT)
 	yes.name = "ConfirmDrop"
 	yes.pressed.connect(func():
 		_close_confirm()
@@ -464,15 +459,19 @@ func _label(text: String, size: int, color: Color) -> Label:
 func _button(text: String) -> Button:
 	var b := Button.new()
 	b.text = text
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(0, 40)
 	b.add_theme_font_size_override("font_size", FONT)
 	return b
 
 
 func _choice(text: String, current: bool, disabled: bool, pick: Callable) -> Button:
-	var b := _button(("✓ " if current else "") + text)
+	var b := _button(text)
 	b.disabled = disabled or current
 	if current:
-		b.add_theme_color_override("font_disabled_color", Color(1.0, 0.9, 0.6))
+		UiKit.style_button(b, "red", FONT)
+		b.add_theme_stylebox_override("disabled", UiKit.button_box("red", "normal"))
+		b.add_theme_color_override("font_disabled_color", UiKit.GOLD_BRIGHT)
 	if pick.is_valid():
 		b.pressed.connect(func():
 			pick.call()
@@ -480,10 +479,13 @@ func _choice(text: String, current: bool, disabled: bool, pick: Callable) -> But
 	return b
 
 
+## A button for what can be done with the chosen thing; the main ones red.
 func _action(text: String, act: Callable, disabled := false) -> Button:
 	var b := _button(text)
 	b.disabled = disabled
 	b.pressed.connect(act)
+	if text in ["設為誘餌", "確定", "裝上", "改用浮標"] or text.begins_with("獻祭"):
+		UiKit.style_button(b, "red", FONT)
 	return b
 
 
@@ -529,53 +531,63 @@ class GridView extends Control:
 			accept_event()
 
 	func _draw() -> void:
-		var font := get_theme_default_font()
 		for x in Inventory.COLS:
 			for y in Inventory.ROWS:
-				var r := Rect2(Vector2(x, y) * Backpack.CELL, Vector2.ONE * Backpack.CELL).grow(-1.5)
-				draw_rect(r, Color(1, 1, 1, 0.05))
-				draw_rect(r, Color(1, 1, 1, 0.12), false, 1.0)
+				UiKit.draw_slot(self, Rect2(Vector2(x, y) * Backpack.CELL, Vector2.ONE * Backpack.CELL).grow(-1.5))
 		for i in placed.size():
 			var item: Dictionary = items[i]
 			var cells: Rect2i = placed[i]
-			var r := Rect2(Vector2(cells.position) * Backpack.CELL, Vector2(cells.size) * Backpack.CELL).grow(-3.0)
+			var r := Rect2(Vector2(cells.position) * Backpack.CELL, Vector2(cells.size) * Backpack.CELL).grow(-2.0)
+			var is_sel: bool = not selected.is_empty() and selected.kind == item.kind and selected.index == item.index
+			var rarity := _rarity(item)
+			UiKit.draw_slot(self, r, rarity, is_sel)
+			var inner := r.grow(-4.0)
 			var col: Color = Backpack.ROTTEN_COLOR if item.get("rotten", false) else Backpack.KIND_COLORS.get(item.kind, Color.GRAY)
-			draw_rect(r, col)
+			draw_texture_rect(UiKit.glow(), inner, false, Color(col.lightened(0.3), 0.4))
 			if item.kind == "fish":
-				# Its picture, fitted in (2:1), under the name.
+				# Its picture, fitted in (2:1).
 				var tex := FishData.icon(item.get("id", ""), item.label)
 				if tex != null:
-					var fit := minf(r.size.x / 2.0, r.size.y) * 0.95
-					var pic := Rect2(r.get_center() - Vector2(fit, fit / 2.0) + Vector2(0, 3), Vector2(fit * 2.0, fit))
+					var fit := minf(inner.size.x / 2.0, inner.size.y) * 0.95
+					var pic := Rect2(inner.get_center() - Vector2(fit, fit / 2.0), Vector2(fit * 2.0, fit))
 					draw_texture_rect(tex, pic, false, Color(0.55, 0.5, 0.35) if item.get("rotten", false) else Color.WHITE)
 			elif item.has("item"):
 				# Packed before the run: its picture (Items.icon), fitted in.
 				var tex := Items.icon(item.item)
 				if tex != null:
-					var k := minf(r.size.x / tex.get_width(), (r.size.y - 12.0) / tex.get_height())
+					var k := minf(inner.size.x / tex.get_width(), inner.size.y / tex.get_height())
 					var sz := Vector2(tex.get_size()) * k
-					draw_texture_rect(tex, Rect2(r.get_center() - sz / 2.0 + Vector2(0, 5), sz), false)
+					draw_texture_rect(tex, Rect2(inner.get_center() - sz / 2.0, sz), false)
 			if item.kind == "fish":
 				var uid: int = int(GameState.carried_fish[item.index].get("uid", -1))
 				if owner_bag.marked().has(uid):
-					draw_rect(r, Color(0.4, 1.0, 0.5, 0.3))
+					draw_rect(r, Color(0.4, 1.0, 0.5, 0.25))
 					draw_rect(r, Color(0.4, 1.0, 0.5, 0.9), false, 2.5)
-					draw_string(font, r.position + Vector2(0, r.size.y - 5), "✓", HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 4.0, 16, Color(0.6, 1.0, 0.6))
+					UiKit.draw_text(self, Vector2(r.position.x, r.end.y - 4), "✓", 16, Color(0.6, 1.0, 0.6), HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 4.0)
 				if GameState.lure_index() == item.index:
 					# The 誘惑 fish: a badge at the top right.
-					var at := Vector2(r.end.x - 9.0, r.position.y + 9.0)
-					draw_circle(at, 8.0, Color(0.85, 0.35, 0.25))
-					draw_string(font, at + Vector2(-6, 4.5), "誘", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color.WHITE)
-			var is_sel: bool = not selected.is_empty() and selected.kind == item.kind and selected.index == item.index
-			draw_rect(r, Color(1.0, 0.9, 0.6) if is_sel else Color(1, 1, 1, 0.3), false, 2.0 if is_sel else 1.0)
+					var at := Vector2(r.end.x - 10.0, r.position.y + 10.0)
+					draw_circle(at, 9.0, Color(0.7, 0.18, 0.1))
+					draw_arc(at, 9.0, 0.0, TAU, 20, UiKit.GOLD, 1.5)
+					UiKit.draw_text(self, at + Vector2(-9, 5), "誘", 12, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, 18)
 			var name: String = item.label
 			var fs := 12 if cells.size.x > 1 else 11
-			var text_w := r.size.x - 6.0
-			draw_string(font, r.position + Vector2(3, 14), name, HORIZONTAL_ALIGNMENT_LEFT, text_w, fs, Color(1, 1, 1, 0.95))
+			var text_w := r.size.x - 8.0
+			UiKit.draw_text(self, r.position + Vector2(4, 15), name, fs, UiKit.rarity_color(rarity), HORIZONTAL_ALIGNMENT_LEFT, text_w)
 			if item.kind == "fish":
-				draw_string(font, r.position + Vector2(3, r.size.y - 5), item.grade, HORIZONTAL_ALIGNMENT_LEFT, text_w, 11, Color(1, 1, 1, 0.6))
+				UiKit.draw_text(self, r.position + Vector2(4, r.size.y - 5), item.grade, 11, UiKit.DIM, HORIZONTAL_ALIGNMENT_LEFT, text_w)
 			elif item.count > 0:
-				draw_string(font, r.position + Vector2(0, r.size.y - 5), "x%d" % item.count, HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 3.0, 12, Color(1, 1, 1, 0.9))
+				UiKit.draw_text(self, r.position + Vector2(0, r.size.y - 5), str(item.count), 13, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 5.0)
+
+	## A thing's rarity: a fish's own, a packed thing's by its id.
+	func _rarity(item: Dictionary) -> String:
+		if item.kind == "fish" and item.index < GameState.carried_fish.size():
+			return UiKit.fish_rarity(GameState.carried_fish[item.index])
+		if item.has("item"):
+			return UiKit.item_rarity(item.item)
+		if item.kind == "heart":
+			return "legend"
+		return "common"
 
 
 ## While a window's up, the sticks leave its touches alone (they'd walk the

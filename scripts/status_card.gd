@@ -9,12 +9,13 @@ extends CanvasLayer
 ## Top left, where most games keep the player's own status; the right side
 ## is left to the time, the lamp and the thumbs.
 ##
-## Plain for now: the whole UI is to be redesigned later.
+## Dressed as an MMO's player frame (user request): the portrait in a gold
+## medallion, the name on a plate, what's wrong under it in red.
 
 const NAME := "釣客"
-const POS := Vector2(10, 8)
-const SIZE := Vector2(200, 62)
-const PORTRAIT := 50.0
+const POS := Vector2(6, 4)
+const SIZE := Vector2(226, 72)
+const PORTRAIT := 64.0
 ## The portrait: the player sheet's first frame (idle, facing down), head
 ## and shoulders.
 const PORTRAIT_REGION := Rect2(50, 34, 44, 44)
@@ -100,27 +101,27 @@ func _draw_card() -> void:
 	var p := _player()
 	if p == null:
 		return
-	var box := StyleBoxFlat.new()
-	box.bg_color = Color(0.06, 0.05, 0.04, 0.55)
-	box.border_color = Color(1.0, 0.85, 0.55, 0.45)
-	box.set_border_width_all(1)
-	box.set_corner_radius_all(12)
-	_view.draw_style_box(box, Rect2(POS, SIZE))
-	# Portrait in a round frame.
-	var c := POS + Vector2(6.0 + PORTRAIT * 0.5, SIZE.y * 0.5)
-	_view.draw_circle(c, PORTRAIT * 0.5, Color(0.12, 0.14, 0.16, 0.9))
-	_view.draw_texture_rect(_portrait, Rect2(c - Vector2.ONE * PORTRAIT * 0.42, Vector2.ONE * PORTRAIT * 0.84), false)
-	_view.draw_arc(c, PORTRAIT * 0.5, 0.0, TAU, 40, Color(1.0, 0.85, 0.55, 0.8), 2.0)
-	var x := POS.x + PORTRAIT + 14.0
-	var line := x
-	_view.draw_string(_font, Vector2(x, POS.y + 20), NAME, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, INK)
-	var hint := "點我開背包" if _touchscreen else "點我開背包（I）"
-	_view.draw_string(_font, Vector2(x + 46, POS.y + 20), hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(1, 1, 1, 0.4))
+	var ci := _view.get_canvas_item()
+	# The name plate, from under the medallion to the right.
+	var plate := Rect2(POS + Vector2(PORTRAIT * 0.55, 8), Vector2(SIZE.x - PORTRAIT * 0.55, 30))
+	UiKit.plate_box().draw(ci, plate)
+	var x := POS.x + PORTRAIT + 6.0
+	UiKit.draw_text(_view, Vector2(x, plate.position.y + 21), NAME, 16, UiKit.GOLD, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	var hint := "背包" if _touchscreen else "背包（I）"
+	UiKit.draw_text(_view, Vector2(x, plate.position.y + 21), hint, 12, UiKit.DIM, HORIZONTAL_ALIGNMENT_RIGHT,
+		plate.end.x - x - 12.0)
+	# Portrait in the gold medallion.
+	var c := POS + Vector2(PORTRAIT * 0.5, SIZE.y * 0.5)
+	_view.draw_circle(c, PORTRAIT * 0.36, Color(0.06, 0.07, 0.09))
+	var face := PORTRAIT * 0.62
+	_view.draw_texture_rect(_portrait, Rect2(c - Vector2.ONE * face * 0.5, Vector2.ONE * face), false)
+	_view.draw_texture_rect(UiKit.tex("medallion"), Rect2(c - Vector2.ONE * PORTRAIT * 0.5, Vector2.ONE * PORTRAIT), false)
 	# User request (HUD cleanup): no speed or fish count - just what's
 	# wrong, if anything.
+	var line := x
 	for cond in conditions(p):
-		var w := _font.get_string_size(cond[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+		var w := UiKit.font().get_string_size(cond[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
 		if line + w > POS.x + SIZE.x - 4.0:
 			break
-		_view.draw_string(_font, Vector2(line, POS.y + 42), cond[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, cond[1])
+		UiKit.draw_text(_view, Vector2(line, POS.y + 58), cond[0], 12, cond[1])
 		line += w + 8.0
