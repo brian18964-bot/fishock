@@ -410,8 +410,11 @@ static func fish_rarity(fish: Dictionary) -> String:
 
 ## Draws an item slot (sunken square) at `r`, with a rarity ring when
 ## `rarity` is given, lit when `lit`.
-static func draw_slot(ci: CanvasItem, r: Rect2, rarity := "", lit := false) -> void:
+static func draw_slot(ci: CanvasItem, r: Rect2, rarity := "", lit := false, icon: Texture2D = null) -> void:
 	slot_box().draw(ci.get_canvas_item(), r)
+	if icon != null:
+		# A square icon fills the slot inside its rim, under the ring.
+		ci.draw_texture_rect(icon, r.grow(-3.0), false)
 	if rarity != "" and rarity != "common":
 		var ring := nine("slot_ring", 10.0, Vector4.ZERO, false)
 		ring.modulate_color = Color(rarity_color(rarity), 0.95)

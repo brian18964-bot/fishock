@@ -473,8 +473,10 @@ class WareIcon extends Control:
 	func _draw() -> void:
 		var r := Rect2(Vector2.ZERO, size)
 		var rarity := "common" if id.begins_with("up_") or id == "lamp" or id == "" else UiKit.item_rarity(id)
-		UiKit.draw_slot(self, r, rarity)
-		if texture == null:
+		# Its square icon (the MMO look) where it has one.
+		var square := Items.square_icon(id)
+		UiKit.draw_slot(self, r, rarity, false, square)
+		if texture == null or square != null:
 			return
 		var room := r.grow(-7.0)
 		var long := float(texture.get_width()) / texture.get_height()

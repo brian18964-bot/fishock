@@ -21,10 +21,10 @@ extends Control
 ## The camp's picture is drawn at this many times the screen's own size.
 const RENDER_SCALE := 1.5
 const ENTRIES := [
-	["warehouse", "倉庫", "res://assets/sprites/items/battery.png"],
+	["warehouse", "倉庫", "res://assets/sprites/icons/battery.png"],
 	["equipment", "裝備", ""],
 	["fish_tank", "魚缸", ""],
-	["shop", "商城", "res://assets/sprites/items/oil_lamp.png"],
+	["shop", "商城", "res://assets/sprites/icons/lamp.png"],
 ]
 
 var _stage: CampStage
@@ -427,10 +427,13 @@ class EntryIcon extends Control:
 				var ft := FishData.icon(fish.get("id", ""), fish.get("name", ""))
 				_pic(r, ft)
 				return
-		UiKit.draw_slot(self, r)
 		if _tex == null and icon_path != "":
 			_tex = load(icon_path)
-		_pic(r, _tex)
+		# A square icon fills the slot.
+		var square := _tex != null and _tex.get_width() == _tex.get_height()
+		UiKit.draw_slot(self, r, "", false, _tex if square else null)
+		if not square:
+			_pic(r, _tex)
 
 	func _pic(r: Rect2, tex: Texture2D) -> void:
 		if tex == null:

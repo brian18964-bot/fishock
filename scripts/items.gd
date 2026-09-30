@@ -106,6 +106,25 @@ static func model_path(id: String) -> String:
 	return ""
 
 
+const SQUARE_ICONS := "res://assets/sprites/icons/%s.png"
+
+
+## A thing's square icon, in the MMO look (tools/render_square_icons.py:
+## its model close up on a dark painted ground) - for square slots; null
+## when it has none (the long cells keep icon()'s picture).
+static func square_icon(id: String) -> Texture2D:
+	var key := ""
+	if id.begins_with("rod_") or id in ["flashlight", "battery", "lamp"]:
+		key = id
+	elif id == "bait":
+		key = "worm"
+	elif id.begins_with("live_"):
+		key = id.substr(5)
+	elif id.begins_with("lure_") and Profile.LURES.has(id.substr(5)):
+		key = "lure_%d" % (int(Profile.LURES[id.substr(5)].sprite) + 1)
+	return texture(SQUARE_ICONS % key) if key != "" else null
+
+
 ## A picture by its path, kept loaded (safe to use while drawing).
 static func texture(path: String) -> Texture2D:
 	if not _icons.has(path):

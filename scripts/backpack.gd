@@ -540,10 +540,13 @@ class GridView extends Control:
 			var r := Rect2(Vector2(cells.position) * Backpack.CELL, Vector2(cells.size) * Backpack.CELL).grow(-2.0)
 			var is_sel: bool = not selected.is_empty() and selected.kind == item.kind and selected.index == item.index
 			var rarity := _rarity(item)
-			UiKit.draw_slot(self, r, rarity, is_sel)
+			# A packed thing in one cell shows its square icon (the MMO look).
+			var square: Texture2D = Items.square_icon(item.item) if item.has("item") and cells.size.x == cells.size.y else null
+			UiKit.draw_slot(self, r, rarity, is_sel, square)
 			var inner := r.grow(-4.0)
 			var col: Color = Backpack.ROTTEN_COLOR if item.get("rotten", false) else Backpack.KIND_COLORS.get(item.kind, Color.GRAY)
-			draw_texture_rect(UiKit.glow(), inner, false, Color(col.lightened(0.3), 0.4))
+			if square == null:
+				draw_texture_rect(UiKit.glow(), inner, false, Color(col.lightened(0.3), 0.4))
 			if item.kind == "fish":
 				# Its picture, fitted in (2:1).
 				var tex := FishData.icon(item.get("id", ""), item.label)
@@ -551,7 +554,7 @@ class GridView extends Control:
 					var fit := minf(inner.size.x / 2.0, inner.size.y) * 0.95
 					var pic := Rect2(inner.get_center() - Vector2(fit, fit / 2.0), Vector2(fit * 2.0, fit))
 					draw_texture_rect(tex, pic, false, Color(0.55, 0.5, 0.35) if item.get("rotten", false) else Color.WHITE)
-			elif item.has("item"):
+			elif item.has("item") and square == null:
 				# Packed before the run: its picture (Items.icon), fitted in.
 				var tex := Items.icon(item.item)
 				if tex != null:

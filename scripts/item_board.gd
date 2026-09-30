@@ -287,12 +287,15 @@ func _close_card() -> void:
 static func draw_item(ci: CanvasItem, r: Rect2, id: String, count: int, _font: Font, lit := false, named := false) -> void:
 	var def := Items.def(id)
 	var rarity := UiKit.item_rarity(id)
-	UiKit.draw_slot(ci, r, rarity, lit)
+	# A square slot shows the thing's square icon (the MMO look); a long
+	# one (a rod's three cells) its picture, laid along it.
+	var square := Items.square_icon(id) if absf(r.size.x - r.size.y) < r.size.y * 0.25 else null
+	UiKit.draw_slot(ci, r, rarity, lit, square)
 	var col: Color = TAB_COLORS.get(def.get("tab", "other"), Color.GRAY)
 	var inner := r.grow(-4.0)
-	ci.draw_texture_rect(UiKit.glow(), inner, false, Color(col.lightened(0.35), 0.45))
-	var tex := Items.icon(id)
+	var tex := Items.icon(id) if square == null else null
 	if tex != null:
+		ci.draw_texture_rect(UiKit.glow(), inner, false, Color(col.lightened(0.35), 0.45))
 		var room := inner.grow(-3.0)
 		if named:
 			room.size.y -= 12.0
