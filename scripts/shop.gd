@@ -342,6 +342,7 @@ func _upgrade_dialog(key: String) -> void:
 	up.disabled = Profile.gold < cost
 	up.pressed.connect(func():
 		Profile.buy_upgrade(key)
+		Sfx.play("coins", -4.0)
 		_show_toast("%s 升到 Lv.%d" % [d.label, Profile.get_upgrade_level(key)])
 		_upgrade_dialog(key))
 	_pane.add_child(up)
@@ -467,6 +468,7 @@ func buy(id: String, n: int, where: String) -> int:
 		bought += 1
 	if bought == 0:
 		return 0
+	Sfx.play("coins", -4.0)
 	var note := ""
 	match where:
 		"equip":

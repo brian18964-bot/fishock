@@ -425,7 +425,8 @@ func test_catalog_and_sounds() -> void:
 		"perfect", "catch", "fail", "ignite", "extinguish", "flash", "step_soft", "step_hard", "step_wood",
 		"step_snow", "chain_loop", "whisper", "moan", "emerge", "cage", "heartbeat_loop", "offering",
 		"rock_flip", "tap", "swipe_hit", "flop", "thunder", "escape", "amb_night", "amb_day", "amb_water",
-		"amb_rain", "amb_wind", "amb_swamp", "amb_jungle", "amb_surf", "music_day", "music_night"]
+		"amb_rain", "amb_wind", "amb_swamp", "amb_jungle", "amb_surf", "music_day", "music_night",
+		"ui_click", "ui_open", "ui_close", "coins", "amb_camp", "music_camp"]
 	var lost := sounds.filter(func(n): return Sfx.stream(n) == null)
 	check(lost.is_empty(), "every sound loads %s" % str(lost))
 	var toggle: SoundToggle = null
@@ -440,8 +441,9 @@ func test_catalog_and_sounds() -> void:
 	check(Sfx.muted != was, "the speaker mutes")
 	toggle._input(tap)
 	check(Sfx.muted == was, "and unmutes")
-	var loop := Sfx.stream("amb_rain") as AudioStreamWAV
-	check(loop != null and loop.loop_mode == AudioStreamWAV.LOOP_FORWARD, "ambience loops")
+	for bed in ["amb_rain", "amb_camp", "music_camp"]:
+		var loop := Sfx.stream(bed) as AudioStreamWAV
+		check(loop != null and loop.loop_mode == AudioStreamWAV.LOOP_FORWARD, "%s loops" % bed)
 
 
 ## User feedback: the big and small ghosts were stiff, the animals walked

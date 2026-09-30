@@ -200,6 +200,7 @@ func _card_for(i: int) -> void:
 	sell.custom_minimum_size = Vector2(110, 42)
 	sell.pressed.connect(func():
 		Profile.sell_from_tank(i)
+		Sfx.play("coins", -4.0)
 		_close()
 		_rebuild())
 	acts.add_child(sell)

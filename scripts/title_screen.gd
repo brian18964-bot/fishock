@@ -47,6 +47,10 @@ const MENU_FPS := 30
 func _ready() -> void:
 	GameState.reset_run()
 	Engine.max_fps = MENU_FPS
+	# The camp's sound (user request, the MMO feel): the fire and the night,
+	# and a lute.
+	Sfx.ambience("amb_camp")
+	Sfx.music("music_camp")
 	_build()
 	Profile.gold_updated.connect(func(_g): _refresh())
 	Profile.profile_changed.connect(_refresh)
@@ -292,6 +296,7 @@ func open_page(page: String) -> void:
 		_page.queue_free()
 		_page = null
 	_home.visible = false
+	Sfx.play("ui_open", -6.0)
 	var p: Control = load("res://scenes/%s.tscn" % page).instantiate()
 	p.set_meta("over_camp", _stage != null)
 	p.set_meta("camp", self)
@@ -311,6 +316,7 @@ func close_page() -> void:
 	if _page != null:
 		_page.queue_free()
 		_page = null
+		Sfx.play("ui_close", -8.0)
 	_home.visible = true
 	_refresh()
 	if _stage != null:

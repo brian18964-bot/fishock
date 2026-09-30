@@ -401,6 +401,52 @@ def escape_sparkle():
     return norm(fade(reverb(x, 0.4, 1.2, 0.35)), 0.55)
 
 
+# --- the menus (user request: the MMO look - and its sound) --------------------
+
+def ui_click():
+    """A button: a soft wooden tock with a little click on top."""
+    d = 0.09
+    n = int(d * SR)
+    click = bandpass(white(d), 1900, 800) * env_ad(n, 0.0005, 0.005)
+    body = tone(glide(430, 300, d), d) * env_ad(n, 0.001, 0.018)
+    return norm(fade(click * 0.6 + body * 0.7), 0.35)
+
+
+def ui_open():
+    """A page opening: a leathery swish rising, a knock under it."""
+    d = 0.42
+    swish = sweep_filter(pink(d), lambda u: 450 + 1900 * u ** 1.3, 0.5, 512)
+    swish *= np.sin(np.linspace(0, math.pi, len(swish))) ** 1.5
+    x = swish * 0.8
+    place(x, tone(glide(170, 90, 0.16), 0.16) * env_ad(int(0.16 * SR), 0.002, 0.04) * 0.7, 0.0)
+    return norm(fade(x), 0.4)
+
+
+def ui_close():
+    """A page closing: the swish falling, the knock at the end."""
+    d = 0.32
+    swish = sweep_filter(pink(d), lambda u: 2000 - 1500 * u ** 0.8, 0.5, 512)
+    swish *= np.sin(np.linspace(0, math.pi, len(swish))) ** 1.5
+    x = swish * 0.7
+    place(x, tone(glide(150, 85, 0.14), 0.14) * env_ad(int(0.14 * SR), 0.002, 0.035) * 0.6, d - 0.16)
+    return norm(fade(x), 0.35)
+
+
+def coins():
+    """Buying or selling: a handful of coins clinking down."""
+    d = 0.75
+    x = np.zeros(int(d * SR))
+    at = 0.0
+    for _ in range(5):
+        f = RNG.uniform(2500, 4300)
+        c = bell(f, 0.35, partials=((1, 1.0), (2.13, 0.5), (3.87, 0.3), (5.7, 0.15)), tau=RNG.uniform(0.08, 0.16))
+        tick = bandpass(white(0.01), 6000, 3000) * np.hanning(int(0.01 * SR)) * 0.5
+        place(x, c * RNG.uniform(0.5, 1.0), at)
+        place(x, tick, at)
+        at += RNG.uniform(0.04, 0.09)
+    return norm(fade(reverb(x, 0.3, 0.6, 0.2)[:len(x)]), 0.45)
+
+
 # --- ambience (loops) ----------------------------------------------------------
 
 def crickets(d, density=1.0, pitch=4300):
@@ -519,6 +565,24 @@ def amb_surf():
     return norm(loopify(x, 1.2), 0.5)
 
 
+def amb_camp():
+    """The main screen's camp at night: the fire crackling and breathing,
+    crickets, the lake lapping at the dock, a little wind."""
+    d = 16.0
+    t = t_axis(d)
+    wind = lowpass(pink(d), 350) * 0.22
+    roar = lowpass(pink(d), 220) * 0.35 * (0.8 + 0.2 * np.sin(2 * np.pi * t / 3.2))
+    crackle = crunch(320, d, (1200, 5200), 0.006, 0.8)
+    pops = np.zeros(len(t))
+    for _ in range(16):
+        g = 0.03
+        pop = bandpass(white(g), RNG.uniform(1800, 3500), 2000) * env_ad(int(g * SR), 0.0005, 0.006)
+        place(pops, pop * RNG.uniform(0.4, 1.0), RNG.uniform(0, d - g))
+    lap = lowpass(white(d), 600) * (0.3 + 0.7 * np.clip(np.sin(2 * np.pi * t / 3.4) + np.sin(2 * np.pi * t / 5.3 + 1), 0, None))
+    x = wind + roar + crackle * 0.45 + pops * 0.7 + crickets(d, 1.0) * 0.35 + lap * 0.12
+    return norm(loopify(x, 1.0), 0.45)
+
+
 # --- music ---------------------------------------------------------------------
 
 def pad(freqs, d, vib=0.004, bright=1400):
@@ -548,6 +612,42 @@ def music_day():
     for i in range(10):
         place(x, bell(RNG.choice([440, 523, 659, 880]), 2.0, tau=0.8) * 0.12, RNG.uniform(0, d - 2))
     return norm(loopify(reverb(x, 0.7, 2.5, 0.35)[:len(x)], 2.0), 0.4)
+
+
+def pluck(freq, dur, decay=0.996):
+    """A plucked string (Karplus-Strong): a lute's note."""
+    n = int(dur * SR)
+    period = max(2, int(SR / freq))
+    buf = RNG.uniform(-1, 1, period)
+    out = np.zeros(n)
+    for i in range(n):
+        j = i % period
+        out[i] = buf[j]
+        buf[j] = decay * 0.5 * (buf[j] + buf[(j + 1) % period])
+    return lowpass(out, 3000)
+
+
+def music_camp():
+    """The main screen: warm and a little wistful, like an MMO's camp by
+    night - soft pads (D, B minor, G, A) under a lute picking the chords."""
+    bar = 4.0
+    chords = [(147, 185, 220, 294), (123, 147, 185, 247), (98, 147, 196, 247), (110, 139, 165, 220)] * 2
+    d = bar * len(chords)
+    x = np.zeros(int(d * SR))
+    for i, ch in enumerate(chords):
+        p = pad(ch, bar + 2.0, bright=800)
+        n = len(p)
+        env = np.clip(np.minimum(np.arange(n) / (1.2 * SR), (n - np.arange(n)) / (2.0 * SR)), 0, 1)
+        place(x, p * env * 0.12, i * bar)
+        # The lute: up and down the chord, an octave up, in eighths.
+        notes = [ch[1] * 2, ch[2] * 2, ch[3] * 2, ch[2] * 2, ch[1] * 2, ch[2] * 2, ch[3] * 2, ch[0] * 4]
+        if i % 2 == 1:
+            notes = notes[:6] + [ch[3] * 2, ch[2] * 2]
+        for k, f in enumerate(notes):
+            place(x, pluck(f, 1.6) * (0.5 if k % 4 == 0 else 0.32), i * bar + k * 0.5)
+    tail = int(2.0 * SR)
+    x[:tail] += x[-tail:]
+    return norm(loopify(reverb(x, 0.6, 2.0, 0.3)[:len(x)], 2.0), 0.4)
 
 
 def music_night():
@@ -580,6 +680,8 @@ SOUNDS = {
     "amb_night": amb_night, "amb_day": amb_day, "amb_water": amb_water, "amb_rain": amb_rain,
     "amb_wind": amb_wind, "amb_swamp": amb_swamp, "amb_jungle": amb_jungle, "amb_surf": amb_surf,
     "music_day": music_day, "music_night": music_night,
+    "ui_click": ui_click, "ui_open": ui_open, "ui_close": ui_close, "coins": coins,
+    "amb_camp": amb_camp, "music_camp": music_camp,
 }
 
 
