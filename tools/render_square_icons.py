@@ -7,7 +7,8 @@ kind's colour, a dark edge round it. 128x128, shown at 64 or less.
   bpyenv/bin/python tools/render_square_icons.py [name ...]    (repo root)
 
 Writes assets/sprites/icons/<name>.png - rod_0..rod_4, flashlight,
-battery, lamp, worm, cricket, shrimp, minnow, lure_1..lure_6 (Items
+battery, lamp, worm, cricket, shrimp, minnow, lure_1..lure_6, and throw
+(the 誘惑 action button) (Items
 .square_icon() maps the things' ids onto these).
 """
 import math
@@ -33,6 +34,7 @@ LIGHT = (0.7, 0.5, 0.18)
 ITEM = (0.36, 0.26, 0.62)
 TACKLE = (0.12, 0.46, 0.44)
 BAIT = (0.34, 0.46, 0.16)
+ABILITY = (0.62, 0.14, 0.1)
 
 # name: model, turn (degrees about x, y, z), fill (the frame spans the
 # thing's size / fill), ground; thick (a rod is a hair at this size: made
@@ -46,6 +48,9 @@ THINGS = {
     "cricket": dict(model="items/cricket.glb", turn=(25, 0, 30), fill=0.86, ground=BAIT),
     "shrimp": dict(model="items/shrimp.glb", turn=(20, 0, 25), fill=0.86, ground=BAIT),
     "minnow": dict(model="fish/minnow.glb", turn=(0, 0, 20), fill=0.9, ground=BAIT),
+    # The in-game 誘惑 action (a bait fish thrown): the fish flung nose-up
+    # on a crimson ground.
+    "throw": dict(model="fish/minnow.glb", turn=(0, -40, 35), fill=0.95, ground=ABILITY),
 }
 for _t in range(5):
     THINGS["rod_%d" % _t] = dict(model="fishing_rod_lvl%d.glb" % (_t + 1), turn=(0, 45, 0), fill=2.0, ground=GEAR,

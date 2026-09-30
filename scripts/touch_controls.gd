@@ -343,10 +343,15 @@ func _send(key: Key, down: bool) -> void:
 
 ## An MMO-style action button at `r`: a dark slot, a glow of `tint`
 ## behind the picture, the gold frame; darker while pressed, dim when off.
-static func draw_action(ci: CanvasItem, r: Rect2, tint: Color, pressed: bool, on: bool) -> void:
+## An `icon` (a square icon, the MMO look) fills the button inside its
+## frame, dimmed when off.
+static func draw_action(ci: CanvasItem, r: Rect2, tint: Color, pressed: bool, on: bool, icon: Texture2D = null) -> void:
 	var inner := r.grow(-5.0)
 	ci.draw_rect(inner, Color(0.03, 0.03, 0.04, 0.72))
-	ci.draw_texture_rect(UiKit.glow(), inner.grow(4.0), false, Color(tint, 0.55 if on else 0.2))
+	if icon != null:
+		ci.draw_texture_rect(icon, inner.grow(1.0), false, Color.WHITE if on else Color(0.45, 0.45, 0.5))
+	else:
+		ci.draw_texture_rect(UiKit.glow(), inner.grow(4.0), false, Color(tint, 0.55 if on else 0.2))
 	ci.draw_texture_rect(UiKit.tex("action_frame"), r, false, Color(1, 1, 1, 0.95 if on else 0.6))
 	if pressed:
 		ci.draw_rect(inner, Color(0, 0, 0, 0.35))
@@ -417,14 +422,17 @@ class SkillButtonView extends Node2D:
 	## cools down, a golden glow as the light charges.
 	func _draw() -> void:
 		var r := Rect2(-Vector2(radius, radius), Vector2(radius, radius) * 2.0)
-		TouchControls.draw_action(self, r, Color(1.0, 0.6, 0.2) if not _flashlight else Color(0.45, 0.65, 1.0), _pressed, _lit)
-		var ink := Color(1.0, 0.94, 0.75, 0.95 if _lit else 0.45)
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE * 1.5)
-		if _flashlight:
-			_draw_flashlight(ink)
-		else:
-			_draw_lamp(ink)
-		draw_set_transform(Vector2.ZERO)
+		# The light's square icon (the MMO look), or a drawing of it.
+		var icon := Items.square_icon("flashlight" if _flashlight else "lamp")
+		TouchControls.draw_action(self, r, Color(1.0, 0.6, 0.2) if not _flashlight else Color(0.45, 0.65, 1.0), _pressed, _lit, icon)
+		if icon == null:
+			var ink := Color(1.0, 0.94, 0.75, 0.95 if _lit else 0.45)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE * 1.5)
+			if _flashlight:
+				_draw_flashlight(ink)
+			else:
+				_draw_lamp(ink)
+			draw_set_transform(Vector2.ZERO)
 		if _cooldown > 0.0:
 			TouchControls.draw_sweep(self, r.grow(-5.0), _cooldown)
 		if _charge > 0.0:
@@ -462,6 +470,7 @@ class SkillButtonView extends Node2D:
 ## The 誘惑 button: the lure fish's picture (or the word, with none
 ## picked), a ring showing how far it'll go while it's dragged.
 class LureButtonView extends Node2D:
+	const THROW_ICON := "res://assets/sprites/icons/throw.png"
 	var radius := 30.0
 	var _fish := {}
 	var _pressed := false
@@ -487,10 +496,12 @@ class LureButtonView extends Node2D:
 	## it'll go while it's dragged.
 	func _draw() -> void:
 		var r := Rect2(-Vector2(radius, radius), Vector2(radius, radius) * 2.0)
-		TouchControls.draw_action(self, r, Color(0.3, 0.7, 0.45), _pressed, true)
 		if _fish.is_empty():
-			UiKit.draw_text(self, Vector2(-radius, 6), "誘惑", 15, UiKit.GOLD_BRIGHT, HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, true)
+			# No fish picked yet: the action's own icon (a fish flung).
+			TouchControls.draw_action(self, r, Color(0.3, 0.7, 0.45), _pressed, true, Items.texture(THROW_ICON))
+			UiKit.draw_text(self, Vector2(-radius, radius - 7.0), "誘惑", 11, UiKit.GOLD_BRIGHT, HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, true)
 			return
+		TouchControls.draw_action(self, r, Color(0.3, 0.7, 0.45), _pressed, true)
 		var tex := FishData.icon(_fish.get("id", ""), _fish.get("name", ""))
 		if tex != null:
 			var w := radius * 1.6
