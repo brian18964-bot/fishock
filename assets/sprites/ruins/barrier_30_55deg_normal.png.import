@@ -15,9 +15,9 @@ dest_files=["res://.godot/imported/barrier_30_55deg_normal.png-4a4a010622417ad1e
 
 [params]
 
-compress/mode=0
+compress/mode=1
 compress/high_quality=false
-compress/lossy_quality=0.7
+compress/lossy_quality=0.9
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1

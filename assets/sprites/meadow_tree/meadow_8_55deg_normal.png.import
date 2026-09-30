@@ -15,9 +15,9 @@ dest_files=["res://.godot/imported/meadow_8_55deg_normal.png-3e2259b7f2d4ed6866c
 
 [params]
 
-compress/mode=0
+compress/mode=1
 compress/high_quality=false
-compress/lossy_quality=0.7
+compress/lossy_quality=0.9
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
