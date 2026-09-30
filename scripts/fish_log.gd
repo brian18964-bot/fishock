@@ -131,6 +131,10 @@ func _card(id: String, entry: Dictionary) -> void:
 	var def: Dictionary = FishData.FISH[id]
 	var lines := ["釣過 %d 次，最高賣 %.0f 金幣" % [int(entry.count), float(entry.best_value)],
 		"個性：%s" % TRAIT_NAMES.get(def.trait, def.trait)]
+	if float(entry.get("longest", 0.0)) > 0.0:
+		lines.insert(1, "最長 %.1f cm" % float(entry.longest))
+	var usual := FishData.species_trait(id)
+	lines.append("特性：%s（%s）" % [FishData.trait_name(usual), FishData.TANK_TRAITS[usual][1]])
 	if HABIT_NAMES.has(def.habit):
 		lines.append("習性：" + HABIT_NAMES[def.habit])
 	MenuStyle.notice(self, def.name, lines)

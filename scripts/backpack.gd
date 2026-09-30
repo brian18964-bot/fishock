@@ -21,6 +21,7 @@ const KIND_COLORS := {
 	"bait": Color(0.45, 0.34, 0.2),
 	"lure": Color(0.25, 0.5, 0.4),
 	"battery": Color(0.6, 0.55, 0.2),
+	"gear": Color(0.35, 0.3, 0.45),
 }
 const ROTTEN_COLOR := Color(0.36, 0.3, 0.18)
 
@@ -151,7 +152,7 @@ func _rebuild() -> void:
 		_light_row.add_child(_choice("手電筒 %d%%" % int(lantern.charge), lantern.tool == Lantern.Tool.FLASHLIGHT,
 			false, lantern.switch_tool.bind(Lantern.Tool.FLASHLIGHT)))
 	else:
-		_light_row.add_child(_choice("手電筒（商店）", false, true, Callable()))
+		_light_row.add_child(_choice("手電筒（未裝備）", false, true, Callable()))
 
 	var using: String = "浮標" if player.fishing_mode == Player.FishingMode.BOBBER else "路亞・" + Profile.LURES[player.current_lure].name
 	_mode.text = "釣法：%s%s" % [using, "　（油箱提在手上，不佔背包）" if player.carrying_oil_drum else ""]
@@ -198,6 +199,8 @@ func _show_selected(player: Player, items: Array) -> void:
 					_rebuild(), busy))
 		"battery":
 			_detail.text = "電池 x%d（全部 %d）：手電筒沒電時按住燈鈕換上" % [item.count, Profile.batteries]
+		"gear":
+			_detail.text = "%s：備用的，要在主畫面的裝備頁換上" % item.label
 	if busy and item.kind in ["bait", "lure"]:
 		_detail.text += "（收線後才能換）"
 
@@ -278,6 +281,13 @@ class GridView extends Control:
 					var fit := minf(r.size.x / 2.0, r.size.y) * 0.95
 					var pic := Rect2(r.get_center() - Vector2(fit, fit / 2.0) + Vector2(0, 3), Vector2(fit * 2.0, fit))
 					draw_texture_rect(tex, pic, false, Color(0.55, 0.5, 0.35) if item.get("rotten", false) else Color.WHITE)
+			elif item.has("item"):
+				# Packed before the run: its picture (Items.icon), fitted in.
+				var tex := Items.icon(item.item)
+				if tex != null:
+					var k := minf(r.size.x / tex.get_width(), (r.size.y - 12.0) / tex.get_height())
+					var sz := Vector2(tex.get_size()) * k
+					draw_texture_rect(tex, Rect2(r.get_center() - sz / 2.0 + Vector2(0, 5), sz), false)
 			var is_sel: bool = not selected.is_empty() and selected.kind == item.kind and selected.index == item.index
 			draw_rect(r, Color(1.0, 0.9, 0.6) if is_sel else Color(1, 1, 1, 0.3), false, 2.0 if is_sel else 1.0)
 			var name: String = item.label

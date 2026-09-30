@@ -7,7 +7,7 @@ extends Control
 ##            tap to wave
 ##   top:     the player's card (name, fish logged) and gold
 ##   right:   單機模式 (a run) and 多人連線 (not yet - says so)
-##   bottom:  商城, 裝備, 圖鑑
+##   bottom:  商城, 倉庫, 裝備, 魚缸, 圖鑑
 ## Between runs, so the day timer is stopped here (GameState.reset_run).
 
 const BG_TOP := Color(0.035, 0.045, 0.08)
@@ -23,6 +23,24 @@ func _ready() -> void:
 	Profile.gold_updated.connect(func(_g): _refresh())
 	Profile.profile_changed.connect(_refresh)
 	_refresh()
+	if not Profile.tank_news.is_empty():
+		_tank_news()
+
+
+## User request (fish tank): back from a run with fish, the main screen
+## says they went in the tank - and offers to go and look.
+func _tank_news() -> void:
+	var names: Array = Profile.tank_news.duplicate()
+	Profile.clear_tank_news()
+	var shown := names.slice(0, 8)
+	var line := "將 %s 放進魚缸" % "、".join(shown)
+	if names.size() > shown.size():
+		line += "（還有 %d 條）" % (names.size() - shown.size())
+	var note := MenuStyle.notice(self, "漁獲入缸", [line])
+	note.name = "TankNews"
+	var go := MenuStyle.button("去魚缸看看", 16, true)
+	go.pressed.connect(_go.bind("fish_tank"))
+	note.get_child(0).get_child(0).add_child(go)
 
 
 func _build() -> void:
@@ -130,11 +148,12 @@ func _build() -> void:
 
 	# Bottom: shop, equipment, fish log.
 	var bar := HBoxContainer.new()
-	bar.position = Vector2(520, 438)
-	bar.add_theme_constant_override("separation", 12)
-	for entry in [["商城", _on_shop], ["裝備", _on_equipment], ["圖鑑", _on_fish_log]]:
+	bar.position = Vector2(452, 438)
+	bar.add_theme_constant_override("separation", 8)
+	for entry in [["商城", _on_shop], ["倉庫", _go.bind("warehouse")], ["裝備", _on_equipment],
+			["魚缸", _go.bind("fish_tank")], ["圖鑑", _on_fish_log]]:
 		var b := MenuStyle.button(entry[0], 18)
-		b.custom_minimum_size = Vector2(128, 72)
+		b.custom_minimum_size = Vector2(92, 72)
 		b.pressed.connect(entry[1])
 		bar.add_child(b)
 	add_child(bar)
@@ -171,6 +190,10 @@ func _on_shop() -> void:
 
 func _on_equipment() -> void:
 	get_tree().change_scene_to_file("res://scenes/equipment.tscn")
+
+
+func _go(page: String) -> void:
+	get_tree().change_scene_to_file("res://scenes/%s.tscn" % page)
 
 
 func _on_fish_log() -> void:

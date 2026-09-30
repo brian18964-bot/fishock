@@ -274,9 +274,7 @@ func end_run(success: bool, message: String) -> void:
 
 	var final_message := message
 	if success:
-		var sold := _sell_carried_fish()
-		if sold > 0:
-			final_message += "\n順便賣掉身上剩下的漁獲，賺了 %d 金幣" % sold
+		final_message += _bring_fish_home()
 	else:
 		# Design doc §8: on failure, carried fish are lost outright, never sold.
 		carried_fish.clear()
@@ -285,17 +283,33 @@ func end_run(success: bool, message: String) -> void:
 	run_ended.emit(success, final_message)
 
 
-## Design doc §7/§9.1: excess catch you carried onto the "boat" (i.e. still
-## on hand when you escape) becomes sellable, permanent gold.
-func _sell_carried_fish() -> int:
-	var total := 0
+## User request (fish tank): the fish carried out of a run go into the
+## fish tank at home (Profile.tank), to be looked at, sold or traded there;
+## rotten ones are thrown away, and any the tank has no room for are sold.
+## What to tell the player.
+func _bring_fish_home() -> String:
+	var kept := []
+	var sold := 0
+	var rotten := 0
 	for fish in carried_fish:
-		total += int(fish.value)
+		if fish.get("rotten", false):
+			rotten += 1
+		elif Profile.add_to_tank(fish):
+			kept.append(fish.get("name", "魚"))
+		else:
+			sold += maxi(1, int(fish.get("value", 0)))
 	carried_fish.clear()
 	inventory_updated.emit(carried_fish)
-	if total > 0:
-		Profile.add_gold(total)
-	return total
+	if sold > 0:
+		Profile.add_gold(sold)
+	var text := ""
+	if not kept.is_empty():
+		text += "\n將 %s 放進魚缸" % "、".join(kept)
+	if sold > 0:
+		text += "\n魚缸滿了，其餘的漁獲賣了 %d 金幣" % sold
+	if rotten > 0:
+		text += "\n腐敗的魚丟掉了 %d 條" % rotten
+	return text
 
 
 ## User feedback: periodic weather - mostly clear, but fog (dims/shrinks

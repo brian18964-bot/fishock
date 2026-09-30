@@ -81,23 +81,24 @@ func _rebuild_rows() -> void:
 	for key in Profile.UPGRADE_DEFS.keys():
 		left.add_child(_upgrade_row(key))
 
-	right.add_child(_header("路亞假餌（買了下一輪全部帶去）"))
+	right.add_child(_header("路亞假餌（買了放進倉庫，裝進背包才帶得進去）"))
 	for id in Profile.LURE_ORDER:
 		var def: Dictionary = Profile.LURES[id]
-		right.add_child(_row("%s（庫存 %d）｜%d 金幣" % [def.name, int(Profile.lure_stock.get(id, 0)), def.cost],
+		right.add_child(_row("%s（擁有 %d）｜%d 金幣" % [def.name, Profile.owned("lure_" + id), def.cost],
 			def.desc, "購買", Profile.gold < int(def.cost), func(): Profile.buy_lure(id)))
 	right.add_child(_header("燈具"))
-	right.add_child(_row("手電筒｜%s" % ("已擁有" if Profile.has_flashlight else "%d 金幣" % Profile.FLASHLIGHT_COST),
-		"遠距離窄光束，用電池", "購買", Profile.has_flashlight or Profile.gold < Profile.FLASHLIGHT_COST, Profile.buy_flashlight))
-	right.add_child(_row("電池（庫存 %d）｜%d 金幣" % [Profile.batteries, Profile.BATTERY_COST],
+	var has_light := Profile.owned("flashlight") > 0
+	right.add_child(_row("手電筒｜%s" % ("已擁有" if has_light else "%d 金幣" % Profile.FLASHLIGHT_COST),
+		"遠距離窄光束，用電池", "購買", has_light or Profile.gold < Profile.FLASHLIGHT_COST, Profile.buy_flashlight))
+	right.add_child(_row("電池（擁有 %d）｜%d 金幣" % [Profile.owned("battery"), Profile.BATTERY_COST],
 		"手電筒沒電時隨地換上", "購買", Profile.gold < Profile.BATTERY_COST, Profile.buy_battery))
 
 
 func _rod_row() -> Control:
 	var rod := Profile.rod()
 	var next := Profile.next_rod()
-	var title := "%s（Lv.%d/%d）｜%s" % [rod.name, Profile.rod_tier + 1, Profile.ROD_TIERS.size(),
-		"已是最好的竿" if next.is_empty() else "換%s %d 金幣" % [next.name, next.cost]]
+	var title := "%s（Lv.%d/%d）｜%s" % [Profile.ROD_TIERS[Profile.rods_owned].name, Profile.rods_owned + 1, Profile.ROD_TIERS.size(),
+		"已是最好的竿" if next.is_empty() else "買%s %d 金幣" % [next.name, next.cost]]
 	var desc := "現在：" + _rod_effects(rod)
 	if not next.is_empty():
 		desc += "\n下一支：" + _rod_effects(next)

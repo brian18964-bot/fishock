@@ -36,6 +36,9 @@ const TESTS := [
 	"test_lure_retrieve",
 	"test_fish_by_style",
 	"test_main_menu",
+	"test_catch_details",
+	"test_warehouse_and_bag",
+	"test_fish_tank",
 	"test_light_button_tap_and_hold",
 	"test_light_button_relights",
 	"test_long_press_brightness",
@@ -1004,6 +1007,160 @@ func test_fish_by_style() -> void:
 		check(FishData.pick_species("near", "common", "common", "", "sea").id != "cod", "no cod close in")
 
 
+## User request (playtest): a catch has a length, a weight and a trait
+## (for the fish tank), shown on the catch card and kept in the bag.
+func test_catch_details() -> void:
+	var p := player()
+	GameState.carried_fish.clear()
+	p.tier_data = FishData.get_tier_data("mid").duplicate()
+	p.tier_data.label = "鯉魚"
+	p.fish_id = "carp"
+	p.current_tier = "mid"
+	p.is_heart_catch = false
+	p.is_epic_catch = false
+	p.caught_in_hotspot = false
+	p._succeed_catch()
+	await frames(1)
+	check(GameState.carried_fish.size() == 1, "the carp is in the bag")
+	var f: Dictionary = GameState.carried_fish[0]
+	var span: Array = FishData.LENGTH_CM.carp
+	check(f.has("length") and f.length >= span[0] and f.length <= span[1], "a carp's length (%s)" % str(f.get("length")))
+	check(float(f.get("weight", 0.0)) > 0.1, "and weight (%s kg)" % str(f.get("weight")))
+	check(FishData.TANK_TRAITS.has(f.get("tank_trait", "")), "and a tank trait")
+	var card: CatchCard = main.find_children("*", "CatchCard", true, false)[0]
+	card.show_catch(f, false)
+	check(card._measure.text.contains("cm") and card._measure.text.contains(FishData.trait_name(f.tank_trait)),
+		"the card shows them: " + card._measure.text)
+	# Small near-shore fish stay small, legends run past the top.
+	for _i in 30:
+		check(FishData.measure("sardine", "small").length <= 12 + 13 * 0.36, "a small sardine is small")
+		check(FishData.measure("bluefin", "huge").weight > 100.0, "a legendary bluefin is heavy")
+	var traits := {}
+	for _i in 200:
+		traits[FishData.roll_tank_trait("sardine")] = true
+	check(traits.has("school") and traits.size() > 1, "sardines school, now and then one doesn't")
+	GameState.carried_fish.clear()
+
+
+## User request (warehouse): the warehouse and the bag packed for the next
+## run - the shop fills the warehouse, things move between the two (by
+## drag or by a card with a count), stack up to a cell's worth, keep their
+## place in the bag, and go into the run from there.
+func test_warehouse_and_bag() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 2000})
+	for _i in 12:
+		Profile.buy_lure("minnow")
+	check(Profile.stored("lure_minnow") == 12 and Profile.bag.is_empty(), "bought lures wait in the warehouse")
+	check(Profile.to_bag("lure_minnow", 12) == 12 and Profile.bag.size() == 2, "ten to a cell: two stacks")
+	for _i in 4:
+		Profile.buy_battery()
+	check(Profile.to_bag("battery", 4, Vector2i(5, 1)) == 4, "batteries packed")
+	var bi := Profile.bag_at(Vector2i(5, 1))
+	check(bi >= 0 and Profile.bag[bi].id == "battery" and int(Profile.bag[bi].count) == 3,
+		"three to a cell, the first stack where it was dropped")
+	check(not Profile.bag_move(bi, Profile.bag[0].cell), "not onto something else")
+	check(Profile.bag_move(bi, Vector2i(7, 3)) and Profile.bag[Profile.bag_at(Vector2i(7, 3))].id == "battery", "moved to a free cell")
+	check(Profile.buy_rod() and Profile.rod_tier == 1 and Profile.stored("rod_0") == 1, "a new rod is put on, the old one stored")
+	check(Profile.to_bag("rod_0", 1, Vector2i(0, 3)) == 1, "a spare rod packed")
+	check(not Profile.bag_fits("battery", Vector2i(2, 3)), "a rod takes three cells")
+	check(Profile.equip("rod_0") and Profile.rod_tier == 0 and Profile.stored("rod_1") == 1 and Profile.bag_count("rod_0") == 0,
+		"put on from the bag, the other one stored")
+	check(Profile.buy_flashlight() and Profile.has_flashlight, "the flashlight's worn once bought")
+	check(Profile.unequip("light") and not Profile.has_flashlight and Profile.stored("flashlight") == 1, "taken off, to the warehouse")
+	check(not Profile.unequip("rod"), "there's always a rod on")
+	# What the run takes: the bag, where it was packed.
+	check(int(Profile.lure_stock.get("minnow", 0)) == 12 and Profile.batteries == 4, "the bag's lures and batteries go in")
+	var items := Inventory.items(null)
+	var placed := Inventory.pack(items)
+	for k in items.size():
+		if items[k].has("cell"):
+			check(placed[k].position == items[k].cell, "%s packed where it was put" % items[k].label)
+	check(Profile.use_battery() and Profile.batteries == 3, "a battery used comes out of the bag")
+	check(Profile.bag_take("lure_minnow", 2) == 2 and Profile.bag_count("lure_minnow") == 10, "lures lost come out too")
+
+	# The page: drag from the warehouse onto the bag, and back.
+	var page: Control = load("res://scenes/warehouse.tscn").instantiate()
+	get_tree().root.add_child(page)
+	await frames(3)
+	check(page.find_child("Tab_tackle", true, false) != null and page.find_child("Tab_other", true, false) != null, "tabs")
+	page._show_tab("gear")
+	var bag = page._bag
+	var drop_at: Vector2 = bag.global_position + Vector2(3.5, 2.5) * bag.cell
+	page.pressed({"from": "storage", "id": "rod_1"}, page._storage.global_position + Vector2(10, 10))
+	var motion := InputEventMouseMotion.new()
+	motion.position = drop_at
+	page._input(motion)
+	check(page._dragging, "a drag starts")
+	var up := InputEventMouseButton.new()
+	up.button_index = MOUSE_BUTTON_LEFT
+	up.pressed = false
+	up.position = drop_at
+	page._input(up)
+	await frames(1)
+	var ri := Profile.bag_at(Vector2i(3, 2))
+	check(ri >= 0 and Profile.bag[ri].id == "rod_1" and Profile.stored("rod_1") == 0, "dragged into the bag, where it was let go")
+	check(page.move({"from": "bag", "id": "rod_1", "index": ri}, {"to": "storage"}) and Profile.stored("rod_1") == 1, "and back")
+	# A tap: the card, a count, into the bag.
+	Profile.storage["battery"] = 5
+	page.card({"from": "storage", "id": "battery"})
+	await frames(1)
+	var amount: Label = page.find_child("Amount", true, false)
+	check(amount != null and amount.text == "5", "the card offers all five")
+	var slider: HSlider = page.find_children("*", "HSlider", true, false)[0]
+	slider.value = 2
+	(page.find_child("Act_放進背包", true, false) as Button).pressed.emit()
+	await frames(1)
+	check(Profile.stored("battery") == 3 and Profile.batteries == 5, "two of them packed (%d left)" % Profile.stored("battery"))
+	page.queue_free()
+	await frames(1)
+	Profile.load_data(saved)
+	Profile._save()
+
+
+## User request (fish tank): fish carried out of a run go in the tank; the
+## main screen says so; the tank page shows them swimming, lists them, and
+## sells them.
+func test_fish_tank() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 0})
+	GameState.carried_fish = [
+		{"name": "鯉魚", "id": "carp", "value": 6.0, "size": "medium", "length": 55.0, "weight": 2.3, "tank_trait": "glutton"},
+		{"name": "沙丁魚", "id": "sardine", "value": 2.0, "size": "small"},
+		{"name": "鯉魚", "id": "carp", "value": 0.0, "rotten": true, "size": "small"},
+	]
+	var text: String = GameState._bring_fish_home()
+	check(text.contains("將 鯉魚、沙丁魚 放進魚缸"), "the message: " + text)
+	check(Profile.tank.size() == 2 and GameState.carried_fish.is_empty(), "two in the tank, the rotten one thrown away")
+	check(Profile.tank[1].has("length") and Profile.tank[1].has("tank_trait"), "an old-style fish gets its measure")
+	var title: Control = load("res://scenes/title_screen.tscn").instantiate()
+	get_tree().root.add_child(title)
+	await frames(2)
+	check(title.find_child("TankNews", true, false) != null and Profile.tank_news.is_empty(), "the main screen tells, once")
+	title.queue_free()
+	var page: Control = load("res://scenes/fish_tank.tscn").instantiate()
+	get_tree().root.add_child(page)
+	await seconds(1.0)
+	var tank = page.find_child("Tank", true, false)
+	check(tank.fish().size() == 2, "both swim in the tank")
+	var inside := true
+	for s in tank.fish():
+		inside = inside and tank.water().grow(2).has_point(s.position)
+	check(inside, "and stay in the water")
+	check(page.find_child("Fish_0", true, false) != null and page.find_child("Fish_1", true, false) != null, "the list")
+	tank.feed()
+	check(tank.food().size() > 0, "food goes in")
+	page._card_for(0)
+	await frames(1)
+	(page.find_child("Sell", true, false) as Button).pressed.emit()
+	await frames(2)
+	check(Profile.tank.size() == 1 and Profile.gold == 6, "sold for its value (gold %d)" % Profile.gold)
+	page.queue_free()
+	await frames(1)
+	Profile.load_data(saved)
+	Profile._save()
+
+
 ## User request: a mobile-game main screen - the player's own character in
 ## 3D, the shop, the equipment page, single player and multiplayer - and
 ## the equipment page and the fish log it leads to.
@@ -1019,7 +1176,7 @@ func test_main_menu() -> void:
 	var labels := {}
 	for b in title.find_children("*", "Button", true, false):
 		labels[(b as Button).text] = true
-	for want in ["單機模式", "多人連線", "商城", "裝備", "圖鑑"]:
+	for want in ["單機模式", "多人連線", "商城", "倉庫", "裝備", "魚缸", "圖鑑"]:
 		check(labels.has(want), "main screen has " + want)
 	title.queue_free()
 	await frames(1)
@@ -1027,11 +1184,10 @@ func test_main_menu() -> void:
 	var equip: Control = load("res://scenes/equipment.tscn").instantiate()
 	get_tree().root.add_child(equip)
 	await frames(3)
-	for key in ["rod", "light", "lure", "hat", "top", "pack"]:
+	for key in ["rod", "light", "hat", "top", "pack"]:
 		check(equip.find_child("Slot_" + key, true, false) != null, "equipment slot " + key)
-	(equip.find_child("Slot_lure", true, false) as Button).pressed.emit()
-	await frames(1)
-	check(equip._selected == "lure" and equip.find_child("ToShop", true, false) != null, "a slot opens its detail")
+	check(equip.find_child("Storage", true, false) != null and equip.find_child("Bag", true, false) != null,
+		"the equipment page shows the warehouse's gear and the bag")
 	equip.queue_free()
 	await frames(1)
 

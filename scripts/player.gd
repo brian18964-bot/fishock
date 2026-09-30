@@ -403,6 +403,7 @@ func _can_start_cast() -> bool:
 func _lose_lure() -> void:
 	if current_lure != "":
 		lure_stock[current_lure] = maxi(int(lure_stock.get(current_lure, 0)) - 1, 0)
+		Profile.bag_take("lure_" + current_lure, 1)
 	_sync_lures()
 	if lure_count <= 0:
 		fishing_mode = FishingMode.BOBBER
@@ -574,7 +575,7 @@ func choose_lure(id: String) -> void:
 func _handle_shop_input() -> void:
 	if _key_just_pressed(KEY_B):
 		if Profile.buy_lure("minnow"):
-			GameState.push_message("買了一個假餌（下輪庫存 %d），這輪不會生效" % Profile.loadout_lure_total())
+			GameState.push_message("買了一個假餌（放進倉庫），這輪不會生效")
 		else:
 			GameState.push_message("金幣不夠，買不起假餌（需要 %d）" % Profile.LURES.minnow.cost)
 	if _key_just_pressed(KEY_1):
@@ -1446,8 +1447,10 @@ func _succeed_catch() -> void:
 	else:
 		var fish := {"name": tier_data.label, "id": fish_id, "value": tier_data.value, "tier": current_tier,
 			"size": Inventory.size_for_catch(current_tier, is_epic_catch)}
+		fish.merge(FishData.measure(fish_id, fish.size))
+		fish["tank_trait"] = FishData.roll_tank_trait(fish_id)
 		catch_success.emit(fish)
-		Profile.record_catch(fish.name, fish.value)
+		Profile.record_catch(fish.name, fish.value, fish.length)
 		if Inventory.fits_with(self, [Inventory.fish_item(fish)]):
 			GameState.add_carried_fish(fish)
 			GameState.push_message("釣到了 %s（%s型）！" % [tier_data.label, Inventory.SIZE_NAMES[fish.size]])

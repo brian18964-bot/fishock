@@ -406,6 +406,110 @@ static func id_for(species_name: String) -> String:
 	return ""
 
 
+## User request: a catch is more than its kind - each one has a length, a
+## weight and a trait, and the traits will matter in the fish tank later
+## (a fierce one goes for the others, a schooling one keeps with them...).
+##
+## Length: the range an angler lands, in cm; where in it a catch falls
+## goes by its size (Inventory: near-shore fish small, far ones large, a
+## legend past the top). Weight: k * L^3 grams, k by body shape.
+const LENGTH_CM := {
+	"carp": [30, 90], "crucian": [12, 35], "grass_carp": [40, 110], "tilapia": [15, 40], "catfish": [30, 90],
+	"bass": [25, 60], "bluegill": [10, 25], "rainbow_trout": [25, 65], "eel": [40, 100], "loach": [8, 20],
+	"brown_trout": [25, 70], "brook_trout": [20, 45], "grayling": [25, 50], "ayu": [12, 25], "golden_trout": [20, 45],
+	"snakehead": [30, 80], "bowfin": [35, 80], "cavefish": [6, 12], "black_catfish": [30, 80], "ghost_fish": [40, 90],
+	"char": [25, 60], "sculpin": [8, 18], "goby": [5, 15], "minnow": [5, 12], "wels": [100, 250],
+	"piranha": [15, 35], "oscar": [20, 35], "angelfish": [10, 20], "arowana": [50, 90], "arapaima": [120, 280],
+	"sturgeon": [80, 200], "lungfish": [50, 120], "bichir": [25, 60], "paddlefish": [80, 180], "coelacanth": [120, 190],
+	"swamp_eel": [30, 70], "betta": [5, 8], "climbing_perch": [12, 25], "walking_catfish": [25, 45],
+	"alligator_gar": [120, 280], "arctic_char": [30, 75], "whitefish": [25, 55], "burbot": [30, 80], "smelt": [12, 25],
+	"taimen": [70, 180], "sockeye": [45, 80], "pike": [45, 120], "perch": [15, 40], "channel_cat": [35, 100],
+	"golden_koi": [45, 100], "pleco": [20, 50], "silver_carp": [45, 100], "giant_goldfish": [25, 45], "crayfish": [8, 15],
+	"two_headed_carp": [50, 110], "mackerel": [25, 50], "sardine": [12, 25], "horse_mackerel": [18, 40],
+	"saury": [25, 35], "herring": [20, 40], "sea_bream": [25, 80], "sea_bass": [35, 90], "flounder": [25, 70],
+	"cod": [45, 120], "puffer": [15, 40], "cutlassfish": [70, 150], "grouper": [35, 120], "mullet": [35, 70],
+	"croaker": [25, 60], "yellowtail": [50, 120], "mahi": [60, 150], "conger": [60, 150], "scorpionfish": [12, 30],
+	"trevally": [60, 150], "napoleon": [80, 200], "sunfish": [120, 300], "sailfish": [170, 300],
+	"hammerhead": [180, 400], "swordfish": [150, 350], "bluefin": [120, 280],
+}
+const WEIGHT_K := {
+	"carp": 0.014, "tilapia": 0.018, "bass": 0.013, "trout": 0.011, "catfish": 0.009, "eel": 0.0022, "goby": 0.011,
+	"pike": 0.007, "angel": 0.03, "arowana": 0.006, "sturgeon": 0.006, "gar": 0.004, "coelacanth": 0.015,
+	"betta": 0.012, "mackerel": 0.009, "tuna": 0.018, "bream": 0.02, "grouper": 0.017, "ribbon": 0.0006,
+	"ribbon_short": 0.004, "flat": 0.012, "puffer": 0.03, "billfish": 0.005, "sunfish": 0.06, "shark": 0.006,
+	"mahi": 0.009, "trevally": 0.016, "crayfish": 0.02,
+}
+## Where in its length range a catch of each size falls (0 = shortest).
+const SIZE_SPAN := {"small": [0.0, 0.35], "medium": [0.3, 0.65], "large": [0.6, 0.95], "huge": [0.9, 1.12]}
+
+## The tank traits: name, what it does (in the tank - to come).
+const TANK_TRAITS := {
+	"fierce": ["兇猛", "會攻擊魚缸裡的其他魚"],
+	"school": ["群聚", "總是跟其他魚一起游"],
+	"bottom": ["底棲", "喜歡待在缸底"],
+	"shy": ["膽小", "常躲在水草後面"],
+	"lazy": ["慵懶", "很少游動"],
+	"active": ["好動", "在缸裡四處巡游"],
+	"jumper": ["愛跳", "偶爾會跳出水面"],
+	"glutton": ["貪吃", "會搶其他魚的食物"],
+}
+## Each species' usual trait (the rest: "active"); one in five catches has
+## a mind of its own (INDIVIDUAL_CHANCE) and rolls another.
+const TRAIT_OF := {
+	"fierce": ["bass", "snakehead", "bowfin", "pike", "piranha", "arowana", "arapaima", "alligator_gar", "taimen", "wels",
+		"betta", "oscar", "grouper", "hammerhead", "trevally", "cutlassfish", "conger", "ghost_fish", "two_headed_carp"],
+	"school": ["sardine", "herring", "horse_mackerel", "saury", "mackerel", "smelt", "minnow", "ayu", "whitefish",
+		"bluegill", "crucian", "perch", "croaker"],
+	"bottom": ["catfish", "black_catfish", "channel_cat", "walking_catfish", "loach", "goby", "sculpin", "flounder",
+		"sturgeon", "pleco", "burbot", "crayfish", "scorpionfish", "cod"],
+	"shy": ["eel", "swamp_eel", "cavefish", "angelfish", "bichir", "coelacanth", "puffer"],
+	"lazy": ["lungfish", "sunfish", "giant_goldfish", "paddlefish", "napoleon"],
+	"jumper": ["sailfish", "swordfish", "silver_carp", "mullet"],
+	"glutton": ["carp", "grass_carp", "tilapia", "golden_koi"],
+}
+const INDIVIDUAL_CHANCE := 0.2
+
+
+## A catch's length (cm) and weight (kg), by its species and size.
+static func measure(id: String, size_key: String) -> Dictionary:
+	var span: Array = LENGTH_CM.get(id, [20, 50])
+	var at: Array = SIZE_SPAN.get(size_key, SIZE_SPAN.small)
+	var length: float = lerpf(span[0], span[1], randf_range(at[0], at[1]))
+	var body: String = FISH.get(id, {}).get("body", "carp")
+	var k: float = 0.0035 if id == "sailfish" else WEIGHT_K.get(body, 0.012)
+	var kg: float = k * pow(length, 3) / 1000.0 * randf_range(0.9, 1.1)
+	return {"length": snappedf(length, 0.1), "weight": snappedf(kg, 0.01 if kg < 10.0 else 0.1)}
+
+
+static func species_trait(id: String) -> String:
+	for key in TRAIT_OF:
+		if id in TRAIT_OF[key]:
+			return key
+	return "active"
+
+
+## One catch's trait: mostly its kind's, now and then its own.
+static func roll_tank_trait(id: String) -> String:
+	var usual := species_trait(id)
+	if randf() >= INDIVIDUAL_CHANCE:
+		return usual
+	var others := TANK_TRAITS.keys().filter(func(k): return k != usual)
+	return others[randi() % others.size()]
+
+
+static func trait_name(key: String) -> String:
+	return TANK_TRAITS.get(key, ["", ""])[0]
+
+
+## "45.2 cm・1.24 kg" for a catch that has them ("" otherwise).
+static func size_text(fish: Dictionary) -> String:
+	if not fish.has("length"):
+		return ""
+	var kg: float = float(fish.weight)
+	var w := "%.0f g" % (kg * 1000.0) if kg < 1.0 else ("%.2f kg" % kg if kg < 10.0 else "%.1f kg" % kg)
+	return "%.1f cm・%s" % [float(fish.length), w]
+
+
 static var _icons := {}
 
 

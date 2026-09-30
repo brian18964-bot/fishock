@@ -64,7 +64,6 @@ static func notice(parent: Node, title: String, lines: Array) -> Control:
 	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
 	parent.add_child(shade)
 	var p := panel(Color(0.08, 0.075, 0.07, 0.97))
-	p.set_anchors_preset(Control.PRESET_CENTER)
 	p.custom_minimum_size = Vector2(420, 0)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 10)
@@ -79,5 +78,8 @@ static func notice(parent: Node, title: String, lines: Array) -> Control:
 	col.add_child(ok)
 	p.add_child(col)
 	shade.add_child(p)
-	p.position = -p.get_combined_minimum_size() / 2.0
+	# Centred on the screen (grows both ways as buttons are added).
+	p.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
+	p.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	p.grow_vertical = Control.GROW_DIRECTION_BOTH
 	return shade

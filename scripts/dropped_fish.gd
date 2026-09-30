@@ -13,6 +13,8 @@ const MIN_VALUE_RATIO := 0.15
 
 var fish_name: String = "魚"
 var fish_id := ""
+## The catch's own details (length, weight, trait) kept for picking it up.
+var details := {}
 var base_value: float = 0.0
 ## Its size in the backpack (Inventory).
 var size: String = "small"
@@ -41,6 +43,9 @@ func setup(fish: Dictionary) -> void:
 	fish_id = fish.get("id", FishData.id_for(fish_name))
 	base_value = float(fish.get("value", 0))
 	size = Inventory.fish_size(fish)
+	for key in ["length", "weight", "tank_trait"]:
+		if fish.has(key):
+			details[key] = fish[key]
 	var tex := FishData.icon(fish_id, fish_name)
 	if tex != null:
 		visual.texture = tex
@@ -82,9 +87,11 @@ func pick_up() -> Dictionary:
 
 ## What it'd be back in the backpack.
 func as_fish() -> Dictionary:
+	var fish := {"name": fish_name, "id": fish_id, "value": current_value(), "tier": "dropped", "rotten": false, "size": size}
 	if is_rotten():
-		return {"name": fish_name, "id": fish_id, "value": 0.0, "tier": "rotten", "rotten": true, "size": size}
-	return {"name": fish_name, "id": fish_id, "value": current_value(), "tier": "dropped", "rotten": false, "size": size}
+		fish.merge({"value": 0.0, "tier": "rotten", "rotten": true}, true)
+	fish.merge(details)
+	return fish
 
 
 ## Eaten by the big ghost: gone, and no longer on offer to a player

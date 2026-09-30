@@ -51,35 +51,44 @@ static func items(player: Node) -> Array:
 		while bait > 0:
 			out.append({"kind": "bait", "label": "餌", "count": mini(bait, BAIT_PER_CELL), "size": Vector2i(1, 1), "index": -1})
 			bait -= BAIT_PER_CELL
-		for id in Profile.LURE_ORDER:
-			var n := int(player.lure_stock.get(id, 0))
-			if n > 0:
-				out.append({"kind": "lure", "label": Profile.LURES[id].name, "count": n, "size": Vector2i(1, 1), "index": id})
-	var batteries: int = Profile.batteries
-	while batteries > 0:
-		out.append({"kind": "battery", "label": "電池", "count": mini(batteries, BATTERIES_PER_CELL), "size": Vector2i(1, 1), "index": -1})
-		batteries -= BATTERIES_PER_CELL
+	# What was packed before the run (Profile.bag), where it was packed.
+	for i in Profile.bag.size():
+		var e: Dictionary = Profile.bag[i]
+		var def := Items.def(e.id)
+		if def.is_empty():
+			continue
+		var kind := "lure" if def.has("lure") else ("battery" if e.id == "battery" else "gear")
+		out.append({"kind": kind, "label": def.name, "count": int(e.count) if def.stack > 1 else 0,
+			"size": def.size, "index": def.get("lure", i), "cell": e.cell, "item": e.id})
 	return out
 
 
 ## Where each item goes (same order as `list`), or [] if they don't all fit.
+## Things packed before the run keep their cells ("cell"); the rest are
+## packed around them, biggest first.
 static func pack(list: Array) -> Array:
-	var order := range(list.size())
+	var used := {}
+	var placed := []
+	placed.resize(list.size())
+	var loose := []
+	for i in list.size():
+		var cell = list[i].get("cell")
+		if cell is Vector2i and _free(used, cell, list[i].size):
+			_take(used, cell, list[i].size)
+			placed[i] = Rect2i(cell, list[i].size)
+		else:
+			loose.append(i)
+	var order := loose
 	order.sort_custom(func(a, b):
 		var sa: Vector2i = list[a].size
 		var sb: Vector2i = list[b].size
 		return sa.x * sa.y > sb.x * sb.y if sa.x * sa.y != sb.x * sb.y else a < b)
-	var used := {}
-	var placed := []
-	placed.resize(list.size())
 	for i in order:
 		var size: Vector2i = list[i].size
 		var spot := _first_fit(used, size)
 		if spot.x < 0:
 			return []
-		for dx in size.x:
-			for dy in size.y:
-				used[Vector2i(spot.x + dx, spot.y + dy)] = true
+		_take(used, spot, size)
 		placed[i] = Rect2i(spot, size)
 	return placed
 
@@ -87,14 +96,25 @@ static func pack(list: Array) -> Array:
 static func _first_fit(used: Dictionary, size: Vector2i) -> Vector2i:
 	for x in COLS - size.x + 1:
 		for y in ROWS - size.y + 1:
-			var free := true
-			for dx in size.x:
-				for dy in size.y:
-					if used.has(Vector2i(x + dx, y + dy)):
-						free = false
-			if free:
+			if _free(used, Vector2i(x, y), size):
 				return Vector2i(x, y)
 	return Vector2i(-1, -1)
+
+
+static func _free(used: Dictionary, at: Vector2i, size: Vector2i) -> bool:
+	if at.x < 0 or at.y < 0 or at.x + size.x > COLS or at.y + size.y > ROWS:
+		return false
+	for dx in size.x:
+		for dy in size.y:
+			if used.has(Vector2i(at.x + dx, at.y + dy)):
+				return false
+	return true
+
+
+static func _take(used: Dictionary, at: Vector2i, size: Vector2i) -> void:
+	for dx in size.x:
+		for dy in size.y:
+			used[Vector2i(at.x + dx, at.y + dy)] = true
 
 
 ## Would it all still fit with `extra` (grid items) added?

@@ -4,26 +4,30 @@ extends CanvasLayer
 ## User request: the fish need a look of their own - landing one shows it:
 ## a card with its picture (FishData.icon), its name, size and value, a
 ## legend's name in gold. It rises in, holds a moment and fades.
+## User request (playtest): up near the top, see-through enough to watch
+## the water behind it, gone sooner - and showing the catch's length,
+## weight and tank trait.
 
-const HOLD := 2.2
+const HOLD := 1.3
 const LEGEND_GOLD := Color(1.0, 0.82, 0.35)
 
 var _panel: PanelContainer
 var _pic: TextureRect
 var _name: Label
 var _info: Label
+var _measure: Label
 var _tween: Tween
 
 
 func _init() -> void:
-	layer = 3
+	layer = 7
 
 
 func _ready() -> void:
 	_panel = PanelContainer.new()
 	var box := StyleBoxFlat.new()
-	box.bg_color = Color(0.07, 0.06, 0.05, 0.86)
-	box.border_color = Color(1.0, 0.85, 0.55, 0.55)
+	box.bg_color = Color(0.07, 0.06, 0.05, 0.6)
+	box.border_color = Color(1.0, 0.85, 0.55, 0.4)
 	box.set_border_width_all(1)
 	box.set_corner_radius_all(8)
 	box.content_margin_left = 14
@@ -35,19 +39,27 @@ func _ready() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
 	_pic = TextureRect.new()
-	_pic.custom_minimum_size = Vector2(160, 80)
+	_pic.custom_minimum_size = Vector2(120, 60)
 	_pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	row.add_child(_pic)
 	var text := VBoxContainer.new()
 	text.alignment = BoxContainer.ALIGNMENT_CENTER
+	text.add_theme_constant_override("separation", 0)
 	_name = Label.new()
-	_name.add_theme_font_size_override("font_size", 24)
+	_name.add_theme_font_size_override("font_size", 20)
+	_name.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
 	_info = Label.new()
-	_info.add_theme_font_size_override("font_size", 15)
-	_info.add_theme_color_override("font_color", Color(1, 1, 1, 0.75))
+	_info.add_theme_font_size_override("font_size", 13)
+	_info.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
+	_info.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+	_measure = Label.new()
+	_measure.add_theme_font_size_override("font_size", 13)
+	_measure.add_theme_color_override("font_color", Color(0.75, 0.9, 1.0))
+	_measure.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
 	text.add_child(_name)
 	text.add_child(_info)
+	text.add_child(_measure)
 	row.add_child(text)
 	_panel.add_child(row)
 	_panel.modulate.a = 0.0
@@ -63,9 +75,14 @@ func show_catch(fish: Dictionary, legend: bool) -> void:
 	_name.add_theme_color_override("font_color", LEGEND_GOLD if legend else Color.WHITE)
 	var size: String = Inventory.SIZE_NAMES.get(fish.get("size", "small"), "")
 	_info.text = "%s%s型・價值 %.0f" % ["傳說・" if legend else "", size, float(fish.get("value", 0.0))]
+	var extra := FishData.size_text(fish)
+	if fish.has("tank_trait"):
+		extra += "・" + FishData.trait_name(fish.tank_trait)
+	_measure.text = extra
+	_measure.visible = extra != ""
 	_panel.reset_size()
 	var view := get_viewport().get_visible_rect().size
-	var at := Vector2((view.x - _panel.size.x) / 2.0, view.y * 0.22)
+	var at := Vector2((view.x - _panel.size.x) / 2.0, view.y * 0.185)
 	if _tween != null:
 		_tween.kill()
 	_panel.position = at + Vector2(0, 16)
@@ -74,4 +91,4 @@ func show_catch(fish: Dictionary, legend: bool) -> void:
 	_tween.tween_property(_panel, "position", at, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_tween.parallel().tween_property(_panel, "modulate:a", 1.0, 0.2)
 	_tween.tween_interval(HOLD)
-	_tween.tween_property(_panel, "modulate:a", 0.0, 0.4)
+	_tween.tween_property(_panel, "modulate:a", 0.0, 0.3)
