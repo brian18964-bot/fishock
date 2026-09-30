@@ -14,7 +14,11 @@ extends CanvasLayer
 ##                  flashes the nearest ghost close by for a short stun
 ##                  (Player's light skill). Its rim fills as it charges and
 ##                  shows the flash's cooldown.
-##   丟魚            throw a fish ahead (the big ghost goes for it)
+##   誘惑            the lure fish (user request): with none picked, a tap
+##                  opens the bag to pick one; with one, its picture's on the
+##                  button - press and drag (further throws further, like the
+##                  cast) and let go to throw it there; a tap throws it close
+##                  by. The big ghost goes for it.
 ## The lamp's brightness: long-press any empty spot on the screen, then
 ## slide up or down - like iPhone's brightness in Control Center; all the
 ## way down puts the lamp out, and with the lamp out the long press relights
@@ -38,8 +42,12 @@ const DRAG_DEADZONE := 10.0
 
 const BUTTONS := [
 	# [label, key, angle around the right stick (deg, clockwise from right), distance, radius]
-	["丟魚", KEY_G, 222.0, 150.0, 25.0],
 ]
+## The 誘惑 button, where 丟魚 was; a drag this long throws furthest.
+const LURE_ANGLE := 222.0
+const LURE_DISTANCE := 152.0
+const LURE_RADIUS := 30.0
+const LURE_FULL_PULL := 90.0
 ## A press on an empty spot held this long (and still) opens the slider.
 const LONG_PRESS := 0.4
 const PRESS_SLOP := 14.0
@@ -66,6 +74,9 @@ var _start_brightness := 0.75
 ## User request: with the lamp out, holding the light skill button relights
 ## it (L held, like the long press on an empty spot) instead of flashing.
 var _skill_relight := false
+var _lure_center := Vector2.ZERO
+var _lure_touch := -1
+var _lure_view: LureButtonView
 
 
 func _ready() -> void:
@@ -75,6 +86,12 @@ func _ready() -> void:
 		var center: Vector2 = AIM_CENTER + Vector2.RIGHT.rotated(deg_to_rad(spec[2])) * spec[3]
 		_add_button(spec[0], spec[1], center, spec[4])
 	_skill_center = AIM_CENTER + Vector2.RIGHT.rotated(deg_to_rad(SKILL_ANGLE)) * SKILL_DISTANCE
+	_lure_center = AIM_CENTER + Vector2.RIGHT.rotated(deg_to_rad(LURE_ANGLE)) * LURE_DISTANCE
+	_lure_view = LureButtonView.new()
+	_lure_view.name = "LureButton"
+	_lure_view.position = _lure_center
+	_lure_view.radius = LURE_RADIUS
+	add_child(_lure_view)
 	_skill_view = SkillButtonView.new()
 	_skill_view.position = _skill_center
 	_skill_view.radius = SKILL_RADIUS
@@ -92,6 +109,10 @@ func _process(delta: float) -> void:
 	var lantern := _lantern()
 	if lantern == null:
 		return
+	var li := GameState.lure_index()
+	var player := get_tree().get_first_node_in_group("player")
+	_lure_view.set_state(GameState.carried_fish[li] if li >= 0 else {}, _lure_touch >= 0,
+		player.lure_charge if player != null else 0.0)
 	_skill_view.set_state(_skill_touch != -1, lantern.tool == Lantern.Tool.FLASHLIGHT, lantern.boost,
 		lantern.flash_cooldown / maxf(lantern.flash_cooldown_max, 0.01), lantern.lit)
 	if _press_touch != -1:
@@ -120,6 +141,18 @@ func _process(delta: float) -> void:
 
 func _input(event: InputEvent) -> void:
 	if not visible or _bag_open():
+		return
+	if event is InputEventScreenTouch and _lure_input(event):
+		get_viewport().set_input_as_handled()
+		return
+	if event is InputEventScreenDrag and event.index == _lure_touch:
+		var player := get_tree().get_first_node_in_group("player")
+		var drag: Vector2 = event.position - _lure_center
+		if player != null and drag.length() > DRAG_DEADZONE:
+			player.lure_aim = drag.normalized()
+			player.lure_pull = clampf(drag.length() / LURE_FULL_PULL, 0.0, 1.0)
+		_lure_view.set_knob(drag.limit_length(LURE_RADIUS) if drag.length() > DRAG_DEADZONE else Vector2.ZERO)
+		get_viewport().set_input_as_handled()
 		return
 	if event is InputEventScreenTouch:
 		if event.pressed and _skill_touch == -1 and event.position.distance_to(_skill_center) <= SKILL_RADIUS:
@@ -180,6 +213,30 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
+## The 誘惑 button's touches; true if it took this one.
+func _lure_input(event: InputEventScreenTouch) -> bool:
+	var player := get_tree().get_first_node_in_group("player")
+	if player == null:
+		return false
+	if event.pressed and _lure_touch == -1 and event.position.distance_to(_lure_center) <= LURE_RADIUS + 4.0:
+		_lure_touch = event.index
+		if GameState.lure_index() < 0:
+			player.pick_lure_fish()
+			_lure_touch = -2  # the bag's open: this touch is spent
+		else:
+			player.lure_pull = 0.0
+			player.lure_aim = Vector2.ZERO
+			player.lure_held = true
+		return true
+	if not event.pressed and (event.index == _lure_touch or (_lure_touch == -2)):
+		if _lure_touch >= 0:
+			player.lure_held = false
+		_lure_touch = -1
+		_lure_view.set_knob(Vector2.ZERO)
+		return true
+	return false
+
+
 func _end_press() -> void:
 	if _press_key_down:
 		_send(KEY_L, false)
@@ -194,11 +251,14 @@ func _end_press() -> void:
 ## Nothing there to take the touch: not a stick, a button, the character
 ## card or an object's button.
 func _is_empty_spot(pos: Vector2) -> bool:
-	if pos.distance_to(_skill_center) <= SKILL_RADIUS + 8.0:
+	if pos.distance_to(_skill_center) <= SKILL_RADIUS + 8.0 or pos.distance_to(_lure_center) <= LURE_RADIUS + 8.0:
 		return false
 	for spec in BUTTONS:
 		var center: Vector2 = AIM_CENTER + Vector2.RIGHT.rotated(deg_to_rad(spec[2])) * spec[3]
 		if pos.distance_to(center) <= spec[4] + 8.0:
+			return false
+	for block in get_tree().get_nodes_in_group("hud_block"):
+		if block.is_visible_in_tree() and block.get_global_rect().has_point(pos):
 			return false
 	var scene := get_tree().current_scene
 	for path in ["HUD/Panel/MoveJoystick", "HUD/Panel/AimJoystick"]:
@@ -368,6 +428,58 @@ class SkillButtonView extends Node2D:
 		draw_colored_polygon(PackedVector2Array([Vector2(10, -6), Vector2(22, -12), Vector2(22, 12), Vector2(10, 6)]),
 			Color(1.0, 0.95, 0.7, ink.a * 0.45))
 		draw_set_transform_matrix(Transform2D.IDENTITY)
+
+
+## The 誘惑 button: the lure fish's picture (or the word, with none
+## picked), a ring showing how far it'll go while it's dragged.
+class LureButtonView extends Node2D:
+	var radius := 30.0
+	var _fish := {}
+	var _pressed := false
+	var _charge := 0.0
+	var _knob := Vector2.ZERO
+	var _normal: ImageTexture
+	var _down: ImageTexture
+
+	func _ready() -> void:
+		_normal = TouchControls._disc(radius, TouchControls.FILL)
+		_down = TouchControls._disc(radius, TouchControls.FILL_PRESSED)
+
+	func set_state(fish: Dictionary, pressed: bool, charge: float) -> void:
+		if fish.get("uid", -1) == _fish.get("uid", -1) and pressed == _pressed and absf(charge - _charge) < 0.01:
+			return
+		_fish = fish
+		_pressed = pressed
+		_charge = charge
+		queue_redraw()
+
+	func set_knob(knob: Vector2) -> void:
+		_knob = knob
+		queue_redraw()
+
+	func has_fish() -> bool:
+		return not _fish.is_empty()
+
+	func _draw() -> void:
+		draw_texture(_down if _pressed else _normal, -Vector2(radius, radius))
+		var font := ThemeDB.fallback_font
+		var custom: String = ProjectSettings.get_setting("gui/theme/custom_font", "")
+		if custom != "":
+			font = load(custom)
+		if _fish.is_empty():
+			draw_string_outline(font, Vector2(-radius, 5), "誘惑", HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, 14, 4, Color(0, 0, 0, 0.8))
+			draw_string(font, Vector2(-radius, 5), "誘惑", HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, 14, Color(1, 1, 1, 0.85))
+			return
+		var tex := FishData.icon(_fish.get("id", ""), _fish.get("name", ""))
+		if tex != null:
+			var w := radius * 1.6
+			draw_texture_rect(tex, Rect2(Vector2(-w / 2.0, -w / 4.0 - 3.0), Vector2(w, w / 2.0)), false)
+		draw_string_outline(font, Vector2(-radius, radius - 5.0), "誘惑", HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, 10, 3, Color(0, 0, 0, 0.8))
+		draw_string(font, Vector2(-radius, radius - 5.0), "誘惑", HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, 10, Color(1, 0.85, 0.7))
+		if _charge > 0.0:
+			draw_arc(Vector2.ZERO, radius - 2.0, -PI / 2.0, -PI / 2.0 + TAU * _charge, 40, Color(1.0, 0.6, 0.4, 0.95), 4.0)
+		if _pressed and _knob != Vector2.ZERO:
+			draw_line(Vector2.ZERO, _knob.normalized() * (radius + 22.0), Color(1, 0.7, 0.5, 0.8), 3.0)
 
 
 ## Under a long press on an empty spot: a ring filling towards the slider

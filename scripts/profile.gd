@@ -111,11 +111,15 @@ func _ready() -> void:
 	_load()
 
 
-func record_catch(fish_name: String, value: float, length := 0.0) -> void:
+func record_catch(fish_name: String, value: float, length := 0.0, tank_trait := "") -> void:
 	var entry: Dictionary = fish_log.get(fish_name, {"count": 0, "best_value": 0.0})
 	entry.count = int(entry.count) + 1
 	entry.best_value = max(float(entry.best_value), value)
 	entry["longest"] = maxf(float(entry.get("longest", 0.0)), length)
+	var traits: Array = entry.get("traits", [])
+	if tank_trait != "" and not tank_trait in traits:
+		traits.append(tank_trait)
+	entry["traits"] = traits
 	fish_log[fish_name] = entry
 	profile_changed.emit()
 	_save()
@@ -373,6 +377,40 @@ func to_bag(id: String, count: int, cell := Vector2i(-1, -1)) -> int:
 			storage.erase(id)
 		_changed()
 	return moved
+
+
+## Puts `count` of `id` straight in the bag (picked up in a run): topping
+## up stacks, then new ones where they fit. How many went in.
+func bag_put(id: String, count: int) -> int:
+	var left := count
+	var stack := Items.stack_of(id)
+	for e in bag:
+		if left <= 0:
+			break
+		if e.id == id and int(e.count) < stack:
+			var n := mini(left, stack - int(e.count))
+			e.count += n
+			left -= n
+	while left > 0:
+		var free := bag_free_cell(id)
+		if free.x < 0:
+			break
+		var n := mini(left, stack)
+		bag.append({"id": id, "count": n, "cell": free})
+		left -= n
+	if left < count:
+		_changed()
+	return count - left
+
+
+## Takes the bag stack at `index` out whole (put down in a run).
+func bag_remove(index: int) -> Dictionary:
+	if index < 0 or index >= bag.size():
+		return {}
+	var e: Dictionary = bag[index]
+	bag.remove_at(index)
+	_changed()
+	return e
 
 
 ## Puts up to `count` from the bag stack at `index` back in the warehouse.

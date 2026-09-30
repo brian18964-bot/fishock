@@ -597,12 +597,170 @@ const FISH_TOSS := 36.0
 
 
 func _handle_drop_input() -> void:
-	if not _key_just_pressed(KEY_G):
+	# G (keyboard): the 誘惑 throw - held to charge, let go to throw; with no
+	# fish picked yet it opens the bag to pick one.
+	var g := Input.is_key_pressed(KEY_G)
+	var pressed: bool = g and not _key_prev_held.get(KEY_G, false)
+	_key_prev_held[KEY_G] = g
+	if pressed and GameState.lure_index() < 0:
+		pick_lure_fish()
 		return
+	if g and GameState.lure_index() >= 0:
+		lure_held = true
+	elif _g_throwing:
+		lure_held = false
+	_g_throwing = g and GameState.lure_index() >= 0
+
+
+## User request (誘惑): the fish picked as a lure is thrown - charged like a
+## cast (held longer, thrown further; dragged, aimed) - far off to draw the
+## big ghost away, or close by to save your skin (and, later, a teammate).
+## lure_held: the button / G is held (TouchControls sets it); lure_aim: the
+## direction dragged (ZERO: the way you face).
+const LURE_THROW_MIN := 30.0
+const LURE_THROW_MAX := 260.0
+const LURE_CHARGE_TIME := 1.2
+var lure_held := false
+var lure_aim := Vector2.ZERO
+## Set by the touch button: how far it's dragged (0..1) - the throw's
+## length; -1 (keyboard): it charges by holding instead.
+var lure_pull := -1.0
+var lure_charge := 0.0
+var _lure_charging := false
+var _g_throwing := false
+var _lure_guide: LureGuide
+
+
+## Opens the bag to pick the 誘惑 fish.
+func pick_lure_fish() -> void:
 	if GameState.carried_fish.is_empty():
-		GameState.push_message("身上沒有漁獲可以丟")
+		GameState.push_message("身上沒有魚可以當誘餌")
 		return
-	throw_fish(GameState.carried_fish.size() - 1)
+	var bag := backpack()
+	if bag != null:
+		bag.open_mode("pick_lure")
+
+
+func backpack() -> Backpack:
+	for c in get_tree().current_scene.get_children():
+		if c is Backpack:
+			return c
+	return null
+
+
+func _update_lure_throw(delta: float) -> void:
+	if _lure_guide == null:
+		# On a layer of its own that follows the camera: out of reach of the
+		# night's darkening (CanvasModulate), so it shows in the dark.
+		var layer := CanvasLayer.new()
+		layer.layer = 2
+		layer.follow_viewport_enabled = true
+		add_child(layer)
+		_lure_guide = LureGuide.new()
+		layer.add_child(_lure_guide)
+	if lure_held and GameState.lure_index() >= 0 and state == State.IDLE and not held:
+		if not _lure_charging:
+			_lure_charging = true
+			lure_charge = 0.0
+		if lure_pull >= 0.0:
+			lure_charge = lure_pull
+		else:
+			lure_charge = minf(lure_charge + delta / LURE_CHARGE_TIME, 1.0)
+		_lure_guide.show_throw(global_position, lure_target())
+	elif _lure_charging:
+		_lure_charging = false
+		_lure_guide.hide_throw()
+		if not lure_held:
+			throw_lure()
+		lure_charge = 0.0
+		lure_aim = Vector2.ZERO
+		lure_pull = -1.0
+
+
+## Where the lure fish would land now: out along the aim (dragged, or the
+## way you face) by the charge, short of any water.
+func lure_target() -> Vector2:
+	var dir := lure_aim.normalized() if lure_aim != Vector2.ZERO else aim_dir.normalized()
+	var dist := lerpf(LURE_THROW_MIN, LURE_THROW_MAX, lure_charge)
+	var to := global_position + dir * dist
+	var step := 0
+	while step < 20 and Ripple.water_at(get_tree(), to + FEET) != null:
+		dist -= 16.0
+		to = global_position + dir * maxf(dist, 0.0)
+		step += 1
+	return to
+
+
+func throw_lure() -> void:
+	var i := GameState.lure_index()
+	if i < 0:
+		return
+	var to := lure_target()
+	var fish: Dictionary = GameState.drop_carried_at(i)
+	if fish.is_empty():
+		return
+	var dropped: DroppedFish = DROPPED_FISH_SCENE.instantiate()
+	get_tree().current_scene.add_child(dropped)
+	dropped.global_position = global_position
+	dropped.setup(fish)
+	dropped.fly_to(to)
+	GameState.push_message("丟出誘餌 %s（大鬼會被引過去）" % fish.get("name", "魚"))
+
+
+## Puts carried fish `index` down at your feet (from the bag).
+func put_fish_down(index: int) -> void:
+	var fish: Dictionary = GameState.drop_carried_at(index)
+	if not fish.is_empty():
+		_put_fish_down(fish, global_position + Vector2(randf_range(-10, 10), 10))
+		GameState.push_message("把 %s 放在地上" % fish.get("name", "魚"))
+
+
+## User request (for multiplayer): puts the bag stack at `index` (Profile.bag)
+## down on the ground, to be picked up again (DroppedItem).
+func put_item_down(index: int) -> void:
+	var e := Profile.bag_remove(index)
+	if e.is_empty():
+		return
+	var key: String = Items.def(e.id).get("lure", "")
+	if key != "":
+		lure_stock[key] = maxi(int(lure_stock.get(key, 0)) - int(e.count), 0)
+		_sync_lures()
+		if lure_count <= 0 and fishing_mode == FishingMode.LURE:
+			fishing_mode = FishingMode.BOBBER
+	var item := DroppedItem.make(e.id, int(e.count))
+	get_tree().current_scene.add_child(item)
+	item.global_position = global_position + Vector2(randf_range(-12, 12), 12)
+	GameState.push_message("把 %s 放在地上" % item.title())
+
+
+func _nearest_dropped_item() -> DroppedItem:
+	var best: DroppedItem = null
+	var best_d := DroppedItem.PICK_RANGE
+	for n in get_tree().get_nodes_in_group("dropped_items"):
+		var d := global_position.distance_to(n.global_position)
+		if d < best_d:
+			best = n
+			best_d = d
+	return best
+
+
+func _pick_up_item(item: DroppedItem) -> void:
+	if item == null:
+		return
+	var n := Profile.bag_put(item.item_id, item.count)
+	if n <= 0:
+		GameState.push_message("背包滿了，放不下")
+		return
+	var key: String = Items.def(item.item_id).get("lure", "")
+	if key != "":
+		lure_stock[key] = int(lure_stock.get(key, 0)) + n
+		_sync_lures()
+	if n < item.count:
+		item.count -= n
+		GameState.push_message("撿起了一部分（背包滿了）")
+		return
+	GameState.push_message("撿起了 %s" % item.title())
+	item.pick_up()
 
 
 ## Tosses carried fish `index` a little way ahead (also from the backpack):
@@ -651,6 +809,7 @@ func _physics_process(delta: float) -> void:
 	_handle_mode_toggle()
 	_handle_shop_input()
 	_handle_drop_input()
+	_update_lure_throw(get_physics_process_delta_time())
 	_handle_action_input(delta)
 
 
@@ -665,6 +824,8 @@ func _update_aim() -> void:
 		# Design doc §4.2 "視野弱點": hands are busy jigging the lure, so
 		# aim just holds still instead of tracking mouse/stick input.
 		pass
+	elif _lure_charging and lure_aim != Vector2.ZERO:
+		aim_dir = lure_aim.normalized()
 	elif touch_aim != Vector2.ZERO:
 		aim_dir = touch_aim
 	elif skill_held and skill_aim != Vector2.ZERO:
@@ -856,9 +1017,12 @@ func interaction() -> Dictionary:
 	if held or state != State.IDLE or GameState.run_over:
 		return {}
 	if in_altar_zone and not GameState.carried_fish.is_empty():
-		return _offer(get_parent().get_node("Altar"), "祭壇", "獻祭", true, -34.0)
+		return _offer(get_parent().get_node("Altar"), "祭壇", "獻祭", false, -34.0)
 	if in_escape_zone and GameState.day_phase == GameState.DayPhase.ESCAPE:
 		return _offer(get_parent().get_node("EscapePoint"), "符文石柱", "逃離", false, -30.0)
+	var item := _nearest_dropped_item()
+	if item != null:
+		return _offer(item, item.title(), "撿起", false, -22.0)
 	if in_fuel_zone and _fuel_station != null:
 		var station := "煤油站 %d/%d" % [int(_fuel_station.total_fuel), int(_fuel_station.max_total_fuel)]
 		if carrying_oil_drum:
@@ -927,7 +1091,14 @@ func _handle_interaction(delta: float) -> void:
 		sacrifice_progress_updated.emit(0.0)
 	match verb:
 		"獻祭":
-			_handle_sacrifice(use_held, delta)
+			# User request: a tap opens the bag to pick the fish to offer.
+			if use_pressed:
+				var bag := backpack()
+				if bag != null:
+					bag.open_mode("sacrifice")
+		"撿起":
+			if use_pressed:
+				_pick_up_item(_nearest_dropped_item())
 		"翻開":
 			if use_pressed:
 				_turn_rock()
@@ -1449,8 +1620,14 @@ func _succeed_catch() -> void:
 			"size": Inventory.size_for_catch(current_tier, is_epic_catch)}
 		fish.merge(FishData.measure(fish_id, fish.size))
 		fish["tank_trait"] = FishData.roll_tank_trait(fish_id)
+		# User request: the catch card calls out a first catch of a kind
+		# (NEW), a trait not seen on it before, and a record size (BIGGER).
+		var seen: Dictionary = Profile.fish_log.get(fish.name, {})
+		fish["is_new"] = seen.is_empty()
+		fish["new_trait"] = not seen.is_empty() and not fish.tank_trait in seen.get("traits", [])
+		fish["bigger"] = not seen.is_empty() and fish.length > float(seen.get("longest", 0.0))
 		catch_success.emit(fish)
-		Profile.record_catch(fish.name, fish.value, fish.length)
+		Profile.record_catch(fish.name, fish.value, fish.length, fish.tank_trait)
 		if Inventory.fits_with(self, [Inventory.fish_item(fish)]):
 			GameState.add_carried_fish(fish)
 			GameState.push_message("釣到了 %s（%s型）！" % [tier_data.label, Inventory.SIZE_NAMES[fish.size]])

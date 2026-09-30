@@ -55,6 +55,17 @@ func setup(fish: Dictionary) -> void:
 		visual.flip_h = randf() < 0.5
 
 
+## Thrown (the 誘惑 throw): flies in an arc to `to` and lands there.
+func fly_to(to: Vector2, time := 0.5) -> void:
+	var from := global_position
+	var lift := minf(from.distance_to(to) * 0.35, 80.0)
+	var tween := create_tween()
+	tween.tween_method(func(k: float):
+		global_position = from.lerp(to, k)
+		visual.position.y = -sin(k * PI) * lift
+		visual.rotation += 0.25, 0.0, 1.0, time)
+
+
 func _process(delta: float) -> void:
 	age += delta
 	var freshness: float = _freshness()

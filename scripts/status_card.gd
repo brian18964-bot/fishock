@@ -13,7 +13,7 @@ extends CanvasLayer
 
 const NAME := "釣客"
 const POS := Vector2(10, 8)
-const SIZE := Vector2(238, 62)
+const SIZE := Vector2(200, 62)
 const PORTRAIT := 50.0
 ## The portrait: the player sheet's first frame (idle, facing down), head
 ## and shoulders.
@@ -116,13 +116,11 @@ func _draw_card() -> void:
 	_view.draw_string(_font, Vector2(x, POS.y + 20), NAME, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, INK)
 	var hint := "點我開背包" if _touchscreen else "點我開背包（I）"
 	_view.draw_string(_font, Vector2(x + 46, POS.y + 20), hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(1, 1, 1, 0.4))
-	var share := speed_share(p)
-	var speed_ink := INK if share > 0.95 else (DIM if share > 0.7 else WARN)
-	_view.draw_string(_font, Vector2(x, POS.y + 38), "移動速度 %d%%　漁獲 %d 條" % [roundi(share * 100.0), GameState.carried_fish.size()],
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 12, speed_ink)
+	# User request (HUD cleanup): no speed or fish count - just what's
+	# wrong, if anything.
 	for cond in conditions(p):
 		var w := _font.get_string_size(cond[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
 		if line + w > POS.x + SIZE.x - 4.0:
 			break
-		_view.draw_string(_font, Vector2(line, POS.y + 55), cond[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 11, cond[1])
+		_view.draw_string(_font, Vector2(line, POS.y + 42), cond[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, cond[1])
 		line += w + 8.0

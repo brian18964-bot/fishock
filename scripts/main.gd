@@ -71,9 +71,7 @@ func _ready() -> void:
 	move_child($ActionPrompt, -1)
 	if DisplayServer.is_touchscreen_available():
 		$HUD/Panel/HelpLabel.visible = false
-		# User request: see-through controls, the sticks included.
-		for stick in [$HUD/Panel/MoveJoystick, $HUD/Panel/AimJoystick]:
-			stick.modulate.a = 0.45
+		# The sticks: unseen till touched (HUD).
 	player.cast_started.connect(_on_cast_started)
 	player.bite_started.connect(_on_bite_started)
 	player.hook_success.connect(_on_hook_success)
@@ -160,6 +158,10 @@ func _update_camera(delta: float) -> void:
 			focus = bobber.global_position - player.global_position
 		_:
 			fishing = false
+	if player._lure_charging:
+		# The 誘惑 throw being aimed: its landing in the shot too.
+		focus = player.lure_target() - player.global_position
+		fishing = true
 	var zoom := WALK_ZOOM
 	var frame := Vector2.ZERO
 	if fishing:

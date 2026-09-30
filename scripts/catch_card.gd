@@ -7,6 +7,9 @@ extends CanvasLayer
 ## User request (playtest): up near the top, see-through enough to watch
 ## the water behind it, gone sooner - and showing the catch's length,
 ## weight and tank trait.
+## User request (HUD): in the clear space over the right stick, with tags -
+## NEW for a first catch of its kind or a trait not seen on it before,
+## BIGGER for a new record size.
 
 const HOLD := 1.3
 const LEGEND_GOLD := Color(1.0, 0.82, 0.35)
@@ -16,6 +19,7 @@ var _pic: TextureRect
 var _name: Label
 var _info: Label
 var _measure: Label
+var _tags: HBoxContainer
 var _tween: Tween
 
 
@@ -57,7 +61,14 @@ func _ready() -> void:
 	_measure.add_theme_font_size_override("font_size", 13)
 	_measure.add_theme_color_override("font_color", Color(0.75, 0.9, 1.0))
 	_measure.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
-	text.add_child(_name)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 6)
+	head.add_child(_name)
+	_tags = HBoxContainer.new()
+	_tags.add_theme_constant_override("separation", 4)
+	_tags.alignment = BoxContainer.ALIGNMENT_CENTER
+	head.add_child(_tags)
+	text.add_child(head)
 	text.add_child(_info)
 	text.add_child(_measure)
 	row.add_child(text)
@@ -80,9 +91,18 @@ func show_catch(fish: Dictionary, legend: bool) -> void:
 		extra += "・" + FishData.trait_name(fish.tank_trait)
 	_measure.text = extra
 	_measure.visible = extra != ""
+	for c in _tags.get_children():
+		c.free()
+	if fish.get("is_new", false):
+		_tags.add_child(_tag("NEW", Color(0.35, 0.8, 0.45)))
+	elif fish.get("new_trait", false):
+		_tags.add_child(_tag("NEW 特性", Color(0.35, 0.7, 0.9)))
+	if fish.get("bigger", false):
+		_tags.add_child(_tag("BIGGER", Color(0.95, 0.6, 0.2)))
 	_panel.reset_size()
 	var view := get_viewport().get_visible_rect().size
-	var at := Vector2((view.x - _panel.size.x) / 2.0, view.y * 0.185)
+	# Right-aligned over the right stick (under the energy panel).
+	var at := Vector2(view.x - _panel.size.x - 12.0, view.y * 0.2)
 	if _tween != null:
 		_tween.kill()
 	_panel.position = at + Vector2(0, 16)
@@ -92,3 +112,23 @@ func show_catch(fish: Dictionary, legend: bool) -> void:
 	_tween.parallel().tween_property(_panel, "modulate:a", 1.0, 0.2)
 	_tween.tween_interval(HOLD)
 	_tween.tween_property(_panel, "modulate:a", 0.0, 0.3)
+
+
+## A small coloured badge (NEW, BIGGER).
+static func _tag(text: String, col: Color) -> PanelContainer:
+	var p := PanelContainer.new()
+	var box := StyleBoxFlat.new()
+	box.bg_color = col
+	box.set_corner_radius_all(4)
+	box.content_margin_left = 5
+	box.content_margin_right = 5
+	box.content_margin_top = 0
+	box.content_margin_bottom = 0
+	p.add_theme_stylebox_override("panel", box)
+	p.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", 11)
+	l.add_theme_color_override("font_color", Color(0.08, 0.06, 0.03))
+	p.add_child(l)
+	return p

@@ -59,7 +59,7 @@ static func items(player: Node) -> Array:
 			continue
 		var kind := "lure" if def.has("lure") else ("battery" if e.id == "battery" else "gear")
 		out.append({"kind": kind, "label": def.name, "count": int(e.count) if def.stack > 1 else 0,
-			"size": def.size, "index": def.get("lure", i), "cell": e.cell, "item": e.id})
+			"size": def.size, "index": def.get("lure", i), "cell": e.cell, "item": e.id, "bag": i})
 	return out
 
 

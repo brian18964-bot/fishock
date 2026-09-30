@@ -38,6 +38,8 @@ const TESTS := [
 	"test_main_menu",
 	"test_catch_details",
 	"test_warehouse_and_bag",
+	"test_lure_throw_and_drops",
+	"test_hud_top",
 	"test_fish_tank",
 	"test_light_button_tap_and_hold",
 	"test_light_button_relights",
@@ -513,12 +515,20 @@ func test_sacrifice_and_altar_stages() -> void:
 	await put(altar.global_position + Vector2(0, 10))
 	check(player().interaction().get("verb", "") == "獻祭", "offering offered at the altar")
 	var before: float = gs.quota_progress
-	key(KEY_E, true)
-	await seconds(2.0)
-	key(KEY_E, false)
+	# User request: a tap opens the bag to pick which fish to offer.
+	await tap(KEY_E)
+	var bag: Backpack = player().backpack()
+	check(bag.is_open() and bag.mode() == "sacrifice", "a tap at the altar opens the bag to pick the fish")
+	bag.select("fish", 0)
+	bag.select("fish", 3)
+	await frames(1)
+	var offer_button: Button = bag.find_child("Offer", true, false)
+	check(offer_button != null and not offer_button.disabled, "an offer button for the picked fish")
+	offer_button.pressed.emit()
 	await frames(2)
 	check(gs.quota_progress > before, "quota rose")
-	check(gs.carried_fish.size() < 10, "fish offered one by one")
+	check(gs.carried_fish.size() == 8, "the two picked were offered")
+	check(not bag.is_open(), "and the bag closed")
 	gs.quota_progress = gs.quota_target * 0.5
 	await seconds(8.0)
 	check(willow.stage() == "tend", "Willow tends the altar past a third")
@@ -1116,6 +1126,85 @@ func test_warehouse_and_bag() -> void:
 	await frames(1)
 	Profile.load_data(saved)
 	Profile._save()
+
+
+## User request (誘惑): a fish is picked from the bag as the lure; charged
+## and aimed, it's thrown out (the big ghost goes for it); the button goes
+## blank once it's gone (thrown or offered). And (for multiplayer) things
+## can be put down from the bag and picked up again.
+func test_lure_throw_and_drops() -> void:
+	var saved := Profile.snapshot()
+	gs.carried_fish.clear()
+	for i in 3:
+		gs.add_carried_fish({"name": "鯉魚", "id": "carp", "value": 4.0, "size": "small"})
+	var p := player()
+	check(gs.lure_index() == -1, "no lure fish at first")
+	p.pick_lure_fish()
+	await frames(1)
+	var bag: Backpack = p.backpack()
+	check(bag.is_open() and bag.mode() == "pick_lure", "the bag opens to pick one")
+	bag.select("fish", 1)
+	await frames(1)
+	(bag.find_child("ConfirmLure", true, false) as Button).pressed.emit()
+	await frames(1)
+	check(gs.lure_index() == 1 and not bag.is_open(), "picked (after confirming)")
+	var before := get_tree().get_nodes_in_group("dropped_fish").size()
+	p.lure_pull = 1.0
+	p.lure_held = true
+	await frames(4)
+	check(p.lure_charge > 0.99 and p._lure_guide.visible, "charged, the landing shown")
+	var aim := p.lure_target()
+	p.lure_held = false
+	await frames(2)
+	check(gs.carried_fish.size() == 2 and gs.lure_index() == -1, "thrown: out of the bag, the button blank again")
+	await seconds(0.8)
+	var landed := false
+	for d in get_tree().get_nodes_in_group("dropped_fish"):
+		if d.global_position.distance_to(aim) < 4.0:
+			landed = true
+	check(landed and get_tree().get_nodes_in_group("dropped_fish").size() == before + 1, "it landed where aimed")
+	gs.set_lure(0)
+	gs.sacrifice_at(0)
+	check(gs.lure_index() == -1, "an offered lure fish leaves the button blank")
+	# Put down and picked up.
+	Profile.load_data({"gold": 0})
+	Profile.bag_put("battery", 2)
+	p.put_item_down(0)
+	await frames(2)
+	check(Profile.batteries == 0 and get_tree().get_nodes_in_group("dropped_items").size() == 1, "batteries put down")
+	check(p.interaction().get("verb", "") == "撿起", "and offered to pick up")
+	await tap(KEY_E)
+	await frames(2)
+	check(Profile.batteries == 2 and get_tree().get_nodes_in_group("dropped_items").is_empty(), "picked up again")
+	p.put_fish_down(0)
+	check(gs.carried_fish.size() == 0, "a fish put down")
+	Profile.load_data(saved)
+	Profile._save()
+
+
+## User request (HUD): no lists of numbers - the quota as a bar at the top
+## middle with the time under it, the light's energy as a percentage with a
+## brightness bar; the sticks unseen till touched; a flash costs a share
+## of the energy; the light dims by itself as it runs down.
+func test_hud_top() -> void:
+	check(main.find_child("QuotaView", true, false) != null and main.find_child("EnergyView", true, false) != null,
+		"quota bar and energy panel")
+	for n in ["StateLabel", "QuotaLabel", "GearLabel", "PhaseLabel", "EvilLabel", "OfferingLabel", "GoldLabel", "WeatherLabel", "FuelBar"]:
+		check(not main.get_node("HUD/Panel/" + n).visible, n + " hidden")
+	check(main.get_node("HUD/Panel/MoveJoystick").modulate.a < 0.05, "the sticks are unseen")
+	var lantern: Lantern = player().get_node("Lantern")
+	lantern.fuel = lantern.max_fuel
+	lantern.flash_cooldown = 0.0
+	lantern._try_flash()
+	check(absf(lantern.fuel - lantern.max_fuel * (1.0 - Lantern.FLASH_SHARE)) < 0.5, "a flash takes its share")
+	lantern.brightness = Lantern.MAX_BRIGHTNESS
+	await seconds(2.0)
+	check(lantern.brightness < Lantern.MAX_BRIGHTNESS, "the light dims as it burns")
+	var ev = main.find_child("EnergyView", true, false)
+	ev._set_from(ev.TRACK.position.x)
+	check(is_equal_approx(lantern.brightness, Lantern.MIN_BRIGHTNESS), "the brightness bar sets it")
+	lantern.fuel = lantern.max_fuel
+	lantern.brightness = 0.75
 
 
 ## User request (fish tank): fish carried out of a run go in the tank; the

@@ -55,8 +55,10 @@ const TEXTURE_HALF_SIZE := 128.0
 ## light, and only lands on a ghost that's both in range and lit. Paid
 ## for from whichever tool is out.
 const FLASH_RANGE := 160.0
-const FLASH_FUEL_COST := 25.0
-const FLASH_CHARGE_COST := 20.0
+## A flash's cost: this share of a full tank / battery.
+const FLASH_SHARE := 0.2
+## Brightness lost per whole tank burned (see _process).
+const AUTO_DIM := 0.6
 const FLASH_COOLDOWN := 3.0
 const FLASH_STUN_DURATION := 1.75
 
@@ -111,10 +113,14 @@ func _process(delta: float) -> void:
 
 	if lit:
 		var burn := brightness * (1.0 + boost)  # charging burns faster
+		var before := energy_share()
 		if tool == Tool.LAMP:
 			fuel = max(fuel - DRAIN_RATE * burn * delta, 0.0)
 		else:
 			charge = max(charge - 100.0 / BATTERY_LIFE * burn * delta, 0.0)
+		# User request: as the energy runs down the light dims by itself,
+		# slowly (it can still be turned back up - burning faster).
+		brightness = maxf(MIN_BRIGHTNESS, brightness - AUTO_DIM * maxf(before - energy_share(), 0.0))
 		if power() <= 0.0:
 			lit = false
 			GameState.push_message("煤燈的油燒完了" if tool == Tool.LAMP else "手電筒沒電了，按住 L 換電池")
@@ -179,6 +185,20 @@ func _flame(delta: float) -> float:
 ## What the current tool has left: lamp fuel, or flashlight charge.
 func power() -> float:
 	return fuel if tool == Tool.LAMP else charge
+
+
+## The same as a share of a full tank / battery (the HUD's 能源 %).
+func energy_share() -> float:
+	return clampf(fuel / maxf(max_fuel, 1.0) if tool == Tool.LAMP else charge / 100.0, 0.0, 1.0)
+
+
+## The brightness as 0..1 of its range (the HUD's 亮度 bar), and back.
+func brightness_share() -> float:
+	return inverse_lerp(MIN_BRIGHTNESS, MAX_BRIGHTNESS, brightness)
+
+
+func set_brightness_share(v: float) -> void:
+	brightness = lerpf(MIN_BRIGHTNESS, MAX_BRIGHTNESS, clampf(v, 0.0, 1.0))
 
 
 func tool_name() -> String:
@@ -348,16 +368,20 @@ func _in_beam(point: Vector2, reach: float) -> bool:
 
 
 func _try_flash(reach: float = FLASH_RANGE, stun: float = FLASH_STUN_DURATION) -> void:
+	# User request: a flash takes its share of the energy straight off -
+	# the same share of a bigger tank.
 	if tool == Tool.LAMP:
-		if fuel < FLASH_FUEL_COST:
-			GameState.push_message("燃油不足，無法使用強光")
+		var cost := max_fuel * FLASH_SHARE
+		if fuel < cost:
+			GameState.push_message("能源不足，無法使用強光")
 			return
-		fuel -= FLASH_FUEL_COST
+		fuel -= cost
 	else:
-		if charge < FLASH_CHARGE_COST:
-			GameState.push_message("電量不足，無法使用強光")
+		var cost := 100.0 * FLASH_SHARE
+		if charge < cost:
+			GameState.push_message("能源不足，無法使用強光")
 			return
-		charge -= FLASH_CHARGE_COST
+		charge -= cost
 
 	flash_cooldown = flash_cooldown_max
 

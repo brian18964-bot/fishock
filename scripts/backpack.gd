@@ -36,6 +36,12 @@ var _actions: HBoxContainer
 var _key_held := false
 var _refresh := 0.0
 var _selected := {}  # {kind, index} of the tapped item
+## User request: the bag also opens to pick fish - "sacrifice" (at the
+## altar: mark the fish to offer, then offer them) and "pick_lure" (the
+## fish the 誘惑 button throws); "normal" otherwise.
+var _mode_kind := "normal"
+var _marked := {}  # uid -> true, the fish marked to offer
+var _title: Label
 
 
 func _ready() -> void:
@@ -70,6 +76,7 @@ func _ready() -> void:
 	var title := _label("背包", 20, Color(1.0, 0.9, 0.7))
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(title)
+	_title = title
 	_used = _label("", 13, Color(1, 1, 1, 0.7))
 	top.add_child(_used)
 	var close := _button("✕")
@@ -109,8 +116,30 @@ func toggle() -> void:
 	_backdrop.visible = _panel.visible
 	set_sticks_enabled(get_tree(), not _panel.visible)
 	_selected = {}
+	if not _panel.visible:
+		_mode_kind = "normal"
+		_marked.clear()
 	if _panel.visible:
 		_rebuild()
+
+
+## Opens the bag to pick fish: "sacrifice" or "pick_lure" (see _mode_kind).
+func open_mode(kind: String) -> void:
+	_mode_kind = kind
+	_marked.clear()
+	_selected = {}
+	if not _panel.visible:
+		toggle()
+		_mode_kind = kind
+	_rebuild()
+
+
+func mode() -> String:
+	return _mode_kind
+
+
+func marked() -> Dictionary:
+	return _marked
 
 
 func _process(delta: float) -> void:
@@ -161,7 +190,15 @@ func _rebuild() -> void:
 
 func _show_selected(player: Player, items: Array) -> void:
 	for c in _actions.get_children():
+		_actions.remove_child(c)
 		c.queue_free()
+	_title.text = {"sacrifice": "獻祭：選擇要獻上的魚", "pick_lure": "誘惑：選擇要當誘餌的魚"}.get(_mode_kind, "背包")
+	if _mode_kind == "sacrifice":
+		_show_offering()
+		return
+	if _mode_kind == "pick_lure":
+		_show_lure_pick(items)
+		return
 	var item := {}
 	for it in items:
 		if not _selected.is_empty() and it.kind == _selected.kind and it.index == _selected.index:
@@ -178,8 +215,17 @@ func _show_selected(player: Player, items: Array) -> void:
 				_detail.text = "腐敗的%s（%s型）：拿去獻祭會賭一把" % [item.label, item.grade]
 			else:
 				_detail.text = "%s（%s型，價值 %.0f）" % [item.label, item.grade, fish.get("value", 0.0)]
-			_actions.add_child(_action("丟出（大鬼會去吃）", func():
-				player.throw_fish(item.index)
+			if GameState.lure_index() == item.index:
+				_detail.text += "　・已設為誘惑用的魚"
+				_actions.add_child(_action("取消誘餌", func():
+					GameState.lure_uid = -1
+					_rebuild()))
+			else:
+				_actions.add_child(_action("設為誘餌", func():
+					GameState.set_lure(item.index)
+					_rebuild()))
+			_actions.add_child(_action("放在地上", func():
+				player.put_fish_down(item.index)
 				_selected = {}
 				_rebuild()))
 		"heart":
@@ -201,13 +247,78 @@ func _show_selected(player: Player, items: Array) -> void:
 			_detail.text = "電池 x%d（全部 %d）：手電筒沒電時按住燈鈕換上" % [item.count, Profile.batteries]
 		"gear":
 			_detail.text = "%s：備用的，要在主畫面的裝備頁換上" % item.label
+	# User request (multiplayer to come): put things down for a teammate.
+	if item.has("bag"):
+		_actions.add_child(_action("放在地上", func():
+			player.put_item_down(item.bag)
+			_selected = {}
+			_rebuild(), busy))
 	if busy and item.kind in ["bait", "lure"]:
 		_detail.text += "（收線後才能換）"
 
 
 func select(kind: String, index) -> void:
+	if _mode_kind == "sacrifice":
+		if kind == "fish":
+			var uid: int = int(GameState.carried_fish[index].get("uid", -1))
+			if _marked.has(uid):
+				_marked.erase(uid)
+			else:
+				_marked[uid] = true
+		_rebuild()
+		return
+	if _mode_kind == "pick_lure" and kind != "fish":
+		return
 	_selected = {"kind": kind, "index": index}
 	_rebuild()
+
+
+## Offering at the altar: the marked fish, what they'd add, offer them.
+func _show_offering() -> void:
+	var picked := _marked_indices()
+	var total := 0.0
+	for i in picked:
+		total += float(GameState.carried_fish[i].get("value", 0.0))
+	_detail.text = "點魚選擇要獻祭的（可多選）。已選 %d 條，額度 +%.0f" % [picked.size(), total] \
+		if not picked.is_empty() else "點魚選擇要獻祭的（可多選）"
+	_actions.add_child(_action("全選", func():
+		for f in GameState.carried_fish:
+			_marked[int(f.get("uid", -1))] = true
+		_rebuild()))
+	var go := _action("獻祭 %d 條" % picked.size(), func():
+		var offered := GameState.sacrifice_many(_marked_indices())
+		if not offered.is_empty():
+			GameState.push_message("獻祭了 %d 條魚" % offered.size())
+		toggle(), picked.is_empty())
+	go.name = "Offer"
+	_actions.add_child(go)
+	_actions.add_child(_action("取消", toggle))
+
+
+func _marked_indices() -> Array:
+	var out := []
+	for i in GameState.carried_fish.size():
+		if _marked.has(int(GameState.carried_fish[i].get("uid", -1))):
+			out.append(i)
+	return out
+
+
+## Picking the 誘惑 fish: tap one, then confirm.
+func _show_lure_pick(_items: Array) -> void:
+	if _selected.is_empty() or _selected.kind != "fish" or _selected.index >= GameState.carried_fish.size():
+		_selected = {}
+		_detail.text = "點一條魚，選它當誘餌"
+		_actions.add_child(_action("取消", toggle))
+		return
+	var fish: Dictionary = GameState.carried_fish[_selected.index]
+	_detail.text = "選定 %s 為誘餌？" % fish.get("name", "魚")
+	var ok := _action("確定", func():
+		GameState.set_lure(_selected.index)
+		GameState.push_message("誘餌：%s（按住誘惑鈕蓄力丟出）" % fish.get("name", "魚"))
+		toggle())
+	ok.name = "ConfirmLure"
+	_actions.add_child(ok)
+	_actions.add_child(_action("取消", toggle))
 
 
 func _label(text: String, size: int, color: Color) -> Label:
@@ -288,6 +399,17 @@ class GridView extends Control:
 					var k := minf(r.size.x / tex.get_width(), (r.size.y - 12.0) / tex.get_height())
 					var sz := Vector2(tex.get_size()) * k
 					draw_texture_rect(tex, Rect2(r.get_center() - sz / 2.0 + Vector2(0, 5), sz), false)
+			if item.kind == "fish":
+				var uid: int = int(GameState.carried_fish[item.index].get("uid", -1))
+				if owner_bag.marked().has(uid):
+					draw_rect(r, Color(0.4, 1.0, 0.5, 0.3))
+					draw_rect(r, Color(0.4, 1.0, 0.5, 0.9), false, 2.5)
+					draw_string(font, r.position + Vector2(0, r.size.y - 5), "✓", HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 4.0, 16, Color(0.6, 1.0, 0.6))
+				if GameState.lure_index() == item.index:
+					# The 誘惑 fish: a badge at the top right.
+					var at := Vector2(r.end.x - 9.0, r.position.y + 9.0)
+					draw_circle(at, 8.0, Color(0.85, 0.35, 0.25))
+					draw_string(font, at + Vector2(-6, 4.5), "誘", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color.WHITE)
 			var is_sel: bool = not selected.is_empty() and selected.kind == item.kind and selected.index == item.index
 			draw_rect(r, Color(1.0, 0.9, 0.6) if is_sel else Color(1, 1, 1, 0.3), false, 2.0 if is_sel else 1.0)
 			var name: String = item.label

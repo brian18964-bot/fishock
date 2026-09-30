@@ -146,8 +146,31 @@ func start_run() -> void:
 
 
 func add_carried_fish(fish: Dictionary) -> void:
+	if not fish.has("uid"):
+		fish["uid"] = _next_uid
+		_next_uid += 1
 	carried_fish.append(fish)
 	inventory_updated.emit(carried_fish)
+
+
+## User request (誘惑): the fish picked to be thrown as a lure, by its uid;
+## -1 when none (or once it's gone - sacrificed, dropped, taken).
+var lure_uid := -1
+var _next_uid := 1
+
+
+func lure_index() -> int:
+	if lure_uid < 0:
+		return -1
+	for i in carried_fish.size():
+		if int(carried_fish[i].get("uid", -2)) == lure_uid:
+			return i
+	lure_uid = -1
+	return -1
+
+
+func set_lure(index: int) -> void:
+	lure_uid = int(carried_fish[index].get("uid", -1)) if index >= 0 and index < carried_fish.size() else -1
 
 
 func drop_carried_at(index: int) -> Dictionary:
@@ -170,9 +193,28 @@ func drop_one_carried() -> Dictionary:
 ## Design doc request: sacrificing is per-fish (one small progress bar
 ## each), not an instant bulk dump - see Player._handle_sacrifice().
 func sacrifice_one() -> Dictionary:
-	if carried_fish.is_empty():
+	return sacrifice_at(0)
+
+
+## User request: at the altar the player picks which fish to offer from
+## the bag (Backpack's offering mode) - these, highest index first.
+func sacrifice_many(indices: Array) -> Array:
+	var order := indices.duplicate()
+	order.sort()
+	order.reverse()
+	var out := []
+	for i in order:
+		var fish := sacrifice_at(int(i))
+		if not fish.is_empty():
+			out.append(fish)
+	return out
+
+
+func sacrifice_at(index: int) -> Dictionary:
+	if index < 0 or index >= carried_fish.size():
 		return {}
-	var fish: Dictionary = carried_fish.pop_front()
+	var fish: Dictionary = carried_fish[index]
+	carried_fish.remove_at(index)
 	inventory_updated.emit(carried_fish)
 
 	if fish.get("rotten", false):
@@ -233,6 +275,7 @@ func escape() -> void:
 func reset_run() -> void:
 	quota_progress = 0.0
 	carried_fish.clear()
+	lure_uid = -1
 	day_over = false
 	day_phase = DayPhase.FISHING
 	offering_pool.clear()

@@ -41,6 +41,9 @@ const PHASE_TEXT := {
 }
 
 var _message_timer: float = 0.0
+var _quota_view: QuotaView
+var _energy_view: EnergyView
+var _sticks: Array = []
 var _lantern: Lantern
 var _player: Player
 
@@ -67,6 +70,41 @@ func _ready() -> void:
 	_lantern = player.get_node("Lantern")
 	_lantern.relight_progress_updated.connect(_on_relight_progress_updated)
 	back_to_title_button.pressed.connect(_on_back_to_title_pressed)
+	_build_top()
+
+
+## User request (HUD cleanup): the lists of numbers go - status, quota,
+## weather, phase, evil offerings, the offering pool, gold, the fishing
+## mode - leaving: the quota as a bar at the top middle with the time left
+## under it, and the light's energy (as a percentage) with a brightness
+## bar at the top right. The sticks are invisible till touched. Passing
+## messages show under the time.
+func _build_top() -> void:
+	for n in [state_label, quota_label, gear_label, phase_label, evil_label, offering_label, gold_label,
+			weather_label, heart_label, affliction_label, time_label, fuel_label, fuel_bar, sacrifice_bar]:
+		n.visible = false
+		n.process_mode = Node.PROCESS_MODE_DISABLED
+	var help := get_node_or_null("Panel/HelpLabel")
+	if help != null:
+		help.visible = false
+	_quota_view = QuotaView.new()
+	_quota_view.name = "QuotaView"
+	$Panel.add_child(_quota_view)
+	_energy_view = EnergyView.new()
+	_energy_view.name = "EnergyView"
+	_energy_view.lantern = _lantern
+	$Panel.add_child(_energy_view)
+	message_label.position = Vector2(180, 50)
+	message_label.size = Vector2(600, 24)
+	message_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	message_label.add_theme_font_size_override("font_size", 14)
+	message_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	message_label.add_theme_constant_override("outline_size", 4)
+	relight_bar.position = Vector2(790, 72)
+	relight_bar.size = Vector2(150, 8)
+	_sticks = [$Panel/MoveJoystick, $Panel/AimJoystick]
+	for stick in _sticks:
+		stick.modulate.a = 0.0
 
 
 func _process(delta: float) -> void:
@@ -74,6 +112,16 @@ func _process(delta: float) -> void:
 		_message_timer -= delta
 		if _message_timer <= 0.0:
 			message_label.text = ""
+	# The sticks show (faintly) only while they're held.
+	for stick in _sticks:
+		var want := 0.55 if stick.is_pressed else 0.0
+		stick.modulate.a = move_toward(stick.modulate.a, want, delta * 4.0)
+	_quota_view.queue_redraw()
+	_energy_view.queue_redraw()
+	# The fight panel takes the middle of the top while a fish is on.
+	_quota_view.visible = _player.state != Player.State.REELING
+	return
+
 	if _lantern.tool == Lantern.Tool.LAMP:
 		fuel_bar.max_value = _lantern.max_fuel
 		fuel_bar.value = _lantern.fuel
@@ -114,8 +162,6 @@ func _process(delta: float) -> void:
 
 func _on_state_changed(new_state: String) -> void:
 	state_label.text = "狀態：%s" % STATE_TEXT.get(new_state, new_state)
-	# The fight panel (FightPanel) takes the middle of the top while a fish is on.
-	gear_label.visible = new_state != "REELING"
 
 
 func _on_sacrifice_progress_updated(progress: float) -> void:
@@ -189,3 +235,104 @@ func _rarity_label(rarity: String) -> String:
 			return "史詩"
 		_:
 			return rarity
+
+
+## The quota, top middle: a bar filling toward the target, the time left
+## (or the phase) under it.
+class QuotaView extends Control:
+	const W := 300.0
+	const H := 14.0
+	const FILL := Color(0.85, 0.62, 0.28)
+	const FULL := Color(1.0, 0.85, 0.4)
+
+	func _ready() -> void:
+		position = Vector2(480.0 - W / 2.0, 8)
+		size = Vector2(W, 40)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		var font := get_theme_default_font()
+		var share := clampf(GameState.quota_progress / maxf(GameState.quota_target, 1.0), 0.0, 1.0)
+		var bar := Rect2(0, 0, W, H)
+		draw_rect(bar, Color(0.05, 0.04, 0.03, 0.6))
+		draw_rect(Rect2(0, 0, W * share, H), FULL if share >= 1.0 else FILL)
+		draw_rect(bar, Color(1.0, 0.85, 0.55, 0.55), false, 1.0)
+		var text := "獻祭額度  %d / %d" % [int(GameState.quota_progress), int(GameState.quota_target)]
+		draw_string_outline(font, Vector2(0, 11.5), text, HORIZONTAL_ALIGNMENT_CENTER, W, 11, 3, Color(0, 0, 0, 0.8))
+		draw_string(font, Vector2(0, 11.5), text, HORIZONTAL_ALIGNMENT_CENTER, W, 11, Color(1, 0.97, 0.9))
+		var under := ""
+		var col := Color(1, 0.97, 0.9)
+		if GameState.is_night:
+			under = "夜晚降臨"
+			col = Color(1.0, 0.45, 0.4)
+		elif GameState.day_phase == GameState.DayPhase.ESCAPE:
+			under = "額度已滿！去發光的符文石柱逃離"
+			col = FULL
+		elif GameState.day_phase == GameState.DayPhase.FISHING:
+			var total: int = int(GameState.time_remaining)
+			under = "%02d:%02d" % [total / 60, total % 60]
+			if total < 60:
+				col = Color(1.0, 0.6, 0.45)
+		if under != "":
+			draw_string_outline(font, Vector2(0, 33), under, HORIZONTAL_ALIGNMENT_CENTER, W, 16, 4, Color(0, 0, 0, 0.8))
+			draw_string(font, Vector2(0, 33), under, HORIZONTAL_ALIGNMENT_CENTER, W, 16, col)
+
+
+## The light, top right: its energy as a percentage, and a brightness bar
+## to drag (the light dims by itself as the energy runs down; brighter
+## burns faster).
+class EnergyView extends Control:
+	const W := 176.0
+	const TRACK := Rect2(44, 40, 118, 8)
+	var lantern: Lantern
+	var _dragging := false
+
+	func _ready() -> void:
+		position = Vector2(960.0 - W - 12.0, 6)
+		size = Vector2(W, 58)
+		mouse_filter = Control.MOUSE_FILTER_STOP
+		add_to_group("hud_block")
+
+	func _gui_input(event: InputEvent) -> void:
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+			_dragging = event.pressed and event.position.y > 28.0
+			if _dragging:
+				_set_from(event.position.x)
+			accept_event()
+		elif event is InputEventMouseMotion and _dragging:
+			_set_from(event.position.x)
+			accept_event()
+
+	func _set_from(x: float) -> void:
+		if lantern != null and lantern.lit:
+			lantern.set_brightness_share((x - TRACK.position.x) / TRACK.size.x)
+
+	func _draw() -> void:
+		if lantern == null:
+			return
+		var font := get_theme_default_font()
+		var box := StyleBoxFlat.new()
+		box.bg_color = Color(0.06, 0.05, 0.04, 0.5)
+		box.border_color = Color(1.0, 0.85, 0.55, 0.35)
+		box.set_border_width_all(1)
+		box.set_corner_radius_all(10)
+		draw_style_box(box, Rect2(Vector2.ZERO, size))
+		var share := lantern.energy_share()
+		var ink := Color(1, 0.97, 0.9)
+		var warm := Color(1.0, 0.8, 0.45)
+		var low := Color(1.0, 0.45, 0.4)
+		var name := "煤燈" if lantern.tool == Lantern.Tool.LAMP else "手電筒"
+		draw_string(font, Vector2(10, 22), "能源・" + name, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(ink, 0.7))
+		var pct := "熄滅" if not lantern.lit else "%d%%" % roundi(share * 100.0)
+		draw_string_outline(font, Vector2(0, 25), pct, HORIZONTAL_ALIGNMENT_RIGHT, W - 12.0, 22, 3, Color(0, 0, 0, 0.7))
+		draw_string(font, Vector2(0, 25), pct, HORIZONTAL_ALIGNMENT_RIGHT, W - 12.0, 22,
+			low if share < 0.2 or not lantern.lit else ink)
+		if lantern.tool == Lantern.Tool.FLASHLIGHT:
+			draw_string(font, Vector2(10, 36), "電池 ×%d" % Profile.batteries, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(ink, 0.6))
+		# Brightness.
+		draw_string(font, Vector2(10, 49), "亮度", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(ink, 0.7))
+		var b := lantern.brightness_share()
+		draw_rect(TRACK, Color(0, 0, 0, 0.5))
+		draw_rect(Rect2(TRACK.position, Vector2(TRACK.size.x * b, TRACK.size.y)), Color(warm, 0.9 if lantern.lit else 0.3))
+		draw_rect(TRACK, Color(1, 1, 1, 0.3), false, 1.0)
+		draw_circle(TRACK.position + Vector2(TRACK.size.x * b, TRACK.size.y / 2.0), 6.0, ink if lantern.lit else Color(ink, 0.4))
