@@ -22,6 +22,7 @@ const KIND_COLORS := {
 	"lure": Color(0.25, 0.5, 0.4),
 	"battery": Color(0.6, 0.55, 0.2),
 	"gear": Color(0.35, 0.3, 0.45),
+	"live": Color(0.45, 0.3, 0.3),
 }
 const ROTTEN_COLOR := Color(0.36, 0.3, 0.18)
 
@@ -247,13 +248,25 @@ func _show_selected(player: Player, items: Array) -> void:
 			_detail.text = "電池 x%d（全部 %d）：手電筒沒電時按住燈鈕換上" % [item.count, Profile.batteries]
 		"gear":
 			_detail.text = "%s：備用的，要在主畫面的裝備頁換上" % item.label
+		"live":
+			var live: Dictionary = Profile.LIVE_BAITS[item.index]
+			var on: bool = player.live_bait == item.index and player.fishing_mode == Player.FishingMode.BOBBER
+			_detail.text = "%s x%d：%s%s" % [live.name, item.count, live.desc, "（使用中）" if on else ""]
+			if on:
+				_actions.add_child(_action("改用基礎餌料", func():
+					player.choose_live_bait("")
+					_rebuild(), busy))
+			else:
+				_actions.add_child(_action("裝上", func():
+					player.choose_live_bait(item.index)
+					_rebuild(), busy))
 	# User request (multiplayer to come): put things down for a teammate.
 	if item.has("bag"):
 		_actions.add_child(_action("放在地上", func():
 			player.put_item_down(item.bag)
 			_selected = {}
 			_rebuild(), busy))
-	if busy and item.kind in ["bait", "lure"]:
+	if busy and item.kind in ["bait", "lure", "live"]:
 		_detail.text += "（收線後才能換）"
 
 
@@ -313,7 +326,7 @@ static func precious(item: Dictionary) -> bool:
 				if FishData.STYLE_FISH[style][1] == id:
 					return true
 			return false
-		"lure", "battery", "bait":
+		"lure", "battery", "bait", "live":
 			return false
 	return true
 

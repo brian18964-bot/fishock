@@ -50,6 +50,18 @@ const LURES := {
 	"rainbow": {"name": "彩虹", "sprite": 5, "cost": 45, "desc": "傳說魚機率 x2，但比較常空竿", "epic": 2.0, "no_bite": 1.5},
 }
 const LURE_ORDER := ["minnow", "redhead", "zebra", "clown", "bluegold", "rainbow"]
+## User request: live baits besides the base bait, bought in the shop and
+## packed in the bag; on the float, one is used per cast in place of the
+## base bait (chosen in the in-game bag), each with the effect of its
+## flavor (Player: 蚯蚓 bites sooner, 蟲子 fewer empty casts, 青蛙 rare
+## fish likelier, big bait legends likelier).
+const LIVE_BAITS := {
+	"worm": {"name": "蚯蚓", "cost": 3, "flavor": "蚯蚓", "desc": "活餌：魚咬得比較快（等待時間 -30%）"},
+	"cricket": {"name": "蟋蟀", "cost": 4, "flavor": "蟲子", "desc": "活餌：空竿的機率減半"},
+	"shrimp": {"name": "活蝦", "cost": 6, "flavor": "青蛙", "desc": "活餌：稀有魚的機率 x2"},
+	"minnow": {"name": "小活魚", "cost": 9, "flavor": "小活魚", "desc": "活餌（大餌）：稀有魚升級成傳說魚的機率 x2"},
+}
+const LIVE_ORDER := ["worm", "cricket", "shrimp", "minnow"]
 ## User request: the flashlight is a shop item (bought once) that runs on
 ## batteries, also bought here and kept in stock until used (see Lantern).
 const FLASHLIGHT_COST := 120
@@ -182,6 +194,17 @@ func buy_lure(id: String) -> bool:
 
 
 ## Lures packed for the next run.
+func buy_live_bait(key: String) -> bool:
+	var cost: int = LIVE_BAITS[key].cost
+	if gold < cost:
+		return false
+	gold -= cost
+	_store("live_" + key, 1)
+	gold_updated.emit(gold)
+	_changed()
+	return true
+
+
 func loadout_lure_total() -> int:
 	var total := 0
 	for key in lure_stock:

@@ -280,20 +280,21 @@ class QuotaView extends Control:
 			draw_string(font, Vector2(0, 33), under, HORIZONTAL_ALIGNMENT_CENTER, W, 16, col)
 
 
-## The light, top right: its brightness as a percentage (drag across it
-## to turn it up or down) and its energy as a bar under it. The light dims
-## by itself once the energy's low (Lantern.AUTO_DIM_BELOW); brighter
-## burns faster.
+## The light, top right (user request): above all, how much fuel is left -
+## a big bar with the percentage - and under it, small, how bright the
+## light is (its real output: the dimmest setting still gives 35%; drag
+## across the panel to turn it up or down). The light dims by itself once
+## the fuel's low (Lantern.AUTO_DIM_BELOW); brighter burns faster.
 class EnergyView extends Control:
-	const W := 176.0
-	const BAR := Rect2(84, 41, 82, 9)
+	const W := 190.0
+	const BAR := Rect2(10, 24, 170, 14)
 	var lantern: Lantern
 	var _dragging := false
 	var _drag_x := 0.0
 
 	func _ready() -> void:
 		position = Vector2(960.0 - W - 12.0, 6)
-		size = Vector2(W, 58)
+		size = Vector2(W, 60)
 		mouse_filter = Control.MOUSE_FILTER_STOP
 		add_to_group("hud_block")
 
@@ -312,6 +313,10 @@ class EnergyView extends Control:
 		if lantern != null and lantern.lit:
 			lantern.set_brightness_share((x - BAR.position.x) / BAR.size.x)
 
+	## The light's output as shown: its brightness (0.35..1) as a percentage.
+	func output_percent() -> int:
+		return roundi(lantern.brightness * 100.0) if lantern.lit else 0
+
 	func _draw() -> void:
 		if lantern == null:
 			return
@@ -324,20 +329,21 @@ class EnergyView extends Control:
 		draw_style_box(box, Rect2(Vector2.ZERO, size))
 		var ink := Color(1, 0.97, 0.9)
 		var low := Color(1.0, 0.45, 0.4)
-		# Brightness, as a percentage.
-		draw_string(font, Vector2(10, 22), "亮度", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(ink, 0.7))
-		var pct := "熄滅" if not lantern.lit else "%d%%" % roundi(lantern.brightness_share() * 100.0)
-		draw_string_outline(font, Vector2(0, 25), pct, HORIZONTAL_ALIGNMENT_RIGHT, W - 12.0, 22, 3, Color(0, 0, 0, 0.7))
-		draw_string(font, Vector2(0, 25), pct, HORIZONTAL_ALIGNMENT_RIGHT, W - 12.0, 22, ink if lantern.lit else low)
-		# Energy, as a bar.
 		var share := lantern.energy_share()
-		var name := "煤燈" if lantern.tool == Lantern.Tool.LAMP else "手電筒"
-		draw_string(font, Vector2(10, 49), "能源・" + name, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(ink, 0.7))
+		var name := "煤燈燃料" if lantern.tool == Lantern.Tool.LAMP else "手電筒電量"
+		draw_string(font, Vector2(10, 18), name, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(ink, 0.8))
+		if lantern.tool == Lantern.Tool.FLASHLIGHT:
+			draw_string(font, Vector2(0, 18), "電池 ×%d" % Profile.batteries, HORIZONTAL_ALIGNMENT_RIGHT, W - 10.0, 11, Color(ink, 0.6))
+		# The fuel: the main thing.
 		var col := Color(0.45, 0.85, 0.5)
 		if share < Lantern.AUTO_DIM_BELOW:
 			col = Color(1.0, 0.7, 0.3) if share >= 0.12 else low
-		draw_rect(BAR, Color(0, 0, 0, 0.5))
+		draw_rect(BAR, Color(0, 0, 0, 0.55))
 		draw_rect(Rect2(BAR.position, Vector2(BAR.size.x * share, BAR.size.y)), col)
-		draw_rect(BAR, Color(1, 1, 1, 0.3), false, 1.0)
-		if lantern.tool == Lantern.Tool.FLASHLIGHT:
-			draw_string(font, Vector2(10, 36), "電池 ×%d" % Profile.batteries, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(ink, 0.6))
+		draw_rect(BAR, Color(1, 1, 1, 0.35), false, 1.0)
+		var pct := "%d%%" % roundi(share * 100.0)
+		draw_string_outline(font, BAR.position + Vector2(0, 12), pct, HORIZONTAL_ALIGNMENT_CENTER, BAR.size.x, 12, 3, Color(0, 0, 0, 0.8))
+		draw_string(font, BAR.position + Vector2(0, 12), pct, HORIZONTAL_ALIGNMENT_CENTER, BAR.size.x, 12, ink)
+		# The light's output, small.
+		var out := "熄滅（長按燈鈕點燃）" if not lantern.lit else "亮度 %d%%　←拖曳調整→" % output_percent()
+		draw_string(font, Vector2(10, 54), out, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, low if not lantern.lit else Color(ink, 0.6))

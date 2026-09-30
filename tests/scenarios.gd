@@ -1122,6 +1122,33 @@ func test_warehouse_and_bag() -> void:
 	check(Profile.bag_count("lure_zebra") == had + 3, "three bought straight into the bag")
 	shop.queue_free()
 	await frames(1)
+	# Live baits: bought, packed, put on the hook one per float cast.
+	check(Profile.buy_live_bait("worm") and Profile.buy_live_bait("worm"), "live worms bought")
+	check(Profile.to_bag("live_worm", 2) == 2, "and packed")
+	var pl := player()
+	var base_before: int = pl.bait_count
+	pl.choose_live_bait("worm")
+	pl.use_bait_for_cast()
+	check(pl.pending_bait_flavor == "蚯蚓" and Profile.bag_count("live_worm") == 1 and pl.bait_count == base_before,
+		"a cast uses a worm, not a base bait")
+	pl.use_bait_for_cast()
+	pl.use_bait_for_cast()
+	check(pl.live_bait == "" and pl.bait_count == base_before - 1, "out of worms, back to the base bait")
+	pl.pending_bait_flavor = ""
+	pl.bait_count = base_before
+	# The shop's sections: cards with pictures.
+	var shop2: Control = load("res://scenes/shop.tscn").instantiate()
+	get_tree().root.add_child(shop2)
+	await frames(2)
+	for t in ["gear", "bait", "item", "upgrade"]:
+		shop2._show_tab(t)
+		await frames(1)
+		check(shop2.find_children("Card_*", "Button", true, false).size() > 0, "shop section %s has cards" % t)
+	shop2._show_tab("bait")
+	await frames(1)
+	check(shop2.find_child("Card_live_cricket", true, false) != null, "live baits for sale")
+	shop2.queue_free()
+	await frames(1)
 	# The page: drag from the warehouse onto the bag, and back.
 	var page: Control = load("res://scenes/warehouse.tscn").instantiate()
 	get_tree().root.add_child(page)
@@ -1333,6 +1360,7 @@ func test_fish_tank() -> void:
 		inside = inside and tank.water().grow(2).has_point(s.position)
 	check(inside, "and stay in the water")
 	check(page.find_child("Fish_0", true, false) != null and page.find_child("Fish_1", true, false) != null, "the list")
+	check(page.find_child("FishLog", true, false) != null, "the fish log is reached from the tank")
 	tank.feed()
 	check(tank.food().size() > 0, "food goes in")
 	page._card_for(0)
@@ -1364,7 +1392,8 @@ func test_main_menu() -> void:
 	var labels := {}
 	for b in title.find_children("*", "Button", true, false):
 		labels[(b as Button).text] = true
-	for want in ["單機模式", "多人連線", "商城", "倉庫", "裝備", "魚缸", "圖鑑"]:
+	check(title.find_child("Settings", true, false) != null, "the settings gear")
+	for want in ["單機模式", "多人連線", "商城", "倉庫", "裝備", "魚缸"]:
 		check(labels.has(want), "main screen has " + want)
 	title.queue_free()
 	await frames(1)

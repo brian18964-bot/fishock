@@ -114,7 +114,7 @@ const BAIT_FLAVOR_FROG := "青蛙"
 ## User request: critters (see Critter) can be caught as bait. Rats,
 ## snakes and the beach's crabs are "big bait": a rare catch is twice as
 ## likely to turn epic.
-const BIG_BAIT_FLAVORS := ["老鼠", "蛇", "螃蟹"]
+const BIG_BAIT_FLAVORS := ["老鼠", "蛇", "螃蟹", "小活魚"]
 
 ## User feedback: weather (see GameState.Weather) should color the fishing
 ## odds too - a fish run is a reliably better window, a storm makes the
@@ -395,9 +395,33 @@ func release() -> void:
 	held = false
 
 
+## The live bait on the hook (Profile.LIVE_BAITS key; "" for the base
+## bait): one is used per float cast while any are in the bag.
+var live_bait := ""
+
+
+func choose_live_bait(key: String) -> void:
+	live_bait = key if key == "" or Profile.bag_count("live_" + key) > 0 else ""
+	if live_bait != "":
+		fishing_mode = FishingMode.BOBBER
+		GameState.push_message("換上活餌：%s" % Profile.LIVE_BAITS[live_bait].name)
+
+
+## A float cast takes a live bait (its flavor on the hook) while any of
+## the one chosen are packed, else a base bait.
+func use_bait_for_cast() -> void:
+	if live_bait != "" and Profile.bag_take("live_" + live_bait, 1) == 1:
+		pending_bait_flavor = Profile.LIVE_BAITS[live_bait].flavor
+		if Profile.bag_count("live_" + live_bait) <= 0:
+			live_bait = ""
+	else:
+		live_bait = ""
+		bait_count = max(bait_count - 1, 0)
+
+
 func _can_start_cast() -> bool:
 	if fishing_mode == FishingMode.BOBBER:
-		return bait_count > 0
+		return bait_count > 0 or (live_bait != "" and Profile.bag_count("live_" + live_bait) > 0)
 	return lure_count > 0
 
 
@@ -1371,7 +1395,7 @@ func landing_point(ratio: float) -> Vector2:
 
 func _launch_cast() -> void:
 	if fishing_mode == FishingMode.BOBBER:
-		bait_count = max(bait_count - 1, 0)
+		use_bait_for_cast()
 
 	var ratio: float = charge_time / MAX_CHARGE_TIME
 	if cast_jittered or water_ghost_timer > 0.0:

@@ -7,7 +7,8 @@ extends Control
 ##            tap to wave
 ##   top:     the player's card (name, fish logged) and gold
 ##   right:   單機模式 (a run) and 多人連線 (not yet - says so)
-##   bottom:  商城, 倉庫, 裝備, 魚缸, 圖鑑
+##   bottom:  商城, 倉庫, 裝備, 魚缸 (圖鑑 is inside 魚缸)
+##   top right: gold, the settings (a gear icon)
 ## Between runs, so the day timer is stopped here (GameState.reset_run).
 
 const BG_TOP := Color(0.035, 0.045, 0.08)
@@ -91,17 +92,6 @@ func _build() -> void:
 	_viewer.frame_x = -0.32
 	add_child(_viewer)
 
-	# Title.
-	var title := MenuStyle.label("黑暗釣魚", 40, MenuStyle.GOLD)
-	title.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
-	title.add_theme_constant_override("shadow_offset_y", 3)
-	title.position = Vector2(560, 34)
-	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(title)
-	var sub := MenuStyle.label("在黑夜裡釣魚，別被牠們發現", 14, MenuStyle.DIM)
-	sub.position = Vector2(566, 90)
-	add_child(sub)
-
 	# Top left: the player's card.
 	var card := MenuStyle.panel()
 	card.position = Vector2(16, 14)
@@ -122,14 +112,15 @@ func _build() -> void:
 	add_child(card)
 
 	# Top right: settings, gold.
-	var gear := MenuStyle.button("設定", 15)
+	# User request: the settings as an icon, in the top right corner.
+	var gear := GearButton.new()
 	gear.name = "Settings"
-	gear.position = Vector2(710, 14)
-	gear.custom_minimum_size = Vector2(80, 44)
+	gear.position = Vector2(904, 14)
+	gear.size = Vector2(44, 44)
 	gear.pressed.connect(_on_settings)
 	add_child(gear)
 	var purse := MenuStyle.panel()
-	purse.position = Vector2(800, 14)
+	purse.position = Vector2(752, 14)
 	purse.custom_minimum_size = Vector2(140, 0)
 	_gold = MenuStyle.label("", 18, MenuStyle.GOLD)
 	purse.add_child(_gold)
@@ -152,14 +143,14 @@ func _build() -> void:
 	multi.add_child(soon)
 	add_child(play)
 
-	# Bottom: shop, equipment, fish log.
+	# Bottom: shop, warehouse, equipment, fish tank (the fish log is in it).
 	var bar := HBoxContainer.new()
-	bar.position = Vector2(452, 438)
+	bar.position = Vector2(520, 438)
 	bar.add_theme_constant_override("separation", 8)
 	for entry in [["商城", _on_shop], ["倉庫", _go.bind("warehouse")], ["裝備", _on_equipment],
-			["魚缸", _go.bind("fish_tank")], ["圖鑑", _on_fish_log]]:
+			["魚缸", _go.bind("fish_tank")]]:
 		var b := MenuStyle.button(entry[0], 18)
-		b.custom_minimum_size = Vector2(92, 72)
+		b.custom_minimum_size = Vector2(100, 72)
 		b.pressed.connect(entry[1])
 		bar.add_child(b)
 	add_child(bar)
@@ -220,3 +211,27 @@ func _go(page: String) -> void:
 
 func _on_fish_log() -> void:
 	get_tree().change_scene_to_file("res://scenes/fish_log.tscn")
+
+
+## A round button with a gear drawn on it (the settings).
+class GearButton extends Button:
+	func _ready() -> void:
+		focus_mode = Control.FOCUS_NONE
+		flat = true
+		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+
+	func _draw() -> void:
+		var c := size / 2.0
+		var r := minf(size.x, size.y) / 2.0
+		draw_circle(c, r, Color(0.1, 0.095, 0.09, 0.9))
+		draw_arc(c, r - 0.5, 0.0, TAU, 40, MenuStyle.EDGE, 1.0)
+		var ink := MenuStyle.GOLD if is_hovered() or button_pressed else MenuStyle.TEXT
+		# Teeth, ring, hole.
+		var teeth := PackedVector2Array()
+		for i in 16:
+			var a := TAU * i / 16.0
+			var rr := r * (0.62 if i % 2 == 0 else 0.48)
+			teeth.append(c + Vector2(cos(a), sin(a)) * rr)
+		draw_colored_polygon(teeth, ink)
+		draw_circle(c, r * 0.4, ink)
+		draw_circle(c, r * 0.18, Color(0.1, 0.095, 0.09))

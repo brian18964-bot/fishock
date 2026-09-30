@@ -9,6 +9,7 @@ extends RefCounted
 ##   flashlight     two cells, worn in the light slot
 ##   battery        three to a cell
 ##   lure_<id>      the lures (Profile.LURES), ten to a cell
+##   live_<id>      live baits (Profile.LIVE_BAITS), ten to a cell
 ##   bait           the base bait (user request: given each run, but it
 ##                  takes bag cells) - kept in the bag, only moved about
 ## A thing's {name, tab, size (cells), stack (per cell), slot (the
@@ -18,6 +19,12 @@ const TABS := {"gear": "裝備", "item": "物品", "tackle": "釣具", "other": 
 const TAB_ORDER := ["gear", "item", "tackle", "other"]
 const ICONS := "res://assets/sprites/items/%s.png"
 const LURE_ICON := "res://assets/sprites/lure/lure_%d_55deg_albedo.png"
+const LIVE_ICONS := {
+	"worm": "res://assets/sprites/lure/worm_55deg_albedo.png",
+	"cricket": "res://assets/sprites/items/cricket.png",
+	"shrimp": "res://assets/sprites/items/shrimp.png",
+	"minnow": "res://assets/sprites/fish/minnow.png",
+}
 
 static var _icons := {}
 
@@ -40,6 +47,13 @@ static func def(id: String) -> Dictionary:
 	if id == "battery":
 		return {"name": "電池", "tab": "item", "size": Vector2i(1, 1), "stack": 3, "slot": "",
 			"icon": ICONS % id, "desc": "手電筒沒電時換上，要放在背包裡才帶得進去"}
+	if id.begins_with("live_"):
+		var lk := id.substr(5)
+		if not Profile.LIVE_BAITS.has(lk):
+			return {}
+		var lb: Dictionary = Profile.LIVE_BAITS[lk]
+		return {"name": lb.name, "tab": "tackle", "size": Vector2i(1, 1), "stack": 10, "slot": "",
+			"icon": LIVE_ICONS[lk], "desc": lb.desc, "live": lk}
 	if id.begins_with("lure_"):
 		var key := id.substr(5)
 		if not Profile.LURES.has(key):
@@ -94,6 +108,8 @@ static func _rank(id: String) -> int:
 		return 15
 	if id == "battery":
 		return 20
+	if id.begins_with("live_"):
+		return 25 + Profile.LIVE_ORDER.find(id.substr(5))
 	if id.begins_with("lure_"):
 		return 30 + Profile.LURE_ORDER.find(id.substr(5))
 	return 100

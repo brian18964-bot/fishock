@@ -127,6 +127,90 @@ def lamp():
     shoot("oil_lamp", objs + [flame], (1, 1))
 
 
+def blob(name, loc, scale, m, rot=(0, 0, 0)):
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, location=loc, rotation=rot, segments=24, ring_count=12)
+    o = bpy.context.object
+    o.name = name
+    o.scale = scale
+    o.data.materials.append(m)
+    bpy.ops.object.shade_smooth()
+    return o
+
+
+def stick(name, a, b, r, m):
+    from mathutils import Vector
+    a, b = Vector(a), Vector(b)
+    d = b - a
+    bpy.ops.mesh.primitive_cylinder_add(radius=r, depth=d.length, location=(a + b) / 2, vertices=8)
+    o = bpy.context.object
+    o.name = name
+    o.rotation_mode = 'QUATERNION'
+    o.rotation_quaternion = Vector((0, 0, 1)).rotation_difference(d)
+    o.data.materials.append(m)
+    return o
+
+
+def cricket():
+    """A live-bait cricket: brown body, head, long hind legs, feelers."""
+    fresh()
+    shell = mat("shell", (0.28, 0.17, 0.08), rough=0.35)
+    dark = mat("dark", (0.12, 0.08, 0.05), rough=0.5)
+    objs = [
+        blob("body", (0, 0, 0.1), (0.42, 0.16, 0.14), shell),
+        blob("thorax", (0.36, 0, 0.12), (0.14, 0.14, 0.13), shell),
+        blob("head", (0.52, 0, 0.13), (0.1, 0.1, 0.1), dark),
+    ]
+    for s in (-1, 1):
+        objs.append(stick("thigh%d" % s, (0.05, 0.1 * s, 0.14), (-0.3, 0.14 * s, 0.34), 0.035, shell))
+        objs.append(stick("shin%d" % s, (-0.3, 0.14 * s, 0.34), (-0.55, 0.16 * s, 0.0), 0.02, dark))
+        objs.append(stick("fore%d" % s, (0.35, 0.1 * s, 0.08), (0.45, 0.2 * s, -0.04), 0.015, dark))
+        objs.append(stick("feeler%d" % s, (0.58, 0.04 * s, 0.18), (1.05, 0.25 * s, 0.4), 0.008, dark))
+    shoot("cricket", objs, (1, 1))
+
+
+def shrimp():
+    """A live-bait shrimp: a curled, tapering, segmented body (a bevelled
+    curve), a tail fan, little legs and long feelers."""
+    import math as m
+    fresh()
+    body = mat("body", (0.9, 0.5, 0.38), rough=0.28)
+    dark = mat("dark", (0.1, 0.05, 0.05), rough=0.4)
+    cu = bpy.data.curves.new("shrimp", 'CURVE')
+    cu.dimensions = '3D'
+    cu.bevel_depth = 0.11
+    cu.bevel_resolution = 6
+    sp = cu.splines.new('NURBS')
+    n = 9
+    sp.points.add(n - 1)
+    for i in range(n):
+        a_ = m.radians(200 - i * 30)
+        x, z = m.cos(a_) * 0.32, m.sin(a_) * 0.32
+        sp.points[i].co = (x, 0, z, 1)
+        sp.points[i].radius = 1.15 - i * 0.1
+    sp.use_endpoint_u = True
+    sp.order_u = 3
+    o = bpy.data.objects.new("body", cu)
+    bpy.context.scene.collection.objects.link(o)
+    o.data.materials.append(body)
+    objs = [o]
+    # Segment lines: thin dark rings along the back.
+    for i in range(1, 7):
+        a_ = m.radians(200 - i * 30 - 15)
+        objs.append(blob("ring%d" % i, (m.cos(a_) * 0.33, 0, m.sin(a_) * 0.33), (0.012, 0.1, 0.012), dark))
+    head = blob("head", (-0.34, 0, -0.08), (0.16, 0.11, 0.12), body)
+    objs.append(head)
+    objs.append(blob("eye", (-0.44, 0.07, -0.03), (0.028, 0.028, 0.028), dark))
+    tail = blob("fan", (0.3, 0, -0.3), (0.13, 0.03, 0.08), body, rot=(0, m.radians(40), 0))
+    objs.append(tail)
+    for k in range(5):
+        a_ = m.radians(170 - k * 22)
+        base = (m.cos(a_) * 0.24, 0.04, m.sin(a_) * 0.24)
+        objs.append(stick("leg%d" % k, base, (base[0] * 0.55, 0.06, base[2] * 0.55 - 0.06), 0.01, body))
+    for sgn in (-1, 1):
+        objs.append(stick("feeler%d" % sgn, (-0.46, 0.03 * sgn, -0.1), (-1.05, 0.12 * sgn, 0.25), 0.006, dark))
+    shoot("shrimp", objs, (1, 1))
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     only = sys.argv[1:]

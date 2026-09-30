@@ -44,6 +44,13 @@ func _build() -> void:
 	var title := MenuStyle.label("魚缸", 26, MenuStyle.GOLD)
 	title.position = Vector2(130, 14)
 	add_child(title)
+	# User request: the fish log is here now (not on the main screen).
+	var book := MenuStyle.button("圖鑑", 15)
+	book.name = "FishLog"
+	book.position = Vector2(604, 12)
+	book.custom_minimum_size = Vector2(88, 40)
+	book.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/fish_log.tscn"))
+	add_child(book)
 	var feed := MenuStyle.button("餵食", 15, true)
 	feed.name = "Feed"
 	feed.position = Vector2(700, 12)
