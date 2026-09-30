@@ -288,7 +288,10 @@ func test_ruined_town() -> void:
 		check(props.all(func(p): return p.get_children().any(func(c): return c is CollisionPolygon2D)),
 			"seed %d: all solid" % s)
 		check(props.all(func(p): return p.sprite.texture != null), "seed %d: all drawn" % s)
-		check(get_tree().get_nodes_in_group("walkways").is_empty(), "seed %d: no wooden docks in town" % s)
+		var town_ways := get_tree().get_nodes_in_group("walkways")
+		check(town_ways.all(func(w): return w is Jetty and w.style == "concrete"),
+			"seed %d: no wooden docks in town - concrete platforms" % s)
+		check(not town_ways.is_empty(), "seed %d: a platform out over a pond" % s)
 	gen_script.forced_theme = ""
 
 
@@ -311,7 +314,14 @@ func test_beach_sea() -> void:
 				if commons.any(func(z): return z.contains(Vector2(x, y))):
 					wet += 1
 		check(float(wet) / total > 0.25, "seed %d: the sea covers a good part of the map (%d%%)" % [s, 100 * wet / total])
-		check(get_tree().get_nodes_in_group("walkways").is_empty(), "seed %d: no docks on the beach" % s)
+		var ways := get_tree().get_nodes_in_group("walkways")
+		check(ways.all(func(w): return w is Jetty), "seed %d: no wooden docks on the beach" % s)
+		# User request: a rock jetty out into the deep instead.
+		check(not ways.is_empty(), "seed %d: a rock jetty out into the sea" % s)
+		for j in ways:
+			var tip: Vector2 = j.position - j.dir * (j.half_length - 6.0)
+			check(Dock.on_walkway(get_tree(), tip) and commons.any(func(z): return z.contains(tip)),
+				"seed %d: its end stands over the sea" % s)
 		if gen.theme.get("ridges", 0) > 0:
 			var big := of_script("obstacle.gd").filter(func(r): return r.size > 1.2)
 			check(big.size() >= 10, "seed %d: rock ridges (%d boulders)" % [s, big.size()])
@@ -1061,8 +1071,11 @@ func test_warehouse_and_bag() -> void:
 	Profile.load_data({"gold": 2000})
 	for _i in 12:
 		Profile.buy_lure("minnow")
-	check(Profile.stored("lure_minnow") == 12 and Profile.bag.is_empty(), "bought lures wait in the warehouse")
-	check(Profile.to_bag("lure_minnow", 12) == 12 and Profile.bag.size() == 2, "ten to a cell: two stacks")
+	check(Profile.stored("lure_minnow") == 12 and Profile.bag_count("lure_minnow") == 0, "bought lures wait in the warehouse")
+	check(Profile.bag_count("bait") == Profile.base_bait(), "the base bait takes its cells in the bag")
+	check(Profile.to_storage(Profile.bag_at(Profile.bag[0].cell)) == 0, "and can't be put in the warehouse")
+	check(Profile.to_bag("lure_minnow", 12) == 12 and Profile.bag.filter(func(e): return e.id == "lure_minnow").size() == 2,
+		"ten to a cell: two stacks")
 	for _i in 4:
 		Profile.buy_battery()
 	check(Profile.to_bag("battery", 4, Vector2i(5, 1)) == 4, "batteries packed")
@@ -1071,12 +1084,16 @@ func test_warehouse_and_bag() -> void:
 		"three to a cell, the first stack where it was dropped")
 	check(not Profile.bag_move(bi, Profile.bag[0].cell), "not onto something else")
 	check(Profile.bag_move(bi, Vector2i(7, 3)) and Profile.bag[Profile.bag_at(Vector2i(7, 3))].id == "battery", "moved to a free cell")
-	check(Profile.buy_rod() and Profile.rod_tier == 1 and Profile.stored("rod_0") == 1, "a new rod is put on, the old one stored")
-	check(Profile.to_bag("rod_0", 1, Vector2i(0, 3)) == 1, "a spare rod packed")
-	check(not Profile.bag_fits("battery", Vector2i(2, 3)), "a rod takes three cells")
+	check(Profile.buy_rod() and Profile.stored("rod_1") == 1 and Profile.rod_tier == 0, "a rod bought waits in the warehouse")
+	check(Profile.equip("rod_1") and Profile.rod_tier == 1 and Profile.stored("rod_0") == 1, "put on, the old one stored")
+	check(Profile.to_bag("rod_0", 1, Vector2i(3, 3)) == 1, "a spare rod packed")
+	check(not Profile.bag_fits("battery", Vector2i(5, 3)), "a rod takes three cells")
+	Profile.bag.append({"id": "rod_4", "count": 1, "cell": Vector2i(3, 2), "found": true})
+	Profile.lose_found_gear()
+	check(Profile.bag_count("rod_4") == 0 and Profile.bag_count("rod_0") == 1, "dying loses gear found on the map, not what was brought")
 	check(Profile.equip("rod_0") and Profile.rod_tier == 0 and Profile.stored("rod_1") == 1 and Profile.bag_count("rod_0") == 0,
 		"put on from the bag, the other one stored")
-	check(Profile.buy_flashlight() and Profile.has_flashlight, "the flashlight's worn once bought")
+	check(Profile.buy_flashlight() and Profile.equip("flashlight") and Profile.has_flashlight, "the flashlight bought and worn")
 	check(Profile.unequip("light") and not Profile.has_flashlight and Profile.stored("flashlight") == 1, "taken off, to the warehouse")
 	check(not Profile.unequip("rod"), "there's always a rod on")
 	# What the run takes: the bag, where it was packed.
@@ -1089,6 +1106,21 @@ func test_warehouse_and_bag() -> void:
 	check(Profile.use_battery() and Profile.batteries == 3, "a battery used comes out of the bag")
 	check(Profile.bag_take("lure_minnow", 2) == 2 and Profile.bag_count("lure_minnow") == 10, "lures lost come out too")
 
+	# The shop asks how many and where to.
+	var shop: Control = load("res://scenes/shop.tscn").instantiate()
+	get_tree().root.add_child(shop)
+	await frames(2)
+	var had := Profile.bag_count("lure_zebra")
+	shop.buy_dialog("lure_zebra", int(Profile.LURES.zebra.cost))
+	await frames(1)
+	var amount_slider: HSlider = shop.find_child("Amount", true, false)
+	check(amount_slider != null and shop.find_child("To_equip", true, false) == null, "a count, and no 裝備 for a lure")
+	amount_slider.value = 3
+	(shop.find_child("To_bag", true, false) as Button).pressed.emit()
+	await frames(1)
+	check(Profile.bag_count("lure_zebra") == had + 3, "three bought straight into the bag")
+	shop.queue_free()
+	await frames(1)
 	# The page: drag from the warehouse onto the bag, and back.
 	var page: Control = load("res://scenes/warehouse.tscn").instantiate()
 	get_tree().root.add_child(page)
@@ -1163,13 +1195,25 @@ func test_lure_throw_and_drops() -> void:
 		if d.global_position.distance_to(aim) < 4.0:
 			landed = true
 	check(landed and get_tree().get_nodes_in_group("dropped_fish").size() == before + 1, "it landed where aimed")
+	# Settings: the cheapest fish carried becomes the next lure.
+	Profile.set_setting("auto_lure", true)
+	gs.add_carried_fish({"name": "沙丁魚", "id": "sardine", "value": 1.0, "size": "small"})
+	gs.set_lure(0)
+	p.lure_pull = 0.2
+	p.lure_held = true
+	await frames(3)
+	p.lure_held = false
+	await frames(2)
+	var li: int = gs.lure_index()
+	check(li >= 0 and gs.carried_fish[li].id == "sardine", "auto: the cheapest is picked next")
+	Profile.set_setting("auto_lure", false)
 	gs.set_lure(0)
 	gs.sacrifice_at(0)
 	check(gs.lure_index() == -1, "an offered lure fish leaves the button blank")
 	# Put down and picked up.
 	Profile.load_data({"gold": 0})
 	Profile.bag_put("battery", 2)
-	p.put_item_down(0)
+	p.put_item_down(Profile.bag.map(func(e): return e.id).find("battery"))
 	await frames(2)
 	check(Profile.batteries == 0 and get_tree().get_nodes_in_group("dropped_items").size() == 1, "batteries put down")
 	check(p.interaction().get("verb", "") == "撿起", "and offered to pick up")
@@ -1257,6 +1301,9 @@ func test_main_menu() -> void:
 	var title: Control = load("res://scenes/title_screen.tscn").instantiate()
 	get_tree().root.add_child(title)
 	await frames(3)
+	title._on_settings()
+	await frames(1)
+	check(title.find_child("AutoLure", true, false) != null, "settings: the auto-lure option")
 	var viewer: CharacterViewer = title.find_children("*", "CharacterViewer", true, false)[0]
 	check(viewer != null, "the character stands on the main screen")
 	var hand: BoneAttachment3D = viewer._attachments.get("hand_r")

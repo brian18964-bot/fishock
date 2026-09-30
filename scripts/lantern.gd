@@ -57,6 +57,8 @@ const TEXTURE_HALF_SIZE := 128.0
 const FLASH_RANGE := 160.0
 ## A flash's cost: this share of a full tank / battery.
 const FLASH_SHARE := 0.2
+## A fully charged flash costs this much more (x2.5 the share).
+const FLASH_CHARGE_EXTRA := 1.5
 ## Brightness lost per whole tank burned (see _process).
 const AUTO_DIM := 0.6
 const FLASH_COOLDOWN := 3.0
@@ -345,7 +347,7 @@ func release_flash(stun_scale: float = 1.0) -> void:
 	if flash_cooldown > 0.0:
 		GameState.push_message("強光還在冷卻（%.0f 秒）" % ceilf(flash_cooldown))
 		return
-	_try_flash(reach, FLASH_STUN_DURATION * (1.0 + BOOST_STUN * charged) * stun_scale)
+	_try_flash(reach, FLASH_STUN_DURATION * (1.0 + BOOST_STUN * charged) * stun_scale, charged)
 
 
 ## In the flash: within `reach` and in the light - its feet or its body (the
@@ -367,17 +369,19 @@ func _in_beam(point: Vector2, reach: float) -> bool:
 	return absf(wrapf(offset.angle() - rotation, -PI, PI)) <= deg_to_rad(TOOLS[tool].half_angle)
 
 
-func _try_flash(reach: float = FLASH_RANGE, stun: float = FLASH_STUN_DURATION) -> void:
+func _try_flash(reach: float = FLASH_RANGE, stun: float = FLASH_STUN_DURATION, charged := 0.0) -> void:
 	# User request: a flash takes its share of the energy straight off -
-	# the same share of a bigger tank.
+	# the same share of a bigger tank - and the longer it was charged, the
+	# more (FLASH_CHARGE_EXTRA more, fully charged).
+	var share := FLASH_SHARE * (1.0 + FLASH_CHARGE_EXTRA * clampf(charged, 0.0, 1.0))
 	if tool == Tool.LAMP:
-		var cost := max_fuel * FLASH_SHARE
+		var cost := max_fuel * share
 		if fuel < cost:
 			GameState.push_message("能源不足，無法使用強光")
 			return
 		fuel -= cost
 	else:
-		var cost := 100.0 * FLASH_SHARE
+		var cost := 100.0 * share
 		if charge < cost:
 			GameState.push_message("能源不足，無法使用強光")
 			return

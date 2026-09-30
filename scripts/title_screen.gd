@@ -121,7 +121,13 @@ func _build() -> void:
 	card.add_child(row)
 	add_child(card)
 
-	# Top right: gold.
+	# Top right: settings, gold.
+	var gear := MenuStyle.button("設定", 15)
+	gear.name = "Settings"
+	gear.position = Vector2(710, 14)
+	gear.custom_minimum_size = Vector2(80, 44)
+	gear.pressed.connect(_on_settings)
+	add_child(gear)
 	var purse := MenuStyle.panel()
 	purse.position = Vector2(800, 14)
 	purse.custom_minimum_size = Vector2(140, 0)
@@ -190,6 +196,22 @@ func _on_shop() -> void:
 
 func _on_equipment() -> void:
 	get_tree().change_scene_to_file("res://scenes/equipment.tscn")
+
+
+## User request: game settings.
+func _on_settings() -> void:
+	var note := MenuStyle.notice(self, "設定", ["調整遊戲中的輔助功能。"])
+	note.name = "SettingsPanel"
+	var col: VBoxContainer = note.get_child(0).get_child(0)
+	var auto := CheckButton.new()
+	auto.name = "AutoLure"
+	auto.text = "丟出誘餌後，自動選最便宜的魚當下一個誘餌"
+	auto.button_pressed = Profile.settings.get("auto_lure", false)
+	auto.add_theme_font_size_override("font_size", 14)
+	auto.focus_mode = Control.FOCUS_NONE
+	auto.toggled.connect(func(on): Profile.set_setting("auto_lure", on))
+	col.add_child(auto)
+	col.move_child(auto, col.get_child_count() - 2)
 
 
 func _go(page: String) -> void:

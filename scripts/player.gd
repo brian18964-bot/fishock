@@ -358,7 +358,8 @@ func spoil_bait() -> void:
 ## upgrade; lures come from whatever the player bought into their loadout
 ## before this run started (consumed here, not reusable across runs).
 func reset_gear() -> void:
-	bait_count = START_BAIT + int(Profile.get_upgrade_bonus("bait_capacity"))
+	Profile.ensure_bait()
+	bait_count = Profile.base_bait()
 	lure_stock = Profile.consume_loadout_lures()
 	_sync_lures()
 	fishing_mode = FishingMode.BOBBER
@@ -705,6 +706,14 @@ func throw_lure() -> void:
 	dropped.setup(fish)
 	dropped.fly_to(to)
 	GameState.push_message("丟出誘餌 %s（大鬼會被引過去）" % fish.get("name", "魚"))
+	if Profile.settings.get("auto_lure", false):
+		# Settings: the cheapest fish carried is the next lure.
+		var best := -1
+		for j in GameState.carried_fish.size():
+			var f: Dictionary = GameState.carried_fish[j]
+			if best < 0 or float(f.get("value", 0.0)) < float(GameState.carried_fish[best].get("value", 0.0)):
+				best = j
+		GameState.set_lure(best)
 
 
 ## Puts carried fish `index` down at your feet (from the bag).
@@ -1619,6 +1628,7 @@ func _succeed_catch() -> void:
 		var fish := {"name": tier_data.label, "id": fish_id, "value": tier_data.value, "tier": current_tier,
 			"size": Inventory.size_for_catch(current_tier, is_epic_catch)}
 		fish.merge(FishData.measure(fish_id, fish.size))
+		fish.value = FishData.value_for_length(fish_id, float(fish.value), fish.length)
 		fish["tank_trait"] = FishData.roll_tank_trait(fish_id)
 		# User request: the catch card calls out a first catch of a kind
 		# (NEW), a trait not seen on it before, and a record size (BIGGER).

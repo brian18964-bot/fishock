@@ -617,6 +617,14 @@ def stage(objs, flat=False):
 
 
 def render(fid, sp):
+    objs, flat = make(fid, sp)
+    stage(objs, flat)
+    bpy.context.scene.render.filepath = os.path.join(OUT, fid + ".png")
+    bpy.ops.render.render(write_still=True)
+
+
+def make(fid, sp):
+    """The fish's parts in a fresh scene (with their materials): (objects, flat)."""
     if sp["body"] == "crayfish":
         objs = crayfish(sp)
         flat = False
@@ -640,9 +648,7 @@ def render(fid, sp):
             # Lying on its side: turned to face the camera above.
             for o in objs:
                 o.rotation_euler.x += math.pi / 2
-    stage(objs, flat)
-    bpy.context.scene.render.filepath = os.path.join(OUT, fid + ".png")
-    bpy.ops.render.render(write_still=True)
+    return objs, flat
 
 
 def main():

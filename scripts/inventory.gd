@@ -46,16 +46,27 @@ static func items(player: Node) -> Array:
 			"id": fish.get("id", "")})
 	if GameState.has_heart:
 		out.append({"kind": "heart", "label": "心臟", "count": 0, "size": Vector2i(1, 1), "index": -1})
+	# The bait: its bundles in the bait cells packed before the run (user
+	# request: the base bait takes bag space), any more wherever there's room.
+	var bait_cells := []
+	for e in Profile.bag:
+		if e.id == "bait":
+			bait_cells.append(e.cell)
 	if player != null:
 		var bait: int = player.bait_count
+		var k := 0
 		while bait > 0:
-			out.append({"kind": "bait", "label": "餌", "count": mini(bait, BAIT_PER_CELL), "size": Vector2i(1, 1), "index": -1})
+			var bundle := {"kind": "bait", "label": "餌", "count": mini(bait, BAIT_PER_CELL), "size": Vector2i(1, 1), "index": -1}
+			if k < bait_cells.size():
+				bundle["cell"] = bait_cells[k]
+			out.append(bundle)
 			bait -= BAIT_PER_CELL
+			k += 1
 	# What was packed before the run (Profile.bag), where it was packed.
 	for i in Profile.bag.size():
 		var e: Dictionary = Profile.bag[i]
 		var def := Items.def(e.id)
-		if def.is_empty():
+		if def.is_empty() or e.id == "bait":
 			continue
 		var kind := "lure" if def.has("lure") else ("battery" if e.id == "battery" else "gear")
 		out.append({"kind": kind, "label": def.name, "count": int(e.count) if def.stack > 1 else 0,

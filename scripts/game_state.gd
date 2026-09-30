@@ -319,9 +319,11 @@ func end_run(success: bool, message: String) -> void:
 	if success:
 		final_message += _bring_fish_home()
 	else:
-		# Design doc §8: on failure, carried fish are lost outright, never sold.
+		# Design doc §8: on failure, carried fish are lost outright, never sold;
+		# user request: so is gear found on the map - what was brought stays.
 		carried_fish.clear()
 		inventory_updated.emit(carried_fish)
+		Profile.lose_found_gear()
 
 	run_ended.emit(success, final_message)
 

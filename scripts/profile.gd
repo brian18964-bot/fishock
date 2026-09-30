@@ -93,10 +93,20 @@ var lure_stock: Dictionary:
 				out[key] = int(out.get(key, 0)) + int(e.count)
 		return out
 
+## User request: the game's settings. auto_lure: after a 誘惑 throw, pick
+## the cheapest fish carried as the next lure (off: pick again yourself).
+var settings: Dictionary = {"auto_lure": false}
+
+
+func set_setting(key: String, value) -> void:
+	settings[key] = value
+	_changed()
+
+
 ## User request (fish tank): the fish brought home from a run live here -
 ## each a catch dict (id, name, value, size, length, weight, tank_trait).
 ## Sold or (later, with multiplayer) traded from the tank page.
-const TANK_SIZE := 30
+const TANK_SIZE := 10
 var tank: Array = []
 ## Names put in the tank since the main screen last said so.
 var tank_news: Array = []
@@ -152,6 +162,8 @@ func buy_upgrade(key: String) -> bool:
 		return false
 	gold -= cost
 	upgrade_levels[key] = level + 1
+	if key == "bait_capacity":
+		ensure_bait()
 	gold_updated.emit(gold)
 	profile_changed.emit()
 	_save()
@@ -186,16 +198,14 @@ func next_rod() -> Dictionary:
 	return ROD_TIERS[rods_owned + 1] if rods_owned + 1 < ROD_TIERS.size() else {}
 
 
-## Buys the next rod and puts it on (the old one goes to the warehouse).
+## Buys the next rod (into the warehouse; the shop asks where it goes).
 func buy_rod() -> bool:
 	var next := next_rod()
 	if next.is_empty() or gold < int(next.cost):
 		return false
 	gold -= int(next.cost)
 	rods_owned += 1
-	var id := "rod_%d" % rods_owned
-	_store(id, 1)
-	equip(id)
+	_store("rod_%d" % rods_owned, 1)
 	gold_updated.emit(gold)
 	_changed()
 	return true
@@ -206,8 +216,6 @@ func buy_flashlight() -> bool:
 		return false
 	gold -= FLASHLIGHT_COST
 	_store("flashlight", 1)
-	if equipped.get("light", "") == "":
-		equip("flashlight")
 	gold_updated.emit(gold)
 	_changed()
 	return true
@@ -403,6 +411,55 @@ func bag_put(id: String, count: int) -> int:
 	return count - left
 
 
+## The base bait a run starts with (the bait_capacity upgrade adds).
+func base_bait() -> int:
+	return Player.START_BAIT + int(get_upgrade_bonus("bait_capacity"))
+
+
+## User request: the base bait takes bag cells - kept as "bait" stacks in
+## the bag, as many as it needs (ten to a cell), placed where there's room
+## (the last thing packed goes back to the warehouse if there isn't).
+func ensure_bait() -> void:
+	var need := base_bait()
+	var cells := ceili(need / float(Items.stack_of("bait")))
+	var have := []
+	for i in bag.size():
+		if bag[i].id == "bait":
+			have.append(i)
+	for k in range(have.size() - 1, cells - 1, -1):
+		bag.remove_at(have[k])
+	have.resize(mini(have.size(), cells))
+	var guard := 0
+	while have.size() < cells and guard < 40:
+		guard += 1
+		var free := bag_free_cell("bait")
+		if free.x < 0:
+			# No room: the last thing packed (not bait) goes to the warehouse.
+			for j in range(bag.size() - 1, -1, -1):
+				if bag[j].id != "bait":
+					_store(bag[j].id, int(bag[j].count))
+					bag.remove_at(j)
+					break
+			continue
+		bag.append({"id": "bait", "count": 0, "cell": free})
+		have.append(bag.size() - 1)
+	var left := need
+	for e in bag:
+		if e.id == "bait":
+			e.count = mini(left, Items.stack_of("bait"))
+			left -= e.count
+	profile_changed.emit()
+
+
+## User request: dying in a run loses the fish and any gear found on the
+## map there (flagged "found"); what was brought in stays.
+func lose_found_gear() -> void:
+	for i in range(bag.size() - 1, -1, -1):
+		if bag[i].get("found", false):
+			bag.remove_at(i)
+	_changed()
+
+
 ## Takes the bag stack at `index` out whole (put down in a run).
 func bag_remove(index: int) -> Dictionary:
 	if index < 0 or index >= bag.size():
@@ -415,7 +472,7 @@ func bag_remove(index: int) -> Dictionary:
 
 ## Puts up to `count` from the bag stack at `index` back in the warehouse.
 func to_storage(index: int, count := -1) -> int:
-	if index < 0 or index >= bag.size():
+	if index < 0 or index >= bag.size() or Items.def(bag[index].id).get("fixed", false):
 		return 0
 	var e: Dictionary = bag[index]
 	var n: int = int(e.count) if count < 0 else mini(count, int(e.count))
@@ -558,6 +615,7 @@ func snapshot() -> Dictionary:
 		"rods_owned": rods_owned,
 		"tank": tank,
 		"tank_news": tank_news,
+		"settings": settings,
 	}.duplicate(true)
 
 
@@ -584,6 +642,8 @@ func load_data(data: Dictionary) -> void:
 	rods_owned = clampi(data.get("rods_owned", data.get("rod_tier", 0)), 0, ROD_TIERS.size() - 1)
 	tank = data.get("tank", [])
 	tank_news = data.get("tank_news", [])
+	settings = {"auto_lure": false}
+	settings.merge(data.get("settings", {}), true)
 	if not data.has("equipped"):
 		var tier := rods_owned
 		equipped = {"rod": "rod_%d" % tier, "light": "flashlight" if data.get("has_flashlight", false) else ""}
@@ -600,3 +660,4 @@ func load_data(data: Dictionary) -> void:
 		_store("battery", cells)
 		to_bag("battery", cells)
 	_sync_rod()
+	ensure_bait()

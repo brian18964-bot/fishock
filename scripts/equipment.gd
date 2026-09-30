@@ -128,7 +128,8 @@ func actions(source: Dictionary) -> Array:
 		"bag":
 			if slot != "":
 				out.append(["裝備", {"to": "slot", "slot": slot}, true])
-			out.append(["放回倉庫", {"to": "storage"}])
+			if not Items.def(source.id).get("fixed", false):
+				out.append(["放回倉庫", {"to": "storage"}])
 		"slot":
 			if source.slot != "rod":
 				out.append(["卸下", {"to": "storage"}, true])

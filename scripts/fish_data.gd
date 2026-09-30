@@ -481,6 +481,15 @@ static func measure(id: String, size_key: String) -> Dictionary:
 	return {"length": snappedf(length, 0.1), "weight": snappedf(kg, 0.01 if kg < 10.0 else 0.1)}
 
 
+## User request: a bigger fish of a kind sells for more - by where its
+## length falls in its kind's range: x0.8 for the smallest, x1.25 for the
+## longest, a legend past the top more still.
+static func value_for_length(id: String, base: float, length: float) -> float:
+	var span: Array = LENGTH_CM.get(id, [20, 50])
+	var q := (length - float(span[0])) / maxf(float(span[1]) - float(span[0]), 1.0)
+	return snappedf(base * (0.8 + 0.45 * clampf(q, 0.0, 1.2)), 0.1)
+
+
 static func species_trait(id: String) -> String:
 	for key in TRAIT_OF:
 		if id in TRAIT_OF[key]:

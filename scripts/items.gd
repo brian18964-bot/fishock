@@ -9,6 +9,8 @@ extends RefCounted
 ##   flashlight     two cells, worn in the light slot
 ##   battery        three to a cell
 ##   lure_<id>      the lures (Profile.LURES), ten to a cell
+##   bait           the base bait (user request: given each run, but it
+##                  takes bag cells) - kept in the bag, only moved about
 ## A thing's {name, tab, size (cells), stack (per cell), slot (the
 ## equipment slot it's worn in, if any), icon, desc}.
 
@@ -31,6 +33,10 @@ static func def(id: String) -> Dictionary:
 	if id == "flashlight":
 		return {"name": "手電筒", "tab": "gear", "size": Vector2i(2, 1), "stack": 1, "slot": "light",
 			"icon": ICONS % id, "desc": "遠距離窄光束，用電池；裝備後才能在遊戲裡切換使用"}
+	if id == "bait":
+		return {"name": "餌料", "tab": "item", "size": Vector2i(1, 1), "stack": 10, "slot": "", "fixed": true,
+			"icon": "res://assets/sprites/lure/worm_55deg_albedo.png",
+			"desc": "基礎餌料：每輪開局自動補滿，會佔背包空間（可以移動位置，不能拿出背包）"}
 	if id == "battery":
 		return {"name": "電池", "tab": "item", "size": Vector2i(1, 1), "stack": 3, "slot": "",
 			"icon": ICONS % id, "desc": "手電筒沒電時換上，要放在背包裡才帶得進去"}
@@ -84,6 +90,8 @@ static func _rank(id: String) -> int:
 		return int(id.substr(4))
 	if id == "flashlight":
 		return 10
+	if id == "bait":
+		return 15
 	if id == "battery":
 		return 20
 	if id.begins_with("lure_"):

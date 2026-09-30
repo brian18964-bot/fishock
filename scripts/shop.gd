@@ -85,13 +85,14 @@ func _rebuild_rows() -> void:
 	for id in Profile.LURE_ORDER:
 		var def: Dictionary = Profile.LURES[id]
 		right.add_child(_row("%s（擁有 %d）｜%d 金幣" % [def.name, Profile.owned("lure_" + id), def.cost],
-			def.desc, "購買", Profile.gold < int(def.cost), func(): Profile.buy_lure(id)))
+			def.desc, "購買", Profile.gold < int(def.cost), func(): buy_dialog("lure_" + id, int(def.cost))))
 	right.add_child(_header("燈具"))
 	var has_light := Profile.owned("flashlight") > 0
 	right.add_child(_row("手電筒｜%s" % ("已擁有" if has_light else "%d 金幣" % Profile.FLASHLIGHT_COST),
-		"遠距離窄光束，用電池", "購買", has_light or Profile.gold < Profile.FLASHLIGHT_COST, Profile.buy_flashlight))
+		"遠距離窄光束，用電池", "購買", has_light or Profile.gold < Profile.FLASHLIGHT_COST,
+		func(): buy_dialog("flashlight", Profile.FLASHLIGHT_COST)))
 	right.add_child(_row("電池（擁有 %d）｜%d 金幣" % [Profile.owned("battery"), Profile.BATTERY_COST],
-		"手電筒沒電時隨地換上", "購買", Profile.gold < Profile.BATTERY_COST, Profile.buy_battery))
+		"手電筒沒電時隨地換上", "購買", Profile.gold < Profile.BATTERY_COST, func(): buy_dialog("battery", Profile.BATTERY_COST)))
 
 
 func _rod_row() -> Control:
@@ -102,7 +103,8 @@ func _rod_row() -> Control:
 	var desc := "現在：" + _rod_effects(rod)
 	if not next.is_empty():
 		desc += "\n下一支：" + _rod_effects(next)
-	return _row(title, desc, "升級", next.is_empty() or Profile.gold < int(next.get("cost", 0)), Profile.buy_rod)
+	return _row(title, desc, "購買", next.is_empty() or Profile.gold < int(next.get("cost", 0)),
+		func(): buy_dialog("rod_%d" % (Profile.rods_owned + 1), int(next.cost)))
 
 
 func _rod_effects(rod: Dictionary) -> String:
@@ -160,6 +162,142 @@ func _row(title: String, desc: String, button_text: String, disabled: bool, acti
 	button.pressed.connect(func(): action.call())
 	row.add_child(button)
 	return card
+
+
+## User request: buying asks where the thing goes - put it on (gear), in
+## the bag, or in the warehouse - and, for what stacks, how many.
+var _dialog: Control
+
+
+func buy_dialog(id: String, cost: int) -> void:
+	if _dialog != null:
+		return
+	var def := Items.def(id)
+	var stackable := Items.stack_of(id) > 1
+	var most := mini(20, Profile.gold / maxi(cost, 1)) if stackable else 1
+	if most < 1:
+		return
+	var shade := ColorRect.new()
+	shade.name = "BuyDialog"
+	shade.color = Color(0, 0, 0, 0.55)
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(shade)
+	_dialog = shade
+	var panel := MenuStyle.panel(Color(0.08, 0.075, 0.07, 0.97))
+	panel.custom_minimum_size = Vector2(420, 0)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 8)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 12)
+	var pic := TextureRect.new()
+	pic.texture = Items.icon(id)
+	pic.custom_minimum_size = Vector2(96, 56)
+	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	head.add_child(pic)
+	var words := VBoxContainer.new()
+	words.add_child(MenuStyle.label("購買 " + def.get("name", id), 20, MenuStyle.GOLD))
+	var desc := MenuStyle.label(def.get("desc", ""), 13, MenuStyle.DIM)
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc.custom_minimum_size.x = 280
+	words.add_child(desc)
+	head.add_child(words)
+	col.add_child(head)
+	var amount := [1]
+	var total := MenuStyle.label("", 16, MenuStyle.GOLD)
+	var show_total := func(): total.text = "共 %d 金幣（持有 %d）" % [cost * amount[0], Profile.gold]
+	if stackable and most > 1:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		row.add_child(MenuStyle.label("數量", 15, MenuStyle.DIM))
+		var slider := HSlider.new()
+		slider.name = "Amount"
+		slider.min_value = 1
+		slider.max_value = most
+		slider.step = 1
+		slider.value = 1
+		slider.custom_minimum_size = Vector2(170, 30)
+		var shown := MenuStyle.label("1", 18, MenuStyle.GOLD)
+		shown.custom_minimum_size.x = 30
+		slider.value_changed.connect(func(v):
+			amount[0] = int(v)
+			shown.text = str(int(v))
+			show_total.call())
+		var less := MenuStyle.button("－", 18)
+		less.pressed.connect(func(): slider.value -= 1)
+		var more := MenuStyle.button("＋", 18)
+		more.pressed.connect(func(): slider.value += 1)
+		for c in [less, slider, more, shown]:
+			row.add_child(c)
+		col.add_child(row)
+	show_total.call()
+	col.add_child(total)
+	col.add_child(MenuStyle.label("買了要放到哪裡？", 14, MenuStyle.TEXT))
+	var acts := HBoxContainer.new()
+	acts.add_theme_constant_override("separation", 8)
+	var places := []
+	if def.get("slot", "") != "":
+		places.append(["裝備", "equip"])
+	places.append(["放進背包", "bag"])
+	places.append(["放進倉庫", "storage"])
+	for p in places:
+		var b := MenuStyle.button(p[0], 15, p[1] == places[0][1])
+		b.name = "To_" + p[1]
+		b.custom_minimum_size = Vector2(96, 42)
+		var where: String = p[1]
+		b.pressed.connect(func():
+			_close_dialog()
+			buy(id, amount[0], where))
+		acts.add_child(b)
+	var cancel := MenuStyle.button("取消", 15)
+	cancel.custom_minimum_size = Vector2(70, 42)
+	cancel.pressed.connect(_close_dialog)
+	acts.add_child(cancel)
+	col.add_child(acts)
+	panel.add_child(col)
+	shade.add_child(panel)
+	panel.reset_size()
+	panel.position = (size - panel.size) / 2.0
+
+
+## Buys `n` of `id` and puts them `where` ("equip", "bag" or "storage").
+func buy(id: String, n: int, where: String) -> int:
+	var bought := 0
+	for i in n:
+		var ok := false
+		if id.begins_with("lure_"):
+			ok = Profile.buy_lure(id.substr(5))
+		elif id == "battery":
+			ok = Profile.buy_battery()
+		elif id == "flashlight":
+			ok = Profile.buy_flashlight()
+		elif id.begins_with("rod_"):
+			ok = Profile.buy_rod()
+		if not ok:
+			break
+		bought += 1
+	if bought == 0:
+		return 0
+	var note := ""
+	match where:
+		"equip":
+			Profile.equip(id)
+			note = "已裝備 %s" % Items.name_of(id)
+		"bag":
+			var packed := Profile.to_bag(id, bought)
+			note = "放進背包 %d 個" % packed
+			if packed < bought:
+				note += "，背包放不下的 %d 個放進倉庫" % (bought - packed)
+		_:
+			note = "放進倉庫"
+	MenuStyle.notice(self, "買好了", ["%s ×%d：%s" % [Items.name_of(id), bought, note]])
+	return bought
+
+
+func _close_dialog() -> void:
+	if _dialog != null:
+		_dialog.queue_free()
+		_dialog = null
 
 
 func _on_back_pressed() -> void:

@@ -231,7 +231,8 @@ func actions(source: Dictionary) -> Array:
 		"storage":
 			out.append(["放進背包", {"to": "bag"}, true])
 		"bag":
-			out.append(["放回倉庫", {"to": "storage"}, true])
+			if not Items.def(source.id).get("fixed", false):
+				out.append(["放回倉庫", {"to": "storage"}, true])
 	if slot != "" and source.from != "slot":
 		out.append(["裝備", {"to": "slot", "slot": slot}])
 	return out

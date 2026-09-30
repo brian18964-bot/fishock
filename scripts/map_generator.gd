@@ -230,6 +230,7 @@ const THEMES := {
 		"look": "detailed",
 		"sea": true,
 		"docks": false,
+		"jetty": "rock",
 		"coast": {"sand": "sea_sand", "stones": "sea_pebbles", "stones_tile": 1.5, "sand_width": 140.0,
 			"stones_width": 75.0, "patches": 0.7},
 		"shore_extras": {"reeds": 0.0, "lilypad": 0.0, "driftwood": 0.06},
@@ -261,6 +262,7 @@ const THEMES := {
 		"look": "detailed",
 		"sea": true,
 		"docks": false,
+		"jetty": "rock",
 		"coast": {"sand": "sea_sand", "stones": "sea_pebbles", "stones_tile": 1.2, "sand_width": 300.0,
 			"stones_width": 26.0, "patches": 0.0},
 		# The user's ocean scene: dark wet rocks along the water line.
@@ -295,6 +297,7 @@ const THEMES := {
 		"town": true,
 		# User feedback: wooden jetties make no sense in a flooded town.
 		"docks": false,
+		"jetty": "concrete",
 		"shore_extras": {"reeds": 0.12, "lilypad": 0.06, "driftwood": 0.03},
 		"floor": ["grass", "dirt", 0.45],
 		# Weeds and scrub, not a garden: no red bushes or bright shrubs.
@@ -525,6 +528,8 @@ func _ready() -> void:
 	_generate_water_zones()
 	if theme.get("docks", true):
 		_place_docks()
+	if theme.has("jetty"):
+		_place_jetties()
 	_place_altar_and_escape()
 	if theme.get("town", false):
 		town = TownBuilder.new(self)
@@ -748,7 +753,7 @@ func _place_sea_stacks() -> void:
 		var size: Array = theme.get("stack_size", [1.5, 2.3])
 		var pos: Vector2 = sample[0] - (sample[1] as Vector2) * randf_range(reach[0], reach[1])
 		if not _inside_map(pos, 40.0) or (reach[0] >= 0.0 and not _in_any_water(pos)) \
-				or pos.distance_to(SPAWN_POS) < PROP_AVOID_SPAWN_RADIUS \
+				or pos.distance_to(SPAWN_POS) < PROP_AVOID_SPAWN_RADIUS or _near_walkway(pos, 90.0) \
 				or _themed_spots.any(func(s): return s.distance_to(pos) < 90.0):
 			continue
 		for k in randi_range(1, 3):
@@ -804,6 +809,11 @@ func _place_rock_ridges() -> void:
 				clear = false
 		for spot in _themed_spots:
 			if Geometry2D.get_closest_point_to_segment(spot, start, end).distance_to(spot) < 90.0:
+				clear = false
+		# Clear of the jetties too (and their way in).
+		for r in _walk_rects:
+			var c := r.get_center()
+			if Geometry2D.get_closest_point_to_segment(c, start, end).distance_to(c) < r.size.length() * 0.5 + 80.0:
 				clear = false
 		if not clear:
 			continue
@@ -930,6 +940,58 @@ func _place_docks() -> void:
 				get_parent().add_child.call_deferred(stairs)
 				_walk_rects.append(stairs.walk_rect)
 			used.get_or_add(zone, []).append(d)
+			break
+
+
+## User request: where there are no wooden docks (the beach, the ruined
+## town), something else leads out over deep water - a rock jetty into the
+## sea (boulders along its sides), a concrete embankment platform into the
+## town's ponds. Like the docks: from open land out past the shallows, got
+## on and off at its landward end (Jetty).
+func _place_jetties() -> void:
+	var style: String = theme.jetty
+	var sea := theme.has("coast")
+	var zones: Array = water_zones.filter(func(z): return not z.is_rare())
+	zones.shuffle()
+	var want: int = theme.get("jetties", 2 if sea else 3)
+	var half_len := 70.0 if style == "rock" else 48.0
+	var half_wid := 20.0 if style == "rock" else 26.0
+	var made := 0
+	for zone in zones:
+		if made >= want:
+			break
+		var dirs := [-sea_side] if sea else [Vector2.DOWN, Vector2.UP, Vector2.LEFT, Vector2.RIGHT]
+		dirs.shuffle()
+		for d in dirs:
+			var edge: Vector2 = zone.shore_point(d)
+			var center: Vector2 = edge - d * half_len * (0.8 if style == "rock" else 0.55)
+			var land_end: Vector2 = center + d * half_len
+			if not _inside_map(land_end + d * 30.0, DOCK_SHORE_MARGIN) or _in_any_water(land_end + d * 20.0):
+				continue
+			if not zone.is_deep(center - d * half_len * 0.9, 10.0):
+				continue
+			var half: Vector2 = Vector2(half_wid, half_len) if d.x == 0.0 else Vector2(half_len, half_wid)
+			var rect := Rect2(center - half, half * 2.0)
+			if _walk_rects.any(func(r): return r.grow(60.0).intersects(rect)) \
+					or rect.grow(40.0).has_point(SPAWN_POS):
+				continue
+			var jetty := Jetty.new()
+			jetty.setup(style, center, d, half_len, half_wid)
+			get_parent().add_child.call_deferred(jetty)
+			_walk_rects.append(jetty.walk_rect)
+			_add_entrance(jetty.walk_rect, d)
+			if style == "rock":
+				# Boulders along its sides (over the water) and round its end.
+				for p in jetty.side_points(16.0):
+					if not _in_any_water(p):
+						continue
+					var rock: Node2D = OBSTACLE_SCENE.instantiate()
+					rock.position = p + Vector2(randf_range(-3, 3), randf_range(-3, 3))
+					rock.size = randf_range(0.38, 0.6)
+					rock.variant_pool = theme.get("ridge_pool", theme.get("rock_pool", []))
+					rock.modulate = theme.get("rock_tint", Color.WHITE)
+					get_parent().add_child.call_deferred(rock)
+			made += 1
 			break
 
 
