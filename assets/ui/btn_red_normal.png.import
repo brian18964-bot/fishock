@@ -1,0 +1,14 @@
+[remap]
+
+importer="image"
+type="Image"
+uid="uid://ccsl6veadv1bk"
+path="res://.godot/imported/btn_red_normal.png-f81eb455522df81032935e6c913a6aa8.image"
+
+[deps]
+
+source_file="res://assets/ui/btn_red_normal.png"
+dest_files=["res://.godot/imported/btn_red_normal.png-f81eb455522df81032935e6c913a6aa8.image"]
+
+[params]
+

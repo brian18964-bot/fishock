@@ -127,8 +127,9 @@ func move(source: Dictionary, target: Dictionary, count := -1) -> bool:
 	return false
 
 
-## The card for a tapped thing: its picture, name and what it does, how
-## many (a stepper, for stacks) and what can be done with it here.
+## The card for a tapped thing (an MMO tooltip): its picture and name in
+## its rarity's colour, what it is and does, how many (a stepper, for
+## stacks) and what can be done with it here.
 func card(source: Dictionary) -> void:
 	var id: String = source.id
 	var def := Items.def(id)
@@ -148,37 +149,36 @@ func card(source: Dictionary) -> void:
 			_close_card())
 	add_child(shade)
 	_card = shade
-	var panel := MenuStyle.panel(Color(0.08, 0.075, 0.07, 0.97))
-	panel.custom_minimum_size = Vector2(380, 0)
+	var panel := UiKit.tooltip_panel()
+	panel.custom_minimum_size = Vector2(400, 0)
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 8)
+	col.add_theme_constant_override("separation", 6)
+	var rarity := UiKit.item_rarity(id)
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 12)
-	var pic := TextureRect.new()
-	pic.texture = Items.icon(id)
-	pic.custom_minimum_size = Vector2(96, 64)
-	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	head.add_child(pic)
+	head.add_child(ItemBoard.icon_box(id, 72.0))
 	var words := VBoxContainer.new()
-	words.add_child(MenuStyle.label(def.name, 20, MenuStyle.GOLD))
+	words.add_theme_constant_override("separation", 0)
+	words.add_child(UiKit.label(def.name, 21, UiKit.rarity_color(rarity), true))
+	words.add_child(UiKit.label("%s %s" % [UiKit.rarity_name(rarity), Items.TABS.get(def.tab, "")], 14, UiKit.rarity_color(rarity)))
 	var where := {"storage": "在倉庫", "bag": "在背包", "slot": "穿戴中"}
-	words.add_child(MenuStyle.label("%s・%s ×%d" % [Items.TABS.get(def.tab, ""), where[source.from], have], 13, MenuStyle.DIM))
+	words.add_child(UiKit.label("%s ×%d" % [where[source.from], have], 14, UiKit.DIM))
 	head.add_child(words)
 	col.add_child(head)
-	var desc := MenuStyle.label(def.get("desc", ""), 14, MenuStyle.TEXT)
-	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	desc.custom_minimum_size.x = 350
-	col.add_child(desc)
+	for line in ItemBoard.desc_lines(id):
+		var l := UiKit.label(line[0], 15, line[1])
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.custom_minimum_size.x = 370
+		col.add_child(l)
 
 	# How many (stacks only).
 	var amount := [have]
 	if have > 1:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 8)
-		row.add_child(MenuStyle.label("數量", 15, MenuStyle.DIM))
-		var less := MenuStyle.button("－", 18)
-		var more := MenuStyle.button("＋", 18)
+		row.add_child(UiKit.label("數量", 15, UiKit.DIM))
+		var less := UiKit.button("－", 18)
+		var more := UiKit.button("＋", 18)
 		var slider := HSlider.new()
 		slider.min_value = 1
 		slider.max_value = have
@@ -186,7 +186,7 @@ func card(source: Dictionary) -> void:
 		slider.value = have
 		slider.custom_minimum_size = Vector2(150, 30)
 		slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		var shown := MenuStyle.label(str(have), 18, MenuStyle.GOLD)
+		var shown := UiKit.label(str(have), 18, UiKit.GOLD_BRIGHT)
 		shown.name = "Amount"
 		shown.custom_minimum_size.x = 36
 		slider.value_changed.connect(func(v):
@@ -202,16 +202,16 @@ func card(source: Dictionary) -> void:
 	acts.add_theme_constant_override("separation", 8)
 	acts.alignment = BoxContainer.ALIGNMENT_END
 	for act in actions(source):
-		var b := MenuStyle.button(act[0], 15, act.size() > 2 and act[2])
+		var b := UiKit.button(act[0], 15, "red" if act.size() > 2 and act[2] else "gray")
 		b.name = "Act_" + act[0]
-		b.custom_minimum_size = Vector2(96, 40)
+		b.custom_minimum_size = Vector2(100, 42)
 		var target: Dictionary = act[1]
 		b.pressed.connect(func():
 			move(source, target, amount[0])
 			_close_card())
 		acts.add_child(b)
-	var cancel := MenuStyle.button("取消", 15)
-	cancel.custom_minimum_size = Vector2(80, 40)
+	var cancel := UiKit.button("取消", 15)
+	cancel.custom_minimum_size = Vector2(80, 42)
 	cancel.pressed.connect(_close_card)
 	acts.add_child(cancel)
 	col.add_child(acts)
@@ -219,6 +219,37 @@ func card(source: Dictionary) -> void:
 	shade.add_child(panel)
 	panel.reset_size()
 	panel.position = (size - panel.size) / 2.0
+
+
+## A thing's tooltip lines, [text, colour]: a rod's numbers one per line
+## in white, what a bait or tool does in green (like an MMO's "use:").
+static func desc_lines(id: String) -> Array:
+	var def := Items.def(id)
+	var out := []
+	if id.begins_with("rod_"):
+		for part in Items.rod_effects(Profile.ROD_TIERS[int(id.substr(4))]).split("、"):
+			out.append([part, UiKit.TEXT])
+		out.append(["裝備：換上後，下一輪釣魚就用這支", UiKit.USE])
+	elif def.get("desc", "") != "":
+		out.append(["使用：" + def.desc, UiKit.USE])
+	return out
+
+
+## A thing's picture in a slot (a Control): the square, its rarity ring,
+## the picture.
+static func icon_box(id: String, side := 64.0) -> Control:
+	var box := ItemIcon.new()
+	box.id = id
+	box.custom_minimum_size = Vector2(side, side)
+	return box
+
+
+class ItemIcon extends Control:
+	var id := ""
+	var count := 0
+
+	func _draw() -> void:
+		ItemBoard.draw_item(self, Rect2(Vector2.ZERO, size), id, count, get_theme_default_font())
 
 
 ## What a tapped thing can do on this page: [label, target, main?]. The
@@ -244,14 +275,21 @@ func _close_card() -> void:
 		_card = null
 
 
-## Draws one thing in a box: its tab's colour, its picture, its count.
-static func draw_item(ci: CanvasItem, r: Rect2, id: String, count: int, font: Font, lit := false, named := false) -> void:
+## Draws one thing in a slot: the sunken square with its rarity's ring, a
+## soft glow of its kind's colour, its picture, its count (and its name,
+## `named`, along the bottom).
+static func draw_item(ci: CanvasItem, r: Rect2, id: String, count: int, _font: Font, lit := false, named := false) -> void:
 	var def := Items.def(id)
+	var rarity := UiKit.item_rarity(id)
+	UiKit.draw_slot(ci, r, rarity, lit)
 	var col: Color = TAB_COLORS.get(def.get("tab", "other"), Color.GRAY)
-	ci.draw_rect(r, col.darkened(0.25) if not lit else col.lightened(0.15))
+	var inner := r.grow(-4.0)
+	ci.draw_texture_rect(UiKit.glow(), inner, false, Color(col.lightened(0.35), 0.45))
 	var tex := Items.icon(id)
 	if tex != null:
-		var room := r.grow(-4.0)
+		var room := inner.grow(-3.0)
+		if named:
+			room.size.y -= 12.0
 		var long := float(tex.get_width()) / tex.get_height()
 		if long > 2.2 and room.size.x / room.size.y < 1.6:
 			# A long thing in a square box: laid corner to corner.
@@ -264,13 +302,12 @@ static func draw_item(ci: CanvasItem, r: Rect2, id: String, count: int, font: Fo
 			var k := minf(room.size.x / tex.get_width(), room.size.y / tex.get_height())
 			var sz := Vector2(tex.get_size()) * k
 			ci.draw_texture_rect(tex, Rect2(room.get_center() - sz / 2.0, sz), false)
-	ci.draw_rect(r, Color(1.0, 0.9, 0.6) if lit else Color(1, 1, 1, 0.25), false, 2.0 if lit else 1.0)
 	if named:
-		ci.draw_string(font, r.position + Vector2(4, 13), def.get("name", ""), HORIZONTAL_ALIGNMENT_LEFT,
-			r.size.x - 6.0, 11, Color(1, 1, 1, 0.85))
+		UiKit.draw_text(ci, Vector2(r.position.x, r.end.y - 6.0), def.get("name", ""), 11,
+			UiKit.rarity_color(rarity), HORIZONTAL_ALIGNMENT_CENTER, r.size.x)
 	if count > 1:
-		ci.draw_string(font, r.position + Vector2(0, r.size.y - 4), "×%d" % count, HORIZONTAL_ALIGNMENT_RIGHT,
-			r.size.x - 4.0, 13, Color.WHITE)
+		UiKit.draw_text(ci, Vector2(r.position.x, r.end.y - (18.0 if named else 5.0)), str(count), 14, Color.WHITE,
+			HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 6.0)
 
 
 ## The bag: Inventory's grid with what's packed where it's packed.
@@ -318,9 +355,7 @@ class BagGrid extends Control:
 		var font := get_theme_default_font()
 		for x in Inventory.COLS:
 			for y in Inventory.ROWS:
-				var r := Rect2(Vector2(x, y) * cell, Vector2.ONE * cell).grow(-1.5)
-				draw_rect(r, Color(1, 1, 1, 0.05))
-				draw_rect(r, Color(1, 1, 1, 0.12), false, 1.0)
+				UiKit.draw_slot(self, Rect2(Vector2(x, y) * cell, Vector2.ONE * cell).grow(-1.5))
 		for i in Profile.bag.size():
 			var e: Dictionary = Profile.bag[i]
 			var r := Rect2(Vector2(e.cell) * cell, Vector2(Items.size_of(e.id)) * cell).grow(-3.0)
@@ -389,17 +424,16 @@ class StorageGrid extends Control:
 			var r := box(i)
 			if r.end.y > size.y + 1.0:
 				break
-			draw_rect(r, Color(1, 1, 1, 0.04))
-			draw_rect(r, Color(1, 1, 1, 0.1), false, 1.0)
+			UiKit.draw_slot(self, r)
 		for i in list.size():
 			ItemBoard.draw_item(self, box(i), list[i], Profile.stored(list[i]), font, false, true)
 		if list.is_empty():
-			draw_string(font, Vector2(0, cell * 0.6), "這裡還沒有東西", HORIZONTAL_ALIGNMENT_CENTER, size.x, 15,
-				Color(1, 1, 1, 0.35))
+			UiKit.draw_text(self, Vector2(0, cell * 0.6), "這裡還沒有東西", 15, UiKit.DIM, HORIZONTAL_ALIGNMENT_CENTER, size.x)
 
 
 ## An equipment slot: what's worn there, or its name greyed.
 class SlotBox extends Control:
+	const LAMP_ICON := "res://assets/sprites/items/oil_lamp.png"
 	var board: ItemBoard
 	var slot := "rod"
 	var title := ""
@@ -432,20 +466,39 @@ class SlotBox extends Control:
 			board.pressed({"from": "slot", "id": worn(), "slot": slot}, event.global_position)
 			accept_event()
 
+	## The slot as a square on the left (the thing worn, or the slot's
+	## faint mark), its name and the thing's beside it - like a paper doll's
+	## slot with its label.
 	func _draw() -> void:
-		var font := get_theme_default_font()
-		var r := Rect2(Vector2.ZERO, size)
-		draw_rect(r, Color(0.1, 0.095, 0.09, 0.9 if not locked else 0.5))
-		draw_rect(r, MenuStyle.GOLD if _lit else MenuStyle.EDGE, false, 2.0 if _lit else 1.0)
-		draw_string(font, Vector2(8, 16), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, MenuStyle.DIM)
-		if locked:
-			draw_string(font, Vector2(0, size.y / 2.0 + 8), "即將推出", HORIZONTAL_ALIGNMENT_CENTER, size.x, 13,
-				Color(1, 1, 1, 0.35))
-			return
+		var side := minf(size.y, size.x)
+		var sq := Rect2(Vector2.ZERO, Vector2(side, side))
 		var id := worn()
-		if id == "":
-			draw_string(font, Vector2(0, size.y / 2.0 + 8), "（空）", HORIZONTAL_ALIGNMENT_CENTER, size.x, 13,
-				Color(1, 1, 1, 0.35))
+		var text_x := side + 10.0
+		if locked:
+			UiKit.draw_slot(self, sq)
+			draw_rect(sq.grow(-4.0), Color(0, 0, 0, 0.45))
+			_lock(sq.get_center())
+		elif id == "":
+			UiKit.draw_slot(self, sq, "", _lit)
+			if slot == "light":
+				# Nothing worn: the oil lamp every run starts with.
+				var lamp: Texture2D = load(LAMP_ICON)
+				var room := sq.grow(-9.0)
+				var k := minf(room.size.x / lamp.get_width(), room.size.y / lamp.get_height())
+				var sz := Vector2(lamp.get_size()) * k
+				draw_texture_rect(lamp, Rect2(room.get_center() - sz / 2.0, sz), false, Color(1, 1, 1, 0.8))
+		else:
+			ItemBoard.draw_item(self, sq, id, 1, null, _lit)
+		if size.x - side < 50.0:
 			return
-		ItemBoard.draw_item(self, Rect2(6, 22, size.x - 12, size.y - 44), id, 1, font)
-		draw_string(font, Vector2(0, size.y - 7), Items.name_of(id), HORIZONTAL_ALIGNMENT_CENTER, size.x, 14, MenuStyle.TEXT)
+		UiKit.draw_text(self, Vector2(text_x, side * 0.5 - 4.0), title, 13, UiKit.DIM)
+		var line := "即將推出" if locked else ("（空）" if id == "" else Items.name_of(id))
+		if slot == "light" and id == "" and not locked:
+			line = "煤燈（隨身）"
+		var col := UiKit.DIM if locked or id == "" else UiKit.rarity_color(UiKit.item_rarity(id))
+		UiKit.draw_text(self, Vector2(text_x, side * 0.5 + 16.0), line, 16, col, HORIZONTAL_ALIGNMENT_LEFT, size.x - text_x, true)
+
+	func _lock(c: Vector2) -> void:
+		var ink := Color(0.6, 0.56, 0.5, 0.8)
+		draw_arc(c + Vector2(0, -4), 7.0, PI, TAU, 16, ink, 2.5)
+		draw_rect(Rect2(c + Vector2(-9, -4), Vector2(18, 14)), ink)

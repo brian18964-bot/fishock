@@ -1,0 +1,14 @@
+[remap]
+
+importer="image"
+type="Image"
+uid="uid://ca567yy0ivsyf"
+path="res://.godot/imported/btn_red_disabled.png-c9b962a2d457cf78b271ad4885bdabfb.image"
+
+[deps]
+
+source_file="res://assets/ui/btn_red_disabled.png"
+dest_files=["res://.godot/imported/btn_red_disabled.png-c9b962a2d457cf78b271ad4885bdabfb.image"]
+
+[params]
+

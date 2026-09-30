@@ -1,0 +1,14 @@
+[remap]
+
+importer="image"
+type="Image"
+uid="uid://enr0gykybblo"
+path="res://.godot/imported/frame.png-9671cf69952750673daa10046231c287.image"
+
+[deps]
+
+source_file="res://assets/ui/frame.png"
+dest_files=["res://.godot/imported/frame.png-9671cf69952750673daa10046231c287.image"]
+
+[params]
+

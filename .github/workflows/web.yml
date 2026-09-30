@@ -44,9 +44,10 @@ jobs:
         if: steps.templates.outputs.cache-hit != 'true'
         run: python3 tools/fetch_web_templates.py "$GODOT_VERSION"
 
-      # Browsers have no CJK system font; rebuild the bundled subset so any
-      # new Chinese text in scripts/scenes is covered.
-      - name: Rebuild Chinese font subset
+      # Browsers have no CJK system font; rebuild the bundled subsets (the
+      # WenKai UI face, fetched from Google Fonts, and the Noto fallback) so
+      # any new Chinese text in scripts/scenes is covered.
+      - name: Rebuild Chinese font subsets
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq fonts-noto-cjk

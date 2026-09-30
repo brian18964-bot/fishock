@@ -1,0 +1,14 @@
+[remap]
+
+importer="image"
+type="Image"
+uid="uid://go7xmv71l2g2"
+path="res://.godot/imported/btn_gray_disabled.png-9df37428d78e939ed71b088dcdf05bd9.image"
+
+[deps]
+
+source_file="res://assets/ui/btn_gray_disabled.png"
+dest_files=["res://.godot/imported/btn_gray_disabled.png-9df37428d78e939ed71b088dcdf05bd9.image"]
+
+[params]
+

@@ -13,7 +13,7 @@ const WATER_NAMES := {
 }
 const TRAIT_NAMES := {"calm": "溫和", "normal": "普通", "wild": "兇猛"}
 const HABIT_NAMES := {"cover": "會往障礙物鑽", "jumper": "愛跳出水面"}
-const CELL := Vector2(96, 92)
+const CELL := Vector2(96, 98)
 
 var _rows: VBoxContainer
 var _count: Label
@@ -25,34 +25,25 @@ func _ready() -> void:
 
 
 func _build() -> void:
-	var bg := ColorRect.new()
-	bg.color = Color(0.04, 0.045, 0.07)
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(bg)
-	var back := MenuStyle.button("‹ 返回", 16)
-	back.name = "BackButton"
-	back.position = Vector2(16, 12)
-	back.custom_minimum_size = Vector2(96, 40)
-	back.pressed.connect(_on_back_pressed)
-	add_child(back)
-	add_child(_at(MenuStyle.label("魚類圖鑑", 26, MenuStyle.GOLD), Vector2(130, 14)))
-	_count = MenuStyle.label("", 16, MenuStyle.DIM)
-	add_child(_at(_count, Vector2(760, 22)))
-
+	UiKit.page_chrome(self, _on_back_pressed, "BackButton")
+	var made := UiKit.window("魚類圖鑑")
+	var book: PanelContainer = made[0]
+	var col: VBoxContainer = made[1]
+	book.position = Vector2(14, 56)
+	book.custom_minimum_size = Vector2(932, 474)
+	book.size = book.custom_minimum_size
+	_count = UiKit.label("", 15, UiKit.DIM)
+	_count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(_count)
 	var scroll := ScrollContainer.new()
-	scroll.position = Vector2(16, 64)
-	scroll.size = Vector2(928, 468)
+	scroll.custom_minimum_size = Vector2(890, 376)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_rows = VBoxContainer.new()
 	_rows.name = "RowsContainer"
 	_rows.add_theme_constant_override("separation", 6)
 	scroll.add_child(_rows)
-	add_child(scroll)
-
-
-func _at(c: Control, pos: Vector2) -> Control:
-	c.position = pos
-	return c
+	col.add_child(scroll)
+	add_child(book)
 
 
 func _rebuild_rows() -> void:
@@ -64,67 +55,76 @@ func _rebuild_rows() -> void:
 			caught += 1
 	_count.text = "已收集 %d / %d" % [caught, FishData.FISH.size()]
 
-	_section("淡水・各地都有", FishData.COMMON_FRESH, "")
+	_section("淡水・各地都有", FishData.COMMON_FRESH)
 	for key in FishData.STYLE_FISH:
 		var own: Array = FishData.STYLE_FISH[key][0].duplicate()
 		own.append(FishData.STYLE_FISH[key][1])
-		_section("淡水・" + WATER_NAMES.get(key, key), own, FishData.STYLE_FISH[key][1])
-	_section("海水", FishData.SEA_COMMON, "")
+		_section("淡水・" + WATER_NAMES.get(key, key), own)
+	_section("海水", FishData.SEA_COMMON)
 	var rare: Array = FishData.SEA_RARE + FishData.SEA_LEGEND
-	_section("海水・稀有", rare, "")
+	_section("海水・稀有", rare)
 
 
-## One group: its title, then its fish in rows of nine. `rarest` gets a
-## gold edge (the sea's rare ones all do).
-func _section(title: String, ids: Array, rarest: String) -> void:
-	_rows.add_child(MenuStyle.label(title, 16, MenuStyle.GOLD))
+## One group: its title, then its fish in rows of nine, each ringed by its
+## rarity (a water's rarest purple, the sea's legends orange).
+func _section(title: String, ids: Array) -> void:
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 10)
+	head.add_child(UiKit.label(title, 17, UiKit.GOLD, true))
+	var line := UiKit.divider(560)
+	line.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	head.add_child(line)
+	_rows.add_child(head)
 	var grid := GridContainer.new()
 	grid.columns = 9
 	grid.add_theme_constant_override("h_separation", 5)
 	grid.add_theme_constant_override("v_separation", 5)
 	for id in ids:
-		grid.add_child(_cell(id, id == rarest or title.ends_with("稀有")))
+		grid.add_child(_cell(id))
 	_rows.add_child(grid)
 
 
-func _cell(id: String, rare: bool) -> Control:
+func _cell(id: String) -> Control:
 	var def: Dictionary = FishData.FISH[id]
 	var entry: Dictionary = Profile.fish_log.get(def.name, {})
 	var have := not entry.is_empty()
-	var b := Button.new()
+	var b := LogCell.new()
 	b.name = "Fish_" + id
 	b.focus_mode = Control.FOCUS_NONE
 	b.custom_minimum_size = CELL
-	var edge := MenuStyle.GOLD if rare else MenuStyle.EDGE
-	var box := MenuStyle.box(Color(0.1, 0.095, 0.09, 0.9) if have else Color(0.06, 0.06, 0.07, 0.9), edge, 8, 2 if rare else 1)
-	for s in ["normal", "hover", "pressed"]:
-		b.add_theme_stylebox_override(s, box)
-	var col := VBoxContainer.new()
-	col.set_anchors_preset(Control.PRESET_FULL_RECT)
-	col.offset_left = 4
-	col.offset_right = -4
-	col.offset_top = 8
-	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	col.add_theme_constant_override("separation", 0)
-	var icon := TextureRect.new()
-	icon.texture = FishData.icon(id)
-	icon.custom_minimum_size = Vector2(0, 42)
-	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	if not have:
-		icon.modulate = Color(0, 0, 0, 0.75)
-	col.add_child(icon)
-	var n := MenuStyle.label(def.name if have else "？？？", 13, MenuStyle.TEXT if have else Color(1, 1, 1, 0.35))
-	n.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	col.add_child(n)
+	b.fish_id = id
+	b.have = have
+	b.count = int(entry.get("count", 0))
+	for st in ["normal", "hover", "pressed"]:
+		b.add_theme_stylebox_override(st, StyleBoxEmpty.new())
 	if have:
-		var c := MenuStyle.label("×%d" % int(entry.count), 11, MenuStyle.DIM)
-		c.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		col.add_child(c)
 		b.pressed.connect(func(): _card(id, entry))
-	b.add_child(col)
 	return b
+
+
+## A species in the log: a slot with its picture (a dark shape if never
+## caught) ringed by its rarity, its name under it.
+class LogCell extends Button:
+	var fish_id := ""
+	var have := false
+	var count := 0
+
+	func _draw() -> void:
+		var r := Rect2(Vector2(10, 2), Vector2(size.x - 20, size.x - 20))
+		var rarity := UiKit.fish_rarity({"id": fish_id})
+		UiKit.draw_slot(self, r, rarity if have else "")
+		var tex := FishData.icon(fish_id)
+		if tex != null:
+			var room := r.grow(-5.0)
+			var k := minf(room.size.x / tex.get_width(), room.size.y / tex.get_height())
+			var sz := Vector2(tex.get_size()) * k
+			draw_texture_rect(tex, Rect2(room.get_center() - sz / 2.0, sz), false,
+				Color.WHITE if have else Color(0, 0, 0, 0.8))
+		var name_text: String = FishData.FISH[fish_id].name if have else "？？？"
+		var col := UiKit.rarity_color(rarity) if have else Color(1, 1, 1, 0.35)
+		UiKit.draw_text(self, Vector2(0, size.y - 4), name_text, 13, col, HORIZONTAL_ALIGNMENT_CENTER, size.x)
+		if have and count > 0:
+			UiKit.draw_text(self, Vector2(0, r.end.y - 4), str(count), 12, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT, r.end.x - 4)
 
 
 func _card(id: String, entry: Dictionary) -> void:

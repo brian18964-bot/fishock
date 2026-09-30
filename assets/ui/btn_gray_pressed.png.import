@@ -1,0 +1,14 @@
+[remap]
+
+importer="image"
+type="Image"
+uid="uid://b3ttrgmfsapuk"
+path="res://.godot/imported/btn_gray_pressed.png-77a27ae63292d19a6ea2c705ed5de0b3.image"
+
+[deps]
+
+source_file="res://assets/ui/btn_gray_pressed.png"
+dest_files=["res://.godot/imported/btn_gray_pressed.png-77a27ae63292d19a6ea2c705ed5de0b3.image"]
+
+[params]
+

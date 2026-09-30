@@ -1,0 +1,14 @@
+[remap]
+
+importer="image"
+type="Image"
+uid="uid://5pxnmjuilshy"
+path="res://.godot/imported/divider.png-89465bed9aae46d609175abd88241b53.image"
+
+[deps]
+
+source_file="res://assets/ui/divider.png"
+dest_files=["res://.godot/imported/divider.png-89465bed9aae46d609175abd88241b53.image"]
+
+[params]
+

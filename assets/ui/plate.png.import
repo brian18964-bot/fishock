@@ -1,0 +1,14 @@
+[remap]
+
+importer="image"
+type="Image"
+uid="uid://dhtnkqklcwyn0"
+path="res://.godot/imported/plate.png-7961db8fba29d0df2de7a3a31b76148c.image"
+
+[deps]
+
+source_file="res://assets/ui/plate.png"
+dest_files=["res://.godot/imported/plate.png-7961db8fba29d0df2de7a3a31b76148c.image"]
+
+[params]
+

@@ -1,0 +1,14 @@
+[remap]
+
+importer="image"
+type="Image"
+uid="uid://mvp3860y2jn0"
+path="res://.godot/imported/frame_dark.png-21c26f701cb3917d1bc49cbc951578bf.image"
+
+[deps]
+
+source_file="res://assets/ui/frame_dark.png"
+dest_files=["res://.godot/imported/frame_dark.png-21c26f701cb3917d1bc49cbc951578bf.image"]
+
+[params]
+

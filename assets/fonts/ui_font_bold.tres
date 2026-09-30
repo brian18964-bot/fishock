@@ -1,0 +1,10 @@
+[gd_resource type="FontVariation" load_steps=4 format=3]
+
+[ext_resource type="FontFile" path="res://assets/fonts/Philosopher-Latin.ttf" id="1_latin"]
+[ext_resource type="FontFile" path="res://assets/fonts/WenKaiTC-Bold-subset.ttf" id="2_kai"]
+[ext_resource type="FontFile" path="res://assets/fonts/NotoSansTC-subset.otf" id="3_noto"]
+
+[resource]
+fallbacks = Array[Font]([ExtResource("2_kai"), ExtResource("3_noto")])
+base_font = ExtResource("1_latin")
+variation_embolden = 0.5

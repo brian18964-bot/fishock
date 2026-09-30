@@ -6,11 +6,13 @@ extends ItemBoard
 ## (or about the bag to rearrange it), or tap it for a card that moves as
 ## many as you choose. The warehouse has tabs - 裝備, 物品, 釣具, 其他;
 ## the bag doesn't.
+## Dressed as an MMO bank (user request): two iron-and-gold windows, the
+## warehouse's tabs along its top, sunken slots ringed by rarity.
 
 var _storage: ItemBoard.StorageGrid
 var _bag: ItemBoard.BagGrid
 var _tabs := {}
-var _gold: Label
+var _purse: PanelContainer
 var _used: Label
 
 
@@ -22,75 +24,58 @@ func _ready() -> void:
 
 
 func _build() -> void:
-	var bg := ColorRect.new()
-	bg.color = Color(0.04, 0.045, 0.07)
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(bg)
-	var back := MenuStyle.button("‹ 返回", 16)
-	back.name = "Back"
-	back.position = Vector2(16, 12)
-	back.custom_minimum_size = Vector2(96, 40)
-	back.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/title_screen.tscn"))
-	add_child(back)
-	var title := MenuStyle.label("倉庫", 26, MenuStyle.GOLD)
-	title.position = Vector2(130, 14)
-	add_child(title)
-	var purse := MenuStyle.panel()
-	purse.position = Vector2(800, 12)
-	purse.custom_minimum_size = Vector2(140, 0)
-	_gold = MenuStyle.label("", 18, MenuStyle.GOLD)
-	purse.add_child(_gold)
-	add_child(purse)
+	_purse = UiKit.page_chrome(self, _on_back)
 
 	# Left: the warehouse, by tab.
-	var left := MenuStyle.panel()
-	left.position = Vector2(16, 64)
-	left.custom_minimum_size = Vector2(452, 460)
-	var lcol := VBoxContainer.new()
-	lcol.add_theme_constant_override("separation", 8)
+	var made := UiKit.window("倉庫")
+	var left: PanelContainer = made[0]
+	var lcol: VBoxContainer = made[1]
+	left.name = "WarehouseWindow"
+	left.position = Vector2(14, 56)
+	left.custom_minimum_size = Vector2(454, 474)
 	var tabs := HBoxContainer.new()
 	tabs.add_theme_constant_override("separation", 6)
+	tabs.alignment = BoxContainer.ALIGNMENT_CENTER
 	for key in Items.TAB_ORDER:
-		var b := MenuStyle.button(Items.TABS[key], 15)
+		var b := UiKit.button(Items.TABS[key], 15)
 		b.name = "Tab_" + key
-		b.custom_minimum_size = Vector2(100, 38)
+		b.custom_minimum_size = Vector2(98, 38)
 		b.pressed.connect(func(): _show_tab(key))
 		tabs.add_child(b)
 		_tabs[key] = b
 	lcol.add_child(tabs)
-	_storage = ItemBoard.StorageGrid.new(6, 71.0)
+	_storage = ItemBoard.StorageGrid.new(6, 68.0)
 	_storage.name = "Storage"
-	_storage.custom_minimum_size = Vector2(426, 355)
+	_storage.custom_minimum_size = Vector2(408, 340)
+	_storage.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	lcol.add_child(_storage)
-	lcol.add_child(MenuStyle.label("商城買的東西會放在這裡", 12, Color(1, 1, 1, 0.4)))
-	left.add_child(lcol)
+	var note := UiKit.label("商城買的東西會放在這裡", 13, UiKit.DIM)
+	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lcol.add_child(note)
 	add_child(left)
 	track(_storage)
 
 	# Right: the bag.
-	var right := MenuStyle.panel()
-	right.position = Vector2(480, 64)
-	right.custom_minimum_size = Vector2(464, 460)
-	var rcol := VBoxContainer.new()
-	rcol.add_theme_constant_override("separation", 8)
-	var head := HBoxContainer.new()
-	head.add_child(MenuStyle.label("背包（帶進下一輪）", 18, MenuStyle.GOLD))
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(spacer)
-	_used = MenuStyle.label("", 14, MenuStyle.DIM)
-	head.add_child(_used)
-	rcol.add_child(head)
+	var made2 := UiKit.window("背包・帶進下一輪")
+	var right: PanelContainer = made2[0]
+	var rcol: VBoxContainer = made2[1]
+	right.name = "BagWindow"
+	right.position = Vector2(478, 56)
+	right.custom_minimum_size = Vector2(468, 474)
+	_used = UiKit.label("", 14, UiKit.DIM)
+	_used.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	rcol.add_child(_used)
 	_bag = ItemBoard.BagGrid.new(54.0)
 	_bag.name = "Bag"
+	_bag.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	rcol.add_child(_bag)
-	for line in ["拖曳可以在倉庫和背包之間搬，或在背包裡換位置", "點一下物品可以選數量",
-			"背包裡的東西會帶進遊戲；釣到的魚、餌料在遊戲中會放進空格"]:
-		var l := MenuStyle.label("・" + line, 13, MenuStyle.DIM)
+	rcol.add_child(UiKit.divider(360))
+	for line in ["拖曳物品可以在倉庫和背包之間搬，或在背包裡換位置", "點一下物品看說明、選數量",
+			"背包裡的東西會帶進遊戲；釣到的魚、餌料會放進空格"]:
+		var l := UiKit.label(line, 14, UiKit.DIM)
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		l.custom_minimum_size.x = 430
+		l.custom_minimum_size.x = 420
 		rcol.add_child(l)
-	right.add_child(rcol)
 	add_child(right)
 	track(_bag)
 	_show_tab("gear")
@@ -99,15 +84,12 @@ func _build() -> void:
 func _show_tab(key: String) -> void:
 	_storage.tab = key
 	for k in _tabs:
-		var on: bool = k == key
-		var b: Button = _tabs[k]
-		b.add_theme_stylebox_override("normal", MenuStyle.box(Color(0.3, 0.2, 0.08, 0.95) if on
-			else Color(0.1, 0.095, 0.09, 0.9), MenuStyle.GOLD if on else MenuStyle.EDGE, 12, 2 if on else 1))
+		UiKit.style_tab(_tabs[k], k == key)
 	_storage.queue_redraw()
 
 
 func _refresh() -> void:
-	_gold.text = "金幣  %d" % Profile.gold
+	UiKit.set_purse(_purse, Profile.gold)
 	var cells := 0
 	for e in Profile.bag:
 		var sz := Items.size_of(e.id)
@@ -119,3 +101,7 @@ func _refresh() -> void:
 		for id in Profile.storage_ids(k):
 			n += Profile.stored(id)
 		(_tabs[k] as Button).text = Items.TABS[k] + (" %d" % n if n > 0 else "")
+
+
+func _on_back() -> void:
+	get_tree().change_scene_to_file("res://scenes/title_screen.tscn")

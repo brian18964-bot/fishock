@@ -1,0 +1,14 @@
+[remap]
+
+importer="image"
+type="Image"
+uid="uid://36pxso2xknnm"
+path="res://.godot/imported/btn_gray_hover.png-56b0bcde228afaa6df9b20b14cdc49fc.image"
+
+[deps]
+
+source_file="res://assets/ui/btn_gray_hover.png"
+dest_files=["res://.godot/imported/btn_gray_hover.png-56b0bcde228afaa6df9b20b14cdc49fc.image"]
+
+[params]
+

@@ -9,7 +9,7 @@ extends Control
 ## by the weed, lazy ones barely move, jumpers leap, gluttons get to the
 ## food first. Tap a fish, in the tank or the list, for its card.
 
-const TANK := Rect2(16, 64, 590, 460)
+const TANK := Rect2(24, 66, 580, 454)
 ## The water inside the glass (tank-local).
 const WATER := Rect2(10, 26, 570, 380)
 const SAND_H := 44.0
@@ -19,7 +19,7 @@ const WATER_BOTTOM := Color(0.03, 0.1, 0.16)
 var _tank: TankView
 var _list: VBoxContainer
 var _count: Label
-var _gold: Label
+var _purse: PanelContainer
 var _card: Control
 
 
@@ -31,39 +31,28 @@ func _ready() -> void:
 
 
 func _build() -> void:
-	var bg := ColorRect.new()
-	bg.color = Color(0.04, 0.045, 0.07)
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(bg)
-	var back := MenuStyle.button("‹ 返回", 16)
-	back.name = "Back"
-	back.position = Vector2(16, 12)
-	back.custom_minimum_size = Vector2(96, 40)
-	back.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/title_screen.tscn"))
-	add_child(back)
-	var title := MenuStyle.label("魚缸", 26, MenuStyle.GOLD)
-	title.position = Vector2(130, 14)
-	add_child(title)
+	_purse = UiKit.page_chrome(self, func(): get_tree().change_scene_to_file("res://scenes/title_screen.tscn"))
 	# User request: the fish log is here now (not on the main screen).
-	var book := MenuStyle.button("圖鑑", 15)
+	var book := UiKit.button("圖鑑", 15)
 	book.name = "FishLog"
-	book.position = Vector2(604, 12)
-	book.custom_minimum_size = Vector2(88, 40)
+	book.position = Vector2(592, 12)
+	book.custom_minimum_size = Vector2(100, 38)
 	book.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/fish_log.tscn"))
 	add_child(book)
-	var feed := MenuStyle.button("餵食", 15, true)
+	var feed := UiKit.button("餵食", 15, "red")
 	feed.name = "Feed"
 	feed.position = Vector2(700, 12)
-	feed.custom_minimum_size = Vector2(88, 40)
+	feed.custom_minimum_size = Vector2(100, 38)
 	feed.pressed.connect(func(): _tank.feed())
 	add_child(feed)
-	var purse := MenuStyle.panel()
-	purse.position = Vector2(800, 12)
-	purse.custom_minimum_size = Vector2(140, 0)
-	_gold = MenuStyle.label("", 18, MenuStyle.GOLD)
-	purse.add_child(_gold)
-	add_child(purse)
 
+	# The tank in its own frame.
+	var frame := PanelContainer.new()
+	frame.add_theme_stylebox_override("panel", UiKit.frame_box(true))
+	frame.position = TANK.position - Vector2(10, 10)
+	frame.size = TANK.size + Vector2(20, 20)
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(frame)
 	_tank = TankView.new()
 	_tank.name = "Tank"
 	_tank.position = TANK.position
@@ -71,27 +60,27 @@ func _build() -> void:
 	_tank.picked.connect(_card_for)
 	add_child(_tank)
 
-	var right := MenuStyle.panel()
-	right.position = Vector2(618, 64)
-	right.custom_minimum_size = Vector2(326, 460)
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 6)
-	_count = MenuStyle.label("", 16, MenuStyle.GOLD)
+	var made := UiKit.window("魚缸")
+	var right: PanelContainer = made[0]
+	var col: VBoxContainer = made[1]
+	right.position = Vector2(622, 56)
+	right.custom_minimum_size = Vector2(324, 474)
+	_count = UiKit.label("", 15, UiKit.DIM)
+	_count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(_count)
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(302, 408)
+	scroll.custom_minimum_size = Vector2(288, 376)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_list = VBoxContainer.new()
 	_list.name = "List"
 	_list.add_theme_constant_override("separation", 4)
 	scroll.add_child(_list)
 	col.add_child(scroll)
-	right.add_child(col)
 	add_child(right)
 
 
 func _refresh_gold() -> void:
-	_gold.text = "金幣  %d" % Profile.gold
+	UiKit.set_purse(_purse, Profile.gold)
 
 
 func _rebuild() -> void:
@@ -99,54 +88,68 @@ func _rebuild() -> void:
 	for c in _list.get_children():
 		c.queue_free()
 	if Profile.tank.is_empty():
-		var l := MenuStyle.label("還沒有魚。從遊戲裡帶著漁獲成功逃出來，魚就會放進這裡。", 14, MenuStyle.DIM)
+		var l := UiKit.label("還沒有魚。從遊戲裡帶著漁獲成功逃出來，魚就會放進這裡。", 15, UiKit.DIM)
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		l.custom_minimum_size.x = 290
+		l.custom_minimum_size.x = 280
 		_list.add_child(l)
 	for i in Profile.tank.size():
 		_list.add_child(_row(i))
 	_tank.stock()
 
 
+## A fish in the list: its picture in a slot ringed by its rarity, its
+## name in that colour, its trait and size.
 func _row(i: int) -> Control:
 	var f: Dictionary = Profile.tank[i]
+	var rarity := UiKit.fish_rarity(f)
 	var b := Button.new()
 	b.name = "Fish_%d" % i
 	b.focus_mode = Control.FOCUS_NONE
-	b.custom_minimum_size = Vector2(296, 52)
-	var box := MenuStyle.box(Color(0.1, 0.095, 0.09, 0.9), MenuStyle.EDGE, 8)
-	for s in ["normal", "hover", "pressed"]:
-		b.add_theme_stylebox_override(s, box)
+	b.custom_minimum_size = Vector2(284, 58)
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color(0, 0, 0, 0.35)
+	box.border_color = Color(0.3, 0.28, 0.25, 0.8)
+	box.set_border_width_all(1)
+	box.set_corner_radius_all(4)
+	var hover := box.duplicate()
+	hover.bg_color = Color(0.22, 0.17, 0.08, 0.6)
+	b.add_theme_stylebox_override("normal", box)
+	b.add_theme_stylebox_override("hover", hover)
+	b.add_theme_stylebox_override("pressed", hover)
 	b.pressed.connect(_card_for.bind(i))
 	var row := HBoxContainer.new()
 	row.set_anchors_preset(Control.PRESET_FULL_RECT)
-	row.offset_left = 6
+	row.offset_left = 4
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_theme_constant_override("separation", 8)
-	var pic := TextureRect.new()
-	pic.texture = FishData.icon(f.get("id", ""), f.get("name", ""))
-	pic.custom_minimum_size = Vector2(76, 38)
-	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	var pic := FishIcon.new()
+	pic.fish = f
+	pic.custom_minimum_size = Vector2(50, 50)
+	pic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(pic)
 	var words := VBoxContainer.new()
 	words.alignment = BoxContainer.ALIGNMENT_CENTER
-	words.add_theme_constant_override("separation", -2)
+	words.add_theme_constant_override("separation", 0)
 	words.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var top := MenuStyle.label("%s　%s" % [f.get("name", "魚"), FishData.trait_name(f.get("tank_trait", ""))], 15)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 8)
+	top.add_child(UiKit.label(f.get("name", "魚"), 16, UiKit.rarity_color(rarity), true))
+	top.add_child(UiKit.label(FishData.trait_name(f.get("tank_trait", "")), 13, UiKit.USE))
 	words.add_child(top)
-	words.add_child(MenuStyle.label(FishData.size_text(f), 12, MenuStyle.DIM))
+	words.add_child(UiKit.label(FishData.size_text(f), 13, UiKit.DIM))
 	row.add_child(words)
 	b.add_child(row)
 	return b
 
 
-## A fish's card: its picture, measurements, trait, price; sell or trade.
+## A fish's card (its tooltip): picture, name, measurements, trait, price;
+## sell or trade.
 func _card_for(i: int) -> void:
 	if _card != null or i < 0 or i >= Profile.tank.size():
 		return
 	var f: Dictionary = Profile.tank[i]
+	var rarity := UiKit.fish_rarity(f)
 	var shade := ColorRect.new()
 	shade.color = Color(0, 0, 0, 0.5)
 	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -155,40 +158,47 @@ func _card_for(i: int) -> void:
 			_close())
 	add_child(shade)
 	_card = shade
-	var panel := MenuStyle.panel(Color(0.08, 0.075, 0.07, 0.97))
-	panel.custom_minimum_size = Vector2(400, 0)
+	var panel := UiKit.tooltip_panel()
+	panel.custom_minimum_size = Vector2(420, 0)
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 6)
+	col.add_theme_constant_override("separation", 5)
 	var pic := TextureRect.new()
 	pic.texture = FishData.icon(f.get("id", ""), f.get("name", ""))
 	pic.custom_minimum_size = Vector2(0, 110)
 	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	col.add_child(pic)
-	col.add_child(MenuStyle.label(f.get("name", "魚"), 22, MenuStyle.GOLD))
-	col.add_child(MenuStyle.label("長度・重量：" + FishData.size_text(f), 15))
+	col.add_child(UiKit.label(f.get("name", "魚"), 22, UiKit.rarity_color(rarity), true))
+	col.add_child(UiKit.label(UiKit.rarity_name(rarity) + " 魚", 14, UiKit.rarity_color(rarity)))
+	col.add_child(UiKit.divider(360))
+	col.add_child(UiKit.label("長度・重量：" + FishData.size_text(f), 15))
 	var t: String = f.get("tank_trait", "")
-	var tl := MenuStyle.label("特性：%s－%s" % [FishData.trait_name(t), FishData.TANK_TRAITS.get(t, ["", ""])[1]], 15)
+	var tl := UiKit.label("特性：%s－%s" % [FishData.trait_name(t), FishData.TANK_TRAITS.get(t, ["", ""])[1]], 15, UiKit.USE)
+	tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tl.custom_minimum_size.x = 390
 	col.add_child(tl)
 	var price := maxi(1, roundi(float(f.get("value", 0.0))))
-	col.add_child(MenuStyle.label("售價：%d 金幣" % price, 15, MenuStyle.DIM))
+	var pr := HBoxContainer.new()
+	pr.add_child(UiKit.label("售價：", 15))
+	pr.add_child(UiKit.gold_label(price, 15))
+	col.add_child(pr)
 	var acts := HBoxContainer.new()
 	acts.add_theme_constant_override("separation", 8)
 	acts.alignment = BoxContainer.ALIGNMENT_END
-	var sell := MenuStyle.button("販售 +%d" % price, 15, true)
+	var sell := UiKit.button("販售 +%d" % price, 15, "red")
 	sell.name = "Sell"
-	sell.custom_minimum_size = Vector2(110, 40)
+	sell.custom_minimum_size = Vector2(110, 42)
 	sell.pressed.connect(func():
 		Profile.sell_from_tank(i)
 		_close()
 		_rebuild())
 	acts.add_child(sell)
-	var trade := MenuStyle.button("交換（多人連線開放後）", 13)
+	var trade := UiKit.button("交換（多人連線後）", 13)
 	trade.disabled = true
-	trade.custom_minimum_size = Vector2(150, 40)
+	trade.custom_minimum_size = Vector2(150, 42)
 	acts.add_child(trade)
-	var close := MenuStyle.button("關閉", 15)
-	close.custom_minimum_size = Vector2(70, 40)
+	var close := UiKit.button("關閉", 15)
+	close.custom_minimum_size = Vector2(70, 42)
 	close.pressed.connect(_close)
 	acts.add_child(close)
 	col.add_child(acts)
@@ -202,6 +212,22 @@ func _close() -> void:
 	if _card != null:
 		_card.queue_free()
 		_card = null
+
+
+## A fish's picture in a slot ringed by its rarity.
+class FishIcon extends Control:
+	var fish := {}
+
+	func _draw() -> void:
+		var r := Rect2(Vector2.ZERO, size)
+		UiKit.draw_slot(self, r, UiKit.fish_rarity(fish))
+		var tex := FishData.icon(fish.get("id", ""), fish.get("name", ""))
+		if tex == null:
+			return
+		var room := r.grow(-5.0)
+		var k := minf(room.size.x / tex.get_width(), room.size.y / tex.get_height())
+		var sz := Vector2(tex.get_size()) * k
+		draw_texture_rect(tex, Rect2(room.get_center() - sz / 2.0, sz), false)
 
 
 ## The tank: glass, water, sand, weed and bubbles, and the fish in it.

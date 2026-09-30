@@ -1,0 +1,14 @@
+[remap]
+
+importer="image"
+type="Image"
+uid="uid://bvvk8yb28g086"
+path="res://.godot/imported/btn_red_pressed.png-15962bda487986694aa0a54a07666e2e.image"
+
+[deps]
+
+source_file="res://assets/ui/btn_red_pressed.png"
+dest_files=["res://.godot/imported/btn_red_pressed.png-15962bda487986694aa0a54a07666e2e.image"]
+
+[params]
+

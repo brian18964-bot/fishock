@@ -1,0 +1,14 @@
+[remap]
+
+importer="image"
+type="Image"
+uid="uid://cg7q00mgx4tl4"
+path="res://.godot/imported/bar_frame.png-017dc8b68bb9eefb253330a5d2018768.image"
+
+[deps]
+
+source_file="res://assets/ui/bar_frame.png"
+dest_files=["res://.godot/imported/bar_frame.png-017dc8b68bb9eefb253330a5d2018768.image"]
+
+[params]
+

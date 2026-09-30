@@ -1,0 +1,14 @@
+[remap]
+
+importer="image"
+type="Image"
+uid="uid://c3pj4wr3txiqx"
+path="res://.godot/imported/parchment.png-257eae38700f82c9ae4565773e254a85.image"
+
+[deps]
+
+source_file="res://assets/ui/parchment.png"
+dest_files=["res://.godot/imported/parchment.png-257eae38700f82c9ae4565773e254a85.image"]
+
+[params]
+

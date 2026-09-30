@@ -1,0 +1,14 @@
+[remap]
+
+importer="image"
+type="Image"
+uid="uid://b7x70uh80sbj6"
+path="res://.godot/imported/btn_red_hover.png-696ab50620957fcdab7619ff1bfbec56.image"
+
+[deps]
+
+source_file="res://assets/ui/btn_red_hover.png"
+dest_files=["res://.godot/imported/btn_red_hover.png-696ab50620957fcdab7619ff1bfbec56.image"]
+
+[params]
+

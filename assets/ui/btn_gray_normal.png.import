@@ -1,0 +1,14 @@
+[remap]
+
+importer="image"
+type="Image"
+uid="uid://toyqrndmrc5k"
+path="res://.godot/imported/btn_gray_normal.png-a78ef7c1b80c91128031e88aead6c94d.image"
+
+[deps]
+
+source_file="res://assets/ui/btn_gray_normal.png"
+dest_files=["res://.godot/imported/btn_gray_normal.png-a78ef7c1b80c91128031e88aead6c94d.image"]
+
+[params]
+
