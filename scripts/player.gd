@@ -1630,6 +1630,7 @@ func _succeed_catch() -> void:
 		fish.merge(FishData.measure(fish_id, fish.size))
 		fish.value = FishData.value_for_length(fish_id, float(fish.value), fish.length)
 		fish["tank_trait"] = FishData.roll_tank_trait(fish_id)
+		fish["rarity"] = "epic" if is_epic_catch else ("rare" if is_rare_catch else "common")
 		# User request: the catch card calls out a first catch of a kind
 		# (NEW), a trait not seen on it before, and a record size (BIGGER).
 		var seen: Dictionary = Profile.fish_log.get(fish.name, {})

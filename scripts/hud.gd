@@ -94,6 +94,8 @@ func _build_top() -> void:
 	_energy_view.name = "EnergyView"
 	_energy_view.lantern = _lantern
 	$Panel.add_child(_energy_view)
+	# User request: no narrating text lines.
+	message_label.visible = false
 	message_label.position = Vector2(180, 50)
 	message_label.size = Vector2(600, 24)
 	message_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -278,14 +280,16 @@ class QuotaView extends Control:
 			draw_string(font, Vector2(0, 33), under, HORIZONTAL_ALIGNMENT_CENTER, W, 16, col)
 
 
-## The light, top right: its energy as a percentage, and a brightness bar
-## to drag (the light dims by itself as the energy runs down; brighter
-## burns faster).
+## The light, top right: its brightness as a percentage (drag across it
+## to turn it up or down) and its energy as a bar under it. The light dims
+## by itself once the energy's low (Lantern.AUTO_DIM_BELOW); brighter
+## burns faster.
 class EnergyView extends Control:
 	const W := 176.0
-	const TRACK := Rect2(44, 40, 118, 8)
+	const BAR := Rect2(84, 41, 82, 9)
 	var lantern: Lantern
 	var _dragging := false
+	var _drag_x := 0.0
 
 	func _ready() -> void:
 		position = Vector2(960.0 - W - 12.0, 6)
@@ -295,17 +299,18 @@ class EnergyView extends Control:
 
 	func _gui_input(event: InputEvent) -> void:
 		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
-			_dragging = event.pressed and event.position.y > 28.0
-			if _dragging:
-				_set_from(event.position.x)
+			_dragging = event.pressed
+			_drag_x = event.position.x
 			accept_event()
 		elif event is InputEventMouseMotion and _dragging:
-			_set_from(event.position.x)
+			if lantern != null and lantern.lit:
+				lantern.set_brightness_share(lantern.brightness_share() + (event.position.x - _drag_x) / 120.0)
+			_drag_x = event.position.x
 			accept_event()
 
 	func _set_from(x: float) -> void:
 		if lantern != null and lantern.lit:
-			lantern.set_brightness_share((x - TRACK.position.x) / TRACK.size.x)
+			lantern.set_brightness_share((x - BAR.position.x) / BAR.size.x)
 
 	func _draw() -> void:
 		if lantern == null:
@@ -317,22 +322,22 @@ class EnergyView extends Control:
 		box.set_border_width_all(1)
 		box.set_corner_radius_all(10)
 		draw_style_box(box, Rect2(Vector2.ZERO, size))
-		var share := lantern.energy_share()
 		var ink := Color(1, 0.97, 0.9)
-		var warm := Color(1.0, 0.8, 0.45)
 		var low := Color(1.0, 0.45, 0.4)
-		var name := "煤燈" if lantern.tool == Lantern.Tool.LAMP else "手電筒"
-		draw_string(font, Vector2(10, 22), "能源・" + name, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(ink, 0.7))
-		var pct := "熄滅" if not lantern.lit else "%d%%" % roundi(share * 100.0)
+		# Brightness, as a percentage.
+		draw_string(font, Vector2(10, 22), "亮度", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(ink, 0.7))
+		var pct := "熄滅" if not lantern.lit else "%d%%" % roundi(lantern.brightness_share() * 100.0)
 		draw_string_outline(font, Vector2(0, 25), pct, HORIZONTAL_ALIGNMENT_RIGHT, W - 12.0, 22, 3, Color(0, 0, 0, 0.7))
-		draw_string(font, Vector2(0, 25), pct, HORIZONTAL_ALIGNMENT_RIGHT, W - 12.0, 22,
-			low if share < 0.2 or not lantern.lit else ink)
+		draw_string(font, Vector2(0, 25), pct, HORIZONTAL_ALIGNMENT_RIGHT, W - 12.0, 22, ink if lantern.lit else low)
+		# Energy, as a bar.
+		var share := lantern.energy_share()
+		var name := "煤燈" if lantern.tool == Lantern.Tool.LAMP else "手電筒"
+		draw_string(font, Vector2(10, 49), "能源・" + name, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(ink, 0.7))
+		var col := Color(0.45, 0.85, 0.5)
+		if share < Lantern.AUTO_DIM_BELOW:
+			col = Color(1.0, 0.7, 0.3) if share >= 0.12 else low
+		draw_rect(BAR, Color(0, 0, 0, 0.5))
+		draw_rect(Rect2(BAR.position, Vector2(BAR.size.x * share, BAR.size.y)), col)
+		draw_rect(BAR, Color(1, 1, 1, 0.3), false, 1.0)
 		if lantern.tool == Lantern.Tool.FLASHLIGHT:
 			draw_string(font, Vector2(10, 36), "電池 ×%d" % Profile.batteries, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(ink, 0.6))
-		# Brightness.
-		draw_string(font, Vector2(10, 49), "亮度", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(ink, 0.7))
-		var b := lantern.brightness_share()
-		draw_rect(TRACK, Color(0, 0, 0, 0.5))
-		draw_rect(Rect2(TRACK.position, Vector2(TRACK.size.x * b, TRACK.size.y)), Color(warm, 0.9 if lantern.lit else 0.3))
-		draw_rect(TRACK, Color(1, 1, 1, 0.3), false, 1.0)
-		draw_circle(TRACK.position + Vector2(TRACK.size.x * b, TRACK.size.y / 2.0), 6.0, ink if lantern.lit else Color(ink, 0.4))

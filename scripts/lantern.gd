@@ -59,8 +59,10 @@ const FLASH_RANGE := 160.0
 const FLASH_SHARE := 0.2
 ## A fully charged flash costs this much more (x2.5 the share).
 const FLASH_CHARGE_EXTRA := 1.5
-## Brightness lost per whole tank burned (see _process).
-const AUTO_DIM := 0.6
+## Below this share of energy the light dims by itself, losing AUTO_DIM
+## brightness per whole tank burned (0.6 over the last 30%).
+const AUTO_DIM_BELOW := 0.3
+const AUTO_DIM := 2.0
 const FLASH_COOLDOWN := 3.0
 const FLASH_STUN_DURATION := 1.75
 
@@ -120,9 +122,11 @@ func _process(delta: float) -> void:
 			fuel = max(fuel - DRAIN_RATE * burn * delta, 0.0)
 		else:
 			charge = max(charge - 100.0 / BATTERY_LIFE * burn * delta, 0.0)
-		# User request: as the energy runs down the light dims by itself,
-		# slowly (it can still be turned back up - burning faster).
-		brightness = maxf(MIN_BRIGHTNESS, brightness - AUTO_DIM * maxf(before - energy_share(), 0.0))
+		# User request: once the energy's down to AUTO_DIM_BELOW the light
+		# dims by itself, slowly (it can still be turned back up - burning
+		# faster).
+		if energy_share() < AUTO_DIM_BELOW:
+			brightness = maxf(MIN_BRIGHTNESS, brightness - AUTO_DIM * maxf(before - energy_share(), 0.0))
 		if power() <= 0.0:
 			lit = false
 			GameState.push_message("煤燈的油燒完了" if tool == Tool.LAMP else "手電筒沒電了，按住 L 換電池")

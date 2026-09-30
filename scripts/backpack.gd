@@ -257,6 +257,125 @@ func _show_selected(player: Player, items: Array) -> void:
 		_detail.text += "（收線後才能換）"
 
 
+## User request: things can be dragged out of the bag onto the ground;
+## rare fish, gear and special things ask first.
+var _ghost: TextureRect
+var _confirm: Control
+
+
+func can_drop(item: Dictionary) -> bool:
+	return _mode_kind == "normal" and (item.kind == "fish" or item.has("bag"))
+
+
+func drag_start(item: Dictionary) -> void:
+	_ghost = TextureRect.new()
+	_ghost.texture = FishData.icon(item.get("id", ""), item.label) if item.kind == "fish" else Items.icon(item.get("item", ""))
+	_ghost.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_ghost.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_ghost.size = Vector2(item.size) * CELL
+	_ghost.modulate = Color(1, 1, 1, 0.8)
+	_ghost.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_ghost)
+
+
+func drag_move(at: Vector2) -> void:
+	if _ghost != null:
+		_ghost.position = at - _ghost.size / 2.0
+		# Out of the bag: reddish, "put down here".
+		_ghost.modulate = Color(1, 0.75, 0.6, 0.9) if not _panel.get_global_rect().has_point(at) else Color(1, 1, 1, 0.8)
+
+
+func drag_end(item: Dictionary, at: Vector2) -> void:
+	if _ghost != null:
+		_ghost.queue_free()
+		_ghost = null
+	if _panel.get_global_rect().has_point(at):
+		return
+	if precious(item):
+		_ask_drop(item)
+	else:
+		_drop(item)
+
+
+## Worth a second thought before leaving on the ground: rare fish (a rare
+## or legendary catch, a style's rarest, the sea's rare ones), gear, the
+## heart and anything special.
+static func precious(item: Dictionary) -> bool:
+	match item.kind:
+		"fish":
+			var fish: Dictionary = GameState.carried_fish[item.index] if item.index < GameState.carried_fish.size() else {}
+			if fish.get("rarity", "common") != "common" or fish.get("size", "") == "huge":
+				return true
+			var id: String = fish.get("id", "")
+			if id in FishData.SEA_RARE or id in FishData.SEA_LEGEND:
+				return true
+			for style in FishData.STYLE_FISH:
+				if FishData.STYLE_FISH[style][1] == id:
+					return true
+			return false
+		"lure", "battery", "bait":
+			return false
+	return true
+
+
+func _drop(item: Dictionary) -> void:
+	var player := _player()
+	if player == null:
+		return
+	if item.kind == "fish":
+		player.put_fish_down(item.index)
+	elif item.has("bag"):
+		player.put_item_down(item.bag)
+	_selected = {}
+	_rebuild()
+
+
+func _ask_drop(item: Dictionary) -> void:
+	if _confirm != null:
+		return
+	var shade := ColorRect.new()
+	shade.name = "DropConfirm"
+	shade.color = Color(0, 0, 0, 0.45)
+	shade.size = Vector2(960, 540)
+	add_child(shade)
+	_confirm = shade
+	var box := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.07, 0.06, 0.97)
+	style.border_color = Color(1.0, 0.85, 0.55, 0.7)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(10)
+	style.set_content_margin_all(14)
+	box.add_theme_stylebox_override("panel", style)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 10)
+	col.add_child(_label("確定把 %s 丟在地上？" % item.label, 17, Color(1.0, 0.9, 0.7)))
+	col.add_child(_label("這是稀有或重要的東西，丟了可能會被鬼吃掉或被別人撿走。", 13, Color(1, 1, 1, 0.7)))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	var yes := _button("丟掉")
+	yes.name = "ConfirmDrop"
+	yes.pressed.connect(func():
+		_close_confirm()
+		_drop(item))
+	var no := _button("取消")
+	no.pressed.connect(_close_confirm)
+	row.add_child(yes)
+	row.add_child(no)
+	col.add_child(row)
+	box.add_child(col)
+	shade.add_child(box)
+	box.reset_size()
+	box.position = (Vector2(960, 540) - box.size) / 2.0
+
+
+func _close_confirm() -> void:
+	if _confirm != null:
+		_confirm.queue_free()
+		_confirm = null
+
+
 func select(kind: String, index) -> void:
 	if _mode_kind == "sacrifice":
 		if kind == "fish":
@@ -362,15 +481,39 @@ class GridView extends Control:
 	var placed: Array = []
 	var selected := {}
 
+	var _press := -1
+	var _press_at := Vector2.ZERO
+	var _dragging := false
+
 	func _gui_input(event: InputEvent) -> void:
-		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-			var cell := Vector2i(event.position / Backpack.CELL)
-			for i in placed.size():
-				var r: Rect2i = placed[i]
-				if r.has_point(cell):
-					owner_bag.select(items[i].kind, items[i].index)
-					accept_event()
-					return
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+			if event.pressed:
+				_press = -1
+				_dragging = false
+				var cell := Vector2i(event.position / Backpack.CELL)
+				for i in placed.size():
+					var r: Rect2i = placed[i]
+					if r.has_point(cell):
+						_press = i
+						_press_at = event.position
+				accept_event()
+			else:
+				if _press >= 0 and _press < items.size():
+					if _dragging:
+						owner_bag.drag_end(items[_press], get_global_transform() * event.position)
+					else:
+						owner_bag.select(items[_press].kind, items[_press].index)
+				_press = -1
+				_dragging = false
+				accept_event()
+		elif event is InputEventMouseMotion and _press >= 0 and _press < items.size():
+			# User request: drag a thing out of the bag to put it down.
+			if not _dragging and event.position.distance_to(_press_at) > 10.0 and owner_bag.can_drop(items[_press]):
+				_dragging = true
+				owner_bag.drag_start(items[_press])
+			if _dragging:
+				owner_bag.drag_move(get_global_transform() * event.position)
+			accept_event()
 
 	func _draw() -> void:
 		var font := get_theme_default_font()

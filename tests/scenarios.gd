@@ -40,6 +40,7 @@ const TESTS := [
 	"test_warehouse_and_bag",
 	"test_lure_throw_and_drops",
 	"test_hud_top",
+	"test_bag_drag_out",
 	"test_fish_tank",
 	"test_light_button_tap_and_hold",
 	"test_light_button_relights",
@@ -1226,6 +1227,53 @@ func test_lure_throw_and_drops() -> void:
 	Profile._save()
 
 
+## User request: drag things out of the bag to put them down; rare fish
+## (and gear, special things) ask first.
+func test_bag_drag_out() -> void:
+	gs.carried_fish.clear()
+	gs.add_carried_fish({"name": "鯉魚", "id": "carp", "value": 3.0, "size": "small", "rarity": "common"})
+	gs.add_carried_fish({"name": "金鱒", "id": "golden_trout", "value": 30.0, "size": "large", "rarity": "epic"})
+	var bag: Backpack = player().backpack()
+	bag.toggle()
+	await frames(2)
+	var grid = bag._grid
+	var drag := func(kind_index: int) -> void:
+		var i: int = -1
+		for k in grid.items.size():
+			if grid.items[k].kind == "fish" and grid.items[k].index == kind_index:
+				i = k
+		var r: Rect2i = grid.placed[i]
+		var at := (Vector2(r.position) + Vector2(r.size) / 2.0) * Backpack.CELL
+		var press := InputEventMouseButton.new()
+		press.button_index = MOUSE_BUTTON_LEFT
+		press.pressed = true
+		press.position = at
+		grid._gui_input(press)
+		var out := at + Vector2(-600, 0)
+		var move := InputEventMouseMotion.new()
+		move.position = out
+		grid._gui_input(move)
+		var up := InputEventMouseButton.new()
+		up.button_index = MOUSE_BUTTON_LEFT
+		up.pressed = false
+		up.position = out
+		grid._gui_input(up)
+	# The common carp (index 0) goes straight down.
+	drag.call(0)
+	await frames(2)
+	check(gs.carried_fish.size() == 1 and gs.carried_fish[0].id == "golden_trout", "a common fish dragged out is put down")
+	bag._rebuild()
+	await frames(1)
+	drag.call(0)
+	await frames(1)
+	check(gs.carried_fish.size() == 1 and bag.find_child("DropConfirm", true, false) != null, "a rare one asks first")
+	(bag.find_child("ConfirmDrop", true, false) as Button).pressed.emit()
+	await frames(2)
+	check(gs.carried_fish.is_empty(), "and goes down once confirmed")
+	bag.toggle()
+	await frames(1)
+
+
 ## User request (HUD): no lists of numbers - the quota as a bar at the top
 ## middle with the time under it, the light's energy as a percentage with a
 ## brightness bar; the sticks unseen till touched; a flash costs a share
@@ -1242,11 +1290,15 @@ func test_hud_top() -> void:
 	lantern._try_flash()
 	check(absf(lantern.fuel - lantern.max_fuel * (1.0 - Lantern.FLASH_SHARE)) < 0.5, "a flash takes its share")
 	lantern.brightness = Lantern.MAX_BRIGHTNESS
+	await seconds(1.5)
+	check(is_equal_approx(lantern.brightness, Lantern.MAX_BRIGHTNESS), "above 30% the light holds its brightness")
+	lantern.fuel = lantern.max_fuel * 0.25
 	await seconds(2.0)
-	check(lantern.brightness < Lantern.MAX_BRIGHTNESS, "the light dims as it burns")
+	check(lantern.brightness < Lantern.MAX_BRIGHTNESS, "below 30% it dims as it burns")
 	var ev = main.find_child("EnergyView", true, false)
-	ev._set_from(ev.TRACK.position.x)
-	check(is_equal_approx(lantern.brightness, Lantern.MIN_BRIGHTNESS), "the brightness bar sets it")
+	ev._set_from(ev.BAR.position.x)
+	check(is_equal_approx(lantern.brightness, Lantern.MIN_BRIGHTNESS), "the panel sets it")
+	check(not main.get_node("HUD/Panel/MessageLabel").visible, "no narrating text")
 	lantern.fuel = lantern.max_fuel
 	lantern.brightness = 0.75
 
