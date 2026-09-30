@@ -12,17 +12,8 @@ extends SubViewportContainer
 ## Paper doll: equip(slot, scene) hangs a model on a bone (SLOTS) - the rod
 ## in the right hand now; hats, packs and the rest later.
 
-const CHARACTER := preload("res://assets/models/menu_character.glb")
-const RODS := [
-	preload("res://assets/models/fishing_rod_lvl1.glb"), preload("res://assets/models/fishing_rod_lvl2.glb"),
-	preload("res://assets/models/fishing_rod_lvl3.glb"), preload("res://assets/models/fishing_rod_lvl4.glb"),
-	preload("res://assets/models/fishing_rod_lvl5.glb"),
-]
-## Slot -> the bone it hangs from.
-const SLOTS := {"hand_r": "hand_r", "hand_l": "hand_l", "head": "Head", "back": "spine_03"}
 ## The player's colour in the game (the sprite's cyan-blue).
-const SKIN := Color(0.38, 0.72, 0.84)
-const JOINTS := Color(0.2, 0.36, 0.45)
+const SKIN := CharacterRig.SKIN
 
 ## Where the character stands in the frame: -1 left edge .. 1 right edge.
 @export var frame_x := 0.0
@@ -30,10 +21,15 @@ const JOINTS := Color(0.2, 0.36, 0.45)
 
 var _viewport: SubViewport
 var _pivot: Node3D
-var _anim: AnimationPlayer
-var _skeleton: Skeleton3D
 var _camera: Camera3D
-var _attachments := {}
+## The character itself (CharacterRig: the model, its clips, what it holds).
+var rig: CharacterRig
+var _anim: AnimationPlayer:
+	get:
+		return rig.anim if rig != null else null
+var _attachments: Dictionary:
+	get:
+		return rig.attachments if rig != null else {}
 var _turn := 0.0
 var _turn_vel := 0.0
 var _dragging := false
@@ -52,9 +48,6 @@ func _ready() -> void:
 	_build_stage()
 	resized.connect(func(): _frame())
 	_frame()
-	equip_rod(Profile.rod_tier)
-	equip_lamp()
-	Profile.profile_changed.connect(func(): equip_rod(Profile.rod_tier))
 
 
 func _build_stage() -> void:
@@ -117,117 +110,16 @@ func _build_stage() -> void:
 
 	_pivot = Node3D.new()
 	_viewport.add_child(_pivot)
-	var body: Node3D = CHARACTER.instantiate()
-	_pivot.add_child(body)
-	_anim = _find(body, "AnimationPlayer") as AnimationPlayer
-	_skeleton = _find(body, "Skeleton3D") as Skeleton3D
-	_dress(body)
-	if _anim != null:
-		_anim.animation_finished.connect(func(_n): _play_idle())
-		_play_idle()
-	for slot in SLOTS:
-		var att := BoneAttachment3D.new()
-		att.bone_name = SLOTS[slot]
-		_skeleton.add_child(att)
-		_attachments[slot] = att
+	rig = CharacterRig.new()
+	_pivot.add_child(rig)
 
 	_camera = Camera3D.new()
 	_camera.fov = 30.0
 	_viewport.add_child(_camera)
 
 
-func _find(n: Node, cls: String) -> Node:
-	if n.is_class(cls):
-		return n
-	for c in n.get_children():
-		var f := _find(c, cls)
-		if f != null:
-			return f
-	return null
-
-
-## The mannequin in the game's colours.
-func _dress(n: Node) -> void:
-	if n is MeshInstance3D:
-		var mi := n as MeshInstance3D
-		for i in mi.get_surface_override_material_count():
-			var src := mi.mesh.surface_get_material(i)
-			var m := StandardMaterial3D.new()
-			var joints := src != null and src.resource_name.contains("Joint")
-			m.albedo_color = JOINTS if joints else SKIN
-			m.roughness = 0.55
-			m.rim_enabled = true
-			m.rim = 0.35
-			mi.set_surface_override_material(i, m)
-	for c in n.get_children():
-		_dress(c)
-
-
-func _play_idle() -> void:
-	if _anim == null:
-		return
-	for name in _anim.get_animation_list():
-		if name == "Idle" or name.begins_with("Idle_Loop"):
-			_anim.get_animation(name).loop_mode = Animation.LOOP_LINEAR
-			_anim.play(name, 0.3)
-			return
-
-
 func wave() -> void:
-	if _anim == null:
-		return
-	for name in _anim.get_animation_list():
-		if name.begins_with("Interact"):
-			_anim.play(name, 0.2)
-			return
-
-
-## Hangs `model` (a PackedScene) on a paper-doll slot, replacing what was
-## there; null empties it.
-func equip(slot: String, model: PackedScene, offset := Transform3D.IDENTITY) -> void:
-	var att: BoneAttachment3D = _attachments.get(slot)
-	if att == null:
-		return
-	for c in att.get_children():
-		c.queue_free()
-	if model != null:
-		var inst: Node3D = model.instantiate()
-		inst.transform = offset
-		att.add_child(inst)
-
-
-## The rod bought (Profile.rod_tier) in the right hand, held up and out.
-## The rods' models are 6 m long along +Y, the grip at the origin.
-const ROD_AIM := Vector3(-0.42, 1.0, 0.15)
-const ROD_SCALE := 0.24
-const ROD_GRIP := Vector3.ZERO
-## The oil lamp (0.3 m, base at the origin) hangs from the left hand.
-const LAMP := preload("res://assets/models/oil_lamp.glb")
-const LAMP_DROP := Vector3(0.0, -0.3, 0.02)
-
-
-func equip_rod(tier: int) -> void:
-	var y := ROD_AIM.normalized()
-	var x := y.cross(Vector3.BACK).normalized()
-	equip("hand_r", RODS[clampi(tier, 0, RODS.size() - 1)],
-		_held("hand_r", Basis(x, y, x.cross(y)).scaled(Vector3.ONE * ROD_SCALE), Vector3.ZERO, ROD_GRIP))
-
-
-func equip_lamp() -> void:
-	equip("hand_l", LAMP, _held("hand_l", Basis.IDENTITY, LAMP_DROP))
-
-
-## An offset for a slot's bone that puts a model at `world` (a basis in the
-## character's frame) `drop` away in that frame, plus `grip` in the bone's -
-## set against the bone as the idle pose holds it (the rig's rest is a
-## T-pose), so it holds whichever way the bone's axes happen to lie.
-func _held(slot: String, world: Basis, drop: Vector3, grip := Vector3.ZERO) -> Transform3D:
-	var bone := _skeleton.find_bone(SLOTS[slot])
-	if _anim != null:
-		_anim.advance(0.0)
-	var pose := _skeleton.get_bone_global_pose(bone).basis.orthonormalized() if bone >= 0 else Basis.IDENTITY
-	var inv := pose.inverse()
-	return Transform3D(inv * world, inv * drop + grip)
+	rig.wave()
 
 
 func _frame() -> void:

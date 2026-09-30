@@ -273,20 +273,7 @@ static func divider(width := 200.0) -> TextureRect:
 ## page's "over_camp" meta - a see-through shade), a back button top left
 ## and the purse top right. Returns the purse (set_purse updates it).
 static func page_chrome(page: Control, back: Callable, back_name := "Back") -> PanelContainer:
-	if page.get_meta("over_camp", false):
-		var shade := ColorRect.new()
-		shade.color = Color(0.0, 0.0, 0.02, 0.55)
-		shade.set_anchors_preset(Control.PRESET_FULL_RECT)
-		shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		page.add_child(shade)
-	else:
-		var stone := TextureRect.new()
-		stone.texture = tex("page_bg")
-		stone.stretch_mode = TextureRect.STRETCH_TILE
-		stone.set_anchors_preset(Control.PRESET_FULL_RECT)
-		stone.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		page.add_child(stone)
-		page.add_child(vignette())
+	backdrop(page)
 	var b := button("‹ 返回", 16)
 	b.name = back_name
 	b.position = Vector2(14, 10)
@@ -298,6 +285,45 @@ static func page_chrome(page: Control, back: Callable, back_name := "Back") -> P
 	p.custom_minimum_size = Vector2(126, 36)
 	page.add_child(p)
 	return p
+
+
+## A page's back: dark stone with darkened corners - or, over the 3D camp
+## (the page's "over_camp" meta), a see-through shade.
+static func backdrop(page: Control) -> void:
+	if page.get_meta("over_camp", false):
+		var shade := ColorRect.new()
+		shade.color = Color(0.0, 0.0, 0.02, 0.55)
+		shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+		shade.mouse_filter = Control.MOUSE_FILTER_STOP
+		page.add_child(shade)
+		return
+	var stone := TextureRect.new()
+	stone.texture = tex("page_bg")
+	stone.stretch_mode = TextureRect.STRETCH_TILE
+	stone.set_anchors_preset(Control.PRESET_FULL_RECT)
+	stone.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	page.add_child(stone)
+	page.add_child(vignette())
+
+
+## Leaves a menu page: back to the camp it's open over, or (a page on its
+## own) to the main screen.
+static func page_back(page: Control) -> void:
+	var camp: Object = page.get_meta("camp", null)
+	if camp != null and is_instance_valid(camp):
+		camp.call("close_page")
+	else:
+		page.get_tree().change_scene_to_file("res://scenes/title_screen.tscn")
+
+
+## From one menu page to another ("shop", "fish_log", ...): over the camp
+## if that's where it is.
+static func page_go(page: Control, to: String) -> void:
+	var camp: Object = page.get_meta("camp", null)
+	if camp != null and is_instance_valid(camp):
+		camp.call("open_page", to)
+	else:
+		page.get_tree().change_scene_to_file("res://scenes/%s.tscn" % to)
 
 
 ## Darkened corners over the whole screen.

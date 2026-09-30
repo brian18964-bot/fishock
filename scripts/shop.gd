@@ -242,6 +242,14 @@ func _clear_pane() -> void:
 ## The top of the pane: the thing's picture, name (rarity colour), what
 ## kind of thing, then its lines.
 func _head(tex: Texture2D, title: String, rarity: String, kind: String, lines: Array) -> void:
+	# User request (3D out of the game): the thing itself, turning, when
+	# there's a model of it.
+	if Items.model_path(_selected) != "":
+		var pv := ItemPreview.new()
+		pv.name = "Preview"
+		pv.custom_minimum_size = Vector2(330, 150)
+		_pane.add_child(pv)
+		pv.show_item(_selected)
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 12)
 	var pic := WareIcon.new()
@@ -454,7 +462,7 @@ func _close_dialog() -> void:
 
 
 func _on_back_pressed() -> void:
-	get_tree().change_scene_to_file("res://scenes/title_screen.tscn")
+	UiKit.page_back(self)
 
 
 ## A ware's picture in a slot, ringed by its rarity.

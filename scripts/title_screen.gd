@@ -1,25 +1,52 @@
 extends Control
 
 ## The main screen. User request: like a mobile game's - the player's own
-## character in 3D, front on (it'll be dressed up later, a paper doll),
-## the shop, the character's equipment, single player and multiplayer.
-##   left:    the character (CharacterViewer) on its stone, drag to turn,
-##            tap to wave
-##   top:     the player's card (name, fish logged) and gold
-##   right:   單機模式 (a run) and 多人連線 (not yet - says so)
-##   bottom:  商城, 倉庫, 裝備, 魚缸 (圖鑑 is inside 魚缸)
-##   top right: gold, the settings (a gear icon)
+## character in 3D, the shop, the character's equipment, single player and
+## multiplayer; the settings as a gear in the top-right corner; the fish
+## log inside the fish tank.
+## And (user request: an MMO look, everything out of the game in 3D as far
+## as it goes) it's a camp at night, like an MMO's character select:
+##   the scene:   CampStage - the character by the fire (drag to turn it,
+##                tap it and it waves), the tent, the merchant's stall, the
+##                chest, the fish tank, the lake
+##   right:       the camp's list - 倉庫, 裝備, 魚缸, 商城 - each opens its
+##                page over the camp while the camera glides to its spot
+##                (the chest, the character, the tank, the stall)
+##   bottom:      出發夜釣 (a run), 多人連線 (not yet - says so)
+##   top right:   gold, the settings (a gear)
 ## Between runs, so the day timer is stopped here (GameState.reset_run).
+## With the 3D camp off (settings; for weak phones) it's the old stage: the
+## character on its stone before a dark wall.
 
-const BG_TOP := Color(0.035, 0.045, 0.08)
-const BG_BOTTOM := Color(0.09, 0.07, 0.06)
+## The camp's picture is drawn at this many times the screen's own size.
+const RENDER_SCALE := 1.5
+const ENTRIES := [
+	["warehouse", "倉庫", "res://assets/sprites/items/battery.png"],
+	["equipment", "裝備", ""],
+	["fish_tank", "魚缸", ""],
+	["shop", "商城", "res://assets/sprites/items/oil_lamp.png"],
+]
 
-var _gold: Label
+var _stage: CampStage
+var _viewport: SubViewport
 var _viewer: CharacterViewer
+var _home: Control
+var _page: Control
+var _purse: PanelContainer
+var _nameplate: VBoxContainer
+var _entries := {}
+var _drag := false
+var _drag_moved := 0.0
+
+
+## A menu needn't draw at 60 frames a second: half that saves a phone's
+## battery (and heat) while the camp's on screen.
+const MENU_FPS := 30
 
 
 func _ready() -> void:
 	GameState.reset_run()
+	Engine.max_fps = MENU_FPS
 	_build()
 	Profile.gold_updated.connect(func(_g): _refresh())
 	Profile.profile_changed.connect(_refresh)
@@ -39,136 +66,265 @@ func _tank_news() -> void:
 		line += "（還有 %d 條）" % (names.size() - shown.size())
 	var note := MenuStyle.notice(self, "漁獲入缸", [line])
 	note.name = "TankNews"
-	var go := MenuStyle.button("去魚缸看看", 16, true)
-	go.pressed.connect(_go.bind("fish_tank"))
+	var go := UiKit.button("去魚缸看看", 16, "red")
+	go.custom_minimum_size = Vector2(160, 42)
+	go.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	go.pressed.connect(func():
+		note.queue_free()
+		open_page("fish_tank"))
 	note.get_child(0).get_child(0).add_child(go)
 
 
+func camp_on() -> bool:
+	return Profile.settings.get("camp_3d", true)
+
+
 func _build() -> void:
-	# The night sky behind everything: a gradient, a moon's glow, drifting motes.
-	var bg := TextureRect.new()
-	var grad := Gradient.new()
-	grad.set_color(0, BG_TOP)
-	grad.set_color(1, BG_BOTTOM)
-	var gt := GradientTexture2D.new()
-	gt.gradient = grad
-	gt.fill_from = Vector2(0, 0)
-	gt.fill_to = Vector2(0, 1)
-	bg.texture = gt
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	bg.stretch_mode = TextureRect.STRETCH_SCALE
-	add_child(bg)
-	var moon := TextureRect.new()
-	moon.texture = LightTextureFactory.make_radial_texture(256, 0.6)
-	moon.modulate = Color(0.55, 0.65, 0.9, 0.35)
-	moon.position = Vector2(470, -120)
-	moon.size = Vector2(420, 420)
-	moon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(moon)
-	var motes := CPUParticles2D.new()
-	motes.amount = 26
-	motes.lifetime = 7.0
-	motes.preprocess = 7.0
-	motes.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
-	motes.emission_rect_extents = Vector2(480, 270)
-	motes.position = Vector2(480, 270)
-	motes.gravity = Vector2(0, -4)
-	motes.initial_velocity_min = 2.0
-	motes.initial_velocity_max = 8.0
-	motes.direction = Vector2.UP
-	motes.spread = 60.0
-	motes.scale_amount_min = 1.0
-	motes.scale_amount_max = 2.5
-	var mc := Gradient.new()
-	mc.set_color(0, Color(0.8, 1.0, 0.5, 0.0))
-	mc.set_color(1, Color(0.8, 1.0, 0.5, 0.0))
-	mc.add_point(0.5, Color(0.85, 1.0, 0.55, 0.8))
-	motes.color_ramp = mc
-	add_child(motes)
+	if camp_on():
+		_viewport = SubViewport.new()
+		_viewport.size = Vector2i(Vector2(960, 540) * RENDER_SCALE)
+		_viewport.own_world_3d = true
+		_viewport.msaa_3d = Viewport.MSAA_2X
+		_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+		add_child(_viewport)
+		_stage = CampStage.new()
+		_stage.name = "Camp"
+		_viewport.add_child(_stage)
+		var view := TextureRect.new()
+		view.name = "CampView"
+		view.texture = _viewport.get_texture()
+		view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		view.stretch_mode = TextureRect.STRETCH_SCALE
+		view.set_anchors_preset(Control.PRESET_FULL_RECT)
+		view.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(view)
+		add_child(UiKit.vignette(0.6))
+	else:
+		UiKit.backdrop(self)
+		_viewer = CharacterViewer.new()
+		_viewer.set_anchors_preset(Control.PRESET_FULL_RECT)
+		_viewer.frame_x = -0.32
+		add_child(_viewer)
 
-	# The character, standing left of centre.
-	_viewer = CharacterViewer.new()
-	_viewer.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_viewer.frame_x = -0.32
-	add_child(_viewer)
+	_home = Control.new()
+	_home.name = "Home"
+	_home.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_home.mouse_filter = Control.MOUSE_FILTER_PASS
+	add_child(_home)
+	_home.gui_input.connect(_on_home_input)
 
-	# Top left: the player's card.
-	var card := MenuStyle.panel()
-	card.position = Vector2(16, 14)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	var avatar := Panel.new()
-	avatar.custom_minimum_size = Vector2(46, 46)
-	avatar.add_theme_stylebox_override("panel", MenuStyle.box(CharacterViewer.SKIN.darkened(0.3), MenuStyle.GOLD, 23, 2))
-	row.add_child(avatar)
-	var who := VBoxContainer.new()
-	who.add_theme_constant_override("separation", 0)
-	who.add_child(MenuStyle.label("釣客", 18))
-	var logged := MenuStyle.label("", 12, MenuStyle.DIM)
+	# Above the character: its name and how far the fish log's come.
+	_nameplate = VBoxContainer.new()
+	_nameplate.name = "Nameplate"
+	_nameplate.add_theme_constant_override("separation", -2)
+	_nameplate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var who := UiKit.label("釣客", 20, UiKit.GOLD_BRIGHT, true, 4)
+	who.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_nameplate.add_child(who)
+	var logged := UiKit.label("", 13, UiKit.TEXT)
 	logged.name = "Logged"
-	who.add_child(logged)
-	row.add_child(who)
-	card.add_child(row)
-	add_child(card)
+	logged.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_nameplate.add_child(logged)
+	_nameplate.custom_minimum_size = Vector2(220, 0)
+	_nameplate.position = Vector2(215, 92)
+	_home.add_child(_nameplate)
 
-	# Top right: settings, gold.
+	# Top right: gold, the settings.
 	# User request: the settings as an icon, in the top right corner.
+	_purse = UiKit.purse()
+	_purse.position = Vector2(764, 12)
+	_purse.custom_minimum_size = Vector2(126, 36)
+	_home.add_child(_purse)
 	var gear := GearButton.new()
 	gear.name = "Settings"
-	gear.position = Vector2(904, 14)
+	gear.position = Vector2(900, 10)
 	gear.size = Vector2(44, 44)
 	gear.pressed.connect(_on_settings)
-	add_child(gear)
-	var purse := MenuStyle.panel()
-	purse.position = Vector2(752, 14)
-	purse.custom_minimum_size = Vector2(140, 0)
-	_gold = MenuStyle.label("", 18, MenuStyle.GOLD)
-	purse.add_child(_gold)
-	add_child(purse)
+	_home.add_child(gear)
 
-	# Right: play.
-	var play := VBoxContainer.new()
-	play.position = Vector2(600, 190)
-	play.add_theme_constant_override("separation", 14)
-	var solo := MenuStyle.button("單機模式", 28, true)
-	solo.custom_minimum_size = Vector2(300, 84)
-	solo.pressed.connect(_on_solo)
-	play.add_child(solo)
-	var multi := MenuStyle.button("多人連線", 22)
-	multi.custom_minimum_size = Vector2(300, 60)
+	# Right: the camp's list.
+	var made := UiKit.window("營地")
+	var list: PanelContainer = made[0]
+	var col: VBoxContainer = made[1]
+	list.name = "CampList"
+	list.position = Vector2(672, 64)
+	list.custom_minimum_size = Vector2(274, 0)
+	col.add_theme_constant_override("separation", 6)
+	for e in ENTRIES:
+		var b := _entry(e[0], e[1], e[2])
+		col.add_child(b)
+	_home.add_child(list)
+
+	# Bottom: play, and multiplayer (not yet).
+	var play := UiKit.button("出發夜釣", 24, "red")
+	play.name = "Play"
+	play.custom_minimum_size = Vector2(250, 58)
+	play.position = Vector2(355, 466)
+	play.pressed.connect(_on_solo)
+	_home.add_child(play)
+	var multi := UiKit.button("多人連線", 16)
+	multi.name = "Multiplayer"
+	multi.custom_minimum_size = Vector2(140, 42)
+	multi.position = Vector2(14, 484)
 	multi.pressed.connect(_on_multiplayer)
-	play.add_child(multi)
-	var soon := MenuStyle.label("即將開放", 12, Color(0.6, 0.85, 1.0))
-	soon.position = Vector2(222, 6)
+	_home.add_child(multi)
+	var soon := UiKit.label("即將開放", 11, Color(0.6, 0.85, 1.0))
+	soon.position = Vector2(88, -8)
 	multi.add_child(soon)
-	add_child(play)
 
-	# Bottom: shop, warehouse, equipment, fish tank (the fish log is in it).
-	var bar := HBoxContainer.new()
-	bar.position = Vector2(520, 438)
-	bar.add_theme_constant_override("separation", 8)
-	for entry in [["商城", _on_shop], ["倉庫", _go.bind("warehouse")], ["裝備", _on_equipment],
-			["魚缸", _go.bind("fish_tank")]]:
-		var b := MenuStyle.button(entry[0], 18)
-		b.custom_minimum_size = Vector2(100, 72)
-		b.pressed.connect(entry[1])
-		bar.add_child(b)
-	add_child(bar)
 
-	var hint := MenuStyle.label("拖曳角色可以轉動，點一下會打招呼", 12, Color(1, 1, 1, 0.4))
-	hint.position = Vector2(92, 506)
-	add_child(hint)
+## An entry in the camp's list, like a character in an MMO's list: a
+## picture in a slot, a gold name, a line about it under.
+func _entry(page: String, title: String, icon_path: String) -> Button:
+	var b := Button.new()
+	b.name = "Go_" + page
+	b.text = ""
+	b.tooltip_text = title
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(238, 66)
+	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color(0, 0, 0, 0.35)
+	box.border_color = Color(0.32, 0.29, 0.25, 0.9)
+	box.set_border_width_all(1)
+	box.set_corner_radius_all(4)
+	var hover := box.duplicate() as StyleBoxFlat
+	hover.bg_color = Color(0.5, 0.36, 0.08, 0.5)
+	hover.border_color = UiKit.GOLD
+	hover.set_border_width_all(2)
+	b.add_theme_stylebox_override("normal", box)
+	b.add_theme_stylebox_override("hover", hover)
+	b.add_theme_stylebox_override("pressed", hover)
+	b.pressed.connect(open_page.bind(page))
+	var row := HBoxContainer.new()
+	row.set_anchors_preset(Control.PRESET_FULL_RECT)
+	row.offset_left = 8
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_theme_constant_override("separation", 10)
+	var pic := EntryIcon.new()
+	pic.page = page
+	pic.icon_path = icon_path
+	pic.custom_minimum_size = Vector2(48, 48)
+	pic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(pic)
+	var words := VBoxContainer.new()
+	words.alignment = BoxContainer.ALIGNMENT_CENTER
+	words.add_theme_constant_override("separation", 0)
+	words.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	words.add_child(UiKit.label(title, 18, UiKit.GOLD, true))
+	var sub := UiKit.label("", 13, UiKit.TEXT)
+	sub.name = "Sub"
+	words.add_child(sub)
+	row.add_child(words)
+	b.add_child(row)
+	_entries[page] = b
+	return b
 
 
 func _refresh() -> void:
-	_gold.text = "金幣  %d" % Profile.gold
-	var logged: Label = find_child("Logged", true, false)
-	if logged != null:
-		var kinds := 0
-		for id in FishData.FISH:
-			if Profile.fish_log.has(FishData.FISH[id].name):
-				kinds += 1
-		logged.text = "圖鑑 %d/%d・%s" % [kinds, FishData.FISH.size(), Profile.rod().name]
+	UiKit.set_purse(_purse, Profile.gold)
+	var kinds := 0
+	for id in FishData.FISH:
+		if Profile.fish_log.has(FishData.FISH[id].name):
+			kinds += 1
+	(_nameplate.get_node("Logged") as Label).text = "圖鑑 %d / %d" % [kinds, FishData.FISH.size()]
+	var things := 0
+	for id in Profile.storage:
+		things += Profile.stored(id)
+	_set_sub("warehouse", "倉庫裡 %d 件" % things)
+	var light := "手電筒" if Profile.has_flashlight else "煤燈"
+	_set_sub("equipment", "%s・%s" % [Profile.rod().name, light])
+	_set_sub("fish_tank", "%d / %d 條魚" % [Profile.tank.size(), Profile.TANK_SIZE])
+	_set_sub("shop", "釣具、魚餌、升級")
+
+
+func _set_sub(page: String, text: String) -> void:
+	var b: Button = _entries.get(page)
+	if b != null:
+		(b.find_child("Sub", true, false) as Label).text = text
+
+
+func _process(_delta: float) -> void:
+	# The name floats over the character's head.
+	if _stage != null and _home.visible:
+		var head := _stage.character_pivot.global_position + Vector3(0, 2.05, 0)
+		if not _stage.camera.is_position_behind(head):
+			var at := _stage.camera.unproject_position(head) / RENDER_SCALE
+			_nameplate.position = at - Vector2(_nameplate.size.x * 0.5, _nameplate.size.y)
+
+
+## Drags across the screen turn the character; a tap on it, a wave.
+func _on_home_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			_drag = true
+			_drag_moved = 0.0
+		else:
+			_drag = false
+			if _drag_moved < 6.0 and _near_character(event.position):
+				_wave()
+	elif event is InputEventMouseMotion and _drag:
+		_drag_moved += absf(event.relative.x)
+		if _stage != null:
+			_stage.turn_character(event.relative.x * 0.012)
+
+
+func _near_character(at: Vector2) -> bool:
+	if _stage == null:
+		return false
+	var feet := _stage.camera.unproject_position(_stage.character_pivot.global_position) / RENDER_SCALE
+	return Rect2(feet - Vector2(80, 300), Vector2(160, 320)).has_point(at)
+
+
+func _wave() -> void:
+	if _stage != null:
+		_stage.character.wave()
+	elif _viewer != null:
+		_viewer.wave()
+
+
+## Opens a menu page over the camp: the list goes, the camera glides to the
+## page's spot, the page fades in; the camp holds still under it (one
+## frame drawn - cheaper on a phone) till it closes.
+func open_page(page: String) -> void:
+	if _page != null:
+		_page.queue_free()
+		_page = null
+	_home.visible = false
+	var p: Control = load("res://scenes/%s.tscn" % page).instantiate()
+	p.set_meta("over_camp", _stage != null)
+	p.set_meta("camp", self)
+	p.modulate.a = 0.0
+	_page = p
+	add_child(p)
+	if _stage != null:
+		_live(true)
+		_stage.go_to(page, true, func(): _live(false))
+	var t := p.create_tween()
+	t.tween_interval(0.35 if _stage != null else 0.0)
+	t.tween_property(p, "modulate:a", 1.0, 0.25)
+
+
+## Back from a page to the camp.
+func close_page() -> void:
+	if _page != null:
+		_page.queue_free()
+		_page = null
+	_home.visible = true
+	_refresh()
+	if _stage != null:
+		_live(true)
+		_stage.go_to("home")
+
+
+func _live(on: bool) -> void:
+	if _viewport != null:
+		_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS if on else SubViewport.UPDATE_ONCE
+
+
+func _exit_tree() -> void:
+	Engine.max_fps = 0
 
 
 func _on_solo() -> void:
@@ -182,38 +338,49 @@ func _on_multiplayer() -> void:
 
 
 func _on_shop() -> void:
-	get_tree().change_scene_to_file("res://scenes/shop.tscn")
+	open_page("shop")
 
 
 func _on_equipment() -> void:
-	get_tree().change_scene_to_file("res://scenes/equipment.tscn")
+	open_page("equipment")
 
 
 ## User request: game settings.
 func _on_settings() -> void:
-	var note := MenuStyle.notice(self, "設定", ["調整遊戲中的輔助功能。"])
+	var note := MenuStyle.notice(self, "設定", ["調整遊戲中的輔助功能與畫面。"])
 	note.name = "SettingsPanel"
 	var col: VBoxContainer = note.get_child(0).get_child(0)
 	var auto := CheckButton.new()
 	auto.name = "AutoLure"
 	auto.text = "丟出誘餌後，自動選最便宜的魚當下一個誘餌"
 	auto.button_pressed = Profile.settings.get("auto_lure", false)
-	auto.add_theme_font_size_override("font_size", 14)
+	auto.add_theme_font_size_override("font_size", 15)
 	auto.focus_mode = Control.FOCUS_NONE
 	auto.toggled.connect(func(on): Profile.set_setting("auto_lure", on))
 	col.add_child(auto)
 	col.move_child(auto, col.get_child_count() - 2)
+	var camp := CheckButton.new()
+	camp.name = "Camp3D"
+	camp.text = "主畫面的 3D 營地（關掉比較省電）"
+	camp.button_pressed = camp_on()
+	camp.add_theme_font_size_override("font_size", 15)
+	camp.focus_mode = Control.FOCUS_NONE
+	camp.toggled.connect(func(on):
+		Profile.set_setting("camp_3d", on)
+		get_tree().change_scene_to_file("res://scenes/title_screen.tscn"))
+	col.add_child(camp)
+	col.move_child(camp, col.get_child_count() - 2)
 
 
 func _go(page: String) -> void:
-	get_tree().change_scene_to_file("res://scenes/%s.tscn" % page)
+	open_page(page)
 
 
 func _on_fish_log() -> void:
-	get_tree().change_scene_to_file("res://scenes/fish_log.tscn")
+	open_page("fish_log")
 
 
-## A round button with a gear drawn on it (the settings).
+## A round button with a gear drawn on it (the settings), in gold.
 class GearButton extends Button:
 	func _ready() -> void:
 		focus_mode = Control.FOCUS_NONE
@@ -223,9 +390,10 @@ class GearButton extends Button:
 	func _draw() -> void:
 		var c := size / 2.0
 		var r := minf(size.x, size.y) / 2.0
-		draw_circle(c, r, Color(0.1, 0.095, 0.09, 0.9))
-		draw_arc(c, r - 0.5, 0.0, TAU, 40, MenuStyle.EDGE, 1.0)
-		var ink := MenuStyle.GOLD if is_hovered() or button_pressed else MenuStyle.TEXT
+		draw_circle(c, r, Color(0.07, 0.065, 0.06, 0.92))
+		draw_arc(c, r - 1.5, 0.0, TAU, 40, Color(0.62, 0.46, 0.17), 3.0)
+		draw_arc(c, r - 0.5, 0.0, TAU, 40, Color(0, 0, 0), 1.0)
+		var ink := UiKit.GOLD_BRIGHT if is_hovered() or button_pressed else UiKit.GOLD
 		# Teeth, ring, hole.
 		var teeth := PackedVector2Array()
 		for i in 16:
@@ -234,4 +402,40 @@ class GearButton extends Button:
 			teeth.append(c + Vector2(cos(a), sin(a)) * rr)
 		draw_colored_polygon(teeth, ink)
 		draw_circle(c, r * 0.4, ink)
-		draw_circle(c, r * 0.18, Color(0.1, 0.095, 0.09))
+		draw_circle(c, r * 0.18, Color(0.07, 0.065, 0.06))
+
+
+## An entry's picture: its page's thing in a slot (the rod worn for 裝備,
+## a fish from the tank for 魚缸).
+class EntryIcon extends Control:
+	var page := ""
+	var icon_path := ""
+	## Held here: a texture loaded only inside _draw is freed before the
+	## frame's drawn (and shows white).
+	var _tex: Texture2D
+
+	func _draw() -> void:
+		var r := Rect2(Vector2.ZERO, size)
+		match page:
+			"equipment":
+				var id := "rod_%d" % Profile.rod_tier
+				ItemBoard.draw_item(self, r, id, 1, null)
+				return
+			"fish_tank":
+				var fish: Dictionary = Profile.tank[0] if not Profile.tank.is_empty() else {"id": "carp", "name": "鯉魚"}
+				UiKit.draw_slot(self, r, UiKit.fish_rarity(fish))
+				var ft := FishData.icon(fish.get("id", ""), fish.get("name", ""))
+				_pic(r, ft)
+				return
+		UiKit.draw_slot(self, r)
+		if _tex == null and icon_path != "":
+			_tex = load(icon_path)
+		_pic(r, _tex)
+
+	func _pic(r: Rect2, tex: Texture2D) -> void:
+		if tex == null:
+			return
+		var room := r.grow(-6.0)
+		var k := minf(room.size.x / tex.get_width(), room.size.y / tex.get_height())
+		var sz := Vector2(tex.get_size()) * k
+		draw_texture_rect(tex, Rect2(room.get_center() - sz / 2.0, sz), false)

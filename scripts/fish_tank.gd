@@ -31,13 +31,13 @@ func _ready() -> void:
 
 
 func _build() -> void:
-	_purse = UiKit.page_chrome(self, func(): get_tree().change_scene_to_file("res://scenes/title_screen.tscn"))
+	_purse = UiKit.page_chrome(self, func(): UiKit.page_back(self))
 	# User request: the fish log is here now (not on the main screen).
 	var book := UiKit.button("圖鑑", 15)
 	book.name = "FishLog"
 	book.position = Vector2(592, 12)
 	book.custom_minimum_size = Vector2(100, 38)
-	book.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/fish_log.tscn"))
+	book.pressed.connect(func(): UiKit.page_go(self, "fish_log"))
 	add_child(book)
 	var feed := UiKit.button("餵食", 15, "red")
 	feed.name = "Feed"

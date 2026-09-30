@@ -142,4 +142,4 @@ func _card(id: String, entry: Dictionary) -> void:
 
 func _on_back_pressed() -> void:
 	# Opened from the fish tank.
-	get_tree().change_scene_to_file("res://scenes/fish_tank.tscn")
+	UiKit.page_go(self, "fish_tank")

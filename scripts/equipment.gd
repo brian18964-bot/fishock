@@ -40,7 +40,7 @@ func _build() -> void:
 	shop.name = "ToShop"
 	shop.position = Vector2(708, 12)
 	shop.custom_minimum_size = Vector2(100, 38)
-	shop.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/shop.tscn"))
+	shop.pressed.connect(func(): UiKit.page_go(self, "shop"))
 	add_child(shop)
 
 	# Left: the character, framed, with a warm glow behind it.
@@ -128,4 +128,4 @@ func actions(source: Dictionary) -> Array:
 
 
 func _on_back() -> void:
-	get_tree().change_scene_to_file("res://scenes/title_screen.tscn")
+	UiKit.page_back(self)

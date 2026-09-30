@@ -83,6 +83,36 @@ static func icon(id: String) -> Texture2D:
 	return _icons[id]
 
 
+const MODELS := "res://assets/models/items/%s.glb"
+const LIVE_MODELS := {"worm": "worm", "cricket": "cricket", "shrimp": "shrimp"}
+
+
+## A thing's 3D model, for the menus' previews (ItemPreview) - "" when it
+## has none. "lamp" is the oil lamp every run starts with.
+static func model_path(id: String) -> String:
+	if id.begins_with("rod_"):
+		return "res://assets/models/fishing_rod_lvl%d.glb" % (int(id.substr(4)) + 1)
+	match id:
+		"flashlight", "battery":
+			return MODELS % id
+		"bait":
+			return MODELS % "worm"
+		"lamp":
+			return "res://assets/models/oil_lamp.glb"
+	if id.begins_with("lure_") and Profile.LURES.has(id.substr(5)):
+		return MODELS % ("lure_%d" % (int(Profile.LURES[id.substr(5)].sprite) + 1))
+	if id.begins_with("live_") and LIVE_MODELS.has(id.substr(5)):
+		return MODELS % LIVE_MODELS[id.substr(5)]
+	return ""
+
+
+## A picture by its path, kept loaded (safe to use while drawing).
+static func texture(path: String) -> Texture2D:
+	if not _icons.has(path):
+		_icons[path] = load(path) if ResourceLoader.exists(path) else null
+	return _icons[path]
+
+
 static func rod_effects(rod: Dictionary) -> String:
 	var parts := ["張力上限 x%.2f" % rod.strength]
 	if rod.window > 1.0:

@@ -1384,17 +1384,28 @@ func test_main_menu() -> void:
 	title._on_settings()
 	await frames(1)
 	check(title.find_child("AutoLure", true, false) != null, "settings: the auto-lure option")
-	var viewer: CharacterViewer = title.find_children("*", "CharacterViewer", true, false)[0]
-	check(viewer != null, "the character stands on the main screen")
-	var hand: BoneAttachment3D = viewer._attachments.get("hand_r")
-	check(hand != null and hand.get_child_count() == 1, "it holds the rod")
-	check(viewer._anim != null and viewer._anim.is_playing(), "it breathes (idle)")
-	var labels := {}
-	for b in title.find_children("*", "Button", true, false):
-		labels[(b as Button).text] = true
+	# User request (MMO look, 3D out of the game): the main screen is a 3D
+	# camp with the character by the fire.
+	var camp: CampStage = title.find_child("Camp", true, false)
+	check(camp != null, "the main screen is the 3D camp")
+	var rig: CharacterRig = camp.character
+	var hand: BoneAttachment3D = rig.attachments.get("hand_r")
+	check(hand != null and hand.get_child_count() == 1, "the character holds the rod")
+	check(rig.anim != null and rig.anim.is_playing(), "it breathes (idle)")
 	check(title.find_child("Settings", true, false) != null, "the settings gear")
-	for want in ["單機模式", "多人連線", "商城", "倉庫", "裝備", "魚缸"]:
-		check(labels.has(want), "main screen has " + want)
+	for want in ["Play", "Multiplayer", "Go_shop", "Go_warehouse", "Go_equipment", "Go_fish_tank"]:
+		check(title.find_child(want, true, false) != null, "main screen has " + want)
+	# A page opens over the camp (the camera glides to its spot) and closes
+	# back to it.
+	title.open_page("shop")
+	await seconds(1.0)
+	var page: Control = title._page
+	check(page != null and page.get_meta("camp", null) == title and not title._home.visible, "the shop opens over the camp")
+	var spot: Array = CampStage.STATIONS.shop
+	check(camp.camera.position.distance_to(spot[0]) < 0.05, "the camera went to the stall")
+	UiKit.page_back(page)
+	await seconds(1.0)
+	check(title._page == null and title._home.visible, "back to the camp")
 	title.queue_free()
 	await frames(1)
 

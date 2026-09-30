@@ -104,4 +104,4 @@ func _refresh() -> void:
 
 
 func _on_back() -> void:
-	get_tree().change_scene_to_file("res://scenes/title_screen.tscn")
+	UiKit.page_back(self)

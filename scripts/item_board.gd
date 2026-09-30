@@ -154,6 +154,12 @@ func card(source: Dictionary) -> void:
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 6)
 	var rarity := UiKit.item_rarity(id)
+	if Items.model_path(id) != "":
+		var pv := ItemPreview.new()
+		pv.name = "Preview"
+		pv.custom_minimum_size = Vector2(370, 130)
+		col.add_child(pv)
+		pv.show_item(id)
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 12)
 	head.add_child(ItemBoard.icon_box(id, 72.0))
@@ -482,7 +488,7 @@ class SlotBox extends Control:
 			UiKit.draw_slot(self, sq, "", _lit)
 			if slot == "light":
 				# Nothing worn: the oil lamp every run starts with.
-				var lamp: Texture2D = load(LAMP_ICON)
+				var lamp: Texture2D = Items.texture(LAMP_ICON)
 				var room := sq.grow(-9.0)
 				var k := minf(room.size.x / lamp.get_width(), room.size.y / lamp.get_height())
 				var sz := Vector2(lamp.get_size()) * k
