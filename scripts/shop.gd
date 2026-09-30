@@ -245,10 +245,25 @@ func _head(tex: Texture2D, title: String, rarity: String, kind: String, lines: A
 	# User request (3D out of the game): the thing itself, turning, when
 	# there's a model of it.
 	if Items.model_path(_selected) != "":
+		var stage := Control.new()
+		stage.name = "Stage"
+		stage.custom_minimum_size = Vector2(330, 150)
 		var pv := ItemPreview.new()
 		pv.name = "Preview"
-		pv.custom_minimum_size = Vector2(330, 150)
-		_pane.add_child(pv)
+		pv.set_anchors_preset(Control.PRESET_FULL_RECT)
+		stage.add_child(pv)
+		# User request (show the gear on the character): what's held can be
+		# tried on - the character holding it, in 3D.
+		if _selected.begins_with("rod_") or _selected in ["flashlight", "lamp"]:
+			var tb := UiKit.button("試穿", 13)
+			tb.name = "TryOn"
+			tb.toggle_mode = true
+			tb.custom_minimum_size = Vector2(58, 30)
+			tb.position = Vector2(330 - 62, 2)
+			var id := _selected
+			tb.toggled.connect(func(on): _try_on(stage, pv, id, on))
+			stage.add_child(tb)
+		_pane.add_child(stage)
 		pv.show_item(_selected)
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 12)
@@ -273,6 +288,29 @@ func _head(tex: Texture2D, title: String, rarity: String, kind: String, lines: A
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		l.custom_minimum_size.x = 320
 		_pane.add_child(l)
+
+
+## The character holding `id` (a rod, the flashlight, the lamp) in place of
+## the thing turning on its own; off puts the thing back.
+func _try_on(stage: Control, preview: ItemPreview, id: String, on: bool) -> void:
+	var old := stage.get_node_or_null("TryOnView")
+	if old != null:
+		old.queue_free()
+	preview.visible = not on
+	if not on:
+		return
+	var view := CharacterViewer.new()
+	view.name = "TryOnView"
+	view.zoom = 2.1
+	view.look_height = 1.15
+	view.set_anchors_preset(Control.PRESET_FULL_RECT)
+	stage.add_child(view)
+	stage.move_child(view, 1)
+	view.rig.follow_profile = false
+	if id.begins_with("rod_"):
+		view.rig.equip_rod(int(id.substr(4)))
+	elif id == "flashlight":
+		view.rig.equip_flashlight()
 
 
 func _lamp_card() -> void:

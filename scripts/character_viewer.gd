@@ -18,6 +18,9 @@ const SKIN := CharacterRig.SKIN
 ## Where the character stands in the frame: -1 left edge .. 1 right edge.
 @export var frame_x := 0.0
 @export var zoom := 1.0
+## The height (m) the camera looks at: the middle of the body; higher to
+## frame the chest and hands (the shop's try-on).
+@export var look_height := 0.95
 
 var _viewport: SubViewport
 var _pivot: Node3D
@@ -127,8 +130,8 @@ func _frame() -> void:
 		return
 	# Full body, from a little above and in front.
 	var dist := 5.6 / zoom
-	_camera.position = Vector3(0, 1.25, dist)
-	_camera.look_at(Vector3(0, 0.95, 0))
+	_camera.position = Vector3(0, look_height + 0.3, dist)
+	_camera.look_at(Vector3(0, look_height, 0))
 	# Shift so the character stands at frame_x across the view.
 	_camera.h_offset = -frame_x * dist * tan(deg_to_rad(_camera.fov) / 2.0) * size.x / maxf(size.y, 1.0)
 

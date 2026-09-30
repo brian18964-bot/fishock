@@ -1147,6 +1147,21 @@ func test_warehouse_and_bag() -> void:
 	shop2._show_tab("bait")
 	await frames(1)
 	check(shop2.find_child("Card_live_cricket", true, false) != null, "live baits for sale")
+	check(Items.square_icon("lure_zebra") != null and Items.square_icon("rod_4") != null and Items.square_icon("up_bag") == null,
+		"the wares have square icons (the MMO look)")
+	# User request (show the gear on the character): a rod tried on.
+	shop2._show_tab("gear")
+	await frames(1)
+	(shop2.find_child("Card_rod_4", true, false) as Button).pressed.emit()
+	await frames(1)
+	var try_on: Button = shop2.find_child("TryOn", true, false)
+	check(try_on != null, "a rod can be tried on")
+	try_on.button_pressed = true
+	await frames(2)
+	var view: CharacterViewer = shop2.find_child("TryOnView", true, false)
+	var held: BoneAttachment3D = view.rig.attachments.get("hand_r") if view != null else null
+	check(held != null and held.get_child_count() == 1 and held.get_child(0).scene_file_path.ends_with("lvl5.glb"),
+		"the character holds the rod tried on")
 	shop2.queue_free()
 	await frames(1)
 	# The page: drag from the warehouse onto the bag, and back.

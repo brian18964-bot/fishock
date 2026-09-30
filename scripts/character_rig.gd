@@ -29,9 +29,17 @@ const ROD_GRIP := Vector3.ZERO
 const LAMP := preload("res://assets/models/oil_lamp.glb")
 const LAMP_DROP := Vector3(0.0, -0.3, 0.02)
 
+## The flashlight (built along +x, lens forward, about 1.05 long), held
+## out in the left hand in place of the lamp - the shop's try-on.
+const FLASHLIGHT := preload("res://assets/models/items/flashlight.glb")
+const FLASHLIGHT_SCALE := 0.3
+
 var anim: AnimationPlayer
 var skeleton: Skeleton3D
 var attachments := {}
+## Holds the rod the player owns, following the profile; off for the
+## shop's try-on (it holds what's being tried).
+var follow_profile := true
 
 
 func _ready() -> void:
@@ -54,7 +62,7 @@ func _ready() -> void:
 
 
 func _on_profile_changed() -> void:
-	if is_inside_tree():
+	if is_inside_tree() and follow_profile:
 		equip_rod(Profile.rod_tier)
 
 
@@ -128,6 +136,14 @@ func equip_rod(tier: int) -> void:
 
 func equip_lamp() -> void:
 	equip("hand_l", LAMP, _held("hand_l", Basis.IDENTITY, LAMP_DROP))
+
+
+## The flashlight in the left hand, pointed ahead and a little down.
+func equip_flashlight() -> void:
+	var ahead := Vector3(0.35, -0.2, 1.0).normalized()
+	var side := ahead.cross(Vector3.UP).normalized()
+	var world := Basis(ahead, side.cross(ahead), side).scaled(Vector3.ONE * FLASHLIGHT_SCALE)
+	equip("hand_l", FLASHLIGHT, _held("hand_l", world, Vector3(0.0, -0.04, 0.06)))
 
 
 ## An offset for a slot's bone that puts a model at `world` (a basis in the
