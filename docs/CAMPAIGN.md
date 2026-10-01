@@ -221,7 +221,7 @@
 
 ## 八、成就
 
-成就分五類，達成時事件欄會跳出「成就達成」，並給金幣。可以在旅程地圖的「成就」頁查看進度。
+成就分七類，達成時在結算畫面顯示「成就達成」並給金幣（在營地達成的，例如買東西、圖鑑，打開旅程頁時發放）。可以在旅程頁的「成就」分頁查看進度。
 
 | 類別 | 成就 | 條件 |
 |---|---|---|
@@ -286,9 +286,10 @@
 - 統計：遊戲各處本來就有的事件（`catch_success`、`catch_failed`、`GameState.report`……）
   由 `Campaign` 接收，計數。
 - 畫面：
-  - `ObjectivePanel`：左側的關卡目標與星星條件
-  - `GuideArrow`：指引箭頭
-  - `TutorialBox`：柳靈的提示
-  - 結算畫面：星星、目標、獎勵，以及「重試／下一關／回營地」
-- 營地的「出發夜釣」打開旅程地圖（`scenes/journey.tscn`）；選關後照原本的出發動畫進入異空間。
+  - `CampaignHud`（`scripts/campaign_hud.gd`）：左側的關卡目標與星星條件、上方柳靈的提示、
+    指引箭頭（目標在畫面外時繞著角色指方向）、開場的關卡標題
+  - `CampaignResults`（`scripts/campaign_results.gd`）：結算畫面，星星、條件、獎勵，
+    以及「再試一次／下一關／回營地」
+- 營地的「出發夜釣」打開旅程頁（`scenes/journey.tscn`、`scripts/journey.gd`）；選關後照原本的出發動畫進入異空間。
+- 測試：`tests/scenarios.gd` 的 `test_campaign_*`、`test_journey_page`（每一關的地圖都照規則生成、1-1 從頭到尾、解鎖、成就、詛咒）。
 - 存檔：`Profile` 多存 `campaign`（每關星星、通關次數、最佳時間）和 `achievements`。
