@@ -44,6 +44,10 @@ const BOAT_AT := Vector3(2.95, 0.02, -5.25)
 const LAKE_CENTER := Vector3(0.0, 0.0, -17.0)
 const LAKE_RADIUS := 13.5
 const MOON_DIR := Vector3(0.1, 0.17, -1.0)
+## The logs to sit on by the fire, and the chopping block by the woodpile.
+const SEATS := [Vector3(-1.5, 0.0, -0.75), Vector3(1.55, 0.0, 0.35)]
+const BLOCK_AT := Vector3(-1.25, 0.0, -2.05)
+const WOODPILE_AT := Vector3(-1.8, 0.0, -2.4)
 ## The water in the cut drum (its surface's height and size).
 const TROUGH_WATER := [0.33, Vector2(0.84, 0.52)]
 const OUTLINE_COLOR := Color(1.0, 0.78, 0.38)
@@ -53,6 +57,12 @@ var character: CharacterRig
 var character_pivot: Node3D
 ## page -> {node, label, center (world), radius (m), overlays: [ShaderMaterial]}
 var hotspots := {}
+## The character's life at the camp (CampLife): where it goes and does
+## things - name -> {at (where it stands), face (what it looks at)} - and
+## what it walks round ([centre, radius] on the ground).
+var life: CampLife
+var spots := {}
+var obstacles: Array = []
 var _fire_light: OmniLight3D
 var _fire_glow: MeshInstance3D
 var _embers_mat: StandardMaterial3D
@@ -61,6 +71,10 @@ var _boat: Node3D
 var _tent_holder: Node3D
 var _rod_holder: Node3D
 var _water_mat: ShaderMaterial
+var _drum_lamp: Node3D
+var _stone_light: OmniLight3D
+var _stoke := 0.0
+var _stone_flare := 0.0
 var _lit := ""
 var _tent_shown := -1
 var _rod_shown := -1
@@ -84,6 +98,7 @@ func _ready() -> void:
 	_stone()
 	_stall()
 	_dock()
+	_places()
 	_character()
 	camera = Camera3D.new()
 	camera.near = 0.1
@@ -134,16 +149,129 @@ func _process(delta: float) -> void:
 	_time += delta
 	# The fire breathes: its light flickers, its glow swells, its embers pulse.
 	var flick := 0.85 + 0.1 * sin(_time * 7.3) + 0.06 * sin(_time * 13.1 + 1.3) + 0.04 * sin(_time * 23.0)
+	# Wood just put on flares up and dies back.
+	_stoke = maxf(_stoke - delta * 0.25, 0.0)
+	flick *= 1.0 + 0.45 * _stoke
 	_fire_light.light_energy = 2.2 * flick
 	_fire_glow.scale = Vector3.ONE * (0.95 + 0.08 * flick)
 	_embers_mat.emission_energy_multiplier = 0.5 * flick
-	# The 渡石's runes breathe, slowly.
-	_stone_mat.emission_energy_multiplier = 0.55 + 0.3 * sin(_time * 1.3)
+	# The 渡石's runes breathe, slowly - and blaze as someone crosses.
+	_stone_flare = maxf(_stone_flare - delta * 0.6, 0.0)
+	_stone_mat.emission_energy_multiplier = 0.55 + 0.3 * sin(_time * 1.3) + 4.0 * _stone_flare
+	_stone_light.light_energy = 0.5 + 6.0 * _stone_flare
 	# The boat rides the water.
 	_boat.rotation = Vector3(sin(_time * 0.9) * 0.025, _boat.rotation.y, sin(_time * 0.7 + 1.0) * 0.035)
 	_boat.position.y = BOAT_AT.y + sin(_time * 1.1) * 0.02
-	# The character eases back to facing the camera between drags.
-	character_pivot.rotation.y = lerpf(character_pivot.rotation.y, 0.35, minf(1.0, delta * 0.8))
+
+
+# ---------------------------------------------------------------- places
+
+## The flat way from `from` to `to`.
+static func _toward(from: Vector3, to: Vector3) -> Vector3:
+	var d := to - from
+	d.y = 0.0
+	return d.normalized() if d.length() > 0.001 else Vector3.FORWARD
+
+
+func _spot(name: String, at: Vector3, face: Vector3) -> void:
+	spots[name] = {"at": Vector3(at.x, 0.0, at.z), "face": face}
+
+
+## Where the character goes and what it walks round (CampLife).
+func _places() -> void:
+	# A seat: standing just in front of the log, facing the fire (sat, the
+	# hips go back onto it).
+	for i in SEATS.size():
+		var f := _toward(SEATS[i], FIRE_AT)
+		_spot("seat_%d" % i, SEATS[i] + f * 0.33, FIRE_AT)
+	_spot("home", CHARACTER_AT, CHARACTER_AT + Vector3(0.35, 0, 1.0))
+	_spot("chop", BLOCK_AT + Vector3(-0.42, 0, 0.42), BLOCK_AT)
+	_spot("stoke", FIRE_AT + _toward(FIRE_AT, BLOCK_AT) * 0.95, FIRE_AT)
+	_spot("warm", FIRE_AT + Vector3(0.38, 0, -0.92), FIRE_AT)
+	_spot("dance", FIRE_AT + Vector3(0.55, 0, 1.05), Vector3(0.6, 0, 6.0))
+	var tent_front := Vector3(sin(0.7), 0, cos(0.7))
+	_spot("tent", TENT_AT + tent_front * 1.7, TENT_AT)
+	var crate_side := Vector3(cos(0.55), 0, -sin(0.55))
+	_spot("crate", CRATE_AT + crate_side * 0.72, CRATE_AT)
+	var trough_back := -Vector3(sin(-0.45), 0, cos(-0.45))
+	_spot("trough", TROUGH_AT + trough_back * 0.66, TROUGH_AT)
+	_spot("lean", DRUM_AT + Vector3(0, 0, 0.3), DRUM_AT + Vector3(0, 0, -3.0))
+	_spot("lake", Vector3(1.15, 0, -2.75), Vector3(1.6, 0, -6.0))
+	var stall_front := Vector3(sin(-0.95), 0, cos(-0.95))
+	_spot("merchant", HUT_AT + stall_front * 1.35, HUT_AT)
+	_spot("gather_0", Vector3(-2.3, 0, 1.6), Vector3(-2.6, 0, 2.6))
+	_spot("gather_1", Vector3(2.4, 0, 1.3), Vector3(2.9, 0, 2.2))
+	_spot("gather_2", Vector3(-0.7, 0, 1.95), Vector3(-0.9, 0, 3.0))
+	var lamp_side := Vector3(0.447, 0, 0.894)
+	_spot("lamp", DRUM_AT + lamp_side * 0.55, DRUM_AT)
+	_spot("rod", ROD_AT + Vector3(0.45, 0, 0.35), ROD_AT + Vector3(0, 0, 0))
+	_spot("stone", STONE_AT + Vector3(0, 0, 0.95), STONE_AT)
+	_spot("stone_in", STONE_AT + Vector3(0, 0, 0.12), STONE_AT + Vector3(0, 0, -2.0))
+	_spot("wake", FIRE_AT + Vector3(-0.95, 0, 0.55), FIRE_AT)
+	# What it walks round.
+	obstacles = [
+		[FIRE_AT, 0.75], [CRATE_AT, 0.62], [BACKPACK_AT, 0.3], [DRUM_AT, 0.36],
+		[TROUGH_AT + Vector3(0.22, 0, 0.1), 0.34], [TROUGH_AT - Vector3(0.22, 0, 0.1), 0.34],
+		[WOODPILE_AT, 0.5], [BLOCK_AT, 0.26], [ROD_AT, 0.2], [TENT_AT, 1.45], [STONE_AT, 0.62], [HUT_AT, 1.25],
+	]
+	for at in SEATS:
+		var f := _toward(at, FIRE_AT)
+		var along := Vector3(-f.z, 0, f.x)
+		for k in [-0.55, 0.0, 0.55]:
+			obstacles.append([at + along * k, 0.27])
+
+
+## A way from `from` to `to` round what's in the way: the points to walk
+## through, `to` last.
+func route(from: Vector3, to: Vector3) -> Array:
+	var pts: Array = [Vector3(from.x, 0, from.z), Vector3(to.x, 0, to.z)]
+	for _i in 8:
+		var bent := false
+		for k in pts.size() - 1:
+			var a: Vector3 = pts[k]
+			var b: Vector3 = pts[k + 1]
+			for o in obstacles:
+				var c: Vector3 = o[0]
+				var r: float = o[1]
+				# What the ends stand in (a seat by its log) doesn't count.
+				if Vector2(a.x - c.x, a.z - c.z).length() < r or Vector2(b.x - c.x, b.z - c.z).length() < r:
+					continue
+				var ab := b - a
+				var t := clampf((c - a).dot(ab) / maxf(ab.length_squared(), 0.0001), 0.0, 1.0)
+				var near := a + ab * t
+				var off := near - c
+				off.y = 0.0
+				if off.length() < r:
+					if off.length() < 0.01:
+						off = Vector3(-ab.z, 0, ab.x)
+					pts.insert(k + 1, c + off.normalized() * (r + 0.3))
+					bent = true
+					break
+			if bent:
+				break
+		if not bent:
+			break
+	return pts.slice(1)
+
+
+## Wood put on the fire: it flares up.
+func stoke() -> void:
+	_stoke = 1.0
+
+
+## The 渡石 blazes (someone crossing).
+func stone_flare() -> void:
+	_stone_flare = 1.0
+
+
+## The lamp taken off the drum (setting out) or put back (home).
+func lamp_on_drum(on: bool) -> void:
+	_drum_lamp.visible = on
+
+
+## The rod taken from beside the tent, or leant back.
+func rod_by_tent(on: bool) -> void:
+	_rod_holder.visible = on
 
 
 # ---------------------------------------------------------------- hotspots
@@ -653,8 +781,22 @@ func _fire() -> void:
 
 ## Logs to sit on by the fire, and a few stacked by the tent.
 func _seats() -> void:
-	_put("log", Vector3(-1.5, 0.0, -0.75), 0.95)
-	_put("log", Vector3(1.55, 0.0, 0.35), -0.25)
+	for at in SEATS:
+		# Lying across the way to the fire (its length along its z).
+		var f := _toward(at, FIRE_AT)
+		_put("log", at, atan2(-f.z, f.x))
+	# The chopping block: a round of a trunk on end.
+	var block := MeshInstance3D.new()
+	block.name = "Block"
+	var bm := CylinderMesh.new()
+	bm.top_radius = 0.2
+	bm.bottom_radius = 0.23
+	bm.height = 0.36
+	bm.radial_segments = 12
+	block.mesh = bm
+	block.material_override = _mat(Color(0.2, 0.14, 0.09), 0.95)
+	block.position = BLOCK_AT + Vector3(0, 0.18, 0)
+	add_child(block)
 	for k in 3:
 		var l := _put("log", Vector3(-1.85 + k * 0.05, 0.0 + (0.17 if k == 2 else 0.0), -2.55 + k * 0.24 - (0.12 if k == 2 else 0.0)), 1.5)
 		if l != null:
@@ -721,10 +863,11 @@ func _dress_rod() -> void:
 ## half, water in it (the fish tank).
 func _drums() -> void:
 	_put("drum", DRUM_AT, 0.4)
-	var lamp: Node3D = CharacterRig.LAMP.instantiate()
-	lamp.position = DRUM_AT + Vector3(0.05, 0.92, 0.02)
-	lamp.scale = Vector3.ONE * 1.15
-	add_child(lamp)
+	_drum_lamp = CharacterRig.LAMP.instantiate()
+	_drum_lamp.name = "DrumLamp"
+	_drum_lamp.position = DRUM_AT + Vector3(0.05, 0.92, 0.02)
+	_drum_lamp.scale = Vector3.ONE * 1.15
+	add_child(_drum_lamp)
 	var trough := Node3D.new()
 	trough.name = "Trough"
 	trough.position = TROUGH_AT
@@ -778,12 +921,12 @@ func _stone() -> void:
 	_stone_mat = stone.material_override as StandardMaterial3D
 	_stone_mat.albedo_color = Color(0.42, 0.44, 0.46)
 	_stone_mat.emission = Color(0.4, 0.8, 1.0)
-	var light := OmniLight3D.new()
-	light.light_color = Color(0.45, 0.75, 1.0)
-	light.light_energy = 0.5
-	light.omni_range = 2.6
-	light.position = STONE_AT + Vector3(0, 1.1, 0.5)
-	add_child(light)
+	_stone_light = OmniLight3D.new()
+	_stone_light.light_color = Color(0.45, 0.75, 1.0)
+	_stone_light.light_energy = 0.5
+	_stone_light.omni_range = 2.6
+	_stone_light.position = STONE_AT + Vector3(0, 1.1, 0.5)
+	add_child(_stone_light)
 
 
 ## The merchant's stall at the water's edge (the shop), a lamp at its
@@ -884,6 +1027,10 @@ func _character() -> void:
 	character = CharacterRig.new()
 	character.hold_gear = false
 	character_pivot.add_child(character)
+	life = CampLife.new()
+	life.name = "Life"
+	life.stage = self
+	add_child(life)
 	var blob := MeshInstance3D.new()
 	var q := QuadMesh.new()
 	q.size = Vector2(0.9, 0.9)

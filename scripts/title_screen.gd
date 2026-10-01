@@ -13,9 +13,14 @@ extends Control
 ##   the crate 倉庫 (warehouse), the backpack 背包 (the bag alone), the
 ##   tent 裝備 (equipment), the cut drum 魚缸 (fish tank), the merchant's
 ##   stall or his boat 商人 (shop)
-##   the character: drag to turn it, tap it and it waves
+##   the character: it lives there on its own (CampLife - by its
+##                spirit); tap it and it waves (nods, talks...)
 ##   bottom:      出發夜釣 (a run), 多人連線 (not yet - says so)
 ##   top right:   gold, the settings (a gear)
+## 出發夜釣 sets out (user request): the character takes the lamp from the
+## drum and the rod from beside the tent and walks into the 渡石, then the
+## run starts; back from one it comes out of the stone (escaped) or wakes
+## by the fire (lost). A tap skips either.
 ## Between runs, so the day timer is stopped here (GameState.reset_run).
 ## With the 3D camp off (settings; for weak phones) it's the old stage - the
 ## character on its stone before a dark wall - and the camp's list on the
@@ -45,6 +50,11 @@ var _drag_moved := 0.0
 var _spot := ""
 var _press_spot := ""
 var _spot_label: Label
+## A set piece playing (setting out, coming home): a tap skips it.
+var _scene_piece := ""
+var _skip_hint: Label
+var _fade: ColorRect
+var _setting_off := false
 
 
 ## A menu needn't draw at 60 frames a second: half that saves a phone's
@@ -63,6 +73,10 @@ func _ready() -> void:
 	Profile.gold_updated.connect(func(_g): _refresh())
 	Profile.profile_changed.connect(_refresh)
 	_refresh()
+	var back := GameState.last_return
+	GameState.last_return = ""
+	if _stage != null and back != "":
+		_come_home(back)
 	if not Profile.tank_news.is_empty():
 		_tank_news()
 
@@ -194,6 +208,21 @@ func _build() -> void:
 	soon.position = Vector2(88, -8)
 	multi.add_child(soon)
 
+	_skip_hint = UiKit.label("點一下畫面跳過", 15, UiKit.DIM)
+	_skip_hint.name = "SkipHint"
+	_skip_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_skip_hint.custom_minimum_size = Vector2(300, 0)
+	_skip_hint.position = Vector2(330, 500)
+	_skip_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_skip_hint.visible = false
+	add_child(_skip_hint)
+	_fade = ColorRect.new()
+	_fade.name = "Fade"
+	_fade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_fade.color = Color(0, 0, 0, 0)
+	_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_fade)
+
 
 ## An entry in the camp's list, like a character in an MMO's list: a
 ## picture in a slot, a gold name, a line about it under.
@@ -267,10 +296,21 @@ func _set_sub(page: String, text: String) -> void:
 		(b.find_child("Sub", true, false) as Label).text = text
 
 
+## The character's head (world), standing or sat.
+func _head_point() -> Vector3:
+	var rig := _stage.character
+	var bone := rig.skeleton.find_bone("Head") if rig.skeleton != null else -1
+	if bone < 0:
+		return _stage.character_pivot.global_position + Vector3(0, 1.55, 0)
+	return (rig.skeleton.global_transform * rig.skeleton.get_bone_global_pose(bone)).origin
+
+
 func _process(_delta: float) -> void:
 	# The name floats over the character's head; the lit thing's over it.
+	if _stage != null:
+		Profile.rest(_delta)
 	if _stage != null and _home.visible:
-		var head := _stage.character_pivot.global_position + Vector3(0, 2.05, 0)
+		var head := _head_point() + Vector3(0, 0.5, 0)
 		if not _stage.camera.is_position_behind(head):
 			var at := _stage.camera.unproject_position(head) / RENDER_SCALE
 			_nameplate.position = at - Vector2(_nameplate.size.x * 0.5, _nameplate.size.y)
@@ -296,11 +336,17 @@ func _light(page: String) -> void:
 ## A press on one of the camp's things lights it; let go on it, it opens.
 ## Elsewhere, drags turn the character and a tap on it waves.
 func _on_home_input(event: InputEvent) -> void:
+	if _scene_piece != "":
+		# Setting out or coming home: a tap skips it.
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
+			_stage.life.finish()
+		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			_drag = true
 			_drag_moved = 0.0
-			_press_spot = spot_at(event.position)
+			# The character itself before what's behind it.
+			_press_spot = "" if _near_character(event.position) else spot_at(event.position)
 			_light(_press_spot)
 		else:
 			_drag = false
@@ -325,16 +371,20 @@ func _on_home_input(event: InputEvent) -> void:
 			_light(spot_at(event.position))
 
 
+## On the character: between its feet and its head, about its width.
 func _near_character(at: Vector2) -> bool:
 	if _stage == null:
 		return false
 	var feet := _stage.camera.unproject_position(_stage.character_pivot.global_position) / RENDER_SCALE
-	return Rect2(feet - Vector2(80, 300), Vector2(160, 320)).has_point(at)
+	var head := _stage.camera.unproject_position(_head_point() + Vector3(0, 0.15, 0)) / RENDER_SCALE
+	var tall := maxf(feet.y - head.y, 40.0)
+	var r := Rect2(Vector2((feet.x + head.x) * 0.5 - tall * 0.22, head.y), Vector2(tall * 0.44, tall))
+	return r.has_point(at)
 
 
 func _wave() -> void:
 	if _stage != null:
-		_stage.character.wave()
+		_stage.life.tap()
 	elif _viewer != null:
 		_viewer.wave()
 
@@ -356,6 +406,7 @@ func open_page(page: String) -> void:
 	_page = p
 	add_child(p)
 	if _stage != null:
+		_stage.life.hold(true)
 		_live(true)
 		_stage.go_to(page, true, func(): _live(false))
 	var t := p.create_tween()
@@ -372,6 +423,7 @@ func close_page() -> void:
 	_home.visible = true
 	_refresh()
 	if _stage != null:
+		_stage.life.hold(false)
 		_live(true)
 		_stage.go_to("home")
 
@@ -386,8 +438,54 @@ func _exit_tree() -> void:
 
 
 func _on_solo() -> void:
-	GameState.start_run()
-	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	if _stage == null or _scene_piece != "":
+		_start_run()
+		return
+	# User request: it sets out - the lamp from the drum, the rod from by
+	# the tent, into the 渡石.
+	_scene_piece = "depart"
+	_light("")
+	for n in ["Play", "Multiplayer", "Settings", "Nameplate"]:
+		var c := _home.get_node_or_null(n)
+		if c != null:
+			c.visible = false
+	_skip_hint.visible = true
+	_stage.life.plan_done.connect(_on_piece_done)
+	_stage.life.depart()
+
+
+func _on_piece_done(tag: String) -> void:
+	if tag == "depart":
+		_start_run()
+		return
+	_scene_piece = ""
+	_skip_hint.visible = false
+
+
+## Into the run: the 渡石's light fills the screen, then the run starts.
+func _start_run() -> void:
+	if _setting_off:
+		return
+	_setting_off = true
+	if _stage != null:
+		_stage.stone_flare()
+	_fade.color = Color(0.75, 0.92, 1.0, 0.0)
+	var t := create_tween()
+	t.tween_property(_fade, "color:a", 1.0, 0.45)
+	t.tween_callback(func():
+		GameState.start_run()
+		get_tree().change_scene_to_file("res://scenes/main.tscn"))
+
+
+## Back from a run (GameState.last_return): out of the stone's light, or
+## waking by the fire (out of the dark).
+func _come_home(how: String) -> void:
+	_scene_piece = how
+	_skip_hint.visible = true
+	_stage.life.plan_done.connect(_on_piece_done)
+	_stage.life.come_home(how)
+	_fade.color = Color(0, 0, 0, 1) if how == "lost" else Color(0.75, 0.92, 1.0, 0.9)
+	create_tween().tween_property(_fade, "color:a", 0.0, 1.2 if how == "lost" else 0.6)
 
 
 func _on_multiplayer() -> void:

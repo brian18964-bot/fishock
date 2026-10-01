@@ -43,6 +43,7 @@ const TESTS := [
 	"test_bag_drag_out",
 	"test_fish_tank",
 	"test_camp_spirit_and_tents",
+	"test_camp_life",
 	"test_light_button_tap_and_hold",
 	"test_light_button_relights",
 	"test_long_press_brightness",
@@ -106,6 +107,8 @@ func seconds(s: float) -> void:
 func _fresh_game(rng_seed := 7) -> void:
 	seed(rng_seed)
 	gs.reset_run()
+	# A run an earlier test ended isn't one to come home from.
+	gs.last_return = ""
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
 	await frames(3)
 	main = get_tree().current_scene
@@ -1556,6 +1559,163 @@ func test_camp_spirit_and_tents() -> void:
 	check(Profile.camp_tent == 2 and "還沒解鎖" in page._tent_note.text, "a locked one says what it needs")
 	title.queue_free()
 	await frames(1)
+	Profile.load_data(saved)
+	Profile._save()
+
+
+## User request (Camp v2): the character lives at the camp by its spirit -
+## busy (all of it, dancing over 90), tired, worn (mostly sitting), spent
+## (only sitting); waves (nods, shakes its head) when tapped; holds still
+## under a page; sets out with the lamp and the rod into the 渡石, comes
+## home out of it, or wakes by the fire.
+func test_camp_life() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 100, "spirit": 95.0})
+	var title: Control = load("res://scenes/title_screen.tscn").instantiate()
+	get_tree().root.add_child(title)
+	await frames(3)
+	var camp: CampStage = title.find_child("Camp", true, false)
+	var life: CampLife = camp.life
+	check(life != null and CampLife.tier() == 3, "the camp has a life; at 95 it's busy")
+	# What it picks, by how it feels.
+	var allowed := {
+		0: ["sit"], 1: ["sit", "trough", "warm", "stand"],
+		2: ["sit", "crate", "trough", "lean", "lake", "merchant", "warm", "stand"],
+	}
+	for spirit in [20.0, 40.0, 60.0]:
+		Profile.spirit = spirit
+		var t := CampLife.tier()
+		var seen := {}
+		life.seated = false
+		for _i in 120:
+			life._choose()
+			seen[life.activity] = true
+		var stray: Array = seen.keys().filter(func(k): return not k in allowed[t])
+		check(stray.is_empty(), "spirit %d picks only what it can (%s)" % [spirit, ", ".join(stray)])
+	Profile.spirit = 95.0
+	var busy := {}
+	for _i in 200:
+		life._choose()
+		busy[life.activity] = true
+	check(busy.has("chop") and busy.has("dance") and busy.has("sit"), "busy, it chops, dances and sits (%s)" % ", ".join(busy.keys()))
+	Profile.spirit = 80.0
+	var danced := false
+	for _i in 200:
+		life._choose()
+		danced = danced or life.activity == "dance"
+	check(not danced, "no dancing under 90")
+	# Its ways round the camp keep off the fire.
+	var path := camp.route(camp.spots.home.at, camp.spots.stone.at)
+	var clear := true
+	var from: Vector3 = camp.spots.home.at
+	for p in path:
+		for k in 10:
+			var q: Vector3 = from.lerp(p, k / 10.0)
+			if Vector2(q.x - CampStage.FIRE_AT.x, q.z - CampStage.FIRE_AT.z).length() < 0.7:
+				clear = false
+		from = p
+	check(clear and path.size() >= 2, "the way to the stone goes round the fire (%d points)" % path.size())
+	# A tap: a wave when busy; worn out, a shake of the head.
+	life._plan.clear()
+	life._step = {}
+	life.seated = false
+	Profile.spirit = 80.0
+	life.tap()
+	check(life._step.get("do", "") == "face" and life._plan.size() >= 1 and life._plan[0].get("clip", "") == "Interact",
+		"tapped, it turns and waves")
+	Profile.spirit = 10.0
+	life._plan.clear()
+	life._step = {}
+	life.tap()
+	check(life._plan.size() >= 1 and life._plan[0].get("clip", "") == "Idle_No", "spent, it shakes its head")
+	# Spent, it sits and stays sat.
+	life._plan.clear()
+	life._step = {}
+	life.sit_now()
+	for _i in 6:
+		life._plan = life._choose()
+		check(life.activity == "sit" and not life._plan.any(func(st): return st.get("clip", "") == "Sitting_Exit"),
+			"spent, it never gets up")
+	# A page: it holds still.
+	title.open_page("shop")
+	await frames(2)
+	check(life.paused, "it holds still under a page")
+	UiKit.page_back(title._page)
+	await seconds(0.8)
+	check(not life.paused, "and carries on after")
+	# Setting out: the lamp off the drum (lit, in its hand), the rod from by
+	# the tent, into the stone.
+	Profile.spirit = 80.0
+	title._setting_off = true
+	title._on_solo()
+	check(life.busy == "depart" and title._scene_piece == "depart", "出發夜釣 sets it off")
+	var lamp: Node3D = camp.find_child("DrumLamp", true, false)
+	var took := false
+	for _i in 900:
+		await frames(1)
+		if not lamp.visible:
+			took = true
+			break
+	check(took and camp.character.attachments.hand_l.get_child_count() == 1, "it takes the lamp from the drum")
+	check(camp.character.find_child("LampLight", true, false) != null, "and it's lit")
+	var rod_holder: Node3D = camp.find_child("Rod", true, false)
+	var rod_taken := false
+	for _i in 900:
+		await frames(1)
+		if not rod_holder.visible:
+			rod_taken = true
+			break
+	check(rod_taken and camp.character.attachments.hand_r.get_child_count() == 1, "then the rod from beside the tent")
+	var done := {"gone": false}
+	life.plan_done.connect(func(tag): done.gone = done.gone or tag == "depart")
+	for _i in 900:
+		await frames(1)
+		if done.gone:
+			break
+	check(done.gone and camp.character_pivot.position.distance_to(camp.spots.stone_in.at) < 0.1, "and walks into the 渡石")
+	title.queue_free()
+	await frames(1)
+
+	# Home again, escaped: out of the stone with the lamp; a tap skips to it
+	# put away.
+	GameState.last_return = "escaped"
+	title = load("res://scenes/title_screen.tscn").instantiate()
+	get_tree().root.add_child(title)
+	await frames(3)
+	camp = title.find_child("Camp", true, false)
+	life = camp.life
+	check(GameState.last_return == "" and life.busy == "home", "back from a run escaped, it comes home")
+	check(not camp.find_child("DrumLamp", true, false).visible and camp.character.attachments.hand_l.get_child_count() == 1,
+		"lamp in hand")
+	var down := InputEventMouseButton.new()
+	down.button_index = MOUSE_BUTTON_LEFT
+	down.position = Vector2(480, 300)
+	title._on_home_input(down)
+	title._on_home_input(down)
+	await frames(2)
+	check(life.busy == "" and title._scene_piece == "" and camp.find_child("DrumLamp", true, false).visible
+		and camp.find_child("Rod", true, false).visible and camp.character.attachments.hand_l.get_child_count() == 0,
+		"a tap skips to the lamp on the drum and the rod by the tent")
+	title.queue_free()
+	await frames(1)
+	# Lost: it wakes by the fire, gets up.
+	GameState.last_return = "lost"
+	title = load("res://scenes/title_screen.tscn").instantiate()
+	get_tree().root.add_child(title)
+	await frames(3)
+	life = (title.find_child("Camp", true, false) as CampStage).life
+	check(life.busy == "wake" and life.rig.anim.assigned_animation == "LayToIdle", "back from a run lost, it wakes by the fire")
+	await seconds(6.0)
+	check(life.busy == "" and title._scene_piece == "", "and gets up")
+	title.queue_free()
+	await frames(1)
+	# Resting at the camp: a point a minute.
+	Profile.spirit = 50.0
+	Profile._rest_time = 0.0
+	Profile.rest(59.0)
+	check(is_equal_approx(Profile.spirit, 50.0), "not before the minute's up")
+	Profile.rest(1.5)
+	check(is_equal_approx(Profile.spirit, 51.0), "a point of spirit for a minute's rest")
 	Profile.load_data(saved)
 	Profile._save()
 

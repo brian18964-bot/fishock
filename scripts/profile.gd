@@ -15,7 +15,7 @@ const UPGRADE_DEFS := {
 	"fuel_capacity": {"label": "提燈燃油容量", "max_level": 3, "costs": [20, 40, 70], "bonus": 20.0},
 	"bait_capacity": {"label": "帶餌上限", "max_level": 3, "costs": [15, 30, 50], "bonus": 5.0},
 	"flash_cooldown": {"label": "強光冷卻縮短", "max_level": 3, "costs": [20, 40, 70], "bonus": 0.5},
-	"fuel_station_charges": {"label": "煤油站總量上限", "max_level": 3, "costs": [25, 45, 75], "bonus": 100.0},
+	"fuel_station_charges": {"label": "營地油桶容量", "max_level": 3, "costs": [25, 45, 75], "bonus": 100.0},
 	"rod_distance": {"label": "釣竿拋投距離", "max_level": 3, "costs": [20, 40, 70], "bonus": 40.0},
 	"reel_power": {"label": "捲線器力道", "max_level": 3, "costs": [25, 50, 85], "bonus": 0.12},
 }
@@ -144,6 +144,21 @@ const TENTS := [
 func set_setting(key: String, value) -> void:
 	settings[key] = value
 	_changed()
+
+
+var _rest_time := 0.0
+
+
+## Resting at the camp (user request): a point of spirit back for every
+## minute there, up to full.
+func rest(delta: float) -> void:
+	if spirit >= SPIRIT_MAX:
+		_rest_time = 0.0
+		return
+	_rest_time += delta
+	if _rest_time >= 60.0:
+		_rest_time -= 60.0
+		add_spirit(1.0)
 
 
 ## Spirit up or down by `amount` (kept in 0..SPIRIT_MAX).

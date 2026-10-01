@@ -22,7 +22,7 @@ const UPGRADE_DESC := {
 	"fuel_capacity": "提燈能裝更多燃料",
 	"bait_capacity": "每輪開局多帶 5 份基礎餌料",
 	"flash_cooldown": "閃光技能冷卻縮短 0.5 秒",
-	"fuel_station_charges": "地圖上煤油站的總存量增加",
+	"fuel_station_charges": "營地油桶能存更多燃油（營火燒得更久）",
 	"rod_distance": "拋竿拋得更遠",
 	"reel_power": "收線時魚的體力掉得更快",
 }
@@ -320,7 +320,7 @@ func _lamp_card() -> void:
 	_clear_pane()
 	_head(load(LAMP_ICON), "煤燈", "common", "普通 燈具", [
 		["隨身的提燈，照亮身邊一圈。", UiKit.TEXT],
-		["使用：燃料在地圖上的煤油站補充，剩 30% 以下亮度會慢慢變暗。", UiKit.USE],
+		["使用：燃料回營地的油桶補充，剩 30% 以下亮度會慢慢變暗。", UiKit.USE],
 		["升級「提燈燃油容量」能裝更多燃料。", UiKit.DIM]])
 
 

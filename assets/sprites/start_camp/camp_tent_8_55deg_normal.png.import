@@ -2,28 +2,28 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b13m3r5guv6yf"
-path="res://.godot/imported/fuel_station_55deg_albedo.png-61bfd356305cfe15c44a2d4f5f8baaf6.ctex"
+uid="uid://dnn3onu2ix103"
+path="res://.godot/imported/camp_tent_8_55deg_normal.png-67b65e69102e13750c0ddb609560b574.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/sprites/fuel_station/fuel_station_55deg_albedo.png"
-dest_files=["res://.godot/imported/fuel_station_55deg_albedo.png-61bfd356305cfe15c44a2d4f5f8baaf6.ctex"]
+source_file="res://assets/sprites/start_camp/camp_tent_8_55deg_normal.png"
+dest_files=["res://.godot/imported/camp_tent_8_55deg_normal.png-67b65e69102e13750c0ddb609560b574.ctex"]
 
 [params]
 
 compress/mode=1
 compress/high_quality=false
-compress/lossy_quality=0.85
+compress/lossy_quality=0.9
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

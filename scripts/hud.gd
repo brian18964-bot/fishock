@@ -147,7 +147,7 @@ func _process(delta: float) -> void:
 		time_label.text = "剩餘時間：%02d:%02d" % [total / 60, total % 60]
 
 	if _player.carrying_oil_drum:
-		gear_label.text = "提著油箱中，沒辦法釣魚，送去煤油站吧"
+		gear_label.text = "提著油箱中，沒辦法釣魚，送回營地吧"
 	elif _player.fishing_mode == Player.FishingMode.BOBBER:
 		gear_label.text = "釣法：浮標（餌 x%d）－背包裡切換" % _player.bait_count
 	else:

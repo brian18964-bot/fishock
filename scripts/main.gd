@@ -51,6 +51,60 @@ var _fish_offset := Vector2.ZERO
 var _fish_goal := Vector2.ZERO
 var _fish_goal_timer := 0.0
 
+## User request (Camp v2): the travellers cross into the otherworld through
+## the fog - a run opens on fog that thins away from the player outward,
+## the player coming clear of it, the camp's fire ahead.
+const FOG_ARRIVAL := 2.6
+const FOG_SHADER := """
+shader_type canvas_item;
+uniform float clear = 0.0;
+uniform float aspect = 1.7778;
+uniform vec2 center = vec2(0.5, 0.55);
+uniform sampler2D noise : repeat_enable, filter_linear;
+void fragment() {
+	vec2 p = (UV - center) * vec2(aspect, 1.0);
+	float n = texture(noise, UV * vec2(aspect, 1.0) * 1.3 + vec2(TIME * 0.03, TIME * 0.01)).r;
+	float r = clear * 1.7;
+	float fog = smoothstep(r - 0.3, r + 0.1, length(p) + (n - 0.5) * 0.4);
+	COLOR = vec4(vec3(0.6, 0.66, 0.7) * (0.75 + 0.45 * n), fog * (1.0 - clear * clear));
+}
+"""
+
+
+func _arrive_from_fog() -> void:
+	var layer := CanvasLayer.new()
+	layer.name = "ArrivalFog"
+	layer.layer = 3
+	add_child(layer)
+	var fog := ColorRect.new()
+	fog.set_anchors_preset(Control.PRESET_FULL_RECT)
+	fog.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var mat := ShaderMaterial.new()
+	var sh := Shader.new()
+	sh.code = FOG_SHADER
+	mat.shader = sh
+	var noise := NoiseTexture2D.new()
+	noise.width = 256
+	noise.height = 256
+	noise.seamless = true
+	var fn := FastNoiseLite.new()
+	fn.frequency = 0.012
+	fn.fractal_octaves = 3
+	noise.noise = fn
+	mat.set_shader_parameter("noise", noise)
+	var vp := get_viewport().get_visible_rect().size
+	mat.set_shader_parameter("aspect", vp.x / maxf(vp.y, 1.0))
+	fog.material = mat
+	layer.add_child(fog)
+	var t := create_tween()
+	t.tween_method(func(v: float): mat.set_shader_parameter("clear", v), 0.0, 1.0, FOG_ARRIVAL) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	t.tween_callback(layer.queue_free)
+	# The player stepping out of it.
+	player.modulate.a = 0.0
+	create_tween().tween_property(player, "modulate:a", 1.0, 1.2).set_delay(0.3)
+
+
 ## Now and then a fish leaps somewhere in the water near the player
 ## (user feedback: every 10-25 s, not 5-12).
 const FISH_JUMP_INTERVAL := Vector2(10.0, 25.0)
@@ -61,6 +115,7 @@ var _fish_jump_timer := 12.0
 
 func _ready() -> void:
 	add_child(Atmosphere.new())
+	_arrive_from_fog()
 	# Above the breathing-darkness vignette (Atmosphere, layer 1).
 	$HUD.layer = 2
 	# Phones (the web build on iPhone): on-screen buttons for the keys, and

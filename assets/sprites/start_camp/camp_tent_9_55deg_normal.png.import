@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://ci33lkxk1pbou"
-path="res://.godot/imported/fuel_station_55deg_normal.png-eb2598284b6bc79e51d96814491e8d88.ctex"
+uid="uid://yabvafal11w1"
+path="res://.godot/imported/camp_tent_9_55deg_normal.png-520707cdafcc40284a7001ae9dc9c4a5.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/sprites/fuel_station/fuel_station_55deg_normal.png"
-dest_files=["res://.godot/imported/fuel_station_55deg_normal.png-eb2598284b6bc79e51d96814491e8d88.ctex"]
+source_file="res://assets/sprites/start_camp/camp_tent_9_55deg_normal.png"
+dest_files=["res://.godot/imported/camp_tent_9_55deg_normal.png-520707cdafcc40284a7001ae9dc9c4a5.ctex"]
 
 [params]
 

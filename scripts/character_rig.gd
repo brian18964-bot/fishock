@@ -44,6 +44,9 @@ var follow_profile := true
 ## request): resting there, its hands are empty - the lamp sits on the oil
 ## drum, the rod leans on the tent - until it sets out.
 var hold_gear := true
+## Back to breathing when a clip ends. Off at the camp, where CampLife says
+## what comes next.
+var auto_idle := true
 
 
 func _ready() -> void:
@@ -53,7 +56,9 @@ func _ready() -> void:
 	skeleton = _find(body, "Skeleton3D") as Skeleton3D
 	_dress(body)
 	if anim != null:
-		anim.animation_finished.connect(func(_n): play_idle())
+		anim.animation_finished.connect(func(_n):
+			if auto_idle:
+				play_idle())
 		play_idle()
 	for slot in SLOTS:
 		var att := BoneAttachment3D.new()
@@ -130,6 +135,65 @@ func equip(slot: String, model: PackedScene, offset := Transform3D.IDENTITY) -> 
 		var inst: Node3D = model.instantiate()
 		inst.transform = offset
 		att.add_child(inst)
+
+
+## Hangs `node` (built in code) on a slot, replacing what was there.
+func equip_node(slot: String, node: Node3D, offset := Transform3D.IDENTITY) -> void:
+	equip(slot, null)
+	var att: BoneAttachment3D = attachments.get(slot)
+	if att == null:
+		node.free()
+		return
+	node.transform = offset
+	att.add_child(node)
+
+
+## Hangs `node` on a slot where `clip` (`frac` of the way through) holds
+## it: placed between the hands as that pose has them (an armful carried).
+func attach_posed(slot: String, node: Node3D, clip: String, frac: float) -> void:
+	var a := anim.get_animation(clip) if anim != null and anim.has_animation(clip) else null
+	if a == null:
+		equip_node(slot, node)
+		return
+	var t := a.length * frac
+	var bone := pose_at(a, t, SLOTS[slot])
+	var mid := (pose_at(a, t, "hand_l").origin + pose_at(a, t, "hand_r").origin) / 2.0
+	equip_node(slot, node, bone.affine_inverse() * Transform3D(Basis.IDENTITY, mid))
+
+
+## A bone's pose (skeleton space) `t` into clip `a`, worked out from its
+## tracks - no need to play it.
+func pose_at(a: Animation, t: float, bone_name: String) -> Transform3D:
+	var chain: Array[int] = []
+	var b := skeleton.find_bone(bone_name)
+	while b >= 0:
+		chain.push_front(b)
+		b = skeleton.get_bone_parent(b)
+	var xf := Transform3D.IDENTITY
+	for bi in chain:
+		var rest := skeleton.get_bone_rest(bi)
+		var pos := rest.origin
+		var rot := rest.basis.get_rotation_quaternion()
+		var scl := rest.basis.get_scale()
+		var suffix := ":" + skeleton.get_bone_name(bi)
+		for ti in a.get_track_count():
+			if not str(a.track_get_path(ti)).ends_with(suffix):
+				continue
+			match a.track_get_type(ti):
+				Animation.TYPE_POSITION_3D:
+					pos = a.position_track_interpolate(ti, t)
+				Animation.TYPE_ROTATION_3D:
+					rot = a.rotation_track_interpolate(ti, t)
+				Animation.TYPE_SCALE_3D:
+					scl = a.scale_track_interpolate(ti, t)
+		xf = xf * Transform3D(Basis(rot).scaled(scl), pos)
+	return xf
+
+
+## The offset that holds a thing as `world` (a basis in the character's
+## frame) `drop` from the hand, against the resting pose (see _held).
+func held_offset(slot: String, world: Basis, drop: Vector3) -> Transform3D:
+	return _held(slot, world, drop)
 
 
 func equip_rod(tier: int) -> void:

@@ -88,6 +88,10 @@ var weather_timer: float = 0.0
 ## pressed "Start" on the title screen - otherwise browsing the shop
 ## would silently burn down the clock before the run even begins.
 var run_started: bool = false
+## How the last run ended, for the camp to show it coming home (user
+## request, Camp v2): "escaped" (out of the 渡石) or "lost" (waking by the
+## fire); "" once shown.
+var last_return := ""
 
 ## Design doc §5.3: hotspot-only pickup. Solo use is a single automatic
 ## save from a night catch; multiplayer altar revival doesn't apply here.
@@ -316,6 +320,7 @@ func end_run(success: bool, message: String) -> void:
 	day_phase_changed.emit("DONE")
 
 	var final_message := message
+	last_return = "escaped" if success else "lost"
 	if success:
 		final_message += _bring_fish_home()
 		# User request (Camp v2): an escape counts toward the tents and

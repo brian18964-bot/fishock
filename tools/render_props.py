@@ -16,7 +16,13 @@ user's models:
       and a third layer holds just the runes, which glow in game once the
       sacrifice quota is met.
 
-  [ONLY=altar|fuel_station|rune_stones] python tools/render_props.py OUT_DIR
+  User request (Camp v2): the run's start is a snapshot of the safe camp -
+  the campfire, the oil drums that feed it, a tent - from the camp's own
+  models (assets/models/camp, tools/build_camp_models.py):
+  start_camp_55deg_* the fire pit and the drums (and a _glow layer: the
+  embers, lit while the fire burns), camp_tent_<n>_55deg_* each tent.
+
+  [ONLY=altar|fuel_station|rune_stones|start_camp|camp_tents] python tools/render_props.py OUT_DIR
 
 writes OUT_DIR/altar_55deg_*.png and fuel_station_55deg_*.png (albedo at
 2x density, normal at the original density) and prints each sprite's
@@ -202,6 +208,106 @@ def build_station():
     return meshes, flame
 
 
+CAMP = os.path.join(os.path.dirname(__file__), "..", "assets", "models", "camp")
+# The start camp's layout (metres; +y away from the camera): the fire
+# behind where the player starts, the drums to its left, the tent behind
+# to the right.
+CAMP_FIRE = (0.0, 1.6)
+CAMP_DRUMS = [((-1.6, 1.95), 20, False, "yellow"), ((-2.15, 1.45), 75, False, "rust"),
+              ((-1.35, 1.0), 60, True, "red")]
+CAMP_TENT = (1.75, 3.0)
+
+
+def camp_model(name, at, yaw=0.0, scale=1.0, glow=False):
+    """One of the camp's models with its baked colours (and its surface
+    detail and its glow, where it has them), placed at `at` (metres)."""
+    before = set(bpy.data.objects)
+    bpy.ops.import_scene.gltf(filepath=os.path.join(CAMP, name + ".glb"))
+    objs = [o for o in bpy.data.objects if o not in before and o.type == 'MESH']
+    mat = bpy.data.materials.new(name)
+    mat.use_nodes = True
+    nt = mat.node_tree
+    bsdf = next(n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED')
+    tex = nt.nodes.new('ShaderNodeTexImage')
+    tex.image = bpy.data.images.load(os.path.join(CAMP, name + "_albedo.png"))
+    nt.links.new(tex.outputs['Color'], bsdf.inputs['Base Color'])
+    npath = os.path.join(CAMP, name + "_normal.png")
+    if os.path.exists(npath):
+        nimg = bpy.data.images.load(npath)
+        nimg.colorspace_settings.name = 'Non-Color'
+        ntex = nt.nodes.new('ShaderNodeTexImage')
+        ntex.image = nimg
+        nmap = nt.nodes.new('ShaderNodeNormalMap')
+        nt.links.new(ntex.outputs['Color'], nmap.inputs['Color'])
+        nt.links.new(nmap.outputs['Normal'], bsdf.inputs['Normal'])
+    gpath = os.path.join(CAMP, name + "_glow.png")
+    if glow and os.path.exists(gpath):
+        gtex = nt.nodes.new('ShaderNodeTexImage')
+        gtex.name = "glow_map"
+        gtex.image = bpy.data.images.load(gpath)
+    m = UNITS_PER_M
+    place = Matrix.Translation((at[0] * m, at[1] * m, 0)) @ Matrix.Rotation(math.radians(yaw), 4, 'Z') @ \
+        Matrix.Scale(scale * m, 4)
+    for o in objs:
+        o.data.materials.clear()
+        o.data.materials.append(mat)
+        o.matrix_world = place @ o.matrix_world
+    return objs
+
+
+def build_start_camp():
+    """The fire pit and the oil drums that feed it."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    meshes = camp_model("campfire", CAMP_FIRE, 0.0, 0.85, glow=True)
+    paints = {
+        "yellow": paint("yellow", (0.62, 0.46, 0.1), (0.2, 0.12, 0.06)),
+        "rust": paint("rust", (0.55, 0.26, 0.1), (0.16, 0.09, 0.05)),
+        "red": paint("red", (0.45, 0.1, 0.08), (0.14, 0.08, 0.05)),
+    }
+    m = UNITS_PER_M
+    template = import_fbx(os.path.join(ROOT, "fuel_station", "barrel_low.fbx"))[0]
+    upright = template.matrix_world.copy()
+    for k, ((x, y), yaw, lying, colour) in enumerate(CAMP_DRUMS):
+        drum = template if k == 0 else template.copy()
+        if k:
+            drum.data = template.data.copy()
+            bpy.context.scene.collection.objects.link(drum)
+        drum.data.materials.clear()
+        drum.data.materials.append(paints[colour])
+        rot = Matrix.Rotation(math.radians(yaw), 4, 'Z')
+        if lying:
+            rot = rot @ Matrix.Translation((0, 0, 0.288)) @ Matrix.Rotation(math.radians(90), 4, 'X') @ Matrix.Translation((0, 0, -0.46))
+        drum.matrix_world = Matrix.Translation((x * m, y * m, 0)) @ Matrix.Scale(m, 4) @ rot @ upright
+        smooth(drum, 50.0)
+        meshes.append(drum)
+    bpy.context.view_layer.update()
+    return meshes
+
+
+def render_ember_glow(meshes, out_prefix):
+    """The embers alone (their glow map, hidden behind what's in front),
+    with the camera the last render() left set up."""
+    rs.rewire_materials(meshes, "albedo")
+    for mat in {s.material for o in meshes for s in o.material_slots if s.material}:
+        nt = mat.node_tree
+        emit = nt.nodes.get("__sprite_emit")
+        glow = nt.nodes.get("glow_map")
+        for link in list(emit.inputs['Color'].links):
+            nt.links.remove(link)
+        if glow is not None:
+            nt.links.new(glow.outputs['Color'], emit.inputs['Color'])
+        else:
+            emit.inputs['Color'].default_value = (0, 0, 0, 1)
+    rs.render_pass(f"{out_prefix}_glow.png", "albedo")
+
+
+def build_camp_tent(n):
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    meshes = camp_model("tent_%d" % n, (0.0, 0.0), -25.0, 0.6)
+    bpy.context.view_layer.update()
+    return meshes
+
+
 RUNE_HEIGHT = 3.2      # units: taller than the player
 RUNE_SPREAD = 0.35     # each stone moved out this far, for a gateway
 
@@ -354,6 +460,20 @@ def main():
         meta["rune_stones"] = render(meshes, os.path.join(out, "rune_stones_55deg"))
         render_glow(meshes, masks, os.path.join(out, "rune_stones_55deg"))
         meta["rune_stones"]["feet"] = feet
+    if only in ("", "start_camp"):
+        meshes = build_start_camp()
+        meta["start_camp"] = render(meshes, os.path.join(out, "start_camp_55deg"))
+        render_ember_glow(meshes, os.path.join(out, "start_camp_55deg"))
+        fire = Vector((CAMP_FIRE[0] * UNITS_PER_M, CAMP_FIRE[1] * UNITS_PER_M, 0.35 * UNITS_PER_M))
+        meta["start_camp"]["fire"] = [round(fire.dot(rs.RIGHT) * DENSITY * 0.5, 2),
+                                      round(-fire.dot(rs.UP) * DENSITY * 0.5, 2)]
+        tent = Vector((CAMP_TENT[0] * UNITS_PER_M, CAMP_TENT[1] * UNITS_PER_M, 0.0))
+        meta["start_camp"]["tent"] = [round(tent.dot(rs.RIGHT) * DENSITY * 0.5, 2),
+                                      round(-tent.dot(rs.UP) * DENSITY * 0.5, 2)]
+    if only in ("", "camp_tents"):
+        for n in range(1, 10):
+            meshes = build_camp_tent(n)
+            meta["camp_tent_%d" % n] = render(meshes, os.path.join(out, "camp_tent_%d_55deg" % n))
     print(json.dumps(meta))
 
 
