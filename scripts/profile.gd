@@ -141,6 +141,85 @@ const TENTS := [
 ]
 
 
+## User request (the campaign, Campaign): each level's stars [out, ★★,
+## ★★★], how often it's been cleared and tried, the best time; the
+## chapters whose every-star bonus is paid; the curse sets cleared.
+var campaign: Dictionary = {"levels": {}, "chapter_bonus": [], "curse_clears": 0, "best_curses": 0}
+## Counts kept for good (Campaign adds each run's into them): catches, far
+## catches, stuns, escapes at night...
+var records: Dictionary = {}
+## Achievements earned (Campaign.ACHIEVEMENTS ids): when.
+var achievements: Dictionary = {}
+
+
+func level_stars(id: String) -> Array:
+	var entry: Dictionary = campaign.levels.get(id, {})
+	var s: Array = entry.get("stars", [false, false, false])
+	return [bool(s[0]), bool(s[1]), bool(s[2])]
+
+
+func record_level(id: String, stars: Array, seconds: float) -> void:
+	var entry: Dictionary = campaign.levels.get(id, {})
+	entry["stars"] = stars.duplicate()
+	entry["clears"] = int(entry.get("clears", 0)) + 1
+	entry["tries"] = int(entry.get("tries", 0)) + 1
+	var best := float(entry.get("best", 0.0))
+	entry["best"] = seconds if best <= 0.0 else minf(best, seconds)
+	campaign.levels[id] = entry
+	_changed()
+
+
+func record_level_try(id: String) -> void:
+	var entry: Dictionary = campaign.levels.get(id, {})
+	entry["tries"] = int(entry.get("tries", 0)) + 1
+	campaign.levels[id] = entry
+	_changed()
+
+
+func level_entry(id: String) -> Dictionary:
+	return campaign.levels.get(id, {})
+
+
+func chapter_bonus_paid(ch: int) -> bool:
+	return ch in campaign.chapter_bonus
+
+
+func pay_chapter_bonus(ch: int) -> void:
+	if not ch in campaign.chapter_bonus:
+		campaign.chapter_bonus.append(ch)
+		_changed()
+
+
+func record_curse_clear(chosen: Array) -> void:
+	campaign["curse_clears"] = int(campaign.get("curse_clears", 0)) + 1
+	campaign["best_curses"] = maxi(int(campaign.get("best_curses", 0)), chosen.size())
+	_changed()
+
+
+func record(key: String) -> float:
+	return float(records.get(key, 0.0))
+
+
+func add_records(add: Dictionary) -> void:
+	for key in add:
+		records[key] = float(records.get(key, 0.0)) + float(add[key])
+	_changed()
+
+
+func has_achievement(id: String) -> bool:
+	return achievements.has(id)
+
+
+## Marks an achievement earned and pays its gold.
+func grant_achievement(id: String, gold_reward: int) -> void:
+	if achievements.has(id):
+		return
+	achievements[id] = Time.get_unix_time_from_system()
+	gold += gold_reward
+	gold_updated.emit(gold)
+	_changed()
+
+
 func set_setting(key: String, value) -> void:
 	settings[key] = value
 	_changed()
@@ -229,6 +308,7 @@ func buy_snack(key: String) -> bool:
 func _spend(cost: int) -> void:
 	gold -= cost
 	stats["gold_spent"] = int(stats.get("gold_spent", 0)) + cost
+	records["purchases"] = float(records.get("purchases", 0.0)) + 1.0
 
 
 ## How far the fish log's come: the share (0..100) of the kinds caught.
@@ -815,6 +895,9 @@ func snapshot() -> Dictionary:
 		"spirit": spirit,
 		"camp_since": camp_since,
 		"stats": stats,
+		"campaign": campaign,
+		"records": records,
+		"achievements": achievements,
 	}.duplicate(true)
 
 
@@ -848,6 +931,10 @@ func load_data(data: Dictionary) -> void:
 	camp_since = float(data.get("camp_since", 0.0))
 	stats = {"escapes": 0, "gold_spent": 0, "legends": 0}
 	stats.merge(data.get("stats", {}), true)
+	campaign = {"levels": {}, "chapter_bonus": [], "curse_clears": 0, "best_curses": 0}
+	campaign.merge(data.get("campaign", {}), true)
+	records = data.get("records", {})
+	achievements = data.get("achievements", {})
 	if not data.has("equipped"):
 		var tier := rods_owned
 		equipped = {"rod": "rod_%d" % tier, "light": "flashlight" if data.get("has_flashlight", false) else ""}

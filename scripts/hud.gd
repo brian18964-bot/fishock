@@ -220,6 +220,28 @@ func _on_run_ended(success: bool, message: String) -> void:
 	run_end_label.text = message
 	run_end_label.visible = false
 	back_to_title_button.visible = false
+	# User request (the campaign): a level ends on its stars.
+	if Campaign.is_level():
+		var delay := 1.6 if GameState.last_cause == "caught" else 0.0
+		if delay > 0.0:
+			var black := ColorRect.new()
+			black.color = Color(0, 0, 0, 1)
+			black.set_anchors_preset(Control.PRESET_FULL_RECT)
+			$Panel.add_child(black)
+			get_tree().create_timer(delay).timeout.connect(func():
+				black.queue_free()
+				CampaignResults.show_for($Panel, success, message))
+		else:
+			CampaignResults.show_for($Panel, success, message)
+		return
+	# The free run: what the curses paid, the achievements earned.
+	var extra := ""
+	if int(Campaign.result.get("curse_gold", 0)) > 0:
+		extra += "\n詛咒加成：金幣 +%d" % int(Campaign.result.curse_gold)
+	for id in Campaign.result.get("achievements", []):
+		var a := Campaign.achievement(id)
+		extra += "\n成就達成：%s（+%d 金幣）" % [a[2], int(a[4])]
+	message += extra
 	var shade := ColorRect.new()
 	shade.name = "RunEnd"
 	shade.color = Color(0, 0, 0, 0.55)
@@ -313,6 +335,9 @@ class QuotaView extends Control:
 		elif GameState.day_phase == GameState.DayPhase.ESCAPE:
 			under = "額度已滿！去發光的符文石柱逃離"
 			col = FULL
+		elif GameState.day_phase == GameState.DayPhase.FISHING and GameState.day_duration <= 0.0:
+			under = "不限時"
+			col = UiKit.DIM
 		elif GameState.day_phase == GameState.DayPhase.FISHING:
 			var total: int = int(GameState.time_remaining)
 			under = "%02d:%02d" % [total / 60, total % 60]

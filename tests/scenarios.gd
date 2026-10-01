@@ -6,6 +6,12 @@ extends Node
 ## classes and autoloads (a -s script is compiled before those exist).
 
 const TESTS := [
+	"test_campaign_levels_build",
+	"test_campaign_level_one",
+	"test_campaign_night_ends_safe_level",
+	"test_campaign_curses",
+	"test_campaign_unlocks_and_achievements",
+	"test_journey_page",
 	"test_map_generation",
 	"test_all_themes",
 	"test_ruined_town",
@@ -108,6 +114,8 @@ func seconds(s: float) -> void:
 
 func _fresh_game(rng_seed := 7) -> void:
 	seed(rng_seed)
+	# The plain free run unless a test plays a level.
+	camp().clear()
 	gs.reset_run()
 	# A run an earlier test ended isn't one to come home from.
 	gs.last_return = ""
@@ -120,6 +128,28 @@ func _fresh_game(rng_seed := 7) -> void:
 
 func player() -> Player:
 	return main.get_node("Player")
+
+
+func camp() -> Node:
+	return get_tree().root.get_node("Campaign")
+
+
+## Into level `id` the way the results screen's buttons go (no camp).
+func play_level(id: String) -> void:
+	camp().begin_level(id)
+	gs.last_return = ""
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	await frames(3)
+	main = get_tree().current_scene
+	gs.start_run()
+	await frames(3)
+
+
+## A clean slate of campaign progress (the profile is the real one).
+func reset_progress() -> void:
+	Profile.campaign = {"levels": {}, "chapter_bonus": [], "curse_clears": 0, "best_curses": 0}
+	Profile.achievements = {}
+	Profile.records = {}
 
 
 func key(k: Key, down: bool) -> void:
@@ -2107,3 +2137,183 @@ func test_reset_run() -> void:
 	check(gs.quota_progress == 0.0, "quota cleared")
 	check(gs.evil_count == 0, "evil cleared")
 	check(gs.ghost_interferences == 0, "ghost budget renewed")
+
+
+# --- the campaign (docs/CAMPAIGN.md) ------------------------------------------
+
+## User request: levels from a small map to the full one - every level's map
+## comes out as its rules say: its size, its ponds, its look, its quota and
+## day, which threats are in it.
+func test_campaign_levels_build() -> void:
+	for l in camp().LEVELS:
+		var r: Dictionary = camp().rules_for(l.id)
+		await play_level(l.id)
+		var size: Vector2 = camp().MAP_SIZES[r.map]
+		check(is_equal_approx(Player.WORLD_WIDTH, size.x) and is_equal_approx(Player.WORLD_HEIGHT, size.y),
+			"%s: the %s map" % [l.id, r.map])
+		var gen: MapGenerator = main.get_node("MapGenerator")
+		check(gen.theme_name == r.theme, "%s: its look (%s)" % [l.id, gen.theme_name])
+		var rare := get_tree().get_nodes_in_group("water_zones_rare").size()
+		var common := get_tree().get_nodes_in_group("water_zones_common").size()
+		check(rare == int(r.ponds[1]), "%s: %d dark pond(s), got %d" % [l.id, int(r.ponds[1]), rare])
+		if not gen.theme.get("sea", false) and int(r.ponds[0]) >= 0:
+			check(common == int(r.ponds[0]), "%s: %d pond(s), got %d" % [l.id, int(r.ponds[0]), common])
+		check(gs.quota_target == float(r.quota) and gs.day_duration == float(r.day), "%s: quota and day" % l.id)
+		var big: Node = main.get_node("BigGhost")
+		check((big.process_mode != Node.PROCESS_MODE_DISABLED) == r.big_ghost, "%s: the big ghost %s" % [l.id, "in" if r.big_ghost else "out"])
+		var floating := get_tree().get_nodes_in_group("ghosts").filter(func(g): return not g is BigGhost).size()
+		check(floating == int(r.ghosts), "%s: %d floating ghost(s), got %d" % [l.id, int(r.ghosts), floating])
+		if not r.hunters:
+			check(get_tree().get_nodes_in_group("hunters").is_empty(), "%s: no beasts" % l.id)
+		# The start, the altar, the stones and the camp on dry land inside the map.
+		for n in ["Player", "Altar", "EscapePoint", "FuelStation"]:
+			var p: Vector2 = main.get_node(n).global_position
+			check(Rect2(0, 0, size.x, size.y).has_point(p) and Ripple.water_at(get_tree(), p) == null,
+				"%s: %s on dry land in the map" % [l.id, n])
+		var hud: CampaignHud = null
+		for c in main.get_children():
+			if c is CampaignHud:
+				hud = c
+		check(hud != null and (str(r.tutorial) == "" or hud.steps.size() > 0), "%s: objectives and tutorial up" % l.id)
+
+
+## The first level end to end: the tutorial follows along, the run scores
+## its stars and its reward, and the next level opens.
+func test_campaign_level_one() -> void:
+	reset_progress()
+	await play_level("1-1")
+	var hud: CampaignHud = null
+	for c in main.get_children():
+		if c is CampaignHud:
+			hud = c
+	check(hud != null and hud.step == 0, "the tutorial starts at its first line")
+	check(Player.WORLD_WIDTH < 1400.0 and gs.day_duration == 0.0, "a small map with no clock")
+	await put(get_tree().get_nodes_in_group("water_zones_common")[0].shore_point(Vector2.DOWN) + Vector2(0, 14))
+	await seconds(1.6)
+	check(hud.step >= 1, "walking to the water moves the tutorial on")
+	var gold: int = Profile.gold
+	player().cast_started.emit(player().global_position, "near")
+	player().hook_success.emit()
+	var f := fish()
+	player().catch_success.emit(f)
+	gs.add_carried_fish(f)
+	check(camp().value("catch") == 1.0, "the catch is counted")
+	gs.sacrifice_at(0)
+	await frames(2)
+	check(gs.day_phase == gs.DayPhase.ESCAPE, "one fish meets the quota")
+	gs.escape()
+	await frames(3)
+	var res: Dictionary = camp().result
+	check(res.success and res.stars == [true, true, true], "all three stars (%s)" % str(res.get("stars")))
+	check(Profile.level_stars("1-1") == [true, true, true], "the stars are kept")
+	check(camp().level_open("1-2") and not camp().level_open("1-3"), "1-2 opens, 1-3 doesn't yet")
+	check(Profile.gold == gold + 40 + 3 * camp().STAR_GOLD + 30, "first clear, new stars and the achievement paid (%d)" % (Profile.gold - gold))
+	check(Profile.has_achievement("first_crossing"), "初渡 earned")
+	var results: Node = main.find_child("CampaignResults", true, false)
+	check(results != null and results.find_child("Next", true, false) != null, "the results screen, with 下一關")
+	# Again, slower and with a fish lost: nothing more to win.
+	await play_level("1-1")
+	player().catch_failed.emit("line_break")
+	check(not camp().condition_met(camp().level("1-1").stars[0]), "a lost fish loses ★★ this time")
+	gs.add_carried_fish(fish())
+	gs.sacrifice_at(0)
+	gold = Profile.gold
+	gs.escape()
+	await frames(2)
+	check(Profile.gold == gold and Profile.level_stars("1-1") == [true, true, true], "stars already won stay won, no gold twice")
+
+
+## A level with nothing deadly at night ends at nightfall - and the first
+## chapter's are safe: nothing found is lost.
+func test_campaign_night_ends_safe_level() -> void:
+	reset_progress()
+	await play_level("1-4")
+	var found := {"id": "battery", "count": 1, "cell": Vector2i(-9, -9), "found": true}
+	Profile.bag.append(found)
+	gs.time_remaining = 0.5
+	await seconds(1.0)
+	check(gs.run_over and not camp().result.success, "nightfall ends the run")
+	check(found in Profile.bag, "safe: the found battery is kept")
+	Profile.bag.erase(found)
+	check(camp().stars_earned(false) == [false, false, false], "no stars for a lost run")
+
+
+## After the last chapter: curses on the free run.
+func test_campaign_curses() -> void:
+	camp().begin_free(["rush", "greed", "horde", "early"])
+	gs.last_return = ""
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	await frames(3)
+	main = get_tree().current_scene
+	gs.start_run()
+	await frames(3)
+	check(is_equal_approx(gs.quota_target, 45.0) and is_equal_approx(gs.day_duration, 180.0), "貪念 and 急潮")
+	var floating := get_tree().get_nodes_in_group("ghosts").filter(func(g): return not g is BigGhost).size()
+	check(floating == 3, "群鬼: three floating ghosts (%d)" % floating)
+	await frames(2)
+	check(main.get_node("BigGhost").mode != BigGhost.Mode.ASLEEP, "早醒: the big ghost's up from the start")
+	check(Player.WORLD_WIDTH == 2400.0, "the free run's full map")
+	gs.quota_progress = 50.0
+	gs._enter_escape_phase()
+	var gold: int = Profile.gold
+	gs.escape()
+	await frames(2)
+	check(int(camp().result.curse_gold) == int(roundf(50.0 * 1.05)) and Profile.gold >= gold + int(camp().result.curse_gold),
+		"the curses pay on the way out (%d)" % int(camp().result.curse_gold))
+
+
+## Chapters open in order and on stars; achievements count across runs.
+func test_campaign_unlocks_and_achievements() -> void:
+	reset_progress()
+	check(camp().level_open("1-1") and not camp().level_open("1-2") and not camp().chapter_open(2), "only 1-1 to begin with")
+	for id in ["1-1", "1-2", "1-3", "1-4", "1-5"]:
+		Profile.record_level(id, [true, true, false], 100.0)
+	check(camp().chapter_open(2) and camp().level_open("2-1") and not camp().level_open("2-2"), "chapter 2 after 1-5")
+	check(camp().free_open(), "the free run after chapter 1")
+	for id in ["2-1", "2-2", "2-3", "2-4"]:
+		Profile.record_level(id, [true, false, false], 100.0)
+	check(not camp().chapter_open(3), "chapter 3 waits for 2-5")
+	Profile.record_level("2-5", [true, false, false], 100.0)
+	check(camp().stars_total() == 15 and camp().chapter_open(3), "chapter 3 at 10 stars or more (15)")
+	check(not camp().chapter_open(4), "chapter 4 needs chapter 3")
+	check(camp().danger(camp().rules_for("1-1")) == 0 and camp().danger(camp().rules_for("5-5")) == 5, "danger from none to the most")
+	Profile.add_records({"catch": 99.0})
+	check(not camp().achievement_done(camp().achievement("catch_100")), "99 fish isn't 百尾")
+	Profile.add_records({"catch": 1.0})
+	var got: Array = camp().check_achievements()
+	check("catch_100" in got and Profile.has_achievement("catch_100"), "百尾 at 100")
+	check(not "catch_100" in camp().check_achievements(), "and only once")
+
+
+## The journey page: the camp's 出發夜釣 opens it; a locked level can't be
+## picked; setting off walks out of the camp into the level.
+func test_journey_page() -> void:
+	reset_progress()
+	get_tree().change_scene_to_file("res://scenes/title_screen.tscn")
+	await frames(4)
+	var title: Node = get_tree().current_scene
+	title._on_play()
+	await frames(30)
+	var page: Node = title.find_child("Journey", true, false)
+	check(page != null, "出發夜釣 opens the journey")
+	check(page.selected == "1-1", "the first level picked to begin with")
+	page.select("1-3")
+	await frames(2)
+	check(page.find_child("Go", true, false) == null, "a locked level has no 出發")
+	page._show_tab("achievements")
+	await frames(2)
+	check(page.find_child("Achievements", true, false) != null, "the achievements tab")
+	page._show_tab("free")
+	await frames(2)
+	check(page.find_child("GoFree", true, false) == null or camp().free_open(), "the free run waits for chapter 1")
+	page._show_tab("story")
+	page.select("1-1")
+	await frames(2)
+	page._depart_level("1-1")
+	for i in 60 * 25:
+		await get_tree().process_frame
+		if get_tree().current_scene != null and get_tree().current_scene.name == "Main":
+			break
+	main = get_tree().current_scene
+	check(main != null and main.name == "Main" and camp().level_id == "1-1", "off into 1-1")
+	check(Player.WORLD_WIDTH < 1400.0, "on its small map")

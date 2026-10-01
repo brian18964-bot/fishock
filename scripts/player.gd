@@ -36,8 +36,10 @@ const CAST_SHORE_RANGE := 90.0
 const REEL_IN_SHORE_RANGE := 150.0
 const MAX_CAST_DIST := 340.0
 const MOVE_REEL_PENALTY := 0.5
-const WORLD_WIDTH := 2400.0
-const WORLD_HEIGHT := 1350.0
+## The map's size: the full map, or a campaign level's smaller one
+## (Campaign sets these before the run's scene loads).
+static var WORLD_WIDTH := 2400.0
+static var WORLD_HEIGHT := 1350.0
 const START_BAIT := 20
 const START_LURES := 5
 
@@ -235,6 +237,10 @@ var _key_prev_held: Dictionary = {}
 
 func _ready() -> void:
 	add_to_group("player")
+	var cam: Camera2D = get_node_or_null("Camera2D")
+	if cam != null:
+		cam.limit_right = int(WORLD_WIDTH)
+		cam.limit_bottom = int(WORLD_HEIGHT)
 	# The gas can in hand while it's being carried (see OilDrum).
 	# User feedback: held in the hand, swinging with the walk (carried_can.gd).
 	var hand := Node2D.new()
@@ -464,6 +470,7 @@ func _can_start_cast() -> bool:
 
 
 func _lose_lure() -> void:
+	Campaign.stat("lure_lost")
 	if current_lure != "":
 		lure_stock[current_lure] = maxi(int(lure_stock.get(current_lure, 0)) - 1, 0)
 		Profile.bag_take("lure_" + current_lure, 1)
@@ -533,7 +540,9 @@ func _nearest_water_edge_distance() -> float:
 ## only lands on a player standing right at the water's edge whose cast
 ## also drops close in by the bank.
 func _maybe_trigger_water_ghost() -> void:
-	var chance := WATER_GHOST_CHANCE
+	var chance := WATER_GHOST_CHANCE * float(Campaign.rules.water_ghost)
+	if chance <= 0.0:
+		return
 	if GameState.weather == GameState.Weather.STORM:
 		chance *= STORM_WATER_GHOST_MULT
 	if Dock.on_walkway(get_tree(), global_position + FEET) and _find_water_zone(global_position + FEET) != null:
@@ -560,6 +569,9 @@ func _apply_water_ghost_attack(cause := "") -> void:
 	# User request: and it's seen doing it (WaterGhost).
 	WaterGhost.summon(self)
 	var stolen: Dictionary = GameState.steal_one_carried()
+	Campaign.stat("water_ghost_hit")
+	if not stolen.is_empty():
+		Campaign.stat("stolen")
 	var msg := "水鬼從水裡冒出來偷襲！身上狀態異常中"
 	if not stolen.is_empty():
 		msg = "水鬼冒出來偷襲，還搶走了一條 %s！身上狀態異常中" % stolen.get("name", "魚")
@@ -581,6 +593,7 @@ func ghost_confuse(duration: float) -> void:
 func animal_attack(attacker: String) -> void:
 	water_ghost_timer = maxf(water_ghost_timer, ANIMAL_ATTACK_DEBUFF_DURATION)
 	affliction_text = "被%s攻擊，行動變慢" % attacker
+	Campaign.stat("animal_hit")
 	if state != State.IDLE:
 		_cancel_cast("animal_attack")
 	var fish: Dictionary = GameState.drop_one_carried()
@@ -1200,6 +1213,7 @@ func _handle_interaction(delta: float) -> void:
 			if use_pressed:
 				var lantern: Lantern = get_node("Lantern")
 				if _fuel_station.try_refuel(lantern):
+					Campaign.stat("refuel")
 					GameState.push_message("煤油加滿了！（營地油桶剩 %d/%d）" % [int(_fuel_station.total_fuel), int(_fuel_station.max_total_fuel)])
 		"提起":
 			if use_pressed:
@@ -1208,6 +1222,7 @@ func _handle_interaction(delta: float) -> void:
 				carrying_oil_drum = true
 				in_oil_drum_zone = false
 				_oil_drum = null
+				Campaign.stat("oil_pickup")
 				GameState.push_message("提起了油箱，送回營地吧（提著沒辦法釣魚）")
 		"撿回":
 			if use_pressed:
@@ -1217,6 +1232,7 @@ func _handle_interaction(delta: float) -> void:
 				_catch_critter()
 		"對話":
 			if use_pressed:
+				Campaign.stat("willow_talk")
 				_talk_to_willow()
 
 
@@ -1318,6 +1334,7 @@ func _catch_critter() -> void:
 	in_critter_zone = false
 	bait_count += 1
 	pending_bait_flavor = flavor
+	Campaign.stat("grab_bait")
 	GameState.push_message("抓到了%s，當作一份餌料！（下一竿餌料：%s）" % [label, flavor])
 
 
@@ -1327,6 +1344,7 @@ func _turn_rock() -> void:
 	if _rock == null or not _rock.active:
 		return
 	var result: Dictionary = _rock.turn_over(global_position)
+	Campaign.stat("flip_rock")
 	if result.get("found", false) and not Inventory.fits_bait(self, 1):
 		GameState.push_message("石頭底下有%s，但背包滿了放不下" % result.get("flavor", "餌料"))
 	elif result.get("found", false):
@@ -1344,6 +1362,7 @@ func _deliver_oil_drum() -> void:
 		_carried_oil_drum.deliver()
 	_carried_oil_drum = null
 	carrying_oil_drum = false
+	Campaign.stat("oil_delivered")
 	if added > 0.0:
 		GameState.push_message("把油箱倒進營地的油桶了！補充了 %d 燃油" % int(added))
 	else:
@@ -1546,6 +1565,7 @@ func _roll_catch_outcome() -> void:
 
 	if caught_in_hotspot:
 		var heart_chance := HOTSPOT_HEART_CHANCE_NIGHT if GameState.is_night else HOTSPOT_HEART_CHANCE_DAY
+		heart_chance *= float(Campaign.rules.heart)
 		if randf() < heart_chance:
 			is_heart_catch = true
 		elif randf() < HOTSPOT_RARE_CHANCE:

@@ -67,6 +67,8 @@ const MENU_FPS := 30
 
 
 func _ready() -> void:
+	# The camp plays by no level's rules (the journey page sets the next).
+	Campaign.clear()
 	GameState.reset_run()
 	Engine.max_fps = MENU_FPS
 	# The camp's sound (user request, the MMO feel): the fire and the night,
@@ -216,7 +218,7 @@ func _build() -> void:
 	play.name = "Play"
 	play.custom_minimum_size = Vector2(250, 58)
 	play.position = Vector2(355, 466)
-	play.pressed.connect(_on_solo)
+	play.pressed.connect(_on_play)
 	_home.add_child(play)
 	var multi := UiKit.button("多人連線", 16)
 	multi.name = "Multiplayer"
@@ -447,6 +449,24 @@ func _exit_tree() -> void:
 	Engine.max_fps = 0
 
 
+## User request (the campaign): 出發夜釣 opens the journey - the levels,
+## the free run, the achievements - and the run picked there sets off.
+func _on_play() -> void:
+	open_page("journey")
+
+
+func depart_level(id: String) -> void:
+	close_page()
+	Campaign.begin_level(id)
+	_on_solo()
+
+
+func depart_free(curses: Array = []) -> void:
+	close_page()
+	Campaign.begin_free(curses)
+	_on_solo()
+
+
 func _on_solo() -> void:
 	if _stage == null or _scene_piece != "":
 		_start_run()
@@ -470,8 +490,6 @@ func _on_piece_done(tag: String) -> void:
 	_skip_hint.visible = false
 
 
-## Into the run: the camp fades into the night as the character goes off
-## with its lamp, then the run starts.
 ## Over the camp: 輕觸畫面開始, gently pulsing; the tap that clears it is
 ## the one the browser waits for to let sound play.
 func tap_to_start() -> void:
@@ -501,6 +519,8 @@ func tap_to_start() -> void:
 		t.tween_callback(cover.queue_free))
 
 
+## Into the run: the camp fades into the night as the character goes off
+## with its lamp, then the run starts.
 func _start_run() -> void:
 	if _setting_off:
 		return

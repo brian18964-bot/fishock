@@ -81,6 +81,9 @@ var run_over: bool = false
 var _quota_since_offering: float = 0.0
 
 var time_remaining: float = DAY_DURATION
+## This run's day (Campaign.rules.day); 0: no clock and no night (the
+## first tutorial levels).
+var day_duration: float = DAY_DURATION
 var is_night: bool = false
 
 var _extra_ghosts: Array = []
@@ -113,7 +116,7 @@ var ghost_haunter: Node = null
 
 
 func ghost_may_interfere() -> bool:
-	return run_started and not run_over and ghost_interferences < GHOST_INTERFERENCE_MAX \
+	return run_started and not run_over and ghost_interferences < int(Campaign.rules.meddle) \
 		and _ghost_quiet >= GHOST_INTERFERENCE_GAP
 
 
@@ -127,18 +130,20 @@ func _process(delta: float) -> void:
 		_ghost_quiet += delta
 	if not run_started or run_over or is_night or day_phase != DayPhase.FISHING:
 		return
-	time_remaining = max(time_remaining - delta, 0.0)
-	var stage := light_stage()
-	if stage != _light_stage:
-		_light_stage = stage
-		light_stage_changed.emit(stage)
-		push_message(LIGHT_STAGE_MESSAGES[stage])
-	if time_remaining <= 0.0:
-		_trigger_night()
+	if day_duration > 0.0:
+		time_remaining = max(time_remaining - delta, 0.0)
+		var stage := light_stage()
+		if stage != _light_stage:
+			_light_stage = stage
+			light_stage_changed.emit(stage)
+			push_message(LIGHT_STAGE_MESSAGES[stage])
+		if time_remaining <= 0.0:
+			_trigger_night()
+			return
 
 	weather_timer -= delta
 	if weather_timer <= 0.0:
-		_roll_weather()
+		_next_weather()
 
 
 ## 0 at the start of the day ... LIGHT_STAGES - 1 in its last quarter (and
@@ -146,11 +151,49 @@ func _process(delta: float) -> void:
 func light_stage() -> int:
 	if is_night:
 		return LIGHT_STAGES - 1
-	return clampi(int((1.0 - time_remaining / DAY_DURATION) * LIGHT_STAGES), 0, LIGHT_STAGES - 1)
+	if day_duration <= 0.0:
+		return 0
+	return clampi(int((1.0 - time_remaining / day_duration) * LIGHT_STAGES), 0, LIGHT_STAGES - 1)
 
 
 func start_run() -> void:
 	run_started = true
+	_start_weather()
+
+
+## The run's weather as Campaign.rules.weather says: a schedule first (a
+## level's fog then fish run...), then "random", "mild" (no storms),
+## "stormy" or "clear".
+var _weather_plan: Array = []
+var _weather_mode := "random"
+
+
+func _start_weather() -> void:
+	_weather_plan = Campaign.weather_plan()
+	_weather_mode = "random"
+	_next_weather(true)
+
+
+func _next_weather(first := false) -> void:
+	while not _weather_plan.is_empty() and _weather_plan[0] is String:
+		_weather_mode = _weather_plan.pop_front()
+	if not _weather_plan.is_empty():
+		var step: Array = _weather_plan.pop_front()
+		_set_weather(Weather[step[0]], float(step[1]), first)
+	elif _weather_mode == "clear":
+		_set_weather(Weather.CLEAR, INF, first)
+	elif first:
+		_set_weather(Weather.CLEAR, randf_range(WEATHER_MIN_DURATION, WEATHER_MAX_DURATION), true)
+	else:
+		_roll_weather()
+
+
+func _set_weather(kind: int, seconds: float, quiet: bool) -> void:
+	weather = kind
+	weather_timer = seconds
+	weather_changed.emit(Weather.keys()[weather])
+	if not quiet or kind != Weather.CLEAR:
+		_announce_weather()
 
 
 func add_carried_fish(fish: Dictionary) -> void:
@@ -226,6 +269,7 @@ func sacrifice_at(index: int) -> Dictionary:
 	inventory_updated.emit(carried_fish)
 
 	if fish.get("rotten", false):
+		Campaign.stat("rotten_sacrifice")
 		_trigger_rotten_sacrifice()
 		return fish
 
@@ -274,6 +318,10 @@ func escape() -> void:
 	else:
 		var picked: Dictionary = safe_offerings[randi() % safe_offerings.size()]
 		picked.taken = true
+		if picked.rarity in ["rare", "epic"]:
+			Campaign.stat("offering_rare")
+		if picked.rarity == "epic":
+			Campaign.stat("offering_epic")
 		message = "成功逃離！拿到了一個%s供品（價值 %d）" % [_rarity_label(picked.rarity), picked.value]
 		offering_pool_updated.emit(offering_pool, evil_count)
 
@@ -291,7 +339,9 @@ func reset_run() -> void:
 	evil_count = 0
 	run_over = false
 	_quota_since_offering = 0.0
-	time_remaining = DAY_DURATION
+	quota_target = float(Campaign.rules.quota)
+	day_duration = float(Campaign.rules.day)
+	time_remaining = day_duration
 	_light_stage = 0
 	is_night = false
 	run_started = false
@@ -337,9 +387,11 @@ func end_run(success: bool, message: String) -> void:
 	else:
 		# Design doc §8: on failure, carried fish are lost outright, never sold;
 		# user request: so is gear found on the map - what was brought stays.
+		# (The first chapter's levels are safe: nothing's lost there.)
 		carried_fish.clear()
 		inventory_updated.emit(carried_fish)
-		Profile.lose_found_gear()
+		if not Campaign.rules.safe:
+			Profile.lose_found_gear()
 
 	run_ended.emit(success, final_message)
 
@@ -377,19 +429,31 @@ func _bring_fish_home() -> String:
 ## visibility), storms (ghosts more dangerous, water ghost more likely) and
 ## fish runs (better odds map-wide) each take a turn for a while.
 func _roll_weather() -> void:
+	var fog := WEATHER_FOG_WEIGHT
+	var storm := WEATHER_STORM_WEIGHT
+	var fish := WEATHER_FISH_RUN_WEIGHT
+	if _weather_mode == "mild":
+		storm = 0.0
+	elif _weather_mode == "stormy":
+		fog = 0.12
+		storm = 0.45
+		fish = 0.13
 	var roll := randf()
 	var new_weather := Weather.CLEAR
-	if roll < WEATHER_FOG_WEIGHT:
+	if roll < fog:
 		new_weather = Weather.FOG
-	elif roll < WEATHER_FOG_WEIGHT + WEATHER_STORM_WEIGHT:
+	elif roll < fog + storm:
 		new_weather = Weather.STORM
-	elif roll < WEATHER_FOG_WEIGHT + WEATHER_STORM_WEIGHT + WEATHER_FISH_RUN_WEIGHT:
+	elif roll < fog + storm + fish:
 		new_weather = Weather.FISH_RUN
 
 	weather = new_weather
 	weather_timer = randf_range(WEATHER_MIN_DURATION, WEATHER_MAX_DURATION)
 	weather_changed.emit(Weather.keys()[weather])
+	_announce_weather()
 
+
+func _announce_weather() -> void:
 	match weather:
 		Weather.FOG:
 			push_message("起霧了，視野變差...")
@@ -407,6 +471,11 @@ func _roll_weather() -> void:
 
 func _trigger_night() -> void:
 	is_night = true
+	if Campaign.rules.night_fails:
+		# A level with nothing deadly in the dark: the night is the end.
+		report("天黑了，符文石沒有亮起來")
+		end_run(false, "天黑了，額度沒有補滿，符文石沒有亮起來……\n下次早一點開始獻祭吧。")
+		return
 	night_fell.emit()
 	push_message("時間到了，額度沒補滿...夜晚降臨，鬼進入獵殺模式！")
 	report("夜晚降臨，鬼開始獵殺！")
@@ -429,6 +498,9 @@ func caught() -> void:
 	if run_over:
 		return
 	last_cause = "caught"
+	if Campaign.rules.safe:
+		end_run(false, "被大鬼抓走了……眼前一黑。\n醒來時已經躺在營火邊。")
+		return
 	Profile.add_spirit(-CAUGHT_SPIRIT)
 	end_run(false, "被大鬼抓走了……眼前一黑。\n醒來時已經躺在營火邊，精神 -%d" % int(CAUGHT_SPIRIT))
 
@@ -437,6 +509,7 @@ func use_heart() -> bool:
 	if not has_heart:
 		return false
 	has_heart = false
+	Campaign.stat("heart_used")
 	return true
 
 
@@ -456,7 +529,8 @@ func _enter_escape_phase() -> void:
 	var count := randi_range(3, 5)
 	for _i in range(count):
 		_add_offering(false)
-	_escalate_threat()
+	if Campaign.rules.escalate:
+		_escalate_threat()
 	push_message("額度已滿！鬼群警覺起來了 - 前往逃離點離開，或繼續釣魚賭更好的供品")
 	report("額度滿了！可以去符文石柱離開", "good")
 
@@ -523,6 +597,8 @@ func _add_offering(is_bonus: bool, force_evil: bool = false) -> void:
 
 	var evil_chance: float = RARITY_EVIL_CHANCE[rarity]
 	var is_evil := force_evil or randf() < evil_chance
+	if not Campaign.rules.evil:
+		is_evil = false
 	if is_evil and not is_bonus and not force_evil and evil_count >= MAX_STARTING_EVIL:
 		is_evil = false
 

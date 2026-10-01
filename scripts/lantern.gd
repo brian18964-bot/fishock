@@ -119,9 +119,9 @@ func _process(delta: float) -> void:
 		var burn := brightness * (1.0 + boost)  # charging burns faster
 		var before := energy_share()
 		if tool == Tool.LAMP:
-			fuel = max(fuel - DRAIN_RATE * burn * delta, 0.0)
+			fuel = max(fuel - DRAIN_RATE * float(Campaign.rules.drain) * burn * delta, 0.0)
 		else:
-			charge = max(charge - 100.0 / BATTERY_LIFE * burn * delta, 0.0)
+			charge = max(charge - 100.0 / BATTERY_LIFE * float(Campaign.rules.drain) * burn * delta, 0.0)
 		# User request: once the energy's down to AUTO_DIM_BELOW the light
 		# dims by itself, slowly (it can still be turned back up - burning
 		# faster).
@@ -403,6 +403,11 @@ func _try_flash(reach: float = FLASH_RANGE, stun: float = FLASH_STUN_DURATION, c
 			ghost.stun(stun)
 			hit_any = true
 			hit_big = hit_big or ghost is BigGhost
+			if ghost is BigGhost:
+				if ghost.mode != BigGhost.Mode.ASLEEP:
+					Campaign.stat("big_ghost_stun")
+			else:
+				Campaign.stat("ghost_stun")
 
 	# Wolves and meat-eating dinosaurs (see Critter) bolt from the flash.
 	var scared_any := false
@@ -411,6 +416,7 @@ func _try_flash(reach: float = FLASH_RANGE, stun: float = FLASH_STUN_DURATION, c
 				and illuminates(hunter.global_position):
 			hunter.scare()
 			scared_any = true
+			Campaign.stat("beast_scare")
 
 	if hit_big:
 		GameState.push_message("強光把大鬼定住了！趁現在快跑")

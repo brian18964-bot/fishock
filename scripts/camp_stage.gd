@@ -28,6 +28,7 @@ const STATIONS := {
 	"fish_tank": [Vector3(2.25, 2.1, 1.6), Vector3(3.3, 0.25, 0.3), 40.0],
 	"fish_log": [Vector3(2.25, 2.1, 1.6), Vector3(3.3, 0.25, 0.3), 40.0],
 	"stone": [Vector3(-0.3, 1.8, -1.6), Vector3(-0.5, 0.9, -6.4), 42.0],
+	"journey": [Vector3(-0.3, 1.8, -1.6), Vector3(-0.5, 0.9, -6.4), 42.0],
 }
 const CHARACTER_AT := Vector3(-0.35, 0.0, 0.6)
 const FIRE_AT := Vector3(0.75, 0.0, -0.35)

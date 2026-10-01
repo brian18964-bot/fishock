@@ -145,6 +145,9 @@ func _ready() -> void:
 	# Covers opening this scene directly (e.g. F6 in the editor) without
 	# going through the title screen's Start button.
 	GameState.start_run()
+	# User request (the campaign): the run's rules set the threats, and a
+	# level puts up its objectives and tutorial (once the map's in).
+	Campaign.attach.call_deferred(self)
 
 
 func _process(delta: float) -> void:

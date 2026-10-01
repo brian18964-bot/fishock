@@ -193,6 +193,7 @@ func _haunt(delta: float) -> void:
 		GameState.push_message("鬼把釣線剪斷了！")
 	elif not GameState.carried_fish.is_empty():
 		var stolen: Dictionary = GameState.steal_one_carried()
+		Campaign.stat("stolen")
 		GameState.push_message("鬼摸走了一條 %s！" % stolen.get("name", "魚"))
 		GameState.report("小鬼摸走了%s" % stolen.get("name", "魚"))
 	else:

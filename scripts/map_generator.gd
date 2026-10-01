@@ -44,7 +44,8 @@ const ZONE_MIN_GAP := 90.0
 ## Design doc request: rare zones are placed without regard to the altar -
 ## no distance-from-altar logic here, just kept clear of the shared spawn
 ## point so the player never spawns inside solid water-zone collision.
-const SPAWN_POS := Vector2(1200.0, 700.0)
+## The middle of the map: the full map's, or a smaller one's (Campaign).
+static var SPAWN_POS := Vector2(1200.0, 700.0)
 const SPAWN_CLEAR_RADIUS := 220.0
 
 const FIXED_POINT_MARGIN := 150.0
@@ -514,9 +515,19 @@ var sea_side := Vector2.ZERO
 
 
 func _ready() -> void:
-	theme_name = forced_theme if forced_theme != "" else _pick_theme()
-	theme = THEMES[theme_name]
+	var level_theme := str(Campaign.rules.theme)
+	theme_name = forced_theme if forced_theme != "" else (level_theme if level_theme != "" else _pick_theme())
+	theme = THEMES[theme_name].duplicate(true)
+	_fit_theme()
+	# User request (the campaign): maps of three sizes - the floor, the
+	# camp and the player's start go where this one's middle is.
 	var ground: CanvasItem = get_parent().get_node_or_null("GroundBackground")
+	if ground is Control:
+		ground.size = Vector2(Player.WORLD_WIDTH, Player.WORLD_HEIGHT)
+	for start in ["Player", "FuelStation"]:
+		var node: Node2D = get_parent().get_node_or_null(start)
+		if node != null:
+			node.position = SPAWN_POS
 	if ground != null:
 		ground.material = _ground_material()
 	var darkness := get_parent().get_node_or_null("Darkness")
@@ -550,6 +561,27 @@ func _ready() -> void:
 	_scatter_flip_rocks()
 	_scatter_ground_cover()
 	_scatter_critters()
+
+
+## A smaller map (the campaign's) gets fewer trees, rocks, plants and
+## animals, so it's as thick with them as the full one; a level without
+## beasts has none of the hunters, and one may bring its own (rules.beasts).
+func _fit_theme() -> void:
+	var share := Campaign.area_share()
+	for key in ["trees", "rocks", "bushes", "ground"]:
+		theme[key] = int(roundf(float(theme.get(key, 0)) * share))
+	theme["animal_count"] = maxi(2, int(roundf(float(theme.get("animal_count", AMBIENT_ANIMAL_COUNT)) * share)))
+	var animals: Dictionary = theme.animals.duplicate()
+	if not Campaign.rules.hunters:
+		for kind in animals.keys():
+			if Critter.SPECIES.get(kind, {}).has("chase_speed"):
+				animals.erase(kind)
+	var beasts: Dictionary = Campaign.rules.beasts
+	for kind in beasts:
+		animals[kind] = float(beasts[kind])
+	if animals.is_empty():
+		animals = {"fox": 1.0, "deer": 1.0}
+	theme["animals"] = animals
 
 
 ## User request: the ground itself follows the style - "floor" is
@@ -607,12 +639,23 @@ func _generate_water_zones() -> void:
 	if theme.get("sea", false):
 		_generate_sea()
 	# The rare one first: it's smaller and solid, so it gets its pick.
-	for _i in range(RARE_ZONE_COUNT):
-		_spawn_zone(WaterZone.ZoneType.RARE, randf_range(RARE_RADIUS_MIN, RARE_RADIUS_MAX), RARE_EXTRA_LOBES)
+	var ponds: Array = Campaign.rules.ponds
+	var k := _pond_scale()
+	for _i in range(int(ponds[1])):
+		_spawn_zone(WaterZone.ZoneType.RARE, randf_range(RARE_RADIUS_MIN, RARE_RADIUS_MAX) * k, RARE_EXTRA_LOBES)
 	if theme.get("sea", false):
 		return
-	for _i in range(randi_range(COMMON_ZONE_COUNT.x, COMMON_ZONE_COUNT.y)):
-		_spawn_zone(WaterZone.ZoneType.COMMON, randf_range(COMMON_RADIUS_MIN, COMMON_RADIUS_MAX), COMMON_EXTRA_LOBES)
+	var commons := int(ponds[0])
+	if commons < 0:
+		commons = randi_range(COMMON_ZONE_COUNT.x, COMMON_ZONE_COUNT.y)
+	for _i in range(commons):
+		_spawn_zone(WaterZone.ZoneType.COMMON, randf_range(COMMON_RADIUS_MIN, COMMON_RADIUS_MAX) * k, COMMON_EXTRA_LOBES)
+
+
+## Ponds (and the room kept round the start) shrink a little on a smaller
+## map (the campaign's), so they fit with land to walk round them.
+static func _pond_scale() -> float:
+	return clampf(sqrt(Campaign.area_share()), 0.72, 1.0)
 
 
 ## User request: the beach's water is the sea - one great sweep of it
@@ -1009,7 +1052,7 @@ func _pick_zone_position(radius: float) -> Vector2:
 			randf_range(ZONE_MARGIN + radius, Player.WORLD_WIDTH - ZONE_MARGIN - radius),
 			randf_range(ZONE_MARGIN + radius, Player.WORLD_HEIGHT - ZONE_MARGIN - radius)
 		)
-		if pos.distance_to(SPAWN_POS) < SPAWN_CLEAR_RADIUS + radius:
+		if pos.distance_to(SPAWN_POS) < SPAWN_CLEAR_RADIUS * _pond_scale() + radius:
 			continue
 		var overlaps := false
 		for zone in water_zones:
@@ -1044,6 +1087,8 @@ func _pick_fixed_point_position(avoid: Array) -> Vector2:
 	# last random try, which could be in a pond).
 	var best := Vector2(Player.WORLD_WIDTH * 0.5, FIXED_POINT_MARGIN)
 	var best_score := -INF
+	# Closer together on a smaller map (the campaign's).
+	var separation := FIXED_POINT_MIN_SEPARATION * minf(1.0, sqrt(Campaign.area_share()))
 	for _try in range(60):
 		var pos := Vector2(
 			randf_range(FIXED_POINT_MARGIN, Player.WORLD_WIDTH - FIXED_POINT_MARGIN),
@@ -1053,9 +1098,9 @@ func _pick_fixed_point_position(avoid: Array) -> Vector2:
 		for p in avoid:
 			spread = minf(spread, pos.distance_to(p))
 		var shore := _shore_distance(pos)
-		if spread >= FIXED_POINT_MIN_SEPARATION and shore > 50.0:
+		if spread >= separation and shore > 50.0:
 			return pos
-		var score := minf(spread / FIXED_POINT_MIN_SEPARATION, 1.0) + (1.0 if shore > 50.0 else -2.0)
+		var score := minf(spread / separation, 1.0) + (1.0 if shore > 50.0 else -2.0)
 		if score > best_score:
 			best_score = score
 			best = pos
@@ -1114,7 +1159,8 @@ var _themed_spots: Array = []
 
 
 func _scatter_flip_rocks() -> void:
-	for _i in randi_range(FLIP_ROCKS.x, FLIP_ROCKS.y):
+	var count: Array = Campaign.rules.rocks
+	for _i in randi_range(int(count[0]), int(count[1])):
 		var rock: Node2D = FLIP_ROCK_SCENE.instantiate()
 		rock.position = _pick_prop_position(_themed_spots)
 		_themed_spots.append(rock.position)
@@ -1296,7 +1342,7 @@ func _scatter_ground_cover() -> void:
 ## User request: small animals to catch as bait, spread around the map
 ## (kept off the spawn point so the first few seconds aren't a chase).
 func _scatter_critters() -> void:
-	for _i in range(CRITTER_COUNT):
+	for _i in range(int(Campaign.rules.critters)):
 		var pos := _pick_prop_position([])
 		var critter: Node2D = CRITTER_SCENE.instantiate()
 		critter.position = pos
@@ -1315,7 +1361,7 @@ func _scatter_critters() -> void:
 ## Extra catchable critters come out at nightfall, away from the player.
 func _on_night_fell() -> void:
 	var player: Node2D = get_tree().get_first_node_in_group("player")
-	for _i in range(NIGHT_CRITTER_COUNT):
+	for _i in range(int(roundf(NIGHT_CRITTER_COUNT * Campaign.area_share()))):
 		var pos := _pick_prop_position([])
 		for _try in range(6):
 			if player == null or pos.distance_to(player.global_position) > 250.0:

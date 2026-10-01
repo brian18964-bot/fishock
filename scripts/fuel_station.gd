@@ -189,6 +189,8 @@ func _process(delta: float) -> void:
 		_was_lit = lit
 		GameState.push_message("營火重新燒起來了，營地又安全了" if lit else "油桶的油用完了，營火熄了——營地不再安全（從地圖提油箱回來補）")
 		GameState.report("營火又燒起來了" if lit else "營火熄了，營地不再安全", "good" if lit else "warn")
+		if not lit:
+			Campaign.stat("fire_out")
 	if lit:
 		# A live fire: a slow waver and a quick flutter.
 		_time += delta

@@ -168,6 +168,7 @@ func grip_left() -> float:
 
 ## Lets the player go: they stagger back, it keeps off a while.
 func _let_go(message: String) -> void:
+	Campaign.stat("grab_escaped")
 	_player.break_free(global_position)
 	_timer = REST_TIME
 	_set_mode(Mode.REST)
@@ -193,7 +194,8 @@ func _physics_process(delta: float) -> void:
 	match mode:
 		Mode.ASLEEP:
 			global_position = _lair.global_position + HOME
-			if GameState.run_started and (GameState.is_night or GameState.light_stage() >= ACTIVE_FROM_STAGE):
+			var wake: int = int(Campaign.rules.big_wake) if int(Campaign.rules.big_wake) >= 0 else ACTIVE_FROM_STAGE
+			if GameState.run_started and (GameState.is_night or GameState.light_stage() >= wake):
 				_set_mode(Mode.WANDER)
 				GameState.push_message("遠處傳來鐵鍊拖地的聲音...大鬼醒了")
 		Mode.WANDER, Mode.REST:
@@ -422,6 +424,10 @@ func _pick_wander_target(away_from_player := false) -> void:
 func _set_mode(m: Mode) -> void:
 	# Under the character card (user request): it's after you, or you've
 	# lost it.
+	if m == Mode.GRAB and mode != Mode.GRAB:
+		Campaign.stat("grabbed")
+	elif m == Mode.EAT and mode != Mode.EAT:
+		Campaign.stat("big_ghost_lured")
 	if m == Mode.CHASE and mode != Mode.CHASE:
 		GameState.report("大鬼盯上你了！")
 	elif m in [Mode.WANDER, Mode.REST] and mode in [Mode.CHASE, Mode.SEARCH]:
