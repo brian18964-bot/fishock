@@ -54,6 +54,7 @@ var _scene_piece := ""
 var _skip_hint: Label
 var _fade: ColorRect
 var _setting_off := false
+var _crickets: CampCrickets
 
 
 ## A menu needn't draw at 60 frames a second: half that saves a phone's
@@ -68,6 +69,10 @@ func _ready() -> void:
 	# and a lute.
 	Sfx.ambience("amb_camp")
 	Sfx.music("music_camp")
+	# Its crickets come and go on their own (user feedback).
+	_crickets = CampCrickets.new()
+	_crickets.name = "Crickets"
+	add_child(_crickets)
 	_build()
 	Profile.gold_updated.connect(func(_g): _refresh())
 	Profile.profile_changed.connect(_refresh)
@@ -465,6 +470,8 @@ func _start_run() -> void:
 	_fade.color = Color(0.02, 0.03, 0.05, 0.0)
 	var t := create_tween()
 	t.tween_property(_fade, "color:a", 1.0, 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+	_crickets.set_process(false)
+	t.parallel().tween_property(_crickets, "volume_db", CampCrickets.SILENT_DB, 1.1)
 	t.tween_callback(func():
 		Profile.leave_camp()
 		GameState.start_run()

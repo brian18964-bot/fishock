@@ -432,7 +432,7 @@ func test_catalog_and_sounds() -> void:
 		"step_snow", "chain_loop", "whisper", "moan", "emerge", "cage", "heartbeat_loop", "offering",
 		"rock_flip", "tap", "swipe_hit", "flop", "thunder", "escape", "amb_night", "amb_day", "amb_water",
 		"amb_rain", "amb_wind", "amb_swamp", "amb_jungle", "amb_surf", "music_day", "music_night",
-		"ui_click", "ui_open", "ui_close", "coins", "amb_camp", "music_camp"]
+		"ui_click", "ui_open", "ui_close", "coins", "amb_camp", "camp_crickets_loop", "music_camp"]
 	var lost := sounds.filter(func(n): return Sfx.stream(n) == null)
 	check(lost.is_empty(), "every sound loads %s" % str(lost))
 	var toggle: SoundToggle = null
@@ -447,7 +447,7 @@ func test_catalog_and_sounds() -> void:
 	check(Sfx.muted != was, "the speaker mutes")
 	toggle._input(tap)
 	check(Sfx.muted == was, "and unmutes")
-	for bed in ["amb_rain", "amb_camp", "music_camp"]:
+	for bed in ["amb_rain", "amb_camp", "camp_crickets_loop", "music_camp"]:
 		var s := Sfx.stream(bed)
 		var loops: bool = s.loop if s is AudioStreamOggVorbis else \
 			s is AudioStreamWAV and (s as AudioStreamWAV).loop_mode == AudioStreamWAV.LOOP_FORWARD
@@ -1496,6 +1496,20 @@ func test_main_menu() -> void:
 	check(hand == null or hand.get_child_count() == 0, "the character's hands are empty at camp")
 	check(rig.anim != null and rig.anim.is_playing(), "it breathes (idle)")
 	check(title.find_child("Settings", true, false) != null, "the settings gear")
+	# User feedback: the crickets were loud and steady - softer now, and now
+	# and then they fade away to nothing and strike up again all at once.
+	var crickets: CampCrickets = title.find_child("Crickets", true, false)
+	check(crickets != null and crickets.playing, "the crickets sing")
+	crickets._enter(CampCrickets.State.SING, 0.05)
+	await seconds(0.3)
+	check(crickets.state == CampCrickets.State.FALL, "they hush now and then")
+	crickets._enter(CampCrickets.State.FALL, 0.2)
+	await seconds(0.4)
+	check(crickets.state == CampCrickets.State.HUSH and crickets.volume_db <= CampCrickets.SILENT_DB + 0.1, "until they can't be heard")
+	crickets._enter(CampCrickets.State.HUSH, 0.05)
+	await seconds(0.7)
+	check(crickets.state == CampCrickets.State.SING and absf(crickets.volume_db - CampCrickets.LEVEL_DB) <= CampCrickets.SWELL_DB + 0.1,
+		"and come back all at once, softly")
 	for want in ["Play", "Multiplayer"]:
 		check(title.find_child(want, true, false) != null, "main screen has " + want)
 	# The pages are the camp's things: the crate, the backpack, the tent, the

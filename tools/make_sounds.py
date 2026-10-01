@@ -567,7 +567,8 @@ def amb_surf():
 
 def amb_camp():
     """The main screen's camp at night: the fire crackling and breathing,
-    crickets, the lake lapping at the dock, a little wind."""
+    the lake lapping at the dock, a little wind. Its crickets are a loop of
+    their own (camp_crickets_loop) that CampCrickets swells and hushes."""
     d = 16.0
     t = t_axis(d)
     wind = lowpass(pink(d), 350) * 0.22
@@ -579,8 +580,31 @@ def amb_camp():
         pop = bandpass(white(g), RNG.uniform(1800, 3500), 2000) * env_ad(int(g * SR), 0.0005, 0.006)
         place(pops, pop * RNG.uniform(0.4, 1.0), RNG.uniform(0, d - g))
     lap = lowpass(white(d), 600) * (0.3 + 0.7 * np.clip(np.sin(2 * np.pi * t / 3.4) + np.sin(2 * np.pi * t / 5.3 + 1), 0, None))
-    x = wind + roar + crackle * 0.45 + pops * 0.7 + crickets(d, 1.0) * 0.35 + lap * 0.12
+    x = wind + roar + crackle * 0.45 + pops * 0.7 + lap * 0.12
     return norm(loopify(x, 1.0), 0.45)
+
+
+def camp_crickets_loop():
+    """User feedback: the camp's crickets were too sharp. Softer chirps -
+    each pulse a rounded swell, not a gated tone, a little low-passed - some
+    near, more far off and duller; long enough not to be heard repeating."""
+    d = 24.0
+    x = np.zeros(int(d * SR))
+    for v in range(7):
+        near = v < 2
+        f = 4100 * RNG.uniform(0.88, 1.1)
+        period = RNG.uniform(0.7, 1.5)
+        rate = RNG.uniform(30, 45)
+        gain = RNG.uniform(0.35, 0.5) if near else RNG.uniform(0.12, 0.25)
+        t = RNG.uniform(0, period)
+        while t < d - 0.3:
+            chirp_d = RNG.uniform(0.1, 0.16)
+            n = int(chirp_d * SR)
+            pulses = np.sin(np.pi * rate * np.arange(n) / SR) ** 2
+            c = tone(f, chirp_d) * pulses * np.hanning(n) * gain * RNG.uniform(0.7, 1.0)
+            place(x, c if near else lowpass(c, 3000), t)
+            t += period * RNG.uniform(0.8, 1.25)
+    return norm(loopify(lowpass(x, 6000), 1.0), 0.45)
 
 
 # --- music ---------------------------------------------------------------------
@@ -681,7 +705,7 @@ SOUNDS = {
     "amb_wind": amb_wind, "amb_swamp": amb_swamp, "amb_jungle": amb_jungle, "amb_surf": amb_surf,
     "music_day": music_day, "music_night": music_night,
     "ui_click": ui_click, "ui_open": ui_open, "ui_close": ui_close, "coins": coins,
-    "amb_camp": amb_camp, "music_camp": music_camp,
+    "amb_camp": amb_camp, "camp_crickets_loop": camp_crickets_loop, "music_camp": music_camp,
 }
 
 
