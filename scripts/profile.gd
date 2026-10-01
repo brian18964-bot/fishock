@@ -108,6 +108,9 @@ var lure_stock: Dictionary:
 ## User request: the game's settings. auto_lure: after a 誘惑 throw, pick
 ## the cheapest fish carried as the next lure (off: pick again yourself).
 var settings: Dictionary = {"auto_lure": false}
+## User request (the camp): the tent pitched at the camp (CampStage's
+## tent_<n> model; 8, the bare lean-to, to start - better ones are earned).
+var camp_tent: int = 8
 
 
 func set_setting(key: String, value) -> void:
@@ -493,6 +496,20 @@ func bag_remove(index: int) -> Dictionary:
 	return e
 
 
+## Throws away up to `count` of the bag stack at `index` (the bag page's
+## 丟棄; not the base bait - it's given every run). How many went.
+func bag_discard(index: int, count := -1) -> int:
+	if index < 0 or index >= bag.size() or Items.def(bag[index].id).get("fixed", false):
+		return 0
+	var e: Dictionary = bag[index]
+	var n: int = int(e.count) if count < 0 else mini(count, int(e.count))
+	e.count -= n
+	if int(e.count) <= 0:
+		bag.remove_at(index)
+	_changed()
+	return n
+
+
 ## Puts up to `count` from the bag stack at `index` back in the warehouse.
 func to_storage(index: int, count := -1) -> int:
 	if index < 0 or index >= bag.size() or Items.def(bag[index].id).get("fixed", false):
@@ -639,6 +656,7 @@ func snapshot() -> Dictionary:
 		"tank": tank,
 		"tank_news": tank_news,
 		"settings": settings,
+		"camp_tent": camp_tent,
 	}.duplicate(true)
 
 
@@ -667,6 +685,7 @@ func load_data(data: Dictionary) -> void:
 	tank_news = data.get("tank_news", [])
 	settings = {"auto_lure": false}
 	settings.merge(data.get("settings", {}), true)
+	camp_tent = int(data.get("camp_tent", 8))
 	if not data.has("equipped"):
 		var tier := rods_owned
 		equipped = {"rod": "rod_%d" % tier, "light": "flashlight" if data.get("has_flashlight", false) else ""}

@@ -1087,6 +1087,11 @@ func test_warehouse_and_bag() -> void:
 		"three to a cell, the first stack where it was dropped")
 	check(not Profile.bag_move(bi, Profile.bag[0].cell), "not onto something else")
 	check(Profile.bag_move(bi, Vector2i(7, 3)) and Profile.bag[Profile.bag_at(Vector2i(7, 3))].id == "battery", "moved to a free cell")
+	# User request (Camp v2): the backpack's own page can throw things away.
+	var li := Profile.bag.map(func(e): return e.id).find("lure_minnow")
+	check(Profile.bag_discard(li, 1) == 1 and Profile.bag_count("lure_minnow") == 11, "a lure thrown away")
+	Profile.bag[li].count += 1
+	check(Profile.bag_discard(0) == 0, "the base bait can't be thrown away")
 	check(Profile.buy_rod() and Profile.stored("rod_1") == 1 and Profile.rod_tier == 0, "a rod bought waits in the warehouse")
 	check(Profile.equip("rod_1") and Profile.rod_tier == 1 and Profile.stored("rod_0") == 1, "put on, the old one stored")
 	check(Profile.to_bag("rod_0", 1, Vector2i(3, 3)) == 1, "a spare rod packed")
@@ -1414,11 +1419,32 @@ func test_main_menu() -> void:
 	check(camp != null, "the main screen is the 3D camp")
 	var rig: CharacterRig = camp.character
 	var hand: BoneAttachment3D = rig.attachments.get("hand_r")
-	check(hand != null and hand.get_child_count() == 1, "the character holds the rod")
+	# User request (Camp v2): at camp the hands are empty - the lamp sits on
+	# the drum, the rod leans by the tent.
+	check(hand == null or hand.get_child_count() == 0, "the character's hands are empty at camp")
 	check(rig.anim != null and rig.anim.is_playing(), "it breathes (idle)")
 	check(title.find_child("Settings", true, false) != null, "the settings gear")
-	for want in ["Play", "Multiplayer", "Go_shop", "Go_warehouse", "Go_equipment", "Go_fish_tank"]:
+	for want in ["Play", "Multiplayer"]:
 		check(title.find_child(want, true, false) != null, "main screen has " + want)
+	# The pages are the camp's things: the crate, the backpack, the tent, the
+	# trough, the merchant's stall.
+	for want in ["warehouse", "bag", "equipment", "fish_tank", "shop"]:
+		check(camp.hotspots.has(want), "the camp's thing for " + want)
+	check(title.find_child("CampList", true, false) == null, "no list of pages down the side")
+	# A tap on the backpack opens the bag page.
+	var at: Vector2 = camp.camera.unproject_position(camp.hotspots.bag.parts[0][1]) / title.RENDER_SCALE
+	check(title.spot_at(at) == "bag", "the backpack is under its own spot")
+	for down in [true, false]:
+		var tap := InputEventMouseButton.new()
+		tap.button_index = MOUSE_BUTTON_LEFT
+		tap.pressed = down
+		tap.position = at
+		title._on_home_input(tap)
+	await seconds(0.8)
+	var bag_page: Control = title._page
+	check(bag_page != null and bag_page.get("bag_only") == true, "tapping the backpack opens the bag")
+	UiKit.page_back(bag_page)
+	await seconds(1.0)
 	# A page opens over the camp (the camera glides to its spot) and closes
 	# back to it.
 	title.open_page("shop")

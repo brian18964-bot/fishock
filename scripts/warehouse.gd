@@ -9,6 +9,11 @@ extends ItemBoard
 ## Dressed as an MMO bank (user request): two iron-and-gold windows, the
 ## warehouse's tabs along its top, sunken slots ringed by rarity.
 
+## User request (the camp): the backpack leant on the crate opens the bag
+## alone (scenes/bag.tscn) - rearranged by dragging, things thrown away
+## from their card.
+@export var bag_only := false
+
 var _storage: ItemBoard.StorageGrid
 var _bag: ItemBoard.BagGrid
 var _tabs := {}
@@ -25,6 +30,11 @@ func _ready() -> void:
 
 func _build() -> void:
 	_purse = UiKit.page_chrome(self, _on_back)
+	can_discard = bag_only
+	if bag_only:
+		_build_bag(Vector2((960 - 468) / 2.0, 56), "背包", ["拖曳物品可以在背包裡換位置",
+			"點一下物品看說明，可以放回倉庫或丟棄", "背包裡的東西會帶進遊戲；釣到的魚、餌料會放進空格"])
+		return
 
 	# Left: the warehouse, by tab.
 	var made := UiKit.window("倉庫")
@@ -56,11 +66,17 @@ func _build() -> void:
 	track(_storage)
 
 	# Right: the bag.
-	var made2 := UiKit.window("背包・帶進下一輪")
+	_build_bag(Vector2(478, 56), "背包・帶進下一輪", ["拖曳物品可以在倉庫和背包之間搬，或在背包裡換位置",
+		"點一下物品看說明、選數量", "背包裡的東西會帶進遊戲；釣到的魚、餌料會放進空格"])
+	_show_tab("gear")
+
+
+func _build_bag(at: Vector2, title: String, lines: Array) -> void:
+	var made2 := UiKit.window(title)
 	var right: PanelContainer = made2[0]
 	var rcol: VBoxContainer = made2[1]
 	right.name = "BagWindow"
-	right.position = Vector2(478, 56)
+	right.position = at
 	right.custom_minimum_size = Vector2(468, 474)
 	_used = UiKit.label("", 14, UiKit.DIM)
 	_used.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -70,18 +86,18 @@ func _build() -> void:
 	_bag.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	rcol.add_child(_bag)
 	rcol.add_child(UiKit.divider(360))
-	for line in ["拖曳物品可以在倉庫和背包之間搬，或在背包裡換位置", "點一下物品看說明、選數量",
-			"背包裡的東西會帶進遊戲；釣到的魚、餌料會放進空格"]:
+	for line in lines:
 		var l := UiKit.label(line, 14, UiKit.DIM)
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		l.custom_minimum_size.x = 420
 		rcol.add_child(l)
 	add_child(right)
 	track(_bag)
-	_show_tab("gear")
 
 
 func _show_tab(key: String) -> void:
+	if _storage == null:
+		return
 	_storage.tab = key
 	for k in _tabs:
 		UiKit.style_tab(_tabs[k], k == key)

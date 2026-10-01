@@ -20,6 +20,8 @@ const TAB_COLORS := {
 	"other": Color(0.3, 0.3, 0.32),
 }
 
+## The bag page (user request): things in the bag can be thrown away.
+var can_discard := false
 var _views: Array = []
 ## The press: {from: "storage"/"bag"/"slot", id, index (bag), slot, at}.
 var _press := {}
@@ -118,6 +120,8 @@ func move(source: Dictionary, target: Dictionary, count := -1) -> bool:
 			return Profile.bag_move(source.index, target.cell)
 		["bag", "storage"]:
 			return Profile.to_storage(source.index, count) > 0
+		["bag", "discard"]:
+			return Profile.bag_discard(source.index, count) > 0
 		["slot", "storage"]:
 			return Profile.unequip(source.slot)
 		["slot", "bag"]:
@@ -212,6 +216,16 @@ func card(source: Dictionary) -> void:
 		b.name = "Act_" + act[0]
 		b.custom_minimum_size = Vector2(100, 42)
 		var target: Dictionary = act[1]
+		if target.to == "discard":
+			# Thrown away for good: a second press to be sure.
+			b.pressed.connect(func():
+				if b.text != "確定丟棄？":
+					b.text = "確定丟棄？"
+					return
+				move(source, target, amount[0])
+				_close_card())
+			acts.add_child(b)
+			continue
 		b.pressed.connect(func():
 			move(source, target, amount[0])
 			_close_card())
@@ -270,6 +284,8 @@ func actions(source: Dictionary) -> Array:
 		"bag":
 			if not Items.def(source.id).get("fixed", false):
 				out.append(["放回倉庫", {"to": "storage"}, true])
+				if can_discard:
+					out.append(["丟棄", {"to": "discard"}])
 	if slot != "" and source.from != "slot":
 		out.append(["裝備", {"to": "slot", "slot": slot}])
 	return out

@@ -5,23 +5,27 @@ extends Control
 ## multiplayer; the settings as a gear in the top-right corner; the fish
 ## log inside the fish tank.
 ## And (user request: an MMO look, everything out of the game in 3D as far
-## as it goes) it's a camp at night, like an MMO's character select:
-##   the scene:   CampStage - the character by the fire (drag to turn it,
-##                tap it and it waves), the tent, the merchant's stall, the
-##                chest, the fish tank, the lake
-##   right:       the camp's list - 倉庫, 裝備, 魚缸, 商城 - each opens its
-##                page over the camp while the camera glides to its spot
-##                (the chest, the character, the tank, the stall)
+## as it goes) it's a camp at night, like an MMO's character select -
+## CampStage. User request (the camp rebuilt): no list - the camp's things
+## are the menu. Each has a faint gold rim; pressed (or hovered) it lights
+## up with its name, and a tap opens its page over the camp while the
+## camera glides to it:
+##   the crate 倉庫 (warehouse), the backpack 背包 (the bag alone), the
+##   tent 裝備 (equipment), the cut drum 魚缸 (fish tank), the merchant's
+##   stall or his boat 商人 (shop)
+##   the character: drag to turn it, tap it and it waves
 ##   bottom:      出發夜釣 (a run), 多人連線 (not yet - says so)
 ##   top right:   gold, the settings (a gear)
 ## Between runs, so the day timer is stopped here (GameState.reset_run).
-## With the 3D camp off (settings; for weak phones) it's the old stage: the
-## character on its stone before a dark wall.
+## With the 3D camp off (settings; for weak phones) it's the old stage - the
+## character on its stone before a dark wall - and the camp's list on the
+## right stands in for the things.
 
 ## The camp's picture is drawn at this many times the screen's own size.
 const RENDER_SCALE := 1.5
 const ENTRIES := [
 	["warehouse", "倉庫", "res://assets/sprites/icons/battery.png"],
+	["bag", "背包", ""],
 	["equipment", "裝備", ""],
 	["fish_tank", "魚缸", ""],
 	["shop", "商城", "res://assets/sprites/icons/lamp.png"],
@@ -37,6 +41,10 @@ var _nameplate: VBoxContainer
 var _entries := {}
 var _drag := false
 var _drag_moved := 0.0
+## The camp's thing under the finger (or the mouse), lit, its name shown.
+var _spot := ""
+var _press_spot := ""
+var _spot_label: Label
 
 
 ## A menu needn't draw at 60 frames a second: half that saves a phone's
@@ -146,18 +154,28 @@ func _build() -> void:
 	gear.pressed.connect(_on_settings)
 	_home.add_child(gear)
 
-	# Right: the camp's list.
-	var made := UiKit.window("營地")
-	var list: PanelContainer = made[0]
-	var col: VBoxContainer = made[1]
-	list.name = "CampList"
-	list.position = Vector2(672, 64)
-	list.custom_minimum_size = Vector2(274, 0)
-	col.add_theme_constant_override("separation", 6)
-	for e in ENTRIES:
-		var b := _entry(e[0], e[1], e[2])
-		col.add_child(b)
-	_home.add_child(list)
+	if _stage == null:
+		# Right: the camp's list (only without the 3D camp - with it, the
+		# camp's things are tapped).
+		var made := UiKit.window("營地")
+		var list: PanelContainer = made[0]
+		var col: VBoxContainer = made[1]
+		list.name = "CampList"
+		list.position = Vector2(672, 64)
+		list.custom_minimum_size = Vector2(274, 0)
+		col.add_theme_constant_override("separation", 6)
+		for e in ENTRIES:
+			var b := _entry(e[0], e[1], e[2])
+			col.add_child(b)
+		_home.add_child(list)
+	# The name of the camp's thing under the finger.
+	_spot_label = UiKit.label("", 20, UiKit.GOLD_BRIGHT, true, 5)
+	_spot_label.name = "SpotLabel"
+	_spot_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_spot_label.custom_minimum_size = Vector2(160, 0)
+	_spot_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_spot_label.visible = false
+	_home.add_child(_spot_label)
 
 	# Bottom: play, and multiplayer (not yet).
 	var play := UiKit.button("出發夜釣", 24, "red")
@@ -250,28 +268,61 @@ func _set_sub(page: String, text: String) -> void:
 
 
 func _process(_delta: float) -> void:
-	# The name floats over the character's head.
+	# The name floats over the character's head; the lit thing's over it.
 	if _stage != null and _home.visible:
 		var head := _stage.character_pivot.global_position + Vector3(0, 2.05, 0)
 		if not _stage.camera.is_position_behind(head):
 			var at := _stage.camera.unproject_position(head) / RENDER_SCALE
 			_nameplate.position = at - Vector2(_nameplate.size.x * 0.5, _nameplate.size.y)
+		if _spot != "":
+			var over := _stage.camera.unproject_position(_stage.label_point(_spot)) / RENDER_SCALE
+			_spot_label.position = over - Vector2(_spot_label.size.x * 0.5, _spot_label.size.y)
 
 
-## Drags across the screen turn the character; a tap on it, a wave.
+## The camp's thing at `at` (screen), "" if none.
+func spot_at(at: Vector2) -> String:
+	return _stage.hotspot_at(at * RENDER_SCALE) if _stage != null else ""
+
+
+func _light(page: String) -> void:
+	_spot = page
+	if _stage != null:
+		_stage.highlight(page)
+	_spot_label.visible = page != ""
+	if page != "":
+		_spot_label.text = _stage.hotspots[page].label
+
+
+## A press on one of the camp's things lights it; let go on it, it opens.
+## Elsewhere, drags turn the character and a tap on it waves.
 func _on_home_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			_drag = true
 			_drag_moved = 0.0
+			_press_spot = spot_at(event.position)
+			_light(_press_spot)
 		else:
 			_drag = false
+			var under := spot_at(event.position)
+			if _press_spot != "" and under == _press_spot and _drag_moved < 12.0:
+				var page := _press_spot
+				_press_spot = ""
+				_light("")
+				open_page(page)
+				return
+			_press_spot = ""
+			_light(under)
 			if _drag_moved < 6.0 and _near_character(event.position):
 				_wave()
-	elif event is InputEventMouseMotion and _drag:
-		_drag_moved += absf(event.relative.x)
-		if _stage != null:
-			_stage.turn_character(event.relative.x * 0.012)
+	elif event is InputEventMouseMotion:
+		if _drag:
+			_drag_moved += absf(event.relative.x) + absf(event.relative.y)
+			if _press_spot == "" and _stage != null:
+				_stage.turn_character(event.relative.x * 0.012)
+		else:
+			# Hovered (a mouse): lit, named.
+			_light(spot_at(event.position))
 
 
 func _near_character(at: Vector2) -> bool:
@@ -296,6 +347,7 @@ func open_page(page: String) -> void:
 		_page.queue_free()
 		_page = null
 	_home.visible = false
+	_light("")
 	Sfx.play("ui_open", -6.0)
 	var p: Control = load("res://scenes/%s.tscn" % page).instantiate()
 	p.set_meta("over_camp", _stage != null)

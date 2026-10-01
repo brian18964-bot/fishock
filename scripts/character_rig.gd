@@ -40,6 +40,10 @@ var attachments := {}
 ## Holds the rod the player owns, following the profile; off for the
 ## shop's try-on (it holds what's being tried).
 var follow_profile := true
+## Takes up the rod and the lamp when it's ready. Off at the camp (user
+## request): resting there, its hands are empty - the lamp sits on the oil
+## drum, the rod leans on the tent - until it sets out.
+var hold_gear := true
 
 
 func _ready() -> void:
@@ -56,13 +60,14 @@ func _ready() -> void:
 		att.bone_name = SLOTS[slot]
 		skeleton.add_child(att)
 		attachments[slot] = att
-	equip_rod(Profile.rod_tier)
-	equip_lamp()
+	if hold_gear:
+		equip_rod(Profile.rod_tier)
+		equip_lamp()
 	Profile.profile_changed.connect(_on_profile_changed)
 
 
 func _on_profile_changed() -> void:
-	if is_inside_tree() and follow_profile:
+	if is_inside_tree() and follow_profile and hold_gear:
 		equip_rod(Profile.rod_tier)
 
 
