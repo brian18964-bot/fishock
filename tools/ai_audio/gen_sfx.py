@@ -25,7 +25,9 @@ def main():
     ap.add_argument("--model", default="OpenMOSS-Team/MOSS-SoundEffect-v2.0")
     args = ap.parse_args()
     prompts = json.load(open(os.path.join(HERE, "prompts.json"), encoding="utf-8"))
-    pipe = MossSoundEffectPipeline.from_pretrained(args.model, torch_dtype=torch.bfloat16, device="cuda")
+    # bfloat16 where the GPU has it; float16 on older ones (Colab's free T4).
+    dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+    pipe = MossSoundEffectPipeline.from_pretrained(args.model, torch_dtype=dtype, device="cuda")
     kinds = [args.kind] if args.kind else ["ambience", "sfx"]
     for kind in kinds:
         for item in prompts[kind]:

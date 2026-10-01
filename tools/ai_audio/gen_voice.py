@@ -24,7 +24,9 @@ BASE = "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
 
 
 def load(name):
-    kw = {"device_map": "cuda:0", "dtype": torch.bfloat16}
+    # bfloat16 where the GPU has it; float16 on older ones (Colab's free T4).
+    dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+    kw = {"device_map": "cuda:0", "dtype": dtype}
     try:
         return Qwen3TTSModel.from_pretrained(name, attn_implementation="flash_attention_2", **kw)
     except Exception:  # 沒裝 flash-attn 也能跑，只是比較吃記憶體

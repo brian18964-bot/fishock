@@ -14,6 +14,12 @@
 
 > 使用前請再看一次各模型的授權與模型權重頁面，確認生成的內容可以用在你的遊戲裡。
 
+## 電腦不夠力？用 Colab（免費雲端 GPU）
+
+打開 [colab.ipynb](https://colab.research.google.com/github/brian18964-bot/fishock/blob/claude/focused-fermi-96pp3r/tools/ai_audio/colab.ipynb)，
+執行階段選 T4 GPU，從上到下按 ▶ 就好：三首音樂、環境音、音效、角色語音全部做完，最後打包成 zip 下載。
+（還沒在 Colab 實際跑過，出錯請把錯誤訊息截圖給 Claude。）
+
 ## 需要的電腦
 
 - NVIDIA 顯示卡（CUDA）。建議 12 GB 以上顯示記憶體；8 GB 也可以，換成表格裡較小的模型。

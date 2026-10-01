@@ -230,9 +230,9 @@ func _on_run_ended(success: bool, message: String) -> void:
 			$Panel.add_child(black)
 			get_tree().create_timer(delay).timeout.connect(func():
 				black.queue_free()
-				CampaignResults.show_for($Panel, success, message))
+				CampaignResults.show_for(get_parent(), success, message))
 		else:
-			CampaignResults.show_for($Panel, success, message)
+			CampaignResults.show_for(get_parent(), success, message)
 		return
 	# The free run: what the curses paid, the achievements earned.
 	var extra := ""

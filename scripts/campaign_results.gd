@@ -18,19 +18,27 @@ var _stars: Control
 var _t := 0.0
 
 
-static func show_for(parent: Control, won: bool, text: String) -> CampaignResults:
+## Over everything else on screen (the character card, the sticks...).
+const LAYER := 8
+
+
+static func show_for(parent: Node, won: bool, text: String) -> CampaignResults:
+	var layer := CanvasLayer.new()
+	layer.name = "ResultsLayer"
+	layer.layer = LAYER
 	var r := CampaignResults.new()
 	r.name = "CampaignResults"
 	r.success = won
 	r.message = text
-	parent.add_child(r)
+	r.color = Color(0, 0, 0, 0.6)
+	r.set_anchors_preset(Control.PRESET_FULL_RECT)
+	r.mouse_filter = Control.MOUSE_FILTER_STOP
+	layer.add_child(r)
+	parent.add_child(layer)
 	return r
 
 
 func _ready() -> void:
-	color = Color(0, 0, 0, 0.6)
-	set_anchors_preset(Control.PRESET_FULL_RECT)
-	mouse_filter = Control.MOUSE_FILTER_STOP
 	var res: Dictionary = Campaign.result
 	var lv := Campaign.level(str(res.get("level", Campaign.level_id)))
 	var scroll := PanelContainer.new()

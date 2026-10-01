@@ -5,9 +5,9 @@
     {"name": "music_camp", "duration": 120, "bpm": 64, "key": "D minor", "time_signature": "4",
      "prompt": "Melancholic survival theme at a lonely campfire beside a cursed lake. Solo ronroco and resonant steel-string acoustic guitar, close-miked with audible fret noise and finger slides, slow rubato phrases with long silences between them, natural room reverb, faint low string drone underneath, haunting, desolate, bittersweet, beauty and loss, no drums, no strings section, instrumental, seamless loop"},
     {"name": "music_night", "duration": 120, "bpm": 60, "key": "A minor", "time_signature": "4",
-     "prompt": "Night fishing on a dark haunted lake. Low eerie drones, slow plucked kalimba motif, distant breathy choir, soft muffled taiko like a heartbeat, creeping tension without jump scares, dark fantasy horror ambience, minimal, instrumental, seamless loop"},
-    {"name": "music_day", "duration": 120, "bpm": 92, "key": "G major", "time_signature": "4",
-     "prompt": "Bright peaceful lakeside morning. Light acoustic guitar strumming, wooden flute melody, soft hand percussion and shaker, birds-in-the-air feeling, relaxed fishing adventure, cozy indie game soundtrack, instrumental, seamless loop"}
+     "prompt": "Night fishing on a cursed lake, something is hunting in the dark. Scraped and bowed metal, prepared guitar with detuned strings, sparse ronroco notes, low pulsing drone, irregular muffled knocks like distant footsteps, slowly rising tension, survival horror, minimal, no catchy melody, instrumental, seamless loop"},
+    {"name": "music_day", "duration": 120, "bpm": 80, "key": "G major", "time_signature": "4",
+     "prompt": "Pale overcast morning at an abandoned lake. Solo ronroco and fingerpicked steel-string acoustic guitar, a little brighter but still bittersweet, gentle flowing movement, quiet hope after a long night, sparse, natural room sound, no drums, instrumental, seamless loop"}
   ],
 
   "ambience": [

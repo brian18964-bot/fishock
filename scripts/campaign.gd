@@ -90,7 +90,7 @@ const LEVELS := [
 		"reward": {"gold": 60, "items": {"live_worm": 3}}},
 	{"id": "1-4", "chapter": 1, "name": "天色將暗", "teach": "時間、天色、燈的亮度、燈油、回營火補油",
 		"intro": "這裡的白天很短。天黑以前沒離開，符文石就再也不會亮了。",
-		"rules": {"map": "S", "theme": "forest_maple", "ponds": [1, 0], "day": 240.0, "quota": 18.0,
+		"rules": {"map": "S", "theme": "forest_maple", "ponds": [1, 0], "day": 240.0, "quota": 18.0, "drain": 0.5,
 			"ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear",
 			"rocks": [5, 6], "critters": 4, "hotspot": false, "oil": false, "escalate": false, "evil": false,
 			"night_fails": true, "safe": true, "tutorial": "lamp"},
@@ -99,7 +99,7 @@ const LEVELS := [
 		"reward": {"gold": 70, "items": {"battery": 2}}},
 	{"id": "1-5", "chapter": 1, "name": "飄忽的影子", "teach": "小鬼的搗亂、用強光定住鬼",
 		"intro": "有東西在樹梢間飄。它們不會傷人，只是愛搗蛋。",
-		"rules": {"map": "S", "theme": "forest_green", "ponds": [1, 0], "day": 270.0, "quota": 22.0,
+		"rules": {"map": "S", "theme": "forest_green", "ponds": [1, 0], "day": 270.0, "quota": 22.0, "drain": 0.6,
 			"ghosts": 1, "meddle": 3, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear",
 			"rocks": [5, 6], "critters": 4, "hotspot": false, "oil": false, "escalate": false, "evil": false,
 			"night_fails": true, "safe": true, "tutorial": "ghost"},
@@ -141,8 +141,8 @@ const LEVELS := [
 		"reward": {"gold": 120}},
 	{"id": "2-5", "chapter": 2, "name": "搬油", "teach": "營火的油、提油箱回營地",
 		"intro": "營火的油桶快見底了。地圖上散落著油箱，得自己提回來。",
-		"rules": {"map": "M", "theme": "autumn", "ponds": [2, 1], "day": 330.0, "quota": 36.0, "fuel": 160.0,
-			"drain": 1.3, "ghosts": 1, "meddle": 3, "big_ghost": false, "water_ghost": 0.6, "hunters": false,
+		"rules": {"map": "M", "theme": "autumn", "ponds": [2, 1], "day": 330.0, "quota": 36.0, "fuel": 260.0,
+			"drain": 1.0, "ghosts": 1, "meddle": 3, "big_ghost": false, "water_ghost": 0.6, "hunters": false,
 			"weather": "mild", "escalate": false, "evil": false, "night_fails": true, "tutorial": "oil"},
 		"stars": [{"stat": "oil_delivered", "min": 2, "text": "提回 2 桶油"},
 			{"stat": "fire_out", "max": 0, "text": "營火從沒熄滅"}],
@@ -201,8 +201,8 @@ const LEVELS := [
 		"reward": {"gold": 230}},
 	{"id": "4-3", "chapter": 4, "name": "雪夜長路", "teach": "綜合：油少、大鬼、野獸",
 		"intro": "營火燒不久，池塘又離得遠。每一趟來回都要算好。",
-		"rules": {"map": "L", "theme": "snow", "ponds": [3, 1], "day": 330.0, "quota": 48.0, "fuel": 220.0,
-			"drain": 1.2, "ghosts": 1, "evil": false, "beasts": {"wolf": 1.5}},
+		"rules": {"map": "L", "theme": "snow", "ponds": [3, 1], "day": 330.0, "quota": 48.0, "fuel": 300.0,
+			"drain": 1.1, "ghosts": 1, "evil": false, "beasts": {"wolf": 1.5}},
 		"stars": [{"stat": "oil_delivered", "min": 1, "text": "提回 1 桶油"},
 			{"stat": "grabbed", "max": 0, "text": "沒被大鬼抓住"}],
 		"reward": {"gold": 240}},
@@ -328,7 +328,7 @@ const TUTORIALS := {
 		["額度滿了，符文石亮了！走進光裡就能回營地。", {"stat": "escaped", "min": 1}, "escape"],
 	],
 	"reach": [
-		["拉得越久，拋得越遠。遠處的魚比較大，也值得比較多。", {"after": 7.0}, ""],
+		["{far}，拋得越遠。遠處的魚比較大，也值得比較多。", {"after": 7.0}, ""],
 		["試試把浮標拋到池塘中間，釣一條遠海大魚。", {"stat": "catch_far", "min": 1}, "water"],
 		["大魚拉力強。張力條太紅就放手，讓牠跑一下再收。", {"after": 7.0}, ""],
 		["湊滿額度，就能回去了。", {"stat": "quota_met", "min": 1}, "altar"],
@@ -438,7 +438,8 @@ const TUTORIALS := {
 ## The controls' words: [touchscreen, keyboard].
 const CONTROLS := {
 	"move": ["左搖桿", "WASD"],
-	"cast": ["按住右搖桿往後拉、放開", "按住空白鍵、放開"],
+	"cast": ["把右搖桿往要拋的方向拉，放開", "滑鼠指向水面，按住空白鍵、放開"],
+	"far": ["右搖桿拉得越遠", "空白鍵按得越久"],
 	"strike": ["點右搖桿", "按空白鍵"],
 	"reel": ["按住右搖桿", "按住空白鍵"],
 	"act": ["點旁邊的按鈕", "按 E"],
@@ -446,7 +447,7 @@ const CONTROLS := {
 	"flash": ["按住燈的按鈕蓄力、放開", "按住 F 蓄力、放開"],
 	"mode": ["點左上角的人物卡打開背包，在背包裡切換", "按 Tab"],
 	"lure": ["點「誘惑」選魚，再按住往遠處拖、放開", "按 G 選魚，再按住 G、放開"],
-	"swipe": ["右搖桿往反方向一甩", "往反方向按方向鍵"],
+	"swipe": ["右搖桿往反方向一甩", "往反方向按方向鍵（WASD）"],
 }
 
 ## What's being played: a level's id, or "" (the free run).

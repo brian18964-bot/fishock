@@ -17,6 +17,7 @@ const PANEL_W := 236.0
 const ROW := 19.0
 const TEXT_SIZE := 12
 const BOX_Y := 74.0
+const BOX_Y_FIGHT := 164.0
 const BOX_W := 520.0
 const BOX_PAD := 10.0
 const MEDAL := 40.0
@@ -157,7 +158,11 @@ func _draw_box(s: Array) -> void:
 	var font := UiKit.font()
 	var lines := 1 if font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x <= BOX_W - MEDAL - 30.0 else 2
 	var h := maxf(MEDAL + 8.0, 16.0 + lines * 20.0)
-	var r := Rect2(480.0 - BOX_W / 2.0, BOX_Y, BOX_W, h)
+	# Under the fight panel while a fish is on (it takes the top middle).
+	var y := BOX_Y
+	if Campaign._player != null and Campaign._player.state == Player.State.REELING:
+		y = BOX_Y_FIGHT
+	var r := Rect2(480.0 - BOX_W / 2.0, y, BOX_W, h)
 	var a := _box_alpha
 	_view.draw_rect(r, Color(0.05, 0.04, 0.03, 0.82 * a))
 	_view.draw_rect(r, Color(0.62, 0.46, 0.17, 0.9 * a), false, 1.5)
