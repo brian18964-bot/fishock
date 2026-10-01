@@ -1646,7 +1646,7 @@ func test_camp_life() -> void:
 	# What it picks, by how it feels.
 	var allowed := {
 		0: ["sit"], 1: ["sit", "trough", "warm", "stand"],
-		2: ["sit", "crate", "trough", "lean", "lake", "merchant", "warm", "stand"],
+		2: ["sit", "crate", "trough", "lean", "lake", "merchant", "warm", "watch", "stand"],
 	}
 	for spirit in [20.0, 40.0, 60.0]:
 		Profile.spirit = spirit

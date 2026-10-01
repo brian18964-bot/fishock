@@ -5,8 +5,9 @@ extends Node
 ## sits by the fire, chops wood and carries it to the fire, mends the
 ## tent, opens the crate and has a bite, crouches over the fish, leans on
 ## the drum looking at the lake, has a word with the merchant, gathers
-## sticks, warms itself, dances when it's in high spirits - less and less
-## of it as its spirit (Profile.spirit) runs down:
+## sticks, warms itself, keeps watch with the lamp held up at the edge of
+## the dark, dances when it's in high spirits - less and less of it as its
+## spirit (Profile.spirit) runs down:
 ##   70-100  busy    all of it (dancing only over 90)
 ##   50-69   tired   no chopping, mending or gathering; slower; sits more
 ##   30-49   worn    mostly sits, a long while
@@ -46,6 +47,7 @@ const WEIGHTS := {
 	"merchant": [0.0, 0.0, 0.5, 0.7],
 	"warm": [0.0, 0.6, 1.2, 1.0],
 	"dance": [0.0, 0.0, 0.0, 1.2],
+	"watch": [0.0, 0.0, 0.3, 0.6],
 	"stand": [0.0, 0.4, 1.0, 0.5],
 }
 ## Walking pace, how long it sits, the pause between things - by tier.
@@ -337,6 +339,12 @@ func _activity(name: String, t: int) -> Array:
 			return plan
 		"dance":
 			return _go("dance") + [{"do": "loop", "clip": "Dance", "time": _rng.randf_range(3.0, 5.0)}]
+		"watch":
+			# On watch: the lamp lit and held up at the edge of the dark.
+			var edge := "gather_%d" % _rng.randi_range(0, 2)
+			return _go("lamp") + [{"do": "play", "clip": "PickUp_Table", "at": 0.5, "fn": func(): take_lamp()}] \
+				+ _go(edge) + [{"do": "loop", "clip": "Idle_Torch", "time": _rng.randf_range(3.0, 5.0)}] \
+				+ _go("lamp") + [{"do": "play", "clip": "PickUp_Table", "at": 0.5, "fn": func(): put_lamp()}]
 	# "stand": a while where it is, arms folded.
 	return [{"do": "loop", "clip": "Idle_FoldArms", "time": _rng.randf_range(3.0, 6.0)}]
 
@@ -362,8 +370,9 @@ func depart() -> void:
 	var plan: Array = _stand_up() if seated else []
 	plan += _go("lamp") + [{"do": "play", "clip": "PickUp_Table", "at": 0.5, "fn": func(): take_lamp()}]
 	plan += _go("rod") + [{"do": "play", "clip": "PickUp_Table", "at": 0.5, "fn": func(): take_rod()}]
+	# The lamp raised to the stone as it blazes, then in.
 	plan += _go("stone") + [{"do": "call", "fn": func(): stage.stone_flare()},
-		{"do": "wait", "time": 0.5}, {"do": "walk", "to": stage.spots.stone_in.at}]
+		{"do": "loop", "clip": "Idle_Torch", "time": 1.2}, {"do": "walk", "to": stage.spots.stone_in.at}]
 	_plan = plan
 	_next()
 
