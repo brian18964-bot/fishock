@@ -2,8 +2,8 @@
   "_說明": "每一項的 name 就是遊戲裡的音效名稱（assets/audio/<name>）。生成後經 finish.py 轉成 <name>.ogg 放進 assets/audio/，遊戲會自動用它取代原本的合成音。prompt 用英文效果最好；voice 的台詞用繁體中文。",
 
   "music": [
-    {"name": "music_camp", "duration": 120, "bpm": 72, "key": "D minor", "time_signature": "3",
-     "prompt": "Quiet night at a campfire beside a misty lake. Solo fingerpicked nylon guitar and a soft medieval lute, warm low cello sustains, faint music-box twinkles, gentle and cozy but a little lonely, fantasy RPG rest-area theme, sparse, unhurried, no drums, instrumental, seamless loop"},
+    {"name": "music_camp", "duration": 120, "bpm": 64, "key": "D minor", "time_signature": "4",
+     "prompt": "Melancholic survival theme at a lonely campfire beside a cursed lake. Solo ronroco and resonant steel-string acoustic guitar, close-miked with audible fret noise and finger slides, slow rubato phrases with long silences between them, natural room reverb, faint low string drone underneath, haunting, desolate, bittersweet, beauty and loss, no drums, no strings section, instrumental, seamless loop"},
     {"name": "music_night", "duration": 120, "bpm": 60, "key": "A minor", "time_signature": "4",
      "prompt": "Night fishing on a dark haunted lake. Low eerie drones, slow plucked kalimba motif, distant breathy choir, soft muffled taiko like a heartbeat, creeping tension without jump scares, dark fantasy horror ambience, minimal, instrumental, seamless loop"},
     {"name": "music_day", "duration": 120, "bpm": 92, "key": "G major", "time_signature": "4",

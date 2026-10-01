@@ -448,8 +448,10 @@ func test_catalog_and_sounds() -> void:
 	toggle._input(tap)
 	check(Sfx.muted == was, "and unmutes")
 	for bed in ["amb_rain", "amb_camp", "music_camp"]:
-		var loop := Sfx.stream(bed) as AudioStreamWAV
-		check(loop != null and loop.loop_mode == AudioStreamWAV.LOOP_FORWARD, "%s loops" % bed)
+		var s := Sfx.stream(bed)
+		var loops: bool = s.loop if s is AudioStreamOggVorbis else \
+			s is AudioStreamWAV and (s as AudioStreamWAV).loop_mode == AudioStreamWAV.LOOP_FORWARD
+		check(loops, "%s loops" % bed)
 
 
 ## User feedback: the big and small ghosts were stiff, the animals walked
