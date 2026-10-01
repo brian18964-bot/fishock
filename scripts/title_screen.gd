@@ -314,8 +314,8 @@ func _head_point() -> Vector3:
 
 func _process(_delta: float) -> void:
 	# The name floats over the character's head; the lit thing's over it.
-	if _stage != null:
-		Profile.rest(_delta)
+	# Resting at the camp (3D or not).
+	Profile.rest(_delta)
 	if _stage != null and _home.visible:
 		var head := _head_point() + Vector3(0, 0.5, 0)
 		if not _stage.camera.is_position_behind(head):
