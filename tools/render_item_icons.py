@@ -211,6 +211,95 @@ def shrimp():
     shoot("shrimp", objs, (1, 1))
 
 
+def tea():
+    """The merchant's hot tea (Camp v2): a chipped enamel tin mug, dark
+    amber tea in it, a loop of handle."""
+    import bmesh
+    fresh()
+    enamel = mat("enamel", (0.24, 0.26, 0.25), rough=0.3)
+    rim = mat("rim", (0.08, 0.14, 0.26), rough=0.35)
+    chip = mat("chip", (0.06, 0.06, 0.07), metal=0.6, rough=0.5)
+    brew = mat("tea", (0.2, 0.07, 0.015), rough=0.05)
+    up = (0, 0, 0)
+    # The cup: a cylinder hollowed out (its top face dropped, walls made
+    # thick).
+    bpy.ops.mesh.primitive_cylinder_add(radius=0.3, depth=0.5, location=(0, 0, 0.25), vertices=32)
+    cup = bpy.context.object
+    cup.name = "cup"
+    bm = bmesh.new()
+    bm.from_mesh(cup.data)
+    top = [f for f in bm.faces if f.normal.z > 0.9]
+    bmesh.ops.delete(bm, geom=top, context="FACES_ONLY")
+    bm.to_mesh(cup.data)
+    bm.free()
+    sol = cup.modifiers.new("wall", "SOLIDIFY")
+    sol.thickness = 0.025
+    cup.data.materials.append(enamel)
+    bpy.ops.object.shade_smooth()
+    objs = [cup,
+            cyl("tea", 0.278, 0.02, (0, 0, 0.43), brew, rot=up),
+            ]
+    bpy.ops.mesh.primitive_torus_add(major_radius=0.3, minor_radius=0.018, location=(0, 0, 0.5))
+    lip = bpy.context.object
+    lip.name = "rim"
+    lip.data.materials.append(rim)
+    bpy.ops.object.shade_smooth()
+    objs.append(lip)
+    # Chips in the enamel.
+    for k, (a, z, r) in enumerate([(0.6, 0.32, 0.035), (2.2, 0.12, 0.05), (4.0, 0.4, 0.03), (5.1, 0.2, 0.04)]):
+        objs.append(blob("chip%d" % k, (math.cos(a) * 0.3, math.sin(a) * 0.3, z), (r * 1.4, r * 1.4, r * 0.9), chip,
+                         rot=(0, 0, a)))
+    bpy.ops.mesh.primitive_torus_add(major_radius=0.13, minor_radius=0.028, location=(0.32, 0, 0.27),
+                                     rotation=(math.radians(90), 0, 0))
+    handle = bpy.context.object
+    handle.name = "handle"
+    handle.data.materials.append(enamel)
+    bpy.ops.object.shade_smooth()
+    objs.append(handle)
+    shoot("tea", objs, (1, 1))
+
+
+def rations():
+    """The merchant's rations (Camp v2): a loaf and a slab of jerky
+    wrapped in brown paper, tied with twine."""
+    fresh()
+    paper = mat("paper", (0.14, 0.09, 0.05), rough=0.85)
+    twine = mat("twine", (0.3, 0.25, 0.15), rough=0.9)
+    jerky = mat("jerky", (0.12, 0.03, 0.015), rough=0.5)
+    bread = mat("bread", (0.26, 0.13, 0.04), rough=0.7)
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.13))
+    parcel = bpy.context.object
+    parcel.name = "parcel"
+    parcel.scale = (0.72, 0.46, 0.26)
+    bev = parcel.modifiers.new("soft", "BEVEL")
+    bev.width = 0.05
+    bev.segments = 3
+    parcel.data.materials.append(paper)
+    objs = [parcel]
+    for k, (sx, sy) in enumerate([(0.74, 0.03), (0.03, 0.48)]):
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.13))
+        t = bpy.context.object
+        t.name = "twine%d" % k
+        t.scale = (sx, sy, 0.272)
+        t.data.materials.append(twine)
+        objs.append(t)
+    objs.append(blob("knot", (0, 0, 0.27), (0.045, 0.045, 0.03), twine))
+    # The paper folded back at one end: a heel of bread showing, and a
+    # strip of jerky on top.
+    objs.append(blob("loaf", (-0.36, 0.0, 0.16), (0.08, 0.2, 0.12), bread))
+    for k, (x, y, turn) in enumerate([(0.08, 0.06, 0.45), (0.16, -0.06, 0.3)]):
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(x, y, 0.3 + k * 0.025), rotation=(0.05, 0.06, turn))
+        strip = bpy.context.object
+        strip.name = "jerky%d" % k
+        strip.scale = (0.42, 0.08, 0.025)
+        b = strip.modifiers.new("soft", "BEVEL")
+        b.width = 0.01
+        b.segments = 2
+        strip.data.materials.append(jerky)
+        objs.append(strip)
+    shoot("rations", objs, (1, 1))
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     only = sys.argv[1:]

@@ -112,9 +112,104 @@ var settings: Dictionary = {"auto_lure": false}
 ## tent_<n> model; 8, the bare lean-to, to start - better ones are earned).
 var camp_tent: int = 8
 
+## User request (Camp v2): the traveller's spirit (精神), 0..SPIRIT_MAX.
+## Lost when a ghost's grab isn't escaped; back with rest at the camp, a
+## run escaped, or the merchant's tea and rations (SNACKS).
+const SPIRIT_MAX := 100.0
+var spirit: float = SPIRIT_MAX
+const SNACKS := {
+	"tea": {"name": "熱茶", "cost": 15, "spirit": 20.0, "desc": "一杯熱騰騰的茶，暖手也暖心"},
+	"rations": {"name": "乾糧", "cost": 30, "spirit": 35.0, "desc": "肉乾配硬麵包，吃飽了才有力氣"},
+}
+const SNACK_ORDER := ["tea", "rations"]
+
+## User request (Camp v2): what's been done, for the achievements that
+## earn the camp's tents (TENTS) - escapes, gold spent, legends caught.
+var stats: Dictionary = {"escapes": 0, "gold_spent": 0, "legends": 0}
+## The tents, in the order they're earned: [tent model, its name, what
+## earns it, its stat ("log": the fish log's share of the kinds), amount].
+const TENTS := [
+	[8, "枝條棚", "一開始就有", "", 0],
+	[9, "編枝小屋", "成功逃脫 10 次", "escapes", 10],
+	[7, "枝架遮棚", "圖鑑收集 20%", "log", 20],
+	[5, "帆布帳", "累計花費 500 金幣", "gold_spent", 500],
+	[6, "皮頂長棚", "成功逃脫 50 次", "escapes", 50],
+	[1, "獸皮帳", "圖鑑收集 40%", "log", 40],
+	[2, "熊皮大帳", "釣到第一條傳說魚", "legends", 1],
+	[3, "旅人帳", "成功逃脫 100 次", "escapes", 100],
+	[4, "長屋帳", "圖鑑收集 80%", "log", 80],
+]
+
 
 func set_setting(key: String, value) -> void:
 	settings[key] = value
+	_changed()
+
+
+## Spirit up or down by `amount` (kept in 0..SPIRIT_MAX).
+func add_spirit(amount: float) -> void:
+	var was := spirit
+	spirit = clampf(spirit + amount, 0.0, SPIRIT_MAX)
+	if spirit != was:
+		_changed()
+
+
+## Buys the merchant's tea or rations and has it there and then: false if
+## short of gold or already in full spirit.
+func buy_snack(key: String) -> bool:
+	var d: Dictionary = SNACKS[key]
+	if gold < int(d.cost) or spirit >= SPIRIT_MAX:
+		return false
+	_spend(int(d.cost))
+	spirit = minf(spirit + float(d.spirit), SPIRIT_MAX)
+	gold_updated.emit(gold)
+	_changed()
+	return true
+
+
+## Pays `cost` (counted toward the gold-spent achievement).
+func _spend(cost: int) -> void:
+	gold -= cost
+	stats["gold_spent"] = int(stats.get("gold_spent", 0)) + cost
+
+
+## How far the fish log's come: the share (0..100) of the kinds caught.
+func log_percent() -> float:
+	var caught := 0
+	for id in FishData.FISH:
+		if fish_log.has(FishData.FISH[id].name):
+			caught += 1
+	return 100.0 * caught / maxf(FishData.FISH.size(), 1.0)
+
+
+## How far along a tent's achievement is: [now, needed].
+func tent_progress(i: int) -> Array:
+	var t: Array = TENTS[i]
+	if t[3] == "":
+		return [0.0, 0.0]
+	var now: float = log_percent() if t[3] == "log" else float(stats.get(t[3], 0))
+	return [now, float(t[4])]
+
+
+func tent_unlocked(tent: int) -> bool:
+	for i in TENTS.size():
+		if TENTS[i][0] == tent:
+			var p := tent_progress(i)
+			return p[0] >= p[1]
+	return false
+
+
+## Pitches tent `tent` at the camp, if it's been earned.
+func pitch_tent(tent: int) -> bool:
+	if not tent_unlocked(tent):
+		return false
+	camp_tent = tent
+	_changed()
+	return true
+
+
+func record_escape() -> void:
+	stats["escapes"] = int(stats.get("escapes", 0)) + 1
 	_changed()
 
 
@@ -136,7 +231,9 @@ func _ready() -> void:
 	_load()
 
 
-func record_catch(fish_name: String, value: float, length := 0.0, tank_trait := "") -> void:
+func record_catch(fish_name: String, value: float, length := 0.0, tank_trait := "", legend := false) -> void:
+	if legend:
+		stats["legends"] = int(stats.get("legends", 0)) + 1
 	var entry: Dictionary = fish_log.get(fish_name, {"count": 0, "best_value": 0.0})
 	entry.count = int(entry.count) + 1
 	entry.best_value = max(float(entry.best_value), value)
@@ -175,7 +272,7 @@ func buy_upgrade(key: String) -> bool:
 	var cost: int = def.costs[level]
 	if gold < cost:
 		return false
-	gold -= cost
+	_spend(cost)
 	upgrade_levels[key] = level + 1
 	if key == "bait_capacity":
 		ensure_bait()
@@ -189,7 +286,7 @@ func buy_lure(id: String) -> bool:
 	var cost: int = LURES[id].cost
 	if gold < cost:
 		return false
-	gold -= cost
+	_spend(cost)
 	_store("lure_" + id, 1)
 	gold_updated.emit(gold)
 	_changed()
@@ -201,7 +298,7 @@ func buy_live_bait(key: String) -> bool:
 	var cost: int = LIVE_BAITS[key].cost
 	if gold < cost:
 		return false
-	gold -= cost
+	_spend(cost)
 	_store("live_" + key, 1)
 	gold_updated.emit(gold)
 	_changed()
@@ -229,7 +326,7 @@ func buy_rod() -> bool:
 	var next := next_rod()
 	if next.is_empty() or gold < int(next.cost):
 		return false
-	gold -= int(next.cost)
+	_spend(int(next.cost))
 	rods_owned += 1
 	_store("rod_%d" % rods_owned, 1)
 	gold_updated.emit(gold)
@@ -240,7 +337,7 @@ func buy_rod() -> bool:
 func buy_flashlight() -> bool:
 	if owned("flashlight") > 0 or gold < FLASHLIGHT_COST:
 		return false
-	gold -= FLASHLIGHT_COST
+	_spend(FLASHLIGHT_COST)
 	_store("flashlight", 1)
 	gold_updated.emit(gold)
 	_changed()
@@ -250,7 +347,7 @@ func buy_flashlight() -> bool:
 func buy_battery() -> bool:
 	if gold < BATTERY_COST:
 		return false
-	gold -= BATTERY_COST
+	_spend(BATTERY_COST)
 	_store("battery", 1)
 	gold_updated.emit(gold)
 	_changed()
@@ -657,6 +754,8 @@ func snapshot() -> Dictionary:
 		"tank_news": tank_news,
 		"settings": settings,
 		"camp_tent": camp_tent,
+		"spirit": spirit,
+		"stats": stats,
 	}.duplicate(true)
 
 
@@ -686,6 +785,9 @@ func load_data(data: Dictionary) -> void:
 	settings = {"auto_lure": false}
 	settings.merge(data.get("settings", {}), true)
 	camp_tent = int(data.get("camp_tent", 8))
+	spirit = clampf(float(data.get("spirit", SPIRIT_MAX)), 0.0, SPIRIT_MAX)
+	stats = {"escapes": 0, "gold_spent": 0, "legends": 0}
+	stats.merge(data.get("stats", {}), true)
 	if not data.has("equipped"):
 		var tier := rods_owned
 		equipped = {"rod": "rod_%d" % tier, "light": "flashlight" if data.get("has_flashlight", false) else ""}

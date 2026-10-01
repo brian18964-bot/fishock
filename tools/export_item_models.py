@@ -1,11 +1,11 @@
 """3D models of the things sold and carried, for the menus' 3D previews
 (user request: out of the game, show things in 3D - the shop's wares, the
-equipment). The flashlight, battery, cricket and shrimp are built here by
-render_item_icons.py's own builders (the same shapes as their pictures) and
-saved as .glb; the lures and the worm are copied from art_src (the models
+equipment). The flashlight, battery, cricket, shrimp, tea and rations are
+built here by render_item_icons.py's own builders (the same shapes as their
+pictures) and saved as .glb; the lures and the worm are copied from art_src (the models
 their sprites were rendered from).
 
-  bpyenv/bin/python tools/export_item_models.py      (from the repo root)
+  bpyenv/bin/python tools/export_item_models.py [builder ...]   (repo root)
 
 Writes assets/models/items/*.glb.
 """
@@ -41,7 +41,12 @@ def export(name, objs, cells):
 
 def main():
     ri.shoot = export
-    for build in (ri.flashlight, ri.battery, ri.cricket, ri.shrimp):
+    only = sys.argv[1:]
+    if only:
+        for name in only:
+            getattr(ri, name)()
+        return
+    for build in (ri.flashlight, ri.battery, ri.cricket, ri.shrimp, ri.tea, ri.rations):
         build()
     src = os.path.join(ri.ROOT, "art_src", "lure")
     for n in ["lure_%d" % i for i in range(1, 7)] + ["worm"]:

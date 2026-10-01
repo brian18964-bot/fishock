@@ -1,15 +1,16 @@
 class_name Aquarium
 extends Control
 
-## The fish tank page's tank in 3D (user request: out of the game, show
-## everything in 3D that can be): a planted tank seen through its front
-## glass - sand in dunes rising to the back with light rippling over it,
-## rocks and a piece of driftwood, weed swaying, light falling through the
-## surface in shafts, bubbles from an air stone - and the fish of
+## The fish tank page's tank in 3D (user request, Camp v2: no glass tank in
+## the wild - an oil drum lying on its side, its top half cut away, filled
+## with water, and the fish seen from above). The camp's own drum
+## (CampModel "drum_trough"), a bed of silt in its curved bottom with light
+## rippling over it, a few stones and swaying weed, lily pads on the
+## surface, the night round it lit by the fire - and the fish of
 ## Profile.tank as 3D models (FishModel) swimming by their trait, as the
 ## 2D tank (FishTank.TankView, still used when the 3D camp is off) has
 ## them: schooling ones keep together, fierce ones go for the others now
-## and then, bottom dwellers keep low (flatfish lie on the sand), shy ones
+## and then, bottom dwellers keep low (flatfish lie on the silt), shy ones
 ## by the weed, lazy ones barely move, jumpers leap out and splash,
 ## gluttons get to the food first. Tap a fish for its card (`picked`).
 ## Drawn at 1.5x in a SubViewport shown through a TextureRect.
@@ -17,30 +18,34 @@ extends Control
 signal picked(index: int)
 
 const RENDER_SCALE := 1.5
-## The water inside the glass: x across, y up (the surface at SURFACE), z
-## toward the viewer.
-const WIDTH := 2.0
-const DEPTH := 1.0
-const SURFACE := 1.2
+## The drum: the camp's model made LENGTH long along x, lying on its side
+## (its axis at AXIS_Y, inside RADIUS round it); the water's surface at
+## SURFACE, a little under the cut rim.
+const LENGTH := 2.0
+const DRUM_SCALE := LENGTH / 0.92
+const AXIS_Y := 0.287 * DRUM_SCALE
+const RADIUS := 0.27 * DRUM_SCALE
+const SURFACE := 0.71
+const WIDTH := LENGTH
+const DEPTH := 2.0 * RADIUS
 ## Where the fish may go (their middles).
-const SWIM := AABB(Vector3(-0.84, 0.2, -0.3), Vector3(1.68, 0.9, 0.6))
-const WATER_COLOR := Color(0.05, 0.19, 0.22)
-## Rocks the fish keep out of: [centre, radius].
+const SWIM := AABB(Vector3(-0.8, 0.14, -0.4), Vector3(1.6, 0.5, 0.8))
+const WATER_COLOR := Color(0.03, 0.11, 0.1)
+## Stones the fish keep out of: [centre, radius, seed].
 const ROCKS := [
-	[Vector3(-0.62, 0.12, -0.3), 0.26, 3],
-	[Vector3(-0.3, 0.1, -0.36), 0.17, 8],
-	[Vector3(0.56, 0.1, -0.24), 0.2, 12],
-	[Vector3(0.82, 0.08, 0.08), 0.12, 21],
+	[Vector3(-0.68, 0.1, -0.14), 0.14, 3],
+	[Vector3(-0.52, 0.1, 0.12), 0.09, 8],
+	[Vector3(0.62, 0.1, 0.1), 0.12, 12],
 ]
 ## Weed clumps: [x, z, leaves, tallest, colour].
 const WEED := [
-	[-0.84, -0.36, 12, 1.05, Color(0.16, 0.42, 0.18)],
-	[-0.45, -0.18, 8, 0.7, Color(0.26, 0.46, 0.16)],
-	[0.2, -0.4, 14, 1.1, Color(0.14, 0.38, 0.2)],
-	[0.78, -0.38, 9, 0.8, Color(0.62, 0.28, 0.18)],
-	[0.4, 0.05, 6, 0.42, Color(0.3, 0.5, 0.18)],
-	[-0.88, 0.2, 5, 0.35, Color(0.2, 0.45, 0.2)],
+	[-0.78, 0.02, 10, 0.55, Color(0.16, 0.42, 0.18)],
+	[-0.2, -0.2, 7, 0.45, Color(0.26, 0.46, 0.16)],
+	[0.74, -0.12, 9, 0.5, Color(0.14, 0.38, 0.2)],
+	[0.3, 0.2, 5, 0.32, Color(0.5, 0.3, 0.16)],
 ]
+## Lily pads on the surface: [x, z, size].
+const PADS := [[-0.55, 0.3, 0.17], [-0.36, 0.38, 0.11], [0.78, -0.32, 0.15]]
 const SPEEDS := {"lazy": 0.05, "active": 0.19, "school": 0.16, "fierce": 0.175, "bottom": 0.09, "shy": 0.1,
 	"jumper": 0.17, "glutton": 0.14}
 
@@ -53,6 +58,7 @@ var _food: Array = []  # [MeshInstance3D, resting time]
 var _splashes: Array = []  # [MeshInstance3D, age]
 var _time := 0.0
 var _glowing: Swimmer = null
+var _floating: Array = []  # the lily pads
 
 
 func _ready() -> void:
@@ -73,21 +79,19 @@ func _ready() -> void:
 	_world = Node3D.new()
 	_viewport.add_child(_world)
 	_environment()
+	_drum()
 	_sand()
-	_back()
 	_rocks()
-	_driftwood()
 	_weed()
-	_light()
-	_bubbles()
-	_frame()
+	_surface()
+	_pads()
 	_fish_root = Node3D.new()
 	_world.add_child(_fish_root)
 	camera = Camera3D.new()
-	camera.fov = 29.0
+	camera.fov = 34.0
 	camera.near = 0.05
 	camera.far = 20.0
-	camera.transform = Transform3D(Basis.IDENTITY, Vector3(0, 0.72, 3.55)).looking_at(Vector3(0, 0.58, 0), Vector3.UP)
+	camera.transform = Transform3D(Basis.IDENTITY, Vector3(0, 3.35, 1.05)).looking_at(Vector3(0, 0.4, 0.02), Vector3.UP)
 	_world.add_child(camera)
 	resized.connect(_fit)
 	_fit()
@@ -143,7 +147,7 @@ func feed() -> void:
 		m.rings = 3
 		pellet.mesh = m
 		pellet.material_override = _mat(Color(0.55, 0.32, 0.14))
-		pellet.position = Vector3(randf_range(-0.7, 0.7), SURFACE - 0.01, randf_range(-0.25, 0.25))
+		pellet.position = Vector3(randf_range(-0.6, 0.6), SURFACE - 0.01, randf_range(-0.25, 0.25))
 		_world.add_child(pellet)
 		_food.append([pellet, 0.0])
 
@@ -156,17 +160,18 @@ func eat(at: Vector3) -> void:
 			return
 
 
-## The height of the sand at (x, z): low at the front, banked up at the
-## back, in gentle dunes.
+## The bottom at (x, z): the drum's curved inside, with silt settled in
+## the low middle in gentle ripples.
 static func sand_y(x: float, z: float) -> float:
-	var bank := lerpf(0.2, 0.04, clampf(z / DEPTH + 0.5, 0.0, 1.0))
-	return bank + 0.025 * sin(x * 3.1 + 1.3) * cos(z * 4.2) + 0.012 * sin(x * 7.3 + z * 2.1)
+	var curve := AXIS_Y - sqrt(maxf(RADIUS * RADIUS - z * z, 0.0))
+	var silt := 0.1 + 0.018 * sin(x * 3.1 + 1.3) * cos(z * 5.2) + 0.01 * sin(x * 7.3 + z * 2.1)
+	return maxf(curve, silt)
 
 
 ## Where a shy fish hides: by a clump of weed.
 func weed_spot() -> Vector3:
 	var w: Array = WEED[randi() % WEED.size()]
-	return Vector3(w[0] + randf_range(-0.15, 0.15), 0.0, w[1] + randf_range(0.0, 0.2))
+	return Vector3(w[0] + randf_range(-0.12, 0.12), 0.0, w[1] + randf_range(-0.1, 0.1))
 
 
 func splash(at: Vector3) -> void:
@@ -194,6 +199,10 @@ func highlight(index: int) -> void:
 
 func _process(delta: float) -> void:
 	_time += delta
+	for i in _floating.size():
+		var pad: Node3D = _floating[i]
+		pad.position.y = SURFACE + 0.004 + sin(_time * 0.9 + i * 2.0) * 0.003
+		pad.rotation.y += sin(_time * 0.3 + i) * 0.02 * delta
 	for p in _food:
 		var pellet: MeshInstance3D = p[0]
 		var floor_y := sand_y(pellet.position.x, pellet.position.z) + 0.008
@@ -249,29 +258,38 @@ func pick(at: Vector2) -> int:
 func _environment() -> void:
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.012, 0.016, 0.02)
+	env.background_color = Color(0.01, 0.012, 0.016)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.3, 0.46, 0.5)
-	env.ambient_light_energy = 0.75
+	env.ambient_light_color = Color(0.36, 0.44, 0.56)
+	env.ambient_light_energy = 0.7
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	# The water: things further back fade into it.
+	# Deeper is darker: things further from the eye fade into the water's
+	# colour (and the night past the drum).
 	env.fog_enabled = true
 	env.fog_mode = Environment.FOG_MODE_DEPTH
 	env.fog_light_color = WATER_COLOR
-	env.fog_density = 0.85
-	env.fog_depth_begin = 2.9
-	env.fog_depth_end = 5.2
-	env.fog_depth_curve = 1.2
+	env.fog_density = 0.7
+	env.fog_depth_begin = 2.75
+	env.fog_depth_end = 4.4
+	env.fog_depth_curve = 1.4
 	env.fog_sky_affect = 0.0
 	var we := WorldEnvironment.new()
 	we.environment = env
 	_world.add_child(we)
-	# The tank's lamp, over it.
-	var lamp := DirectionalLight3D.new()
-	lamp.light_color = Color(0.85, 0.97, 1.0)
-	lamp.light_energy = 1.15
-	lamp.rotation_degrees = Vector3(-68, 12, 0)
-	_world.add_child(lamp)
+	# The moon, high, and the campfire off to the front right.
+	var moon := DirectionalLight3D.new()
+	moon.light_color = Color(0.7, 0.8, 1.0)
+	moon.light_energy = 0.75
+	moon.rotation_degrees = Vector3(-62, -28, 0)
+	_world.add_child(moon)
+	var fire := OmniLight3D.new()
+	fire.name = "Fire"
+	fire.light_color = Color(1.0, 0.62, 0.3)
+	fire.light_energy = 2.2
+	fire.omni_range = 5.5
+	fire.omni_attenuation = 1.3
+	fire.position = Vector3(1.9, 1.5, 1.7)
+	_world.add_child(fire)
 
 
 static func _mat(color: Color, rough := 0.85, metal := 0.0) -> StandardMaterial3D:
@@ -302,18 +320,64 @@ float caustic(vec2 uv, float t) {
 """
 
 
+## The drum, and the trampled ground round it.
+func _drum() -> void:
+	var drum := CampModel.make("drum_trough")
+	if drum != null:
+		drum.scale = Vector3.ONE * DRUM_SCALE
+		# Weathered by the water: darker, browner than the camp's dry one.
+		var m: StandardMaterial3D = drum.material_override.duplicate()
+		m.albedo_color = Color(0.5, 0.4, 0.32)
+		drum.material_override = m
+		_world.add_child(drum)
+	var sh := Shader.new()
+	sh.code = """
+shader_type spatial;
+varying vec3 wpos;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) {
+	vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
+}
+void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+void fragment() {
+	float n = noise(wpos.xz * 3.0) * 0.6 + noise(wpos.xz * 11.0) * 0.4;
+	vec3 dirt = mix(vec3(0.09, 0.075, 0.06), vec3(0.17, 0.14, 0.1), n);
+	// Tufts of dry grass away from the drum, pebbles.
+	float grass = smoothstep(0.55, 0.75, noise(wpos.xz * 2.2 + 7.0)) * smoothstep(1.1, 1.8, length(wpos.xz * vec2(0.7, 1.2)));
+	dirt = mix(dirt, vec3(0.13, 0.15, 0.07), grass * 0.8);
+	vec2 cell = wpos.xz * 9.0;
+	float peb = step(0.93, hash(floor(cell))) * smoothstep(0.3, 0.18, length(fract(cell) - 0.5));
+	ALBEDO = mix(dirt, vec3(0.25, 0.24, 0.22), peb * 0.7);
+	ROUGHNESS = 0.97;
+}
+"""
+	var ground := MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(9, 7)
+	ground.mesh = pm
+	var gm := ShaderMaterial.new()
+	gm.shader = sh
+	ground.material_override = gm
+	ground.position.y = -0.002
+	_world.add_child(ground)
+
+
 func _sand() -> void:
-	# A grid in dunes (sand_y), and its cut face behind the front glass.
+	# A grid over the drum's bottom (sand_y): the silt, and the drum's
+	# rusty inside rising round it under the water.
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var nx := 40
-	var nz := 20
+	var nx := 36
+	var nz := 18
+	var hx := LENGTH / 2.0 - 0.03
+	var hz := sqrt(RADIUS * RADIUS - pow(SURFACE + 0.02 - AXIS_Y, 2.0))
 	for j in nz:
 		for i in nx:
 			var quad := []
 			for c in [[i, j], [i + 1, j], [i + 1, j + 1], [i, j + 1]]:
-				var x: float = -WIDTH / 2.0 + WIDTH * c[0] / nx
-				var z: float = -DEPTH / 2.0 + DEPTH * c[1] / nz
+				var x: float = -hx + 2.0 * hx * c[0] / nx
+				var z: float = -hz + 2.0 * hz * c[1] / nz
 				quad.append(Vector3(x, sand_y(x, z), z))
 			for k in [0, 1, 2, 0, 2, 3]:
 				st.set_uv(Vector2(quad[k].x, quad[k].z))
@@ -324,114 +388,40 @@ func _sand() -> void:
 	var sh := Shader.new()
 	sh.code = """
 shader_type spatial;
-uniform vec3 light_sand : source_color = vec3(0.62, 0.53, 0.38);
-uniform vec3 dark_sand : source_color = vec3(0.36, 0.31, 0.23);
-uniform float front_cut = 0.0;
+uniform vec3 light_sand : source_color = vec3(0.5, 0.43, 0.3);
+uniform vec3 dark_sand : source_color = vec3(0.27, 0.23, 0.16);
+uniform vec3 rust : source_color = vec3(0.3, 0.15, 0.07);
+uniform float surface = 0.71;
+uniform float silt = 0.13;
 varying vec3 wpos;
 """ + CAUSTIC + """
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
-	// Grains and pebbles.
-	vec2 g = floor(wpos.xz * 180.0 + wpos.y * 90.0 * front_cut);
-	float grain = hash(g);
-	vec2 cell = wpos.xz * 22.0 + vec2(wpos.y * 30.0 * front_cut, 0.0);
+	// Grains and pebbles in the silt; rust and slime up the walls.
+	float grain = hash(floor(wpos.xz * 160.0));
+	vec2 cell = wpos.xz * 20.0;
 	vec2 id = floor(cell);
-	float peb = step(0.8, hash(id)) * smoothstep(0.42, 0.3, length(fract(cell) - 0.5));
+	float peb = step(0.82, hash(id)) * smoothstep(0.42, 0.3, length(fract(cell) - 0.5));
 	vec3 col = mix(dark_sand, light_sand, 0.55 + 0.35 * grain);
-	col = mix(col, mix(dark_sand, vec3(0.7, 0.66, 0.6), hash(id + 3.1)), peb * 0.8);
+	col = mix(col, mix(dark_sand, vec3(0.6, 0.57, 0.5), hash(id + 3.1)), peb * 0.8);
+	float wall = smoothstep(silt - 0.01, silt + 0.05, wpos.y);
+	vec3 walls = mix(rust, vec3(0.12, 0.16, 0.08), 0.5 + 0.5 * sin(wpos.x * 9.0 + hash(floor(wpos.xz * 30.0)) * 2.0));
+	col = mix(col, walls, wall);
+	// Darker the deeper.
+	col *= mix(1.0, 0.55, clamp((surface - wpos.y) / 0.6, 0.0, 1.0));
 	ALBEDO = col;
 	ROUGHNESS = 0.95;
-	// The ripples of light, fainter at the back and on the cut face.
-	float c = caustic(wpos.xz * 0.55, TIME * 0.35);
-	EMISSION = vec3(0.55, 0.8, 0.85) * c * 0.35 * (1.0 - front_cut) * smoothstep(-0.6, 0.4, wpos.z);
+	// The ripples of light, on the silt.
+	float c = caustic(wpos.xz * 0.7, TIME * 0.35);
+	EMISSION = vec3(0.5, 0.75, 0.7) * c * 0.22 * (1.0 - wall);
 }
 """
 	var mat := ShaderMaterial.new()
 	mat.shader = sh
+	mat.set_shader_parameter("surface", SURFACE)
 	sand.material_override = mat
 	_world.add_child(sand)
-	# The cut face: the sand bed seen through the glass, down to the frame.
-	var face := SurfaceTool.new()
-	face.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var z := DEPTH / 2.0
-	for i in nx:
-		var x0 := -WIDTH / 2.0 + WIDTH * i / nx
-		var x1 := x0 + WIDTH / nx
-		var q := [Vector3(x0, -0.14, z), Vector3(x1, -0.14, z), Vector3(x1, sand_y(x1, z), z), Vector3(x0, sand_y(x0, z), z)]
-		for k in [0, 2, 1, 0, 3, 2]:
-			face.set_normal(Vector3.BACK)
-			face.add_vertex(q[k])
-	var cut := MeshInstance3D.new()
-	cut.mesh = face.commit()
-	var cm: ShaderMaterial = mat.duplicate()
-	cm.set_shader_parameter("front_cut", 1.0)
-	cm.set_shader_parameter("light_sand", Color(0.5, 0.42, 0.3))
-	cm.set_shader_parameter("dark_sand", Color(0.26, 0.21, 0.15))
-	cut.material_override = cm
-	_world.add_child(cut)
-
-
-## The back and side panes: deep water fading up to the light.
-func _back() -> void:
-	var sh := Shader.new()
-	sh.code = """
-shader_type spatial;
-render_mode unshaded;
-uniform vec3 deep : source_color = vec3(0.015, 0.06, 0.075);
-uniform vec3 high : source_color = vec3(0.09, 0.27, 0.3);
-uniform float dim = 1.0;
-void fragment() {
-	float h = 1.0 - UV.y;
-	vec3 col = mix(deep, high, pow(h, 1.6));
-	// Soft columns of light from the lamp, drifting.
-	col += vec3(0.05, 0.1, 0.1) * pow(0.5 + 0.5 * sin(UV.x * 17.0 + TIME * 0.2 + sin(UV.x * 5.0)), 6.0) * h;
-	ALBEDO = col * dim;
-}
-"""
-	var mat := ShaderMaterial.new()
-	mat.shader = sh
-	var back := MeshInstance3D.new()
-	var q := QuadMesh.new()
-	q.size = Vector2(WIDTH, SURFACE + 0.1)
-	back.mesh = q
-	back.material_override = mat
-	back.position = Vector3(0, (SURFACE + 0.1) / 2.0 - 0.02, -DEPTH / 2.0)
-	_world.add_child(back)
-	for side in [-1.0, 1.0]:
-		var pane := MeshInstance3D.new()
-		var sq := QuadMesh.new()
-		sq.size = Vector2(DEPTH, SURFACE + 0.1)
-		pane.mesh = sq
-		var sm: ShaderMaterial = mat.duplicate()
-		sm.set_shader_parameter("dim", 0.7)
-		pane.material_override = sm
-		pane.position = Vector3(side * WIDTH / 2.0, (SURFACE + 0.1) / 2.0 - 0.02, 0)
-		pane.rotation.y = -side * PI / 2.0
-		_world.add_child(pane)
-	# The surface from below: a silvery ceiling, rippling.
-	var surf_sh := Shader.new()
-	surf_sh.code = """
-shader_type spatial;
-render_mode unshaded, cull_disabled, blend_mix;
-varying vec3 wpos;
-""" + CAUSTIC + """
-void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
-void fragment() {
-	float c = caustic(wpos.xz * 0.8 + 3.0, TIME * 0.4);
-	ALBEDO = mix(vec3(0.12, 0.3, 0.33), vec3(0.75, 0.95, 1.0), c * 0.8);
-	ALPHA = 0.55 + c * 0.35;
-}
-"""
-	var surf := MeshInstance3D.new()
-	var pm := PlaneMesh.new()
-	pm.size = Vector2(WIDTH, DEPTH)
-	surf.mesh = pm
-	var smat := ShaderMaterial.new()
-	smat.shader = surf_sh
-	surf.material_override = smat
-	surf.position = Vector3(0, SURFACE, 0)
-	_world.add_child(surf)
 
 
 func _rocks() -> void:
@@ -446,39 +436,6 @@ func _rocks() -> void:
 		rock.scale = Vector3(r[1] * 2.2, r[1] * 1.8, r[1] * 1.9)
 		rock.rotation.y = r[2] * 0.7
 		_world.add_child(rock)
-
-
-## A branch of driftwood lying across the back, reaching up.
-func _driftwood() -> void:
-	var wood := _mat(Color(0.2, 0.14, 0.09), 0.95)
-	var pts := [Vector3(-0.15, 0.14, -0.3), Vector3(0.12, 0.3, -0.26), Vector3(0.3, 0.62, -0.34), Vector3(0.38, 0.8, -0.3)]
-	var radius := [0.045, 0.034, 0.022]
-	for k in 3:
-		var a: Vector3 = pts[k]
-		var b: Vector3 = pts[k + 1]
-		var seg := MeshInstance3D.new()
-		var cm := CylinderMesh.new()
-		cm.top_radius = radius[k] * 0.8
-		cm.bottom_radius = radius[k]
-		cm.height = a.distance_to(b) + 0.02
-		cm.radial_segments = 7
-		cm.rings = 1
-		seg.mesh = cm
-		seg.material_override = wood
-		seg.basis = Basis(Quaternion(Vector3.UP, (b - a).normalized()))
-		seg.position = (a + b) / 2.0
-		_world.add_child(seg)
-	var twig := MeshInstance3D.new()
-	var tm := CylinderMesh.new()
-	tm.top_radius = 0.008
-	tm.bottom_radius = 0.018
-	tm.height = 0.3
-	tm.radial_segments = 5
-	twig.mesh = tm
-	twig.material_override = wood
-	twig.basis = Basis(Quaternion(Vector3.UP, Vector3(-0.6, 1.0, 0.1).normalized()))
-	twig.position = Vector3(0.05, 0.4, -0.27)
-	_world.add_child(twig)
 
 
 ## Clumps of ribbon weed, swaying.
@@ -545,126 +502,70 @@ void fragment() {
 		_world.add_child(clump)
 
 
-## Shafts of the lamp's light slanting down through the water.
-func _light() -> void:
+## The water's surface from above: dark and clear, tinted, rippling, the
+## moon and the fire glinting on it.
+func _surface() -> void:
 	var sh := Shader.new()
 	sh.code = """
 shader_type spatial;
-render_mode unshaded, cull_disabled, blend_add, depth_draw_never, fog_disabled;
-uniform float strength = 0.08;
-uniform float seed = 0.0;
+render_mode blend_mix, cull_disabled, depth_draw_never;
+uniform vec3 tint : source_color = vec3(0.04, 0.11, 0.09);
+varying vec3 wpos;
+void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
-	float across = sin(UV.x * 3.14159);
-	float down = smoothstep(1.0, 0.1, UV.y) * smoothstep(0.0, 0.08, UV.y);
-	float breathe = 0.6 + 0.4 * sin(TIME * 0.45 + seed * 5.0);
-	ALBEDO = vec3(0.6, 0.9, 1.0) * across * across * down * breathe * strength;
+	vec2 p = wpos.xz;
+	float t = TIME;
+	vec2 g = vec2(cos(p.x * 9.0 + t * 1.3) + 0.6 * cos(p.x * 4.0 - p.y * 7.0 + t * 0.9),
+		sin(p.y * 11.0 - t * 1.1) + 0.6 * sin(p.x * 6.0 + p.y * 5.0 + t * 0.7)) * 0.06;
+	NORMAL = normalize((VIEW_MATRIX * vec4(g.x, 1.0, g.y, 0.0)).xyz);
+	float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
+	ALBEDO = tint;
+	ALPHA = 0.42 + 0.4 * fres;
+	ROUGHNESS = 0.08;
+	SPECULAR = 0.7;
+	// The night sky's sheen at the far side.
+	EMISSION = vec3(0.05, 0.08, 0.12) * fres;
 }
 """
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 9
-	for i in 5:
-		var shaft := MeshInstance3D.new()
-		var q := QuadMesh.new()
-		q.size = Vector2(rng.randf_range(0.14, 0.3), SURFACE * 1.05)
-		shaft.mesh = q
-		var mat := ShaderMaterial.new()
-		mat.shader = sh
-		mat.set_shader_parameter("seed", float(i))
-		mat.set_shader_parameter("strength", rng.randf_range(0.06, 0.11))
-		shaft.material_override = mat
-		var x := -0.75 + i * 0.37 + rng.randf_range(-0.08, 0.08)
-		shaft.position = Vector3(x, SURFACE * 0.5, rng.randf_range(-0.3, 0.1))
-		shaft.rotation = Vector3(0, rng.randf_range(-0.4, 0.4), deg_to_rad(-14))
-		_world.add_child(shaft)
+	var water := MeshInstance3D.new()
+	water.name = "Surface"
+	var pm := PlaneMesh.new()
+	var half_w := sqrt(RADIUS * RADIUS - pow(SURFACE - AXIS_Y, 2.0))
+	pm.size = Vector2(LENGTH - 0.05, 2.0 * half_w)
+	pm.subdivide_width = 8
+	pm.subdivide_depth = 4
+	water.mesh = pm
+	var mat := ShaderMaterial.new()
+	mat.shader = sh
+	water.material_override = mat
+	water.position.y = SURFACE
+	_world.add_child(water)
 
 
-## An air stone in the back corner, and its bubbles.
-func _bubbles() -> void:
-	var stone := MeshInstance3D.new()
-	var sm := CylinderMesh.new()
-	sm.top_radius = 0.035
-	sm.bottom_radius = 0.04
-	sm.height = 0.05
-	sm.radial_segments = 8
-	stone.mesh = sm
-	stone.material_override = _mat(Color(0.3, 0.3, 0.32))
-	var at := Vector3(0.68, 0.0, -0.1)
-	at.y = sand_y(at.x, at.z) + 0.01
-	stone.position = at
-	_world.add_child(stone)
-	var bubbles := CPUParticles3D.new()
-	var bm := SphereMesh.new()
-	bm.radius = 0.009
-	bm.height = 0.018
-	bm.radial_segments = 8
-	bm.rings = 4
-	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_color = Color(0.85, 0.97, 1.0, 0.55)
-	bm.material = mat
-	bubbles.mesh = bm
-	bubbles.position = at + Vector3(0, 0.03, 0)
-	bubbles.amount = 26
-	bubbles.lifetime = 2.6
-	bubbles.preprocess = 3.0
-	bubbles.direction = Vector3.UP
-	bubbles.spread = 7.0
-	bubbles.gravity = Vector3(0, 0.12, 0)
-	bubbles.initial_velocity_min = 0.25
-	bubbles.initial_velocity_max = 0.4
-	bubbles.scale_amount_min = 0.6
-	bubbles.scale_amount_max = 1.6
-	bubbles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	bubbles.emission_sphere_radius = 0.02
-	_world.add_child(bubbles)
-
-
-## The iron frame round the glass, and a glint on the front pane.
-func _frame() -> void:
-	var iron := _mat(Color(0.06, 0.06, 0.065), 0.45, 0.6)
-	var hw := WIDTH / 2.0 + 0.02
-	var hd := DEPTH / 2.0 + 0.02
-	var top := SURFACE + 0.12
-	var bars := [
-		# [centre, size]
-		[Vector3(0, -0.12, hd), Vector3(WIDTH + 0.1, 0.07, 0.05)],
-		[Vector3(0, top, hd), Vector3(WIDTH + 0.1, 0.045, 0.05)],
-		[Vector3(0, top, -hd), Vector3(WIDTH + 0.1, 0.045, 0.05)],
-		[Vector3(-hw, (top - 0.14) / 2.0, hd), Vector3(0.05, top + 0.16, 0.05)],
-		[Vector3(hw, (top - 0.14) / 2.0, hd), Vector3(0.05, top + 0.16, 0.05)],
-		[Vector3(-hw, (top - 0.14) / 2.0, -hd), Vector3(0.05, top + 0.16, 0.05)],
-		[Vector3(hw, (top - 0.14) / 2.0, -hd), Vector3(0.05, top + 0.16, 0.05)],
-		[Vector3(-hw, top, 0), Vector3(0.05, 0.045, DEPTH + 0.06)],
-		[Vector3(hw, top, 0), Vector3(0.05, 0.045, DEPTH + 0.06)],
-	]
-	for b in bars:
-		var bar := MeshInstance3D.new()
-		var bm := BoxMesh.new()
-		bm.size = b[1]
-		bar.mesh = bm
-		bar.material_override = iron
-		bar.position = b[0]
-		_world.add_child(bar)
-	var sh := Shader.new()
-	sh.code = """
-shader_type spatial;
-render_mode unshaded, blend_add, depth_draw_never, fog_disabled;
-void fragment() {
-	float d = UV.x * 0.8 + UV.y * 0.45;
-	float streak = smoothstep(0.1, 0.0, abs(d - 0.3)) * 0.6 + smoothstep(0.03, 0.0, abs(d - 0.42)) * 0.5;
-	ALBEDO = vec3(0.7, 0.85, 0.9) * streak * 0.05;
-}
-"""
-	var glint := MeshInstance3D.new()
-	var q := QuadMesh.new()
-	q.size = Vector2(WIDTH, top + 0.12)
-	glint.mesh = q
-	var gm := ShaderMaterial.new()
-	gm.shader = sh
-	glint.material_override = gm
-	glint.position = Vector3(0, (top - 0.12) / 2.0, DEPTH / 2.0 + 0.012)
-	_world.add_child(glint)
+## Lily pads afloat, bobbing a little (a fish under one is half hidden).
+func _pads() -> void:
+	var leaf := _mat(Color(0.26, 0.44, 0.15), 0.55)
+	leaf.cull_mode = BaseMaterial3D.CULL_DISABLED
+	for pad in PADS:
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		var r: float = pad[2]
+		var n := 18
+		# A disc with a notch cut to its middle.
+		for k in n:
+			var a0 := 0.35 + (TAU - 0.5) * k / n
+			var a1 := 0.35 + (TAU - 0.5) * (k + 1) / n
+			for v in [Vector3.ZERO, Vector3(cos(a1), 0, sin(a1)) * r, Vector3(cos(a0), 0, sin(a0)) * r]:
+				st.set_normal(Vector3.UP)
+				st.add_vertex(v + Vector3(0, -0.006 * v.length() / r, 0))
+		var mi := MeshInstance3D.new()
+		mi.name = "Pad"
+		mi.mesh = st.commit()
+		mi.material_override = leaf
+		mi.position = Vector3(pad[0], SURFACE + 0.004, pad[1])
+		mi.rotation.y = pad[0] * 7.0
+		_world.add_child(mi)
+		_floating.append(mi)
 
 
 static var _ring_shader: Shader

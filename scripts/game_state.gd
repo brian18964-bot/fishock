@@ -318,6 +318,10 @@ func end_run(success: bool, message: String) -> void:
 	var final_message := message
 	if success:
 		final_message += _bring_fish_home()
+		# User request (Camp v2): an escape counts toward the tents and
+		# lifts the spirit.
+		Profile.record_escape()
+		Profile.add_spirit(10.0)
 	else:
 		# Design doc §8: on failure, carried fish are lost outright, never sold;
 		# user request: so is gear found on the map - what was brought stays.

@@ -9,7 +9,9 @@ extends Control
 ## by the weed, lazy ones barely move, jumpers leap, gluttons get to the
 ## food first. Tap a fish, in the tank or the list, for its card.
 ## User request (3D out of the game): the tank is 3D (Aquarium) - the 2D
-## one (TankView) stays for when the 3D camp is turned off.
+## one (TankView) stays for when the 3D camp is turned off. User request
+## (Camp v2): the 3D one is the camp's half-cut drum of water, seen from
+## above.
 
 const TANK := Rect2(24, 66, 580, 454)
 ## The water inside the glass (tank-local).

@@ -42,6 +42,7 @@ const TESTS := [
 	"test_hud_top",
 	"test_bag_drag_out",
 	"test_fish_tank",
+	"test_camp_spirit_and_tents",
 	"test_light_button_tap_and_hold",
 	"test_light_button_relights",
 	"test_long_press_brightness",
@@ -1480,6 +1481,83 @@ func test_main_menu() -> void:
 	check(turn != null and turn._fish != null, "a caught fish's card turns it in 3D")
 	book.queue_free()
 	await frames(1)
+
+
+## User request (Camp v2): the merchant's tea and rations lift the spirit
+## there and then; the tents are earned by achievements (escapes, gold
+## spent, the fish log, a legend) and pitched from the equipment page's
+## 營地 tab, and the camp's tent changes with it.
+func test_camp_spirit_and_tents() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 100, "spirit": 50.0})
+	check(Profile.buy_snack("tea") and is_equal_approx(Profile.spirit, 70.0) and Profile.gold == 85, "tea: +20 spirit for 15 gold")
+	check(Profile.buy_snack("rations") and is_equal_approx(Profile.spirit, 100.0) and Profile.gold == 55, "rations: up to full")
+	check(not Profile.buy_snack("tea") and Profile.gold == 55, "nothing bought when the spirit's full")
+	check(int(Profile.stats.gold_spent) == 45, "what's spent is counted (%d)" % int(Profile.stats.gold_spent))
+	var loaded := Profile.snapshot()
+	Profile.load_data(loaded)
+	check(is_equal_approx(Profile.spirit, 100.0) and int(Profile.stats.gold_spent) == 45, "spirit and stats saved")
+	# The shop sells them, on its 道具 tab.
+	var shop: Control = load("res://scenes/shop.tscn").instantiate()
+	get_tree().root.add_child(shop)
+	await frames(2)
+	shop._show_tab("item")
+	await frames(1)
+	check(shop.find_child("Card_tea", true, false) != null and shop.find_child("Card_rations", true, false) != null,
+		"the merchant sells tea and rations")
+	Profile.add_spirit(-40.0)
+	(shop.find_child("Card_tea", true, false) as Button).pressed.emit()
+	await frames(1)
+	var have: Button = shop.find_child("Have", true, false)
+	check(have != null, "a lowered spirit can have tea")
+	if have != null:
+		have.pressed.emit()
+		await frames(1)
+	check(is_equal_approx(Profile.spirit, 80.0) and Profile.gold == 40, "had at once (spirit %d)" % Profile.spirit)
+	shop.queue_free()
+	await frames(1)
+
+	# Tents: the lean-to to start; the rest earned.
+	check(Profile.camp_tent == 8 and Profile.tent_unlocked(8), "the stick lean-to to start")
+	check(not Profile.tent_unlocked(9) and not Profile.pitch_tent(9) and Profile.camp_tent == 8, "a tent not earned can't be pitched")
+	for _i in 10:
+		Profile.record_escape()
+	check(Profile.tent_unlocked(9) and Profile.pitch_tent(9) and Profile.camp_tent == 9, "ten escapes earn the woven hut")
+	check(not Profile.tent_unlocked(2), "no legend yet")
+	Profile.record_catch("測試魚", 1.0, 10.0, "", true)
+	check(Profile.tent_unlocked(2), "a legend earns the bearskin tent")
+	Profile.fish_log.clear()
+	var ids: Array = FishData.FISH.keys()
+	for i in ceili(ids.size() * 0.2):
+		Profile.fish_log[FishData.FISH[ids[i]].name] = {"count": 1, "best_value": 1.0}
+	check(Profile.log_percent() >= 20.0 and Profile.tent_unlocked(7) and not Profile.tent_unlocked(1), "a fifth of the log earns tent 7, not tent 1")
+
+	# The equipment page's 營地 tab, over the camp: tap a tent to pitch it.
+	var title: Control = load("res://scenes/title_screen.tscn").instantiate()
+	get_tree().root.add_child(title)
+	await frames(3)
+	var camp: CampStage = title.find_child("Camp", true, false)
+	title.open_page("equipment")
+	await seconds(0.8)
+	var page: Control = title._page
+	page._show_tab("camp")
+	await frames(1)
+	check(page.find_child("CampWindow", true, false).visible and not page.find_child("Storage", true, false).is_visible_in_tree(),
+		"the 營地 tab shows the tents instead of the warehouse")
+	var cards := page.find_children("Tent_*", "", true, false)
+	check(cards.size() == Profile.TENTS.size(), "every tent on the tab (%d)" % cards.size())
+	page._on_tent(Profile.TENTS.map(func(t): return t[0]).find(2))
+	await frames(1)
+	check(Profile.camp_tent == 2, "tapping an earned tent pitches it")
+	check(camp.find_child("tent_2", true, false) != null and camp.find_child("tent_9", true, false) == null,
+		"the camp's tent changes with it")
+	check(camp.hotspots.has("equipment"), "and it still opens the equipment")
+	page._on_tent(Profile.TENTS.map(func(t): return t[0]).find(4))
+	check(Profile.camp_tent == 2 and "還沒解鎖" in page._tent_note.text, "a locked one says what it needs")
+	title.queue_free()
+	await frames(1)
+	Profile.load_data(saved)
+	Profile._save()
 
 
 ## The light button, held with the lamp out, relights it (no flash).

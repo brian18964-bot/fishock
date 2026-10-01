@@ -7,9 +7,9 @@ kind's colour, a dark edge round it. 128x128, shown at 64 or less.
   bpyenv/bin/python tools/render_square_icons.py [name ...]    (repo root)
 
 Writes assets/sprites/icons/<name>.png - rod_0..rod_4, flashlight,
-battery, lamp, worm, cricket, shrimp, minnow, lure_1..lure_6, and throw
-(the 誘惑 action button) (Items
-.square_icon() maps the things' ids onto these).
+battery, lamp, worm, cricket, shrimp, minnow, tea, rations, tent_1..tent_9,
+lure_1..lure_6, and throw (the 誘惑 action button) (Items.square_icon()
+maps the things' ids onto these).
 """
 import math
 import os
@@ -48,6 +48,9 @@ THINGS = {
     "cricket": dict(model="items/cricket.glb", turn=(25, 0, 30), fill=0.86, ground=BAIT),
     "shrimp": dict(model="items/shrimp.glb", turn=(20, 0, 25), fill=0.86, ground=BAIT),
     "minnow": dict(model="fish/minnow.glb", turn=(0, 0, 20), fill=0.9, ground=BAIT),
+    # The merchant's tea and rations (Camp v2): had at once, for spirit.
+    "tea": dict(model="items/tea.glb", turn=(38, 0, -25), fill=0.8, ground=ITEM),
+    "rations": dict(model="items/rations.glb", turn=(40, 0, 22), fill=0.82, ground=ITEM),
     # The in-game 誘惑 action (a bait fish thrown): the fish flung nose-up
     # on a crimson ground.
     "throw": dict(model="fish/minnow.glb", turn=(0, -40, 35), fill=0.95, ground=ABILITY),
@@ -55,6 +58,11 @@ THINGS = {
 for _t in range(5):
     THINGS["rod_%d" % _t] = dict(model="fishing_rod_lvl%d.glb" % (_t + 1), turn=(0, 45, 0), fill=2.0, ground=GEAR,
                                  thick=3.2, aim=0.3)
+# The camp's tents (Camp v2: earned by achievements, picked on the
+# equipment page's 營地 tab).
+for _n in range(1, 10):
+    THINGS["tent_%d" % _n] = dict(model="camp/tent_%d.glb" % _n, turn=(18, 0, -28), fill=0.92, ground=GEAR,
+                                   dim=0.75)
 for _n in range(1, 7):
     THINGS["lure_%d" % _n] = dict(model="items/lure_%d.glb" % _n, turn=(0, -15, 28), fill=1.0, ground=TACKLE)
 
@@ -63,12 +71,13 @@ def fresh():
     bpy.ops.wm.read_factory_settings(use_empty=True)
 
 
-def load(model):
+def load(model, dim=1.0):
     bpy.ops.import_scene.gltf(filepath=os.path.join(MODELS, model))
     meshes = [o for o in bpy.data.objects if o.type == "MESH"]
-    if model.startswith("fish/"):
-        # The fish's mesh has no material: its baked skin.
-        skin = bpy.data.images.load(os.path.join(MODELS, model[:-4] + ".png"))
+    if model.startswith("fish/") or model.startswith("camp/"):
+        # The fish's (and the camp's) mesh has no material: its baked skin.
+        skin_path = model[:-4] + (".png" if model.startswith("fish/") else "_albedo.png")
+        skin = bpy.data.images.load(os.path.join(MODELS, skin_path))
         m = bpy.data.materials.new("skin")
         m.use_nodes = True
         nt = m.node_tree
@@ -76,7 +85,17 @@ def load(model):
         tex.image = skin
         bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
         bsdf.inputs["Roughness"].default_value = 0.4
-        nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+        if dim < 1.0:
+            # A pale skin (canvas) toned down so the key light doesn't burn it.
+            hsv = nt.nodes.new("ShaderNodeHueSaturation")
+            hsv.inputs["Value"].default_value = dim
+            hsv.inputs["Saturation"].default_value = 1.25
+            nt.links.new(tex.outputs["Color"], hsv.inputs["Color"])
+            nt.links.new(hsv.outputs["Color"], bsdf.inputs["Base Color"])
+            bsdf.inputs["Roughness"].default_value = 1.0
+            bsdf.inputs["Specular IOR Level"].default_value = 0.1
+        else:
+            nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
         for o in meshes:
             o.data.materials.clear()
             o.data.materials.append(m)
@@ -186,7 +205,7 @@ def compose(render_path, color, seed):
 def icon(name):
     spec = THINGS[name]
     fresh()
-    root, meshes = load(spec["model"])
+    root, meshes = load(spec["model"], spec.get("dim", 1.0))
     if spec.get("smooth"):
         # A low-poly body, shaded round (its faces joined up, its own flat
         # normals dropped).

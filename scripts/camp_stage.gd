@@ -62,6 +62,8 @@ var _tent_holder: Node3D
 var _rod_holder: Node3D
 var _water_mat: ShaderMaterial
 var _lit := ""
+var _tent_shown := -1
+var _rod_shown := -1
 var _time := 0.0
 var _cam_tween: Tween
 var _rng := RandomNumberGenerator.new()
@@ -92,8 +94,12 @@ func _ready() -> void:
 
 
 func _on_profile_changed() -> void:
-	if is_inside_tree():
+	if not is_inside_tree():
+		return
+	# Only what changed (the profile changes with every coin).
+	if Profile.camp_tent != _tent_shown:
 		_dress_tent()
+	if Profile.rod_tier != _rod_shown:
 		_dress_rod()
 
 
@@ -682,7 +688,9 @@ func _tent() -> void:
 
 
 func _dress_tent() -> void:
+	_tent_shown = Profile.camp_tent
 	for c in _tent_holder.get_children():
+		_tent_holder.remove_child(c)
 		c.queue_free()
 	var tent := CampModel.make("tent_%d" % clampi(Profile.camp_tent, 1, 9))
 	if tent == null:
@@ -695,7 +703,9 @@ func _dress_tent() -> void:
 
 
 func _dress_rod() -> void:
+	_rod_shown = Profile.rod_tier
 	for c in _rod_holder.get_children():
+		_rod_holder.remove_child(c)
 		c.queue_free()
 	var rod: Node3D = CharacterRig.RODS[clampi(Profile.rod_tier, 0, CharacterRig.RODS.size() - 1)].instantiate()
 	# The rods are 6 m long up +y, the grip at the origin: leant on the tent.

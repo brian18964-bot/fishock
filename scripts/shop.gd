@@ -150,6 +150,9 @@ func _refresh() -> void:
 		"item":
 			_card("battery", Items.icon("battery"), "電池", "擁有 %d" % Profile.owned("battery"), Profile.BATTERY_COST,
 				func(): buy_dialog("battery", Profile.BATTERY_COST))
+			for key in Profile.SNACK_ORDER:
+				var sn: Dictionary = Profile.SNACKS[key]
+				_card(key, Items.icon(key), sn.name, "精神 +%d" % int(sn.spirit), int(sn.cost), func(): _snack_card(key))
 		"upgrade":
 			for key in Profile.UPGRADE_DEFS:
 				var d: Dictionary = Profile.UPGRADE_DEFS[key]
@@ -319,6 +322,37 @@ func _lamp_card() -> void:
 		["隨身的提燈，照亮身邊一圈。", UiKit.TEXT],
 		["使用：燃料在地圖上的煤油站補充，剩 30% 以下亮度會慢慢變暗。", UiKit.USE],
 		["升級「提燈燃油容量」能裝更多燃料。", UiKit.DIM]])
+
+
+## User request (Camp v2): the merchant's tea and rations - had there and
+## then, for spirit.
+func _snack_card(key: String) -> void:
+	_clear_pane()
+	var sn: Dictionary = Profile.SNACKS[key]
+	_head(Items.icon(key), sn.name, "common", "普通 補給", [
+		[sn.desc, UiKit.TEXT],
+		["使用：買了當場享用，精神 +%d" % int(sn.spirit), UiKit.USE],
+		["目前精神 %d / %d" % [roundi(Profile.spirit), int(Profile.SPIRIT_MAX)], UiKit.DIM]])
+	var price := HBoxContainer.new()
+	price.add_child(UiKit.label("價格：", 15, UiKit.TEXT))
+	price.add_child(UiKit.gold_label(int(sn.cost), 15))
+	_pane.add_child(price)
+	_spacer()
+	if Profile.spirit >= Profile.SPIRIT_MAX:
+		_pane.add_child(UiKit.label("精神飽滿，現在不需要", 15, UiKit.DIM))
+		return
+	if Profile.gold < int(sn.cost):
+		_pane.add_child(UiKit.label("金幣不夠（要 %d，持有 %d）" % [sn.cost, Profile.gold], 15, Color(1.0, 0.7, 0.5)))
+		return
+	var b := UiKit.button("買下享用", 17, "red")
+	b.name = "Have"
+	b.custom_minimum_size = Vector2(0, 48)
+	b.pressed.connect(func():
+		if Profile.buy_snack(key):
+			Sfx.play("coins", -4.0)
+			_show_toast("%s：精神 %d / %d" % [sn.name, roundi(Profile.spirit), int(Profile.SPIRIT_MAX)])
+		_reselect(key))
+	_pane.add_child(b)
 
 
 func _upgrade_dialog(key: String) -> void:

@@ -1662,7 +1662,7 @@ func _succeed_catch() -> void:
 		fish["new_trait"] = not seen.is_empty() and not fish.tank_trait in seen.get("traits", [])
 		fish["bigger"] = not seen.is_empty() and fish.length > float(seen.get("longest", 0.0))
 		catch_success.emit(fish)
-		Profile.record_catch(fish.name, fish.value, fish.length, fish.tank_trait)
+		Profile.record_catch(fish.name, fish.value, fish.length, fish.tank_trait, UiKit.fish_rarity(fish) == "legend")
 		if Inventory.fits_with(self, [Inventory.fish_item(fish)]):
 			GameState.add_carried_fish(fish)
 			GameState.push_message("釣到了 %s（%s型）！" % [tier_data.label, Inventory.SIZE_NAMES[fish.size]])

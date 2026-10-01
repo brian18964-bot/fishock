@@ -12,6 +12,8 @@ extends RefCounted
 ##   live_<id>      live baits (Profile.LIVE_BAITS), ten to a cell
 ##   bait           the base bait (user request: given each run, but it
 ##                  takes bag cells) - kept in the bag, only moved about
+##   tea, rations   the merchant's (Profile.SNACKS): had as they're bought,
+##                  for spirit - never kept
 ## A thing's {name, tab, size (cells), stack (per cell), slot (the
 ## equipment slot it's worn in, if any), icon, desc}.
 
@@ -47,6 +49,10 @@ static func def(id: String) -> Dictionary:
 	if id == "battery":
 		return {"name": "電池", "tab": "item", "size": Vector2i(1, 1), "stack": 3, "slot": "",
 			"icon": ICONS % id, "desc": "手電筒沒電時換上，要放在背包裡才帶得進去"}
+	if Profile.SNACKS.has(id):
+		var sn: Dictionary = Profile.SNACKS[id]
+		return {"name": sn.name, "tab": "item", "size": Vector2i(1, 1), "stack": 1, "slot": "",
+			"icon": SQUARE_ICONS % id, "desc": sn.desc, "snack": id}
 	if id.begins_with("live_"):
 		var lk := id.substr(5)
 		if not Profile.LIVE_BAITS.has(lk):
@@ -93,7 +99,7 @@ static func model_path(id: String) -> String:
 	if id.begins_with("rod_"):
 		return "res://assets/models/fishing_rod_lvl%d.glb" % (int(id.substr(4)) + 1)
 	match id:
-		"flashlight", "battery":
+		"flashlight", "battery", "tea", "rations":
 			return MODELS % id
 		"bait":
 			return MODELS % "worm"
@@ -114,7 +120,7 @@ const SQUARE_ICONS := "res://assets/sprites/icons/%s.png"
 ## when it has none (the long cells keep icon()'s picture).
 static func square_icon(id: String) -> Texture2D:
 	var key := ""
-	if id.begins_with("rod_") or id in ["flashlight", "battery", "lamp"]:
+	if id.begins_with("rod_") or id in ["flashlight", "battery", "lamp", "tea", "rations"]:
 		key = id
 	elif id == "bait":
 		key = "worm"
