@@ -420,6 +420,12 @@ func _pick_wander_target(away_from_player := false) -> void:
 
 
 func _set_mode(m: Mode) -> void:
+	# Under the character card (user request): it's after you, or you've
+	# lost it.
+	if m == Mode.CHASE and mode != Mode.CHASE:
+		GameState.report("大鬼盯上你了！")
+	elif m in [Mode.WANDER, Mode.REST] and mode in [Mode.CHASE, Mode.SEARCH]:
+		GameState.report("甩掉大鬼了", "good")
 	mode = m
 	_lost = 0.0
 	mode_changed.emit(Mode.keys()[m])

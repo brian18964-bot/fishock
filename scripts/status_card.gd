@@ -22,6 +22,21 @@ const PORTRAIT_REGION := Rect2(50, 34, 44, 44)
 const INK := Color(1.0, 0.96, 0.88)
 const DIM := Color(1.0, 0.96, 0.88, 0.7)
 const WARN := Color(1.0, 0.55, 0.45)
+const GOOD := Color(0.72, 0.95, 0.55)
+
+## User request: what's happening on the run (GameState.report) - the bait
+## taken, a long wait for nothing, a ghost meddling, a wolf on you - a few
+## words each under the card, the newest on top; each stays a few seconds
+## and fades, and the same thing again just refreshes its line.
+const FEED_AT := Vector2(10, 82)
+const FEED_LINES := 3
+const FEED_LIFE := 4.5
+const FEED_FADE := 0.8
+const FEED_SIZE := 13
+const FEED_GAP := 21.0
+
+## The lines showing: [text, tone, age], newest first.
+var feed: Array = []
 
 var _view: Node2D
 var _portrait: AtlasTexture
@@ -42,13 +57,26 @@ func _ready() -> void:
 	_view = Node2D.new()
 	_view.draw.connect(_draw_card)
 	add_child(_view)
+	GameState.event_reported.connect(_on_event)
+
+
+func _on_event(text: String, tone: String) -> void:
+	for line in feed:
+		if line[0] == text:
+			feed.erase(line)
+			break
+	feed.push_front([text, tone, 0.0])
+	feed.resize(mini(feed.size(), FEED_LINES))
 
 
 func contains(pos: Vector2) -> bool:
 	return Rect2(POS, SIZE).has_point(pos)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	for line in feed:
+		line[2] += delta
+	feed = feed.filter(func(line): return line[2] < FEED_LIFE + FEED_FADE)
 	_view.queue_redraw()
 
 
@@ -123,6 +151,7 @@ func _draw_card() -> void:
 	SpiritBar.paint(_view, Rect2(Vector2(x, plate.end.y + 4), Vector2(96, 8)))
 	# User request (HUD cleanup): no speed or fish count - just what's
 	# wrong, if anything.
+	_draw_feed()
 	var line := x
 	for cond in conditions(p):
 		var w := UiKit.font().get_string_size(cond[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
@@ -130,3 +159,19 @@ func _draw_card() -> void:
 			break
 		UiKit.draw_text(_view, Vector2(line, POS.y + 66), cond[0], 12, cond[1])
 		line += w + 8.0
+
+
+func _draw_feed() -> void:
+	var font := UiKit.font()
+	for i in feed.size():
+		var line: Array = feed[i]
+		var age: float = line[2]
+		var alpha := clampf(minf(age / 0.15, (FEED_LIFE + FEED_FADE - age) / FEED_FADE), 0.0, 1.0)
+		var color: Color = {"good": GOOD, "info": INK}.get(line[1], WARN)
+		var w := font.get_string_size(line[0], HORIZONTAL_ALIGNMENT_LEFT, -1, FEED_SIZE).x
+		var at := FEED_AT + Vector2(0, i * FEED_GAP)
+		_view.draw_rect(Rect2(at, Vector2(w + 14.0, FEED_GAP - 3.0)), Color(0, 0, 0, 0.45 * alpha))
+		_view.draw_rect(Rect2(at, Vector2(2.0, FEED_GAP - 3.0)), Color(color, 0.9 * alpha))
+		var text_at := at + Vector2(8, FEED_SIZE + 1.0)
+		_view.draw_string_outline(font, text_at, line[0], HORIZONTAL_ALIGNMENT_LEFT, -1, FEED_SIZE, 4, Color(UiKit.OUTLINE, UiKit.OUTLINE.a * alpha))
+		_view.draw_string(font, text_at, line[0], HORIZONTAL_ALIGNMENT_LEFT, -1, FEED_SIZE, Color(color, alpha))

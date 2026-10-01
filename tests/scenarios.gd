@@ -1496,6 +1496,17 @@ func test_main_menu() -> void:
 	check(hand == null or hand.get_child_count() == 0, "the character's hands are empty at camp")
 	check(rig.anim != null and rig.anim.is_playing(), "it breathes (idle)")
 	check(title.find_child("Settings", true, false) != null, "the settings gear")
+	# User report: on the web the camp was silent until a tap - the first
+	# time in, it asks for one, and that tap clears it.
+	title.tap_to_start()
+	var cover: Control = title.find_child("TapToStart", true, false)
+	check(cover != null, "the web asks for a tap to start the sound")
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	cover.gui_input.emit(press)
+	await seconds(0.7)
+	check(not is_instance_valid(cover) and TitleScreen.sound_unlocked, "a tap lets the sound in")
 	# User feedback: the crickets were loud and steady - softer now, and now
 	# and then they fade away to nothing and take up again little by little.
 	var crickets: CampCrickets = title.find_child("Crickets", true, false)
@@ -1974,6 +1985,21 @@ func test_status_card_opens_bag() -> void:
 	player().ghost_confuse(3.0)
 	check(StatusCard.speed_share(player()) < 0.7, "slowed when dizzy")
 	check(StatusCard.conditions(player()).size() > 0, "and it says why")
+	# User request: what happens on the run, in a few words under the card.
+	card.feed.clear()
+	player()._fail_catch("bait_nibbled")
+	check(not card.feed.is_empty() and card.feed[0][0] == "餌被小魚偷吃了", "a nibbled-off bait shows under the card")
+	player()._fail_catch("no_bite")
+	player().animal_attack("狼")
+	check(card.feed.size() == 3 and card.feed[0][0].begins_with("狼撲上來"), "a wolf attack, newest on top")
+	player().animal_attack("狼")
+	gs.report("小鬼偷走了餌")
+	check(card.feed.size() == StatusCard.FEED_LINES, "three lines at most")
+	var count := card.feed.size()
+	gs.report("小鬼偷走了餌")
+	check(card.feed.size() == count and card.feed[0][0] == "小鬼偷走了餌", "the same again refreshes its line")
+	await seconds(StatusCard.FEED_LIFE + StatusCard.FEED_FADE + 0.3)
+	check(card.feed.is_empty(), "and they fade away")
 
 
 func test_floating_ghost_budget() -> void:

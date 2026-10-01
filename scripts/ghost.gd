@@ -194,11 +194,13 @@ func _haunt(delta: float) -> void:
 	elif not GameState.carried_fish.is_empty():
 		var stolen: Dictionary = GameState.steal_one_carried()
 		GameState.push_message("鬼摸走了一條 %s！" % stolen.get("name", "魚"))
+		GameState.report("小鬼摸走了%s" % stolen.get("name", "魚"))
 	else:
 		if player.state == Player.State.CHARGING:
 			player.apply_cast_jitter()
 		player.ghost_confuse(CONFUSE_TIME)
 		GameState.push_message("鬼從你身上穿過，一陣頭昏眼花...")
+		GameState.report("小鬼穿身而過，頭昏眼花")
 	GameState.ghost_interfered()
 	_leave()
 

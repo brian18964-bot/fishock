@@ -564,6 +564,7 @@ func _apply_water_ghost_attack(cause := "") -> void:
 	if not stolen.is_empty():
 		msg = "水鬼冒出來偷襲，還搶走了一條 %s！身上狀態異常中" % stolen.get("name", "魚")
 	GameState.push_message(cause + msg)
+	GameState.report("水鬼偷襲！" if stolen.is_empty() else "水鬼偷襲，搶走了%s" % stolen.get("name", "魚"))
 
 
 ## User request: a floating ghost passing through the player leaves them
@@ -585,12 +586,14 @@ func animal_attack(attacker: String) -> void:
 	var fish: Dictionary = GameState.drop_one_carried()
 	if fish.is_empty():
 		GameState.push_message("%s撲了上來！" % attacker)
+		GameState.report("%s撲上來了！" % attacker)
 		return
 	var dropped: DroppedFish = DROPPED_FISH_SCENE.instantiate()
 	get_tree().current_scene.add_child(dropped)
 	dropped.global_position = global_position + Vector2.RIGHT.rotated(randf() * TAU) * 40.0
 	dropped.setup(fish)
 	GameState.push_message("%s撲了上來，%s 掉在地上了！" % [attacker, fish.get("name", "魚")])
+	GameState.report("%s撲上來，%s掉了" % [attacker, fish.get("name", "魚")])
 
 
 func _handle_mode_toggle() -> void:
@@ -1231,6 +1234,7 @@ func _handle_action_input(delta: float) -> void:
 					GameState.push_message("提著油箱沒辦法釣魚，先送回營地")
 				elif _nearest_water_edge_distance() > CAST_SHORE_RANGE:
 					GameState.push_message("離水邊太遠了，走近岸邊再拋竿")
+					GameState.report("離水邊太遠，靠近再拋竿", "info")
 				elif _can_start_cast():
 					_set_state(State.CHARGING)
 					charge_time = 0.0
@@ -1239,6 +1243,7 @@ func _handle_action_input(delta: float) -> void:
 				else:
 					var out_of := "餌" if fishing_mode == FishingMode.BOBBER else "假餌"
 					GameState.push_message("沒有%s了，按 Tab 換釣法" % out_of)
+					GameState.report("沒有%s了" % out_of)
 		State.CHARGING:
 			if held and _cast_stick_touched():
 				# Pulled this far: heading this far out.
@@ -1371,6 +1376,7 @@ func _update_fishing(delta: float) -> void:
 						nibbles_left -= 1
 						_nibbled = true
 						nibble.emit(randf() < fake_chance)
+						GameState.report("有魚在碰餌…先別拉", "info")
 						wait_timer = randf_range(NIBBLE_GAP.x, NIBBLE_GAP.y)
 					else:
 						_start_bite()
@@ -1459,6 +1465,7 @@ func _launch_cast() -> void:
 		ratio = clamp(ratio * randf_range(0.3, 1.4), 0.0, 1.0)
 		cast_jittered = false
 		GameState.push_message("蓄力被干擾了，拋竿距離變得不可靠")
+		GameState.report("被干擾，拋竿失準")
 	cast_target = landing_point(ratio)
 
 	# Design doc request: a cast that doesn't land in any water zone just
@@ -1466,6 +1473,7 @@ func _launch_cast() -> void:
 	cast_water_zone = _find_water_zone(cast_target)
 	if cast_water_zone == null:
 		GameState.push_message("這個方向沒有水，這竿撲空了")
+		GameState.report("這方向沒有水", "info")
 		_reset_line(State.IDLE)
 		return
 
@@ -1613,6 +1621,7 @@ func _start_bite() -> void:
 	bite_timer = tier_data.bite_window
 	_set_state(State.BITE)
 	bite_started.emit()
+	GameState.report("咬鉤了！快揚竿", "good")
 	if is_heart_catch:
 		GameState.push_message("水花特別亮、震動特別強...是心臟！")
 	elif is_epic_catch:
@@ -1690,6 +1699,7 @@ func _on_fight_event(kind: String) -> void:
 	match kind:
 		"run":
 			GameState.push_message("魚往外衝！先放手放線")
+			GameState.report("魚往外衝，放線！", "info")
 		"side_run":
 			GameState.push_message("魚往%s邊衝！快把右搖桿往%s一甩" % [FishFight.describe(fight.run_side), FishFight.describe(-fight.run_side)])
 		"swipe_hit":
@@ -1698,6 +1708,7 @@ func _on_fight_event(kind: String) -> void:
 			GameState.push_message("沒來得及反甩，往%s拉竿頂住！" % FishFight.describe(-fight.run_side))
 		"jump":
 			GameState.push_message("魚跳出水面！快放手！")
+			GameState.report("魚跳起來了，放手！", "info")
 		"dive":
 			GameState.push_message("魚往岸邊石縫鑽！按住收線把牠拉回來！")
 		"dive_saved":
@@ -1745,6 +1756,16 @@ func _succeed_catch() -> void:
 	_reset_line(State.IDLE)
 
 
+## What a lost cast or fish says under the character card (user request),
+## in a few words.
+const FAIL_REPORTS := {
+	"bait_nibbled": "餌被小魚偷吃了", "no_bite": "等了很久，沒魚咬餌", "missed_bite": "沒及時揚竿，魚跑了",
+	"spooked": "太早揚竿，魚嚇跑了", "line_break": "線斷了，魚跑了", "shook_off": "魚甩掉了鉤",
+	"cover": "魚鑽進石縫，線磨斷了", "walked_off": "離岸太遠，魚脫鉤了", "line_cut": "小鬼剪斷了釣線",
+	"lure_knocked": "小鬼弄掉了假餌", "bait_stolen": "小鬼偷走了餌",
+}
+
+
 func _fail_catch(reason: String) -> void:
 	catch_failed.emit(reason)
 	var msg := "魚跑掉了"
@@ -1775,6 +1796,11 @@ func _fail_catch(reason: String) -> void:
 	if lure_gone:
 		msg += "，假餌也沒了"
 	GameState.push_message(msg)
+	if FAIL_REPORTS.has(reason):
+		var short: String = FAIL_REPORTS[reason]
+		if reason == "walked_off" and state != State.REELING:
+			short = "離岸太遠，收竿了"
+		GameState.report(short + ("，假餌沒了" if lure_gone else ""))
 	_reset_line(State.IDLE)
 
 

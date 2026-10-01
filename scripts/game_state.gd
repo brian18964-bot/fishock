@@ -9,6 +9,10 @@ signal quota_updated(progress: float, target: float)
 signal inventory_updated(carried: Array)
 signal day_cleared()
 signal message_posted(text: String)
+## User request: what's happening on the run - the bait taken, a long wait
+## for nothing, a ghost meddling, a wolf on you - in a word or two under the
+## character card (StatusCard). tone: "warn", "info" or "good".
+signal event_reported(text: String, tone: String)
 signal day_phase_changed(phase: String)
 signal offering_pool_updated(pool: Array, evil_count: int)
 signal run_ended(success: bool, message: String)
@@ -389,18 +393,23 @@ func _roll_weather() -> void:
 	match weather:
 		Weather.FOG:
 			push_message("起霧了，視野變差...")
+			report("起霧了，視野變差", "info")
 		Weather.STORM:
 			push_message("風雨變大，水鬼變得更加活躍！")
+			report("暴風雨，水鬼更活躍了")
 		Weather.FISH_RUN:
 			push_message("魚汛來了！這段時間更容易釣到魚")
+			report("魚汛來了！更容易上鉤", "good")
 		Weather.CLEAR:
 			push_message("天氣恢復平靜")
+			report("天氣恢復平靜", "info")
 
 
 func _trigger_night() -> void:
 	is_night = true
 	night_fell.emit()
 	push_message("時間到了，額度沒補滿...夜晚降臨，鬼進入獵殺模式！")
+	report("夜晚降臨，鬼開始獵殺！")
 
 
 func grant_heart() -> void:
@@ -435,6 +444,10 @@ func push_message(text: String) -> void:
 	message_posted.emit(text)
 
 
+func report(text: String, tone := "warn") -> void:
+	event_reported.emit(text, tone)
+
+
 func _enter_escape_phase() -> void:
 	day_over = true
 	day_phase = DayPhase.ESCAPE
@@ -445,6 +458,7 @@ func _enter_escape_phase() -> void:
 		_add_offering(false)
 	_escalate_threat()
 	push_message("額度已滿！鬼群警覺起來了 - 前往逃離點離開，或繼續釣魚賭更好的供品")
+	report("額度滿了！可以去符文石柱離開", "good")
 
 
 ## Design doc request: meeting quota also raises the stakes of staying -

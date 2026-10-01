@@ -1,3 +1,4 @@
+class_name TitleScreen
 extends Control
 
 ## The main screen. User request: like a mobile game's - the player's own
@@ -55,6 +56,9 @@ var _skip_hint: Label
 var _fade: ColorRect
 var _setting_off := false
 var _crickets: CampCrickets
+## A browser lets a page make sound once it has been touched: after the
+## first tap (tap_to_start) the camp needn't ask again this session.
+static var sound_unlocked := false
 
 
 ## A menu needn't draw at 60 frames a second: half that saves a phone's
@@ -74,6 +78,11 @@ func _ready() -> void:
 	_crickets.name = "Crickets"
 	add_child(_crickets)
 	_build()
+	# User report: on the web the camp was silent until something was
+	# tapped - browsers keep a page quiet until it's touched. The first time
+	# in, a tap anywhere lets the sound in.
+	if OS.has_feature("web") and not sound_unlocked:
+		tap_to_start()
 	Profile.gold_updated.connect(func(_g): _refresh())
 	Profile.profile_changed.connect(_refresh)
 	_refresh()
@@ -463,6 +472,35 @@ func _on_piece_done(tag: String) -> void:
 
 ## Into the run: the camp fades into the night as the character goes off
 ## with its lamp, then the run starts.
+## Over the camp: 輕觸畫面開始, gently pulsing; the tap that clears it is
+## the one the browser waits for to let sound play.
+func tap_to_start() -> void:
+	var cover := ColorRect.new()
+	cover.name = "TapToStart"
+	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
+	cover.color = Color(0.0, 0.0, 0.0, 0.45)
+	cover.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(cover)
+	var words := UiKit.label("輕觸畫面開始", 26, UiKit.TEXT, true, 4)
+	words.set_anchors_preset(Control.PRESET_FULL_RECT)
+	words.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	words.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	words.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cover.add_child(words)
+	var pulse := words.create_tween().set_loops()
+	pulse.tween_property(words, "modulate:a", 0.45, 1.1).set_trans(Tween.TRANS_SINE)
+	pulse.tween_property(words, "modulate:a", 1.0, 1.1).set_trans(Tween.TRANS_SINE)
+	cover.gui_input.connect(func(e: InputEvent):
+		var tapped: bool = (e is InputEventMouseButton or e is InputEventScreenTouch) and e.pressed
+		if not tapped or cover.mouse_filter == Control.MOUSE_FILTER_IGNORE:
+			return
+		sound_unlocked = true
+		cover.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var t := cover.create_tween()
+		t.tween_property(cover, "modulate:a", 0.0, 0.5)
+		t.tween_callback(cover.queue_free))
+
+
 func _start_run() -> void:
 	if _setting_off:
 		return

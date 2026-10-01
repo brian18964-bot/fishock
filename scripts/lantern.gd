@@ -125,11 +125,14 @@ func _process(delta: float) -> void:
 		# User request: once the energy's down to AUTO_DIM_BELOW the light
 		# dims by itself, slowly (it can still be turned back up - burning
 		# faster).
+		if energy_share() < AUTO_DIM_BELOW and before >= AUTO_DIM_BELOW:
+			GameState.report("燈油不多了，燈會變暗" if tool == Tool.LAMP else "電池不多了，燈會變暗")
 		if energy_share() < AUTO_DIM_BELOW:
 			brightness = maxf(MIN_BRIGHTNESS, brightness - AUTO_DIM * maxf(before - energy_share(), 0.0))
 		if power() <= 0.0:
 			lit = false
 			GameState.push_message("煤燈的油燒完了" if tool == Tool.LAMP else "手電筒沒電了，按住 L 換電池")
+			GameState.report("燈油燒完了" if tool == Tool.LAMP else "手電筒沒電了")
 
 	visible = lit and power() > 0.0
 	rotation = _player.aim_dir.angle()

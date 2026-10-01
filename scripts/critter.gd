@@ -400,6 +400,7 @@ func _update_hunt(delta: float, dist: float) -> void:
 				_pick_target(true)
 			return
 	if _cooldown <= 0.0 and dist < _data.chase_radius and _can_hunt():
+		GameState.report("%s盯上你了！" % _data.label)
 		_mode = Mode.CHASE
 		_mode_timer = CHASE_TIME
 		_target = _player.global_position
