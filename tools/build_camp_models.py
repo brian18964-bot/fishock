@@ -473,6 +473,30 @@ def _checked_cloth():
     return m
 
 
+# The canopy's front hangs down over the counter: cut away below this
+# height (m, the stall 3.3 high) in front of this line (its front is -y),
+# so the shelves inside show (user request).
+CANOPY_HEM = 2.2
+CANOPY_FRONT = -0.45
+
+
+def _lift_canopy(objs, cloth):
+    """Cuts the canopy's front back to a hem at CANOPY_HEM."""
+    for o in objs:
+        slots = [i for i, s in enumerate(o.material_slots) if s.material == cloth]
+        if not slots:
+            continue
+        bm = bmesh.new()
+        bm.from_mesh(o.data)
+        mw = o.matrix_world
+        cut = [f for f in bm.faces if f.material_index in slots
+               and (mw @ f.calc_center_median()).z < CANOPY_HEM and (mw @ f.calc_center_median()).y < CANOPY_FRONT]
+        bmesh.ops.delete(bm, geom=cut, context='FACES')
+        bm.to_mesh(o.data)
+        bm.free()
+        print("canopy:", o.name, "cut", len(cut), "faces", flush=True)
+
+
 def bookshop():
     """The market stall (BookShop.obj): no .mtl came with it - its wood and
     pages from Materials, the rest coloured by material name. The cloth
@@ -504,6 +528,7 @@ def bookshop():
     mul.inputs[7].default_value = (0.62, 0.56, 0.52, 1)
     dark.links.new(mul.outputs[2], b.inputs['Base Color'])
     place(objs, height=3.3)
+    _lift_canopy(objs, table["FabricTiled"])
     decimate(objs, 14000)
     bake(objs, "bookshop", 1024, glow=True)
     export(objs, "bookshop")
@@ -526,7 +551,9 @@ def boat():
 
 
 def log():
-    """A scanned log (213k triangles) brought down, its bark baked on."""
+    """A scanned log (213k triangles) brought down, its bark baked on.
+    Source: "Free 4k Wood Log Scan" on CGTrader, Royalty Free License (no
+    AI) - user confirmed."""
     fresh()
     d = os.path.join(SRC, "log")
     bpy.ops.import_scene.fbx(filepath=os.path.join(d, "log.fbx"))

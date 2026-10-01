@@ -24,42 +24,59 @@ const STATIONS := {
 	"home": [Vector3(0.3, 2.3, 6.9), Vector3(-0.15, 0.75, -2.2), 42.0],
 	"warehouse": [Vector3(-1.6, 1.5, 2.9), Vector3(-3.05, 0.45, 0.35), 38.0],
 	"equipment": [Vector3(-1.4, 1.7, 1.6), Vector3(-3.4, 0.9, -2.6), 40.0],
-	"shop": [Vector3(3.1, 1.9, -0.6), Vector3(5.9, 1.3, -5.7), 42.0],
-	"fish_tank": [Vector3(1.2, 2.2, 0.75), Vector3(1.45, 0.25, -1.3), 40.0],
-	"fish_log": [Vector3(1.2, 2.2, 0.75), Vector3(1.45, 0.25, -1.3), 40.0],
-	"stone": [Vector3(-0.3, 1.8, -2.4), Vector3(-0.5, 1.0, -7.6), 42.0],
+	"shop": [Vector3(3.3, 1.7, -1.3), Vector3(5.9, 1.1, -5.7), 40.0],
+	"fish_tank": [Vector3(1.75, 2.1, 1.6), Vector3(2.8, 0.25, 0.3), 40.0],
+	"fish_log": [Vector3(1.75, 2.1, 1.6), Vector3(2.8, 0.25, 0.3), 40.0],
+	"stone": [Vector3(-0.3, 1.8, -1.6), Vector3(-0.5, 0.9, -6.4), 42.0],
 }
-const CHARACTER_AT := Vector3(-1.1, 0.0, 0.55)
-const FIRE_AT := Vector3(0.1, 0.0, -0.3)
+const CHARACTER_AT := Vector3(-0.35, 0.0, 0.6)
+const FIRE_AT := Vector3(0.75, 0.0, -0.35)
 const CRATE_AT := Vector3(-3.05, 0.0, 0.3)
-## The crate drawn out longer than the pack's (user request: about 30%).
-const CRATE_LENGTH := 1.3
+## The crate drawn out longer than the pack's (user request: 30%, then
+## 20% more).
+const CRATE_LENGTH := 1.56
 const BACKPACK_AT := Vector3(-2.2, 0.0, 1.05)
 const TENT_AT := Vector3(-4.6, 0.0, -3.5)
 const ROD_AT := Vector3(-2.95, 0.0, -2.55)
-const DRUM_AT := Vector3(-0.55, 0.0, -1.75)
-const TROUGH_AT := Vector3(1.35, 0.0, -1.2)
+const DRUM_AT := Vector3(0.2, 0.0, -2.05)
+## A second drum beside it (no lamp).
+const DRUM_2_AT := Vector3(0.95, 0.0, -2.55)
+## The fish trough out on the right, its length toward the camera.
+const TROUGH_AT := Vector3(2.8, 0.0, 0.3)
+const TROUGH_YAW := PI / 2.0
 ## The drums made bigger than life, easier to tap (user request: the drum
 ## 20%, the fish trough 30%).
 const DRUM_SCALE := 1.2
 const TROUGH_SCALE := 1.3
 ## The lamp on the drum's lid.
 const LAMP_ON_DRUM := Vector3(0.05, 0.92 * DRUM_SCALE, 0.02)
-## The 渡石 out at the water's edge, beyond the camp: part of the view, not
-## of the camp.
-const STONE_AT := Vector3(-0.6, 0.0, -7.55)
+## The 渡石 far off, on the shore short of the water: part of the view,
+## not of the camp.
+const STONE_AT := Vector3(-0.6, 0.0, -6.45)
+const STONE_SCALE := 0.6
 const HUT_AT := Vector3(6.1, 0.0, -6.0)
-## The frog merchant, in the stall's own frame: beside the counter.
-const MERCHANT_AT := Vector3(1.3, 0.0, 0.8)
+const HUT_YAW := -0.95
+const HUT_SCALE := 0.8
+## Where the frog merchant potters (the stall's own frame, before its
+## scale): by the counter's corner, out front, round the right side,
+## inside behind the counter (on the stall's floor, 0.7 up).
+const MERCHANT_PLACES := {
+	"corner": Vector3(1.9, 0.0, 1.5), "front": Vector3(-0.3, 0.0, 2.1),
+	"side": Vector3(2.2, 0.0, -0.4), "inside": Vector3(0.2, 0.7, 0.05),
+}
+## The frog's size (the model is 1.25 m): small enough to stand inside.
+const MERCHANT_SCALE := 0.7
 const DOCK_AT := Vector3(2.9, 0.0, -7.05)
-const BOAT_AT := Vector3(3.9, 0.02, -8.85)
+## The boat moored alongside the dock (its right side), bow to the shore.
+const BOAT_AT := Vector3(4.05, 0.02, -9.55)
 const LAKE_CENTER := Vector3(0.0, 0.0, -20.6)
 const LAKE_RADIUS := 13.5
 const MOON_DIR := Vector3(0.1, 0.17, -1.0)
 ## The logs to sit on by the fire (thicker than the pack's log, so the
-## hips sit on it: its top at about 0.52 m), and the chopping block by the
-## woodpile.
-const SEATS := [Vector3(-1.5, 0.0, -0.75), Vector3(1.55, 0.0, 0.35)]
+## hips sit on it: its top at about 0.52 m): [where, which way one sits on
+## it (null: facing the fire)] - the second lies across behind the fire,
+## sat on facing out. And the chopping block by the woodpile.
+const SEATS := [[Vector3(-0.75, 0.0, -0.6), null], [Vector3(1.95, 0.0, -1.45), Vector3(0, 0, 1)]]
 const SEAT_SCALE := Vector3(1.18, 1.18, 1.15)
 const BLOCK_AT := Vector3(-1.45, 0.0, -2.25)
 const WOODPILE_AT := Vector3(-2.0, 0.0, -2.6)
@@ -83,6 +100,7 @@ var _fire_glow: MeshInstance3D
 var _embers_mat: StandardMaterial3D
 var _stone_mat: StandardMaterial3D
 var _boat: Node3D
+var merchant: CampMerchant
 var _tent_holder: Node3D
 var _rod_holder: Node3D
 var _water_mat: ShaderMaterial
@@ -172,8 +190,9 @@ func _process(delta: float) -> void:
 	_stone_mat.emission_energy_multiplier = 0.16 + 0.08 * sin(_time * 1.3) + 3.0 * _stone_flare
 	_stone_light.light_energy = 0.25 + 5.0 * _stone_flare
 	# The boat rides the water.
-	_boat.rotation = Vector3(sin(_time * 0.9) * 0.025, _boat.rotation.y, sin(_time * 0.7 + 1.0) * 0.035)
-	_boat.position.y = BOAT_AT.y + sin(_time * 1.1) * 0.02
+	# The boat, tied up, rocks a little on the water.
+	_boat.rotation = Vector3(sin(_time * 0.9) * 0.012, _boat.rotation.y, sin(_time * 0.7 + 1.0) * 0.022)
+	_boat.position.y = BOAT_AT.y + sin(_time * 1.1) * 0.012
 
 
 # ---------------------------------------------------------------- places
@@ -191,26 +210,25 @@ func _spot(name: String, at: Vector3, face: Vector3) -> void:
 
 ## Where the character goes and what it walks round (CampLife).
 func _places() -> void:
-	# A seat: standing just in front of the log, facing the fire (sat, the
-	# hips go back onto it).
+	# A seat: standing just in front of the log, facing the way one sits on
+	# it (sat, the hips go back onto it).
 	for i in SEATS.size():
-		var f := _toward(SEATS[i], FIRE_AT)
-		_spot("seat_%d" % i, SEATS[i] + f * 0.33, FIRE_AT)
+		var f := seat_facing(i)
+		_spot("seat_%d" % i, SEATS[i][0] + f * 0.33, SEATS[i][0] + f * 3.0)
 	_spot("home", CHARACTER_AT, CHARACTER_AT + Vector3(0.35, 0, 1.0))
-	_spot("warm", FIRE_AT + Vector3(0.38, 0, -0.92), FIRE_AT)
+	_spot("warm", FIRE_AT + Vector3(-0.6, 0, -0.85), FIRE_AT)
 	_spot("dance", FIRE_AT + Vector3(0.55, 0, 1.05), Vector3(0.6, 0, 6.0))
 	var tent_front := Vector3(sin(0.7), 0, cos(0.7))
 	_spot("tent", TENT_AT + tent_front * 1.7, TENT_AT)
 	var crate_side := Vector3(cos(0.55), 0, -sin(0.55))
 	_spot("crate", CRATE_AT + crate_side * 0.94, CRATE_AT)
-	var trough_back := -Vector3(sin(-0.45), 0, cos(-0.45))
-	_spot("trough", TROUGH_AT + trough_back * 0.8, TROUGH_AT)
+	_spot("trough", TROUGH_AT + Vector3(-0.78, 0, 0.1), TROUGH_AT)
 	_spot("lean", DRUM_AT + Vector3(0, 0, 0.3), DRUM_AT + Vector3(0, 0, -3.0))
 	_spot("lake", Vector3(1.3, 0, -6.35), Vector3(1.7, 0, -10.0))
-	var stall_front := Vector3(sin(-0.95), 0, cos(-0.95))
-	_spot("merchant", HUT_AT + stall_front * 1.35, HUT_AT)
+	var stall_front := Vector3(sin(HUT_YAW), 0, cos(HUT_YAW))
+	_spot("merchant", HUT_AT + stall_front * 1.6, HUT_AT)
 	_spot("gather_0", Vector3(-2.3, 0, 1.6), Vector3(-2.6, 0, 2.6))
-	_spot("gather_1", Vector3(2.4, 0, 1.3), Vector3(2.9, 0, 2.2))
+	_spot("gather_1", Vector3(1.9, 0, 1.6), Vector3(2.2, 0, 2.6))
 	_spot("gather_2", Vector3(-0.7, 0, 1.95), Vector3(-0.9, 0, 3.0))
 	# Where the reaching hand (CharacterRig.REACH) gets to the lamp's bail.
 	var ahead := -Vector3(0.447, 0, 0.894)
@@ -225,15 +243,21 @@ func _places() -> void:
 	# What it walks round.
 	obstacles = [
 		[FIRE_AT, 0.75], [CRATE_AT + Vector3(0.22, 0, -0.15), 0.6], [CRATE_AT - Vector3(0.22, 0, -0.15), 0.6],
-		[BACKPACK_AT, 0.3], [DRUM_AT, 0.42],
-		[TROUGH_AT + Vector3(0.3, 0, 0.13), 0.42], [TROUGH_AT - Vector3(0.3, 0, 0.13), 0.42],
-		[WOODPILE_AT, 0.5], [BLOCK_AT, 0.26], [ROD_AT, 0.2], [TENT_AT, 1.45], [STONE_AT, 0.62], [HUT_AT, 1.25],
+		[BACKPACK_AT, 0.3], [DRUM_AT, 0.42], [DRUM_2_AT, 0.42],
+		[TROUGH_AT + Vector3(0, 0, 0.36), 0.42], [TROUGH_AT - Vector3(0, 0, 0.36), 0.42],
+		[WOODPILE_AT, 0.5], [BLOCK_AT, 0.26], [ROD_AT, 0.2], [TENT_AT, 1.45], [STONE_AT, 0.62], [HUT_AT, 1.05],
 	]
-	for at in SEATS:
-		var f := _toward(at, FIRE_AT)
+	for i in SEATS.size():
+		var f := seat_facing(i)
 		var along := Vector3(-f.z, 0, f.x)
-		for k in [-0.55, 0.0, 0.55]:
-			obstacles.append([at + along * k, 0.27])
+		for k in [-0.62, 0.0, 0.62]:
+			obstacles.append([SEATS[i][0] + along * k, 0.3])
+
+
+## The way one sits on seat `i` (flat, unit).
+func seat_facing(i: int) -> Vector3:
+	var face: Variant = SEATS[i][1]
+	return face if face != null else _toward(SEATS[i][0], FIRE_AT)
 
 
 ## A way from `from` to `to` round what's in the way: the points to walk
@@ -797,10 +821,10 @@ func _fire() -> void:
 
 ## Logs to sit on by the fire, and a few stacked by the tent.
 func _seats() -> void:
-	for at in SEATS:
-		# Lying across the way to the fire (its length along its z).
-		var f := _toward(at, FIRE_AT)
-		_put("log", at, atan2(-f.z, f.x)).scale = SEAT_SCALE
+	for i in SEATS.size():
+		# Lying across the way one sits on it (its length along its z).
+		var f := seat_facing(i)
+		_put("log", SEATS[i][0], atan2(-f.z, f.x)).scale = SEAT_SCALE
 	# The chopping block: a round of a trunk on end.
 	var block := MeshInstance3D.new()
 	block.name = "Block"
@@ -881,6 +905,7 @@ func _dress_rod() -> void:
 ## half, water in it (the fish tank).
 func _drums() -> void:
 	_put("drum", DRUM_AT, 0.4).scale = Vector3.ONE * DRUM_SCALE
+	_put("drum", DRUM_2_AT, 2.3).scale = Vector3.ONE * DRUM_SCALE
 	_drum_lamp = CharacterRig.LAMP.instantiate()
 	_drum_lamp.name = "DrumLamp"
 	_drum_lamp.position = DRUM_AT + LAMP_ON_DRUM
@@ -888,7 +913,7 @@ func _drums() -> void:
 	var trough := Node3D.new()
 	trough.name = "Trough"
 	trough.position = TROUGH_AT
-	trough.rotation.y = -0.45
+	trough.rotation.y = TROUGH_YAW
 	trough.scale = Vector3.ONE * TROUGH_SCALE
 	add_child(trough)
 	trough.add_child(CampModel.make("drum_trough"))
@@ -935,7 +960,7 @@ void fragment() {
 func _stone() -> void:
 	var stone := _put("rune_stone", STONE_AT, 0.0, 1.0)
 	stone.name = "Stone"
-	stone.scale = Vector3.ONE * 0.75
+	stone.scale = Vector3.ONE * STONE_SCALE
 	_stone_mat = stone.material_override as StandardMaterial3D
 	_stone_mat.albedo_color = Color(0.42, 0.44, 0.46)
 	_stone_mat.emission = Color(0.4, 0.8, 1.0)
@@ -943,17 +968,18 @@ func _stone() -> void:
 	_stone_light.light_color = Color(0.45, 0.75, 1.0)
 	_stone_light.light_energy = 0.5
 	_stone_light.omni_range = 3.4
-	_stone_light.position = STONE_AT + Vector3(0, 1.1, 0.5)
+	_stone_light.position = STONE_AT + Vector3(0, 0.9, 0.45)
 	add_child(_stone_light)
 
 
-## The merchant's stall at the water's edge (the shop), a lamp at its
-## corner; the frog merchant beside it; his boat tied up by the dock.
+## The merchant's stall back by the water (the shop), a lamp at its corner;
+## the frog merchant pottering about it; his boat tied up by the dock.
 func _stall() -> void:
 	var hut := Node3D.new()
 	hut.name = "Stall"
 	hut.position = HUT_AT
-	hut.rotation.y = -0.95
+	hut.rotation.y = HUT_YAW
+	hut.scale = Vector3.ONE * HUT_SCALE
 	add_child(hut)
 	var shop := CampModel.make("bookshop", 1.6)
 	(shop.material_override as StandardMaterial3D).albedo_color = Color(0.86, 0.84, 0.82)
@@ -964,16 +990,30 @@ func _stall() -> void:
 	lamp_light.omni_range = 4.5
 	lamp_light.position = Vector3(0.0, 2.2, 1.6)
 	hut.add_child(lamp_light)
-	# The merchant, the frog wanderer, at the counter's corner.
-	var merchant := CampModel.make("frog_merchant")
+	_hotspot("shop", hut, "商人", HUT_AT + Vector3(0, 1.2, 0), 1.3)
+	# The merchant, pottering about: by the counter, out front, round the
+	# side, inside behind the counter, down by his boat.
+	var t := hut.transform
+	var camp := Vector3(0.6, 0, 1.0)
+	merchant = CampMerchant.new()
 	merchant.name = "Merchant"
-	merchant.position = MERCHANT_AT
-	merchant.rotation.y = 0.55
-	hut.add_child(merchant)
-	_hotspot("shop", hut, "商人", HUT_AT + Vector3(0, 1.5, 0), 1.6)
+	merchant.places = {
+		"corner": [t * MERCHANT_PLACES.corner, camp],
+		"front": [t * MERCHANT_PLACES.front, camp],
+		"side": [t * MERCHANT_PLACES.side, t * Vector3(3.0, 0, -0.5)],
+		"inside": [t * MERCHANT_PLACES.inside, t * Vector3(0, 0, 3.0)],
+		"boat": [DOCK_AT + Vector3(0.95, 0, 0.35), BOAT_AT],
+	}
+	merchant.links = {"corner": ["front", "side", "boat"], "front": ["corner"], "side": ["corner", "inside"],
+		"inside": ["side"], "boat": ["corner"]}
+	merchant.at = "corner"
+	merchant.scale = Vector3.ONE * MERCHANT_SCALE
+	add_child(merchant)
+	if merchant.body() != null:
+		_hotspot("shop", merchant.body(), "商人", HUT_AT + Vector3(0, 1.2, 0), 1.3, 0.012)
 	_boat = CampModel.make("boat")
 	_boat.position = BOAT_AT
-	_boat.rotation.y = PI / 2.0 - 0.06
+	_boat.rotation.y = PI / 2.0
 	add_child(_boat)
 	_hotspot("shop", _boat, "商人", BOAT_AT + Vector3(0, 0.6, 0), 1.6, 0.015)
 

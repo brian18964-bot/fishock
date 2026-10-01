@@ -1501,6 +1501,14 @@ func test_main_menu() -> void:
 	for want in ["warehouse", "equipment", "fish_tank", "shop"]:
 		check(camp.hotspots.has(want), "the camp's thing for " + want)
 	check(not camp.hotspots.has("bag"), "no bag page of its own")
+	# The frog merchant potters about his stall (user request).
+	var frog: CampMerchant = camp.merchant
+	var was := frog.position
+	frog._wait = 0.0
+	await seconds(1.0)
+	check(frog.position.distance_to(was) > 0.1 and frog.places.has("inside"), "the frog merchant potters about, now and then inside")
+	# The boat moored alongside the dock.
+	check(absf(CampStage.BOAT_AT.x - CampStage.DOCK_AT.x) < 1.3, "the boat lies alongside the dock")
 	check(title.find_child("CampList", true, false) == null, "no list of pages down the side")
 	# User request: nothing over the character's head; the player's card
 	# (name and spirit) top left.
