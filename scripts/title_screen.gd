@@ -118,6 +118,7 @@ func _build() -> void:
 		_stage = CampStage.new()
 		_stage.name = "Camp"
 		_viewport.add_child(_stage)
+		_stage.life.plan_done.connect(_on_piece_done)
 		var view := TextureRect.new()
 		view.name = "CampView"
 		view.texture = _viewport.get_texture()
@@ -457,7 +458,6 @@ func _on_solo() -> void:
 		if c != null:
 			c.visible = false
 	_skip_hint.visible = true
-	_stage.life.plan_done.connect(_on_piece_done)
 	_stage.life.depart()
 
 
@@ -490,7 +490,6 @@ func _start_run() -> void:
 func _come_home(how: String) -> void:
 	_scene_piece = how
 	_skip_hint.visible = true
-	_stage.life.plan_done.connect(_on_piece_done)
 	_stage.life.come_home(how)
 	_fade.color = Color(0, 0, 0, 1) if how == "lost" else Color(0.75, 0.92, 1.0, 0.9)
 	create_tween().tween_property(_fade, "color:a", 0.0, 1.2 if how == "lost" else 0.6)

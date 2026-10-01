@@ -1762,6 +1762,10 @@ func test_camp_life() -> void:
 	check(life.busy == "" and title._scene_piece == "" and camp.find_child("DrumLamp", true, false).visible
 		and camp.find_child("Rod", true, false).visible and camp.character.attachments.hand_l.get_child_count() == 0,
 		"a tap skips to the lamp on the drum and the rod by the tent")
+	# And straight out again.
+	title._setting_off = true
+	title._on_solo()
+	check(life.busy == "depart" and life.plan_done.get_connections().size() == 1, "sets out again (one listener)")
 	title.queue_free()
 	await frames(1)
 	# Lost: it wakes by the fire, gets up.
