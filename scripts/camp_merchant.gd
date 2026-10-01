@@ -3,14 +3,17 @@ extends Node3D
 
 ## The frog merchant (assets/models/camp/frog_merchant.glb: the sculpt
 ## rigged and animated by tools/rig_frog.py - Idle, Walk, Talk) pottering
-## about his stall (user request: he wanders near the shop, now and then
-## inside it): from place to place along `links`, walking, then a while
-## standing, looking at `look`.
-##   places: name -> [where (stage), what he looks at there]
-##   links:  name -> the places he can go on to from there
+## about his stall and down to his boat (user request: from the shop to
+## the boat, now and then inside - in by the back, not through the walls):
+## from place to place along `links`, walking, then a while standing,
+## looking at what that place looks at.
+##   places:  name -> [where (stage), what he looks at there]
+##   links:   name -> the places he can go on to from there
+##   through: places he only passes by (round the back)
+##   meet_at: place -> where a visitor stands instead of in front of him
 ## And visited (CampLife "merchant"; user request: the two of them meet):
-## visit() stops him where he is, turned to the visitor; talk() as they
-## talk; release() and he goes on his way.
+## visit() - he goes on to the next place he can be met at and stops there,
+## turned to the visitor; talk() as they talk; release() and he goes on.
 
 const MODEL := "res://assets/models/camp/frog_merchant.glb"
 const SPEED := 0.32
@@ -22,6 +25,8 @@ const VISIT_TIMEOUT := 25.0
 
 var places := {}
 var links := {}
+var through: Array = []
+var meet_at := {}
 var at := ""
 ## Being visited: the visitor (it faces it), or null.
 var visitor: Node3D
@@ -29,6 +34,8 @@ var visitor: Node3D
 var _body: MeshInstance3D
 var _anim: AnimationPlayer
 var _to := ""
+var _from := ""
+var _meet := ""
 var _wait := 0.0
 var _visit_time := 0.0
 var _rng := RandomNumberGenerator.new()
@@ -63,26 +70,32 @@ func body() -> MeshInstance3D:
 	return _body
 
 
-## Someone coming over: he stops where he is and turns to them.
+## Someone coming over: he goes on to where he was heading (or, if that's
+## only a way by, to the next place on from it) and waits there for them.
 func visit(who: Node3D) -> void:
 	visitor = who
 	_visit_time = 0.0
-	if _to != "":
-		# Stopped on the way: wherever he is now counts as where he was going.
-		at = _to
-		_to = ""
-	_play("Idle")
+	_meet = _to if _to != "" else at
+	if _meet in through:
+		var on: Array = links.get(_meet, []).filter(func(n): return not n in through)
+		if not on.is_empty():
+			_meet = on[0]
+	if _to == "":
+		_play("Idle")
 
 
-## Where a visitor stands to talk to him: in front of him, on their side -
-## or, him inside the stall, at its counter.
+## Where a visitor stands to talk to him: in front of where he'll be met,
+## on their side - or where that place says (the counter, him inside).
 func visit_spot(from: Vector3) -> Vector3:
-	if at == "inside" and places.has("counter"):
-		return places.counter[0]
-	var d := from - global_position
+	var node := _meet if _meet != "" else at
+	if meet_at.has(node) and places.has(meet_at[node]):
+		var m: Vector3 = places[meet_at[node]][0]
+		return Vector3(m.x, 0.0, m.z)
+	var here: Vector3 = places[node][0] if places.has(node) else global_position
+	var d := from - here
 	d.y = 0.0
 	d = d.normalized() if d.length() > 0.01 else Vector3.BACK
-	var p := global_position + d * 1.1
+	var p := here + d * 1.1
 	return Vector3(p.x, 0.0, p.z)
 
 
@@ -93,6 +106,7 @@ func talk() -> void:
 ## The visit over: a moment, then on his way.
 func release() -> void:
 	visitor = null
+	_meet = ""
 	_wait = _rng.randf_range(2.0, 4.0)
 	_play("Idle")
 
@@ -103,17 +117,23 @@ func _process(delta: float) -> void:
 		if not is_instance_valid(visitor) or _visit_time > VISIT_TIMEOUT:
 			release()
 			return
-		var to := _yaw_to(visitor.global_position)
-		rotation.y = lerp_angle(rotation.y, to, minf(delta * 5.0, 1.0))
-		return
-	if _to == "":
+		if _to == "" and at != _meet and links.get(at, []).has(_meet):
+			_go(_meet)
+		if _to == "":
+			var to := _yaw_to(visitor.global_position)
+			rotation.y = lerp_angle(rotation.y, to, minf(delta * 5.0, 1.0))
+			return
+	elif _to == "":
 		if at != "":
 			rotation.y = lerp_angle(rotation.y, _yaw_to(places[at][1]), minf(delta * 3.0, 1.0))
 		_wait -= delta
 		if _wait <= 0.0 and links.has(at):
-			var next: Array = links[at]
-			_to = next[_rng.randi() % next.size()]
-			_play("Walk")
+			# On somewhere new - not straight back the way he came, unless
+			# that's the only way.
+			var next: Array = links[at].filter(func(n): return n != _from)
+			if next.is_empty():
+				next = links[at]
+			_go(next[_rng.randi() % next.size()])
 		return
 	var goal: Vector3 = places[_to][0]
 	var way := goal - position
@@ -122,16 +142,24 @@ func _process(delta: float) -> void:
 	way.y = 0.0
 	if way.length() < 0.02:
 		position = goal
+		_from = at
 		at = _to
 		_to = ""
-		_wait = _rng.randf_range(STAY.x, STAY.y)
-		_play("Idle")
+		# Round the back he doesn't stop; inside he stays a good while.
+		_wait = 0.0 if at in through else _rng.randf_range(STAY.x, STAY.y) * (1.6 if at == "inside" else 1.0)
+		if _wait > 0.0 or visitor != null:
+			_play("Idle")
 		return
 	var dir := way.normalized()
 	rotation.y = lerp_angle(rotation.y, atan2(dir.x, dir.z), minf(delta * 6.0, 1.0))
 	var stride := minf(SPEED * delta, way.length())
 	position += dir * stride
 	position.y += rise * stride / way.length()
+
+
+func _go(place: String) -> void:
+	_to = place
+	_play("Walk")
 
 
 func _play(clip: String) -> void:

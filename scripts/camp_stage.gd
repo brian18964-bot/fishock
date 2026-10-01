@@ -57,19 +57,39 @@ const STONE_SCALE := 0.6
 const HUT_AT := Vector3(6.1, 0.0, -6.0)
 const HUT_YAW := -0.95
 const HUT_SCALE := 0.8
-## Where the frog merchant potters (the stall's own frame, before its
-## scale): by the counter's corner, out front, round the right side,
-## inside behind the counter (on the stall's floor, 0.7 up).
+## Where the frog merchant potters, round his stall (its own frame, before
+## its scale): its front corners and counter, its sides, round the back
+## (the way in - user request: not through the walls) and inside behind
+## the counter (on the stall's floor, 0.7 up); "counter" is where a
+## visitor stands while he's inside.
 const MERCHANT_PLACES := {
-	"corner": Vector3(1.9, 0.0, 1.5), "front": Vector3(-0.3, 0.0, 2.1),
-	"side": Vector3(2.2, 0.0, -0.4), "inside": Vector3(0.2, 0.7, 0.05),
-	"counter": Vector3(0.2, 0.0, 2.0),
+	"corner": Vector3(1.9, 0.0, 1.5), "front": Vector3(-0.3, 0.0, 2.1), "front_l": Vector3(-2.0, 0.0, 1.5),
+	"side_r": Vector3(2.3, 0.0, -0.3), "side_l": Vector3(-2.3, 0.0, -0.3),
+	"back_r": Vector3(2.1, 0.0, -2.0), "back_l": Vector3(-2.1, 0.0, -2.0), "back": Vector3(0.3, 0.0, -2.2),
+	"inside": Vector3(0.2, 0.7, 0.05), "counter": Vector3(0.2, 0.0, 2.0),
+}
+## ... and out from it (the camp's frame): to the foot of the dock, out on
+## it by his boat, and a spot on the open ground toward the camp - still
+## well clear of the fire.
+const MERCHANT_OUT := {
+	"dock_base": Vector3(3.0, 0.0, -6.6), "dock": Vector3(3.15, 0.225, -8.2), "lookout": Vector3(3.5, 0.0, -4.3),
+}
+## His ways between them (none through the stall: in by the back).
+const MERCHANT_LINKS := {
+	"inside": ["back"], "back": ["inside", "back_l", "back_r"],
+	"back_l": ["back", "side_l"], "back_r": ["back", "side_r"],
+	"side_l": ["back_l", "front_l"], "side_r": ["back_r", "corner"],
+	"corner": ["side_r", "front", "lookout"], "front": ["corner", "front_l", "lookout"],
+	"front_l": ["front", "side_l", "dock_base"], "dock_base": ["front_l", "dock", "lookout"],
+	"dock": ["dock_base"], "lookout": ["corner", "front", "dock_base"],
 }
 ## The frog's size (the model is 1.25 m): small enough to stand inside.
 const MERCHANT_SCALE := 0.7
 const DOCK_AT := Vector3(2.9, 0.0, -7.05)
-## The boat moored alongside the dock (its right side), bow to the shore.
-const BOAT_AT := Vector3(4.05, 0.02, -9.55)
+## The boat moored alongside the dock (its right side), bow to the shore;
+## the pack's boat drawn in to 60% of its length (user request).
+const BOAT_AT := Vector3(4.05, 0.02, -8.95)
+const BOAT_LENGTH := 0.6
 const LAKE_CENTER := Vector3(0.0, 0.0, -20.6)
 const LAKE_RADIUS := 13.5
 const MOON_DIR := Vector3(0.1, 0.17, -1.0)
@@ -978,23 +998,26 @@ func _stall() -> void:
 	lamp_light.position = Vector3(0.0, 2.2, 1.6)
 	hut.add_child(lamp_light)
 	_hotspot("shop", hut, "商人", HUT_AT + Vector3(0, 1.2, 0), 1.3)
-	# The merchant, pottering about: by the counter, out front, round the
-	# side, inside behind the counter, down by his boat.
+	# The merchant, pottering about his stall and down to his boat.
 	var t := hut.transform
 	var camp := Vector3(0.6, 0, 1.0)
 	merchant = CampMerchant.new()
 	merchant.name = "Merchant"
-	merchant.places = {
-		"corner": [t * MERCHANT_PLACES.corner, camp],
-		"front": [t * MERCHANT_PLACES.front, camp],
-		"side": [t * MERCHANT_PLACES.side, t * Vector3(3.0, 0, -0.5)],
-		"inside": [t * MERCHANT_PLACES.inside, t * Vector3(0, 0, 3.0)],
-		"boat": [DOCK_AT + Vector3(0.95, 0, 0.35), BOAT_AT],
-		# Not his to walk to: where a visitor stands while he's inside.
-		"counter": [t * MERCHANT_PLACES.counter, t * MERCHANT_PLACES.inside],
-	}
-	merchant.links = {"corner": ["front", "side", "boat"], "front": ["corner"], "side": ["corner", "inside"],
-		"inside": ["side"], "boat": ["corner"]}
+	for name in MERCHANT_PLACES:
+		merchant.places[name] = [t * MERCHANT_PLACES[name], camp]
+	merchant.places.inside[1] = t * Vector3(0, 0, 3.0)
+	merchant.places.counter[1] = t * MERCHANT_PLACES.inside
+	for name in ["side_r", "side_l"]:
+		merchant.places[name][1] = t * (MERCHANT_PLACES[name] * 2.0)
+	for name in MERCHANT_OUT:
+		merchant.places[name] = [MERCHANT_OUT[name], camp]
+	merchant.places.dock[1] = BOAT_AT
+	merchant.places.dock_base[1] = BOAT_AT
+	merchant.links = MERCHANT_LINKS
+	# Round the back he only passes by; at the counter he doesn't stand
+	# (a visitor does); on the dock he's met at its foot.
+	merchant.through = ["back", "back_l", "back_r"]
+	merchant.meet_at = {"inside": "counter", "dock": "dock_base"}
 	merchant.at = "corner"
 	merchant.scale = Vector3.ONE * MERCHANT_SCALE
 	add_child(merchant)
@@ -1003,8 +1026,9 @@ func _stall() -> void:
 	_boat = CampModel.make("boat")
 	_boat.position = BOAT_AT
 	_boat.rotation.y = PI / 2.0
+	_boat.scale = Vector3(BOAT_LENGTH, 1.0, 1.0)
 	add_child(_boat)
-	_hotspot("shop", _boat, "商人", BOAT_AT + Vector3(0, 0.6, 0), 1.6, 0.015)
+	_hotspot("shop", _boat, "商人", BOAT_AT + Vector3(0, 0.6, 0), 1.2, 0.015)
 
 
 ## A dock into the lake, planks on posts.

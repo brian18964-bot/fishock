@@ -1736,7 +1736,7 @@ func test_camp_life() -> void:
 	var gap := frog.global_position - life.pivot.position
 	gap.y = 0.0
 	var facing := Vector3(sin(life.pivot.rotation.y), 0, cos(life.pivot.rotation.y))
-	check(talked and gap.length() < 1.4 and facing.dot(gap.normalized()) > 0.9,
+	check(talked and gap.length() < 2.0 and facing.dot(gap.normalized()) > 0.9,
 		"it walks up to him, face to face, and he talks (%.2f m)" % gap.length())
 	for _i in 900:
 		await frames(1)
