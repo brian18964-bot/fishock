@@ -63,6 +63,7 @@ const HUT_SCALE := 0.8
 const MERCHANT_PLACES := {
 	"corner": Vector3(1.9, 0.0, 1.5), "front": Vector3(-0.3, 0.0, 2.1),
 	"side": Vector3(2.2, 0.0, -0.4), "inside": Vector3(0.2, 0.7, 0.05),
+	"counter": Vector3(0.2, 0.0, 2.0),
 }
 ## The frog's size (the model is 1.25 m): small enough to stand inside.
 const MERCHANT_SCALE := 0.7
@@ -75,10 +76,9 @@ const MOON_DIR := Vector3(0.1, 0.17, -1.0)
 ## The logs to sit on by the fire (thicker than the pack's log, so the
 ## hips sit on it: its top at about 0.52 m): [where, which way one sits on
 ## it (null: facing the fire)] - the second lies across behind the fire,
-## sat on facing out. And the chopping block by the woodpile.
+## sat on facing out. And the woodpile by the tent.
 const SEATS := [[Vector3(-0.75, 0.0, -0.6), null], [Vector3(1.95, 0.0, -1.45), Vector3(0, 0, 1)]]
 const SEAT_SCALE := Vector3(1.18, 1.18, 1.15)
-const BLOCK_AT := Vector3(-1.45, 0.0, -2.25)
 const WOODPILE_AT := Vector3(-2.0, 0.0, -2.6)
 ## The water in the cut drum (its surface's height and size).
 const TROUGH_WATER := [0.33, Vector2(0.84, 0.52)]
@@ -225,8 +225,6 @@ func _places() -> void:
 	_spot("trough", TROUGH_AT + Vector3(-0.78, 0, 0.1), TROUGH_AT)
 	_spot("lean", DRUM_AT + Vector3(0, 0, 0.3), DRUM_AT + Vector3(0, 0, -3.0))
 	_spot("lake", Vector3(1.3, 0, -6.35), Vector3(1.7, 0, -10.0))
-	var stall_front := Vector3(sin(HUT_YAW), 0, cos(HUT_YAW))
-	_spot("merchant", HUT_AT + stall_front * 1.6, HUT_AT)
 	_spot("gather_0", Vector3(-2.3, 0, 1.6), Vector3(-2.6, 0, 2.6))
 	_spot("gather_1", Vector3(1.9, 0, 1.6), Vector3(2.2, 0, 2.6))
 	_spot("gather_2", Vector3(-0.7, 0, 1.95), Vector3(-0.9, 0, 3.0))
@@ -245,7 +243,7 @@ func _places() -> void:
 		[FIRE_AT, 0.75], [CRATE_AT + Vector3(0.22, 0, -0.15), 0.6], [CRATE_AT - Vector3(0.22, 0, -0.15), 0.6],
 		[BACKPACK_AT, 0.3], [DRUM_AT, 0.42], [DRUM_2_AT, 0.42],
 		[TROUGH_AT + Vector3(0, 0, 0.36), 0.42], [TROUGH_AT - Vector3(0, 0, 0.36), 0.42],
-		[WOODPILE_AT, 0.5], [BLOCK_AT, 0.26], [ROD_AT, 0.2], [TENT_AT, 1.45], [STONE_AT, 0.62], [HUT_AT, 1.05],
+		[WOODPILE_AT, 0.5], [ROD_AT, 0.2], [TENT_AT, 1.45], [STONE_AT, 0.62], [HUT_AT, 1.05],
 	]
 	for i in SEATS.size():
 		var f := seat_facing(i)
@@ -825,18 +823,7 @@ func _seats() -> void:
 		# Lying across the way one sits on it (its length along its z).
 		var f := seat_facing(i)
 		_put("log", SEATS[i][0], atan2(-f.z, f.x)).scale = SEAT_SCALE
-	# The chopping block: a round of a trunk on end.
-	var block := MeshInstance3D.new()
-	block.name = "Block"
-	var bm := CylinderMesh.new()
-	bm.top_radius = 0.2
-	bm.bottom_radius = 0.23
-	bm.height = 0.36
-	bm.radial_segments = 12
-	block.mesh = bm
-	block.material_override = _mat(Color(0.2, 0.14, 0.09), 0.95)
-	block.position = BLOCK_AT + Vector3(0, 0.18, 0)
-	add_child(block)
+	# A few logs stacked by the tent.
 	for k in 3:
 		var l := _put("log", WOODPILE_AT + Vector3(-0.05 + k * 0.05, 0.17 if k == 2 else 0.0, -0.15 + k * 0.24 - (0.12 if k == 2 else 0.0)), 1.5)
 		if l != null:
@@ -1003,6 +990,8 @@ func _stall() -> void:
 		"side": [t * MERCHANT_PLACES.side, t * Vector3(3.0, 0, -0.5)],
 		"inside": [t * MERCHANT_PLACES.inside, t * Vector3(0, 0, 3.0)],
 		"boat": [DOCK_AT + Vector3(0.95, 0, 0.35), BOAT_AT],
+		# Not his to walk to: where a visitor stands while he's inside.
+		"counter": [t * MERCHANT_PLACES.counter, t * MERCHANT_PLACES.inside],
 	}
 	merchant.links = {"corner": ["front", "side", "boat"], "front": ["corner"], "side": ["corner", "inside"],
 		"inside": ["side"], "boat": ["corner"]}

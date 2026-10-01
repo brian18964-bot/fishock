@@ -6,6 +6,8 @@ is read and cut down here with numpy, and each part coloured by hand:
 
   python3 tools/prep_frog.py frog.obj OUT_DIR      (numpy, scipy, fast-simplification)
 
+(Its palette is also read by tools/rig_frog.py, in Blender - hence the
+imports kept inside the functions that need them.)
 writes OUT_DIR/frog_low.npz (the game mesh, ~LOW triangles, a colour per
 face; frog_high.npz, the finer copy the colours were worked out on).
 tools/build_camp_models.py frog_merchant takes it from there. Like the
@@ -13,10 +15,7 @@ other source packs, the sculpt stays out of the repo.
 """
 import sys
 
-import fast_simplification
 import numpy as np
-import scipy.sparse as sp
-from scipy.sparse.csgraph import connected_components
 
 LOW = 18000
 HIGH = 300000
@@ -83,6 +82,8 @@ def read_obj(path):
 
 
 def shells(V, f):
+    import scipy.sparse as sp
+    from scipy.sparse.csgraph import connected_components
     n = len(V)
     i = np.r_[f[:, 0], f[:, 1], f[:, 2], f[:, 1], f[:, 2], f[:, 0]]
     j = np.r_[f[:, 1], f[:, 2], f[:, 0], f[:, 0], f[:, 1], f[:, 2]]
@@ -142,6 +143,7 @@ def paint(V, F, G):
 def cut_down(V, F, region, total):
     """Each region (one colour of one polygroup) brought down on its own, so
     the colours keep clean edges."""
+    import fast_simplification
     Vs, Fs, Rs = [], [], []
     off = 0
     for r in np.unique(region):

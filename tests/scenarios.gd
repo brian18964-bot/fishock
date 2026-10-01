@@ -1719,6 +1719,30 @@ func test_camp_life() -> void:
 		life._plan = life._choose()
 		check(life.activity == "sit" and not life._plan.any(func(st): return st.get("clip", "") == "Sitting_Exit"),
 			"spent, it never gets up")
+	# A word with the frog merchant: he stops for it, they face each other,
+	# he talks back, then goes on his way.
+	Profile.spirit = 80.0
+	life._plan = life._activity("merchant", 3)
+	life._step = {}
+	life._next()
+	var frog: CampMerchant = camp.merchant
+	check(frog.visitor == life.pivot, "the merchant stops for the visit")
+	var talked := false
+	for _i in 1500:
+		await frames(1)
+		if frog._anim != null and frog._anim.current_animation == "Talk":
+			talked = true
+			break
+	var gap := frog.global_position - life.pivot.position
+	gap.y = 0.0
+	var facing := Vector3(sin(life.pivot.rotation.y), 0, cos(life.pivot.rotation.y))
+	check(talked and gap.length() < 1.4 and facing.dot(gap.normalized()) > 0.9,
+		"it walks up to him, face to face, and he talks (%.2f m)" % gap.length())
+	for _i in 900:
+		await frames(1)
+		if frog.visitor == null:
+			break
+	check(frog.visitor == null, "and he goes on his way after")
 	# A page: it holds still.
 	title.open_page("shop")
 	await frames(2)

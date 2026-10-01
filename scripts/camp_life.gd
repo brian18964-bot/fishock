@@ -169,13 +169,17 @@ func _next() -> void:
 				_step = {}
 				continue
 			"walk":
-				_path = stage.route(pivot.position, _step.to)
+				# A place worked out as it sets off ("spot", e.g. by the
+				# merchant wherever he is) or fixed when planned ("to").
+				var to: Vector3 = _step.to if _step.has("to") else stage.spots[_step.spot].at
+				_path = stage.route(pivot.position, to)
 				# Set pieces go briskly (a tap skips them anyway).
 				_pace = PACE[tier()] if busy == "" else 1.25
 				_play("Walk", 0.25)
 				rig.anim.speed_scale = _pace
 			"face":
-				_yaw_to = _yaw_of(_step.at - pivot.position)
+				var look: Vector3 = _step.at if _step.has("at") else stage.spots[_step.spot].face
+				_yaw_to = _yaw_of(look - pivot.position)
 				if not seated and rig.anim.current_animation != "Idle":
 					_play("Idle", 0.25)
 			"play":
@@ -313,8 +317,19 @@ func _activity(name: String, t: int) -> Array:
 		"lake":
 			return _go("lake") + [{"do": "loop", "clip": "Idle_FoldArms", "time": _rng.randf_range(5.0, 8.0)}]
 		"merchant":
-			return _go("merchant") + [{"do": "loop", "clip": "Idle_Talking", "time": _rng.randf_range(4.0, 7.0)},
-				{"do": "play", "clip": "Yes"}]
+			# A word with the frog merchant (user request): he stops where he
+			# is and turns to it; it walks up to him, face to face; he talks
+			# back; then he goes on his way.
+			var m := stage.merchant
+			if m == null:
+				return [{"do": "loop", "clip": "Idle_FoldArms", "time": 3.0}]
+			return [{"do": "call", "fn": func():
+					m.visit(pivot)
+					stage.spots["visit"] = {"at": m.visit_spot(pivot.position), "face": m.global_position}},
+				{"do": "walk", "spot": "visit"}, {"do": "face", "spot": "visit"},
+				{"do": "call", "fn": func(): m.talk()},
+				{"do": "loop", "clip": "Idle_Talking", "time": _rng.randf_range(4.0, 7.0)},
+				{"do": "play", "clip": "Yes"}, {"do": "call", "fn": func(): m.release()}]
 		"warm":
 			var plan := _go("warm") + [{"do": "loop", "clip": "Idle", "time": _rng.randf_range(3.0, 5.0)}]
 			if _rng.randf() < 0.5:

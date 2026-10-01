@@ -705,21 +705,46 @@ def frog_merchant():
     """The merchant: the frog wanderer (ASSET2's ZBrush sculpt), cut down and
     coloured part by part by tools/prep_frog.py. Its parts are plain
     colours, so they stay as the mesh's vertex colours (no picture: an
-    unwrap of a sculpt this size is all crumbs). Facing +z (the sculpt's
-    front)."""
+    unwrap of a sculpt this size is all crumbs). Rigged and animated by
+    tools/rig_frog.py (Idle, Walk, Talk). Facing +z (the sculpt's front)."""
+    import numpy as np
+    import rig_frog
     fresh()
-    o = _npz_mesh(os.path.join(SRC, "frog", "frog_low.npz"), "frog_merchant")
+    path = os.path.join(SRC, "frog", "frog_low.npz")
+    o = _npz_mesh(path, "frog_merchant")
+    d = np.load(path)
+    V, F, C = d["V"], d["F"], d["C"]
+    # The sculpt -> metres, standing on the ground (as _npz_mesh lays it, then
+    # place()).
+    k = 1.25 / float(V[:, 1].max() - V[:, 1].min())
+    lo_y = float(V[:, 1].min())
+    cx = float(V[:, 0].max() + V[:, 0].min()) / 2
+    cz = float(V[:, 2].max() + V[:, 2].min()) / 2
+
+    def to_blender(p):
+        return Vector(((p[0] - cx) * k, -(p[2] - cz) * k, (p[1] - lo_y) * k))
+
     place([o], height=1.25)
     o.data.materials.clear()
     for p in o.data.polygons:
         p.use_smooth = True
-    select([o])
+    # Each vertex's colour (its faces all share one).
+    Cv = np.zeros((len(V), 3), np.float32)
+    for j in range(3):
+        Cv[F[:, j]] = C
+    if len(o.data.vertices) != len(V):
+        raise SystemExit("frog mesh changed size (%d vs %d)" % (len(o.data.vertices), len(V)))
+    arm = rig_frog.armature(to_blender)
+    rig_frog.skin(o, arm, V, Cv)
+    rig_frog.animate(arm)
+    select([arm, o], active=arm)
     colours = {"export_vertex_color": "ACTIVE"} if "export_vertex_color" in \
         bpy.ops.export_scene.gltf.get_rna_type().properties.keys() else {"export_colors": True}
     bpy.ops.export_scene.gltf(filepath=os.path.join(OUT, "frog_merchant.glb"), export_format='GLB',
-                              use_selection=True, export_apply=True, export_materials='NONE',
-                              export_texcoords=False, export_normals=True, export_yup=True, **colours)
-    print("built frog_merchant", tris(o), "tris", flush=True)
+                              use_selection=True, export_materials='NONE', export_texcoords=False,
+                              export_normals=True, export_yup=True, export_animation_mode="NLA_TRACKS",
+                              export_def_bones=False, **colours)
+    print("built frog_merchant", tris(o), "tris, rigged", flush=True)
 
 
 def _leaf_picture(path, size=256):
