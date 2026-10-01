@@ -1497,7 +1497,7 @@ func test_main_menu() -> void:
 	check(rig.anim != null and rig.anim.is_playing(), "it breathes (idle)")
 	check(title.find_child("Settings", true, false) != null, "the settings gear")
 	# User feedback: the crickets were loud and steady - softer now, and now
-	# and then they fade away to nothing and strike up again all at once.
+	# and then they fade away to nothing and take up again little by little.
 	var crickets: CampCrickets = title.find_child("Crickets", true, false)
 	check(crickets != null and crickets.playing, "the crickets sing")
 	crickets._enter(CampCrickets.State.SING, 0.05)
@@ -1507,9 +1507,13 @@ func test_main_menu() -> void:
 	await seconds(0.4)
 	check(crickets.state == CampCrickets.State.HUSH and crickets.volume_db <= CampCrickets.SILENT_DB + 0.1, "until they can't be heard")
 	crickets._enter(CampCrickets.State.HUSH, 0.05)
-	await seconds(0.7)
+	await seconds(0.3)
+	check(crickets.state == CampCrickets.State.RISE and crickets._span >= CampCrickets.RISE.x
+		and crickets.volume_db < CampCrickets.LEVEL_DB - 20.0, "and come back slowly, not all at once")
+	crickets._enter(CampCrickets.State.RISE, 0.1)
+	await seconds(0.3)
 	check(crickets.state == CampCrickets.State.SING and absf(crickets.volume_db - CampCrickets.LEVEL_DB) <= CampCrickets.SWELL_DB + 0.1,
-		"and come back all at once, softly")
+		"to their soft song")
 	for want in ["Play", "Multiplayer"]:
 		check(title.find_child(want, true, false) != null, "main screen has " + want)
 	# The pages are the camp's things: the crate, the backpack, the tent, the

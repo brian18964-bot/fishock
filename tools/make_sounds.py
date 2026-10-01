@@ -580,8 +580,11 @@ def amb_camp():
         pop = bandpass(white(g), RNG.uniform(1800, 3500), 2000) * env_ad(int(g * SR), 0.0005, 0.006)
         place(pops, pop * RNG.uniform(0.4, 1.0), RNG.uniform(0, d - g))
     lap = lowpass(white(d), 600) * (0.3 + 0.7 * np.clip(np.sin(2 * np.pi * t / 3.4) + np.sin(2 * np.pi * t / 5.3 + 1), 0, None))
-    x = wind + roar + crackle * 0.45 + pops * 0.7 + lap * 0.12
-    return norm(loopify(x, 1.0), 0.45)
+    fire = roar + crackle * 0.45 + pops * 0.7
+    # The fire 20% quieter (user feedback), the rest as it was: levelled by
+    # the mix with the fire at full.
+    level = 0.45 / np.max(np.abs(loopify(wind + fire + lap * 0.12, 1.0)))
+    return loopify(wind + fire * 0.8 + lap * 0.12, 1.0) * level
 
 
 def camp_crickets_loop():

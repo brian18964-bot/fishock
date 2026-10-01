@@ -4,19 +4,21 @@ extends AudioStreamPlayer
 ## User feedback: the camp's crickets were too loud and too steady. They
 ## sing softly now (well under the fire and the lake), swelling and easing
 ## a little; now and then they hush, fading away until they can't be heard,
-## and after a while strike up again all at once - as crickets do.
+## and after a while take up again little by little - not all at once
+## (user feedback).
 
 const SOUND := "camp_crickets_loop"
-const LEVEL_DB := -23.0
+## 40% under the first take (-23 dB), user feedback.
+const LEVEL_DB := -27.4
 ## The slow swell either side of LEVEL_DB.
 const SWELL_DB := 2.5
 const SILENT_DB := -60.0
 ## How long they sing between hushes, how long the hush takes to fall
-## away, how long it lasts, and how quickly they come back.
-const SING := Vector2(18.0, 50.0)
+## away, how long it lasts, and how slowly they come back.
+const SING := Vector2(18.0, 30.0)
 const FALL := Vector2(2.5, 6.0)
-const HUSH := Vector2(4.0, 14.0)
-const RISE := Vector2(0.15, 0.5)
+const HUSH := Vector2(10.0, 18.0)
+const RISE := Vector2(4.0, 8.0)
 
 enum State { SING, FALL, HUSH, RISE }
 
