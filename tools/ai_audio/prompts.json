@@ -1,0 +1,81 @@
+{
+  "_說明": "每一項的 name 就是遊戲裡的音效名稱（assets/audio/<name>）。生成後經 finish.py 轉成 <name>.ogg 放進 assets/audio/，遊戲會自動用它取代原本的合成音。prompt 用英文效果最好；voice 的台詞用繁體中文。",
+
+  "music": [
+    {"name": "music_camp", "duration": 120, "bpm": 72, "key": "D minor", "time_signature": "3",
+     "prompt": "Quiet night at a campfire beside a misty lake. Solo fingerpicked nylon guitar and a soft medieval lute, warm low cello sustains, faint music-box twinkles, gentle and cozy but a little lonely, fantasy RPG rest-area theme, sparse, unhurried, no drums, instrumental, seamless loop"},
+    {"name": "music_night", "duration": 120, "bpm": 60, "key": "A minor", "time_signature": "4",
+     "prompt": "Night fishing on a dark haunted lake. Low eerie drones, slow plucked kalimba motif, distant breathy choir, soft muffled taiko like a heartbeat, creeping tension without jump scares, dark fantasy horror ambience, minimal, instrumental, seamless loop"},
+    {"name": "music_day", "duration": 120, "bpm": 92, "key": "G major", "time_signature": "4",
+     "prompt": "Bright peaceful lakeside morning. Light acoustic guitar strumming, wooden flute melody, soft hand percussion and shaker, birds-in-the-air feeling, relaxed fishing adventure, cozy indie game soundtrack, instrumental, seamless loop"}
+  ],
+
+  "ambience": [
+    {"name": "amb_camp", "seconds": 30, "prompt": "Night at a lakeside campfire: steady crackling and popping wood fire, soft wind through pine trees, distant crickets, an occasional frog croak, gentle water lapping, calm, no music, no voices"},
+    {"name": "amb_night", "seconds": 30, "prompt": "Deep night at a dark forest lake: quiet water lapping on the shore, crickets and frogs far away, an owl hooting once in the distance, faint cold wind, eerie stillness, no music, no voices"},
+    {"name": "amb_water", "seconds": 30, "prompt": "Close lakeshore: small waves lapping against stones and a wooden dock, soft gurgling, light breeze, night, no music"},
+    {"name": "amb_wind", "seconds": 30, "prompt": "Cold night wind moving through tall pine trees, branches creaking softly, gusts rising and falling, lonely open landscape, no music"},
+    {"name": "amb_rain", "seconds": 30, "prompt": "Steady rain falling on a lake and on leaves, drops on wood and water, soft and continuous, distant rumble, no music"},
+    {"name": "amb_surf", "seconds": 30, "prompt": "Ocean surf at night on a rocky beach, waves rolling in and washing back over pebbles, wind, no music"},
+    {"name": "amb_swamp", "seconds": 30, "prompt": "Night swamp: many frogs croaking in chorus, insects buzzing, bubbling mud, dripping water, humid and dense, no music"},
+    {"name": "amb_jungle", "seconds": 30, "prompt": "Tropical jungle at night: dense insects, strange bird calls, tree frogs, dripping leaves, distant river, no music"},
+    {"name": "amb_day", "seconds": 30, "prompt": "Sunny morning by a forest lake: songbirds chirping, light breeze in leaves, gentle water, peaceful, no music"}
+  ],
+
+  "sfx": [
+    {"name": "splash", "seconds": 2, "prompt": "A large fish thrashing and splashing at the surface of a lake, a big heavy water splash"},
+    {"name": "splash_small", "seconds": 1, "prompt": "A small quick water splash, a little fish jumping and falling back into a lake"},
+    {"name": "plop", "seconds": 1, "prompt": "A fishing float and lure landing in calm water, a soft single plop"},
+    {"name": "cast", "seconds": 2, "prompt": "Casting a fishing rod: a fast whoosh of the rod through the air and fishing line zipping off a spinning reel"},
+    {"name": "reel_loop", "seconds": 4, "prompt": "Steady clicking ratchet of a fishing reel being wound continuously, mechanical, even rhythm"},
+    {"name": "catch", "seconds": 2, "prompt": "A wet fish pulled out of the water and landing on wooden planks, a satisfying wet slap"},
+    {"name": "flop", "seconds": 2, "prompt": "A fish flopping and slapping on a wooden dock, wet and lively"},
+    {"name": "snap", "seconds": 1, "prompt": "A taut fishing line snapping suddenly, a sharp twang"},
+    {"name": "nibble", "seconds": 1, "prompt": "A tiny tug on a fishing float, a faint ripple and soft bob in the water"},
+    {"name": "creak_loop", "seconds": 6, "prompt": "An old wooden dock and moored boat creaking slowly as water moves underneath, slow irregular creaks"},
+    {"name": "step_wood", "seconds": 1, "prompt": "A single footstep in a leather boot on hollow wooden planks"},
+    {"name": "step_soft", "seconds": 1, "prompt": "A single footstep on soft grass and earth"},
+    {"name": "step_hard", "seconds": 1, "prompt": "A single footstep on gravel and stone"},
+    {"name": "step_snow", "seconds": 1, "prompt": "A single footstep crunching in fresh snow"},
+    {"name": "ignite", "seconds": 2, "prompt": "Lighting an old oil lantern: a match strike and the wick catching with a soft whoomp of flame"},
+    {"name": "extinguish", "seconds": 2, "prompt": "A small lantern flame being snuffed out, a soft puff and a faint hiss"},
+    {"name": "coins", "seconds": 1, "prompt": "A handful of old metal coins clinking into a leather pouch"},
+    {"name": "thunder", "seconds": 6, "prompt": "Distant rolling thunder over a lake at night, deep and long"},
+    {"name": "moan", "seconds": 3, "prompt": "A low ghostly moan echoing over dark water, eerie and hollow, not too loud"},
+    {"name": "whisper", "seconds": 3, "prompt": "Faint unintelligible ghostly whispers carried by the wind, creepy, breathy"},
+    {"name": "emerge", "seconds": 3, "prompt": "Something large rising slowly out of a dark lake, water pouring off it, dripping and sloshing"},
+    {"name": "heartbeat_loop", "seconds": 4, "prompt": "A tense heartbeat, deep muffled thumps, steady, close and low"},
+    {"name": "rock_flip", "seconds": 1, "prompt": "Turning over a heavy stone on wet earth, a dull scrape and thud"}
+  ],
+
+  "voices": {
+    "merchant": {
+      "_角色": "青蛙商人（營地的商店）",
+      "design": "一位年長的青蛙旅行商人，男聲，嗓音低沉、略帶沙啞和一點鼻音，說話慢條斯理，帶著狡黠和幽默，句尾偶爾拖長，像在打量客人的錢包。",
+      "ref_text": "歡迎、歡迎……這麼晚還出來的客人，可不多呀。",
+      "lines": [
+        {"name": "voice_merchant_hello_1", "text": "歡迎、歡迎……這麼晚還出來的客人，可不多呀。"},
+        {"name": "voice_merchant_hello_2", "text": "喔？又是你啊。今晚想帶點什麼？"},
+        {"name": "voice_merchant_browse", "text": "慢慢看，這些可都是好東西，呱。"},
+        {"name": "voice_merchant_buy", "text": "好眼光！這個賣你，不虧。"},
+        {"name": "voice_merchant_sell", "text": "這條魚……嗯，算你識貨，我收了。"},
+        {"name": "voice_merchant_poor", "text": "錢不夠啊？那下次再來吧，呱。"},
+        {"name": "voice_merchant_bye", "text": "路上小心。湖裡的東西……可不只有魚。"},
+        {"name": "voice_merchant_idle_1", "text": "呱……今晚的霧，特別濃呢。"},
+        {"name": "voice_merchant_idle_2", "text": "燈油要帶夠，黑暗會吃人的。"}
+      ]
+    },
+    "willow": {
+      "_角色": "柳樹精靈（祭壇旁）",
+      "design": "古老柳樹的精靈，女聲，空靈、輕柔，帶著氣聲，語速很慢，語氣溫和卻神秘，像在夜風裡低語。",
+      "ref_text": "孩子……你又回到這片湖了。",
+      "lines": [
+        {"name": "voice_willow_hello", "text": "孩子……你又回到這片湖了。"},
+        {"name": "voice_willow_offer", "text": "把湖的饋贈還給湖吧，它會記得你的。"},
+        {"name": "voice_willow_full", "text": "夠了……石柱已經醒來，快走吧。"},
+        {"name": "voice_willow_evil", "text": "這份祭品……帶著不好的東西。"},
+        {"name": "voice_willow_warn", "text": "小心，牠在霧裡看著你。"}
+      ]
+    }
+  }
+}

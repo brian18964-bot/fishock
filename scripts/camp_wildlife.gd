@@ -2,16 +2,20 @@ class_name CampWildlife
 extends Node3D
 
 ## Now and then (user request: rarely - a small surprise) an animal from
-## the runs' own sheets (Critter.SPECIES) walks along the far bank, a dark
-## shape against the lake: in from one end of `path`, across, and fading
-## out at the other. The sheets are seen from 55deg above, so the side-on
+## the runs' own sheets (Critter.SPECIES) walks along the far bank at the
+## foot of the forest across the lake, a dark shape: fading in somewhere
+## along `path`, walking a stretch of it (WALK m), fading out. The sheets are seen from 55deg above, so the side-on
 ## row (left, mirrored for right) reads as a walking silhouette.
 
 const KINDS := ["deer", "stag", "fox", "wolf"]
 ## Seconds between them.
 const GAP := Vector2(55.0, 130.0)
 const FIRST := Vector2(20.0, 45.0)
-const SPEED := 0.9
+const SPEED := 1.1
+## How far one walks (m), and how much bigger than life it's drawn - so far
+## off it would be a speck.
+const WALK := Vector2(10.0, 16.0)
+const SIZE := 1.5
 const FADE := 1.5
 ## The sheets' density (pixels a metre, as the runs draw them).
 const PIXEL := 1.0 / 44.7
@@ -25,6 +29,9 @@ var _wait := 0.0
 var _walking := false
 var _pos := 0.0
 var _length := 0.0
+## The stretch walked: where it starts along `path`, how long.
+var _from := 0.0
+var _span := 0.0
 var _backward := false
 var _phase := 0.0
 var _data := {}
@@ -55,14 +62,14 @@ func _process(delta: float) -> void:
 			start(KINDS[_rng.randi() % KINDS.size()])
 		return
 	_pos += SPEED * delta
-	if _pos >= _length:
+	if _pos >= _span:
 		_walking = false
 		_sprite.visible = false
 		_wait = _rng.randf_range(GAP.x, GAP.y)
 		return
-	var along := _length - _pos if _backward else _pos
+	var along := _from + (_span - _pos if _backward else _pos)
 	position = _point_at(along)
-	var fade := clampf(minf(_pos, _length - _pos) / (FADE * SPEED), 0.0, 1.0)
+	var fade := clampf(minf(_pos, _span - _pos) / (FADE * SPEED), 0.0, 1.0)
 	_sprite.modulate = Color(SHADE.r, SHADE.g, SHADE.b, SHADE.a * fade)
 	var frames: int = _data.get("frames", 12)
 	_phase += delta * float(_data.get("move_fps", 14.0)) * 0.8
@@ -81,10 +88,12 @@ func start(kind: String) -> void:
 	var cells: int = _data.get("frames", 12) * _data.clips * Critter.ROWS
 	_sprite.hframes = _data.cols
 	_sprite.vframes = ceili(float(cells) / _data.cols)
-	_sprite.pixel_size = PIXEL * _data.get("size", 1.0)
+	_sprite.pixel_size = PIXEL * SIZE * _data.get("size", 1.0)
 	var off: Vector2 = _data.offset
 	_sprite.offset = Vector2(off.x, -off.y)
 	_backward = _rng.randf() < 0.5
+	_span = minf(_rng.randf_range(WALK.x, WALK.y), _length)
+	_from = _rng.randf_range(0.0, _length - _span)
 	_pos = 0.0
 	_phase = 0.0
 	_walking = true

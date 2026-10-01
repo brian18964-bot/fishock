@@ -1141,15 +1141,17 @@ func _stall() -> void:
 	_hotspot("shop", _boat, "商人", BOAT_AT + Vector3(0, 1.1, 0), 1.2, 0.015)
 
 
-## Now and then an animal's dark shape walks along the water's edge, past
-## the 渡石 (user request: a rare surprise), the lake behind it.
+## Now and then an animal's dark shape walks the far bank, at the foot of
+## the forest across the lake (user request: a rare surprise in the
+## distance).
 func _wildlife() -> void:
 	var w := CampWildlife.new()
 	w.name = "Wildlife"
 	var pts := PackedVector3Array()
-	for x in [-8.5, -6.5, -4.6, -2.8, -1.0, 0.6, 2.1]:
+	for i in 15:
+		var x := -21.0 + i * 3.0
 		var k: float = x / (LAKE_RADIUS * 1.9)
-		pts.append(Vector3(x, 0.0, LAKE_CENTER.z + LAKE_RADIUS * sqrt(1.0 - k * k) + 0.15))
+		pts.append(Vector3(x, 0.0, LAKE_CENTER.z - LAKE_RADIUS * sqrt(1.0 - k * k) - 0.6))
 	w.path = pts
 	add_child(w)
 
