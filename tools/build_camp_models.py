@@ -534,6 +534,22 @@ def bookshop():
     export(objs, "bookshop")
 
 
+# The mast stands far above the hull (the hull's top about 1.4 m): above
+# MAST_FROM it's drawn down to MAST_KEEP of its height (user request: 40%
+# shorter).
+MAST_FROM = 1.6
+MAST_KEEP = 0.567
+
+
+def _shorten_mast(objs):
+    for o in objs:
+        for v in o.data.vertices:
+            p = o.matrix_world @ v.co
+            if p.z > MAST_FROM:
+                p.z = MAST_FROM + (p.z - MAST_FROM) * MAST_KEEP
+                v.co = o.matrix_world.inverted() @ p
+
+
 def boat():
     """The covered boat (BoatColor.blend), without its sea."""
     fresh()
@@ -545,6 +561,7 @@ def boat():
     apply_modifiers(objs)
     realize(objs)
     place(objs, length=5.2)
+    _shorten_mast(objs)
     decimate(objs, 5000)
     bake(objs, "boat", 512)
     export(objs, "boat")

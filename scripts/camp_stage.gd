@@ -25,8 +25,8 @@ const STATIONS := {
 	"warehouse": [Vector3(-1.6, 1.5, 2.9), Vector3(-3.05, 0.45, 0.35), 38.0],
 	"equipment": [Vector3(-1.4, 1.7, 1.6), Vector3(-3.4, 0.9, -2.6), 40.0],
 	"shop": [Vector3(3.3, 1.7, -1.3), Vector3(5.9, 1.1, -5.7), 40.0],
-	"fish_tank": [Vector3(1.75, 2.1, 1.6), Vector3(2.8, 0.25, 0.3), 40.0],
-	"fish_log": [Vector3(1.75, 2.1, 1.6), Vector3(2.8, 0.25, 0.3), 40.0],
+	"fish_tank": [Vector3(2.25, 2.1, 1.6), Vector3(3.3, 0.25, 0.3), 40.0],
+	"fish_log": [Vector3(2.25, 2.1, 1.6), Vector3(3.3, 0.25, 0.3), 40.0],
 	"stone": [Vector3(-0.3, 1.8, -1.6), Vector3(-0.5, 0.9, -6.4), 42.0],
 }
 const CHARACTER_AT := Vector3(-0.35, 0.0, 0.6)
@@ -42,7 +42,7 @@ const DRUM_AT := Vector3(0.2, 0.0, -2.05)
 ## A second drum beside it (no lamp).
 const DRUM_2_AT := Vector3(0.95, 0.0, -2.55)
 ## The fish trough out on the right, its length toward the camera.
-const TROUGH_AT := Vector3(2.8, 0.0, 0.3)
+const TROUGH_AT := Vector3(3.3, 0.0, 0.3)
 const TROUGH_YAW := PI / 2.0
 ## The drums made bigger than life, easier to tap (user request: the drum
 ## 20%, the fish trough 30%).
@@ -103,8 +103,11 @@ const MOON_DIR := Vector3(0.1, 0.17, -1.0)
 const SEATS := [[Vector3(-0.75, 0.0, -0.6), null], [Vector3(1.95, 0.0, -1.45), Vector3(0, 0, 1)]]
 const SEAT_SCALE := Vector3(1.18, 1.18, 1.15)
 const WOODPILE_AT := Vector3(-2.0, 0.0, -2.6)
-## The water in the cut drum (its surface's height and size).
+## The water in the cut drum (its surface's height and size), and the lotus
+## leaves floating on it, as in the fish tank page's ([x, z, radius], the
+## drum's own frame).
 const TROUGH_WATER := [0.33, Vector2(0.84, 0.52)]
+const TROUGH_PADS := [[-0.24, 0.08, 0.12], [0.22, -0.11, 0.09], [0.02, 0.15, 0.065]]
 const OUTLINE_COLOR := Color(1.0, 0.78, 0.38)
 
 var camera: Camera3D
@@ -153,6 +156,7 @@ func _ready() -> void:
 	_stone()
 	_stall()
 	_dock()
+	_wildlife()
 	_places()
 	_character()
 	camera = Camera3D.new()
@@ -252,7 +256,7 @@ func _places() -> void:
 	_spot("gather_1", Vector3(1.9, 0, 1.6), Vector3(2.2, 0, 2.6))
 	_spot("gather_2", Vector3(-0.7, 0, 1.95), Vector3(-0.9, 0, 3.0))
 	# Where the reaching hand (CharacterRig.REACH) gets to the lamp's bail.
-	var ahead := -Vector3(0.447, 0, 0.894)
+	var ahead := Vector3(0.6, 0, -0.8)
 	var left := Vector3(ahead.z, 0, -ahead.x)
 	var lamp_at := DRUM_AT + LAMP_ON_DRUM
 	var stand := lamp_at - ahead * CharacterRig.REACH.z - left * CharacterRig.REACH.x
@@ -261,18 +265,30 @@ func _places() -> void:
 	_spot("stone", STONE_AT + Vector3(0, 0, 0.95), STONE_AT)
 	_spot("stone_in", STONE_AT + Vector3(0, 0, 0.12), STONE_AT + Vector3(0, 0, -2.0))
 	_spot("wake", FIRE_AT + Vector3(-0.95, 0, 0.55), FIRE_AT)
-	# What it walks round.
+	# What it walks round: everything on the ground, as capsules [a, b,
+	# radius] (a circle when a == b) - user request: never through things.
+	var crate_dir := Vector3(cos(0.55), 0, -sin(0.55))
+	var crate_half := 0.575 * CRATE_LENGTH - 0.3
+	var t := Transform3D(Basis(Vector3.UP, HUT_YAW).scaled(Vector3.ONE * HUT_SCALE), HUT_AT)
 	obstacles = [
-		[FIRE_AT, 0.75], [CRATE_AT + Vector3(0.22, 0, -0.15), 0.6], [CRATE_AT - Vector3(0.22, 0, -0.15), 0.6],
-		[BACKPACK_AT, 0.3], [DRUM_AT, 0.42], [DRUM_2_AT, 0.42],
-		[TROUGH_AT + Vector3(0, 0, 0.36), 0.42], [TROUGH_AT - Vector3(0, 0, 0.36), 0.42],
-		[WOODPILE_AT, 0.5], [ROD_AT, 0.2], [TENT_AT, 1.45], [STONE_AT, 0.62], [HUT_AT, 1.05],
+		_round(FIRE_AT, 0.62), [CRATE_AT - crate_dir * crate_half, CRATE_AT + crate_dir * crate_half, 0.32],
+		_round(BACKPACK_AT, 0.26), _round(DRUM_AT, 0.36), _round(DRUM_2_AT, 0.36),
+		[TROUGH_AT - Vector3(0, 0, 0.2), TROUGH_AT + Vector3(0, 0, 0.2), 0.4],
+		[WOODPILE_AT + Vector3(-0.55, 0, 0.1), WOODPILE_AT + Vector3(0.55, 0, 0.1), 0.35],
+		_round(ROD_AT, 0.15), _round(TENT_AT, 1.45),
+		[STONE_AT - Vector3(0.9, 0, 0), STONE_AT + Vector3(0.9, 0, 0), 0.25],
+		[t * Vector3(-0.9, 0, 0), t * Vector3(0.9, 0, 0), 0.9],
 	]
 	for i in SEATS.size():
 		var f := seat_facing(i)
 		var along := Vector3(-f.z, 0, f.x)
-		for k in [-0.62, 0.0, 0.62]:
-			obstacles.append([SEATS[i][0] + along * k, 0.3])
+		var at: Vector3 = SEATS[i][0]
+		obstacles.append([at - along * 0.62, at + along * 0.62, 0.34])
+	_build_grid()
+
+
+static func _round(at: Vector3, r: float) -> Array:
+	return [at, at, r]
 
 
 ## The way one sits on seat `i` (flat, unit).
@@ -281,37 +297,114 @@ func seat_facing(i: int) -> Vector3:
 	return face if face != null else _toward(SEATS[i][0], FIRE_AT)
 
 
-## A way from `from` to `to` round what's in the way: the points to walk
-## through, `to` last.
-func route(from: Vector3, to: Vector3) -> Array:
-	var pts: Array = [Vector3(from.x, 0, from.z), Vector3(to.x, 0, to.z)]
-	for _i in 8:
-		var bent := false
-		for k in pts.size() - 1:
-			var a: Vector3 = pts[k]
-			var b: Vector3 = pts[k + 1]
-			for o in obstacles:
-				var c: Vector3 = o[0]
-				var r: float = o[1]
-				# What the ends stand in (a seat by its log) doesn't count.
-				if Vector2(a.x - c.x, a.z - c.z).length() < r or Vector2(b.x - c.x, b.z - c.z).length() < r:
+# ---------------------------------------------------------------- the ways
+
+## The ground the character walks on, in cells (GRID_CELL m), solid where
+## something stands (its body's width round it) or the lake is.
+const GRID_AREA := Rect2(-9.0, -10.0, 19.0, 15.0)
+const GRID_CELL := 0.2
+const BODY := 0.18
+var _grid: AStarGrid2D
+
+
+func _build_grid() -> void:
+	_grid = AStarGrid2D.new()
+	_grid.region = Rect2i(0, 0, ceili(GRID_AREA.size.x / GRID_CELL), ceili(GRID_AREA.size.y / GRID_CELL))
+	_grid.cell_size = Vector2.ONE
+	_grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+	_grid.update()
+	for x in _grid.region.size.x:
+		for y in _grid.region.size.y:
+			var p := _cell_point(Vector2i(x, y))
+			if _in_lake(p, 0.3) or blocked(p, BODY):
+				_grid.set_point_solid(Vector2i(x, y), true)
+
+
+func _cell_of(p: Vector3) -> Vector2i:
+	var c := Vector2i(floori((p.x - GRID_AREA.position.x) / GRID_CELL), floori((p.z - GRID_AREA.position.y) / GRID_CELL))
+	return c.clamp(Vector2i.ZERO, _grid.region.size - Vector2i.ONE)
+
+
+func _cell_point(c: Vector2i) -> Vector3:
+	return Vector3(GRID_AREA.position.x + (c.x + 0.5) * GRID_CELL, 0.0, GRID_AREA.position.y + (c.y + 0.5) * GRID_CELL)
+
+
+## Whether something stands within `pad` of `p` (the ground).
+func blocked(p: Vector3, pad := 0.0) -> bool:
+	for o in obstacles:
+		if _to_segment(p, o[0], o[1]) < float(o[2]) + pad:
+			return true
+	return false
+
+
+static func _to_segment(p: Vector3, a: Vector3, b: Vector3) -> float:
+	var ab := Vector2(b.x - a.x, b.z - a.z)
+	var ap := Vector2(p.x - a.x, p.z - a.z)
+	var t := clampf(ap.dot(ab) / maxf(ab.length_squared(), 0.000001), 0.0, 1.0)
+	return (ap - ab * t).length()
+
+
+## The nearest open cell to `c` (itself if open).
+func _open_near(c: Vector2i) -> Vector2i:
+	if not _grid.is_point_solid(c):
+		return c
+	for r in range(1, 12):
+		var best := Vector2i(-1, -1)
+		var best_d := INF
+		for dx in range(-r, r + 1):
+			for dy in range(-r, r + 1):
+				if maxi(absi(dx), absi(dy)) != r:
 					continue
-				var ab := b - a
-				var t := clampf((c - a).dot(ab) / maxf(ab.length_squared(), 0.0001), 0.0, 1.0)
-				var near := a + ab * t
-				var off := near - c
-				off.y = 0.0
-				if off.length() < r:
-					if off.length() < 0.01:
-						off = Vector3(-ab.z, 0, ab.x)
-					pts.insert(k + 1, c + off.normalized() * (r + 0.3))
-					bent = true
-					break
-			if bent:
-				break
-		if not bent:
-			break
-	return pts.slice(1)
+				var n := c + Vector2i(dx, dy)
+				if _grid.is_in_boundsv(n) and not _grid.is_point_solid(n) and Vector2(dx, dy).length() < best_d:
+					best = n
+					best_d = Vector2(dx, dy).length()
+		if best.x >= 0:
+			return best
+	return c
+
+
+## Whether the straight way a -> b is clear (what a or b stands in, a seat
+## by its log, doesn't count).
+func _clear(a: Vector3, b: Vector3) -> bool:
+	var n := ceili(Vector2(b.x - a.x, b.z - a.z).length() / (GRID_CELL * 0.5))
+	for k in range(1, n):
+		var p := a.lerp(b, float(k) / n)
+		if _in_lake(p, 0.3):
+			return false
+		for o in obstacles:
+			var r: float = o[2]
+			if _to_segment(a, o[0], o[1]) < r + BODY or _to_segment(b, o[0], o[1]) < r + BODY:
+				continue
+			if _to_segment(p, o[0], o[1]) < r + BODY * 0.9:
+				return false
+	return true
+
+
+## A way from `from` to `to` round everything in the way (a search over the
+## ground's cells, then pulled taut): the points to walk through, `to` last.
+func route(from: Vector3, to: Vector3) -> Array:
+	var a := Vector3(from.x, 0, from.z)
+	var b := Vector3(to.x, 0, to.z)
+	if _grid == null or _clear(a, b):
+		return [b]
+	var cells := _grid.get_id_path(_open_near(_cell_of(a)), _open_near(_cell_of(b)), true)
+	if cells.is_empty():
+		return [b]
+	var pts: Array = [a]
+	for c in cells:
+		pts.append(_cell_point(c))
+	pts.append(b)
+	# Pulled taut: from each point, on to the farthest one in a clear line.
+	var out: Array = []
+	var i := 0
+	while i < pts.size() - 1:
+		var j := pts.size() - 1
+		while j > i + 1 and not _clear(pts[i], pts[j]):
+			j -= 1
+		out.append(pts[j])
+		i = j
+	return out
 
 
 ## The 渡石 blazes (someone crossing).
@@ -963,6 +1056,20 @@ void fragment() {
 	water.material_override = _water_mat
 	water.position = Vector3(0, TROUGH_WATER[0], 0)
 	trough.add_child(water)
+	var leaf := CampModel.make("lotus_leaf")
+	if leaf != null:
+		var mat := (leaf.material_override as StandardMaterial3D).duplicate() as StandardMaterial3D
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		mat.albedo_color = Color(0.9, 0.95, 0.85)
+		for pad in TROUGH_PADS:
+			var mi := leaf.duplicate() as MeshInstance3D
+			mi.name = "Pad"
+			mi.material_override = mat
+			mi.scale = Vector3.ONE * pad[2] * 2.0
+			mi.position = Vector3(pad[0], TROUGH_WATER[0] - 0.004, pad[1])
+			mi.rotation.y = pad[0] * 9.0
+			trough.add_child(mi)
+		leaf.free()
 	_hotspot("fish_tank", trough, "魚缸", TROUGH_AT + Vector3(0, 0.3, 0), 0.75, 0.012)
 
 
@@ -1032,6 +1139,19 @@ func _stall() -> void:
 	_boat.scale = Vector3(BOAT_LENGTH, 1.0, 1.0)
 	add_child(_boat)
 	_hotspot("shop", _boat, "商人", BOAT_AT + Vector3(0, 1.1, 0), 1.2, 0.015)
+
+
+## Now and then an animal's dark shape walks along the water's edge, past
+## the 渡石 (user request: a rare surprise), the lake behind it.
+func _wildlife() -> void:
+	var w := CampWildlife.new()
+	w.name = "Wildlife"
+	var pts := PackedVector3Array()
+	for x in [-8.5, -6.5, -4.6, -2.8, -1.0, 0.6, 2.1]:
+		var k: float = x / (LAKE_RADIUS * 1.9)
+		pts.append(Vector3(x, 0.0, LAKE_CENTER.z + LAKE_RADIUS * sqrt(1.0 - k * k) + 0.15))
+	w.path = pts
+	add_child(w)
 
 
 ## A dock into the lake, planks on posts.

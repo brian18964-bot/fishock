@@ -1698,6 +1698,30 @@ func test_camp_life() -> void:
 				clear = false
 		from = p
 	check(clear and path.size() >= 2, "the way to the stone goes round the fire (%d points)" % path.size())
+	# User request: never through anything on the ground - every way between
+	# the camp's spots keeps off the logs, drums, crate, trough, tent...
+	var through := 0
+	for na in camp.spots:
+		for nb in camp.spots:
+			if na == nb:
+				continue
+			var a: Vector3 = camp.spots[na].at
+			var b: Vector3 = camp.spots[nb].at
+			var prev := a
+			for p in camp.route(a, b):
+				var n := int(prev.distance_to(p) / 0.1)
+				for k in range(1, n):
+					var q: Vector3 = prev.lerp(p, float(k) / n)
+					for o in camp.obstacles:
+						if CampStage._to_segment(q, o[0], o[1]) < o[2] - 0.02 \
+								and CampStage._to_segment(a, o[0], o[1]) >= o[2] and CampStage._to_segment(b, o[0], o[1]) >= o[2]:
+							through += 1
+				prev = p
+	check(through == 0, "no way between the spots goes through anything (%d)" % through)
+	var wild: CampWildlife = camp.find_child("Wildlife", true, false)
+	check(wild != null and not wild.walking() and wild.path.size() >= 2, "an animal now and then on the far bank (none at first)")
+	wild.start("deer")
+	check(wild.walking(), "one sets off")
 	# A tap: a wave when busy; worn out, a shake of the head.
 	life._plan.clear()
 	life._step = {}
