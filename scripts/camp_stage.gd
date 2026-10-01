@@ -86,11 +86,12 @@ const MERCHANT_LINKS := {
 ## The frog's size (the model is 1.25 m): small enough to stand inside.
 const MERCHANT_SCALE := 0.7
 const DOCK_AT := Vector3(2.9, 0.0, -7.05)
-## The boat tied up against the dock (its right side), its bow run up on
-## the beach (user request); the pack's boat drawn in to 60% of its length.
+## The boat afloat, tied up against the dock (its right side), its bow
+## just short of the beach (user request); the pack's boat drawn in to 60%
+## of its length.
 ## The model stands on its rudder, its keel half a metre up: sunk so the
 ## hull sits in the water.
-const BOAT_AT := Vector3(3.97, -0.6, -7.7)
+const BOAT_AT := Vector3(3.97, -0.6, -9.05)
 const BOAT_LENGTH := 0.6
 const LAKE_CENTER := Vector3(0.0, 0.0, -20.6)
 const LAKE_RADIUS := 13.5
@@ -212,9 +213,9 @@ func _process(delta: float) -> void:
 	_stone_mat.emission_energy_multiplier = 0.16 + 0.08 * sin(_time * 1.3) + 3.0 * _stone_flare
 	_stone_light.light_energy = 0.25 + 5.0 * _stone_flare
 	# The boat rides the water.
-	# The boat, its bow on the sand, stirs a little on the water.
-	_boat.rotation = Vector3(sin(_time * 0.9) * 0.006, _boat.rotation.y, sin(_time * 0.7 + 1.0) * 0.012)
-	_boat.position.y = BOAT_AT.y + sin(_time * 1.1) * 0.006
+	# The boat, tied up, rocks a little on the water.
+	_boat.rotation = Vector3(sin(_time * 0.9) * 0.01, _boat.rotation.y, sin(_time * 0.7 + 1.0) * 0.02)
+	_boat.position.y = BOAT_AT.y + sin(_time * 1.1) * 0.01
 
 
 # ---------------------------------------------------------------- places
