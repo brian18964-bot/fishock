@@ -277,6 +277,7 @@ func escape() -> void:
 
 
 func reset_run() -> void:
+	last_cause = ""
 	quota_progress = 0.0
 	carried_fish.clear()
 	lure_uid = -1
@@ -321,6 +322,8 @@ func end_run(success: bool, message: String) -> void:
 
 	var final_message := message
 	last_return = "escaped" if success else "lost"
+	if last_cause != "caught":
+		last_cause = "escaped" if success else "lost"
 	if success:
 		final_message += _bring_fish_home()
 		# User request (Camp v2): an escape counts toward the tents and
@@ -403,6 +406,22 @@ func _trigger_night() -> void:
 func grant_heart() -> void:
 	has_heart = true
 	push_message("拿到心臟了！關鍵時刻能救你一命")
+
+
+## User request (Camp v2): not free of the big ghost's grip in time - the
+## run is lost and the traveller wakes back at the camp, shaken.
+const CAUGHT_SPIRIT := 25.0
+## Why the last run ended ("caught": taken by the big ghost), for the end
+## screen.
+var last_cause := ""
+
+
+func caught() -> void:
+	if run_over:
+		return
+	last_cause = "caught"
+	Profile.add_spirit(-CAUGHT_SPIRIT)
+	end_run(false, "被大鬼抓走了……眼前一黑。\n醒來時已經躺在營火邊，精神 -%d" % int(CAUGHT_SPIRIT))
 
 
 func use_heart() -> bool:

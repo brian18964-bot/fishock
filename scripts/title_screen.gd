@@ -73,6 +73,8 @@ func _ready() -> void:
 	Profile.gold_updated.connect(func(_g): _refresh())
 	Profile.profile_changed.connect(_refresh)
 	_refresh()
+	# The minutes rested here since last time (the game closed too).
+	Profile.arrive_at_camp()
 	var back := GameState.last_return
 	GameState.last_return = ""
 	if _stage != null and back != "":
@@ -151,6 +153,11 @@ func _build() -> void:
 	logged.name = "Logged"
 	logged.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_nameplate.add_child(logged)
+	# User request (Camp v2): the spirit, under the name.
+	var spirit := SpiritBar.new()
+	spirit.name = "Spirit"
+	spirit.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_nameplate.add_child(spirit)
 	_nameplate.custom_minimum_size = Vector2(220, 0)
 	_nameplate.position = Vector2(215, 92)
 	_home.add_child(_nameplate)
@@ -473,6 +480,7 @@ func _start_run() -> void:
 	var t := create_tween()
 	t.tween_property(_fade, "color:a", 1.0, 0.45)
 	t.tween_callback(func():
+		Profile.leave_camp()
 		GameState.start_run()
 		get_tree().change_scene_to_file("res://scenes/main.tscn"))
 

@@ -57,6 +57,10 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	# Struggling in the big ghost's grip (a sheet of its own): no rod.
+	visible = not _body.struggling
+	if not visible:
+		return
 	_time += delta
 	var cell: Array = _rod[PlayerVisual.CLIP_NAMES[_body.clip]][_body.dir][_body.frame_in_clip]
 	var grip := Vector2(cell[0], cell[1]) * SPRITE_SCALE

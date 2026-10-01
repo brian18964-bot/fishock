@@ -110,7 +110,7 @@ func _refresh() -> void:
 	for e in Profile.bag:
 		var sz := Items.size_of(e.id)
 		cells += sz.x * sz.y
-	_used.text = "%d / %d 格" % [cells, Inventory.COLS * Inventory.ROWS]
+	_used.text = "%d / %d 格" % [cells, Inventory.COLS * Profile.bag_rows()]
 	# Each tab's count on its button.
 	for k in _tabs:
 		var n := 0

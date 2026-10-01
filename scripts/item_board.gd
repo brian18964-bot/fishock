@@ -381,6 +381,7 @@ class BagGrid extends Control:
 		for x in Inventory.COLS:
 			for y in Inventory.ROWS:
 				UiKit.draw_slot(self, Rect2(Vector2(x, y) * cell, Vector2.ONE * cell).grow(-1.5))
+		UiKit.draw_shut_rows(self, cell)
 		for i in Profile.bag.size():
 			var e: Dictionary = Profile.bag[i]
 			var r := Rect2(Vector2(e.cell) * cell, Vector2(Items.size_of(e.id)) * cell).grow(-3.0)

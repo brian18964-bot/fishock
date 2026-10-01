@@ -44,9 +44,11 @@ def load_library(path):
 
 
 def find(name):
-    # The glTF importer names them "<clip>_<armature>".
+    # The glTF importer names them "<clip>_<armature>" - "Armature.001" and
+    # on when several skeletons are loaded.
     for a in bpy.data.actions:
-        if a.name.split("|")[-1] in (name, name + "_Armature"):
+        base = a.name.split("|")[-1]
+        if base == name or base == name + "_Armature" or base.startswith(name + "_Armature."):
             return a
     raise SystemExit(f"no action {name!r}")
 
@@ -72,15 +74,18 @@ def _average(qs):
 class Clip:
     """A source clip sampled once: per bone, world orientations over
     `samples` evenly spaced frames of the loop (a one-shot clip is sampled
-    start to end inclusive). ref: "rest", "mean" or a frame index."""
+    start to end inclusive; `span` takes part of it). ref: "rest", "mean"
+    or a frame index."""
 
-    def __init__(self, src_arm, action_name, bones, samples, loop=True, ref="mean"):
+    def __init__(self, src_arm, action_name, bones, samples, loop=True, ref="mean", span=(0.0, 1.0)):
         self.action = find(action_name)
         ad = src_arm.animation_data or src_arm.animation_data_create()
         for t in ad.nla_tracks:
             t.mute = True
         ad.action = self.action
         start, end = self.action.frame_range
+        # Only part of it (span: fractions of the way through).
+        start, end = start + (end - start) * span[0], start + (end - start) * span[1]
         n = samples
         self.times = [start + (end - start) * i / (n if loop else max(n - 1, 1)) for i in range(n)]
         self.parent = {}

@@ -17,8 +17,10 @@ const TESTS := [
 	"test_sacrifice_and_altar_stages",
 	"test_turn_rock",
 	"test_escape",
-	"test_big_ghost_caged_without_heart",
+	"test_big_ghost_grab_lost",
 	"test_big_ghost_heart_frees",
+	"test_big_ghost_light_frees",
+	"test_big_ghost_fish_frees",
 	"test_big_ghost_follows_the_light",
 	"test_big_ghost_night_hunt",
 	"test_big_ghost_eats_thrown_fish",
@@ -592,28 +594,92 @@ func _big_ghost_catch() -> Node:
 	return bg
 
 
-func test_big_ghost_caged_without_heart() -> void:
+## User request (Camp v2): caught, there are a few seconds to struggle
+## free; not free in time, the run is lost - the player wakes at the camp,
+## spirit down by 25.
+func test_big_ghost_grab_lost() -> void:
+	Profile.spirit = 80.0
 	var bg = await _big_ghost_catch()
-	for _i in 60 * 30:
+	var grabbed := false
+	for _i in 60 * 20:
+		await get_tree().process_frame
+		if bg.mode == bg.Mode.GRAB:
+			grabbed = true
+			break
+	check(grabbed and player().held and player().struggling, "seized where it stands, struggling")
+	var spot: Vector2 = player().global_position
+	var overlay: Control = main.find_child("Grip", true, false)
+	await frames(2)
+	check(overlay != null and overlay.visible, "the screen closes in")
+	check(not overlay.find_child("UseHeart", true, false).visible, "no heart, no heart button")
+	check(player().get_node("Body").struggling, "the struggle sheet")
+	await seconds(1.0)
+	check(player().global_position.distance_to(spot) < 1.0 and not gs.run_over, "not carried off - held, the clock running")
+	for _i in 60 * 5:
 		await get_tree().process_frame
 		if gs.run_over:
 			break
-	check(gs.run_over, "caught and killed without a heart")
+	check(gs.run_over and gs.last_cause == "caught" and gs.last_return == "lost", "not free in time: taken")
+	check(is_equal_approx(Profile.spirit, 55.0), "spirit -25 (%d)" % Profile.spirit)
+	Profile.spirit = 100.0
+
+
+func _wait_grab(bg) -> bool:
+	for _i in 60 * 20:
+		await get_tree().process_frame
+		if bg.mode == bg.Mode.GRAB:
+			return true
+	return false
 
 
 func test_big_ghost_heart_frees() -> void:
 	gs.grant_heart()
 	var bg = await _big_ghost_catch()
-	var freed := false
-	for _i in 60 * 30:
-		await get_tree().process_frame
-		if bg.mode == bg.Mode.REST:
-			freed = true
-			break
-	check(freed, "the heart breaks the cage open")
+	check(await _wait_grab(bg), "seized")
+	await frames(2)
+	check(gs.has_heart and player().held, "the heart isn't spent by itself")
+	var button: Button = main.find_child("UseHeart", true, false)
+	check(button != null and button.visible, "a heart: its button")
+	button.pressed.emit()
+	await frames(2)
+	check(bg.mode == bg.Mode.REST, "the heart breaks its grip")
 	check(not gs.run_over, "survived")
-	check(not player().held, "player let go")
+	check(not player().held and player().knocked(), "let go, staggering back")
 	check(not gs.has_heart, "heart spent")
+	await seconds(1.0)
+	check(not player().knocked() and not player().get_node("Body").struggling, "back on its feet")
+
+
+func test_big_ghost_light_frees() -> void:
+	var bg = await _big_ghost_catch()
+	check(await _wait_grab(bg), "seized")
+	var lantern: Lantern = player().get_node("Lantern")
+	lantern.lit = true
+	lantern.flash_cooldown = 0.0
+	# A quick tap of the light button: the strong light in its face.
+	player().skill_held = true
+	await frames(2)
+	player().skill_held = false
+	await frames(3)
+	check(bg.mode == bg.Mode.REST and bg.stun_timer > 0.0, "the strong light makes it let go (mode %s)" % bg.Mode.keys()[bg.mode])
+	check(not player().held and not gs.run_over, "free")
+
+
+func test_big_ghost_fish_frees() -> void:
+	gs.add_carried_fish(fish())
+	gs.set_lure(0)
+	var bg = await _big_ghost_catch()
+	check(await _wait_grab(bg), "seized")
+	# 誘惑, tapped: a fish thrown a little way.
+	player().lure_held = true
+	await frames(2)
+	player().lure_held = false
+	for _i in 60:
+		await get_tree().process_frame
+		if bg.mode != bg.Mode.GRAB:
+			break
+	check(bg.mode == bg.Mode.EAT, "it drops you for the fish (mode %s)" % bg.Mode.keys()[bg.mode])
+	check(not player().held and not gs.run_over, "free")
 
 
 func test_big_ghost_follows_the_light() -> void:
@@ -659,7 +725,7 @@ func test_big_ghost_night_hunt() -> void:
 	await seconds(1.5)
 	var after: float = bg.global_position.distance_to(player().global_position)
 	check(after < before - 60.0, "straight at you (%.0f -> %.0f)" % [before, after])
-	check(bg.mode in [bg.Mode.CHASE, bg.Mode.CARRY], "without losing you in the dark")
+	check(bg.mode in [bg.Mode.CHASE, bg.Mode.GRAB], "without losing you in the dark")
 	player().set_physics_process(true)
 
 
@@ -1716,6 +1782,20 @@ func test_camp_life() -> void:
 	check(is_equal_approx(Profile.spirit, 50.0), "not before the minute's up")
 	Profile.rest(1.5)
 	check(is_equal_approx(Profile.spirit, 51.0), "a point of spirit for a minute's rest")
+	# Away with the game closed: the camp's minutes still count.
+	Profile.camp_since = Time.get_unix_time_from_system() - 10.0 * 60.0 - 5.0
+	Profile.arrive_at_camp()
+	check(is_equal_approx(Profile.spirit, 61.0), "ten minutes away at the camp: +10 (%d)" % Profile.spirit)
+	Profile.leave_camp()
+	check(Profile.camp_since == 0.0, "out on a run, the camp's clock stops")
+	# Low spirit tells: bag rows, pace, the strike window.
+	Profile.spirit = 40.0
+	check(Profile.bag_rows() == Inventory.ROWS - 2 and Profile.SPIRIT_SPEED[Profile.spirit_penalty()] == 0.8,
+		"at 40: two bag rows shut, 80% pace")
+	Profile.spirit = 20.0
+	check(Profile.bag_rows() == Inventory.ROWS - 3 and Profile.SPIRIT_WINDOW[Profile.spirit_penalty()] == 0.7,
+		"at 20: three rows shut, 70% of the strike window")
+	check(not Profile.bag_fits("battery", Vector2i(0, Inventory.ROWS - 1)), "nothing new goes in a shut row")
 	Profile.load_data(saved)
 	Profile._save()
 

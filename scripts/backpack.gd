@@ -169,7 +169,7 @@ func _rebuild() -> void:
 	_grid.placed = placed
 	_grid.selected = _selected
 	_grid.queue_redraw()
-	_used.text = "%d / %d 格　" % [Inventory.used_cells(player), Inventory.COLS * Inventory.ROWS]
+	_used.text = "%d / %d 格　" % [Inventory.used_cells(player), Inventory.COLS * Profile.bag_rows()]
 
 	# The light, picked straight from here.
 	for c in _light_row.get_children():
@@ -230,7 +230,7 @@ func _show_selected(player: Player, items: Array) -> void:
 				_selected = {}
 				_rebuild()))
 		"heart":
-			_detail.text = "心臟：被大鬼關進籠子時會救你一命"
+			_detail.text = "心臟：被大鬼抓住時，按「用心臟掙脫」（或 H）震開牠的手"
 		"bait":
 			_detail.text = "餌料 x%d（全部 %d）：浮標用" % [item.count, player.bait_count]
 			if player.fishing_mode != Player.FishingMode.BOBBER:
@@ -534,6 +534,7 @@ class GridView extends Control:
 		for x in Inventory.COLS:
 			for y in Inventory.ROWS:
 				UiKit.draw_slot(self, Rect2(Vector2(x, y) * Backpack.CELL, Vector2.ONE * Backpack.CELL).grow(-1.5))
+		UiKit.draw_shut_rows(self, Backpack.CELL)
 		for i in placed.size():
 			var item: Dictionary = items[i]
 			var cells: Rect2i = placed[i]

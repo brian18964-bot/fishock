@@ -144,15 +144,17 @@ func _update_lamp(delta: float) -> void:
 func _update_threats() -> void:
 	if _big == null:
 		return
-	var roaming: bool = _big.visible and _big.mode not in [BigGhost.Mode.ASLEEP, BigGhost.Mode.CAGED]
+	var roaming: bool = _big.visible and _big.mode != BigGhost.Mode.ASLEEP
 	if roaming and not _chain.playing:
 		_chain.play()
 	elif not roaming and _chain.playing:
 		_chain.stop()
 	var d := _big.global_position.distance_to(_player.global_position)
-	var hunting: bool = _big.mode in [BigGhost.Mode.CHASE, BigGhost.Mode.SUSPICIOUS, BigGhost.Mode.CARRY]
+	var hunting: bool = _big.mode in [BigGhost.Mode.CHASE, BigGhost.Mode.SUSPICIOUS, BigGhost.Mode.GRAB]
 	var close := hunting and d < HEART_RANGE
-	Sfx.loop("heartbeat_loop", close, lerpf(0.0, -14.0, clampf(d / HEART_RANGE, 0.0, 1.0)))
+	# In its grip the heart pounds as loud as it gets.
+	var loud := 3.0 if _big.mode == BigGhost.Mode.GRAB else lerpf(0.0, -14.0, clampf(d / HEART_RANGE, 0.0, 1.0))
+	Sfx.loop("heartbeat_loop", close, loud)
 
 
 func _update_ghost_whispers() -> void:
@@ -206,10 +208,10 @@ func _on_big_mode(mode: String) -> void:
 	match mode:
 		"CHASE":
 			Sfx.play_at("moan", _big.global_position, 0.0, 0.1)
-		"CARRY":
+		"GRAB":
+			# Seized: its moan, its chain clanking.
 			Sfx.play("moan", -2.0, 0.05)
-		"CAGED":
-			Sfx.play_at("cage", _big.global_position)
+			Sfx.play("cage", -6.0)
 
 
 func _on_night() -> void:

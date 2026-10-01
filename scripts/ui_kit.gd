@@ -427,6 +427,26 @@ static func draw_slot(ci: CanvasItem, r: Rect2, rarity := "", lit := false, icon
 		glow.modulate_color = Color.WHITE
 
 
+## A small padlock centred on `c` (a locked slot or row), `s` its scale.
+static func draw_lock(ci: CanvasItem, c: Vector2, color := DIM, s := 1.0) -> void:
+	ci.draw_arc(c + Vector2(0, -3) * s, 7.0 * s, PI, TAU, 12, color, 2.5 * s, true)
+	ci.draw_rect(Rect2(c + Vector2(-10, -3) * s, Vector2(20, 15) * s), color)
+	ci.draw_rect(Rect2(c + Vector2(-1.5, 2) * s, Vector2(3, 6) * s), Color(0.1, 0.09, 0.08))
+
+
+## The bag's bottom rows shut by low spirit (Profile.bag_rows()), over a
+## grid of `cell`-sized cells: darkened, a padlock and why.
+static func draw_shut_rows(ci: CanvasItem, cell: float) -> void:
+	var open := Profile.bag_rows()
+	if open >= Inventory.ROWS:
+		return
+	var r := Rect2(Vector2(0, open) * cell, Vector2(Inventory.COLS, Inventory.ROWS - open) * cell).grow(-1.0)
+	ci.draw_rect(r, Color(0, 0, 0, 0.6))
+	var mid := r.get_center()
+	draw_lock(ci, mid + Vector2(-92, 0), Color(0.75, 0.55, 0.5), 0.8)
+	draw_text(ci, mid + Vector2(-78, 6), "精神不足，這幾列暫時不能用", 13, Color(0.85, 0.7, 0.65))
+
+
 ## A bar: the frame, the fill (tinted `color`) to `share`.
 static func draw_bar(ci: CanvasItem, r: Rect2, share: float, color: Color) -> void:
 	bar_box().draw(ci.get_canvas_item(), r)

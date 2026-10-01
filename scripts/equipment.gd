@@ -254,10 +254,7 @@ class TentCard extends Control:
 		if not open:
 			# Locked: dimmed, a padlock over it.
 			draw_rect(slot.grow(-3.0), Color(0, 0, 0, 0.6))
-			var c := slot.get_center()
-			draw_arc(c + Vector2(0, -3), 7.0, PI, TAU, 12, UiKit.DIM, 2.5, true)
-			draw_rect(Rect2(c + Vector2(-10, -3), Vector2(20, 15)), UiKit.DIM)
-			draw_rect(Rect2(c + Vector2(-1.5, 2), Vector2(3, 6)), Color(0.1, 0.09, 0.08))
+			UiKit.draw_lock(self, slot.get_center())
 		UiKit.draw_text(self, Vector2(0, 81), t[1], 15, UiKit.GOLD_BRIGHT if open else UiKit.DIM,
 			HORIZONTAL_ALIGNMENT_CENTER, size.x, true)
 		var state: String = "使用中" if pitched else ("已解鎖" if open else t[2])

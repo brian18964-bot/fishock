@@ -147,6 +147,9 @@ func set_setting(key: String, value) -> void:
 
 
 var _rest_time := 0.0
+## When the traveller last rested at the camp (unix time; 0 out on a run) -
+## the camp's minutes count while the game's closed, too.
+var camp_since := 0.0
 
 
 ## Resting at the camp (user request): a point of spirit back for every
@@ -158,7 +161,47 @@ func rest(delta: float) -> void:
 	_rest_time += delta
 	if _rest_time >= 60.0:
 		_rest_time -= 60.0
+		camp_since = Time.get_unix_time_from_system()
 		add_spirit(1.0)
+
+
+## Back at the camp (the main screen): the whole minutes rested since last
+## here - with the game closed - come back as spirit.
+func arrive_at_camp() -> void:
+	var now := Time.get_unix_time_from_system()
+	if camp_since > 0.0 and now > camp_since:
+		var minutes := floorf((now - camp_since) / 60.0)
+		if minutes >= 1.0:
+			add_spirit(minutes)
+			camp_since += minutes * 60.0
+	else:
+		camp_since = now
+	_save()
+
+
+## Setting out: the camp's clock stops till the next return.
+func leave_camp() -> void:
+	camp_since = 0.0
+	_save()
+
+
+## User request (Camp v2): low spirit tells on the traveller - by how low
+## (0: 70 and up, 1: 50-69, 2: 30-49, 3: under 30): bag rows lost, slower
+## on their feet, less time to strike, the float fooling them more often
+## (and, worn right out, a hand that slips and snaps the line now and then).
+const SPIRIT_SPEED := [1.0, 0.9, 0.8, 0.7]
+const SPIRIT_WINDOW := [1.0, 0.9, 0.8, 0.7]
+const SPIRIT_NIBBLES := [0, 0, 1, 2]
+const SPIRIT_FAKE := [0.0, 0.0, 0.15, 0.3]
+
+
+func spirit_penalty() -> int:
+	return 0 if spirit >= 70.0 else (1 if spirit >= 50.0 else (2 if spirit >= 30.0 else 3))
+
+
+## The bag's rows still usable (the rest shut by low spirit).
+func bag_rows() -> int:
+	return maxi(Inventory.ROWS - spirit_penalty(), 1)
 
 
 ## Spirit up or down by `amount` (kept in 0..SPIRIT_MAX).
@@ -457,7 +500,7 @@ func storage_ids(tab := "") -> Array:
 ## stack at index `ignore`)?
 func bag_fits(id: String, cell: Vector2i, ignore := -1) -> bool:
 	var rect := Rect2i(cell, Items.size_of(id))
-	if cell.x < 0 or cell.y < 0 or rect.end.x > Inventory.COLS or rect.end.y > Inventory.ROWS:
+	if cell.x < 0 or cell.y < 0 or rect.end.x > Inventory.COLS or rect.end.y > bag_rows():
 		return false
 	for i in bag.size():
 		if i != ignore and Rect2i(bag[i].cell, Items.size_of(bag[i].id)).intersects(rect):
@@ -468,7 +511,7 @@ func bag_fits(id: String, cell: Vector2i, ignore := -1) -> bool:
 ## The first place `id` fits (down each column in turn), or (-1, -1).
 func bag_free_cell(id: String, ignore := -1) -> Vector2i:
 	for x in Inventory.COLS:
-		for y in Inventory.ROWS:
+		for y in bag_rows():
 			if bag_fits(id, Vector2i(x, y), ignore):
 				return Vector2i(x, y)
 	return Vector2i(-1, -1)
@@ -770,6 +813,7 @@ func snapshot() -> Dictionary:
 		"settings": settings,
 		"camp_tent": camp_tent,
 		"spirit": spirit,
+		"camp_since": camp_since,
 		"stats": stats,
 	}.duplicate(true)
 
@@ -801,6 +845,7 @@ func load_data(data: Dictionary) -> void:
 	settings.merge(data.get("settings", {}), true)
 	camp_tent = int(data.get("camp_tent", 8))
 	spirit = clampf(float(data.get("spirit", SPIRIT_MAX)), 0.0, SPIRIT_MAX)
+	camp_since = float(data.get("camp_since", 0.0))
 	stats = {"escapes": 0, "gold_spent": 0, "legends": 0}
 	stats.merge(data.get("stats", {}), true)
 	if not data.has("equipped"):

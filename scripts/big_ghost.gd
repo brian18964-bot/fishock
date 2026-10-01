@@ -4,13 +4,15 @@ extends Node2D
 ## User request: the big ghost (the user's hooded ghoul rising out of a
 ## smoke cloud, a lantern in one hand and a chain in the other -
 ## tools/render_characters.py, 8 facings). Unlike the floating ghosts, which
-## only get in the way, this one kills: it catches the player, drags them
-## off to its cage (GhostCage) and does away with them there - unless
-## they're carrying a heart, which is spent to break the cage open. No heart
-## and the run is over.
+## only get in the way, this one kills. User request (Camp v2): it seizes
+## the player where they stand and the player has GRAB_TIME seconds to
+## struggle free - the heart (spent by hand: the HUD's button), the strong
+## light in its face, or a fish thrown to it (誘惑). Free, the player
+## staggers back and it keeps off a while; not free in time, the run is
+## lost - the player wakes back at the camp, shaken (spirit down).
 ##
-## Asleep in its cage for the first quarter of the day, it then wanders the
-## map. User request: it doesn't hound the player - it's the light that
+## Asleep in its lair (GhostCage) for the first quarter of the day, it then
+## wanders the map. User request: it doesn't hound the player - it's the light that
 ## draws it. Walk close past it and it comes over to look (and grabs you if
 ## you let it reach you); keep your lamp on it and it charges, and keeps
 ## coming as long as the light stays on it. Out of the light for a couple
@@ -25,7 +27,7 @@ extends Node2D
 
 signal mode_changed(mode: String)
 
-enum Mode { ASLEEP, WANDER, SUSPICIOUS, CHASE, SEARCH, EAT, CARRY, CAGED, REST }
+enum Mode { ASLEEP, WANDER, SUSPICIOUS, CHASE, SEARCH, EAT, GRAB, REST }
 
 const SHEET := [preload("res://assets/sprites/big_ghost/big_ghost_55deg_albedo.png"), preload("res://assets/sprites/big_ghost/big_ghost_55deg_normal.png")]
 ## User feedback: it was stiff - one still pose per facing. It moves now
@@ -47,7 +49,7 @@ const SPRITE_SCALE := 0.5 * SIZE
 const OFFSET := Vector2(0.0, -26.11)
 const DIRS := 8
 const HOVER := 4.0
-## Where it waits by its cage: beside it, so the cage stays in view.
+## Where it sleeps, from its lair's mark.
 const HOME := Vector2(40.0, 12.0)
 const BOB := 2.0
 
@@ -56,7 +58,6 @@ const WANDER_SPEED := 34.0
 const LOOK_SPEED := 46.0
 const CHASE_SPEED := 70.0
 const NIGHT_SPEED := 84.0
-const CARRY_SPEED := 64.0
 ## Walk this close past it and it comes over to look.
 const NOTICE := 90.0
 const NIGHT_NOTICE := 130.0
@@ -72,8 +73,9 @@ const FISH_SMELL := 240.0
 const EAT_TIME := 4.0
 ## Full, it leaves the player alone this long.
 const FED_TIME := 14.0
-const CAGE_TIME := 3.2
-## After a heart breaks the cage open it keeps away this long.
+## Caught: this long to get free.
+const GRAB_TIME := 4.0
+## Shaken off, it keeps away this long.
 const REST_TIME := 18.0
 const WANDER_REPICK := Vector2(7.0, 13.0)
 const SAFE_RADIUS := 85.0
@@ -99,7 +101,7 @@ var _anim := 0.0
 var _speed := 0.0
 var _last_pos := Vector2.ZERO
 static var _lamps: Array = []
-var _cage: GhostCage
+var _lair: GhostCage
 var _player: Player
 
 @onready var visual: Sprite2D = $Visual
@@ -143,9 +145,34 @@ func _ready() -> void:
 
 
 func stun(duration: float) -> void:
-	# Not while it has the player in hand or caged, nor asleep.
-	if mode not in [Mode.ASLEEP, Mode.CARRY, Mode.CAGED]:
-		stun_timer = maxf(stun_timer, duration)
+	if mode == Mode.ASLEEP:
+		return
+	if mode == Mode.GRAB:
+		# The strong light in its face: it lets go.
+		_let_go("強光照得大鬼鬆開了手！趁現在逃！")
+	stun_timer = maxf(stun_timer, duration)
+
+
+## The heart, spent by hand while it holds you: it lets go and keeps off.
+func escape_with_heart() -> bool:
+	if mode != Mode.GRAB or not GameState.use_heart():
+		return false
+	_let_go("心臟猛地一跳，震開了大鬼的手！")
+	return true
+
+
+## Seconds left to get free (0 when it isn't holding anyone).
+func grip_left() -> float:
+	return maxf(_timer, 0.0) if mode == Mode.GRAB else 0.0
+
+
+## Lets the player go: they stagger back, it keeps off a while.
+func _let_go(message: String) -> void:
+	_player.break_free(global_position)
+	_timer = REST_TIME
+	_set_mode(Mode.REST)
+	_pick_wander_target(true)
+	GameState.push_message(message)
 
 
 func enter_frenzy(duration: float) -> void:
@@ -154,7 +181,7 @@ func enter_frenzy(duration: float) -> void:
 
 func _physics_process(delta: float) -> void:
 	frenzy_timer = maxf(frenzy_timer - delta, 0.0)
-	if _cage == null or GameState.run_over:
+	if _lair == null or GameState.run_over:
 		return
 	if stun_timer > 0.0:
 		stun_timer -= delta
@@ -165,10 +192,10 @@ func _physics_process(delta: float) -> void:
 		_start_hunt()
 	match mode:
 		Mode.ASLEEP:
-			global_position = _cage.global_position + HOME
+			global_position = _lair.global_position + HOME
 			if GameState.run_started and (GameState.is_night or GameState.light_stage() >= ACTIVE_FROM_STAGE):
 				_set_mode(Mode.WANDER)
-				GameState.push_message("遠處傳來鐵鍊拖地的聲音...大鬼出籠了")
+				GameState.push_message("遠處傳來鐵鍊拖地的聲音...大鬼醒了")
 		Mode.WANDER, Mode.REST:
 			if mode == Mode.REST:
 				_timer -= delta
@@ -213,30 +240,20 @@ func _physics_process(delta: float) -> void:
 				if _timer <= 0.0:
 					_fish.eaten()
 					_fed()
-		Mode.CARRY:
-			var to_cage := _cage.global_position + HOME - global_position
-			if to_cage.length() < 6.0:
-				_cage.lock(_player)
-				_timer = CAGE_TIME
-				_set_mode(Mode.CAGED)
-				GameState.push_message("你被大鬼關進了籠子...")
-			else:
-				_move_toward(global_position + to_cage, CARRY_SPEED, delta, false)
-				_player.global_position = global_position + Vector2(0, 4)
-		Mode.CAGED:
+		Mode.GRAB:
+			# Holding the player fast: a fish thrown to it, it drops them for
+			# that; time up, they're taken.
 			_timer -= delta
-			if fmod(_timer, 0.9) < delta:
-				_cage.rattle()
-			if _timer <= 0.0:
-				if GameState.use_heart():
-					_cage.unlock()
-					_player.release()
-					GameState.push_message("心臟救了你一命！籠門被震開了，大鬼一時退開")
-					_timer = REST_TIME
-					_set_mode(Mode.REST)
-					_pick_wander_target(true)
-				else:
-					GameState.end_run(false, "被大鬼關進籠子殺死了")
+			_dir = Art.facing8(_player.global_position - global_position, _dir)
+			if _fish_near() != null:
+				var fish := _fish_near()
+				_player.break_free(global_position)
+				_fish = fish
+				_timer = EAT_TIME
+				_set_mode(Mode.EAT)
+				GameState.push_message("大鬼丟下你撲向那條魚！快跑！")
+			elif _timer <= 0.0:
+				GameState.caught()
 
 
 ## Charging - for as long as the lamp stays on it.
@@ -314,14 +331,15 @@ func _near_player() -> bool:
 
 func _try_catch() -> void:
 	if global_position.distance_to(_player.global_position) <= CATCH_RADIUS and not _player.held \
-			and not _in_safe_zone(_player.global_position):
-		_player.seize()
-		_set_mode(Mode.CARRY)
-		GameState.push_message("大鬼抓住你了！牠要把你拖回籠子！")
+			and not _player.knocked() and not _in_safe_zone(_player.global_position):
+		_player.seize(global_position)
+		_timer = GRAB_TIME
+		_set_mode(Mode.GRAB)
+		GameState.push_message("大鬼抓住你了！快掙脫——心臟、強光、或丟魚給牠！")
 
 
-## User request: a fish thrown its way (the drop-fish button) draws it off.
-func _check_fish() -> bool:
+## The nearest dropped fish it can smell, or null.
+func _fish_near() -> Node2D:
 	var best: Node2D = null
 	var best_d := FISH_SMELL
 	for fish in get_tree().get_nodes_in_group("dropped_fish"):
@@ -329,6 +347,12 @@ func _check_fish() -> bool:
 		if d < best_d:
 			best_d = d
 			best = fish
+	return best
+
+
+## User request: a fish thrown its way (the drop-fish button) draws it off.
+func _check_fish() -> bool:
+	var best := _fish_near()
 	if best == null:
 		return false
 	_fish = best
@@ -402,18 +426,16 @@ func _set_mode(m: Mode) -> void:
 
 
 func _go_home() -> void:
-	_cage = get_tree().get_first_node_in_group("ghost_cages") as GhostCage
+	_lair = get_tree().get_first_node_in_group("ghost_cages") as GhostCage
 	mode = Mode.ASLEEP
 	stun_timer = 0.0
-	if _cage != null:
-		global_position = _cage.global_position + HOME
+	if _lair != null:
+		global_position = _lair.global_position + HOME
 
 
-## A new run (the debug reset restarts in place): back to its cage.
+## A new run (the debug reset restarts in place): back to its lair.
 func _on_day_phase(phase: String) -> void:
 	if phase == "FISHING" and mode != Mode.ASLEEP and not GameState.run_over:
-		if _cage != null and _cage.prisoner != null:
-			_cage.unlock()
 		_player.release()
 		_go_home()
 
@@ -428,10 +450,13 @@ func _process(delta: float) -> void:
 	if mode == Mode.EAT:
 		var at_fish := is_instance_valid(_fish) and global_position.distance_to(_fish.global_position) <= 6.5
 		clip = "eat" if at_fish else "chase"
-	elif mode in [Mode.CHASE, Mode.CARRY]:
+	elif mode in [Mode.CHASE, Mode.GRAB]:
 		clip = "chase"
 	var fps: float = CLIP_FPS[clip]
-	if clip == "chase":
+	if mode == Mode.GRAB:
+		# Wrestling with its catch.
+		fps *= 0.8
+	elif clip == "chase":
 		# The lurch keeps pace with how fast it's actually going.
 		fps *= clampf(_speed / CHASE_SPEED, 0.6, 1.4)
 	_anim += delta * fps
@@ -452,7 +477,7 @@ func _process(delta: float) -> void:
 	var flicker := 1.0 + sin(_bob * 9.0) * 0.06 + sin(_bob * 23.0) * 0.04
 	lamp_light.energy = 0.9 * flicker
 	glow.scale = Vector2.ONE * 0.3 * flicker
-	# Sleeping in its cage it's dark; its lamp only lights once it's out.
+	# Asleep it's dark; its lamp only lights once it's out.
 	var awake := mode != Mode.ASLEEP
 	lamp_light.visible = awake
 	glow.visible = awake

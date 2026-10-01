@@ -11,7 +11,8 @@ extends RefCounted
 ##
 ## The layout isn't stored: it's packed afresh from what's carried (biggest
 ## first, top-left first, down each column in turn), so whether something
-## fits is just whether the packing still succeeds with it added.
+## fits is just whether the packing still succeeds with it added. User
+## request (Camp v2): low spirit shuts the bottom rows (Profile.bag_rows()).
 
 const COLS := 8
 const ROWS := 4
@@ -84,7 +85,9 @@ static func pack(list: Array) -> Array:
 	var loose := []
 	for i in list.size():
 		var cell = list[i].get("cell")
-		if cell is Vector2i and _free(used, cell, list[i].size):
+		# What was packed before the run keeps its cell, even in a row low
+		# spirit has shut since.
+		if cell is Vector2i and _free(used, cell, list[i].size, ROWS):
 			_take(used, cell, list[i].size)
 			placed[i] = Rect2i(cell, list[i].size)
 		else:
@@ -104,16 +107,18 @@ static func pack(list: Array) -> Array:
 	return placed
 
 
+## The rows low spirit shuts take nothing new.
 static func _first_fit(used: Dictionary, size: Vector2i) -> Vector2i:
+	var rows := Profile.bag_rows()
 	for x in COLS - size.x + 1:
-		for y in ROWS - size.y + 1:
-			if _free(used, Vector2i(x, y), size):
+		for y in rows - size.y + 1:
+			if _free(used, Vector2i(x, y), size, rows):
 				return Vector2i(x, y)
 	return Vector2i(-1, -1)
 
 
-static func _free(used: Dictionary, at: Vector2i, size: Vector2i) -> bool:
-	if at.x < 0 or at.y < 0 or at.x + size.x > COLS or at.y + size.y > ROWS:
+static func _free(used: Dictionary, at: Vector2i, size: Vector2i, rows: int) -> bool:
+	if at.x < 0 or at.y < 0 or at.x + size.x > COLS or at.y + size.y > rows:
 		return false
 	for dx in size.x:
 		for dy in size.y:

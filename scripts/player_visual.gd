@@ -15,6 +15,11 @@ extends Sprite2D
 ##   7 hold_run  running with the rod held out
 ## Faces where it's running, otherwise where it's aiming. The rod itself is
 ## drawn by held_rod.gd, from where this frame's hand (or back) puts it.
+## User request (Camp v2): in the big ghost's grip it struggles, and
+## knocked free it staggers - a sheet of their own, framed like the main
+## one (tools/render_player_struggle.py; no rod drawn over them):
+##   0 struggle  shoving at the ghost, shaking
+##   1 knock     struck free, staggering back
 
 const SHEET := [preload("res://assets/sprites/player/player_55deg_albedo.png"), preload("res://assets/sprites/player/player_55deg_normal.png")]
 const FRAMES := 8
@@ -47,6 +52,10 @@ const FPS := [2.5, 10.9, 0.0, 3.0, 6.0, 14.0, 16.0, 10.9]
 ## plays it faster.
 const RUN_PACE := 77.4
 const WHIP_TIME := 0.3
+const STRUGGLE := [preload("res://assets/sprites/player/player_struggle_55deg_albedo.png"),
+	preload("res://assets/sprites/player/player_struggle_55deg_normal.png")]
+const STRUGGLE_FPS := 9.0
+const SHAKE := 1.2
 
 ## What's showing (read by held_rod.gd).
 var clip := CLIP_IDLE
@@ -55,22 +64,65 @@ var frame_in_clip := 0
 
 var _phase := 0.0
 var _whip := -1.0
+var _main_tex: CanvasTexture
+var _struggle_tex: CanvasTexture
+## Showing the struggle sheet (held_rod.gd draws no rod then).
+var struggling := false
 
 @onready var _player: Player = get_parent()
 
 
 func _ready() -> void:
-	var tex := CanvasTexture.new()
-	tex.diffuse_texture = SHEET[0]
-	tex.normal_texture = SHEET[1]
-	texture = tex
-	hframes = FRAMES * SHEET_HALVES
-	vframes = CLIPS * DIRS / SHEET_HALVES
+	_main_tex = CanvasTexture.new()
+	_main_tex.diffuse_texture = SHEET[0]
+	_main_tex.normal_texture = SHEET[1]
+	_struggle_tex = CanvasTexture.new()
+	_struggle_tex.diffuse_texture = STRUGGLE[0]
+	_struggle_tex.normal_texture = STRUGGLE[1]
+	_use_sheet(false)
 	Art.place(self, OFFSET, SPRITE_SCALE)
 	_player.cast_started.connect(func(_t, _tier): _whip = 0.0)
 
 
+func _use_sheet(struggle: bool) -> void:
+	struggling = struggle
+	texture = _struggle_tex if struggle else _main_tex
+	hframes = FRAMES if struggle else FRAMES * SHEET_HALVES
+	vframes = 2 * DIRS if struggle else CLIPS * DIRS / SHEET_HALVES
+
+
+## In the ghost's grip, or staggering free: the struggle sheet.
+func _struggle(delta: float) -> bool:
+	var held: bool = _player.struggling
+	var knocked: bool = _player.knocked()
+	if not held and not knocked:
+		if struggling:
+			_use_sheet(false)
+			Art.place(self, OFFSET, SPRITE_SCALE)
+		return false
+	if not struggling:
+		_use_sheet(true)
+	var toward: Vector2 = _player.grab_from - _player.global_position
+	if toward.length() > 0.5:
+		dir = SECTOR_TO_DIR[posmod(roundi(toward.angle() / (PI / 4.0)), 8)]
+	var row := 0
+	if held:
+		_phase += delta * STRUGGLE_FPS
+		frame_in_clip = int(_phase) % FRAMES
+		# Shaking in its grip.
+		var jolt := Vector2(randf_range(-SHAKE, SHAKE), randf_range(-SHAKE, SHAKE) * 0.5)
+		offset = OFFSET * Art.DENSITY + jolt * Art.DENSITY / SPRITE_SCALE
+	else:
+		row = 1
+		frame_in_clip = mini(int(_player.knock_progress() * FRAMES), FRAMES - 1)
+		Art.place(self, OFFSET, SPRITE_SCALE)
+	frame = (row * DIRS + dir) * FRAMES + frame_in_clip
+	return true
+
+
 func _process(delta: float) -> void:
+	if _struggle(delta):
+		return
 	var speed := _player.velocity.length()
 	var moving := speed > 8.0
 	# User feedback: which way a cast will go has to read on the character -

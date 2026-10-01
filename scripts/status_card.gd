@@ -94,6 +94,9 @@ static func conditions(p: Player) -> Array:
 		out.append(["提著油箱", DIM])
 	if GameState.has_heart:
 		out.append(["❤ 心臟", Color(1.0, 0.5, 0.5)])
+	var worn := Profile.spirit_penalty()
+	if worn > 0:
+		out.append([SpiritBar.WORDS[worn], SpiritBar.COLORS[worn]])
 	return out
 
 
@@ -116,6 +119,8 @@ func _draw_card() -> void:
 	var face := PORTRAIT * 0.62
 	_view.draw_texture_rect(_portrait, Rect2(c - Vector2.ONE * face * 0.5, Vector2.ONE * face), false)
 	_view.draw_texture_rect(UiKit.tex("medallion"), Rect2(c - Vector2.ONE * PORTRAIT * 0.5, Vector2.ONE * PORTRAIT), false)
+	# User request (Camp v2): the spirit, under the name.
+	SpiritBar.paint(_view, Rect2(Vector2(x, plate.end.y + 4), Vector2(96, 8)))
 	# User request (HUD cleanup): no speed or fish count - just what's
 	# wrong, if anything.
 	var line := x
@@ -123,5 +128,5 @@ func _draw_card() -> void:
 		var w := UiKit.font().get_string_size(cond[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
 		if line + w > POS.x + SIZE.x - 4.0:
 			break
-		UiKit.draw_text(_view, Vector2(line, POS.y + 58), cond[0], 12, cond[1])
+		UiKit.draw_text(_view, Vector2(line, POS.y + 66), cond[0], 12, cond[1])
 		line += w + 8.0

@@ -382,8 +382,21 @@ func _force_drop_oil_drum() -> void:
 
 
 ## Grabbed by the big ghost: whatever was going on is dropped.
-func seize() -> void:
+## User request (Camp v2): seized by the big ghost, the player struggles -
+## a few seconds to get free (the heart, the strong light, a fish thrown;
+## see BigGhost) - and staggers back when they do.
+const KNOCK_TIME := 0.55
+const KNOCK_SPEED := 120.0
+var struggling := false
+var grab_from := Vector2.ZERO
+var _knock_time := 0.0
+var _knock_dir := Vector2.ZERO
+
+
+func seize(from := Vector2.ZERO) -> void:
 	held = true
+	struggling = true
+	grab_from = from
 	velocity = Vector2.ZERO
 	charge_time = 0.0
 	if state != State.IDLE:
@@ -393,6 +406,31 @@ func seize() -> void:
 
 func release() -> void:
 	held = false
+	struggling = false
+
+
+## Free of the big ghost's grip: thrown back a step, staggering.
+func break_free(from: Vector2) -> void:
+	release()
+	var away := global_position - from
+	_knock_dir = away.normalized() if away.length() > 0.5 else Vector2.DOWN
+	_knock_time = KNOCK_TIME
+
+
+func knocked() -> bool:
+	return _knock_time > 0.0
+
+
+## How far through the stagger (0..1), for the sprite.
+func knock_progress() -> float:
+	return 1.0 - _knock_time / KNOCK_TIME if _knock_time > 0.0 else 1.0
+
+
+## The heart, spent by hand to break the big ghost's grip (H, or the HUD's
+## button).
+func use_heart_to_escape() -> bool:
+	var big := get_tree().current_scene.get_node_or_null("BigGhost")
+	return big != null and struggling and big.escape_with_heart()
 
 
 ## The live bait on the hook (Profile.LIVE_BAITS key; "" for the base
@@ -683,7 +721,7 @@ func _update_lure_throw(delta: float) -> void:
 		add_child(layer)
 		_lure_guide = LureGuide.new()
 		layer.add_child(_lure_guide)
-	if lure_held and GameState.lure_index() >= 0 and state == State.IDLE and not held:
+	if lure_held and GameState.lure_index() >= 0 and state == State.IDLE and (not held or struggling):
 		if not _lure_charging:
 			_lure_charging = true
 			lure_charge = 0.0
@@ -832,8 +870,20 @@ func _try_buy_upgrade(upgrade_key: String) -> void:
 
 func _physics_process(delta: float) -> void:
 	water_ghost_timer = max(water_ghost_timer - delta, 0.0)
+	if _knock_time > 0.0:
+		# Staggering back, free.
+		_knock_time = maxf(_knock_time - delta, 0.0)
+		velocity = _knock_dir * KNOCK_SPEED * (_knock_time / KNOCK_TIME)
+		move_and_slide()
+		return
 	if held:
 		velocity = Vector2.ZERO
+		if struggling:
+			# Seconds to get loose: the light, a fish thrown, the heart.
+			_update_aim()
+			_update_lure_throw(get_physics_process_delta_time())
+			if _key_just_pressed(KEY_H):
+				use_heart_to_escape()
 		return
 	_update_aim()
 	_update_movement()
@@ -909,7 +959,7 @@ func _update_light_skill() -> void:
 		_aim_time = 0.0 if not _was_aiming else _aim_time + get_physics_process_delta_time()
 		# User request: held on, the light charges up - brighter and brighter.
 		lantern.boost = clampf((_aim_time - AIM_TAP_TIME) / LIGHT_CHARGE_TIME, 0.0, 1.0) if lantern.lit else 0.0
-	elif _was_aiming and not held:
+	elif _was_aiming and (not held or struggling):
 		if _aim_time < AIM_TAP_TIME and not skill_dragged:
 			_tap_flash(lantern)
 		else:
@@ -955,7 +1005,9 @@ func _update_movement() -> void:
 	var affliction_ratio: float = WATER_GHOST_SPEED_MULT if water_ghost_timer > 0.0 else 1.0
 	var drum_ratio: float = OIL_DRUM_SPEED_MULT if carrying_oil_drum else 1.0
 	$CarriedCan.visible = carrying_oil_drum
-	velocity = input_dir * SPEED * carry_ratio * affliction_ratio * drum_ratio
+	# Low spirit: heavier on their feet (Profile.SPIRIT_SPEED).
+	var spirit_ratio: float = Profile.SPIRIT_SPEED[Profile.spirit_penalty()]
+	velocity = input_dir * SPEED * carry_ratio * affliction_ratio * drum_ratio * spirit_ratio
 	var before := position
 	move_and_slide()
 	position.x = clamp(position.x, 16.0, WORLD_WIDTH - 16.0)
@@ -1364,6 +1416,11 @@ func _update_fishing(delta: float) -> void:
 			progress = fight.progress
 			tension = fight.tension
 			fish_run_active_time = fight.run_left
+			if _snap_at >= 0.0 and progress >= _snap_at and fight.result == "":
+				_snap_at = -1.0
+				GameState.push_message("精神恍惚，手一抖——線斷了")
+				_fail_catch("line_break")
+				return
 			match fight.result:
 				"landed":
 					_succeed_catch()
@@ -1528,6 +1585,12 @@ func _roll_catch_outcome() -> void:
 	tier_data.bite_window = clampf(diff.window * tier_data.bite_window / 0.7 * float(Profile.rod().window), 0.3, 1.5)
 	nibbles_left = maxi(randi_range(diff.nibbles.x, diff.nibbles.y) - int(lure.get("nibbles", 0)), 0)
 	fake_chance = diff.fake * float(lure.get("fake", 1.0))
+	# Low spirit (Profile.spirit_penalty): less time to strike, and the
+	# float fools you more.
+	var worn := Profile.spirit_penalty()
+	tier_data.bite_window *= Profile.SPIRIT_WINDOW[worn]
+	nibbles_left += Profile.SPIRIT_NIBBLES[worn]
+	fake_chance = minf(fake_chance + Profile.SPIRIT_FAKE[worn], 0.9)
 	_nibbled = false
 	_lure_bite_at = randf_range(LURE_BITE_RANGE.x, LURE_BITE_RANGE.y)
 	_lure_nibbles.clear()
@@ -1589,8 +1652,15 @@ func _update_light_lure(delta: float) -> void:
 		_apply_water_ghost_attack("水面的燈光把水鬼引來了！")
 
 
+## Worn right out (spirit under 30), now and then the hand slips mid-fight
+## and the line snaps: where in the fight (progress), or -1.
+const SPENT_SNAP_CHANCE := 0.15
+var _snap_at := -1.0
+
+
 func _hook_fish(perfect := false) -> void:
 	fight = FishFight.new(difficulty_key, fish_habit, tier_data, reel_power_mult, Profile.rod())
+	_snap_at = randf_range(0.3, 0.8) if Profile.spirit_penalty() >= 3 and randf() < SPENT_SNAP_CHANCE else -1.0
 	if perfect:
 		fight.perfect_hook()
 	progress = fight.progress

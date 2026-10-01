@@ -67,6 +67,11 @@ func _ready() -> void:
 	_on_state_changed("IDLE")
 	_on_offering_pool_updated(GameState.offering_pool, GameState.evil_count)
 
+	# User request (Camp v2): the big ghost's grip - the screen closes in.
+	var grip := GripOverlay.new()
+	grip.name = "Grip"
+	$Panel.add_child(grip)
+
 	_lantern = player.get_node("Lantern")
 	_lantern.relight_progress_updated.connect(_on_relight_progress_updated)
 	back_to_title_button.pressed.connect(_on_back_to_title_pressed)
@@ -245,6 +250,14 @@ func _on_run_ended(success: bool, message: String) -> void:
 	scroll.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
 	scroll.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	scroll.grow_vertical = Control.GROW_DIRECTION_BOTH
+	if GameState.last_cause == "caught":
+		# Taken by the big ghost: it all goes black, then the scroll.
+		shade.color = Color(0, 0, 0, 1)
+		scroll.modulate.a = 0.0
+		var t := shade.create_tween()
+		t.tween_interval(0.9)
+		t.tween_property(shade, "color:a", 0.75, 0.8)
+		t.parallel().tween_property(scroll, "modulate:a", 1.0, 0.6)
 
 
 func _on_back_to_title_pressed() -> void:
