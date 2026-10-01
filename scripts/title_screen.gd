@@ -10,16 +10,16 @@ extends Control
 ## are the menu. Each has a faint gold rim; pressed (or hovered) it lights
 ## up with its name, and a tap opens its page over the camp while the
 ## camera glides to it:
-##   the crate 倉庫 (warehouse), the backpack 背包 (the bag alone), the
-##   tent 裝備 (equipment), the cut drum 魚缸 (fish tank), the merchant's
+##   the crate and the backpack by it 倉庫 (warehouse), the tent 裝備
+##   (equipment), the cut drum 魚缸 (fish tank), the merchant's
 ##   stall or his boat 商人 (shop)
 ##   the character: it lives there on its own (CampLife - by its
 ##                spirit); tap it and it waves (nods, talks...)
 ##   bottom:      出發夜釣 (a run), 多人連線 (not yet - says so)
+##   top left:    the player's card - name, spirit
 ##   top right:   gold, the settings (a gear)
 ## 出發夜釣 sets out (user request): the character takes the lamp from the
-## drum and the rod from beside the tent and walks into the 渡石, then the
-## run starts; back from one it comes out of the stone (escaped) or wakes
+## drum and heads off as the camp fades into the run; back from one it comes out of the stone (escaped) or wakes
 ## by the fire (lost). A tap skips either.
 ## Between runs, so the day timer is stopped here (GameState.reset_run).
 ## With the 3D camp off (settings; for weak phones) it's the old stage - the
@@ -30,7 +30,6 @@ extends Control
 const RENDER_SCALE := 1.5
 const ENTRIES := [
 	["warehouse", "倉庫", "res://assets/sprites/icons/battery.png"],
-	["bag", "背包", ""],
 	["equipment", "裝備", ""],
 	["fish_tank", "魚缸", ""],
 	["shop", "商城", "res://assets/sprites/icons/lamp.png"],
@@ -42,7 +41,7 @@ var _viewer: CharacterViewer
 var _home: Control
 var _page: Control
 var _purse: PanelContainer
-var _nameplate: VBoxContainer
+var _card: PanelContainer
 var _entries := {}
 var _drag := false
 var _drag_moved := 0.0
@@ -142,26 +141,25 @@ func _build() -> void:
 	add_child(_home)
 	_home.gui_input.connect(_on_home_input)
 
-	# Above the character: its name and how far the fish log's come.
-	_nameplate = VBoxContainer.new()
-	_nameplate.name = "Nameplate"
-	_nameplate.add_theme_constant_override("separation", -2)
-	_nameplate.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var who := UiKit.label("釣客", 20, UiKit.GOLD_BRIGHT, true, 4)
-	who.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_nameplate.add_child(who)
-	var logged := UiKit.label("", 13, UiKit.TEXT)
-	logged.name = "Logged"
-	logged.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_nameplate.add_child(logged)
-	# User request (Camp v2): the spirit, under the name.
+	# Top left: the player's card - the name, the spirit under it (user
+	# request: nothing over the character's head).
+	_card = PanelContainer.new()
+	_card.name = "PlayerCard"
+	_card.add_theme_stylebox_override("panel", UiKit.plate_box())
+	_card.position = Vector2(12, 12)
+	_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var card_col := VBoxContainer.new()
+	card_col.add_theme_constant_override("separation", 0)
+	card_col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var who := UiKit.label("釣客", 18, UiKit.GOLD_BRIGHT, true, 4)
+	who.name = "Name"
+	card_col.add_child(who)
 	var spirit := SpiritBar.new()
 	spirit.name = "Spirit"
-	spirit.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_nameplate.add_child(spirit)
-	_nameplate.custom_minimum_size = Vector2(220, 0)
-	_nameplate.position = Vector2(215, 92)
-	_home.add_child(_nameplate)
+	spirit.custom_minimum_size = Vector2(190, 16)
+	card_col.add_child(spirit)
+	_card.add_child(card_col)
+	_home.add_child(_card)
 
 	# Top right: gold, the settings.
 	# User request: the settings as an icon, in the top right corner.
@@ -283,11 +281,6 @@ func _entry(page: String, title: String, icon_path: String) -> Button:
 
 func _refresh() -> void:
 	UiKit.set_purse(_purse, Profile.gold)
-	var kinds := 0
-	for id in FishData.FISH:
-		if Profile.fish_log.has(FishData.FISH[id].name):
-			kinds += 1
-	(_nameplate.get_node("Logged") as Label).text = "圖鑑 %d / %d" % [kinds, FishData.FISH.size()]
 	var things := 0
 	for id in Profile.storage:
 		things += Profile.stored(id)
@@ -314,14 +307,9 @@ func _head_point() -> Vector3:
 
 
 func _process(_delta: float) -> void:
-	# The name floats over the character's head; the lit thing's over it.
-	# Resting at the camp (3D or not).
+	# The lit thing's name over it. Resting at the camp (3D or not).
 	Profile.rest(_delta)
 	if _stage != null and _home.visible:
-		var head := _head_point() + Vector3(0, 0.5, 0)
-		if not _stage.camera.is_position_behind(head):
-			var at := _stage.camera.unproject_position(head) / RENDER_SCALE
-			_nameplate.position = at - Vector2(_nameplate.size.x * 0.5, _nameplate.size.y)
 		if _spot != "":
 			var over := _stage.camera.unproject_position(_stage.label_point(_spot)) / RENDER_SCALE
 			_spot_label.position = over - Vector2(_spot_label.size.x * 0.5, _spot_label.size.y)
@@ -449,11 +437,10 @@ func _on_solo() -> void:
 	if _stage == null or _scene_piece != "":
 		_start_run()
 		return
-	# User request: it sets out - the lamp from the drum, the rod from by
-	# the tent, into the 渡石.
+	# User request: it sets out - the lamp from the drum, and off.
 	_scene_piece = "depart"
 	_light("")
-	for n in ["Play", "Multiplayer", "Settings", "Nameplate"]:
+	for n in ["Play", "Multiplayer", "Settings", "PlayerCard"]:
 		var c := _home.get_node_or_null(n)
 		if c != null:
 			c.visible = false
@@ -469,16 +456,15 @@ func _on_piece_done(tag: String) -> void:
 	_skip_hint.visible = false
 
 
-## Into the run: the 渡石's light fills the screen, then the run starts.
+## Into the run: the camp fades into the night as the character goes off
+## with its lamp, then the run starts.
 func _start_run() -> void:
 	if _setting_off:
 		return
 	_setting_off = true
-	if _stage != null:
-		_stage.stone_flare()
-	_fade.color = Color(0.75, 0.92, 1.0, 0.0)
+	_fade.color = Color(0.02, 0.03, 0.05, 0.0)
 	var t := create_tween()
-	t.tween_property(_fade, "color:a", 1.0, 0.45)
+	t.tween_property(_fade, "color:a", 1.0, 1.1).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
 	t.tween_callback(func():
 		Profile.leave_camp()
 		GameState.start_run()

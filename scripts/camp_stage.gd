@@ -5,13 +5,14 @@ extends Node3D
 ## request: the camp rebuilt from the user's models; a clearing by a lake
 ## at night, everything in it something to tap): the campfire burning in
 ## its ring of stones, logs to sit on; on the left the weathered crate
-## (the warehouse) with the backpack leant against it (the bag), the tent
-## behind (the equipment page; which tent is Profile.camp_tent) with the
-## rod leant beside it; behind the fire an old oil drum with the lamp on it,
-## unlit, and another drum lying cut in half, water in it (the fish tank);
-## at the water's edge the merchant's stall, his covered boat tied up by the
-## dock (the shop); between the camp and the lake the 渡石, the stone the
-## travellers cross by. The character rests by the fire, hands empty.
+## and the backpack leant against it (both the warehouse), the tent behind
+## (the equipment page; which tent is Profile.camp_tent) with the rod leant
+## beside it; behind the fire an old oil drum with the lamp on it, unlit,
+## and another drum lying cut in half, water in it (the fish tank); off to
+## the right, back by the water, the merchant's stall with the frog
+## merchant, his covered boat tied up by the dock (the shop); far off at
+## the water's edge the 渡石, the stone the travellers cross by - part of
+## the view. The character rests by the fire, hands empty.
 ## Models: CampModel (tools/build_camp_models.py). Lit by the fire, the
 ## moon and a lamp at the stall (few lights, no shadows: cheap on a phone).
 ##
@@ -20,34 +21,48 @@ extends Node3D
 ## bright with its name while pressed or hovered.
 
 const STATIONS := {
-	"home": [Vector3(0.35, 1.9, 6.2), Vector3(-0.1, 0.8, -1.4), 40.0],
-	"warehouse": [Vector3(-1.2, 1.5, 2.9), Vector3(-2.55, 0.45, 0.45), 38.0],
-	"bag": [Vector3(-1.45, 1.15, 2.7), Vector3(-2.05, 0.3, 1.0), 34.0],
-	"equipment": [Vector3(-0.9, 1.7, 1.8), Vector3(-2.8, 0.9, -2.2), 40.0],
-	"shop": [Vector3(1.3, 1.8, 1.7), Vector3(3.3, 1.3, -2.5), 42.0],
-	"fish_tank": [Vector3(1.1, 2.0, 0.6), Vector3(1.4, 0.25, -1.25), 40.0],
-	"fish_log": [Vector3(1.1, 2.0, 0.6), Vector3(1.4, 0.25, -1.25), 40.0],
-	"stone": [Vector3(0.2, 1.6, 1.4), Vector3(0.35, 1.2, -3.0), 42.0],
+	"home": [Vector3(0.3, 2.3, 6.9), Vector3(-0.15, 0.75, -2.2), 42.0],
+	"warehouse": [Vector3(-1.6, 1.5, 2.9), Vector3(-3.05, 0.45, 0.35), 38.0],
+	"equipment": [Vector3(-1.4, 1.7, 1.6), Vector3(-3.4, 0.9, -2.6), 40.0],
+	"shop": [Vector3(3.1, 1.9, -0.6), Vector3(5.9, 1.3, -5.7), 42.0],
+	"fish_tank": [Vector3(1.2, 2.2, 0.75), Vector3(1.45, 0.25, -1.3), 40.0],
+	"fish_log": [Vector3(1.2, 2.2, 0.75), Vector3(1.45, 0.25, -1.3), 40.0],
+	"stone": [Vector3(-0.3, 1.8, -2.4), Vector3(-0.5, 1.0, -7.6), 42.0],
 }
 const CHARACTER_AT := Vector3(-1.1, 0.0, 0.55)
 const FIRE_AT := Vector3(0.1, 0.0, -0.3)
-const CRATE_AT := Vector3(-2.55, 0.0, 0.35)
-const BACKPACK_AT := Vector3(-2.0, 0.0, 0.98)
-const TENT_AT := Vector3(-3.85, 0.0, -3.3)
-const ROD_AT := Vector3(-2.4, 0.0, -2.35)
+const CRATE_AT := Vector3(-3.05, 0.0, 0.3)
+## The crate drawn out longer than the pack's (user request: about 30%).
+const CRATE_LENGTH := 1.3
+const BACKPACK_AT := Vector3(-2.2, 0.0, 1.05)
+const TENT_AT := Vector3(-4.6, 0.0, -3.5)
+const ROD_AT := Vector3(-2.95, 0.0, -2.55)
 const DRUM_AT := Vector3(-0.55, 0.0, -1.75)
-const TROUGH_AT := Vector3(1.25, 0.0, -1.15)
-const STONE_AT := Vector3(0.25, 0.0, -3.35)
-const HUT_AT := Vector3(4.1, 0.0, -3.0)
-const DOCK_AT := Vector3(1.95, 0.0, -3.45)
-const BOAT_AT := Vector3(2.95, 0.02, -5.25)
-const LAKE_CENTER := Vector3(0.0, 0.0, -17.0)
+const TROUGH_AT := Vector3(1.35, 0.0, -1.2)
+## The drums made bigger than life, easier to tap (user request: the drum
+## 20%, the fish trough 30%).
+const DRUM_SCALE := 1.2
+const TROUGH_SCALE := 1.3
+## The lamp on the drum's lid.
+const LAMP_ON_DRUM := Vector3(0.05, 0.92 * DRUM_SCALE, 0.02)
+## The 渡石 out at the water's edge, beyond the camp: part of the view, not
+## of the camp.
+const STONE_AT := Vector3(-0.6, 0.0, -7.55)
+const HUT_AT := Vector3(6.1, 0.0, -6.0)
+## The frog merchant, in the stall's own frame: beside the counter.
+const MERCHANT_AT := Vector3(1.3, 0.0, 0.8)
+const DOCK_AT := Vector3(2.9, 0.0, -7.05)
+const BOAT_AT := Vector3(3.9, 0.02, -8.85)
+const LAKE_CENTER := Vector3(0.0, 0.0, -20.6)
 const LAKE_RADIUS := 13.5
 const MOON_DIR := Vector3(0.1, 0.17, -1.0)
-## The logs to sit on by the fire, and the chopping block by the woodpile.
+## The logs to sit on by the fire (thicker than the pack's log, so the
+## hips sit on it: its top at about 0.52 m), and the chopping block by the
+## woodpile.
 const SEATS := [Vector3(-1.5, 0.0, -0.75), Vector3(1.55, 0.0, 0.35)]
-const BLOCK_AT := Vector3(-1.25, 0.0, -2.05)
-const WOODPILE_AT := Vector3(-1.8, 0.0, -2.4)
+const SEAT_SCALE := Vector3(1.18, 1.18, 1.15)
+const BLOCK_AT := Vector3(-1.45, 0.0, -2.25)
+const WOODPILE_AT := Vector3(-2.0, 0.0, -2.6)
 ## The water in the cut drum (its surface's height and size).
 const TROUGH_WATER := [0.33, Vector2(0.84, 0.52)]
 const OUTLINE_COLOR := Color(1.0, 0.78, 0.38)
@@ -73,7 +88,6 @@ var _rod_holder: Node3D
 var _water_mat: ShaderMaterial
 var _drum_lamp: Node3D
 var _stone_light: OmniLight3D
-var _stoke := 0.0
 var _stone_flare := 0.0
 var _lit := ""
 var _tent_shown := -1
@@ -149,16 +163,14 @@ func _process(delta: float) -> void:
 	_time += delta
 	# The fire breathes: its light flickers, its glow swells, its embers pulse.
 	var flick := 0.85 + 0.1 * sin(_time * 7.3) + 0.06 * sin(_time * 13.1 + 1.3) + 0.04 * sin(_time * 23.0)
-	# Wood just put on flares up and dies back.
-	_stoke = maxf(_stoke - delta * 0.25, 0.0)
-	flick *= 1.0 + 0.45 * _stoke
-	_fire_light.light_energy = 2.2 * flick
+	_fire_light.light_energy = 1.45 * flick
 	_fire_glow.scale = Vector3.ONE * (0.95 + 0.08 * flick)
-	_embers_mat.emission_energy_multiplier = 0.5 * flick
+	_embers_mat.emission_energy_multiplier = 0.32 * flick
 	# The 渡石's runes breathe, slowly - and blaze as someone crosses.
 	_stone_flare = maxf(_stone_flare - delta * 0.6, 0.0)
-	_stone_mat.emission_energy_multiplier = 0.55 + 0.3 * sin(_time * 1.3) + 4.0 * _stone_flare
-	_stone_light.light_energy = 0.5 + 6.0 * _stone_flare
+	# Far off, a faint glow: part of the view, not a beacon.
+	_stone_mat.emission_energy_multiplier = 0.16 + 0.08 * sin(_time * 1.3) + 3.0 * _stone_flare
+	_stone_light.light_energy = 0.25 + 5.0 * _stone_flare
 	# The boat rides the water.
 	_boat.rotation = Vector3(sin(_time * 0.9) * 0.025, _boat.rotation.y, sin(_time * 0.7 + 1.0) * 0.035)
 	_boat.position.y = BOAT_AT.y + sin(_time * 1.1) * 0.02
@@ -185,33 +197,36 @@ func _places() -> void:
 		var f := _toward(SEATS[i], FIRE_AT)
 		_spot("seat_%d" % i, SEATS[i] + f * 0.33, FIRE_AT)
 	_spot("home", CHARACTER_AT, CHARACTER_AT + Vector3(0.35, 0, 1.0))
-	_spot("chop", BLOCK_AT + Vector3(-0.42, 0, 0.42), BLOCK_AT)
-	_spot("stoke", FIRE_AT + _toward(FIRE_AT, BLOCK_AT) * 0.95, FIRE_AT)
 	_spot("warm", FIRE_AT + Vector3(0.38, 0, -0.92), FIRE_AT)
 	_spot("dance", FIRE_AT + Vector3(0.55, 0, 1.05), Vector3(0.6, 0, 6.0))
 	var tent_front := Vector3(sin(0.7), 0, cos(0.7))
 	_spot("tent", TENT_AT + tent_front * 1.7, TENT_AT)
 	var crate_side := Vector3(cos(0.55), 0, -sin(0.55))
-	_spot("crate", CRATE_AT + crate_side * 0.72, CRATE_AT)
+	_spot("crate", CRATE_AT + crate_side * 0.94, CRATE_AT)
 	var trough_back := -Vector3(sin(-0.45), 0, cos(-0.45))
-	_spot("trough", TROUGH_AT + trough_back * 0.66, TROUGH_AT)
+	_spot("trough", TROUGH_AT + trough_back * 0.8, TROUGH_AT)
 	_spot("lean", DRUM_AT + Vector3(0, 0, 0.3), DRUM_AT + Vector3(0, 0, -3.0))
-	_spot("lake", Vector3(1.15, 0, -2.75), Vector3(1.6, 0, -6.0))
+	_spot("lake", Vector3(1.3, 0, -6.35), Vector3(1.7, 0, -10.0))
 	var stall_front := Vector3(sin(-0.95), 0, cos(-0.95))
 	_spot("merchant", HUT_AT + stall_front * 1.35, HUT_AT)
 	_spot("gather_0", Vector3(-2.3, 0, 1.6), Vector3(-2.6, 0, 2.6))
 	_spot("gather_1", Vector3(2.4, 0, 1.3), Vector3(2.9, 0, 2.2))
 	_spot("gather_2", Vector3(-0.7, 0, 1.95), Vector3(-0.9, 0, 3.0))
-	var lamp_side := Vector3(0.447, 0, 0.894)
-	_spot("lamp", DRUM_AT + lamp_side * 0.55, DRUM_AT)
+	# Where the reaching hand (CharacterRig.REACH) gets to the lamp's bail.
+	var ahead := -Vector3(0.447, 0, 0.894)
+	var left := Vector3(ahead.z, 0, -ahead.x)
+	var lamp_at := DRUM_AT + LAMP_ON_DRUM
+	var stand := lamp_at - ahead * CharacterRig.REACH.z - left * CharacterRig.REACH.x
+	_spot("lamp", stand, stand + ahead * 2.0)
 	_spot("rod", ROD_AT + Vector3(0.45, 0, 0.35), ROD_AT + Vector3(0, 0, 0))
 	_spot("stone", STONE_AT + Vector3(0, 0, 0.95), STONE_AT)
 	_spot("stone_in", STONE_AT + Vector3(0, 0, 0.12), STONE_AT + Vector3(0, 0, -2.0))
 	_spot("wake", FIRE_AT + Vector3(-0.95, 0, 0.55), FIRE_AT)
 	# What it walks round.
 	obstacles = [
-		[FIRE_AT, 0.75], [CRATE_AT, 0.62], [BACKPACK_AT, 0.3], [DRUM_AT, 0.36],
-		[TROUGH_AT + Vector3(0.22, 0, 0.1), 0.34], [TROUGH_AT - Vector3(0.22, 0, 0.1), 0.34],
+		[FIRE_AT, 0.75], [CRATE_AT + Vector3(0.22, 0, -0.15), 0.6], [CRATE_AT - Vector3(0.22, 0, -0.15), 0.6],
+		[BACKPACK_AT, 0.3], [DRUM_AT, 0.42],
+		[TROUGH_AT + Vector3(0.3, 0, 0.13), 0.42], [TROUGH_AT - Vector3(0.3, 0, 0.13), 0.42],
 		[WOODPILE_AT, 0.5], [BLOCK_AT, 0.26], [ROD_AT, 0.2], [TENT_AT, 1.45], [STONE_AT, 0.62], [HUT_AT, 1.25],
 	]
 	for at in SEATS:
@@ -254,24 +269,25 @@ func route(from: Vector3, to: Vector3) -> Array:
 	return pts.slice(1)
 
 
-## Wood put on the fire: it flares up.
-func stoke() -> void:
-	_stoke = 1.0
-
-
 ## The 渡石 blazes (someone crossing).
 func stone_flare() -> void:
 	_stone_flare = 1.0
 
 
-## The lamp taken off the drum (setting out) or put back (home).
-func lamp_on_drum(on: bool) -> void:
+## The lamp taken off the drum (setting out) or put back (home) - eased
+## down onto it from `from` (where it hung in the hand), if given.
+func lamp_on_drum(on: bool, from: Variant = null) -> void:
 	_drum_lamp.visible = on
+	if on and from is Transform3D:
+		var place := Transform3D(Basis.IDENTITY, DRUM_AT + LAMP_ON_DRUM)
+		_drum_lamp.global_transform = from
+		create_tween().tween_property(_drum_lamp, "global_transform", place, 0.25) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
 
-## The rod taken from beside the tent, or leant back.
-func rod_by_tent(on: bool) -> void:
-	_rod_holder.visible = on
+## Where the lamp stands on the drum (world).
+func drum_lamp_place() -> Transform3D:
+	return Transform3D(Basis.IDENTITY, DRUM_AT + LAMP_ON_DRUM)
 
 
 # ---------------------------------------------------------------- hotspots
@@ -429,7 +445,7 @@ void fragment() {
 	float d = length(wpos.xz - fire_at.xz);
 	float trodden = smoothstep(3.4, 1.4, d + (n - 0.5) * 1.6);
 	// A worn path to the dock.
-	float path = smoothstep(0.75, 0.25, abs(wpos.x - 2.3 + sin(wpos.z * 0.7) * 0.25)) * step(wpos.z, 0.6) * step(-4.5, wpos.z);
+	float path = smoothstep(0.75, 0.25, abs(wpos.x - 1.4 - (0.6 - wpos.z) * 0.19 + sin(wpos.z * 0.7) * 0.25)) * step(wpos.z, 0.6) * step(-7.4, wpos.z);
 	trodden = max(trodden, path * 0.8);
 	ALBEDO = mix(grass, dirt, trodden) * (0.8 + n2 * 0.4);
 	ROUGHNESS = 1.0;
@@ -644,8 +660,8 @@ func _forest() -> void:
 				mine.append(far[i])
 		_trees(models[k], mine, Vector2(0.5, 0.95))
 	# Dead trees along the water.
-	_trees("dead_a", [Vector3(-5.8, 0, -3.6), Vector3(6.6, 0, -3.4), Vector3(-9.5, 0, -5.0)], Vector2(0.45, 0.6))
-	_trees("dead_b", [Vector3(-7.4, 0, -1.8), Vector3(8.9, 0, -1.2)], Vector2(0.45, 0.6))
+	_trees("dead_a", [Vector3(-6.6, 0, -6.9), Vector3(8.4, 0, -6.6), Vector3(-9.5, 0, -8.4)], Vector2(0.45, 0.6))
+	_trees("dead_b", [Vector3(-8.2, 0, -3.6), Vector3(9.6, 0, -2.4)], Vector2(0.45, 0.6))
 
 
 ## The campfire (the pack's stones and logs, its embers glowing), the
@@ -670,17 +686,17 @@ func _fire() -> void:
 	flame_mat.vertex_color_use_as_albedo = true
 	flame_mat.albedo_texture = load(CampModel.DIR + "fire_flames.png")
 	var quad := QuadMesh.new()
-	quad.size = Vector2(0.48, 0.48)
-	quad.center_offset = Vector3(0, 0.2, 0)
+	quad.size = Vector2(0.4, 0.4)
+	quad.center_offset = Vector3(0, 0.17, 0)
 	quad.material = flame_mat
 	var flames := CPUParticles3D.new()
 	flames.name = "Flames"
 	flames.mesh = quad
-	flames.amount = 9
+	flames.amount = 7
 	flames.lifetime = 0.85
 	flames.preprocess = 1.0
 	flames.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	flames.emission_sphere_radius = 0.12
+	flames.emission_sphere_radius = 0.09
 	flames.direction = Vector3.UP
 	flames.spread = 8.0
 	flames.gravity = Vector3(0, 0.6, 0)
@@ -697,8 +713,8 @@ func _fire() -> void:
 	var ramp := Gradient.new()
 	ramp.set_color(0, Color(1.0, 0.9, 0.7, 0.0))
 	ramp.set_color(1, Color(1.0, 0.5, 0.2, 0.0))
-	ramp.add_point(0.15, Color(1.0, 0.8, 0.55, 0.62))
-	ramp.add_point(0.6, Color(1.0, 0.6, 0.3, 0.42))
+	ramp.add_point(0.15, Color(1.0, 0.78, 0.5, 0.5))
+	ramp.add_point(0.6, Color(1.0, 0.58, 0.28, 0.3))
 	flames.color_ramp = ramp
 	flames.position = Vector3(0, 0.12, 0)
 	fire.add_child(flames)
@@ -742,7 +758,7 @@ func _fire() -> void:
 	ember_quad.material = spark_mat
 	var sparks := CPUParticles3D.new()
 	sparks.mesh = ember_quad
-	sparks.amount = 14
+	sparks.amount = 9
 	sparks.lifetime = 2.6
 	sparks.preprocess = 2.0
 	sparks.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
@@ -765,15 +781,15 @@ func _fire() -> void:
 	var gmat := spark_mat.duplicate() as StandardMaterial3D
 	gmat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	gmat.vertex_color_use_as_albedo = false
-	gmat.albedo_color = Color(1.0, 0.45, 0.12, 0.12)
+	gmat.albedo_color = Color(1.0, 0.45, 0.12, 0.07)
 	gq.material = gmat
 	_fire_glow.mesh = gq
 	_fire_glow.position = Vector3(0, 0.45, 0)
 	fire.add_child(_fire_glow)
 	_fire_light = OmniLight3D.new()
 	_fire_light.light_color = Color(1.0, 0.56, 0.24)
-	_fire_light.light_energy = 2.2
-	_fire_light.omni_range = 7.5
+	_fire_light.light_energy = 1.45
+	_fire_light.omni_range = 7.0
 	_fire_light.omni_attenuation = 1.4
 	_fire_light.position = Vector3(0, 0.7, 0)
 	fire.add_child(_fire_light)
@@ -784,7 +800,7 @@ func _seats() -> void:
 	for at in SEATS:
 		# Lying across the way to the fire (its length along its z).
 		var f := _toward(at, FIRE_AT)
-		_put("log", at, atan2(-f.z, f.x))
+		_put("log", at, atan2(-f.z, f.x)).scale = SEAT_SCALE
 	# The chopping block: a round of a trunk on end.
 	var block := MeshInstance3D.new()
 	block.name = "Block"
@@ -798,18 +814,20 @@ func _seats() -> void:
 	block.position = BLOCK_AT + Vector3(0, 0.18, 0)
 	add_child(block)
 	for k in 3:
-		var l := _put("log", Vector3(-1.85 + k * 0.05, 0.0 + (0.17 if k == 2 else 0.0), -2.55 + k * 0.24 - (0.12 if k == 2 else 0.0)), 1.5)
+		var l := _put("log", WOODPILE_AT + Vector3(-0.05 + k * 0.05, 0.17 if k == 2 else 0.0, -0.15 + k * 0.24 - (0.12 if k == 2 else 0.0)), 1.5)
 		if l != null:
 			l.scale = Vector3.ONE * 0.75
 
 
-## The crate (the warehouse) and the backpack leant against it (the bag).
+## The crate and the backpack leant against it (the warehouse, both).
 func _crate() -> void:
 	var crate := _put("crate", CRATE_AT, 0.55)
-	_hotspot("warehouse", crate, "倉庫", CRATE_AT + Vector3(0, 0.35, 0), 0.75)
+	crate.scale = Vector3(CRATE_LENGTH, 1.0, 1.0)
+	_hotspot("warehouse", crate, "倉庫", CRATE_AT + Vector3(0, 0.35, 0), 0.9)
+	# The backpack by it opens the warehouse too (user request).
 	var pack := _put("backpack", BACKPACK_AT, 0.25)
 	pack.rotation.x = -0.18
-	_hotspot("bag", pack, "背包", BACKPACK_AT + Vector3(0, 0.28, 0), 0.38, 0.012)
+	_hotspot("warehouse", pack, "倉庫", BACKPACK_AT + Vector3(0, 0.28, 0), 0.38, 0.012)
 
 
 ## The tent (the equipment page): the one Profile.camp_tent names, and the
@@ -862,16 +880,16 @@ func _dress_rod() -> void:
 ## The oil drums: one standing, the lamp on it, unlit; one lying cut in
 ## half, water in it (the fish tank).
 func _drums() -> void:
-	_put("drum", DRUM_AT, 0.4)
+	_put("drum", DRUM_AT, 0.4).scale = Vector3.ONE * DRUM_SCALE
 	_drum_lamp = CharacterRig.LAMP.instantiate()
 	_drum_lamp.name = "DrumLamp"
-	_drum_lamp.position = DRUM_AT + Vector3(0.05, 0.92, 0.02)
-	_drum_lamp.scale = Vector3.ONE * 1.15
+	_drum_lamp.position = DRUM_AT + LAMP_ON_DRUM
 	add_child(_drum_lamp)
 	var trough := Node3D.new()
 	trough.name = "Trough"
 	trough.position = TROUGH_AT
 	trough.rotation.y = -0.45
+	trough.scale = Vector3.ONE * TROUGH_SCALE
 	add_child(trough)
 	trough.add_child(CampModel.make("drum_trough"))
 	# The water: dark, a glint of the moon and the fire on it, rings now and
@@ -910,7 +928,7 @@ void fragment() {
 	water.material_override = _water_mat
 	water.position = Vector3(0, TROUGH_WATER[0], 0)
 	trough.add_child(water)
-	_hotspot("fish_tank", trough, "魚缸", TROUGH_AT + Vector3(0, 0.25, 0), 0.6, 0.012)
+	_hotspot("fish_tank", trough, "魚缸", TROUGH_AT + Vector3(0, 0.3, 0), 0.75, 0.012)
 
 
 ## The 渡石: the stone the travellers cross by, its runes glowing faintly.
@@ -924,14 +942,13 @@ func _stone() -> void:
 	_stone_light = OmniLight3D.new()
 	_stone_light.light_color = Color(0.45, 0.75, 1.0)
 	_stone_light.light_energy = 0.5
-	_stone_light.omni_range = 2.6
+	_stone_light.omni_range = 3.4
 	_stone_light.position = STONE_AT + Vector3(0, 1.1, 0.5)
 	add_child(_stone_light)
 
 
 ## The merchant's stall at the water's edge (the shop), a lamp at its
-## corner; a hooded merchant behind the counter (a stand-in till the user's
-## model comes); his boat tied up by the dock.
+## corner; the frog merchant beside it; his boat tied up by the dock.
 func _stall() -> void:
 	var hut := Node3D.new()
 	hut.name = "Stall"
@@ -939,7 +956,7 @@ func _stall() -> void:
 	hut.rotation.y = -0.95
 	add_child(hut)
 	var shop := CampModel.make("bookshop", 1.6)
-	(shop.material_override as StandardMaterial3D).albedo_color = Color(0.72, 0.68, 0.66)
+	(shop.material_override as StandardMaterial3D).albedo_color = Color(0.86, 0.84, 0.82)
 	hut.add_child(shop)
 	var lamp_light := OmniLight3D.new()
 	lamp_light.light_color = Color(1.0, 0.7, 0.35)
@@ -947,39 +964,12 @@ func _stall() -> void:
 	lamp_light.omni_range = 4.5
 	lamp_light.position = Vector3(0.0, 2.2, 1.6)
 	hut.add_child(lamp_light)
-	var merchant := Node3D.new()
+	# The merchant, the frog wanderer, at the counter's corner.
+	var merchant := CampModel.make("frog_merchant")
 	merchant.name = "Merchant"
-	merchant.position = Vector3(0.2, 0.0, -0.25)
+	merchant.position = MERCHANT_AT
+	merchant.rotation.y = 0.55
 	hut.add_child(merchant)
-	var robe := MeshInstance3D.new()
-	var rm := CylinderMesh.new()
-	rm.top_radius = 0.16
-	rm.bottom_radius = 0.38
-	rm.height = 1.35
-	rm.radial_segments = 10
-	robe.mesh = rm
-	robe.material_override = _mat(Color(0.07, 0.06, 0.07))
-	robe.position = Vector3(0, 0.68, 0)
-	merchant.add_child(robe)
-	var hood := MeshInstance3D.new()
-	var hm := SphereMesh.new()
-	hm.radius = 0.22
-	hm.height = 0.5
-	hood.mesh = hm
-	hood.material_override = _mat(Color(0.08, 0.07, 0.08))
-	hood.position = Vector3(0, 1.5, 0)
-	merchant.add_child(hood)
-	var eye_mat := _mat(Color(0.9, 0.85, 0.5), 1.0, Color(1.0, 0.85, 0.4))
-	eye_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	for x in [-0.055, 0.055]:
-		var eye := MeshInstance3D.new()
-		var em := SphereMesh.new()
-		em.radius = 0.018
-		em.height = 0.036
-		eye.mesh = em
-		eye.material_override = eye_mat
-		eye.position = Vector3(x, 1.5, 0.2)
-		merchant.add_child(eye)
 	_hotspot("shop", hut, "商人", HUT_AT + Vector3(0, 1.5, 0), 1.6)
 	_boat = CampModel.make("boat")
 	_boat.position = BOAT_AT

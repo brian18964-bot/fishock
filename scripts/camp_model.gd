@@ -11,6 +11,8 @@ extends RefCounted
 
 const DIR := "res://assets/models/camp/"
 const TREE_FAMILY := {"pine": "pine", "dead": "dead_tree", "twisted": "twisted_tree"}
+## Models made from the same one, sharing its normal picture.
+const SHARED_NORMAL := {"drum_trough": "drum"}
 
 static var _meshes := {}
 static var _materials := {}
@@ -42,8 +44,10 @@ static func material(name: String, glow := 1.0) -> StandardMaterial3D:
 	if not _materials.has(key):
 		var m := StandardMaterial3D.new()
 		m.albedo_texture = _tex(name + "_albedo.png")
+		# No picture: its colours are the mesh's own (the frog merchant).
+		m.vertex_color_use_as_albedo = m.albedo_texture == null
 		m.roughness = 0.9
-		var n := _tex(name + "_normal.png")
+		var n := _tex(SHARED_NORMAL.get(name, name) + "_normal.png")
 		if n != null:
 			m.normal_enabled = true
 			m.normal_texture = n

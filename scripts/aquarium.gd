@@ -5,13 +5,13 @@ extends Control
 ## the wild - an oil drum lying on its side, its top half cut away, filled
 ## with water, and the fish seen from above). The camp's own drum
 ## (CampModel "drum_trough"), a bed of silt in its curved bottom with light
-## rippling over it, a few stones and swaying weed, lily pads on the
-## surface, the night round it lit by the fire - and the fish of
+## rippling over it, a few stones, lotus leaves floating on the surface,
+## the night round it lit by the fire - and the fish of
 ## Profile.tank as 3D models (FishModel) swimming by their trait, as the
 ## 2D tank (FishTank.TankView, still used when the 3D camp is off) has
 ## them: schooling ones keep together, fierce ones go for the others now
 ## and then, bottom dwellers keep low (flatfish lie on the silt), shy ones
-## by the weed, lazy ones barely move, jumpers leap out and splash,
+## under the leaves, lazy ones barely move, jumpers leap out and splash,
 ## gluttons get to the food first. Tap a fish for its card (`picked`).
 ## Drawn at 1.5x in a SubViewport shown through a TextureRect.
 
@@ -37,15 +37,9 @@ const ROCKS := [
 	[Vector3(-0.52, 0.1, 0.12), 0.09, 8],
 	[Vector3(0.62, 0.1, 0.1), 0.12, 12],
 ]
-## Weed clumps: [x, z, leaves, tallest, colour].
-const WEED := [
-	[-0.78, 0.02, 10, 0.55, Color(0.16, 0.42, 0.18)],
-	[-0.2, -0.2, 7, 0.45, Color(0.26, 0.46, 0.16)],
-	[0.74, -0.12, 9, 0.5, Color(0.14, 0.38, 0.2)],
-	[0.3, 0.2, 5, 0.32, Color(0.5, 0.3, 0.16)],
-]
-## Lily pads on the surface: [x, z, size].
-const PADS := [[-0.55, 0.3, 0.17], [-0.36, 0.38, 0.11], [0.78, -0.32, 0.15]]
+## Lotus leaves on the surface (user request: the leaves only, no weed
+## below): [x, z, radius].
+const PADS := [[-0.55, 0.28, 0.19], [-0.3, 0.4, 0.12], [0.76, -0.3, 0.17]]
 const SPEEDS := {"lazy": 0.05, "active": 0.19, "school": 0.16, "fierce": 0.175, "bottom": 0.09, "shy": 0.1,
 	"jumper": 0.17, "glutton": 0.14}
 
@@ -82,7 +76,6 @@ func _ready() -> void:
 	_drum()
 	_sand()
 	_rocks()
-	_weed()
 	_surface()
 	_pads()
 	_fish_root = Node3D.new()
@@ -168,10 +161,10 @@ static func sand_y(x: float, z: float) -> float:
 	return maxf(curve, silt)
 
 
-## Where a shy fish hides: by a clump of weed.
-func weed_spot() -> Vector3:
-	var w: Array = WEED[randi() % WEED.size()]
-	return Vector3(w[0] + randf_range(-0.12, 0.12), 0.0, w[1] + randf_range(-0.1, 0.1))
+## Where a shy fish hides: in the shade under a leaf.
+func leaf_spot() -> Vector3:
+	var p: Array = PADS[randi() % PADS.size()]
+	return Vector3(p[0] + randf_range(-0.08, 0.08), 0.0, p[1] + randf_range(-0.06, 0.06))
 
 
 func splash(at: Vector3) -> void:
@@ -201,7 +194,7 @@ func _process(delta: float) -> void:
 	_time += delta
 	for i in _floating.size():
 		var pad: Node3D = _floating[i]
-		pad.position.y = SURFACE + 0.004 + sin(_time * 0.9 + i * 2.0) * 0.003
+		pad.position.y = SURFACE - 0.004 + sin(_time * 0.9 + i * 2.0) * 0.003
 		pad.rotation.y += sin(_time * 0.3 + i) * 0.02 * delta
 	for p in _food:
 		var pellet: MeshInstance3D = p[0]
@@ -438,70 +431,6 @@ func _rocks() -> void:
 		_world.add_child(rock)
 
 
-## Clumps of ribbon weed, swaying.
-func _weed() -> void:
-	var sh := Shader.new()
-	sh.code = """
-shader_type spatial;
-render_mode cull_disabled;
-uniform vec3 color : source_color = vec3(0.16, 0.42, 0.18);
-void vertex() {
-	float h = UV.y;
-	float phase = MODEL_MATRIX[3].x * 3.1 + MODEL_MATRIX[3].z * 1.7 + VERTEX.x * 11.0 + VERTEX.z * 7.0;
-	VERTEX.x += sin(TIME * 0.8 + phase + h * 2.2) * 0.07 * h * h;
-	VERTEX.z += cos(TIME * 0.6 + phase * 1.3 + h * 1.8) * 0.035 * h * h;
-}
-void fragment() {
-	if (!FRONT_FACING) { NORMAL = -NORMAL; }
-	vec3 base = color * 0.45;
-	vec3 tip = color * 1.25 + vec3(0.04, 0.06, 0.0);
-	float vein = smoothstep(0.08, 0.0, abs(UV.x - 0.5)) * 0.12;
-	ALBEDO = mix(base, tip, UV.y) + vein;
-	ROUGHNESS = 0.6;
-	// Light through the leaf.
-	EMISSION = color * 0.12 * UV.y;
-}
-"""
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 5
-	for w in WEED:
-		var st := SurfaceTool.new()
-		st.begin(Mesh.PRIMITIVE_TRIANGLES)
-		for n in int(w[2]):
-			var base := Vector3(rng.randf_range(-0.07, 0.07), 0.0, rng.randf_range(-0.05, 0.05))
-			var tall: float = w[3] * rng.randf_range(0.55, 1.0)
-			var wide := rng.randf_range(0.024, 0.042)
-			var lean := Vector3(rng.randf_range(-0.25, 0.25), 1.0, rng.randf_range(-0.12, 0.12)).normalized()
-			var face := rng.randf() * TAU
-			var across := Vector3(cos(face), 0, sin(face)) * wide / 2.0
-			var segs := 7
-			var prev_l := Vector3.ZERO
-			var prev_r := Vector3.ZERO
-			for k in segs + 1:
-				var t := float(k) / segs
-				var c := base + lean * tall * t + Vector3(lean.x, 0, lean.z) * tall * t * t * 0.4
-				var taper := 1.0 - t * 0.6
-				var l := c - across * taper
-				var r := c + across * taper
-				if k > 0:
-					var n0 := across.cross(lean).normalized()
-					for v in [[prev_l, 0.0, t - 1.0 / segs], [prev_r, 1.0, t - 1.0 / segs], [r, 1.0, t],
-							[prev_l, 0.0, t - 1.0 / segs], [r, 1.0, t], [l, 0.0, t]]:
-						st.set_normal(n0)
-						st.set_uv(Vector2(v[1], v[2]))
-						st.add_vertex(v[0])
-				prev_l = l
-				prev_r = r
-		var clump := MeshInstance3D.new()
-		clump.mesh = st.commit()
-		var mat := ShaderMaterial.new()
-		mat.shader = sh
-		mat.set_shader_parameter("color", w[4])
-		clump.material_override = mat
-		clump.position = Vector3(w[0], sand_y(w[0], w[1]) - 0.01, w[1])
-		_world.add_child(clump)
-
-
 ## The water's surface from above: dark and clear, tinted, rippling, the
 ## moon and the fire glinting on it.
 func _surface() -> void:
@@ -542,30 +471,27 @@ void fragment() {
 	_world.add_child(water)
 
 
-## Lily pads afloat, bobbing a little (a fish under one is half hidden).
+## Lotus leaves afloat (ASSET2's leaf), bobbing a little (a fish under one
+## is half hidden).
 func _pads() -> void:
-	var leaf := _mat(Color(0.26, 0.44, 0.15), 0.55)
-	leaf.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var leaf := CampModel.make("lotus_leaf")
+	if leaf == null:
+		return
+	# Its own material (not the shared one): two-sided, darkened to the night.
+	var mat := (leaf.material_override as StandardMaterial3D).duplicate() as StandardMaterial3D
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.albedo_color = Color(0.5, 0.55, 0.5)
+	mat.roughness = 0.55
+	leaf.material_override = mat
 	for pad in PADS:
-		var st := SurfaceTool.new()
-		st.begin(Mesh.PRIMITIVE_TRIANGLES)
-		var r: float = pad[2]
-		var n := 18
-		# A disc with a notch cut to its middle.
-		for k in n:
-			var a0 := 0.35 + (TAU - 0.5) * k / n
-			var a1 := 0.35 + (TAU - 0.5) * (k + 1) / n
-			for v in [Vector3.ZERO, Vector3(cos(a1), 0, sin(a1)) * r, Vector3(cos(a0), 0, sin(a0)) * r]:
-				st.set_normal(Vector3.UP)
-				st.add_vertex(v + Vector3(0, -0.006 * v.length() / r, 0))
-		var mi := MeshInstance3D.new()
+		var mi := leaf.duplicate() as MeshInstance3D
 		mi.name = "Pad"
-		mi.mesh = st.commit()
-		mi.material_override = leaf
-		mi.position = Vector3(pad[0], SURFACE + 0.004, pad[1])
+		mi.scale = Vector3.ONE * pad[2] * 2.0
+		mi.position = Vector3(pad[0], SURFACE - 0.004, pad[1])
 		mi.rotation.y = pad[0] * 7.0
 		_world.add_child(mi)
 		_floating.append(mi)
+	leaf.free()
 
 
 static var _ring_shader: Shader
@@ -653,7 +579,7 @@ class Swimmer extends Node3D:
 			"bottom":
 				p.y = _floor(p) + randf_range(0.0, 0.1)
 			"shy":
-				var w := tank.weed_spot()
+				var w := tank.leaf_spot()
 				p = Vector3(w.x, randf_range(Aquarium.SWIM.position.y, Aquarium.SWIM.get_center().y), w.z)
 			"lazy":
 				p = position + Vector3(randf_range(-0.15, 0.15), randf_range(-0.05, 0.05), randf_range(-0.08, 0.08))

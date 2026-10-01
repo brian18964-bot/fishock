@@ -20,8 +20,10 @@ allow handing the original files on, so they're read from CAMP_SRC
 CAMP_SRC holds: campfire/ (Campfire.blend + its Optimized textures),
 tents/ (EXPORT_9_VIKING_TENTS_PACK), crate/box2.blend, backpack/
 (Backpack.fbx + images), bookshop/ (BookShop.obj + Materials), boat/
-BoatColor.blend, log/ (log.fbx + 4k textures). The oil drums, the rune
-stones and the trees come from art_src (Quaternius / user models already in
+BoatColor.blend, log/ (log.fbx + 4k textures), barrel/ (Barrel_Metal.blend +
+its Textures/), lotus/Lotus+Leaf.stl, frog/ (tools/prep_frog.py's
+frog_low.npz and frog_high.npz). The rune stones and
+the trees come from art_src (Quaternius / user models already in
 the repo).
 """
 import math
@@ -350,6 +352,11 @@ def embers():
     cold = np.asarray(Image.open(os.path.join(OUT, "campfire_albedo.png")).convert("RGB"), dtype=np.float32) / 255
     hot = np.asarray(Image.open(os.path.join(OUT, "campfire_glow.png")).convert("RGB"), dtype=np.float32) / 255
     heat = np.clip((hot[..., 0] - cold[..., 0] * 1.05 - (hot[..., 2] - cold[..., 2])) * 3.5, 0, 1)
+    # Only the wood smoulders: the ring of stones (grey - little colour in
+    # the cold map) stays cold (user request: not every stone aglow).
+    sat = cold.max(-1) - cold.min(-1)
+    wood = np.clip((sat / np.maximum(cold.max(-1), 0.05) - 0.22) * 6.0, 0, 1)
+    heat *= wood
     out = hot * heat[..., None] * np.array([1.0, 0.75, 0.45])
     Image.fromarray((np.clip(out, 0, 1) * 255).astype(np.uint8)).save(os.path.join(OUT, "campfire_glow.png"), optimize=True)
 
@@ -435,8 +442,35 @@ BOOKSHOP_COLOURS = {
     "metal": (0.12, 0.12, 0.13), "bookOutside": (0.16, 0.035, 0.025), "PotionGlow1": (0.08, 0.55, 0.18),
     "PotionGlow2": (0.12, 0.2, 0.85), "PotionGlow3": (0.75, 0.08, 0.3), "PotionGlow4": (0.85, 0.5, 0.06),
     "Pot": (0.12, 0.07, 0.05), "Mixture": (0.08, 0.35, 0.12), "glow": (1.0, 0.6, 0.2), "Carpet": (0.18, 0.025, 0.02),
-    "None": (0.16, 0.09, 0.05), "FabricTiled": (0.2, 0.03, 0.02),
+    "None": (0.16, 0.09, 0.05),
 }
+
+
+def _checked_cloth():
+    """The canopy as the pack shows it (no picture came with it): a dark
+    green check, the weave faintly in it."""
+    m = bpy.data.materials.new("cloth")
+    m.use_nodes = True
+    nt = m.node_tree
+    b = next(n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED')
+    b.inputs['Roughness'].default_value = 0.95
+    uv = nt.nodes.new('ShaderNodeTexCoord')
+    check = nt.nodes.new('ShaderNodeTexChecker')
+    check.inputs['Scale'].default_value = 6.0
+    check.inputs['Color1'].default_value = (0.016, 0.05, 0.032, 1)
+    check.inputs['Color2'].default_value = (0.005, 0.018, 0.012, 1)
+    nt.links.new(uv.outputs['UV'], check.inputs['Vector'])
+    weave = nt.nodes.new('ShaderNodeTexNoise')
+    weave.inputs['Scale'].default_value = 140.0
+    nt.links.new(uv.outputs['UV'], weave.inputs['Vector'])
+    mul = nt.nodes.new('ShaderNodeMix')
+    mul.data_type = 'RGBA'
+    mul.blend_type = 'MULTIPLY'
+    mul.inputs['Factor'].default_value = 0.35
+    nt.links.new(check.outputs['Color'], mul.inputs[6])
+    nt.links.new(weave.outputs['Color'], mul.inputs[7])
+    nt.links.new(mul.outputs[2], b.inputs['Base Color'])
+    return m
 
 
 def bookshop():
@@ -457,6 +491,7 @@ def bookshop():
         glows = k.startswith("PotionGlow") or k == "glow"
         table[k] = textured("c_" + k, colour=c, rough=0.5 if glows else 0.85,
                             emit=c if glows else None, emit_strength=2.0)
+    table["FabricTiled"] = _checked_cloth()
     retexture(objs, table, fallback=table["None"])
     # The dark wood darker.
     dark = table["DarkWoodTexture"].node_tree
@@ -466,7 +501,7 @@ def bookshop():
     mul.blend_type = 'MULTIPLY'
     mul.inputs['Factor'].default_value = 1.0
     dark.links.new(b.inputs['Base Color'].links[0].from_socket, mul.inputs[6])
-    mul.inputs[7].default_value = (0.45, 0.4, 0.38, 1)
+    mul.inputs[7].default_value = (0.62, 0.56, 0.52, 1)
     dark.links.new(mul.outputs[2], b.inputs['Base Color'])
     place(objs, height=3.3)
     decimate(objs, 14000)
@@ -510,39 +545,60 @@ def log():
     export(objs, "log")
 
 
-def _paint(name, colour, grime):
-    """render_props' drum paint, but worn: the paint dark and dull, rust
-    eating most of it (an abandoned drum, not a new one)."""
-    import render_props as rp
-    return rp.paint(name, colour, grime, scale=5.0, amount=0.85, ao_distance=0.3)
+def _barrel(colour):
+    """The metal barrel (ASSET2's Barrel_Metal.blend, its paint picked from
+    the four it comes in), standing 0.92 m. Its own UVs and pictures are
+    kept - only made small: the colour with its ambient occlusion laid on,
+    and its normal picture."""
+    fresh()
+    d = os.path.join(SRC, "barrel")
+    bpy.ops.wm.open_mainfile(filepath=os.path.join(d, "Barrel_Metal.blend"))
+    for o in list(bpy.data.objects):
+        if o.type != 'MESH':
+            bpy.data.objects.remove(o, do_unlink=True)
+    objs = meshes()
+    realize(objs)
+    place(objs, height=0.92)
+    return objs
+
+
+def _barrel_pictures(name, colour, normal=True):
+    """(The trough shares the drum's normal picture: CampModel.SHARED.)"""
+    import numpy as np
+    d = os.path.join(SRC, "barrel", "Textures", "Common")
+    base = Image.open(os.path.join(d, "Base_Color", "Barrel_Metal_%s_Base_color.png" % colour)).convert("RGB")
+    ao = Image.open(os.path.join(d, "Barrel_Metal_Mixed_AO.png")).convert("L")
+    size = (512, 512)
+    c = np.asarray(base.resize(size, Image.LANCZOS)).astype(np.float32)
+    a = np.asarray(ao.resize(size, Image.LANCZOS)).astype(np.float32)[..., None] / 255.0
+    Image.fromarray(np.clip(c * a, 0, 255).astype(np.uint8)).save(os.path.join(OUT, name + "_albedo.png"), optimize=True)
+    if normal:
+        Image.open(os.path.join(d, "Barrel_Metal_Normal_OpenGL.png")).convert("RGB").resize(size, Image.LANCZOS).save(
+            os.path.join(OUT, name + "_normal.png"), optimize=True)
+
+
+def _export_uv(objs, name):
+    """export(), keeping the model's own UVs as the atlas."""
+    for o in objs:
+        o.data.uv_layers[0].name = "atlas"
+    export(objs, name)
 
 
 def drum():
-    """An oil drum like the run's (art_src barrel, painted as render_props
-    paints them), standing."""
-    fresh()
-    bpy.ops.import_scene.fbx(filepath=os.path.join(ART, "fuel_station", "barrel_low.fbx"))
-    objs = meshes()
-    for o in objs:
-        o.data.materials.clear()
-        o.data.materials.append(_paint("rust", (0.32, 0.14, 0.05), (0.07, 0.035, 0.02)))
-    realize(objs)
-    place(objs, height=0.92)
-    bake(objs, "drum", 512)
-    export(objs, "drum")
+    """The standing oil drum, in its red paint."""
+    objs = _barrel("Red")
+    _barrel_pictures("drum", "Red")
+    _export_uv(objs, "drum")
 
 
 def drum_trough():
-    """The fish tank: an oil drum on its side, its top half cut away, rust
-    inside - CampStage fills it with water."""
-    fresh()
-    bpy.ops.import_scene.fbx(filepath=os.path.join(ART, "fuel_station", "barrel_low.fbx"))
-    objs = meshes()
+    """The fish tank: the barrel on its side, its top half cut away (walls
+    given a thickness, so the cut edge reads), in its yellow paint -
+    CampStage fills it with water."""
+    objs = _barrel("Yellow")
     o = objs[0]
-    realize(objs)
-    place(objs, height=0.92)
     # Lying along x, its middle at the axis height.
-    o.matrix_world = Matrix.Translation((0, 0, 0.29)) @ Matrix.Rotation(math.radians(90), 4, 'Y') @ \
+    o.matrix_world = Matrix.Translation((0, 0, 0.32)) @ Matrix.Rotation(math.radians(90), 4, 'Y') @ \
         Matrix.Translation((0, 0, -0.46))
     realize(objs)
     bm = bmesh.new()
@@ -553,18 +609,14 @@ def drum_trough():
                            plane_no=(0, 0, 1), clear_outer=True)
     bm.to_mesh(o.data)
     bm.free()
-    # Walls with thickness, so the cut edge reads and the inside shows.
     sol = o.modifiers.new("wall", 'SOLIDIFY')
     sol.thickness = 0.012
     sol.offset = -1.0
     sol.use_even_offset = True
     apply_modifiers([o])
-    o.data.materials.clear()
-    o.data.materials.append(_paint("yellow", (0.36, 0.25, 0.05), (0.07, 0.04, 0.02)))
-    realize([o])
     place([o], size=1.0)
-    bake([o], "drum_trough", 512)
-    export([o], "drum_trough")
+    _barrel_pictures("drum_trough", "Yellow", normal=False)
+    _export_uv([o], "drum_trough")
 
 
 def rune_stone():
@@ -587,6 +639,103 @@ def rune_stone():
     place(objs, height=2.6)
     bake(objs, "rune_stone", 512, glow=True)
     export(objs, "rune_stone")
+
+
+def _npz_mesh(path, name):
+    """A mesh from tools/prep_frog.py's arrays (ZBrush is y-up), its colour
+    per face in a colour layer read by a plain material."""
+    import numpy as np
+    d = np.load(path)
+    V, F, C = d["V"], d["F"], d["C"]
+    me = bpy.data.meshes.new(name)
+    me.vertices.add(len(V))
+    me.vertices.foreach_set("co", np.stack([V[:, 0], -V[:, 2], V[:, 1]], 1).ravel())
+    me.loops.add(F.size)
+    me.loops.foreach_set("vertex_index", F.ravel())
+    me.polygons.add(len(F))
+    me.polygons.foreach_set("loop_start", np.arange(0, F.size, 3))
+    me.polygons.foreach_set("loop_total", np.full(len(F), 3))
+    lin = np.where(C <= 0.04045, C / 12.92, ((C + 0.055) / 1.055) ** 2.4)
+    col = me.color_attributes.new("paint", 'FLOAT_COLOR', 'CORNER')
+    col.data.foreach_set("color", np.concatenate([np.repeat(lin, 3, 0), np.ones((F.size, 1))], 1)
+                         .astype(np.float32).ravel())
+    me.validate()
+    me.update()
+    o = bpy.data.objects.new(name, me)
+    bpy.context.scene.collection.objects.link(o)
+    m = bpy.data.materials.new(name + "_paint")
+    m.use_nodes = True
+    nt = m.node_tree
+    b = next(n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED')
+    a = nt.nodes.new('ShaderNodeVertexColor')
+    a.layer_name = "paint"
+    nt.links.new(a.outputs['Color'], b.inputs['Base Color'])
+    me.materials.append(m)
+    return o
+
+
+def frog_merchant():
+    """The merchant: the frog wanderer (ASSET2's ZBrush sculpt), cut down and
+    coloured part by part by tools/prep_frog.py. Its parts are plain
+    colours, so they stay as the mesh's vertex colours (no picture: an
+    unwrap of a sculpt this size is all crumbs). Facing +z (the sculpt's
+    front)."""
+    fresh()
+    o = _npz_mesh(os.path.join(SRC, "frog", "frog_low.npz"), "frog_merchant")
+    place([o], height=1.25)
+    o.data.materials.clear()
+    for p in o.data.polygons:
+        p.use_smooth = True
+    select([o])
+    colours = {"export_vertex_color": "ACTIVE"} if "export_vertex_color" in \
+        bpy.ops.export_scene.gltf.get_rna_type().properties.keys() else {"export_colors": True}
+    bpy.ops.export_scene.gltf(filepath=os.path.join(OUT, "frog_merchant.glb"), export_format='GLB',
+                              use_selection=True, export_apply=True, export_materials='NONE',
+                              export_texcoords=False, export_normals=True, export_yup=True, **colours)
+    print("built frog_merchant", tris(o), "tris", flush=True)
+
+
+def _leaf_picture(path, size=256):
+    """A lotus leaf seen from above, on UVs laid flat across it (u, v = x, y
+    from -0.5 to 0.5): green, paler at the heart, veins running out."""
+    import numpy as np
+    y, x = (np.mgrid[0:size, 0:size] + 0.5) / size - 0.5
+    r = np.hypot(x, y) * 2.0
+    a = np.arctan2(y, x)
+    veins = np.clip(1.0 - np.abs(np.sin(a * 11.0)) * 18.0 * np.clip(r, 0.05, 1) , 0, 1) * np.clip(r * 3.0, 0, 1)
+    rng = np.random.default_rng(5)
+    noise = rng.normal(0, 1, (size // 8, size // 8))
+    noise = np.asarray(Image.fromarray(((noise + 3) / 6 * 255).clip(0, 255).astype(np.uint8)).resize(
+        (size, size), Image.BICUBIC)).astype(np.float32) / 255 - 0.5
+    green = np.array([0.17, 0.36, 0.11])
+    heart = np.array([0.30, 0.46, 0.16])
+    rim = np.array([0.22, 0.34, 0.10])
+    col = green + (heart - green) * np.clip(1 - r * 1.6, 0, 1)[..., None] + (rim - green) * np.clip(r * 2 - 1.2, 0, 1)[..., None]
+    col = col * (1 + noise[..., None] * 0.25) + veins[..., None] * np.array([0.09, 0.1, 0.04])
+    Image.fromarray((np.clip(col * 1.5, 0, 1) * 255).astype(np.uint8)).save(path, optimize=True)
+
+
+def lotus_leaf():
+    """A lotus leaf floating (ASSET2's Lotus+Leaf.stl: a sculpt, 3M
+    triangles, no colour), brought right down; its colour painted here on
+    UVs laid flat from above. 1 m across, its middle at the origin (the
+    water line), front +z (no front)."""
+    fresh()
+    bpy.ops.wm.stl_import(filepath=os.path.join(SRC, "lotus", "Lotus+Leaf.stl"))
+    objs = meshes()
+    realize(objs)
+    o = objs[0]
+    m = o.modifiers.new("lighter", 'DECIMATE')
+    m.ratio = 1400 / len(o.data.polygons)
+    apply_modifiers(objs)
+    place(objs, length=1.0)
+    me = o.data
+    uv = me.uv_layers.new(name="atlas")
+    for loop in me.loops:
+        co = me.vertices[loop.vertex_index].co
+        uv.data[loop.index].uv = (co.x + 0.5, co.y + 0.5)
+    _leaf_picture(os.path.join(OUT, "lotus_leaf_albedo.png"))
+    export(objs, "lotus_leaf")
 
 
 TREES = {
@@ -649,6 +798,7 @@ NO_COLOURS = {"export_vertex_color": "NONE"} if "export_vertex_color" in \
 BUILDERS = {
     "campfire": campfire, "crate": crate, "backpack": backpack, "bookshop": bookshop, "boat": boat,
     "log": log, "drum": drum, "drum_trough": drum_trough, "rune_stone": rune_stone,
+    "frog_merchant": frog_merchant, "lotus_leaf": lotus_leaf,
 }
 for _i in range(1, 10):
     BUILDERS["tent_%d" % _i] = (lambda i: lambda: tent(i))(_i)

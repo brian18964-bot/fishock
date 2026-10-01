@@ -4,8 +4,10 @@ the repo, like the other source models) with the clips the menus play.
 UAL1 and UAL2 share the mannequin's skeleton, so their clips go onto it
 as they are: breathing and waving (the equipment page, a tap), and the
 camp's life (user request, Camp v2: the character rests at the camp on
-its own - walks about, sits by the fire, chops wood, mends things... -
-less and less of it as the spirit runs low; see CampLife).
+its own - walks about, sits by the fire, mends things... - less and less
+of it as the spirit runs low; see CampLife). Carrying, chopping and
+harvesting are left out (user request: the hands didn't close on what
+they held).
 
   UAL1=<UAL1_Standard.glb> UAL2=<UAL2_Standard.glb> \\
       bpyenv/bin/python tools/build_menu_character.py      (repo root)
@@ -24,8 +26,7 @@ UAL1 = [
     "Crouch_Idle_Loop", "Idle_Torch_Loop", "Fixing_Kneeling", "PickUp_Table", "Dance_Loop",
 ]
 UAL2 = [
-    "Idle_FoldArms_Loop", "Idle_Rail_Loop", "TreeChopping_Loop", "Walk_Carry_Loop", "Chest_Open",
-    "Consume", "Farm_Harvest", "Yes", "Idle_No_Loop", "LayToIdle",
+    "Idle_FoldArms_Loop", "Idle_Rail_Loop", "Chest_Open", "Consume", "Yes", "Idle_No_Loop", "LayToIdle",
 ]
 
 

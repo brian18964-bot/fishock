@@ -2,24 +2,25 @@ class_name CampLife
 extends Node
 
 ## User request (Camp v2): the character lives at the camp on its own -
-## sits by the fire, chops wood and carries it to the fire, mends the
-## tent, opens the crate and has a bite, crouches over the fish, leans on
-## the drum looking at the lake, has a word with the merchant, gathers
-## sticks, warms itself, keeps watch with the lamp held up at the edge of
-## the dark, dances when it's in high spirits - less and less of it as its
-## spirit (Profile.spirit) runs down:
+## sits by the fire, mends the tent, opens the crate and has a bite,
+## crouches over the fish, leans on the drum looking at the lake, has a
+## word with the merchant, warms itself, keeps watch with the lamp held up
+## at the edge of the dark, dances when it's in high spirits - less and
+## less of it as its spirit (Profile.spirit) runs down. (Chopping wood and
+## carrying it, gathering sticks: dropped - user request, the hands didn't
+## close on what they held.)
 ##   70-100  busy    all of it (dancing only over 90)
-##   50-69   tired   no chopping, mending or gathering; slower; sits more
+##   50-69   tired   no mending; slower; sits more
 ##   30-49   worn    mostly sits, a long while
 ##   0-29    spent   only sits
 ## A tap (tap()): it waves - nods, shakes its head as it wearies; seated,
 ## it talks. And the set pieces: setting out (depart(): the lamp from the
-## drum - it lights - the rod from beside the tent, into the 渡石), coming
-## home through the stone (come_home("escaped")) and waking by the fire
-## after a run lost (come_home("lost")).
+## drum - it lights - and off, the game fading in as it goes), coming home
+## through the 渡石 (come_home("escaped")) and waking by the fire after a
+## run lost (come_home("lost")).
 ##
 ## A plan is a list of steps, each a Dictionary:
-##   {do: "walk", to, carry}     walk there round things (CampStage.route)
+##   {do: "walk", to}            walk there round things (CampStage.route)
 ##   {do: "face", at}            turn to look at a point
 ##   {do: "play", clip, at, fn}  a clip through once (fn called `at` of
 ##                               the way through)
@@ -30,15 +31,12 @@ extends Node
 
 signal plan_done(tag: String)
 
-## The Walk clip's own pace (m/s), and Walk_Carry's.
+## The Walk clip's own pace (m/s).
 const WALK_SPEED := 0.8
-const CARRY_SPEED := 0.6
 const TURN_RATE := 7.0
 ## How often it does each thing, by how it feels: [spent, worn, tired, busy].
 const WEIGHTS := {
 	"sit": [1.0, 6.0, 3.0, 2.0],
-	"chop": [0.0, 0.0, 0.0, 1.2],
-	"gather": [0.0, 0.0, 0.0, 0.7],
 	"tent": [0.0, 0.0, 0.0, 0.7],
 	"crate": [0.0, 0.0, 0.5, 0.9],
 	"trough": [0.0, 0.6, 1.0, 1.0],
@@ -174,7 +172,7 @@ func _next() -> void:
 				_path = stage.route(pivot.position, _step.to)
 				# Set pieces go briskly (a tap skips them anyway).
 				_pace = PACE[tier()] if busy == "" else 1.25
-				_play("Walk_Carry" if _step.get("carry", false) else "Walk", 0.25)
+				_play("Walk", 0.25)
 				rig.anim.speed_scale = _pace
 			"face":
 				_yaw_to = _yaw_of(_step.at - pivot.position)
@@ -218,7 +216,7 @@ func _walk(delta: float) -> void:
 	var target: Vector3 = _path[0]
 	var to := target - pivot.position
 	to.y = 0.0
-	var speed := (CARRY_SPEED if _step.get("carry", false) else WALK_SPEED) * _pace
+	var speed := WALK_SPEED * _pace
 	if to.length() <= speed * delta + 0.01:
 		pivot.position = Vector3(target.x, 0.0, target.z)
 		_path.pop_front()
@@ -278,9 +276,9 @@ func _stand_up() -> Array:
 	return [{"do": "play", "clip": "Sitting_Exit"}, {"do": "call", "fn": func(): seated = false}]
 
 
-func _go(spot: String, carry := false) -> Array:
+func _go(spot: String) -> Array:
 	var s: Dictionary = stage.spots[spot]
-	return [{"do": "walk", "to": s.at, "carry": carry}, {"do": "face", "at": s.face}]
+	return [{"do": "walk", "to": s.at}, {"do": "face", "at": s.face}]
 
 
 func _span(v: Vector2) -> float:
@@ -303,21 +301,6 @@ func _activity(name: String, t: int) -> Array:
 			if t > 0:
 				plan += _stand_up()
 			return plan
-		"chop":
-			return _go("chop") + [
-				{"do": "call", "fn": func(): rig.equip_node("hand_r", _axe(), _axe_grip())},
-				{"do": "loop", "clip": "TreeChopping", "time": _rng.randf_range(4.0, 7.0)},
-				{"do": "call", "fn": func():
-					rig.equip("hand_r", null)
-					rig.attach_posed("back", _bundle(), "Walk_Carry", 0.25)},
-			] + _go("stoke", true) + _put_on_fire()
-		"gather":
-			var where := "gather_%d" % _rng.randi_range(0, 2)
-			return _go(where) + [
-				{"do": "play", "clip": "Farm_Harvest"},
-				{"do": "play", "clip": "Farm_Harvest", "at": 0.6,
-					"fn": func(): rig.attach_posed("back", _bundle(), "Walk_Carry", 0.25)},
-			] + _go("stoke", true) + _put_on_fire()
 		"tent":
 			return _go("tent") + [{"do": "play", "clip": "Fixing_Kneeling"}]
 		"crate":
@@ -342,25 +325,21 @@ func _activity(name: String, t: int) -> Array:
 		"watch":
 			# On watch: the lamp lit and held up at the edge of the dark.
 			var edge := "gather_%d" % _rng.randi_range(0, 2)
-			return _go("lamp") + [{"do": "play", "clip": "PickUp_Table", "at": 0.5, "fn": func(): take_lamp()}] \
+			return _go("lamp") + [_reach(func(): take_lamp(true))] \
 				+ _go(edge) + [{"do": "loop", "clip": "Idle_Torch", "time": _rng.randf_range(3.0, 5.0)}] \
-				+ _go("lamp") + [{"do": "play", "clip": "PickUp_Table", "at": 0.5, "fn": func(): put_lamp()}]
+				+ _go("lamp") + [_reach(func(): put_lamp(true))]
 	# "stand": a while where it is, arms folded.
 	return [{"do": "loop", "clip": "Idle_FoldArms", "time": _rng.randf_range(3.0, 6.0)}]
-
-
-## Bends to lay the wood on the fire; it flares up.
-func _put_on_fire() -> Array:
-	return [{"do": "play", "clip": "Farm_Harvest", "at": 0.45, "fn": func():
-		rig.equip("back", null)
-		stage.stoke()}]
 
 
 # ---------------------------------------------------------------- set pieces
 
 ## Setting out (user request): the lamp taken from the drum - it lights -
-## the rod from beside the tent, then into the 渡石. plan_done("depart")
-## when it's gone in.
+## and off toward the water; plan_done("depart") as soon as it's in hand,
+## the game fading in while it walks. (Shouldering the backpack and taking
+## the rod first, as asked, would need a clip that lifts a pack onto the
+## back - the animation libraries have none, and swapping it from hand to
+## back would jump; so, as the user allowed, the lamp and away.)
 func depart() -> void:
 	busy = "depart"
 	_plan.clear()
@@ -368,17 +347,14 @@ func depart() -> void:
 	rig.equip("hand_r", null)
 	rig.equip("back", null)
 	var plan: Array = _stand_up() if seated else []
-	plan += _go("lamp") + [{"do": "play", "clip": "PickUp_Table", "at": 0.5, "fn": func(): take_lamp()}]
-	plan += _go("rod") + [{"do": "play", "clip": "PickUp_Table", "at": 0.5, "fn": func(): take_rod()}]
-	# The lamp raised to the stone as it blazes, then in.
-	plan += _go("stone") + [{"do": "call", "fn": func(): stage.stone_flare()},
-		{"do": "loop", "clip": "Idle_Torch", "time": 1.2}, {"do": "walk", "to": stage.spots.stone_in.at}]
+	plan += _go("lamp") + [_reach(func(): take_lamp(true))]
+	plan += [{"do": "call", "fn": func(): plan_done.emit("depart")}, {"do": "walk", "to": stage.spots.stone.at}]
 	_plan = plan
 	_next()
 
 
 ## Home again (user request): "escaped" - out of the 渡石's light, the lamp
-## put back on the drum, the rod by the tent, a sit by the fire; "lost" -
+## put back on the drum, then to the fire; "lost" -
 ## waking up by the fire.
 func come_home(how: String) -> void:
 	_plan.clear()
@@ -397,21 +373,19 @@ func come_home(how: String) -> void:
 		return
 	busy = "home"
 	take_lamp()
-	take_rod()
 	var s2: Dictionary = stage.spots.stone_in
 	pivot.position = s2.at
 	pivot.rotation.y = 0.0
 	stage.stone_flare()
 	_plan = [{"do": "walk", "to": stage.spots.stone.at}]
-	_plan += _go("lamp") + [{"do": "play", "clip": "PickUp_Table", "at": 0.5, "fn": func(): put_lamp()}]
-	_plan += _go("rod") + [{"do": "play", "clip": "PickUp_Table", "at": 0.5, "fn": func(): put_rod()}]
+	_plan += _go("lamp") + [_reach(func(): put_lamp(true))]
 	# Then to the fire.
 	_plan += _go("warm")
 	_next()
 
 
-## Skips a set piece to its end (a tap): gone into the stone, or home with
-## the gear put away.
+## Skips a set piece to its end (a tap): gone, or home with the lamp put
+## away.
 func finish() -> void:
 	if busy == "":
 		return
@@ -423,7 +397,6 @@ func finish() -> void:
 		plan_done.emit(tag)
 		return
 	put_lamp()
-	put_rod()
 	var warm: Dictionary = stage.spots.warm
 	pivot.position = warm.at
 	pivot.rotation.y = _yaw_of(warm.face - warm.at)
@@ -431,9 +404,18 @@ func finish() -> void:
 	plan_done.emit(tag)
 
 
-func take_lamp() -> void:
+## Reaching out to the lamp on the drum (the hand gets to its bail just as
+## `fn` - taking it, putting it back - is called).
+func _reach(fn: Callable) -> Dictionary:
+	return {"do": "play", "clip": CharacterRig.REACH_CLIP, "at": CharacterRig.REACH_AT, "fn": fn}
+
+
+## The lamp in hand, lit; `from_drum`: lifted off the drum (eased from it
+## into the hand), else just there (home through the stone).
+func take_lamp(from_drum := false) -> void:
+	var place: Variant = stage.drum_lamp_place() if from_drum else null
 	stage.lamp_on_drum(false)
-	rig.equip_lamp()
+	rig.equip_lamp(place)
 	# Lit, in the hand.
 	var held: Node3D = rig.attachments.hand_l.get_child(0) if rig.attachments.hand_l.get_child_count() > 0 else null
 	if held != null:
@@ -457,79 +439,12 @@ func take_lamp() -> void:
 		held.add_child(flame)
 
 
-func put_lamp() -> void:
+## The lamp back on the drum (`eased`: set down from the hand).
+func put_lamp(eased := false) -> void:
+	var att: BoneAttachment3D = rig.attachments.get("hand_l")
+	var held: Variant = null
+	if eased and att != null and att.get_child_count() > 0:
+		held = (att.get_child(0) as Node3D).global_transform
 	rig.equip("hand_l", null)
 	_lamp_light = null
-	stage.lamp_on_drum(true)
-
-
-func take_rod() -> void:
-	stage.rod_by_tent(false)
-	rig.equip_rod(Profile.rod_tier)
-
-
-func put_rod() -> void:
-	rig.equip("hand_r", null)
-	stage.rod_by_tent(true)
-
-
-# ---------------------------------------------------------------- props
-
-## A hatchet: the handle hanging from the hand (as the arm hangs at rest),
-## the head at its end, the blade ahead.
-func _axe() -> Node3D:
-	var axe := Node3D.new()
-	axe.name = "Axe"
-	var wood := StandardMaterial3D.new()
-	wood.albedo_color = Color(0.36, 0.24, 0.13)
-	wood.roughness = 0.8
-	var iron := StandardMaterial3D.new()
-	iron.albedo_color = Color(0.32, 0.33, 0.35)
-	iron.metallic = 0.7
-	iron.roughness = 0.35
-	var handle := MeshInstance3D.new()
-	var hm := CylinderMesh.new()
-	hm.top_radius = 0.018
-	hm.bottom_radius = 0.022
-	hm.height = 0.5
-	hm.radial_segments = 6
-	hm.rings = 1
-	handle.mesh = hm
-	handle.material_override = wood
-	handle.position = Vector3(0, -0.2, 0)
-	axe.add_child(handle)
-	var head := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = Vector3(0.03, 0.09, 0.17)
-	head.mesh = bm
-	head.material_override = iron
-	head.position = Vector3(0, -0.4, 0.06)
-	axe.add_child(head)
-	return axe
-
-
-func _axe_grip() -> Transform3D:
-	return rig.held_offset("hand_r", Basis.IDENTITY, Vector3(0, -0.03, 0.0))
-
-
-## An armful of firewood, as Walk_Carry holds things.
-func _bundle() -> Node3D:
-	var bundle := Node3D.new()
-	bundle.name = "Firewood"
-	var bark := StandardMaterial3D.new()
-	bark.albedo_color = Color(0.3, 0.2, 0.12)
-	bark.roughness = 0.9
-	for k in 3:
-		var stick := MeshInstance3D.new()
-		var cm := CylinderMesh.new()
-		cm.top_radius = 0.045
-		cm.bottom_radius = 0.05
-		cm.height = 0.46
-		cm.radial_segments = 7
-		cm.rings = 1
-		stick.mesh = cm
-		stick.material_override = bark
-		stick.rotation = Vector3(0.0, 0.25 * (k - 1), PI / 2.0)
-		stick.position = Vector3(0.0, 0.05 * k - 0.03, 0.04 * (k - 1))
-		bundle.add_child(stick)
-	return bundle
+	stage.lamp_on_drum(true, held)

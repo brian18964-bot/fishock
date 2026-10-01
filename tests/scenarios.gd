@@ -1498,12 +1498,20 @@ func test_main_menu() -> void:
 		check(title.find_child(want, true, false) != null, "main screen has " + want)
 	# The pages are the camp's things: the crate, the backpack, the tent, the
 	# trough, the merchant's stall.
-	for want in ["warehouse", "bag", "equipment", "fish_tank", "shop"]:
+	for want in ["warehouse", "equipment", "fish_tank", "shop"]:
 		check(camp.hotspots.has(want), "the camp's thing for " + want)
+	check(not camp.hotspots.has("bag"), "no bag page of its own")
 	check(title.find_child("CampList", true, false) == null, "no list of pages down the side")
-	# A tap on the backpack opens the bag page.
-	var at: Vector2 = camp.camera.unproject_position(camp.hotspots.bag.parts[0][1]) / title.RENDER_SCALE
-	check(title.spot_at(at) == "bag", "the backpack is under its own spot")
+	# User request: nothing over the character's head; the player's card
+	# (name and spirit) top left.
+	check(title.find_child("Nameplate", true, false) == null, "no nameplate over its head")
+	var card: Control = title.find_child("PlayerCard", true, false)
+	check(card != null and card.position.x < 40 and card.position.y < 40 and card.find_child("Spirit", true, false) != null,
+		"the player's card top left, with the spirit")
+	# A tap on the backpack (by the crate) opens the warehouse too.
+	var pack: Node3D = camp.hotspots.warehouse.parts.filter(func(p): return p[0].name == "backpack")[0][0]
+	var at: Vector2 = camp.camera.unproject_position(pack.global_position + Vector3(0, 0.25, 0)) / title.RENDER_SCALE
+	check(title.spot_at(at) == "warehouse", "the backpack is the warehouse's too")
 	for down in [true, false]:
 		var tap := InputEventMouseButton.new()
 		tap.button_index = MOUSE_BUTTON_LEFT
@@ -1512,7 +1520,7 @@ func test_main_menu() -> void:
 		title._on_home_input(tap)
 	await seconds(0.8)
 	var bag_page: Control = title._page
-	check(bag_page != null and bag_page.get("bag_only") == true, "tapping the backpack opens the bag")
+	check(bag_page != null and bag_page.find_child("WarehouseWindow", true, false) != null, "tapping the backpack opens the warehouse")
 	UiKit.page_back(bag_page)
 	await seconds(1.0)
 	# A page opens over the camp (the camera glides to its spot) and closes
@@ -1663,7 +1671,8 @@ func test_camp_life() -> void:
 	for _i in 200:
 		life._choose()
 		busy[life.activity] = true
-	check(busy.has("chop") and busy.has("dance") and busy.has("sit"), "busy, it chops, dances and sits (%s)" % ", ".join(busy.keys()))
+	check(busy.has("dance") and busy.has("sit") and busy.has("tent"), "busy, it dances, mends and sits (%s)" % ", ".join(busy.keys()))
+	check(not busy.has("chop") and not busy.has("gather"), "no chopping or carrying (dropped)")
 	Profile.spirit = 80.0
 	var danced := false
 	for _i in 200:
@@ -1709,8 +1718,8 @@ func test_camp_life() -> void:
 	UiKit.page_back(title._page)
 	await seconds(0.8)
 	check(not life.paused, "and carries on after")
-	# Setting out: the lamp off the drum (lit, in its hand), the rod from by
-	# the tent, into the stone.
+	# Setting out: the lamp off the drum (lit, hanging from its fingers),
+	# and the game fades in as it goes.
 	Profile.spirit = 80.0
 	title._setting_off = true
 	title._on_solo()
@@ -1724,21 +1733,21 @@ func test_camp_life() -> void:
 			break
 	check(took and camp.character.attachments.hand_l.get_child_count() == 1, "it takes the lamp from the drum")
 	check(camp.character.find_child("LampLight", true, false) != null, "and it's lit")
-	var rod_holder: Node3D = camp.find_child("Rod", true, false)
-	var rod_taken := false
-	for _i in 900:
-		await frames(1)
-		if not rod_holder.visible:
-			rod_taken = true
-			break
-	check(rod_taken and camp.character.attachments.hand_r.get_child_count() == 1, "then the rod from beside the tent")
 	var done := {"gone": false}
 	life.plan_done.connect(func(tag): done.gone = done.gone or tag == "depart")
-	for _i in 900:
-		await frames(1)
+	await seconds(0.6)
+	var held: Node3D = camp.character.attachments.hand_l.get_child(0)
+	var grip: Vector3 = camp.character._grip()
+	var bail: Vector3 = held.global_transform * CharacterRig.LAMP_BAIL
+	check(bail.distance_to(grip) < 0.02 and held.global_transform.basis.y.normalized().dot(Vector3.UP) > 0.9,
+		"the lamp hangs upright by its bail from the fingers (%.3f m off)" % bail.distance_to(grip))
+	for _i in 240:
 		if done.gone:
 			break
-	check(done.gone and camp.character_pivot.position.distance_to(camp.spots.stone_in.at) < 0.1, "and walks into the 渡石")
+		await frames(1)
+	check(done.gone, "lamp in hand, off it goes (the game fades in)")
+	check(camp.find_child("Rod", true, false).visible and camp.character.attachments.hand_r.get_child_count() == 0,
+		"the rod stays by the tent")
 	title.queue_free()
 	await frames(1)
 
@@ -1760,8 +1769,7 @@ func test_camp_life() -> void:
 	title._on_home_input(down)
 	await frames(2)
 	check(life.busy == "" and title._scene_piece == "" and camp.find_child("DrumLamp", true, false).visible
-		and camp.find_child("Rod", true, false).visible and camp.character.attachments.hand_l.get_child_count() == 0,
-		"a tap skips to the lamp on the drum and the rod by the tent")
+		and camp.character.attachments.hand_l.get_child_count() == 0, "a tap skips to the lamp on the drum")
 	# And straight out again.
 	title._setting_off = true
 	title._on_solo()

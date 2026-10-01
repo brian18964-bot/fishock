@@ -9,10 +9,8 @@ extends ItemBoard
 ## Dressed as an MMO bank (user request): two iron-and-gold windows, the
 ## warehouse's tabs along its top, sunken slots ringed by rarity.
 
-## User request (the camp): the backpack leant on the crate opens the bag
-## alone (scenes/bag.tscn) - rearranged by dragging, things thrown away
-## from their card.
-@export var bag_only := false
+## User request (the camp): the crate and the backpack leant on it both
+## open it; a thing in the bag can be thrown away from its card.
 
 var _storage: ItemBoard.StorageGrid
 var _bag: ItemBoard.BagGrid
@@ -30,11 +28,7 @@ func _ready() -> void:
 
 func _build() -> void:
 	_purse = UiKit.page_chrome(self, _on_back)
-	can_discard = bag_only
-	if bag_only:
-		_build_bag(Vector2((960 - 468) / 2.0, 56), "背包", ["拖曳物品可以在背包裡換位置",
-			"點一下物品看說明，可以放回倉庫或丟棄", "背包裡的東西會帶進遊戲；釣到的魚、餌料會放進空格"])
-		return
+	can_discard = true
 
 	# Left: the warehouse, by tab.
 	var made := UiKit.window("倉庫")
