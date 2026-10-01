@@ -1564,6 +1564,9 @@ func test_main_menu() -> void:
 	check(not camp.hotspots.has("bag"), "no bag page of its own")
 	# The frog merchant potters about his stall (user request).
 	var frog: CampMerchant = camp.merchant
+	# (Not while the character happens to be visiting him: he stands to talk.)
+	if frog.visitor != null:
+		frog.release()
 	var was := frog.position
 	frog._wait = 0.0
 	await seconds(1.0)

@@ -34,6 +34,8 @@ var _picked_curses: Array = []
 
 
 func _ready() -> void:
+	# Ones earned at the camp (the shop, the fish log) count here too.
+	Campaign.check_achievements()
 	_purse = UiKit.page_chrome(self, func(): UiKit.page_back(self), "BackButton")
 	UiKit.set_purse(_purse, Profile.gold)
 	var made := UiKit.window("旅程")
