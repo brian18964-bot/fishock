@@ -242,6 +242,7 @@ def main():
     arm, meshes, src = load(args.mixamo)
     if args.character == "owl":
         meshes = owl_character.bind(arm, "mixamo")
+        owl_character.close_stance(arm, "mixamo", list(src.values()), standing=[src["idle"]])
     clips = build_clips(arm, src)
     check_lean(arm, clips)
     back_grip, back_tip = back_rod_local(arm)

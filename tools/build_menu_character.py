@@ -72,6 +72,8 @@ def main():
         for o in body:
             bpy.data.objects.remove(o, do_unlink=True)
         body = owl_character.bind(arm, "ual")
+        owl_character.close_stance(arm, "ual", list(keep.values()),
+                                   standing=[a for n, a in keep.items() if n.startswith("Idle")])
     for a in list(bpy.data.actions):
         if a not in keep.values():
             bpy.data.actions.remove(a)

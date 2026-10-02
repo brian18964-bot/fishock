@@ -31,7 +31,7 @@ const SHEET_HALVES := 2
 const SPRITE_SCALE := 0.5
 ## (0, -center_y * 27.108) for the sheet's camera; the feet sit at the
 ## node origin, which is placed at the bottom of the player's collision box.
-const OFFSET := Vector2(0.0, -17.95)
+const OFFSET := Vector2(0.0, -18.57)
 ## Sheet column order: down, down_left, left, up_left, up, up_right, right,
 ## down_right. Index by 45deg sector clockwise from +X (right).
 const SECTOR_TO_DIR := [6, 7, 0, 1, 2, 3, 4, 5]

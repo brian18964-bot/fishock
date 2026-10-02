@@ -102,6 +102,29 @@ class Straighten:
         return Vector((q.x * side, q.y, q.z))
 
 
+# The legs drawn in (user request: the legs needn't stand so far apart):
+# from the crotch down (fully by LEGS_IN[1], none above LEGS_IN[0]) each
+# leg moved NARROW in toward the middle, the baggy trouser legs made
+# TROUSERS_SLIM narrower about TROUSERS_MID so they don't meet.
+LEGS_IN = (0.60, 0.48)
+NARROW = 0.029
+TROUSERS_MID = 0.11
+TROUSERS_SLIM = 0.8
+
+
+def narrow(p, trousers=False):
+    t = _smooth(LEGS_IN[0], LEGS_IN[1], p.z)
+    if t <= 0.0:
+        return Vector(p)
+    side = 1.0 if p.x >= 0 else -1.0
+    x = abs(p.x)
+    if trousers:
+        want = (TROUSERS_MID - NARROW) + (x - TROUSERS_MID) * TROUSERS_SLIM
+    else:
+        want = x - NARROW
+    return Vector((side * (x + (want - x) * t), p.y, p.z))
+
+
 def _joints(arm, fix, head):
     """Where the owl's joints are (its left side; the right mirrors it),
     arms straightened."""
@@ -120,8 +143,9 @@ def _joints(arm, fix, head):
         "wrist": at("DEF_hand_L"),
         "thumb": [at("DEF_palm_L.004"), at("DEF_thumb_L.001"), at("DEF_thumb_L.002"), at("DEF_thumb_L.002", "tail")],
         "index": finger("index"), "middle": finger("middle"), "ring": finger("ring"), "pinky": finger("pinky"),
-        "thigh": at("DEF_thigh_L"), "knee": list(knee), "ankle": at("DEF_calf_L", "tail"),
-        "ball": at("DEF_toe_2_L.002"), "toe": at("DEF_toe_2_L.003", "tail"),
+        "thigh": list(narrow(Vector(at("DEF_thigh_L")))), "knee": list(narrow(knee)),
+        "ankle": list(narrow(Vector(at("DEF_calf_L", "tail")))),
+        "ball": list(narrow(Vector(at("DEF_toe_2_L.002")))), "toe": list(narrow(Vector(at("DEF_toe_2_L.003", "tail")))),
     }
 
 
@@ -293,6 +317,8 @@ def bake_character(src):
             bpy.ops.object.modifier_apply(modifier="dec")
         for v in o.data.vertices:
             v.co = fix(v.co)
+            if name in ("owl_trousers", "owl_feet"):
+                v.co = narrow(v.co, trousers=name == "owl_trousers")
         o.data.update()
         o.data.shade_smooth()
     lows = parts
@@ -488,6 +514,72 @@ def _neckline(jumper):
     ang = np.arctan2(pts[:, 0] - cx, -(pts[:, 1] - cy))
     order = np.argsort(ang)
     return (lambda a: float(np.interp(a, ang[order], pts[order, 2], period=2 * math.pi))), cx, cy
+
+
+# A clip's feet no further out from the hips than this (owl units; user
+# request: the legs needn't stand so far apart - the stand-in skeletons'
+# clips stand wide).
+STANCE = 0.012
+# ...and, standing (not walking), no further ahead or behind it than this.
+STRIDE = 0.035
+
+
+def close_stance(arm, rig_name, actions, standing=()):
+    """Each of `actions` (on `arm`) gone through frame by frame: where a
+    foot is further out than STANCE from its hip - or, in the `standing`
+    ones, further ahead or behind than STRIDE - the thigh turned (about
+    the hip) to bring it there and the foot turned back the same so it
+    stays flat (a bent knee takes a few goes); keyed over the clip."""
+    rig = RIGS[rig_name]
+    with open(JOINTS) as fh:
+        joints = json.load(fh)
+    hips_z = (arm.matrix_world @ arm.data.bones[rig["trunk"][0]].head_local).z
+    limit = STANCE * hips_z / joints["trunk"][0][2]
+    stride = STRIDE * hips_z / joints["trunk"][0][2]
+    ad = arm.animation_data or arm.animation_data_create()
+    keep = ad.action
+    mutes = [(t, t.mute) for t in ad.nla_tracks]
+    for t in ad.nla_tracks:
+        t.mute = True
+    scene = bpy.context.scene
+    for act in actions:
+        ad.action = act
+        s0, s1 = (int(round(f)) for f in act.frame_range)
+        for f in range(s0, s1 + 1):
+            scene.frame_set(f)
+            for side, sign in (("l", 1.0), ("r", -1.0), ("l", 1.0), ("r", -1.0), ("l", 1.0), ("r", -1.0)):
+                thigh = arm.pose.bones[rig["limb"](side, rig["limbs"]["thigh"])]
+                foot = arm.pose.bones[rig["limb"](side, rig["limbs"]["ankle"])]
+                mw = arm.matrix_world
+                hip = mw @ thigh.head
+                ank = mw @ foot.head
+                drop = hip.z - ank.z
+                if drop < 1e-3:
+                    continue
+                turn = Matrix.Identity(4)
+                out = (ank.x - hip.x) * sign - limit
+                if out > 0.0:
+                    turn = Matrix.Rotation(math.atan2(out, drop) * sign, 4, "Y") @ turn
+                ahead = abs(ank.y - hip.y) - stride
+                if act in standing and ahead > 0.0:
+                    turn = Matrix.Rotation(-math.copysign(math.atan2(ahead, drop), ank.y - hip.y), 4, "X") @ turn
+                if turn == Matrix.Identity(4):
+                    continue
+                turn = Matrix.Translation(hip) @ turn @ Matrix.Translation(-hip)
+                foot_world = mw @ foot.matrix
+                thigh.matrix = mw.inverted() @ turn @ mw @ thigh.matrix
+                bpy.context.view_layer.update()
+                # The foot as it was turned (flat), where the leg now puts it.
+                now = mw @ foot.matrix
+                fixed = foot_world.copy()
+                fixed.translation = now.translation
+                foot.matrix = mw.inverted() @ fixed
+                bpy.context.view_layer.update()
+                for pb in (thigh, foot):
+                    pb.keyframe_insert("rotation_quaternion", frame=f)
+    ad.action = keep
+    for t, m in mutes:
+        t.mute = m
 
 
 def bind(arm, rig_name):

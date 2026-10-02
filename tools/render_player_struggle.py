@@ -42,7 +42,7 @@ TRUNK = ("pelvis", "spine_01", "spine_02", "spine_03", "neck_01", "Head")
 LEGS = ("thigh", "calf", "foot", "ball")
 # The player sheet's cell and camera (render_player.py's output).
 CELL = (72, 88)
-CENTER_Y = 17.95 / rp.DENSITY
+CENTER_Y = 18.57 / rp.DENSITY
 HD = 2
 
 
