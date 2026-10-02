@@ -490,23 +490,40 @@ func _on_piece_done(tag: String) -> void:
 	_skip_hint.visible = false
 
 
-## Over the camp: 輕觸畫面開始, gently pulsing; the tap that clears it is
-## the one the browser waits for to let sound play.
+## User request: the web build's loading screen carries straight on - once
+## the game's loaded, the same picture stays up with the loading bar gone
+## and 輕觸畫面進入遊戲 where it was; a tap fades it away onto the camp. That
+## tap is also the one the browser waits for before letting sound play.
 func tap_to_start() -> void:
+	var layer := CanvasLayer.new()
+	layer.name = "TapToStartLayer"
+	layer.layer = 20
+	add_child(layer)
 	var cover := ColorRect.new()
 	cover.name = "TapToStart"
 	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
-	cover.color = Color(0.0, 0.0, 0.0, 0.45)
+	# The loading screen's own colour and picture (project.godot's boot
+	# splash, shown whole and centred as the web page shows it).
+	cover.color = ProjectSettings.get_setting("application/boot_splash/bg_color", Color(0.02, 0.027, 0.043))
 	cover.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(cover)
-	var words := UiKit.label("輕觸畫面開始", 26, UiKit.TEXT, true, 4)
-	words.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(cover)
+	var splash := TextureRect.new()
+	splash.texture = load(ProjectSettings.get_setting("application/boot_splash/image", "res://assets/boot_splash.png"))
+	splash.set_anchors_preset(Control.PRESET_FULL_RECT)
+	splash.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	splash.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	splash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cover.add_child(splash)
+	# Where the loading bar was (11% up from the bottom).
+	var words := UiKit.label("輕觸畫面進入遊戲", 24, Color(0.91, 0.76, 0.35), true, 5)
+	words.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	words.offset_top = -86.0
+	words.offset_bottom = -50.0
 	words.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	words.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	words.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	cover.add_child(words)
 	var pulse := words.create_tween().set_loops()
-	pulse.tween_property(words, "modulate:a", 0.45, 1.1).set_trans(Tween.TRANS_SINE)
+	pulse.tween_property(words, "modulate:a", 0.35, 1.1).set_trans(Tween.TRANS_SINE)
 	pulse.tween_property(words, "modulate:a", 1.0, 1.1).set_trans(Tween.TRANS_SINE)
 	cover.gui_input.connect(func(e: InputEvent):
 		var tapped: bool = (e is InputEventMouseButton or e is InputEventScreenTouch) and e.pressed
@@ -514,9 +531,10 @@ func tap_to_start() -> void:
 			return
 		sound_unlocked = true
 		cover.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		Sfx.play("ui_open", -6.0)
 		var t := cover.create_tween()
-		t.tween_property(cover, "modulate:a", 0.0, 0.5)
-		t.tween_callback(cover.queue_free))
+		t.tween_property(cover, "modulate:a", 0.0, 0.9).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		t.tween_callback(layer.queue_free))
 
 
 ## Into the run: the camp fades into the night as the character goes off

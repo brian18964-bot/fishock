@@ -1531,11 +1531,13 @@ func test_main_menu() -> void:
 	title.tap_to_start()
 	var cover: Control = title.find_child("TapToStart", true, false)
 	check(cover != null, "the web asks for a tap to start the sound")
+	var splash := cover.get_child(0) as TextureRect
+	check(splash != null and splash.texture != null, "the loading screen's picture stays up behind 輕觸畫面進入遊戲")
 	var press := InputEventMouseButton.new()
 	press.button_index = MOUSE_BUTTON_LEFT
 	press.pressed = true
 	cover.gui_input.emit(press)
-	await seconds(0.7)
+	await seconds(1.2)
 	check(not is_instance_valid(cover) and TitleScreen.sound_unlocked, "a tap lets the sound in")
 	# User feedback: the crickets were loud and steady - softer now, and now
 	# and then they fade away to nothing and take up again little by little.
