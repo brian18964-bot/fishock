@@ -525,12 +525,19 @@ func tap_to_start() -> void:
 	var pulse := words.create_tween().set_loops()
 	pulse.tween_property(words, "modulate:a", 0.35, 1.1).set_trans(Tween.TRANS_SINE)
 	pulse.tween_property(words, "modulate:a", 1.0, 1.1).set_trans(Tween.TRANS_SINE)
+	# User report: the tap went on through to 出發夜釣 below the words (a
+	# phone's touch comes again as a mouse click, and the cover had already
+	# stopped catching) and opened the journey. The cover now keeps every
+	# touch and click until it's gone, and goes only once the finger's up.
+	var gone := [false]
 	cover.gui_input.connect(func(e: InputEvent):
-		var tapped: bool = (e is InputEventMouseButton or e is InputEventScreenTouch) and e.pressed
-		if not tapped or cover.mouse_filter == Control.MOUSE_FILTER_IGNORE:
+		if not (e is InputEventMouseButton or e is InputEventScreenTouch):
 			return
+		cover.accept_event()
+		if e.pressed or gone[0]:
+			return
+		gone[0] = true
 		sound_unlocked = true
-		cover.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		Sfx.play("ui_open", -6.0)
 		var t := cover.create_tween()
 		t.tween_property(cover, "modulate:a", 0.0, 0.9).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)

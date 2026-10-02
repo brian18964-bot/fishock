@@ -1542,8 +1542,17 @@ func test_main_menu() -> void:
 	press.button_index = MOUSE_BUTTON_LEFT
 	press.pressed = true
 	cover.gui_input.emit(press)
+	await seconds(0.3)
+	# User report: the tap went through to 出發夜釣 and opened the journey -
+	# the cover holds on until the finger's up, and then it's only the camp.
+	check(is_instance_valid(cover) and cover.mouse_filter == Control.MOUSE_FILTER_STOP,
+		"the cover keeps catching while the finger's down")
+	var lift := press.duplicate() as InputEventMouseButton
+	lift.pressed = false
+	cover.gui_input.emit(lift)
 	await seconds(1.2)
 	check(not is_instance_valid(cover) and TitleScreen.sound_unlocked, "a tap lets the sound in")
+	check(title.get("_page") == null, "the tap only goes into the camp (no page opened under it)")
 	# User feedback: the crickets were loud and steady - softer now, and now
 	# and then they fade away to nothing and take up again little by little.
 	var crickets: CampCrickets = title.find_child("Crickets", true, false)
