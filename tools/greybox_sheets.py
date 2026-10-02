@@ -23,9 +23,10 @@ ANIMALS = ["owl", "dog", "cat", "bear"]
 NAMES = {"owl": "貓頭鷹", "dog": "犬", "cat": "黑貓", "bear": "熊"}
 VIEWS = ["front", "three", "side", "back"]
 VIEW_NAMES = {"front": "正面", "three": "四分之三", "side": "真側面", "back": "背面"}
-TESTS = ["bind", "arms_down", "arms_up", "arms_forward", "crouch", "head_turn"]
+TESTS = ["bind", "arms_down", "arms_up", "arms_forward", "crouch", "squat", "head_turn", "tail_swing"]
 TEST_NAMES = {"bind": "綁定姿勢 (T)", "arms_down": "手臂放下", "arms_up": "抬臂",
-              "arms_forward": "手前伸＋屈肘", "crouch": "蹲下 (屈膝)", "head_turn": "轉頭 60°"}
+              "arms_forward": "手前伸＋屈肘", "crouch": "UAL 蹲 (單膝前移低姿)",
+              "squat": "雙腳承重下蹲 (測試用 IK)", "head_turn": "轉頭 60°", "tail_swing": "尾巴擺動 (尾骨)"}
 BG = (64, 66, 70)
 INK = (235, 235, 235)
 # The renders' camera: 1.5 m across, centred 0.68 m up.
@@ -203,8 +204,158 @@ def main(rev, out, fpath=None):
 
 
 REGION = {"tail root": "尾根", "arm/sleeve": "手臂/袖", "neck/collar": "頸/領口", "waist/hem": "腰/下襬",
-          "thigh/cuff": "大腿/褲管", "lower leg": "小腿"}
+          "thigh/cuff": "大腿/褲管", "lower leg": "小腿", "crotch": "褲襠"}
+
+
+# ------------------------------------------------------------ round 2
+# (user request, round 2: before / after at the same camera, close views
+# of the head, hands, feet, crotch and tail root, the pose tests counted,
+# measured and placed apart, the clips played through on both skeletons)
+
+DETAILS = [("head_front", "頭・正面"), ("head_three", "頭・四分之三"), ("head_side", "頭・側面"),
+           ("hand_top", "手掌・上"), ("hand_front", "手掌・前"), ("foot_side", "腳掌・側"),
+           ("foot_front", "腳掌・前"), ("crotch_front", "褲襠・正面"), ("crotch_low", "褲襠・仰視"),
+           ("tail_root", "尾根近照"), ("tail_back", "尾巴・背面"), ("tail_side", "尾巴・側面")]
+CLIP_NAMES = {"idle": "待機", "walk": "走路", "run": "跑步", "cast": "甩竿", "fish_idle": "持竿待機"}
+
+
+def measured_text(m):
+    b, sh = m["body"], m["shorts"]
+    t = "身體穿出 %d 點・最深 %.1f mm・平均 %.1f mm・%.1f cm²" % (
+        b["points"], b["depth_max_mm"], b["depth_mean_mm"], b["area_cm2"])
+    if sh["points"]:
+        t += "\n褲頭穿出上衣 %d 點・最深 %.1f mm" % (sh["points"], sh["depth_max_mm"])
+    return t
+
+
+def round2(before, rev, out, fpath=None):
+    os.makedirs(out, exist_ok=True)
+
+    def f(size):
+        return font(fpath, size)
+    # standing pictures, silhouettes and thumbnails (main's, from these
+    # renders; its pose sheets are replaced below)
+    main(rev, out, fpath)
+    for a in ANIMALS:
+        # before / after, the four views
+        cells = []
+        for src in (before, rev):
+            for v in VIEWS:
+                im = load(src, "%s_new_%s.png" % (a, v))
+                cells.append(ruler(im) if im else None)
+        grid(cells, 4, 420, [VIEW_NAMES[v] for v in VIEWS], ["第一輪", "第二輪"], f,
+             title="%s：本輪修改前／後・同鏡頭、燈光、比例尺（橫線每 25 cm）" % NAMES[a]).save(
+            os.path.join(out, "%s_before_after.png" % a))
+        # close views, before / after
+        shots = [d for d in DETAILS if load(rev, "%s_new_%s.png" % (a, d[0])) is not None]
+        for part, sel in (("a", shots[:5]), ("b", shots[5:9]), ("c", shots[9:])):
+            if not sel:
+                continue
+            cells = [load(src, "%s_%s_%s.png" % (a, tag, k)) for src, tag in ((rev, "old"), (rev, "new"))
+                     for k, _ in sel]
+            grid(cells, len(sel), 330, [n for _, n in sel], ["第一輪", "第二輪"], f,
+                 title="%s：近照（T 姿勢，同燈光；地面不顯示）" % NAMES[a]).save(
+                os.path.join(out, "%s_details_%s.png" % (a, part)))
+        # the pose tests, measured
+        p = os.path.join(rev, "%s_poses.json" % a)
+        if os.path.exists(p):
+            with open(p) as fh:
+                st = json.load(fh)
+            tests = [t for t in TESTS if t in st]
+            cells = []
+            for v in ("front", "three"):
+                for t in tests:
+                    im = load(rev, "%s_pose_%s_%s.png" % (a, t, v))
+                    if im is None and v == "front":
+                        im = load(rev, "%s_pose_%s_back.png" % (a, t))
+                    cells.append(im)
+            cell = 280
+            G = grid(cells, len(tests), cell, [TEST_NAMES[t] for t in tests], ["正面*", "四分之三"], f,
+                     title="%s：靜態姿勢測試（UAL 骨架）・紅點＝綁定時在衣服內、擺姿後在兩件衣服外的身體點" % NAMES[a])
+            H = Image.new("RGB", (G.size[0], G.size[1] + 250), BG)
+            H.paste(G, (0, 0))
+            d = ImageDraw.Draw(H)
+            d.text((12, G.size[1] + 8), "實際\n量測", font=f(20), fill=INK)
+            for c, t in enumerate(tests):
+                m = st[t]["measured"]
+                lines = ["穿出 %d 點" % m["body"]["points"], "最深 %.1f mm" % m["body"]["depth_max_mm"],
+                         "平均 %.1f mm" % m["body"]["depth_mean_mm"], "面積 %.1f cm²" % m["body"]["area_cm2"]]
+                if m["shorts"]["points"]:
+                    lines.append("褲頭穿上衣 %d 點 / %.1f mm" % (m["shorts"]["points"], m["shorts"]["depth_max_mm"]))
+                for r, v in sorted(m["where"].items(), key=lambda kv: -kv[1]["points"])[:3]:
+                    lines.append("%s %d 點 %.1f mm" % (REGION.get(r, r), v["points"], v["depth_max_mm"]))
+                d.text((130 + c * cell + 6, G.size[1] + 8), "\n".join(lines), font=f(15), fill=INK)
+            d.text((12, H.size[1] - 26), "* 尾巴擺動一欄為背面。總點數與各部位點數分列；各部位只列前三。",
+                   font=f(15), fill=INK)
+            H.save(os.path.join(out, "%s_poses.png" % a))
+            # where it came through, close
+            items = [(t, c) for t in tests for c in st[t].get("close", [])]
+            if items:
+                cells = [load(rev, c["file"]) for _, c in items]
+                cols = 4
+                G = grid(cells, cols, 340, None, None, f, left=10, top=10,
+                         title="%s：穿模位置近照（紅點＝穿出點；褲襠近照為每次蹲姿固定拍攝）" % NAMES[a])
+                d = ImageDraw.Draw(G)
+                for i, (t, c) in enumerate(items):
+                    x, y = 10 + (i % cols) * 340, 56 + 10 + (i // cols) * 340
+                    reg = c["region"]
+                    m = st[t]["measured"]["where"].get(reg)
+                    txt = "%s・%s" % (TEST_NAMES[t], REGION.get(reg.split(" (")[0], reg))
+                    if m:
+                        txt += "\n%d 點・最深 %.1f mm・%.1f cm²" % (m["points"], m["depth_max_mm"], m["area_cm2"])
+                    d.rectangle([x, y, x + 340, y + (46 if m else 24)], fill=(30, 30, 32))
+                    d.text((x + 6, y + 3), txt, font=f(15), fill=INK)
+                G.save(os.path.join(out, "%s_poke_close.png" % a))
+        # the clips
+        p = os.path.join(rev, "%s_anim.json" % a)
+        if os.path.exists(p):
+            with open(p) as fh:
+                an = json.load(fh)
+            rows = []
+            for rig, label in (("ual", "UAL"), ("mixamo", "Mixamo（遊戲跑圖流程）")):
+                for key, v in an[rig].items():
+                    im = load(rev, "%s_anim_%s_%s.png" % (a, rig, key))
+                    if "frames" in v:
+                        fr = v["frames"]
+                        worst = max(fr, key=lambda r: r["body"]["points"])
+                        txt = "%s・%s（%s）：12 格中穿出點最多 %d 點（第 %.0f 幀），最深 %.1f mm" % (
+                            label, CLIP_NAMES.get(key, key), v["clip"], worst["body"]["points"], worst["frame"],
+                            max(r["body"]["depth_max_mm"] for r in fr))
+                        if rig == "mixamo" and not v.get("in_game", True):
+                            txt += "（遊戲未使用此片段）"
+                    else:
+                        txt = "%s・%s：未驗證（%s）" % (label, CLIP_NAMES.get(key, key), v.get("note", "片段不存在"))
+                    rows.append((txt, im))
+            W = max(im.size[0] for _, im in rows if im is not None)
+            H = sum((im.size[1] if im is not None else 0) + 36 for _, im in rows) + 60
+            S_ = Image.new("RGB", (W, H), BG)
+            d = ImageDraw.Draw(S_)
+            d.text((12, 12), "%s：動畫逐格（四分之三視角，紅點＝穿出點；尾巴擺動為程式控制 ±%.0f°）" % (
+                NAMES[a], an.get("sway_deg", 0)), font=f(24), fill=INK)
+            y = 60
+            for txt, im in rows:
+                d.text((12, y + 6), txt, font=f(18), fill=INK)
+                y += 36
+                if im is not None:
+                    S_.paste(im, (0, y))
+                    y += im.size[1]
+            S_.save(os.path.join(out, "%s_anim.png" % a))
+    # the dog without its neckerchief
+    cells = [load(rev, "dog_new_noscarf_%s.png" % v) for v in VIEWS] + \
+        [load(rev, "dog_new_noscarf_neck_three.png"), load(rev, "dog_new_noscarf_neck_side.png")]
+    if cells[0] is not None:
+        grid(cells, 6, 330, [VIEW_NAMES[v] for v in VIEWS] + ["頸部・四分之三", "頸部・側面"], None, f, left=10,
+             title="犬：不戴領巾的檢查圖（頸部、下顎後方與肩的連接）").save(os.path.join(out, "dog_noscarf.png"))
+    # the cat's walk frame (an animation still, not its picture)
+    cells = [load(rev, "cat_anim_still_%s.png" % v) for v in VIEWS]
+    if cells[0] is not None:
+        grid(cells, 4, 360, [VIEW_NAMES[v] for v in VIEWS], None, f, left=10,
+             title="黑貓：動畫截圖（UAL Walk_Formal_Loop 35%）・不作角色展示圖").save(
+            os.path.join(out, "cat_anim_still.png"))
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else None)
+    if sys.argv[1] == "round2":
+        round2(sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5] if len(sys.argv) > 5 else None)
+    else:
+        main(sys.argv[1], sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else None)

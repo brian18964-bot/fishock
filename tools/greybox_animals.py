@@ -49,10 +49,10 @@ ZONES = [("fur", 0.40), ("skin", 0.22), ("horn", 0.55), ("eye", 0.07),
          ("knit", 0.74), ("cloth", 0.56), ("button", 0.30), ("scarf", 0.24), ("pad", 0.40)]
 # The owl's legs below its shorts today (hem 0.352 over the ground at -0.004),
 # and the share of that it keeps by default (user request: compare 15-20%
-# shorter); the rolled cuff hangs this far below the hem it's measured to.
+# shorter); the turned-back cuff ends this far below the hem it's measured to.
 OWL_EXPOSED = 0.356
 OWL_LEGS = 0.85
-CUFF_DROP = 0.017
+CUFF_DROP = 0.0103
 
 
 def V(*a):
@@ -99,12 +99,12 @@ def leaf(root, direction, length, width, thick, up=V(0, 0, 1)):
     return S.ellipsoid(root + d * length * 0.5, (width * 0.5, length * 0.5, thick * 0.5), R)
 
 
-def clump(root, direction, length, r0, flat=0.6, up=V(0, 0, 1)):
-    """A fur clump: a round cone from r0 at the root to a point, flattened
-    against the surface it grows from."""
+def clump(root, direction, length, r0, flat=0.6, up=V(0, 0, 1), tip_r=0.34):
+    """A fur clump: a round cone from r0 at the root to a point (tip_r of
+    r0 round), flattened against the surface it grows from."""
     d = unit(direction)
     tip = root + d * length
-    c = S.round_cone(root, tip, r0, r0 * 0.34)
+    c = S.round_cone(root, tip, r0, r0 * tip_r)
     side = np.cross(up, d)
     if np.linalg.norm(side) < 1e-6:
         side = np.cross(V(1, 0, 0), d)
@@ -112,6 +112,17 @@ def clump(root, direction, length, r0, flat=0.6, up=V(0, 0, 1)):
     n = np.cross(d, side)
     R = np.stack([side, d, n], axis=1)
     return S.squash(c, root + d * length * 0.5, (1.0, 1.0, flat), R)
+
+
+def fold(base, inner, dirs, r, sink=0.72):
+    """A cloth fold on `base`'s surface: a low, soft ridge (it stands
+    1 - sink of r proud) curving between the points where rays from
+    `inner` along `dirs` leave the surface, thinning out at both ends."""
+    a = hit(base, inner[0], dirs[0]) - unit(dirs[0]) * r * sink
+    b = hit(base, inner[1], dirs[1]) - unit(dirs[1]) * r * sink
+    dm = unit(dirs[0] + dirs[1])
+    m = hit(base, (inner[0] + inner[1]) * 0.5, dm) - dm * r * sink
+    return S.smooth([S.round_cone(a, m, r * 0.55, r), S.round_cone(m, b, r, r * 0.5)], 0.006)
 
 
 def flat_cone(a, b, ra, rb, across, flat):
@@ -141,8 +152,8 @@ ANIMALS = {
         upper=(0.142, 0.038, 0.032), fore=(0.142, 0.036, 0.026),
         neck=((0.0, 0.012, 0.29), (0.0, 0.004, 0.35), 0.080, 0.076),
         head=(0.0, -0.004, 0.418),
-        hand=dict(kind="wing", palm=(0.048, 0.052, 0.024), fingers=(0.026, 0.022, 0.018), finger_r=0.0098,
-                  thumb=(0.024, 0.019), thumb_r=0.0095, n=3, curl=(6, 12, 16), spread=10, claw=None),
+        hand=dict(kind="wing", palm=(0.052, 0.056, 0.031), fingers=(0.020, 0.017, 0.014), finger_r=0.0116,
+                  thumb=(0.020, 0.016), thumb_r=0.0110, n=3, curl=(8, 14, 18), spread=10, claw=None),
         foot=dict(kind="bird"),
         jumper=dict(ease=0.013, hem=0.035, sleeve=0.62, v_depth=0.070, v_slope=1.9),
         trousers=dict(ease=0.007, waist=0.080, hem_above_knee=0.022, leg_r=0.016, crotch=0.025),
@@ -155,16 +166,17 @@ ANIMALS = {
         chest=((0.0, -0.008, 0.215), (0.138, 0.112, 0.110)),
         shoulder=(0.160, 0.020, 0.255), shoulder_r=0.050,
         upper=(0.155, 0.042, 0.035), fore=(0.145, 0.037, 0.029),
-        neck=((0.0, 0.022, 0.262), (0.0, 0.004, 0.372), 0.074, 0.060),
+        neck=((0.0, 0.024, 0.262), (0.0, 0.010, 0.372), 0.076, 0.066),
+        traps=(0.062, 0.062, 0.042, 0.030),
         head=(0.0, -0.014, 0.438),
         hand=dict(kind="paw", palm=(0.056, 0.068, 0.036), fingers=(0.018, 0.015, 0.012), finger_r=0.0138,
                   thumb=(0.016, 0.013), thumb_r=0.0125, n=3, curl=(8, 14, 18), spread=10,
                   claw=(0.013, 0.0045)),
         foot=dict(kind="paw", length=0.150, width=0.080, toe_r=0.0170, toe_len=0.036, toes=4, heel=0.034,
                   claw=(0.013, 0.0048)),
-        tail=dict(points=((0.0, 0.098, 0.040), (0.0, 0.158, 0.048), (0.0, 0.214, 0.078), (0.0, 0.256, 0.126),
-                          (0.0, 0.272, 0.178)),
-                  radii=(0.026, 0.031, 0.031, 0.024, 0.008), tufts=0),
+        tail=dict(points=((0.0, 0.098, 0.040), (0.0, 0.150, 0.050), (0.0, 0.196, 0.076), (0.0, 0.228, 0.116),
+                          (0.0, 0.244, 0.160), (0.0, 0.244, 0.194)),
+                  radii=(0.024, 0.027, 0.025, 0.020, 0.013, 0.006), tufts=0, bones=4),
         jumper=dict(ease=0.013, hem=0.035, sleeve=0.64, v_depth=0.062, v_slope=2.1),
         trousers=dict(ease=0.007, waist=0.080, hem_above_knee=0.026, leg_r=0.016, crotch=0.024),
     ),
@@ -173,19 +185,19 @@ ANIMALS = {
         thigh_r=(0.054, 0.039), shin_r=(0.037, 0.022), calf=0.011,
         pelvis=((0.0, 0.010, 0.0), (0.100, 0.080, 0.072)),
         belly=((0.0, 0.000, 0.095), (0.090, 0.077, 0.082)),
-        chest=((0.0, -0.004, 0.188), (0.108, 0.088, 0.096)),
-        shoulder=(0.128, 0.018, 0.230), shoulder_r=0.040,
-        upper=(0.134, 0.031, 0.025), fore=(0.126, 0.026, 0.0195),
+        chest=((0.0, -0.002, 0.186), (0.094, 0.080, 0.094)),
+        shoulder=(0.116, 0.018, 0.226), shoulder_r=0.034,
+        upper=(0.134, 0.028, 0.023), fore=(0.126, 0.025, 0.019),
         neck=((0.0, 0.014, 0.236), (0.0, 0.000, 0.306), 0.052, 0.040),
         head=(0.0, -0.010, 0.356),
         hand=dict(kind="paw", palm=(0.044, 0.052, 0.028), fingers=(0.014, 0.012, 0.010), finger_r=0.0108,
                   thumb=(0.013, 0.011), thumb_r=0.0098, n=3, curl=(8, 14, 18), spread=10, claw=None),
         foot=dict(kind="paw", length=0.120, width=0.064, toe_r=0.0140, toe_len=0.028, toes=4, heel=0.028,
                   claw=None),
-        tail=dict(points=((0.0, 0.085, 0.030), (0.0, 0.150, -0.010), (0.0, 0.225, 0.010), (0.0, 0.272, 0.090),
-                          (0.0, 0.272, 0.185), (0.0, 0.236, 0.250), (0.0, 0.196, 0.262)),
-                  radii=(0.020, 0.018, 0.017, 0.016, 0.015, 0.014, 0.010), tufts=0),
-        jumper=dict(ease=0.011, hem=0.032, sleeve=0.64, v_depth=0.080, v_slope=1.3),
+        tail=dict(points=((0.0, 0.085, 0.030), (0.006, 0.155, 0.006), (0.026, 0.225, 0.018), (0.054, 0.272, 0.062),
+                          (0.076, 0.292, 0.120), (0.088, 0.300, 0.172), (0.092, 0.322, 0.206)),
+                  radii=(0.019, 0.017, 0.016, 0.015, 0.0135, 0.0115, 0.0075), tufts=0, bones=5),
+        jumper=dict(ease=0.010, hem=0.032, sleeve=0.64, v_depth=0.050, v_slope=2.2, pit=0.06),
         trousers=dict(ease=0.008, waist=0.072, hem_above_knee=0.024, leg_r=0.014, crotch=0.022),
     ),
     "bear": dict(
@@ -196,13 +208,14 @@ ANIMALS = {
         chest=((0.0, 0.000, 0.272), (0.198, 0.150, 0.140)),
         shoulder=(0.214, 0.022, 0.318), shoulder_r=0.072,
         upper=(0.140, 0.064, 0.054), fore=(0.124, 0.054, 0.046),
-        neck=((0.0, 0.020, 0.34), (0.0, -0.006, 0.44), 0.104, 0.090),
-        head=(0.0, -0.026, 0.500),
+        neck=((0.0, 0.022, 0.34), (0.0, -0.004, 0.425), 0.106, 0.090),
+        traps=(0.090, 0.090, 0.060, 0.042),
+        head=(0.0, -0.022, 0.482),
         hand=dict(kind="paw", palm=(0.070, 0.104, 0.048), fingers=(0.018, 0.015, 0.012), finger_r=0.0158,
                   thumb=(0.018, 0.015), thumb_r=0.0158, n=4, curl=(8, 14, 16), spread=6,
-                  claw=(0.026, 0.0062)),
+                  claw=(0.020, 0.0075)),
         foot=dict(kind="paw", length=0.192, width=0.108, toe_r=0.0170, toe_len=0.032, toes=5, heel=0.046,
-                  claw=(0.024, 0.0060), arc=0.25),
+                  claw=(0.018, 0.0075), arc=0.25),
         tail=None,
         jumper=dict(ease=0.015, hem=0.040, sleeve=0.70, v_depth=0.095, v_slope=1.25),
         trousers=dict(ease=0.010, waist=0.090, hem_above_knee=0.028, leg_r=0.018, crotch=0.028),
@@ -290,13 +303,21 @@ class Animal:
         P = self.P
         return S.round_cone(self.hipj * V(s, 1, 1), self.knee * V(s, 1, 1), P["thigh_r"][0], P["thigh_r"][1])
 
+    def quad(self, s=1):
+        """The front of the thigh, fuller in its upper half."""
+        P = self.P
+        hp = self.hipj * V(s, 1, 1)
+        kn = self.knee * V(s, 1, 1)
+        return S.ellipsoid(lerp(hp, kn, 0.42) + V(s * 0.004, -P["thigh_r"][0] * 0.28, 0),
+                           (P["thigh_r"][0] * 0.82, P["thigh_r"][0] * 0.80, (hp[2] - kn[2]) * 0.34))
+
     def leg(self, s=1):
         P = self.P
         kn = self.knee * V(s, 1, 1)
         an = self.ankle * V(s, 1, 1)
         th = self.thigh(s)
         sh = S.round_cone(kn, an, P["shin_r"][0], P["shin_r"][1])
-        bits = [th, sh, S.sphere(kn + V(0, -P["shin_r"][0] * 0.45, 0.004), P["shin_r"][0] * 0.82)]
+        bits = [th, self.quad(s), sh, S.sphere(kn + V(0, -P["shin_r"][0] * 0.45, 0.004), P["shin_r"][0] * 0.82)]
         if P["calf"]:
             c = lerp(kn, an, 0.30) + V(0, P["calf"], 0)
             bits.append(S.ellipsoid(c, (P["shin_r"][0] * 0.82, P["shin_r"][0] * 0.78, (kn[2] - an[2]) * 0.26)))
@@ -337,7 +358,7 @@ class Animal:
             if paw:
                 rs = [fr * 1.05, fr * 1.0, fr * 0.97, fr * 0.95]
             else:
-                rs = [fr * 1.05, fr * 0.92, fr * 0.74, fr * 0.42]
+                rs = [fr * 1.10, fr * 0.98, fr * 0.84, fr * 0.60]
             shapes.append(S.smooth([S.round_cone(pts[j], pts[j + 1], rs[j], rs[j + 1]) for j in range(3)], 0.004))
             if paw:
                 pads.append(S.sphere(pts[3] + d * fr * 0.15 + V(0, 0, -fr * 0.42), fr * 0.72))
@@ -387,26 +408,34 @@ class Animal:
         return hand, pads, claws, feathers, joints
 
     def wing_fringe(self):
-        """The owl's wing-arm: flight feathers in a row off the back edge
-        of the forearm and on along the outer edge of the hand, longest
-        at the hand (its primaries), so the wing's outline runs off the
-        arm without a break."""
+        """The owl's wing-arm: a band of coverts along the back edge of the
+        forearm, and under it the flight feathers - shorter secondaries off
+        the forearm, longer primaries off the outer edge of the hand, the
+        last ones shorter again so the wing closes to a point - each a
+        little different in length, overlapping, swept back."""
         P = self.P
         el, wr = self.elbow, self.wrist
         H = P["hand"]
-        reach = H["palm"][0] + sum(H["fingers"]) * 0.55
         out = []
-        n = 10
-        for i in range(n):
-            t = i / (n - 1)
-            along = lerp(el + V(0.026, 0, 0), wr + V(reach, 0, 0), t)
+        # (where along elbow -> hand end, length, width, lift, sweep)
+        spec = [(0.05, 0.046, 0.030, 0.0025, 0.00), (0.22, 0.054, 0.031, -0.002, 0.04),
+                (0.38, 0.060, 0.030, 0.003, 0.08), (0.54, 0.068, 0.029, -0.0025, 0.13),
+                (0.68, 0.074, 0.028, 0.002, 0.20), (0.79, 0.088, 0.026, -0.002, 0.42),
+                (0.87, 0.096, 0.025, 0.0025, 0.62), (0.94, 0.090, 0.023, -0.002, 0.82),
+                (1.00, 0.072, 0.021, 0.002, 1.05)]
+        end = wr + V(H["palm"][0] * 0.95, 0, 0)
+        for t, L, w, lift, sweep in spec:
+            along = lerp(el + V(0.022, 0, 0), end, t)
             on_hand = along[0] > wr[0]
-            r_arm = lerp(P["fore"][1], P["fore"][2], min(t * 1.25, 1.0))
-            root = along + V(0.0, (H["palm"][1] * 0.42 if on_hand else r_arm * 0.55), -r_arm * 0.20)
-            length = 0.048 + 0.052 * min(t / 0.8, 1.0) ** 1.2
-            d = unit(V(0.12 + 0.95 * t ** 1.6, 1.0, -0.30))
-            out.append(leaf(root - d * 0.006, d, length + 0.006, 0.030, 0.0095, up=V(0, 0, 1)))
-        return S.smooth(out, 0.006)
+            r_arm = lerp(P["fore"][1], P["fore"][2], min(t * 1.2, 1.0))
+            back = H["palm"][1] * 0.40 if on_hand else r_arm * 0.55
+            root = along + V(0.0, back, -r_arm * 0.18 + lift)
+            d = unit(V(sweep, 1.0, -0.28))
+            out.append(leaf(root - d * 0.008, d, L + 0.008, w, 0.0085, up=V(0, 0, 1)))
+        fringe = S.smooth(out, 0.005)
+        coverts = S.ellipsoid(lerp(el, wr, 0.5) + V(0.0, P["fore"][1] * 0.75, -0.004),
+                              (np.linalg.norm(wr - el) * 0.55, 0.020, 0.010))
+        return S.smooth([fringe, coverts], 0.010)
 
     # -------------------------------------------------------- feet
     def foot(self, s=1):
@@ -440,8 +469,8 @@ class Animal:
             pads.append(S.ellipsoid(c + V(0, -tl * 0.05, -tr * 0.62), (tr * 0.66, tl * 0.36, tr * 0.38)))
             if F["claw"]:
                 cl, cr = F["claw"]
-                base = c + V(0, -tl * 0.30, tr * 0.55)
-                mid = base + V(u * 0.002, -cl * 0.5, -cr * 0.1)
+                base = c + V(0, -tl * 0.22, tr * 0.42)
+                mid = base + V(u * 0.002, -cl * 0.55, -cr * 0.1)
                 claws.append(S.smooth([S.round_cone(base, mid, cr, cr * 0.75),
                                        S.round_cone(mid, mid + V(0, -cl * 0.35, -tr * 0.9), cr * 0.75, cr * 0.15)], 0.002))
         pads.append(S.ellipsoid(V(x, lerp(back, front, 0.62), 0.0), (w * 0.32, L * 0.10, 0.010)))
@@ -498,15 +527,16 @@ class Animal:
         return foot, pads, claws
 
     def ankle_fluff(self, s=1):
-        """The owl's feathered legs end in a skirt of big pointed feathers
-        over the toes' roots."""
+        """The owl's feathered legs end in a few rounded feathers round the
+        back and sides of the ankle - the front left open so the toes'
+        roots show and the leg runs into the foot."""
         A = self.ankle.copy()
         out = []
-        for i in range(7):
-            a = (i + 0.5) / 7.0 * 2 * math.pi
+        for deg, L in ((70, 0.030), (115, 0.036), (160, 0.038), (200, 0.038), (245, 0.036), (290, 0.030)):
+            a = math.radians(deg)
             d = V(math.sin(a), -math.cos(a), 0.0)
-            root = V(A[0], A[1], A[2] + 0.034) + d * 0.030
-            out.append(leaf(root, d * 0.62 + V(0, 0, -1.0), 0.048, 0.034, 0.011, up=d))
+            root = V(A[0], A[1], A[2] + 0.048) + d * 0.030
+            out.append(leaf(root, d * 0.55 + V(0, 0, -1.0), L, 0.030, 0.010, up=d))
         f = S.smooth(out, 0.006)
         return _mirror_x(f) if s == -1 else f
 
@@ -538,16 +568,15 @@ class Animal:
         return S.smooth(bits, 0.012)
 
     def owl_tail(self):
-        """A short folded tail: five feathers, in a narrow fan, down and
-        out behind from under the jumper."""
-        root = V(0, 0.092, self.pz + 0.020)
+        """A short tail folded into a small fan: five feathers spread from
+        one root under the jumper, the middle one longest, overlapping."""
+        root = V(0, 0.094, self.pz + 0.020)
         out = []
-        for i, ang in enumerate((-20, -10, 0, 10, 20)):
-            d = rotate(unit(V(0, 0.75, -1.0)), "y", ang * 0.9)
-            d = unit(d + V(0, 0.06 * (2 - abs(i - 2)), 0))
-            out.append(leaf(root + V(math.sin(math.radians(ang)) * 0.024, -0.004 * abs(i - 2), 0), d,
-                            0.135 - 0.012 * abs(i - 2), 0.040, 0.012, up=V(0, 1, 0.75)))
-        return S.smooth(out, 0.006)
+        for i, ang in enumerate((-30, -15, 0, 15, 30)):
+            d = rotate(unit(V(0, 0.80, -1.0)), "y", -ang)
+            out.append(leaf(root + V(math.sin(math.radians(ang)) * 0.020, 0.002 * abs(i - 2), -0.002 * abs(i - 2)), d,
+                            0.112 - 0.008 * abs(i - 2), 0.034, 0.010, up=V(0, 1, 0.8)))
+        return S.smooth(out, 0.005)
 
     # -------------------------------------------------------- body
     def body(self):
@@ -577,8 +606,24 @@ class Animal:
             if self.name == "owl":
                 legs.append(self.ankle_fluff(s))
         tail = self.tail()
-        upper = S.smooth([trunk, neck], 0.045)
+        extra = []
+        tr = self.P.get("traps")
+        if tr:
+            # the neck's root runs out over the shoulders and down the throat
+            n0, n1 = self.neck0, self.neck1
+            for s in (1, -1):
+                extra.append(S.ellipsoid(V(s * tr[0], n0[1] + 0.014, n0[2] + 0.004), (tr[1], tr[2], tr[3]),
+                                         S.rot("y", s * 28)))
+            extra.append(S.ellipsoid(lerp(n0, n1, 0.55) + V(0, -self.neck_r[1] * 0.55, -0.01),
+                                     (self.neck_r[1] * 0.75, self.neck_r[1] * 0.55, (n1[2] - n0[2]) * 0.55)))
+        # (the jumper is cut over them too, or they come through it)
+        self.traps_nodes = extra[:2]
+        upper = S.smooth([trunk, neck] + extra, 0.045)
         upper = S.smooth([upper, head], 0.035)
+        self.fur_node = None
+        if self.name == "bear":
+            self.fur_node = bear_fur(self, upper)
+            upper = S.smooth([upper, self.fur_node], 0.018)
         limbs_a = [S.smooth([a, h], 0.012) for a, h in zip(arms, hands)]
         limbs_a = [S.smooth([a] + ([f] if f is not None else []), 0.010) for a, f in
                    zip(limbs_a, fringes if fringes else [None, None])]
@@ -604,37 +649,121 @@ class Animal:
         return body, labels
 
     # -------------------------------------------------------- jumper
+    def ease_field(self, base, top, shoulder_ease):
+        """How far a garment stands off the body, point by point: little
+        where it rests on the shoulders, more where it hangs (the back's
+        and sides' lower half), so it's not one even shell."""
+        sz = self.shoulder[2]
+        sx = self.shoulder[0]
+        lo = self.pz
+
+        def fn(P):
+            z = P[:, 2]
+            up = np.clip((z - (sz - 0.07)) / 0.07, 0.0, 1.0)
+            # on the shoulders' tops only (not out along the sleeves)
+            near = np.clip(1.0 - (np.abs(P[:, 0]) - sx * 0.9) / 0.06, 0.0, 1.0)
+            rest = shoulder_ease * up * near + base * (1.0 - up * near)
+            hang = np.clip(((sz - 0.07) - z) / (sz - 0.07 - lo), 0.0, 1.0)
+            back = np.clip(P[:, 1] / 0.08, 0.0, 1.0)
+            return -(rest + (top - base) * hang * (0.5 + 0.5 * back))
+        return fn
+
+    def jumper_base(self):
+        """The jumper's outer shape before its edges: the trunk with fabric
+        falling straight from the chest, bridged under the arms."""
+        P = self.P
+        J = P["jumper"]
+        pel, bel, che = self.trunk_shapes()
+        hem = self.pz + J["hem"]
+        cc, cr = self.at(P["chest"][0]), P["chest"][1]
+        # the cloth hangs from the chest to the hem (not tucked under it)
+        drop = S.ellipsoid(V(0, cc[1] + cr[1] * 0.08, (cc[2] + hem) * 0.5),
+                           (cr[0] * 0.88, cr[1] * 0.90, (cc[2] - hem) * 0.5 + 0.02))
+        core = S.smooth([pel, bel, che, drop] + self.shoulder_caps() + getattr(self, "traps_nodes", []), 0.06)
+        arms = [self.upper_arm(s) for s in (1, -1)]
+        # under the arm the knit bridges arm and side (a wider blend)
+        core = S.smooth([core] + arms, J.get("pit", 0.075))
+        self.jumper_core = core
+        top = J["ease"] + J.get("hang", 0.006)
+        return S.Displace(core, self.ease_field(J["ease"], top, J.get("shoulder_ease", 0.008)), top + 0.002)
+
     def jumper(self):
         J = self.P["jumper"]
-        pel, bel, che = self.trunk_shapes()
-        core = S.smooth([pel, bel, che] + self.shoulder_caps(), 0.06)
-        arms = [self.upper_arm(s) for s in (1, -1)]
-        core = S.smooth([core] + arms, 0.05)
+        base = self.jumper_base()
+        core = self.jumper_core
         ease = J["ease"]
         hem = self.pz + J["hem"]
-        band_h = 0.032
-        shell = S.offset(core, ease)
-        top = S.inter(shell, above(hem + band_h - 0.004))
-        band = S.inter(S.offset(core, ease - 0.002), slab(hem, hem + band_h))
-        jumper = S.smooth([top, band], 0.010)
-        # the bottom edge of the rib: rounded off
-        jumper = S.cut(jumper, below(hem), 0.004)
-        # sleeves: end part way down the upper arm, a rolled cuff there
-        sx = self.shoulder[0] + (self.elbow[0] - self.shoulder[0]) * J["sleeve"]
-        jumper = S.inter(jumper, S.box(V(0, 0, self.pz), V(sx, 1.0, 1.5)))
+        # the hem a touch lower behind than in front; the cloth gathered in
+        # gradually over its last few centimetres (no band, no step) and its
+        # edge a slim rolled lip
+        hem_plane = S.half_space(V(0, 0, hem), unit(V(0, 0.10, -1)))
+        gather = S.Displace(base, lambda P: 0.005 * np.clip(1.0 - (P[:, 2] - hem) / 0.06, 0.0, 1.0), 0.006)
+        jumper = S.inter(gather, hem_plane, 0.008)
+        lip = S.inter(S.offset(core, ease - 0.001), S.inter(hem_plane, S.half_space(V(0, 0, hem + 0.009),
+                                                                                 unit(V(0, -0.10, 1)))), 0.003)
+        jumper = S.smooth([jumper, lip], 0.006)
+        # sleeves end part way down the upper arm, in a turned-back cuff
+        sleeve_end = []
         cuffs = []
+        hollows = []
         for s in (1, -1):
-            c = lerp(self.shoulder, self.elbow, J["sleeve"]) * V(s, 1, 1)
+            sh = self.shoulder * V(s, 1, 1)
+            el = self.elbow * V(s, 1, 1)
+            ax = unit(el - sh)
+            c = lerp(sh, el, J["sleeve"])
+            # the opening tilted a little (lower behind) so the edge isn't a ring
+            n = unit(ax + V(0, 0.16, -0.10))
+            end = S.half_space(c, n)
+            sleeve_end.append((c, n))
+            arm = self.upper_arm(s)
             r_arm = lerp(self.P["upper"][1], self.P["upper"][2], J["sleeve"])
-            cuffs.append(S.torus(c + V(-s * 0.006, 0, 0), V(1, 0, 0), r_arm + ease + 0.004, 0.0105, (1.0, 1.45)))
-        # the neck: a hole round it and a V down the front
+            cuff_h = max(0.022, r_arm * 0.7)
+            # the turn-up: a flat band of cloth folded back over the sleeve,
+            # standing off it by its thickness, its top edge a step
+            band = S.offset(arm, ease + J.get("cuff_out", 0.0055) + 0.003)
+            band = S.inter(band, S.inter(end, S.half_space(c - n * cuff_h, -n), 0.003), 0.004)
+            cuffs.append(band)
+            # the opening is cloth, not solid: hollow it back to the arm
+            hollows.append(S.inter(S.offset(arm, ease - 0.004), S.half_space(c - n * (cuff_h + 0.012), -n)))
+        for c, n in sleeve_end:
+            jumper = S.inter(jumper, S.half_space(c, n), 0.003)
         cutter = self.neck_cutter()
-        rib = S.cut(S.inter(S.offset(core, ease + 0.0035), S.offset(cutter, 0.013)), cutter, 0.0)
+        rib = S.cut(S.inter(S.offset(core, ease + 0.0035), S.offset(cutter, 0.012)), cutter, 0.0)
         jumper = S.cut(jumper, cutter, 0.004)
-        jumper = S.union([jumper, S.inter(rib, above(hem + 0.05))] + cuffs)
-        self.jumper_core = core
+        # nothing of the knit stands up beside the neck above the collar line
+        # (round the neck only: the shoulders' tops can be higher than that)
+        n0 = self.neck0
+        # (widening upward, so the cut runs down the slope of the shoulders)
+        r0 = self.neck_r[0] + 0.024
+        ring = S.round_cone(V(0, n0[1], n0[2]), V(0, n0[1], n0[2] + 0.2), r0, r0 + 0.09)
+        jumper = S.cut(jumper, S.inter(above(n0[2] + 0.028), ring), 0.018)
+        jumper = S.union([jumper, S.inter(rib, S.inter(above(hem + 0.05), below(self.neck0[2] + 0.034)))] + cuffs)
+        for h in hollows:
+            jumper = S.cut(jumper, h, 0.002)
+        # the hem's underside is cloth too: hollow it up a little
+        jumper = S.cut(jumper, S.inter(S.offset(core, ease - 0.008), below(hem + 0.012)), 0.003)
+        jumper = S.smooth([jumper] + self.jumper_folds(base), 0.012)
+        if self.fur_node is not None:
+            # the bear's locks lie over the knit
+            jumper = S.cut(jumper, S.offset(self.fur_node, 0.003), 0.006)
         self.cutter = cutter
         return jumper
+
+    def jumper_folds(self, base):
+        """A few big folds where the cloth is pulled: from under each arm
+        down across the chest's side, front and back."""
+        J = self.P["jumper"]
+        sz = self.shoulder[2]
+        out = []
+        r = J.get("fold_r", 0.011)
+        for s in (1, -1):
+            sx = self.shoulder[0] * s
+            # under the arm, front and back
+            for side in (-1, 1):
+                a = V(sx * 0.80, side * 0.01, sz - 0.05)
+                b = V(sx * 0.52, side * 0.02, sz - 0.13)
+                out.append(fold(base, [a, b], [V(s * 0.25, side, 0.05), V(s * 0.4, side, -0.1)], r))
+        return out
 
     def neck_cutter(self):
         J = self.P["jumper"]
@@ -652,41 +781,66 @@ class Animal:
 
     # -------------------------------------------------------- shorts
     def trousers(self):
+        """The shorts off the body's hips and thighs: each leg a tube a
+        little roomier on its outside than its inside (so the inner edges
+        follow the thigh and part below the crotch), the two blended at
+        the top into a rounded crotch and the seat, a turned-back cuff
+        at each leg's hem, the openings hollow."""
         T = self.P["trousers"]
         pel, bel, che = self.trunk_shapes()
         hem = self.knee_z + T["hem_above_knee"]
         waist = self.pz + T["waist"]
-        legs = []
-        for s in (1, -1):
-            h = self.hipj * V(s, 1, 1)
-            k = self.knee * V(s, 1, 1)
-            r0 = self.P["thigh_r"][0]
-            r_hem = lerp(self.P["thigh_r"][0], self.P["thigh_r"][1], (h[2] - hem) / (h[2] - k[2]))
-            end = lerp(h, k, (h[2] - hem + 0.03) / (h[2] - k[2]))
-            legs.append(S.round_cone(h + V(0, 0, 0.02), end, r0 + 0.004, r_hem + T["leg_r"]))
-        seat = S.smooth([pel, S.inter(bel, below(self.pz + T["waist"] + 0.02))], 0.05)
-        core = S.smooth([seat] + legs, 0.045)
         ease = T["ease"]
-        shorts = S.inter(S.offset(core, ease), slab(hem, waist))
-        # the crotch: the legs part below it (at the hips' width for this body)
-        cz = self.hipj_z - T["crotch"]
-        gap_w = max(self.P["leg_x"] - self.P["thigh_r"][1] - ease - 0.016, 0.006)
-        crotch = S.smooth([S.box(V(0, 0, (hem + cz) * 0.5 - 0.05), V(gap_w, 0.4, (cz - hem) * 0.5 + 0.05)),
-                           S.capsule(V(0, -0.4, cz), V(0, 0.4, cz), gap_w)], 0.01)
-        shorts = S.cut(shorts, crotch, 0.012)
-        cuffs = []
+        legs, cuffs, hollows, ends = [], [], [], []
         for s in (1, -1):
             h = self.hipj * V(s, 1, 1)
             k = self.knee * V(s, 1, 1)
-            c = lerp(h, k, (h[2] - hem - 0.006) / (h[2] - k[2]))
-            r_hem = lerp(self.P["thigh_r"][0], self.P["thigh_r"][1], (h[2] - hem) / (h[2] - k[2]))
-            cuffs.append(S.torus(c, unit(h - k), r_hem + T["leg_r"] + ease - 0.002, 0.0125, (1.0, 1.35)))
+            t_hem = (h[2] - hem) / (h[2] - k[2])
+            r0, r1 = self.P["thigh_r"]
+            r_hem = lerp(r0, r1, t_hem)
+            loose = T["leg_r"]
+            end = lerp(h, k, min(t_hem + 0.03 / (h[2] - k[2]), 1.0))
+            # roomier outward: the tube's axis moved out by half the extra
+            leg = S.round_cone(h + V(0, 0, 0.02), end + V(s * loose * 0.5, 0, 0), r0 + 0.002, r_hem + loose * 0.5)
+            leg = S.smooth([leg, S.offset(self.quad(s), 0.003)], 0.03)
+            legs.append(leg)
+            ax = unit(k - h)
+            c = lerp(h, k, t_hem)
+            n = unit(ax + V(0, -0.06, 0))
+            ends.append((c, n))
+            cuff_h = T.get("cuff_h", 0.026)
+            band = S.offset(S.round_cone(c - ax * 0.05 + V(s * loose * 0.5, 0, 0), c + ax * 0.02 + V(s * loose * 0.5, 0, 0),
+                                         r_hem + loose * 0.5, r_hem + loose * 0.5), ease + 0.0065)
+            band = S.inter(band, S.inter(S.half_space(c, n), S.half_space(c - n * cuff_h, -n), 0.003), 0.004)
+            cuffs.append(band)
+            hollows.append((c, n, cuff_h, leg))
+        seat = S.smooth([pel, S.inter(bel, below(waist + 0.02))], 0.05)
+        pair = S.smooth(legs, T.get("crotch_k", 0.035))
+        core = S.smooth([seat, pair], 0.045)
+        shorts = S.inter(S.offset(core, ease), slab(hem - 0.05, waist))
+        for c, n in ends:
+            side = S.half_space(V(0, 0, 0), V(-np.sign(c[0]), 0, 0))
+            shorts = S.cut(shorts, S.inter(side, S.half_space(c, -n)), 0.003)
         shorts = S.union([shorts] + cuffs)
-        # the fly: a seam down from the button
+        for c, n, cuff_h, leg in hollows:
+            shorts = S.cut(shorts, S.inter(S.offset(leg, ease - 0.004), S.half_space(c - n * (cuff_h + 0.012), -n)), 0.002)
+        shorts = S.smooth([shorts] + self.trouser_folds(S.offset(core, ease), hem), 0.016)
         self.trouser_core = core
         self.hem_z = hem
         self.waist_z = waist
         return shorts
+
+    def trouser_folds(self, base, hem):
+        """A fold pulled from the crotch out over the front of each thigh."""
+        out = []
+        cz = self.hipj_z - self.P["trousers"]["crotch"]
+        lx = self.P["leg_x"]
+        r = self.P["trousers"].get("fold_r", 0.010)
+        for s in (1, -1):
+            a = V(s * lx * 0.35, 0.0, cz + 0.010)
+            b = V(s * lx * 1.05, 0.0, cz - 0.060)
+            out.append(fold(base, [a, b], [V(s * 0.2, -1, 0), V(s * 0.6, -1, -0.1)], r))
+        return out
 
     def button_and_fly(self, shorts):
         J = self.P["jumper"]
@@ -738,6 +892,13 @@ class Animal:
         if self.tail_node is not None:
             j["tail_box"] = [list(map(float, self.tail_node.lo)), list(map(float, self.tail_node.hi))]
             j["tail_root_y"] = float(self.tail_root_y)
+        T = self.P.get("tail")
+        if T and self.name != "owl":
+            # a chain of tail bones along it (owl_character.bind adds them)
+            pts = [V(0, 0, self.pz) + V(*p) for p in T["points"]]
+            sp, _ = spline(pts, T["radii"], per=8)
+            idx = np.linspace(0, len(sp) - 1, T.get("bones", 4) + 1).round().astype(int)
+            j["tail"] = [list(map(float, sp[i])) for i in idx]
         return j
 
 
@@ -829,37 +990,59 @@ def lid(c, r, cover=0.35, thick=0.0012, tilt=0.0, s=1):
     return S.inter(S.sphere(c, r + thick), S.half_space(c + V(0, 0, r * cover), n))
 
 
+def plume(root, d, length, width, thick, face=V(0, -1, 0), lean=0.0):
+    """A flat feather tuft: a tapering blade from `root` along `d`, its flat
+    side toward `face`, the tip set off to one side (lean) so it reads as
+    a lock of feathers, not a cone."""
+    d = unit(d)
+    n = unit(face - d * np.dot(face, d))
+    w = unit(np.cross(d, n))
+    R = np.stack([w, d, n], axis=1)
+    hw = width * 0.5
+    poly = [(-hw, 0.0), (hw, 0.0), (hw * 0.80, length * 0.45), (hw * 0.25 + lean, length * 0.88),
+            (lean, length), (-hw * 0.35 + lean, length * 0.80), (-hw * 0.85, length * 0.40)]
+    return S.plate(root, R, poly, thick * 0.5, thick * 0.5)
+
+
 def head_owl(an):
-    """A horned owl: a broad round head, the facial disc a shallow dish
-    round each eye with a raised rim, a V of brows running out into the
-    ear tufts, a hooked beak between the eyes."""
+    """A horned owl: a broad head whose face, temples and jaw run back
+    into the skull (no mask on a ball); the facial disc two shallow dishes
+    with a light rim, the brows a soft V merging into the forehead and out
+    into flat ear tufts, a hooked beak between the eyes."""
     H = an.head_c
-    skull = S.ellipsoid(H + V(0, 0.014, 0.002), (0.134, 0.112, 0.110))
-    face = S.ellipsoid(H + V(0, -0.040, -0.012), (0.124, 0.082, 0.100))
-    jowl = S.ellipsoid(H + V(0, -0.030, -0.070), (0.092, 0.070, 0.050))
-    head = S.smooth([skull, face, jowl], 0.035)
-    dishes = S.union([S.sphere(H + V(s * 0.050, -0.232, 0.004), 0.140) for s in (1, -1)])
-    head = S.cut(head, dishes, 0.018)
+    skull = S.ellipsoid(H + V(0, 0.020, 0.000), (0.130, 0.100, 0.106))
+    face = S.ellipsoid(H + V(0, -0.036, -0.010), (0.124, 0.088, 0.100))
+    temples = [S.ellipsoid(H + V(s * 0.098, -0.014, 0.000), (0.044, 0.074, 0.078)) for s in (1, -1)]
+    jowl = S.ellipsoid(H + V(0, -0.020, -0.066), (0.098, 0.080, 0.054))
+    nape = S.ellipsoid(H + V(0, 0.058, -0.052), (0.098, 0.062, 0.062))
+    head = S.smooth([skull, face, jowl, nape] + temples, 0.045)
+    dishes = S.union([S.sphere(H + V(s * 0.050, -0.238, 0.004), 0.140) for s in (1, -1)])
+    head = S.cut(head, dishes, 0.024)
+    # the disc's rim: light, strongest at the outer cheek, fading out
     rims = []
     for s in (1, -1):
-        c = H + V(s * 0.050, -0.092, 0.000)
-        rims.append(S.inter(S.torus(c, unit(V(s * 0.25, -1, 0.0)), 0.064, 0.010, (1.0, 1.6)),
-                            S.half_space(c + V(s * 0.006, 0, 0), V(-s, 0, 0.0))))
-    head = S.smooth([head] + rims, 0.012)
-    brows = [S.capsule(H + V(s * 0.010, -0.120, 0.030), H + V(s * 0.086, -0.092, 0.066), 0.0120) for s in (1, -1)]
-    head = S.smooth([head] + brows, 0.014)
-    # ear tufts: two broad feathers fanned up and out off each brow's end
+        c = H + V(s * 0.050, -0.090, 0.000)
+        ring = S.torus(c, unit(V(s * 0.25, -1, 0.0)), 0.064, 0.0058, (1.0, 1.5))
+        rims.append(S.inter(ring, S.half_space(c + V(s * 0.020, 0, 0.02), unit(V(-s, 0, 0.35))), 0.03))
+    head = S.smooth([head] + rims, 0.020)
+    fore = S.ellipsoid(H + V(0, -0.070, 0.050), (0.075, 0.048, 0.040))
+    brows = []
+    for s in (1, -1):
+        a, b = H + V(s * 0.012, -0.116, 0.030), H + V(s * 0.086, -0.088, 0.066)
+        ax = unit(b - a)
+        up = unit(np.cross(V(0, -1, 0.25), ax))
+        brows.append(S.ellipsoid((a + b) * 0.5, (0.050, 0.013, 0.008), np.stack([ax, up, np.cross(ax, up)], axis=1)))
+    head = S.smooth([head, fore] + brows, 0.022)
     tufts = []
     for s in (1, -1):
-        root = H + V(s * 0.080, -0.064, 0.076)
-        for k, (ox, oz, L, r0) in enumerate(((0.36, 1.0, 0.080, 0.025), (0.80, 0.80, 0.060, 0.021))):
-            d = unit(V(s * ox, 0.14 + 0.10 * k, oz))
-            tufts.append(clump(root + V(s * 0.004 * k, 0.014 * k, -0.010 * k), d, L, r0, flat=0.48, up=V(0, -1, 0.2)))
+        root = H + V(s * 0.082, -0.062, 0.072)
+        tufts.append(plume(root, V(s * 0.42, 0.16, 1.0), 0.078, 0.040, 0.009, V(0, -1, 0.2), s * -0.004))
+        tufts.append(plume(root + V(s * 0.006, 0.014, -0.008), V(s * 0.75, 0.30, 0.85), 0.056, 0.032, 0.008,
+                           V(0, -1, 0.2), s * -0.003))
     head = S.smooth([head] + tufts, 0.014)
-    ec = [H + V(s * 0.049, -0.094, 0.008) for s in (1, -1)]
+    ec = [H + V(s * 0.049, -0.096, 0.008) for s in (1, -1)]
     eyes = [S.sphere(c, 0.031) for c in ec]
-    # upper lids over the top of the eye: a level, steady look
-    head = S.smooth([head] + [lid(c, 0.031, 0.40, 0.0025, 0.18, sd) for c, sd in zip(ec, (1, -1))], 0.004)
+    head = S.smooth([head] + [lid(c, 0.031, 0.42, 0.0025, 0.18, sd) for c, sd in zip(ec, (1, -1))], 0.004)
     beak = S.smooth([S.round_cone(H + V(0, -0.110, 0.026), H + V(0, -0.138, 0.000), 0.019, 0.013),
                      S.round_cone(H + V(0, -0.138, 0.000), H + V(0, -0.148, -0.026), 0.013, 0.0068),
                      S.round_cone(H + V(0, -0.148, -0.026), H + V(0, -0.139, -0.044), 0.0068, 0.0016)], 0.004)
@@ -881,58 +1064,57 @@ def set_eye(head, centre_from, look, r, out=0.45):
 
 
 def head_dog(an):
-    """A shepherd-type dog: a rounded skull, a clear stop, a muzzle a
-    little narrower to its end, the jaw under it, soft brows, drop ears."""
+    """A shepherd-type dog: a rounder, narrower skull; a clear stop; a
+    flat nasal bridge sloping to an angled nose; the upper muzzle deep at
+    its base and narrowing forward, the flews below it, a shorter lower
+    jaw; level, open eyes under light brows; drop ears hung from high
+    on the skull, standing clear of the cheeks."""
     H = an.head_c
-    skull = S.ellipsoid(H + V(0, 0.020, 0.024), (0.078, 0.086, 0.076))
-    occ = S.sphere(H + V(0, 0.068, 0.034), 0.034)
-    cheeks = [S.ellipsoid(H + V(s * 0.046, -0.028, -0.018), (0.032, 0.044, 0.038)) for s in (1, -1)]
-    head = S.smooth([skull, occ] + cheeks, 0.030)
-    # the muzzle: off the stop (a step down from the forehead), its top
-    # running level to the nose
-    base = S.ellipsoid(H + V(0, -0.066, -0.026), (0.044, 0.040, 0.040))
-    snout = S.box(H + V(0, -0.118, -0.030), V(0.028, 0.054, 0.025), round_r=0.020)
-    tip = S.ellipsoid(H + V(0, -0.160, -0.028), (0.026, 0.020, 0.025))
-    muz = S.smooth([base, snout, tip], 0.020)
-    jaw = S.ellipsoid(H + V(0, -0.096, -0.060), (0.025, 0.056, 0.015))
-    chin = S.sphere(H + V(0, -0.136, -0.058), 0.0115)
-    head = S.smooth([head, muz], 0.022)
+    skull = S.ellipsoid(H + V(0, 0.022, 0.028), (0.070, 0.084, 0.074))
+    occ = S.sphere(H + V(0, 0.068, 0.036), 0.032)
+    cheeks = [S.ellipsoid(H + V(s * 0.040, -0.030, -0.024), (0.028, 0.040, 0.034)) for s in (1, -1)]
+    head = S.smooth([skull, occ] + cheeks, 0.028)
+    bridge = S.box(H + V(0, -0.104, -0.008), V(0.020, 0.052, 0.011), S.rot("x", -7), round_r=0.010)
+    upper = S.ellipsoid(H + V(0, -0.080, -0.030), (0.040, 0.048, 0.032))
+    snout = S.ellipsoid(H + V(0, -0.134, -0.026), (0.025, 0.036, 0.022))
+    flews = [S.ellipsoid(H + V(s * 0.018, -0.124, -0.042), (0.016, 0.034, 0.013)) for s in (1, -1)]
+    muz = S.smooth([bridge, upper, snout] + flews, 0.016)
+    jaw = S.ellipsoid(H + V(0, -0.090, -0.058), (0.022, 0.046, 0.012))
+    chin = S.sphere(H + V(0, -0.124, -0.056), 0.0095)
+    head = S.smooth([head, muz], 0.020)
     head = S.smooth([head, jaw, chin], 0.010)
-    # the lips' line, its corner turned up a little
-    mouth = S.tube([H + V(-0.032, -0.064, -0.042), H + V(-0.028, -0.088, -0.050), H + V(-0.016, -0.132, -0.054),
-                    H + V(0, -0.154, -0.053), H + V(0.016, -0.132, -0.054), H + V(0.028, -0.088, -0.050),
-                    H + V(0.032, -0.064, -0.042)], [0.0024] * 7)
+    mouth = S.tube([H + V(-0.030, -0.064, -0.044), H + V(-0.026, -0.090, -0.050), H + V(-0.014, -0.124, -0.052),
+                    H + V(0, -0.140, -0.051), H + V(0.014, -0.124, -0.052), H + V(0.026, -0.090, -0.050),
+                    H + V(0.030, -0.064, -0.044)], [0.0022] * 7)
     head = S.cut(head, mouth, 0.004)
-    brows = [S.ellipsoid(H + V(s * 0.033, -0.066, 0.052), (0.018, 0.013, 0.007), S.rot("y", s * 10)) for s in (1, -1)]
-    head = S.smooth([head] + brows, 0.012)
-    ec = [set_eye(head, H + V(s * 0.036, 0.0, 0.028), V(s * 0.22, -1, 0), 0.0135, 0.42) for s in (1, -1)]
-    head = S.cut(head, S.union([S.sphere(c, 0.0158) for c in ec]), 0.005)
+    brows = [S.ellipsoid(H + V(s * 0.032, -0.066, 0.046), (0.018, 0.012, 0.005)) for s in (1, -1)]
+    head = S.smooth([head] + brows, 0.018)
+    ec = [set_eye(head, H + V(s * 0.035, 0.0, 0.030), V(s * 0.22, -1, 0), 0.0135, 0.44) for s in (1, -1)]
+    head = S.cut(head, S.union([S.sphere(c, 0.0156) for c in ec]), 0.005)
     eyes = [S.sphere(c, 0.0135) for c in ec]
-    head = S.smooth([head] + [lid(c, 0.0135, 0.40, 0.0012, 0.15, sd) for c, sd in zip(ec, (1, -1))], 0.002)
-    nose = S.smooth([S.box(H + V(0, -0.170, -0.006), V(0.017, 0.010, 0.012), round_r=0.008),
-                     S.ellipsoid(H + V(0, -0.174, -0.002), (0.015, 0.008, 0.010))], 0.006)
+    head = S.smooth([head] + [lid(c, 0.0135, 0.55, 0.0011, 0.0, sd) for c, sd in zip(ec, (1, -1))], 0.002)
+    nose = S.smooth([S.box(H + V(0, -0.160, -0.004), V(0.016, 0.010, 0.011), S.rot("x", 18), round_r=0.008),
+                     S.ellipsoid(H + V(0, -0.163, 0.000), (0.014, 0.008, 0.009))], 0.006)
     head = S.smooth([head, S.offset(nose, -0.003)], 0.006)
-    # drop ears: from high on the skull's sides, hanging clear of the
-    # cheeks, their lower ends standing off a little more
     ears = []
     for s in (1, -1):
-        y = 0.004
-        top = hit(head, H + V(0, y, 0.062), V(s, 0, 0.30))
-        low = hit(head, H + V(0, y, -0.030), V(s, 0, 0.0))
-        bottom = low + V(s * 0.010, 0, 0)
+        y = 0.014
+        top = hit(head, H + V(0, y, 0.056), V(s, 0, 0.30))
+        low = hit(head, H + V(0, y, -0.032), V(s, 0, 0.0))
+        bottom = low + V(s * 0.016, 0, 0)
         ly = unit(top - bottom)
         lx = V(0, -1, 0)
         lz = unit(np.cross(lx, ly))
         lx = unit(np.cross(ly, lz))
         R = np.stack([lx, ly, lz], axis=1)
         L = np.linalg.norm(top - bottom)
-        poly = [(-0.022, L + 0.006), (0.022, L + 0.006), (0.030, L * 0.62), (0.026, L * 0.22), (0.012, -0.010),
-                (-0.004, -0.014), (-0.018, 0.0), (-0.026, L * 0.5)]
-        ear = S.plate(bottom + lz * (0.0075 * (1 if s > 0 else -1) * np.sign(lz[0] * s)), R, poly, 0.0035, 0.004)
-        fold = S.capsule(top + V(s * 0.002, -0.020, 0.0), top + V(s * 0.002, 0.020, 0.0), 0.0105)
+        poly = [(-0.016, L + 0.004), (0.016, L + 0.004), (0.026, L * 0.60), (0.024, L * 0.20), (0.010, -0.010),
+                (-0.004, -0.014), (-0.016, 0.0), (-0.020, L * 0.5)]
+        ear = S.plate(bottom + lz * 0.0075 * np.sign(lz[0] * s) * s, R, poly, 0.0032, 0.0035)
+        fold = S.capsule(top + V(-s * 0.002, -0.012, -0.004), top + V(-s * 0.002, 0.012, -0.004), 0.0075)
         ears.append(S.smooth([ear, fold], 0.010))
     head = S.smooth([head] + ears, 0.010)
-    return head, eyes, [nose], [], {"top": float(H[2] + 0.100), "half_width": 0.105}
+    return head, eyes, [nose], [], {"top": float(H[2] + 0.102), "half_width": 0.100}
 
 
 def head_cat(an):
@@ -941,23 +1123,21 @@ def head_cat(an):
     set wide, almond eyes."""
     H = an.head_c
     skull = S.ellipsoid(H + V(0, 0.010, 0.014), (0.062, 0.064, 0.056))
-    cheeks = [S.ellipsoid(H + V(s * 0.034, -0.026, -0.014), (0.034, 0.036, 0.030)) for s in (1, -1)]
+    cheeks = [S.ellipsoid(H + V(s * 0.034, -0.020, -0.016), (0.033, 0.034, 0.028)) for s in (1, -1)]
     nape = S.ellipsoid(H + V(0, 0.040, -0.030), (0.044, 0.034, 0.040))
-    head = S.smooth([skull, nape] + cheeks, 0.022)
-    pads = [S.ellipsoid(H + V(s * 0.0118, -0.058, -0.019), (0.0122, 0.0105, 0.0098)) for s in (1, -1)]
-    chin = S.ellipsoid(H + V(0, -0.046, -0.034), (0.0100, 0.0090, 0.0072))
+    head = S.smooth([skull, nape] + cheeks, 0.024)
+    pads = [S.ellipsoid(H + V(s * 0.0105, -0.052, -0.018), (0.0105, 0.0080, 0.0075)) for s in (1, -1)]
+    chin = S.ellipsoid(H + V(0, -0.040, -0.031), (0.0075, 0.0065, 0.0052))
     bridge = S.capsule(H + V(0, -0.046, 0.024), H + V(0, -0.064, 0.000), 0.0095)
     head = S.smooth([head, bridge] + pads, 0.010)
     head = S.smooth([head, chin], 0.008)
     nose = S.ellipsoid(H + V(0, -0.069, -0.004), (0.0088, 0.0055, 0.0058))
     head = S.smooth([head, S.offset(nose, -0.0025)], 0.004)
     head = S.cut(head, S.capsule(H + V(0, -0.0725, -0.011), H + V(0, -0.0715, -0.024), 0.0021), 0.002)
-    ec = [set_eye(head, H + V(s * 0.028, 0.0, 0.013), V(s * 0.30, -1, 0.0), 0.0152, 0.44) for s in (1, -1)]
-    head = S.cut(head, S.union([S.sphere(c, 0.0170) for c in ec]), 0.004)
-    eyes = [S.sphere(c, 0.0152) for c in ec]
-    head = S.smooth([head] + [lid(c, 0.0152, 0.46, 0.0013, 0.32, sd) for c, sd in zip(ec, (1, -1))], 0.002)
-    brows = [S.ellipsoid(H + V(s * 0.025, -0.050, 0.030), (0.017, 0.011, 0.0065), S.rot("y", s * 16)) for s in (1, -1)]
-    head = S.smooth([head] + brows, 0.010)
+    ec = [set_eye(head, H + V(s * 0.028, 0.0, 0.013), V(s * 0.30, -1, 0.0), 0.0150, 0.40) for s in (1, -1)]
+    head = S.cut(head, S.union([S.sphere(c, 0.0164) for c in ec]), 0.006)
+    eyes = [S.sphere(c, 0.0150) for c in ec]
+    head = S.smooth([head] + [lid(c, 0.0150, 0.50, 0.0011, 0.30, sd) for c, sd in zip(ec, (1, -1))], 0.002)
     ears = []
     for s in (1, -1):
         base = H + V(s * 0.040, 0.004, 0.044)
@@ -972,46 +1152,50 @@ def head_cat(an):
 
 
 def head_bear(an):
-    """A bear: a broad skull with small round ears, a deep short muzzle
-    (the biggest form on the face) with a broad nose, the eyes small and
-    set wide under a low brow, the mouth one clean line with its corners
-    a touch up; the cheeks' fur in a few big locks running back."""
+    """A bear: a broad skull with a heavy brow plane and small round ears;
+    a short, deep muzzle in parts - the bridge's flat top, the broad nose
+    leather, two upper-lip lobes, a separate smaller chin - the eyes small
+    and set wide under the brow; the cheeks' fur in a few locks."""
     H = an.head_c
-    skull = S.ellipsoid(H + V(0, 0.022, 0.020), (0.104, 0.098, 0.086))
-    cheeks = [S.ellipsoid(H + V(s * 0.066, -0.016, -0.030), (0.050, 0.058, 0.050)) for s in (1, -1)]
-    head = S.smooth([skull] + cheeks, 0.035)
+    skull = S.ellipsoid(H + V(0, 0.024, 0.022), (0.102, 0.094, 0.080))
+    fore = S.ellipsoid(H + V(0, -0.058, 0.040), (0.072, 0.040, 0.030))
+    cheeks = [S.ellipsoid(H + V(s * 0.064, -0.014, -0.030), (0.048, 0.056, 0.048)) for s in (1, -1)]
+    nape = S.ellipsoid(H + V(0, 0.058, -0.048), (0.086, 0.060, 0.060))
+    head = S.smooth([skull, fore, nape] + cheeks, 0.035)
     locks = []
     for s in (1, -1):
-        for k, (dz, dy) in enumerate(((-0.008, 0.004), (-0.040, 0.018), (-0.070, 0.036))):
-            root = H + V(s * 0.098, -0.028 + dy, -0.020 + dz)
-            locks.append(clump(root, V(s * 0.45, 0.62, -0.62), 0.052 - 0.006 * k, 0.022, flat=0.55, up=V(s, 0, 0)))
-    head = S.smooth([head] + locks, 0.012)
-    muz = S.smooth([S.ellipsoid(H + V(0, -0.098, -0.026), (0.056, 0.056, 0.048)),
-                    S.ellipsoid(H + V(0, -0.136, -0.022), (0.044, 0.034, 0.040))], 0.02)
-    jaw = S.ellipsoid(H + V(0, -0.112, -0.064), (0.038, 0.044, 0.020))
-    head = S.smooth([head, muz], 0.026)
-    head = S.smooth([head, jaw], 0.014)
-    mouth = S.tube([H + V(-0.044, -0.096, -0.046), H + V(-0.034, -0.132, -0.054), H + V(0, -0.150, -0.054),
-                    H + V(0.034, -0.132, -0.054), H + V(0.044, -0.096, -0.046)], [0.0026] * 5)
+        for k, (dz, dy, L) in enumerate(((-0.012, 0.004, 0.050), (-0.046, 0.022, 0.044))):
+            root = H + V(s * 0.096, -0.028 + dy, -0.020 + dz)
+            locks.append(clump(root, V(s * 0.45, 0.62, -0.62), L, 0.026, flat=0.5, up=V(s, 0, 0)))
+    head = S.smooth([head] + locks, 0.016)
+    base = S.ellipsoid(H + V(0, -0.080, -0.024), (0.052, 0.044, 0.044))
+    bridge = S.box(H + V(0, -0.104, -0.006), V(0.028, 0.044, 0.013), S.rot("x", -6), round_r=0.013)
+    lips = [S.ellipsoid(H + V(s * 0.019, -0.118, -0.040), (0.025, 0.030, 0.021)) for s in (1, -1)]
+    muz = S.smooth([base, bridge] + lips, 0.018)
+    jaw = S.ellipsoid(H + V(0, -0.092, -0.066), (0.032, 0.034, 0.017))
+    head = S.smooth([head, muz], 0.022)
+    head = S.smooth([head, jaw], 0.012)
+    mouth = S.tube([H + V(-0.040, -0.080, -0.050), H + V(-0.022, -0.116, -0.058), H + V(0, -0.126, -0.059),
+                    H + V(0.022, -0.116, -0.058), H + V(0.040, -0.080, -0.050)], [0.0026] * 5)
     head = S.cut(head, mouth, 0.004)
-    brows = [S.ellipsoid(H + V(s * 0.044, -0.080, 0.048), (0.026, 0.015, 0.009), S.rot("y", s * 6)) for s in (1, -1)]
-    head = S.smooth([head] + brows, 0.014)
+    # the philtrum between the lip lobes, under the nose
+    head = S.cut(head, S.capsule(H + V(0, -0.136, -0.022), H + V(0, -0.134, -0.044), 0.0028), 0.003)
     ec = [set_eye(head, H + V(s * 0.047, 0.0, 0.024), V(s * 0.20, -1, 0.0), 0.0128, 0.42) for s in (1, -1)]
     head = S.cut(head, S.union([S.sphere(c, 0.0145) for c in ec]), 0.005)
     eyes = [S.sphere(c, 0.0128) for c in ec]
-    head = S.smooth([head] + [lid(c, 0.0128, 0.40, 0.0012, 0.0, sd) for c, sd in zip(ec, (1, -1))], 0.002)
-    nose = S.smooth([S.box(H + V(0, -0.168, -0.004), V(0.026, 0.013, 0.017), round_r=0.012),
-                     S.ellipsoid(H + V(0, -0.172, 0.002), (0.022, 0.011, 0.013))], 0.006)
+    head = S.smooth([head] + [lid(c, 0.0128, 0.42, 0.0012, 0.0, sd) for c, sd in zip(ec, (1, -1))], 0.002)
+    nose = S.smooth([S.box(H + V(0, -0.145, -0.006), V(0.024, 0.012, 0.015), S.rot("x", 14), round_r=0.011),
+                     S.ellipsoid(H + V(0, -0.148, -0.001), (0.020, 0.010, 0.011))], 0.006)
     head = S.smooth([head, S.offset(nose, -0.004)], 0.006)
     ears = []
     for s in (1, -1):
-        c = H + V(s * 0.080, 0.024, 0.078)
+        c = H + V(s * 0.080, 0.026, 0.076)
         R = S.rot("y", s * -28)
         e = S.ellipsoid(c, (0.034, 0.016, 0.032), R)
         hollow = S.ellipsoid(c + V(0, -0.010, 0.002), (0.022, 0.010, 0.020), R)
         ears.append(S.cut(e, hollow, 0.004))
     head = S.smooth([head] + ears, 0.012)
-    return head, eyes, [nose], [], {"top": float(H[2] + 0.106), "half_width": 0.125}
+    return head, eyes, [nose], [], {"top": float(H[2] + 0.104), "half_width": 0.122}
 
 
 HEADS = {"owl": head_owl, "dog": head_dog, "cat": head_cat, "bear": head_bear}
@@ -1035,55 +1219,61 @@ def collar_owl(an):
 
 
 def collar_dog(an):
-    """A neckerchief: a rolled band round the neck just over the collar,
-    knotted behind, its triangle lying on the jumper's chest over the V
-    (the same dark form from the front and the back)."""
+    """A neckerchief of thin cloth: a slim rolled band round the neck just
+    over the collar, knotted behind, a small triangle lying on the
+    jumper's chest in front of the V (the same dark form from the front
+    and the back)."""
     n0, n1 = an.neck0, an.neck1
-    t = 0.42
+    t = 0.40
     c = lerp(n0, n1, t)
     up = unit(n1 - n0)
     r = max(surface_r(an.body_node, c, d) for d in (V(1, 0, 0), V(0, -1, 0), V(0, 1, 0)))
-    band = S.torus(c, up, r + 0.001, 0.0095, (1.0, 1.7))
-    knot = S.ellipsoid(c + V(0, r + 0.012, -0.004), (0.017, 0.012, 0.014))
-    tails = [S.plate(c + V(s * 0.013, r + 0.020, -0.034), S.rot("x", 102) @ S.rot("z", s * 14),
-                     [(-0.010, 0.022), (0.010, 0.022), (0.004, -0.026), (-0.006, -0.022)], 0.0025, 0.002)
+    band = S.torus(c, up, r + 0.001, 0.0065, (1.0, 1.7))
+    knot = S.ellipsoid(c + V(0, r + 0.010, -0.004), (0.013, 0.009, 0.011))
+    tails = [S.plate(c + V(s * 0.011, r + 0.016, -0.030), S.rot("x", 102) @ S.rot("z", s * 14),
+                     [(-0.009, 0.020), (0.009, 0.020), (0.004, -0.024), (-0.005, -0.020)], 0.0016, 0.0016)
              for s in (1, -1)]
-    # the triangle: from the band's front down over the chest, on the jumper
-    ztop = c[2] - 0.010
-    ztip = c[2] - 0.112
-    ytop = min(surface_y(an.jumper_node, 0.045, ztop), surface_y(an.body_node, 0.0, ztop)) - 0.005
-    ytip = min(surface_y(an.jumper_node, 0.0, ztip), surface_y(an.jumper_node, 0.03, ztip)) - 0.005
+    ztop = c[2] - 0.008
+    ztip = c[2] - 0.098
+    ytop = min(surface_y(an.jumper_node, 0.040, ztop), surface_y(an.body_node, 0.0, ztop)) - 0.006
+    ytip = min(surface_y(an.jumper_node, 0.0, ztip), surface_y(an.jumper_node, 0.03, ztip)) - 0.006
     top, tip = V(0, ytop, ztop), V(0, ytip, ztip)
     ly = unit(top - tip)
     lx = V(1, 0, 0)
     lz = np.cross(lx, ly)
     R = np.stack([lx, ly, lz], axis=1)
     L = np.linalg.norm(top - tip)
-    tri = S.plate(tip + lz * -0.002, R, [(-0.064, L), (0.064, L), (0.012, 0.012), (0.0, 0.0), (-0.012, 0.012)], 0.003, 0.004)
-    return S.smooth([band, knot] + tails, 0.006), SCARF, tri
+    tri = S.plate(tip + lz * -0.002, R, [(-0.050, L), (0.050, L), (0.010, 0.010), (0.0, 0.0), (-0.010, 0.010)],
+                  0.0018, 0.0022)
+    return S.smooth([band, knot] + tails, 0.004), SCARF, tri
 
 
-def collar_bear(an):
-    """The bear's neck and shoulder fur gathered into big locks: two rows
-    rooted on the neck just above the jumper, all running down and back
-    over its neckline and onto the shoulders."""
+def bear_fur(an, upper):
+    """The bear's neck and shoulder fur in a few big locks of different
+    widths and lengths - three over the chest, four down the back, one
+    over each shoulder - rooted into the neck (blended into it) and only
+    parting toward their ends, running down and back."""
     n0, n1 = an.neck0, an.neck1
     out = []
-    for row, (t, n, L, r0) in enumerate(((0.22, 12, 0.074, 0.030), (0.42, 10, 0.064, 0.028))):
+    # (angle from the front, height up the neck, length, root radius, outward)
+    spec = [(-38, 0.30, 0.070, 0.040, 0.55), (0, 0.24, 0.088, 0.050, 0.45), (36, 0.32, 0.064, 0.036, 0.55),
+            (80, 0.36, 0.070, 0.044, 0.85), (-82, 0.36, 0.074, 0.046, 0.85),
+            (140, 0.40, 0.078, 0.048, 0.55), (166, 0.48, 0.112, 0.060, 0.42), (198, 0.40, 0.088, 0.050, 0.45),
+            (224, 0.34, 0.064, 0.042, 0.55)]
+    for deg, t, L, r0, outw in spec:
+        a = math.radians(deg)
+        d = V(math.sin(a), -math.cos(a), 0.0)
         c = lerp(n0, n1, t)
-        for i in range(n):
-            a = (i + 0.5 * row) / n * 2 * math.pi
-            d = V(math.sin(a), -math.cos(a), 0.0)
-            r = surface_r(an.body_node, c, d)
-            back = max(math.cos(a - math.pi), 0.0)
-            side = abs(math.sin(a))
-            root = c + d * (r - 0.010)
-            way = d * (0.75 + 0.25 * side) + V(0, 0.30 * back, -0.85)
-            out.append(clump(root, way, L * (1.0 + 0.30 * back), r0, flat=0.55, up=d))
-    return S.smooth(out, 0.010), FUR
+        r = surface_r(upper, c, d)
+        root = c + d * (r - r0 * 0.5)
+        back = max(-math.cos(a), 0.0)
+        way = d * (outw + 0.2) + V(0, 0.25 * back, -1.0)
+        # (tapering to a point: a lock, not a drip)
+        out.append(clump(root, way, L * 1.2, r0 * 0.82, flat=0.42, up=d, tip_r=0.16))
+    return S.smooth(out, 0.008)
 
 
-COLLARS = {"owl": collar_owl, "dog": collar_dog, "bear": collar_bear}
+COLLARS = {"owl": collar_owl, "dog": collar_dog}
 
 
 # ---------------------------------------------------------------- build

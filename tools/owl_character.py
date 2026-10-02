@@ -658,6 +658,9 @@ def _bind_greybox(arm, rig, joints, parts, heads, tails, targets, k, off):
     hg = body.vertex_groups.get(head_bone) or body.vertex_groups.new(name=head_bone)
     pg = body.vertex_groups.get(pelvis) or body.vertex_groups.new(name=pelvis)
     box = joints.get("tail_box")
+    chain = _tail_bones(arm, pelvis, joints, k, off) if joints.get("tail") else []
+    tg = [body.vertex_groups.get(n) or body.vertex_groups.new(name=n) for n in chain]
+    pts = [Vector(p) for p in joints.get("tail", ())]
     for v in body.data.vertices:
         p = unit(v.co)
         w = _smooth(z0, z1, p.z) if abs(p.x) < reach else 0.0
@@ -667,7 +670,24 @@ def _bind_greybox(arm, rig, joints, parts, heads, tails, targets, k, off):
             hg.add([v.index], w, "ADD")
         if box and all(box[0][i] - 0.005 <= p[i] <= box[1][i] + 0.005 for i in range(3)):
             t = _smooth(joints["tail_root_y"], joints["tail_root_y"] + 0.03, p.y)
-            if t > 0.0:
+            if t > 0.0 and chain:
+                # along the tail's own bones: the two nearest its place on it
+                d, i, f = min((_seg_dist(p, pts[j], pts[j + 1]), j, _seg_t(p, pts[j], pts[j + 1]))
+                              for j in range(len(pts) - 1))
+                if d > TAIL_REACH:
+                    t = 0.0
+                # each bone's share peaks at its middle, shared at its ends
+                at = i + f
+                ws = {j: max(0.0, 1.0 - abs(at - j - 0.5)) for j in range(len(chain))}
+                tot = sum(ws.values())
+                ws = {j: w / tot for j, w in ws.items()}
+                if t > 0.0:
+                    for g in v.groups:
+                        g.weight *= 1.0 - t
+                    for j, w in ws.items():
+                        if w * t > 1e-4:
+                            tg[j].add([v.index], w * t, "ADD")
+            elif t > 0.0:
                 for g in v.groups:
                     g.weight *= 1.0 - t
                 pg.add([v.index], t, "ADD")
@@ -680,6 +700,41 @@ def _bind_greybox(arm, rig, joints, parts, heads, tails, targets, k, off):
         if name in parts:
             _copy_weights(body, parts[name])
     return body
+
+
+# A body point further than this from the tail's line (character units)
+# isn't the tail's, whatever box it is in.
+TAIL_REACH = 0.05
+
+
+def _seg_t(p, a, b):
+    ab = b - a
+    return 0.0 if ab.length_squared < 1e-12 else min(max((p - a).dot(ab) / ab.length_squared, 0.0), 1.0)
+
+
+def _tail_bones(arm, pelvis, joints, k, off):
+    """A chain of bones down the tail (joints["tail"]: its points, root
+    to tip, character units) from the hips - for swinging it; the clips
+    don't key them, so they ride with the hips until something does."""
+    bpy.ops.object.select_all(action="DESELECT")
+    bpy.context.view_layer.objects.active = arm
+    arm.select_set(True)
+    bpy.ops.object.mode_set(mode="EDIT")
+    inv = arm.matrix_world.inverted()
+    eb = arm.data.edit_bones
+    parent = eb[pelvis]
+    names = []
+    pts = joints["tail"]
+    for i in range(len(pts) - 1):
+        b = eb.new("tail_%02d" % (i + 1))
+        b.head = inv @ (Vector(pts[i]) * k + off)
+        b.tail = inv @ (Vector(pts[i + 1]) * k + off)
+        b.parent = parent
+        b.use_connect = i > 0
+        parent = b
+        names.append(b.name)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    return names
 
 
 def _copy_weights(src, dst):

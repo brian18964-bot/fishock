@@ -153,6 +153,63 @@ def views(animal, gb_dir, out):
         shoot(os.path.join(out, "%s_sil_%s.png" % (animal, v)), piv, v)
 
 
+def detail(animal, gb_dir, out, tag):
+    """Close views of the T-pose (the same lights; the ground left out):
+    the head from the front, 3/4 and side, the left hand from above and
+    in front, the left foot from the side and in front, the crotch from
+    in front and from below, the tail's root from behind - and for the
+    dog, the whole of it without its neckerchief."""
+    bpy.ops.wm.open_mainfile(filepath=os.path.join(gb_dir, animal + ".blend"))
+    with open(os.path.join(gb_dir, animal + "_greybox.json")) as fh:
+        j = json.load(fh)
+    meshes = [o for o in bpy.context.scene.objects if o.type == "MESH"]
+    stage(res=480)
+    V = Vector
+    # each part found by the body's own points (its box), not guessed
+    body = next(o for o in meshes if o.name.startswith("owl_body"))
+    co = np.array([(body.matrix_world @ v.co)[:] for v in body.data.vertices])
+
+    def box(sel, pad=1.35):
+        pts = co[sel]
+        lo, hi = pts.min(axis=0), pts.max(axis=0)
+        return V(((lo + hi) / 2).tolist()), float((hi - lo).max()) * pad
+    z0 = j["head_rigid"][0]
+    head, hs = box(co[:, 2] > z0, 1.15)
+    w = V(j["wrist"])
+    hand, hsz = box(co[:, 0] > w.x - 0.01, 1.3)
+    a = V(j["ankle"])
+    foot, fs = box((co[:, 2] < a.z + 0.02) & (co[:, 0] > 0.0), 1.4)
+    th = V(j["thigh"])
+    crotch = V((0.0, th.y, th.z - 0.05))
+    shots = [("head_front", head, (0, -1, 0.05), hs), ("head_three", head, (0.75, -1, 0.1), hs),
+             ("head_side", head, (1, 0, 0.05), hs),
+             ("hand_top", hand, (0, 0.001, 1), hsz), ("hand_front", hand, (0.15, -1, 0.2), hsz),
+             ("foot_side", foot, (1, 0, 0.12), fs), ("foot_front", foot, (0.25, -1, 0.3), fs),
+             ("crotch_front", crotch, (0, -1, -0.12), 0.32), ("crotch_low", crotch, (0, -0.45, -1), 0.32)]
+    if j.get("tail_box"):
+        lo, hi = V(j["tail_box"][0]), V(j["tail_box"][1])
+        root = V((0.0, j["tail_root_y"] + 0.02, lo.z + 0.03)) if not j.get("tail") else V(j["tail"][0])
+        tc, ts = (lo + hi) / 2, max(hi - lo) * 1.5
+        shots += [("tail_back", tc + V((0, 0.0, 0.0)), (0.2, 1, 0.2), max(ts, 0.28)),
+                  ("tail_side", tc, (1, 0.1, 0.08), max(ts, 0.28)),
+                  ("tail_root", root, (0.35, 1, 0.35), 0.2)]
+    for name, c, d, sc in shots:
+        close(os.path.join(out, "%s_%s_%s.png" % (animal, tag, name)), c, d, scale=sc)
+    if animal == "dog":
+        for o in meshes:
+            if o.name.startswith("owl_ruff"):
+                o.hide_render = True
+        piv = pivot_all(meshes)
+        stage()
+        for v in VIEWS:
+            shoot(os.path.join(out, "%s_%s_noscarf_%s.png" % (animal, tag, v)), piv, v)
+        piv.rotation_euler = (0, 0, 0)
+        close(os.path.join(out, "%s_%s_noscarf_neck_three.png" % (animal, tag)), head + V((0, 0, -0.1)),
+              (0.75, -1, 0.1), hs * 1.5)
+        close(os.path.join(out, "%s_%s_noscarf_neck_side.png" % (animal, tag)), head + V((0, 0, -0.1)),
+              (1, 0, 0.05), hs * 1.5)
+
+
 def original(animal, out):
     """The game's character today (its .glb at the size the game puts it
     on the skeleton)."""
@@ -286,7 +343,71 @@ def clip(arm, act, frame):
 
 
 SCALE = {"k": 1.0}
-TESTS = ["bind", "arms_down", "arms_up", "arms_forward", "crouch", "head_turn"]
+TESTS = ["bind", "arms_down", "arms_up", "arms_forward", "crouch", "squat", "head_turn", "tail_swing"]
+# How far the hips go down in the squat test: a share of the leg's length.
+SQUAT = 0.36
+
+
+def angle_x(v):
+    """A direction's angle in the side (y-z) plane: what a turn about the
+    world X axis adds to."""
+    return math.degrees(math.atan2(v.z, v.y))
+
+
+def squat(arm, depth=SQUAT, lean=16.0):
+    """Both feet flat where they stood, the hips straight down by `depth`
+    of the leg's length and the knees forward over the toes (worked out
+    for each leg, two-bone IK in the side plane), the trunk leant forward
+    a little and the arms forward for balance - a test pose of our own,
+    not a clip: the weight on both feet."""
+    mw = arm.matrix_world
+    pb = arm.pose.bones
+
+    def at(name, end="head"):
+        return mw @ (pb[name].head if end == "head" else pb[name].tail)
+    legs = {}
+    for s in ("l", "r"):
+        legs[s] = (at("thigh_" + s), at("calf_" + s), at("foot_" + s))
+    hip, knee, ank = legs["l"]
+    drop = depth * ((knee - hip).length + (ank - knee).length)
+    pel = pb["pelvis"]
+    pel.matrix = mw.inverted() @ Matrix.Translation((0.0, 0.0, -drop)) @ mw @ pel.matrix
+    bpy.context.view_layer.update()
+    turn(arm, "spine_01", "X", lean * 0.6)
+    turn(arm, "spine_02", "X", lean * 0.4)
+    for s in ("l", "r"):
+        h0, k0, a0 = legs[s]
+        l1, l2 = (k0 - h0).length, (a0 - k0).length
+        h = at("thigh_" + s)
+        k = at("calf_" + s)
+        to = a0 - h
+        dist = min(to.length, l1 + l2 - 1e-4)
+        bend = math.degrees(math.acos(max(-1.0, min(1.0, (l1 * l1 + dist * dist - l2 * l2) / (2 * l1 * dist)))))
+        # the knee forward (-Y): the thigh turned from hip-to-ankle that much more
+        r1 = (angle_x(to) - bend) - angle_x(k - h)
+        r1 = (r1 + 180.0) % 360.0 - 180.0
+        turn(arm, "thigh_" + s, "X", r1)
+        k = at("calf_" + s)
+        r2 = angle_x(a0 - k) - angle_x(at("foot_" + s) - k)
+        r2 = (r2 + 180.0) % 360.0 - 180.0
+        turn(arm, "calf_" + s, "X", r2)
+        turn(arm, "foot_" + s, "X", -(r1 + r2))
+    for s, sg in (("l", 1), ("r", -1)):
+        turn(arm, "upperarm_" + s, "Y", 62 * sg)
+        turn(arm, "upperarm_" + s, "Z", -34 * sg)
+        turn(arm, "lowerarm_" + s, "Z", -30 * sg)
+
+
+def tail_bones(arm):
+    return sorted(b.name for b in arm.pose.bones if b.name.startswith("tail_"))
+
+
+def tail_swing(arm, side=22.0, lift=-8.0):
+    """The tail swung to one side (more at each bone, as a tail swings)
+    and a little up - its bones from owl_character.bind."""
+    for i, b in enumerate(tail_bones(arm)):
+        turn(arm, b, "Z", side * (0.6 + 0.2 * i))
+        turn(arm, b, "X", lift)
 
 
 def pose(arm, acts, name):
@@ -308,6 +429,12 @@ def pose(arm, acts, name):
         turn(arm, "lowerarm_r", "Z", 62)
     elif name == "crouch":
         clip(arm, acts["Crouch_Idle_Loop"], 10)
+    elif name == "squat":
+        squat(arm)
+    elif name == "tail_swing":
+        turn(arm, "upperarm_l", "Y", 68)
+        turn(arm, "upperarm_r", "Y", -68)
+        tail_swing(arm)
     elif name == "head_turn":
         turn(arm, "upperarm_l", "Y", 68)
         turn(arm, "upperarm_r", "Y", -68)
@@ -323,6 +450,8 @@ def zones(mesh):
     me = ev.to_mesh()
     co = np.array([v.co[:] for v in me.vertices])
     co = np.array([(ev.matrix_world @ Vector(c))[:] for c in co])
+    rot = ev.matrix_world.to_3x3()
+    NORMALS["n"] = np.array([(rot @ v.normal).normalized()[:] for v in me.vertices])
     faces = [list(p.vertices) for p in me.polygons]
     mats = np.array([p.material_index for p in me.polygons])
     names = [m.name.split(".")[0] if m else "" for m in mesh.data.materials]
@@ -338,6 +467,7 @@ def zones(mesh):
     return co, faces, fz, vz
 
 
+NORMALS = {"n": None}
 RAYS = [Vector(d).normalized() for d in ((0.31, 0.12, 0.94), (-0.71, 0.53, -0.46), (0.22, -0.95, 0.19))]
 
 
@@ -398,15 +528,99 @@ def poke(mesh, covered0):
         ob = ob[~(ins_j | ins_t)]
     idx = covered0["shorts"]
     os_ = idx[~inside(co, faces, fz, KNIT, co[idx])] if len(idx) else np.array([], dtype=int)
-    return {"body": ob, "shorts": os_, "co": co}, co
+    # how far out: each point's distance to the nearest of the clothes'
+    # surfaces (the jumper's, for the shorts)
+    sel = [f for f, z in zip(faces, fz) if z in (KNIT, CLOTH)]
+    tree = BVHTree.FromPolygons([Vector(c) for c in co], sel, all_triangles=False)
+    tk = BVHTree.FromPolygons([Vector(c) for c in co], [f for f, z in zip(faces, fz) if z == KNIT],
+                              all_triangles=False)
+    depth = np.array([tree.find_nearest(Vector(co[i]))[3] for i in ob]) if len(ob) else np.zeros(0)
+    depth_s = np.array([tk.find_nearest(Vector(co[i]))[3] for i in os_]) if len(os_) else np.zeros(0)
+    allt = BVHTree.FromPolygons([Vector(c) for c in co], faces, all_triangles=False)
+    return {"body": ob, "shorts": os_, "co": co, "depth": depth, "depth_s": depth_s,
+            "area": vertex_area(co, faces), "seen": seen(allt, co, ob), "seen_s": seen(allt, co, os_)}, co
+
+
+# The four standard views' directions to the camera, in the character's
+# frame (faced front): front, 3/4, side, back.
+LOOKS = [Vector((0.0, -1.0, 0.0)), Vector((0.7071, -0.7071, 0.0)), Vector((1.0, 0.0, 0.0)), Vector((0.0, 1.0, 0.0))]
+
+
+def seen(tree, co, idx):
+    """Which of the points idx a camera in any of the four standard views
+    sees: facing it and nothing of the character in between."""
+    out = np.zeros(len(idx), dtype=bool)
+    nm = NORMALS["n"]
+    for k, i in enumerate(idx):
+        p = Vector(co[i])
+        for d in LOOKS:
+            if nm is not None and Vector(nm[i]).dot(d) <= 0.0:
+                continue
+            hit = tree.ray_cast(p + d * 2e-4, d)[0]
+            if hit is None:
+                out[k] = True
+                break
+    return out
+
+
+def vertex_area(co, faces):
+    """Each vertex's share of the surface (a third of its triangles')."""
+    va = np.zeros(len(co))
+    for f in faces:
+        for j in range(1, len(f) - 1):
+            a, b, c = co[f[0]], co[f[j]], co[f[j + 1]]
+            ar = 0.5 * np.linalg.norm(np.cross(b - a, c - a)) / 3.0
+            va[[f[0], f[j], f[j + 1]]] += ar
+    return va
+
+
+def summary(res, co0, joints):
+    """What came through, counted, measured and placed: the number of
+    points, how far out (mm: the deepest and the mean) and the surface
+    they stand for (cm2), all and per region; the shorts through the
+    jumper apart (never added to the body's)."""
+    def part(idx, depth, vis):
+        if not len(idx):
+            return {"points": 0, "depth_max_mm": 0.0, "depth_mean_mm": 0.0, "area_cm2": 0.0,
+                    "visible_points": 0, "visible_area_cm2": 0.0}
+        return {"points": int(len(idx)), "depth_max_mm": round(float(depth.max()) * 1000, 1),
+                "depth_mean_mm": round(float(depth.mean()) * 1000, 1),
+                "area_cm2": round(float(res["area"][idx].sum()) * 1e4, 2),
+                "visible_points": int(vis.sum()), "visible_area_cm2": round(float(res["area"][idx[vis]].sum()) * 1e4, 2)}
+    body = res["body"]
+    z = np.zeros(0, dtype=bool)
+    out = {"body": part(body, res.get("depth", np.zeros(0)), res.get("seen", z)),
+           "shorts": part(res["shorts"], res.get("depth_s", np.zeros(0)), res.get("seen_s", z)), "where": {}}
+    if len(body):
+        lab = np.array(region_of(co0, body, joints))
+        for r in sorted(set(lab)):
+            m = lab == r
+            out["where"][r] = part(body[m], res["depth"][m], res["seen"][m])
+            # (the side with more of them: a mean of both arms is no place)
+            pick = body[m]
+            sx = np.sign(co0[pick, 0])
+            if r != "neck/collar" and (sx > 0).any() and (sx < 0).any():
+                pick = pick[sx == (1 if (sx > 0).sum() >= (sx < 0).sum() else -1)]
+            out["where"][r]["centre"] = [round(float(v), 4) for v in res["co"][pick].mean(axis=0)]
+            # the way they face (posed): where to look at them from
+            if NORMALS["n"] is not None:
+                nm = NORMALS["n"][pick].mean(axis=0)
+                out["where"][r]["facing"] = [round(float(v), 3) for v in nm / max(np.linalg.norm(nm), 1e-6)]
+    return out
 
 
 def regions(co0, idx, joints):
     """Where on the body (by its bind-pose place) the points that came
     through are: counts per region."""
     out = {}
-    if not len(idx):
-        return out
+    for r in region_of(co0, idx, joints):
+        out[r] = out.get(r, 0) + 1
+    return out
+
+
+def region_of(co0, idx, joints):
+    """Each point's region of the body, by its bind-pose place."""
+    out = []
     sh = joints["shoulder"]
     th = joints["thigh"]
     kn = joints["knee"]
@@ -421,11 +635,13 @@ def regions(co0, idx, joints):
             r = "neck/collar"
         elif z > th[2] + 0.03:
             r = "waist/hem"
+        elif abs(x) < th[0] * 0.55 and z > kn[2]:
+            r = "crotch"
         elif z > kn[2] - 0.03:
             r = "thigh/cuff"
         else:
             r = "lower leg"
-        out[r] = out.get(r, 0) + 1
+        out.append(r)
     return out
 
 
@@ -454,60 +670,151 @@ def markers(points, name="poke", r=0.006):
     return ob
 
 
+def close(path, centre, d, scale=0.34, res=480):
+    """A close view: an orthographic camera `scale` across looking at
+    `centre` from direction `d` (the ground hidden), then the stage's
+    camera back."""
+    sc = bpy.context.scene
+    keep = sc.camera, sc.render.resolution_x
+    cd = bpy.data.cameras.new("close")
+    cd.type = "ORTHO"
+    cd.ortho_scale = scale
+    cam = bpy.data.objects.new("close", cd)
+    sc.collection.objects.link(cam)
+    d = Vector(d).normalized()
+    cam.location = Vector(centre) + d * 3.0
+    cam.rotation_euler = (-d).to_track_quat("-Z", "Y").to_euler()
+    sc.camera = cam
+    sc.render.resolution_x = sc.render.resolution_y = res
+    g = sc.objects.get("ground")
+    if g is not None:
+        g.hide_render = True
+    sc.render.filepath = path
+    bpy.ops.render.render(write_still=True)
+    if g is not None:
+        g.hide_render = False
+    sc.camera = keep[0]
+    sc.render.resolution_x = sc.render.resolution_y = keep[1]
+    bpy.data.objects.remove(cam, do_unlink=True)
+    return path
+
+
+def look_from(region, c):
+    """Which way to look at a region's points (centre c, character
+    units, facing -Y): the crotch and hem from in front and a little
+    below, the rest from straight out at them, a little above."""
+    if region in ("crotch",):
+        return (0.0, -1.0, -0.35)
+    if region == "tail root":
+        return (0.35, 1.0, 0.2)
+    h = Vector((c[0], c[1], 0.0))
+    if h.length < 0.03:
+        h = Vector((0.0, -1.0, 0.0))
+    h = h.normalized()
+    return (h.x, h.y, 0.35)
+
+
+# What each test is shot from (the body as a whole).
+SHOTS = {"squat": ("front", "three", "side"), "tail_swing": ("back", "three"), "crouch": ("front", "three", "side")}
+
+
 def poses(animal, gb_dir, out, ual1, ual2):
     arm, acts, mesh, files = bound(animal, gb_dir, ual1, ual2)
     piv = pivot_rig(arm)
     stage(res=480, samples=20)
     rest(arm)
-    # (under the pivot the world is in the character's own units)
+    # (under the pivot the world is in the character's own units; faced
+    # front while measuring, so the points' places are the front view's)
+    piv.rotation_euler = (0, 0, 0)
+    bpy.context.view_layer.update()
     covered0, _ = poke(mesh, None)
     co0 = zones(mesh)[0]
     with open(files[1]) as fh:
         joints = json.load(fh)
-    stats = {"covered_body": int(len(covered0["body"])), "covered_shorts": int(len(covered0["shorts"]))}
+    stats = {"covered_body": int(len(covered0["body"])), "covered_shorts": int(len(covered0["shorts"])),
+             "tail_bones": tail_bones(arm)}
+    only = os.environ.get("GB_TESTS")
     for name in TESTS:
+        if only and name not in only.split(","):
+            continue
+        if name == "tail_swing" and not tail_bones(arm):
+            continue
+        piv.rotation_euler = (0, 0, 0)
+        bpy.context.view_layer.update()
         pose(arm, acts, name)
-        res, co = poke(mesh, covered0) if name != "bind" else ({"body": [], "shorts": []}, None)
-        stats[name] = {"body_through": int(len(res["body"])), "shorts_through": int(len(res["shorts"])),
-                       "where": regions(co0, res["body"], joints)}
+        if name == "bind":
+            res = {"body": np.array([], dtype=int), "shorts": np.array([], dtype=int), "area": np.zeros(len(co0))}
+        else:
+            res, co = poke(mesh, covered0)
+        sm = summary(res, co0, joints)
+        stats[name] = {"body_through": sm["body"]["points"], "shorts_through": sm["shorts"]["points"],
+                       "where": {r: v["points"] for r, v in sm["where"].items()}, "measured": sm}
         mk = None
         if name != "bind" and (len(res["body"]) or len(res["shorts"])):
-            pts = np.concatenate([res["co"][res["body"]], res["co"][res["shorts"]]]) if len(res["shorts"]) else \
-                res["co"][res["body"]]
+            pts = np.concatenate([res["co"][res["body"]], res["co"][res["shorts"]]])
             mk = markers(pts[:: max(1, len(pts) // 400)])
             mk.parent = piv
             # markers are in world space already; keep them so under the turning pivot
             mk.matrix_parent_inverse = piv.matrix_world.inverted()
-        for v in ("front", "three"):
+        for v in SHOTS.get(name, ("front", "three")):
             shoot(os.path.join(out, "%s_pose_%s_%s.png" % (animal, name, v)), piv, v)
+        # close views of the worst places (most points), markers on
+        piv.rotation_euler = (0, 0, 0)
+        bpy.context.view_layer.update()
+        worst = sorted(sm["where"].items(), key=lambda kv: -kv[1]["points"])[:2]
+        stats[name]["close"] = []
+        for r, v in worst:
+            fn = "%s_close_%s_%s.png" % (animal, name, r.replace("/", "-").replace(" ", "-"))
+            d = Vector(v.get("facing") or look_from(r, v["centre"]))
+            if d.length < 0.3:
+                d = Vector(look_from(r, v["centre"]))
+            d = d.normalized() + Vector((0.0, 0.0, 0.25))
+            close(os.path.join(out, fn), v["centre"], d)
+            stats[name]["close"].append({"region": r, "file": fn})
+        if name in ("crouch", "squat"):
+            # the crotch, whatever came through: where it bends most
+            th = joints["thigh"]
+            near = np.where((np.abs(co0[:, 0]) < th[0] * 0.3) & (co0[:, 2] > th[2] - 0.06) & (co0[:, 2] < th[2]))[0]
+            if len(near):
+                c = res["co"][near].mean(axis=0)
+                for tag, d in (("front", (0.0, -1.0, -0.2)), ("low", (0.0, -0.45, -1.0))):
+                    fn = "%s_close_%s_crotch-%s.png" % (animal, name, tag)
+                    close(os.path.join(out, fn), c, d, scale=0.40)
+                    stats[name]["close"].append({"region": "crotch (" + tag + ")", "file": fn})
         if mk is not None:
             bpy.data.objects.remove(mk, do_unlink=True)
     with open(os.path.join(out, "%s_poses.json" % animal), "w") as fh:
         json.dump(stats, fh, indent=1)
-    print(animal, json.dumps(stats))
+    print(animal, json.dumps({k: (v["body_through"], v["shorts_through"]) if isinstance(v, dict) else v
+                              for k, v in stats.items()}))
 
 
 # Display poses: a UAL clip and where in it (a share of its length) for
 # each, whether its feet are drawn
 # in (owl_character.close_stance) and small adjustments (world-axis turns):
 # the owl calm with its arms folded, the dog talking with its head
-# cocked, the cat mid-step in the formal walk (light, its weight on the
-# planted foot), the bear standing as the clip has it - feet wide, heavy.
+# cocked, the cat standing at ease (both feet down, arms loose - user
+# request: its mid-step walk is an animation frame, not its picture),
+# the bear standing as the clip has it - feet wide, heavy. ("anim_still"
+# below: a frame of a clip, apart from these.)
 DISPLAY = {
     "owl": ("Idle_FoldArms_Loop", 0.5, True, [("Head", "Z", -14), ("Head", "X", 6)]),
     "dog": ("Idle_Talking_Loop", 0.5, True, [("Head", "Z", 10), ("Head", "Y", -8)]),
-    "cat": ("Walk_Formal_Loop", 0.35, False, [("Head", "X", -6)]),
+    "cat": ("Idle_Loop", 0.5, True, [("Head", "X", -4), ("Head", "Z", 8)]),
     "bear": ("Idle_Loop", 0.5, False, [("Head", "X", -4)]),
 }
 
 
-def display(animal, gb_dir, out, ual1, ual2, clip_name=None, frame=None):
+ANIM_STILLS = {"cat": ("Walk_Formal_Loop", 0.35, False, [("Head", "X", -6)])}
+
+
+def display(animal, gb_dir, out, ual1, ual2, clip_name=None, frame=None, tag="display"):
     arm, acts, mesh, files = bound(animal, gb_dir, ual1, ual2)
-    name, f, close, tweaks = DISPLAY[animal]
+    name, f, draw_in, tweaks = (ANIM_STILLS if tag == "anim_still" else DISPLAY)[animal]
     name = clip_name or name
     f = frame if frame is not None else f
     act = acts[name]
-    if close:
+    if draw_in:
         oc.close_stance(arm, "ual", [act], standing=[act], character=animal, files=files)
     f0, f1 = act.frame_range
     clip(arm, act, int(round(f0 + (f1 - f0) * f)) if f < 1.0 else int(f))
@@ -516,11 +823,150 @@ def display(animal, gb_dir, out, ual1, ual2, clip_name=None, frame=None):
     piv = pivot_rig(arm)
     stage()
     for v in VIEWS:
-        shoot(os.path.join(out, "%s_display_%s.png" % (animal, v)), piv, v)
+        shoot(os.path.join(out, "%s_%s_%s.png" % (animal, tag, v)), piv, v)
     stage(transparent=True, ground=False)
     override([mesh], silhouette_material())
     for v in ("front", "three"):
-        shoot(os.path.join(out, "%s_display_sil_%s.png" % (animal, v)), piv, v)
+        shoot(os.path.join(out, "%s_%s_sil_%s.png" % (animal, tag, v)), piv, v)
+
+
+# ---------------------------------------------------------------- clips
+
+# The clips played through, on each skeleton (UAL: the library's; Mixamo:
+# the ones the game's player sheets are made from - render_player.py -
+# plus its walk, which the game doesn't use).
+UAL_CLIPS = [("idle", "Idle_Loop"), ("walk", "Walk_Loop"), ("run", "Jog_Fwd_Loop")]
+MIXAMO_CLIPS = ["idle", "walk", "run", "cast", "fish_idle"]
+STEPS = int(os.environ.get("GB_STEPS", 12))
+# The tail's swing in the clips (none of them key a tail): a sway, a
+# control of our own, so many degrees each way at the root bone.
+SWAY = 14.0
+
+
+def sway(arm, phase):
+    for i, b in enumerate(tail_bones(arm)):
+        arm.pose.bones[b].matrix_basis = Matrix.Identity(4)
+    bpy.context.view_layer.update()
+    for i, b in enumerate(tail_bones(arm)):
+        turn(arm, b, "Z", SWAY * math.sin(phase * math.tau - i * 0.6) * (0.6 + 0.15 * i))
+
+
+def play(arm, mesh, piv, act, covered0, co0, joints, out, tag, f0=None, f1=None, still=None):
+    """`act` gone through in STEPS frames: each measured (what came through
+    the clothes) and drawn small from 3/4 with its markers; returns the
+    frames' numbers and the pictures."""
+    a0, a1 = act.frame_range
+    f0 = a0 if f0 is None else f0
+    f1 = a1 if f1 is None else f1
+    rows, pics = [], []
+    for i in range(STEPS):
+        f = f0 + (f1 - f0) * i / STEPS
+        piv.rotation_euler = (0, 0, 0)
+        ad = arm.animation_data
+        ad.action = act
+        bpy.context.scene.frame_set(int(f), subframe=f - int(f))
+        if still is not None:
+            still(arm)
+        if tail_bones(arm):
+            sway(arm, i / STEPS)
+        bpy.context.view_layer.update()
+        res, co = poke(mesh, covered0)
+        sm = summary(res, co0, joints)
+        rows.append({"frame": round(f, 1), "body": sm["body"], "shorts": sm["shorts"],
+                     "where": {r: v["points"] for r, v in sm["where"].items()}})
+        mk = None
+        pts = np.concatenate([res["co"][res["body"]], res["co"][res["shorts"]]])
+        if len(pts):
+            mk = markers(pts[:: max(1, len(pts) // 300)], r=0.008)
+            mk.parent = piv
+            mk.matrix_parent_inverse = piv.matrix_world.inverted()
+        pics.append(shoot(os.path.join(out, "%s_%02d.png" % (tag, i)), piv, "three"))
+        if mk is not None:
+            bpy.data.objects.remove(mk, do_unlink=True)
+    return rows, pics
+
+
+def strip(pics, path, gif=None):
+    from PIL import Image
+    ims = [Image.open(p).convert("RGB") for p in pics]
+    w, h = ims[0].size
+    cols = 6
+    W = Image.new("RGB", (w * cols, h * ((len(ims) + cols - 1) // cols)))
+    for i, im in enumerate(ims):
+        W.paste(im, ((i % cols) * w, (i // cols) * h))
+    W.save(path)
+    if gif:
+        ims[0].save(gif, save_all=True, append_images=ims[1:], duration=110, loop=0)
+    for p in pics:
+        os.remove(p)
+
+
+def anim(animal, gb_dir, out, ual1, ual2, mixamo):
+    """The clips, on both skeletons, frame by frame (UAL's with the greybox
+    as bound for the tests; Mixamo's as render_player.py makes the game's
+    sheets - its feet drawn in by close_stance)."""
+    report = {"ual": {}, "mixamo": {}, "sway_deg": SWAY}
+    files = (os.path.join(gb_dir, animal + "_greybox.glb"), os.path.join(gb_dir, animal + "_greybox.json"))
+    with open(files[1]) as fh:
+        joints = json.load(fh)
+    # UAL
+    arm, acts, mesh, _ = bound(animal, gb_dir, ual1, ual2)
+    piv = pivot_rig(arm)
+    stage(res=300, samples=10, frame=1.25, look_z=0.6)
+    rest(arm)
+    piv.rotation_euler = (0, 0, 0)
+    bpy.context.view_layer.update()
+    covered0, _ = poke(mesh, None)
+    co0 = zones(mesh)[0]
+    for key, name in UAL_CLIPS:
+        if name not in acts:
+            report["ual"][key] = {"clip": name, "missing": True}
+            continue
+        rows, pics = play(arm, mesh, piv, acts[name], covered0, co0, joints, out, "%s_ual_%s" % (animal, key))
+        strip(pics, os.path.join(out, "%s_anim_ual_%s.png" % (animal, key)),
+              os.path.join(out, "%s_anim_ual_%s.gif" % (animal, key)))
+        report["ual"][key] = {"clip": name, "frames": rows}
+    report["ual"]["cast"] = {"clip": None, "missing": True, "note": "UAL has no fishing cast"}
+    # Mixamo, as the game's sheets
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import render_player as rp
+    arm, _, src = rp.load(mixamo)
+    objs, a2 = rp.import_fbx(os.path.join(mixamo, "Y_Bot@walking.fbx"))
+    src["walk"] = a2[0]
+    src["walk"].use_fake_user = True
+    rp.in_place(src["walk"])
+    for o in objs:
+        bpy.data.objects.remove(o, do_unlink=True)
+    hips = (arm.matrix_world @ arm.data.bones["mixamorig:Hips"].head_local).z
+    SCALE["k"] = oc._scale(hips, joints)
+    mesh = oc.bind(arm, "mixamo", animal, files=files)[0]
+    oc.close_stance(arm, "mixamo", list(src.values()), standing=[src["idle"]], character=animal, files=files)
+    piv = pivot_all([arm])
+    piv.scale = (1.0 / SCALE["k"],) * 3
+    stage(res=300, samples=10, frame=1.25, look_z=0.6)
+    ad = arm.animation_data or arm.animation_data_create()
+    for t in ad.nla_tracks:
+        t.mute = True
+    ad.action = None
+    for pb in arm.pose.bones:
+        pb.matrix_basis = Matrix.Identity(4)
+    piv.rotation_euler = (0, 0, 0)
+    bpy.context.view_layer.update()
+    covered0, _ = poke(mesh, None)
+    co0 = zones(mesh)[0]
+    for key in MIXAMO_CLIPS:
+        act = src[key]
+        rows, pics = play(arm, mesh, piv, act, covered0, co0, joints, out, "%s_mx_%s" % (animal, key))
+        strip(pics, os.path.join(out, "%s_anim_mixamo_%s.png" % (animal, key)),
+              os.path.join(out, "%s_anim_mixamo_%s.gif" % (animal, key)))
+        report["mixamo"][key] = {"clip": act.name, "frames": rows, "in_game": key != "walk"}
+    with open(os.path.join(out, "%s_anim.json" % animal), "w") as fh:
+        json.dump(report, fh, indent=1)
+    for rig in ("ual", "mixamo"):
+        for key, v in report[rig].items():
+            if isinstance(v, dict) and "frames" in v:
+                print(animal, rig, key, "max points", max(r["body"]["points"] for r in v["frames"]),
+                      "max depth", max(r["body"]["depth_max_mm"] for r in v["frames"]))
 
 
 if __name__ == "__main__":
@@ -538,10 +984,19 @@ if __name__ == "__main__":
     elif cmd == "poses":
         os.makedirs(args[3], exist_ok=True)
         poses(args[1], os.path.abspath(args[2]), os.path.abspath(args[3]), args[4], args[5])
+    elif cmd == "detail":
+        os.makedirs(args[3], exist_ok=True)
+        detail(args[1], os.path.abspath(args[2]), os.path.abspath(args[3]), args[4] if len(args) > 4 else "new")
+    elif cmd == "anim":
+        os.makedirs(args[3], exist_ok=True)
+        anim(args[1], os.path.abspath(args[2]), os.path.abspath(args[3]), args[4], args[5], args[6])
     elif cmd == "display":
         os.makedirs(args[3], exist_ok=True)
         extra = args[6:]
-        display(args[1], os.path.abspath(args[2]), os.path.abspath(args[3]), args[4], args[5],
-                extra[0] if extra else None, int(extra[1]) if len(extra) > 1 else None)
+        if extra and extra[0] == "--still":
+            display(args[1], os.path.abspath(args[2]), os.path.abspath(args[3]), args[4], args[5], tag="anim_still")
+        else:
+            display(args[1], os.path.abspath(args[2]), os.path.abspath(args[3]), args[4], args[5],
+                    extra[0] if extra else None, int(extra[1]) if len(extra) > 1 else None)
     sys.stdout.flush()
     os._exit(0)
