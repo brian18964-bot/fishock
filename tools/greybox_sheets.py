@@ -26,7 +26,7 @@ VIEW_NAMES = {"front": "正面", "three": "四分之三", "side": "真側面", "
 TESTS = ["bind", "arms_down", "arms_up", "arms_forward", "crouch", "squat", "head_turn", "tail_swing"]
 TEST_NAMES = {"bind": "綁定姿勢 (T)", "arms_down": "手臂放下", "arms_up": "抬臂",
               "arms_forward": "手前伸＋屈肘", "crouch": "UAL 蹲 (單膝前移低姿)",
-              "squat": "雙腳承重下蹲 (測試用 IK)", "head_turn": "轉頭 60°", "tail_swing": "尾巴擺動 (尾骨)"}
+              "squat": "雙腳下蹲 (IK 測試)", "head_turn": "轉頭 60°", "tail_swing": "尾巴擺動 (尾骨)"}
 BG = (64, 66, 70)
 INK = (235, 235, 235)
 # The renders' camera: 1.5 m across, centred 0.68 m up.
@@ -272,14 +272,15 @@ def round2(before, rev, out, fpath=None):
             cell = 280
             G = grid(cells, len(tests), cell, [TEST_NAMES[t] for t in tests], ["正面*", "四分之三"], f,
                      title="%s：靜態姿勢測試（UAL 骨架）・紅點＝綁定時在衣服內、擺姿後在兩件衣服外的身體點" % NAMES[a])
-            H = Image.new("RGB", (G.size[0], G.size[1] + 250), BG)
+            H = Image.new("RGB", (G.size[0], G.size[1] + 270), BG)
             H.paste(G, (0, 0))
             d = ImageDraw.Draw(H)
             d.text((12, G.size[1] + 8), "實際\n量測", font=f(20), fill=INK)
             for c, t in enumerate(tests):
                 m = st[t]["measured"]
                 lines = ["穿出 %d 點" % m["body"]["points"], "最深 %.1f mm" % m["body"]["depth_max_mm"],
-                         "平均 %.1f mm" % m["body"]["depth_mean_mm"], "面積 %.1f cm²" % m["body"]["area_cm2"]]
+                         "平均 %.1f mm" % m["body"]["depth_mean_mm"], "面積 %.1f cm²" % m["body"]["area_cm2"],
+                         "可見 %d 點 / %.1f cm²" % (m["body"].get("visible_points", 0), m["body"].get("visible_area_cm2", 0))]
                 if m["shorts"]["points"]:
                     lines.append("褲頭穿上衣 %d 點 / %.1f mm" % (m["shorts"]["points"], m["shorts"]["depth_max_mm"]))
                 for r, v in sorted(m["where"].items(), key=lambda kv: -kv[1]["points"])[:3]:
@@ -302,7 +303,7 @@ def round2(before, rev, out, fpath=None):
                     m = st[t]["measured"]["where"].get(reg)
                     txt = "%s・%s" % (TEST_NAMES[t], REGION.get(reg.split(" (")[0], reg))
                     if m:
-                        txt += "\n%d 點・最深 %.1f mm・%.1f cm²" % (m["points"], m["depth_max_mm"], m["area_cm2"])
+                        txt += "\n%d 點・最深 %.1f mm・可見 %d 點" % (m["points"], m["depth_max_mm"], m.get("visible_points", 0))
                     d.rectangle([x, y, x + 340, y + (46 if m else 24)], fill=(30, 30, 32))
                     d.text((x + 6, y + 3), txt, font=f(15), fill=INK)
                 G.save(os.path.join(out, "%s_poke_close.png" % a))
