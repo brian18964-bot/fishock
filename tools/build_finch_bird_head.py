@@ -65,20 +65,23 @@ FORWARD = -0.03
 # neckline its tips reach, how far off the knit it lies, where its tips
 # fall round the neck as a share of one tip, its own random draw) - the
 # inner the longer, the outer over its gaps. RUFF_TIPS round the neck,
-# their lengths a little uneven (RUFF_JITTER), notched RUFF_NOTCH deep;
-# RUFF_ROWS rows under the head and on the knit; RUFF_PUFF how full
-# the breast under the chin.
+# their lengths a little uneven (RUFF_JITTER), notched RUFF_NOTCH deep,
+# each RUFF_TIP_SEGS faces wide; RUFF_ROWS rows under the head and on the
+# knit; RUFF_PUFF how full the breast under the chin.
 RUFF_RISE = 0.045
-RUFF_LAYERS = [(0.034, 0.004, 0.0, 5), (0.018, 0.0075, 0.5, 6)]
-RUFF_TIPS = 30
-RUFF_JITTER = 0.25
-RUFF_NOTCH = 0.012
-RUFF_ROWS = (8, 8)
-RUFF_PUFF = 0.45
-# ...over a neckline rounded off over this many degrees, and no further
-# out from it than RUFF_SPREAD (the inner layer's longest tips).
+RUFF_LAYERS = [(0.014, 0.003, 0.0, 5), (0.008, 0.005, 0.5, 6)]
+RUFF_TIPS = 46
+RUFF_JITTER = 0.3
+RUFF_NOTCH = 0.006
+RUFF_TIP_SEGS = 4
+RUFF_ROWS = (5, 3)
+RUFF_PUFF = 0.3
+# ...over a neckline rounded off over this many degrees (the tips still
+# past the real one by RUFF_COVER), and no further out from it than
+# RUFF_SPREAD (the inner layer's longest tips).
 RUFF_ROUND = 50
-RUFF_SPREAD = 0.06
+RUFF_SPREAD = 0.018
+RUFF_COVER = 0.006
 # Its feathers' picture (and the back of the head's): repeats a metre.
 FEATHER_SCALE = 7.5
 # The shins: feathered all round - from ANKLE up, this thick at the
@@ -234,7 +237,7 @@ def ruff(owl, jumper, axis, mat):
     ht = evaluated_bvh(owl)
     height, cy = neckline(jumper)
     centre = Vector((axis.x, cy))
-    segs = RUFF_TIPS * 8
+    segs = RUFF_TIPS * RUFF_TIP_SEGS
     angles = [-math.pi + 2 * math.pi * i / segs for i in range(segs)]
     # The neckline rounded off (the V's point and its corners smoothed),
     # so the breast is one even fall of feathers - its tips still below
@@ -268,7 +271,10 @@ def ruff(owl, jumper, axis, mat):
             # outer ones come out from under it only on the knit).
             under_lift = RUFF_LAYERS[0][1] - 0.001 * layer
             r1, z1 = edge[i] + under_lift, necks[i] + 0.002
-            tip = necks[i] - drape * length[i]
+            # Past the rounded neckline, and always past the real one (the
+            # V's point) a little.
+            tip = min(necks[i] - drape, raw[i] - RUFF_COVER * drape / RUFF_LAYERS[0][0])
+            tip = necks[i] - (necks[i] - tip) * length[i]
             # No further out over the shoulders' flat tops than this.
             spread = RUFF_SPREAD * drape / RUFF_LAYERS[0][0] * length[i]
             z = z1
