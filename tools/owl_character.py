@@ -561,14 +561,14 @@ STANCE = 0.012
 STRIDE = 0.035
 
 
-def close_stance(arm, rig_name, actions, standing=(), character="owl"):
+def close_stance(arm, rig_name, actions, standing=(), character="owl", files=None):
     """Each of `actions` (on `arm`) gone through frame by frame: where a
     foot is further out than STANCE from its hip - or, in the `standing`
     ones, further ahead or behind than STRIDE - the thigh turned (about
     the hip) to bring it there and the foot turned back the same so it
     stays flat (a bent knee takes a few goes); keyed over the clip."""
     rig = RIGS[rig_name]
-    with open(paths(character)[1]) as fh:
+    with open((files or paths(character))[1]) as fh:
         joints = json.load(fh)
     hips_z = (arm.matrix_world @ arm.data.bones[rig["trunk"][0]].head_local).z
     limit = STANCE * _scale(hips_z, joints)
@@ -619,12 +619,95 @@ def close_stance(arm, rig_name, actions, standing=(), character="owl"):
         t.mute = m
 
 
-def bind(arm, rig_name, character="owl"):
+def _pick(rig, targets, spec):
+    """The bones a part is weighted from (PART_JOINTS' spec)."""
+    names = []
+    if spec.get("trunk"):
+        names += rig["trunk"][:-1]
+    if spec.get("hips"):
+        names.append(rig["trunk"][0])
+    for s in ("l", "r"):
+        for j in spec.get("limbs", ()):
+            names.append(rig["limb"](s, rig["limbs"][j]))
+        if spec.get("fingers"):
+            names += [rig["finger"](s, f, i) for f in FINGERS for i in (1, 2, 3)]
+    return [n for n in names if n in targets]
+
+
+def _bind_greybox(arm, rig, joints, parts, heads, tails, targets, k, off):
+    """A greybox character (tools/greybox_animals.py): its one body (head
+    to toes and tail) weighted from the whole skeleton - rigid with the
+    head above its neck and the tail with the hips - its eyes and nose
+    with the head, and its clothes moving as the body under them does."""
+    head_bone = rig["trunk"][-1]
+    pelvis = rig["trunk"][0]
+    fingers = joints.get("fingers", list(FINGERS))
+    names = list(rig["trunk"])
+    for s in ("l", "r"):
+        for j in ("clavicle", "shoulder", "elbow", "wrist", "thigh", "knee", "ankle", "ball"):
+            names.append(rig["limb"](s, rig["limbs"][j]))
+        names += [rig["finger"](s, f, i) for f in fingers for i in (1, 2, 3)]
+    names = [n for n in names if n in targets]
+    body = parts["owl_body"]
+    _weigh_heat(body, arm, names, heads, tails)
+
+    def unit(co):
+        return (co - off) / k
+    z0, z1 = joints["head_rigid"]
+    reach = joints["head_reach"]
+    hg = body.vertex_groups.get(head_bone) or body.vertex_groups.new(name=head_bone)
+    pg = body.vertex_groups.get(pelvis) or body.vertex_groups.new(name=pelvis)
+    box = joints.get("tail_box")
+    for v in body.data.vertices:
+        p = unit(v.co)
+        w = _smooth(z0, z1, p.z) if abs(p.x) < reach else 0.0
+        if w > 0.0:
+            for g in v.groups:
+                g.weight *= 1.0 - w
+            hg.add([v.index], w, "ADD")
+        if box and all(box[0][i] - 0.005 <= p[i] <= box[1][i] + 0.005 for i in range(3)):
+            t = _smooth(joints["tail_root_y"], joints["tail_root_y"] + 0.03, p.y)
+            if t > 0.0:
+                for g in v.groups:
+                    g.weight *= 1.0 - t
+                pg.add([v.index], t, "ADD")
+    if "owl_face" in parts:
+        fc = parts["owl_face"]
+        fc.vertex_groups.new(name=head_bone).add(range(len(fc.data.vertices)), 1.0, "REPLACE")
+    # The clothes move as the body under them does: each point takes the
+    # weights of the nearest point of the body (so they stay over it).
+    for name in ("owl_jumper", "owl_trousers", "owl_button", "owl_ruff"):
+        if name in parts:
+            _copy_weights(body, parts[name])
+    return body
+
+
+def _copy_weights(src, dst):
+    """dst's vertex groups from src's, at the nearest point of src's
+    surface (interpolated across its face)."""
+    for vg in src.vertex_groups:
+        if dst.vertex_groups.get(vg.name) is None:
+            dst.vertex_groups.new(name=vg.name)
+    md = dst.modifiers.new("weights", "DATA_TRANSFER")
+    md.object = src
+    md.use_vert_data = True
+    md.data_types_verts = {"VGROUP_WEIGHTS"}
+    md.vert_mapping = "POLYINTERP_NEAREST"
+    md.layers_vgroup_select_src = "ALL"
+    md.layers_vgroup_select_dst = "NAME"
+    bpy.ops.object.select_all(action="DESELECT")
+    bpy.context.view_layer.objects.active = dst
+    dst.select_set(True)
+    bpy.ops.object.modifier_apply(modifier=md.name)
+
+
+def bind(arm, rig_name, character="owl", files=None):
     """The owl (or another animal person, `character`) on `arm` (Mixamo's
     or UAL's skeleton, T-posed): returns its one mesh, skinned to it; the
-    skeleton's own meshes are taken off."""
+    skeleton's own meshes are taken off. `files` (a .glb and its .json)
+    instead of the character's own - a greybox (greybox_animals.py)."""
     rig = RIGS[rig_name]
-    glb, joints_path = paths(character)
+    glb, joints_path = files or paths(character)
     with open(joints_path) as fh:
         joints = json.load(fh)
     for o in [o for o in bpy.data.objects if o.type == "MESH" and (o.parent is arm or o.find_armature() is arm)]:
@@ -657,20 +740,11 @@ def bind(arm, rig_name, character="owl"):
     if rig["head_top"] is None:
         tails[head_bone] = Vector(joints["head_top"]) * k + off
 
-    def pick(spec):
-        names = []
-        if spec.get("trunk"):
-            names += rig["trunk"][:-1]
-        if spec.get("hips"):
-            names.append(rig["trunk"][0])
-        for s in ("l", "r"):
-            for j in spec.get("limbs", ()):
-                names.append(rig["limb"](s, rig["limbs"][j]))
-            if spec.get("fingers"):
-                names += [rig["finger"](s, f, i) for f in FINGERS for i in (1, 2, 3)]
-        return [n for n in names if n in targets]
+    if "owl_body" in parts:
+        hd = _bind_greybox(arm, rig, joints, parts, heads, tails, targets, k, off)
+        return _join(parts, hd, arm)
     for name, spec in PART_JOINTS.items():
-        _weigh_heat(parts[name], arm, pick(spec), heads, tails)
+        _weigh_heat(parts[name], arm, _pick(rig, targets, spec), heads, tails)
     # The head: all the head's.
     hd = parts["owl_head"]
     hd.vertex_groups.new(name=head_bone).add(range(len(hd.data.vertices)), 1.0, "REPLACE")
@@ -688,7 +762,11 @@ def bind(arm, rig_name, character="owl"):
         for n, w in ((chest, wc), (neck, wn), (head_bone, wh)):
             if w > 1e-4:
                 groups[n].add([v.index], w, "REPLACE")
-    # One mesh, skinned to the skeleton.
+    return _join(parts, hd, arm)
+
+
+def _join(parts, hd, arm):
+    """The parts as one mesh, skinned to the skeleton."""
     bpy.ops.object.select_all(action="DESELECT")
     for o in parts.values():
         o.select_set(True)
