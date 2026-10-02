@@ -18,7 +18,9 @@ enum Tool { LAMP, FLASHLIGHT }
 
 const MAX_FUEL := 100.0
 ## User feedback: lights last 40% longer (was 7 fuel/s at full brightness).
-const DRAIN_RATE := 5.0
+## User request: a full lamp lasts 50 s at the usual brightness (0.75) -
+## it was 27 s at 5 fuel/s.
+const DRAIN_RATE := 2.67
 const MIN_BRIGHTNESS := 0.35
 const MAX_BRIGHTNESS := 1.0
 const BRIGHTNESS_STEP := 0.5
