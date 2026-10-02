@@ -13,6 +13,7 @@ Two steps:
           art_src/player/owl_character.json (where its joints are).
 
     bpyenv/bin/python tools/owl_character.py bake FINCH_OWL.blend
+    bpyenv/bin/python tools/owl_character.py bake DOG.blend --name dog   (build_animal_person.py's)
 
   bind  - for the tools that render or export the character: the owl put
           on a skeleton that already carries the game's clips - Mixamo's
@@ -38,10 +39,18 @@ import numpy as np
 from mathutils import Matrix, Vector
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-GLB = os.path.join(ROOT, "art_src", "player", "owl_character.glb")
-JOINTS = os.path.join(ROOT, "art_src", "player", "owl_character.json")
+# The finch's hips' height: the other animal people (build_animal_person.py)
+# are sized against it (their legs may be shorter), times their own size.
+REF_HIPS = 0.603
+
+
+def paths(name="owl"):
+    """A character's game file and its joints (art_src/player)."""
+    base = os.path.join(ROOT, "art_src", "player", "%s_character" % name)
+    return base + ".glb", base + ".json"
 
 # The built owl's parts, by what they're called in the game file.
+# (the animal people's head and collar are "animal_head", "animal_ruff")
 PARTS = {"bird_head": "owl_head", "bird_ruff": "owl_ruff", "finch_jumper": "owl_jumper",
          "finch_trousers": "owl_trousers", "finch_hand": "owl_hands", "finch_feet": "owl_feet",
          "finch_button_trousers_1": "owl_button"}
@@ -95,7 +104,10 @@ class Straighten:
     def __call__(self, p):
         side = 1.0 if p.x >= 0 else -1.0
         q = Vector((p.x * side, p.y, p.z))
-        w1 = _smooth(self.sh.x - SHOULDER_BLEND, self.sh.x + SHOULDER_BLEND, q.x)
+        # (only the arms: a wide body's sides - the bear's - lower down
+        # are left as they are)
+        w1 = _smooth(self.sh.x - SHOULDER_BLEND, self.sh.x + SHOULDER_BLEND, q.x) * \
+            _smooth(self.sh.z - 0.2, self.sh.z - 0.15, q.z)
         q = _turn(q, self.sh, self.t1 * w1)
         w2 = _smooth(self.el.x - ELBOW_BLEND, self.el.x + ELBOW_BLEND, q.x)
         q = _turn(q, self.el, self.t2 * w2)
@@ -112,20 +124,23 @@ TROUSERS_MID = 0.11
 TROUSERS_SLIM = 0.8
 
 
-def narrow(p, trousers=False):
-    t = _smooth(LEGS_IN[0], LEGS_IN[1], p.z)
+def narrow(p, trousers=False, girth=1.0, drop=0.0):
+    """(`drop`: how much lower this body's hips are than the finch's - an
+    animal person with shorter legs)"""
+    t = _smooth(LEGS_IN[0] - drop, LEGS_IN[1] - drop, p.z)
     if t <= 0.0:
         return Vector(p)
     side = 1.0 if p.x >= 0 else -1.0
     x = abs(p.x)
     if trousers:
-        want = (TROUSERS_MID - NARROW) + (x - TROUSERS_MID) * TROUSERS_SLIM
+        mid = TROUSERS_MID * girth
+        want = (mid - NARROW) + (x - mid) * TROUSERS_SLIM
     else:
         want = x - NARROW
     return Vector((side * (x + (want - x) * t), p.y, p.z))
 
 
-def _joints(arm, fix, head):
+def _joints(arm, fix, head, girth=1.0, drop=0.0):
     """Where the owl's joints are (its left side; the right mirrors it),
     arms straightened."""
     def at(name, end="head"):
@@ -143,9 +158,10 @@ def _joints(arm, fix, head):
         "wrist": at("DEF_hand_L"),
         "thumb": [at("DEF_palm_L.004"), at("DEF_thumb_L.001"), at("DEF_thumb_L.002"), at("DEF_thumb_L.002", "tail")],
         "index": finger("index"), "middle": finger("middle"), "ring": finger("ring"), "pinky": finger("pinky"),
-        "thigh": list(narrow(Vector(at("DEF_thigh_L")))), "knee": list(narrow(knee)),
-        "ankle": list(narrow(Vector(at("DEF_calf_L", "tail")))),
-        "ball": list(narrow(Vector(at("DEF_toe_2_L.002")))), "toe": list(narrow(Vector(at("DEF_toe_2_L.003", "tail")))),
+        "thigh": list(narrow(Vector(at("DEF_thigh_L")), girth=girth, drop=drop)), "knee": list(narrow(knee, girth=girth, drop=drop)),
+        "ankle": list(narrow(Vector(at("DEF_calf_L", "tail")), girth=girth, drop=drop)),
+        "ball": list(narrow(Vector(at("DEF_toe_2_L.002")), girth=girth, drop=drop)),
+        "toe": list(narrow(Vector(at("DEF_toe_2_L.003", "tail")), girth=girth, drop=drop)),
     }
 
 
@@ -209,16 +225,29 @@ def _atlas(parts, gap=0.006):
         uv.foreach_set("uv", co.ravel())
 
 
-def bake_character(src):
+def bake_character(src, character="owl"):
     bpy.ops.wm.open_mainfile(filepath=src)
+    glb, joints_path = paths(character)
     arm = next(o for o in bpy.data.objects if o.type == "ARMATURE")
     arm.data.pose_position = "REST"
+    sc = bpy.context.scene
+    girth = float(sc.get("animal_girth", 1.0))
+    for a, b in (("animal_head", "bird_head"), ("animal_ruff", "bird_ruff")):
+        if a in bpy.data.objects:
+            bpy.data.objects[a].name = b
     head = bpy.data.objects["bird_head"]
     bpy.context.view_layer.update()
     fix = Straighten(arm)
-    joints = _joints(arm, fix, head)
+    drop = REF_HIPS - _bone(arm, "DEF_spine.004").z if "animal_size" in sc else 0.0
+    joints = _joints(arm, fix, head, girth, drop)
+    if "animal_size" in sc:
+        joints["size"] = float(sc["animal_size"])
+        joints["ref_hips"] = REF_HIPS
 
-    sc = bpy.context.scene
+    tris = dict(TRIS)
+    if "animal_size" in sc:
+        # (a sculpted animal's head needs more to keep its face)
+        tris["owl_head"] = 6000
     parts = {}
     for src_name, name in PARTS.items():
         o = bpy.data.objects[src_name]
@@ -310,15 +339,15 @@ def bake_character(src):
         # Cut down to about TRIS (the picture's map kept), then the arms
         # straightened (the pictures go with them).
         have = sum(len(p.vertices) - 2 for p in me.polygons)
-        if have > TRIS[name]:
+        if have > tris[name]:
             dec = o.modifiers.new("dec", "DECIMATE")
-            dec.ratio = TRIS[name] / have
+            dec.ratio = tris[name] / have
             bpy.context.view_layer.objects.active = o
             bpy.ops.object.modifier_apply(modifier="dec")
         for v in o.data.vertices:
             v.co = fix(v.co)
             if name in ("owl_trousers", "owl_feet"):
-                v.co = narrow(v.co, trousers=name == "owl_trousers")
+                v.co = narrow(v.co, trousers=name == "owl_trousers", girth=girth, drop=drop)
         o.data.update()
         o.data.shade_smooth()
     lows = parts
@@ -326,14 +355,15 @@ def bake_character(src):
     bpy.ops.object.select_all(action="DESELECT")
     for o in lows.values():
         o.select_set(True)
-    os.makedirs(os.path.dirname(GLB), exist_ok=True)
-    bpy.ops.export_scene.gltf(filepath=GLB, export_format="GLB", use_selection=True,
+    os.makedirs(os.path.dirname(glb), exist_ok=True)
+    bpy.ops.export_scene.gltf(filepath=glb, export_format="GLB", use_selection=True,
                               export_image_format="JPEG", export_jpeg_quality=88, export_vertex_color="NONE")
-    with open(JOINTS, "w") as fh:
-        json.dump({k: [[round(c, 5) for c in p] for p in v] if isinstance(v[0], list) else [round(c, 5) for c in v]
+    with open(joints_path, "w") as fh:
+        json.dump({k: v if not isinstance(v, list) else
+                   [[round(c, 5) for c in p] for p in v] if isinstance(v[0], list) else [round(c, 5) for c in v]
                    for k, v in joints.items()}, fh, indent=1)
     tris = {o.name: sum(len(p.vertices) - 2 for p in o.data.polygons) for o in lows.values()}
-    print("wrote", GLB, os.path.getsize(GLB) // 1024, "KB;", tris, sum(tris.values()), "triangles")
+    print("wrote", glb, os.path.getsize(glb) // 1024, "KB;", tris, sum(tris.values()), "triangles")
 
 
 # ---------------------------------------------------------------- bind
@@ -375,6 +405,13 @@ RUFF_CHEST = (-0.002, 0.012)
 RUFF_HEAD = (0.02, 0.04)
 
 
+def _scale(hips_z, joints):
+    """World units a character unit, on a skeleton with its hips this high:
+    the owl's hips at the skeleton's; another animal person sized against
+    the finch's hips, times its own size."""
+    return hips_z / joints.get("ref_hips", joints["trunk"][0][2]) * joints.get("size", 1.0)
+
+
 def _targets(arm, rig, joints):
     """Each mapped bone's new head (world), the scale and offset the owl
     is put on the skeleton with."""
@@ -384,7 +421,7 @@ def _targets(arm, rig, joints):
     hips = mw @ bones[trunk[0]].head_local
     head = mw @ bones[trunk[-1]].head_local
     owl_trunk = [Vector(p) for p in joints["trunk"]]
-    k = hips.z / owl_trunk[0].z
+    k = _scale(hips.z, joints)
     off = Vector((0.0, hips.y - owl_trunk[0].y * k, 0.0))
 
     def place(p):
@@ -524,18 +561,18 @@ STANCE = 0.012
 STRIDE = 0.035
 
 
-def close_stance(arm, rig_name, actions, standing=()):
+def close_stance(arm, rig_name, actions, standing=(), character="owl"):
     """Each of `actions` (on `arm`) gone through frame by frame: where a
     foot is further out than STANCE from its hip - or, in the `standing`
     ones, further ahead or behind than STRIDE - the thigh turned (about
     the hip) to bring it there and the foot turned back the same so it
     stays flat (a bent knee takes a few goes); keyed over the clip."""
     rig = RIGS[rig_name]
-    with open(JOINTS) as fh:
+    with open(paths(character)[1]) as fh:
         joints = json.load(fh)
     hips_z = (arm.matrix_world @ arm.data.bones[rig["trunk"][0]].head_local).z
-    limit = STANCE * hips_z / joints["trunk"][0][2]
-    stride = STRIDE * hips_z / joints["trunk"][0][2]
+    limit = STANCE * _scale(hips_z, joints)
+    stride = STRIDE * _scale(hips_z, joints)
     ad = arm.animation_data or arm.animation_data_create()
     keep = ad.action
     mutes = [(t, t.mute) for t in ad.nla_tracks]
@@ -582,18 +619,20 @@ def close_stance(arm, rig_name, actions, standing=()):
         t.mute = m
 
 
-def bind(arm, rig_name):
-    """The owl on `arm` (Mixamo's or UAL's skeleton, T-posed): returns its
-    one mesh, skinned to it; the skeleton's own meshes are taken off."""
+def bind(arm, rig_name, character="owl"):
+    """The owl (or another animal person, `character`) on `arm` (Mixamo's
+    or UAL's skeleton, T-posed): returns its one mesh, skinned to it; the
+    skeleton's own meshes are taken off."""
     rig = RIGS[rig_name]
-    with open(JOINTS) as fh:
+    glb, joints_path = paths(character)
+    with open(joints_path) as fh:
         joints = json.load(fh)
     for o in [o for o in bpy.data.objects if o.type == "MESH" and (o.parent is arm or o.find_armature() is arm)]:
         bpy.data.objects.remove(o, do_unlink=True)
     before = set(bpy.data.objects)
     # Whole again (the file splits them where the picture's map does) -
     # weighted in pieces they'd tear apart at those seams.
-    bpy.ops.import_scene.gltf(filepath=GLB, merge_vertices=True)
+    bpy.ops.import_scene.gltf(filepath=glb, merge_vertices=True)
     parts = {o.name.split(".")[0]: o for o in set(bpy.data.objects) - before if o.type == "MESH"}
     bpy.context.view_layer.update()
     targets, k, off = _targets(arm, rig, joints)
@@ -671,4 +710,4 @@ def bind(arm, rig_name):
 if __name__ == "__main__":
     args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
     if args and args[0] == "bake":
-        bake_character(os.path.abspath(args[1]))
+        bake_character(os.path.abspath(args[1]), args[3] if len(args) > 3 and args[2] == "--name" else "owl")

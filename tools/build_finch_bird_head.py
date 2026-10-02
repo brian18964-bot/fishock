@@ -46,9 +46,9 @@ import numpy as np
 from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
 
-args = sys.argv[sys.argv.index("--") + 1:]
-SRC, BIRD, OUT = [os.path.abspath(a) for a in args[:3]]
-PREVIEW = args[3] if len(args) > 3 else ""
+# The command line's (main); other tools import this file for its parts
+# (build_animal_person.py).
+SRC = BIRD = OUT = PREVIEW = ""
 
 # The owl's head in its own file.
 HEAD_Y = -0.24
@@ -87,6 +87,8 @@ FEATHER_SCALE = 7.5
 # The shins: feathered all round - from ANKLE up, this thick at the
 # ankle and under the shorts, ruffled by FLUFF.
 ANKLE = 0.05
+# (the shorts' hem, where the shins end)
+HEM = 0.36
 SHIN = (0.021, 0.03)
 FLUFF = 0.12
 # Tiers of feathers on the forearms (how many) and shins (how tall each),
@@ -180,7 +182,11 @@ def neckline(jumper):
     bm.transform(jumper.matrix_world)
     pts = np.array([v.co[:] for e in bm.edges if e.is_boundary for v in e.verts])
     bm.free()
-    pts = pts[(np.abs(pts[:, 0]) < 0.2) & (pts[:, 2] > 0.75)]
+    # The neck's edge: the boundary near the middle, at the top (the
+    # sleeves' and hem's edges are further out or lower; the body may be
+    # reshaped - build_animal_person.py - so nothing absolute).
+    pts = pts[np.abs(pts[:, 0]) < 0.26]
+    pts = pts[pts[:, 2] > pts[:, 2].max() - 0.16]
     cy = (pts[:, 1].min() + pts[:, 1].max()) / 2
     ang = np.arctan2(pts[:, 0], -(pts[:, 1] - cy))
     order = np.argsort(ang)
@@ -357,14 +363,18 @@ def tuck(owl, height, centre):
 
 # ---------------------------------------------------------------- feathers
 
-def patch(owl_png, box, name, saturation=1.0):
+def patch(owl_png, box, name, saturation=1.0, match=None):
     """A crop of the owl's texture as a Blender image, made to tile
     without seams: crossfaded with itself moved half a tile over, so its
-    edges are its own middle."""
+    edges are its own middle. `match`: an average colour (0-1) to bring
+    it to."""
     from PIL import Image
     from PIL import ImageEnhance
     tile = ImageEnhance.Color(Image.open(owl_png).convert("RGB").crop(box)).enhance(saturation)
     px = np.asarray(tile, dtype=np.float32) / 255.0
+    if match is not None:
+        # Its average colour made `match`'s (each channel scaled).
+        px = np.clip(px * (np.asarray(match, np.float32) / np.maximum(px.reshape(-1, 3).mean(0), 1e-3)), 0.0, 1.0)
     h, w = px.shape[:2]
     moved = np.roll(px, (h // 2, w // 2), axis=(0, 1))
     wy = np.sin(np.pi * (np.arange(h) + 0.5) / h) ** 2
@@ -647,7 +657,7 @@ def feathered_shins(feet):
             if d.length < 1e-6:
                 continue
             ang = math.atan2(d.y, d.x)
-            t = min(max((p[2] - ANKLE) / (0.36 - ANKLE), 0.0), 1.0)
+            t = min(max((p[2] - ANKLE) / (HEM - ANKLE), 0.0), 1.0)
             ease = min((p[2] - ANKLE) / 0.03, 1.0)
             fluff = 1.0 + FLUFF * sum(ruffle[(side + 1) // 2, n] * math.sin((n + 2) * ang + n) / (n + 2)
                                       for n in range(12))
@@ -671,7 +681,8 @@ def rig(o, arm, group_name):
 
 # ---------------------------------------------------------------- previews
 
-def previews():
+def previews(prefix=None):
+    prefix = prefix or PREVIEW
     sc = bpy.context.scene
     for o in sc.objects:
         for md in o.modifiers:
@@ -694,11 +705,15 @@ def previews():
     for cam, name, res in shots:
         sc.camera = bpy.data.objects[cam]
         sc.render.resolution_x, sc.render.resolution_y = res
-        sc.render.filepath = "%s_%s.png" % (PREVIEW, name)
+        sc.render.filepath = "%s_%s.png" % (prefix, name)
         bpy.ops.render.render(write_still=True)
 
 
 def main():
+    global SRC, BIRD, OUT, PREVIEW
+    args = sys.argv[sys.argv.index("--") + 1:]
+    SRC, BIRD, OUT = [os.path.abspath(a) for a in args[:3]]
+    PREVIEW = args[3] if len(args) > 3 else ""
     bpy.ops.wm.open_mainfile(filepath=SRC)
     for name in OFF:
         if name in bpy.data.objects:
@@ -732,4 +747,5 @@ def main():
         previews()
 
 
-main()
+if __name__ == "__main__":
+    main()
