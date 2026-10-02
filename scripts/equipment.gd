@@ -4,7 +4,7 @@ extends ItemBoard
 ## request: the player sees their own character - it'll be dressed up
 ## later (a paper doll) - so the character stands on the left in 3D
 ## (CharacterViewer) wearing what's equipped; the slots are beside it:
-## 釣竿 and 燈具 now, 帽子, 上衣, 背包 locked until the paper doll comes.
+## 釣竿, 燈具 and 武器 now, 帽子, 上衣, 背包 locked until the paper doll comes.
 ## And (user request) it's tied to the warehouse: its 裝備 tab and the bag
 ## are on the right - drag a rod or the flashlight onto a slot to put it
 ## on, off a slot to take it off, or tap one for its card.
@@ -22,6 +22,8 @@ const SLOT_LAYOUT := [
 	["pack", "背包", Rect2(34, 256, 58, 58), true],
 	["rod", "釣竿", Rect2(40, 452, 206, 58), false],
 	["light", "燈具", Rect2(258, 452, 206, 58), false],
+	# User request: the weapons (Profile.WEAPONS).
+	["weapon", "武器", Rect2(404, 116, 58, 58), false],
 ]
 
 var _viewer: CharacterViewer
@@ -113,7 +115,7 @@ func _build() -> void:
 	_bag.name = "Bag"
 	_bag.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	(made3[1] as VBoxContainer).add_child(_bag)
-	var hint := UiKit.label("把釣竿、手電筒拖到左邊的欄位就能換上；點一下看說明", 13, UiKit.DIM)
+	var hint := UiKit.label("把釣竿、手電筒、武器拖到左邊的欄位就能換上；點一下看說明", 13, UiKit.DIM)
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	(made3[1] as VBoxContainer).add_child(hint)
 	add_child(bagwin)

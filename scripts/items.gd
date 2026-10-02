@@ -12,8 +12,11 @@ extends RefCounted
 ##   live_<id>      live baits (Profile.LIVE_BAITS), ten to a cell
 ##   bait           the base bait (user request: given each run, but it
 ##                  takes bag cells) - kept in the bag, only moved about
-##   tea, rations   the merchant's (Profile.SNACKS): had as they're bought,
-##                  for spirit - never kept
+##   tea, rations, roll, cheese   the merchant's (Profile.SNACKS): had as
+##                  they're bought, for spirit - never kept
+##   knife, hatchet, machete, glock   the weapons (Profile.WEAPONS), worn
+##                  in the weapon slot
+##   ammo           the pistol's rounds, twelve to a cell
 ## A thing's {name, tab, size (cells), stack (per cell), slot (the
 ## equipment slot it's worn in, if any), icon, desc}.
 
@@ -26,6 +29,8 @@ const LIVE_ICONS := {
 	"cricket": "res://assets/sprites/items/cricket.png",
 	"shrimp": "res://assets/sprites/items/shrimp.png",
 	"minnow": "res://assets/sprites/fish/minnow.png",
+	"spider": "res://assets/sprites/icons/spider.png",
+	"frog": "res://assets/sprites/icons/frog.png",
 }
 
 static var _icons := {}
@@ -49,6 +54,13 @@ static func def(id: String) -> Dictionary:
 	if id == "battery":
 		return {"name": "電池", "tab": "item", "size": Vector2i(1, 1), "stack": 3, "slot": "",
 			"icon": ICONS % id, "desc": "手電筒沒電時換上，要放在背包裡才帶得進去"}
+	if Profile.WEAPONS.has(id):
+		var w: Dictionary = Profile.WEAPONS[id]
+		return {"name": w.name, "tab": "gear", "size": w.size, "stack": 1, "slot": "weapon",
+			"icon": ICONS % id, "desc": w.desc, "weapon": id}
+	if id == "ammo":
+		return {"name": "子彈", "tab": "item", "size": Vector2i(1, 1), "stack": 12, "slot": "",
+			"icon": SQUARE_ICONS % id, "desc": "手槍的子彈，要放在背包裡才帶得進去"}
 	if Profile.SNACKS.has(id):
 		var sn: Dictionary = Profile.SNACKS[id]
 		return {"name": sn.name, "tab": "item", "size": Vector2i(1, 1), "stack": 1, "slot": "",
@@ -90,7 +102,7 @@ static func icon(id: String) -> Texture2D:
 
 
 const MODELS := "res://assets/models/items/%s.glb"
-const LIVE_MODELS := {"worm": "worm", "cricket": "cricket", "shrimp": "shrimp"}
+const LIVE_MODELS := {"worm": "worm", "cricket": "cricket", "shrimp": "shrimp", "spider": "spider", "frog": "frog"}
 
 
 ## A thing's 3D model, for the menus' previews (ItemPreview) - "" when it
@@ -99,8 +111,11 @@ static func model_path(id: String) -> String:
 	if id.begins_with("rod_"):
 		return "res://assets/models/fishing_rod_lvl%d.glb" % (int(id.substr(4)) + 1)
 	match id:
-		"flashlight", "battery", "tea", "rations":
+		"flashlight", "battery", "rations", "roll", "cheese", "ammo", "knife", "hatchet", "machete", "glock":
 			return MODELS % id
+		"tea":
+			# User request: the tea in the user's cup.
+			return MODELS % "cup"
 		"bait":
 			return MODELS % "worm"
 		"lamp":
@@ -120,7 +135,8 @@ const SQUARE_ICONS := "res://assets/sprites/icons/%s.png"
 ## when it has none (the long cells keep icon()'s picture).
 static func square_icon(id: String) -> Texture2D:
 	var key := ""
-	if id.begins_with("rod_") or id in ["flashlight", "battery", "lamp", "tea", "rations"]:
+	if id.begins_with("rod_") or id in ["flashlight", "battery", "lamp", "tea", "rations", "roll", "cheese", "ammo",
+			"knife", "hatchet", "machete", "glock"]:
 		key = id
 	elif id == "bait":
 		key = "worm"
@@ -159,10 +175,14 @@ static func _rank(id: String) -> int:
 		return int(id.substr(4))
 	if id == "flashlight":
 		return 10
+	if Profile.WEAPONS.has(id):
+		return 11 + Profile.WEAPON_ORDER.find(id)
 	if id == "bait":
 		return 15
 	if id == "battery":
 		return 20
+	if id == "ammo":
+		return 21
 	if id.begins_with("live_"):
 		return 25 + Profile.LIVE_ORDER.find(id.substr(5))
 	if id.begins_with("lure_"):

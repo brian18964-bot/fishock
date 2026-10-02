@@ -62,6 +62,9 @@ const TESTS := [
 	"test_willow_talk",
 	"test_altar_corrosion",
 	"test_reset_run",
+	"test_shop_new_wares",
+	"test_black_spider",
+	"test_chop_and_weapons",
 ]
 
 var main: Node
@@ -462,7 +465,8 @@ func test_catalog_and_sounds() -> void:
 		"step_snow", "chain_loop", "whisper", "moan", "emerge", "cage", "heartbeat_loop", "offering",
 		"rock_flip", "tap", "swipe_hit", "flop", "thunder", "escape", "amb_night", "amb_day", "amb_water",
 		"amb_rain", "amb_wind", "amb_swamp", "amb_jungle", "amb_surf", "music_day", "music_night",
-		"ui_click", "ui_open", "ui_close", "coins", "amb_camp", "camp_crickets_loop", "music_camp"]
+		"ui_click", "ui_open", "ui_close", "coins", "amb_camp", "camp_crickets_loop", "music_camp", "chop",
+		"gunshot"]
 	var lost := sounds.filter(func(n): return Sfx.stream(n) == null)
 	check(lost.is_empty(), "every sound loads %s" % str(lost))
 	var toggle: SoundToggle = null
@@ -2322,3 +2326,175 @@ func test_journey_page() -> void:
 	main = get_tree().current_scene
 	check(main != null and main.name == "Main" and camp().level_id == "1-1", "off into 1-1")
 	check(Player.WORLD_WIDTH < 1400.0, "on its small map")
+
+
+## The profile's things as they are, to put back after a test that buys.
+func _keep_profile() -> Dictionary:
+	return {"gold": Profile.gold, "storage": Profile.storage.duplicate(true), "bag": Profile.bag.duplicate(true),
+		"equipped": Profile.equipped.duplicate(true)}
+
+
+func _restore_profile(kept: Dictionary) -> void:
+	Profile.gold = kept.gold
+	Profile.storage = kept.storage
+	Profile.bag = kept.bag
+	Profile.equipped = kept.equipped
+
+
+## User request: the frog and the low-poly spider as live baits; the
+## knives, the hatchet, the pistol (and its rounds), the flashlight, the
+## food and the cup for the tea, all in the shop.
+func test_shop_new_wares() -> void:
+	var kept := _keep_profile()
+	Profile.gold = 5000
+	for id in ["live_frog", "live_spider", "knife", "hatchet", "machete", "glock", "ammo", "roll", "cheese", "tea",
+			"flashlight"]:
+		var d := Items.def(id)
+		check(not d.is_empty(), "%s is a thing" % id)
+		check(Items.icon(id) != null, "%s has a picture" % id)
+		check(Items.square_icon(id) != null, "%s has a square icon" % id)
+		var model := Items.model_path(id)
+		check(model != "" and ResourceLoader.exists(model), "%s has a model (%s)" % [id, model])
+	check(Items.model_path("tea").ends_with("cup.glb"), "the tea is served in the cup")
+	check(Profile.buy_live_bait("frog") and Profile.buy_live_bait("spider"), "live frog and spider bought")
+	check(Profile.stored("live_frog") >= 1 and Profile.stored("live_spider") >= 1, "into the warehouse")
+	Profile.storage.erase("hatchet")
+	Profile.equipped["weapon"] = ""
+	check(Profile.buy_weapon("hatchet"), "a hatchet bought")
+	check(not Profile.buy_weapon("hatchet"), "only once")
+	check(Profile.equip("hatchet") and Profile.weapon.get("chop", 0) == 2, "worn in the weapon slot, chops")
+	check(Items.def("hatchet").slot == "weapon", "the weapon slot")
+	var rounds := Profile.stored("ammo")
+	check(Profile.buy_ammo() and Profile.stored("ammo") == rounds + 1, "a round bought")
+	var spirit := Profile.spirit
+	Profile.spirit = 10.0
+	check(Profile.buy_snack("cheese") and Profile.spirit > 10.0, "the cheese is had for spirit")
+	Profile.spirit = spirit
+	# The shop shows them.
+	var shop: Control = load("res://scenes/shop.tscn").instantiate()
+	get_tree().root.add_child(shop)
+	await frames(2)
+	shop._show_tab("gear")
+	await frames(1)
+	for id in Profile.WEAPON_ORDER:
+		check(shop._grid.get_node_or_null("Card_" + id) != null, "the shop sells the %s" % id)
+	shop._show_tab("bait")
+	await frames(1)
+	check(shop._grid.get_node_or_null("Card_live_frog") != null and shop._grid.get_node_or_null("Card_live_spider") != null,
+		"the frog and the spider on the bait tab")
+	shop._show_tab("item")
+	await frames(1)
+	for id in ["ammo", "roll", "cheese", "tea"]:
+		check(shop._grid.get_node_or_null("Card_" + id) != null, "the shop has %s" % id)
+	shop.queue_free()
+	_restore_profile(kept)
+	await frames(1)
+
+
+## User request: a real black spider, in many colourings, caught for bait
+## but maybe poisonous - a big slow-down.
+func test_black_spider() -> void:
+	var p := player()
+	var at := away_from_water(80.0)
+	await put(at)
+	var spider := Critter.spawn_black_spider(main, at + Vector2(40, 0), at)
+	await frames(2)
+	check(spider.species == "black_spider" and spider.is_venomous(), "a venomous black spider")
+	check(spider.skin >= 1 and spider.skin <= 8, "in one of the 8 colourings (%d)" % spider.skin)
+	check(spider.sprite.texture.diffuse_texture != null, "its colouring loads")
+	var skins := {}
+	for i in 40:
+		spider.set_species("black_spider")
+		skins[spider.skin] = true
+	check(skins.size() >= 5, "colourings drawn at random (%d seen)" % skins.size())
+	# Caught: two baits, and sometimes a bite.
+	var poisoned := false
+	for i in 30:
+		seed(100 + i)
+		p.poison_timer = 0.0
+		var bait: int = p.bait_count
+		p._catch_black_spider("黑蜘蛛", "蜘蛛")
+		check(p.bait_count >= bait + 1, "bait for it")
+		if p.poison_timer > 0.0:
+			poisoned = true
+			break
+	check(poisoned, "its bite poisons, sometimes")
+	check(StatusCard.speed_share(p) < 0.5, "poison slows a lot (%.2f)" % StatusCard.speed_share(p))
+	check(StatusCard.conditions(p).any(func(c): return str(c[0]).begins_with("中毒")), "the card says poisoned")
+	p.poison_timer = 0.0
+	# Caught where it ran: gone for good (a spawned one).
+	await put(spider.global_position)
+	await frames(3)
+	if p._critter == spider:
+		p._catch_critter()
+		await frames(2)
+		check(not is_instance_valid(spider), "a spawned spider is gone once caught")
+	# Live spider bait halves fake bites; the live frog is big bait.
+	check("活青蛙" in Player.BIG_BAIT_FLAVORS, "the live frog is big bait")
+
+
+## User request: the weapons in a run - a blade turns a pounce aside, the
+## hatchet and the machete chop trees (bait, or a black spider), the
+## pistol scares a beast off but the shot brings the big ghost.
+func test_chop_and_weapons() -> void:
+	var kept := _keep_profile()
+	var p := player()
+	Profile.equipped["weapon"] = ""
+	var trees := main.get_tree().get_nodes_in_group("trees")
+	check(not trees.is_empty(), "the map has trees")
+	if trees.is_empty():
+		_restore_profile(kept)
+		return
+	var tree: MapTree = trees[0]
+	await put(tree.global_position + Vector2(20, 6))
+	check(p.choppable_tree() == null, "no chopping bare-handed")
+	Profile.equipped["weapon"] = "hatchet"
+	check(p.choppable_tree() == tree, "a hatchet chops the tree in reach")
+	check(p.interaction().get("verb", "") == "砍樹", "chopping offered at the tree")
+	await tap(KEY_E)
+	check(tree.chopped, "chopped with a tap")
+	check(p.choppable_tree() != tree, "each tree once")
+	# Chopped all over, the trees give bait and spiders.
+	var found := 0
+	var spiders := 0
+	seed(11)
+	for t in trees:
+		if t.chopped:
+			continue
+		var r: Dictionary = t.chop(p.global_position, 2)
+		found += 1 if r.get("found", false) else 0
+		spiders += 1 if r.get("spider", false) else 0
+	check(found > 0 and spiders > 0, "chopping finds bait (%d) and spiders (%d)" % [found, spiders])
+	# A blade parries.
+	Profile.equipped["weapon"] = "knife"
+	gs.add_carried_fish(fish())
+	var carried: int = gs.carried_fish.size()
+	p.water_ghost_timer = 0.0
+	p.animal_attack("狼")
+	check(gs.carried_fish.size() == carried, "the knife keeps the fish")
+	check(p.water_ghost_timer <= Player.PARRY_DEBUFF_DURATION, "only a short stagger")
+	Profile.equipped["weapon"] = ""
+	p.water_ghost_timer = 0.0
+	p.animal_attack("狼")
+	check(gs.carried_fish.size() < carried, "bare-handed the fish is knocked loose")
+	p.water_ghost_timer = 0.0
+	# The pistol: a round a shot, the big ghost hears it.
+	Profile.equipped["weapon"] = "glock"
+	Profile.storage["ammo"] = 3
+	Profile.to_bag("ammo", 3)
+	var wolf: Critter = load("res://scenes/critter.tscn").instantiate()
+	wolf.ambient = true
+	wolf.species = "wolf"
+	main.add_child(wolf)
+	wolf.global_position = p.global_position + Vector2(100, 0)
+	var bg := first("big_ghost")
+	var rounds := Profile.bag_count("ammo")
+	check(p.shoot_at(wolf), "the pistol fires")
+	check(Profile.bag_count("ammo") == rounds - 1, "a round used")
+	if bg != null:
+		check(bg.mode == bg.Mode.SUSPICIOUS, "the big ghost comes to look")
+	Profile.bag = Profile.bag.filter(func(e): return e.id != "ammo")
+	check(not p.shoot_at(wolf), "no rounds, no shot")
+	wolf.queue_free()
+	_restore_profile(kept)
+	await frames(1)

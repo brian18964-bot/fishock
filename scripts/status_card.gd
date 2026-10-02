@@ -106,6 +106,8 @@ static func speed_share(p: Player) -> float:
 	var share := Player.carry_speed_ratio(GameState.carried_fish.size())
 	if p.water_ghost_timer > 0.0:
 		share *= Player.WATER_GHOST_SPEED_MULT
+	if p.poison_timer > 0.0:
+		share *= Player.POISON_SPEED_MULT
 	if p.carrying_oil_drum:
 		share *= Player.OIL_DRUM_SPEED_MULT
 	return share
@@ -118,6 +120,8 @@ static func conditions(p: Player) -> Array:
 		out.append(["被大鬼抓住了", WARN])
 	if p.water_ghost_timer > 0.0:
 		out.append([p.affliction_text, WARN])
+	if p.poison_timer > 0.0:
+		out.append(["中毒了，腳步沉重（%d 秒）" % ceili(p.poison_timer), WARN])
 	if p.carrying_oil_drum:
 		out.append(["提著油箱", DIM])
 	if GameState.has_heart:

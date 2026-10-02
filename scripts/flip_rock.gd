@@ -3,7 +3,7 @@ extends Node2D
 
 ## User request: no more roadside junk pile - instead 8-10 of each run's
 ## rocks are small ones the player can turn over (a tap, see
-## Player._turn_rock()) for a chance at bait. Turned over, the rock
+## Player._turn_rock()) for a chance at bait - or a black spider. Turned over, the rock
 ## rolls off to the side and leaves a bare, damp patch where it lay; each
 ## one can be turned once a run. Same rock art as the obstacles
 ## (obstacle.gd), smaller.
@@ -11,6 +11,8 @@ extends Node2D
 const ROCK := preload("res://scripts/obstacle.gd")
 const SIZE := 0.42
 const FIND_CHANCE := 0.6
+## User request: sometimes a black spider is under it instead (Critter).
+const SPIDER_CHANCE := 0.18
 const BAIT_FLAVORS := ["蚯蚓", "蟲子", "青蛙"]
 ## How close the player has to be to turn it.
 const REACH := 26.0
@@ -97,6 +99,8 @@ func turn_over(from: Vector2) -> Dictionary:
 	var tween := create_tween()
 	tween.tween_method(_roll.bind(offset, spin), 0.0, 1.0, ROLL_TIME) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	if randf() < SPIDER_CHANCE:
+		return {"found": false, "spider": true}
 	if randf() < FIND_CHANCE:
 		return {"found": true, "flavor": BAIT_FLAVORS[randi() % BAIT_FLAVORS.size()]}
 	return {"found": false}

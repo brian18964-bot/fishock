@@ -378,10 +378,14 @@ static func item_rarity(id: String) -> String:
 	if id == "flashlight":
 		return "rare"
 	var cost := 0
+	if Profile.WEAPONS.has(id):
+		cost = int(Profile.WEAPONS[id].cost) / 4
 	if id.begins_with("lure_") and Profile.LURES.has(id.substr(5)):
 		cost = int(Profile.LURES[id.substr(5)].cost)
 	elif id.begins_with("live_") and Profile.LIVE_BAITS.has(id.substr(5)):
 		cost = int(Profile.LIVE_BAITS[id.substr(5)].cost)
+	elif id == "ammo":
+		cost = Profile.AMMO_COST
 	if cost >= 40:
 		return "epic"
 	if cost >= 20:

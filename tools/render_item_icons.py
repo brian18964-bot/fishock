@@ -72,33 +72,44 @@ def rod(tier):
     shoot("rod_%d" % (tier - 1), objs, (3, 1))
 
 
-def flashlight():
+def model_pic(name, cells, turn, thick=1.0):
+    """A picture from a model the shop sells (tools/prep_shop_models.py
+    builds them along +x): laid side on, turned by `turn` (degrees about
+    x, y, z)."""
     fresh()
-    body = mat("body", (0.08, 0.08, 0.09), metal=0.6, rough=0.35)
-    chrome = mat("chrome", (0.75, 0.75, 0.78), metal=1.0, rough=0.2)
-    lens = mat("lens", (1.0, 0.95, 0.7), emit=(1.0, 0.9, 0.6))
-    grip = mat("grip", (0.2, 0.2, 0.22), rough=0.8)
-    objs = [
-        cyl("body", 0.11, 0.9, (0, 0, 0), body),
-        cyl("head", 0.17, 0.3, (0.58, 0, 0), chrome),
-        cyl("lens", 0.155, 0.02, (0.735, 0, 0), lens),
-        cyl("tail", 0.12, 0.08, (-0.47, 0, 0), chrome),
-    ]
-    for i in range(5):
-        objs.append(cyl("ring%d" % i, 0.118, 0.04, (-0.3 + i * 0.08, 0, 0), grip))
-    bpy.ops.mesh.primitive_cube_add(size=1, location=(0.15, 0, 0.11))
-    btn = bpy.context.object
-    btn.scale = (0.1, 0.06, 0.03)
-    btn.data.materials.append(mat("btn", (0.8, 0.2, 0.15), rough=0.4))
-    objs.append(btn)
-    # Turned a little toward the camera so the lens shows.
+    bpy.ops.import_scene.gltf(filepath=os.path.join(ROOT, "assets", "models", "items", name + ".glb"))
+    objs = [o for o in bpy.data.objects if o.type == "MESH"]
     root = bpy.data.objects.new("root", None)
     bpy.context.scene.collection.objects.link(root)
-    for o in objs:
-        o.parent = root
-    root.rotation_euler = (0, 0, math.radians(-28))
+    for o in bpy.data.objects:
+        if o.parent is None and o is not root:
+            o.parent = root
+    root.rotation_euler = tuple(math.radians(a) for a in turn)
+    root.scale = (1.0, thick, thick)
     bpy.context.view_layer.update()
-    shoot("flashlight", objs, (2, 1))
+    shoot(name, objs, cells)
+
+
+def flashlight():
+    # User request: the user's flashlight model (tools/prep_shop_models.py).
+    model_pic("flashlight", (2, 1), (0, 0, -28))
+
+
+# User request: the weapons (Profile.WEAPONS), as long as their bag cells.
+def knife():
+    model_pic("knife", (2, 1), (0, 0, -8))
+
+
+def machete():
+    model_pic("machete", (3, 1), (0, 0, -6))
+
+
+def hatchet():
+    model_pic("hatchet", (2, 1), (-90, 0, -90))
+
+
+def glock():
+    model_pic("glock", (2, 1), (0, 0, -12))
 
 
 def battery():
@@ -312,6 +323,8 @@ def main():
     flashlight()
     battery()
     lamp()
+    for weapon in (knife, machete, hatchet, glock):
+        weapon()
 
 
 if __name__ == "__main__":

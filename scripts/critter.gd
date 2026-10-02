@@ -73,6 +73,25 @@ const SPECIES := {
 		"frames": 12, "cols": 60, "clips": 1, "offset": Vector2(0, -12.37), "move_fps": 8.0, "idle_fps": 8.0, "size": 1.6,
 		"wander_speed": 40.0, "flee_speed": 115.0, "hover": 14.0},
 
+	# User request: the real black spider (tools/prep_black_spider.py) - in
+	# 8 colourings, one drawn at random (skins: a picture sheet each over
+	# one normal sheet). Good bait (Player.BLACK_SPIDER_BAIT) but its bite
+	# may poison (venom, see Player._catch_black_spider). Also turns up
+	# under rocks and out of chopped trees (spawn_black_spider).
+	"black_spider": {"label": "黑蜘蛛", "flavor": "蜘蛛", "venom": true,
+		"albedo": "res://assets/sprites/critter/black_spider_1_55deg_albedo.png",
+		"skins": ["res://assets/sprites/critter/black_spider_1_55deg_albedo.png",
+			"res://assets/sprites/critter/black_spider_2_55deg_albedo.png",
+			"res://assets/sprites/critter/black_spider_3_55deg_albedo.png",
+			"res://assets/sprites/critter/black_spider_4_55deg_albedo.png",
+			"res://assets/sprites/critter/black_spider_5_55deg_albedo.png",
+			"res://assets/sprites/critter/black_spider_6_55deg_albedo.png",
+			"res://assets/sprites/critter/black_spider_7_55deg_albedo.png",
+			"res://assets/sprites/critter/black_spider_8_55deg_albedo.png"],
+		"normal": "res://assets/sprites/critter/black_spider_55deg_normal.png",
+		"frames": 12, "cols": 56, "clips": 2, "offset": Vector2(0, -5.79), "move_fps": 10.0, "idle_fps": 6.0,
+		"size": 1.3, "wander_speed": 38.0, "flee_speed": 105.0},
+
 	# Ambient animals: not catchable. Grazers and dogs ignore the player
 	# (flee_speed 0); deer, stag, fox and wolf bolt at a gallop, faster than the
 	# player can follow.
@@ -213,6 +232,11 @@ const HUNT_COOLDOWN := 12.0
 
 var species: String = ""
 var active: bool = true
+## Spawned by a turned rock or a chopped tree (spawn_black_spider): gone
+## for good once caught, rather than coming back elsewhere.
+var one_shot := false
+## Which colouring it wears (a "skins" species), 1-based; 0 for none.
+var skin := 0
 ## Draw from the ambient (scenery) animals instead of the catchable ones.
 @export var ambient: bool = false
 
@@ -254,7 +278,12 @@ func set_species(name: String) -> void:
 	# Ambient animals name their sheets by path, loaded when one spawns:
 	# preloading every species held them all in memory at once, though a
 	# map only uses a few (and the sharper props need the room, see Art).
-	tex.diffuse_texture = _data.albedo if _data.albedo is Texture2D else load(_data.albedo)
+	var albedo = _data.albedo
+	skin = 0
+	if _data.has("skins"):
+		skin = randi() % _data.skins.size() + 1
+		albedo = _data.skins[skin - 1]
+	tex.diffuse_texture = albedo if albedo is Texture2D else load(albedo)
 	tex.normal_texture = _data.normal if _data.normal is Texture2D else load(_data.normal)
 	sprite.texture = tex
 	var cells: int = _data.get("frames", 12) * _data.clips * ROWS
@@ -400,6 +429,12 @@ func _update_hunt(delta: float, dist: float) -> void:
 				_pick_target(true)
 			return
 	if _cooldown <= 0.0 and dist < _data.chase_radius and _can_hunt():
+		# User request (the pistol): shot at as it comes - it bolts.
+		if _player.has_method("shoot_at") and _player.shoot_at(self):
+			scare()
+			_mode_timer = SCARED_TIME * 2.0
+			_cooldown = HUNT_COOLDOWN * 1.5
+			return
 		GameState.report("%s盯上你了！" % _data.label)
 		Campaign.stat("beast_seen")
 		_mode = Mode.CHASE
@@ -496,12 +531,33 @@ func get_label() -> String:
 	return _data.label
 
 
+## A black spider's: its bite may poison.
+func is_venomous() -> bool:
+	return _data.get("venom", false)
+
+
+## User request: a black spider out from under a turned rock or a chopped
+## tree, at `at`, scuttling off away from `from` (the player) - catchable,
+## gone once caught (one_shot).
+static func spawn_black_spider(parent: Node, at: Vector2, from: Vector2) -> Critter:
+	var c: Critter = load("res://scenes/critter.tscn").instantiate()
+	c.species = "black_spider"
+	c.one_shot = true
+	parent.add_child(c)
+	c.global_position = at
+	c._mode = Mode.FLEE
+	c._target = at + (at - from).normalized() * 60.0 if at != from else at + Vector2(60, 0)
+	return c
+
+
 ## Called by the player on a successful catch; returns the bait flavor.
 func catch() -> String:
 	active = false
 	visible = false
 	catch_area.set_deferred("monitoring", false)
 	_respawn_timer = RESPAWN_DELAY
+	if one_shot:
+		queue_free()
 	return _data.flavor
 
 

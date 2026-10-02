@@ -48,6 +48,11 @@ ANIMALS = {
     "snake": ("critter/snake.glb", 0.44, ["Snake_Walk", "Snake_Idle"], {}),
     "spider": ("critter/spider.glb", 0.28, ["Spider_Walk", "Spider_Idle"], {}),
     "wasp": ("critter/wasp.glb", 0.26, ["Wasp_Flying"], {"facing": -90.0}),
+    # User request: the real black spider (tools/prep_black_spider.py), in
+    # 8 colourings - a picture sheet each (<name>_<n>_55deg_albedo.png,
+    # n = 1..8) over the one normal sheet.
+    "black_spider": ("critter/black_spider.glb", 0.28, ["Spider_Walk", "Spider_Idle"],
+                     {"skins": "critter/black_spider_skins"}),
     "cow": ("animal/cow.glb", 0.40, ["Walk", "Eating"], {}),
     "bull": ("animal/bull.glb", 0.40, ["Walk", "Eating"], {}),
     "donkey": ("animal/donkey.glb", 0.45, ["Walk", "Eating"], {}),
@@ -108,6 +113,8 @@ def render(name, out):
         rs.set_pose(a, f)
 
     meta = sheet(name, out, meshes, cells, pose)
+    if "skins" in extra:
+        meta["skins"] = skins(name, out, meshes, cells, pose, os.path.join(ROOT, extra["skins"]), meta)
     fps = []
     for a in actions:
         start, end = a.frame_range
@@ -138,6 +145,26 @@ def sheet(name, out, meshes, cells, pose):
     rs.pack_sheet(meshes, cells, pose, (w, h), cols, prefix)
     half_normal(f"{prefix}_normal.png")
     return {"cell": [w, h], "cols": cols, "offset": [0.0, round(-cy * DENSITY, 2)]}
+
+
+def skins(name, out, meshes, cells, pose, folder, meta):
+    """The other colourings: the model's picture swapped for each of
+    folder/skin_<n>.jpg in turn and only the picture sheet rendered again
+    (same camera, same cells). The first colouring's sheet is renamed
+    <name>_1_55deg_albedo.png; returns how many there are."""
+    files = sorted(f for f in os.listdir(folder) if f.startswith("skin_"))
+    tex = next(n for o in meshes for s in o.material_slots if s.material
+               for n in s.material.node_tree.nodes if n.type == "TEX_IMAGE"
+               and any(l.to_socket.name == "Base Color" for l in n.outputs[0].links))
+    w, h = meta["cell"]
+    for f in files:
+        n = int(f.split("_")[1].split(".")[0])
+        tex.image = bpy.data.images.load(os.path.join(folder, f))
+        rs.pack_sheet(meshes, cells, pose, (w, h), meta["cols"], os.path.join(out, f"{name}_{n}_55deg"),
+                      modes=("albedo",))
+        print(name, "colouring", n, flush=True)
+    os.remove(os.path.join(out, f"{name}_55deg_albedo.png"))
+    return len(files)
 
 
 def main():

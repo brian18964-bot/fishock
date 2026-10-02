@@ -1,7 +1,8 @@
 extends Control
 
 ## The shop (from the main screen's 商城). User request: in sections -
-## 釣具 (rods and lights), 魚餌 (live baits and lures), 道具, 升級 - each
+## 釣具 (rods, lights and weapons), 魚餌 (live baits and lures), 道具
+## (batteries, rounds, the merchant's food and tea), 升級 - each
 ## thing a card with its picture; tapping one shows what it is (and, for
 ## sale, how many and where it goes: equip, bag or warehouse).
 ## Dressed as an MMO vendor (user request): the vendor's window on the left
@@ -136,6 +137,14 @@ func _refresh() -> void:
 			else:
 				_card("flashlight", Items.icon("flashlight"), "手電筒", "", Profile.FLASHLIGHT_COST,
 					func(): buy_dialog("flashlight", Profile.FLASHLIGHT_COST))
+			# User request: the weapons, each bought once.
+			for key in Profile.WEAPON_ORDER:
+				var w: Dictionary = Profile.WEAPONS[key]
+				var wid: String = key
+				if Profile.owned(wid) > 0:
+					_card(wid, Items.icon(wid), w.name, "已擁有", 0, func(): buy_dialog(wid, 0, "已經擁有了（到裝備頁或倉庫換上）"))
+				else:
+					_card(wid, Items.icon(wid), w.name, "", int(w.cost), func(): buy_dialog(wid, int(w.cost)))
 		"bait":
 			for key in Profile.LIVE_ORDER:
 				var lb: Dictionary = Profile.LIVE_BAITS[key]
@@ -150,6 +159,8 @@ func _refresh() -> void:
 		"item":
 			_card("battery", Items.icon("battery"), "電池", "擁有 %d" % Profile.owned("battery"), Profile.BATTERY_COST,
 				func(): buy_dialog("battery", Profile.BATTERY_COST))
+			_card("ammo", Items.icon("ammo"), "子彈", "擁有 %d" % Profile.owned("ammo"), Profile.AMMO_COST,
+				func(): buy_dialog("ammo", Profile.AMMO_COST))
 			for key in Profile.SNACK_ORDER:
 				var sn: Dictionary = Profile.SNACKS[key]
 				_card(key, Items.icon(key), sn.name, "精神 +%d" % int(sn.spirit), int(sn.cost), func(): _snack_card(key))
@@ -495,6 +506,10 @@ func buy(id: String, n: int, where: String) -> int:
 			ok = Profile.buy_battery()
 		elif id == "flashlight":
 			ok = Profile.buy_flashlight()
+		elif Profile.WEAPONS.has(id):
+			ok = Profile.buy_weapon(id)
+		elif id == "ammo":
+			ok = Profile.buy_ammo()
 		elif id.begins_with("rod_"):
 			ok = Profile.buy_rod()
 		if not ok:

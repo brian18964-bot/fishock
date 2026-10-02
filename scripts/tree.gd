@@ -1,3 +1,4 @@
+class_name MapTree
 extends Node2D
 
 ## Dead-tree, pine, leafy and twisted tree variants pre-rendered from Quaternius' Stylized Nature
@@ -217,8 +218,35 @@ static func variants() -> Array:
 var family_weights: Dictionary = {}
 
 
+## User request (the hatchet and the machete): chopped once a run (see
+## chop()).
+var chopped := false
+## What a chop turns up, by the weapon's chop power (Profile.WEAPONS):
+## [black spider, bait].
+const CHOP_ODDS := {1: [0.22, 0.3], 2: [0.28, 0.45]}
+const CHOP_BAIT := ["蟲子", "蟲子", "蚯蚓"]
+
+
 func _ready() -> void:
+	add_to_group("trees")
 	apply_variant(_pick_variant())
+
+
+## A chop (Player._chop_tree): the tree shudders and says what fell out -
+## {"spider": true}, {"found": true, "flavor": ...} or {"found": false}.
+func chop(_from: Vector2, power: int) -> Dictionary:
+	chopped = true
+	Sfx.play_at("chop", global_position, -2.0)
+	var canopy: Node2D = $Canopy
+	var t := create_tween()
+	for a in [0.05, -0.04, 0.025, -0.012, 0.0]:
+		t.tween_property(canopy, "rotation", a, 0.09).set_trans(Tween.TRANS_SINE)
+	var odds: Array = CHOP_ODDS.get(clampi(power, 1, 2))
+	if randf() < float(odds[0]):
+		return {"found": false, "spider": true}
+	if randf() < float(odds[1]):
+		return {"found": true, "flavor": CHOP_BAIT.pick_random()}
+	return {"found": false}
 
 
 ## Family first, then a variant within it, so families with many models

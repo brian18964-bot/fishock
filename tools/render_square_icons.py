@@ -7,7 +7,8 @@ kind's colour, a dark edge round it. 128x128, shown at 64 or less.
   bpyenv/bin/python tools/render_square_icons.py [name ...]    (repo root)
 
 Writes assets/sprites/icons/<name>.png - rod_0..rod_4, flashlight,
-battery, lamp, worm, cricket, shrimp, minnow, tea, rations, tent_1..tent_9,
+battery, lamp, worm, cricket, shrimp, minnow, tea, rations, roll, cheese,
+frog, spider, knife, machete, hatchet, glock, ammo, tent_1..tent_9,
 lure_1..lure_6, and throw (the 誘惑 action button) (Items.square_icon()
 maps the things' ids onto these).
 """
@@ -35,6 +36,7 @@ ITEM = (0.36, 0.26, 0.62)
 TACKLE = (0.12, 0.46, 0.44)
 BAIT = (0.34, 0.46, 0.16)
 ABILITY = (0.62, 0.14, 0.1)
+WEAPON = (0.5, 0.22, 0.2)
 
 # name: model, turn (degrees about x, y, z), fill (the frame spans the
 # thing's size / fill), ground; thick (a rod is a hair at this size: made
@@ -49,8 +51,20 @@ THINGS = {
     "shrimp": dict(model="items/shrimp.glb", turn=(20, 0, 25), fill=0.86, ground=BAIT),
     "minnow": dict(model="fish/minnow.glb", turn=(0, 0, 20), fill=0.9, ground=BAIT),
     # The merchant's tea and rations (Camp v2): had at once, for spirit.
-    "tea": dict(model="items/tea.glb", turn=(38, 0, -25), fill=0.8, ground=ITEM),
+    # User request: the tea served in the user's cup.
+    "tea": dict(model="items/cup.glb", turn=(28, 0, -30), fill=0.8, ground=ITEM),
     "rations": dict(model="items/rations.glb", turn=(40, 0, 22), fill=0.82, ground=ITEM),
+    # User request: the user's models (tools/prep_shop_models.py) - the
+    # food, the live frog and spider, the weapons and the rounds.
+    "roll": dict(model="items/roll.glb", turn=(35, 0, 20), fill=0.8, ground=ITEM),
+    "cheese": dict(model="items/cheese.glb", turn=(40, 0, -20), fill=0.86, ground=ITEM),
+    "frog": dict(model="items/frog.glb", turn=(20, 0, 35), fill=0.86, ground=BAIT),
+    "spider": dict(model="items/spider.glb", turn=(35, 0, 25), fill=0.9, ground=BAIT),
+    "knife": dict(model="items/knife.glb", turn=(0, -40, 0), fill=1.05, ground=WEAPON),
+    "machete": dict(model="items/machete.glb", turn=(0, -40, 0), fill=1.05, ground=WEAPON),
+    "hatchet": dict(model="items/hatchet.glb", turn=(70, 0, 20), fill=0.9, ground=WEAPON),
+    "glock": dict(model="items/glock.glb", turn=(0, -12, 0), fill=0.92, ground=WEAPON),
+    "ammo": dict(model="items/ammo.glb", turn=(15, 0, 20), fill=0.8, ground=ITEM),
     # The in-game 誘惑 action (a bait fish thrown): the fish flung nose-up
     # on a crimson ground.
     "throw": dict(model="fish/minnow.glb", turn=(0, -40, 35), fill=0.95, ground=ABILITY),

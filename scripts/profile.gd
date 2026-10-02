@@ -60,12 +60,40 @@ const LIVE_BAITS := {
 	"cricket": {"name": "蟋蟀", "cost": 4, "flavor": "蟲子", "desc": "活餌：空竿的機率減半"},
 	"shrimp": {"name": "活蝦", "cost": 6, "flavor": "青蛙", "desc": "活餌：稀有魚的機率 x2"},
 	"minnow": {"name": "小活魚", "cost": 9, "flavor": "小活魚", "desc": "活餌（大餌）：稀有魚升級成傳說魚的機率 x2"},
+	# User request: the frog and the spider (the user's models) sold as
+	# live baits too.
+	"spider": {"name": "活蜘蛛", "cost": 5, "flavor": "蜘蛛", "desc": "活餌：空竿的機率減半，假咬也減半"},
+	"frog": {"name": "活青蛙", "cost": 15, "flavor": "活青蛙",
+		"desc": "活餌（大餌）：稀有魚機率 x2，稀有魚升級成傳說魚的機率也 x2"},
 }
-const LIVE_ORDER := ["worm", "cricket", "shrimp", "minnow"]
+const LIVE_ORDER := ["worm", "cricket", "spider", "shrimp", "minnow", "frog"]
 ## User request: the flashlight is a shop item (bought once) that runs on
 ## batteries, also bought here and kept in stock until used (see Lantern).
 const FLASHLIGHT_COST := 120
 const BATTERY_COST := 12
+## User request: the knives, the hatchet and the pistol (the user's
+## models) sold in the shop - each bought once and worn in the weapon
+## slot (equipped.weapon). What each does in a run (Player):
+##   defend: a beast that pounces is cut back - no fish knocked loose, and
+##           only a short stagger;
+##   chop:   trees can be chopped (砍樹, see MapTree): sometimes bait falls
+##           out, sometimes a black spider - 1 the machete, 2 the hatchet
+##           (finds more);
+##   gun:    a beast that starts a chase is shot at and runs - one round
+##           (ammo, packed in the bag) a shot - but the shot carries: the
+##           big ghost comes to look.
+const WEAPONS := {
+	"knife": {"name": "獵刀", "cost": 80, "size": Vector2i(2, 1), "defend": true,
+		"desc": "野獸撲上來時揮刀擋開：不會被撞掉魚，只踉蹌一下"},
+	"hatchet": {"name": "手斧", "cost": 110, "size": Vector2i(2, 1), "chop": 2,
+		"desc": "可以砍樹：樹上常掉下餌料，也可能抖出黑蜘蛛"},
+	"machete": {"name": "開山刀", "cost": 160, "size": Vector2i(3, 1), "chop": 1, "defend": true,
+		"desc": "可以砍樹（找到的比手斧少），野獸撲上來時也能揮刀擋開"},
+	"glock": {"name": "手槍", "cost": 380, "size": Vector2i(2, 1), "gun": true,
+		"desc": "野獸開始追你時自動開槍嚇跑牠（每次用 1 發子彈，子彈要放背包）；槍聲會引來大鬼"},
+}
+const WEAPON_ORDER := ["knife", "hatchet", "machete", "glock"]
+const AMMO_COST := 6
 
 var gold: int = 0
 var upgrade_levels: Dictionary = {
@@ -81,12 +109,16 @@ var upgrade_levels: Dictionary = {
 ## it sells in the warehouse.
 var storage: Dictionary = {}
 var bag: Array = []
-var equipped: Dictionary = {"rod": "rod_0", "light": ""}
+var equipped: Dictionary = {"rod": "rod_0", "light": "", "weapon": ""}
 ## The best rod bought (the shop's rod line goes on from it).
 var rods_owned: int = 0
 ## Index into ROD_TIERS: the rod worn (kept in step with equipped.rod).
 var rod_tier: int = 0
 
+## The weapon worn (WEAPONS entry; {} for none).
+var weapon: Dictionary:
+	get:
+		return WEAPONS.get(equipped.get("weapon", ""), {})
 ## Worn in the light slot - usable in a run.
 var has_flashlight: bool:
 	get:
@@ -120,8 +152,11 @@ var spirit: float = SPIRIT_MAX
 const SNACKS := {
 	"tea": {"name": "熱茶", "cost": 15, "spirit": 20.0, "desc": "一杯熱騰騰的茶，暖手也暖心"},
 	"rations": {"name": "乾糧", "cost": 30, "spirit": 35.0, "desc": "肉乾配硬麵包，吃飽了才有力氣"},
+	# User request: the bread roll and the cheeses (the user's models).
+	"roll": {"name": "凱薩麵包", "cost": 20, "spirit": 25.0, "desc": "剛烤好的小圓麵包，外皮酥脆"},
+	"cheese": {"name": "乳酪拼盤", "cost": 45, "spirit": 50.0, "desc": "三種乳酪切好一盤，配茶最對味"},
 }
-const SNACK_ORDER := ["tea", "rations"]
+const SNACK_ORDER := ["tea", "roll", "rations", "cheese"]
 
 ## User request (Camp v2): what's been done, for the achievements that
 ## earn the camp's tents (TENTS) - escapes, gold spent, legends caught.
@@ -477,6 +512,27 @@ func buy_flashlight() -> bool:
 		return false
 	_spend(FLASHLIGHT_COST)
 	_store("flashlight", 1)
+	gold_updated.emit(gold)
+	_changed()
+	return true
+
+
+## A weapon (WEAPONS), bought once, into the warehouse.
+func buy_weapon(id: String) -> bool:
+	if not WEAPONS.has(id) or owned(id) > 0 or gold < int(WEAPONS[id].cost):
+		return false
+	_spend(int(WEAPONS[id].cost))
+	_store(id, 1)
+	gold_updated.emit(gold)
+	_changed()
+	return true
+
+
+func buy_ammo() -> bool:
+	if gold < AMMO_COST:
+		return false
+	_spend(AMMO_COST)
+	_store("ammo", 1)
 	gold_updated.emit(gold)
 	_changed()
 	return true
@@ -921,6 +977,8 @@ func load_data(data: Dictionary) -> void:
 	storage = data.get("storage", {})
 	bag = data.get("bag", [])
 	equipped = data.get("equipped", {"rod": "rod_0", "light": ""})
+	if not equipped.has("weapon"):
+		equipped["weapon"] = ""
 	rods_owned = clampi(data.get("rods_owned", data.get("rod_tier", 0)), 0, ROD_TIERS.size() - 1)
 	tank = data.get("tank", [])
 	tank_news = data.get("tank_news", [])
@@ -937,7 +995,7 @@ func load_data(data: Dictionary) -> void:
 	achievements = data.get("achievements", {})
 	if not data.has("equipped"):
 		var tier := rods_owned
-		equipped = {"rod": "rod_%d" % tier, "light": "flashlight" if data.get("has_flashlight", false) else ""}
+		equipped = {"rod": "rod_%d" % tier, "light": "flashlight" if data.get("has_flashlight", false) else "", "weapon": ""}
 		for t in tier:
 			_store("rod_%d" % t, 1)
 		var lures: Dictionary = data.get("lure_stock", {})

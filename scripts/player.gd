@@ -81,6 +81,17 @@ const WATER_GHOST_DEBUFF_DURATION := 4.0
 const DOCK_WATER_GHOST_MULT := 0.35
 const ANIMAL_ATTACK_DEBUFF_DURATION := 2.5
 const WATER_GHOST_SPEED_MULT := 0.55
+## User request (the black spider): its bite sometimes poisons - a big
+## slow-down for a while (no wobble, just heavy legs).
+const POISON_CHANCE := 0.35
+const POISON_TIME := 8.0
+const POISON_SPEED_MULT := 0.4
+## A black spider caught is worth this many baits (the risk's reward).
+const BLACK_SPIDER_BAIT := 2
+## A weapon that defends (Profile.WEAPONS): the stagger it leaves.
+const PARRY_DEBUFF_DURATION := 0.8
+## Chopping: how close to a trunk.
+const CHOP_REACH := 34.0
 
 ## User feedback: carrying the oil drum should slow you down, not just
 ## block fishing.
@@ -116,7 +127,12 @@ const BAIT_FLAVOR_FROG := "青蛙"
 ## User request: critters (see Critter) can be caught as bait. Rats,
 ## snakes and the beach's crabs are "big bait": a rare catch is twice as
 ## likely to turn epic.
-const BIG_BAIT_FLAVORS := ["老鼠", "蛇", "螃蟹", "小活魚"]
+const BIG_BAIT_FLAVORS := ["老鼠", "蛇", "螃蟹", "小活魚", "活青蛙"]
+## User request (the shop's live frog and spider): the frog is big bait that
+## also draws rare fish like a caught frog; the spider halves empty casts
+## (as bugs do) and fake bites.
+const BAIT_FLAVOR_LIVE_FROG := "活青蛙"
+const BAIT_FLAVOR_SPIDER := "蜘蛛"
 
 ## User feedback: weather (see GameState.Weather) should color the fishing
 ## odds too - a fish run is a reliably better window, a storm makes the
@@ -149,6 +165,8 @@ var cast_jittered: bool = false
 var retrieve_progress: float = 0.0
 var cast_water_zone: WaterZone
 var water_ghost_timer: float = 0.0
+## Poisoned (a black spider's bite): seconds left, see POISON_SPEED_MULT.
+var poison_timer: float = 0.0
 ## What the HUD warning names while water_ghost_timer runs - the water
 ## ghost, or an animal that caught up with you (see animal_attack()).
 var affliction_text: String = "水鬼異常狀態中"
@@ -591,6 +609,16 @@ func ghost_confuse(duration: float) -> void:
 ## (it can be picked back up, like a G-dropped one), snaps the line if
 ## you're fishing, and leaves you slowed for a moment.
 func animal_attack(attacker: String) -> void:
+	# User request (weapons): a blade worn turns the pounce aside - a short
+	# stagger, nothing knocked loose, the line kept.
+	if Profile.weapon.get("defend", false):
+		water_ghost_timer = maxf(water_ghost_timer, PARRY_DEBUFF_DURATION)
+		affliction_text = "擋下了%s的撲擊" % attacker
+		Sfx.play_at("swipe_hit", global_position, -4.0)
+		Campaign.stat("parry")
+		GameState.push_message("%s撲上來，你揮出%s擋開了牠！" % [attacker, Profile.weapon.name])
+		GameState.report("揮刀擋開了%s" % attacker)
+		return
 	water_ghost_timer = maxf(water_ghost_timer, ANIMAL_ATTACK_DEBUFF_DURATION)
 	affliction_text = "被%s攻擊，行動變慢" % attacker
 	Campaign.stat("animal_hit")
@@ -886,6 +914,7 @@ func _try_buy_upgrade(upgrade_key: String) -> void:
 
 func _physics_process(delta: float) -> void:
 	water_ghost_timer = max(water_ghost_timer - delta, 0.0)
+	poison_timer = maxf(poison_timer - delta, 0.0)
 	if _knock_time > 0.0:
 		# Staggering back, free.
 		_knock_time = maxf(_knock_time - delta, 0.0)
@@ -1019,6 +1048,8 @@ func _update_movement() -> void:
 
 	var carry_ratio: float = carry_speed_ratio(GameState.carried_fish.size())
 	var affliction_ratio: float = WATER_GHOST_SPEED_MULT if water_ghost_timer > 0.0 else 1.0
+	if poison_timer > 0.0:
+		affliction_ratio *= POISON_SPEED_MULT
 	var drum_ratio: float = OIL_DRUM_SPEED_MULT if carrying_oil_drum else 1.0
 	$CarriedCan.visible = carrying_oil_drum
 	# Low spirit: heavier on their feet (Profile.SPIRIT_SPEED).
@@ -1144,7 +1175,28 @@ func interaction() -> Dictionary:
 		return _offer(willow, "Willow", "對話", false, -34.0)
 	if in_rock_zone and _rock != null and _rock.active:
 		return {"at": _rock.prompt_anchor(), "name": "石頭", "verb": "翻開", "hold": false}
+	var tree := choppable_tree()
+	if tree != null:
+		return {"at": tree.global_position + Vector2(0, -30), "name": "樹", "verb": "砍樹", "hold": false}
 	return {}
+
+
+## User request (the hatchet and the machete): the nearest tree in reach
+## that can be chopped, with a chopping weapon worn; null otherwise.
+func choppable_tree() -> MapTree:
+	if int(Profile.weapon.get("chop", 0)) <= 0:
+		return null
+	var best: MapTree = null
+	var best_d := CHOP_REACH
+	for t in get_tree().get_nodes_in_group("trees"):
+		var tree := t as MapTree
+		if tree == null or tree.chopped:
+			continue
+		var d := global_position.distance_to(tree.global_position)
+		if d < best_d:
+			best_d = d
+			best = tree
+	return best
 
 
 const TALK_RANGE := 40.0
@@ -1203,6 +1255,9 @@ func _handle_interaction(delta: float) -> void:
 		"翻開":
 			if use_pressed:
 				_turn_rock()
+		"砍樹":
+			if use_pressed:
+				_chop_tree(choppable_tree())
 		"逃離":
 			if use_pressed:
 				GameState.escape()
@@ -1329,13 +1384,38 @@ func _catch_critter() -> void:
 		GameState.push_message("背包滿了，放不下餌料")
 		return
 	var label: String = _critter.get_label()
+	var venomous: bool = _critter.is_venomous()
 	var flavor: String = _critter.catch()
 	_critter = null
 	in_critter_zone = false
+	if venomous:
+		_catch_black_spider(label, flavor)
+		return
 	bait_count += 1
 	pending_bait_flavor = flavor
 	Campaign.stat("grab_bait")
 	GameState.push_message("抓到了%s，當作一份餌料！（下一竿餌料：%s）" % [label, flavor])
+
+
+## User request: the black spider is good bait (BLACK_SPIDER_BAIT of it)
+## but may bite - poison, a big slow-down for POISON_TIME.
+func _catch_black_spider(label: String, flavor: String) -> void:
+	var room := 0
+	for i in BLACK_SPIDER_BAIT:
+		if Inventory.fits_bait(self, room + 1):
+			room += 1
+	bait_count += maxi(room, 1)
+	pending_bait_flavor = flavor
+	Campaign.stat("grab_bait")
+	Campaign.stat("black_spider")
+	if randf() < POISON_CHANCE:
+		poison_timer = POISON_TIME
+		Campaign.stat("poisoned")
+		Sfx.play("swipe_hit", -8.0)
+		GameState.push_message("抓到%s，卻被牠咬了一口——中毒了，腳步變得好沉重！（餌料 +%d）" % [label, maxi(room, 1)])
+		GameState.report("被%s咬到，中毒變慢" % label)
+	else:
+		GameState.push_message("小心翼翼抓到了%s！（餌料 +%d，下一竿餌料：%s）" % [label, maxi(room, 1), flavor])
 
 
 ## Turning a rock over (was: rummaging a roadside pile) only sometimes
@@ -1345,6 +1425,9 @@ func _turn_rock() -> void:
 		return
 	var result: Dictionary = _rock.turn_over(global_position)
 	Campaign.stat("flip_rock")
+	if result.get("spider", false):
+		Critter.spawn_black_spider(get_parent(), _rock.global_position + Vector2(0, -4), global_position)
+		GameState.push_message("石頭底下爬出一隻黑蜘蛛！抓不抓？牠可能會咬人")
 	if result.get("found", false) and not Inventory.fits_bait(self, 1):
 		GameState.push_message("石頭底下有%s，但背包滿了放不下" % result.get("flavor", "餌料"))
 	elif result.get("found", false):
@@ -1354,6 +1437,40 @@ func _turn_rock() -> void:
 		GameState.push_message("石頭底下有%s，補充了一份餌料！（下一竿咬餌手感會不一樣）" % flavor)
 	else:
 		GameState.push_message("石頭底下什麼都沒有")
+
+
+## Chops `tree` (once a run each): it shakes, and bait may drop out of it,
+## or a black spider (Profile.WEAPONS chop: the hatchet finds more).
+func _chop_tree(tree: MapTree) -> void:
+	if tree == null:
+		return
+	var result: Dictionary = tree.chop(global_position, int(Profile.weapon.get("chop", 1)))
+	Campaign.stat("chop_tree")
+	if result.get("spider", false):
+		Critter.spawn_black_spider(get_parent(), tree.global_position + Vector2(randf_range(-10, 10), 6), global_position)
+		GameState.push_message("樹上掉下一隻黑蜘蛛！")
+	elif result.get("found", false) and not Inventory.fits_bait(self, 1):
+		GameState.push_message("樹上掉下了%s，但背包滿了放不下" % result.get("flavor", "餌料"))
+	elif result.get("found", false):
+		bait_count += 1
+		pending_bait_flavor = str(result.get("flavor", ""))
+		GameState.push_message("樹上掉下了%s，補充了一份餌料！" % result.get("flavor", "餌料"))
+	else:
+		GameState.push_message("砍了幾下，什麼也沒掉下來")
+
+
+## User request (the pistol): fires at `beast` as it starts a chase - it
+## bolts - using a round from the bag. The shot carries: the big ghost
+## comes to look (BigGhost.hear). False with no pistol worn or no rounds.
+func shoot_at(beast: Node2D) -> bool:
+	if not Profile.weapon.get("gun", false) or Profile.bag_take("ammo", 1) != 1:
+		return false
+	Sfx.play_at("gunshot", global_position, -2.0, 0.03)
+	Campaign.stat("gunshot")
+	GameState.report("開槍嚇跑了%s（子彈剩 %d）" % [beast.get_label(), Profile.bag_count("ammo")])
+	for ghost in get_tree().get_nodes_in_group("big_ghost"):
+		ghost.hear(global_position)
+	return true
 
 
 func _deliver_oil_drum() -> void:
@@ -1543,7 +1660,7 @@ func _roll_catch_outcome() -> void:
 		no_bite_chance *= HOTSPOT_NO_BITE_MULT
 	if GameState.weather == GameState.Weather.FISH_RUN:
 		no_bite_chance *= FISH_RUN_WEATHER_NO_BITE_MULT
-	if flavor == BAIT_FLAVOR_BUG:
+	if flavor == BAIT_FLAVOR_BUG or flavor == BAIT_FLAVOR_SPIDER:
 		no_bite_chance *= 0.5
 	no_bite_chance *= float(lure.get("no_bite", 1.0))
 	if randf() < no_bite_chance:
@@ -1559,7 +1676,7 @@ func _roll_catch_outcome() -> void:
 		rare_chance += RARE_ZONE_RARE_CHANCE_BONUS
 	if GameState.weather == GameState.Weather.FISH_RUN:
 		rare_chance += FISH_RUN_WEATHER_RARE_BONUS
-	if flavor == BAIT_FLAVOR_FROG:
+	if flavor == BAIT_FLAVOR_FROG or flavor == BAIT_FLAVOR_LIVE_FROG:
 		rare_chance *= 2.0
 	rare_chance *= float(lure.get("rare", 1.0))
 
@@ -1613,6 +1730,8 @@ func _roll_catch_outcome() -> void:
 	tier_data.bite_window = clampf(diff.window * tier_data.bite_window / 0.7 * float(Profile.rod().window), 0.3, 1.5)
 	nibbles_left = maxi(randi_range(diff.nibbles.x, diff.nibbles.y) - int(lure.get("nibbles", 0)), 0)
 	fake_chance = diff.fake * float(lure.get("fake", 1.0))
+	if flavor == BAIT_FLAVOR_SPIDER:
+		fake_chance *= 0.5
 	# Low spirit (Profile.spirit_penalty): less time to strike, and the
 	# float fools you more.
 	var worn := Profile.spirit_penalty()

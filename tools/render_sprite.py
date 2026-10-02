@@ -409,19 +409,20 @@ def measure_anim(meshes, args):
     return total
 
 
-def pack_sheet(meshes, cells, pose, res, cols, out_prefix):
+def pack_sheet(meshes, cells, pose, res, cols, out_prefix, modes=("albedo", "normal")):
     """Renders every cell and packs them into OUT_PREFIX_{albedo,normal}.png,
     `cols` cells per row. pose(cell) sets the scene up for one cell; both
     passes of a cell are rendered back to back from that same pose, so the
     two sheets always line up (posing each pass separately let the deer's
-    walk drift by a pixel between them)."""
+    walk drift by a pixel between them). `modes` limits it to one sheet
+    (another colouring's pictures over a normal sheet already made)."""
     import os
     import tempfile
     import numpy as np
     w, h = res
     rows = math.ceil(len(cells) / cols)
     tmp = tempfile.mkdtemp()
-    sheets = {mode: np.zeros((rows * h, cols * w, 4), dtype=np.float32) for mode in ("albedo", "normal")}
+    sheets = {mode: np.zeros((rows * h, cols * w, 4), dtype=np.float32) for mode in modes}
     for i, cell in enumerate(cells):
         pose(cell)
         row, col = divmod(i, cols)

@@ -111,6 +111,7 @@ var _player: Player
 
 func _ready() -> void:
 	add_to_group("ghosts")
+	add_to_group("big_ghost")
 	_player = get_tree().current_scene.get_node("Player")
 	var tex := CanvasTexture.new()
 	tex.diffuse_texture = SHEET[0]
@@ -174,6 +175,22 @@ func _let_go(message: String) -> void:
 	_set_mode(Mode.REST)
 	_pick_wander_target(true)
 	GameState.push_message(message)
+
+
+## User request (the pistol): a shot heard at `at` - asleep, it wakes;
+## wandering, resting or searching, it comes to look there (as when it
+## notices someone close). Already after someone, or eating, it carries on.
+func hear(at: Vector2) -> void:
+	if GameState.run_over or mode in [Mode.CHASE, Mode.EAT, Mode.GRAB]:
+		return
+	if mode == Mode.ASLEEP:
+		GameState.push_message("槍聲在夜裡迴盪...大鬼被吵醒了")
+	else:
+		GameState.push_message("槍聲驚動了大鬼，牠往這邊來了！")
+	GameState.report("槍聲引來了大鬼")
+	_target = at
+	_timer = LOOK_TIME * 2.0
+	_set_mode(Mode.SUSPICIOUS)
 
 
 func enter_frenzy(duration: float) -> void:

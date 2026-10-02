@@ -362,6 +362,31 @@ def rock_flip():
     return norm(fade(x), 0.55)
 
 
+def chop():
+    """User request (chopping trees): an axe biting into a trunk - a dull
+    woody knock with a short crack on top."""
+    d = 0.45
+    n = int(d * SR)
+    knock = lowpass(white(d), 700) * env_ad(n, 0.001, 0.05)
+    body = tone(glide(210, 150, d), d) * env_ad(n, 0.001, 0.07)
+    crack = bandpass(white(0.05), 3200, 1500) * env_ad(int(0.05 * SR), 0.0005, 0.008)
+    x = knock * 0.8 + body * 0.5
+    place(x, crack * 0.5, 0.0)
+    return norm(fade(reverb(x, 0.3, 0.5, 0.15)), 0.6)
+
+
+def gunshot():
+    """User request (the pistol): a shot - a hard crack, a low boom and its
+    echo off the trees."""
+    d = 1.4
+    n = int(d * SR)
+    crack = highpass(white(d), 1500) * env_ad(n, 0.0002, 0.012)
+    boom = lowpass(white(d), 260) * env_ad(n, 0.001, 0.09) * 2.0
+    thump = tone(glide(110, 45, d, 0.3), d) * env_ad(n, 0.001, 0.06)
+    x = crack * 0.9 + boom + thump * 0.8
+    return norm(fade(reverb(x, 0.7, 1.2, 0.35)), 0.85)
+
+
 def tap():
     d = 0.05
     n = int(d * SR)
@@ -702,7 +727,7 @@ SOUNDS = {
     "step_soft": lambda: step("soft"), "step_hard": lambda: step("hard"), "step_wood": lambda: step("wood"),
     "step_snow": lambda: step("snow"), "chain_loop": chain_loop, "whisper": whisper, "moan": moan,
     "emerge": emerge, "cage": cage, "heartbeat_loop": heartbeat_loop, "offering": offering,
-    "rock_flip": rock_flip, "tap": tap, "swipe_hit": whoosh_hit, "flop": flop, "thunder": thunder,
+    "rock_flip": rock_flip, "chop": chop, "gunshot": gunshot, "tap": tap, "swipe_hit": whoosh_hit, "flop": flop, "thunder": thunder,
     "escape": escape_sparkle,
     "amb_night": amb_night, "amb_day": amb_day, "amb_water": amb_water, "amb_rain": amb_rain,
     "amb_wind": amb_wind, "amb_swamp": amb_swamp, "amb_jungle": amb_jungle, "amb_surf": amb_surf,
