@@ -174,6 +174,19 @@ const FISH := {
 		"colors": [Color(0.7, 0.2, 0.12), Color(0.85, 0.45, 0.3), Color(0.4, 0.1, 0.08)], "pattern": "plain", "body": "crayfish"},
 	"two_headed_carp": {"name": "雙頭變異鯉", "value": 5.5, "trait": "wild", "habit": "", "reach": ["mid", "far"],
 		"colors": [Color(0.5, 0.55, 0.3), Color(0.8, 0.8, 0.55), Color(0.6, 0.8, 0.3)], "pattern": "blotch", "body": "carp"},
+	# User request (the desert of bones): an oasis's fish - the pupfish of
+	# desert springs, the doctor fish, the sucker and the bonytail of
+	# desert rivers; the rarest, the Devils Hole pupfish of one desert pool.
+	"pupfish": {"name": "沙漠鱂", "value": 1.3, "trait": "calm", "habit": "", "reach": ["near"],
+		"colors": [Color(0.22, 0.38, 0.72), Color(0.72, 0.8, 0.92), Color(0.15, 0.2, 0.4)], "pattern": "bars", "body": "tilapia"},
+	"garra": {"name": "親親魚", "value": 1.2, "trait": "normal", "habit": "cover", "reach": ["near", "mid"],
+		"colors": [Color(0.48, 0.46, 0.4), Color(0.8, 0.77, 0.68), Color(0.25, 0.24, 0.22)], "pattern": "stripe", "body": "trout"},
+	"desert_sucker": {"name": "沙漠亞口魚", "value": 1.5, "trait": "calm", "habit": "cover", "reach": ["mid"],
+		"colors": [Color(0.45, 0.4, 0.3), Color(0.84, 0.78, 0.64), Color(0.32, 0.27, 0.2)], "pattern": "speckle", "body": "carp"},
+	"bonytail": {"name": "骨尾魚", "value": 2.0, "trait": "wild", "habit": "jumper", "reach": ["mid", "far"],
+		"colors": [Color(0.4, 0.42, 0.38), Color(0.86, 0.85, 0.8), Color(0.55, 0.48, 0.36)], "pattern": "gradient", "body": "trout"},
+	"devils_pupfish": {"name": "魔鬼洞鱂", "value": 6.0, "trait": "wild", "habit": "cover", "reach": ["near", "mid"],
+		"colors": [Color(0.12, 0.32, 0.88), Color(0.6, 0.76, 1.0), Color(0.08, 0.12, 0.4)], "pattern": "scales", "body": "tilapia"},
 
 	# --- The sea ------------------------------------------------------------
 	"mackerel": {"name": "鯖魚", "value": 1.0, "trait": "normal", "habit": "jumper", "reach": ["near", "mid"],
@@ -241,6 +254,7 @@ const STYLE_FISH := {
 	"snow": [["arctic_char", "whitefish", "burbot", "smelt"], "taimen"],
 	"autumn": [["sockeye", "pike", "perch", "channel_cat"], "golden_koi"],
 	"ruins": [["pleco", "silver_carp", "giant_goldfish", "crayfish"], "two_headed_carp"],
+	"desert": [["pupfish", "garra", "desert_sucker", "bonytail"], "devils_pupfish"],
 }
 const SEA_COMMON := ["mackerel", "sardine", "horse_mackerel", "saury", "herring", "sea_bream", "sea_bass",
 	"flounder", "cod", "puffer", "cutlassfish", "grouper", "mullet", "croaker", "yellowtail", "mahi", "conger",
@@ -256,7 +270,7 @@ const THEME_WATERS := {
 	"deadwood": "deadwood", "rocky": "rocky", "stone_forest": "rocky", "savanna": "rocky",
 	"tropical": "tropical", "jungle": "tropical", "prehistoric": "prehistoric", "swamp": "swamp",
 	"snow": "snow", "snow_lowpoly": "snow", "autumn": "autumn", "autumn_lowpoly": "autumn",
-	"ruins": "ruins", "beach_rocky": "sea", "beach_sandy": "sea",
+	"ruins": "ruins", "beach_rocky": "sea", "beach_sandy": "sea", "desert": "desert",
 }
 ## This map's waters (MapGenerator sets it from the theme).
 static var waters := "forest"
@@ -425,7 +439,8 @@ const LENGTH_CM := {
 	"alligator_gar": [120, 280], "arctic_char": [30, 75], "whitefish": [25, 55], "burbot": [30, 80], "smelt": [12, 25],
 	"taimen": [70, 180], "sockeye": [45, 80], "pike": [45, 120], "perch": [15, 40], "channel_cat": [35, 100],
 	"golden_koi": [45, 100], "pleco": [20, 50], "silver_carp": [45, 100], "giant_goldfish": [25, 45], "crayfish": [8, 15],
-	"two_headed_carp": [50, 110], "mackerel": [25, 50], "sardine": [12, 25], "horse_mackerel": [18, 40],
+	"two_headed_carp": [50, 110], "pupfish": [4, 8], "garra": [8, 15], "desert_sucker": [20, 40],
+	"bonytail": [30, 60], "devils_pupfish": [3, 6], "mackerel": [25, 50], "sardine": [12, 25], "horse_mackerel": [18, 40],
 	"saury": [25, 35], "herring": [20, 40], "sea_bream": [25, 80], "sea_bass": [35, 90], "flounder": [25, 70],
 	"cod": [45, 120], "puffer": [15, 40], "cutlassfish": [70, 150], "grouper": [35, 120], "mullet": [35, 70],
 	"croaker": [25, 60], "yellowtail": [50, 120], "mahi": [60, 150], "conger": [60, 150], "scorpionfish": [12, 30],

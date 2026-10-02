@@ -65,6 +65,7 @@ const TESTS := [
 	"test_shop_new_wares",
 	"test_black_spider",
 	"test_chop_and_weapons",
+	"test_desert_bones",
 ]
 
 var main: Node
@@ -397,7 +398,7 @@ func test_beach_sea() -> void:
 ## Which look a scenery texture belongs to ("" for the shared art - the
 ## player, the landmarks, animals, lily pads).
 const DETAILED_DIRS := ["bare_tree", "birch_tree", "bush", "dead_tree", "ground_cover", "leafy_tree", "maple_tree",
-	"oak_tree", "palm_tree", "pine", "rock", "twisted_tree", "props", "beach_palm", "ruins"]
+	"oak_tree", "palm_tree", "pine", "rock", "twisted_tree", "props", "beach_palm", "ruins", "bones"]
 const LOWPOLY_DIRS := ["autumn_tree", "bonsai_tree", "bush2", "conifer", "jungle_tree", "lowpoly", "meadow_tree",
 	"snow_tree", "rock2"]
 
@@ -2498,3 +2499,27 @@ func test_chop_and_weapons() -> void:
 	wolf.queue_free()
 	_restore_profile(kept)
 	await frames(1)
+
+
+## User request: a desert map strewn with the animal carcasses - bones
+## among the rocks (solid, never turned over), oases with their own fish,
+## black spiders about the water.
+func test_desert_bones() -> void:
+	var gen_script = load("res://scripts/map_generator.gd")
+	gen_script.forced_theme = "desert"
+	await _fresh_game(5)
+	gen_script.forced_theme = ""
+	var gen = main.get_node("MapGenerator")
+	check(gen.theme_name == "desert", "the desert picked")
+	var bones := of_script("obstacle.gd").filter(func(r): return r.sprite.texture.diffuse_texture.resource_path.contains("/bones/"))
+	check(bones.size() >= 3, "bones lie about (%d)" % bones.size())
+	check(bones.all(func(b): return b.collision.polygon.size() > 0), "and are solid")
+	var flips := of_script("flip_rock.gd")
+	check(flips.all(func(f): return not f._visual.texture.diffuse_texture.resource_path.contains("/bones/")),
+		"no bones among the rocks to turn")
+	check(FishData.waters == "desert", "the oases have their own fish")
+	var own: Array = FishData.STYLE_FISH.desert[0] + [FishData.STYLE_FISH.desert[1]]
+	check(own.all(func(id): return FishData.FISH.has(id) and ResourceLoader.exists("res://assets/sprites/fish/%s.png" % id)),
+		"each with its picture")
+	var spiders := of_script("/critter.gd").filter(func(c): return c.species == "black_spider")
+	check(not spiders.is_empty(), "black spiders about the water")

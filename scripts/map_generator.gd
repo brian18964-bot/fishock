@@ -81,7 +81,8 @@ const OBSTACLE_SCENE := preload("res://scenes/obstacle.tscn")
 const FLIP_ROCK_SCENE := preload("res://scenes/flip_rock.tscn")
 ## User request: rocks the player can turn over for bait, per run.
 const FLIP_ROCKS := Vector2i(8, 10)
-const NOT_FLIPPABLE := ["pillar", "grave", "lantern", "shrine", "well", "lp_grave", "lp_lantern", "lp_shrine", "lp_well"]
+const NOT_FLIPPABLE := ["pillar", "grave", "lantern", "shrine", "well", "lp_grave", "lp_lantern", "lp_shrine", "lp_well",
+	"bones"]
 const BUSH_SCENE := preload("res://scenes/bush.tscn")
 
 ## User request: each run is dressed in one of a few looks, all from the
@@ -312,6 +313,30 @@ const THEMES := {
 		"tint": Color(0.94, 0.98, 1.0),
 		"water": {"base": Color(0.12, 0.17, 0.14), "deep": Color(0.04, 0.06, 0.05)},
 	},
+	# User request: a desert of bones - the user's animal carcasses (deer,
+	# buffalo, crocodile, wild cat, an elephant: NatureCatalog "bones",
+	# tools/prep_bones.py) lying about sand and cracked red earth among
+	# sandstone boulders and a few dead trees and palms; the ponds are
+	# oases (reeds, hardly a lily pad), with black spiders and snakes about
+	# the water, and its own fish (FishData "desert").
+	"desert": {
+		"look": "detailed",
+		"shore_extras": {"reeds": 0.22, "lilypad": 0.02, "driftwood": 0.02},
+		"floor": ["sand", "red_earth", 0.3],
+		"trees": 7, "rocks": 16, "bushes": 2, "ground": 60,
+		"tree_families": {"dead": 1.0, "bare": 0.5, "palm": 0.6},
+		"rock_pool": ["bones", "sand", 3, 4],
+		"bush_families": ["bush_autumn"],
+		"ground_kinds": {"pebble": 4.0, "grass": 1.0, "plant": 0.5},
+		"cover": {"shrub": "pebble", "flower_bush": "grass"},
+		"shore": {"grass": 0.14, "shrub": 0.0, "pebbles": 0.35},
+		"shore_critters": ["black_spider", "snake", "black_spider", "frog"],
+		"shore_critter_count": 6,
+		"animals": {"donkey": 1.5, "alpaca": 1.0, "fox": 1.2, "wolf": 1.0},
+		"animal_count": 4,
+		"tint": Color(1.12, 1.0, 0.82),
+		"water": {"base": Color(0.1, 0.32, 0.3), "deep": Color(0.03, 0.11, 0.11)},
+	},
 	# User request: many more map styles so the picture isn't monotonous,
 	# from the user's packs (NatureCatalog, tools/render_packs.py). Each has
 	# its own ground, light ("tint", multiplying the day's darkness), pond
@@ -454,6 +479,7 @@ const STYLES := {
 	"autumn": {"weight": 10.0, "themes": ["autumn"]},
 	"beach": {"weight": 9.0, "themes": ["beach_rocky", "beach_sandy"]},
 	"ruins": {"weight": 10.0, "themes": ["ruins"]},
+	"desert": {"weight": 9.0, "themes": ["desert"]},
 }
 ## User decision: the low-poly styles are kept in reserve - built and
 ## tested (forced_theme still reaches them) but never dealt to a player.

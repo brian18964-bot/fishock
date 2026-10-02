@@ -16,6 +16,7 @@ packs the user supplied (art_src/packs/):
   rocks_stylized.fbx, assorted_rocks.fbx  rocks whose textures didn't come
       with them: painted stone colours with grime and ambient occlusion
       (render_props.paint).
+  bones/*.glb  the animal carcasses (tools/prep_bones.py), for the desert.
 
 Each model goes through the same 55deg pipeline as every other sprite
 (render_sprite.py): moved so its ground footprint sits on the origin,
@@ -223,6 +224,12 @@ for i, tall in enumerate([True, False]):
                     height=2.6 if tall else 1.9, builder="stone_lantern", seed=91 + i, tall=tall))
 MODELS.append(m("shrine_1", None, [], "props", "rock", "shrine", height=2.4, builder="shrine", seed=95))
 MODELS.append(m("well_1", None, [], "props", "rock", "well", height=2.4, builder="well", seed=97))
+
+# User request (a desert of bones): the animal carcasses
+# (tools/prep_bones.py) - solid, with a footprint, so rocks to the game.
+for name, w in [("deer", 4.0), ("buffalo", 5.0), ("crocodile", 5.4), ("wildcat", 2.6), ("elephant", 8.5)]:
+    MODELS.append(m("bones_" + name, "bones/%s.glb" % name, [name], "bones", "rock", "bones", width=w,
+                    detailed=True))
 
 
 def make_palette(leaf, bark):

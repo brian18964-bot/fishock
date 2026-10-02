@@ -19,7 +19,7 @@ const HEART_RANGE := 280.0
 const WATER_HEAR := 160.0
 const THUNDER_GAP := Vector2(9.0, 22.0)
 const THEME_AMBIENCE := {"snow": "amb_wind", "snow_lowpoly": "amb_wind", "beach_rocky": "amb_surf", "beach_sandy": "amb_surf", "swamp": "amb_swamp", "jungle": "amb_jungle",
-	"prehistoric": "amb_jungle", "tropical": "amb_jungle"}
+	"prehistoric": "amb_jungle", "tropical": "amb_jungle", "desert": "amb_wind"}
 
 var _player: Player
 var _lantern: Lantern

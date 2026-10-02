@@ -9,7 +9,7 @@ extends Control
 
 const WATER_NAMES := {
 	"forest": "森林", "deadwood": "枯木林", "rocky": "岩地", "tropical": "熱帶雨林", "prehistoric": "史前",
-	"swamp": "沼澤", "snow": "雪原", "autumn": "秋林", "ruins": "廢墟城市",
+	"swamp": "沼澤", "snow": "雪原", "autumn": "秋林", "ruins": "廢墟城市", "desert": "白骨沙漠",
 }
 const TRAIT_NAMES := {"calm": "溫和", "normal": "普通", "wild": "兇猛"}
 const HABIT_NAMES := {"cover": "會往障礙物鑽", "jumper": "愛跳出水面"}
