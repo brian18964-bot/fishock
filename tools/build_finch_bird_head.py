@@ -69,19 +69,19 @@ FORWARD = -0.03
 # each RUFF_TIP_SEGS faces wide; RUFF_ROWS rows under the head and on the
 # knit; RUFF_PUFF how full the breast under the chin.
 RUFF_RISE = 0.045
-RUFF_LAYERS = [(0.014, 0.003, 0.0, 5), (0.008, 0.005, 0.5, 6)]
-RUFF_TIPS = 46
+RUFF_LAYERS = [(0.007, 0.002, 0.0, 5), (0.004, 0.0035, 0.5, 6)]
+RUFF_TIPS = 56
 RUFF_JITTER = 0.3
-RUFF_NOTCH = 0.006
+RUFF_NOTCH = 0.003
 RUFF_TIP_SEGS = 4
-RUFF_ROWS = (5, 3)
-RUFF_PUFF = 0.3
+RUFF_ROWS = (5, 2)
+RUFF_PUFF = 0.0
 # ...over a neckline rounded off over this many degrees (the tips still
 # past the real one by RUFF_COVER), and no further out from it than
 # RUFF_SPREAD (the inner layer's longest tips).
 RUFF_ROUND = 50
-RUFF_SPREAD = 0.018
-RUFF_COVER = 0.006
+RUFF_SPREAD = 0.009
+RUFF_COVER = 0.004
 # Its feathers' picture (and the back of the head's): repeats a metre.
 FEATHER_SCALE = 7.5
 # The shins: feathered all round - from ANKLE up, this thick at the
