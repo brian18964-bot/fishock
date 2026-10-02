@@ -637,7 +637,8 @@ def _pick(rig, targets, spec):
 def _bind_greybox(arm, rig, joints, parts, heads, tails, targets, k, off):
     """A greybox character (tools/greybox_animals.py): its one body (head
     to toes and tail) weighted from the whole skeleton - rigid with the
-    head above its neck and the tail with the hips - its eyes and nose
+    head above its neck, the tail along tail bones added for it (with the
+    hips if it has none) - its eyes and nose
     with the head, and its clothes moving as the body under them does."""
     head_bone = rig["trunk"][-1]
     pelvis = rig["trunk"][0]
@@ -671,7 +672,7 @@ def _bind_greybox(arm, rig, joints, parts, heads, tails, targets, k, off):
         if box and all(box[0][i] - 0.005 <= p[i] <= box[1][i] + 0.005 for i in range(3)):
             t = _smooth(joints["tail_root_y"], joints["tail_root_y"] + 0.03, p.y)
             if t > 0.0 and chain:
-                # along the tail's own bones: the two nearest its place on it
+                # along the tail's own bones, by its place along the tail
                 d, i, f = min((_seg_dist(p, pts[j], pts[j + 1]), j, _seg_t(p, pts[j], pts[j + 1]))
                               for j in range(len(pts) - 1))
                 if d > TAIL_REACH:
