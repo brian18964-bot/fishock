@@ -12,7 +12,7 @@ extends RefCounted
 ##   live_<id>      live baits (Profile.LIVE_BAITS), ten to a cell
 ##   bait           the base bait (user request: given each run, but it
 ##                  takes bag cells) - kept in the bag, only moved about
-##   tea, rations, roll, cheese   the merchant's (Profile.SNACKS): had as
+##   tea, rations, roll, loaf, cheese   the merchant's (Profile.SNACKS): had as
 ##                  they're bought, for spirit - never kept
 ##   knife, hatchet, machete, glock   the weapons (Profile.WEAPONS), worn
 ##                  in the weapon slot
@@ -111,7 +111,7 @@ static func model_path(id: String) -> String:
 	if id.begins_with("rod_"):
 		return "res://assets/models/fishing_rod_lvl%d.glb" % (int(id.substr(4)) + 1)
 	match id:
-		"flashlight", "battery", "rations", "roll", "cheese", "ammo", "knife", "hatchet", "machete", "glock":
+		"flashlight", "battery", "rations", "roll", "loaf", "cheese", "ammo", "knife", "hatchet", "machete", "glock":
 			return MODELS % id
 		"tea":
 			# User request: the tea in the user's cup.
@@ -135,7 +135,7 @@ const SQUARE_ICONS := "res://assets/sprites/icons/%s.png"
 ## when it has none (the long cells keep icon()'s picture).
 static func square_icon(id: String) -> Texture2D:
 	var key := ""
-	if id.begins_with("rod_") or id in ["flashlight", "battery", "lamp", "tea", "rations", "roll", "cheese", "ammo",
+	if id.begins_with("rod_") or id in ["flashlight", "battery", "lamp", "tea", "rations", "roll", "loaf", "cheese", "ammo",
 			"knife", "hatchet", "machete", "glock"]:
 		key = id
 	elif id == "bait":

@@ -154,9 +154,10 @@ const SNACKS := {
 	"rations": {"name": "乾糧", "cost": 30, "spirit": 35.0, "desc": "肉乾配硬麵包，吃飽了才有力氣"},
 	# User request: the bread roll and the cheeses (the user's models).
 	"roll": {"name": "凱薩麵包", "cost": 20, "spirit": 25.0, "desc": "剛烤好的小圓麵包，外皮酥脆"},
+	"loaf": {"name": "鄉村麵包", "cost": 35, "spirit": 40.0, "desc": "一整條烤得焦香的大麵包，分著吃也夠"},
 	"cheese": {"name": "乳酪拼盤", "cost": 45, "spirit": 50.0, "desc": "三種乳酪切好一盤，配茶最對味"},
 }
-const SNACK_ORDER := ["tea", "roll", "rations", "cheese"]
+const SNACK_ORDER := ["tea", "roll", "rations", "loaf", "cheese"]
 
 ## User request (Camp v2): what's been done, for the achievements that
 ## earn the camp's tents (TENTS) - escapes, gold spent, legends caught.

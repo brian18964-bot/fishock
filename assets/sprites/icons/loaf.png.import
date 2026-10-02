@@ -2,19 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bdsit11cj0e8h"
-path="res://.godot/imported/machete_machete_mr.jpg-015c1613c513747f7ea46ee012f8fef2.ctex"
+uid="uid://dogydbntawjb3"
+path="res://.godot/imported/loaf.png-d7308691abcd79140acadef39502b062.ctex"
 metadata={
 "vram_texture": false
-}
-generator_parameters={
-"md5": "a220ac15b905d26fb4dba4d756611bc0"
 }
 
 [deps]
 
-source_file="res://assets/models/items/machete_machete_mr.jpg"
-dest_files=["res://.godot/imported/machete_machete_mr.jpg-015c1613c513747f7ea46ee012f8fef2.ctex"]
+source_file="res://assets/sprites/icons/loaf.png"
+dest_files=["res://.godot/imported/loaf.png-d7308691abcd79140acadef39502b062.ctex"]
 
 [params]
 
@@ -26,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

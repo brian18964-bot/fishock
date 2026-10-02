@@ -1,6 +1,7 @@
 """The shop's new wares, from the user's model packs (user request: the
-frog and the low-poly spider as live baits; the knives, the gun, the
-flashlight, the food, and a cup for the tea - all things to buy). Each is
+frog and the low-poly spider as live baits; the knives, the gun and its
+rounds, the flashlight and its battery, the food, and a cup for the tea -
+all things to buy). Each is
 made into one small game model for the menus' 3D previews and the icons
 (tools/render_square_icons.py):
 
@@ -16,10 +17,9 @@ made into one small game model for the menus' 3D previews and the icons
 
   bpyenv/bin/python tools/prep_shop_models.py SRC_DIR [name ...]   (repo root)
 
-SRC_DIR holds the packs as unpacked (see SOURCES). The machete came
-without its textures, so it's given plain steel and wood here; the bread
-roll came unpainted, so it wears the bread pack's crust. The packs stay
-out of the repo.
+SRC_DIR holds the packs as unpacked (see SOURCES). The bread roll came
+unpainted, so it wears the bread pack's crust. The packs stay out of the
+repo.
 """
 import math
 import os
@@ -326,18 +326,35 @@ def knife(src):
 
 def machete(src):
     fresh()
-    bpy.ops.wm.open_mainfile(filepath=os.path.join(src, "machete.blend"))
-    # Its textures weren't in the pack: plain steel blade, dark wood grip.
-    steel = mat("steel", (0.56, 0.57, 0.6), metal=1.0, rough=0.32)
-    wood = mat("grip", (0.17, 0.1, 0.06), rough=0.6)
-    for name, m in (("Plane.001", steel), ("Plane.002", wood)):
-        o = bpy.data.objects[name]
-        o.data.materials.clear()
-        o.data.materials.append(m)
-    high = solid([bpy.data.objects["Plane.001"], bpy.data.objects["Plane.002"]])
+    # The pack's FBX with its own textures (the .blend first sent had lost
+    # them).
+    bpy.ops.import_scene.fbx(filepath=os.path.join(src, "machete_fbx", "MACHETE.fbx"))
+    high = solid([o for o in bpy.data.objects if o.type == "MESH"])
     # Grip at +x in the pack: blade to +x.
     place(high, (0, 0, 180), 0.55)
     bake("machete", high, 2000)
+
+
+def battery(src):
+    fresh()
+    bpy.ops.import_scene.fbx(filepath=os.path.join(src, "battery", "battery.fbx"))
+    high = solid([o for o in bpy.data.objects if o.type == "MESH"])
+    # Stands upright once its object turn is applied.
+    place(high, (0, 0, 0), 0.05, base=True)
+    bake("battery", high, 900, 256)
+
+
+def loaf(src):
+    fresh()
+    bpy.ops.import_scene.fbx(filepath=os.path.join(src, "loaf", "loaf.fbx"))
+    o = next(o for o in bpy.data.objects if o.type == "MESH")
+    m = mat("loaf", (1, 1, 1), rough=0.7, image=os.path.join(src, "loaf", "Color.png"))
+    set_image(m, os.path.join(src, "loaf", "Roughness.png"), "Roughness", data=True)
+    o.data.materials.clear()
+    o.data.materials.append(m)
+    high = solid([o])
+    place(high, (0, 0, 0), 0.3, base=True)
+    bake("loaf", high, 1200)
 
 
 def hatchet(src):
@@ -360,11 +377,18 @@ def glock(src):
 
 def ammo(src):
     fresh()
-    bpy.ops.wm.open_mainfile(filepath=os.path.join(src, "glock.blend"))
-    # The pack's two loose rounds.
-    high = solid([o for o in bpy.data.objects if o.type == "MESH" and o.name.startswith("b_low")])
-    place(high, (0, 90, 0), 0.03, base=True)
-    bake("ammo", high, 800, 256)
+    # The user's 9 mm round (230k triangles, plain brass and copper):
+    # two of them side by side, cut right down.
+    bpy.ops.import_scene.fbx(filepath=os.path.join(src, "bullet.fbx"))
+    one = next(o for o in bpy.data.objects if o.type == "MESH")
+    two = one.copy()
+    two.data = one.data.copy()
+    bpy.context.scene.collection.objects.link(two)
+    two.location.x += one.dimensions.x * 1.1
+    two.location.y += one.dimensions.y * 0.3
+    high = solid([one, two])
+    place(high, (0, 0, 0), 0.03, base=True)
+    bake("ammo", high, 1000, 256)
 
 
 def flashlight(src):
@@ -490,7 +514,7 @@ def roll(src):
 
 
 SOURCES = {"frog": frog, "spider": spider, "knife": knife, "machete": machete, "hatchet": hatchet,
-           "glock": glock, "ammo": ammo, "flashlight": flashlight, "cup": cup, "cheese": cheese, "roll": roll}
+           "glock": glock, "ammo": ammo, "battery": battery, "loaf": loaf, "flashlight": flashlight, "cup": cup, "cheese": cheese, "roll": roll}
 
 
 def main():

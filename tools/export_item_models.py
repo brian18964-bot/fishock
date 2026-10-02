@@ -46,8 +46,9 @@ def main():
         for name in only:
             getattr(ri, name)()
         return
-    # (The flashlight and the tea's cup are the user's models now - tools/prep_shop_models.py.)
-    for build in (ri.battery, ri.cricket, ri.shrimp, ri.rations):
+    # (The flashlight, its battery and the tea's cup are the user's models
+    # now - tools/prep_shop_models.py.)
+    for build in (ri.cricket, ri.shrimp, ri.rations):
         build()
     src = os.path.join(ri.ROOT, "art_src", "lure")
     for n in ["lure_%d" % i for i in range(1, 7)] + ["worm"]:

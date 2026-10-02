@@ -7,7 +7,7 @@ kind's colour, a dark edge round it. 128x128, shown at 64 or less.
   bpyenv/bin/python tools/render_square_icons.py [name ...]    (repo root)
 
 Writes assets/sprites/icons/<name>.png - rod_0..rod_4, flashlight,
-battery, lamp, worm, cricket, shrimp, minnow, tea, rations, roll, cheese,
+battery, lamp, worm, cricket, shrimp, minnow, tea, rations, roll, loaf, cheese,
 frog, spider, knife, machete, hatchet, glock, ammo, tent_1..tent_9,
 lure_1..lure_6, and throw (the 誘惑 action button) (Items.square_icon()
 maps the things' ids onto these).
@@ -57,6 +57,7 @@ THINGS = {
     # User request: the user's models (tools/prep_shop_models.py) - the
     # food, the live frog and spider, the weapons and the rounds.
     "roll": dict(model="items/roll.glb", turn=(35, 0, 20), fill=0.8, ground=ITEM),
+    "loaf": dict(model="items/loaf.glb", turn=(35, 0, 25), fill=0.92, ground=ITEM),
     "cheese": dict(model="items/cheese.glb", turn=(40, 0, -20), fill=0.86, ground=ITEM),
     "frog": dict(model="items/frog.glb", turn=(20, 0, 35), fill=0.86, ground=BAIT),
     "spider": dict(model="items/spider.glb", turn=(35, 0, 25), fill=0.9, ground=BAIT),

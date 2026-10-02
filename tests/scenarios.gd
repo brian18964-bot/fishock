@@ -2348,7 +2348,7 @@ func _restore_profile(kept: Dictionary) -> void:
 func test_shop_new_wares() -> void:
 	var kept := _keep_profile()
 	Profile.gold = 5000
-	for id in ["live_frog", "live_spider", "knife", "hatchet", "machete", "glock", "ammo", "roll", "cheese", "tea",
+	for id in ["live_frog", "live_spider", "knife", "hatchet", "machete", "glock", "ammo", "roll", "loaf", "cheese", "tea", "battery",
 			"flashlight"]:
 		var d := Items.def(id)
 		check(not d.is_empty(), "%s is a thing" % id)
@@ -2385,7 +2385,7 @@ func test_shop_new_wares() -> void:
 		"the frog and the spider on the bait tab")
 	shop._show_tab("item")
 	await frames(1)
-	for id in ["ammo", "roll", "cheese", "tea"]:
+	for id in ["ammo", "roll", "loaf", "cheese", "tea"]:
 		check(shop._grid.get_node_or_null("Card_" + id) != null, "the shop has %s" % id)
 	shop.queue_free()
 	_restore_profile(kept)

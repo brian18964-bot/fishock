@@ -2,19 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bdsit11cj0e8h"
-path="res://.godot/imported/machete_machete_mr.jpg-015c1613c513747f7ea46ee012f8fef2.ctex"
+uid="uid://iru5o3xci6af"
+path="res://.godot/imported/battery_battery_color.jpg-73feec3f4eb23b8d31d954e191427ce9.ctex"
 metadata={
 "vram_texture": false
 }
 generator_parameters={
-"md5": "a220ac15b905d26fb4dba4d756611bc0"
+"md5": "843d535bfbee160738dfbe1f0bf525e7"
 }
 
 [deps]
 
-source_file="res://assets/models/items/machete_machete_mr.jpg"
-dest_files=["res://.godot/imported/machete_machete_mr.jpg-015c1613c513747f7ea46ee012f8fef2.ctex"]
+source_file="res://assets/models/items/battery_battery_color.jpg"
+dest_files=["res://.godot/imported/battery_battery_color.jpg-73feec3f4eb23b8d31d954e191427ce9.ctex"]
 
 [params]
 

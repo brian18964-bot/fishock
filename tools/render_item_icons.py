@@ -113,18 +113,8 @@ def glock():
 
 
 def battery():
-    fresh()
-    shell = mat("shell", (0.12, 0.3, 0.55), metal=0.3, rough=0.35)
-    band = mat("band", (0.85, 0.65, 0.2), metal=0.8, rough=0.3)
-    tip = mat("tip", (0.75, 0.75, 0.78), metal=1.0, rough=0.2)
-    up = (0, 0, 0)
-    objs = [
-        cyl("shell", 0.2, 0.8, (0, 0, 0), shell, rot=up),
-        cyl("band", 0.203, 0.22, (0, 0, 0.26), band, rot=up),
-        cyl("tip", 0.07, 0.06, (0, 0, 0.43), tip, rot=up),
-        cyl("base", 0.19, 0.02, (0, 0, -0.405), tip, rot=up),
-    ]
-    shoot("battery", objs, (1, 1))
+    # User request: the user's battery model (tools/prep_shop_models.py).
+    model_pic("battery", (1, 1), (0, 0, 25))
 
 
 def lamp():
