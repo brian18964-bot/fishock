@@ -9,12 +9,19 @@ of it as the spirit runs low; see CampLife). Carrying, chopping and
 harvesting are left out (user request: the hands didn't close on what
 they held).
 
+The one wearing them is the beginner owl person (owl_character.py, put on
+the mannequin's skeleton); MANNEQUIN=1 keeps the mannequin instead.
+
   UAL1=<UAL1_Standard.glb> UAL2=<UAL2_Standard.glb> \\
       bpyenv/bin/python tools/build_menu_character.py      (repo root)
 """
 import os
+import sys
 
 import bpy
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import owl_character  # noqa: E402
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 OUT = os.path.join(ROOT, "assets", "models", "menu_character.glb")
@@ -61,6 +68,10 @@ def main():
     # The second library's mannequin goes; its clips stay.
     for o in [arm2] + body2:
         bpy.data.objects.remove(o, do_unlink=True)
+    if os.environ.get("MANNEQUIN") != "1":
+        for o in body:
+            bpy.data.objects.remove(o, do_unlink=True)
+        body = owl_character.bind(arm, "ual")
     for a in list(bpy.data.actions):
         if a not in keep.values():
             bpy.data.actions.remove(a)

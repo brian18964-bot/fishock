@@ -1,10 +1,10 @@
 class_name PlayerVisual
 extends Sprite2D
 
-## The player on screen. Trial (user request: the carrying / casting /
-## holding-the-rod animation): Mixamo's Y Bot - a stand-in, the final
-## character's look comes later - pre-rendered by tools/render_player.py,
-## 8 frames per clip, 72x80 cells; rows = clips x 8 facings. Plays:
+## The player on screen: the beginner owl person (tools/owl_character.py)
+## moving as Mixamo's clips move (user request: the carrying / casting /
+## holding-the-rod animation), pre-rendered by tools/render_player.py,
+## 8 frames per clip, 72x88 cells; rows = clips x 8 facings. Plays:
 ##   0 idle      breathing, rod across the back
 ##   1 run       rod across the back
 ##   2 cast      winding back with the charge (0-3), whipped on release (4-7)
@@ -31,7 +31,7 @@ const SHEET_HALVES := 2
 const SPRITE_SCALE := 0.5
 ## (0, -center_y * 27.108) for the sheet's camera; the feet sit at the
 ## node origin, which is placed at the bottom of the player's collision box.
-const OFFSET := Vector2(0.0, -17.52)
+const OFFSET := Vector2(0.0, -17.95)
 ## Sheet column order: down, down_left, left, up_left, up, up_right, right,
 ## down_right. Index by 45deg sector clockwise from +X (right).
 const SECTOR_TO_DIR := [6, 7, 0, 1, 2, 3, 4, 5]

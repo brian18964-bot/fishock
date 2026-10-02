@@ -3,8 +3,8 @@ extends Node3D
 
 ## The player's character in 3D - in the main screen's camp and on the
 ## equipment page (CharacterViewer): assets/models/menu_character.glb -
-## Quaternius' Universal Animation Library mannequin, CC0, trimmed by hand
-## to three clips - breathing, waving when tapped, and dressed as a paper
+## the beginner owl person on Quaternius' Universal Animation Library
+## skeleton (CC0; tools/build_menu_character.py), with its clips - breathing, waving when tapped, and dressed as a paper
 ## doll: equip(slot, scene) hangs a model on a bone (SLOTS) - the rod bought
 ## in the right hand, the oil lamp in the left; hats, packs and the rest
 ## later.
@@ -112,12 +112,19 @@ static func _find(n: Node, cls: String) -> Node:
 	return null
 
 
-## The mannequin in the game's colours.
+## The mannequin in the game's colours. A character with its own
+## pictures (the beginner owl person) keeps them, with the same rim.
 func _dress(n: Node) -> void:
 	if n is MeshInstance3D:
 		var mi := n as MeshInstance3D
 		for i in mi.get_surface_override_material_count():
 			var src := mi.mesh.surface_get_material(i)
+			if src is BaseMaterial3D and (src as BaseMaterial3D).albedo_texture != null:
+				var own := (src as BaseMaterial3D).duplicate() as BaseMaterial3D
+				own.rim_enabled = true
+				own.rim = 0.25
+				mi.set_surface_override_material(i, own)
+				continue
 			var m := StandardMaterial3D.new()
 			var joints := src != null and src.resource_name.contains("Joint")
 			m.albedo_color = JOINTS if joints else SKIN

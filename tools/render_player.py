@@ -54,6 +54,7 @@ from PIL import Image
 
 sys.path.insert(0, os.path.dirname(__file__))
 import render_sprite as rs  # noqa: E402
+import owl_character  # noqa: E402
 
 DENSITY = 27.108
 PAD = 0.08
@@ -234,9 +235,13 @@ def main():
     p.add_argument("out_prefix")
     p.add_argument("--density", type=int, default=2)
     p.add_argument("--dry", action="store_true", help="rod data and cell size only, no render")
+    p.add_argument("--character", choices=("owl", "ybot"), default="owl",
+                   help="who's drawn: the beginner owl person (owl_character.py) or Mixamo's Y Bot")
     args = p.parse_args()
 
     arm, meshes, src = load(args.mixamo)
+    if args.character == "owl":
+        meshes = owl_character.bind(arm, "mixamo")
     clips = build_clips(arm, src)
     check_lean(arm, clips)
     back_grip, back_tip = back_rod_local(arm)

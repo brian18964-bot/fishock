@@ -1,0 +1,582 @@
+"""The beginner owl person (tools/build_finch_bird_head.py) as the player's
+character in the game (user request: put it in the game to see it).
+
+Two steps:
+
+  bake  - the built owl (its .blend: the finch in the beginner's clothes
+          with the owl's head, feathered arms and legs) made game-ready:
+          the arms straightened level (the T-pose both of the game's
+          skeletons have), each part cut down and its whole look - the
+          owl's own texture, the projected feathers, the knit and its
+          normal maps - baked onto one shared picture and one normal map.
+          Writes art_src/player/owl_character.glb (the parts, no rig) and
+          art_src/player/owl_character.json (where its joints are).
+
+    bpyenv/bin/python tools/owl_character.py bake FINCH_OWL.blend
+
+  bind  - for the tools that render or export the character: the owl put
+          on a skeleton that already carries the game's clips - Mixamo's
+          (the run's sprites: render_player.py, render_player_struggle.py)
+          or Quaternius' UAL (the camp's 3D character:
+          build_menu_character.py). The skeleton's joints are moved to the
+          owl's (each bone keeps its own axes, so every clip plays on it as
+          it did), the owl is sized to it by the hips, and its parts get
+          their weights (bone heat, each part only from the bones it
+          belongs to; the head and the ruff by hand).
+
+    import owl_character
+    meshes = owl_character.bind(armature, "mixamo")      # or "ual"
+"""
+import json
+import math
+import os
+import sys
+
+import bpy
+import bmesh  # noqa: E402 (after bpy, which provides it)
+import numpy as np
+from mathutils import Matrix, Vector
+
+ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+GLB = os.path.join(ROOT, "art_src", "player", "owl_character.glb")
+JOINTS = os.path.join(ROOT, "art_src", "player", "owl_character.json")
+
+# The built owl's parts, by what they're called in the game file.
+PARTS = {"bird_head": "owl_head", "bird_ruff": "owl_ruff", "finch_jumper": "owl_jumper",
+         "finch_trousers": "owl_trousers", "finch_hand": "owl_hands", "finch_feet": "owl_feet",
+         "finch_button_trousers_1": "owl_button"}
+# Triangles each part is cut down to (from its smoothed shape), about.
+TRIS = {"owl_head": 2400, "owl_ruff": 6400, "owl_jumper": 7000, "owl_trousers": 4000,
+        "owl_hands": 5000, "owl_feet": 5000, "owl_button": 120}
+# The shared picture; the face gets more of it (HEAD_SHARE times the
+# texels a part of its size would).
+ATLAS = 2048
+NORMALS = 1024
+HEAD_SHARE = 2.2
+# The arms straightened (after the bake) over this much either side of the shoulder and
+# elbow (finch units).
+SHOULDER_BLEND = 0.035
+ELBOW_BLEND = 0.02
+
+
+# ---------------------------------------------------------------- bake
+
+def _bone(arm, name, end="head"):
+    b = arm.data.bones[name]
+    return arm.matrix_world @ (b.head_local if end == "head" else b.tail_local)
+
+
+def _turn(p, about, t):
+    """p turned by t about `about`, in the x-z plane."""
+    dx, dz = p.x - about.x, p.z - about.z
+    c, s = math.cos(t), math.sin(t)
+    return Vector((about.x + dx * c - dz * s, p.y, about.z + dx * s + dz * c))
+
+
+def _smooth(a, b, x):
+    t = min(max((x - a) / (b - a), 0.0), 1.0)
+    return t * t * (3 - 2 * t)
+
+
+class Straighten:
+    """The arms raised level at the shoulder, then the forearm at the
+    elbow - the finch's arms hang a little; both game skeletons are
+    T-posed (and keep their bones' own axes on the owl)."""
+
+    def __init__(self, arm):
+        self.sh = _bone(arm, "DEF_arm_L")
+        el = _bone(arm, "DEF_forearm_L")
+        wr = _bone(arm, "DEF_hand_L")
+        self.t1 = -math.atan2(el.z - self.sh.z, el.x - self.sh.x)
+        self.el = _turn(el, self.sh, self.t1)
+        wr1 = _turn(wr, self.sh, self.t1)
+        self.t2 = -math.atan2(wr1.z - self.el.z, wr1.x - self.el.x)
+
+    def __call__(self, p):
+        side = 1.0 if p.x >= 0 else -1.0
+        q = Vector((p.x * side, p.y, p.z))
+        w1 = _smooth(self.sh.x - SHOULDER_BLEND, self.sh.x + SHOULDER_BLEND, q.x)
+        q = _turn(q, self.sh, self.t1 * w1)
+        w2 = _smooth(self.el.x - ELBOW_BLEND, self.el.x + ELBOW_BLEND, q.x)
+        q = _turn(q, self.el, self.t2 * w2)
+        return Vector((q.x * side, q.y, q.z))
+
+
+def _joints(arm, fix, head):
+    """Where the owl's joints are (its left side; the right mirrors it),
+    arms straightened."""
+    def at(name, end="head"):
+        return list(fix(_bone(arm, name, end)))
+
+    def finger(n):
+        return [at(f"DEF_{n}_L.001"), at(f"DEF_{n}_L.002"), at(f"DEF_{n}_L.003"), at(f"DEF_{n}_L.003", "tail")]
+    top = max((head.matrix_world @ v.co).z for v in head.data.vertices)
+    knee = (Vector(at("DEF_knee_L")) + Vector(at("DEF_knee_L", "tail"))) / 2
+    return {
+        "trunk": [at("DEF_spine.004"), at("DEF_spine.003"), at("DEF_spine.002"), at("DEF_spine.001"),
+                  at("DEF_head")],
+        "head_top": [0.0, at("DEF_head")[1], top],
+        "clavicle": at("DEF_shoulder_L"), "shoulder": at("DEF_arm_L"), "elbow": at("DEF_forearm_L"),
+        "wrist": at("DEF_hand_L"),
+        "thumb": [at("DEF_palm_L.004"), at("DEF_thumb_L.001"), at("DEF_thumb_L.002"), at("DEF_thumb_L.002", "tail")],
+        "index": finger("index"), "middle": finger("middle"), "ring": finger("ring"), "pinky": finger("pinky"),
+        "thigh": at("DEF_thigh_L"), "knee": list(knee), "ankle": at("DEF_calf_L", "tail"),
+        "ball": at("DEF_toe_2_L.002"), "toe": at("DEF_toe_2_L.003", "tail"),
+    }
+
+
+def _fill_misses(im):
+    w, h = im.size
+    px = np.empty(w * h * 4, np.float32)
+    im.pixels.foreach_get(px)
+    px = px.reshape(-1, 4)
+    miss = px[:, :3].sum(1) <= 0.0
+    if miss.any() and not miss.all():
+        px[miss, :3] = px[~miss, :3].mean(0)
+        im.pixels.foreach_set(px.ravel())
+
+
+def _emission_of_colour(m):
+    nt = m.node_tree
+    out = next((n for n in nt.nodes if n.type == "OUTPUT_MATERIAL" and n.is_active_output), None)
+    b = next((n for n in nt.nodes if n.type == "BSDF_PRINCIPLED"), None)
+    if out is None or b is None:
+        return
+    emit = nt.nodes.new("ShaderNodeEmission")
+    sock = b.inputs["Base Color"]
+    if sock.is_linked:
+        nt.links.new(sock.links[0].from_socket, emit.inputs["Color"])
+    else:
+        emit.inputs["Color"].default_value = sock.default_value
+    nt.links.new(emit.outputs[0], out.inputs["Surface"])
+
+
+def _area(o):
+    return sum(p.area for p in o.data.polygons)
+
+
+def _atlas(parts, gap=0.006):
+    """Each part's own unwrap (filling a square) set into the one picture:
+    squares as big as the part's surface (the face's HEAD_SHARE times),
+    laid in rows, as large as they all fit."""
+    want = {n: math.sqrt(_area(o) * (HEAD_SHARE if n == "owl_head" else 1.0)) for n, o in parts.items()}
+    order = sorted(want, key=want.get, reverse=True)
+
+    def lay(k):
+        at, x, y, row = {}, 0.0, 0.0, 0.0
+        for n in order:
+            side = want[n] * k
+            if x + side > 1.0 + 1e-9:
+                x, y, row = 0.0, y + row + gap, 0.0
+            at[n] = (x, y, side)
+            x += side + gap
+            row = max(row, side)
+        return at if y + row <= 1.0 + 1e-9 else None
+    lo, hi = 0.0, 10.0 / max(want.values())
+    for _ in range(40):
+        mid = (lo + hi) / 2
+        lo, hi = (mid, hi) if lay(mid) else (lo, mid)
+    for n, (x, y, side) in lay(lo).items():
+        uv = parts[n].data.uv_layers["atlas"].data
+        co = np.array([d.uv[:] for d in uv])
+        base = co.min(0)
+        span = float((co.max(0) - base).max())
+        co = (co - base) / span * side + (x, y)
+        uv.foreach_set("uv", co.ravel())
+
+
+def bake_character(src):
+    bpy.ops.wm.open_mainfile(filepath=src)
+    arm = next(o for o in bpy.data.objects if o.type == "ARMATURE")
+    arm.data.pose_position = "REST"
+    head = bpy.data.objects["bird_head"]
+    bpy.context.view_layer.update()
+    fix = Straighten(arm)
+    joints = _joints(arm, fix, head)
+
+    sc = bpy.context.scene
+    parts = {}
+    for src_name, name in PARTS.items():
+        o = bpy.data.objects[src_name]
+        for md in list(o.modifiers):
+            if md.type in ("PARTICLE_SYSTEM", "ARMATURE"):
+                o.modifiers.remove(md)
+            elif md.type == "SUBSURF":
+                md.levels = 2
+        dg = bpy.context.evaluated_depsgraph_get()
+        me = bpy.data.meshes.new_from_object(o.evaluated_get(dg))
+        me.transform(o.matrix_world)
+        part = bpy.data.objects.new(name, me)
+        sc.collection.objects.link(part)
+        # The picture's own map, to bake onto; the part's maps still
+        # what its materials read.
+        render = next(l for l in me.uv_layers if l.active_render)
+        atlas = me.uv_layers.new(name="atlas")
+        me.uv_layers.active = atlas
+        render.active_render = True
+        parts[name] = part
+    for o in [o for o in bpy.data.objects if o.type == "MESH" and o not in parts.values()]:
+        bpy.data.objects.remove(o, do_unlink=True)
+
+    # One picture for all: unwrapped together, the face given more room.
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in parts.values():
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = parts["owl_head"]
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.smart_project(angle_limit=math.radians(60), island_margin=0.004, scale_to_bounds=False)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    _atlas(parts)
+
+    # Baked from each part's own materials, as built (their projected
+    # feathers placed as they were drawn).
+    colour = bpy.data.images.new("owl_character_color", ATLAS, ATLAS)
+    normal = bpy.data.images.new("owl_character_normal", ATLAS, ATLAS)
+    normal.colorspace_settings.name = "Non-Color"
+    sc.render.engine = "CYCLES"
+    sc.cycles.device = "CPU"
+    sc.cycles.samples = 4
+    bk = sc.render.bake
+    bk.use_selected_to_active = False
+    bk.margin = 6
+    mats = {s.material for o in parts.values() for s in o.material_slots if s.material and s.material.use_nodes}
+    targets = []
+    for m in mats:
+        slot = m.node_tree.nodes.new("ShaderNodeTexImage")
+        m.node_tree.nodes.active = slot
+        targets.append(slot)
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in parts.values():
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = parts["owl_head"]
+    for what, im in (("NORMAL", normal), ("EMIT", colour)):
+        if what == "EMIT":
+            for m in mats:
+                _emission_of_colour(m)
+        for t in targets:
+            t.image = im
+        bpy.ops.object.bake(type=what, use_clear=True, normal_space="TANGENT")
+    _fill_misses(colour)
+    normal.scale(NORMALS, NORMALS)
+
+    # The game's material: the two pictures.
+    mat = bpy.data.materials.new("owl_character")
+    mat.use_nodes = True
+    nt = mat.node_tree
+    b = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    b.inputs["Roughness"].default_value = 0.85
+    col = nt.nodes.new("ShaderNodeTexImage")
+    col.image = colour
+    nt.links.new(col.outputs[0], b.inputs["Base Color"])
+    nrm = nt.nodes.new("ShaderNodeTexImage")
+    nrm.image = normal
+    nm = nt.nodes.new("ShaderNodeNormalMap")
+    nt.links.new(nrm.outputs[0], nm.inputs["Color"])
+    nt.links.new(nm.outputs[0], b.inputs["Normal"])
+    for im in (colour, normal):
+        im.pack()
+    for name, o in parts.items():
+        me = o.data
+        for layer_name in [l.name for l in me.uv_layers if l.name != "atlas"]:
+            me.uv_layers.remove(me.uv_layers[layer_name])
+        me.uv_layers["atlas"].name = "UVMap"
+        me.materials.clear()
+        me.materials.append(mat)
+        # Cut down to about TRIS (the picture's map kept), then the arms
+        # straightened (the pictures go with them).
+        have = sum(len(p.vertices) - 2 for p in me.polygons)
+        if have > TRIS[name]:
+            dec = o.modifiers.new("dec", "DECIMATE")
+            dec.ratio = TRIS[name] / have
+            bpy.context.view_layer.objects.active = o
+            bpy.ops.object.modifier_apply(modifier="dec")
+        for v in o.data.vertices:
+            v.co = fix(v.co)
+        o.data.update()
+        o.data.shade_smooth()
+    lows = parts
+
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in lows.values():
+        o.select_set(True)
+    os.makedirs(os.path.dirname(GLB), exist_ok=True)
+    bpy.ops.export_scene.gltf(filepath=GLB, export_format="GLB", use_selection=True,
+                              export_image_format="JPEG", export_jpeg_quality=88, export_vertex_color="NONE")
+    with open(JOINTS, "w") as fh:
+        json.dump({k: [[round(c, 5) for c in p] for p in v] if isinstance(v[0], list) else [round(c, 5) for c in v]
+                   for k, v in joints.items()}, fh, indent=1)
+    tris = {o.name: sum(len(p.vertices) - 2 for p in o.data.polygons) for o in lows.values()}
+    print("wrote", GLB, os.path.getsize(GLB) // 1024, "KB;", tris, sum(tris.values()), "triangles")
+
+
+# ---------------------------------------------------------------- bind
+
+FINGERS = ("thumb", "index", "middle", "ring", "pinky")
+# Each skeleton's names: its trunk, hips to head; a limb bone of side s
+# ("l"/"r"); a finger's i-th bone (1-4, the 4th its tip); the head's top.
+RIGS = {
+    "mixamo": {
+        "trunk": ["mixamorig:Hips", "mixamorig:Spine", "mixamorig:Spine1", "mixamorig:Spine2", "mixamorig:Neck",
+                  "mixamorig:Head"],
+        "limbs": {"clavicle": "Shoulder", "shoulder": "Arm", "elbow": "ForeArm", "wrist": "Hand",
+                  "thigh": "UpLeg", "knee": "Leg", "ankle": "Foot", "ball": "ToeBase", "toe": "Toe_End"},
+        "limb": lambda s, n: "mixamorig:%s%s" % ("Left" if s == "l" else "Right", n),
+        "finger": lambda s, f, i: "mixamorig:%sHand%s%d" % ("Left" if s == "l" else "Right", f.capitalize(), i),
+        "head_top": "mixamorig:HeadTop_End",
+    },
+    "ual": {
+        "trunk": ["pelvis", "spine_01", "spine_02", "spine_03", "neck_01", "Head"],
+        "limbs": {"clavicle": "clavicle", "shoulder": "upperarm", "elbow": "lowerarm", "wrist": "hand",
+                  "thigh": "thigh", "knee": "calf", "ankle": "foot", "ball": "ball", "toe": "ball_leaf"},
+        "limb": lambda s, n: "%s_%s" % (n, s),
+        "finger": lambda s, f, i: "%s_0%d_%s" % (f, i, s) if i < 4 else "%s_04_leaf_%s" % (f, s),
+        "head_top": None,
+    },
+}
+# Which bones each part is weighted from (by the joints they belong to).
+PART_JOINTS = {
+    "owl_jumper": {"trunk": True, "limbs": ("clavicle", "shoulder", "elbow")},
+    "owl_trousers": {"hips": True, "limbs": ("thigh", "knee")},
+    "owl_button": {"hips": True},
+    "owl_hands": {"limbs": ("elbow", "wrist"), "fingers": True},
+    "owl_feet": {"limbs": ("thigh", "knee", "ankle", "ball")},
+}
+# The ruff: on the knit it goes with the chest, up to the neck's edge
+# with the neck, under the head with the head (heights above the
+# jumper's neckline, owl units).
+RUFF_CHEST = (-0.002, 0.012)
+RUFF_HEAD = (0.02, 0.04)
+
+
+def _targets(arm, rig, joints):
+    """Each mapped bone's new head (world), the scale and offset the owl
+    is put on the skeleton with."""
+    mw = arm.matrix_world
+    bones = arm.data.bones
+    trunk = rig["trunk"]
+    hips = mw @ bones[trunk[0]].head_local
+    head = mw @ bones[trunk[-1]].head_local
+    owl_trunk = [Vector(p) for p in joints["trunk"]]
+    k = hips.z / owl_trunk[0].z
+    off = Vector((0.0, hips.y - owl_trunk[0].y * k, 0.0))
+
+    def place(p):
+        return Vector(p) * k + off
+
+    def mirror(p, s):
+        return Vector((p[0] if s == "l" else -p[0], p[1], p[2]))
+    out = {}
+    # The trunk: each bone as far up the owl's as it is up the skeleton's.
+    zs = [p.z for p in owl_trunk]
+    for name in trunk:
+        f = ((mw @ bones[name].head_local).z - hips.z) / (head.z - hips.z)
+        z = zs[0] + f * (zs[-1] - zs[0])
+        x = float(np.interp(z, zs, [p.x for p in owl_trunk]))
+        y = float(np.interp(z, zs, [p.y for p in owl_trunk]))
+        out[name] = place((x, y, z))
+    if rig["head_top"]:
+        out[rig["head_top"]] = place(joints["head_top"])
+    for s in ("l", "r"):
+        for joint, n in rig["limbs"].items():
+            out[rig["limb"](s, n)] = place(mirror(joints[joint], s))
+        for f in FINGERS:
+            for i in range(4):
+                out[rig["finger"](s, f, i + 1)] = place(mirror(joints[f][i], s))
+    return {n: p for n, p in out.items() if n in bones}, k, off
+
+
+def _chain_next(arm, name, targets):
+    """The bone that carries this one's chain on (the child nearest its
+    tail) - for the segment it's weighted along."""
+    b = arm.data.bones[name]
+    kids = [c for c in b.children if c.name in targets]
+    if not kids:
+        return None
+    return min(kids, key=lambda c: (c.head_local - b.tail_local).length).name
+
+
+def _refit(arm, targets):
+    """The skeleton's rest pose moved onto the owl: each mapped bone's head
+    where the owl's joint is, its axes and roll as they were (so a clip
+    turns it as it turned the original); the rest follow their nearest
+    moved parent."""
+    bpy.ops.object.select_all(action="DESELECT")
+    bpy.context.view_layer.objects.active = arm
+    arm.select_set(True)
+    bpy.ops.object.mode_set(mode="EDIT")
+    mw = arm.matrix_world
+    inv = mw.inverted()
+    eb = arm.data.edit_bones
+    old = {b.name: (mw @ b.head, mw @ b.tail) for b in eb}
+    for b in eb:
+        b.use_connect = False
+    heads = dict(targets)
+    for b in eb:
+        if b.name in heads:
+            continue
+        a = b.parent
+        while a is not None and a.name not in targets:
+            a = a.parent
+        if a is not None:
+            heads[b.name] = targets[a.name] + (old[b.name][0] - old[a.name][0])
+    for b in eb:
+        if b.name not in heads:
+            continue
+        h0, t0 = old[b.name]
+        nxt = next((c.name for c in b.children if c.name in heads and (old[c.name][0] - t0).length < 1e-4), None)
+        ratio = 1.0
+        if nxt is not None and (old[nxt][0] - h0).length > 1e-6:
+            ratio = (heads[nxt] - heads[b.name]).length / (old[nxt][0] - h0).length
+        d = t0 - h0
+        b.head = inv @ heads[b.name]
+        b.tail = inv @ (heads[b.name] + d * max(ratio, 0.05))
+    bpy.ops.object.mode_set(mode="OBJECT")
+    return heads
+
+
+def _weigh_heat(part, arm, names, heads, tails):
+    """Bone-heat weights for `part` from just the bones `names`, laid
+    along the owl's own limbs (a stand-in skeleton, used only for this)."""
+    data = bpy.data.armatures.new("weigh")
+    rig = bpy.data.objects.new("weigh", data)
+    bpy.context.scene.collection.objects.link(rig)
+    bpy.ops.object.select_all(action="DESELECT")
+    bpy.context.view_layer.objects.active = rig
+    rig.select_set(True)
+    bpy.ops.object.mode_set(mode="EDIT")
+    for n in names:
+        b = data.edit_bones.new(n)
+        b.head = heads[n]
+        b.tail = tails[n]
+    bpy.ops.object.mode_set(mode="OBJECT")
+    bpy.ops.object.select_all(action="DESELECT")
+    part.select_set(True)
+    rig.select_set(True)
+    bpy.context.view_layer.objects.active = rig
+    bpy.ops.object.parent_set(type="ARMATURE_AUTO")
+    # Anything the heat didn't reach: from its nearest bones.
+    segs = [(n, heads[n], tails[n]) for n in names]
+    for v in part.data.vertices:
+        if sum(g.weight for g in v.groups) > 1e-3:
+            continue
+        near = sorted((_seg_dist(v.co, a, b), n) for n, a, b in segs)[:2]
+        w = [1.0 / max(d, 1e-4) ** 4 for d, _ in near]
+        for (d, n), wi in zip(near, w):
+            part.vertex_groups[n].add([v.index], wi / sum(w), "REPLACE")
+    for md in [m for m in part.modifiers if m.type == "ARMATURE"]:
+        part.modifiers.remove(md)
+    part.parent = None
+    bpy.data.objects.remove(rig, do_unlink=True)
+
+
+def _seg_dist(p, a, b):
+    ab = b - a
+    t = 0.0 if ab.length_squared < 1e-12 else min(max((p - a).dot(ab) / ab.length_squared, 0.0), 1.0)
+    return (p - (a + ab * t)).length
+
+
+def _neckline(jumper):
+    bm = bmesh.new()
+    bm.from_mesh(jumper.data)
+    pts = np.array([v.co[:] for e in bm.edges if e.is_boundary for v in e.verts])
+    bm.free()
+    top = pts[:, 2].max()
+    pts = pts[pts[:, 2] > top - (top - pts[:, 2].min()) * 0.25]
+    pts = pts[np.abs(pts[:, 0]) < np.abs(pts[:, 0]).max() * 0.5]
+    cx, cy = 0.0, (pts[:, 1].min() + pts[:, 1].max()) / 2
+    ang = np.arctan2(pts[:, 0] - cx, -(pts[:, 1] - cy))
+    order = np.argsort(ang)
+    return (lambda a: float(np.interp(a, ang[order], pts[order, 2], period=2 * math.pi))), cx, cy
+
+
+def bind(arm, rig_name):
+    """The owl on `arm` (Mixamo's or UAL's skeleton, T-posed): returns its
+    one mesh, skinned to it; the skeleton's own meshes are taken off."""
+    rig = RIGS[rig_name]
+    with open(JOINTS) as fh:
+        joints = json.load(fh)
+    for o in [o for o in bpy.data.objects if o.type == "MESH" and (o.parent is arm or o.find_armature() is arm)]:
+        bpy.data.objects.remove(o, do_unlink=True)
+    before = set(bpy.data.objects)
+    # Whole again (the file splits them where the picture's map does) -
+    # weighted in pieces they'd tear apart at those seams.
+    bpy.ops.import_scene.gltf(filepath=GLB, merge_vertices=True)
+    parts = {o.name.split(".")[0]: o for o in set(bpy.data.objects) - before if o.type == "MESH"}
+    bpy.context.view_layer.update()
+    targets, k, off = _targets(arm, rig, joints)
+    for o in parts.values():
+        o.data.transform(o.matrix_world)
+        o.matrix_world = Matrix.Identity(4)
+        o.data.transform(Matrix.Translation(off) @ Matrix.Scale(k, 4))
+        o.data.update()
+    heads = _refit(arm, targets)
+    # The segments the parts are weighted along: each bone to the next
+    # joint of its chain (the head to its top; tips a little on).
+    tails = {}
+    for n in targets:
+        nxt = _chain_next(arm, n, targets)
+        if nxt is not None:
+            tails[n] = heads[nxt]
+        else:
+            b = arm.data.bones[n]
+            d = (arm.matrix_world @ b.tail_local) - (arm.matrix_world @ b.head_local)
+            tails[n] = heads[n] + d
+    head_bone = rig["trunk"][-1]
+    if rig["head_top"] is None:
+        tails[head_bone] = Vector(joints["head_top"]) * k + off
+
+    def pick(spec):
+        names = []
+        if spec.get("trunk"):
+            names += rig["trunk"][:-1]
+        if spec.get("hips"):
+            names.append(rig["trunk"][0])
+        for s in ("l", "r"):
+            for j in spec.get("limbs", ()):
+                names.append(rig["limb"](s, rig["limbs"][j]))
+            if spec.get("fingers"):
+                names += [rig["finger"](s, f, i) for f in FINGERS for i in (1, 2, 3)]
+        return [n for n in names if n in targets]
+    for name, spec in PART_JOINTS.items():
+        _weigh_heat(parts[name], arm, pick(spec), heads, tails)
+    # The head: all the head's.
+    hd = parts["owl_head"]
+    hd.vertex_groups.new(name=head_bone).add(range(len(hd.data.vertices)), 1.0, "REPLACE")
+    # The ruff: by how far above the jumper's neckline.
+    height, cx, cy = _neckline(parts["owl_jumper"])
+    ruff = parts["owl_ruff"]
+    chest, neck = rig["trunk"][3], rig["trunk"][4]
+    groups = {n: ruff.vertex_groups.new(name=n) for n in (chest, neck, head_bone)}
+    for v in ruff.data.vertices:
+        p = v.co
+        h = (p.z - height(math.atan2(p.x - cx, -(p.y - cy)))) / k
+        wc = 1.0 - _smooth(RUFF_CHEST[0], RUFF_CHEST[1], h)
+        wh = _smooth(RUFF_HEAD[0], RUFF_HEAD[1], h)
+        wn = max(1.0 - wc - wh, 0.0)
+        for n, w in ((chest, wc), (neck, wn), (head_bone, wh)):
+            if w > 1e-4:
+                groups[n].add([v.index], w, "REPLACE")
+    # One mesh, skinned to the skeleton.
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in parts.values():
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = hd
+    bpy.ops.object.join()
+    hd.name = "owl"
+    hd.data.name = "owl"
+    hd.data.validate()
+    bpy.ops.object.select_all(action="DESELECT")
+    hd.select_set(True)
+    arm.select_set(True)
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.parent_set(type="OBJECT", keep_transform=True)
+    md = hd.modifiers.new("Armature", "ARMATURE")
+    md.object = arm
+    return [hd]
+
+
+if __name__ == "__main__":
+    args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
+    if args and args[0] == "bake":
+        bake_character(os.path.abspath(args[1]))
