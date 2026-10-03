@@ -37,6 +37,7 @@ import bpy
 import bmesh  # noqa: E402 (after bpy, which provides it)
 import numpy as np
 from mathutils import Matrix, Vector
+from mathutils.bvhtree import BVHTree
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 # The finch's hips' height: the other animal people (build_animal_person.py)
@@ -697,10 +698,16 @@ def _bind_greybox(arm, rig, joints, parts, heads, tails, targets, k, off):
         fc.vertex_groups.new(name=head_bone).add(range(len(fc.data.vertices)), 1.0, "REPLACE")
     # The clothes move as the body under them does: each point takes the
     # weights of the nearest point of the body (so they stay over it).
+    tune = os.environ.get("GB_GARMENT_WEIGHTS", "1") != "0"
+    if tune and "owl_trousers" in parts:
+        # the shorts first: smoothed, and the body under them given the
+        # same weights, so the two move as one (see _shorts_and_body)
+        _copy_weights(body, parts["owl_trousers"])
+        _shorts_and_body(body, parts["owl_trousers"], rig, unit, k)
     for name in ("owl_jumper", "owl_trousers", "owl_button", "owl_ruff"):
-        if name in parts:
+        if name in parts and not (tune and name == "owl_trousers"):
             _copy_weights(body, parts[name])
-    if os.environ.get("GB_GARMENT_WEIGHTS", "1") != "0":
+    if tune:
         _garment_weights(parts, rig, joints, unit)
     return body
 
@@ -802,7 +809,7 @@ def _garment_weights(parts, rig, joints, unit):
                 [n for n in fingers if n.endswith("_" + side) or ("Left" if side == "l" else "Right") in n]
             q = Vector((abs(p.x), p.y, p.z))
             t = (q - sh).dot(ax) / reach
-            if t < 0.0:
+            if t < 0.0 and os.environ.get("GB_JUMPER_ARMFADE", "0") != "0":
                 # the body of it: the arms' pull fades out below the armpit
                 d = (q - sh).length
                 keep = 1.0 - _smooth(0.06, 0.14, d)
@@ -814,18 +821,51 @@ def _garment_weights(parts, rig, joints, unit):
                 _move(w, [limb(side, "clavicle")], spine + [pelvis], _smooth(hem + 0.06, hem, p.z))
         _set_weights(ob, ws)
         _smooth_weights(ob, int(os.environ.get("GB_SMOOTH_JUMPER", "0")))
-    if "owl_trousers" in parts:
-        ob = parts["owl_trousers"]
-        co = [unit(v.co) for v in ob.data.vertices]
-        low = min(p.z for p in co)
-        ws = _weights(ob)
-        for p, w in zip(co, ws):
-            side = "l" if p.x >= 0.0 else "r"
-            if p.z < low + 0.045:
-                # the turned-up hem: with the thigh
-                _move(w, [limb(side, "knee"), limb(side, "ankle")], limb(side, "thigh"))
-        _set_weights(ob, ws)
-        _smooth_weights(ob, int(os.environ.get("GB_SMOOTH_SHORTS", "0")))
+
+
+def _shorts_and_body(body, shorts, rig, unit, k):
+    """The shorts' weights smoothed (user request: the shorts stretched in
+    big patches - a bend spread over the cloth stretches it less), their
+    turned-up hems with the thighs alone; then the body under them given
+    the same weights, fading back to its own toward the hems and the
+    waistband, so the body moves with the cloth over it instead of out
+    through it (smoothing the shorts alone, the hips and crotch came
+    through). The tail's root keeps its own."""
+    limb = lambda s, j: rig["limb"](s, rig["limbs"][j])  # noqa: E731
+    co = [unit(v.co) for v in shorts.data.vertices]
+    low = min(p.z for p in co)
+    top = max(p.z for p in co)
+    ws = _weights(shorts)
+    for p, w in zip(co, ws):
+        side = "l" if p.x >= 0.0 else "r"
+        if p.z < low + 0.045:
+            _move(w, [limb(side, "knee"), limb(side, "ankle")], limb(side, "thigh"))
+    _set_weights(shorts, ws)
+    _smooth_weights(shorts, int(os.environ.get("GB_SMOOTH_SHORTS", "4")))
+    ws = _weights(shorts)
+    me = shorts.data
+    tree = BVHTree.FromPolygons([v.co for v in me.vertices], [list(p.vertices) for p in me.polygons])
+    polys = [list(p.vertices) for p in me.polygons]
+    bw = _weights(body)
+    for i, v in enumerate(body.data.vertices):
+        p = unit(v.co)
+        if p.z < low - 0.005 or p.z > top or any(n.startswith("tail_") for n in bw[i]):
+            continue
+        loc, nrm, fi, dist = tree.find_nearest(v.co)
+        if loc is None or dist / k > 0.03 or ((v.co - loc).dot(nrm) > 0.0 and dist / k > 0.002):
+            continue
+        b = _smooth(low, low + 0.03, p.z) * _smooth(top, top - 0.02, p.z)
+        if b <= 0.0:
+            continue
+        mix = {}
+        for j in polys[fi]:
+            for n, x in ws[j].items():
+                mix[n] = mix.get(n, 0.0) + x / len(polys[fi])
+        w = {n: x * (1.0 - b) for n, x in bw[i].items()}
+        for n, x in mix.items():
+            w[n] = w.get(n, 0.0) + x * b
+        bw[i] = w
+    _set_weights(body, bw)
 
 
 # A body point further than this from the tail's line (character units)
