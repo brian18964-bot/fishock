@@ -700,7 +700,132 @@ def _bind_greybox(arm, rig, joints, parts, heads, tails, targets, k, off):
     for name in ("owl_jumper", "owl_trousers", "owl_button", "owl_ruff"):
         if name in parts:
             _copy_weights(body, parts[name])
+    if os.environ.get("GB_GARMENT_WEIGHTS", "1") != "0":
+        _garment_weights(parts, rig, joints, unit)
     return body
+
+
+def _weights(ob):
+    """Each vertex's weights by group name."""
+    names = {g.index: g.name for g in ob.vertex_groups}
+    return [{names[g.group]: g.weight for g in v.groups if g.weight > 0.0} for v in ob.data.vertices]
+
+
+def _set_weights(ob, ws):
+    groups = {g.name: g for g in ob.vertex_groups}
+    for g in ob.vertex_groups:
+        g.remove(range(len(ob.data.vertices)))
+    for i, w in enumerate(ws):
+        tot = sum(w.values())
+        for n, x in w.items():
+            if x > 1e-4 and tot > 0.0:
+                groups[n].add([i], x / tot, "REPLACE")
+
+
+def _move(w, src, dst, share=1.0):
+    """`share` of the weight of bones `src` handed to `dst` (one bone, or
+    the vertex's own weights among `dst` bones, by their shares)."""
+    moved = 0.0
+    for n in src:
+        if n in w:
+            m = w[n] * share
+            w[n] -= m
+            moved += m
+    if moved <= 0.0:
+        return
+    if isinstance(dst, str):
+        w[dst] = w.get(dst, 0.0) + moved
+        return
+    have = {n: w[n] for n in dst if w.get(n, 0.0) > 0.0}
+    if not have:
+        have = {dst[0]: 1.0}
+    tot = sum(have.values())
+    for n, x in have.items():
+        w[n] = w.get(n, 0.0) + moved * x / tot
+
+
+def _smooth_weights(ob, repeat, factor=0.5):
+    """Every group's weights eased toward their neighbours' mean, `repeat`
+    times; then each vertex's summed to one."""
+    me = ob.data
+    n = len(me.vertices)
+    ev = np.zeros(len(me.edges) * 2, dtype=np.int64)
+    me.edges.foreach_get("vertices", ev)
+    ev = ev.reshape(-1, 2)
+    a = np.concatenate([ev[:, 0], ev[:, 1]])
+    b = np.concatenate([ev[:, 1], ev[:, 0]])
+    deg = np.bincount(a, minlength=n).astype(float)
+    names = [g.name for g in ob.vertex_groups]
+    W = np.zeros((n, len(names)))
+    for i, w in enumerate(_weights(ob)):
+        for k, x in w.items():
+            W[i, names.index(k)] = x
+    for _ in range(repeat):
+        acc = np.zeros_like(W)
+        np.add.at(acc, a, W[b])
+        mean = acc / np.maximum(deg, 1.0)[:, None]
+        W = np.where(deg[:, None] > 0, W * (1.0 - factor) + mean * factor, W)
+    _set_weights(ob, [{names[j]: W[i, j] for j in np.nonzero(W[i] > 1e-4)[0]} for i in range(n)])
+
+
+def _garment_weights(parts, rig, joints, unit):
+    """The clothes' weights, copied from the body, then set to move as
+    cloth does (user request: the jumper lifted whole in the run, the
+    waist left uncovered, the cuffs collapsed, the shorts stretched):
+    the jumper's body, away from the armpit,
+    goes with the spine, not the arms; its turned-back cuffs move with
+    the upper arm alone, as do the shorts' with the thigh; the shorts
+    ride on the hips and thighs, nothing higher; and the weights are
+    smoothed so a bend spreads over the cloth instead of creasing it.
+    (The jumper's hem keeps the thighs' share it copied: let go of them,
+    the shorts' fronts rose through it as a leg came up - measured in the
+    run, 43 mm deep.)"""
+    lr = ("l", "r")
+    limb = lambda s, j: rig["limb"](s, rig["limbs"][j])  # noqa: E731
+    trunk = list(rig["trunk"])
+    pelvis = trunk[0]
+    spine = trunk[1:-2]
+    legs = [limb(s, j) for s in lr for j in ("thigh", "knee", "ankle", "ball")]
+    fingers = [rig["finger"](s, f, i) for s in lr for f in FINGERS for i in (1, 2, 3)]
+    sh = Vector(joints["shoulder"])
+    el = Vector(joints["elbow"])
+    ax = (el - sh).normalized()
+    reach = (el - sh).length
+    if "owl_jumper" in parts:
+        ob = parts["owl_jumper"]
+        co = [unit(v.co) for v in ob.data.vertices]
+        hem = min(p.z for p in co)
+        ws = _weights(ob)
+        for p, w in zip(co, ws):
+            side = "l" if p.x >= 0.0 else "r"
+            arm = [limb(side, "shoulder"), limb(side, "elbow"), limb(side, "wrist")] + \
+                [n for n in fingers if n.endswith("_" + side) or ("Left" if side == "l" else "Right") in n]
+            q = Vector((abs(p.x), p.y, p.z))
+            t = (q - sh).dot(ax) / reach
+            if t < 0.0:
+                # the body of it: the arms' pull fades out below the armpit
+                d = (q - sh).length
+                keep = 1.0 - _smooth(0.06, 0.14, d)
+                _move(w, arm, spine + [pelvis], 1.0 - keep)
+            elif t > 0.45:
+                # the sleeve's end and cuff: with the upper arm only
+                _move(w, arm[1:], arm[0])
+            if p.z < hem + 0.06:
+                _move(w, [limb(side, "clavicle")], spine + [pelvis], _smooth(hem + 0.06, hem, p.z))
+        _set_weights(ob, ws)
+        _smooth_weights(ob, int(os.environ.get("GB_SMOOTH_JUMPER", "0")))
+    if "owl_trousers" in parts:
+        ob = parts["owl_trousers"]
+        co = [unit(v.co) for v in ob.data.vertices]
+        low = min(p.z for p in co)
+        ws = _weights(ob)
+        for p, w in zip(co, ws):
+            side = "l" if p.x >= 0.0 else "r"
+            if p.z < low + 0.045:
+                # the turned-up hem: with the thigh
+                _move(w, [limb(side, "knee"), limb(side, "ankle")], limb(side, "thigh"))
+        _set_weights(ob, ws)
+        _smooth_weights(ob, int(os.environ.get("GB_SMOOTH_SHORTS", "0")))
 
 
 # A body point further than this from the tail's line (character units)

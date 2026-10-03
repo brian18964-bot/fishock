@@ -185,7 +185,10 @@ def detail(animal, gb_dir, out, tag):
              ("head_side", head, (1, 0, 0.05), hs),
              ("hand_top", hand, (0, 0.001, 1), hsz), ("hand_front", hand, (0.15, -1, 0.2), hsz),
              ("foot_side", foot, (1, 0, 0.12), fs), ("foot_front", foot, (0.25, -1, 0.3), fs),
-             ("crotch_front", crotch, (0, -1, -0.12), 0.32), ("crotch_low", crotch, (0, -0.45, -1), 0.32)]
+             ("crotch_front", crotch, (0, -1, -0.12), 0.32), ("crotch_low", crotch, (0, -0.45, -1), 0.32),
+             ("neck_back", head + V((0, 0, -hs * 0.45)), (0, 1, 0.3), hs * 1.7),
+             ("cuff", V(j["shoulder"]).lerp(V(j["elbow"]), 0.64), (0.0, -0.25, 1.0), 0.16),
+             ("cuff_front", V(j["shoulder"]).lerp(V(j["elbow"]), 0.64), (0.0, -1.0, 0.1), 0.16)]
     if j.get("tail_box"):
         lo, hi = V(j["tail_box"][0]), V(j["tail_box"][1])
         root = V((0.0, j["tail_root_y"] + 0.02, lo.z + 0.03)) if not j.get("tail") else V(j["tail"][0])
@@ -734,6 +737,7 @@ def poses(animal, gb_dir, out, ual1, ual2):
     stats = {"covered_body": int(len(covered0["body"])), "covered_shorts": int(len(covered0["shorts"])),
              "tail_bones": tail_bones(arm)}
     only = os.environ.get("GB_TESTS")
+    flagged = {}
     for name in TESTS:
         if only and name not in only.split(","):
             continue
@@ -749,6 +753,14 @@ def poses(animal, gb_dir, out, ual1, ual2):
         sm = summary(res, co0, joints)
         stats[name] = {"body_through": sm["body"]["points"], "shorts_through": sm["shorts"]["points"],
                        "where": {r: v["points"] for r, v in sm["where"].items()}, "measured": sm}
+        flagged[name] = set(int(i) for i in res["body"])
+        if name == "head_turn" and "arms_down" in flagged:
+            # against the same stance without the turn (user request: the
+            # waist's own points aren't the neck's): what the turn adds
+            new = np.array(sorted(flagged["head_turn"] - flagged["arms_down"]), dtype=int)
+            gone = flagged["arms_down"] - flagged["head_turn"]
+            stats[name]["vs_arms_down"] = {"new": int(len(new)), "gone": int(len(gone)),
+                                           "new_where": regions(co0, new, joints)}
         mk = None
         if name != "bind" and (len(res["body"]) or len(res["shorts"])):
             pts = np.concatenate([res["co"][res["body"]], res["co"][res["shorts"]]])
