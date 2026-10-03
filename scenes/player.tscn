@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://scripts/player.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/lantern.gd" id="2"]
@@ -6,6 +6,7 @@
 [ext_resource type="Script" path="res://scripts/held_rod.gd" id="4"]
 [ext_resource type="Script" path="res://scripts/player_visual.gd" id="5"]
 [ext_resource type="Script" path="res://scripts/cast_guide.gd" id="6"]
+[ext_resource type="Script" path="res://scripts/body_front.gd" id="7"]
 
 [sub_resource type="CircleShape2D" id="RectangleShape2D_1"]
 radius = 7.0
@@ -32,6 +33,9 @@ color = Color(1, 1, 0.3, 1)
 [node name="Rod" type="Sprite2D" parent="."]
 position = Vector2(4, -2)
 script = ExtResource("4")
+
+[node name="BodyFront" type="Sprite2D" parent="."]
+script = ExtResource("7")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 position = Vector2(0, 8)

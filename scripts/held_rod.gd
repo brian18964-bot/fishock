@@ -28,6 +28,13 @@ const MAX_LEAN := 0.5
 ## offset: canvas center relative to the grip, (center_x, -center_y) *
 ## 27.108 for the shared 104x16 canvas (center 1.18, 0.06).
 const OFFSET := Vector2(31.99, -1.63)
+## (Candidate, user request round 4: the hand on the rod.) Where each
+## tier's hand goes along its rod (orig px past the model's origin): at
+## the reel seat - the lvl3-5 rods' origins are at their butts, the hand
+## held them by the very end - and where each one's visible tip is (the
+## line leaves there; lvl1-2 end at 56 of TIP_X's 82 px).
+const GRIP_SHIFT := [0.0, 0.0, 11.8, 7.5, 7.9]
+const TIP_END := [56.0, 56.0, 75.0, 75.5, 79.5]
 const TIERS := [
 	[preload("res://assets/sprites/rod/rod_lvl1_55deg_albedo.png"), preload("res://assets/sprites/rod/rod_lvl1_55deg_normal.png")],
 	[preload("res://assets/sprites/rod/rod_lvl2_55deg_albedo.png"), preload("res://assets/sprites/rod/rod_lvl2_55deg_normal.png")],
@@ -43,6 +50,10 @@ var _swing: float = 0.0
 var _swing_tween: Tween
 var _time: float = 0.0
 var _rod: Dictionary = ROD_DATA.data.rod
+## The sheet's pixels in front of the rod (BodyFront) when it has them:
+## the rod is then drawn over the body, and they over the rod.
+var _has_front: bool = ROD_DATA.data.has("front")
+var _tier := 0
 
 @onready var _body: PlayerVisual = _player.get_node("Body")
 
@@ -86,14 +97,13 @@ func _process(delta: float) -> void:
 	rotation = along.angle() + extra
 	# Foreshortened: pointing toward or away from the camera it's shorter.
 	scale = Vector2(along.length() / (TIP_X * Art.DENSITY), SPRITE_SCALE * THICKNESS_SCALE / Art.DENSITY)
-	z_index = -1 if cell[4] else 1
+	z_index = 1 if _has_front else (-1 if cell[4] else 1)
 
 
 ## Where the line leaves the rod: the far end of the sprite, so the line
 ## follows the rod through its swing and shudder.
 func tip_position() -> Vector2:
-	var half_width: float = texture.get_width() * 0.5 if texture != null else 0.0
-	return to_global(offset + Vector2(half_width - 2.0 * Art.DENSITY, 0.0))
+	return to_global(Vector2((TIP_END[_tier] - GRIP_SHIFT[_tier]) * Art.DENSITY, offset.y))
 
 
 ## User request: the rod is visibly yanked when a fish takes the bait.
@@ -115,3 +125,5 @@ func _apply_tier() -> void:
 	tex.diffuse_texture = TIERS[tier][0]
 	tex.normal_texture = TIERS[tier][1]
 	texture = tex
+	_tier = tier
+	offset = (OFFSET - Vector2(GRIP_SHIFT[tier], 0.0)) * Art.DENSITY
