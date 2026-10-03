@@ -318,22 +318,25 @@ def load_rod():
         if o.parent is None:
             o.parent = holder
     meshes = [o for o in objs if o.type == "MESH"]
-    # its grip's girth (the first 4% of its 6 m)
+    # its grip's girth, the median of the 30 cm above the grip point (the
+    # importer turns Godot's +Y, the rod's length, to Blender's +Z)
     vs = [o.matrix_world @ v.co for o in meshes for v in o.data.vertices]
-    grip = [v for v in vs if v.y < 0.24]
-    r = max(math.hypot(v.x, v.z) for v in grip) if grip else 0.03
+    grip = sorted(math.hypot(v.x, v.y) for v in vs if 0.0 <= v.z < 0.3)
+    r = grip[len(grip) // 2] if grip else 0.03
     return holder, meshes, r
 
 
 def place_rod(holder, grip, tip):
+    """The rod's model (its length along +Z as imported) from the grip
+    toward the tip, scaled to the grip-to-tip length (its 6 m)."""
     d = (tip - grip)
     L = d.length
-    y = d.normalized()
-    x = y.cross(Vector((0, 0, 1)))
+    z = d.normalized()
+    x = z.cross(Vector((0, 0, 1)))
     if x.length < 1e-6:
         x = Vector((1, 0, 0))
     x.normalize()
-    z = x.cross(y)
+    y = z.cross(x)
     m = Matrix((x, y, z)).transposed().to_4x4()
     m.translation = grip
     holder.matrix_world = m @ Matrix.Scale(L / 6.0, 4)
@@ -464,6 +467,64 @@ def sheet(animal, gb_dir, out, mixamo, tag="r3"):
     with open(os.path.join(out, "%s_%s_sheet.json" % (animal, tag)), "w") as fh:
         json.dump(report, fh, indent=1)
     summary_print(report)
+
+
+def rods(animal, gb_dir, out, mixamo, tag="r3"):
+    """The rod in the hand only (the sheet's five clips that hold it):
+    where it sits against the hand and body each frame, the clips' strips
+    with it, and the hand close up through the cast."""
+    import render_player as rp
+    files = (os.path.join(gb_dir, animal + "_greybox.glb"), os.path.join(gb_dir, animal + "_greybox.json"))
+    with open(files[1]) as fh:
+        joints = json.load(fh)
+    arm, _, src = rp.load(mixamo)
+    hips = (arm.matrix_world @ arm.data.bones["mixamorig:Hips"].head_local).z
+    k = oc._scale(hips, joints)
+    mesh = oc.bind(arm, "mixamo", animal, files=files)[0]
+    oc.close_stance(arm, "mixamo", list(src.values()), standing=[src["idle"]], character=animal, files=files)
+    clips = rp.build_clips(arm, src)
+    piv = gr.pivot_all([arm])
+    piv.scale = (1.0 / k,) * 3
+    gr.stage(res=360, samples=12, frame=1.45, look_z=0.55)
+    vg = {g.index: g.name for g in mesh.vertex_groups}
+    hand_names = {n for n in vg.values() if n.startswith("mixamorig:LeftHand")}
+    hand = np.array([any(vg[g.group] in hand_names and g.weight > 0.5 for g in v.groups) for v in mesh.data.vertices])
+    rod, rod_meshes, rod_r = load_rod()
+    r = rod_r * (rp.ROD_TIP / 6.0) / k
+    report = {"animal": animal, "grip_radius_mm": round(r * 1000, 1), "clips": {}}
+    cam = sprite_camera()
+    for name in ("cast", "hold", "reel", "fight", "hold_run"):
+        frames, paths = [], []
+        for f in range(1, rp.FRAMES + 1):
+            piv.rotation_euler = (0, 0, 0)
+            rp.rs.set_pose(clips[name], f)
+            bpy.context.view_layer.update()
+            co, faces, fz, vz = gr.zones(mesh)
+            grip, tip = rod_ends(arm, rp, name, f, k)
+            m = rod_and_hand(co, vz, hand, grip, tip, r, finger_tips(arm))
+            m["frame"] = f
+            frames.append(m)
+            place_rod(rod, grip, tip)
+            p = os.path.join(out, "_f%d.png" % f)
+            shoot(p, piv, FACINGS["down_right"])
+            paths.append(p)
+        strip(paths, os.path.join(out, "%s_%s_sheet_%s_strip.png" % (animal, tag, name)))
+        report["clips"][name] = frames
+        if name == "cast":
+            paths = []
+            for f in range(1, rp.FRAMES + 1):
+                rp.rs.set_pose(clips[name], f)
+                grip, tip = rod_ends(arm, rp, name, f, k)
+                place_rod(rod, grip, tip)
+                p = os.path.join(out, "_h%d.png" % f)
+                gr.close(p, grip + (tip - grip) * 0.12, Vector((0.5, -1.0, 0.35)), scale=0.42, res=300)
+                paths.append(p)
+            strip(paths, os.path.join(out, "%s_%s_sheet_cast_hand.png" % (animal, tag)))
+    with open(os.path.join(out, "%s_%s_rod.json" % (animal, tag)), "w") as fh:
+        json.dump(report, fh, indent=1)
+    for name, fr in report["clips"].items():
+        print(animal, name, "palm", [m["hand_points_inside_grip"] for m in fr], "other",
+              [m["other_points_inside_rod"] for m in fr])
 
 
 def rod_ends(arm, rp, name, f, k):
@@ -620,6 +681,8 @@ if __name__ == "__main__":
     os.makedirs(args[3], exist_ok=True)
     if cmd == "sheet":
         sheet(args[1], os.path.abspath(args[2]), os.path.abspath(args[3]), args[4], *(args[5:6] or []))
+    elif cmd == "rods":
+        rods(args[1], os.path.abspath(args[2]), os.path.abspath(args[3]), args[4], *(args[5:6] or []))
     elif cmd == "rigged":
         rigged(args[1], os.path.abspath(args[2]), os.path.abspath(args[3]), args[4], args[5])
     elif cmd == "camp":
