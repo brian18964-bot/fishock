@@ -52,15 +52,17 @@ SHOULDER_MAX = 30.0
 # The handle's axis may lie this far from across the knuckles (deg): past
 # it the fingers would run along it rather than round it.
 FIT_MAX = 45.0
-# Per character: the handle's place along the first finger bones (0 the
-# knuckles, 1 the next joint), its diagonal across the palm (deg; the
-# little finger's end toward the wrist), and how deep below the fingers
-# (x the finger's radius plus the handle's).
+# Per character (user request, round 5: each its own grip, not one 45
+# degree axis for all): the handle's axis in the palm (deg from across the
+# knuckles toward the fingers; None = fitted to the clips, up to FIT_MAX),
+# where it crosses the palm (x the first finger bone's length from the
+# knuckles; negative = into the palm), and the handle's radius (character
+# units).
 GRIP_TUNE = {
-    "owl": {"along": 0.45, "diagonal": 18.0, "depth": 1.0},
-    "dog": {"along": 0.50, "diagonal": 16.0, "depth": 1.0},
-    "cat": {"along": 0.50, "diagonal": 16.0, "depth": 1.0},
-    "bear": {"along": 0.55, "diagonal": 12.0, "depth": 1.0},
+    "owl": {"axis": 25.0, "palm_at": -0.20, "handle_r": 0.008},
+    "dog": {"axis": 20.0, "palm_at": -0.25, "handle_r": 0.008},
+    "cat": {"axis": 20.0, "palm_at": -0.25, "handle_r": 0.007},
+    "bear": {"axis": 15.0, "palm_at": -0.30, "handle_r": 0.009},
 }
 
 
@@ -143,27 +145,24 @@ class Grip:
             n = -n
         L1 = np.mean([np.linalg.norm(head(arm, "mixamorig:LeftHand%s2" % x) - roots[x]) for x in self.fingers])
         fr = np.mean([self.radius[x] for x in self.fingers])
-        self.handle_r = HANDLE_R * self._char_k(mesh)
-        dg = math.radians(tune["diagonal"])
-        g = a * math.cos(dg) + f * math.sin(dg)
-        g /= np.linalg.norm(g)
+        self.handle_r = tune.get("handle_r", HANDLE_R) * self._char_k(mesh)
         hm0 = np.array(hand_matrix(arm).to_3x3())
-        if hands:
+        if tune.get("axis") is None and hands:
             g = self.fit_axis(hands, hm0, a, f, n)
-        # The handle's place: across the palm under the fingers, where they
-        # wrap furthest round it (the palm and knuckles clear of it).
-        palm = [wrist + (knuck - wrist) * t for t in np.linspace(0.0, 1.0, 9)]
-        palm_r = max(fr, 0.6 * np.mean([np.linalg.norm(roots[x] - knuck) for x in self.fingers]))
-        best = None
-        for along in np.linspace(-0.2, 1.1, 14):
-            for depth in np.linspace(0.6, 2.2, 17):
-                c = knuck + f * L1 * along + n * (fr + self.handle_r) * depth
-                if min(_to_axis(p, c, g) for p in palm) < self.handle_r + palm_r * 0.85:
-                    continue
-                wrap = sum(self._wrap(x, c, g, n)[0] for x in self.fingers)
-                if best is None or wrap > best[0]:
-                    best = (wrap, c, along, depth)
-        _, c, self.along, self.depth = best
+        else:
+            dg = math.radians(tune.get("axis") or 0.0)
+            g = a * math.cos(dg) + f * math.sin(dg)
+            g /= np.linalg.norm(g)
+            Grip.fit_deg = tune.get("axis") or 0.0
+        # The handle across the palm: on the palm's side, where the palm
+        # meets it (the palm's own points just clear of it).
+        palm = self._palm_points(mesh)
+        c = knuck + f * L1 * tune["palm_at"]
+        for _ in range(400):
+            if min(_to_axis(p, c, g) for p in palm) >= self.handle_r:
+                break
+            c = c + n * self.handle_r * 0.04
+        self.palm_gap = float(min(_to_axis(p, c, g) for p in palm) - self.handle_r)
         self.rest = {"c": c, "g": g, "n": n, "f": f, "a": a}
         hm = hand_matrix(arm)
         inv = np.array(hm.inverted())
@@ -238,133 +237,189 @@ class Grip:
         pts = [head(self.arm, n) for n in names] + [tail(self.arm, names[-1])]
         return names, pts
 
-    def _wrap(self, f, c, g, n):
-        """Finger f curled round the handle (c, g) joint by joint, each as far
-        as it goes before its later joints would sink into the handle:
-        (how far round the handle it reaches (deg), its points, each joint's
-        turn)."""
-        names, pts = self._chain(f)
-        want = self.handle_r + self.radius[f]
-        pts = [p.copy() for p in pts]
-        if min(_to_axis(p, c, g) for p in pts) < want * 0.97:
-            return -1e3, pts, []
-        turns = []
-        for j in range(3):
-            seg = pts[j + 1] - pts[j]
-            axis = np.cross(seg, n)
-            axis /= np.linalg.norm(axis)
-            use = None
-            for deg in np.arange(0.0, CURL_MAX[j] + 0.1, 2.0):
-                R = _rot(axis, deg)
-                q = [pts[j] + R @ (p - pts[j]) for p in pts[j + 1:]]
-                chain = [pts[j]] + q
-                mids = [(x + y) * 0.5 for x, y in zip(chain[:-1], chain[1:])]
-                if min(_to_axis(p, c, g) for p in q) < want * 0.97 or \
-                        min(_to_axis(p, c, g) for p in mids) < want * 0.80:
+    def _palm_points(self, mesh):
+        """The palm's own vertices (mostly the hand bone's, not a finger's)."""
+        g = mesh.vertex_groups.get(HAND)
+        out = []
+        if g is None:
+            return out
+        for v in mesh.data.vertices:
+            for x in v.groups:
+                if x.group == g.index and x.weight > 0.6:
+                    out.append(_v(mesh.matrix_world @ v.co))
                     break
-                use = (deg, R, q)
-            if use is None:
-                turns.append((names[j], np.eye(3), pts[j].copy()))
-                continue
-            deg, R, q = use
-            pts[j + 1:] = q
-            turns.append((names[j], R, pts[j].copy()))
-        # how far round: the angle about the axis from knuckle to tip,
-        # counting only the joints close to the handle
-        def ang(p):
-            d = p - c
-            d = d - g * (d @ g)
-            return math.atan2(float(np.cross(n, d) @ g), float(-n @ d))
-        close = [p for p in pts if _to_axis(p, c, g) < want * 1.25]
-        if len(close) < 2:
-            return 0.0, pts, turns
-        a = [ang(p) for p in close]
-        span = abs(math.degrees(np.unwrap(a)[-1] - np.unwrap(a)[0]))
-        return span, pts, turns
+        return out[::3]
+
+    def _hinge(self, pts, n):
+        """A finger's bending axis: square to its first bone and the palm's
+        normal, turned so that bending moves it toward the palm."""
+        d = pts[1] - pts[0]
+        d /= np.linalg.norm(d)
+        h = np.cross(d, n)
+        h /= np.linalg.norm(h)
+        if (np.cross(h, d)) @ n < 0:
+            h = -h
+        return h
+
+    @staticmethod
+    def _bend(pts, h, angles):
+        """The chain's points with joint j turned angles[j] about h (each
+        turn carrying the rest of the finger)."""
+        out = [pts[0].copy()]
+        tot = 0.0
+        for j in range(len(pts) - 1):
+            tot += angles[j] if j < len(angles) else 0.0
+            out.append(out[-1] + _rot(h, tot) @ (pts[j + 1] - pts[j]))
+        return out
 
     def _curl(self, c, g, n):
-        """Each finger wrapped round the handle (_wrap), on the skeleton."""
-        self.wrapped = {}
-        self.wrap_deg = {}
+        """Each finger bent joint by joint about its own fixed axis so that
+        its joints lie along the handle's surface - wrapping round it as far
+        as the finger reaches, every joint bending (not stopping at the
+        first touch), nowhere sinking into the handle."""
+        from scipy.optimize import minimize
+        self.wrapped, self.wrap_deg, self.curl_deg, self.hinges = {}, {}, {}, {}
         for f in self.fingers:
-            span, pts, turns = self._wrap(f, c, g, n)
-            for name, R, about in turns:
-                turn_bone(self.arm, name, R, about)
-            self.wrapped[f] = pts
-            self.wrap_deg[f] = round(span, 1)
+            names, pts = self._chain(f)
+            want = self.handle_r + self.radius[f]
+            h = self._hinge(pts, n)
+
+            base_r = self.radius[f]
+
+            def cost(x):
+                q = self._bend(pts, h, x)
+                e = 0.0
+                for j, w in ((1, 0.5), (2, 1.0), (3, 1.0)):
+                    e += w * (_to_axis(q[j], c, g) - want) ** 2
+                for a_, b_ in zip(q[:-1], q[1:]):
+                    for t in (0.25, 0.5, 0.75, 1.0):
+                        p = a_ + (b_ - a_) * t
+                        # (the finger's root is in the palm, by the handle
+                        # already: only what's past it must keep off)
+                        if np.linalg.norm(p - q[0]) < base_r * 1.2:
+                            continue
+                        dd = _to_axis(p, c, g)
+                        if dd < want * 0.97:
+                            e += 50.0 * (want * 0.97 - dd) ** 2
+                return e / want ** 2
+
+            grid = []
+            for t1 in np.arange(0, CURL_MAX[0] + 1, 7.5):
+                for t2 in np.arange(0, CURL_MAX[1] + 1, 7.5):
+                    for t3 in np.arange(0, CURL_MAX[2] + 1, 7.5):
+                        grid.append((cost((t1, t2, t3)), (t1, t2, t3)))
+            grid.sort(key=lambda z: z[0])
+            best = None
+            for _, start in grid[:3]:
+                r = minimize(cost, np.array(start, float), method="Nelder-Mead",
+                         options={"xatol": 0.3, "fatol": 1e-9, "maxiter": 600})
+                xr = np.clip(r.x, 0.0, CURL_MAX)
+                fx = cost(xr)
+                if best is None or fx < best[0]:
+                    best = (fx, xr)
+            x = best[1]
+            q = self._bend(pts, h, x)
+            # on the skeleton, root first
+            tot = 0.0
+            for j in range(3):
+                turn_bone(self.arm, names[j], _rot(h, x[j]), head(self.arm, names[j]))
+                tot += x[j]
+            self.wrapped[f] = q
+            self.curl_deg[f] = [round(float(v), 1) for v in x]
+            self.hinges[f] = h
+            # how far round the handle its joints in touch reach (deg)
+            near = [p for p in q if _to_axis(p, c, g) < want * 1.15]
+            if len(near) >= 2:
+                ref = np.cross(g, h)
+
+                def ang(p):
+                    d = p - c
+                    d = d - g * (d @ g)
+                    return math.atan2(float(np.cross(ref, d) @ g), float(ref @ d))
+                a_ = np.unwrap([ang(p) for p in near])
+                self.wrap_deg[f] = round(abs(math.degrees(a_[-1] - a_[0])), 1)
+            else:
+                self.wrap_deg[f] = 0.0
 
     def _thumb(self, c, g, n):
-        """The thumb round the handle's other side, its tip on the index
-        finger's middle bone: its root bone turned (two ways), the others
-        curled, the best of a search."""
+        """The thumb on the handle's other side from the fingers, its tip
+        pressing on the index finger's middle bone from outside (the grip's
+        two sides): its root bone turned two ways, the others bent, the
+        best of a search; never into the handle, the fingers or the palm."""
+        from scipy.optimize import minimize
         arm = self.arm
         names = ["mixamorig:LeftHandThumb%d" % i for i in (1, 2, 3)]
         p0 = [head(arm, x) for x in names] + [tail(arm, names[-1])]
         tr = self.radius["Thumb"]
         want = self.handle_r + tr
-        idx = self.wrapped.get(self.fingers[0]) or self._chain(self.fingers[0])[1]
+        idx = self.wrapped[self.fingers[0]]
         fr = self.radius[self.fingers[0]]
-        # against the handle opposite the fingers' tips (pressing it into
-        # them), along it by the index finger
-        tip = idx[3]
-        opp = (tip - c) - g * ((tip - c) @ g)
-        opp = -opp / np.linalg.norm(opp)
-        side = (c + g * ((idx[0] - c) @ g))
-        target = side + opp * want
-        fing = [self.wrapped.get(f) or self._chain(f)[1] for f in self.fingers]
+        m = (idx[1] * 0.4 + idx[2] * 0.6)
+        out = (m - c) - g * ((m - c) @ g)
+        out /= np.linalg.norm(out)
+        target = m + out * (fr + tr) * 0.95
+        fing = [self.wrapped[f] for f in self.fingers]
+        ht = self._hinge(p0, n)
 
         def chain(x):
-            pts = [p.copy() for p in p0]
-            Rs = []
-            R = _rot(n, x[0]) @ _rot(g, x[1])
-            pts[1:] = [pts[0] + R @ (p - pts[0]) for p in pts[1:]]
-            Rs.append(R)
+            R = _rot(n, x[0]) @ _rot(ht, x[1])
+            pts = [p0[0]] + [p0[0] + R @ (p - p0[0]) for p in p0[1:]]
+            h2 = R @ ht
             for j, deg in ((1, x[2]), (2, x[3])):
-                seg = pts[j + 1] - pts[j]
-                axis = np.cross(seg, n)
-                axis /= np.linalg.norm(axis) + 1e-12
-                R = _rot(axis, deg)
-                pts[j + 1:] = [pts[j] + R @ (p - pts[j]) for p in pts[j + 1:]]
-                Rs.append(R)
-            return pts, Rs
+                Rj = _rot(h2, deg)
+                pts[j + 1:] = [pts[j] + Rj @ (p - pts[j]) for p in pts[j + 1:]]
+            return pts
 
-        def seg_d(p, a, b):
-            ab = b - a
-            t = np.clip(((p - a) @ ab) / (ab @ ab), 0, 1)
-            return np.linalg.norm(p - (a + t * ab))
+        def seg_d(p, a_, b_):
+            ab = b_ - a_
+            t = np.clip(((p - a_) @ ab) / (ab @ ab), 0, 1)
+            return np.linalg.norm(p - (a_ + t * ab))
 
         def cost(x):
-            pts, _ = chain(x)
-            e = np.linalg.norm(pts[3] - target) ** 2
-            for a, b in zip(pts[:-1], pts[1:]):
+            pts = chain(x)
+            e = np.linalg.norm(pts[3] - target) ** 2 / want ** 2
+            e += 0.3 * (_to_axis(pts[2], c, g) - want) ** 2 / want ** 2
+            for a_, b_ in zip(pts[:-1], pts[1:]):
                 for t in (0.25, 0.5, 0.75, 1.0):
-                    p = a + (b - a) * t
-                    d = _to_axis(p, c, g)
-                    if d < want * 0.95:
-                        e += (want * 0.95 - d) ** 2 * 40
+                    p = a_ + (b_ - a_) * t
+                    dd = _to_axis(p, c, g)
+                    if dd < want * 0.95:
+                        e += 300 * ((want * 0.95 - dd) / want) ** 2
                     for ch in fing:
                         for u, v in zip(ch[:-1], ch[1:]):
-                            dd = seg_d(p, u, v)
-                            if dd < (fr + tr) * 0.85:
-                                e += ((fr + tr) * 0.85 - dd) ** 2 * 20
-            return e + 1e-7 * (x @ x)
+                            d2 = seg_d(p, u, v)
+                            if d2 < (fr + tr) * 0.85:
+                                e += 100 * (((fr + tr) * 0.85 - d2) / want) ** 2
+            return e + 1e-6 * float(x @ x)
 
         best = None
-        for a0 in range(-75, 76, 15):
-            for a1 in range(-75, 76, 15):
-                for b in (10.0, 40.0):
+        for a0 in range(-90, 91, 15):
+            for a1 in range(-90, 91, 15):
+                for b in (10.0, 45.0):
                     x = np.array([a0, a1, b, b], float)
                     cst = cost(x)
                     if best is None or cst < best[0]:
                         best = (cst, x)
-        from scipy.optimize import minimize
-        r = minimize(cost, best[1], method="Nelder-Mead", options={"xatol": 0.2, "fatol": 1e-12, "maxiter": 1500})
-        x = np.clip(r.x, [-90, -90, 0, 0], [90, 90, 80, 80])
-        pts, Rs = chain(x)
-        for j, R in enumerate(Rs):
-            turn_bone(arm, names[j], R, head(arm, names[j]))
+        r = minimize(cost, best[1], method="Nelder-Mead", options={"xatol": 0.3, "fatol": 1e-10, "maxiter": 2000})
+        x = np.clip(r.x, [-120, -120, 0, 0], [120, 120, 90, 90])
+        R = _rot(n, x[0]) @ _rot(ht, x[1])
+        turn_bone(arm, names[0], R, p0[0])
+        h2 = R @ ht
+        turn_bone(arm, names[1], _rot(h2, x[2]), head(arm, names[1]))
+        turn_bone(arm, names[2], _rot(h2, x[3]), head(arm, names[2]))
+        pts = chain(x)
         self.thumb_fit = float(np.linalg.norm(pts[3] - target))
         self.thumb_angles = [round(float(v), 1) for v in x]
+        # which side of the handle the thumb's tip is on, against the
+        # fingers' tips (deg round the handle; ~180 = opposite)
+        ref = np.cross(g, self.hinges[self.fingers[0]])
+
+        def ang(p):
+            d = p - c
+            d = d - g * (d @ g)
+            return math.degrees(math.atan2(float(np.cross(ref, d) @ g), float(ref @ d)))
+        tips = np.mean([ang(ch[2]) for ch in fing])
+        self.thumb_opposite_deg = round(abs((ang(pts[3]) - tips + 180) % 360 - 180), 1)
 
     # ------------------------------------------------------------ per frame
 
@@ -389,19 +444,27 @@ class Grip:
             return out
         t = np.array(target, float)
         t /= np.linalg.norm(t)
-        for name, limit in ((HAND, WRIST_MAX), (FOREARM, FOREARM_MAX), (UPPER, SHOULDER_MAX)):
+        # shared out (user request, round 5: not the wrist first to its
+        # limit): the wrist takes half of what's wanted, the forearm most of
+        # what's left, the upper arm the rest - each within its limit - and
+        # the wrist then whatever is still over, if it has room
+        used = {HAND: 0.0, FOREARM: 0.0, UPPER: 0.0}
+        limits = {HAND: WRIST_MAX, FOREARM: FOREARM_MAX, UPPER: SHOULDER_MAX}
+        for name, share in ((HAND, 0.5), (FOREARM, 0.6), (UPPER, 1.0), (HAND, 1.0), (FOREARM, 1.0)):
             _, d = self.rod()
             ang = math.degrees(math.acos(max(-1.0, min(1.0, float(d @ t)))))
-            if ang < 0.5:
-                out[name] = 0.0
-                continue
+            if ang < 0.3:
+                break
             axis = np.cross(d, t)
             if np.linalg.norm(axis) < 1e-9:
-                continue
+                break
             axis /= np.linalg.norm(axis)
-            use = min(ang, limit)
+            use = min(ang * share, limits[name] - used[name])
+            if use <= 0.0:
+                continue
             turn_bone(self.arm, name, _rot(axis, use), head(self.arm, name))
-            out[name] = round(use, 1)
+            used[name] += use
+        out.update({k: round(v, 1) for k, v in used.items()})
         _, d = self.rod()
         out["left"] = round(math.degrees(math.acos(max(-1.0, min(1.0, float(d @ t))))), 1)
         return out

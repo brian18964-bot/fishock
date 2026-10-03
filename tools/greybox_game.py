@@ -144,6 +144,18 @@ class Rest:
         cov = set(np.asarray(self.covered["body"]).tolist())
         self.beyond = np.array(sorted(set(body[inj | intr].tolist()) - cov), dtype=int)
         self.beyond_where = gr.regions(co, self.beyond, joints) if len(self.beyond) else {}
+        # the clothes' real openings: their rims (edges of one face only),
+        # where a body point may come out without coming through
+        import collections
+        cnt = collections.Counter()
+        for fc, z in zip(faces, fz):
+            if z in (KNIT, CLOTH):
+                for i in range(len(fc)):
+                    cnt[tuple(sorted((fc[i], fc[(i + 1) % len(fc)])))] += 1
+        self.rims = np.array(sorted({v for e, n_ in cnt.items() if n_ == 1 for v in e}), dtype=int)
+        # tiny faces at rest (their stretch ratio means nothing): under a
+        # hundredth of the clothes' median face
+        self.tiny_area = float(np.median(self.area[np.isin(self.tri_z, (KNIT, CLOTH))])) * 0.01
 
     def cuff_bone(self, side):
         return self.bones[1] if side == "l" else self.bones[2]
@@ -225,6 +237,7 @@ def measure(rest, looks):
     # crossing triangles
     bt = BVHTree.FromPolygons([Vector(c) for c in co], [f for f, z in zip(rest.faces, rest.fz) if z in BODY])
     gt = BVHTree.FromPolygons([Vector(c) for c in co], [f for f, z in zip(rest.faces, rest.fz) if z in (KNIT, CLOTH)])
+    out["blind"] = blind_check(rest, co, looks)
     cross = {a for a, b in bt.overlap(gt)}
     new = sorted(cross - rest.cross0)
     out["crossing"] = len(cross)
@@ -233,6 +246,58 @@ def measure(rest, looks):
     out["crossing_new_where"] = gr.regions(rest.co, np.array([rest.body_faces[i][0] for i in new], dtype=int),
                                            rest.joints) if new else {}
     return out, res, co
+
+
+# A body point out of the clothes this close to an opening's rim (m) came
+# out of the opening, not through the cloth.
+RIM_NEAR = 0.015
+
+
+def blind_check(rest, co, looks):
+    """The points the 3.5 cm reach leaves out (inside the clothes at rest,
+    further than that from them), checked too (user request, round 5): out
+    of both garments now - by an opening (within RIM_NEAR of a rim) or
+    through the cloth - where, how deep and how many the game's cameras see."""
+    if not len(rest.beyond):
+        return {"checked": 0, "through": 0, "by_opening": 0}
+    faces, fz = rest.faces, rest.fz
+    pts = co[rest.beyond]
+    ins = gr.inside(co, faces, fz, KNIT, pts) | gr.inside(co, faces, fz, CLOTH, pts)
+    out_idx = rest.beyond[~ins]
+    res = {"checked": int(len(rest.beyond)), "through": 0, "by_opening": 0}
+    if not len(out_idx):
+        return res
+    from scipy.spatial import cKDTree
+    rim = cKDTree(co[rest.rims])
+    d, _ = rim.query(co[out_idx])
+    thr = out_idx[d > RIM_NEAR]
+    res["by_opening"] = int((d <= RIM_NEAR).sum())
+    res["through"] = int(len(thr))
+    if len(thr):
+        sel = [f for f, z in zip(faces, fz) if z in (KNIT, CLOTH)]
+        tree = BVHTree.FromPolygons([Vector(c) for c in co], sel, all_triangles=False)
+        depth = [tree.find_nearest(Vector(co[i]))[3] for i in thr]
+        res["through_where"] = gr.regions(rest.co, thr, rest.joints)
+        res["through_depth_max_mm"] = round(float(max(depth)) * 1000, 1)
+        allt = BVHTree.FromPolygons([Vector(c) for c in co], rest.faces, all_triangles=False)
+        nm = gr.NORMALS["n"]
+        seen = 0
+        for name, (kind, v) in looks.items():
+            n_ = 0
+            for i in thr:
+                p = Vector(co[i])
+                dv = Vector(v) if kind == "dir" else (Vector(v) - p)
+                if dv.length < 1e-9:
+                    continue
+                dv.normalize()
+                if Vector(nm[i]).dot(dv) <= 0.0:
+                    continue
+                if allt.ray_cast(p + dv * 2e-4, dv)[0] is None:
+                    n_ += 1
+            seen = max(seen, n_)
+        res["through_seen_max"] = seen
+        res["through_points"] = [int(i) for i in thr[:400]]
+    return res
 
 
 def cloth(rest, hem, waist, co, mats):
@@ -269,8 +334,26 @@ def cloth(rest, hem, waist, co, mats):
         # stretched past 25% is not how far the most stretched part goes)
         out["%s_area_share_stretched_over_25pct" % name] = round(float(w[ratio > 1.25].sum()), 4)
         out["%s_area_share_squeezed_over_25pct" % name] = round(float(w[ratio < 0.75].sum()), 4)
+        # (per face, not weighted by area)
         out["%s_stretch_p95" % name] = round(float(np.percentile(ratio, 95)), 3)
+        # (weighted by area: the stretch 95% of the cloth's surface is under)
+        order = np.argsort(ratio)
+        cw = np.cumsum(w[order])
+        out["%s_stretch_p95_area" % name] = round(float(ratio[order][np.searchsorted(cw, 0.95)]), 3)
         out["%s_stretch_max" % name] = round(float(ratio.max()), 3)
+        # the tiny faces (rest area under rest.tiny_area): kept apart, not
+        # dropped - how many, how much cloth, the most stretched of them and
+        # the most stretched of the rest, and where each is
+        tiny = rest.area[m] < rest.tiny_area
+        tri = rest.tri[m]
+        out["%s_tiny_faces" % name] = int(tiny.sum())
+        out["%s_tiny_area_share" % name] = round(float(w[tiny].sum()), 6)
+        for key, sel in (("tiny", tiny), ("rest", ~tiny)):
+            if sel.any():
+                k = int(np.argmax(np.where(sel, ratio, -1.0)))
+                out["%s_stretch_max_%s" % (name, key)] = round(float(ratio[k]), 3)
+                out["%s_stretch_max_%s_at" % (name, key)] = [round(float(v), 4) for v in rest.co[tri[k]].mean(axis=0)]
+                out["%s_stretch_max_%s_rest_mm2" % (name, key)] = round(float(rest.area[m][k]) * 1e6, 4)
     return out
 
 

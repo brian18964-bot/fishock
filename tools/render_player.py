@@ -240,11 +240,65 @@ def back_rod_local(arm):
 GRIP_SIDE_STEP = 8.0
 GRIP_SIDE_MAX = 65.0
 GRIP_BONES = ("mixamorig:LeftArm", "mixamorig:LeftForeArm", "mixamorig:LeftHand")
-# The drawn rod's width on the sheet (orig px, held_rod.gd's
-# THICKNESS_SCALE included) and how far its sprite reaches behind the
-# grip (the lvl1 rod's butt: 16 of its 82 px).
-ROD_DRAWN_WIDTH = 3.2
-ROD_BUTT = 0.2
+# The rods as the game draws them (scripts/held_rod.gd): each tier's
+# sprite, its canvas centre from the grip (OFFSET, orig px), the tier's
+# grip moved along it to the reel seat (GRIP_SHIFT, the candidate's), the
+# sprite's grip-to-tip length the rod data's length stands for (TIP_X)
+# and its thickness on screen (SPRITE_SCALE x THICKNESS_SCALE). The
+# pixels in front of the rod are found over all five tiers' outlines -
+# reel and butt included - so the one front layer serves whichever rod.
+ROD_SPRITES = [os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "sprites", "rod",
+                            "rod_lvl%d_55deg_albedo.png" % t) for t in range(1, 6)]
+ROD_OFFSET = (31.99, -1.63)
+ROD_GRIP_SHIFT = [0.0, 0.0, 11.8, 7.5, 7.9]
+ROD_TIP_X = 82.0
+ROD_THICK = 0.5 * 1.6
+_ROD_TEXELS = []
+
+
+def rod_texels():
+    """Each tier's opaque texels, in its node's local px (grip at 0)."""
+    if not _ROD_TEXELS:
+        for t, path in enumerate(ROD_SPRITES):
+            a = np.asarray(Image.open(path).convert("RGBA"))[..., 3]
+            H, W = a.shape
+            ys, xs = np.nonzero(a > 60)
+            u = xs + 0.5 - W / 2.0
+            v = ys + 0.5 - H / 2.0
+            ox = (ROD_OFFSET[0] - ROD_GRIP_SHIFT[t]) * 2.0
+            oy = ROD_OFFSET[1] * 2.0
+            _ROD_TEXELS.append(np.stack([u + ox, v + oy], axis=1))
+    return _ROD_TEXELS
+
+
+def rod_footprint(grip_px, tip_px, size):
+    """Where any tier's rod covers this cell's picture (render px): each
+    texel placed as held_rod.gd places it, then a pixel's grow."""
+    from scipy.ndimage import binary_dilation
+    W, H = size
+    g = np.asarray(grip_px, float)
+    al = np.asarray(tip_px, float) - g
+    L = float(np.hypot(*al))
+    mask = np.zeros((H, W), bool)
+    if L < 1e-6:
+        return mask
+    cth, sth = al / L
+    # local px -> render px: scale x by L / (2 TIP_X) (the sprite's 2x
+    # texels to the rod data's length), y as held_rod.gd's scale.y to orig
+    # px, then the density
+    for tex in rod_texels():
+        x = tex[:, 0] * (L / (ROD_TIP_X * 2.0))
+        y = tex[:, 1] * ROD_THICK / 2.0 * RENDER_D[0]  # held_rod: / Art.DENSITY to orig px
+        px = g[0] + x * cth - y * sth
+        py = g[1] + x * sth + y * cth
+        i = np.round(px).astype(int)
+        j = np.round(py).astype(int)
+        ok = (i >= 0) & (i < W) & (j >= 0) & (j < H)
+        mask[j[ok], i[ok]] = True
+    return binary_dilation(mask, iterations=1)
+
+
+RENDER_D = [2]
 
 
 def rod_target(name, f, side=ROD_SIDE):
@@ -319,16 +373,15 @@ def front_mask(mesh, cam, size, grip, tip, d):
     character, nearer than the rod's axis there."""
     scene = bpy.context.scene
     W, H = size
+    RENDER_D[0] = d
     gx, gy, _ = [v * k for v, k in zip(world_to_camera_view(scene, cam, grip), (W, H, 1))]
     tx, ty, _ = [v * k for v, k in zip(world_to_camera_view(scene, cam, tip), (W, H, 1))]
     gy, ty = H - gy, H - ty
-    a = np.array([gx, gy]) + (np.array([gx, gy]) - np.array([tx, ty])) * ROD_BUTT
+    a = np.array([gx, gy])
     b = np.array([tx, ty])
-    half = ROD_DRAWN_WIDTH * d * 0.5 + 1.0
-    x0, x1 = int(max(0, min(a[0], b[0]) - half)), int(min(W - 1, max(a[0], b[0]) + half))
-    y0, y1 = int(max(0, min(a[1], b[1]) - half)), int(min(H - 1, max(a[1], b[1]) + half))
+    foot = rod_footprint(a, b, (W, H))
     mask = np.zeros((H, W), bool)
-    if x1 <= x0 or y1 <= y0:
+    if not foot.any():
         return mask
     mw_c = cam.matrix_world
     fwd = (mw_c.to_3x3() @ Vector((0, 0, -1))).normalized()
@@ -342,22 +395,19 @@ def front_mask(mesh, cam, size, grip, tip, d):
     ab = b - a
     L2 = float(ab @ ab) or 1.0
     g3, t3 = Vector(grip), Vector(tip)
-    butt3 = g3 + (g3 - t3) * ROD_BUTT
     dir_l = (inv3 @ fwd).normalized()
-    for py in range(y0, y1 + 1):
-        for px in range(x0, x1 + 1):
-            q = np.array([px + 0.5, py + 0.5])
-            t = float(np.clip(((q - a) @ ab) / L2, 0.0, 1.0))
-            if np.linalg.norm(q - (a + ab * t)) > half:
-                continue
-            o = mw_c.translation + right * ((q[0] / W - 0.5) * sw) + up * ((0.5 - q[1] / H) * sh)
-            hit, _, _, _ = bvh.ray_cast(inv @ o, dir_l)
-            if hit is None:
-                continue
-            depth = ((mw @ hit) - o).dot(fwd)
-            on_rod = butt3 + (t3 - butt3) * t
-            if depth < (on_rod - o).dot(fwd):
-                mask[py, px] = True
+    for py, px in zip(*np.nonzero(foot)):
+        q = np.array([px + 0.5, py + 0.5])
+        # (the rod's line runs on past the grip, for the butt)
+        t = float(((q - a) @ ab) / L2)
+        o = mw_c.translation + right * ((q[0] / W - 0.5) * sw) + up * ((0.5 - q[1] / H) * sh)
+        hit, _, _, _ = bvh.ray_cast(inv @ o, dir_l)
+        if hit is None:
+            continue
+        depth = ((mw @ hit) - o).dot(fwd)
+        on_rod = g3 + (t3 - g3) * t
+        if depth < (on_rod - o).dot(fwd):
+            mask[py, px] = True
     return mask
 
 

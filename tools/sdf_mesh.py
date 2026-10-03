@@ -554,6 +554,53 @@ def drop_crumbs(verts, faces, keep_frac=0.002):
     return verts[used], remap[faces]
 
 
+def tidy_labels(me, idx, passes=2, min_island=12):
+    """The faces' zones with their edges cleaned (user request, round 4:
+    broken flecks along the pads and claws): each face a couple of times
+    takes the zone most of its neighbours have, where they agree (the
+    single-face teeth of the boundary go); then any island of a zone under
+    `min_island` faces joins the zone round it."""
+    import collections
+    ef = collections.defaultdict(list)
+    for p in me.polygons:
+        for ek in p.edge_keys:
+            ef[ek].append(p.index)
+    nbr = [[] for _ in range(len(idx))]
+    for fs in ef.values():
+        if len(fs) == 2:
+            nbr[fs[0]].append(fs[1])
+            nbr[fs[1]].append(fs[0])
+    idx = idx.copy()
+    for _ in range(passes):
+        new = idx.copy()
+        for f, ns in enumerate(nbr):
+            if not ns:
+                continue
+            c = collections.Counter(idx[g] for g in ns)
+            z, n = c.most_common(1)[0]
+            if z != idx[f] and n * 2 > len(ns):
+                new[f] = z
+        idx = new
+    seen = np.zeros(len(idx), bool)
+    for s in range(len(idx)):
+        if seen[s]:
+            continue
+        st, comp = [s], []
+        seen[s] = True
+        while st:
+            f = st.pop()
+            comp.append(f)
+            for g in nbr[f]:
+                if not seen[g] and idx[g] == idx[f]:
+                    seen[g] = True
+                    st.append(g)
+        if len(comp) < min_island:
+            out = collections.Counter(idx[g] for f in comp for g in nbr[f] if idx[g] != idx[s])
+            if out:
+                idx[comp] = out.most_common(1)[0][0]
+    return idx
+
+
 def mesh(name, node, voxel=0.0025, bounds=None, materials=None, labels=None, smooth_iters=0, crumbs=True):
     """A Blender object of node's surface. `labels` [(material index,
     node)]: a face takes the first whose node is at its centre (within a
@@ -582,6 +629,7 @@ def mesh(name, node, voxel=0.0025, bounds=None, materials=None, labels=None, smo
             hit = (~done) & (d < voxel * 1.0)
             idx[hit] = mi
             done |= hit
+        idx = tidy_labels(me, idx)
         me.polygons.foreach_set("material_index", idx)
     me.polygons.foreach_set("use_smooth", [True] * len(me.polygons))
     if smooth_iters:
