@@ -441,7 +441,7 @@ def sheet(animal, gb_dir, out, mixamo, tag="r3"):
                 place_rod(rod, grip, tip)
                 for o in rod_meshes:
                     o.hide_render = False
-            p = os.path.join(out, "_f%d.png" % f)
+            p = os.path.join(out, "_%s_f%d.png" % (animal, f))
             shoot(p, piv, FACINGS["down_right"])
             paths.append(p)
         strip(paths, os.path.join(out, "%s_%s_sheet_%s_strip.png" % (animal, tag, name)))
@@ -457,7 +457,7 @@ def sheet(animal, gb_dir, out, mixamo, tag="r3"):
                 place_rod(rod, grip, tip)
                 for o in rod_meshes:
                     o.hide_render = False
-                p = os.path.join(out, "_h%d.png" % f)
+                p = os.path.join(out, "_%s_h%d.png" % (animal, f))
                 d = Vector((0.5, -1.0, 0.35))
                 gr.close(p, grip, d, scale=0.30, res=300)
                 paths.append(p)
@@ -505,7 +505,7 @@ def rods(animal, gb_dir, out, mixamo, tag="r3"):
             m["frame"] = f
             frames.append(m)
             place_rod(rod, grip, tip)
-            p = os.path.join(out, "_f%d.png" % f)
+            p = os.path.join(out, "_%s_f%d.png" % (animal, f))
             shoot(p, piv, FACINGS["down_right"])
             paths.append(p)
         strip(paths, os.path.join(out, "%s_%s_sheet_%s_strip.png" % (animal, tag, name)))
@@ -516,7 +516,7 @@ def rods(animal, gb_dir, out, mixamo, tag="r3"):
                 rp.rs.set_pose(clips[name], f)
                 grip, tip = rod_ends(arm, rp, name, f, k)
                 place_rod(rod, grip, tip)
-                p = os.path.join(out, "_h%d.png" % f)
+                p = os.path.join(out, "_%s_h%d.png" % (animal, f))
                 gr.close(p, grip + (tip - grip) * 0.12, Vector((0.5, -1.0, 0.35)), scale=0.42, res=300)
                 paths.append(p)
             strip(paths, os.path.join(out, "%s_%s_sheet_cast_hand.png" % (animal, tag)))
