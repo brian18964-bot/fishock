@@ -53,7 +53,8 @@ def materials(animal):
         m = bpy.data.materials.new("col_" + z)
         m.use_nodes = True
         b = next(n for n in m.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
-        b.inputs["Base Color"].default_value = (*rgb, 1.0)
+        # (the colours above are as seen - sRGB; Blender's are linear)
+        b.inputs["Base Color"].default_value = (*(c ** 2.2 for c in rgb), 1.0)
         b.inputs["Roughness"].default_value = rough
         for name, v in (("Sheen Weight", sheen), ("Sheen Roughness", 0.6)):
             if name in b.inputs:
