@@ -26,16 +26,24 @@ Measured for each frame, each apart:
   cloth     the clothes' own deformation: how far the jumper's hem
             overlaps the shorts' waistband all round (and the least,
             where), how far the hem has risen against the hips, each
-            turned-back cuff's cross-section against its rest, and the
+            turned-back cuff's cross-section against its rest, the
             share of the shorts' and the jumper's surface stretched or
-            squeezed by more than a quarter;
+            squeezed by more than a quarter (area_share_*), and apart
+            from it how far the most stretched part goes (stretch_p95,
+            stretch_max: a face's area over its rest area);
   crossing  body triangles crossing the clothes' triangles (all of the
-            body, openings included), against the bind pose's own.
+            body, openings included): the count, and against the bind
+            pose's own which are new (and where) and which have gone -
+            new ones never netted against gone ones.
+The body points inside the clothes but past the 3.5 cm reach (never
+checked - "inside_beyond_reach") are listed by region and marked on the
+bind pose (ANIMAL_TAG_blind_front/back.png).
 
     bpyenv/bin/python tools/greybox_game.py -- sheet ANIMAL GB_DIR OUT_DIR MIXAMO_DIR [TAG]
     bpyenv/bin/python tools/greybox_game.py -- camp ANIMAL GB_DIR OUT_DIR UAL1.glb UAL2.glb [TAG]
 (GB_GARMENT_WEIGHTS=0 binds the clothes with the body's weights as
-copied, unadjusted - the before of the comparison.)
+copied, unadjusted - the before of the comparison; GB_GRIP=1 measures the
+sheet with the candidate's hand on the rod, render_player.py --grip.)
 """
 import json
 import math
@@ -120,15 +128,22 @@ class Rest:
         pel = self.mat[bones[0]].translation
         self.pelvis_xy = np.array([pel.x, pel.y])
         self.cuff_rest = {s: cross_section(co[i], self.mat[self.cuff_bone(s)]) for s, i in self.cuffs.items()}
-        bt = BVHTree.FromPolygons([Vector(c) for c in co], [f for f, z in zip(faces, fz) if z in BODY])
+        self.body_faces = [f for f, z in zip(faces, fz) if z in BODY]
+        bt = BVHTree.FromPolygons([Vector(c) for c in co], self.body_faces)
         gt = BVHTree.FromPolygons([Vector(c) for c in co], [f for f, z in zip(faces, fz) if z in (KNIT, CLOTH)])
-        self.crossing0 = len({a for a, b in bt.overlap(gt)})
+        # which body triangles cross the clothes at the bind pose (a frame's
+        # new crossings are told from these, not netted against them)
+        self.cross0 = {a for a, b in bt.overlap(gt)}
+        self.crossing0 = len(self.cross0)
         # the 3.5 cm reach of "covered": the body's points inside the clothes
-        # but further than that from them (never checked)
+        # but further than that from them (never checked) - and where they are
         body = np.where(np.isin(vz, BODY))[0]
         inj = gr.inside(co, faces, fz, KNIT, co[body])
         intr = gr.inside(co, faces, fz, CLOTH, co[body])
         self.inside_all = int((inj | intr).sum())
+        cov = set(np.asarray(self.covered["body"]).tolist())
+        self.beyond = np.array(sorted(set(body[inj | intr].tolist()) - cov), dtype=int)
+        self.beyond_where = gr.regions(co, self.beyond, joints) if len(self.beyond) else {}
 
     def cuff_bone(self, side):
         return self.bones[1] if side == "l" else self.bones[2]
@@ -210,7 +225,13 @@ def measure(rest, looks):
     # crossing triangles
     bt = BVHTree.FromPolygons([Vector(c) for c in co], [f for f, z in zip(rest.faces, rest.fz) if z in BODY])
     gt = BVHTree.FromPolygons([Vector(c) for c in co], [f for f, z in zip(rest.faces, rest.fz) if z in (KNIT, CLOTH)])
-    out["crossing"] = len({a for a, b in bt.overlap(gt)})
+    cross = {a for a, b in bt.overlap(gt)}
+    new = sorted(cross - rest.cross0)
+    out["crossing"] = len(cross)
+    out["crossing_new"] = len(new)
+    out["crossing_gone"] = len(rest.cross0 - cross)
+    out["crossing_new_where"] = gr.regions(rest.co, np.array([rest.body_faces[i][0] for i in new], dtype=int),
+                                           rest.joints) if new else {}
     return out, res, co
 
 
@@ -244,9 +265,12 @@ def cloth(rest, hem, waist, co, mats):
         m = rest.tri_z == zone
         ratio = area[m] / np.maximum(rest.area[m], 1e-12)
         w = rest.area[m] / rest.area[m].sum()
-        out["%s_stretched" % name] = round(float(w[ratio > 1.25].sum()), 4)
-        out["%s_squeezed" % name] = round(float(w[ratio < 0.75].sum()), 4)
+        # (named apart, user request round 4: the share of the area
+        # stretched past 25% is not how far the most stretched part goes)
+        out["%s_area_share_stretched_over_25pct" % name] = round(float(w[ratio > 1.25].sum()), 4)
+        out["%s_area_share_squeezed_over_25pct" % name] = round(float(w[ratio < 0.75].sum()), 4)
         out["%s_stretch_p95" % name] = round(float(np.percentile(ratio, 95)), 3)
+        out["%s_stretch_max" % name] = round(float(ratio.max()), 3)
     return out
 
 
@@ -376,6 +400,10 @@ def sheet(animal, gb_dir, out, mixamo, tag="r3"):
     mesh = oc.bind(arm, "mixamo", animal, files=files)[0]
     oc.close_stance(arm, "mixamo", list(src.values()), standing=[src["idle"]], character=animal, files=files)
     clips = rp.build_clips(arm, src)
+    # GB_GRIP=1: the candidate's hand on the rod (render_player.py --grip)
+    grip = os.environ.get("GB_GRIP") == "1"
+    if grip:
+        rp.grip_clips(arm, mesh, clips, animal)
     piv = gr.pivot_all([arm])
     piv.scale = (1.0 / k,) * 3
     gr.stage(res=360, samples=12, frame=1.45, look_z=0.55)
@@ -399,10 +427,24 @@ def sheet(animal, gb_dir, out, mixamo, tag="r3"):
     for o in rod_meshes:
         o.hide_render = True
     report = {"animal": animal, "skeleton": "mixamo (render_player.py)", "k": k,
-              "covered_body": int(len(rest.covered["body"])), "inside_beyond_reach": rest.inside_all - int(len(rest.covered["body"])),
+              "covered_body": int(len(rest.covered["body"])), "inside_beyond_reach": int(len(rest.beyond)),
+              "inside_beyond_reach_where": rest.beyond_where,
+              "sampling": "every frame the game shows (8 per clip) from all 8 facings",
+              "grip": "candidate (rod_grip.py)" if grip else "current",
               "crossing_rest": rest.crossing0, "garment_weights": os.environ.get("GB_GARMENT_WEIGHTS", "1") != "0",
               "clips": {}}
     shots = os.environ.get("GB_SHOTS", "1") != "0"
+    if shots and len(rest.beyond):
+        # where the 3.5 cm reach doesn't look (user request, round 4): the
+        # bind pose with those points marked, front and back
+        piv.rotation_euler = (0, 0, 0)
+        bpy.context.view_layer.update()
+        mk = gr.markers(rest.co[rest.beyond][:: max(1, len(rest.beyond) // 400)], r=0.006)
+        mk.parent = piv
+        mk.matrix_parent_inverse = piv.matrix_world.inverted()
+        for v, deg in (("front", 0.0), ("back", 180.0)):
+            shoot(os.path.join(out, "%s_%s_blind_%s.png" % (animal, tag, v)), piv, deg)
+        bpy.data.objects.remove(mk, do_unlink=True)
     for name in ("run", "cast", "idle", "hold", "reel", "fight", "hold_run", "busy"):
         frames = []
         for f in range(1, rp.FRAMES + 1):
@@ -566,7 +608,8 @@ def camp(animal, gb_dir, out, ual1, ual2, tag="r3"):
     rest = Rest(mesh, arm, joints, rig, bones)
     cam_pos, cam_at, fov = CAMP_CAMERA
     report = {"animal": animal, "skeleton": "ual (camp)", "k": k, "covered_body": int(len(rest.covered["body"])),
-              "inside_beyond_reach": rest.inside_all - int(len(rest.covered["body"])), "crossing_rest": rest.crossing0,
+              "inside_beyond_reach": int(len(rest.beyond)), "inside_beyond_reach_where": rest.beyond_where,
+              "sampling": "16 samples per clip (camp)", "crossing_rest": rest.crossing0,
               "garment_weights": os.environ.get("GB_GARMENT_WEIGHTS", "1") != "0", "clips": {}}
     shots = os.environ.get("GB_SHOTS", "1") != "0"
     for key, name in CAMP_CLIPS:
@@ -672,7 +715,7 @@ def summary_print(report):
               min(m["cloth"]["hem_overlap_min_mm"] for m in fr), "rise max mm",
               max(m["cloth"]["hem_rise_mm"] for m in fr), "cuff min",
               min(min(m["cloth"]["cuff_l_area"], m["cloth"]["cuff_r_area"]) for m in fr), "shorts>25%",
-              max(m["cloth"]["shorts_stretched"] for m in fr), "crossing", max(m["crossing"] for m in fr))
+              max(m["cloth"]["shorts_area_share_stretched_over_25pct"] for m in fr), "crossing", max(m["crossing"] for m in fr))
 
 
 if __name__ == "__main__":

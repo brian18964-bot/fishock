@@ -42,11 +42,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import sdf_mesh as S  # noqa: E402
 
 # Material zones (each part's faces take one).
-FUR, SKIN, HORN, EYE, KNIT, CLOTH, BUTTON, SCARF, PAD = range(9)
-# Greybox values: one grey for the animal (its pads too - their own zone,
-# for the colour pass), lighter for the clothes, dark for eyes and nose.
+FUR, SKIN, HORN, EYE, KNIT, CLOTH, BUTTON, SCARF, PAD, MUZZLE = range(10)
+# Greybox values: one grey for the animal (its pads and muzzle too - their
+# own zones, for the colour pass), lighter for the clothes, dark for eyes
+# and nose.
 ZONES = [("fur", 0.40), ("skin", 0.22), ("horn", 0.55), ("eye", 0.07),
-         ("knit", 0.74), ("cloth", 0.56), ("button", 0.30), ("scarf", 0.24), ("pad", 0.40)]
+         ("knit", 0.74), ("cloth", 0.56), ("button", 0.30), ("scarf", 0.24), ("pad", 0.40), ("muzzle", 0.40)]
 # The owl's legs below its shorts today (hem 0.352 over the ground at -0.004),
 # and the share of that it keeps by default (user request: compare 15-20%
 # shorter); the turned-back cuff ends this far below the hem it's measured to.
@@ -474,11 +475,17 @@ class Animal:
                 # rooted in the toe's tip and curving down close round its
                 # front to the ground (user request: they stood off in a row
                 # ahead of the toes)
-                base = c + V(0, -tl * 0.36, tr * 0.28)
-                mid = base + V(u * 0.0015, -cl * 0.42, -tr * 0.22)
-                claws.append(S.smooth([S.round_cone(base, mid, cr, cr * 0.78),
-                                       S.round_cone(mid, mid + V(0, -cl * 0.22, -tr * 0.78), cr * 0.78, cr * 0.15)],
-                                      0.003))
+                # (user request, round 4: not a row of round blunt teeth -
+                # each claw deep at its root, sunk into the toe's top,
+                # narrow from side to side, hooking down over the toe to a
+                # sharp point, fanned out with its toe; no longer, no higher)
+                sp = u * 0.10
+                base = c + V(0, -tl * 0.24, tr * 0.42)
+                pts = [base, base + V(sp * cl * 0.3, -cl * 0.40, 0.0005), base + V(sp * cl * 0.6, -cl * 0.70, -tr * 0.30),
+                       base + V(sp * cl * 0.8, -cl * 0.86, -tr * 0.80), base + V(sp * cl, -cl * 0.90, -tr * 1.15)]
+                side = [V(1, 0, 0)] * 5
+                claws.append(S.ribbon(pts, [cr * 2.3, cr * 2.0, cr * 1.5, cr * 0.85, cr * 0.18],
+                                      [cr * 1.5, cr * 1.25, cr * 0.95, cr * 0.55, cr * 0.15], side))
         pads.append(S.ellipsoid(V(x, lerp(back, front, 0.62), 0.0), (w * 0.32, L * 0.10, 0.010)))
         pads.append(S.ellipsoid(V(x, back - hz * 0.9, 0.0), (w * 0.24, hz * 0.7, 0.010)))
         foot = S.smooth([heel, body, instep], 0.022)
@@ -581,12 +588,28 @@ class Animal:
         # feather on top and longest, the others tucked under it in turn
         # and of slightly different lengths, so the tips step (user
         # request: not a wavy board hanging from a straight line)
-        out = [S.ellipsoid(root + V(0, -0.006, 0.004), (0.020, 0.014, 0.016))]
-        for ang, L, layer in ((0, 0.110, 0), (-14, 0.100, 1), (16, 0.096, 1), (-28, 0.084, 2), (29, 0.080, 2)):
-            d = rotate(unit(V(0, 0.80, -1.0)), "y", -ang)
-            off = V(math.sin(math.radians(ang)) * 0.006, -0.004 * layer, 0.003 * layer)
-            out.append(leaf(root + off, d, L, 0.032 - 0.002 * layer, 0.009, up=V(0, 1, 0.8)))
-        return S.smooth(out, 0.004)
+        rump = S.ellipsoid(root + V(0, -0.006, 0.004), (0.020, 0.014, 0.016))
+        # (user request, round 4: the main feathers told apart - each its
+        # own quill-narrow root, broadest past the middle, a rounded tip,
+        # layered with a gap between the layers, not blended into a board)
+        feathers = []
+        # (thick enough for the mesh to hold their edges, each layer a
+        # step lower and lifted a little more, so the fan is domed and the
+        # layers' edges and tips show)
+        for ang, L, layer in ((0, 0.114, 0), (-19, 0.098, 1), (20, 0.094, 1), (-38, 0.080, 2), (39, 0.076, 2)):
+            d = rotate(unit(V(0, 0.80 + 0.10 * layer, -1.0)), "y", -ang)
+            off = V(math.sin(math.radians(ang)) * 0.010, -0.007 * layer, 0.006 * layer)
+            up = unit(rotate(V(0, 1, 0.8), "y", -ang))
+            a = root + off
+            pts = [a, a + d * L * 0.25 + up * 0.002, a + d * L * 0.55 + up * 0.004, a + d * L * 0.82 + up * 0.003,
+                   a + d * L]
+            w = 0.033 - 0.002 * layer
+            feathers.append(S.ribbon(pts, [w * 0.35, w * 0.82, w, w * 0.90, w * 0.34],
+                                     [0.0090, 0.0085, 0.0078, 0.0068, 0.0055], [up] * 5))
+        # the shorts open round the root only (cut round the whole fan,
+        # their hole's edge followed every feather and came out ragged)
+        self.tail_hole = S.ellipsoid(root + V(0, -0.002, 0.000), (0.024, 0.020, 0.020))
+        return S.smooth([rump, S.union(feathers)], 0.005)
 
     # -------------------------------------------------------- body
     def body(self):
@@ -662,6 +685,8 @@ class Animal:
             labels.append((HORN, lambda P, h=horn, b=bare: np.where(b(P) > 0.0010, h(P), 1.0)))
         if pads:
             labels.append((PAD, S.union(pads)))
+        if getattr(self, "muzzle", None) is not None:
+            labels.append((MUZZLE, self.muzzle))
         # the eyes, the nose or beak: their own pieces (clean edges where
         # the lids and the face meet them; rigid with the head)
         self.face = [(EYE, e) for e in h_eyes] + [(SKIN, n) for n in h_skin] + [(HORN, b) for b in h_horn] + \
@@ -1094,19 +1119,20 @@ def head_owl(an):
         brows.append(S.round_cone(a - unit(a - H) * 0.0045, m - unit(m - H) * 0.0040, 0.0072, 0.0050))
         brows.append(S.round_cone(m - unit(m - H) * 0.0040, b - unit(b - H) * 0.0050, 0.0050, 0.0022))
     head = S.smooth([head, fore] + brows, 0.026)
-    # ear tufts: flat feathers that bend out and back as they go, thinning
-    # and narrowing to a point (user request: not a straight board)
+    # ear tufts: flat feathers in one continuous surface (user request,
+    # round 4: no steps along it) - bending out and back from the root to
+    # the tip, thinning and narrowing all the way, a little twisted
     tufts = []
     for s in (1, -1):
-        root = H + V(s * 0.080, -0.060, 0.066)
-        pts = arc(root, V(s * 0.20, 0.02, 1.0), V(s * 0.62, 0.50, 0.62), 0.082, 6)
+        root = H + V(s * 0.080, -0.060, 0.062)
+        pts = arc(root, V(s * 0.20, 0.02, 1.0), V(s * 0.62, 0.50, 0.62), 0.088, 5)
         faces = [unit(lerp(V(0, -1, 0.25), V(s * 0.35, -0.85, 0.35), i / 5.0)) for i in range(6)]
-        tufts.append(blade(pts, [0.040, 0.040, 0.036, 0.030, 0.022, 0.012, 0.003],
-                           [0.010, 0.009, 0.0078, 0.0066, 0.0054, 0.0042, 0.003], faces, k=0.006))
-        pts = arc(root + V(s * 0.008, 0.016, -0.010), V(s * 0.50, 0.22, 0.85), V(s * 0.85, 0.65, 0.25), 0.056, 4)
-        faces = [unit(lerp(V(0, -1, 0.2), V(s * 0.45, -0.8, 0.3), i / 3.0)) for i in range(4)]
-        tufts.append(blade(pts, [0.032, 0.030, 0.024, 0.014, 0.003], [0.008, 0.007, 0.0055, 0.0042, 0.003], faces,
-                           k=0.006))
+        tufts.append(S.ribbon(pts, [0.042, 0.040, 0.034, 0.026, 0.015, 0.003],
+                              [0.011, 0.0095, 0.008, 0.0062, 0.0046, 0.0026], faces))
+        pts = arc(root + V(s * 0.008, 0.016, -0.012), V(s * 0.50, 0.22, 0.85), V(s * 0.85, 0.65, 0.25), 0.058, 4)
+        faces = [unit(lerp(V(0, -1, 0.2), V(s * 0.45, -0.8, 0.3), i / 4.0)) for i in range(5)]
+        tufts.append(S.ribbon(pts, [0.032, 0.030, 0.024, 0.014, 0.003], [0.0085, 0.0074, 0.006, 0.0045, 0.0026],
+                              faces))
     head = S.smooth([head] + tufts, 0.014)
     ec = [H + V(s * 0.049, -0.096, 0.008) for s in (1, -1)]
     eyes = [S.sphere(c, 0.031) for c in ec]
@@ -1175,22 +1201,26 @@ def head_dog(an):
     nose = S.smooth([S.box(H + V(0, -0.160, -0.004), V(0.016, 0.010, 0.011), S.rot("x", 18), round_r=0.008),
                      S.ellipsoid(H + V(0, -0.163, 0.000), (0.014, 0.008, 0.009))], 0.006)
     head = S.smooth([head, S.offset(nose, -0.003)], 0.010)
-    # drop ears: the leather leaves the skull going out and a little up,
-    # turns over at the fold and hangs, thinning and narrowing to a
-    # rounded tip, its lower half curving in toward the cheek (user
-    # request: not a long rectangular plate)
+    # drop ears (user request, round 4: a clear hanging outline, the flap
+    # reaching below the cheek; seen from the front they hang, from the
+    # side not an oval stuck on): out from the skull and over at the fold,
+    # then down beside the cheek, broad above, narrowing to a rounded tip
+    # turned a little forward, thin at the edges
     ears = []
     for s in (1, -1):
         top = hit(head, H + V(0, 0.014, 0.056), V(s, 0, 0.30))
-        c = top + V(s * 0.010, 0.0, 0.004)
-        # the fold: a soft roll lying front to back where it turns over
-        fold = S.capsule(c + V(-s * 0.002, -0.013, -0.002), c + V(-s * 0.002, 0.012, -0.002), 0.0068)
-        # the leather: broad and a little thicker above, tilting in toward
-        # the cheek lower down, narrowing to a rounded tip
-        up = S.ellipsoid(c + V(s * 0.007, -0.001, -0.030), (0.0036, 0.022, 0.030), S.rot("y", s * 6))
-        low = S.ellipsoid(c + V(s * 0.008, -0.003, -0.060), (0.0031, 0.019, 0.022), S.rot("y", -s * 8))
-        tip = S.ellipsoid(c + V(s * 0.005, -0.005, -0.080), (0.0028, 0.012, 0.011), S.rot("y", -s * 14))
-        ears.append(S.smooth([fold, up, low, tip], 0.010))
+        c = top + V(s * 0.004, 0.0, 0.002)
+        fold = S.capsule(c + V(s * 0.004, -0.016, -0.002), c + V(s * 0.004, 0.014, -0.002), 0.0068)
+        # (a leaf, not a strip: broadest a third of the way down, its back
+        # edge rounding in to a tip that points a little forward; thick
+        # enough that the mesh keeps its edges clean)
+        pts = [c + V(s * 0.004, 0.0, 0.000), c + V(s * 0.016, 0.002, -0.014), c + V(s * 0.021, 0.004, -0.046),
+               c + V(s * 0.020, -0.004, -0.086), c + V(s * 0.015, -0.016, -0.116), c + V(s * 0.011, -0.022, -0.128)]
+        out = [unit(V(s, 0, 0.9)), unit(V(s, 0, 0.3)), unit(V(s, 0.05, 0.05)), unit(V(s, 0.10, -0.05)),
+               unit(V(s, 0.12, -0.10)), unit(V(s, 0.12, -0.10))]
+        flap = S.ribbon(pts, [0.040, 0.054, 0.056, 0.044, 0.026, 0.008],
+                        [0.0120, 0.0088, 0.0078, 0.0070, 0.0064, 0.0058], out)
+        ears.append(S.smooth([fold, flap], 0.006))
     head = S.smooth([head] + ears, 0.008)
     return head, eyes, [nose], [], {"top": float(H[2] + 0.102), "half_width": 0.100}
 
@@ -1216,6 +1246,11 @@ def head_cat(an):
     head = S.cut(head, S.union([S.sphere(c, 0.0164) for c in ec]), 0.006)
     eyes = [S.sphere(c, 0.0150) for c in ec]
     an.lids = [lid(c, 0.0150, 0.74, 0.0026, 0.30, sd) for c, sd in zip(ec, (1, -1))]
+    # the muzzle's own zone (user request, round 4: a little lighter in the
+    # colour pass so nose and mouth read on the black): the whisker pads,
+    # the chin and the bridge's lower end
+    an.muzzle = S.smooth([S.ellipsoid(H + V(0, -0.056, -0.020), (0.024, 0.016, 0.019)),
+                          S.ellipsoid(H + V(0, -0.058, -0.004), (0.010, 0.012, 0.012))], 0.006)
     ears = []
     for s in (1, -1):
         base = H + V(s * 0.040, 0.004, 0.044)
@@ -1352,20 +1387,31 @@ def bear_fur(an, upper):
         back = max(-math.cos(a), 0.0)
         way = d * (outw + 0.2) + V(0, 0.25 * back, -1.0)
         if back > 0.5:
-            # down the back: shorter, flatter, fanning a little to either
-            # side, so they read as the mantle's ragged edge, not drops
-            side = V(math.sin(a), 0, 0) * 1.4
-            out.append(clump(root, way + side, L * 1.0, r0 * 0.86, flat=0.30, up=d, tip_r=0.16))
-        else:
-            # (tapering to a point: a lock, not a drip)
-            out.append(clump(root, way, L * 1.2, r0 * 0.82, flat=0.42, up=d, tip_r=0.16))
-    # the mantle: one broad, low mass of fur over the shoulders behind the
-    # neck that the back locks grow from (user request: a cape, read as a
-    # whole, its edge broken by the locks)
-    mc = lerp(n0, n1, 0.30)
-    back_r = surface_r(upper, mc, V(0, 1, 0))
-    mantle = S.ellipsoid(mc + V(0, back_r - 0.012, -0.030), (0.120, 0.026, 0.060))
-    out.append(mantle)
+            continue
+        # (tapering to a point: a lock, not a drip)
+        out.append(clump(root, way, L * 1.2, r0 * 0.82, flat=0.42, up=d, tip_r=0.16))
+    # down the back (user request, round 4: no thick ridge where it starts,
+    # no cape or pad, no row of drops): three broad locks growing out of
+    # the nape - thin where they leave it, fullest over the collar - lying
+    # down over the back and narrowing to points, of different lengths
+    # (their roots overlapping - one mass of fur from the nape that parts
+    # into three points, not three pieces laid side by side)
+    for deg, L, w in ((180, 0.112, 0.088), (158, 0.090, 0.072), (203, 0.096, 0.074)):
+        a = math.radians(deg)
+        d = V(math.sin(a), -math.cos(a), 0.0)
+        pts = []
+        # (over the collar and down, they lie on the jumper: its ease out)
+        ease = an.P["jumper"]["ease"]
+        for t, z_off, lift in ((0.70, None, -0.012), (0.30, None, 0.004), (0.0, None, ease + 0.008),
+                               (None, -0.40, ease + 0.008), (None, -0.80, ease + 0.005), (None, -1.0, ease + 0.002)):
+            if t is not None:
+                cc = lerp(n0, n1, t)
+            else:
+                cc = V(0, n0[1], n0[2] + z_off * L)
+            pts.append(cc + d * (surface_r(upper, cc, d) + lift))
+        faces = [d] * len(pts)
+        out.append(S.ribbon(pts, [w * 0.55, w * 0.85, w, w * 0.80, w * 0.42, w * 0.06],
+                            [0.006, 0.010, 0.013, 0.011, 0.007, 0.002], faces))
     return S.smooth(out, 0.010)
 
 
@@ -1415,7 +1461,9 @@ def build(name, out_dir, legs=None, voxel=0.0024, tag=None):
     shorts_cut = S.cut(shorts, fly, 0.0015)
     if an.tail_node is not None:
         # the tail out through the seat: a hemmed hole round it
-        shorts_cut = S.cut(shorts_cut, S.offset(an.tail_node, 0.004), 0.004)
+        hole = getattr(an, "tail_hole", None)
+        shorts_cut = S.cut(shorts_cut, hole if hole is not None else S.offset(an.tail_node, 0.004),
+                           0.006 if hole is not None else 0.004)
     ot = S.mesh("owl_trousers", shorts_cut, voxel=voxel * 1.1, materials=mats)
     ot.data.polygons.foreach_set("material_index", [CLOTH] * len(ot.data.polygons))
     obt = S.mesh("owl_button", button, voxel=0.0012, materials=mats)

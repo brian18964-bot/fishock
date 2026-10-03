@@ -963,7 +963,9 @@ def bind(arm, rig_name, character="owl", files=None):
 
     if "owl_body" in parts:
         hd = _bind_greybox(arm, rig, joints, parts, heads, tails, targets, k, off)
-        return _join(parts, hd, arm)
+        out = _join(parts, hd, arm)
+        out[0]["char_k"] = k  # (world units a character unit: rod_grip.py)
+        return out
     for name, spec in PART_JOINTS.items():
         _weigh_heat(parts[name], arm, _pick(rig, targets, spec), heads, tails)
     # The head: all the head's.

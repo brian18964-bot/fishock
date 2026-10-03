@@ -19,7 +19,8 @@ import bpy
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import greybox_review as gr  # noqa: E402
 
-# By zone (fur, skin, horn, eye, knit, cloth, button, scarf, pad):
+# By zone (fur, skin, horn, eye, knit, cloth, button, scarf, pad, muzzle -
+# the muzzle the fur's colour unless given):
 # (colour, roughness, sheen). The clothes the same on all four: the
 # beginner's cream jumper, khaki shorts, wooden button.
 COMMON = {"knit": ((0.80, 0.75, 0.62), 0.92, 0.35), "cloth": ((0.47, 0.41, 0.27), 0.85, 0.15),
@@ -36,12 +37,15 @@ PALETTES = {
     # a black cat: near black, its eyes amber so they read on it
     "cat": {"fur": ((0.022, 0.020, 0.022), 0.75, 0.10), "skin": ((0.22, 0.12, 0.13), 0.4, 0.0),
             "horn": ((0.60, 0.57, 0.52), 0.45, 0.0), "pad": ((0.18, 0.10, 0.11), 0.6, 0.0),
-            "eye": ((0.62, 0.52, 0.08), 0.08, 0.0)},
+            "eye": ((0.62, 0.52, 0.08), 0.08, 0.0),
+            # (user request, round 4: nose and mouth told apart by a little
+            # light, the cat still black)
+            "muzzle": ((0.115, 0.105, 0.108), 0.75, 0.12)},
     # a brown bear: dark brown, ivory claws
     "bear": {"fur": ((0.27, 0.17, 0.10), 0.88, 0.25), "skin": ((0.05, 0.04, 0.04), 0.4, 0.0),
              "horn": ((0.70, 0.64, 0.54), 0.45, 0.0), "pad": ((0.08, 0.06, 0.06), 0.6, 0.0)},
 }
-ZONE_NAMES = ["fur", "skin", "horn", "eye", "knit", "cloth", "button", "scarf", "pad"]
+ZONE_NAMES = ["fur", "skin", "horn", "eye", "knit", "cloth", "button", "scarf", "pad", "muzzle"]
 
 
 def materials(animal):
@@ -49,7 +53,7 @@ def materials(animal):
     pal.update(PALETTES[animal])
     out = []
     for z in ZONE_NAMES:
-        rgb, rough, sheen = pal.get(z, ((0.5, 0.5, 0.5), 0.6, 0.0))
+        rgb, rough, sheen = pal.get(z, pal["fur"] if z == "muzzle" else ((0.5, 0.5, 0.5), 0.6, 0.0))
         m = bpy.data.materials.new("col_" + z)
         m.use_nodes = True
         b = next(n for n in m.node_tree.nodes if n.type == "BSDF_PRINCIPLED")

@@ -25,7 +25,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import owl_character  # noqa: E402
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-OUT = os.path.join(ROOT, "assets", "models", "menu_character.glb")
+# (OUT=<path>: elsewhere - a try-out of another character)
+OUT = os.environ.get("OUT") or os.path.join(ROOT, "assets", "models", "menu_character.glb")
 
 # The clips kept, by library.
 UAL1 = [

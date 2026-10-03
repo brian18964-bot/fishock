@@ -209,6 +209,76 @@ def tube(points, radii, close=False):
     return union([round_cone(pts[i], pts[i + 1], rs[i], rs[i + 1]) for i in range(len(pts) - 1)])
 
 
+def _catmull(points, n):
+    """n points along a Catmull-Rom curve through `points` (ends held),
+    and each one's place along the control points (0 .. len - 1)."""
+    P = _v(points)
+    ext = np.vstack([P[0] * 2 - P[1], P, P[-1] * 2 - P[-2]])
+    out, at = [], []
+    for s in np.linspace(0.0, len(P) - 1.0, n):
+        i = min(int(s), len(P) - 2)
+        t = s - i
+        p0, p1, p2, p3 = ext[i], ext[i + 1], ext[i + 2], ext[i + 3]
+        t2, t3 = t * t, t * t * t
+        out.append(0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3))
+        at.append(s)
+    return np.array(out), np.array(at)
+
+
+def ribbon(points, widths, thicks, faces, samples=40):
+    """A curved, tapering flat piece in one continuous surface (a feather
+    tuft, a lock of fur, a drop ear, a claw): swept along a smooth curve
+    through `points`, its section an ellipse `widths` across and `thicks`
+    through at each point (eased between), its flat side toward `faces`
+    (turning smoothly as it goes)."""
+    C, at = _catmull(points, samples)
+    idx = np.arange(len(points), dtype=float)
+    Wd = np.interp(at, idx, _v(widths)) * 0.5
+    Th = np.interp(at, idx, _v(thicks)) * 0.5
+    Fc = _v(faces)
+    F = np.stack([np.interp(at, idx, Fc[:, k]) for k in range(3)], axis=1)
+    T = np.gradient(C, axis=0)
+    T /= np.linalg.norm(T, axis=1)[:, None]
+    F = F - T * np.einsum("ij,ij->i", F, T)[:, None]
+    F /= np.linalg.norm(F, axis=1)[:, None]
+    m = len(C) - 1
+
+    def fn(P):
+        best = np.full(len(P), np.inf)
+        seg = np.zeros(len(P), int)
+        tt = np.zeros(len(P))
+        for i in range(m):
+            a, ab = C[i], C[i + 1] - C[i]
+            t = np.clip(((P - a) @ ab) / (ab @ ab), 0.0, 1.0)
+            d2 = np.einsum("ij,ij->i", P - a - t[:, None] * ab, P - a - t[:, None] * ab)
+            k = d2 < best
+            best[k], seg[k], tt[k] = d2[k], i, t[k]
+        a = C[seg]
+        b = C[seg + 1]
+        q = a + (b - a) * tt[:, None]
+        Tq = T[seg] * (1 - tt)[:, None] + T[seg + 1] * tt[:, None]
+        Tq /= np.linalg.norm(Tq, axis=1)[:, None]
+        Fq = F[seg] * (1 - tt)[:, None] + F[seg + 1] * tt[:, None]
+        Fq = Fq - Tq * np.einsum("ij,ij->i", Fq, Tq)[:, None]
+        Fq /= np.linalg.norm(Fq, axis=1)[:, None]
+        Wq = np.cross(Tq, Fq)
+        r = P - q
+        u = np.einsum("ij,ij->i", r, Wq)
+        v = np.einsum("ij,ij->i", r, Fq)
+        e = np.einsum("ij,ij->i", r, Tq)
+        ha = np.maximum(Wd[seg] * (1 - tt) + Wd[seg + 1] * tt, 1e-5)
+        hb = np.maximum(Th[seg] * (1 - tt) + Th[seg + 1] * tt, 1e-5)
+        k0 = np.sqrt((u / ha) ** 2 + (v / hb) ** 2)
+        k1 = np.sqrt((u / ha ** 2) ** 2 + (v / hb ** 2) ** 2)
+        d = np.where(k1 > 1e-12, k0 * (k0 - 1.0) / np.maximum(k1, 1e-12), -hb)
+        # past either end: the rest of the way there along the curve
+        end = ((seg == 0) & (tt <= 0.0)) | ((seg == m - 1) & (tt >= 1.0))
+        out = np.where(end, np.sqrt(np.maximum(d, 0.0) ** 2 + e ** 2), d)
+        return np.where(end & (d < 0), np.maximum(d, np.abs(e)), out)
+    r = float(max(np.max(Wd), np.max(Th)))
+    return Prim(fn, C.min(axis=0) - r, C.max(axis=0) + r)
+
+
 def polygon2d(Q, poly):
     """Signed distance in the plane to a closed polygon (IQ's)."""
     v = np.asarray(poly, dtype=np.float64)

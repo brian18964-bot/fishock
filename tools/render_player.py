@@ -55,6 +55,7 @@ from PIL import Image
 sys.path.insert(0, os.path.dirname(__file__))
 import render_sprite as rs  # noqa: E402
 import owl_character  # noqa: E402
+import rod_grip  # noqa: E402
 
 DENSITY = 27.108
 PAD = 0.08
@@ -229,12 +230,202 @@ def back_rod_local(arm):
     return m @ grip, m @ tip
 
 
+# ---------------------------------------------------------------- the hand on the rod (candidate)
+# User request (round 4): the hand holds the rod - the rod fixed in the
+# hand (rod_grip.py), the arm turned toward the path wanted - in a
+# candidate sheet beside the game's (--grip). The rod's path: ROD_ANGLES'
+# angle up, ROD_SIDE out to the left - a clip's whole path further out
+# (GRIP_SIDE_STEP at a time, up to GRIP_SIDE_MAX) while the rod would
+# pass through the character in any of its frames.
+GRIP_SIDE_STEP = 8.0
+GRIP_SIDE_MAX = 65.0
+GRIP_BONES = ("mixamorig:LeftArm", "mixamorig:LeftForeArm", "mixamorig:LeftHand")
+# The drawn rod's width on the sheet (orig px, held_rod.gd's
+# THICKNESS_SCALE included) and how far its sprite reaches behind the
+# grip (the lvl1 rod's butt: 16 of its 82 px).
+ROD_DRAWN_WIDTH = 3.2
+ROD_BUTT = 0.2
+
+
+def rod_target(name, f, side=ROD_SIDE):
+    up = math.radians(ROD_ANGLES[name][f - 1])
+    s = math.radians(side)
+    return Vector((math.sin(s) * math.cos(up), -math.cos(s) * math.cos(up), math.sin(up)))
+
+
+def _bvh(mesh):
+    from mathutils.bvhtree import BVHTree
+    dg = bpy.context.evaluated_depsgraph_get()
+    ev = mesh.evaluated_get(dg)
+    return BVHTree.FromObject(ev, dg), mesh.matrix_world.copy()
+
+
+def rod_through(mesh, grip, d, from_t=0.15):
+    """How many of the rod's points (past the hand) are inside the
+    character."""
+    bvh, mw = _bvh(mesh)
+    inv = mw.inverted()
+    n = 0
+    for t in np.linspace(from_t, 1.0, 40):
+        p = inv @ (grip + d * ROD_TIP * t)
+        loc, nor, _, _ = bvh.find_nearest(p)
+        if loc is not None and (p - loc).dot(nor) < 0:
+            n += 1
+    return n
+
+
+def grip_clips(arm, mesh, clips, character):
+    """The hand clips re-keyed with the hand on the rod: the fingers round
+    it, the arm turned toward its path. Returns the grip and, per clip and
+    frame, what it took."""
+    samples = [(clips[n], f, rod_target(n, f)) for n in ("hold", "reel", "fight", "hold_run")
+               for f in range(1, FRAMES + 1)]
+    g = rod_grip.Grip(arm, mesh, character, samples)
+    report = {"fit_deg": g.fit_deg, "wrap_deg": g.wrap_deg, "thumb_angles": g.thumb_angles,
+              "handle_r": g.handle_r, "clips": {}}
+    fingers = list(g.pose)
+    for name in HAND_CLIPS:
+        # one side angle for the whole clip (frame by frame, the rod jumped
+        # out where one frame needed it): the least that clears every frame
+        side = ROD_SIDE
+        while True:
+            worst = 0
+            for f in range(1, FRAMES + 1):
+                rs.set_pose(clips[name], f)
+                g.hold(rod_target(name, f, side))
+                c, d = g.rod()
+                worst = max(worst, rod_through(mesh, Vector(c), Vector(d)))
+            if worst == 0 or side >= GRIP_SIDE_MAX:
+                break
+            side += GRIP_SIDE_STEP
+        rows = []
+        for f in range(1, FRAMES + 1):
+            rs.set_pose(clips[name], f)
+            used = g.hold(rod_target(name, f, side))
+            c, d = g.rod()
+            through = rod_through(mesh, Vector(c), Vector(d))
+            for b in GRIP_BONES + tuple(fingers):
+                arm.pose.bones[b].keyframe_insert("rotation_quaternion", frame=f)
+            used.update({"side": side, "through": through})
+            rows.append(used)
+        report["clips"][name] = rows
+    return g, report
+
+
+def front_mask(mesh, cam, size, grip, tip, d):
+    """Where on this cell's picture (size, `d` x density) the character is
+    in front of the drawn rod: the rod's footprint (its drawn width, from
+    a little behind the grip to the tip), each pixel's ray against the
+    character, nearer than the rod's axis there."""
+    scene = bpy.context.scene
+    W, H = size
+    gx, gy, _ = [v * k for v, k in zip(world_to_camera_view(scene, cam, grip), (W, H, 1))]
+    tx, ty, _ = [v * k for v, k in zip(world_to_camera_view(scene, cam, tip), (W, H, 1))]
+    gy, ty = H - gy, H - ty
+    a = np.array([gx, gy]) + (np.array([gx, gy]) - np.array([tx, ty])) * ROD_BUTT
+    b = np.array([tx, ty])
+    half = ROD_DRAWN_WIDTH * d * 0.5 + 1.0
+    x0, x1 = int(max(0, min(a[0], b[0]) - half)), int(min(W - 1, max(a[0], b[0]) + half))
+    y0, y1 = int(max(0, min(a[1], b[1]) - half)), int(min(H - 1, max(a[1], b[1]) + half))
+    mask = np.zeros((H, W), bool)
+    if x1 <= x0 or y1 <= y0:
+        return mask
+    mw_c = cam.matrix_world
+    fwd = (mw_c.to_3x3() @ Vector((0, 0, -1))).normalized()
+    right = (mw_c.to_3x3() @ Vector((1, 0, 0))).normalized()
+    up = (mw_c.to_3x3() @ Vector((0, 1, 0))).normalized()
+    sw = cam.data.ortho_scale if W >= H else cam.data.ortho_scale * W / H
+    sh = sw * H / W
+    bvh, mw = _bvh(mesh)
+    inv = mw.inverted()
+    inv3 = inv.to_3x3()
+    ab = b - a
+    L2 = float(ab @ ab) or 1.0
+    g3, t3 = Vector(grip), Vector(tip)
+    butt3 = g3 + (g3 - t3) * ROD_BUTT
+    dir_l = (inv3 @ fwd).normalized()
+    for py in range(y0, y1 + 1):
+        for px in range(x0, x1 + 1):
+            q = np.array([px + 0.5, py + 0.5])
+            t = float(np.clip(((q - a) @ ab) / L2, 0.0, 1.0))
+            if np.linalg.norm(q - (a + ab * t)) > half:
+                continue
+            o = mw_c.translation + right * ((q[0] / W - 0.5) * sw) + up * ((0.5 - q[1] / H) * sh)
+            hit, _, _, _ = bvh.ray_cast(inv @ o, dir_l)
+            if hit is None:
+                continue
+            depth = ((mw @ hit) - o).dot(fwd)
+            on_rod = butt3 + (t3 - butt3) * t
+            if depth < (on_rod - o).dot(fwd):
+                mask[py, px] = True
+    return mask
+
+
+def front_atlas(out_prefix, masks, cells, cell, d, cols):
+    """The character's pixels in front of the rod, cut from the sheets
+    (albedo at d x, normal at 1x) and packed: OUT_PREFIX_front_{albedo,
+    normal}.png; returns each cell's [x, y, w, h, ox, oy] (atlas and
+    in-cell place, in the albedo's px) or None."""
+    alb = np.asarray(Image.open(f"{out_prefix}_albedo.png").convert("RGBA"))
+    nor = np.asarray(Image.open(f"{out_prefix}_normal.png").convert("RGBA"))
+    w, h = cell[0] * d, cell[1] * d
+    pieces = []
+    for i, c in enumerate(cells):
+        m = masks.get(c)
+        if m is None or not m.any():
+            pieces.append(None)
+            continue
+        ys, xs = np.nonzero(m)
+        x0, y0 = xs.min() // d * d, ys.min() // d * d
+        x1, y1 = (xs.max() // d + 1) * d, (ys.max() // d + 1) * d
+        row, col = divmod(i, cols)
+        X, Y = col * w, row * h
+        a = alb[Y + y0:Y + y1, X + x0:X + x1].copy()
+        a[..., 3] = (a[..., 3] * m[y0:y1, x0:x1]).astype(np.uint8)
+        n = nor[(Y + y0) // d:(Y + y1) // d, (X + x0) // d:(X + x1) // d].copy()
+        mn = m[y0:y1, x0:x1].reshape((y1 - y0) // d, d, (x1 - x0) // d, d).any(axis=(1, 3))
+        n[..., 3] = (n[..., 3] * mn).astype(np.uint8)
+        pieces.append((a, n, x0, y0))
+    # shelf packing, rows 1024 px wide
+    W = 1024
+    x = y = rowh = 0
+    place = []
+    for p in pieces:
+        if p is None:
+            place.append(None)
+            continue
+        ph, pw = p[0].shape[:2]
+        if x + pw > W:
+            x, y, rowh = 0, y + rowh, 0
+        place.append((x, y))
+        x += pw + d
+        rowh = max(rowh, ph + d)
+    Hh = int(math.ceil((y + rowh) / 8.0) * 8) or 8
+    A = np.zeros((Hh, W, 4), np.uint8)
+    N = np.zeros((Hh // d, W // d, 4), np.uint8)
+    out = []
+    for p, pl in zip(pieces, place):
+        if p is None:
+            out.append(None)
+            continue
+        a, n, ox, oy = p
+        X, Y = pl
+        A[Y:Y + a.shape[0], X:X + a.shape[1]] = a
+        N[Y // d:Y // d + n.shape[0], X // d:X // d + n.shape[1]] = n
+        out.append([X, Y, a.shape[1], a.shape[0], int(ox), int(oy)])
+    Image.fromarray(A, "RGBA").save(f"{out_prefix}_front_albedo.png")
+    Image.fromarray(N, "RGBA").save(f"{out_prefix}_front_normal.png")
+    return out
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("mixamo")
     p.add_argument("out_prefix")
     p.add_argument("--density", type=int, default=2)
     p.add_argument("--dry", action="store_true", help="rod data and cell size only, no render")
+    p.add_argument("--grip", action="store_true",
+                   help="candidate: the hand holding the rod (rod_grip.py), and the pixels in front of the rod")
     p.add_argument("--character", choices=("owl", "ybot"), default="owl",
                    help="who's drawn: the player's character (owl_character.player: the owl person,"
                    " or PLAYER=<animal> a greybox one) or Mixamo's Y Bot")
@@ -245,6 +436,9 @@ def main():
         meshes = owl_character.player(arm, "mixamo", list(src.values()), standing=[src["idle"]])
     clips = build_clips(arm, src)
     check_lean(arm, clips)
+    hand_grip = grip_report = None
+    if args.grip:
+        hand_grip, grip_report = grip_clips(arm, meshes[0], clips, os.environ.get("PLAYER", "owl"))
     back_grip, back_tip = back_rod_local(arm)
     yaw = rs.Yaw(0.0)
     cells = [(name, d, f) for name in CLIPS for d in DIRS for f in range(1, FRAMES + 1)]
@@ -279,6 +473,7 @@ def main():
 
     ox, oy, _ = px(Vector((0.0, 0.0, 0.0)))
     rod = {name: [[None] * FRAMES for _ in DIRS] for name in CLIPS}
+    masks = {}
     mw = arm.matrix_world
 
     def pose_and_rod(cell):
@@ -286,7 +481,11 @@ def main():
         name, dname, f = cell
         bones = arm.pose.bones
         chest = mw @ bones["mixamorig:Spine2"].head
-        if name in HAND_CLIPS:
+        if name in HAND_CLIPS and hand_grip is not None:
+            c, dd = hand_grip.rod()
+            grip = Vector(c)
+            tip = grip + Vector(dd) * ROD_TIP
+        elif name in HAND_CLIPS:
             hand = bones["mixamorig:LeftHand"]
             grip = (mw @ hand.head + mw @ bones["mixamorig:LeftHandMiddle1"].head) * 0.5
             up = math.radians(ROD_ANGLES[name][f - 1])
@@ -303,6 +502,8 @@ def main():
         # camera's depth would count anything held high as in front).
         behind = ((grip + tip) * 0.5).y > chest.y + 0.05
         rod[name][DIRS.index(dname)][f - 1] = [round(gx - ox, 2), round(gy - oy, 2), round(tx - ox, 2), round(ty - oy, 2), int(behind)]
+        if hand_grip is not None and not args.dry:
+            masks[cell] = front_mask(meshes[0], cam, (w * d, h * d), grip, tip, d)
 
     if args.dry:
         for cell in cells:
@@ -321,6 +522,10 @@ def main():
         img[..., :3] = n * 0.5 + 0.5
         Image.fromarray((np.clip(img, 0, 1) * 255 + 0.5).astype(np.uint8), "RGBA").save(path)
 
+    front = None
+    if hand_grip is not None and not args.dry:
+        front = front_atlas(args.out_prefix, masks, cells, (w, h), d, FRAMES)
+
     # Performance on phones: 64 rows of cells made the sheet over 8192 px
     # tall, past what many phone GPUs take; the second half of the rows sits
     # beside the first instead (scripts/player_visual.gd, SHEET_HALVES).
@@ -331,6 +536,12 @@ def main():
     meta = {"cell": [w, h], "frames": FRAMES, "clips": CLIPS, "dirs": DIRS,
             "offset": [0.0, round(-cy * DENSITY, 2)], "rod_length": round(ROD_TIP * DENSITY, 2),
             "rod": rod}
+    if hand_grip is not None:
+        meta["grip"] = "hand"
+        meta["grip_report"] = grip_report
+    if front is not None:
+        meta["front"] = {name: [[front[cells.index((name, dn, f))] for f in range(1, FRAMES + 1)] for dn in DIRS]
+                         for name in CLIPS}
     with open(f"{args.out_prefix}_rod.json", "w") as fh:
         json.dump(meta, fh, separators=(",", ":"))
     print(json.dumps({k: meta[k] for k in ("cell", "offset", "clips")}))

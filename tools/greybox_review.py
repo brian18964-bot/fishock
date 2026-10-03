@@ -461,7 +461,8 @@ def zones(mesh):
     zone_of = {}
     for i, n in enumerate(names):
         zone_of[i] = {"gb_fur": FUR, "gb_skin": SKIN, "gb_horn": HORN, "gb_eye": EYE, "gb_knit": KNIT,
-                      "gb_cloth": CLOTH, "gb_button": BUTTON, "gb_scarf": SCARF, "gb_pad": PAD}.get(n, -1)
+                      "gb_cloth": CLOTH, "gb_button": BUTTON, "gb_scarf": SCARF, "gb_pad": PAD,
+                      "gb_muzzle": FUR}.get(n, -1)
     fz = np.array([zone_of.get(m, -1) for m in mats])
     vz = np.full(len(co), -1)
     for f, z in zip(faces, fz):
