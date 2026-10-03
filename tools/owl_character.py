@@ -986,6 +986,29 @@ def bind(arm, rig_name, character="owl", files=None):
     return _join(parts, hd, arm)
 
 
+def player(arm, rig_name, actions, standing=()):
+    """The player's character on `arm`, for the tools that make the game's
+    pictures of it (render_player.py, render_player_struggle.py,
+    build_menu_character.py): the baked owl person, or - PLAYER=<animal>
+    (user request: the black cat in the game) - a greybox animal person
+    from GREYBOX_DIR (greybox_animals.py's build: <animal>_greybox.glb and
+    .json, kept out of the repo like its other builds) in its trial colours
+    (greybox_colour.py). Bound, its feet drawn in over `actions`; returns
+    its meshes."""
+    name = os.environ.get("PLAYER", "owl")
+    files = None
+    if name != "owl":
+        gb = os.environ["GREYBOX_DIR"]
+        files = (os.path.join(gb, name + "_greybox.glb"), os.path.join(gb, name + "_greybox.json"))
+    meshes = bind(arm, rig_name, name, files=files)
+    if actions:
+        close_stance(arm, rig_name, actions, standing=standing, character=name, files=files)
+    if files:
+        import greybox_colour
+        greybox_colour.recolour(meshes, name)
+    return meshes
+
+
 def _join(parts, hd, arm):
     """The parts as one mesh, skinned to the skeleton."""
     bpy.ops.object.select_all(action="DESELECT")

@@ -236,13 +236,13 @@ def main():
     p.add_argument("--density", type=int, default=2)
     p.add_argument("--dry", action="store_true", help="rod data and cell size only, no render")
     p.add_argument("--character", choices=("owl", "ybot"), default="owl",
-                   help="who's drawn: the beginner owl person (owl_character.py) or Mixamo's Y Bot")
+                   help="who's drawn: the player's character (owl_character.player: the owl person,"
+                   " or PLAYER=<animal> a greybox one) or Mixamo's Y Bot")
     args = p.parse_args()
 
     arm, meshes, src = load(args.mixamo)
     if args.character == "owl":
-        meshes = owl_character.bind(arm, "mixamo")
-        owl_character.close_stance(arm, "mixamo", list(src.values()), standing=[src["idle"]])
+        meshes = owl_character.player(arm, "mixamo", list(src.values()), standing=[src["idle"]])
     clips = build_clips(arm, src)
     check_lean(arm, clips)
     back_grip, back_tip = back_rod_local(arm)

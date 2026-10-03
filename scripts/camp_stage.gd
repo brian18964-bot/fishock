@@ -365,8 +365,9 @@ func _open_near(c: Vector2i) -> Vector2i:
 	return c
 
 
-## Whether the straight way a -> b is clear (what a or b stands in, a seat
-## by its log, doesn't count).
+## Whether the straight way a -> b is clear. What a or b stands close by
+## (a seat by its log, the lamp's spot by its drum) only keeps the way from
+## going in any closer than they stand.
 func _clear(a: Vector3, b: Vector3) -> bool:
 	var n := ceili(Vector2(b.x - a.x, b.z - a.z).length() / (GRID_CELL * 0.5))
 	for k in range(1, n):
@@ -375,9 +376,11 @@ func _clear(a: Vector3, b: Vector3) -> bool:
 			return false
 		for o in obstacles:
 			var r: float = o[2]
-			if _to_segment(a, o[0], o[1]) < r + BODY or _to_segment(b, o[0], o[1]) < r + BODY:
-				continue
-			if _to_segment(p, o[0], o[1]) < r + BODY * 0.9:
+			var limit := r + BODY * 0.9
+			var by := minf(_to_segment(a, o[0], o[1]), _to_segment(b, o[0], o[1]))
+			if by < r + BODY:
+				limit = minf(limit, by - 0.02)
+			if _to_segment(p, o[0], o[1]) < limit:
 				return false
 	return true
 

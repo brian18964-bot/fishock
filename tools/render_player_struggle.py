@@ -2,14 +2,14 @@
 carried off stiff to a cage - caught, the player struggles for a few
 seconds, and staggers free if they get loose). Motion from Quaternius'
 Universal Animation Library (CC0, not kept in the repo), carried
-over to the player's Mixamo skeleton by tools/retarget.py - the beginner
-owl person on it (owl_character.py; --ybot: Mixamo's Y Bot, the old
+over to the player's Mixamo skeleton by tools/retarget.py - the player's
+character on it (owl_character.player; --ybot: Mixamo's Y Bot, the old
 stand-in):
 
   struggle  Push_Loop   shoving at the ghost's hold
   knock     Hit_Chest   struck free, staggering back a step
 
-Framed exactly as the player's own sheet (tools/render_player.py: 72x88
+Framed exactly as the player's own sheet (tools/render_player.py: 56x72
 cells, the feet at the same place), so PlayerVisual swaps sheets without
 moving the character. Rows = clip x 8 facings, FRAMES columns.
 
@@ -41,8 +41,8 @@ CLIPS = [("struggle", "Push_Loop", True, (0.0, 1.0), 0.35, False),
 TRUNK = ("pelvis", "spine_01", "spine_02", "spine_03", "neck_01", "Head")
 LEGS = ("thigh", "calf", "foot", "ball")
 # The player sheet's cell and camera (render_player.py's output).
-CELL = (72, 88)
-CENTER_Y = 18.57 / rp.DENSITY
+CELL = (56, 72)
+CENTER_Y = 15.38 / rp.DENSITY
 HD = 2
 
 
@@ -51,7 +51,7 @@ def main():
     mixamo, ual1, out = [a for a in sys.argv if a != "--ybot"][-3:]
     arm, meshes, _ = rp.load(mixamo)
     if not ybot:
-        meshes = owl_character.bind(arm, "mixamo")
+        meshes = owl_character.player(arm, "mixamo", [])
     for a in [a for a in bpy.data.actions]:
         a.use_fake_user = False
     lib1 = retarget.load_library(ual1)

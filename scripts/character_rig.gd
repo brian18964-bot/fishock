@@ -3,8 +3,9 @@ extends Node3D
 
 ## The player's character in 3D - in the main screen's camp and on the
 ## equipment page (CharacterViewer): assets/models/menu_character.glb -
-## the beginner owl person on Quaternius' Universal Animation Library
-## skeleton (CC0; tools/build_menu_character.py), with its clips - breathing, waving when tapped, and dressed as a paper
+## the black cat (a greybox animal person in its trial colours) on
+## Quaternius' Universal Animation Library skeleton (CC0;
+## tools/build_menu_character.py), with its clips - breathing, waving when tapped, and dressed as a paper
 ## doll: equip(slot, scene) hangs a model on a bone (SLOTS) - the rod bought
 ## in the right hand, the oil lamp in the left; hats, packs and the rest
 ## later.
@@ -29,10 +30,11 @@ const ROD_GRIP := Vector3.ZERO
 const LAMP := preload("res://assets/models/oil_lamp.glb")
 ## The left hand reaching out and up (Interact, this far through): where
 ## the fingers get to, in the character's frame (+z ahead, +x its left) -
-## where a lamp to be picked up should hang. Measured from the clip.
+## where a lamp to be picked up should hang. Measured from the clip on
+## the character wearing it (the black cat: its index fingertip).
 const REACH_CLIP := "Interact"
 const REACH_AT := 0.32
-const REACH := Vector3(0.11, 1.3, 0.62)
+const REACH := Vector3(0.10, 1.01, 0.42)
 ## Where the lamp is held (its own frame): the top of its bail - it hangs
 ## from the fingers by it (user request: the lamp held exactly).
 const LAMP_BAIL := Vector3(0.0, 0.29, 0.0)
@@ -113,13 +115,15 @@ static func _find(n: Node, cls: String) -> Node:
 
 
 ## The mannequin in the game's colours. A character with its own
-## pictures (the beginner owl person) keeps them, with the same rim.
+## pictures (the beginner owl person) or its own colours (a greybox animal
+## person's trial ones, tools/greybox_colour.py: "col_<zone>") keeps them,
+## with the same rim.
 func _dress(n: Node) -> void:
 	if n is MeshInstance3D:
 		var mi := n as MeshInstance3D
 		for i in mi.get_surface_override_material_count():
 			var src := mi.mesh.surface_get_material(i)
-			if src is BaseMaterial3D and (src as BaseMaterial3D).albedo_texture != null:
+			if src is BaseMaterial3D and ((src as BaseMaterial3D).albedo_texture != null or src.resource_name.begins_with("col_")):
 				var own := (src as BaseMaterial3D).duplicate() as BaseMaterial3D
 				own.rim_enabled = true
 				own.rim = 0.25

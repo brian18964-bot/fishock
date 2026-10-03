@@ -1,10 +1,11 @@
 class_name PlayerVisual
 extends Sprite2D
 
-## The player on screen: the beginner owl person (tools/owl_character.py)
+## The player on screen: the black cat (a greybox animal person in its
+## trial colours, tools/owl_character.py's player())
 ## moving as Mixamo's clips move (user request: the carrying / casting /
 ## holding-the-rod animation), pre-rendered by tools/render_player.py,
-## 8 frames per clip, 72x88 cells; rows = clips x 8 facings. Plays:
+## 8 frames per clip, 56x72 cells; rows = clips x 8 facings. Plays:
 ##   0 idle      breathing, rod across the back
 ##   1 run       rod across the back
 ##   2 cast      winding back with the charge (0-3), whipped on release (4-7)
@@ -31,7 +32,7 @@ const SHEET_HALVES := 2
 const SPRITE_SCALE := 0.5
 ## (0, -center_y * 27.108) for the sheet's camera; the feet sit at the
 ## node origin, which is placed at the bottom of the player's collision box.
-const OFFSET := Vector2(0.0, -18.57)
+const OFFSET := Vector2(0.0, -15.38)
 ## Sheet column order: down, down_left, left, up_left, up, up_right, right,
 ## down_right. Index by 45deg sector clockwise from +X (right).
 const SECTOR_TO_DIR := [6, 7, 0, 1, 2, 3, 4, 5]

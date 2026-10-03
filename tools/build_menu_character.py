@@ -9,8 +9,9 @@ of it as the spirit runs low; see CampLife). Carrying, chopping and
 harvesting are left out (user request: the hands didn't close on what
 they held).
 
-The one wearing them is the beginner owl person (owl_character.py, put on
-the mannequin's skeleton); MANNEQUIN=1 keeps the mannequin instead.
+The one wearing them is the player's character (owl_character.player, put
+on the mannequin's skeleton: the beginner owl person, or PLAYER=<animal>
+GREYBOX_DIR=<build> a greybox one); MANNEQUIN=1 keeps the mannequin instead.
 
   UAL1=<UAL1_Standard.glb> UAL2=<UAL2_Standard.glb> \\
       bpyenv/bin/python tools/build_menu_character.py      (repo root)
@@ -71,9 +72,8 @@ def main():
     if os.environ.get("MANNEQUIN") != "1":
         for o in body:
             bpy.data.objects.remove(o, do_unlink=True)
-        body = owl_character.bind(arm, "ual")
-        owl_character.close_stance(arm, "ual", list(keep.values()),
-                                   standing=[a for n, a in keep.items() if n.startswith("Idle")])
+        body = owl_character.player(arm, "ual", list(keep.values()),
+                                    standing=[a for n, a in keep.items() if n.startswith("Idle")])
     for a in list(bpy.data.actions):
         if a not in keep.values():
             bpy.data.actions.remove(a)
