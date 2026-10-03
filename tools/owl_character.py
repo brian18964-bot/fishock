@@ -994,13 +994,16 @@ def player(arm, rig_name, actions, standing=()):
     build_menu_character.py): the baked owl person, or - PLAYER=<animal>
     (user request: the black cat in the game) - a greybox animal person
     from GREYBOX_DIR (greybox_animals.py's build: <animal>_greybox.glb and
-    .json, kept out of the repo like its other builds) in its trial colours
+    .json, kept out of the repo like its other builds; with GREYBOX_DIR set
+    the owl is its greybox too) in its trial colours
     (greybox_colour.py). Bound, its feet drawn in over `actions`; returns
     its meshes."""
     name = os.environ.get("PLAYER", "owl")
     files = None
-    if name != "owl":
-        gb = os.environ["GREYBOX_DIR"]
+    gb = os.environ.get("GREYBOX_DIR")
+    # (the greybox whenever GREYBOX_DIR is given - the owl's too; without
+    # it, PLAYER=owl is the baked owl person)
+    if gb or name != "owl":
         files = (os.path.join(gb, name + "_greybox.glb"), os.path.join(gb, name + "_greybox.json"))
     meshes = bind(arm, rig_name, name, files=files)
     if actions:
