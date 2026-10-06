@@ -34,6 +34,8 @@ const TESTS := [
 	"test_light_flash_stuns",
 	"test_right_stick_casts",
 	"test_right_stick_tap_cast",
+	"test_cast_whip_follows_wind_up",
+	"test_rod_bends_with_the_fish",
 	"test_cast_only_near_water",
 	"test_walking_off_reels_in",
 	"test_fight_swipe",
@@ -856,6 +858,102 @@ func test_right_stick_tap_cast() -> void:
 	stick._reset()
 	await frames(1)
 	check(absf(player().charge_time / Player.MAX_CHARGE_TIME - Player.CAST_TAP_RATIO) < 0.01, "a tap casts at the usual distance (%.2f)" % (player().charge_time / Player.MAX_CHARGE_TIME))
+
+
+## User request (round 5): letting go of a charge plays on from the
+## wind-up frame it got to, one frame at a time - no cut to the whip's top.
+func test_cast_whip_follows_wind_up() -> void:
+	check(PlayerVisual.whip_start(-1) == 4, "no wind-up shown: the whip as before")
+	check(PlayerVisual.whip_start(3) == 4, "a full wind-up whips from frame 4")
+	check(PlayerVisual.whip_start(0) == 1 and PlayerVisual.whip_start(1) == 2, "an early release plays on from the next frame")
+	var zone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
+	var shore: Vector2 = zone.shore_point(Vector2.DOWN)
+	await put(shore + Vector2(0, 60))
+	player().aim_dir = Vector2.UP
+	var visual = player().get_node("Body")
+	var stick = main.get_node("HUD/Panel/AimJoystick")
+	stick._touch_index = 7
+	await frames(4)
+	stick._reset()
+	var seen := []
+	for i in 30:
+		await frames(1)
+		if visual.clip == PlayerVisual.CLIP_CAST and (seen.is_empty() or seen[-1] != visual.frame_in_clip):
+			seen.append(visual.frame_in_clip)
+	check(not seen.is_empty() and seen[0] <= 2, "a tap's whip starts next to its wind-up (%s)" % [seen])
+	var steps_ok := true
+	for i in range(1, seen.size()):
+		steps_ok = steps_ok and seen[i] - seen[i - 1] <= 2 and seen[i] > seen[i - 1]
+	check(steps_ok, "and runs forward without a cut (%s)" % [seen])
+
+
+## (Candidate, user request round 6: the fight shows the fish pulling.)
+## The rod is straight with no fish on; hooked, it bends toward the line,
+## more as the tension rises; the line leaves its bent tip; a run's yank
+## jolts the body toward the fish and bends the rod harder.
+func test_rod_bends_with_the_fish() -> void:
+	var zone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
+	await put(zone.shore_point(Vector2.DOWN) + Vector2(0, 60))
+	player().aim_dir = Vector2.UP
+	var rod = player().get_node("Rod")
+	var visual = player().get_node("Body")
+	await frames(20)
+	check(absf(rod.bend) < 0.001, "no fish on: the rod straight (%.3f)" % rod.bend)
+	var straight_tip: Vector2 = rod.tip_position()
+	player().cast_target = player().global_position + Vector2(-60, -90)
+	player().tier_data = FishData.get_tier_data("mid").duplicate()
+	player().difficulty_key = "normal"
+	player().fish_habit = ""
+	player().is_heart_catch = false
+	player()._hook_fish()
+	var bends := []
+	for t in [0.1, 0.8]:
+		player().fight.tension = t
+		player().fight._run_timer = 99.0
+		player().fight._jump_cooldown = 99.0
+		player().tension = t
+		await seconds(0.6)
+		bends.append(absf(rod.bend))
+	check(bends[0] > 0.05 and bends[1] > bends[0] + 0.3, "hooked, it bends - more at a high tension (%s)" % [bends])
+	var to_line: Vector2 = rod.to_local(player().get_line_target_position())
+	check(signf(rod.bend) == signf(to_line.y), "toward the line's side of it")
+	var tip: Vector2 = rod.tip_position()
+	var at_tip: Array = rod._at(rod._tip_along())
+	check(tip.distance_to(rod.to_global(at_tip[0] + at_tip[1] * rod._offset.y * rod._scale().y)) < 0.01, "the line leaves the bent tip")
+	check(tip.distance_to(straight_tip) > 0.5, "which has moved off the straight rod's (%.1f px)" % tip.distance_to(straight_tip))
+	# cranking: the reel clip from its first frame (the crank turns on from
+	# where the hand rests on it in the hold)
+	await frames(5)
+	check(visual.clip == PlayerVisual.CLIP_HOLD, "hooked, not cranking: the hold")
+	key(KEY_SPACE, true)
+	var first := -1
+	for i in 10:
+		await frames(1)
+		if visual.clip == PlayerVisual.CLIP_REEL:
+			first = visual.frame_in_clip
+			break
+	key(KEY_SPACE, false)
+	check(first == 0, "cranking starts the reel at its first frame (%d)" % first)
+	await frames(3)
+	# a run: the fight clip, its yank
+	player().fight.run_left = 2.0
+	player().fight.run_side = Vector2.ZERO
+	var home: Vector2 = visual.position
+	var yanked := false
+	var jolted := 0.0
+	for i in 40:
+		await frames(1)
+		if visual.clip == PlayerVisual.CLIP_FIGHT and visual.yank > 0.9:
+			yanked = true
+			jolted = maxf(jolted, (visual.position - home).dot((player().cast_target - player().global_position).normalized()))
+	check(yanked, "a run plays the fight, its yank at YANK_FRAME")
+	check(jolted > 0.5, "the yank jolts the body toward the fish (%.2f px)" % jolted)
+	await seconds(0.5)
+	check(visual.position.distance_to(home) < 0.3 or visual.yank > 0.0, "and it eases back")
+	player()._set_state(Player.State.IDLE)
+	player().fight = null
+	await seconds(0.6)
+	check(absf(rod.bend) < 0.02, "the fish off: straight again (%.3f)" % rod.bend)
 
 
 ## Too far from the water, the stick doesn't cast.

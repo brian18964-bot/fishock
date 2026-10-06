@@ -5,15 +5,20 @@ extends Sprite2D
 ## trial colours, tools/owl_character.py's player())
 ## moving as Mixamo's clips move (user request: the carrying / casting /
 ## holding-the-rod animation), pre-rendered by tools/render_player.py,
-## 8 frames per clip, 56x72 cells; rows = clips x 8 facings. Plays:
+## 8 frames per clip (the cell fitted to the character); rows = clips x 8
+## facings. Plays:
 ##   0 idle      breathing, rod across the back
 ##   1 run       rod across the back
 ##   2 cast      winding back with the charge (0-3), whipped on release (4-7)
 ##   3 hold      rod held out after the cast, waiting
 ##   4 busy      bent over (sacrificing, rummaging)
 ##   5 reel      cranking the reel in (reeling a fish, retrieving a lure)
-##   6 fight     cranking, leaning back against a running fish
+##   6 fight     a running fish pulling: braced on the reel, yanked toward
+##               it (frame YANK_FRAME) and hauling back
 ##   7 hold_run  running with the rod held out
+## (Candidate, user request round 6: the reeling cranked at the air.) In
+## hold, reel, fight and hold_run both hands are on the rod: the right on
+## the reel's crank, turning it once round over the reel clip.
 ## Faces where it's running, otherwise where it's aiming. The rod itself is
 ## drawn by held_rod.gd, from where this frame's hand (or back) puts it.
 ## User request (Camp v2): in the big ghost's grip it struggles, and
@@ -32,7 +37,12 @@ const SHEET_HALVES := 2
 const SPRITE_SCALE := 0.5
 ## (0, -center_y * 27.108) for the sheet's camera; the feet sit at the
 ## node origin, which is placed at the bottom of the player's collision box.
-const OFFSET := Vector2(0.0, -15.38)
+## The main sheet's comes with it (render_player.py writes it into the rod
+## data: its cell is fitted to the character, so it changes with the
+## character and the clips); the struggle sheet's is fixed
+## (render_player_struggle.py CELL, CENTER_Y).
+const ROD_DATA := preload("res://assets/sprites/player/player_55deg_rod.json")
+const STRUGGLE_OFFSET := Vector2(0.0, -15.38)
 ## Sheet column order: down, down_left, left, up_left, up, up_right, right,
 ## down_right. Index by 45deg sector clockwise from +X (right).
 const SECTOR_TO_DIR := [6, 7, 0, 1, 2, 3, 4, 5]
@@ -48,7 +58,14 @@ const CLIP_HOLD_RUN := 7
 const CLIPS := 8
 ## Row names in the sheet (and in its rod data, see held_rod.gd).
 const CLIP_NAMES := ["idle", "run", "cast", "hold", "busy", "reel", "fight", "hold_run"]
-const FPS := [2.5, 10.9, 0.0, 3.0, 6.0, 14.0, 16.0, 10.9]
+const FPS := [2.5, 10.9, 0.0, 3.0, 6.0, 14.0, 9.0, 10.9]
+## The fight clip's frame where the fish yanks: the rod dips, the arms are
+## pulled out (render_player.py FIGHT_LEAN, FIGHT_REACH) - and, here, the
+## body is jolted YANK_JOLT px toward the fish and the rod bent harder
+## (held_rod.gd), easing off over YANK_TIME s.
+const YANK_FRAME := 1
+const YANK_JOLT := 1.6
+const YANK_TIME := 0.18
 ## The run clip's own pace in world px/s at this scale; faster running
 ## plays it faster.
 const RUN_PACE := 77.4
@@ -64,11 +81,20 @@ var dir := 0
 var frame_in_clip := 0
 
 var _phase := 0.0
+## The main sheet's offset (ROD_DATA, above).
+var _sheet_offset := Vector2(ROD_DATA.data.offset[0], ROD_DATA.data.offset[1])
 var _whip := -1.0
+## The wind-up frame (0-3) the charge reached, -1 when none showed.
+var _wound := -1
+## The whip's first frame: the one after where the wind-up got to.
+var _whip_from := 4
 var _main_tex: CanvasTexture
 var _struggle_tex: CanvasTexture
 ## Showing the struggle sheet (held_rod.gd draws no rod then).
 var struggling := false
+## A fish's yank, 1 at its frame easing to 0 (read by held_rod.gd).
+var yank := 0.0
+var _home := Vector2.ZERO
 
 @onready var _player: Player = get_parent()
 
@@ -80,9 +106,23 @@ func _ready() -> void:
 	_struggle_tex = CanvasTexture.new()
 	_struggle_tex.diffuse_texture = STRUGGLE[0]
 	_struggle_tex.normal_texture = STRUGGLE[1]
+	_home = position
 	_use_sheet(false)
-	Art.place(self, OFFSET, SPRITE_SCALE)
-	_player.cast_started.connect(func(_t, _tier): _whip = 0.0)
+	Art.place(self, _sheet_offset, SPRITE_SCALE)
+	_player.cast_started.connect(func(_t, _tier):
+		_whip = 0.0
+		_whip_from = whip_start(_wound))
+
+
+## User request (round 5: no jump from the charge into the release): a
+## cast let go before the wind-up's top (a tap, a short charge) used to cut
+## from the rod low at frame 0 or 1 to the top of the whip (frame 4); it
+## plays on from the next frame through the rest of the wind-up and the
+## whip instead, in the same WHIP_TIME - one frame at a time.
+static func whip_start(wound: int) -> int:
+	if wound < 0:
+		return 4
+	return clampi(wound + 1, 1, 4)
 
 
 func _use_sheet(struggle: bool) -> void:
@@ -99,7 +139,7 @@ func _struggle(delta: float) -> bool:
 	if not held and not knocked:
 		if struggling:
 			_use_sheet(false)
-			Art.place(self, OFFSET, SPRITE_SCALE)
+			Art.place(self, _sheet_offset, SPRITE_SCALE)
 		return false
 	if not struggling:
 		_use_sheet(true)
@@ -112,17 +152,19 @@ func _struggle(delta: float) -> bool:
 		frame_in_clip = int(_phase) % FRAMES
 		# Shaking in its grip.
 		var jolt := Vector2(randf_range(-SHAKE, SHAKE), randf_range(-SHAKE, SHAKE) * 0.5)
-		offset = OFFSET * Art.DENSITY + jolt * Art.DENSITY / SPRITE_SCALE
+		offset = STRUGGLE_OFFSET * Art.DENSITY + jolt * Art.DENSITY / SPRITE_SCALE
 	else:
 		row = 1
 		frame_in_clip = mini(int(_player.knock_progress() * FRAMES), FRAMES - 1)
-		Art.place(self, OFFSET, SPRITE_SCALE)
+		Art.place(self, STRUGGLE_OFFSET, SPRITE_SCALE)
 	frame = (row * DIRS + dir) * FRAMES + frame_in_clip
 	return true
 
 
 func _process(delta: float) -> void:
 	if _struggle(delta):
+		yank = 0.0
+		position = _home
 		return
 	var speed := _player.velocity.length()
 	var moving := speed > 8.0
@@ -142,13 +184,15 @@ func _process(delta: float) -> void:
 		# The cast: the whip and follow-through, fast.
 		_whip += delta
 		clip = CLIP_CAST
-		frame_in_clip = mini(4 + int(_whip / WHIP_TIME * 4.0), FRAMES - 1)
+		frame_in_clip = mini(_whip_from + int(_whip / WHIP_TIME * (FRAMES - _whip_from)), FRAMES - 1)
 		if _whip >= WHIP_TIME:
 			_whip = -1.0
+			_wound = -1
 	elif charging and not moving:
 		# Winding back with the charge.
 		clip = CLIP_CAST
 		frame_in_clip = mini(int(_player.charge_time / Player.MAX_CHARGE_TIME * 4.0), 3)
+		_wound = frame_in_clip
 	elif charging:
 		# User feedback: walking while holding the cast froze the legs (the
 		# wind-up is one still frame) - it runs with the rod out instead,
@@ -156,9 +200,12 @@ func _process(delta: float) -> void:
 		clip = CLIP_HOLD_RUN
 		_phase += delta * FPS[clip] * speed / RUN_PACE
 		frame_in_clip = int(_phase) % FRAMES
+		_wound = -1
 	else:
+		_wound = -1
 		var fishing := state != Player.State.IDLE
 		var cranking := _player._is_action_pressed()
+		var was := clip
 		if moving:
 			clip = CLIP_HOLD_RUN if fishing else CLIP_RUN
 		elif state == Player.State.REELING:
@@ -177,8 +224,31 @@ func _process(delta: float) -> void:
 		var fps: float = FPS[clip]
 		if clip == CLIP_RUN or clip == CLIP_HOLD_RUN:
 			fps *= speed / RUN_PACE
+		if clip == CLIP_FIGHT and was != CLIP_FIGHT:
+			# a run starts with the fish's first yank
+			_phase = YANK_FRAME - delta * fps
+		elif clip == CLIP_REEL and was != CLIP_REEL:
+			# the crank turns on from where the hand rests on it (frame 0:
+			# the knob where the hold, the fight and the running hold keep it)
+			_phase = -delta * fps
+		var before := frame_in_clip
 		_phase += delta * fps
 		frame_in_clip = int(_phase) % FRAMES
+		if clip == CLIP_FIGHT and frame_in_clip == YANK_FRAME and (before != YANK_FRAME or was != CLIP_FIGHT):
+			yank = 1.0
+	_jolt(delta)
 	var row := clip * DIRS + dir
 	var rows_per_half := CLIPS * DIRS / SHEET_HALVES
 	frame = (row % rows_per_half) * hframes + (row / rows_per_half) * FRAMES + frame_in_clip
+
+
+## (Candidate, user request round 6.) The fish's yank: the body jolted
+## toward it, easing back (the rod and the layer in front of it follow the
+## body's place).
+func _jolt(delta: float) -> void:
+	yank = maxf(0.0, yank - delta / YANK_TIME) if yank > 0.0 else 0.0
+	var toward: Vector2 = _player.cast_target - _player.global_position
+	var jolt := Vector2.ZERO
+	if yank > 0.0 and toward.length() > 1.0:
+		jolt = toward.normalized() * YANK_JOLT * yank * yank
+	position = _home + jolt
