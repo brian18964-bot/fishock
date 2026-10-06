@@ -288,13 +288,13 @@ def rod_texels():
     return _ROD_TEXELS
 
 
-def rod_footprint(grip_px, tip_px, size):
+def rod_footprint(grip_px, tip_px, size, grow=None):
     """Where any tier's rod covers this cell's picture (render px): each
     texel placed as held_rod.gd places it (its faint edge too), then
-    FOOT_GROW px more - the front layer redraws the body's own pixels
-    (scripts/body_front.gd), so reaching past the rod costs nothing, and
-    short of it the rod's edge showed as a thin line (user request, round
-    5: no notches where the layer meets the rod)."""
+    `grow` px more (FOOT_GROW) - the front layer redraws the body's own
+    pixels (scripts/body_front.gd), so reaching past the rod costs nothing
+    inside the body, and short of it the rod's edge showed as a thin line
+    (user request, round 5: no notches where the layer meets the rod)."""
     from scipy.ndimage import binary_dilation
     W, H = size
     g = np.asarray(grip_px, float)
@@ -316,7 +316,7 @@ def rod_footprint(grip_px, tip_px, size):
         j = np.round(py).astype(int)
         ok = (i >= 0) & (i < W) & (j >= 0) & (j < H)
         mask[j[ok], i[ok]] = True
-    return binary_dilation(mask, iterations=FOOT_GROW)
+    return binary_dilation(mask, iterations=FOOT_GROW if grow is None else grow)
 
 
 RENDER_D = [2]
@@ -423,7 +423,8 @@ def front_mask(mesh, cam, size, grip, tip, d):
     """Where on this cell's picture (size, `d` x density) the character is
     in front of the drawn rod: the rod's footprint (its drawn width, from
     a little behind the grip to the tip), each pixel's ray against the
-    character, nearer than the rod's axis there."""
+    character, nearer than the rod's axis there. Returns that and the part
+    of it within a pixel of the rod itself (see front_atlas)."""
     scene = bpy.context.scene
     W, H = size
     RENDER_D[0] = d
@@ -433,9 +434,10 @@ def front_mask(mesh, cam, size, grip, tip, d):
     a = np.array([gx, gy])
     b = np.array([tx, ty])
     foot = rod_footprint(a, b, (W, H))
+    near = rod_footprint(a, b, (W, H), grow=1)
     mask = np.zeros((H, W), bool)
     if not foot.any():
-        return mask
+        return mask, mask
     mw_c = cam.matrix_world
     fwd = (mw_c.to_3x3() @ Vector((0, 0, -1))).normalized()
     right = (mw_c.to_3x3() @ Vector((1, 0, 0))).normalized()
@@ -461,7 +463,7 @@ def front_mask(mesh, cam, size, grip, tip, d):
         on_rod = g3 + (t3 - g3) * t
         if depth < (on_rod - o).dot(fwd):
             mask[py, px] = True
-    return mask
+    return mask, mask & near
 
 
 def front_atlas(out_prefix, masks, cells, cell, d, cols):
@@ -474,7 +476,7 @@ def front_atlas(out_prefix, masks, cells, cell, d, cols):
     w, h = cell[0] * d, cell[1] * d
     pieces = []
     for i, c in enumerate(cells):
-        m = masks.get(c)
+        m, near = masks.get(c, (None, None))
         if m is None or not m.any():
             pieces.append(None)
             continue
@@ -484,6 +486,11 @@ def front_atlas(out_prefix, masks, cells, cell, d, cols):
         row, col = divmod(i, cols)
         X, Y = col * w, row * h
         a = alb[Y + y0:Y + y1, X + x0:X + x1].copy()
+        # past the rod itself only where the body is opaque: drawn twice, a
+        # half-clear outline pixel came out darker (user request, round 5:
+        # no blocks of the character's colour where the layer ends)
+        m = m.copy()
+        m[y0:y1, x0:x1] &= (a[..., 3] >= 250) | near[y0:y1, x0:x1]
         a[..., 3] = (a[..., 3] * m[y0:y1, x0:x1]).astype(np.uint8)
         n = nor[(Y + y0) // d:(Y + y1) // d, (X + x0) // d:(X + x1) // d].copy()
         mn = m[y0:y1, x0:x1].reshape((y1 - y0) // d, d, (x1 - x0) // d, d).any(axis=(1, 3))
