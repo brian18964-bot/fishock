@@ -448,7 +448,7 @@ def rod_through(mesh, grip, d, from_t=0.15):
 
 # ---------------------------------------------------------------- both hands on the reel (candidate)
 # User request (round 6): reeling in and the fight cranked at the air - the
-# right hand turned a small circle 24-31 cm (in a 1.2 m animal person) off
+# right hand turned a small circle 24-42 cm (in a 1.2 m animal person) off
 # the rod, with no reel there. In the clips with the rod held out
 # (STANCE_CLIPS) both hands are on it now: the left round its handle, the
 # right on the reel's crank knob (reel.py, drawn with the character) -

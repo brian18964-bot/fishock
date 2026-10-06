@@ -1,7 +1,7 @@
 """The reel on the rod, and where the cranking hand holds its knob.
 
 User request (round 6): reeling in and the fight cranked at the air - the
-right hand turned a small circle 24-31 cm (in a 1.2 m animal person) off
+right hand turned a small circle 24-42 cm (in a 1.2 m animal person) off
 the rod, with nothing there to turn; the reel was only a flat bump on the
 rod's sprite. Here the reel is a part of the character's own pictures
 (render_player.py --grip draws it with the body, so the hand on its knob
