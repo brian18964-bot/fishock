@@ -13,8 +13,12 @@ extends Sprite2D
 ##   3 hold      rod held out after the cast, waiting
 ##   4 busy      bent over (sacrificing, rummaging)
 ##   5 reel      cranking the reel in (reeling a fish, retrieving a lure)
-##   6 fight     cranking, leaning back against a running fish
+##   6 fight     a running fish pulling: braced on the reel, yanked toward
+##               it (frame YANK_FRAME) and hauling back
 ##   7 hold_run  running with the rod held out
+## (Candidate, user request round 6: the reeling cranked at the air.) In
+## hold, reel, fight and hold_run both hands are on the rod: the right on
+## the reel's crank, turning it once round over the reel clip.
 ## Faces where it's running, otherwise where it's aiming. The rod itself is
 ## drawn by held_rod.gd, from where this frame's hand (or back) puts it.
 ## User request (Camp v2): in the big ghost's grip it struggles, and
@@ -54,7 +58,14 @@ const CLIP_HOLD_RUN := 7
 const CLIPS := 8
 ## Row names in the sheet (and in its rod data, see held_rod.gd).
 const CLIP_NAMES := ["idle", "run", "cast", "hold", "busy", "reel", "fight", "hold_run"]
-const FPS := [2.5, 10.9, 0.0, 3.0, 6.0, 14.0, 16.0, 10.9]
+const FPS := [2.5, 10.9, 0.0, 3.0, 6.0, 14.0, 9.0, 10.9]
+## The fight clip's frame where the fish yanks: the rod dips, the arms are
+## pulled out (render_player.py FIGHT_LEAN, FIGHT_REACH) - and, here, the
+## body is jolted YANK_JOLT px toward the fish and the rod bent harder
+## (held_rod.gd), easing off over YANK_TIME s.
+const YANK_FRAME := 1
+const YANK_JOLT := 1.6
+const YANK_TIME := 0.18
 ## The run clip's own pace in world px/s at this scale; faster running
 ## plays it faster.
 const RUN_PACE := 77.4
@@ -81,6 +92,9 @@ var _main_tex: CanvasTexture
 var _struggle_tex: CanvasTexture
 ## Showing the struggle sheet (held_rod.gd draws no rod then).
 var struggling := false
+## A fish's yank, 1 at its frame easing to 0 (read by held_rod.gd).
+var yank := 0.0
+var _home := Vector2.ZERO
 
 @onready var _player: Player = get_parent()
 
@@ -92,6 +106,7 @@ func _ready() -> void:
 	_struggle_tex = CanvasTexture.new()
 	_struggle_tex.diffuse_texture = STRUGGLE[0]
 	_struggle_tex.normal_texture = STRUGGLE[1]
+	_home = position
 	_use_sheet(false)
 	Art.place(self, _sheet_offset, SPRITE_SCALE)
 	_player.cast_started.connect(func(_t, _tier):
@@ -148,6 +163,8 @@ func _struggle(delta: float) -> bool:
 
 func _process(delta: float) -> void:
 	if _struggle(delta):
+		yank = 0.0
+		position = _home
 		return
 	var speed := _player.velocity.length()
 	var moving := speed > 8.0
@@ -188,6 +205,7 @@ func _process(delta: float) -> void:
 		_wound = -1
 		var fishing := state != Player.State.IDLE
 		var cranking := _player._is_action_pressed()
+		var was := clip
 		if moving:
 			clip = CLIP_HOLD_RUN if fishing else CLIP_RUN
 		elif state == Player.State.REELING:
@@ -206,8 +224,31 @@ func _process(delta: float) -> void:
 		var fps: float = FPS[clip]
 		if clip == CLIP_RUN or clip == CLIP_HOLD_RUN:
 			fps *= speed / RUN_PACE
+		if clip == CLIP_FIGHT and was != CLIP_FIGHT:
+			# a run starts with the fish's first yank
+			_phase = YANK_FRAME - delta * fps
+		elif clip == CLIP_REEL and was != CLIP_REEL:
+			# the crank turns on from where the hand rests on it (frame 0:
+			# the knob where the hold, the fight and the running hold keep it)
+			_phase = -delta * fps
+		var before := frame_in_clip
 		_phase += delta * fps
 		frame_in_clip = int(_phase) % FRAMES
+		if clip == CLIP_FIGHT and frame_in_clip == YANK_FRAME and (before != YANK_FRAME or was != CLIP_FIGHT):
+			yank = 1.0
+	_jolt(delta)
 	var row := clip * DIRS + dir
 	var rows_per_half := CLIPS * DIRS / SHEET_HALVES
 	frame = (row % rows_per_half) * hframes + (row / rows_per_half) * FRAMES + frame_in_clip
+
+
+## (Candidate, user request round 6.) The fish's yank: the body jolted
+## toward it, easing back (the rod and the layer in front of it follow the
+## body's place).
+func _jolt(delta: float) -> void:
+	yank = maxf(0.0, yank - delta / YANK_TIME) if yank > 0.0 else 0.0
+	var toward: Vector2 = _player.cast_target - _player.global_position
+	var jolt := Vector2.ZERO
+	if yank > 0.0 and toward.length() > 1.0:
+		jolt = toward.normalized() * YANK_JOLT * yank * yank
+	position = _home + jolt

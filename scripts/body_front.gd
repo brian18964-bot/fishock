@@ -21,7 +21,7 @@ var _front: Dictionary = ROD_DATA.data.get("front", {})
 var _mat: ShaderMaterial
 
 @onready var _body: PlayerVisual = get_parent().get_node("Body")
-@onready var _rod: Sprite2D = get_parent().get_node("Rod")
+@onready var _rod: Node2D = get_parent().get_node("Rod")
 
 
 func _ready() -> void:
