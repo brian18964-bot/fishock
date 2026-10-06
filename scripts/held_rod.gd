@@ -9,7 +9,7 @@ extends Node2D
 ## where the player's animation puts it - in the left hand while fishing,
 ## across the back otherwise. tools/render_player.py recorded, for every
 ## frame of every clip and facing, the grip and tip on screen and whether
-## the rod is behind the body (ROD_DATA); this points the rod from that
+## the rod is behind the body (CharacterArt.rod_data()); this points the rod from that
 ## grip to that tip, foreshortened to its on-screen length.
 ##
 ## (Candidate, user request round 6: the fight has to show the fish pulling
@@ -28,7 +28,6 @@ const THICKNESS_SCALE := 1.6
 const BRIGHTNESS := 1.6
 ## Grip to tip along the sprite, in original-density texture px (Art).
 const TIP_X := 82.0
-const ROD_DATA := preload("res://assets/sprites/player/player_55deg_rod.json")
 
 ## A bite jerks it; while fighting a fish it shudders, harder while
 ## reeling and during a run, and leans the way it's pulled.
@@ -83,10 +82,10 @@ const TIERS := [
 var _swing: float = 0.0
 var _swing_tween: Tween
 var _time: float = 0.0
-var _rod: Dictionary = ROD_DATA.data.rod
+var _rod: Dictionary = CharacterArt.rod_data().rod
 ## The sheet's pixels in front of the rod (BodyFront) when it has them:
 ## the rod is then drawn over the body, and they over the rod.
-var _has_front: bool = ROD_DATA.data.has("front")
+var _has_front: bool = CharacterArt.rod_data().has("front")
 var _tier := 0
 var _tex: CanvasTexture
 ## The sprite's canvas centre from the grip (texels), as a Sprite2D offset.

@@ -9,7 +9,7 @@ stand-in):
   struggle  Push_Loop   shoving at the ghost's hold
   knock     Hit_Chest   struck free, staggering back a step
 
-Framed exactly as the player's own sheet (tools/render_player.py: 56x72
+Framed like the player's own sheet (tools/render_player.py; 56x84
 cells, the feet at the same place), so PlayerVisual swaps sheets without
 moving the character. Rows = clip x 8 facings, FRAMES columns.
 
@@ -40,9 +40,12 @@ CLIPS = [("struggle", "Push_Loop", True, (0.0, 1.0), 0.35, False),
          ("knock", "Hit_Chest", False, (0.0, 1.0), 1.0, True)]
 TRUNK = ("pelvis", "spine_01", "spine_02", "spine_03", "neck_01", "Head")
 LEGS = ("thigh", "calf", "foot", "ball")
-# The player sheet's cell and camera (render_player.py's output).
-CELL = (56, 72)
-CENTER_Y = 15.38 / rp.DENSITY
+# The cell and camera: the player sheet's (render_player.py's output),
+# 12 px taller at the top (user request: all four animals in the game -
+# the dog's ears and the bear's head came up past 72) - the feet where
+# they were, so PlayerVisual.STRUGGLE_OFFSET is the centre 6 px higher.
+CELL = (56, 84)
+CENTER_Y = 21.38 / rp.DENSITY
 HD = 2
 
 

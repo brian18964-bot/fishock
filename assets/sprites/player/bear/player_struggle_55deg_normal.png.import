@@ -2,28 +2,28 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cbnx80nma26i6"
-path="res://.godot/imported/player_struggle_55deg_albedo.png-17c3d42c511be1cd213a30eef9061b63.ctex"
+uid="uid://brhsoihj3b3ty"
+path="res://.godot/imported/player_struggle_55deg_normal.png-4965e6c917066c08904fd52189a38920.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/sprites/player/player_struggle_55deg_albedo.png"
-dest_files=["res://.godot/imported/player_struggle_55deg_albedo.png-17c3d42c511be1cd213a30eef9061b63.ctex"]
+source_file="res://assets/sprites/player/bear/player_struggle_55deg_normal.png"
+dest_files=["res://.godot/imported/player_struggle_55deg_normal.png-4965e6c917066c08904fd52189a38920.ctex"]
 
 [params]
 
 compress/mode=1
 compress/high_quality=false
-compress/lossy_quality=0.85
+compress/lossy_quality=0.9
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=0
+compress/normal_map=1
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

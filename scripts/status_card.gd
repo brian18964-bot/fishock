@@ -16,9 +16,6 @@ const NAME := "釣客"
 const POS := Vector2(6, 4)
 const SIZE := Vector2(226, 72)
 const PORTRAIT := 64.0
-## The portrait: the player sheet's first frame (idle, facing down), head
-## and shoulders.
-const PORTRAIT_REGION := Rect2(50, 34, 44, 44)
 const INK := Color(1.0, 0.96, 0.88)
 const DIM := Color(1.0, 0.96, 0.88, 0.7)
 const WARN := Color(1.0, 0.55, 0.45)
@@ -52,8 +49,10 @@ func _ready() -> void:
 	if custom_path != "":
 		_font = load(custom_path)
 	_portrait = AtlasTexture.new()
-	_portrait.atlas = PlayerVisual.SHEET[0]
-	_portrait.region = PORTRAIT_REGION
+	# The portrait: the character's sheet's first frame (idle, facing
+	# down), head and shoulders.
+	_portrait.atlas = CharacterArt.sheet()[0]
+	_portrait.region = CharacterArt.portrait()
 	_view = Node2D.new()
 	_view.draw.connect(_draw_card)
 	add_child(_view)

@@ -36,6 +36,7 @@ const TESTS := [
 	"test_right_stick_tap_cast",
 	"test_cast_whip_follows_wind_up",
 	"test_rod_bends_with_the_fish",
+	"test_characters",
 	"test_cast_only_near_water",
 	"test_walking_off_reels_in",
 	"test_fight_swipe",
@@ -891,6 +892,82 @@ func test_cast_whip_follows_wind_up() -> void:
 ## The rod is straight with no fish on; hooked, it bends toward the line,
 ## more as the tension rises; the line leaves its bent tip; a run's yank
 ## jolts the body toward the fish and bends the rod harder.
+## User request: the four animals in the game, tapping the camp's fire to
+## change who's travelling - each with its own pictures in the run (the
+## sheet, its front layer and rod data, the struggle sheet) and its own
+## model at camp.
+func test_characters() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 100, "spirit": 95.0})
+	for c in Profile.CHARACTERS:
+		var id: String = c[0]
+		var sheet := CharacterArt.sheet(id)
+		var data := CharacterArt.rod_data(id)
+		var cell: Array = data.cell
+		check(sheet[0] != null and sheet[1] != null, "%s: its run sheet" % id)
+		# (2x density; the clips' rows in two halves side by side)
+		check(sheet[0].get_width() == int(cell[0]) * 2 * PlayerVisual.FRAMES * PlayerVisual.SHEET_HALVES
+			and sheet[0].get_height() == int(cell[1]) * 2 * PlayerVisual.CLIPS * PlayerVisual.DIRS / PlayerVisual.SHEET_HALVES,
+			"%s: the sheet holds its cells (%dx%d)" % [id, sheet[0].get_width(), sheet[0].get_height()])
+		check(data.clips == PlayerVisual.CLIP_NAMES and data.rod.has("fight") and data.has("front") and data.has("crank"),
+			"%s: its rod data has every clip, the front layer and the crank" % id)
+		check(CharacterArt.front_mask(id) != null, "%s: its front layer" % id)
+		var struggle := CharacterArt.struggle(id)
+		check(struggle[0] != null and struggle[0].get_width() == 56 * 2 * PlayerVisual.FRAMES
+			and struggle[0].get_height() == 84 * 2 * 2 * PlayerVisual.DIRS, "%s: its struggle sheet" % id)
+		var body: Node3D = CharacterArt.model(id).instantiate()
+		var anim: AnimationPlayer = body.find_children("*", "AnimationPlayer", true, false)[0]
+		var clips := ["Idle", "Walk", "Interact", "Sitting_Idle", "Sitting_Enter", "Fixing_Kneeling"]
+		check(clips.all(func(n): return anim.has_animation(n)), "%s: its camp model has the camp's clips" % id)
+		body.free()
+		var p := CharacterArt.portrait(id)
+		var first := (sheet[0] as Texture2D).get_image().get_region(Rect2i(p))
+		check(not first.is_invisible(), "%s: the card's portrait has its head in it" % id)
+
+	# At camp: the fire is a thing to tap, and each tap the next one.
+	var title: Control = load("res://scenes/title_screen.tscn").instantiate()
+	get_tree().root.add_child(title)
+	await frames(3)
+	var camp: CampStage = title.find_child("Camp", true, false)
+	check(camp.hotspots.has("character"), "the fire can be tapped")
+	check(camp.character.character == "cat", "the black cat to start")
+	var fire: Vector2 = camp.camera.unproject_position(camp.hotspots.character.parts[0][1]) / TitleScreen.RENDER_SCALE
+	check(title.spot_at(fire) == "character", "the fire's where it's tapped")
+	var lamp_was: Vector3 = camp.spots.lamp.at
+	var seen := []
+	for i in Profile.CHARACTERS.size():
+		var press := InputEventMouseButton.new()
+		press.button_index = MOUSE_BUTTON_LEFT
+		press.pressed = true
+		press.position = fire
+		title._on_home_input(press)
+		var lift := press.duplicate() as InputEventMouseButton
+		lift.pressed = false
+		title._on_home_input(lift)
+		await frames(2)
+		seen.append(Profile.character)
+		check(camp.character.character == Profile.character and camp.character.anim != null and camp.character.anim.is_playing(),
+			"tap %d: %s at the fire, alive" % [i + 1, Profile.character])
+		check(title._who.text.ends_with(Profile.character_name()), "the card names it (%s)" % title._who.text)
+		check(title.get("_page") == null, "no page opened")
+		if i == 0:
+			check(camp.spots.lamp.at.distance_to(lamp_was) > 0.01, "it stands where its own hand reaches the lamp")
+	check(seen == ["owl", "dog", "bear", "cat"], "round all four and back (%s)" % [seen])
+	title.queue_free()
+	await frames(1)
+
+	# Into a run as the one chosen: its sheet, its rod data.
+	Profile.character = "bear"
+	await _fresh_game()
+	var visual: PlayerVisual = player().get_node("Body")
+	check((visual.texture as CanvasTexture).diffuse_texture == CharacterArt.sheet("bear")[0], "in the run it's the bear")
+	var off: Array = CharacterArt.rod_data("bear").offset
+	check(visual._sheet_offset == Vector2(off[0], off[1]), "framed by its own rod data")
+	check(Profile.snapshot().character == "bear", "and it's saved")
+	Profile.load_data(saved)
+	Profile._save()
+
+
 func test_rod_bends_with_the_fish() -> void:
 	var zone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
 	await put(zone.shore_point(Vector2.DOWN) + Vector2(0, 60))

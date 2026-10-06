@@ -50,6 +50,11 @@ var _drag_moved := 0.0
 var _spot := ""
 var _press_spot := ""
 var _spot_label: Label
+## The card's name line (釣客・<the character>).
+var _who: Label
+## The new character's name shows over the fire this long (s).
+const NAME_TIME := 1.6
+var _name_time := 0.0
 ## A set piece playing (setting out, coming home): a tap skips it.
 var _scene_piece := ""
 var _skip_hint: Label
@@ -167,7 +172,8 @@ func _build() -> void:
 	var card_col := VBoxContainer.new()
 	card_col.add_theme_constant_override("separation", 0)
 	card_col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var who := UiKit.label("釣客", 18, UiKit.GOLD_BRIGHT, true, 4)
+	var who := UiKit.label("釣客・" + Profile.character_name(), 18, UiKit.GOLD_BRIGHT, true, 4)
+	_who = who
 	who.name = "Name"
 	card_col.add_child(who)
 	var spirit := SpiritBar.new()
@@ -325,6 +331,11 @@ func _head_point() -> Vector3:
 func _process(_delta: float) -> void:
 	# The lit thing's name over it. Resting at the camp (3D or not).
 	Profile.rest(_delta)
+	if _name_time > 0.0:
+		# (the new character's name over the fire, then gone)
+		_name_time -= _delta
+		if _name_time <= 0.0 and _spot == "character" and _press_spot == "":
+			_light("")
 	if _stage != null and _home.visible:
 		if _spot != "":
 			var over := _stage.camera.unproject_position(_stage.label_point(_spot)) / RENDER_SCALE
@@ -367,7 +378,10 @@ func _on_home_input(event: InputEvent) -> void:
 				var page := _press_spot
 				_press_spot = ""
 				_light("")
-				open_page(page)
+				if page == "character":
+					_next_character()
+				else:
+					open_page(page)
 				return
 			_press_spot = ""
 			_light(under)
@@ -392,6 +406,21 @@ func _near_character(at: Vector2) -> bool:
 	var tall := maxf(feet.y - head.y, 40.0)
 	var r := Rect2(Vector2((feet.x + head.x) * 0.5 - tall * 0.22, head.y), Vector2(tall * 0.44, tall))
 	return r.has_point(at)
+
+
+## User request: the fire tapped, the next character (Profile.CHARACTERS)
+## takes over - its name shown over the fire a moment.
+func _next_character() -> void:
+	if _stage == null or _stage.life.busy != "":
+		return
+	var id := Profile.next_character()
+	_stage.set_character(id)
+	Sfx.play("ui_open", -6.0)
+	_who.text = "釣客・" + Profile.character_name()
+	_spot = "character"
+	_spot_label.visible = true
+	_spot_label.text = Profile.character_name()
+	_name_time = NAME_TIME
 
 
 func _wave() -> void:

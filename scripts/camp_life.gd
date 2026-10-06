@@ -103,6 +103,16 @@ func sit_now() -> void:
 	_step = {}
 
 
+## Another character took over (CampStage.set_character, the fire tapped):
+## it carries on from where this one was - sat, still sat; standing, a
+## moment's rest before what's next.
+func restart() -> void:
+	_plan.clear()
+	_step = {}
+	_play("Sitting_Idle" if seated else "Idle", 0.0)
+	_rest = 1.0
+
+
 ## A page over the camp: it holds still (and costs nothing) till it closes.
 func hold(on: bool) -> void:
 	paused = on

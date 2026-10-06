@@ -4,8 +4,8 @@ extends SubViewportContainer
 ## User request (the main screen): the player's character shown in 3D,
 ## front on - it'll be dressed up later (a paper doll), so the player
 ## should see their own. A small 3D stage in a SubViewport: the character
-## (assets/models/menu_character.glb - Quaternius' Universal Animation
-## Library mannequin, CC0, trimmed by hand to three clips) breathing on a
+## (CharacterRig: the one travelling, CharacterArt.model() - on Quaternius'
+## Universal Animation Library skeleton, CC0) breathing on a
 ## round stone, lit by a warm lantern from the front and a cold rim from
 ## behind, in the dark. Drag to turn it; tap it and it waves.
 ##

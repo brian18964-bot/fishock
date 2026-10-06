@@ -144,6 +144,13 @@ var settings: Dictionary = {"auto_lure": false}
 ## tent_<n> model; 8, the bare lean-to, to start - better ones are earned).
 var camp_tent: int = 8
 
+## User request: the four greybox animal people in the game (tools/
+## owl_character.py's player(), PLAYER=<id>), each with its own pictures
+## (CharacterArt); tapping the camp's fire changes who's travelling.
+## [id, name].
+const CHARACTERS := [["cat", "黑貓"], ["owl", "貓頭鷹"], ["dog", "犬"], ["bear", "熊"]]
+var character: String = "cat"
+
 ## User request (Camp v2): the traveller's spirit (精神), 0..SPIRIT_MAX.
 ## Lost when a ghost's grab isn't escaped; back with rest at the camp, a
 ## run escaped, or the merchant's tea and rations (SNACKS).
@@ -371,6 +378,25 @@ func tent_unlocked(tent: int) -> bool:
 			var p := tent_progress(i)
 			return p[0] >= p[1]
 	return false
+
+
+## The character's name (CHARACTERS).
+func character_name(id: String = character) -> String:
+	for c in CHARACTERS:
+		if c[0] == id:
+			return c[1]
+	return id
+
+
+## The next character in CHARACTERS takes over (the camp's fire).
+func next_character() -> String:
+	var i := 0
+	for j in CHARACTERS.size():
+		if CHARACTERS[j][0] == character:
+			i = j
+	character = CHARACTERS[(i + 1) % CHARACTERS.size()][0]
+	_changed()
+	return character
 
 
 ## Pitches tent `tent` at the camp, if it's been earned.
@@ -949,6 +975,7 @@ func snapshot() -> Dictionary:
 		"tank_news": tank_news,
 		"settings": settings,
 		"camp_tent": camp_tent,
+		"character": character,
 		"spirit": spirit,
 		"camp_since": camp_since,
 		"stats": stats,
@@ -986,6 +1013,9 @@ func load_data(data: Dictionary) -> void:
 	settings = {"auto_lure": false}
 	settings.merge(data.get("settings", {}), true)
 	camp_tent = int(data.get("camp_tent", 8))
+	character = str(data.get("character", "cat"))
+	if CHARACTERS.all(func(c): return c[0] != character):
+		character = "cat"
 	spirit = clampf(float(data.get("spirit", SPIRIT_MAX)), 0.0, SPIRIT_MAX)
 	camp_since = float(data.get("camp_since", 0.0))
 	stats = {"escapes": 0, "gold_spent": 0, "legends": 0}

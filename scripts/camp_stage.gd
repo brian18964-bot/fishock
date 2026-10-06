@@ -124,6 +124,8 @@ var spots := {}
 var obstacles: Array = []
 var _fire_light: OmniLight3D
 var _fire_glow: MeshInstance3D
+## The fire flaring as the character changes (1, dying down to 0).
+var _fire_flare := 0.0
 var _embers_mat: StandardMaterial3D
 var _stone_mat: StandardMaterial3D
 var _boat: Node3D
@@ -200,6 +202,15 @@ func go_to(station: String, animate := true, done := Callable()) -> void:
 		_cam_tween.chain().tween_callback(done)
 
 
+## User request: the fire tapped, another character takes over - in the
+## same place, doing what it was (sat, it stays sat), the fire flaring up.
+func set_character(id: String) -> void:
+	character.set_character(id)
+	_lamp_spot()
+	life.restart()
+	_fire_flare = 1.0
+
+
 ## Turns the character by `amount` (radians), as a drag on it does.
 func turn_character(amount: float) -> void:
 	character_pivot.rotation.y += amount
@@ -209,8 +220,9 @@ func _process(delta: float) -> void:
 	_time += delta
 	# The fire breathes: its light flickers, its glow swells, its embers pulse.
 	var flick := 0.85 + 0.1 * sin(_time * 7.3) + 0.06 * sin(_time * 13.1 + 1.3) + 0.04 * sin(_time * 23.0)
-	_fire_light.light_energy = 1.45 * flick
-	_fire_glow.scale = Vector3.ONE * (0.95 + 0.08 * flick)
+	_fire_flare = maxf(_fire_flare - delta * 1.5, 0.0)
+	_fire_light.light_energy = 1.45 * flick + 2.5 * _fire_flare
+	_fire_glow.scale = Vector3.ONE * (0.95 + 0.08 * flick + 0.5 * _fire_flare)
 	_embers_mat.emission_energy_multiplier = 0.32 * flick
 	# The 渡石's runes breathe, slowly - and blaze as someone crosses.
 	_stone_flare = maxf(_stone_flare - delta * 0.6, 0.0)
@@ -236,6 +248,17 @@ func _spot(name: String, at: Vector3, face: Vector3) -> void:
 	spots[name] = {"at": Vector3(at.x, 0.0, at.z), "face": face}
 
 
+## Where the character stands to take the lamp off the drum: where its
+## reaching hand (CharacterArt.reach()) gets to the lamp's bail.
+func _lamp_spot() -> void:
+	var reach := CharacterArt.reach(character.character if character != null else "")
+	var ahead := Vector3(0.6, 0, -0.8)
+	var left := Vector3(ahead.z, 0, -ahead.x)
+	var lamp_at := DRUM_AT + LAMP_ON_DRUM
+	var stand := lamp_at - ahead * reach.z - left * reach.x
+	_spot("lamp", stand, stand + ahead * 2.0)
+
+
 ## Where the character goes and what it walks round (CampLife).
 func _places() -> void:
 	# A seat: standing just in front of the log, facing the way one sits on
@@ -256,12 +279,7 @@ func _places() -> void:
 	_spot("gather_0", Vector3(-2.3, 0, 1.6), Vector3(-2.6, 0, 2.6))
 	_spot("gather_1", Vector3(1.9, 0, 1.6), Vector3(2.2, 0, 2.6))
 	_spot("gather_2", Vector3(-0.7, 0, 1.95), Vector3(-0.9, 0, 3.0))
-	# Where the reaching hand (CharacterRig.REACH) gets to the lamp's bail.
-	var ahead := Vector3(0.6, 0, -0.8)
-	var left := Vector3(ahead.z, 0, -ahead.x)
-	var lamp_at := DRUM_AT + LAMP_ON_DRUM
-	var stand := lamp_at - ahead * CharacterRig.REACH.z - left * CharacterRig.REACH.x
-	_spot("lamp", stand, stand + ahead * 2.0)
+	_lamp_spot()
 	_spot("rod", ROD_AT + Vector3(0.45, 0, 0.35), ROD_AT + Vector3(0, 0, 0))
 	_spot("stone", STONE_AT + Vector3(0, 0, 0.95), STONE_AT)
 	_spot("stone_in", STONE_AT + Vector3(0, 0, 0.12), STONE_AT + Vector3(0, 0, -2.0))
@@ -816,6 +834,8 @@ func _fire() -> void:
 	var pit := CampModel.make("campfire", 0.5)
 	pit.scale = Vector3.ONE * 0.85
 	fire.add_child(pit)
+	# User request: tapping the fire changes who's travelling.
+	_hotspot("character", pit, "換角色", FIRE_AT + Vector3(0, 0.3, 0), 0.6)
 	_embers_mat = pit.material_override as StandardMaterial3D
 	_embers_mat.emission = Color(1.0, 0.55, 0.2)
 	var flame_mat := StandardMaterial3D.new()

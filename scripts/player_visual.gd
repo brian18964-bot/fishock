@@ -1,8 +1,9 @@
 class_name PlayerVisual
 extends Sprite2D
 
-## The player on screen: the black cat (a greybox animal person in its
-## trial colours, tools/owl_character.py's player())
+## The player on screen: the character travelling (Profile.character - a
+## greybox animal person in its trial colours, tools/owl_character.py's
+## player(); its sheets from CharacterArt)
 ## moving as Mixamo's clips move (user request: the carrying / casting /
 ## holding-the-rod animation), pre-rendered by tools/render_player.py,
 ## 8 frames per clip (the cell fitted to the character); rows = clips x 8
@@ -27,7 +28,6 @@ extends Sprite2D
 ##   0 struggle  shoving at the ghost, shaking
 ##   1 knock     struck free, staggering back
 
-const SHEET := [preload("res://assets/sprites/player/player_55deg_albedo.png"), preload("res://assets/sprites/player/player_55deg_normal.png")]
 const FRAMES := 8
 const DIRS := 8
 ## Performance on phones: the rows are split into halves side by side (the
@@ -41,8 +41,7 @@ const SPRITE_SCALE := 0.5
 ## data: its cell is fitted to the character, so it changes with the
 ## character and the clips); the struggle sheet's is fixed
 ## (render_player_struggle.py CELL, CENTER_Y).
-const ROD_DATA := preload("res://assets/sprites/player/player_55deg_rod.json")
-const STRUGGLE_OFFSET := Vector2(0.0, -15.38)
+const STRUGGLE_OFFSET := Vector2(0.0, -21.38)
 ## Sheet column order: down, down_left, left, up_left, up, up_right, right,
 ## down_right. Index by 45deg sector clockwise from +X (right).
 const SECTOR_TO_DIR := [6, 7, 0, 1, 2, 3, 4, 5]
@@ -70,8 +69,6 @@ const YANK_TIME := 0.18
 ## plays it faster.
 const RUN_PACE := 77.4
 const WHIP_TIME := 0.3
-const STRUGGLE := [preload("res://assets/sprites/player/player_struggle_55deg_albedo.png"),
-	preload("res://assets/sprites/player/player_struggle_55deg_normal.png")]
 const STRUGGLE_FPS := 9.0
 const SHAKE := 1.2
 
@@ -81,8 +78,8 @@ var dir := 0
 var frame_in_clip := 0
 
 var _phase := 0.0
-## The main sheet's offset (ROD_DATA, above).
-var _sheet_offset := Vector2(ROD_DATA.data.offset[0], ROD_DATA.data.offset[1])
+## The main sheet's offset (its rod data, above).
+var _sheet_offset := Vector2.ZERO
 var _whip := -1.0
 ## The wind-up frame (0-3) the charge reached, -1 when none showed.
 var _wound := -1
@@ -100,12 +97,16 @@ var _home := Vector2.ZERO
 
 
 func _ready() -> void:
+	var sheet := CharacterArt.sheet()
+	var offset_px: Array = CharacterArt.rod_data().offset
+	_sheet_offset = Vector2(offset_px[0], offset_px[1])
 	_main_tex = CanvasTexture.new()
-	_main_tex.diffuse_texture = SHEET[0]
-	_main_tex.normal_texture = SHEET[1]
+	_main_tex.diffuse_texture = sheet[0]
+	_main_tex.normal_texture = sheet[1]
+	var struggle := CharacterArt.struggle()
 	_struggle_tex = CanvasTexture.new()
-	_struggle_tex.diffuse_texture = STRUGGLE[0]
-	_struggle_tex.normal_texture = STRUGGLE[1]
+	_struggle_tex.diffuse_texture = struggle[0]
+	_struggle_tex.normal_texture = struggle[1]
 	_home = position
 	_use_sheet(false)
 	Art.place(self, _sheet_offset, SPRITE_SCALE)

@@ -1,4 +1,6 @@
-"""The camp's character, assets/models/menu_character.glb: Quaternius'
+"""The camp's character, assets/models/characters/<PLAYER>.glb (user
+request: the four animals in the game, the camp's fire changing who's
+travelling - CharacterArt): Quaternius'
 Universal Animation Library mannequin (CC0 - the libraries kept out of
 the repo, like the other source models) with the clips the menus play.
 UAL1 and UAL2 share the mannequin's skeleton, so their clips go onto it
@@ -26,7 +28,8 @@ import owl_character  # noqa: E402
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 # (OUT=<path>: elsewhere - a try-out of another character)
-OUT = os.environ.get("OUT") or os.path.join(ROOT, "assets", "models", "menu_character.glb")
+OUT = os.environ.get("OUT") or os.path.join(ROOT, "assets", "models", "characters",
+                                           os.environ.get("PLAYER", "owl") + ".glb")
 
 # The clips kept, by library.
 UAL1 = [

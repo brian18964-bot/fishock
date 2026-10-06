@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://buj8k7isuiqd4"
-path="res://.godot/imported/player_55deg_albedo.png-884edd8c00babde978266329d5c43cac.ctex"
+uid="uid://b3t6kocpnvv8s"
+path="res://.godot/imported/player_55deg_albedo.png-e711e3bd14556de11c41149c9f78aa0d.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/sprites/player/player_55deg_albedo.png"
-dest_files=["res://.godot/imported/player_55deg_albedo.png-884edd8c00babde978266329d5c43cac.ctex"]
+source_file="res://assets/sprites/player/dog/player_55deg_albedo.png"
+dest_files=["res://.godot/imported/player_55deg_albedo.png-e711e3bd14556de11c41149c9f78aa0d.ctex"]
 
 [params]
 

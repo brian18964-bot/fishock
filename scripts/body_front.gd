@@ -3,7 +3,7 @@ extends Sprite2D
 ## (Candidate, user request round 4: the hand holds the rod.) The player's
 ## pixels that are in front of the rod - the fingers round its handle, an
 ## arm or the head it passes behind - drawn over the rod, which held_rod.gd
-## then draws over the body. Where (per frame and facing, ROD_DATA "front")
+## then draws over the body. Where (per frame and facing, the rod data's "front")
 ## comes from tools/render_player.py --grip.
 ##
 ## User request (round 5: no notches or blocks of colour where the layer
@@ -14,10 +14,9 @@ extends Sprite2D
 ## own came out a little different (compressed apart, filtered at its own
 ## edges), and the rod showed through as a faint line.
 
-const MASK := preload("res://assets/sprites/player/player_55deg_front_albedo.png")
-const ROD_DATA := preload("res://assets/sprites/player/player_55deg_rod.json")
-
-var _front: Dictionary = ROD_DATA.data.get("front", {})
+## (The character travelling's: CharacterArt.)
+var _mask: Texture2D = CharacterArt.front_mask()
+var _front: Dictionary = CharacterArt.rod_data().get("front", {})
 var _mat: ShaderMaterial
 
 @onready var _body: PlayerVisual = get_parent().get_node("Body")
@@ -27,7 +26,7 @@ var _mat: ShaderMaterial
 func _ready() -> void:
 	_mat = ShaderMaterial.new()
 	_mat.shader = preload("res://shaders/body_front.gdshader")
-	_mat.set_shader_parameter("mask", MASK)
+	_mat.set_shader_parameter("mask", _mask)
 	material = _mat
 	region_enabled = true
 	z_index = 2
@@ -49,7 +48,7 @@ func _process(_delta: float) -> void:
 	var at := Vector2(_body.frame % _body.hframes, _body.frame / _body.hframes) * cell
 	region_rect = Rect2(at.x + piece[4], at.y + piece[5], piece[2], piece[3])
 	offset = _body.offset + Vector2(piece[4] + piece[2] * 0.5, piece[5] + piece[3] * 0.5) - cell * 0.5
-	var msize := Vector2(MASK.get_width(), MASK.get_height())
+	var msize := Vector2(_mask.get_width(), _mask.get_height())
 	_mat.set_shader_parameter("region_uv", Vector4(region_rect.position.x / size.x, region_rect.position.y / size.y,
 		region_rect.size.x / size.x, region_rect.size.y / size.y))
 	_mat.set_shader_parameter("mask_uv", Vector4(piece[0] / msize.x, piece[1] / msize.y, piece[2] / msize.x, piece[3] / msize.y))

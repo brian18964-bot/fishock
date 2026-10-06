@@ -20,6 +20,7 @@ extends SceneTree
 ## straight ahead (FISH_AHEAD px), as held_rod.gd bends it - fixed, not
 ## eased or shaken, so every capture of a cell is the same; jolt=1: the
 ## fight's yank frame jolted toward the fish as the game jolts it.
+## character=<id>: the character travelling (Profile.CHARACTERS).
 const BG := Color(0.72, 0.74, 0.70)
 const AMBIENT := Color(0.78, 0.78, 0.80)
 const KEY_ENERGY := 0.85
@@ -69,6 +70,16 @@ func _initialize() -> void:
 		var kv := a.split("=", true, 1)
 		args[kv[0]] = kv[1] if kv.size() > 1 else ""
 	seed(int(args.get("seed", "5")))
+	# character=<id>: who's travelling (user request: the four animals in
+	# the game; Profile.CHARACTERS) - for this capture only, not saved.
+	# (after the Profile's own save is read in)
+	if args.has("character"):
+		var profile: Node = root.get_node("Profile")
+		var id: String = args.character
+		if profile.is_node_ready():
+			profile.character = id
+		else:
+			profile.ready.connect(func(): profile.character = id, CONNECT_ONE_SHOT)
 	RenderingServer.set_default_clear_color(BG)
 	change_scene_to_file("res://scenes/main.tscn")
 

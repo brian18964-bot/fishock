@@ -2,15 +2,14 @@ class_name CharacterRig
 extends Node3D
 
 ## The player's character in 3D - in the main screen's camp and on the
-## equipment page (CharacterViewer): assets/models/menu_character.glb -
-## the black cat (a greybox animal person in its trial colours) on
-## Quaternius' Universal Animation Library skeleton (CC0;
-## tools/build_menu_character.py), with its clips - breathing, waving when tapped, and dressed as a paper
+## equipment page (CharacterViewer): the one travelling (Profile.character;
+## its model CharacterArt.model() - a greybox animal person in its trial
+## colours on Quaternius' Universal Animation Library skeleton (CC0;
+## tools/build_menu_character.py)), with its clips - breathing, waving when tapped, and dressed as a paper
 ## doll: equip(slot, scene) hangs a model on a bone (SLOTS) - the rod bought
 ## in the right hand, the oil lamp in the left; hats, packs and the rest
 ## later.
 
-const CHARACTER := preload("res://assets/models/menu_character.glb")
 const RODS := [
 	preload("res://assets/models/fishing_rod_lvl1.glb"), preload("res://assets/models/fishing_rod_lvl2.glb"),
 	preload("res://assets/models/fishing_rod_lvl3.glb"), preload("res://assets/models/fishing_rod_lvl4.glb"),
@@ -29,12 +28,10 @@ const ROD_GRIP := Vector3.ZERO
 ## The oil lamp (0.3 m, base at the origin) hangs from the left hand.
 const LAMP := preload("res://assets/models/oil_lamp.glb")
 ## The left hand reaching out and up (Interact, this far through): where
-## the fingers get to, in the character's frame (+z ahead, +x its left) -
-## where a lamp to be picked up should hang. Measured from the clip on
-## the character wearing it (the black cat: its index fingertip).
+## the fingers get to - each character's own, CharacterArt.reach() - is
+## where a lamp to be picked up should hang.
 const REACH_CLIP := "Interact"
 const REACH_AT := 0.32
-const REACH := Vector3(0.10, 1.01, 0.42)
 ## Where the lamp is held (its own frame): the top of its bail - it hangs
 ## from the fingers by it (user request: the lamp held exactly).
 const LAMP_BAIL := Vector3(0.0, 0.29, 0.0)
@@ -46,6 +43,9 @@ const FLASHLIGHT_SCALE := 0.3
 
 var anim: AnimationPlayer
 var skeleton: Skeleton3D
+## Who's wearing it (Profile.character when built; set_character()).
+var character := ""
+var _body: Node3D
 var attachments := {}
 ## Holds the rod the player owns, following the profile; off for the
 ## shop's try-on (it holds what's being tried).
@@ -72,17 +72,41 @@ var _grip_mod: Grip
 
 
 func _ready() -> void:
-	var body: Node3D = CHARACTER.instantiate()
-	add_child(body)
-	anim = _find(body, "AnimationPlayer") as AnimationPlayer
-	skeleton = _find(body, "Skeleton3D") as Skeleton3D
+	_build(Profile.character)
+	Profile.profile_changed.connect(_on_profile_changed)
+
+
+## User request (the camp's fire changes who's travelling): another
+## character in the same place - its own model, idling, holding what this
+## one held if it holds gear (what hung on the slots otherwise goes).
+func set_character(id: String) -> void:
+	if id == character:
+		return
+	if _body != null:
+		remove_child(_body)
+		_body.queue_free()
+	_body = null
+	anim = null
+	skeleton = null
+	_grip_mod = null
+	_hang = null
+	attachments = {}
+	_build(id)
+
+
+func _build(id: String) -> void:
+	character = id
+	_body = CharacterArt.model(id).instantiate()
+	add_child(_body)
+	anim = _find(_body, "AnimationPlayer") as AnimationPlayer
+	skeleton = _find(_body, "Skeleton3D") as Skeleton3D
 	if skeleton != null:
 		skeleton.skeleton_updated.connect(_on_skeleton_updated)
 		_grip_mod = Grip.new()
 		_grip_mod.name = "Grip"
 		_grip_mod.influence = 0.0
 		skeleton.add_child(_grip_mod)
-	_dress(body)
+	_dress(_body)
 	if anim != null:
 		anim.animation_finished.connect(func(_n):
 			if auto_idle:
@@ -96,7 +120,6 @@ func _ready() -> void:
 	if hold_gear:
 		equip_rod(Profile.rod_tier)
 		equip_lamp()
-	Profile.profile_changed.connect(_on_profile_changed)
 
 
 func _on_profile_changed() -> void:
