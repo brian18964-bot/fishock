@@ -34,6 +34,7 @@ const TESTS := [
 	"test_light_flash_stuns",
 	"test_right_stick_casts",
 	"test_right_stick_tap_cast",
+	"test_cast_whip_follows_wind_up",
 	"test_cast_only_near_water",
 	"test_walking_off_reels_in",
 	"test_fight_swipe",
@@ -856,6 +857,33 @@ func test_right_stick_tap_cast() -> void:
 	stick._reset()
 	await frames(1)
 	check(absf(player().charge_time / Player.MAX_CHARGE_TIME - Player.CAST_TAP_RATIO) < 0.01, "a tap casts at the usual distance (%.2f)" % (player().charge_time / Player.MAX_CHARGE_TIME))
+
+
+## User request (round 5): letting go of a charge plays on from the
+## wind-up frame it got to, one frame at a time - no cut to the whip's top.
+func test_cast_whip_follows_wind_up() -> void:
+	check(PlayerVisual.whip_start(-1) == 4, "no wind-up shown: the whip as before")
+	check(PlayerVisual.whip_start(3) == 4, "a full wind-up whips from frame 4")
+	check(PlayerVisual.whip_start(0) == 1 and PlayerVisual.whip_start(1) == 2, "an early release plays on from the next frame")
+	var zone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
+	var shore: Vector2 = zone.shore_point(Vector2.DOWN)
+	await put(shore + Vector2(0, 60))
+	player().aim_dir = Vector2.UP
+	var visual = player().get_node("Body")
+	var stick = main.get_node("HUD/Panel/AimJoystick")
+	stick._touch_index = 7
+	await frames(4)
+	stick._reset()
+	var seen := []
+	for i in 30:
+		await frames(1)
+		if visual.clip == PlayerVisual.CLIP_CAST and (seen.is_empty() or seen[-1] != visual.frame_in_clip):
+			seen.append(visual.frame_in_clip)
+	check(not seen.is_empty() and seen[0] <= 2, "a tap's whip starts next to its wind-up (%s)" % [seen])
+	var steps_ok := true
+	for i in range(1, seen.size()):
+		steps_ok = steps_ok and seen[i] - seen[i - 1] <= 2 and seen[i] > seen[i - 1]
+	check(steps_ok, "and runs forward without a cut (%s)" % [seen])
 
 
 ## Too far from the water, the stick doesn't cast.

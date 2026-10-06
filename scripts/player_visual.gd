@@ -65,6 +65,10 @@ var frame_in_clip := 0
 
 var _phase := 0.0
 var _whip := -1.0
+## The wind-up frame (0-3) the charge reached, -1 when none showed.
+var _wound := -1
+## The whip's first frame: the one after where the wind-up got to.
+var _whip_from := 4
 var _main_tex: CanvasTexture
 var _struggle_tex: CanvasTexture
 ## Showing the struggle sheet (held_rod.gd draws no rod then).
@@ -82,7 +86,20 @@ func _ready() -> void:
 	_struggle_tex.normal_texture = STRUGGLE[1]
 	_use_sheet(false)
 	Art.place(self, OFFSET, SPRITE_SCALE)
-	_player.cast_started.connect(func(_t, _tier): _whip = 0.0)
+	_player.cast_started.connect(func(_t, _tier):
+		_whip = 0.0
+		_whip_from = whip_start(_wound))
+
+
+## User request (round 5: no jump from the charge into the release): a
+## cast let go before the wind-up's top (a tap, a short charge) used to cut
+## from the rod low at frame 0 or 1 to the top of the whip (frame 4); it
+## plays on from the next frame through the rest of the wind-up and the
+## whip instead, in the same WHIP_TIME - one frame at a time.
+static func whip_start(wound: int) -> int:
+	if wound < 0:
+		return 4
+	return clampi(wound + 1, 1, 4)
 
 
 func _use_sheet(struggle: bool) -> void:
@@ -142,13 +159,15 @@ func _process(delta: float) -> void:
 		# The cast: the whip and follow-through, fast.
 		_whip += delta
 		clip = CLIP_CAST
-		frame_in_clip = mini(4 + int(_whip / WHIP_TIME * 4.0), FRAMES - 1)
+		frame_in_clip = mini(_whip_from + int(_whip / WHIP_TIME * (FRAMES - _whip_from)), FRAMES - 1)
 		if _whip >= WHIP_TIME:
 			_whip = -1.0
+			_wound = -1
 	elif charging and not moving:
 		# Winding back with the charge.
 		clip = CLIP_CAST
 		frame_in_clip = mini(int(_player.charge_time / Player.MAX_CHARGE_TIME * 4.0), 3)
+		_wound = frame_in_clip
 	elif charging:
 		# User feedback: walking while holding the cast froze the legs (the
 		# wind-up is one still frame) - it runs with the rod out instead,
@@ -156,7 +175,9 @@ func _process(delta: float) -> void:
 		clip = CLIP_HOLD_RUN
 		_phase += delta * FPS[clip] * speed / RUN_PACE
 		frame_in_clip = int(_phase) % FRAMES
+		_wound = -1
 	else:
+		_wound = -1
 		var fishing := state != Player.State.IDLE
 		var cranking := _player._is_action_pressed()
 		if moving:
