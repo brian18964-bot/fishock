@@ -472,7 +472,8 @@ STANCE_PROT = (15.0, 25.0)
 # never passes
 REACH_AIM = 0.8
 REACH_MAX = 0.93
-# how much of the run's forward pitch the running hold takes back
+# how much of the run's forward pitch, and of its turn at the hips, the
+# running hold takes back (it runs upright, its shoulders square)
 UPRIGHT = 0.85
 # the elbows tried round each arm's line (deg): the least bent wrist kept
 ELBOW_SWINGS = (-45.0, -22.5, 0.0, 22.5, 45.0)
@@ -657,8 +658,13 @@ class Hands:
             over = pitch(arm) - self.ref_pitch
             for b, share in SPINE:
                 rod_grip.turn_bone(arm, b, rod_grip._rot([1, 0, 0], -over * UPRIGHT * share), rod_grip.head(arm, b))
-            # and the rod swings as the shoulders turn with the stride (the
-            # hands keep their hold on it and the reel)
+            # and keeps its shoulders square as the stride turns the hips
+            # (the rod swung with them, user request round 6 review); the
+            # turn left over swings the rod a little, the hands keeping
+            # their hold on it and the reel
+            turn = yaw(arm) - self.ref_yaw
+            for b, share in SPINE:
+                rod_grip.turn_bone(arm, b, rod_grip._rot([0, 0, 1], -turn * UPRIGHT * share), rod_grip.head(arm, b))
             target = np.array(rod_grip._rot([0, 0, 1], yaw(arm) - self.ref_yaw) @ np.array(target, float))
         c = chest(arm) @ np.append(st["local"], 1.0)
         c = c[:3]
