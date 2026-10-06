@@ -269,6 +269,7 @@ ROD_OFFSET = (31.99, -1.63)
 ROD_GRIP_SHIFT = [0.0, 0.0, 11.8, 7.5, 7.9]
 ROD_TIP_X = 82.0
 ROD_THICK = 0.5 * 1.6
+FOOT_GROW = 3
 _ROD_TEXELS = []
 
 
@@ -278,7 +279,7 @@ def rod_texels():
         for t, path in enumerate(ROD_SPRITES):
             a = np.asarray(Image.open(path).convert("RGBA"))[..., 3]
             H, W = a.shape
-            ys, xs = np.nonzero(a > 60)
+            ys, xs = np.nonzero(a > 0)
             u = xs + 0.5 - W / 2.0
             v = ys + 0.5 - H / 2.0
             ox = (ROD_OFFSET[0] - ROD_GRIP_SHIFT[t]) * 2.0
@@ -289,7 +290,11 @@ def rod_texels():
 
 def rod_footprint(grip_px, tip_px, size):
     """Where any tier's rod covers this cell's picture (render px): each
-    texel placed as held_rod.gd places it, then a pixel's grow."""
+    texel placed as held_rod.gd places it (its faint edge too), then
+    FOOT_GROW px more - the front layer redraws the body's own pixels
+    (scripts/body_front.gd), so reaching past the rod costs nothing, and
+    short of it the rod's edge showed as a thin line (user request, round
+    5: no notches where the layer meets the rod)."""
     from scipy.ndimage import binary_dilation
     W, H = size
     g = np.asarray(grip_px, float)
@@ -311,7 +316,7 @@ def rod_footprint(grip_px, tip_px, size):
         j = np.round(py).astype(int)
         ok = (i >= 0) & (i < W) & (j >= 0) & (j < H)
         mask[j[ok], i[ok]] = True
-    return binary_dilation(mask, iterations=1)
+    return binary_dilation(mask, iterations=FOOT_GROW)
 
 
 RENDER_D = [2]
