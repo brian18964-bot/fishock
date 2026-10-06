@@ -251,6 +251,13 @@ def measure(rest, looks):
 # A body point out of the clothes this close to an opening's rim (m) came
 # out of the opening, not through the cloth.
 RIM_NEAR = 0.015
+# Directions out from a point for the under-the-cloth test: rings level with
+# it and 30 degrees up and down (26); under the cloth when at least
+# COVER_MIN of them meet a garment (the rest may leave by an opening).
+COVER_DIRS = [Vector((math.cos(math.radians(e)) * math.cos(math.radians(a)),
+                      math.cos(math.radians(e)) * math.sin(math.radians(a)), math.sin(math.radians(e))))
+              for e, step in ((-30, 45), (0, 36), (30, 45)) for a in range(0, 360, step)]
+COVER_MIN = 20
 
 
 def blind_check(rest, co, looks):
@@ -277,6 +284,19 @@ def blind_check(rest, co, looks):
         sel = [f for f, z in zip(faces, fz) if z in (KNIT, CLOTH)]
         tree = BVHTree.FromPolygons([Vector(c) for c in co], sel, all_triangles=False)
         depth = [tree.find_nearest(Vector(co[i]))[3] for i in thr]
+        # under the cloth after all? The inside test counts crossings of
+        # each garment, and a garment is open (hem, cuffs, neck): a point up
+        # a sleeve or under a hanging hem has rays leave by the opening and
+        # reads as out. Of COVER_DIRS directions out from it, how many meet
+        # a garment: under the cloth when nearly all do (COVER_MIN).
+        cover = np.array([sum(1 for d in COVER_DIRS if tree.ray_cast(Vector(co[i]) + d * 1e-4, d)[0] is not None)
+                          for i in thr])
+        res["through_cover_dirs"] = len(COVER_DIRS)
+        res["through_under_cloth"] = int((cover >= COVER_MIN).sum())
+        exposed = thr[cover < COVER_MIN]
+        res["through_exposed"] = int(len(exposed))
+        res["through_exposed_where"] = gr.regions(rest.co, exposed, rest.joints) if len(exposed) else {}
+        res["through_cover_min"] = int(cover.min())
         res["through_where"] = gr.regions(rest.co, thr, rest.joints)
         res["through_depth_max_mm"] = round(float(max(depth)) * 1000, 1)
         allt = BVHTree.FromPolygons([Vector(c) for c in co], rest.faces, all_triangles=False)
@@ -354,7 +374,21 @@ def cloth(rest, hem, waist, co, mats):
                 out["%s_stretch_max_%s" % (name, key)] = round(float(ratio[k]), 3)
                 out["%s_stretch_max_%s_at" % (name, key)] = [round(float(v), 4) for v in rest.co[tri[k]].mean(axis=0)]
                 out["%s_stretch_max_%s_rest_mm2" % (name, key)] = round(float(rest.area[m][k]) * 1e6, 4)
+        # the most stretched face's surroundings (user request, round 5: a
+        # local oddity looked into, not netted by a percentile): the faces of
+        # the garment within AROUND of it now - how many, their median and
+        # how many past 2x; one face alone past 2x is a spike, many a region
+        k = int(np.argmax(ratio))
+        cen = co[tri].mean(axis=1)
+        near = np.linalg.norm(cen - cen[k], axis=1) < AROUND
+        out["%s_stretch_max_around" % name] = {"faces": int(near.sum()),
+                                               "p50": round(float(np.median(ratio[near])), 3),
+                                               "over_2x": int((ratio[near] > 2.0).sum())}
     return out
+
+
+# how far round the most stretched face its neighbourhood is read (m)
+AROUND = 0.03
 
 
 # ---------------------------------------------------------------- views
