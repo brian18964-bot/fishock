@@ -54,6 +54,10 @@ ZONES = [("fur", 0.40), ("skin", 0.22), ("horn", 0.55), ("eye", 0.07),
 OWL_EXPOSED = 0.356
 OWL_LEGS = 0.85
 CUFF_DROP = 0.0103
+# A claw is coloured as claw where it stands out of the bare finger or toe:
+# its zone max(claw, CLAW_OUT - bare) under a voxel - out by CLAW_OUT less a
+# voxel (1 mm at the default 2.4 mm).
+CLAW_OUT = 0.0034
 
 
 def V(*a):
@@ -682,7 +686,9 @@ class Animal:
             # claw only where the claw stands out of the finger or toe (user
             # request: bright flecks on the fingers - the faces of the skin
             # over a sunk claw's root were taken for claw)
-            labels.append((HORN, lambda P, h=horn, b=bare: np.where(b(P) > 0.0010, h(P), 1.0)))
+            # (as one field - claw, and out of the bare body by a millimetre -
+            # so its edge can be cut along: sdf_mesh.split_labels)
+            labels.append((HORN, lambda P, h=horn, b=bare: np.maximum(h(P), CLAW_OUT - b(P))))
         if pads:
             labels.append((PAD, S.union(pads)))
         if getattr(self, "muzzle", None) is not None:
@@ -1448,9 +1454,12 @@ def build(name, out_dir, legs=None, voxel=0.0024, tag=None):
         (float(T["points"][0][1]) - 0.010 if T else 0.0)
     ob = S.mesh("owl_body", body, voxel=voxel, materials=mats, labels=labels)
     print("body", len(ob.data.polygons), "%.1fs" % (time.time() - t0))
+    zones = {"owl_body": (labels, voxel)}
     if an.face:
         face = S.union([n for _, n in an.face])
-        S.mesh("owl_face", face, voxel=voxel * 0.5, materials=mats, labels=[(z, n) for z, n in an.face])
+        face_labels = [(z, n) for z, n in an.face]
+        S.mesh("owl_face", face, voxel=voxel * 0.5, materials=mats, labels=face_labels)
+        zones["owl_face"] = (face_labels, voxel * 0.5)
     t0 = time.time()
     jumper = an.jumper()
     an.jumper_node = jumper
@@ -1487,7 +1496,7 @@ def build(name, out_dir, legs=None, voxel=0.0024, tag=None):
     with open(stem + "_greybox.json", "w") as fh:
         json.dump(joints, fh, indent=1)
     bpy.ops.wm.save_as_mainfile(filepath=stem + ".blend")
-    export_glb(stem + "_greybox.glb")
+    export_glb(stem + "_greybox.glb", zones)
     return an, joints
 
 
@@ -1497,14 +1506,54 @@ GLB_TRIS = {"owl_body": 48000, "owl_face": 3000, "owl_jumper": 14000, "owl_trous
             "owl_ruff": 7000, "owl_button": 300}
 
 
-def export_glb(path):
+def cut_down_zoned(o, tris, labels, voxel):
+    """o cut down to about `tris` triangles with its colour zones cut again
+    on what's left (user request, round 5: the pads' and claws' edges came
+    out torn - the cut collapsed the faces along a zone's edge like any
+    others, so a smooth edge ended in teeth along whatever edges were left
+    and a small zone in a few flecks): the zones' fields read at the cut-down
+    surface and the triangles their edges cross split there
+    (sdf_mesh.split_labels)."""
+    n = len(o.data.polygons)
+    md = o.modifiers.new("cut", "DECIMATE")
+    md.ratio = tris / n
+    md.use_collapse_triangulate = True
+    dg = bpy.context.evaluated_depsgraph_get()
+    low = bpy.data.meshes.new_from_object(o.evaluated_get(dg))
+    o.modifiers.remove(md)
+    co = np.zeros(len(low.vertices) * 3)
+    low.vertices.foreach_get("co", co)
+    faces = np.array([p.vertices[:] for p in low.polygons], np.int64)
+    verts, faces, idx = S.split_labels(co.reshape(-1, 3), faces, labels, voxel)
+    me = bpy.data.meshes.new(o.data.name + "_low")
+    me.from_pydata(verts.tolist(), [], faces.tolist())
+    me.validate()
+    for m in o.data.materials:
+        me.materials.append(m)
+    if len(me.polygons) != len(idx):
+        raise RuntimeError("%s: %d faces after validate, %d zones" % (o.name, len(me.polygons), len(idx)))
+    me.polygons.foreach_set("material_index", idx)
+    me.polygons.foreach_set("use_smooth", [True] * len(me.polygons))
+    o.data = me
+    bpy.data.meshes.remove(low)
+
+
+def export_glb(path, zones=None):
+    """The scene's meshes into a .glb, each cut down to GLB_TRIS; `zones`
+    {object name: (labels, voxel)} those whose colour zones are cut again
+    after (cut_down_zoned) - which replaces their mesh, so the .blend is
+    saved first."""
+    zones = zones or {}
     objs = [o for o in bpy.context.scene.objects if o.type == "MESH"]
     for o in objs:
         n = len(o.data.polygons)
         t = GLB_TRIS.get(o.name, 20000)
         if n > t:
-            md = o.modifiers.new("cut", "DECIMATE")
-            md.ratio = t / n
+            if o.name in zones:
+                cut_down_zoned(o, t, *zones[o.name])
+            else:
+                md = o.modifiers.new("cut", "DECIMATE")
+                md.ratio = t / n
     bpy.ops.object.select_all(action="DESELECT")
     for o in objs:
         o.select_set(True)

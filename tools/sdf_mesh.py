@@ -554,61 +554,69 @@ def drop_crumbs(verts, faces, keep_frac=0.002):
     return verts[used], remap[faces]
 
 
-def tidy_labels(me, idx, passes=2, min_island=12):
-    """The faces' zones with their edges cleaned (user request, round 4:
-    broken flecks along the pads and claws): each face a couple of times
-    takes the zone most of its neighbours have, where they agree (the
-    single-face teeth of the boundary go); then any island of a zone under
-    `min_island` faces joins the zone round it."""
-    import collections
-    ef = collections.defaultdict(list)
-    for p in me.polygons:
-        for ek in p.edge_keys:
-            ef[ek].append(p.index)
-    nbr = [[] for _ in range(len(idx))]
-    for fs in ef.values():
-        if len(fs) == 2:
-            nbr[fs[0]].append(fs[1])
-            nbr[fs[1]].append(fs[0])
-    idx = idx.copy()
-    for _ in range(passes):
-        new = idx.copy()
-        for f, ns in enumerate(nbr):
-            if not ns:
-                continue
-            c = collections.Counter(idx[g] for g in ns)
-            z, n = c.most_common(1)[0]
-            if z != idx[f] and n * 2 > len(ns):
-                new[f] = z
-        idx = new
-    seen = np.zeros(len(idx), bool)
-    for s in range(len(idx)):
-        if seen[s]:
+def split_labels(verts, faces, labels, voxel):
+    """The faces' zones, the zones' edges cut along their outlines (user
+    request, round 5: the pads' and claws' edges came out as torn teeth and
+    flecks - a whole face took a zone by its centre, so an edge followed the
+    voxel grid). Each zone (in order; a face keeps the first it falls in) is
+    where its node is under a voxel; every triangle that line crosses is
+    split where it crosses its edges. Returns verts, faces, zone per face."""
+    verts = np.asarray(verts, float)
+    faces = np.asarray(faces, np.int64)
+    idx = np.zeros(len(faces), np.int32)
+    done = np.zeros(len(faces), bool)
+    for mi, ln in labels:
+        val = ln(verts) - voxel
+        inside = val < 0.0
+        fin = inside[faces]
+        mixed = (~done) & fin.any(axis=1) & ~fin.all(axis=1)
+        idx[(~done) & fin.all(axis=1)] = mi
+        done |= (~done) & fin.all(axis=1)
+        if not mixed.any():
             continue
-        st, comp = [s], []
-        seen[s] = True
-        while st:
-            f = st.pop()
-            comp.append(f)
-            for g in nbr[f]:
-                if not seen[g] and idx[g] == idx[f]:
-                    seen[g] = True
-                    st.append(g)
-        if len(comp) < min_island:
-            out = collections.Counter(idx[g] for f in comp for g in nbr[f] if idx[g] != idx[s])
-            if out:
-                idx[comp] = out.most_common(1)[0][0]
-    return idx
+        cut = {}
+        new_v, new_f, new_i, new_d = [], [], [], []
+
+        def at(a, b):
+            k = (a, b) if a < b else (b, a)
+            if k not in cut:
+                t = val[a] / (val[a] - val[b])
+                t = min(max(t, 0.02), 0.98)
+                cut[k] = len(verts) + len(new_v)
+                new_v.append(verts[a] + (verts[b] - verts[a]) * t)
+            return cut[k]
+        for f in np.nonzero(mixed)[0]:
+            tri = faces[f]
+            ins = fin[f]
+            # the odd corner first, the winding kept
+            o = int(np.nonzero((ins != ins[[1, 2, 0]]) & (ins != ins[[2, 0, 1]]))[0][0])
+            a, b, c = tri[o], tri[(o + 1) % 3], tri[(o + 2) % 3]
+            ab, ac = at(a, b), at(a, c)
+            side_a = bool(ins[o])
+            for piece, is_in in (((a, ab, ac), side_a), ((ab, b, c), not side_a), ((ab, c, ac), not side_a)):
+                new_f.append(piece)
+                new_i.append(mi if is_in else 0)
+                new_d.append(is_in)
+        keep = ~mixed
+        verts = np.concatenate([verts, np.array(new_v)]) if new_v else verts
+        faces = np.concatenate([faces[keep], np.array(new_f, np.int64)])
+        idx = np.concatenate([idx[keep], np.array(new_i, np.int32)])
+        done = np.concatenate([done[keep], np.array(new_d, bool)])
+    return verts, faces, idx
 
 
 def mesh(name, node, voxel=0.0025, bounds=None, materials=None, labels=None, smooth_iters=0, crumbs=True):
     """A Blender object of node's surface. `labels` [(material index,
-    node)]: a face takes the first whose node is at its centre (within a
-    voxel); the rest keep 0. `materials` are appended in order."""
+    node)]: a zone where its node is within a voxel, the first that takes a
+    face keeping it, its edge cut along that line (split_labels); the rest
+    keep 0. `materials` are appended in order."""
     import bpy
     verts, faces = polygonise(node, voxel, bounds=bounds)
     if crumbs:
         verts, faces = drop_crumbs(verts, faces)
+    idx = None
+    if labels and len(faces):
+        verts, faces, idx = split_labels(verts, faces, labels, voxel)
     me = bpy.data.meshes.new(name)
     me.from_pydata(verts.tolist(), [], faces.tolist())
     me.validate()
@@ -618,18 +626,9 @@ def mesh(name, node, voxel=0.0025, bounds=None, materials=None, labels=None, smo
     if materials:
         for m in materials:
             me.materials.append(m)
-    if labels and len(me.polygons):
-        cen = np.zeros(len(me.polygons) * 3)
-        me.polygons.foreach_get("center", cen)
-        cen = cen.reshape(-1, 3)
-        idx = np.zeros(len(cen), dtype=np.int32)
-        done = np.zeros(len(cen), dtype=bool)
-        for mi, ln in labels:
-            d = ln(cen)
-            hit = (~done) & (d < voxel * 1.0)
-            idx[hit] = mi
-            done |= hit
-        idx = tidy_labels(me, idx)
+    if idx is not None:
+        if len(me.polygons) != len(idx):
+            raise RuntimeError("%s: %d faces after validate, %d zones" % (name, len(me.polygons), len(idx)))
         me.polygons.foreach_set("material_index", idx)
     me.polygons.foreach_set("use_smooth", [True] * len(me.polygons))
     if smooth_iters:
