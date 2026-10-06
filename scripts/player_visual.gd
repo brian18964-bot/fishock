@@ -5,7 +5,8 @@ extends Sprite2D
 ## trial colours, tools/owl_character.py's player())
 ## moving as Mixamo's clips move (user request: the carrying / casting /
 ## holding-the-rod animation), pre-rendered by tools/render_player.py,
-## 8 frames per clip, 56x72 cells; rows = clips x 8 facings. Plays:
+## 8 frames per clip (the cell fitted to the character); rows = clips x 8
+## facings. Plays:
 ##   0 idle      breathing, rod across the back
 ##   1 run       rod across the back
 ##   2 cast      winding back with the charge (0-3), whipped on release (4-7)
@@ -32,7 +33,12 @@ const SHEET_HALVES := 2
 const SPRITE_SCALE := 0.5
 ## (0, -center_y * 27.108) for the sheet's camera; the feet sit at the
 ## node origin, which is placed at the bottom of the player's collision box.
-const OFFSET := Vector2(0.0, -15.38)
+## The main sheet's comes with it (render_player.py writes it into the rod
+## data: its cell is fitted to the character, so it changes with the
+## character and the clips); the struggle sheet's is fixed
+## (render_player_struggle.py CELL, CENTER_Y).
+const ROD_DATA := preload("res://assets/sprites/player/player_55deg_rod.json")
+const STRUGGLE_OFFSET := Vector2(0.0, -15.38)
 ## Sheet column order: down, down_left, left, up_left, up, up_right, right,
 ## down_right. Index by 45deg sector clockwise from +X (right).
 const SECTOR_TO_DIR := [6, 7, 0, 1, 2, 3, 4, 5]
@@ -64,6 +70,8 @@ var dir := 0
 var frame_in_clip := 0
 
 var _phase := 0.0
+## The main sheet's offset (ROD_DATA, above).
+var _sheet_offset := Vector2(ROD_DATA.data.offset[0], ROD_DATA.data.offset[1])
 var _whip := -1.0
 ## The wind-up frame (0-3) the charge reached, -1 when none showed.
 var _wound := -1
@@ -85,7 +93,7 @@ func _ready() -> void:
 	_struggle_tex.diffuse_texture = STRUGGLE[0]
 	_struggle_tex.normal_texture = STRUGGLE[1]
 	_use_sheet(false)
-	Art.place(self, OFFSET, SPRITE_SCALE)
+	Art.place(self, _sheet_offset, SPRITE_SCALE)
 	_player.cast_started.connect(func(_t, _tier):
 		_whip = 0.0
 		_whip_from = whip_start(_wound))
@@ -116,7 +124,7 @@ func _struggle(delta: float) -> bool:
 	if not held and not knocked:
 		if struggling:
 			_use_sheet(false)
-			Art.place(self, OFFSET, SPRITE_SCALE)
+			Art.place(self, _sheet_offset, SPRITE_SCALE)
 		return false
 	if not struggling:
 		_use_sheet(true)
@@ -129,11 +137,11 @@ func _struggle(delta: float) -> bool:
 		frame_in_clip = int(_phase) % FRAMES
 		# Shaking in its grip.
 		var jolt := Vector2(randf_range(-SHAKE, SHAKE), randf_range(-SHAKE, SHAKE) * 0.5)
-		offset = OFFSET * Art.DENSITY + jolt * Art.DENSITY / SPRITE_SCALE
+		offset = STRUGGLE_OFFSET * Art.DENSITY + jolt * Art.DENSITY / SPRITE_SCALE
 	else:
 		row = 1
 		frame_in_clip = mini(int(_player.knock_progress() * FRAMES), FRAMES - 1)
-		Art.place(self, OFFSET, SPRITE_SCALE)
+		Art.place(self, STRUGGLE_OFFSET, SPRITE_SCALE)
 	frame = (row * DIRS + dir) * FRAMES + frame_in_clip
 	return true
 
