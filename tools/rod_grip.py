@@ -25,6 +25,12 @@ The shared logic is the same for every character; GRIP_TUNE holds each
 one's small differences (its handle's place along the fingers, the
 diagonal).
 
+User request (round 6: the reeling cranked at the air): the other hand
+grips the reel's crank knob the same way (Grip(..., side="Right"), a knob
+for a handle), and a hand can be put somewhere - reach(): the handle's
+centre to a point, its axis along a direction, the arm reaching there by
+two-bone IK (two_bone), the hand turned so the wrist bends least.
+
     import rod_grip
     g = rod_grip.Grip(arm, mesh, character)     # the bound T-posed rig
     g.hold(arm, target)                          # each frame of a clip
@@ -99,39 +105,46 @@ def tail(arm, name):
     return _v(arm.matrix_world @ arm.pose.bones[name].tail)
 
 
-def hand_matrix(arm):
-    """The left hand bone's world matrix (scale taken out)."""
-    m = arm.matrix_world @ arm.pose.bones[HAND].matrix
+def hand_matrix(arm, hand=HAND):
+    """A hand bone's world matrix (scale taken out; the left by default)."""
+    m = arm.matrix_world @ arm.pose.bones[hand].matrix
     loc, rot, _ = m.decompose()
     return Matrix.LocRotScale(loc, rot, None)
 
 
 class Grip:
-    def __init__(self, arm, mesh, character, samples=()):
+    def __init__(self, arm, mesh, character, samples=(), side="Left", tune=None):
         """On the bound skeleton. `samples`: (action, frame, wanted rod
         direction) - the handle's axis in the hand is the one that, over
-        them, points the rod nearest where it's wanted (fit_axis)."""
+        them, points the rod nearest where it's wanted (fit_axis). `side`:
+        the hand ("Left" holds the rod; "Right" the reel's knob, user
+        request round 6); `tune`: its GRIP_TUNE entry, if not the
+        character's."""
         self.arm = arm
-        tune = GRIP_TUNE.get(character, GRIP_TUNE["cat"])
+        self.side = side
+        self.HAND = "mixamorig:%sHand" % side
+        self.FOREARM = "mixamorig:%sForeArm" % side
+        self.UPPER = "mixamorig:%sArm" % side
+        tune = tune or GRIP_TUNE.get(character, GRIP_TUNE["cat"])
         ad = arm.animation_data
         keep = ad.action if ad else None
         hands = []
         for act, fr, want in samples:
             ad.action = act
             bpy.context.scene.frame_set(int(fr))
-            hands.append((np.array(hand_matrix(arm).to_3x3()), np.array(want, float)))
+            hands.append((np.array(hand_matrix(arm, self.HAND).to_3x3()), np.array(want, float)))
         if ad:
             ad.action = None
         for pb in arm.pose.bones:
             pb.matrix_basis = Matrix.Identity(4)
         bpy.context.view_layer.update()
-        self.fingers = [f for f in FINGERS if self._weighted(mesh, "mixamorig:LeftHand%s1" % f)]
+        self.fingers = [f for f in FINGERS if self._weighted(mesh, self.HAND + "%s1" % f)]
         self.k = (arm.matrix_world.to_3x3() @ Vector((1, 0, 0))).length
         self.radius = {f: self._radius(mesh, f) for f in self.fingers + ["Thumb"]}
         # The hand's frame at rest: across (little finger -> index), along
         # the fingers, and toward the palm (the side they curl to).
-        roots = {f: head(arm, "mixamorig:LeftHand%s1" % f) for f in self.fingers}
-        wrist = head(arm, HAND)
+        roots = {f: head(arm, self.HAND + "%s1" % f) for f in self.fingers}
+        wrist = head(arm, self.HAND)
         knuck = np.mean(list(roots.values()), axis=0)
         f = knuck - wrist
         f /= np.linalg.norm(f)
@@ -139,21 +152,22 @@ class Grip:
         a -= f * (a @ f)
         a /= np.linalg.norm(a)
         n = np.cross(f, a)
-        tips = np.mean([tail(arm, "mixamorig:LeftHand%s3" % x) for x in self.fingers], axis=0)
+        tips = np.mean([tail(arm, self.HAND + "%s3" % x) for x in self.fingers], axis=0)
         # (the palm: where the fingertips hang below the knuckles, else down)
         if n @ (tips - knuck) < 0 or (abs(n @ (tips - knuck)) < 1e-4 and n[2] > 0):
             n = -n
-        L1 = np.mean([np.linalg.norm(head(arm, "mixamorig:LeftHand%s2" % x) - roots[x]) for x in self.fingers])
+        L1 = np.mean([np.linalg.norm(head(arm, self.HAND + "%s2" % x) - roots[x]) for x in self.fingers])
         fr = np.mean([self.radius[x] for x in self.fingers])
         self.handle_r = tune.get("handle_r", HANDLE_R) * self._char_k(mesh)
-        hm0 = np.array(hand_matrix(arm).to_3x3())
+        hm0 = np.array(hand_matrix(arm, self.HAND).to_3x3())
         if tune.get("axis") is None and hands:
             g = self.fit_axis(hands, hm0, a, f, n)
+            self.fit_deg = Grip.fit_deg
         else:
             dg = math.radians(tune.get("axis") or 0.0)
             g = a * math.cos(dg) + f * math.sin(dg)
             g /= np.linalg.norm(g)
-            Grip.fit_deg = tune.get("axis") or 0.0
+            self.fit_deg = tune.get("axis") or 0.0
         # The handle across the palm: on the palm's side, where the palm
         # meets it (the palm's own points just clear of it).
         palm = self._palm_points(mesh)
@@ -164,16 +178,23 @@ class Grip:
             c = c + n * self.handle_r * 0.04
         self.palm_gap = float(min(_to_axis(p, c, g) for p in palm) - self.handle_r)
         self.rest = {"c": c, "g": g, "n": n, "f": f, "a": a}
-        hm = hand_matrix(arm)
+        hm = hand_matrix(arm, self.HAND)
         inv = np.array(hm.inverted())
         self.c_local = (inv @ np.append(c, 1.0))[:3]
         self.g_local = inv[:3, :3] @ g
+        # (and the fingers' way and the palm's, for placing the hand)
+        self.f_local = inv[:3, :3] @ f
+        self.n_local = inv[:3, :3] @ n
+        # how far the fingers spread along the handle, from its centre
+        # (index side +, little finger side -), finger girth included
+        along = [(roots[x] - c) @ g for x in self.fingers]
+        self.span = (min(along) - fr, max(along) + fr)
         # The fingers and thumb curled round it, as rotations of their
         # bones relative to their parents (the same in every frame).
         self._curl(c, g, n)
         self._thumb(c, g, n)
         self.pose = {pb.name: pb.matrix_basis.copy() for pb in arm.pose.bones
-                     if pb.name.startswith("mixamorig:LeftHand") and pb.name != HAND}
+                     if pb.name.startswith(self.HAND) and pb.name != self.HAND}
         for pb in arm.pose.bones:
             pb.matrix_basis = Matrix.Identity(4)
         if ad:
@@ -219,7 +240,7 @@ class Grip:
         arm = self.arm
         out = []
         for i in (1, 2):
-            name = "mixamorig:LeftHand%s%d" % (f, i)
+            name = self.HAND + "%s%d" % (f, i)
             g = mesh.vertex_groups.get(name)
             if g is None:
                 continue
@@ -233,13 +254,13 @@ class Grip:
         return float(np.median(out)) if out else 0.01
 
     def _chain(self, f):
-        names = ["mixamorig:LeftHand%s%d" % (f, i) for i in (1, 2, 3)]
+        names = [self.HAND + "%s%d" % (f, i) for i in (1, 2, 3)]
         pts = [head(self.arm, n) for n in names] + [tail(self.arm, names[-1])]
         return names, pts
 
     def _palm_points(self, mesh):
         """The palm's own vertices (mostly the hand bone's, not a finger's)."""
-        g = mesh.vertex_groups.get(HAND)
+        g = mesh.vertex_groups.get(self.HAND)
         out = []
         if g is None:
             return out
@@ -348,7 +369,7 @@ class Grip:
         best of a search; never into the handle, the fingers or the palm."""
         from scipy.optimize import minimize
         arm = self.arm
-        names = ["mixamorig:LeftHandThumb%d" % i for i in (1, 2, 3)]
+        names = [self.HAND + "Thumb%d" % i for i in (1, 2, 3)]
         p0 = [head(arm, x) for x in names] + [tail(arm, names[-1])]
         tr = self.radius["Thumb"]
         want = self.handle_r + tr
@@ -431,7 +452,7 @@ class Grip:
 
     def rod(self):
         """The handle's centre and the rod's direction, world."""
-        m = np.array(hand_matrix(self.arm))
+        m = np.array(hand_matrix(self.arm, self.HAND))
         return m[:3, :3] @ self.c_local + m[:3, 3], m[:3, :3] @ self.g_local
 
     def hold(self, target=None):
@@ -448,6 +469,7 @@ class Grip:
         # limit): the wrist takes half of what's wanted, the forearm most of
         # what's left, the upper arm the rest - each within its limit - and
         # the wrist then whatever is still over, if it has room
+        HAND, FOREARM, UPPER = self.HAND, self.FOREARM, self.UPPER
         used = {HAND: 0.0, FOREARM: 0.0, UPPER: 0.0}
         limits = {HAND: WRIST_MAX, FOREARM: FOREARM_MAX, UPPER: SHOULDER_MAX}
         for name, share in ((HAND, 0.5), (FOREARM, 0.6), (UPPER, 1.0), (HAND, 1.0), (FOREARM, 1.0)):
@@ -468,3 +490,124 @@ class Grip:
         _, d = self.rod()
         out["left"] = round(math.degrees(math.acos(max(-1.0, min(1.0, float(d @ t))))), 1)
         return out
+
+    # ------------------------------------------------------------ reaching (round 6)
+
+    def wrist_bend(self):
+        """How far the hand is bent off the forearm's line (deg)."""
+        fa = head(self.arm, self.HAND) - head(self.arm, self.FOREARM)
+        m = np.array(hand_matrix(self.arm, self.HAND).to_3x3())
+        f = m @ self.f_local
+        c = float(fa @ f / (np.linalg.norm(fa) * np.linalg.norm(f)))
+        return math.degrees(math.acos(max(-1.0, min(1.0, c))))
+
+    def move_to(self, c, pole=None):
+        """User request (round 6: both hands on the reel): the handle's
+        centre to world point c, the hand turned as it is - the arm reaching
+        there (two_bone), the elbow kept toward `pole` (default: where it
+        is)."""
+        m = hand_matrix(self.arm, self.HAND)
+        R = np.array(m.to_3x3())
+        w = np.array(c, float) - R @ self.c_local
+        two_bone(self.arm, self.UPPER, self.FOREARM, self.HAND, w, pole)
+        set_rotation(self.arm, self.HAND, R)
+
+    def place(self, c, g, prefer, palm=None, pole=None):
+        """The handle's centre to world point c, its axis along g (either
+        way round, whichever turns the palm nearer `palm`; just g without
+        one), the fingers as near `prefer` as that leaves them; the arm
+        reaching there (the elbow toward `pole`, default where it is)."""
+        g = np.array(g, float)
+        g /= np.linalg.norm(g)
+        best = None
+        for sign in ((1.0, -1.0) if palm is not None else (1.0,)):
+            gt = g * sign
+            ft = np.array(prefer, float) - gt * (gt @ prefer)
+            ft /= np.linalg.norm(ft)
+            gl = self.g_local / np.linalg.norm(self.g_local)
+            fl = self.f_local - gl * (gl @ self.f_local)
+            fl /= np.linalg.norm(fl)
+            R = np.column_stack([gt, ft, np.cross(gt, ft)]) @ np.column_stack([gl, fl, np.cross(gl, fl)]).T
+            score = float((R @ self.n_local) @ np.array(palm, float)) if palm is not None else 0.0
+            if best is None or score > best[0]:
+                best = (score, R)
+        R = best[1]
+        w = np.array(c, float) - R @ self.c_local
+        two_bone(self.arm, self.UPPER, self.FOREARM, self.HAND, w, pole)
+        set_rotation(self.arm, self.HAND, R)
+
+    def reach(self, c, g, palm=None, pole=None, rounds=3, either=False, swings=()):
+        """place(), the fingers led along the forearm: first toward the
+        shoulder's line to c, then each round along the forearm as it lies
+        (so the wrist bends as little as it can). either: the handle may
+        lie either way round in the hand (a knob: over- or underhand) -
+        whichever bends the wrist less; swings: elbow positions to try (deg
+        round the shoulder-to-hand line), the least bent wrist kept."""
+        if either or swings:
+            # the handle either way round (if it may be), the elbow swung
+            # round the shoulder-to-hand line by `swings` deg: the least
+            # bent wrist
+            g = np.array(g, float)
+            keep = {b: self.arm.pose.bones[b].matrix_basis.copy() for b in (self.UPPER, self.FOREARM, self.HAND)}
+            s0 = head(self.arm, self.UPPER)
+            e0 = head(self.arm, self.FOREARM)
+            axis = np.array(c, float) - s0
+            axis /= np.linalg.norm(axis)
+            best = None
+            for sign in ((1.0, -1.0) if either else (1.0,)):
+                for sw in (swings or (0.0,)):
+                    for b, m in keep.items():
+                        self.arm.pose.bones[b].matrix_basis = m
+                    bpy.context.view_layer.update()
+                    pl = s0 + _rot(axis, sw) @ (e0 - s0) if pole is None else pole
+                    self.reach(c, g * sign, palm if not either else None, pl, rounds)
+                    bend = self.wrist_bend()
+                    if best is None or bend < best[0] - 1e-6:
+                        best = (bend, sign, pl)
+            for b, m in keep.items():
+                self.arm.pose.bones[b].matrix_basis = m
+            bpy.context.view_layer.update()
+            self.reach(c, g * best[1], palm if not either else None, best[2], rounds)
+            return
+        prefer = np.array(c, float) - head(self.arm, self.UPPER)
+        for _ in range(rounds):
+            self.place(c, g, prefer / np.linalg.norm(prefer), palm, pole)
+            prefer = head(self.arm, self.HAND) - head(self.arm, self.FOREARM)
+
+
+def rot_between(a, b):
+    """The least rotation (3x3) taking direction a to direction b."""
+    a = np.array(a, float) / np.linalg.norm(a)
+    b = np.array(b, float) / np.linalg.norm(b)
+    axis = np.cross(a, b)
+    s = np.linalg.norm(axis)
+    if s < 1e-9:
+        return np.eye(3)
+    return _rot(axis / s, math.degrees(math.atan2(s, float(a @ b))))
+
+
+def set_rotation(arm, name, R):
+    """Turns a bone about its head until its world rotation is R."""
+    m = np.array(hand_matrix(arm, name).to_3x3())
+    turn_bone(arm, name, R @ m.T, head(arm, name))
+
+
+def two_bone(arm, upper, fore, hand, w, pole=None):
+    """Upper arm and forearm turned so the hand's head (the wrist) reaches
+    world point w - as near as the arm's length allows - the elbow toward
+    `pole` (default: where it is now)."""
+    s, e, h = head(arm, upper), head(arm, fore), head(arm, hand)
+    a, b = np.linalg.norm(e - s), np.linalg.norm(h - e)
+    d = np.array(w, float) - s
+    L = float(np.clip(np.linalg.norm(d), abs(a - b) + 1e-5, a + b - 1e-5))
+    dn = d / np.linalg.norm(d)
+    p = (e if pole is None else np.array(pole, float)) - s
+    p = p - dn * (p @ dn)
+    if np.linalg.norm(p) < 1e-6:
+        p = np.cross(dn, [0.0, 0.0, 1.0])
+    p /= np.linalg.norm(p)
+    ca = (a * a + L * L - b * b) / (2 * a * L)
+    et = s + a * (ca * dn + math.sqrt(max(0.0, 1 - ca * ca)) * p)
+    turn_bone(arm, upper, rot_between(e - s, et - s), s)
+    e2, h2 = head(arm, fore), head(arm, hand)
+    turn_bone(arm, fore, rot_between(h2 - e2, s + dn * L - e2), e2)

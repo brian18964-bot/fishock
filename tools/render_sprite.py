@@ -85,7 +85,10 @@ Sets rendered so far (see art_src/):
   dock/dock_wide_*, dock_stairs_*  x0.34, one tight camera per --yaw (stairs: 0 down,
                  90 right, 180 up, -90 left = the way they step down); offsets in dock.gd
   rod/rod_lvl1.._lvl5  x0.42 --tip 90 --center-x 1.18 --center-y 0.06
-                 --ortho-scale 3.8365 --res 104 16 (lying along +X, grip at the origin)
+                 --ortho-scale 3.8365 --res 104 16 (lying along +X, grip at the origin);
+                 the grip candidate's (round 6, the reel drawn with the character) without
+                 their reels: lvl2 --cut -0.13 0.25 0.072, lvl3 --cut 0.86 1.16 0.106,
+                 lvl4 --cut 0.47 0.82 0.098, lvl5 --cut 0.48 0.87 0.104 (lvl1 has none)
   lure/lure_1.._6  x0.8 --recenter --center-y -0.04 --ortho-scale 2.0658 --res 56 16
   lure/worm        x1.2 --recenter --center-y 0.125 --ortho-scale 1.1805 --res 32 24
   dock/boat_*      x0.4, one tight camera per --yaw (0 down, 90 right, 180 up,
@@ -188,6 +191,26 @@ def load_model(path, scale=1.0, recenter=False, base_slice=0.25, only=None, drop
             o.location += shift
         bpy.context.view_layer.update()
     return meshes
+
+
+def cut_faces(meshes, z0, z1, r, scale=1.0):
+    """Deletes the faces whose centres lie between z0 and z1 along Z and
+    more than r off the Z axis (model units, before scale): user request
+    (round 6) - the candidate draws the reel with the character, turning
+    with its hand, so its rods' sprites leave theirs out."""
+    import bmesh
+    for o in meshes:
+        bm = bmesh.new()
+        bm.from_mesh(o.data)
+        mw = o.matrix_world
+        cut = []
+        for f in bm.faces:
+            c = (mw @ f.calc_center_median()) / scale
+            if z0 <= c.z <= z1 and math.hypot(c.x, c.y) > r:
+                cut.append(f)
+        bmesh.ops.delete(bm, geom=cut, context="FACES")
+        bm.to_mesh(o.data)
+        bm.free()
 
 
 def screen_bounds(meshes):
@@ -506,6 +529,9 @@ def main():
                        help="turn the model about Z first (deg; +90 turns a camera-facing model to face right)")
         p.add_argument("--drop", action="append", default=[],
                        help="delete this named object after import (repeatable)")
+        p.add_argument("--cut", type=float, nargs=3, metavar=("Z0", "Z1", "R"), default=None,
+                       help="delete the faces between Z0 and Z1 along the model's Z (before --tip) more than R"
+                            " off its axis: a rod's reel")
         p.add_argument("--no-bind-guess", action="store_true",
                        help="glTF import: don't guess the original bind pose")
         p.add_argument("--bone-heuristic", default=None, choices=["BLENDER", "TEMPERANCE", "FORTUNE"],
@@ -522,6 +548,8 @@ def main():
     if args.bone_heuristic:
         opts["bone_heuristic"] = args.bone_heuristic
     meshes = load_model(args.model, args.scale, args.recenter, args.base_slice, args.object, args.drop, opts)
+    if args.cut:
+        cut_faces(meshes, *args.cut, scale=args.scale)
     if args.tip:
         tip = Matrix.Rotation(math.radians(args.tip), 4, 'Y')
         for o in [o for o in bpy.context.scene.objects if o.parent is None]:

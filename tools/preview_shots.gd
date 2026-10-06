@@ -15,18 +15,27 @@ extends SceneTree
 ##            (yellow, where main.gd starts the fishing line) and the axis
 ##   nofront  without the front layer (BodyFront)
 ##   norod    without the rod (and so without the front layer)
+## bend=<rad> (round 6, the candidate's rod bends while a fish is on): in
+## hold, reel, fight and hold_run the rod bent that much toward a fish
+## straight ahead (FISH_AHEAD px), as held_rod.gd bends it - fixed, not
+## eased or shaken, so every capture of a cell is the same; jolt=1: the
+## fight's yank frame jolted toward the fish as the game jolts it.
 const BG := Color(0.72, 0.74, 0.70)
 const AMBIENT := Color(0.78, 0.78, 0.80)
 const KEY_ENERGY := 0.85
 const KEY_OFFSET := Vector2(-90, -120)
 const KEY_HEIGHT := 110.0
 const CLIPS := ["idle", "run", "cast", "hold", "busy", "reel", "fight", "hold_run"]
+const BENT := ["hold", "reel", "fight", "hold_run"]
+const FISH_AHEAD := 150.0
+## Facing (sheet column) -> the way it faces on screen.
+const FACING := [Vector2(0, 1), Vector2(-1, 1), Vector2(-1, 0), Vector2(-1, -1), Vector2(0, -1), Vector2(1, -1), Vector2(1, 0), Vector2(1, 1)]
 
 var args := {}
 var main: Node
 var player: Node2D
 var body: Sprite2D
-var rod: Sprite2D
+var rod: Node2D
 var front: Sprite2D
 var marks: Node2D
 var queue := []
@@ -36,7 +45,7 @@ var started := false
 
 
 class Marks extends Node2D:
-	var rod: Sprite2D
+	var rod: Node2D
 
 	func _process(_d: float) -> void:
 		queue_redraw()
@@ -166,6 +175,21 @@ func _process(_d: float) -> bool:
 		var rows_half: int = 32
 		body.frame = (row % rows_half) * body.hframes + (row / rows_half) * 8 + job[3]
 		var v: String = job[4]
+		body.position = Vector2(0, 10)
+		if args.has("bend") and rod.has_method("bend_toward"):
+			rod.process_mode = Node.PROCESS_MODE_DISABLED
+			var amount := float(args.bend) if job[1] in BENT else 0.0
+			var fish: Vector2 = player.global_position + FACING[job[2]].normalized() * FISH_AHEAD
+			var vis: Dictionary = body.get_script().get_script_constant_map()
+			var held: Dictionary = rod.get_script().get_script_constant_map()
+			if job[1] == "fight" and job[3] == vis.get("YANK_FRAME", -1):
+				amount += held.get("BEND_YANK", 0.0)
+				if args.get("jolt", "") == "1":
+					body.position += FACING[job[2]].normalized() * vis.get("YANK_JOLT", 0.0)
+			rod.bend = 0.0
+			rod.place(0.0)
+			rod.bend = rod.bend_toward(fish, amount)
+			rod.place(0.0)
 		marks.visible = v.begins_with("marked")
 		rod.self_modulate.a = 0.0 if v.begins_with("norod") else 1.0
 		if front != null:
