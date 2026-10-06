@@ -84,6 +84,7 @@ BACK_GRIP = Vector((-0.14, 0.2, 0.92))
 BACK_DIR = Vector((0.33, 0.06, 0.94)).normalized()
 BACK_LENGTH = 1.25
 UPPER_ROOT = "mixamorig:Spine"
+HOLD_SETTLE = 0.75
 
 
 def import_fbx(path):
@@ -201,6 +202,20 @@ def build_clips(arm, src):
         "hold": [capture(arm, src["cast"], f) for f in pingpong(140, 200)],
         "reel": [capture(arm, src["cast"], f) for f in reel_frames],
     }
+    # User request (round 5: switching between waiting, reeling and the
+    # fight is checked): the hold is the cast's follow-through, stepped
+    # forward and sinking, its rod hand 6-11 px off the reel's, and the
+    # game cuts straight from one to the other - the hold (hips and all)
+    # HOLD_SETTLE of the way to the reel's first pose, the whip's last two
+    # frames a third and two thirds of that, so it ends where the hold
+    # starts.
+
+    def toward(pose, target, w):
+        return {b: (pose[b][0].lerp(target[b][0], w), pose[b][1].slerp(target[b][1], w)) for b in pose}
+
+    poses["hold"] = [toward(p, poses["reel"][0], HOLD_SETTLE) for p in poses["hold"]]
+    for i, k in ((6, 1 / 3), (7, 2 / 3)):
+        poses["cast"][i] = toward(poses["cast"][i], poses["reel"][0], HOLD_SETTLE * k)
     poses["busy"] = [lean(p, 30.0 + 5.0 * math.sin(i / FRAMES * math.tau)) for i, p in enumerate(poses["idle"])]
     poses["fight"] = [lean(p, -14.0 - 3.0 * math.sin(i / FRAMES * math.tau)) for i, p in enumerate(poses["reel"])]
     hold_top = poses["hold"][2]
@@ -239,6 +254,7 @@ def back_rod_local(arm):
 # pass through the character in any of its frames.
 GRIP_SIDE_STEP = 8.0
 GRIP_SIDE_MAX = 65.0
+SHARED_SIDE = ("hold", "reel", "fight")
 GRIP_BONES = ("mixamorig:LeftArm", "mixamorig:LeftForeArm", "mixamorig:LeftHand")
 # The rods as the game draws them (scripts/held_rod.gd): each tier's
 # sprite, its canvas centre from the grip (OFFSET, orig px), the tier's
@@ -314,6 +330,28 @@ def _bvh(mesh):
     return BVHTree.FromObject(ev, dg), mesh.matrix_world.copy()
 
 
+_PARITY_RAYS = (Vector((0.0, 0.0, 1.0)), Vector((1.0, 0.3, 0.2)).normalized(), Vector((-0.4, 1.0, 0.1)).normalized())
+
+
+def _inside(bvh, p):
+    """Inside the character: rays out from p cross its surface an odd
+    number of times, two of three ways (the nearest face's facing alone
+    said "inside" for points a metre off - user request, round 5: the rod
+    pushed out for hits that weren't there - thin ears and overlapping
+    shells turn their backs on far points)."""
+    odd = 0
+    for ray in _PARITY_RAYS:
+        n, q = 0, p.copy()
+        while n < 64:
+            hit, _, _, _ = bvh.ray_cast(q, ray)
+            if hit is None:
+                break
+            n += 1
+            q = hit + ray * 1e-4
+        odd += n % 2
+    return odd >= 2
+
+
 def rod_through(mesh, grip, d, from_t=0.15):
     """How many of the rod's points (past the hand) are inside the
     character."""
@@ -323,7 +361,7 @@ def rod_through(mesh, grip, d, from_t=0.15):
     for t in np.linspace(from_t, 1.0, 40):
         p = inv @ (grip + d * ROD_TIP * t)
         loc, nor, _, _ = bvh.find_nearest(p)
-        if loc is not None and (p - loc).dot(nor) < 0:
+        if loc is not None and (p - loc).dot(nor) < 0 and _inside(bvh, p):
             n += 1
     return n
 
@@ -338,20 +376,30 @@ def grip_clips(arm, mesh, clips, character):
     report = {"fit_deg": g.fit_deg, "wrap_deg": g.wrap_deg, "thumb_angles": g.thumb_angles,
               "handle_r": g.handle_r, "clips": {}}
     fingers = list(g.pose)
-    for name in HAND_CLIPS:
-        # one side angle for the whole clip (frame by frame, the rod jumped
-        # out where one frame needed it): the least that clears every frame
+
+    def clear_side(names):
+        # the least side angle that clears every frame of these clips
         side = ROD_SIDE
         while True:
             worst = 0
-            for f in range(1, FRAMES + 1):
-                rs.set_pose(clips[name], f)
-                g.hold(rod_target(name, f, side))
-                c, d = g.rod()
-                worst = max(worst, rod_through(mesh, Vector(c), Vector(d)))
+            for name in names:
+                for f in range(1, FRAMES + 1):
+                    rs.set_pose(clips[name], f)
+                    g.hold(rod_target(name, f, side))
+                    c, d = g.rod()
+                    worst = max(worst, rod_through(mesh, Vector(c), Vector(d)))
             if worst == 0 or side >= GRIP_SIDE_MAX:
-                break
+                return side
             side += GRIP_SIDE_STEP
+    # one side angle per clip (frame by frame, the rod jumped out where one
+    # frame needed it), and one for waiting, reeling and the fight together
+    # (user request, round 5: the game cuts between them - the rod kept
+    # its line across the cut)
+    sides = {name: clear_side([name]) for name in ("cast", "hold_run")}
+    shared = clear_side(SHARED_SIDE)
+    sides.update({name: shared for name in SHARED_SIDE})
+    for name in HAND_CLIPS:
+        side = sides[name]
         rows = []
         for f in range(1, FRAMES + 1):
             rs.set_pose(clips[name], f)
