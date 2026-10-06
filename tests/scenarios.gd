@@ -921,6 +921,20 @@ func test_rod_bends_with_the_fish() -> void:
 	var at_tip: Array = rod._at(rod._tip_along())
 	check(tip.distance_to(rod.to_global(at_tip[0] + at_tip[1] * rod._offset.y * rod._scale().y)) < 0.01, "the line leaves the bent tip")
 	check(tip.distance_to(straight_tip) > 0.5, "which has moved off the straight rod's (%.1f px)" % tip.distance_to(straight_tip))
+	# cranking: the reel clip from its first frame (the crank turns on from
+	# where the hand rests on it in the hold)
+	await frames(5)
+	check(visual.clip == PlayerVisual.CLIP_HOLD, "hooked, not cranking: the hold")
+	key(KEY_SPACE, true)
+	var first := -1
+	for i in 10:
+		await frames(1)
+		if visual.clip == PlayerVisual.CLIP_REEL:
+			first = visual.frame_in_clip
+			break
+	key(KEY_SPACE, false)
+	check(first == 0, "cranking starts the reel at its first frame (%d)" % first)
+	await frames(3)
 	# a run: the fight clip, its yank
 	player().fight.run_left = 2.0
 	player().fight.run_side = Vector2.ZERO
