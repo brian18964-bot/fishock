@@ -109,6 +109,8 @@ static func speed_share(p: Player) -> float:
 		share *= Player.POISON_SPEED_MULT
 	if p.carrying_oil_drum:
 		share *= Player.OIL_DRUM_SPEED_MULT
+	if p.vigor_timer > 0.0:
+		share *= Player.VIGOR_SPEED
 	return share
 
 
@@ -123,6 +125,11 @@ static func conditions(p: Player) -> Array:
 		out.append(["中毒了，腳步沉重（%d 秒）" % ceili(p.poison_timer), WARN])
 	if p.carrying_oil_drum:
 		out.append(["提著油箱", DIM])
+	# User request (round 7): what's been drunk, while it lasts.
+	if p.ward_timer > 0.0:
+		out.append(["驅鬼 %d 秒" % ceili(p.ward_timer), GOOD])
+	if p.vigor_timer > 0.0:
+		out.append(["增強 %d 秒" % ceili(p.vigor_timer), GOOD])
 	if GameState.has_heart:
 		out.append(["❤ 心臟", Color(1.0, 0.5, 0.5)])
 	var worn := Profile.spirit_penalty()

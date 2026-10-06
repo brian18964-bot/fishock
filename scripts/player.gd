@@ -167,6 +167,27 @@ var cast_water_zone: WaterZone
 var water_ghost_timer: float = 0.0
 ## Poisoned (a black spider's bite): seconds left, see POISON_SPEED_MULT.
 var poison_timer: float = 0.0
+## User request (round 7): things used from the bag (Profile.USABLES,
+## use_item()). The increase potion: VIGOR_TIME s running VIGOR_SPEED
+## times as fast, the line's tension building VIGOR_STRAIN as fast in a
+## fight. The ghost-ward potion: WARD_TIME s that no ghost comes within
+## WARD_RADIUS (the big one can't grab, the floating ones give up, the
+## water ghost won't rise). The eyeball and the binoculars: GuideArrow
+## pointing at the altar / the 渡石 for GUIDE_TIME s; the binoculars aren't
+## used up, but wait BINOCULARS_COOLDOWN s after.
+const VIGOR_TIME := 45.0
+const VIGOR_SPEED := 1.3
+const VIGOR_STRAIN := 0.75
+const WARD_TIME := 30.0
+const WARD_RADIUS := 110.0
+const GUIDE_TIME := 20.0
+const BINOCULARS_COOLDOWN := 60.0
+const ALTAR_GUIDE := Color(1.0, 0.5, 0.42)
+const STONE_GUIDE := Color(0.45, 1.0, 0.85)
+var vigor_timer := 0.0
+var ward_timer := 0.0
+var binoculars_cooldown := 0.0
+var guide: GuideArrow
 ## What the HUD warning names while water_ghost_timer runs - the water
 ## ghost, or an animal that caught up with you (see animal_attack()).
 var affliction_text: String = "水鬼異常狀態中"
@@ -255,6 +276,15 @@ var _key_prev_held: Dictionary = {}
 
 func _ready() -> void:
 	add_to_group("player")
+	var guide_layer := CanvasLayer.new()
+	guide_layer.name = "GuideLayer"
+	guide_layer.layer = 4
+	add_child(guide_layer)
+	guide = GuideArrow.new()
+	guide.name = "Guide"
+	guide.follow = self
+	guide.visible = false
+	guide_layer.add_child(guide)
 	var cam: Camera2D = get_node_or_null("Camera2D")
 	if cam != null:
 		cam.limit_right = int(WORLD_WIDTH)
@@ -577,6 +607,10 @@ func _maybe_trigger_water_ghost() -> void:
 
 
 func _apply_water_ghost_attack(cause := "") -> void:
+	if ward_timer > 0.0:
+		# (the ghost-ward potion: it doesn't dare)
+		GameState.report("水鬼探出頭，又被藥水的氣味逼回水裡")
+		return
 	water_ghost_timer = WATER_GHOST_DEBUFF_DURATION
 	affliction_text = "水鬼異常狀態中"
 	cast_jittered = true
@@ -595,6 +629,48 @@ func _apply_water_ghost_attack(cause := "") -> void:
 		msg = "水鬼冒出來偷襲，還搶走了一條 %s！身上狀態異常中" % stolen.get("name", "魚")
 	GameState.push_message(cause + msg)
 	GameState.report("水鬼偷襲！" if stolen.is_empty() else "水鬼偷襲，搶走了%s" % stolen.get("name", "魚"))
+
+
+## User request (round 7): uses one of Profile.USABLES from the bag (see
+## VIGOR_TIME...); false (and why, in the event feed) if it can't be.
+func use_item(id: String) -> bool:
+	if Profile.bag_count(id) < 1:
+		return false
+	match id:
+		"potion_vigor":
+			Profile.bag_take(id, 1)
+			vigor_timer = VIGOR_TIME
+			GameState.report("喝下增強藥水：腳步輕快，手上更有力", "good")
+		"potion_ward":
+			Profile.bag_take(id, 1)
+			ward_timer = WARD_TIME
+			for ghost in get_tree().get_nodes_in_group("ghosts"):
+				if ghost.global_position.distance_to(global_position) < WARD_RADIUS * 1.5 and ghost.has_method("stun"):
+					ghost.stun(1.5)
+			for ghost in get_tree().get_nodes_in_group("water_ghosts"):
+				ghost.repel()
+			GameState.report("喝下驅鬼藥水：鬼魂近不了身", "good")
+		"eyeball":
+			var altar: Node2D = get_tree().current_scene.get_node_or_null("Altar")
+			if altar == null:
+				return false
+			Profile.bag_take(id, 1)
+			guide.show_to(altar.global_position, "祭壇", ALTAR_GUIDE, GUIDE_TIME)
+			GameState.report("眼球轉了過去，盯著祭壇的方向", "info")
+		"binoculars":
+			if binoculars_cooldown > 0.0:
+				GameState.report("望遠鏡的鏡片還起著霧（%d 秒）" % ceili(binoculars_cooldown), "warn")
+				return false
+			var stone: Node2D = get_tree().current_scene.get_node_or_null("EscapePoint")
+			if stone == null:
+				return false
+			binoculars_cooldown = GUIDE_TIME + BINOCULARS_COOLDOWN
+			guide.show_to(stone.global_position, "渡石", STONE_GUIDE, GUIDE_TIME)
+			GameState.report("用望遠鏡望見了渡石", "info")
+		_:
+			return false
+	Sfx.play("ui_open", -8.0)
+	return true
 
 
 ## User request: a floating ghost passing through the player leaves them
@@ -915,6 +991,9 @@ func _try_buy_upgrade(upgrade_key: String) -> void:
 func _physics_process(delta: float) -> void:
 	water_ghost_timer = max(water_ghost_timer - delta, 0.0)
 	poison_timer = maxf(poison_timer - delta, 0.0)
+	vigor_timer = maxf(vigor_timer - delta, 0.0)
+	ward_timer = maxf(ward_timer - delta, 0.0)
+	binoculars_cooldown = maxf(binoculars_cooldown - delta, 0.0)
 	if _knock_time > 0.0:
 		# Staggering back, free.
 		_knock_time = maxf(_knock_time - delta, 0.0)
@@ -1054,7 +1133,8 @@ func _update_movement() -> void:
 	$CarriedCan.visible = carrying_oil_drum
 	# Low spirit: heavier on their feet (Profile.SPIRIT_SPEED).
 	var spirit_ratio: float = Profile.SPIRIT_SPEED[Profile.spirit_penalty()]
-	velocity = input_dir * SPEED * carry_ratio * affliction_ratio * drum_ratio * spirit_ratio
+	var vigor_ratio: float = VIGOR_SPEED if vigor_timer > 0.0 else 1.0
+	velocity = input_dir * SPEED * carry_ratio * affliction_ratio * drum_ratio * spirit_ratio * vigor_ratio
 	var before := position
 	move_and_slide()
 	position.x = clamp(position.x, 16.0, WORLD_WIDTH - 16.0)
@@ -1553,6 +1633,7 @@ func _update_fishing(delta: float) -> void:
 			var moving := velocity.length() > 1.0
 			var reel_mult := MOVE_REEL_PENALTY if moving and fight.run_side == Vector2.ZERO else 1.0
 			var line_dir := (cast_target - global_position).normalized()
+			fight.strain = VIGOR_STRAIN if vigor_timer > 0.0 else 1.0
 			for ev in fight.update(delta, held, _counter_dir(), line_dir, reel_mult):
 				_on_fight_event(ev)
 			progress = fight.progress

@@ -155,6 +155,12 @@ func _process(delta: float) -> void:
 		_visual.frame = _dir * COLS + int(_anim) % WALK_FRAMES
 
 
+## User request (round 7): the ghost-ward potion drunk - back it goes.
+func repel() -> void:
+	if _phase in [Phase.RISE, Phase.LUNGE, Phase.CLING]:
+		_next(Phase.RETREAT)
+
+
 func _next(phase: Phase) -> void:
 	_phase = phase
 	_t = 0.0

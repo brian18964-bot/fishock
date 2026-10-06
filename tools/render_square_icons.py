@@ -7,7 +7,8 @@ kind's colour, a dark edge round it. 128x128, shown at 64 or less.
   bpyenv/bin/python tools/render_square_icons.py [name ...]    (repo root)
 
 Writes assets/sprites/icons/<name>.png - rod_0..rod_4, flashlight,
-battery, lamp, worm, cricket, shrimp, minnow, tea, rations, roll, loaf, cheese,
+battery, lamp, worm, cricket, shrimp, minnow, tea, roll, loaf, cheese,
+potion_vigor, potion_ward, eyeball, binoculars,
 frog, spider, knife, machete, hatchet, glock, ammo, tent_1..tent_9,
 lure_1..lure_6, and throw (the 誘惑 action button) (Items.square_icon()
 maps the things' ids onto these).
@@ -47,13 +48,21 @@ THINGS = {
     "battery": dict(model="items/battery.glb", turn=(8, -18, 25), fill=0.8, ground=ITEM),
     "lamp": dict(model="oil_lamp.glb", turn=(0, 0, 20), fill=0.86, ground=LIGHT),
     "worm": dict(model="items/worm.glb", turn=(-90, 0, 0), fill=0.84, ground=BAIT, smooth=True),
-    "cricket": dict(model="items/cricket.glb", turn=(25, 0, 30), fill=0.86, ground=BAIT),
-    "shrimp": dict(model="items/shrimp.glb", turn=(20, 0, 25), fill=0.86, ground=BAIT),
-    "minnow": dict(model="fish/minnow.glb", turn=(0, 0, 20), fill=0.9, ground=BAIT),
-    # The merchant's tea and rations (Camp v2): had at once, for spirit.
+    # User request (round 7): the user's grasshopper (the 蚱蜢 bait, in the
+    # old cricket's place), small fish and earthworm, and a live shrimp
+    # made here (tools/prep_shop_models.py).
+    "cricket": dict(model="items/grasshopper.glb", turn=(20, 0, 30), fill=0.9, ground=BAIT),
+    "shrimp": dict(model="items/shrimp.glb", turn=(20, 0, 25), fill=0.9, ground=BAIT),
+    "minnow": dict(model="items/minnow.glb", turn=(0, 0, 20), fill=0.9, ground=BAIT),
+    # Things to use in a run (round 7): the potions, the eyeball, the
+    # binoculars.
+    "potion_vigor": dict(model="items/potion_vigor.glb", turn=(12, 0, 20), fill=0.86, ground=ABILITY),
+    "potion_ward": dict(model="items/potion_ward.glb", turn=(12, 0, 20), fill=0.86, ground=TACKLE),
+    "eyeball": dict(model="items/eyeball.glb", turn=(10, 0, -105), fill=0.8, ground=ITEM),
+    "binoculars": dict(model="items/binoculars.glb", turn=(15, 0, 30), fill=0.92, ground=GEAR),
+    # The merchant's tea (Camp v2): had at once, for spirit.
     # User request: the tea served in the user's cup.
     "tea": dict(model="items/cup.glb", turn=(28, 0, -30), fill=0.8, ground=ITEM),
-    "rations": dict(model="items/rations.glb", turn=(40, 0, 22), fill=0.82, ground=ITEM),
     # User request: the user's models (tools/prep_shop_models.py) - the
     # food, the live frog and spider, the weapons and the rounds.
     "roll": dict(model="items/roll.glb", turn=(35, 0, 20), fill=0.8, ground=ITEM),

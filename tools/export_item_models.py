@@ -1,6 +1,6 @@
 """3D models of the things sold and carried, for the menus' 3D previews
 (user request: out of the game, show things in 3D - the shop's wares, the
-equipment). The flashlight, battery, cricket, shrimp, tea and rations are
+equipment). The flashlight, battery, cricket, shrimp and tea were
 built here by render_item_icons.py's own builders (the same shapes as their
 pictures) and saved as .glb; the lures and the worm are copied from art_src (the models
 their sprites were rendered from).
@@ -48,10 +48,11 @@ def main():
         return
     # (The flashlight, its battery and the tea's cup are the user's models
     # now - tools/prep_shop_models.py.)
-    for build in (ri.cricket, ri.shrimp, ri.rations):
-        build()
+    # (User request, round 7: the cricket, the shrimp and the worm are the
+    # user's models and one made by hand now - tools/prep_shop_models.py -
+    # and the rations are off the menu.)
     src = os.path.join(ri.ROOT, "art_src", "lure")
-    for n in ["lure_%d" % i for i in range(1, 7)] + ["worm"]:
+    for n in ["lure_%d" % i for i in range(1, 7)]:
         shutil.copy(os.path.join(src, n + ".glb"), os.path.join(OUT, n + ".glb"))
         print("copied", n)
 

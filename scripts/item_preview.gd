@@ -139,7 +139,10 @@ func _fit(inst: Node3D, lean: bool) -> void:
 	if lean and box.size[long_axis] > 3.0 * box.size[(long_axis + 1) % 3]:
 		_holder.rotation = Vector3(0, 0, deg_to_rad(-55)) if long_axis == Vector3.AXIS_Y else Vector3(0, 0, deg_to_rad(30))
 	box = _bounds(inst)
-	var k := 1.7 / maxf(box.get_longest_axis_size(), 0.001)
+	# (a thing standing tall - a bottle - smaller: the frame's wider than
+	# it's high)
+	var tall := box.get_longest_axis_index() == Vector3.AXIS_Y
+	var k := (1.25 if tall else 1.7) / maxf(box.get_longest_axis_size(), 0.001)
 	_holder.scale = Vector3.ONE * k
 	box = _bounds(inst)
 	_holder.position -= box.get_center()

@@ -148,7 +148,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _should_haunt() -> bool:
-	if not GameState.ghost_may_interfere():
+	if not GameState.ghost_may_interfere() or player.ward_timer > 0.0:
 		return false
 	var other = GameState.ghost_haunter
 	if other != null and is_instance_valid(other) and other != self:
@@ -172,7 +172,8 @@ func _wander(delta: float, speed: float) -> void:
 ## along the line if it's out, otherwise to the player.
 func _haunt(delta: float) -> void:
 	state_timer -= delta
-	if state_timer <= 0.0:
+	# (the ghost-ward potion drunk: it gives up and drifts off)
+	if state_timer <= 0.0 or player.ward_timer > 0.0:
 		_leave()
 		return
 	var bobber_waiting := player.fishing_mode == Player.FishingMode.BOBBER and player.state == Player.State.WAITING
@@ -229,6 +230,11 @@ func _move_toward(target: Vector2, speed: float, delta: float, keep_out := true)
 			next_position = _clamp_outside_safe_zone(next_position, escape_point.global_position)
 		if fuel_light.visible:
 			next_position = _clamp_outside_safe_zone(next_position, fuel_station.global_position)
+	# User request (round 7): the ghost-ward potion keeps it off the player.
+	if player.ward_timer > 0.0:
+		var off := next_position - player.global_position
+		if off.length() < Player.WARD_RADIUS:
+			next_position = player.global_position + (off.normalized() if off.length() > 0.01 else Vector2.UP) * Player.WARD_RADIUS
 	global_position = next_position
 
 

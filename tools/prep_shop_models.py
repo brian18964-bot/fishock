@@ -163,15 +163,25 @@ def _fill_misses(im):
     im.pixels.foreach_set(px.ravel())
 
 
-def bake(name, high, tris, size=512, out_dir=OUT, reach=0.04):
+def bake(name, high, tris, size=512, out_dir=OUT, reach=0.04, remesh=None):
     """The cut-down copy with high's look baked on; saved as the item (in
     out_dir). `reach`: how far (a share of its size) the bake looks for
-    the original's surface - more for thin, gappy things cut down hard."""
+    the original's surface - more for thin, gappy things cut down hard.
+    `remesh`: the copy first remade as one closed skin, voxels this share
+    of its size (thin-walled glass, inside and out, falls apart when cut
+    down as it is)."""
     bpy.ops.object.select_all(action="DESELECT")
     low = high.copy()
     low.data = high.data.copy()
     low.name = name
     bpy.context.scene.collection.objects.link(low)
+    if remesh:
+        lo, hi = bounds(low)
+        rm = low.modifiers.new("rm", "REMESH")
+        rm.mode = "VOXEL"
+        rm.voxel_size = float(max(hi - lo)) * remesh
+        bpy.context.view_layer.objects.active = low
+        bpy.ops.object.modifier_apply(modifier="rm")
     have = sum(len(p.vertices) - 2 for p in low.data.polygons)
     if have > tris:
         dec = low.modifiers.new("dec", "DECIMATE")
@@ -513,8 +523,387 @@ def roll(src):
     bake("roll", high, 1600)
 
 
+# ---------------------------------------------------------------- round 7
+# User request: the user's earthworm, grasshopper and small fish as live
+# baits; two potions, an eyeball and binoculars as things to use in a run;
+# and a live shrimp made here (from the user's blockout: a curled body of
+# segments under a carapace, a tail fan). SRC_DIR as laid out by hand:
+#   worm/worm.fbx  Grasshopper.blend  fish.blend  potion/vials.fbx
+#   potion/Potion.fbx  binoculars/Binoculars.fbx (+ textures/)  eye/eye.jpg
+
+def _mix_by(nt, fac, a, b):
+    """A colour mix node: a where fac is 0, b where it's 1."""
+    mix = nt.nodes.new("ShaderNodeMix")
+    mix.data_type = "RGBA"
+    nt.links.new(fac, mix.inputs[0])
+    for sock, v in ((mix.inputs[6], a), (mix.inputs[7], b)):
+        if isinstance(v, tuple):
+            sock.default_value = (*v, 1)
+        else:
+            nt.links.new(v, sock)
+    return mix.outputs[2]
+
+
+def _ramp(nt, fac, stops):
+    """A colour ramp on `fac`: [(position, rgb)]."""
+    r = nt.nodes.new("ShaderNodeValToRGB")
+    els = r.color_ramp.elements
+    while len(els) > len(stops):
+        els.remove(els[-1])
+    while len(els) < len(stops):
+        els.new(0.5)
+    for e, (pos, rgb) in zip(els, stops):
+        e.position = pos
+        e.color = (*rgb, 1)
+    nt.links.new(fac, r.inputs[0])
+    return r.outputs[0]
+
+
+def worm(src):
+    """The user's earthworm (the pack's low-poly one, laid out as it came;
+    its materials didn't come through): pink-brown, ringed, the saddle (the
+    clitellum) a third of the way back, glistening."""
+    fresh()
+    bpy.ops.import_scene.fbx(filepath=os.path.join(src, "worm", "worm.fbx"))
+    o = bpy.data.objects["Worm_LP"]
+    m = bpy.data.materials.new("worm")
+    m.use_nodes = True
+    nt = m.node_tree
+    b = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    tc = nt.nodes.new("ShaderNodeTexCoord")
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+    nt.links.new(tc.outputs["Generated"], sep.inputs[0])
+    # rings along its length (x)
+    wave = nt.nodes.new("ShaderNodeTexWave")
+    wave.wave_profile = "SIN"
+    wave.inputs["Scale"].default_value = 70.0
+    wave.inputs["Distortion"].default_value = 0.0
+    nt.links.new(tc.outputs["Generated"], wave.inputs["Vector"])
+    body = _mix_by(nt, wave.outputs["Fac"], (0.36, 0.13, 0.12), (0.55, 0.24, 0.22))
+    saddle = _ramp(nt, sep.outputs["X"], [(0.0, (0, 0, 0)), (0.6, (0, 0, 0)), (0.64, (1, 1, 1)), (0.72, (1, 1, 1)), (0.76, (0, 0, 0))])
+    col = _mix_by(nt, saddle, body, (0.72, 0.38, 0.3))
+    nt.links.new(col, b.inputs["Base Color"])
+    b.inputs["Roughness"].default_value = 0.3
+    o.data.materials.clear()
+    o.data.materials.append(m)
+    high = solid([o])
+    place(high, (0, 0, 0), 0.12, base=True)
+    bake("worm", high, 2400)
+
+
+def grasshopper(src):
+    """The user's grasshopper (sold as the 蚱蜢 live bait, the old cricket's
+    place): its own painted texture."""
+    fresh()
+    bpy.ops.wm.open_mainfile(filepath=os.path.join(src, "Grasshopper.blend"))
+    objs = [o for o in bpy.data.objects if o.type == "MESH" and o.name.startswith("Grasshopper")]
+    # Its shader is a node group the bake can't read: the painted texture
+    # straight into a plain one instead.
+    m = bpy.data.materials["Grasshopper"]
+    tex = m.node_tree.nodes["Image Texture"].image
+    plain = mat("grasshopper", (1, 1, 1), rough=0.5)
+    t = plain.node_tree.nodes.new("ShaderNodeTexImage")
+    t.image = tex
+    plain.node_tree.links.new(t.outputs[0], next(n for n in plain.node_tree.nodes if n.type == "BSDF_PRINCIPLED").inputs["Base Color"])
+    for o in objs:
+        o.data.materials.clear()
+        o.data.materials.append(plain)
+    high = solid(objs)
+    # its length along y in the file: laid along x, head to +x
+    place(high, (0, 0, 90), 0.1, base=True)
+    bake("grasshopper", high, 2600, reach=0.06)
+
+
+def minnow(src):
+    """The user's small fish (the 小活魚 bait): its painted body."""
+    fresh()
+    bpy.ops.wm.open_mainfile(filepath=os.path.join(src, "fish.blend"))
+    o = bpy.data.objects["Sphere"]
+    high = solid([o])
+    place(high, (0, 0, 0), 0.12)
+    bake("minnow", high, 1600)
+
+
+def binoculars(src):
+    """The user's binoculars (望遠鏡: shows where the 渡石 is)."""
+    fresh()
+    bpy.ops.import_scene.fbx(filepath=os.path.join(src, "binoculars", "Binoculars.fbx"))
+    o = next(o for o in bpy.data.objects if o.type == "MESH")
+    high = solid([o])
+    place(high, (90, 0, 0), 0.16, base=True)
+    bake("binoculars", high, 3000)
+
+
+def _glass(name, liquid, fill_z, glow=0.0):
+    """Glass that shows its liquid below `fill_z` (object z, after
+    placing): the liquid's colour through it, pale glass above."""
+    m = bpy.data.materials.new(name)
+    m.use_nodes = True
+    nt = m.node_tree
+    b = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    tc = nt.nodes.new("ShaderNodeTexCoord")
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+    nt.links.new(tc.outputs["Object"], sep.inputs[0])
+    edge = _ramp(nt, sep.outputs["Z"], [(fill_z - 0.002, (1, 1, 1)), (fill_z + 0.002, (0, 0, 0))])
+    noise = nt.nodes.new("ShaderNodeTexNoise")
+    noise.inputs["Scale"].default_value = 40.0
+    nt.links.new(tc.outputs["Object"], noise.inputs["Vector"])
+    deep = tuple(c * 0.55 for c in liquid)
+    swirl = _mix_by(nt, noise.outputs["Fac"], deep, liquid)
+    col = _mix_by(nt, edge, (0.6, 0.68, 0.72), swirl)
+    nt.links.new(col, b.inputs["Base Color"])
+    b.inputs["Roughness"].default_value = 0.08
+    return m
+
+
+def _fill_glass(high, tmp, name, liquid, fill):
+    """The placeholder glass on `high` swapped for glass full to `fill`
+    of the glass's height (placed: its bottom at z 0)."""
+    idx = [i for i, m in enumerate(high.data.materials) if m == tmp][0]
+    zs = [v.co.z for v in high.data.vertices]
+    top = max(p.center.z for p in high.data.polygons if p.material_index == idx)
+    bottom = min(zs)
+    high.data.materials[idx] = _glass(name, liquid, bottom + (top - bottom) * fill)
+
+
+def potion_ward(src):
+    """驅鬼藥水: one of the user's three small vials, cork-stoppered, the
+    liquid a pale ghostly cyan."""
+    fresh()
+    bpy.ops.import_scene.fbx(filepath=os.path.join(src, "potion", "vials.fbx"))
+    glass, cap, liquid = (bpy.data.objects[n] for n in ("Cylinder", "Cylinder.001", "Cylinder.002"))
+    for o in list(bpy.data.objects):
+        if o.type == "MESH" and o not in (glass, cap, liquid):
+            bpy.data.objects.remove(o, do_unlink=True)
+    lz = max((liquid.matrix_world @ Vector(c)).z for c in liquid.bound_box)
+    gz = [(glass.matrix_world @ Vector(c)).z for c in glass.bound_box]
+    fill = (lz - min(gz)) / (max(gz) - min(gz))
+    cork = mat("cork", (0.55, 0.4, 0.24), rough=0.85)
+    tmp = mat("glass_tmp", (1, 1, 1))
+    for o, m in ((glass, tmp), (cap, cork), (liquid, mat("liq", (0.4, 0.95, 0.9)))):
+        o.data.materials.clear()
+        o.data.materials.append(m)
+    high = solid([glass, cap, liquid])
+    place(high, (0, 0, 0), 0.1, base=True)
+    _fill_glass(high, tmp, "ward_glass", (0.12, 0.78, 0.74), fill)
+    bake("potion_ward", high, 1800, remesh=1 / 90)
+
+
+def potion_vigor(src):
+    """增強藥水: the user's corked flask, the liquid a warm blood red."""
+    fresh()
+    bpy.ops.import_scene.fbx(filepath=os.path.join(src, "potion", "Potion.fbx"))
+    glass, liquid, cap = (bpy.data.objects[n] for n in ("Kolben 1", "Fluid", "Cylinder"))
+    lz = max((liquid.matrix_world @ Vector(c)).z for c in liquid.bound_box)
+    gz = [(glass.matrix_world @ Vector(c)).z for c in glass.bound_box]
+    fill = (lz - min(gz)) / (max(gz) - min(gz))
+    cork = mat("cork", (1, 1, 1), rough=0.85, image=os.path.join(src, "potion", "TexturesCom_BarkCloseup0012_3_S.jpg"))
+    tmp = mat("glass_tmp", (1, 1, 1))
+    for o, m in ((glass, tmp), (liquid, mat("liq", (0.75, 0.12, 0.08))), (cap, cork)):
+        o.data.materials.clear()
+        o.data.materials.append(m)
+    high = solid([glass, liquid, cap])
+    place(high, (0, 0, 0), 0.13, base=True)
+    _fill_glass(high, tmp, "vigor_glass", (0.62, 0.05, 0.03), fill)
+    bake("potion_vigor", high, 2000, remesh=1 / 110)
+
+
+def eyeball(src):
+    """眼球 (shows the way to the altar): a ball wearing the user's eye
+    picture - drawn front on, so laid round the ball from its front (the
+    iris) back (the angle from the front as the distance from the
+    picture's middle) - glossy, the stub of its nerve behind."""
+    fresh()
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, segments=48, ring_count=32)
+    o = bpy.context.object
+    me = o.data
+    while me.uv_layers:
+        me.uv_layers.remove(me.uv_layers[0])
+    uv = me.uv_layers.new(name="UV")
+    for loop in me.loops:
+        v = Vector(me.vertices[loop.vertex_index].co).normalized()
+        # front: +x
+        a = math.acos(max(-1.0, min(1.0, v.x)))
+        # (the iris a little smaller round the ball than an even spread
+        # would make it)
+        r = 0.5 * (a / math.pi) ** 0.6
+        phi = math.atan2(v.z, v.y)
+        uv.data[loop.index].uv = (0.5 + r * math.cos(phi), 0.5 + r * math.sin(phi))
+    m = mat("eye", (1, 1, 1), rough=0.12, image=os.path.join(src, "eye", "eye.jpg"))
+    # the pupil's pure black lifted a hair (the bake takes pure black for
+    # "no surface found" and fills it in)
+    nt = m.node_tree
+    tex = next(n for n in nt.nodes if n.type == "TEX_IMAGE")
+    lift = _mix_by(nt, nt.nodes.new("ShaderNodeValue").outputs[0], tex.outputs[0], (0.03, 0.02, 0.02))
+    lift.node.inputs[0].links[0].from_node.outputs[0].default_value = 0.05
+    nt.links.new(lift, next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED").inputs["Base Color"])
+    me.materials.append(m)
+    bpy.ops.object.shade_smooth()
+    # the nerve's stub, out the back
+    bpy.ops.mesh.primitive_cone_add(radius1=0.22, radius2=0.12, depth=0.5, location=(-1.12, 0, -0.05),
+                                    rotation=(0, math.radians(-90), 0), vertices=16)
+    nerve = bpy.context.object
+    nerve.data.materials.append(mat("nerve", (0.55, 0.12, 0.12), rough=0.4))
+    high = solid([o, nerve])
+    place(high, (0, 0, 20), 0.06, base=True)
+    bake("eyeball", high, 1600)
+
+
+def _loft(name, spine, widths, heights, ring=20, cap=True):
+    """A shell lofted along `spine` (points) - an ellipse of widths[i] x
+    heights[i] square to it at each point, its up kept toward +z."""
+    import bmesh
+    bm = bmesh.new()
+    rings = []
+    n = len(spine)
+    up = Vector((0, 0, 1))
+    for i in range(n):
+        p = Vector(spine[i])
+        t = (Vector(spine[min(i + 1, n - 1)]) - Vector(spine[max(i - 1, 0)])).normalized()
+        side = t.cross(up).normalized()
+        u = side.cross(t).normalized()
+        rings.append([bm.verts.new(p + side * widths[i] * math.cos(a) + u * heights[i] * math.sin(a))
+                      for a in np.linspace(0, math.tau, ring, endpoint=False)])
+    for i in range(n - 1):
+        for j in range(ring):
+            k = (j + 1) % ring
+            bm.faces.new((rings[i][j], rings[i][k], rings[i + 1][k], rings[i + 1][j]))
+    if cap:
+        bm.faces.new(list(reversed(rings[0])))
+        bm.faces.new(rings[-1])
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    o = bpy.data.objects.new(name, me)
+    bpy.context.scene.collection.objects.link(o)
+    return o
+
+
+def _tube(name, pts, r0, r1, m, ring=8):
+    o = _loft(name, pts, list(np.linspace(r0, r1, len(pts))), list(np.linspace(r0, r1, len(pts))), ring=ring)
+    o.data.materials.append(m)
+    return o
+
+
+def shrimp(src=None):
+    """活蝦, made here (user request, from the user's blockout: a carapace,
+    six abdominal segments curling down, a tail fan): one lofted shell -
+    the carapace, then the segments each a little swollen (their joints
+    pinched), the telson - under a pointed rostrum; stalked black eyes;
+    long antennae swept back over it and two short ones; five pairs of
+    thin walking legs and the swimmerets under the abdomen; the tail fan's
+    five blades. Greyish and see-through looking, freckled brown, the legs
+    and feelers tinged orange, the fan's edges blue."""
+    fresh()
+    body = bpy.data.materials.new("shrimp_body")
+    body.use_nodes = True
+    nt = body.node_tree
+    b = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    tc = nt.nodes.new("ShaderNodeTexCoord")
+    noise = nt.nodes.new("ShaderNodeTexNoise")
+    noise.inputs["Scale"].default_value = 26.0
+    noise.inputs["Detail"].default_value = 6.0
+    nt.links.new(tc.outputs["Object"], noise.inputs["Vector"])
+    speck = _ramp(nt, noise.outputs["Fac"], [(0.0, (0.36, 0.4, 0.34)), (0.5, (0.3, 0.34, 0.29)), (0.6, (0.17, 0.13, 0.09)), (1.0, (0.13, 0.1, 0.07))])
+    nt.links.new(speck, b.inputs["Base Color"])
+    b.inputs["Roughness"].default_value = 0.25
+    leg = mat("shrimp_leg", (0.62, 0.34, 0.2), rough=0.35)
+    fan = mat("shrimp_fan", (0.2, 0.34, 0.52), rough=0.3)
+    black = mat("shrimp_eye", (0.02, 0.02, 0.02), rough=0.1)
+
+    # The spine, head (+x) to tail: straight under the carapace, then
+    # curling down through the abdomen.
+    step = 0.01
+    pts, ws, hs = [], [], []
+    p = Vector((0.0, 0.0, 0.0))
+    ang = 0.0
+    d = 0.0
+    segs = [0.44 + i * 0.08 for i in range(7)]
+    while d <= 1.0:
+        if d < 0.04:
+            w = 0.03 + (d / 0.04) * 0.05
+        elif d < 0.42:
+            w = 0.08 + 0.04 * math.sin(min(1.0, (d - 0.04) / 0.2) * math.pi / 2)
+        elif d < 0.92:
+            w = 0.115 - (d - 0.42) / 0.5 * 0.07
+            # each segment swells a little between its joints
+            k = min(abs(d - s) for s in segs)
+            w *= 0.93 + 0.07 * min(1.0, k / 0.035)
+        else:
+            w = 0.045 * (1.0 - (d - 0.92) / 0.08) + 0.006
+        h = w * (1.18 if d < 0.92 else 0.5)
+        pts.append(p.copy())
+        ws.append(w)
+        hs.append(h)
+        if d > 0.42:
+            ang += 1.35 * step / 0.5
+        p += Vector((-math.cos(ang), 0.0, -math.sin(ang))) * step
+        d += step
+    shell = _loft("shell", pts, ws, hs, ring=28)
+    shell.data.materials.append(body)
+    objs = [shell]
+    ix = lambda dd: min(len(pts) - 1, int(round(dd / step)))
+
+    def at(dd, side=0.0, upw=0.0):
+        i = ix(dd)
+        t = (pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]).normalized()
+        u = Vector((0, 1, 0)).cross(t).normalized() * -1.0
+        if u.z < 0:
+            u = -u
+        return pts[i] + Vector((0, 1, 0)) * side * ws[i] + u * upw * hs[i], t, u
+
+    # rostrum: a flattened spike forward and a little up from the head top
+    base, _, _ = at(0.06, 0.0, 0.7)
+    objs.append(_tube("rostrum", [base, base + Vector((0.12, 0, 0.02)), base + Vector((0.2, 0, 0.045))], 0.018, 0.002, body))
+    # eyes on short stalks
+    for s in (-1, 1):
+        e0, _, _ = at(0.05, 0.75 * s, 0.25)
+        e1 = e0 + Vector((0.03, 0.035 * s, 0.015))
+        objs.append(_tube("stalk", [e0, e1], 0.012, 0.012, body))
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.021, location=e1 + Vector((0.008, 0.006 * s, 0)), segments=16, ring_count=10)
+        eye = bpy.context.object
+        eye.data.materials.append(black)
+        objs.append(eye)
+    # long antennae swept back over the body, and two short antennules
+    for s in (-1, 1):
+        a0, _, _ = at(0.03, 0.5 * s, -0.2)
+        ant = [a0] + [Vector((a0.x + 0.06 - 0.95 * t * t + 0.1 * t, a0.y + s * (0.05 + 0.28 * t), a0.z + 0.05 * math.sin(t * 2.4)))
+                      for t in np.linspace(0.05, 1.0, 22)]
+        objs.append(_tube("antenna", ant, 0.006, 0.0015, leg, ring=6))
+        short = [a0 + Vector((0.12 * t, s * 0.05 * t, 0.04 * t * t)) for t in np.linspace(0, 1, 6)]
+        objs.append(_tube("antennule", short, 0.006, 0.002, leg, ring=6))
+    # walking legs under the carapace, and the swimmerets under the abdomen
+    for k, dd in enumerate(np.linspace(0.14, 0.36, 5)):
+        for s in (-1, 1):
+            l0, t, u = at(dd, 0.55 * s, -0.75)
+            knee = l0 + Vector((0.02, s * 0.06, -0.06))
+            foot = knee + Vector((0.03 - 0.012 * k, s * 0.03, -0.09))
+            objs.append(_tube("leg", [l0, knee, foot], 0.007, 0.003, leg, ring=6))
+    for dd in segs[:5]:
+        for s in (-1, 1):
+            l0, t, u = at(dd + 0.03, 0.45 * s, -0.8)
+            tip = l0 - u * 0.07 + Vector((0, s * 0.012, 0)) - t * 0.02
+            objs.append(_tube("swimmeret", [l0, tip], 0.008, 0.004, leg, ring=6))
+    # the tail fan: the telson and two uropods each side, splayed
+    end, t, u = at(0.98)
+    side = Vector((0, 1, 0))
+    for spread, ln, wd in ((0.0, 0.19, 0.035), (0.4, 0.18, 0.04), (-0.4, 0.18, 0.04), (0.75, 0.15, 0.036), (-0.75, 0.15, 0.036)):
+        dirv = (t * math.cos(spread) + side * math.sin(spread)).normalized()
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, segments=16, ring_count=8, location=end + dirv * ln * 0.5)
+        blade = bpy.context.object
+        blade.scale = (ln * 0.5, wd, 0.006)
+        blade.rotation_euler = dirv.to_track_quat("X", "Z").to_euler()
+        blade.data.materials.append(fan)
+        objs.append(blade)
+    high = solid(objs)
+    place(high, (0, 0, 0), 0.1, base=True)
+    bake("shrimp", high, 3200, reach=0.08)
+
+
 SOURCES = {"frog": frog, "spider": spider, "knife": knife, "machete": machete, "hatchet": hatchet,
-           "glock": glock, "ammo": ammo, "battery": battery, "loaf": loaf, "flashlight": flashlight, "cup": cup, "cheese": cheese, "roll": roll}
+           "glock": glock, "ammo": ammo, "battery": battery, "loaf": loaf, "flashlight": flashlight, "cup": cup, "cheese": cheese, "roll": roll,
+           "worm": worm, "grasshopper": grasshopper, "minnow": minnow, "binoculars": binoculars, "potion_ward": potion_ward,
+           "potion_vigor": potion_vigor, "eyeball": eyeball, "shrimp": shrimp}
 
 
 def main():

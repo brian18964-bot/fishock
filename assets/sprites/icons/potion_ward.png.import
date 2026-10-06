@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dxt4ccbgk73fo"
-path="res://.godot/imported/cricket.png-c3b8d3524537f40294ba08648e5239c6.ctex"
+uid="uid://bmlh1uh3wnetp"
+path="res://.godot/imported/potion_ward.png-53c66b3e034a8c27db2355017f180819.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/sprites/items/cricket.png"
-dest_files=["res://.godot/imported/cricket.png-c3b8d3524537f40294ba08648e5239c6.ctex"]
+source_file="res://assets/sprites/icons/potion_ward.png"
+dest_files=["res://.godot/imported/potion_ward.png-53c66b3e034a8c27db2355017f180819.ctex"]
 
 [params]
 

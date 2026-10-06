@@ -68,6 +68,9 @@ var difficulty_key: String
 var habit: String
 var reel_speed: float
 var tension_rise: float
+## The line's tension builds this much as fast (user request, round 7: the
+## increase potion eases it; set by Player each frame).
+var strain := 1.0
 var tension_fall: float
 ## The rod (Profile.ROD_TIERS): its line strength divides every tension
 ## gain (the tension cap), and `jump` scales the strain of holding a leap.
@@ -141,7 +144,7 @@ func update(delta: float, held: bool, counter: Vector2, line_dir: Vector2, reel_
 		if held:
 			dive -= DIVE_HAUL * delta
 			progress += reel_speed * 0.3 * delta
-			tension += tension_rise * pull * DIVE_TENSION * delta
+			tension += tension_rise * strain * pull * DIVE_TENSION * delta
 		else:
 			dive += DIVE_SPEED * delta
 			tension -= tension_fall * delta
@@ -157,27 +160,27 @@ func update(delta: float, held: bool, counter: Vector2, line_dir: Vector2, reel_
 		if run_side == Vector2.ZERO:
 			if held:
 				progress -= RUN_PROGRESS_PENALTY * delta
-				tension += tension_rise * RUN_TENSION_MULT * pull * delta
+				tension += tension_rise * strain * RUN_TENSION_MULT * pull * delta
 			else:
-				tension += tension_rise * RUN_SLACK_TENSION * pull * delta
+				tension += tension_rise * strain * RUN_SLACK_TENSION * pull * delta
 		elif swipe_left > 0.0 and _swipe_check(delta, counter, events):
 			pass
 		elif counter.length() > 0.3 and counter.normalized().dot(-run_side) > SIDE_COUNTER_THRESHOLD:
 			# Rod pulled against the run: it's held, and you can keep reeling.
 			if held:
 				progress += reel_speed * 0.5 * delta
-				tension += tension_rise * 0.6 * pull * delta
+				tension += tension_rise * strain * 0.6 * pull * delta
 			else:
 				tension -= tension_fall * 0.5 * delta
 		else:
 			progress -= RUN_PROGRESS_PENALTY * delta
-			tension += tension_rise * RUN_TENSION_MULT * pull * (1.0 if held else 0.45) * delta
+			tension += tension_rise * strain * RUN_TENSION_MULT * pull * (1.0 if held else 0.45) * delta
 		if run_left <= 0.0:
 			swipe_left = 0.0
 	else:
 		if held:
 			progress += reel_speed * reel_mult * (SWEET_REEL_MULT if in_sweet() else 1.0) * delta
-			tension += tension_rise * pull * (ENRAGE_REEL_TENSION if enraged else 1.0) * delta
+			tension += tension_rise * strain * pull * (ENRAGE_REEL_TENSION if enraged else 1.0) * delta
 		else:
 			tension -= tension_fall * delta
 		events.append_array(_schedule(delta, line_dir))

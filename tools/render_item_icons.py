@@ -260,45 +260,13 @@ def tea():
     shoot("tea", objs, (1, 1))
 
 
-def rations():
-    """The merchant's rations (Camp v2): a loaf and a slab of jerky
-    wrapped in brown paper, tied with twine."""
-    fresh()
-    paper = mat("paper", (0.14, 0.09, 0.05), rough=0.85)
-    twine = mat("twine", (0.3, 0.25, 0.15), rough=0.9)
-    jerky = mat("jerky", (0.12, 0.03, 0.015), rough=0.5)
-    bread = mat("bread", (0.26, 0.13, 0.04), rough=0.7)
-    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.13))
-    parcel = bpy.context.object
-    parcel.name = "parcel"
-    parcel.scale = (0.72, 0.46, 0.26)
-    bev = parcel.modifiers.new("soft", "BEVEL")
-    bev.width = 0.05
-    bev.segments = 3
-    parcel.data.materials.append(paper)
-    objs = [parcel]
-    for k, (sx, sy) in enumerate([(0.74, 0.03), (0.03, 0.48)]):
-        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.13))
-        t = bpy.context.object
-        t.name = "twine%d" % k
-        t.scale = (sx, sy, 0.272)
-        t.data.materials.append(twine)
-        objs.append(t)
-    objs.append(blob("knot", (0, 0, 0.27), (0.045, 0.045, 0.03), twine))
-    # The paper folded back at one end: a heel of bread showing, and a
-    # strip of jerky on top.
-    objs.append(blob("loaf", (-0.36, 0.0, 0.16), (0.08, 0.2, 0.12), bread))
-    for k, (x, y, turn) in enumerate([(0.08, 0.06, 0.45), (0.16, -0.06, 0.3)]):
-        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(x, y, 0.3 + k * 0.025), rotation=(0.05, 0.06, turn))
-        strip = bpy.context.object
-        strip.name = "jerky%d" % k
-        strip.scale = (0.42, 0.08, 0.025)
-        b = strip.modifiers.new("soft", "BEVEL")
-        b.width = 0.01
-        b.segments = 2
-        strip.data.materials.append(jerky)
-        objs.append(strip)
-    shoot("rations", objs, (1, 1))
+def round7():
+    """User request (round 7): pictures (for things dropped on the ground
+    and dragged out of the bag) of the live baits made from the user's
+    models and the things to use in a run."""
+    for name, turn in (("worm", (0, 0, -15)), ("grasshopper", (0, 0, -20)), ("minnow", (0, 0, -10)), ("shrimp", (0, 0, -20)),
+                       ("potion_vigor", (0, 0, 0)), ("potion_ward", (0, 0, 0)), ("eyeball", (0, 0, -105)), ("binoculars", (0, 0, 20))):
+        model_pic(name, (1, 1), turn)
 
 
 def main():

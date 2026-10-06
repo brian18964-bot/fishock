@@ -350,7 +350,7 @@ func _near_player() -> bool:
 
 func _try_catch() -> void:
 	if global_position.distance_to(_player.global_position) <= CATCH_RADIUS and not _player.held \
-			and not _player.knocked() and not _in_safe_zone(_player.global_position):
+			and not _player.knocked() and not _in_safe_zone(_player.global_position) and _player.ward_timer <= 0.0:
 		_player.seize(global_position)
 		_timer = GRAB_TIME
 		_set_mode(Mode.GRAB)
@@ -408,6 +408,11 @@ func _move_toward(target: Vector2, speed: float, delta: float, keep_out := true)
 		var escape := get_tree().current_scene.get_node_or_null("EscapePoint")
 		if escape != null and escape.get_node("Light").visible:
 			next = _outside(next, escape.global_position)
+	# User request (round 7): the ghost-ward potion keeps it off the player.
+	if is_instance_valid(_player) and _player.ward_timer > 0.0:
+		var off := next - _player.global_position
+		if off.length() < Player.WARD_RADIUS:
+			next = _player.global_position + (off.normalized() if off.length() > 0.01 else Vector2.UP) * Player.WARD_RADIUS
 	next.x = clampf(next.x, 20.0, Player.WORLD_WIDTH - 20.0)
 	next.y = clampf(next.y, 20.0, Player.WORLD_HEIGHT - 20.0)
 	var moved := next - global_position

@@ -2,16 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bj1susmuwil2a"
-path="res://.godot/imported/rations.png-0862c335199ce677938cfb66699eed12.ctex"
+uid="uid://dc30mmvcpt01w"
+path="res://.godot/imported/eyeball_eyeball_mr.jpg-e2d1322b1897285a01d944c875cba241.ctex"
 metadata={
 "vram_texture": false
+}
+generator_parameters={
+"md5": "dcb7b2967f640a185c4161e318def5b1"
 }
 
 [deps]
 
-source_file="res://assets/sprites/icons/rations.png"
-dest_files=["res://.godot/imported/rations.png-0862c335199ce677938cfb66699eed12.ctex"]
+source_file="res://assets/models/items/eyeball_eyeball_mr.jpg"
+dest_files=["res://.godot/imported/eyeball_eyeball_mr.jpg-e2d1322b1897285a01d944c875cba241.ctex"]
 
 [params]
 
@@ -23,7 +26,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

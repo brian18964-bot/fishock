@@ -2,7 +2,8 @@ extends Control
 
 ## The shop (from the main screen's 商城). User request: in sections -
 ## 釣具 (rods, lights and weapons), 魚餌 (live baits and lures), 道具
-## (batteries, rounds, the merchant's food and tea), 升級 - each
+## (batteries, rounds, the potions, the eyeball and the binoculars, the
+## merchant's food and tea), 升級 - each
 ## thing a card with its picture; tapping one shows what it is (and, for
 ## sale, how many and where it goes: equip, bag or warehouse).
 ## Dressed as an MMO vendor (user request): the vendor's window on the left
@@ -161,6 +162,15 @@ func _refresh() -> void:
 				func(): buy_dialog("battery", Profile.BATTERY_COST))
 			_card("ammo", Items.icon("ammo"), "子彈", "擁有 %d" % Profile.owned("ammo"), Profile.AMMO_COST,
 				func(): buy_dialog("ammo", Profile.AMMO_COST))
+			# User request (round 7): the potions, the eyeball, the binoculars.
+			for key in Profile.USABLE_ORDER:
+				var u: Dictionary = Profile.USABLES[key]
+				var uid: String = key
+				if u.keep and Profile.owned(uid) > 0:
+					_card(uid, Items.icon(uid), u.name, "已擁有", 0, func(): buy_dialog(uid, 0, "已經擁有了"))
+				else:
+					_card(uid, Items.icon(uid), u.name, "擁有 %d" % Profile.owned(uid), int(u.cost),
+						func(): buy_dialog(uid, int(u.cost)))
 			for key in Profile.SNACK_ORDER:
 				var sn: Dictionary = Profile.SNACKS[key]
 				_card(key, Items.icon(key), sn.name, "精神 +%d" % int(sn.spirit), int(sn.cost), func(): _snack_card(key))
@@ -335,7 +345,7 @@ func _lamp_card() -> void:
 		["升級「提燈燃油容量」能裝更多燃料。", UiKit.DIM]])
 
 
-## User request (Camp v2): the merchant's tea and rations - had there and
+## User request (Camp v2): the merchant's tea and food - had there and
 ## then, for spirit.
 func _snack_card(key: String) -> void:
 	_clear_pane()
@@ -510,6 +520,8 @@ func buy(id: String, n: int, where: String) -> int:
 			ok = Profile.buy_weapon(id)
 		elif id == "ammo":
 			ok = Profile.buy_ammo()
+		elif Profile.USABLES.has(id):
+			ok = Profile.buy_usable(id)
 		elif id.begins_with("rod_"):
 			ok = Profile.buy_rod()
 		if not ok:

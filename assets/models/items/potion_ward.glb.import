@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://3856n4gdieqh"
-path="res://.godot/imported/cricket.glb-e23db8354791e6166136df9d64d15819.scn"
+uid="uid://b5nri7lcrswin"
+path="res://.godot/imported/potion_ward.glb-83ac9fe302443a3feb3a226e00cc39ac.scn"
 
 [deps]
 
-source_file="res://assets/models/items/cricket.glb"
-dest_files=["res://.godot/imported/cricket.glb-e23db8354791e6166136df9d64d15819.scn"]
+source_file="res://assets/models/items/potion_ward.glb"
+dest_files=["res://.godot/imported/potion_ward.glb-83ac9fe302443a3feb3a226e00cc39ac.scn"]
 
 [params]
 

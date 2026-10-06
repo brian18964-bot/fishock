@@ -37,6 +37,7 @@ const TESTS := [
 	"test_cast_whip_follows_wind_up",
 	"test_rod_bends_with_the_fish",
 	"test_characters",
+	"test_usable_items",
 	"test_cast_only_near_water",
 	"test_walking_off_reels_in",
 	"test_fight_swipe",
@@ -968,6 +969,77 @@ func test_characters() -> void:
 	Profile._save()
 
 
+## User request (round 7): the user's earthworm, grasshopper and small
+## fish as live baits and a live shrimp made for them; the rations off the
+## menu; two potions (one to make you stronger, one to keep ghosts off),
+## an eyeball that shows the way to the altar and binoculars that find the
+## 渡石 - bought in the shop, packed in the bag, used from it.
+func test_usable_items() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 1000})
+	for id in ["live_worm", "live_cricket", "live_shrimp", "live_minnow"] + Profile.USABLE_ORDER:
+		var model := Items.model_path(id)
+		check(model != "" and ResourceLoader.exists(model), "%s: its 3D model (%s)" % [id, model])
+		check(Items.square_icon(id) != null and Items.icon(id) != null, "%s: its icons" % id)
+	check(Profile.LIVE_BAITS.cricket.name == "蚱蜢", "the grasshopper in the cricket's place")
+	check(not Profile.SNACKS.has("rations") and not "rations" in Profile.SNACK_ORDER, "no more rations")
+	for id in Profile.USABLE_ORDER:
+		check(Profile.buy_usable(id), "%s can be bought" % Profile.USABLES[id].name)
+	check(not Profile.buy_usable("binoculars"), "the binoculars only once")
+	check(Profile.buy_usable("potion_ward") and Profile.buy_usable("eyeball"), "the rest by the many")
+	for id in Profile.USABLE_ORDER:
+		Profile.to_bag(id, Profile.stored(id))
+	await _fresh_game()
+	var p := player()
+	var kinds := Inventory.items(p).filter(func(it): return it.kind == "use").map(func(it): return it.item)
+	check(Profile.USABLE_ORDER.all(func(id): return id in kinds), "packed, they're things to use in the bag (%s)" % [kinds])
+
+	# The increase potion: faster, and a fight's tension builds slower.
+	var before := StatusCard.speed_share(p)
+	check(p.use_item("potion_vigor") and p.vigor_timer > 0.0, "drunk: stronger for a while")
+	check(Profile.bag_count("potion_vigor") == 0, "and it's gone from the bag")
+	check(StatusCard.speed_share(p) > before * 1.2, "faster on its feet")
+	check(StatusCard.conditions(p).any(func(c): return c[0].begins_with("增強")), "the card says so")
+	check(not p.use_item("potion_vigor"), "none left to drink")
+
+	# The ghost-ward potion: the big ghost can't grab, a floating one can't
+	# come close, the water ghost won't rise.
+	var big: BigGhost = get_tree().get_first_node_in_group("big_ghost")
+	check(p.use_item("potion_ward") and p.ward_timer > 0.0, "the ghost-ward potion drunk")
+	if big != null:
+		big.global_position = p.global_position + Vector2(10, 0)
+		big._try_catch()
+		check(not p.held, "the big ghost can't grab")
+		big._move_toward(p.global_position, 200.0, 0.5)
+		check(big.global_position.distance_to(p.global_position) >= Player.WARD_RADIUS - 0.5, "nor come near")
+	var floating = get_tree().get_nodes_in_group("ghosts").filter(func(g): return not g is BigGhost)
+	if not floating.is_empty():
+		var g = floating[0]
+		g.global_position = p.global_position + Vector2(0, -150)
+		g._move_toward(p.global_position, 400.0, 1.0)
+		check(g.global_position.distance_to(p.global_position) >= Player.WARD_RADIUS - 0.5, "a floating ghost stops short")
+		check(not g._should_haunt(), "and won't come to make trouble")
+	p._apply_water_ghost_attack()
+	check(p.water_ghost_timer == 0.0 and get_tree().get_nodes_in_group("water_ghosts").is_empty(), "the water ghost doesn't rise")
+	check(Profile.bag_count("potion_ward") == 1, "one of the two drunk")
+
+	# The eyeball: the way to the altar; the binoculars: the 渡石.
+	var altar: Node2D = main.get_node("Altar")
+	check(p.use_item("eyeball") and p.guide.active() and p.guide.target == altar.global_position, "the eyeball points at the altar")
+	check(Profile.bag_count("eyeball") == 1, "and is used up")
+	await seconds(0.2)
+	check(p.guide.visible, "the arrow shows")
+	var stone: Node2D = main.get_node("EscapePoint")
+	check(p.use_item("binoculars") and p.guide.target == stone.global_position, "the binoculars find the 渡石")
+	check(Profile.bag_count("binoculars") == 1, "and are kept")
+	check(not p.use_item("binoculars") and p.binoculars_cooldown > 0.0, "but need a while before the next look")
+	p.guide.time_left = 0.0
+	await frames(2)
+	check(not p.guide.visible, "the arrow goes when its time's up")
+	Profile.load_data(saved)
+	Profile._save()
+
+
 func test_rod_bends_with_the_fish() -> void:
 	var zone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
 	await put(zone.shore_point(Vector2.DOWN) + Vector2(0, 60))
@@ -1823,7 +1895,7 @@ func test_main_menu() -> void:
 	await frames(1)
 
 
-## User request (Camp v2): the merchant's tea and rations lift the spirit
+## User request (Camp v2): the merchant's tea and food lift the spirit
 ## there and then; the tents are earned by achievements (escapes, gold
 ## spent, the fish log, a legend) and pitched from the equipment page's
 ## 營地 tab, and the camp's tent changes with it.
@@ -1831,20 +1903,21 @@ func test_camp_spirit_and_tents() -> void:
 	var saved := Profile.snapshot()
 	Profile.load_data({"gold": 100, "spirit": 50.0})
 	check(Profile.buy_snack("tea") and is_equal_approx(Profile.spirit, 70.0) and Profile.gold == 85, "tea: +20 spirit for 15 gold")
-	check(Profile.buy_snack("rations") and is_equal_approx(Profile.spirit, 100.0) and Profile.gold == 55, "rations: up to full")
-	check(not Profile.buy_snack("tea") and Profile.gold == 55, "nothing bought when the spirit's full")
-	check(int(Profile.stats.gold_spent) == 45, "what's spent is counted (%d)" % int(Profile.stats.gold_spent))
+	check(Profile.buy_snack("loaf") and is_equal_approx(Profile.spirit, 100.0) and Profile.gold == 50, "a loaf: up to full")
+	check(not Profile.buy_snack("tea") and Profile.gold == 50, "nothing bought when the spirit's full")
+	check(int(Profile.stats.gold_spent) == 50, "what's spent is counted (%d)" % int(Profile.stats.gold_spent))
 	var loaded := Profile.snapshot()
 	Profile.load_data(loaded)
-	check(is_equal_approx(Profile.spirit, 100.0) and int(Profile.stats.gold_spent) == 45, "spirit and stats saved")
+	check(is_equal_approx(Profile.spirit, 100.0) and int(Profile.stats.gold_spent) == 50, "spirit and stats saved")
 	# The shop sells them, on its 道具 tab.
 	var shop: Control = load("res://scenes/shop.tscn").instantiate()
 	get_tree().root.add_child(shop)
 	await frames(2)
 	shop._show_tab("item")
 	await frames(1)
-	check(shop.find_child("Card_tea", true, false) != null and shop.find_child("Card_rations", true, false) != null,
-		"the merchant sells tea and rations")
+	check(shop.find_child("Card_tea", true, false) != null and shop.find_child("Card_loaf", true, false) != null,
+		"the merchant sells tea and bread")
+	check(shop.find_child("Card_rations", true, false) == null, "and no more rations (user request)")
 	Profile.add_spirit(-40.0)
 	(shop.find_child("Card_tea", true, false) as Button).pressed.emit()
 	await frames(1)
@@ -1853,7 +1926,7 @@ func test_camp_spirit_and_tents() -> void:
 	if have != null:
 		have.pressed.emit()
 		await frames(1)
-	check(is_equal_approx(Profile.spirit, 80.0) and Profile.gold == 40, "had at once (spirit %d)" % Profile.spirit)
+	check(is_equal_approx(Profile.spirit, 80.0) and Profile.gold == 35, "had at once (spirit %d)" % Profile.spirit)
 	shop.queue_free()
 	await frames(1)
 

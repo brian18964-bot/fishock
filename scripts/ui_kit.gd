@@ -386,6 +386,8 @@ static func item_rarity(id: String) -> String:
 		cost = int(Profile.LIVE_BAITS[id.substr(5)].cost)
 	elif id == "ammo":
 		cost = Profile.AMMO_COST
+	elif Profile.USABLES.has(id):
+		cost = int(Profile.USABLES[id].cost)
 	if cost >= 40:
 		return "epic"
 	if cost >= 20:

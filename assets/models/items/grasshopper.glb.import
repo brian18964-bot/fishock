@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://b4l004cspidei"
-path="res://.godot/imported/rations.glb-5ad8f1e541845c0a818e635a3fa7cf9f.scn"
+uid="uid://ch2kxkvr3wmes"
+path="res://.godot/imported/grasshopper.glb-5b0df48e26ab42075eb213c34e4b04cb.scn"
 
 [deps]
 
-source_file="res://assets/models/items/rations.glb"
-dest_files=["res://.godot/imported/rations.glb-5ad8f1e541845c0a818e635a3fa7cf9f.scn"]
+source_file="res://assets/models/items/grasshopper.glb"
+dest_files=["res://.godot/imported/grasshopper.glb-5b0df48e26ab42075eb213c34e4b04cb.scn"]
 
 [params]
 

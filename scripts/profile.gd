@@ -57,7 +57,9 @@ const LURE_ORDER := ["minnow", "redhead", "zebra", "clown", "bluegold", "rainbow
 ## fish likelier, big bait legends likelier).
 const LIVE_BAITS := {
 	"worm": {"name": "蚯蚓", "cost": 3, "flavor": "蚯蚓", "desc": "活餌：魚咬得比較快（等待時間 -30%）"},
-	"cricket": {"name": "蟋蟀", "cost": 4, "flavor": "蟲子", "desc": "活餌：空竿的機率減半"},
+	# (User request, round 7: the user's grasshopper in the old cricket's
+	# place - the id kept, for the saves.)
+	"cricket": {"name": "蚱蜢", "cost": 4, "flavor": "蟲子", "desc": "活餌：空竿的機率減半"},
 	"shrimp": {"name": "活蝦", "cost": 6, "flavor": "青蛙", "desc": "活餌：稀有魚的機率 x2"},
 	"minnow": {"name": "小活魚", "cost": 9, "flavor": "小活魚", "desc": "活餌（大餌）：稀有魚升級成傳說魚的機率 x2"},
 	# User request: the frog and the spider (the user's models) sold as
@@ -153,18 +155,34 @@ var character: String = "cat"
 
 ## User request (Camp v2): the traveller's spirit (精神), 0..SPIRIT_MAX.
 ## Lost when a ghost's grab isn't escaped; back with rest at the camp, a
-## run escaped, or the merchant's tea and rations (SNACKS).
+## run escaped, or the merchant's tea and food (SNACKS).
 const SPIRIT_MAX := 100.0
 var spirit: float = SPIRIT_MAX
 const SNACKS := {
 	"tea": {"name": "熱茶", "cost": 15, "spirit": 20.0, "desc": "一杯熱騰騰的茶，暖手也暖心"},
-	"rations": {"name": "乾糧", "cost": 30, "spirit": 35.0, "desc": "肉乾配硬麵包，吃飽了才有力氣"},
 	# User request: the bread roll and the cheeses (the user's models).
 	"roll": {"name": "凱薩麵包", "cost": 20, "spirit": 25.0, "desc": "剛烤好的小圓麵包，外皮酥脆"},
 	"loaf": {"name": "鄉村麵包", "cost": 35, "spirit": 40.0, "desc": "一整條烤得焦香的大麵包，分著吃也夠"},
 	"cheese": {"name": "乳酪拼盤", "cost": 45, "spirit": 50.0, "desc": "三種乳酪切好一盤，配茶最對味"},
 }
-const SNACK_ORDER := ["tea", "roll", "rations", "loaf", "cheese"]
+## (User request, round 7: the rations taken off the menu.)
+const SNACK_ORDER := ["tea", "roll", "loaf", "cheese"]
+
+## User request (round 7): things to use in a run (the user's models),
+## bought here, packed in the bag and used from it (Backpack's 使用; what
+## each does: Player.use_item()). "keep": not used up (the binoculars,
+## bought once).
+const USABLES := {
+	"potion_vigor": {"name": "增強藥水", "cost": 25, "stack": 3, "keep": false,
+		"desc": "喝下後 45 秒：跑得更快，搏魚時張力上升變慢"},
+	"potion_ward": {"name": "驅鬼藥水", "cost": 30, "stack": 3, "keep": false,
+		"desc": "喝下後 30 秒：鬼魂近不了身，身邊的鬼被逼退，水鬼也不敢偷襲"},
+	"eyeball": {"name": "眼球", "cost": 20, "stack": 5, "keep": false,
+		"desc": "使用後 20 秒，眼球會指出祭壇在哪個方向、有多遠"},
+	"binoculars": {"name": "望遠鏡", "cost": 90, "stack": 1, "keep": true,
+		"desc": "望向遠方找出渡石的位置（指引 20 秒）；不會用掉，用過要等 60 秒"},
+}
+const USABLE_ORDER := ["potion_vigor", "potion_ward", "eyeball", "binoculars"]
 
 ## User request (Camp v2): what's been done, for the achievements that
 ## earn the camp's tents (TENTS) - escapes, gold spent, legends caught.
@@ -334,7 +352,7 @@ func add_spirit(amount: float) -> void:
 		_changed()
 
 
-## Buys the merchant's tea or rations and has it there and then: false if
+## Buys the merchant's tea or food and has it there and then: false if
 ## short of gold or already in full spirit.
 func buy_snack(key: String) -> bool:
 	var d: Dictionary = SNACKS[key]
@@ -560,6 +578,21 @@ func buy_ammo() -> bool:
 		return false
 	_spend(AMMO_COST)
 	_store("ammo", 1)
+	gold_updated.emit(gold)
+	_changed()
+	return true
+
+
+## One of USABLES into the warehouse; false if it can't be bought (no
+## gold, or a kept thing already owned).
+func buy_usable(id: String) -> bool:
+	if not USABLES.has(id):
+		return false
+	var d: Dictionary = USABLES[id]
+	if gold < int(d.cost) or (d.keep and owned(id) > 0):
+		return false
+	_spend(int(d.cost))
+	_store(id, 1)
 	gold_updated.emit(gold)
 	_changed()
 	return true

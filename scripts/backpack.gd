@@ -17,6 +17,7 @@ const CELL := 46.0
 const PANEL_SIZE := Vector2(420, 440)
 const FONT := 15
 const KIND_COLORS := {
+	"use": Color(0.55, 0.3, 0.6),
 	"fish": Color(0.32, 0.45, 0.55),
 	"heart": Color(0.62, 0.16, 0.2),
 	"bait": Color(0.45, 0.34, 0.2),
@@ -248,6 +249,24 @@ func _show_selected(player: Player, items: Array) -> void:
 			_detail.text = "電池 x%d（全部 %d）：手電筒沒電時按住燈鈕換上" % [item.count, Profile.batteries]
 		"gear":
 			_detail.text = "%s：備用的，要在主畫面的裝備頁換上" % item.label
+		"use":
+			# User request (round 7): the potions, the eyeball, the
+			# binoculars - used from here (Player.use_item()).
+			var uid: String = item.item
+			var u: Dictionary = Profile.USABLES[uid]
+			var counted := " x%d" % item.count if item.count > 0 else ""
+			_detail.text = "%s%s：%s" % [u.name, counted, u.desc]
+			var note := ""
+			if uid == "potion_vigor" and player.vigor_timer > 0.0:
+				note = "（藥效還有 %d 秒）" % ceili(player.vigor_timer)
+			elif uid == "potion_ward" and player.ward_timer > 0.0:
+				note = "（藥效還有 %d 秒）" % ceili(player.ward_timer)
+			elif uid == "binoculars" and player.binoculars_cooldown > 0.0:
+				note = "（%d 秒後才能再用）" % ceili(player.binoculars_cooldown)
+			_detail.text += note
+			_actions.add_child(_action("使用", func():
+				player.use_item(uid)
+				_rebuild(), uid == "binoculars" and player.binoculars_cooldown > 0.0))
 		"live":
 			var live: Dictionary = Profile.LIVE_BAITS[item.index]
 			var on: bool = player.live_bait == item.index and player.fishing_mode == Player.FishingMode.BOBBER
