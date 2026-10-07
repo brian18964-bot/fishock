@@ -135,7 +135,9 @@ def load():
     for name, (kind, clip, _loops) in SOURCES.items():
         if kind not in libs:
             libs[kind] = kaykit.load_source(kaykit.path(kind))
-        src[name] = kaykit.bake(arm, libs[kind], clip, name="src_" + name)
+        # (the hips kept over the feet - the sprite's origin: any travel,
+        # the struggle's stepping too, is the game's to do)
+        src[name] = kaykit.bake(arm, libs[kind], clip, name="src_" + name, lift=0.0)
     for lib in libs.values():
         bpy.data.objects.remove(lib, do_unlink=True)
     owl_character.player_stance(arm, "ual", list(src.values()),
