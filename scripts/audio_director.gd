@@ -103,7 +103,7 @@ func _process(delta: float) -> void:
 
 
 func _update_fishing_loops() -> void:
-	var reeling := _player.state == Player.State.REELING and _player._is_action_pressed()
+	var reeling := _player.state == Player.State.REELING and _player.is_cranking()
 	var retrieving := _player.state == Player.State.WAITING and _player.fishing_mode == Player.FishingMode.LURE \
 		and _player._is_action_pressed()
 	Sfx.loop("reel_loop", reeling or retrieving, -8.0)

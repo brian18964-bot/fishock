@@ -395,6 +395,9 @@ func _try_flash(reach: float = FLASH_RANGE, stun: float = FLASH_STUN_DURATION, c
 			GameState.push_message("能源不足，無法使用強光")
 			return
 		charge -= cost
+		# User request: the flashlight wears with each flash (Profile.wear_out).
+		if Profile.wear_out("flashlight"):
+			switch_tool(Tool.LAMP)
 
 	flash_cooldown = flash_cooldown_max
 

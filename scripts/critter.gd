@@ -478,6 +478,12 @@ func is_hunting() -> bool:
 	return _mode == Mode.CHASE
 
 
+## A beast that hunts the player (wolves, the meat-eaters): one a blade or a
+## shot can drive off.
+func is_hunter() -> bool:
+	return _hunts()
+
+
 func _wander_tick(delta: float) -> void:
 	_mode_timer -= delta
 	if _mode == Mode.IDLE and _mode_timer <= 0.0:

@@ -33,7 +33,7 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	visible = _rod.visible and not _body.struggling and not _front.is_empty()
+	visible = _rod.visible and not _body.struggling and _body.acting < 0 and not _front.is_empty()
 	if not visible:
 		return
 	var piece: Variant = _front[PlayerVisual.CLIP_NAMES[_body.clip]][_body.dir][_body.frame_in_clip]

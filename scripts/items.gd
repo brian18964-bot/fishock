@@ -15,11 +15,12 @@ extends RefCounted
 ##   tea, roll, loaf, cheese   the merchant's (Profile.SNACKS): had as
 ##                  they're bought, for spirit - never kept
 ##   knife, hatchet, machete, glock   the weapons (Profile.WEAPONS), worn
-##                  in the weapon slot
+##                  in the off hand (user request: one thing there, the
+##                  net or a weapon)
 ##   ammo           the pistol's rounds, twelve to a cell
 ##   potion_vigor, potion_ward, eyeball, eye_altar, eye_ghost, binoculars
 ##                  things used in a run (Profile.USABLES; Player.use_item())
-##   net            the landing net (round 8), worn in the net slot
+##   net            the landing net (round 8), worn in the off hand
 ## A thing's {name, tab, size (cells), stack (per cell), slot (the
 ## equipment slot it's worn in, if any), icon, desc}.
 
@@ -57,7 +58,7 @@ static func def(id: String) -> Dictionary:
 		return {"name": "手電筒", "tab": "gear", "size": Vector2i(2, 1), "stack": 1, "slot": "light",
 			"icon": ICONS % id, "desc": "遠距離窄光束，用電池；裝備後才能在遊戲裡切換使用"}
 	if id == "net":
-		return {"name": "撈網", "tab": "gear", "size": Vector2i(2, 1), "stack": 1, "slot": "net",
+		return {"name": "撈網", "tab": "gear", "size": Vector2i(2, 1), "stack": 1, "slot": "offhand",
 			"icon": ICONS % id, "desc": Profile.NET_DESC}
 	if id == "bait":
 		return {"name": "餌料", "tab": "item", "size": Vector2i(1, 1), "stack": 10, "slot": "", "fixed": true,
@@ -68,7 +69,7 @@ static func def(id: String) -> Dictionary:
 			"icon": ICONS % id, "desc": "手電筒沒電時換上，要放在背包裡才帶得進去"}
 	if Profile.WEAPONS.has(id):
 		var w: Dictionary = Profile.WEAPONS[id]
-		return {"name": w.name, "tab": "gear", "size": w.size, "stack": 1, "slot": "weapon",
+		return {"name": w.name, "tab": "gear", "size": w.size, "stack": 1, "slot": "offhand",
 			"icon": ICONS % id, "desc": w.desc, "weapon": id}
 	if id == "ammo":
 		return {"name": "子彈", "tab": "item", "size": Vector2i(1, 1), "stack": 12, "slot": "",

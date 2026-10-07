@@ -36,6 +36,16 @@ extends Sprite2D
 ## one (tools/render_player_struggle.py; no rod drawn over them):
 ##   0 struggle  shoving at the ghost, shaking
 ##   1 knock     struck free, staggering back
+## User request: the off hand's thing swung (Player.swing()) - its own
+## sheet too (tools/render_player_tools.py; the rod on the back drawn from
+## its data), facing the aim:
+##   0 slash     a blade swung at a beast
+##   1 chop      the hatchet or machete at a tree
+##   2 scoop     the net swept low
+##   3 shoot     the pistol fired
+## Where the rod goes, and the off hand's thing (in the right hand, or at
+## the hip), comes from the sheet showing (rod_cell(), hand_cell(),
+## belt_cell()).
 
 const FRAMES := 8
 const DIRS := 8
@@ -89,6 +99,10 @@ const YANK_TIME := 0.18
 const RUN_PACE := 77.4
 const WHIP_TIME := 0.3
 const STRUGGLE_FPS := 9.0
+## The off hand's swings, by Player.swing_kind.
+const ACTIONS := ["slash", "chop", "scoop", "shoot"]
+## The clips with the rod on the back (the off hand's thing in hand).
+const BACK_CLIPS := [CLIP_IDLE, CLIP_RUN, CLIP_BUSY]
 const SHAKE := 1.2
 
 ## What's showing (read by held_rod.gd).
@@ -108,8 +122,14 @@ var _wound := -1
 var _whip_from := 4
 var _main_tex: CanvasTexture
 var _struggle_tex: CanvasTexture
+var _action_tex: CanvasTexture
 ## Showing the struggle sheet (held_rod.gd draws no rod then).
 var struggling := false
+## Showing a swing (the off hand's sheet): which (ACTIONS index), else -1.
+var acting := -1
+var _data: Dictionary
+var _action_data: Dictionary
+var _action_offset := Vector2.ZERO
 ## A fish's yank, 1 at its frame easing to 0 (read by held_rod.gd).
 var yank := 0.0
 ## A clip played once over the rest (the strike, the landing, a nibble's
@@ -123,8 +143,17 @@ var _home := Vector2.ZERO
 
 func _ready() -> void:
 	var sheet := CharacterArt.sheet()
-	var offset_px: Array = CharacterArt.rod_data().offset
+	_data = CharacterArt.rod_data()
+	var offset_px: Array = _data.offset
 	_sheet_offset = Vector2(offset_px[0], offset_px[1])
+	var tools := CharacterArt.tools()
+	_action_data = CharacterArt.tools_data()
+	if not tools.is_empty() and not _action_data.is_empty():
+		_action_tex = CanvasTexture.new()
+		_action_tex.diffuse_texture = tools[0]
+		_action_tex.normal_texture = tools[1]
+		var action_px: Array = _action_data.offset
+		_action_offset = Vector2(action_px[0], action_px[1])
 	_main_tex = CanvasTexture.new()
 	_main_tex.diffuse_texture = sheet[0]
 	_main_tex.normal_texture = sheet[1]
@@ -150,7 +179,7 @@ func _ready() -> void:
 func _once_cut(state: Player.State) -> bool:
 	match _once:
 		CLIP_TUG:
-			return _player._is_action_pressed() or _player.fish_run_active_time > 0.0
+			return _player.is_cranking() or _player.fish_run_active_time > 0.0
 		CLIP_BITE:
 			return state != Player.State.WAITING
 	return false
@@ -183,9 +212,62 @@ static func whip_start(wound: int) -> int:
 
 func _use_sheet(struggle: bool) -> void:
 	struggling = struggle
+	acting = -1
 	texture = _struggle_tex if struggle else _main_tex
 	hframes = FRAMES if struggle else FRAMES * SHEET_HALVES
 	vframes = 2 * DIRS if struggle else CLIPS * DIRS / SHEET_HALVES
+
+
+## The rod this frame: [grip x, grip y, tip x, tip y, behind] (sheet px
+## from the feet; held_rod.gd).
+func rod_cell() -> Array:
+	if acting >= 0:
+		return _action_data.rod[ACTIONS[acting]][dir][frame_in_clip]
+	return _data.rod[CLIP_NAMES[clip]][dir][frame_in_clip]
+
+
+## The right hand this frame: [x, y, fist axis x, y, fingers x, y, behind]
+## ([] without the data) - offhand_prop.gd.
+func hand_cell() -> Array:
+	var d: Dictionary = _action_data if acting >= 0 else _data
+	var key: String = ACTIONS[acting] if acting >= 0 else CLIP_NAMES[clip]
+	return d.hand[key][dir][frame_in_clip] if d.has("hand") and d.hand.has(key) else []
+
+
+## The right hip this frame: [x, y, thigh x, y, behind] ([] without).
+func belt_cell() -> Array:
+	var d: Dictionary = _action_data if acting >= 0 else _data
+	var key: String = ACTIONS[acting] if acting >= 0 else CLIP_NAMES[clip]
+	return d.belt[key][dir][frame_in_clip] if d.has("belt") and d.belt.has(key) else []
+
+
+## The rod's on the back this frame (the off hand's thing in the hand).
+func rod_on_back() -> bool:
+	return acting >= 0 or (not struggling and clip in BACK_CLIPS and _once < 0 and _whip < 0.0)
+
+
+## Swinging the off hand's thing (Player.swing_kind): its sheet, facing the
+## aim, through its FRAMES over the swing.
+func _act() -> bool:
+	var which := ACTIONS.find(_player.swing_kind) if _player.swing_left > 0.0 and _action_tex != null else -1
+	if which < 0:
+		if acting >= 0:
+			_use_sheet(false)
+			Art.place(self, _sheet_offset, SPRITE_SCALE)
+		return false
+	if acting < 0:
+		texture = _action_tex
+		hframes = FRAMES
+		vframes = ACTIONS.size() * DIRS
+		Art.place(self, _action_offset, SPRITE_SCALE)
+	acting = which
+	var face: Vector2 = _player.aim_dir
+	if face.length() > 0.01:
+		dir = SECTOR_TO_DIR[posmod(roundi(face.angle() / (PI / 4.0)), 8)]
+	var t := 1.0 - _player.swing_left / Player.SWING_TIME
+	frame_in_clip = clampi(int(t * FRAMES), 0, FRAMES - 1)
+	frame = (acting * DIRS + dir) * FRAMES + frame_in_clip
+	return true
 
 
 ## In the ghost's grip, or staggering free: the struggle sheet.
@@ -219,6 +301,10 @@ func _struggle(delta: float) -> bool:
 
 func _process(delta: float) -> void:
 	if _struggle(delta):
+		yank = 0.0
+		position = _home
+		return
+	if _act():
 		yank = 0.0
 		position = _home
 		return
@@ -270,7 +356,7 @@ func _process(delta: float) -> void:
 		_wound = -1
 		_once = -1
 		var fishing := state != Player.State.IDLE
-		var cranking := _player._is_action_pressed()
+		var cranking := _player.is_cranking()
 		var was := clip
 		if moving:
 			clip = CLIP_HOLD_RUN if fishing else CLIP_RUN
@@ -292,6 +378,9 @@ func _process(delta: float) -> void:
 		var fps: float = FPS[clip]
 		if clip == CLIP_RUN or clip == CLIP_HOLD_RUN:
 			fps *= speed / RUN_PACE
+		elif clip == CLIP_REEL and state == Player.State.REELING:
+			# The crank turns as fast as the stick's turned (Player.crank).
+			fps *= clampf(_player.crank / FishFight.CRANK_NORMAL, 0.4, 1.5)
 		if clip == CLIP_FIGHT and was != CLIP_FIGHT:
 			# a run starts with the fish's first yank
 			_phase = YANK_FRAME - delta * fps

@@ -12,9 +12,19 @@ extends CanvasLayer
 ##
 ## Dressed as an MMO bag (user request): an iron-and-gold window with its
 ## title plate and round close button, sunken slots ringed by rarity.
+##
+## User request: the character's gear beside the grid - the main hand (the
+## rod), the off hand (a weapon or the net) and the light - and things
+## dragged between them (between casts): gear from the bag onto its slot
+## puts it on (what was there goes into the bag in its place), off a slot
+## onto the grid takes it off. Dragged, a thing shows as its simple square
+## icon.
 
 const CELL := 46.0
-const PANEL_SIZE := Vector2(420, 440)
+const PANEL_SIZE := Vector2(560, 452)
+## The gear slots (EquipSlot): [Profile.equipped slot, its name].
+const GEAR_SLOTS := [["rod", "主手・釣竿"], ["offhand", "副手"], ["light", "燈具"]]
+const GEAR_SIDE := 58.0
 const FONT := 15
 const KIND_COLORS := {
 	"use": Color(0.55, 0.3, 0.6),
@@ -32,7 +42,8 @@ var _panel: PanelContainer
 var _backdrop: ColorRect
 var _used: Label
 var _light_row: HBoxContainer
-var _hand_row: HBoxContainer
+var _gear_col: VBoxContainer
+var _gear_slots: Array = []
 var _mode: Label
 var _grid: GridView
 var _detail: Label
@@ -90,18 +101,30 @@ func _ready() -> void:
 	_light_row = HBoxContainer.new()
 	_light_row.add_theme_constant_override("separation", 6)
 	list.add_child(_light_row)
-	# Round 8 (user request): what's in hand - the weapon or the net.
-	_hand_row = HBoxContainer.new()
-	_hand_row.add_theme_constant_override("separation", 6)
-	list.add_child(_hand_row)
 	_mode = _label("", 14, UiKit.GOLD)
 	list.add_child(_mode)
 
+	# The gear worn, beside the grid.
+	var middle := HBoxContainer.new()
+	middle.add_theme_constant_override("separation", 14)
+	_gear_col = VBoxContainer.new()
+	_gear_col.add_theme_constant_override("separation", 6)
+	for g in GEAR_SLOTS:
+		var box := EquipSlot.new()
+		box.name = "Gear_" + g[0]
+		box.slot = g[0]
+		box.title = g[1]
+		box.owner_bag = self
+		box.custom_minimum_size = Vector2(GEAR_SIDE + 40.0, GEAR_SIDE)
+		_gear_col.add_child(box)
+		_gear_slots.append(box)
+	middle.add_child(_gear_col)
 	_grid = GridView.new()
 	_grid.owner_bag = self
 	_grid.custom_minimum_size = Vector2(Inventory.COLS, Inventory.ROWS) * CELL
 	_grid.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	list.add_child(_grid)
+	middle.add_child(_grid)
+	list.add_child(middle)
 
 	_detail = _label("點一下格子裡的東西", 15, UiKit.TEXT)
 	_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -190,14 +213,9 @@ func _rebuild() -> void:
 	else:
 		_light_row.add_child(_choice("手電筒（未裝備）", false, true, Callable()))
 
-	for c in _hand_row.get_children():
-		c.queue_free()
-	_hand_row.visible = Profile.has_net()
-	if Profile.has_net():
-		_hand_row.add_child(_label("手持", 14, UiKit.GOLD))
-		var weapon_name: String = Profile.weapon.get("name", "空手")
-		_hand_row.add_child(_choice(weapon_name, not player.net_out, false, player.set_net_out.bind(false)))
-		_hand_row.add_child(_choice("撈網", player.net_out, false, player.set_net_out.bind(true)))
+	for box in _gear_slots:
+		box.selected = not _selected.is_empty() and _selected.kind == "slot" and _selected.index == box.slot
+		box.queue_redraw()
 
 	var using: String = "浮標" if player.fishing_mode == Player.FishingMode.BOBBER else "路亞・" + Profile.LURES[player.current_lure].name
 	_mode.text = "釣法：%s%s" % [using, "　（油箱提在手上，不佔背包）" if player.carrying_oil_drum else ""]
@@ -214,6 +232,9 @@ func _show_selected(player: Player, items: Array) -> void:
 		return
 	if _mode_kind == "pick_lure":
 		_show_lure_pick(items)
+		return
+	if not _selected.is_empty() and _selected.kind == "slot":
+		_show_slot(player, _selected.index)
 		return
 	var item := {}
 	for it in items:
@@ -262,9 +283,12 @@ func _show_selected(player: Player, items: Array) -> void:
 		"battery":
 			_detail.text = "電池 x%d（全部 %d）：手電筒沒電時按住燈鈕換上" % [item.count, Profile.batteries]
 		"gear":
-			_detail.text = "%s：備用的，要在主畫面的裝備頁換上" % item.label
-			if item.get("item", "") == "net" and not Profile.has_net():
-				_detail.text = "撈網：要在主畫面的裝備頁裝上撈網欄，遊戲中才能拿在手上"
+			var gid: String = item.get("item", "")
+			_detail.text = "%s：備用的，拖到左邊的裝備欄就能換上（收竿時才能換）%s" % [item.label, _wear_text(gid)]
+			if Items.def(gid).get("slot", "") != "":
+				_actions.add_child(_action("裝備", func():
+					equip_from_bag(item.bag)
+					_rebuild(), busy))
 		"use":
 			# User request (round 7): the potions, the eyeball, the
 			# binoculars - used from here (Player.use_item()).
@@ -314,15 +338,21 @@ var _confirm: Control
 
 
 func can_drop(item: Dictionary) -> bool:
-	return _mode_kind == "normal" and (item.kind == "fish" or item.has("bag"))
+	return _mode_kind == "normal" and (item.kind == "fish" or item.has("bag") or item.kind == "slot")
 
 
 func drag_start(item: Dictionary) -> void:
+	# User request: dragged, a thing shows as its simple square icon.
 	_ghost = TextureRect.new()
-	_ghost.texture = FishData.icon(item.get("id", ""), item.label) if item.kind == "fish" else Items.icon(item.get("item", ""))
+	var id: String = item.get("item", "")
+	var square := Items.square_icon(id) if id != "" else null
+	if item.kind == "fish":
+		_ghost.texture = FishData.icon(item.get("id", ""), item.label)
+	else:
+		_ghost.texture = square if square != null else Items.icon(id)
 	_ghost.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_ghost.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_ghost.size = Vector2(item.size) * CELL
+	_ghost.size = Vector2.ONE * CELL
 	_ghost.modulate = Color(1, 1, 1, 0.8)
 	_ghost.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_ghost)
@@ -339,6 +369,18 @@ func drag_end(item: Dictionary, at: Vector2) -> void:
 	if _ghost != null:
 		_ghost.queue_free()
 		_ghost = null
+	# Onto a gear slot: put it on; a slot's thing onto the grid: off.
+	for box in _gear_slots:
+		if box.get_global_rect().has_point(at):
+			if item.has("bag") and Items.def(item.get("item", "")).get("slot", "") == box.slot:
+				equip_from_bag(item.bag)
+			_rebuild()
+			return
+	if item.kind == "slot":
+		if _grid.get_global_rect().has_point(at):
+			unequip_to_bag(item.index, _grid.cell_at(at))
+		_rebuild()
+		return
 	if _panel.get_global_rect().has_point(at):
 		return
 	if precious(item):
@@ -419,6 +461,88 @@ func _close_confirm() -> void:
 	if _confirm != null:
 		_confirm.queue_free()
 		_confirm = null
+
+
+## Puts on the bag's thing at Profile.bag[`index`] (Profile.equip_from_bag)
+## - between casts, and only if the bag still holds everything after.
+func equip_from_bag(index: int) -> bool:
+	var player := _player()
+	if player == null or player.state != Player.State.IDLE:
+		GameState.push_message("收竿後才能換裝備")
+		return false
+	var before := [Profile.bag.duplicate(true), Profile.equipped.duplicate()]
+	var id: String = Profile.bag[index].id if index >= 0 and index < Profile.bag.size() else ""
+	if not Profile.equip_from_bag(index) or Inventory.pack(Inventory.items(player)).is_empty():
+		_undo(before)
+		GameState.push_message("背包放不下換下來的裝備")
+		return false
+	_after_gear_change(player)
+	GameState.push_message("換上了%s" % Items.name_of(id))
+	return true
+
+
+## Takes off what's in `slot` into the bag (at `cell` if it fits there).
+func unequip_to_bag(slot: String, cell := Vector2i(-1, -1)) -> bool:
+	var player := _player()
+	if player == null or player.state != Player.State.IDLE:
+		GameState.push_message("收竿後才能換裝備")
+		return false
+	if slot == "rod":
+		GameState.push_message("釣竿一定要有一支，把另一支拖上來就能換")
+		return false
+	var before := [Profile.bag.duplicate(true), Profile.equipped.duplicate()]
+	var id: String = Profile.equipped.get(slot, "")
+	if not Profile.unequip_to_bag(slot, cell) or Inventory.pack(Inventory.items(player)).is_empty():
+		_undo(before)
+		GameState.push_message("背包滿了，放不下")
+		return false
+	_after_gear_change(player)
+	GameState.push_message("卸下了%s" % Items.name_of(id))
+	return true
+
+
+func _undo(before: Array) -> void:
+	Profile.bag = before[0]
+	Profile.equipped = before[1]
+	Profile._sync_rod()
+	Profile.profile_changed.emit()
+
+
+## The light taken off while on: back to the lamp.
+func _after_gear_change(player: Player) -> void:
+	var lantern: Lantern = player.get_node("Lantern")
+	if lantern.tool == Lantern.Tool.FLASHLIGHT and not Profile.has_flashlight:
+		lantern.switch_tool(Lantern.Tool.LAMP)
+	_selected = {}
+
+
+## A worn thing's durability, said.
+static func _wear_text(id: String) -> String:
+	if Profile.max_durability(id) <= 0:
+		return ""
+	return "（耐久度 %d/%d）" % [Profile.durability(id), Profile.max_durability(id)]
+
+
+## A gear slot tapped: what's in it, and taking it off.
+func _show_slot(player: Player, slot: String) -> void:
+	var id: String = Profile.equipped.get(slot, "")
+	var title := ""
+	for g in GEAR_SLOTS:
+		if g[0] == slot:
+			title = g[1]
+	if id == "":
+		_detail.text = "%s：空的。把背包裡的%s拖過來就能換上" % [title, {"offhand": "武器或撈網", "light": "手電筒", "rod": "釣竿"}.get(slot, "裝備")]
+		if slot == "light":
+			_detail.text = "燈具：煤燈（隨身）。把手電筒拖過來就能換上"
+		return
+	var desc: String = Items.def(id).get("desc", "")
+	if id.begins_with("rod_"):
+		desc = Items.rod_effects(Profile.ROD_TIERS[int(id.substr(4))])
+	_detail.text = "%s：%s%s　%s" % [title, Items.name_of(id), _wear_text(id), desc]
+	if slot != "rod":
+		_actions.add_child(_action("卸下放進背包", func():
+			unequip_to_bag(slot)
+			_rebuild(), player.state != Player.State.IDLE))
 
 
 func select(kind: String, index) -> void:
@@ -521,7 +645,7 @@ func _action(text: String, act: Callable, disabled := false) -> Button:
 	var b := _button(text)
 	b.disabled = disabled
 	b.pressed.connect(act)
-	if text in ["設為誘餌", "確定", "裝上", "改用浮標"] or text.begins_with("獻祭"):
+	if text in ["設為誘餌", "確定", "裝上", "改用浮標", "裝備"] or text.begins_with("獻祭"):
 		UiKit.style_button(b, "red", FONT)
 	return b
 
@@ -536,6 +660,11 @@ class GridView extends Control:
 	var _press := -1
 	var _press_at := Vector2.ZERO
 	var _dragging := false
+
+	## The grid cell under `at` (global).
+	func cell_at(at: Vector2) -> Vector2i:
+		var local: Vector2 = get_global_transform().affine_inverse() * at
+		return Vector2i(floori(local.x / Backpack.CELL), floori(local.y / Backpack.CELL))
 
 	func _gui_input(event: InputEvent) -> void:
 		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
@@ -619,6 +748,8 @@ class GridView extends Control:
 				UiKit.draw_text(self, r.position + Vector2(4, r.size.y - 5), item.grade, 11, UiKit.DIM, HORIZONTAL_ALIGNMENT_LEFT, text_w)
 			elif item.count > 0:
 				UiKit.draw_text(self, r.position + Vector2(0, r.size.y - 5), str(item.count), 13, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 5.0)
+			if item.has("item"):
+				ItemBoard.draw_wear(self, r, item.item)
 
 	## A thing's rarity: a fish's own, a packed thing's by its id.
 	func _rarity(item: Dictionary) -> String:
@@ -629,6 +760,61 @@ class GridView extends Control:
 		if item.kind == "heart":
 			return "legend"
 		return "common"
+
+
+## A gear slot beside the grid (GEAR_SLOTS): the thing worn in its square,
+## the slot's name beside it; tapped, it's chosen; dragged, it comes off.
+class EquipSlot extends Control:
+	var owner_bag: Backpack
+	var slot := ""
+	var title := ""
+	var selected := false
+	var _press_at := Vector2.ZERO
+	var _pressed := false
+	var _dragging := false
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_STOP
+
+	func _gui_input(event: InputEvent) -> void:
+		var id: String = Profile.equipped.get(slot, "")
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+			if event.pressed:
+				_pressed = true
+				_dragging = false
+				_press_at = event.position
+			elif _pressed:
+				_pressed = false
+				if _dragging:
+					owner_bag.drag_end({"kind": "slot", "index": slot, "item": id}, get_global_transform() * event.position)
+				else:
+					owner_bag.select("slot", slot)
+				_dragging = false
+			accept_event()
+		elif event is InputEventMouseMotion and _pressed and id != "" and slot != "rod":
+			if not _dragging and event.position.distance_to(_press_at) > 10.0:
+				_dragging = true
+				owner_bag.drag_start({"kind": "slot", "index": slot, "item": id, "size": Vector2i.ONE, "label": Items.name_of(id)})
+			if _dragging:
+				owner_bag.drag_move(get_global_transform() * event.position)
+			accept_event()
+
+	func _draw() -> void:
+		var id: String = Profile.equipped.get(slot, "")
+		var sq := Rect2(Vector2.ZERO, Vector2.ONE * minf(size.x, size.y))
+		if id == "":
+			UiKit.draw_slot(self, sq, "", selected)
+			if slot == "light":
+				var lamp: Texture2D = Items.square_icon("lamp")
+				if lamp != null:
+					draw_texture_rect(lamp, sq.grow(-6.0), false, Color(1, 1, 1, 0.75))
+		else:
+			UiKit.draw_slot(self, sq, UiKit.item_rarity(id), selected, Items.square_icon(id))
+			ItemBoard.draw_wear(self, sq, id)
+		var text_x := sq.end.x + 4.0
+		UiKit.draw_text(self, Vector2(text_x, 18.0), title.split("・")[0], 13, UiKit.GOLD)
+		var line := Items.name_of(id) if id != "" else ("煤燈" if slot == "light" else "（空）")
+		UiKit.draw_text(self, Vector2(text_x, 36.0), line, 11, UiKit.DIM, HORIZONTAL_ALIGNMENT_LEFT, size.x - text_x)
 
 
 ## While a window's up, the sticks leave its touches alone (they'd walk the

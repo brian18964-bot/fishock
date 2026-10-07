@@ -43,7 +43,8 @@ const TESTS := [
 	"test_walking_off_reels_in",
 	"test_fight_swipe",
 	"test_fight_enrage_tension",
-	"test_fight_sweet_spot",
+	"test_fight_sweet_spot", "test_fight_line_distance", "test_fight_leap_far_out",
+	"test_fight_swim_out_by_fish", "test_crank_by_turning_the_stick", "test_offhand_swing_and_wear",
 	"test_perfect_hook",
 	"test_light_lure",
 	"test_lure_retrieve",
@@ -128,6 +129,10 @@ func _fresh_game(rng_seed := 7) -> void:
 	gs.reset_run()
 	# A run an earlier test ended isn't one to come home from.
 	gs.last_return = ""
+	# (every test's gear as good as new: casts wear the rod; nothing in the
+	# off hand - a tap of the right stick casts - unless a test puts it on)
+	Profile.wear.clear()
+	Profile.unequip("offhand")
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
 	await frames(3)
 	main = get_tree().current_scene
@@ -1088,7 +1093,7 @@ func test_live_bait_and_net() -> void:
 			"%s: its model and icons" % id)
 	for f in FlipRock.BAIT_FLAVORS + MapTree.CHOP_BAIT:
 		check(Player.FOUND_BAIT.has(f), "a %s found is a live bait" % f)
-	check(load("res://scripts/equipment.gd").SLOT_LAYOUT.any(func(sl): return sl[0] == "net"), "a net slot on the equipment page")
+	check(load("res://scripts/equipment.gd").SLOT_LAYOUT.any(func(sl): return sl[0] == "offhand"), "an off-hand slot on the equipment page")
 	check(ResourceLoader.exists(Items.model_path("net")) and Items.square_icon("net") != null and Items.icon("net") != null,
 		"the net: its model and icons")
 	var shop: Control = load("res://scenes/shop.tscn").instantiate()
@@ -1103,11 +1108,14 @@ func test_live_bait_and_net() -> void:
 	check(shop._grid.get_node_or_null("Card_net") != null, "and sells the net")
 	shop.queue_free()
 	check(Profile.buy_net() and not Profile.buy_net(), "the net, bought once")
-	check(Profile.buy_weapon("hatchet") and Profile.equip("hatchet") and Profile.equip("net") and Profile.has_net(),
-		"worn in its own slot, beside the hatchet")
+	# User request: the weapons and the net share the off hand - one of them.
+	check(Profile.buy_weapon("hatchet") and Profile.equip("hatchet") and Profile.offhand() == "hatchet", "the hatchet in the off hand")
+	check(Profile.equip("net") and Profile.has_net() and Profile.weapon.is_empty() and Profile.stored("hatchet") == 1,
+		"the net in its place - the hatchet back in the warehouse")
 	await _fresh_game()
+	Profile.equip("hatchet")
 	var p := player()
-	check(not p.net_out, "a weapon worn: it's in hand to start with")
+	check(p.offhand_in_hand() and p.held_weapon().get("chop", 0) == 2, "between casts the off hand's thing is in hand")
 
 	# Out on the map: a rat just out of reach of bare hands.
 	var at := away_from_water(80.0)
@@ -1118,26 +1126,30 @@ func test_live_bait_and_net() -> void:
 	rat.set_physics_process(false)
 	rat.global_position = p.global_position + Vector2(36, 0)
 	await frames(3)
-	check(p.reachable_critter() == null, "out of reach bare-handed")
-	check(p.set_net_out(true) and p.net_out, "the net taken in hand")
-	check(p.held_weapon().is_empty() and p.choppable_tree() == null, "the hatchet put away meanwhile")
-	check(StatusCard.conditions(p).any(func(c): return c[0] == "手持撈網"), "the card says so")
+	check(p.reachable_critter() == null, "out of reach with the hatchet in hand")
+	Profile.equip("net")
+	check(p.net_in_hand() and p.held_weapon().is_empty() and p.choppable_tree() == null, "the net in hand, no blade")
+	check(StatusCard.gear(p)[1][0] == "net" and StatusCard.gear(p)[1][2], "the card's off-hand slot shows it, in hand")
 	check(p.reachable_critter() == rat and p.interaction().get("verb", "") == "抓餌", "the net reaches it")
 	p.live_bait = ""
-	p._catch_critter()
-	check(Profile.bag_count("live_rat") == 1 and not rat.active, "caught: a live rat in the bag")
+	var wear := Profile.durability("net")
+	check(p.swing() and p.swing_kind == "scoop", "a tap swings the net: a scoop")
+	await seconds(Player.SWING_TIME + 0.1)
+	check(Profile.bag_count("live_rat") == 1 and not rat.active, "scooped: a live rat in the bag")
+	check(Profile.durability("net") == wear - 1, "and the net wears a little (%d -> %d)" % [wear, Profile.durability("net")])
 	check(p.live_bait == "rat", "and on the hook, nothing else being on")
 	check(Inventory.items(p).any(func(it): return it.kind == "live" and it.item == "live_rat"), "it shows in the bag")
 	# Found under a rock: a live bait too.
 	var worms := Profile.bag_count("live_worm")
 	check(p.pocket_live_bait(Player.FOUND_BAIT["蚯蚓"]) == 1 and Profile.bag_count("live_worm") == worms + 1, "a worm found goes in the bag")
-	# The bag's hand row switches between the hatchet and the net.
+	# The bag shows the gear worn beside the grid.
 	var bag: Backpack = p.backpack()
 	bag.toggle()
 	await frames(2)
-	check(bag._hand_row.visible and bag._hand_row.get_child_count() >= 3, "the bag has the hand row")
+	check(bag._gear_slots.size() == 3 and bag._gear_slots[1].slot == "offhand", "the bag has the gear slots")
 	bag.toggle()
-	check(p.set_net_out(false) and p.held_weapon().get("chop", 0) == 2, "the hatchet back in hand")
+	Profile.equip("hatchet")
+	check(p.held_weapon().get("chop", 0) == 2, "the hatchet back in hand")
 
 	# A snake's bite and a bee's sting may poison.
 	for sp in ["snake", "wasp"]:
@@ -1361,6 +1373,120 @@ func test_fight_sweet_spot() -> void:
 	check(inside.progress > outside.progress * 1.4, "in the sweet spot, reeling gains faster (%.4f vs %.4f)" % [inside.progress, outside.progress])
 	var r := inside.sweet_range()
 	check(r.x < FishFight.SWEET_CENTER and r.y > FishFight.SWEET_CENTER, "the sweet spot sits around the middle")
+
+
+## User request: the line out. Left alone the fish swims off with it,
+## the crank brings it back - faster turned, faster in; all out, it's gone.
+func test_fight_line_distance() -> void:
+	var tier: Dictionary = FishData.TIERS.values()[0]
+	var idle := FishFight.new("normal", "", tier, 1.0)
+	var slow := FishFight.new("normal", "", tier, 1.0)
+	var fast := FishFight.new("normal", "", tier, 1.0)
+	for f in [idle, slow, fast]:
+		f._jump_cooldown = 99.0
+		f._run_timer = 99.0
+		f.line_max = 40.0
+		f.distance = 15.0
+		f.swim_out = 1.0
+		f.tension = 0.3
+	idle.update(1.0, 0.0, Vector2.ZERO, Vector2.UP)
+	slow.update(1.0, FishFight.CRANK_NORMAL, Vector2.ZERO, Vector2.UP)
+	fast.update(1.0, 1.0, Vector2.ZERO, Vector2.UP)
+	check(idle.distance > 15.5, "left alone, the fish takes line (%.1f m)" % idle.distance)
+	check(slow.distance < 15.0 and fast.distance < slow.distance, "the crank brings it in, faster turned faster (%.1f, %.1f)" % [slow.distance, fast.distance])
+	check(fast.progress > slow.progress, "and wears the fish faster")
+	check(fast.tension > slow.tension, "and the line tightens faster")
+	# Never reeled: all the line goes and it's gone.
+	var gone := FishFight.new("normal", "", tier, 1.0)
+	gone._jump_cooldown = 99.0
+	gone._run_timer = 99.0
+	gone.line_max = 40.0
+	gone.distance = 25.0
+	gone.swim_out = 2.0
+	for i in 400:
+		gone.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
+		if gone.result != "":
+			break
+	check(gone.result in ["line_out", "line_break"], "left to run, the line goes (%s)" % gone.result)
+	check(gone.snap_why == "far", "for how far out it got")
+	# A straight run takes line even while cranking.
+	var run := FishFight.new("normal", "", tier, 1.0)
+	run._jump_cooldown = 99.0
+	run._run_timer = 99.0
+	run.distance = 15.0
+	run.run_left = 1.0
+	run.update(0.5, 1.0, Vector2.ZERO, Vector2.UP)
+	check(run.distance > 15.0, "on a run the drag slips - line goes out (%.1f)" % run.distance)
+
+
+## Out in the red, a leap snaps the line outright; near, it's only the
+## usual "let go".
+func test_fight_leap_far_out() -> void:
+	var tier: Dictionary = FishData.TIERS.values()[0]
+	for far in [false, true]:
+		var f := FishFight.new("master", "", tier, 1.0)
+		f.diff = f.diff.duplicate()
+		f.diff.jump = 1000.0
+		f._jump_cooldown = 0.0
+		f._run_timer = 99.0
+		f.line_max = 40.0
+		f.distance = 38.0 if far else 10.0
+		f.swim_out = 0.0
+		var events := f.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
+		check(events.has("jump"), "it leaps")
+		if far:
+			check(f.result == "line_break" and f.snap_why == "leap", "far out, the leap snaps the line (%s)" % f.result)
+		else:
+			check(f.result == "", "close in, the line holds")
+
+
+## User request: rarer, wilder fish pull line away faster.
+func test_fight_swim_out_by_fish() -> void:
+	var p := player()
+	p.difficulty_key = "normal"
+	p.is_rare_catch = false
+	p.is_epic_catch = false
+	p.fish_trait = "calm"
+	p.current_tier = "near"
+	var calm := p.swim_out_rate()
+	p.fish_trait = "wild"
+	var wild := p.swim_out_rate()
+	p.is_epic_catch = true
+	p.current_tier = "far"
+	var legend := p.swim_out_rate()
+	check(wild > calm and legend > wild * 1.5, "calm %.2f < wild %.2f < legendary off the far water %.2f" % [calm, wild, legend])
+
+
+## User request: the right stick turned round cranks the reel; held still
+## it doesn't.
+func test_crank_by_turning_the_stick() -> void:
+	var zone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
+	await put(zone.shore_point(Vector2.DOWN) + Vector2(0, 60))
+	var stick = main.get_node("HUD/Panel/AimJoystick")
+	player().aim_dir = Vector2.UP
+	player().cast_target = player().global_position + Vector2(0, -120)
+	player().tier_data = FishData.get_tier_data("mid").duplicate()
+	player().difficulty_key = "normal"
+	player().fish_habit = ""
+	player().is_heart_catch = false
+	player()._hook_fish()
+	player().fight._run_timer = 99.0
+	player().fight._jump_cooldown = 99.0
+	check(player().fight.distance > 5.0 and player().fight.distance < player().fight.line_max, "hooked, the line's out to the fish (%.1f m)" % player().fight.distance)
+	stick.is_pressed = true
+	stick.output = Vector2.RIGHT * 0.8
+	await frames(20)
+	check(player().crank < FishFight.HELD_AT, "the stick held still doesn't reel (%.2f)" % player().crank)
+	var start: float = player().fight.distance
+	for i in 40:
+		stick.output = Vector2.RIGHT.rotated(i * 0.25) * 0.8
+		await frames(1)
+	check(player().crank > 0.5, "turned round, it cranks (%.2f)" % player().crank)
+	check(player().fight.distance < start, "and the line comes in (%.1f -> %.1f m)" % [start, player().fight.distance])
+	check(player().is_cranking() and player().get_node("Body").clip == PlayerVisual.CLIP_REEL, "the reel turns on the sprite")
+	stick.is_pressed = false
+	stick.output = Vector2.ZERO
+	player()._reset_line(Player.State.IDLE)
 
 
 ## Striking right as the float goes under is a perfect strike.
@@ -2724,7 +2850,7 @@ func test_journey_page() -> void:
 ## The profile's things as they are, to put back after a test that buys.
 func _keep_profile() -> Dictionary:
 	return {"gold": Profile.gold, "storage": Profile.storage.duplicate(true), "bag": Profile.bag.duplicate(true),
-		"equipped": Profile.equipped.duplicate(true)}
+		"equipped": Profile.equipped.duplicate(true), "wear": Profile.wear.duplicate(true)}
 
 
 func _restore_profile(kept: Dictionary) -> void:
@@ -2732,6 +2858,9 @@ func _restore_profile(kept: Dictionary) -> void:
 	Profile.storage = kept.storage
 	Profile.bag = kept.bag
 	Profile.equipped = kept.equipped
+	Profile.wear = kept.wear
+	Profile._sync_rod()
+	Profile._save()
 
 
 ## User request: the frog and the low-poly spider as live baits; the
@@ -2752,11 +2881,12 @@ func test_shop_new_wares() -> void:
 	check(Profile.buy_live_bait("frog") and Profile.buy_live_bait("spider"), "live frog and spider bought")
 	check(Profile.stored("live_frog") >= 1 and Profile.stored("live_spider") >= 1, "into the warehouse")
 	Profile.storage.erase("hatchet")
-	Profile.equipped["weapon"] = ""
+	Profile.bag = Profile.bag.filter(func(e): return e.id != "hatchet")
+	Profile.equipped["offhand"] = ""
 	check(Profile.buy_weapon("hatchet"), "a hatchet bought")
 	check(not Profile.buy_weapon("hatchet"), "only once")
-	check(Profile.equip("hatchet") and Profile.weapon.get("chop", 0) == 2, "worn in the weapon slot, chops")
-	check(Items.def("hatchet").slot == "weapon", "the weapon slot")
+	check(Profile.equip("hatchet") and Profile.weapon.get("chop", 0) == 2, "worn in the off hand, chops")
+	check(Items.def("hatchet").slot == "offhand" and Items.def("net").slot == "offhand", "the off-hand slot (with the net)")
 	var rounds := Profile.stored("ammo")
 	check(Profile.buy_ammo() and Profile.stored("ammo") == rounds + 1, "a round bought")
 	var spirit := Profile.spirit
@@ -2838,7 +2968,7 @@ func test_black_spider() -> void:
 func test_chop_and_weapons() -> void:
 	var kept := _keep_profile()
 	var p := player()
-	Profile.equipped["weapon"] = ""
+	Profile.equipped["offhand"] = ""
 	var trees := main.get_tree().get_nodes_in_group("trees")
 	check(not trees.is_empty(), "the map has trees")
 	if trees.is_empty():
@@ -2847,10 +2977,12 @@ func test_chop_and_weapons() -> void:
 	var tree: MapTree = trees[0]
 	await put(tree.global_position + Vector2(20, 6))
 	check(p.choppable_tree() == null, "no chopping bare-handed")
-	Profile.equipped["weapon"] = "hatchet"
+	Profile.equipped["offhand"] = "hatchet"
 	check(p.choppable_tree() == tree, "a hatchet chops the tree in reach")
 	check(p.interaction().get("verb", "") == "砍樹", "chopping offered at the tree")
 	await tap(KEY_E)
+	check(p.swing_kind == "chop", "the hatchet swung (a chop)")
+	await seconds(Player.SWING_TIME)
 	check(tree.chopped, "chopped with a tap")
 	check(p.choppable_tree() != tree, "each tree once")
 	# Chopped all over, the trees give bait and spiders.
@@ -2865,20 +2997,20 @@ func test_chop_and_weapons() -> void:
 		spiders += 1 if r.get("spider", false) else 0
 	check(found > 0 and spiders > 0, "chopping finds bait (%d) and spiders (%d)" % [found, spiders])
 	# A blade parries.
-	Profile.equipped["weapon"] = "knife"
+	Profile.equipped["offhand"] = "knife"
 	gs.add_carried_fish(fish())
 	var carried: int = gs.carried_fish.size()
 	p.water_ghost_timer = 0.0
 	p.animal_attack("狼")
 	check(gs.carried_fish.size() == carried, "the knife keeps the fish")
 	check(p.water_ghost_timer <= Player.PARRY_DEBUFF_DURATION, "only a short stagger")
-	Profile.equipped["weapon"] = ""
+	Profile.equipped["offhand"] = ""
 	p.water_ghost_timer = 0.0
 	p.animal_attack("狼")
 	check(gs.carried_fish.size() < carried, "bare-handed the fish is knocked loose")
 	p.water_ghost_timer = 0.0
 	# The pistol: a round a shot, the big ghost hears it.
-	Profile.equipped["weapon"] = "glock"
+	Profile.equipped["offhand"] = "glock"
 	Profile.storage["ammo"] = 3
 	Profile.to_bag("ammo", 3)
 	var wolf: Critter = load("res://scenes/critter.tscn").instantiate()
@@ -2895,6 +3027,87 @@ func test_chop_and_weapons() -> void:
 	Profile.bag = Profile.bag.filter(func(e): return e.id != "ammo")
 	check(not p.shoot_at(wolf), "no rounds, no shot")
 	wolf.queue_free()
+	_restore_profile(kept)
+	await frames(1)
+
+
+## User request: the off hand. A tap of the right stick swings what's in
+## it; held on, the rod's drawn off the back and cast (the off hand's thing
+## to the hip); every use wears a thing, and worn out it breaks.
+func test_offhand_swing_and_wear() -> void:
+	var kept := _keep_profile()
+	var p := player()
+	var stick = main.get_node("HUD/Panel/AimJoystick")
+	var body: PlayerVisual = p.get_node("Body")
+	var prop: OffhandProp = p.get_node("Offhand")
+	Profile.gold = 5000
+	if Profile.owned("knife") == 0:
+		Profile.buy_weapon("knife")
+	Profile.equip("knife")
+	var zone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
+	await put(zone.shore_point(Vector2.DOWN) + Vector2(0, 60))
+	p.aim_dir = Vector2.UP
+	await frames(3)
+	check(p.offhand_in_hand() and prop.visible, "the knife in hand between casts")
+	var in_hand: Array = prop.shown.duplicate()
+	check(body.rod_on_back(), "the rod on the back")
+	# A tap: a swing, not a cast.
+	stick._touch_index = 0
+	stick.is_pressed = true
+	stick.output = Vector2.ZERO
+	await frames(4)
+	stick._touch_index = -1
+	stick.is_pressed = false
+	await frames(2)
+	check(p.state == Player.State.IDLE and p.swing_kind == "slash", "a tap swings the knife (%s)" % p.swing_kind)
+	check(body.acting == PlayerVisual.ACTIONS.find("slash"), "its swing on the sprite")
+	await seconds(Player.SWING_TIME + 0.1)
+	check(Profile.durability("knife") == Profile.max_durability("knife") - 1, "the swing wears it")
+	check(body.acting < 0, "and back to standing")
+	# Held on: the rod drawn, and a cast.
+	var rod_uses := Profile.durability(Profile.equipped.rod)
+	stick._touch_index = 0
+	stick.is_pressed = true
+	await seconds(Player.SWING_TAP + 0.2)
+	check(p.state == Player.State.CHARGING, "held on, the cast charges")
+	await frames(20)
+	check(not body.rod_on_back() and not prop.shown.is_empty() and prop.shown[0].distance_to(in_hand[0]) > 0.5,
+		"the rod in hand, the knife to the hip")
+	stick._touch_index = -1
+	stick.is_pressed = false
+	await frames(3)
+	check(p.state != Player.State.CHARGING, "let go, it's cast")
+	check(Profile.durability(Profile.equipped.rod) == rod_uses - 1, "the cast wears the rod")
+	p._reset_line(Player.State.IDLE)
+	await frames(2)
+	# Worn out: it breaks, and it's gone - the shop sells another.
+	Profile.wear["knife"] = 1
+	check(p.swing(), "swung once more")
+	await seconds(Player.SWING_TIME + 0.1)
+	check(Profile.offhand() == "" and Profile.owned("knife") == 0, "worn out, the knife broke and is gone")
+	check(Profile.buy_weapon("knife"), "and can be bought again")
+	# The rod: the wooden one comes back when the last rod breaks.
+	Profile.wear[Profile.equipped.rod] = 1
+	var tier_before := Profile.rod_tier
+	Profile.wear_out(Profile.equipped.rod)
+	check(str(Profile.equipped.rod) != "", "a rod still worn after one breaks (was tier %d, now %d)" % [tier_before, Profile.rod_tier])
+	# In the bag: gear dragged onto its slot goes on, the old into the bag.
+	Profile.storage.erase("knife")
+	Profile.bag = Profile.bag.filter(func(e): return Items.def(e.id).get("slot", "") == "")
+	Profile.equipped["offhand"] = ""
+	Profile._store("knife", 1)
+	Profile.to_bag("knife", 1)
+	if Profile.owned("hatchet") == 0:
+		Profile._store("hatchet", 1)
+	Profile.equip("hatchet")
+	var bag: Backpack = p.backpack()
+	var at := -1
+	for i in Profile.bag.size():
+		if Profile.bag[i].id == "knife":
+			at = i
+	check(at >= 0 and bag.equip_from_bag(at), "the knife put on from the bag")
+	check(Profile.offhand() == "knife" and Profile.bag_count("hatchet") == 1, "the hatchet into the bag in its place")
+	check(bag.unequip_to_bag("offhand") and Profile.offhand() == "" and Profile.bag_count("knife") == 1, "and off again")
 	_restore_profile(kept)
 	await frames(1)
 

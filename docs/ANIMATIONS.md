@@ -7,7 +7,7 @@ licence, and which clips are kept ready for later.
 
 | Source | Licence | Where | Used for |
 |---|---|---|---|
-| KayKit Character Animations 1.1 (Kay Lousberg, kaylousberg.com) | CC0 | `art_src/kaykit/` (Rig_Medium .glb) | the player's sheet: the short (one-handed) cast, waiting, reeling, the fight, the bite, the strike, landing the fish (`tools/render_player.py` via `tools/kaykit.py`) |
+| KayKit Character Animations 1.1 (Kay Lousberg, kaylousberg.com) | CC0 | `art_src/kaykit/` (Rig_Medium .glb) | the player's sheet: the short (one-handed) cast, waiting, reeling, the fight, the bite, the strike, landing the fish (`tools/render_player.py` via `tools/kaykit.py`); the off hand's swings - Melee_1H_Attack_Slice_Diagonal (a blade at a beast), Melee_1H_Attack_Chop (a tree), Melee_1H_Attack_Slice_Horizontal (the net), Ranged_1H_Shoot (the pistol) (`tools/render_player_tools.py`) |
 | Universal Animation Library 1 & 2, Standard (Quaternius) | CC0 | `art_src/player/ual1_standard.glb` (UAL2 kept out) | the player's skeleton; the camp character's clips (`tools/build_menu_character.py`); the struggle in the big ghost's grip (`tools/render_player_struggle.py`); the big ghost and the water ghost |
 | Quaternius animal packs | CC0 | `art_src/critter/`, `art_src/animal/` | the animals and critters |
 | Mixamo (Adobe) - Y Bot's Idle, Standard Run, Fishing Cast | Mixamo's terms: free in games, raw files not to be passed on | not in the repo (`MIXAMO_DIR`) | user request: the idle, the run and the long two-handed cast kept as they were (short casts are KayKit's one-handed one) |
@@ -46,8 +46,8 @@ KayKit, Rig_Medium (`art_src/kaykit/`), by file:
 | MovementBasic | Walking_A-C, Running_B, Jump_* | walking pace, variety |
 | MovementAdvanced | Sneaking, Crouching, Crawling, Dodge_*, Walking_Backwards | sneaking past the big ghost, dodging |
 | Simulation | Sit_Floor_*, Sit_Chair_*, Lie_Down / Lie_Idle / Lie_StandUp, Cheering, Waving | the camp (resting by the fire), a legendary catch (Cheering) |
-| CombatMelee | Melee_1H_Attack_*, Melee_Block* | the knife and machete parrying a pounce |
-| CombatRanged | Ranged_1H_Shoot / Reload / Aiming | the pistol |
+| CombatMelee | Melee_Block*, Melee_2H_* | a held block, two-handed tools |
+| CombatRanged | Ranged_1H_Reload / Aiming | reloading the pistol, aiming it |
 
 UAL1 / UAL2 Standard (also on ActionForge): Swim_Idle_Loop / Swim_Fwd_Loop,
 Crouch_Fwd_Loop, Farm_Harvest / PlantSeed / Watering, TreeChopping_Loop,

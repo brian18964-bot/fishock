@@ -32,6 +32,16 @@ extends RefCounted
 ## - User request: a perfect strike (Player, right as the float goes under)
 ##   starts the fight with the fish PERFECT_HOOK_STAMINA down and the line
 ##   slack.
+## - User request: the reel is cranked - the right stick turned round and
+##   round (Player.crank, 0..1): the faster it turns, the faster line comes
+##   in, the fish wears down and the tension builds; CRANK_NORMAL reels at
+##   the pace holding the button used to (Space on a keyboard).
+## - User request: the line out - `distance` (m). Left un-reeled the fish
+##   swims off (swim_out m/s, faster on a run; rare, big and wild fish pull
+##   away faster - Player sets it); cranking brings it back (REEL_IN). Out
+##   past DANGER of the line (line_max) it may snap any moment - more
+##   likely the further out (DANGER_SNAP) - and a leap out there snaps it
+##   outright; all of it out and it's gone ("line_out").
 
 const RUN_TENSION_MULT := 1.8
 ## Giving line to a run: the drag holds tension nearly level.
@@ -62,6 +72,24 @@ const SWEET_CENTER := 0.5
 const SWEET_REEL_MULT := 1.6
 const PERFECT_HOOK_STAMINA := 0.15
 const PERFECT_HOOK_TENSION := 0.05
+## The crank (0..1) at which the reel goes as holding the button used to:
+## gains and the tension's rise go as crank / CRANK_NORMAL. Below HELD_AT
+## it isn't reeling at all (the line's held).
+const CRANK_NORMAL := 0.7
+const HELD_AT := 0.06
+## The line: m reeled in a second at CRANK_NORMAL; the fish swims out
+## RUN_OUT_MULT times as fast on a straight run (the drag slipping - the
+## crank brings nothing in), SIDE_OUT_MULT on a sideways one not held,
+## and only TIRED_OUT of it worn out; never nearer than MIN_DISTANCE.
+const REEL_IN := 2.6
+const RUN_OUT_MULT := 2.6
+const SIDE_OUT_MULT := 1.4
+const TIRED_OUT := 0.35
+const MIN_DISTANCE := 2.0
+## Past this share of the line it's in danger: the chance a second that it
+## snaps rises to DANGER_SNAP at the end.
+const DANGER := 0.75
+const DANGER_SNAP := 0.9
 
 var diff: Dictionary
 var difficulty_key: String
@@ -80,7 +108,17 @@ var jump_strain := 1.0
 var progress := 0.0
 var tension := 0.15
 var enraged := false
-var result := ""  # "", "landed", "line_break", "shook_off", "cover"
+var result := ""  # "", "landed", "line_break", "shook_off", "cover", "line_out"
+## The line out (m), how much there is (m), and how fast this fish swims
+## off with it (m/s) - see REEL_IN.
+var distance := 12.0
+var line_max := 40.0
+var swim_out := 1.0
+## The crank this frame (0..1).
+var crank := 0.0
+## Why the line went (for the message): "far" (out in the danger), "leap"
+## (a leap out there), "" (the tension).
+var snap_why := ""
 
 ## Current run: time left, and its sideways direction (ZERO = straight out).
 var run_left := 0.0
@@ -121,30 +159,42 @@ func label() -> String:
 	return diff.label
 
 
-## One frame. held: reeling in. counter: the direction the rod is being
-## pulled (unit or ZERO). line_dir: from the angler toward the fish.
-## reel_mult: extra reel-speed factor (walking while reeling). Returns the
-## events this frame started: "run", "side_run", "jump", "dive", "enrage",
-## "dive_saved", "swipe_hit", "swipe_miss".
-func update(delta: float, held: bool, counter: Vector2, line_dir: Vector2, reel_mult: float = 1.0) -> Array:
+## One frame. reel: the crank (0..1; a bool: held, at CRANK_NORMAL).
+## counter: the direction the rod is being pulled (unit or ZERO).
+## line_dir: from the angler toward the fish. reel_mult: extra reel-speed
+## factor (walking while reeling). Returns the events this frame started:
+## "run", "side_run", "jump", "dive", "enrage", "dive_saved", "swipe_hit",
+## "swipe_miss".
+func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, reel_mult: float = 1.0) -> Array:
 	var events := []
 	if result != "":
 		return events
+	if reel is bool:
+		reel = CRANK_NORMAL if reel else 0.0
+	crank = clampf(float(reel), 0.0, 1.0)
+	var held := crank >= HELD_AT
+	# How hard it's cranked, against holding the button the old way.
+	var k := crank / CRANK_NORMAL
 	var pull: float = diff.pull * (ENRAGE_PULL if enraged else 1.0)
 	age += delta
 	_jump_cooldown -= delta
+	# The line: out with the fish, in with the crank (see below).
+	var out_mult := 1.0
+	var reel_in := k * reel_mult
 
 	if jump_left > 0.0:
 		jump_left -= delta
+		reel_in *= 0.5
 		if held:
-			tension += JUMP_HELD_TENSION * jump_strain / line_strength * delta
+			tension += JUMP_HELD_TENSION * maxf(k, 1.0) * jump_strain / line_strength * delta
 		else:
 			tension -= tension_fall * delta
 	elif dive_active:
+		out_mult = 0.0
 		if held:
-			dive -= DIVE_HAUL * delta
-			progress += reel_speed * 0.3 * delta
-			tension += tension_rise * strain * pull * DIVE_TENSION * delta
+			dive -= DIVE_HAUL * k * delta
+			progress += reel_speed * 0.3 * k * delta
+			tension += tension_rise * strain * pull * DIVE_TENSION * k * delta
 		else:
 			dive += DIVE_SPEED * delta
 			tension -= tension_fall * delta
@@ -158,32 +208,42 @@ func update(delta: float, held: bool, counter: Vector2, line_dir: Vector2, reel_
 	elif run_left > 0.0:
 		run_left -= delta
 		if run_side == Vector2.ZERO:
+			# Out it goes: the drag slips, the crank brings nothing in.
+			out_mult = RUN_OUT_MULT
+			reel_in = 0.0
 			if held:
 				progress -= RUN_PROGRESS_PENALTY * delta
-				tension += tension_rise * strain * RUN_TENSION_MULT * pull * delta
+				tension += tension_rise * strain * RUN_TENSION_MULT * pull * maxf(k, 1.0) * delta
 			else:
 				tension += tension_rise * strain * RUN_SLACK_TENSION * pull * delta
 		elif swipe_left > 0.0 and _swipe_check(delta, counter, events):
 			pass
 		elif counter.length() > 0.3 and counter.normalized().dot(-run_side) > SIDE_COUNTER_THRESHOLD:
 			# Rod pulled against the run: it's held, and you can keep reeling.
+			reel_in *= 0.5
 			if held:
-				progress += reel_speed * 0.5 * delta
-				tension += tension_rise * strain * 0.6 * pull * delta
+				progress += reel_speed * 0.5 * k * delta
+				tension += tension_rise * strain * 0.6 * pull * k * delta
 			else:
 				tension -= tension_fall * 0.5 * delta
 		else:
+			out_mult = SIDE_OUT_MULT
+			reel_in *= 0.5
 			progress -= RUN_PROGRESS_PENALTY * delta
-			tension += tension_rise * strain * RUN_TENSION_MULT * pull * (1.0 if held else 0.45) * delta
+			tension += tension_rise * strain * RUN_TENSION_MULT * pull * (maxf(k, 1.0) if held else 0.45) * delta
 		if run_left <= 0.0:
 			swipe_left = 0.0
 	else:
 		if held:
-			progress += reel_speed * reel_mult * (SWEET_REEL_MULT if in_sweet() else 1.0) * delta
-			tension += tension_rise * strain * pull * (ENRAGE_REEL_TENSION if enraged else 1.0) * delta
+			progress += reel_speed * reel_mult * k * (SWEET_REEL_MULT if in_sweet() else 1.0) * delta
+			tension += tension_rise * strain * pull * k * (ENRAGE_REEL_TENSION if enraged else 1.0) * delta
 		else:
 			tension -= tension_fall * delta
 		events.append_array(_schedule(delta, line_dir))
+		if events.has("jump") and danger() > 0.0:
+			# A leap that far out: the line can't take it.
+			snap_why = "leap"
+			result = "line_break"
 
 	if diff.phases > 1 and not enraged and progress >= ENRAGE_AT:
 		enraged = true
@@ -195,12 +255,38 @@ func update(delta: float, held: bool, counter: Vector2, line_dir: Vector2, reel_
 
 	tension = clampf(tension, 0.0, 1.0)
 	progress = clampf(progress, 0.0, 1.0)
+	_line(delta, out_mult, reel_in if held else 0.0, pull)
 	if result == "":
 		if tension >= 1.0:
 			result = "shook_off" if jump_left > 0.0 else "line_break"
 		elif progress >= 1.0:
 			result = "landed"
 	return events
+
+
+## The line out: the fish takes it (tired, less), the crank brings it in;
+## all out, it's gone; out in the danger it may snap.
+func _line(delta: float, out_mult: float, reel_in: float, pull: float) -> void:
+	if result != "":
+		return
+	var out: float = swim_out * out_mult * pull / diff.pull * lerpf(TIRED_OUT, 1.0, stamina())
+	distance = clampf(distance + (out - REEL_IN * reel_in) * delta, MIN_DISTANCE, line_max)
+	if distance >= line_max:
+		snap_why = "far"
+		result = "line_out"
+	elif danger() > 0.0 and randf() < DANGER_SNAP * danger() * danger() * delta:
+		snap_why = "far"
+		result = "line_break"
+
+
+## How far into the danger the line is (0 not yet .. 1 all out).
+func danger() -> float:
+	return clampf((distance / line_max - DANGER) / (1.0 - DANGER), 0.0, 1.0)
+
+
+## The line out as a share of all there is.
+func line_share() -> float:
+	return distance / maxf(line_max, 0.01)
 
 
 ## Between events: count down to the next run / leap / dash for cover.

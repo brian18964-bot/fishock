@@ -244,11 +244,17 @@ func _on_run_ended(success: bool, message: String) -> void:
 		var a := Campaign.achievement(id)
 		extra += "\n成就達成：%s（+%d 金幣）" % [a[2], int(a[4])]
 	message += extra
+	# (User request: on a layer of its own over the touch buttons and the
+	# cards - the light and 誘惑 buttons were drawn over it.)
+	var layer := CanvasLayer.new()
+	layer.name = "RunEndLayer"
+	layer.layer = CampaignResults.LAYER
+	get_parent().add_child(layer)
 	var shade := ColorRect.new()
 	shade.name = "RunEnd"
 	shade.color = Color(0, 0, 0, 0.55)
 	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
-	$Panel.add_child(shade)
+	layer.add_child(shade)
 	var scroll := PanelContainer.new()
 	scroll.add_theme_stylebox_override("panel", UiKit.parchment_box())
 	scroll.custom_minimum_size = Vector2(520, 0)

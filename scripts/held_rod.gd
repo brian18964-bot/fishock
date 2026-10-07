@@ -82,7 +82,14 @@ const TIERS := [
 var _swing: float = 0.0
 var _swing_tween: Tween
 var _time: float = 0.0
-var _rod: Dictionary = CharacterArt.rod_data().rod
+## User request (the off hand): fishing, the rod's drawn off the back into
+## the hand - and put back after - eased over DRAW_TIME rather than cut
+## from one to the other (PlayerVisual.rod_on_back()).
+const DRAW_TIME := 0.22
+var _was_back := true
+var _draw_from: Array = []
+var _draw_left := 0.0
+var _last_cell: Array = []
 ## The sheet's pixels in front of the rod (BodyFront) when it has them:
 ## the rod is then drawn over the body, and they over the rod.
 var _has_front: bool = CharacterArt.rod_data().has("front")
@@ -117,6 +124,7 @@ func _process(delta: float) -> void:
 	if not visible:
 		return
 	_time += delta
+	_update_draw(delta)
 	var extra := _swing
 	var want := 0.0
 	match _player.state:
@@ -127,7 +135,7 @@ func _process(delta: float) -> void:
 			want = tug * BEND_BITE
 		Player.State.REELING:
 			var shake := 0.02
-			if _player._is_action_pressed():
+			if _player.is_cranking():
 				shake = 0.04
 			if _player.fish_run_active_time > 0.0:
 				shake = 0.09
@@ -148,21 +156,45 @@ func _process(delta: float) -> void:
 	_bend_curve()
 
 
+## The rod off the back and into the hand, or back: starts the ease.
+func _update_draw(delta: float) -> void:
+	var back := _body.rod_on_back()
+	if back != _was_back and not _last_cell.is_empty():
+		_draw_from = _last_cell
+		_draw_left = DRAW_TIME
+	_was_back = back
+	_draw_left = maxf(_draw_left - delta, 0.0)
+
+
+## The body's frame's rod (PlayerVisual.rod_cell()), eased from where it
+## was while it's being drawn or put back.
+func _cell() -> Array:
+	var cell: Array = _body.rod_cell()
+	if _draw_left > 0.0 and _draw_from.size() >= 4:
+		var t := 1.0 - _draw_left / DRAW_TIME
+		t = t * t * (3.0 - 2.0 * t)
+		cell = [lerpf(_draw_from[0], cell[0], t), lerpf(_draw_from[1], cell[1], t),
+			lerpf(_draw_from[2], cell[2], t), lerpf(_draw_from[3], cell[3], t), cell[4]]
+	_last_cell = cell
+	return cell
+
+
 func _cell_along() -> Vector2:
-	var cell: Array = _rod[PlayerVisual.CLIP_NAMES[_body.clip]][_body.dir][_body.frame_in_clip]
+	var cell := _cell()
 	return (Vector2(cell[2], cell[3]) - Vector2(cell[0], cell[1])) * SPRITE_SCALE
 
 
 ## Where the body's frame puts the rod (turned `extra` more), bent as it
 ## is (`bend`).
 func place(extra := 0.0) -> void:
-	var cell: Array = _rod[PlayerVisual.CLIP_NAMES[_body.clip]][_body.dir][_body.frame_in_clip]
+	var cell := _cell()
 	var grip := Vector2(cell[0], cell[1]) * SPRITE_SCALE
-	var along := _cell_along()
+	var along := (Vector2(cell[2], cell[3]) - Vector2(cell[0], cell[1])) * SPRITE_SCALE
 	position = _body.position + grip
 	rotation = along.angle() + extra
 	_length = along.length()
-	z_index = 1 if _has_front else (-1 if cell[4] else 1)
+	# (a swing's sheet has no front layer: behind the body or in front)
+	z_index = 1 if _has_front and _body.acting < 0 else (-1 if cell[4] else 1)
 	_bend_curve()
 
 

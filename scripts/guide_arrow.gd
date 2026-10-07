@@ -10,9 +10,18 @@ extends Node2D
 ## screen pixels (the darkness doesn't dim it, the camera's zoom doesn't
 ## blow it up), following `follow` (the player).
 
-## How far out from the player the arrow sits (screen px), and its size.
-const RADIUS := 70.0
-const SIZE := 18.0
+## User request: an arrow that reads as one - a shaft and a head, not a
+## lone triangle - with chevrons running out along it, outlined so it
+## shows on any ground; set out past the character (an ellipse round its
+## middle, BODY world px across and up - so the character never covers
+## it, however close the camera is - and GAP screen px more). Its size (screen px): LENGTH
+## tip to tail, HEAD wide, SHAFT thick.
+const BODY := Vector2(7, 10)
+const GAP := 8.0
+const LENGTH := 40.0
+const HEAD := 30.0
+const HEAD_LENGTH := 20.0
+const SHAFT := 10.0
 const FONT := 19
 ## World px to a 公尺 shown.
 const PX_PER_M := 16.0
@@ -20,8 +29,9 @@ const FADE := 0.6
 
 var target := Vector2.ZERO
 var follow: Node2D
-## Where on `follow` it's centred (world px over its feet).
-var lift := Vector2(0, -14)
+## Where on `follow` it's centred (world px off its origin - the
+## character's middle).
+var lift := Vector2.ZERO
 var label := ""
 var color := Color.WHITE
 ## Where the target is now, asked each frame (a Vector2, or null to keep
@@ -77,23 +87,52 @@ func _target_local() -> Vector2:
 
 
 func _draw() -> void:
-	var alpha := clampf(time_left / FADE, 0.0, 1.0) * (0.85 + 0.15 * sin(_t * 5.0))
+	var alpha := clampf(time_left / FADE, 0.0, 1.0)
 	var to := _target_local()
 	var dir := to.normalized() if to.length() > 1.0 else Vector2.UP
-	var tip := dir * (RADIUS + SIZE)
-	var base := dir * RADIUS
-	var side := dir.orthogonal() * SIZE * 0.6
+	var side := dir.orthogonal()
+	var radius := _radius(dir)
+	var tail := dir * radius
+	var tip := dir * (radius + LENGTH)
+	var neck := tip - dir * HEAD_LENGTH
 	var c := Color(color, alpha)
-	draw_colored_polygon(PackedVector2Array([tip, base + side, base - side]), c)
-	draw_polyline(PackedVector2Array([tip, base + side, base - side, tip]), Color(0, 0, 0, alpha * 0.6), 1.5)
+	var ink := Color(0.02, 0.03, 0.05, alpha * 0.85)
+	# Chevrons running out from the character the way to go.
+	for i in 3:
+		var k := fmod(_t * 1.2 + i / 3.0, 1.0)
+		var at := dir * (radius * 0.55 + (radius * 0.45) * k)
+		var a := alpha * sin(k * PI) * 0.7
+		var wing := side * 7.0
+		draw_polyline(PackedVector2Array([at - dir * 6.0 + wing, at, at - dir * 6.0 - wing]), Color(color, a), 3.0)
+	var arrow := PackedVector2Array([
+		tail + side * SHAFT * 0.5, neck + side * SHAFT * 0.5, neck + side * HEAD * 0.5, tip,
+		neck - side * HEAD * 0.5, neck - side * SHAFT * 0.5, tail - side * SHAFT * 0.5])
+	var outline := arrow.duplicate()
+	outline.append(arrow[0])
+	draw_polyline(outline, ink, 5.0, true)
+	draw_colored_polygon(arrow, c)
+	draw_polyline(outline, Color(color.lerp(Color.WHITE, 0.6), alpha), 1.5, true)
 	var meters := roundi(target.distance_to(follow.global_position) / PX_PER_M) if follow != null else 0
 	var text := "%s %d 公尺" % [label, meters] if meters > 2 else label
-	var at := dir * (RADIUS + SIZE + 18.0)
-	var w := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT).x
-	var text_at := at - Vector2(w * 0.5, -FONT * 0.35)
+	var size := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT)
+	# The name past the head, pushed out as far as its box reaches the
+	# arrow's way (so it never sits on the arrow or the character).
+	var half := size * 0.5
+	var push := absf(dir.x) * half.x + absf(dir.y) * half.y
+	var centre := tip + dir * (push + 8.0)
+	var text_at := centre + Vector2(-half.x, FONT * 0.35)
 	draw_string_outline(_font, text_at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT, 5, Color(0, 0, 0, alpha * 0.85))
 	draw_string(_font, text_at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT, Color(color.lerp(Color.WHITE, 0.45), alpha))
 	# On the place itself: a ring that keeps opening out.
 	var k := fmod(_t * 0.8, 1.0)
 	draw_arc(to, 16.0 + 44.0 * k, 0.0, TAU, 40, Color(color, alpha * (1.0 - k)), 3.0)
 	draw_arc(to, 12.0, 0.0, TAU, 28, Color(color, alpha * 0.7), 2.0)
+
+
+## How far out from the character the arrow starts the way `dir` (screen
+## px): clear of it at the camera's zoom.
+func _radius(dir: Vector2) -> float:
+	var zoom := follow.get_viewport().get_canvas_transform().get_scale().x if follow != null else 2.6
+	var e := BODY * zoom
+	# (the ellipse's radius the way `dir` goes)
+	return e.x * e.y / sqrt(pow(e.y * dir.x, 2) + pow(e.x * dir.y, 2)) + GAP

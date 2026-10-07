@@ -68,11 +68,14 @@ func _input(event: InputEvent) -> void:
 
 func _start_drag() -> void:
 	_dragging = true
+	# User request: dragged, a thing shows as its simple square icon, one
+	# cell big - not its whole picture.
 	_ghost = TextureRect.new()
-	_ghost.texture = Items.icon(_press.id)
+	var square := Items.square_icon(_press.id)
+	_ghost.texture = square if square != null else Items.icon(_press.id)
 	_ghost.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_ghost.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_ghost.size = Vector2(Items.size_of(_press.id)) * 52.0
+	_ghost.size = Vector2.ONE * 52.0
 	_ghost.modulate = Color(1, 1, 1, 0.8)
 	_ghost.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ghost.z_index = 50
@@ -252,7 +255,32 @@ static func desc_lines(id: String) -> Array:
 		out.append(["裝備：換上後，下一輪釣魚就用這支", UiKit.USE])
 	elif def.get("desc", "") != "":
 		out.append(["使用：" + def.desc, UiKit.USE])
+	if Profile.max_durability(id) > 0:
+		out.append(["耐久度 %d / %d（每次使用少 1，用完就壞了，要再買新的）" % [Profile.durability(id), Profile.max_durability(id)],
+			wear_color(id)])
 	return out
+
+
+## User request (durability): how worn a thing is - a thin bar along the
+## bottom of its slot, green to red; nothing for things that don't wear.
+static func draw_wear(ci: CanvasItem, r: Rect2, id: String) -> void:
+	var most := Profile.max_durability(id)
+	if most <= 0:
+		return
+	var share := clampf(float(Profile.durability(id)) / most, 0.0, 1.0)
+	var bar := Rect2(r.position.x + 4.0, r.end.y - 7.0, r.size.x - 8.0, 3.0)
+	ci.draw_rect(bar, Color(0, 0, 0, 0.6))
+	ci.draw_rect(Rect2(bar.position, Vector2(bar.size.x * share, bar.size.y)), wear_color(id))
+
+
+static func wear_color(id: String) -> Color:
+	var most := Profile.max_durability(id)
+	var share := float(Profile.durability(id)) / most if most > 0 else 1.0
+	if share > 0.5:
+		return Color(0.5, 0.9, 0.45)
+	if share > 0.2:
+		return Color(0.95, 0.8, 0.3)
+	return Color(1.0, 0.4, 0.3)
 
 
 ## A thing's picture in a slot (a Control): the square, its rarity ring,
@@ -333,6 +361,7 @@ static func draw_item(ci: CanvasItem, r: Rect2, id: String, count: int, _font: F
 	if count > 1:
 		UiKit.draw_text(ci, Vector2(r.position.x, r.end.y - (18.0 if named else 5.0)), str(count), 14, Color.WHITE,
 			HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 6.0)
+	draw_wear(ci, r, id)
 
 
 ## The bag: Inventory's grid with what's packed where it's packed.

@@ -51,6 +51,13 @@ to land one.
 Writes OUT_PREFIX_albedo.png (density x), OUT_PREFIX_normal.png (original
 density: see scripts/art.gd) and OUT_PREFIX_rod.json, and prints the cell
 size and sprite offset.
+
+The rod json also says, per cell, where the right hand and the right hip
+are (hand_cell(): the off hand's thing - user request: the knives, the
+hatchet, the pistol, the net - is drawn in that hand while the rod's on
+the back, hung at the hip while fishing). --merge-hands JSON (with --dry)
+adds them to a sheet's json already rendered, its rod data checked the
+same.
 """
 import argparse
 import json
@@ -327,6 +334,50 @@ def back_rod_local(arm):
     arm.data.pose_position = 'POSE'
     bpy.context.view_layer.update()
     return m @ grip, m @ tip
+
+
+# ---------------------------------------------------------------- the off hand (user request)
+# The off hand's thing (scripts/offhand_prop.gd) - in the right hand while
+# the rod's on the back, at the right hip while fishing. Per cell, on
+# screen (px from the feet, as the rod's): the fist (between the palm's
+# heel and the middle knuckle), its axis (the little finger's knuckle to
+# the index's: a handle held in it lies along it), the fingers' way (a
+# pistol's barrel), and whether it's behind the body; the hip (HIP_OUT out
+# from the hip joint, HIP_DOWN down the thigh) with the thigh's way (a
+# thing hung there hangs along it), and whether it's behind. Directions are
+# DIR_LEN long in the world, so their length on screen is their
+# foreshortening.
+HIP_OUT = 0.08
+HIP_DOWN = 0.06
+DIR_LEN = 0.25
+
+
+def hand_cell(arm, px, ox, oy):
+    """[hand, belt] for the pose now (see above); px projects a world
+    point to (x, y, depth) on the sheet's cell."""
+    b = arm.pose.bones
+    mw = arm.matrix_world
+
+    def at(name):
+        return mw @ b["mixamorig:" + name].head
+
+    chest = at("Spine2")
+    hips = at("Hips")
+
+    def screen(p, d):
+        x, y, _ = px(p)
+        tx, ty, _ = px(p + d * DIR_LEN * SCALE)
+        return [round(x - ox, 2), round(y - oy, 2), round(tx - x, 2), round(ty - y, 2)]
+
+    palm = (at("RightHand") + at("RightHandMiddle1")) * 0.5
+    fist = (at("RightHandIndex1") - at("RightHandPinky1")).normalized()
+    fingers = (at("RightHandMiddle1") - at("RightHand")).normalized()
+    hand = screen(palm, fist) + screen(palm, fingers)[2:] + [int(palm.y > chest.y + 0.05)]
+    thigh = (at("RightLeg") - at("RightUpLeg")).normalized()
+    side = (at("RightUpLeg") - at("LeftUpLeg")).normalized()
+    hip = at("RightUpLeg") + side * HIP_OUT * SCALE + thigh * HIP_DOWN * SCALE
+    belt = screen(hip, thigh) + [int(hip.y > hips.y + 0.02)]
+    return hand, belt
 
 
 # ---------------------------------------------------------------- the hand on the rod (candidate)
@@ -964,6 +1015,8 @@ def main():
     p.add_argument("out_prefix")
     p.add_argument("--density", type=int, default=2)
     p.add_argument("--dry", action="store_true", help="rod data and cell size only, no render")
+    p.add_argument("--merge-hands", default="",
+                   help="(with --dry) add the hand and hip data to this rod json, rendered before")
     p.add_argument("--no-grip", dest="grip", action="store_false",
                    help="the rod drawn from ROD_ANGLES off the hand, not held (rod_grip.py) - no reel,"
                    " no front layer")
@@ -1029,6 +1082,8 @@ def main():
     ox, oy, _ = px(Vector((0.0, 0.0, 0.0)))
     rod = {name: [[None] * FRAMES for _ in DIRS] for name in CLIPS}
     crank = {name: [[None] * FRAMES for _ in DIRS] for name in STANCE_CLIPS}
+    hand_at = {name: [[None] * FRAMES for _ in DIRS] for name in CLIPS}
+    belt_at = {name: [[None] * FRAMES for _ in DIRS] for name in CLIPS}
     masks = {}
 
     def pose_and_rod(cell):
@@ -1059,6 +1114,7 @@ def main():
         # camera's depth would count anything held high as in front).
         behind = ((grip + tip) * 0.5).y > chest_at.y + 0.05
         rod[name][DIRS.index(dname)][f - 1] = [round(gx - ox, 2), round(gy - oy, 2), round(tx - ox, 2), round(ty - oy, 2), int(behind)]
+        hand_at[name][DIRS.index(dname)][f - 1], belt_at[name][DIRS.index(dname)][f - 1] = hand_cell(arm, px, ox, oy)
         if hand_grip is not None and not args.dry:
             fish = None
             if name in STANCE_CLIPS:
@@ -1096,7 +1152,9 @@ def main():
 
     meta = {"cell": [w, h], "frames": FRAMES, "clips": CLIPS, "dirs": DIRS,
             "offset": [0.0, round(-cy * DENSITY, 2)], "rod_length": round(ROD_TIP * DENSITY, 2),
-            "rod": rod}
+            "rod": rod, "hand": hand_at, "belt": belt_at}
+    if args.merge_hands:
+        merge_hands(args.merge_hands, meta)
     if hand_grip is not None:
         meta["grip"] = "hand"
         meta["grip_report"] = grip_report
@@ -1109,6 +1167,27 @@ def main():
     with open(f"{args.out_prefix}_rod.json", "w") as fh:
         json.dump(meta, fh, separators=(",", ":"))
     print(json.dumps({k: meta[k] for k in ("cell", "offset", "clips")}))
+
+
+def merge_hands(path, meta):
+    """The hand and hip data into the rod json at `path` - a sheet rendered
+    before from the same clips: its cell, offset and rod checked first."""
+    with open(path) as fh:
+        old = json.load(fh)
+    assert old["cell"] == meta["cell"] and old["clips"] == meta["clips"], (old["cell"], meta["cell"])
+    assert abs(old["offset"][1] - meta["offset"][1]) < 0.05, (old["offset"], meta["offset"])
+    worst = 0.0
+    for name in CLIPS:
+        for a, b in zip(old["rod"][name], meta["rod"][name]):
+            for ca, cb in zip(a, b):
+                worst = max(worst, max(abs(x - y) for x, y in zip(ca[:4], cb[:4])))
+    print("merge-hands: rod data differs by %.2f px at most" % worst, flush=True)
+    assert worst < 0.5, worst
+    old["hand"] = meta["hand"]
+    old["belt"] = meta["belt"]
+    with open(path, "w") as fh:
+        json.dump(old, fh, separators=(",", ":"))
+    print("merge-hands: wrote", path, flush=True)
 
 
 if __name__ == "__main__":

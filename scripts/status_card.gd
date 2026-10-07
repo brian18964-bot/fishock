@@ -10,7 +10,8 @@ extends CanvasLayer
 ## is left to the time, the lamp and the thumbs.
 ##
 ## Dressed as an MMO's player frame (user request): the portrait in a gold
-## medallion, the name on a plate, what's wrong under it in red.
+## medallion, the name on a plate, what's wrong under it in red. Under the
+## card, the gear in hand (GEAR_AT).
 
 const NAME := "釣客"
 const POS := Vector2(6, 4)
@@ -25,12 +26,21 @@ const GOOD := Color(0.72, 0.95, 0.55)
 ## taken, a long wait for nothing, a ghost meddling, a wolf on you - a few
 ## words each under the card, the newest on top; each stays a few seconds
 ## and fades, and the same thing again just refreshes its line.
-const FEED_AT := Vector2(10, 82)
+const FEED_AT := Vector2(10, 128)
 const FEED_LINES := 3
 const FEED_LIFE := 4.5
 const FEED_FADE := 0.8
 const FEED_SIZE := 13
 const FEED_GAP := 21.0
+
+## User request: under the card, what's in hand - the main hand (the rod),
+## the off hand (a weapon or the net) and the bait on the hook with how many
+## are left - each a slot with its icon (the one in hand now lit, the worn
+## ones with their durability); a tap on any opens the bag.
+const GEAR_AT := Vector2(10, 80)
+const GEAR_SLOT := 40.0
+const GEAR_GAP := 6.0
+const GEAR_LABELS := ["主手", "副手", "餌"]
 
 ## The lines showing: [text, tone, age], newest first.
 var feed: Array = []
@@ -69,7 +79,28 @@ func _on_event(text: String, tone: String) -> void:
 
 
 func contains(pos: Vector2) -> bool:
-	return Rect2(POS, SIZE).has_point(pos)
+	return Rect2(POS, SIZE).has_point(pos) or gear_rect().has_point(pos)
+
+
+## The gear slots' strip.
+func gear_rect() -> Rect2:
+	return Rect2(GEAR_AT, Vector2(GEAR_SLOT * 3.0 + GEAR_GAP * 2.0, GEAR_SLOT))
+
+
+## The slots' contents: [item id (for its icon), count (-1: none shown),
+## lit (in hand), wears (shows durability)].
+static func gear(p: Player) -> Array:
+	var fishing := p.state != Player.State.IDLE
+	var bait := ["bait", p.bait_count]
+	if p.fishing_mode == Player.FishingMode.LURE and p.current_lure != "":
+		bait = ["lure_" + p.current_lure, int(p.lure_stock.get(p.current_lure, 0))]
+	elif p.live_bait != "":
+		bait = ["live_" + p.live_bait, Profile.bag_count("live_" + p.live_bait)]
+	return [
+		[str(Profile.equipped.get("rod", "")), -1, fishing, true],
+		[Profile.offhand(), -1, p.offhand_in_hand(), true],
+		[bait[0], bait[1], false, false],
+	]
 
 
 func _process(delta: float) -> void:
@@ -125,9 +156,6 @@ static func conditions(p: Player) -> Array:
 		out.append(["中毒了，腳步沉重（%d 秒）" % ceili(p.poison_timer), WARN])
 	if p.carrying_oil_drum:
 		out.append(["提著油箱", DIM])
-	# Round 8: the landing net in hand.
-	if p.net_out:
-		out.append(["手持撈網", DIM])
 	# User request (round 7): what's been drunk, while it lasts.
 	if p.ward_timer > 0.0:
 		out.append(["驅鬼 %d 秒" % ceili(p.ward_timer), GOOD])
@@ -164,6 +192,7 @@ func _draw_card() -> void:
 	SpiritBar.paint(_view, Rect2(Vector2(x, plate.end.y + 4), Vector2(96, 8)))
 	# User request (HUD cleanup): no speed or fish count - just what's
 	# wrong, if anything.
+	_draw_gear(p)
 	_draw_feed()
 	var line := x
 	for cond in conditions(p):
@@ -172,6 +201,24 @@ func _draw_card() -> void:
 			break
 		UiKit.draw_text(_view, Vector2(line, POS.y + 66), cond[0], 12, cond[1])
 		line += w + 8.0
+
+
+func _draw_gear(p: Player) -> void:
+	var slots := gear(p)
+	for i in slots.size():
+		var r := Rect2(GEAR_AT + Vector2((GEAR_SLOT + GEAR_GAP) * i, 0), Vector2.ONE * GEAR_SLOT)
+		var id: String = slots[i][0]
+		if id == "":
+			UiKit.draw_slot(_view, r)
+		else:
+			UiKit.draw_slot(_view, r, UiKit.item_rarity(id), slots[i][2], Items.square_icon(id))
+			if slots[i][3]:
+				ItemBoard.draw_wear(_view, r, id)
+		UiKit.draw_text(_view, r.position + Vector2(3, 11), GEAR_LABELS[i], 10, UiKit.DIM)
+		var n: int = slots[i][1]
+		if n >= 0:
+			UiKit.draw_text(_view, Vector2(r.position.x, r.end.y - 4.0), str(n), 13,
+				Color.WHITE if n > 0 else WARN, HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 4.0)
 
 
 func _draw_feed() -> void:

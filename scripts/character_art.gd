@@ -7,6 +7,8 @@ extends RefCounted
 ##       front layer and rod data (tools/render_player.py --grip)
 ##   assets/sprites/player/<id>/player_struggle_55deg_*   in the big ghost's
 ##       grip (tools/render_player_struggle.py)
+##   assets/sprites/player/<id>/player_tools_55deg_*   swinging the off
+##       hand's thing, and its rod and hand data (tools/render_player_tools.py)
 ##   assets/models/characters/<id>.glb   the camp's 3D character
 ##       (tools/build_menu_character.py)
 ## Loaded when asked, for the one travelling (the others stay on disk).
@@ -58,6 +60,22 @@ static func rod_data(id := "") -> Dictionary:
 static func struggle(id := "") -> Array:
 	var dir := SPRITES % _id(id)
 	return [load(dir + "player_struggle_55deg_albedo.png"), load(dir + "player_struggle_55deg_normal.png")]
+
+
+## The off hand's swings (user request): [albedo, normal].
+## ([] when there's none.)
+static func tools(id := "") -> Array:
+	var dir := SPRITES % _id(id)
+	if not ResourceLoader.exists(dir + "player_tools_55deg_albedo.png"):
+		return []
+	return [load(dir + "player_tools_55deg_albedo.png"), load(dir + "player_tools_55deg_normal.png")]
+
+
+## The swings' sheet data: its offset, and per cell the rod (on the back),
+## the right hand and the hip (as rod_data()'s); {} when there's none.
+static func tools_data(id := "") -> Dictionary:
+	var path := SPRITES % _id(id) + "player_tools_55deg_rod.json"
+	return (load(path) as JSON).data if ResourceLoader.exists(path) else {}
 
 
 static func model(id := "") -> PackedScene:

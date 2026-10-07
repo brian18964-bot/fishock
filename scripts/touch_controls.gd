@@ -6,8 +6,11 @@ extends CanvasLayer
 ## sticks as possible):
 ##   left stick     walk
 ##   right stick    fish - press to cast (pull further for a longer cast,
-##                  tap for a middling one), strike, hold to reel, drag to
-##                  answer a fish's sideways run (Player: the right stick)
+##                  held still for a middling one), strike, turn it round to
+##                  reel, drag to answer a fish's sideways run (Player: the
+##                  right stick); a tap swings the off hand's thing (a
+##                  weapon or the net) when one's worn - a middling cast
+##                  when not
 ##   light button   next to the right stick, showing the oil lamp or the
 ##                  flashlight: drag it to aim the light, hold it to charge
 ##                  the light up, let go to flash a ghost in it; a tap
@@ -82,6 +85,10 @@ var _lure_view: LureButtonView
 func _ready() -> void:
 	layer = 5
 	visible = DisplayServer.is_touchscreen_available()
+	# The run over: the buttons go (user request: they covered the results).
+	GameState.run_ended.connect(func(_won, _message):
+		_end_press()
+		visible = false)
 	for spec in BUTTONS:
 		var center: Vector2 = AIM_CENTER + Vector2.RIGHT.rotated(deg_to_rad(spec[2])) * spec[3]
 		_add_button(spec[0], spec[1], center, spec[4])

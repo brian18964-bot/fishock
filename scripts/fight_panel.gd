@@ -15,13 +15,17 @@ extends CanvasLayer
 ##
 ## Dressed as an MMO's target frame (user request): a dark iron frame,
 ## the fish's name and mood, framed bars for its stamina and the tension.
+## User request: and how far off the fish is (the line out, m, of all on
+## the reel) - red past FishFight.DANGER, where the line may snap - and,
+## with the fish getting away and the reel still, a turning arrow round the
+## right stick: turn it to reel.
 
 const CENTER_X := 480.0
 const TOP := 60.0
-const SIZE := Vector2(320, 92)
+const SIZE := Vector2(320, 116)
 const BAR_W := 200.0
 const BAR_H := 14.0
-const CUE_Y := 170.0
+const CUE_Y := 194.0
 const CUE_RADIUS := 24.0
 const INK := Color(1.0, 0.96, 0.88)
 const DIM := Color(1.0, 0.96, 0.88, 0.6)
@@ -36,6 +40,10 @@ const PERFECT := Color(1.0, 0.88, 0.35)
 const RING_FROM := 34.0
 const RING_TO := 11.0
 const CALLOUT_TIME := 1.4
+const LINE := Color(0.55, 0.8, 1.0)
+## The right stick's middle on screen (TouchControls.AIM_CENTER) and the
+## turning arrow's size round it.
+const CRANK_HINT_RADIUS := 64.0
 
 var _view: Node2D
 var _font: Font
@@ -135,12 +143,50 @@ func _draw_panel() -> void:
 	var zone := fight.sweet_range()
 	var band := Rect2(bar_x + 3.0 + (BAR_W - 6.0) * zone.x, at.y - BAR_H + 1.0, (BAR_W - 6.0) * (zone.y - zone.x), BAR_H)
 	_view.draw_rect(band, Color(SWEET, 0.9 if sweet else 0.55), false, 1.5)
+	_draw_distance(fight, Vector2(x, rect.position.y + 98), bar_x)
+	_draw_crank_hint(fight, player)
 
 	if fight.swipe_left > 0.0:
 		_draw_swipe_cue(fight)
 	elif fight.perfect and fight.age < CALLOUT_TIME:
 		var a := clampf((CALLOUT_TIME - fight.age) / 0.4, 0.0, 1.0)
 		UiKit.draw_text(_view, Vector2(CENTER_X - 100, CUE_Y + 6), "完美揚竿！", 24, Color(PERFECT, a), HORIZONTAL_ALIGNMENT_CENTER, 200, true)
+
+
+## The line out: how far off the fish is (m) on a bar of all the line,
+## its danger end marked - in red, pulsing, once it's out there.
+func _draw_distance(fight: FishFight, at: Vector2, bar_x: float) -> void:
+	var share := fight.line_share()
+	var danger := fight.danger() > 0.0
+	var red := Color(RAGE, 0.7 + 0.3 * sin(_pulse * 12.0)) if danger else LINE
+	UiKit.draw_text(_view, at, "距離", 13, RAGE if danger else DIM)
+	var bar := Rect2(bar_x, at.y - BAR_H + 1.0, BAR_W, BAR_H)
+	UiKit.draw_bar(_view, bar, share, red)
+	var mark := bar.position.x + 3.0 + (BAR_W - 6.0) * FishFight.DANGER
+	_view.draw_rect(Rect2(mark, bar.position.y, bar.end.x - 3.0 - mark, BAR_H), Color(RAGE, 0.18), true)
+	_view.draw_line(Vector2(mark, bar.position.y - 1.0), Vector2(mark, bar.end.y + 1.0), Color(RAGE, 0.85), 1.5)
+	UiKit.draw_text(_view, Vector2(bar.position.x, at.y), "%.0f / %.0f 公尺" % [fight.distance, fight.line_max], 11,
+		INK if not danger else Color(1, 0.9, 0.85), HORIZONTAL_ALIGNMENT_CENTER, BAR_W, true)
+
+
+## The fish taking line while the reel's still: a turning arrow round the
+## right stick (touch screens; Space on a keyboard - said in words).
+func _draw_crank_hint(fight: FishFight, player: Player) -> void:
+	if fight.crank >= FishFight.HELD_AT or fight.jump_left > 0.0 or fight.run_left > 0.0 or fight.line_share() < 0.3:
+		return
+	var a := 0.45 + 0.35 * sin(_pulse * 6.0)
+	if DisplayServer.is_touchscreen_available():
+		var c := TouchControls.AIM_CENTER
+		var start := _pulse * 3.0
+		_view.draw_arc(c, CRANK_HINT_RADIUS, start, start + PI * 1.4, 40, Color(LINE, a), 4.0)
+		var end := start + PI * 1.4
+		var tip := c + Vector2.RIGHT.rotated(end) * CRANK_HINT_RADIUS
+		var along := Vector2.RIGHT.rotated(end + PI * 0.5)
+		var out := Vector2.RIGHT.rotated(end)
+		_view.draw_colored_polygon(PackedVector2Array([tip + along * 12.0, tip + out * 9.0, tip - out * 9.0]), Color(LINE, a))
+		UiKit.draw_text(_view, c + Vector2(-60, -CRANK_HINT_RADIUS - 12.0), "轉動收線", 15, Color(LINE, a + 0.2), HORIZONTAL_ALIGNMENT_CENTER, 120, true)
+	else:
+		UiKit.draw_text(_view, Vector2(CENTER_X - 120, CUE_Y + 6), "魚越跑越遠！按住空白鍵收線", 16, Color(LINE, a + 0.2), HORIZONTAL_ALIGNMENT_CENTER, 240, true)
 
 
 func _row(at: Vector2, bar_x: float, text: String, value: float, color: Color, ink := DIM) -> void:

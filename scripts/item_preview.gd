@@ -19,6 +19,19 @@ var _drag := false
 var _id := ""
 var _fish: MeshInstance3D
 var _sway := 0.0
+## User request: how some things are first turned to the camera - the
+## small live fish side-on (its model lies on its side, the back to the
+## camera: turned upright, and it sways side-on like the fish do), the
+## eyes with the pupil looking out (their models look away: half a turn).
+## id -> {tilt (deg, the model turned before it's sized), spin (rad, the
+## turn it starts at), sway (swings side-on instead of turning round)}.
+const PRESENT := {
+	"live_minnow": {"tilt": Vector3(-90, 0, 0), "spin": -0.2, "sway": true, "reach": 1.3},
+	"eyeball": {"spin": PI},
+	"eye_altar": {"spin": PI},
+	"eye_ghost": {"spin": PI},
+}
+var _swaying := false
 
 
 func _ready() -> void:
@@ -100,8 +113,15 @@ func show_item(id: String) -> bool:
 		return false
 	var scene: PackedScene = load(path)
 	var inst: Node3D = scene.instantiate()
+	var how: Dictionary = PRESENT.get(id, {})
 	_holder.add_child(inst)
-	_fit(inst, true)
+	if how.has("tilt"):
+		var deg: Vector3 = how.tilt
+		inst.rotation = Vector3(deg_to_rad(deg.x), deg_to_rad(deg.y), deg_to_rad(deg.z))
+	_fit(inst, not how.has("tilt"), float(how.get("reach", 0.0)))
+	_spin = float(how.get("spin", 0.0))
+	_swaying = how.get("sway", false)
+	_sway = 0.0
 	return true
 
 
@@ -125,14 +145,16 @@ func show_fish(id: String) -> bool:
 
 func _clear() -> void:
 	_fish = null
+	_swaying = false
 	for c in _holder.get_children():
 		_holder.remove_child(c)
 		c.queue_free()
 
 
 ## Sizes and centres a shown thing; long things (rods) lean across the
-## frame when `lean`, the rest stand as they are.
-func _fit(inst: Node3D, lean: bool) -> void:
+## frame when `lean`, the rest stand as they are; `reach` (if given) is
+## the longest side's length in the frame.
+func _fit(inst: Node3D, lean: bool, reach := 0.0) -> void:
 	var box := _bounds(inst)
 	var long_axis := box.get_longest_axis_index()
 	_holder.transform = Transform3D.IDENTITY
@@ -142,7 +164,9 @@ func _fit(inst: Node3D, lean: bool) -> void:
 	# (a thing standing tall - a bottle - smaller: the frame's wider than
 	# it's high)
 	var tall := box.get_longest_axis_index() == Vector3.AXIS_Y
-	var k := (1.25 if tall else 1.7) / maxf(box.get_longest_axis_size(), 0.001)
+	if reach <= 0.0:
+		reach = 1.25 if tall else 1.7
+	var k := reach / maxf(box.get_longest_axis_size(), 0.001)
 	_holder.scale = Vector3.ONE * k
 	box = _bounds(inst)
 	_holder.position -= box.get_center()
@@ -171,6 +195,11 @@ func _process(delta: float) -> void:
 		# A fish swims where it is, swinging from one three-quarter view to
 		# the other (turned all the way round it's only a sliver).
 		FishModel.swim(_fish, delta, 0.3)
+		if not _drag:
+			_sway += delta * 0.5
+		_pivot.rotation.y = _spin + sin(_sway) * 0.75
+		return
+	if _swaying:
 		if not _drag:
 			_sway += delta * 0.5
 		_pivot.rotation.y = _spin + sin(_sway) * 0.75

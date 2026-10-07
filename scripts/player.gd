@@ -88,9 +88,10 @@ const POISON_TIME := 8.0
 const POISON_SPEED_MULT := 0.4
 ## A black spider caught is worth this many baits (the risk's reward).
 const BLACK_SPIDER_BAIT := 2
-## Round 8 (user request): the landing net in hand (net_out, worn in
-## Profile's net slot) reaches a critter NET_REACH px off (bare-handed:
-## standing on it) and halves the chance it bites or stings.
+## Round 8 (user request): the landing net in hand (worn in the off hand,
+## held between casts - offhand_in_hand()) reaches a critter NET_REACH px
+## off (bare-handed: standing on it) and halves the chance it bites or
+## stings.
 const NET_REACH := 46.0
 const NET_VENOM_MULT := 0.5
 ## Round 8 (user request): what turns up under a rock or drops from a tree
@@ -203,8 +204,30 @@ var vigor_timer := 0.0
 var ward_timer := 0.0
 var binoculars_cooldown := 0.0
 var guide: GuideArrow
-## Round 8: the landing net in hand (the weapon put away) - see NET_REACH.
-var net_out := false
+## User request: the off hand (Profile.offhand() - a weapon or the net) is
+## held while the rod's on the back - between casts (offhand_in_hand()) -
+## and hangs at the hip while fishing. A tap of the right stick (Q on a
+## keyboard) swings it (swing()): a blade slashes at the beasts close by
+## (they run), the hatchet or the machete chops a tree in reach, the net
+## scoops a critter, the pistol fires at a beast ahead (GUN_RANGE, within
+## GUN_CONE of the aim). A swing takes SWING_TIME, its blow landing
+## SWING_HIT in; each wears the thing (Profile.wear_out). A press on the
+## stick held past SWING_TAP, or dragged, draws the rod and casts instead.
+const SWING_TIME := 0.55
+const SWING_HIT := 0.25
+const SWING_TAP := 0.2
+const SWING_DRAG := 0.3
+const SWING_REACH := 46.0
+const GUN_RANGE := 220.0
+const GUN_CONE := 0.5
+## The swing on ("slash", "chop", "scoop", "shoot"; "" for none) and its
+## seconds left.
+var swing_kind := ""
+var swing_left := 0.0
+var _swing_landed := false
+## Seconds the right stick's been pressed while the off hand's held (a tap
+## swings; -1: not deciding).
+var _stick_press := -1.0
 ## What the HUD warning names while water_ghost_timer runs - the water
 ## ghost, or an animal that caught up with you (see animal_attack()).
 var affliction_text: String = "水鬼異常狀態中"
@@ -216,6 +239,33 @@ var stolen_timer: float = 0.0
 ## While a run is on (seconds left) - the rod and camera shake with it.
 var fish_run_active_time: float = 0.0
 var fight: FishFight
+## User request: a fish is reeled in by turning the right stick round and
+## round like a reel's handle - the faster, the faster the line comes in
+## (FishFight). crank: 0..1, CRANK_FULL turns a second flat out; eased
+## (CRANK_EASE) so a stroke reads as a steady turn. The stick must be
+## pushed out at least CRANK_REACH to turn it. Space on a keyboard cranks
+## at FishFight.CRANK_NORMAL (with Shift, flat out).
+const CRANK_FULL := 1.6
+const CRANK_EASE := 7.0
+const CRANK_REACH := 0.35
+var crank := 0.0
+var _crank_angle := 0.0
+var _crank_had := false
+## User request: the fish's pull on the line (FishFight.swim_out, m/s) -
+## by how hard it fights (DIFFICULTY's pull), rare and legendary fish,
+## wild ones, and big ones off the far water.
+const SWIM_OUT := 1.1
+const SWIM_OUT_RARE := 1.25
+const SWIM_OUT_EPIC := 1.6
+const SWIM_OUT_TRAIT := {"calm": 0.8, "normal": 1.0, "wild": 1.3}
+const SWIM_OUT_FAR := 1.15
+## The line on the reel (m): LINE_BASE, LINE_PER_TIER more each better rod.
+const LINE_BASE := 40.0
+const LINE_PER_TIER := 5.0
+## World px to a m of line (as GuideArrow shows distances).
+const PX_PER_M := 16.0
+## Why the line last went, said with the loss (see _fail_catch()).
+var _snap_note := ""
 var difficulty_key := "novice"
 var fish_habit := ""
 var nibbles_left := 0
@@ -295,7 +345,8 @@ func _ready() -> void:
 	add_to_group("player")
 	var guide_layer := CanvasLayer.new()
 	guide_layer.name = "GuideLayer"
-	guide_layer.layer = 4
+	# (over the things' buttons - ActionPrompt, 4 - so they don't hide it)
+	guide_layer.layer = 5
 	add_child(guide_layer)
 	guide = GuideArrow.new()
 	guide.name = "Guide"
@@ -321,8 +372,23 @@ func _ready() -> void:
 	hand.set_script(preload("res://scripts/carried_can.gd"))
 	hand.visible = false
 	add_child(hand)
+	# User request: the off hand's thing, in the hand or at the hip.
+	var prop := OffhandProp.new()
+	prop.name = "Offhand"
+	add_child(prop)
 	reset_gear()
 	_set_state(State.IDLE)
+	Profile.gear_broke.connect(_on_gear_broke)
+
+
+## User request: worn out, a thing breaks - said, and it's gone.
+func _on_gear_broke(id: String, item_name: String) -> void:
+	Sfx.play("swipe_hit", -4.0)
+	if id.begins_with("rod_"):
+		GameState.push_message("%s用壞了，斷成兩截！換上%s" % [item_name, Profile.rod().name])
+	else:
+		GameState.push_message("%s用壞了！要回營地的商店買新的" % item_name)
+	GameState.report("%s壞掉了" % item_name, "warn")
 
 
 func set_in_altar(value: bool) -> void:
@@ -434,8 +500,9 @@ func reset_gear() -> void:
 	lure_stock = Profile.consume_loadout_lures()
 	_sync_lures()
 	fishing_mode = FishingMode.BOBBER
-	# The net in hand to start with when there's no weapon to hold instead.
-	net_out = Profile.has_net() and Profile.weapon.is_empty()
+	swing_kind = ""
+	swing_left = 0.0
+	_stick_press = -1.0
 	max_cast_dist = MAX_CAST_DIST + Profile.get_upgrade_bonus("rod_distance")
 	reel_power_mult = 1.0 + Profile.get_upgrade_bonus("reel_power")
 	_force_drop_oil_drum()
@@ -757,26 +824,125 @@ func ghost_confuse(duration: float) -> void:
 	affliction_text = "被鬼纏過，頭昏眼花"
 
 
-## The weapon in hand (Profile.WEAPONS entry; {} with none worn, or while
-## the net's held instead).
+## The off hand's thing is in hand: worn, and the rod on the back (not
+## fishing, the hands not full of the oil drum, not in the big ghost's
+## grip).
+func offhand_in_hand() -> bool:
+	return Profile.offhand() != "" and state == State.IDLE and not carrying_oil_drum and not held
+
+
+## The weapon in hand (Profile.WEAPONS entry; {} with none in the off hand,
+## or while fishing - it's at the hip then).
 func held_weapon() -> Dictionary:
-	return {} if net_out else Profile.weapon
+	return Profile.weapon if offhand_in_hand() else {}
 
 
-## Round 8 (user request): takes the net in hand (the weapon put away) or
-## puts it back; false if there's no net worn.
-func set_net_out(on: bool) -> bool:
-	if on and not Profile.has_net():
+## The landing net in hand.
+func net_in_hand() -> bool:
+	return Profile.has_net() and offhand_in_hand()
+
+
+## What a swing of the off hand's thing does now: "chop" (a tree in reach
+## and a chopping blade - the hatchet always), "slash" (a blade), "scoop"
+## (the net), "shoot" (the pistol); "" with nothing to swing.
+func swing_move() -> String:
+	var id := Profile.offhand()
+	if id == "" or not offhand_in_hand():
+		return ""
+	if id == "net":
+		return "scoop"
+	var w: Dictionary = Profile.weapon
+	if w.get("gun", false):
+		return "shoot"
+	if int(w.get("chop", 0)) > 0 and (choppable_tree() != null or not w.get("defend", false)):
+		return "chop"
+	return "slash"
+
+
+## Swings the off hand's thing (see SWING_TIME); false if it can't now.
+func swing(kind := "") -> bool:
+	if kind == "":
+		kind = swing_move()
+	if kind == "" or swing_left > 0.0 or not offhand_in_hand():
 		return false
-	if on == net_out:
-		return true
-	net_out = on
-	if on:
-		GameState.report("拿起撈網：抓活餌更方便%s" % ("（%s收起來了）" % Profile.weapon.name if not Profile.weapon.is_empty() else ""), "info")
-	else:
-		GameState.report("收起撈網%s" % ("，改拿%s" % Profile.weapon.name if not Profile.weapon.is_empty() else ""), "info")
-	Sfx.play("ui_click", -8.0)
+	swing_kind = kind
+	swing_left = SWING_TIME
+	_swing_landed = false
 	return true
+
+
+func _update_swing(delta: float) -> void:
+	if swing_left <= 0.0:
+		return
+	swing_left = maxf(swing_left - delta, 0.0)
+	if not _swing_landed and SWING_TIME - swing_left >= SWING_HIT:
+		_swing_landed = true
+		_swing_lands()
+	if swing_left <= 0.0:
+		swing_kind = ""
+
+
+## The swing's blow, as it lands.
+func _swing_lands() -> void:
+	var id := Profile.offhand()
+	if id == "":
+		return
+	match swing_kind:
+		"chop":
+			var tree := choppable_tree()
+			if tree != null:
+				_chop_tree(tree)
+			else:
+				_drive_off_beasts()
+		"scoop":
+			if reachable_critter() != null:
+				_catch_critter()
+		"slash":
+			_drive_off_beasts()
+		"shoot":
+			_fire()
+			return
+	Sfx.play_at("swipe_hit", global_position, -10.0)
+	Profile.wear_out(id)
+
+
+## A blade swung: the beasts close by run.
+func _drive_off_beasts() -> void:
+	var hit := 0
+	for c in get_tree().get_nodes_in_group("critters"):
+		var beast := c as Critter
+		if beast != null and beast.is_hunter() and beast.global_position.distance_to(global_position) < SWING_REACH * 1.3:
+			beast.scare()
+			hit += 1
+	if hit > 0:
+		GameState.report("揮%s趕走了野獸" % Profile.weapon.get("name", "刀"), "good")
+
+
+## The pistol fired (a tap): a round from the bag; the beasts ahead (or
+## right by) run, and the big ghost hears it.
+func _fire() -> void:
+	if Profile.bag_take("ammo", 1) != 1:
+		Sfx.play("ui_click", -6.0)
+		GameState.report("沒有子彈了（子彈要放在背包）", "warn")
+		return
+	Profile.wear_out("glock")
+	Sfx.play_at("gunshot", global_position, -2.0, 0.03)
+	Campaign.stat("gunshot")
+	var hit: Critter = null
+	for c in get_tree().get_nodes_in_group("critters"):
+		var beast := c as Critter
+		if beast == null or not beast.is_hunter():
+			continue
+		var to := beast.global_position - global_position
+		if to.length() < GUN_RANGE and (to.length() < SWING_REACH or to.normalized().dot(aim_dir) > GUN_CONE):
+			beast.scare()
+			hit = beast
+	if hit != null:
+		GameState.report("開槍嚇跑了%s（子彈剩 %d）" % [hit.get_label(), Profile.bag_count("ammo")], "info")
+	else:
+		GameState.report("開了一槍（子彈剩 %d）" % Profile.bag_count("ammo"), "info")
+	for ghost in get_tree().get_nodes_in_group("big_ghost"):
+		ghost.hear(global_position)
 
 
 ## User decision: wolves and the meat-eating dinosaurs chase the player
@@ -787,6 +953,10 @@ func animal_attack(attacker: String) -> void:
 	# User request (weapons): a blade worn turns the pounce aside - a short
 	# stagger, nothing knocked loose, the line kept.
 	if held_weapon().get("defend", false):
+		Profile.wear_out(Profile.offhand())
+		# (the parry seen as a slash - its blow already struck)
+		if swing("slash"):
+			_swing_landed = true
 		water_ghost_timer = maxf(water_ghost_timer, PARRY_DEBUFF_DURATION)
 		affliction_text = "擋下了%s的撲擊" % attacker
 		Sfx.play_at("swipe_hit", global_position, -4.0)
@@ -1115,9 +1285,10 @@ func _physics_process(delta: float) -> void:
 	_handle_mode_toggle()
 	_handle_shop_input()
 	_handle_drop_input()
-	# Round 8: N takes the net in hand or puts it away (also from the bag).
-	if _key_just_pressed(KEY_N) and Profile.has_net():
-		set_net_out(not net_out)
+	_update_swing(delta)
+	# Q swings the off hand's thing (a tap of the right stick on a phone).
+	if _key_just_pressed(KEY_Q):
+		swing()
 	_update_lure_throw(get_physics_process_delta_time())
 	_handle_action_input(delta)
 
@@ -1283,8 +1454,10 @@ func _update_noise() -> void:
 ## model): a finger on it is the fishing action held - so it casts, strikes
 ## and reels - its direction aims the cast (and answers a fish's sideways
 ## run) and, while casting, how far it's pulled sets how far the cast goes
-## (the landing mark shows where). A tap casts ahead at CAST_TAP_RATIO.
-## Space on a keyboard (held to charge).
+## (the landing mark shows where). A tap casts ahead at CAST_TAP_RATIO -
+## or, with the off hand's thing held (user request), swings it (SWING_TAP);
+## held still, the cast goes out at CAST_TAP_RATIO. Space on a keyboard
+## (held to charge).
 const CAST_TAP_RATIO := 0.55
 ## User request: the cast charges 40% slower than it used to (full charge
 ## took MAX_CHARGE_TIME seconds) so it's easier to stop where you want.
@@ -1440,7 +1613,7 @@ func _handle_interaction(delta: float) -> void:
 				_turn_rock()
 		"砍樹":
 			if use_pressed:
-				_chop_tree(choppable_tree())
+				swing("chop")
 		"逃離":
 			if use_pressed:
 				GameState.escape()
@@ -1466,7 +1639,7 @@ func _handle_interaction(delta: float) -> void:
 			if use_pressed:
 				_pick_up_dropped_fish()
 		"抓餌":
-			if use_pressed:
+			if use_pressed and not (net_in_hand() and swing("scoop")):
 				_catch_critter()
 		"對話":
 			if use_pressed:
@@ -1483,21 +1656,23 @@ func _handle_action_input(delta: float) -> void:
 
 	match state:
 		State.IDLE:
-			if just_pressed:
-				if carrying_oil_drum:
-					GameState.push_message("提著油箱沒辦法釣魚，先送回營地")
-				elif _nearest_water_edge_distance() > CAST_SHORE_RANGE:
-					GameState.push_message("離水邊太遠了，走近岸邊再拋竿")
-					GameState.report("離水邊太遠，靠近再拋竿", "info")
-				elif _can_start_cast():
-					_set_state(State.CHARGING)
-					charge_time = 0.0
-					_cast_dragged = false
-					_cast_by_stick = false
-				else:
-					var out_of := "餌" if fishing_mode == FishingMode.BOBBER else "假餌"
-					GameState.push_message("沒有%s了，按 Tab 換釣法" % out_of)
-					GameState.report("沒有%s了" % out_of)
+			if swing_left > 0.0:
+				pass
+			elif _stick_press >= 0.0:
+				# A press on the stick with the off hand held: a tap swings it,
+				# held on (or dragged) it's the rod - a cast.
+				_stick_press += delta
+				var dragged: bool = _aim_joystick.is_pressed and _aim_joystick.output.length() > SWING_DRAG
+				if not held:
+					_stick_press = -1.0
+					swing()
+				elif dragged or _stick_press > SWING_TAP:
+					_stick_press = -1.0
+					_try_start_charge()
+			elif just_pressed and _cast_stick_touched() and offhand_in_hand():
+				_stick_press = 0.0
+			elif just_pressed:
+				_try_start_charge()
 		State.CHARGING:
 			if held and _cast_stick_touched():
 				# Pulled this far: heading this far out.
@@ -1531,6 +1706,24 @@ func _handle_action_input(delta: float) -> void:
 			pass
 
 	_prev_action_held = held
+
+
+## Pressed to fish: the cast starts charging - if it can.
+func _try_start_charge() -> void:
+	if carrying_oil_drum:
+		GameState.push_message("提著油箱沒辦法釣魚，先送回營地")
+	elif _nearest_water_edge_distance() > CAST_SHORE_RANGE:
+		GameState.push_message("離水邊太遠了，走近岸邊再拋竿")
+		GameState.report("離水邊太遠，靠近再拋竿", "info")
+	elif _can_start_cast():
+		_set_state(State.CHARGING)
+		charge_time = 0.0
+		_cast_dragged = false
+		_cast_by_stick = _cast_stick_touched()
+	else:
+		var out_of := "餌" if fishing_mode == FishingMode.BOBBER else "假餌"
+		GameState.push_message("沒有%s了，按 Tab 換釣法" % out_of)
+		GameState.report("沒有%s了" % out_of)
 
 
 ## Design doc request: sacrificing is no longer instant-bulk - each fish
@@ -1567,7 +1760,7 @@ func _pick_up_dropped_fish() -> void:
 func reachable_critter() -> Critter:
 	if in_critter_zone and _critter != null and is_instance_valid(_critter) and _critter.active:
 		return _critter
-	if not net_out:
+	if not net_in_hand():
 		return null
 	var best: Critter = null
 	var best_d := NET_REACH
@@ -1621,7 +1814,7 @@ func _catch_critter() -> void:
 		GameState.push_message("背包滿了，放不下%s" % critter.get_label())
 		return
 	var label: String = critter.get_label()
-	var venom: float = critter.venom() * (NET_VENOM_MULT if net_out else 1.0)
+	var venom: float = critter.venom() * (NET_VENOM_MULT if net_in_hand() else 1.0)
 	var stings: bool = critter.stings()
 	var many := BLACK_SPIDER_BAIT if critter.species == "black_spider" else 1
 	critter.catch()
@@ -1633,7 +1826,7 @@ func _catch_critter() -> void:
 	if critter.species == "black_spider":
 		Campaign.stat("black_spider")
 	var bait_name: String = Profile.LIVE_BAITS[key].name
-	var how := "用網子撈到了" if net_out else "抓到了"
+	var how := "用網子撈到了" if net_in_hand() else "抓到了"
 	if venom > 0.0 and randf() < venom:
 		poison_timer = POISON_TIME
 		Campaign.stat("poisoned")
@@ -1691,6 +1884,9 @@ func _chop_tree(tree: MapTree) -> void:
 func shoot_at(beast: Node2D) -> bool:
 	if not held_weapon().get("gun", false) or Profile.bag_take("ammo", 1) != 1:
 		return false
+	swing("shoot")
+	_swing_landed = true
+	Profile.wear_out("glock")
 	Sfx.play_at("gunshot", global_position, -2.0, 0.03)
 	Campaign.stat("gunshot")
 	GameState.report("開槍嚇跑了%s（子彈剩 %d）" % [beast.get_label(), Profile.bag_count("ammo")])
@@ -1775,16 +1971,17 @@ func _update_fishing(delta: float) -> void:
 				_fail_catch("missed_bite")
 		State.REELING:
 			# The fight itself lives in FishFight (see its rules).
-			var held := _is_action_pressed()
+			_update_crank(delta)
 			var moving := velocity.length() > 1.0
 			var reel_mult := MOVE_REEL_PENALTY if moving and fight.run_side == Vector2.ZERO else 1.0
 			var line_dir := (cast_target - global_position).normalized()
 			fight.strain = VIGOR_STRAIN if vigor_timer > 0.0 else 1.0
-			for ev in fight.update(delta, held, _counter_dir(), line_dir, reel_mult):
+			for ev in fight.update(delta, crank, _counter_dir(), line_dir, reel_mult):
 				_on_fight_event(ev)
 			progress = fight.progress
 			tension = fight.tension
 			fish_run_active_time = fight.run_left
+			_follow_line(line_dir)
 			if _snap_at >= 0.0 and progress >= _snap_at and fight.result == "":
 				_snap_at = -1.0
 				GameState.push_message("精神恍惚，手一抖——線斷了")
@@ -1793,10 +1990,55 @@ func _update_fishing(delta: float) -> void:
 			match fight.result:
 				"landed":
 					_succeed_catch()
-				"line_break", "shook_off", "cover":
+				"line_break", "line_out":
+					if fight.result == "line_out":
+						_snap_note = "out"
+					elif fight.snap_why != "":
+						_snap_note = fight.snap_why
+					_fail_catch("line_break")
+				"shook_off", "cover":
 					_fail_catch(fight.result)
 		_:
 			pass
+
+
+## The crank this frame (see CRANK_FULL): the right stick's turning, else
+## Space.
+func _update_crank(delta: float) -> void:
+	var want := 0.0
+	var stick: Vector2 = _aim_joystick.output if _aim_joystick.is_pressed else Vector2.ZERO
+	if stick.length() >= CRANK_REACH:
+		var a := stick.angle()
+		if _crank_had and delta > 0.0:
+			var turns := absf(angle_difference(_crank_angle, a)) / TAU / delta
+			want = clampf(turns / CRANK_FULL, 0.0, 1.0)
+		_crank_angle = a
+		_crank_had = true
+	else:
+		_crank_had = false
+		if Input.is_key_pressed(KEY_SPACE):
+			want = 1.0 if Input.is_key_pressed(KEY_SHIFT) else FishFight.CRANK_NORMAL
+	crank = lerpf(crank, want, 1.0 - exp(-CRANK_EASE * delta)) if want < crank else want
+	if crank < 0.01:
+		crank = 0.0
+
+
+## The reel turning (a fish on: the crank; else the action held - a lure
+## retrieved).
+func is_cranking() -> bool:
+	if state == State.REELING:
+		return crank >= FishFight.HELD_AT
+	return _is_action_pressed()
+
+
+## The fish out where the line says it is (FishFight.distance), along the
+## line - while that's still in the water it was hooked in.
+func _follow_line(line_dir: Vector2) -> void:
+	if line_dir == Vector2.ZERO:
+		return
+	var at := global_position + line_dir * fight.distance * PX_PER_M
+	if cast_water_zone == null or cast_water_zone.contains(at):
+		cast_target = at
 
 
 ## Where a cast at `ratio` of full charge lands. User feedback: overshooting
@@ -1822,6 +2064,8 @@ func landing_point(ratio: float) -> Vector2:
 func _launch_cast() -> void:
 	if fishing_mode == FishingMode.BOBBER:
 		use_bait_for_cast()
+	# User request: the rod wears with each cast (Profile.wear_out).
+	Profile.wear_out(str(Profile.equipped.get("rod", "")))
 
 	var ratio: float = charge_time / MAX_CHARGE_TIME
 	if cast_jittered or water_ghost_timer > 0.0:
@@ -2038,6 +2282,14 @@ func _hook_fish(perfect := false) -> void:
 	_snap_at = randf_range(0.3, 0.8) if Profile.spirit_penalty() >= 3 and randf() < SPENT_SNAP_CHANCE else -1.0
 	if perfect:
 		fight.perfect_hook()
+	# The line out to the fish, all there is on the reel, and how hard this
+	# one pulls it away.
+	fight.line_max = LINE_BASE + LINE_PER_TIER * Profile.rod_tier
+	fight.distance = clampf(global_position.distance_to(cast_target) / PX_PER_M, FishFight.MIN_DISTANCE, fight.line_max * 0.6)
+	fight.swim_out = swim_out_rate()
+	crank = 0.0
+	_crank_had = false
+	_snap_note = ""
 	progress = fight.progress
 	tension = fight.tension
 	fish_run_active_time = 0.0
@@ -2047,6 +2299,22 @@ func _hook_fish(perfect := false) -> void:
 		GameState.push_message("上鉤了！（難度：%s）" % fight.label())
 	_set_state(State.REELING)
 	hook_success.emit()
+
+
+## How fast the fish on the line swims off with it (m/s, FishFight.swim_out):
+## by how hard its kind fights, rarer, wilder and (off the far water)
+## bigger ones faster.
+func swim_out_rate() -> float:
+	var pull: float = FishData.DIFFICULTY[difficulty_key].pull
+	var rate := SWIM_OUT * pull * pull
+	if is_epic_catch:
+		rate *= SWIM_OUT_EPIC
+	elif is_rare_catch:
+		rate *= SWIM_OUT_RARE
+	rate *= float(SWIM_OUT_TRAIT.get(fish_trait, 1.0))
+	if current_tier == "far":
+		rate *= SWIM_OUT_FAR
+	return rate
 
 
 ## Which way the rod is being pulled, for answering a sideways run: the
@@ -2064,7 +2332,7 @@ func _counter_dir() -> Vector2:
 func _on_fight_event(kind: String) -> void:
 	match kind:
 		"run":
-			GameState.push_message("魚往外衝！先放手放線")
+			GameState.push_message("魚往外衝！先停手放線，別讓線被拉光")
 			GameState.report("魚往外衝，放線！", "info")
 		"side_run":
 			GameState.push_message("魚往%s邊衝！快把右搖桿往%s一甩" % [FishFight.describe(fight.run_side), FishFight.describe(-fight.run_side)])
@@ -2073,10 +2341,10 @@ func _on_fight_event(kind: String) -> void:
 		"swipe_miss":
 			GameState.push_message("沒來得及反甩，往%s拉竿頂住！" % FishFight.describe(-fight.run_side))
 		"jump":
-			GameState.push_message("魚跳出水面！快放手！")
-			GameState.report("魚跳起來了，放手！", "info")
+			GameState.push_message("魚跳出水面！快停手！")
+			GameState.report("魚跳起來了，停手！", "info")
 		"dive":
-			GameState.push_message("魚往岸邊石縫鑽！按住收線把牠拉回來！")
+			GameState.push_message("魚往岸邊石縫鑽！快轉右搖桿收線把牠拉回來！")
 		"dive_saved":
 			GameState.push_message("把魚從石縫邊拉回來了")
 		"enrage":
@@ -2140,7 +2408,16 @@ func _fail_catch(reason: String) -> void:
 	if lure_gone:
 		_lose_lure()
 	if reason == "line_break":
-		msg = "線斷了，魚跑了"
+		match _snap_note:
+			"out":
+				msg = "線被魚拉光了，斷了（魚越跑越遠時要轉右搖桿收線）"
+			"far":
+				msg = "魚跑得太遠，線撐不住斷了（距離變紅時要快收線）"
+			"leap":
+				msg = "魚在遠處跳出水面，線一下就斷了"
+			_:
+				msg = "線斷了，魚跑了"
+		_snap_note = ""
 	elif reason == "line_cut":
 		msg = "線被鬼剪斷了！"
 	elif reason == "lure_knocked":

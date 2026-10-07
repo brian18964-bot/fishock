@@ -290,9 +290,36 @@ func _process(delta: float) -> void:
 		_grip_mod.influence = move_toward(_grip_mod.influence, want, delta / 0.2)
 
 
+## User report: getting up off the ground after a run lost (CampLife,
+## LayToIdle - UAL's clip, made for its mannequin's proportions) sank the
+## animal people into the ground. While a clip in FLOOR_CLIPS is on, the
+## body's lifted so none of FLOOR_BONES is lower than its clearance (m off
+## the ground: the trunk lies on its back, the feet stand on it) - at once
+## when it would sink, eased back down after.
+const FLOOR_CLIPS := ["LayToIdle"]
+const FLOOR_BONES := {"pelvis": 0.12, "spine_03": 0.12, "Head": 0.1, "hand_l": 0.03, "hand_r": 0.03,
+	"foot_l": 0.05, "foot_r": 0.05, "ball_l": 0.02, "ball_r": 0.02, "ball_leaf_l": 0.0, "ball_leaf_r": 0.0}
+const FLOOR_EASE := 0.35
+var _floor_lift := 0.0
+
+
+func _keep_off_floor(delta: float) -> void:
+	var want := 0.0
+	if anim != null and anim.assigned_animation in FLOOR_CLIPS:
+		var to_rig := global_transform.affine_inverse() * skeleton.global_transform
+		for b in FLOOR_BONES:
+			var i := skeleton.find_bone(b)
+			if i >= 0:
+				var y := (to_rig * skeleton.get_bone_global_pose(i).origin).y - _body.position.y
+				want = maxf(want, float(FLOOR_BONES[b]) - y)
+	_floor_lift = want if want > _floor_lift else move_toward(_floor_lift, want, delta / FLOOR_EASE)
+	_body.position.y = _floor_lift
+
+
 ## After the skeleton's posed for the frame (so the lamp keeps to the
 ## fingers, not a frame behind).
 func _on_skeleton_updated() -> void:
+	_keep_off_floor(get_process_delta_time())
 	if _hang != null:
 		if not is_instance_valid(_hang) or not _hang.is_inside_tree():
 			_hang = null

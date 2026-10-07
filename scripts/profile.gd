@@ -8,6 +8,8 @@ extends Node
 
 signal gold_updated(gold: int)
 signal profile_changed()
+## User request: a thing worn out (Profile.wear_out()) - gone.
+signal gear_broke(id: String, name: String)
 
 const SAVE_PATH := "user://profile.save"
 
@@ -27,12 +29,18 @@ const UPGRADE_DEFS := {
 ##   strength: divides every tension gain in FishFight
 ##   window: strike-time multiplier; jump: tension from holding a leap
 const ROD_TIERS := [
-	{"name": "木竿", "cost": 0, "strength": 1.0, "window": 1.0, "jump": 1.0},
-	{"name": "玻纖竿", "cost": 50, "strength": 1.15, "window": 1.0, "jump": 1.0},
-	{"name": "碳纖竿", "cost": 100, "strength": 1.3, "window": 1.1, "jump": 1.0},
-	{"name": "海釣竿", "cost": 180, "strength": 1.45, "window": 1.15, "jump": 0.75},
-	{"name": "黃金竿", "cost": 300, "strength": 1.6, "window": 1.2, "jump": 0.6},
+	{"name": "木竿", "cost": 0, "strength": 1.0, "window": 1.0, "jump": 1.0, "durability": 50},
+	{"name": "玻纖竿", "cost": 50, "strength": 1.15, "window": 1.0, "jump": 1.0, "durability": 70},
+	{"name": "碳纖竿", "cost": 100, "strength": 1.3, "window": 1.1, "jump": 1.0, "durability": 90},
+	{"name": "海釣竿", "cost": 180, "strength": 1.45, "window": 1.15, "jump": 0.75, "durability": 120},
+	{"name": "黃金竿", "cost": 300, "strength": 1.6, "window": 1.2, "jump": 0.6, "durability": 160},
 ]
+## User request: everything worn wears out - every use takes one off its
+## durability (a rod: a cast; the flashlight: a flash; the off hand's
+## thing: a swing, a parry, a shot), and at 0 it breaks and is gone: buy a
+## new one (the wooden rod, free, if no rod's left). Uses each lasts; the
+## rods' are ROD_TIERS' durability.
+const DURABILITY := {"flashlight": 60, "knife": 60, "hatchet": 50, "machete": 70, "glock": 80, "net": 40}
 
 ## User request (shop linkage): each lure is its own shop item with its own
 ## effect, and fishing with it shows that lure (LureVisual.LURES[sprite]).
@@ -83,18 +91,20 @@ const LIVE_BAITS := {
 		"desc": "活餌（只能在地圖上抓到）：空竿的機率減半，假咬也減半"},
 }
 const LIVE_ORDER := ["worm", "cricket", "spider", "shrimp", "minnow", "frog", "rat", "snake", "crab", "bee", "black_spider"]
-## Round 8 (user request): the landing net - worn in its own slot
-## (equipped.net) and taken in hand in a run (Player.net_out, from the
-## bag): critters are caught from further off and bite less.
+## Round 8 (user request): the landing net - worn in the off hand
+## (equipped.offhand) and held in a run between casts (Player.net_in_hand):
+## critters are caught from further off and bite less.
 const NET_COST := 70
-const NET_DESC := "裝備後在遊戲中可以從背包切換拿在手上：抓活餌的距離變遠，被咬中毒的機率減半（拿網時武器收起來）"
+const NET_DESC := "副手裝備：拿在手上時點一下右搖桿揮網撈活餌，抓得更遠，被咬中毒的機率減半"
 ## User request: the flashlight is a shop item (bought once) that runs on
 ## batteries, also bought here and kept in stock until used (see Lantern).
 const FLASHLIGHT_COST := 120
 const BATTERY_COST := 12
 ## User request: the knives, the hatchet and the pistol (the user's
-## models) sold in the shop - each bought once and worn in the weapon
-## slot (equipped.weapon). What each does in a run (Player):
+## models) sold in the shop - each bought once. User request: worn in the
+## off hand (equipped.offhand, with the net - one of them), held while the
+## rod's on the back and swung with a tap of the right stick; at the hip
+## while fishing. What each does in a run (Player):
 ##   defend: a beast that pounces is cut back - no fish knocked loose, and
 ##           only a short stagger;
 ##   chop:   trees can be chopped (砍樹, see MapTree): sometimes bait falls
@@ -105,13 +115,13 @@ const BATTERY_COST := 12
 ##           big ghost comes to look.
 const WEAPONS := {
 	"knife": {"name": "獵刀", "cost": 80, "size": Vector2i(2, 1), "defend": true,
-		"desc": "野獸撲上來時揮刀擋開：不會被撞掉魚，只踉蹌一下"},
+		"desc": "副手：拿在手上時野獸撲上來會揮刀擋開；點右搖桿揮刀可以趕走身邊的野獸"},
 	"hatchet": {"name": "手斧", "cost": 110, "size": Vector2i(2, 1), "chop": 2,
-		"desc": "可以砍樹：樹上常掉下餌料，也可能抖出黑蜘蛛"},
+		"desc": "副手：靠近樹點右搖桿砍樹，樹上常掉下餌料，也可能抖出黑蜘蛛"},
 	"machete": {"name": "開山刀", "cost": 160, "size": Vector2i(3, 1), "chop": 1, "defend": true,
-		"desc": "可以砍樹（找到的比手斧少），野獸撲上來時也能揮刀擋開"},
+		"desc": "副手：可以砍樹（找到的比手斧少）；拿在手上時野獸撲上來會擋開，揮刀可趕走野獸"},
 	"glock": {"name": "手槍", "cost": 380, "size": Vector2i(2, 1), "gun": true,
-		"desc": "野獸開始追你時自動開槍嚇跑牠（每次用 1 發子彈，子彈要放背包）；槍聲會引來大鬼"},
+		"desc": "副手：點右搖桿開槍嚇跑野獸，拿在手上時野獸追來也會自動開槍（每次 1 發子彈，子彈要放背包）；槍聲會引來大鬼"},
 }
 const WEAPON_ORDER := ["knife", "hatchet", "machete", "glock"]
 const AMMO_COST := 6
@@ -130,16 +140,19 @@ var upgrade_levels: Dictionary = {
 ## it sells in the warehouse.
 var storage: Dictionary = {}
 var bag: Array = []
-var equipped: Dictionary = {"rod": "rod_0", "light": "", "weapon": "", "net": ""}
+var equipped: Dictionary = {"rod": "rod_0", "light": "", "offhand": ""}
+## Uses left on what's worn out a little (id -> uses; see DURABILITY) -
+## there's one of each such thing.
+var wear: Dictionary = {}
 ## The best rod bought (the shop's rod line goes on from it).
 var rods_owned: int = 0
 ## Index into ROD_TIERS: the rod worn (kept in step with equipped.rod).
 var rod_tier: int = 0
 
-## The weapon worn (WEAPONS entry; {} for none).
+## The weapon in the off hand (WEAPONS entry; {} for none, or the net).
 var weapon: Dictionary:
 	get:
-		return WEAPONS.get(equipped.get("weapon", ""), {})
+		return WEAPONS.get(equipped.get("offhand", ""), {})
 ## Worn in the light slot - usable in a run.
 var has_flashlight: bool:
 	get:
@@ -564,8 +577,17 @@ func next_rod() -> Dictionary:
 	return ROD_TIERS[rods_owned + 1] if rods_owned + 1 < ROD_TIERS.size() else {}
 
 
-## Buys the next rod (into the warehouse; the shop asks where it goes).
-func buy_rod() -> bool:
+## Buys the next rod (into the warehouse; the shop asks where it goes) -
+## or, `tier` given, one bought before that broke.
+func buy_rod(tier := -1) -> bool:
+	if tier >= 0 and tier <= rods_owned:
+		if owned("rod_%d" % tier) > 0 or gold < int(ROD_TIERS[tier].cost):
+			return false
+		_spend(int(ROD_TIERS[tier].cost))
+		_store("rod_%d" % tier, 1)
+		gold_updated.emit(gold)
+		_changed()
+		return true
 	var next := next_rod()
 	if next.is_empty() or gold < int(next.cost):
 		return false
@@ -610,7 +632,69 @@ func buy_net() -> bool:
 
 
 func has_net() -> bool:
-	return equipped.get("net", "") == "net"
+	return equipped.get("offhand", "") == "net"
+
+
+## The off hand's thing ("" for none).
+func offhand() -> String:
+	return str(equipped.get("offhand", ""))
+
+
+## Uses a thing lasts new (0: it doesn't wear out).
+func max_durability(id: String) -> int:
+	if id.begins_with("rod_"):
+		var tier := int(id.substr(4))
+		return int(ROD_TIERS[tier].durability) if tier >= 0 and tier < ROD_TIERS.size() else 0
+	return int(DURABILITY.get(id, 0))
+
+
+## Uses `id` has left.
+func durability(id: String) -> int:
+	return int(wear.get(id, max_durability(id)))
+
+
+## A use of `id` (worn): one off its durability; at 0 it breaks - gone
+## from where it is (the rod: another put on, or a new wooden one).
+## True if it broke.
+func wear_out(id: String, uses := 1) -> bool:
+	if id == "" or max_durability(id) <= 0:
+		return false
+	var left := durability(id) - uses
+	if left > 0:
+		wear[id] = left
+		_changed()
+		return false
+	wear.erase(id)
+	var slot := ""
+	for k in equipped:
+		if equipped[k] == id:
+			slot = k
+	if slot != "":
+		equipped[slot] = ""
+	elif stored(id) > 0:
+		_store(id, -1)
+		if stored(id) <= 0:
+			storage.erase(id)
+	else:
+		bag_take(id, 1)
+	if slot == "rod":
+		_next_rod()
+	gear_broke.emit(id, Items.name_of(id))
+	_changed()
+	return true
+
+
+## The rod broke: the best one left goes on (from the warehouse, else the
+## bag), or a new wooden one.
+func _next_rod() -> void:
+	for t in range(ROD_TIERS.size() - 1, -1, -1):
+		var id := "rod_%d" % t
+		if stored(id) > 0 or bag_count(id) > 0:
+			equipped.rod = ""
+			equip(id)
+			return
+	equipped.rod = "rod_0"
+	_sync_rod()
 
 
 func buy_ammo() -> bool:
@@ -1002,6 +1086,48 @@ func equip(id: String, bag_index := -1) -> bool:
 	return true
 
 
+## User request (the bag in a run): puts on the thing in the bag stack at
+## `index` - what was worn in its slot goes into the bag in its place
+## (where it fits, else anywhere) - false if it can't: nothing to wear, or
+## no room for what comes off.
+func equip_from_bag(index: int) -> bool:
+	if index < 0 or index >= bag.size():
+		return false
+	var id: String = bag[index].id
+	var slot: String = Items.def(id).get("slot", "")
+	if slot == "":
+		return false
+	var cell: Vector2i = bag[index].cell
+	var old: String = equipped.get(slot, "")
+	bag.remove_at(index)
+	if old != "":
+		var at := cell if bag_fits(old, cell) else bag_free_cell(old)
+		if at.x < 0:
+			bag.insert(index, {"id": id, "count": 1, "cell": cell})
+			return false
+		bag.append({"id": old, "count": 1, "cell": at})
+	equipped[slot] = id
+	_sync_rod()
+	_changed()
+	return true
+
+
+## User request (the bag in a run): takes off what's in `slot` into the bag
+## at `cell` (or anywhere it fits); false if there's no room - or it's the
+## rod (there's always one on).
+func unequip_to_bag(slot: String, cell := Vector2i(-1, -1)) -> bool:
+	var id: String = equipped.get(slot, "")
+	if id == "" or slot == "rod":
+		return false
+	var at := cell if cell.x >= 0 and bag_fits(id, cell) else bag_free_cell(id)
+	if at.x < 0:
+		return false
+	equipped[slot] = ""
+	bag.append({"id": id, "count": 1, "cell": at})
+	_changed()
+	return true
+
+
 ## Takes off what's in `slot` (to the warehouse). The rod stays: there's
 ## always one on.
 func unequip(slot: String) -> bool:
@@ -1043,6 +1169,7 @@ func snapshot() -> Dictionary:
 		"storage": storage,
 		"bag": bag,
 		"equipped": equipped,
+		"wear": wear,
 		"rods_owned": rods_owned,
 		"tank": tank,
 		"tank_news": tank_news,
@@ -1078,10 +1205,19 @@ func load_data(data: Dictionary) -> void:
 	storage = data.get("storage", {})
 	bag = data.get("bag", [])
 	equipped = data.get("equipped", {"rod": "rod_0", "light": ""})
-	if not equipped.has("weapon"):
-		equipped["weapon"] = ""
-	if not equipped.has("net"):
-		equipped["net"] = ""
+	wear = data.get("wear", {})
+	# (saves from before the off hand: the weapon worn goes in it, else the
+	# net; the other back to the warehouse)
+	if not equipped.has("offhand"):
+		var weapon_id: String = equipped.get("weapon", "")
+		var net_id: String = equipped.get("net", "")
+		equipped["offhand"] = weapon_id if weapon_id != "" else net_id
+		if weapon_id != "" and net_id != "":
+			_store(net_id, 1)
+	equipped.erase("weapon")
+	equipped.erase("net")
+	if str(equipped.get("rod", "")) == "":
+		equipped["rod"] = "rod_0"
 	rods_owned = clampi(data.get("rods_owned", data.get("rod_tier", 0)), 0, ROD_TIERS.size() - 1)
 	tank = data.get("tank", [])
 	tank_news = data.get("tank_news", [])
@@ -1101,7 +1237,7 @@ func load_data(data: Dictionary) -> void:
 	achievements = data.get("achievements", {})
 	if not data.has("equipped"):
 		var tier := rods_owned
-		equipped = {"rod": "rod_%d" % tier, "light": "flashlight" if data.get("has_flashlight", false) else "", "weapon": "", "net": ""}
+		equipped = {"rod": "rod_%d" % tier, "light": "flashlight" if data.get("has_flashlight", false) else "", "offhand": ""}
 		for t in tier:
 			_store("rod_%d" % t, 1)
 		var lures: Dictionary = data.get("lure_stock", {})
