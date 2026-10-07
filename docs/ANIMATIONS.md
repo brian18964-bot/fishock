@@ -1,23 +1,24 @@
 # Character animation sources
 
 What the game's characters move with, where it came from and under what
-licence, and which clips are kept ready for later. Everything the game
-ships is CC0 (free for commercial use, no credit required).
+licence, and which clips are kept ready for later.
 
 ## In use
 
 | Source | Licence | Where | Used for |
 |---|---|---|---|
-| KayKit Character Animations 1.1 (Kay Lousberg, kaylousberg.com) | CC0 | `art_src/kaykit/` (Rig_Medium .glb) | the player's sheet: idle, run, cast, wait, reel, fight, bite, strike, catch (`tools/render_player.py` via `tools/kaykit.py`) |
+| KayKit Character Animations 1.1 (Kay Lousberg, kaylousberg.com) | CC0 | `art_src/kaykit/` (Rig_Medium .glb) | the player's sheet: the short (one-handed) cast, waiting, reeling, the fight, the bite, the strike, landing the fish (`tools/render_player.py` via `tools/kaykit.py`) |
 | Universal Animation Library 1 & 2, Standard (Quaternius) | CC0 | `art_src/player/ual1_standard.glb` (UAL2 kept out) | the player's skeleton; the camp character's clips (`tools/build_menu_character.py`); the struggle in the big ghost's grip (`tools/render_player_struggle.py`); the big ghost and the water ghost |
 | Quaternius animal packs | CC0 | `art_src/critter/`, `art_src/animal/` | the animals and critters |
+| Mixamo (Adobe) - Y Bot's Idle, Standard Run, Fishing Cast | Mixamo's terms: free in games, raw files not to be passed on | not in the repo (`MIXAMO_DIR`) | user request: the idle, the run and the long two-handed cast kept as they were (short casts are KayKit's one-handed one) |
 
-Mixamo is no longer used for the player: its sheet was first built on
-Mixamo's Fishing Cast / Fishing Idle / Idle / Standard Run (taken from
-github.com/Kevin-Kwan/Unity3D-FishingRodMotion, not downloaded from
-mixamo.com); now the sheet, its skeleton and the struggle sheet
-come from KayKit and UAL only. (The water ghost is the user's own zombie
-model, which came rigged to Mixamo's skeleton; its motion is UAL2's.)
+The Mixamo clips came from github.com/Kevin-Kwan/Unity3D-FishingRodMotion,
+not from mixamo.com; to be clean for a commercial release, download the
+same three (Y Bot: Idle, Standard Run, Fishing Cast; FBX, With Skin, 60
+fps) with your own Adobe account and keep that record - the sheets render
+from them unchanged. Everything else is CC0, and the skeleton the sheets
+pose is UAL's. (The water ghost is the user's own zombie model, which came
+rigged to Mixamo's skeleton; its motion is UAL2's.)
 
 ActionForge (actionforge.app) serves the same Quaternius UAL1 + UAL2 clips
 (84, CC0) with in-browser tools to blend, pose, mirror and export them -

@@ -12,11 +12,14 @@ it's behind the body - in the left hand while fishing, across the back
 otherwise. The game draws whichever rod is bought from that data
 (scripts/held_rod.gd), so rod tiers don't need sheets of their own.
 
-The clips (all baked to FRAMES poses; KayKit's names):
-  idle      Idle_B (breathing)
-  run       Running_A
-  cast      Fishing_Cast: winding back (0-3, follows the charge) to the top
-            of the backswing, the whip and follow-through (4-7)
+The clips (all baked to FRAMES poses; KayKit's names - and, user request,
+the idle, the run and the long cast kept as they were: Mixamo's, MIXAMO_DIR):
+  idle      Mixamo's Idle, ping-ponged over its first 2 s (breathing)
+  run       Mixamo's Standard Run
+  cast      Mixamo's Fishing Cast 31-140, two-handed (a long cast): winding
+            back (0-3, follows the charge), the whip and follow-through (4-7)
+  cast_short  Fishing_Cast, one-handed (a short cast): winding back to the
+            top of the backswing, the whip
   hold      Fishing_Idle, waiting
   busy      idle bent forward, rummaging
   reel      Fishing_Reeling
@@ -41,6 +44,9 @@ to land one.
 
   python tools/render_player.py OUT_PREFIX [--density 2]
       PLAYER=<animal> GREYBOX_DIR=<build>   (owl_character.player_files)
+      MIXAMO_DIR=<dir>   Y_Bot@idle.fbx, Y_Bot@standard_run.fbx and
+                         Fishing Cast.fbx (not in the repo: Mixamo's raw
+                         files may not be passed on)
 
 Writes OUT_PREFIX_albedo.png (density x), OUT_PREFIX_normal.png (original
 density: see scripts/art.gd) and OUT_PREFIX_rod.json, and prints the cell
@@ -72,11 +78,15 @@ PAD = 0.08
 SCALE = 1.4337
 FRAMES = 8
 DIRS = ["down", "down_left", "left", "up_left", "up", "up_right", "right", "down_right"]
-CLIPS = ["idle", "run", "cast", "hold", "busy", "reel", "fight", "hold_run", "bite", "tug", "catch"]
-HAND_CLIPS = {"cast", "hold", "reel", "fight", "hold_run", "bite", "tug", "catch"}
-# The KayKit clip each comes from: (file, clip, loops).
-SOURCES = {"idle": ("general", "Idle_B", True), "run": ("move", "Running_A", True),
-           "cast": ("tools", "Fishing_Cast", False), "hold": ("tools", "Fishing_Idle", True),
+CLIPS = ["idle", "run", "cast", "hold", "busy", "reel", "fight", "hold_run", "bite", "tug", "catch", "cast_short"]
+HAND_CLIPS = {"cast", "hold", "reel", "fight", "hold_run", "bite", "tug", "catch", "cast_short"}
+# The clip each comes from: (KayKit file, clip, loops) - or ("mixamo",
+# file, (first, last) source frames, step): user request, the idle, the run
+# and the long cast (two-handed) kept as they were, Mixamo's (MIXAMO_DIR,
+# kaykit.load_mixamo); the short cast KayKit's one-handed one.
+SOURCES = {"idle": ("mixamo", "Y_Bot@idle.fbx", (1, 121), 2), "run": ("mixamo", "Y_Bot@standard_run.fbx", None, 1),
+           "cast": ("mixamo", "Fishing Cast.fbx", (31, 140), 1),
+           "cast_short": ("tools", "Fishing_Cast", False), "hold": ("tools", "Fishing_Idle", True),
            "reel": ("tools", "Fishing_Reeling", True), "fight": ("tools", "Fishing_Struggling", True),
            "bite": ("tools", "Fishing_Bite", True), "tug": ("tools", "Fishing_Tug", False),
            "catch": ("tools", "Fishing_Catch", False)}
@@ -96,6 +106,7 @@ ROD_ANGLES = {
     "tug": [20, 48, 72, 80, 78, 72, 64, 56],
     "catch": [56, 68, 78, 84, 82, 74, 60, 44],
 }
+ROD_ANGLES["cast_short"] = ROD_ANGLES["cast"]
 # (--grip, user request round 6: the fight reads as the fish pulling.) Not
 # cranking - through a run the drag gives line - but braced on the reel,
 # leaning back (deg, - = back), yanked forward at frame 1 (the rod dipped
@@ -132,11 +143,19 @@ def load():
     meshes = owl_character.player(arm, "ual", [])
     libs = {}
     src = {}
-    for name, (kind, clip, _loops) in SOURCES.items():
-        if kind not in libs:
-            libs[kind] = kaykit.load_source(kaykit.path(kind))
+    for name, spec in SOURCES.items():
         # (the hips kept over the feet - the sprite's origin: any travel,
         # the struggle's stepping too, is the game's to do)
+        if spec[0] == "mixamo":
+            _, fbx, span, step = spec
+            lib = kaykit.load_mixamo(os.path.join(os.environ["MIXAMO_DIR"], fbx), "mx_" + name)
+            libs["mx_" + name] = lib
+            src[name] = kaykit.bake(arm, lib, "mx_" + name, name="src_" + name, lift=0.0, rig="mixamo",
+                                    span=span, step=step)
+            continue
+        kind, clip, _loops = spec
+        if kind not in libs:
+            libs[kind] = kaykit.load_source(kaykit.path(kind))
         src[name] = kaykit.bake(arm, libs[kind], clip, name="src_" + name, lift=0.0)
     for lib in libs.values():
         bpy.data.objects.remove(lib, do_unlink=True)
@@ -176,6 +195,10 @@ def turned(arm, pose, bone, axis_world, deg):
     return out
 
 
+def pingpong(a, b):
+    return [a + (b - a) * t for t in (0, 0.25, 0.5, 0.75, 1, 0.75, 0.5, 0.25)]
+
+
 def frames_of(act, loop=True, start=0.0):
     """FRAMES frames spread over an action keyed 1..N: a loop's last key
     (its first again) left out, beginning `start` frames in (wrapping)."""
@@ -209,8 +232,9 @@ def run_pace(arm, act):
         if prev is not None and prev[0] == side:
             speeds.append(abs(y - prev[1]) * kaykit.FPS)
         prev = (side, y)
-    per_s = float(np.median(speeds)) if speeds else 0.0
-    cycle = (e - s) / kaykit.FPS
+    fps = bpy.context.scene.render.fps / bpy.context.scene.render.fps_base
+    per_s = float(np.median(speeds)) * fps / kaykit.FPS if speeds else 0.0
+    cycle = (e - s) / fps
     # (the game plays the run's FRAMES at 10.9 a second)
     return per_s * cycle * DENSITY / (FRAMES / 10.9)
 
@@ -230,10 +254,16 @@ def build_clips(arm, src, two_hands=True):
         return [capture(arm, src[name], f) for f in frames]
 
     poses = {name: take(name, frames_of(src[name], SOURCES[name][2]))
-             for name in ("idle", "run", "hold", "reel", "bite", "tug", "catch")}
-    # The cast: up to the top of the backswing (the rod hand highest) with
-    # the charge, then the whip.
-    cast = src["cast"]
+             for name in ("hold", "reel", "bite", "tug", "catch")}
+    # Mixamo's (as they were): the idle ping-ponged over its first 2 s (its
+    # keys every other frame), the run round its loop, the long cast Fishing
+    # Cast's frames 31-140 (winding back, the whip, the follow-through).
+    poses["idle"] = take("idle", pingpong(1, src["idle"].frame_range[1]))
+    poses["run"] = take("run", frames_of(src["run"], True))
+    poses["cast"] = take("cast", [f - 30 for f in (31, 49, 67, 85, 100, 110, 122, 140)])
+    # The short cast (KayKit's, one-handed): up to the top of the backswing
+    # (the rod hand highest) with the charge, then the whip.
+    cast = src["cast_short"]
     s, e = (int(v) for v in cast.frame_range)
     zs = {}
     for f in range(s, e + 1):
@@ -242,8 +272,8 @@ def build_clips(arm, src, two_hands=True):
     peak = max(range(s, s + int((e - s) * 0.75) + 1), key=lambda f: zs[f])
     wind = [s + (peak - s) * t for t in (0.0, 0.4, 0.75, 1.0)]
     whip = [peak + (e - peak) * t for t in (0.2, 0.42, 0.68, 1.0)]
-    print("cast: top of the backswing at %d of %d-%d" % (peak, s, e), flush=True)
-    poses["cast"] = take("cast", wind + whip)
+    print("short cast: top of the backswing at %d of %d-%d" % (peak, s, e), flush=True)
+    poses["cast_short"] = take("cast_short", wind + whip)
     # The fight: its hardest pull forward (the chest leant furthest toward
     # the fish) at frame 1 - where the game jolts the body (YANK_FRAME).
     fight = src["fight"]
@@ -267,7 +297,8 @@ def build_clips(arm, src, two_hands=True):
 
     poses["hold"] = [toward(p, poses["reel"][0], HOLD_SETTLE) for p in poses["hold"]]
     for i, k in ((6, 1 / 3), (7, 2 / 3)):
-        poses["cast"][i] = toward(poses["cast"][i], poses["reel"][0], HOLD_SETTLE * k)
+        for c in ("cast", "cast_short"):
+            poses[c][i] = toward(poses[c][i], poses["reel"][0], HOLD_SETTLE * k)
     poses["busy"] = [lean(p, 30.0 + 5.0 * math.sin(i / FRAMES * math.tau)) for i, p in enumerate(poses["idle"])]
     hold_top = poses["hold"][2]
     poses["hold_run"] = [{b: (hold_top[b] if b in upper else p[b]) for b in p} for p in poses["run"]]
@@ -761,10 +792,10 @@ def grip_clips(arm, mesh, clips, character):
     # frame needed it), and one for waiting, reeling and the fight together
     # (user request, round 5: the game cuts between them - the rod kept
     # its line across the cut)
-    sides = {name: clear_side([name]) for name in ("cast", "hold_run", "catch")}
+    sides = {name: clear_side([name]) for name in ("cast", "cast_short", "hold_run", "catch")}
     shared = clear_side(SHARED_SIDE)
     sides.update({name: shared for name in SHARED_SIDE})
-    for name in ("hold", "reel", "fight", "hold_run", "cast", "bite", "tug", "catch"):
+    for name in ("hold", "reel", "fight", "hold_run", "cast", "cast_short", "bite", "tug", "catch"):
         side = sides[name]
         rows = []
         for f in range(1, FRAMES + 1):
@@ -782,18 +813,19 @@ def grip_clips(arm, mesh, clips, character):
     # hold's first - its other hand coming to the knob
     rs.set_pose(clips["hold"], 1)
     held = {pb.name: (pb.location.copy(), pb.rotation_quaternion.copy()) for pb in arm.pose.bones}
-    for f, w in ((7, 1 / 3), (8, 2 / 3)):
-        rs.set_pose(clips["cast"], f)
-        for pb in arm.pose.bones:
-            loc, rot = held[pb.name]
-            pb.location = pb.location.lerp(loc, w)
-            pb.rotation_quaternion = pb.rotation_quaternion.slerp(rot, w)
-            pb.keyframe_insert("location", frame=f)
-            pb.keyframe_insert("rotation_quaternion", frame=f)
-        bpy.context.view_layer.update()
-        c, d = g.rod()
-        report["clips"]["cast"][f - 1]["through"] = rod_through(mesh, Vector(c), Vector(d))
-        report["clips"]["cast"][f - 1]["to_hold"] = round(w, 3)
+    for cast in ("cast", "cast_short"):
+        for f, w in ((7, 1 / 3), (8, 2 / 3)):
+            rs.set_pose(clips[cast], f)
+            for pb in arm.pose.bones:
+                loc, rot = held[pb.name]
+                pb.location = pb.location.lerp(loc, w)
+                pb.rotation_quaternion = pb.rotation_quaternion.slerp(rot, w)
+                pb.keyframe_insert("location", frame=f)
+                pb.keyframe_insert("rotation_quaternion", frame=f)
+            bpy.context.view_layer.update()
+            c, d = g.rod()
+            report["clips"][cast][f - 1]["through"] = rod_through(mesh, Vector(c), Vector(d))
+            report["clips"][cast][f - 1]["to_hold"] = round(w, 3)
     return g, hands, report
 
 

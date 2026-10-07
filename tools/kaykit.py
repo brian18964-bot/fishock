@@ -89,20 +89,30 @@ def _feet_z(arm):
     return min((mw @ arm.pose.bones["%s_%s" % (b, s)].head).z for b in ("foot", "ball") for s in ("l", "r"))
 
 
-def bake(arm, src_arm, clip, name=None, mirror=True, lift=1.0, step=1.0, straighten=STRAIGHTEN):
+def bake(arm, src_arm, clip, name=None, mirror=True, lift=1.0, step=1.0, straighten=STRAIGHTEN,
+         rig="kaykit", span=None):
     """`clip` carried onto `arm` (UAL, the character bound) and keyed, one
-    key a source frame (every `step` frames), from frame 1: returns the
-    action. lift scales the hips' sway and drift; the legs are straightened
-    (`straighten`, see STRAIGHTEN) and the hips set so the lower foot stays
-    on the ground where it stands at rest."""
-    act_name = action_name(src_arm, clip)
+    key a source frame (every `step` frames; only source frames `span`, if
+    given), from frame 1: returns the action. lift scales the hips' sway and
+    drift; the legs are straightened (`straighten`, see STRAIGHTEN) and the
+    hips set so the lower foot stays on the ground where it stands at rest.
+    rig "mixamo": the source is a Mixamo clip (load_mixamo) - not mirrored,
+    nor straightened (a grown-up's proportions)."""
+    if rig == "mixamo":
+        bone_map, limbs, hips_bone = MIXAMO_MAP, MIXAMO_LIMBS, "mixamorig:Hips"
+        act_name = clip
+    else:
+        bone_map, limbs, hips_bone = MAP, LIMBS, "hips"
+        act_name = action_name(src_arm, clip)
     src_act = next(a for a in bpy.data.actions if a.name.split("|")[-1] == act_name)
-    s, e = src_act.frame_range
+    s, e = span or src_act.frame_range
     n = max(int(round((e - s) / step)) + 1, 2)
-    bones = list(MAP)
-    c = retarget.Clip(src_arm, act_name, bones, n, loop=False, ref="rest")
-    # The hips' motion scaled from KayKit's mannequin to the character.
-    src_hips = (src_arm.matrix_world @ src_arm.data.bones["hips"].head_local).z
+    bones = list(bone_map)
+    c = retarget.Clip(src_arm, act_name, bones, n, loop=False, ref="rest",
+                      span=((s - src_act.frame_range[0]) / max(src_act.frame_range[1] - src_act.frame_range[0], 1e-6),
+                            (e - src_act.frame_range[0]) / max(src_act.frame_range[1] - src_act.frame_range[0], 1e-6)))
+    # The hips' motion scaled from the source's mannequin to the character.
+    src_hips = (src_arm.matrix_world @ src_arm.data.bones[hips_bone].head_local).z
     tgt_hips = (arm.matrix_world @ arm.data.bones["pelvis"].head_local).z
     k = tgt_hips / max(src_hips, 1e-6) * lift
     ad = arm.animation_data or arm.animation_data_create()
@@ -120,18 +130,19 @@ def bake(arm, src_arm, clip, name=None, mirror=True, lift=1.0, step=1.0, straigh
     poses = []
     for i in range(n):
         deltas, dirs, off = c.delta(i), c.dirs(i), c.offset(i)
-        if mirror:
+        if mirror and rig != "mixamo":
             deltas = {_other(b): _mirror_q(q) for b, q in deltas.items()}
             dirs = {_other(b): _mirror_v(v) for b, v in dirs.items()}
             off = _mirror_v(off)
-        aim = {b: v for b, v in dirs.items() if b in LIMBS}
-        for b in aim:
-            if b.split(".")[0] in LEGS:
-                aim[b] = aim[b].normalized().lerp(down, straighten).normalized()
+        aim = {b: v for b, v in dirs.items() if b in limbs}
+        if rig != "mixamo":
+            for b in aim:
+                if b.split(".")[0] in LEGS:
+                    aim[b] = aim[b].normalized().lerp(down, straighten).normalized()
         off = Vector((off.x * k, off.y * k, 0.0))
-        retarget.apply(arm, deltas, MAP, 1.0, aim=aim, offset=off)
+        retarget.apply(arm, deltas, bone_map, 1.0, aim=aim, offset=off)
         off.z = ground - _feet_z(arm)
-        retarget.apply(arm, deltas, MAP, 1.0, aim=aim, offset=off)
+        retarget.apply(arm, deltas, bone_map, 1.0, aim=aim, offset=off)
         poses.append({pb.name: (pb.location.copy(), pb.rotation_quaternion.copy()) for pb in arm.pose.bones})
     act = bpy.data.actions.new(name or clip)
     act.use_fake_user = True
@@ -201,3 +212,29 @@ def rename_to_mixamo(arm):
         for g in act.groups:
             if g.name in TO_MIXAMO:
                 g.name = TO_MIXAMO[g.name]
+
+
+# ---------------------------------------------------------------- Mixamo
+# (User request: the idle, the run and the long two-handed cast kept as
+# they were - Mixamo's Y Bot clips, Y_Bot@idle, Y_Bot@standard_run and
+# Fishing Cast, from MIXAMO_DIR; not in the repo: Mixamo's raw files may
+# not be passed on.)
+MIXAMO_MAP = {v: k for k, v in TO_MIXAMO.items()
+              if not any(f in v for f in ("Thumb", "Index", "Middle", "Ring", "Pinky", "Toe_End"))}
+MIXAMO_LIMBS = {b for b in MIXAMO_MAP
+                if any(b.endswith(x) for x in ("Arm", "ForeArm", "Hand", "UpLeg", "Leg", "Foot", "ToeBase"))}
+
+
+def load_mixamo(fbx, name):
+    """Imports a Mixamo .fbx; returns its armature (its mesh hidden), its
+    clip renamed `name`."""
+    before_o, before_a = set(bpy.data.objects), set(bpy.data.actions)
+    bpy.ops.import_scene.fbx(filepath=fbx)
+    new = set(bpy.data.objects) - before_o
+    for o in new:
+        if o.type != "ARMATURE":
+            o.hide_render = True
+            o.hide_viewport = True
+    act = next(a for a in bpy.data.actions if a not in before_a)
+    act.name = name
+    return next(o for o in new if o.type == "ARMATURE")
