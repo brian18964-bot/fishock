@@ -8,7 +8,8 @@ kind's colour, a dark edge round it. 128x128, shown at 64 or less.
 
 Writes assets/sprites/icons/<name>.png - rod_0..rod_4, flashlight,
 battery, lamp, worm, cricket, shrimp, minnow, tea, roll, loaf, cheese,
-potion_vigor, potion_ward, eyeball, binoculars,
+potion_vigor, potion_ward, eyeball, binoculars, eye_altar, eye_ghost, net,
+rat, snake, crab, bee, black_spider,
 frog, spider, knife, machete, hatchet, glock, ammo, tent_1..tent_9,
 lure_1..lure_6, and throw (the 誘惑 action button) (Items.square_icon()
 maps the things' ids onto these).
@@ -60,6 +61,17 @@ THINGS = {
     "potion_ward": dict(model="items/potion_ward.glb", turn=(12, 0, 20), fill=0.86, ground=TACKLE),
     "eyeball": dict(model="items/eyeball.glb", turn=(10, 0, -105), fill=0.8, ground=ITEM),
     "binoculars": dict(model="items/binoculars.glb", turn=(15, 0, 30), fill=0.92, ground=GEAR),
+    # Round 8: the eye that shows the altar, the one that sees the ghosts;
+    # the net; and the live baits only caught on the map (their own
+    # critter models, posed - tools/prep_shop_models.py).
+    "eye_altar": dict(model="items/eye_altar.glb", turn=(10, 0, -105), fill=0.8, ground=ABILITY),
+    "eye_ghost": dict(model="items/eye_ghost.glb", turn=(10, 0, -105), fill=0.8, ground=TACKLE),
+    "net": dict(model="items/net.glb", turn=(0, -40, 0), fill=1.0, ground=GEAR),
+    "rat": dict(model="items/rat.glb", turn=(20, 0, 35), fill=0.9, ground=BAIT),
+    "snake": dict(model="items/snake.glb", turn=(70, 0, 20), fill=0.95, ground=BAIT),
+    "crab": dict(model="items/crab.glb", turn=(30, 0, 20), fill=0.86, ground=BAIT),
+    "bee": dict(model="items/bee.glb", turn=(20, 0, 35), fill=0.86, ground=BAIT),
+    "black_spider": dict(model="items/black_spider.glb", turn=(35, 0, 25), fill=0.9, ground=BAIT),
     # The merchant's tea (Camp v2): had at once, for spirit.
     # User request: the tea served in the user's cup.
     "tea": dict(model="items/cup.glb", turn=(28, 0, -30), fill=0.8, ground=ITEM),

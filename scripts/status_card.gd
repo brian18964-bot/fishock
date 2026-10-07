@@ -125,6 +125,9 @@ static func conditions(p: Player) -> Array:
 		out.append(["中毒了，腳步沉重（%d 秒）" % ceili(p.poison_timer), WARN])
 	if p.carrying_oil_drum:
 		out.append(["提著油箱", DIM])
+	# Round 8: the landing net in hand.
+	if p.net_out:
+		out.append(["手持撈網", DIM])
 	# User request (round 7): what's been drunk, while it lasts.
 	if p.ward_timer > 0.0:
 		out.append(["驅鬼 %d 秒" % ceili(p.ward_timer), GOOD])

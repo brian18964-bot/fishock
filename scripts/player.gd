@@ -82,12 +82,20 @@ const DOCK_WATER_GHOST_MULT := 0.35
 const ANIMAL_ATTACK_DEBUFF_DURATION := 2.5
 const WATER_GHOST_SPEED_MULT := 0.55
 ## User request (the black spider): its bite sometimes poisons - a big
-## slow-down for a while (no wobble, just heavy legs).
-const POISON_CHANCE := 0.35
+## slow-down for a while (no wobble, just heavy legs). Round 8: a snake's
+## bite or a bee's sting too - how likely is the critter's (Critter.venom()).
 const POISON_TIME := 8.0
 const POISON_SPEED_MULT := 0.4
 ## A black spider caught is worth this many baits (the risk's reward).
 const BLACK_SPIDER_BAIT := 2
+## Round 8 (user request): the landing net in hand (net_out, worn in
+## Profile's net slot) reaches a critter NET_REACH px off (bare-handed:
+## standing on it) and halves the chance it bites or stings.
+const NET_REACH := 46.0
+const NET_VENOM_MULT := 0.5
+## Round 8 (user request): what turns up under a rock or drops from a tree
+## goes in the bag as a live bait (Profile.LIVE_BAITS) - by its flavor.
+const FOUND_BAIT := {"蚯蚓": "worm", "蟲子": "cricket", "青蛙": "frog"}
 ## A weapon that defends (Profile.WEAPONS): the stagger it leaves.
 const PARRY_DEBUFF_DURATION := 0.8
 ## Chopping: how close to a trunk.
@@ -172,9 +180,11 @@ var poison_timer: float = 0.0
 ## times as fast, the line's tension building VIGOR_STRAIN as fast in a
 ## fight. The ghost-ward potion: WARD_TIME s that no ghost comes within
 ## WARD_RADIUS (the big one can't grab, the floating ones give up, the
-## water ghost won't rise). The eyeball and the binoculars: GuideArrow
-## pointing at the altar / the 渡石 for GUIDE_TIME s; the binoculars aren't
-## used up, but wait BINOCULARS_COOLDOWN s after.
+## water ghost won't rise). The eyes and the binoculars: GuideArrow
+## pointing for GUIDE_TIME s - round 8 (user request): the eyeball at the
+## 渡石, the golden eye (eye_altar) at the altar, the ghost eye at the
+## nearest ghost (following it), the binoculars at the nearest water; the
+## binoculars aren't used up, but wait BINOCULARS_COOLDOWN s after.
 const VIGOR_TIME := 45.0
 const VIGOR_SPEED := 1.3
 const VIGOR_STRAIN := 0.75
@@ -184,10 +194,17 @@ const GUIDE_TIME := 20.0
 const BINOCULARS_COOLDOWN := 60.0
 const ALTAR_GUIDE := Color(1.0, 0.5, 0.42)
 const STONE_GUIDE := Color(0.45, 1.0, 0.85)
+const GHOST_GUIDE := Color(0.72, 0.6, 1.0)
+const WATER_GUIDE := Color(0.45, 0.75, 1.0)
+## The binoculars look past the water you're standing at (this close) to
+## the next, if there's another.
+const BINOCULARS_SKIP := 60.0
 var vigor_timer := 0.0
 var ward_timer := 0.0
 var binoculars_cooldown := 0.0
 var guide: GuideArrow
+## Round 8: the landing net in hand (the weapon put away) - see NET_REACH.
+var net_out := false
 ## What the HUD warning names while water_ghost_timer runs - the water
 ## ghost, or an animal that caught up with you (see animal_attack()).
 var affliction_text: String = "水鬼異常狀態中"
@@ -417,6 +434,8 @@ func reset_gear() -> void:
 	lure_stock = Profile.consume_loadout_lures()
 	_sync_lures()
 	fishing_mode = FishingMode.BOBBER
+	# The net in hand to start with when there's no weapon to hold instead.
+	net_out = Profile.has_net() and Profile.weapon.is_empty()
 	max_cast_dist = MAX_CAST_DIST + Profile.get_upgrade_bonus("rod_distance")
 	reel_power_mult = 1.0 + Profile.get_upgrade_bonus("reel_power")
 	_force_drop_oil_drum()
@@ -651,26 +670,84 @@ func use_item(id: String) -> bool:
 				ghost.repel()
 			GameState.report("喝下驅鬼藥水：鬼魂近不了身", "good")
 		"eyeball":
+			var stone: Node2D = get_tree().current_scene.get_node_or_null("EscapePoint")
+			if stone == null:
+				return false
+			Profile.bag_take(id, 1)
+			guide.show_to(stone.global_position, "渡石", STONE_GUIDE, GUIDE_TIME)
+			GameState.report("眼球轉了過去，盯著渡石的方向", "info")
+		"eye_altar":
 			var altar: Node2D = get_tree().current_scene.get_node_or_null("Altar")
 			if altar == null:
 				return false
 			Profile.bag_take(id, 1)
 			guide.show_to(altar.global_position, "祭壇", ALTAR_GUIDE, GUIDE_TIME)
-			GameState.report("眼球轉了過去，盯著祭壇的方向", "info")
+			GameState.report("金色的眼睛亮了起來，盯著祭壇的方向", "info")
+		"eye_ghost":
+			var ghost := nearest_ghost()
+			if ghost == null:
+				GameState.report("眼睛四處張望……附近看不見鬼", "info")
+				return false
+			Profile.bag_take(id, 1)
+			guide.show_to(ghost.global_position, "鬼", GHOST_GUIDE, GUIDE_TIME)
+			guide.track = func():
+				var g := nearest_ghost()
+				return g.global_position if g != null else null
+			GameState.report("眼裡浮出一縷白霧，看見了鬼的方向", "info")
 		"binoculars":
 			if binoculars_cooldown > 0.0:
 				GameState.report("望遠鏡的鏡片還起著霧（%d 秒）" % ceili(binoculars_cooldown), "warn")
 				return false
-			var stone: Node2D = get_tree().current_scene.get_node_or_null("EscapePoint")
-			if stone == null:
+			var water := nearest_water()
+			if water.is_empty():
 				return false
 			binoculars_cooldown = GUIDE_TIME + BINOCULARS_COOLDOWN
-			guide.show_to(stone.global_position, "渡石", STONE_GUIDE, GUIDE_TIME)
-			GameState.report("用望遠鏡望見了渡石", "info")
+			guide.show_to(water.at, water.name, WATER_GUIDE, GUIDE_TIME)
+			GameState.report("用望遠鏡望見了%s" % water.name, "info")
 		_:
 			return false
 	Sfx.play("ui_open", -8.0)
 	return true
+
+
+## The nearest ghost about (a floating one or the big one), or null.
+func nearest_ghost() -> Node2D:
+	var best: Node2D = null
+	var best_d := INF
+	for group in ["ghosts", "big_ghost"]:
+		for g in get_tree().get_nodes_in_group(group):
+			var ghost := g as Node2D
+			if ghost == null or not ghost.is_inside_tree() or not ghost.visible:
+				continue
+			var d := global_position.distance_to(ghost.global_position)
+			if d < best_d:
+				best = ghost
+				best_d = d
+	return best
+
+
+## The binoculars' find: the nearest water's nearest shore {at, name} -
+## past the water you're standing at when there's another; {} for none.
+func nearest_water() -> Dictionary:
+	var finds := []
+	for zone in get_tree().get_nodes_in_group("water_zones"):
+		var best := Vector2.ZERO
+		var best_d := INF
+		for poly in zone.outline:
+			for i in poly.size():
+				var q := Geometry2D.get_closest_point_to_segment(global_position, poly[i], poly[(i + 1) % poly.size()])
+				var d := global_position.distance_to(q)
+				if d < best_d:
+					best = q
+					best_d = d
+		if best_d < INF:
+			finds.append({"at": best, "d": best_d, "name": "稀有水域" if zone.is_rare() else "水域"})
+	if finds.is_empty():
+		return {}
+	finds.sort_custom(func(a, b): return a.d < b.d)
+	if finds.size() > 1 and finds[0].d < BINOCULARS_SKIP:
+		return finds[1]
+	return finds[0]
 
 
 ## User request: a floating ghost passing through the player leaves them
@@ -680,6 +757,28 @@ func ghost_confuse(duration: float) -> void:
 	affliction_text = "被鬼纏過，頭昏眼花"
 
 
+## The weapon in hand (Profile.WEAPONS entry; {} with none worn, or while
+## the net's held instead).
+func held_weapon() -> Dictionary:
+	return {} if net_out else Profile.weapon
+
+
+## Round 8 (user request): takes the net in hand (the weapon put away) or
+## puts it back; false if there's no net worn.
+func set_net_out(on: bool) -> bool:
+	if on and not Profile.has_net():
+		return false
+	if on == net_out:
+		return true
+	net_out = on
+	if on:
+		GameState.report("拿起撈網：抓活餌更方便%s" % ("（%s收起來了）" % Profile.weapon.name if not Profile.weapon.is_empty() else ""), "info")
+	else:
+		GameState.report("收起撈網%s" % ("，改拿%s" % Profile.weapon.name if not Profile.weapon.is_empty() else ""), "info")
+	Sfx.play("ui_click", -8.0)
+	return true
+
+
 ## User decision: wolves and the meat-eating dinosaurs chase the player
 ## (see Critter); one that catches up knocks a carried fish to the ground
 ## (it can be picked back up, like a G-dropped one), snaps the line if
@@ -687,12 +786,12 @@ func ghost_confuse(duration: float) -> void:
 func animal_attack(attacker: String) -> void:
 	# User request (weapons): a blade worn turns the pounce aside - a short
 	# stagger, nothing knocked loose, the line kept.
-	if Profile.weapon.get("defend", false):
+	if held_weapon().get("defend", false):
 		water_ghost_timer = maxf(water_ghost_timer, PARRY_DEBUFF_DURATION)
 		affliction_text = "擋下了%s的撲擊" % attacker
 		Sfx.play_at("swipe_hit", global_position, -4.0)
 		Campaign.stat("parry")
-		GameState.push_message("%s撲上來，你揮出%s擋開了牠！" % [attacker, Profile.weapon.name])
+		GameState.push_message("%s撲上來，你揮出%s擋開了牠！" % [attacker, held_weapon().name])
 		GameState.report("揮刀擋開了%s" % attacker)
 		return
 	water_ghost_timer = maxf(water_ghost_timer, ANIMAL_ATTACK_DEBUFF_DURATION)
@@ -1016,6 +1115,9 @@ func _physics_process(delta: float) -> void:
 	_handle_mode_toggle()
 	_handle_shop_input()
 	_handle_drop_input()
+	# Round 8: N takes the net in hand or puts it away (also from the bag).
+	if _key_just_pressed(KEY_N) and Profile.has_net():
+		set_net_out(not net_out)
 	_update_lure_throw(get_physics_process_delta_time())
 	_handle_action_input(delta)
 
@@ -1246,8 +1348,9 @@ func interaction() -> Dictionary:
 		return _offer(_oil_drum, "油箱", "提起", false, -30.0)
 	if in_dropped_fish_zone and is_instance_valid(_dropped_fish):
 		return _offer(_dropped_fish, _dropped_fish.label.text, "撿回", false, -22.0)
-	if in_critter_zone and _critter != null and _critter.active:
-		return _offer(_critter, _critter.get_label(), "抓餌", false, -20.0)
+	var critter := reachable_critter()
+	if critter != null:
+		return _offer(critter, critter.get_label(), "抓餌", false, -20.0)
 	# User request: once the quota's met, Willow (before the altar) can be
 	# talked to - it tells what offerings turned up.
 	var willow := get_tree().get_first_node_in_group("willow") as Node2D
@@ -1264,7 +1367,7 @@ func interaction() -> Dictionary:
 ## User request (the hatchet and the machete): the nearest tree in reach
 ## that can be chopped, with a chopping weapon worn; null otherwise.
 func choppable_tree() -> MapTree:
-	if int(Profile.weapon.get("chop", 0)) <= 0:
+	if int(held_weapon().get("chop", 0)) <= 0:
 		return null
 	var best: MapTree = null
 	var best_d := CHOP_REACH
@@ -1459,43 +1562,87 @@ func _pick_up_dropped_fish() -> void:
 		GameState.push_message("撿回了%s（新鮮度打折，價值 %.0f）" % [fish.get("name", "魚"), fish.value])
 
 
-func _catch_critter() -> void:
-	if not Inventory.fits_bait(self, 1):
-		GameState.push_message("背包滿了，放不下餌料")
-		return
-	var label: String = _critter.get_label()
-	var venomous: bool = _critter.is_venomous()
-	var flavor: String = _critter.catch()
-	_critter = null
-	in_critter_zone = false
-	if venomous:
-		_catch_black_spider(label, flavor)
-		return
-	bait_count += 1
-	pending_bait_flavor = flavor
-	Campaign.stat("grab_bait")
-	GameState.push_message("抓到了%s，當作一份餌料！（下一竿餌料：%s）" % [label, flavor])
+## The critter a catch would take: the one stood on, or with the net in
+## hand the nearest within NET_REACH; null if none.
+func reachable_critter() -> Critter:
+	if in_critter_zone and _critter != null and is_instance_valid(_critter) and _critter.active:
+		return _critter
+	if not net_out:
+		return null
+	var best: Critter = null
+	var best_d := NET_REACH
+	for c in get_tree().get_nodes_in_group("critters"):
+		var critter := c as Critter
+		if critter == null or not critter.active or not critter.visible:
+			continue
+		var d := global_position.distance_to(critter.global_position)
+		if d < best_d:
+			best = critter
+			best_d = d
+	return best
 
 
-## User request: the black spider is good bait (BLACK_SPIDER_BAIT of it)
-## but may bite - poison, a big slow-down for POISON_TIME.
-func _catch_black_spider(label: String, flavor: String) -> void:
+## Room in the bag for `count` more of live bait `key`: topping up its
+## stacks, or a new cell.
+func _room_for_live(key: String, count := 1) -> bool:
+	var id := "live_" + key
 	var room := 0
-	for i in BLACK_SPIDER_BAIT:
-		if Inventory.fits_bait(self, room + 1):
-			room += 1
-	bait_count += maxi(room, 1)
-	pending_bait_flavor = flavor
+	for e in Profile.bag:
+		if e.id == id:
+			room += Items.stack_of(id) - int(e.count)
+	if room >= count:
+		return true
+	return Inventory.fits_with(self, [{"kind": "live", "size": Items.size_of(id)}])
+
+
+## Puts `count` of live bait `key` in the bag (round 8, user request: what's
+## caught or found on the map is a real live bait); how many went in. Hooked
+## at once if it's a float with no live bait on.
+func pocket_live_bait(key: String, count := 1) -> int:
+	var n := 0
+	for i in count:
+		if not _room_for_live(key):
+			break
+		n += Profile.bag_put("live_" + key, 1)
+	if n > 0 and live_bait == "" and fishing_mode == FishingMode.BOBBER and state == State.IDLE:
+		live_bait = key
+	return n
+
+
+## Catches the critter in reach (reachable_critter()) into the bag as a
+## live bait - BLACK_SPIDER_BAIT of a black spider. One that bites or
+## stings (Critter.venom(); halved with the net) may poison.
+func _catch_critter() -> void:
+	var critter := reachable_critter()
+	if critter == null:
+		return
+	var key := critter.bait_key()
+	if not _room_for_live(key):
+		GameState.push_message("背包滿了，放不下%s" % critter.get_label())
+		return
+	var label: String = critter.get_label()
+	var venom: float = critter.venom() * (NET_VENOM_MULT if net_out else 1.0)
+	var stings: bool = critter.stings()
+	var many := BLACK_SPIDER_BAIT if critter.species == "black_spider" else 1
+	critter.catch()
+	if critter == _critter:
+		_critter = null
+		in_critter_zone = false
+	var got := pocket_live_bait(key, many)
 	Campaign.stat("grab_bait")
-	Campaign.stat("black_spider")
-	if randf() < POISON_CHANCE:
+	if critter.species == "black_spider":
+		Campaign.stat("black_spider")
+	var bait_name: String = Profile.LIVE_BAITS[key].name
+	var how := "用網子撈到了" if net_out else "抓到了"
+	if venom > 0.0 and randf() < venom:
 		poison_timer = POISON_TIME
 		Campaign.stat("poisoned")
 		Sfx.play("swipe_hit", -8.0)
-		GameState.push_message("抓到%s，卻被牠咬了一口——中毒了，腳步變得好沉重！（餌料 +%d）" % [label, maxi(room, 1)])
-		GameState.report("被%s咬到，中毒變慢" % label)
+		var hurt := "螫了一下" if stings else "咬了一口"
+		GameState.push_message("%s%s，卻被牠%s——中毒了，腳步變得好沉重！（%s +%d）" % [how, label, hurt, bait_name, got])
+		GameState.report("被%s%s，中毒變慢" % [label, hurt.substr(0, 1)])
 	else:
-		GameState.push_message("小心翼翼抓到了%s！（餌料 +%d，下一竿餌料：%s）" % [label, maxi(room, 1), flavor])
+		GameState.push_message("%s%s，放進背包當活餌（%s +%d）" % [how, label, bait_name, got])
 
 
 ## Turning a rock over (was: rummaging a roadside pile) only sometimes
@@ -1508,13 +1655,12 @@ func _turn_rock() -> void:
 	if result.get("spider", false):
 		Critter.spawn_black_spider(get_parent(), _rock.global_position + Vector2(0, -4), global_position)
 		GameState.push_message("石頭底下爬出一隻黑蜘蛛！抓不抓？牠可能會咬人")
-	if result.get("found", false) and not Inventory.fits_bait(self, 1):
-		GameState.push_message("石頭底下有%s，但背包滿了放不下" % result.get("flavor", "餌料"))
+	var key: String = FOUND_BAIT.get(result.get("flavor", ""), "worm")
+	if result.get("found", false) and not _room_for_live(key):
+		GameState.push_message("石頭底下有%s，但背包滿了放不下" % Profile.LIVE_BAITS[key].name)
 	elif result.get("found", false):
-		bait_count += 1
-		var flavor: String = result.get("flavor", "餌料")
-		pending_bait_flavor = flavor
-		GameState.push_message("石頭底下有%s，補充了一份餌料！（下一竿咬餌手感會不一樣）" % flavor)
+		pocket_live_bait(key)
+		GameState.push_message("石頭底下有%s，放進背包當活餌！" % Profile.LIVE_BAITS[key].name)
 	else:
 		GameState.push_message("石頭底下什麼都沒有")
 
@@ -1524,17 +1670,17 @@ func _turn_rock() -> void:
 func _chop_tree(tree: MapTree) -> void:
 	if tree == null:
 		return
-	var result: Dictionary = tree.chop(global_position, int(Profile.weapon.get("chop", 1)))
+	var result: Dictionary = tree.chop(global_position, int(held_weapon().get("chop", 1)))
 	Campaign.stat("chop_tree")
 	if result.get("spider", false):
 		Critter.spawn_black_spider(get_parent(), tree.global_position + Vector2(randf_range(-10, 10), 6), global_position)
 		GameState.push_message("樹上掉下一隻黑蜘蛛！")
-	elif result.get("found", false) and not Inventory.fits_bait(self, 1):
-		GameState.push_message("樹上掉下了%s，但背包滿了放不下" % result.get("flavor", "餌料"))
+	elif result.get("found", false) and not _room_for_live(FOUND_BAIT.get(result.get("flavor", ""), "cricket")):
+		GameState.push_message("樹上掉下了%s，但背包滿了放不下" % Profile.LIVE_BAITS[FOUND_BAIT.get(result.get("flavor", ""), "cricket")].name)
 	elif result.get("found", false):
-		bait_count += 1
-		pending_bait_flavor = str(result.get("flavor", ""))
-		GameState.push_message("樹上掉下了%s，補充了一份餌料！" % result.get("flavor", "餌料"))
+		var key: String = FOUND_BAIT.get(result.get("flavor", ""), "cricket")
+		pocket_live_bait(key)
+		GameState.push_message("樹上掉下了%s，放進背包當活餌！" % Profile.LIVE_BAITS[key].name)
 	else:
 		GameState.push_message("砍了幾下，什麼也沒掉下來")
 
@@ -1543,7 +1689,7 @@ func _chop_tree(tree: MapTree) -> void:
 ## bolts - using a round from the bag. The shot carries: the big ghost
 ## comes to look (BigGhost.hear). False with no pistol worn or no rounds.
 func shoot_at(beast: Node2D) -> bool:
-	if not Profile.weapon.get("gun", false) or Profile.bag_take("ammo", 1) != 1:
+	if not held_weapon().get("gun", false) or Profile.bag_take("ammo", 1) != 1:
 		return false
 	Sfx.play_at("gunshot", global_position, -2.0, 0.03)
 	Campaign.stat("gunshot")

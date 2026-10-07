@@ -38,6 +38,7 @@ const TESTS := [
 	"test_rod_bends_with_the_fish",
 	"test_characters",
 	"test_usable_items",
+	"test_live_bait_and_net",
 	"test_cast_only_near_water",
 	"test_walking_off_reels_in",
 	"test_fight_swipe",
@@ -1023,19 +1024,134 @@ func test_usable_items() -> void:
 	check(p.water_ghost_timer == 0.0 and get_tree().get_nodes_in_group("water_ghosts").is_empty(), "the water ghost doesn't rise")
 	check(Profile.bag_count("potion_ward") == 1, "one of the two drunk")
 
-	# The eyeball: the way to the altar; the binoculars: the 渡石.
-	var altar: Node2D = main.get_node("Altar")
-	check(p.use_item("eyeball") and p.guide.active() and p.guide.target == altar.global_position, "the eyeball points at the altar")
+	# Round 8 (user request): the eyeball shows the 渡石, the golden eye the
+	# altar, the ghost eye the nearest ghost (following it), the binoculars
+	# the nearest water.
+	var stone: Node2D = main.get_node("EscapePoint")
+	check(p.use_item("eyeball") and p.guide.active() and p.guide.target == stone.global_position, "the eyeball points at the 渡石")
 	check(Profile.bag_count("eyeball") == 1, "and is used up")
 	await seconds(0.2)
 	check(p.guide.visible, "the arrow shows")
-	var stone: Node2D = main.get_node("EscapePoint")
-	check(p.use_item("binoculars") and p.guide.target == stone.global_position, "the binoculars find the 渡石")
+	var altar: Node2D = main.get_node("Altar")
+	check(p.use_item("eye_altar") and p.guide.target == altar.global_position, "the golden eye points at the altar")
+	var ghost := p.nearest_ghost()
+	if ghost != null:
+		check(p.use_item("eye_ghost") and p.guide.target == ghost.global_position, "the ghost eye points at the nearest ghost")
+		ghost.global_position += Vector2(30, 0)
+		await frames(2)
+		var now := p.nearest_ghost()
+		check(now != null and p.guide.target.distance_to(now.global_position) < 4.0, "and follows it as it moves")
+	var water := p.nearest_water()
+	check(not water.is_empty(), "there's water to find")
+	check(p.use_item("binoculars") and p.guide.target == water.at, "the binoculars find the nearest water (%s)" % water.get("name", ""))
+	var on_shore: bool = water.d >= Player.BINOCULARS_SKIP or get_tree().get_nodes_in_group("water_zones").size() == 1
+	check(on_shore, "past the water you're standing at")
 	check(Profile.bag_count("binoculars") == 1, "and are kept")
 	check(not p.use_item("binoculars") and p.binoculars_cooldown > 0.0, "but need a while before the next look")
 	p.guide.time_left = 0.0
 	await frames(2)
 	check(not p.guide.visible, "the arrow goes when its time's up")
+	Profile.load_data(saved)
+	Profile._save()
+
+
+## Round 8 (user request): what's caught or found on the map goes in the
+## bag as a real live bait (the shrimp and the small fish only bought);
+## the landing net, worn in its slot and taken in hand in a run, catches
+## from further off and is bitten less; snakes and bees may poison too.
+func test_live_bait_and_net() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 1000})
+	for key in Critter.SPECIES:
+		var d: Dictionary = Critter.SPECIES[key]
+		if not d.get("ambient", false):
+			check(Profile.LIVE_BAITS.has(d.get("bait", "")), "a caught %s is a live bait (%s)" % [key, d.get("bait", "")])
+	check(Critter.SPECIES.grasshopper.bait == "cricket", "grasshoppers are caught on the map")
+	check(Critter.SPECIES.wasp.label == "蜜蜂", "the bee")
+	check(Critter.SPECIES.snake.get("venom", 0.0) > 0.0 and Critter.SPECIES.wasp.get("venom", 0.0) > 0.0,
+		"snakes and bees may poison")
+	for key in ["shrimp", "minnow"]:
+		check(Critter.SPECIES.values().all(func(d): return d.get("bait", "") != key), "%s: only bought" % key)
+	for key in ["rat", "snake", "crab", "bee", "black_spider"]:
+		var id: String = "live_" + key
+		check(not Profile.LIVE_BAITS[key].get("shop", true), "%s isn't sold" % key)
+		check(ResourceLoader.exists(Items.model_path(id)) and Items.square_icon(id) != null and Items.icon(id) != null,
+			"%s: its model and icons" % id)
+	for f in FlipRock.BAIT_FLAVORS + MapTree.CHOP_BAIT:
+		check(Player.FOUND_BAIT.has(f), "a %s found is a live bait" % f)
+	check(load("res://scripts/equipment.gd").SLOT_LAYOUT.any(func(sl): return sl[0] == "net"), "a net slot on the equipment page")
+	check(ResourceLoader.exists(Items.model_path("net")) and Items.square_icon("net") != null and Items.icon("net") != null,
+		"the net: its model and icons")
+	var shop: Control = load("res://scenes/shop.tscn").instantiate()
+	get_tree().root.add_child(shop)
+	await frames(2)
+	shop._show_tab("bait")
+	await frames(1)
+	check(shop._grid.get_node_or_null("Card_live_rat") == null and shop._grid.get_node_or_null("Card_live_worm") != null,
+		"the shop sells worms, not rats")
+	shop._show_tab("gear")
+	await frames(1)
+	check(shop._grid.get_node_or_null("Card_net") != null, "and sells the net")
+	shop.queue_free()
+	check(Profile.buy_net() and not Profile.buy_net(), "the net, bought once")
+	check(Profile.buy_weapon("hatchet") and Profile.equip("hatchet") and Profile.equip("net") and Profile.has_net(),
+		"worn in its own slot, beside the hatchet")
+	await _fresh_game()
+	var p := player()
+	check(not p.net_out, "a weapon worn: it's in hand to start with")
+
+	# Out on the map: a rat just out of reach of bare hands.
+	var at := away_from_water(80.0)
+	await put(at)
+	var rat: Critter = load("res://scenes/critter.tscn").instantiate()
+	rat.species = "rat"
+	main.add_child(rat)
+	rat.set_physics_process(false)
+	rat.global_position = p.global_position + Vector2(36, 0)
+	await frames(3)
+	check(p.reachable_critter() == null, "out of reach bare-handed")
+	check(p.set_net_out(true) and p.net_out, "the net taken in hand")
+	check(p.held_weapon().is_empty() and p.choppable_tree() == null, "the hatchet put away meanwhile")
+	check(StatusCard.conditions(p).any(func(c): return c[0] == "手持撈網"), "the card says so")
+	check(p.reachable_critter() == rat and p.interaction().get("verb", "") == "抓餌", "the net reaches it")
+	p.live_bait = ""
+	p._catch_critter()
+	check(Profile.bag_count("live_rat") == 1 and not rat.active, "caught: a live rat in the bag")
+	check(p.live_bait == "rat", "and on the hook, nothing else being on")
+	check(Inventory.items(p).any(func(it): return it.kind == "live" and it.item == "live_rat"), "it shows in the bag")
+	# Found under a rock: a live bait too.
+	var worms := Profile.bag_count("live_worm")
+	check(p.pocket_live_bait(Player.FOUND_BAIT["蚯蚓"]) == 1 and Profile.bag_count("live_worm") == worms + 1, "a worm found goes in the bag")
+	# The bag's hand row switches between the hatchet and the net.
+	var bag: Backpack = p.backpack()
+	bag.toggle()
+	await frames(2)
+	check(bag._hand_row.visible and bag._hand_row.get_child_count() >= 3, "the bag has the hand row")
+	bag.toggle()
+	check(p.set_net_out(false) and p.held_weapon().get("chop", 0) == 2, "the hatchet back in hand")
+
+	# A snake's bite and a bee's sting may poison.
+	for sp in ["snake", "wasp"]:
+		var poisoned := false
+		for i in 40:
+			seed(300 + i)
+			p.poison_timer = 0.0
+			var c: Critter = load("res://scenes/critter.tscn").instantiate()
+			c.species = sp
+			main.add_child(c)
+			c.set_physics_process(false)
+			c.global_position = p.global_position
+			await frames(1)
+			p.set_in_critter(true, c)
+			p._catch_critter()
+			c.queue_free()
+			if p.poison_timer > 0.0:
+				poisoned = true
+				break
+		check(poisoned, "a %s may poison" % Critter.SPECIES[sp].label)
+	check(Profile.bag_count("live_snake") >= 1 and Profile.bag_count("live_bee") >= 1, "snakes and bees go in the bag")
+	check(Player.NET_VENOM_MULT < 1.0, "the net makes a bite less likely")
+	p.poison_timer = 0.0
 	Profile.load_data(saved)
 	Profile._save()
 
@@ -2665,17 +2781,23 @@ func test_black_spider() -> void:
 		spider.set_species("black_spider")
 		skins[spider.skin] = true
 	check(skins.size() >= 5, "colourings drawn at random (%d seen)" % skins.size())
-	# Caught: two baits, and sometimes a bite.
+	# Caught: two live baits in the bag (round 8), and sometimes a bite.
 	var poisoned := false
+	var kept := _keep_profile()
 	for i in 30:
 		seed(100 + i)
 		p.poison_timer = 0.0
-		var bait: int = p.bait_count
-		p._catch_black_spider("黑蜘蛛", "蜘蛛")
-		check(p.bait_count >= bait + 1, "bait for it")
+		Profile.bag_take("live_black_spider", 99)
+		var s2 := Critter.spawn_black_spider(main, at, at)
+		await frames(1)
+		s2.global_position = p.global_position
+		p.set_in_critter(true, s2)
+		p._catch_critter()
+		check(Profile.bag_count("live_black_spider") == Player.BLACK_SPIDER_BAIT, "two live black spiders in the bag")
 		if p.poison_timer > 0.0:
 			poisoned = true
 			break
+	_restore_profile(kept)
 	check(poisoned, "its bite poisons, sometimes")
 	check(StatusCard.speed_share(p) < 0.5, "poison slows a lot (%.2f)" % StatusCard.speed_share(p))
 	check(StatusCard.conditions(p).any(func(c): return str(c[0]).begins_with("中毒")), "the card says poisoned")

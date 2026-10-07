@@ -63,6 +63,7 @@ func build(parent: Node) -> void:
 	_abandon_cars(parent)
 	_furnish_pavements(parent)
 	_set_up_checkpoint(parent)
+	_build_playground(parent)
 	_fill_empty_lots(parent)
 
 
@@ -447,6 +448,40 @@ func _set_up_checkpoint(parent: Node) -> void:
 	for k in 4:
 		var e := _entry(["cones", "barrels"].pick_random(), [0, 120, 240].pick_random())
 		_try_place(parent, e, Vector2(x + randf_range(-60.0, 60.0), y0 + randf_range(-10.0, main[3])), false, 2.0)
+
+
+## Round 8 (user request: the abandoned playground the user found, used
+## in the town): one empty lot off the streets turned into a playground
+## left to the weeds - the slide, swings, roundabout, sandpit and seesaw
+## in a loose cluster round a middle, a broken bench or two by it.
+const PLAYGROUND := ["pg_slide", "pg_swings", "pg_roundabout", "pg_sandpit", "pg_seesaw"]
+## Where round the middle each piece goes (world px), jittered a little.
+const PLAYGROUND_SPOTS := [Vector2(-95, -40), Vector2(70, -55), Vector2(-20, 35), Vector2(105, 45), Vector2(-110, 70)]
+
+
+func _build_playground(parent: Node) -> int:
+	for _try in 60:
+		var mid := Vector2(randf_range(220.0, world.x - 220.0), randf_range(200.0, world.y - 160.0))
+		# The whole park's ground clear first, so it isn't left half built.
+		if not _clear(Rect2(mid - Vector2(170, 130), Vector2(340, 250)), true):
+			continue
+		var placed := 0
+		var spots := PLAYGROUND_SPOTS.duplicate()
+		spots.shuffle()
+		for i in PLAYGROUND.size():
+			var family: String = PLAYGROUND[i]
+			var yaws := RuinsCatalog.ENTRIES.filter(func(e): return e.family == family).map(func(e): return e.yaw)
+			if yaws.is_empty():
+				continue
+			var e := _entry(family, yaws.pick_random())
+			var at: Vector2 = mid + spots[i] + Vector2(randf_range(-10, 10), randf_range(-8, 8))
+			if _try_place(parent, e, at, true, 3.0):
+				placed += 1
+		for k in 2:
+			var bench := _entry("bench_broken" if randf() < 0.6 else "bench", [0, 90, 180, 270].pick_random())
+			_try_place(parent, bench, mid + Vector2(randf_range(-160, 160), randf_range(90, 120)), true, 2.0)
+		return placed
+	return 0
 
 
 ## The lots behind and between the buildings: chain-link fences, rubble,

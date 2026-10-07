@@ -17,8 +17,9 @@ extends RefCounted
 ##   knife, hatchet, machete, glock   the weapons (Profile.WEAPONS), worn
 ##                  in the weapon slot
 ##   ammo           the pistol's rounds, twelve to a cell
-##   potion_vigor, potion_ward, eyeball, binoculars   things used in a run
-##                  (Profile.USABLES; Player.use_item())
+##   potion_vigor, potion_ward, eyeball, eye_altar, eye_ghost, binoculars
+##                  things used in a run (Profile.USABLES; Player.use_item())
+##   net            the landing net (round 8), worn in the net slot
 ## A thing's {name, tab, size (cells), stack (per cell), slot (the
 ## equipment slot it's worn in, if any), icon, desc}.
 
@@ -33,6 +34,12 @@ const LIVE_ICONS := {
 	"minnow": "res://assets/sprites/items/minnow.png",
 	"spider": "res://assets/sprites/icons/spider.png",
 	"frog": "res://assets/sprites/icons/frog.png",
+	# Round 8: caught on the map only (their critter models, posed).
+	"rat": "res://assets/sprites/icons/rat.png",
+	"snake": "res://assets/sprites/icons/snake.png",
+	"crab": "res://assets/sprites/icons/crab.png",
+	"bee": "res://assets/sprites/icons/bee.png",
+	"black_spider": "res://assets/sprites/icons/black_spider.png",
 }
 
 static var _icons := {}
@@ -49,6 +56,9 @@ static func def(id: String) -> Dictionary:
 	if id == "flashlight":
 		return {"name": "手電筒", "tab": "gear", "size": Vector2i(2, 1), "stack": 1, "slot": "light",
 			"icon": ICONS % id, "desc": "遠距離窄光束，用電池；裝備後才能在遊戲裡切換使用"}
+	if id == "net":
+		return {"name": "撈網", "tab": "gear", "size": Vector2i(2, 1), "stack": 1, "slot": "net",
+			"icon": ICONS % id, "desc": Profile.NET_DESC}
 	if id == "bait":
 		return {"name": "餌料", "tab": "item", "size": Vector2i(1, 1), "stack": 10, "slot": "", "fixed": true,
 			"icon": "res://assets/sprites/lure/worm_55deg_albedo.png",
@@ -108,7 +118,8 @@ static func icon(id: String) -> Texture2D:
 
 
 const MODELS := "res://assets/models/items/%s.glb"
-const LIVE_MODELS := {"worm": "worm", "cricket": "grasshopper", "shrimp": "shrimp", "minnow": "minnow", "spider": "spider", "frog": "frog"}
+const LIVE_MODELS := {"worm": "worm", "cricket": "grasshopper", "shrimp": "shrimp", "minnow": "minnow", "spider": "spider", "frog": "frog",
+	"rat": "rat", "snake": "snake", "crab": "crab", "bee": "bee", "black_spider": "black_spider"}
 
 
 ## A thing's 3D model, for the menus' previews (ItemPreview) - "" when it
@@ -118,7 +129,7 @@ static func model_path(id: String) -> String:
 		return "res://assets/models/fishing_rod_lvl%d.glb" % (int(id.substr(4)) + 1)
 	match id:
 		"flashlight", "battery", "roll", "loaf", "cheese", "ammo", "knife", "hatchet", "machete", "glock", \
-				"potion_vigor", "potion_ward", "eyeball", "binoculars":
+				"potion_vigor", "potion_ward", "eyeball", "eye_altar", "eye_ghost", "binoculars", "net":
 			return MODELS % id
 		"tea":
 			# User request: the tea in the user's cup.
@@ -143,7 +154,8 @@ const SQUARE_ICONS := "res://assets/sprites/icons/%s.png"
 static func square_icon(id: String) -> Texture2D:
 	var key := ""
 	if id.begins_with("rod_") or id in ["flashlight", "battery", "lamp", "tea", "roll", "loaf", "cheese", "ammo",
-			"knife", "hatchet", "machete", "glock", "potion_vigor", "potion_ward", "eyeball", "binoculars"]:
+			"knife", "hatchet", "machete", "glock", "potion_vigor", "potion_ward", "eyeball", "eye_altar", "eye_ghost",
+			"binoculars", "net"]:
 		key = id
 	elif id == "bait":
 		key = "worm"
@@ -184,6 +196,8 @@ static func _rank(id: String) -> int:
 		return 10
 	if Profile.WEAPONS.has(id):
 		return 11 + Profile.WEAPON_ORDER.find(id)
+	if id == "net":
+		return 14
 	if id == "bait":
 		return 15
 	if id == "battery":

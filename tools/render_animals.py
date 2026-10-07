@@ -43,11 +43,16 @@ DIRS = ["down", "down_left", "left", "up_left", "up"]
 
 # name: (file, scale, clips, extra)
 ANIMALS = {
+    # User request (round 8): the rat, frog, snake and bee are the user's
+    # models now (tools/prep_critters.py: the rat and frog on the pack's
+    # rigs, the snake and the bee - "wasp" - on rigs of their own); the
+    # grasshopper (the 蚱蜢 bait) is new.
     "rat": ("critter/rat.glb", 0.35, ["Rat_Run", "Rat_Idle"], {}),
     "frog": ("critter/frog.glb", 0.34, ["Frog_Jump", "Frog_Idle"], {}),
-    "snake": ("critter/snake.glb", 0.44, ["Snake_Walk", "Snake_Idle"], {}),
+    "snake": ("critter/snake.glb", 0.4, ["Snake_Walk", "Snake_Idle"], {}),
     "spider": ("critter/spider.glb", 0.28, ["Spider_Walk", "Spider_Idle"], {}),
-    "wasp": ("critter/wasp.glb", 0.26, ["Wasp_Flying"], {"facing": -90.0}),
+    "wasp": ("critter/wasp.glb", 0.28, ["Wasp_Flying"], {}),
+    "grasshopper": ("critter/grasshopper.glb", 0.24, ["Grasshopper_Hop", "Grasshopper_Idle"], {}),
     # User request: the real black spider (tools/prep_black_spider.py), in
     # 8 colourings - a picture sheet each (<name>_<n>_55deg_albedo.png,
     # n = 1..8) over the one normal sheet.

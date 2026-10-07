@@ -21,6 +21,9 @@ and the "Asset2" release (street furniture the user found on request):
                             a US mail drop box (the rusty skin)
   Traffic+signal+FBX.rar    a cantilevered traffic signal (its textures
                             didn't come with it: painted)
+and round 8's (the "Asset1" release again):
+  Old_Playground_CGT/       an old playground: slide, swings, roundabout,
+                            sandpit, seesaw (CPG_01..05.fbx + _color/_nrm)
 Needs Blender 5's Python module (pip install bpy==5.0.1) - the ivy file
 is Blender 5; render_sprite.py's helpers work there too.
 
@@ -107,6 +110,19 @@ MODELS = {
     "traffic_light": ("Traffic signal.fbx", None, "prop", ("height", 5.6), SIDES,
                       {"paint": "traffic_light",
                        "keep": lambda lo, hi: lo[0] >= -1.05 and hi[0] <= 2.4 and (hi[2] > 3.0 or lo[0] >= 1.95)}),
+    # Round 8 (user request: the abandoned playground the user found, for
+    # the town): a slide, a swing set, a roundabout, a sandpit with its
+    # shade and a seesaw - rusted, left to the weeds.
+    "pg_slide": ("Old_Playground_CGT/CPG_01.fbx", None, "prop", ("height", 2.3), SIDES,
+                 {"maps": {"CPG_01_mat": "Old_Playground_CGT/CPG_01"}}),
+    "pg_swings": ("Old_Playground_CGT/CPG_02.fbx", None, "prop", ("height", 2.4), SIDES,
+                  {"maps": {"CPG_02_mat": "Old_Playground_CGT/CPG_02"}}),
+    "pg_roundabout": ("Old_Playground_CGT/CPG_03.fbx", None, "junk", ("height", 1.0), [0, 45],
+                      {"maps": {"CPG_03_mat": "Old_Playground_CGT/CPG_03"}}),
+    "pg_sandpit": ("Old_Playground_CGT/CPG_04.fbx", None, "prop", ("height", 2.3), [0, 90],
+                   {"maps": {"CPG_04_mat": "Old_Playground_CGT/CPG_04"}}),
+    "pg_seesaw": ("Old_Playground_CGT/CPG_05.fbx", None, "junk", ("length", 3.8), [0, 30, 60, 90, 120, 150],
+                  {"maps": {"CPG_05_mat": "Old_Playground_CGT/CPG_05"}}),
     # Built here (BUILDERS): the street's furniture and junk, wooden houses.
     "street_lamp": ("@street_lamp", None, "prop", ("height", 6.5), SIDES, {}),
     "street_lamp_bent": ("@street_lamp_bent", None, "prop", ("height", 6.5), SIDES, {}),
@@ -632,8 +648,8 @@ def apply_maps(release, meshes, maps):
         bsdf = next((n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED'), None)
         if bsdf is None:
             return
-        base = find(prefix, ["_BaseColor.png", "_AlbedoTransparency.tga"])
-        normal = find(prefix, ["_Normal.png", "_Normal.tga"])
+        base = find(prefix, ["_BaseColor.png", "_AlbedoTransparency.tga", "_color.png"])
+        normal = find(prefix, ["_Normal.png", "_Normal.tga", "_nrm.png"])
         assert base, prefix
         t = nt.nodes.new('ShaderNodeTexImage')
         t.image = bpy.data.images.load(base, check_existing=True)

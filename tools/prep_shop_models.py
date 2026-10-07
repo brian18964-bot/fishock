@@ -27,7 +27,7 @@ import sys
 
 import bpy
 import numpy as np
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 OUT = os.path.join(ROOT, "assets", "models", "items")
@@ -709,10 +709,10 @@ def potion_vigor(src):
 
 
 def eyeball(src):
-    """眼球 (shows the way to the altar): a ball wearing the user's eye
-    picture - drawn front on, so laid round the ball from its front (the
-    iris) back (the angle from the front as the distance from the
-    picture's middle) - glossy, the stub of its nerve behind."""
+    """眼球 (round 8: shows the way to the 渡石): a ball wearing the user's
+    eye picture - drawn front on, so laid round the ball from its front
+    (the iris) back (the angle from the front as the distance from the
+    picture's middle) - glossy."""
     fresh()
     bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, segments=48, ring_count=32)
     o = bpy.context.object
@@ -739,14 +739,292 @@ def eyeball(src):
     nt.links.new(lift, next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED").inputs["Base Color"])
     me.materials.append(m)
     bpy.ops.object.shade_smooth()
-    # the nerve's stub, out the back
-    bpy.ops.mesh.primitive_cone_add(radius1=0.22, radius2=0.12, depth=0.5, location=(-1.12, 0, -0.05),
-                                    rotation=(0, math.radians(-90), 0), vertices=16)
-    nerve = bpy.context.object
-    nerve.data.materials.append(mat("nerve", (0.55, 0.12, 0.12), rough=0.4))
-    high = solid([o, nerve])
+    # (user request, round 8: no flesh-coloured stub behind the pupil - the
+    # nerve's gone)
+    high = solid([o])
     place(high, (0, 0, 20), 0.06, base=True)
     bake("eyeball", high, 1600)
+
+
+def _eye_picture(src_png, out_png, kind):
+    """The pack's eye picture repainted in the same places (its UVs): the
+    pupil kept where it is, the rest our own. kind "altar": an amber-gold
+    ball darkening to rust at the back, the round pupil ringed in
+    fire-orange with thin spokes of light out from it; "ghost": a
+    violet-black ball, the slit's glow turned to a pale spectral cyan
+    mist with a milky film over it."""
+    from PIL import Image, ImageFilter
+    im = np.asarray(Image.open(src_png).convert("RGB")).astype(np.float32) / 255.0
+    h, w, _ = im.shape
+    lum = im.mean(2)
+    yy, xx = np.mgrid[0:h, 0:w]
+    if kind == "altar":
+        pupil = lum < 0.12
+        cy, cx = yy[pupil].mean(), xx[pupil].mean()
+        r_p = math.sqrt(pupil.sum() / math.pi)
+        d = np.hypot(yy - cy, xx - cx)
+        ang = np.arctan2(yy - cy, xx - cx)
+        t = np.clip(d / (w * 0.7), 0, 1)[..., None]
+        out = (1 - t) * np.array([0.98, 0.72, 0.22]) + t * np.array([0.42, 0.13, 0.05])
+        ring = np.exp(-((d - r_p * 1.25) / (r_p * 0.22)) ** 2)[..., None]
+        out = out * (1 - ring) + ring * np.array([1.0, 0.42, 0.06])
+        spokes = (np.cos(ang * 14) * 0.5 + 0.5) ** 18 * np.exp(-((d - r_p * 2.3) / (r_p * 0.9)) ** 2)
+        out = out + spokes[..., None] * np.array([1.0, 0.9, 0.55]) * 0.6
+        out[pupil] = (0.02, 0.01, 0.01)
+    else:
+        glow = (im[..., 0] > 0.25) & (lum > 0.12)
+        pupil = (lum < 0.08) & glow.astype(bool)
+        g = np.asarray(Image.fromarray((glow * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(w / 80))) / 255.0
+        white = np.clip((lum - 0.5) * 2.5, 0, 1)
+        base = np.array([0.1, 0.04, 0.16])
+        mist = np.array([0.55, 0.95, 1.0])
+        out = base * (1 - g[..., None]) + mist * g[..., None] * (0.55 + 0.45 * white[..., None])
+        # the slit itself (dark inside the glow) kept dark
+        slit = (lum < 0.1) & (g > 0.5)
+        out[slit] = (0.01, 0.02, 0.04)
+        # a milky film: lifts everything a little toward pale lilac
+        out = out * 0.85 + np.array([0.6, 0.55, 0.75]) * 0.15
+    Image.fromarray((np.clip(out, 0, 1) * 255).astype(np.uint8)).save(out_png)
+
+
+def _reptile_eye(src, variant, kind):
+    """The pack's low-poly eye with our own picture (_eye_picture)."""
+    fresh()
+    base = os.path.join(src, "reptile_eyes")
+    bpy.ops.wm.obj_import(filepath=os.path.join(base, "Files", "Reptiles_Eye_OBJ.obj"))
+    o = next(o for o in bpy.data.objects if o.type == "MESH")
+    bpy.ops.object.select_all(action="DESELECT")
+    o.select_set(True)
+    bpy.context.view_layer.objects.active = o
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    tex_dir = os.path.join(base, "Textures", variant, "1k")
+    diffuse = next(f for f in os.listdir(tex_dir) if "Diffuse" in f)
+    painted = os.path.join(src, "reptile_eyes", "eye_%s.png" % kind)
+    _eye_picture(os.path.join(tex_dir, diffuse), painted, kind)
+    o.data.materials.clear()
+    o.data.materials.append(mat("eye_" + kind, (1, 1, 1), rough=0.12, image=painted))
+    bpy.ops.object.shade_smooth()
+    return o
+
+
+def _ring(name, radius, minor, rot, m, loc=(0, 0, 0)):
+    bpy.ops.mesh.primitive_torus_add(major_radius=radius, minor_radius=minor, major_segments=48,
+                                     minor_segments=10, location=loc, rotation=rot)
+    r = bpy.context.object
+    r.name = name
+    r.data.materials.append(m)
+    bpy.ops.object.shade_smooth()
+    return r
+
+
+def eye_altar(src):
+    """祭壇之眼 (round 8: shows the way to the altar): the pack's simplest
+    eye (round pupil) repainted amber-gold with a fire ring and spokes of
+    light, set like an amulet - a bronze band round its middle and three
+    little prongs gripping it from behind."""
+    o = _reptile_eye(src, "Red_Eye_03", "altar")
+    lo, hi = bounds(o)
+    r = float(max(hi - lo)) / 2
+    c = Vector(((lo + hi) / 2).tolist())
+    bronze = mat("bronze", (0.55, 0.36, 0.16), metal=0.9, rough=0.35)
+    # the pupil faces the eye's own front: find it (darkest texel's
+    # direction is the mesh's +? - the band goes square to it)
+    front = _eye_front(o)
+    band = _ring("band", r * 1.02, r * 0.08, (0, 0, 0), bronze, c)
+    band.rotation_euler = front.to_track_quat("Z", "Y").to_euler()
+    parts = [o, band]
+    side = front.orthogonal().normalized()
+    for k in range(3):
+        a = k * math.tau / 3
+        d = (Matrix.Rotation(a, 3, front) @ side)
+        tip = c - front * r * 0.55 + d * r * 0.85
+        bpy.ops.mesh.primitive_cone_add(radius1=r * 0.12, radius2=r * 0.03, depth=r * 0.6, location=tip, vertices=10)
+        p = bpy.context.object
+        p.rotation_euler = (-front * 0.5 + d).normalized().to_track_quat("Z", "Y").to_euler()
+        p.data.materials.append(bronze)
+        parts.append(p)
+    high = solid(parts)
+    _face_front(high, front)
+    place(high, (0, 0, 0), 0.06, base=True)
+    bake("eye_altar", high, 2400)
+
+
+def eye_ghost(src):
+    """見鬼之眼 (round 8: shows which way the ghosts are): the pack's slit
+    eye repainted violet-black with a pale spectral mist round the slit
+    and a milky film, hung in two crossed silver rings."""
+    o = _reptile_eye(src, "Black_Red_Eye_06", "ghost")
+    lo, hi = bounds(o)
+    r = float(max(hi - lo)) / 2
+    c = Vector(((lo + hi) / 2).tolist())
+    silver = mat("silver", (0.75, 0.77, 0.8), metal=1.0, rough=0.25)
+    front = _eye_front(o)
+    up = front.orthogonal().normalized()
+    # a halo round the eye's rim, and a second ring tipped back from it
+    # (neither across the slit)
+    a = _ring("ring_a", r * 1.08, r * 0.05, (0, 0, 0), silver, c)
+    a.rotation_euler = front.to_track_quat("Z", "Y").to_euler()
+    b = _ring("ring_b", r * 1.2, r * 0.04, (0, 0, 0), silver, c)
+    b.rotation_euler = (front * math.cos(1.1) + up * math.sin(1.1)).to_track_quat("Z", "Y").to_euler()
+    high = solid([o, a, b])
+    _face_front(high, front)
+    place(high, (0, 0, 0), 0.06, base=True)
+    bake("eye_ghost", high, 3200, size=1024)
+
+
+def _eye_front(o):
+    """The way the eye looks (world): from its middle toward where its
+    picture stands out from the rest of the ball (the iris and pupil) -
+    each vertex weighted by how far its texel's colour is from the ball's
+    usual one."""
+    img = next(n.image for m in o.data.materials for n in m.node_tree.nodes if n.type == "TEX_IMAGE")
+    w, h = img.size
+    px = np.empty(w * h * 4, np.float32)
+    img.pixels.foreach_get(px)
+    px = px.reshape(h, w, 4)[..., :3]
+    uv = o.data.uv_layers.active.data
+    cols, pts = [], []
+    for poly in o.data.polygons:
+        for li in poly.loop_indices:
+            u, v = uv[li].uv
+            cols.append(px[min(h - 1, max(0, int(v * h))), min(w - 1, max(0, int(u * w)))])
+            pts.append(o.matrix_world @ o.data.vertices[o.data.loops[li].vertex_index].co)
+    cols = np.array(cols)
+    weight = np.linalg.norm(cols - np.median(cols, 0), axis=1) ** 2
+    lo, hi = bounds(o)
+    c = Vector(((lo + hi) / 2).tolist())
+    d = Vector((0, 0, 0))
+    for p, k in zip(pts, weight):
+        d += (p - c).normalized() * float(k)
+    return d.normalized()
+
+
+def _face_front(o, front):
+    """Turns `o` (placed later) so the eye looks along +x, as the cartoon
+    eyeball does."""
+    rot = front.rotation_difference(Vector((1, 0, 0))).to_matrix()
+    for v in o.data.vertices:
+        v.co = rot @ Vector(v.co)
+
+
+def net(src):
+    """撈網 (round 8: carried to catch live bait): the user's net - its rim
+    and handle, and its netting (a cloth sack worn as a wireframe in the
+    file) as a sack whose mesh is a picture: alpha-cut squares, so it's
+    light and still see-through."""
+    fresh()
+    bpy.ops.wm.open_mainfile(filepath=os.path.join(src, "net.blend"))
+    for o in list(bpy.data.objects):
+        if o.type != "MESH":
+            bpy.data.objects.remove(o, do_unlink=True)
+    rim = bpy.data.objects["Circle"]
+    sack = bpy.data.objects["Sphere"]
+    for m in list(sack.modifiers):
+        if m.type == "WIREFRAME":
+            sack.modifiers.remove(m)
+    dg = bpy.context.evaluated_depsgraph_get()
+    made = []
+    for o in (rim, sack):
+        me = bpy.data.meshes.new_from_object(o.evaluated_get(dg), preserve_all_data_layers=True, depsgraph=dg)
+        n = bpy.data.objects.new(o.name + "_s", me)
+        n.matrix_world = o.matrix_world
+        bpy.context.scene.collection.objects.link(n)
+        made.append(n)
+    for o in (rim, sack):
+        bpy.data.objects.remove(o, do_unlink=True)
+    rim, sack = made
+    # The netting picture: cord-coloured lines, clear between.
+    size = 256
+    cells = 12
+    img = bpy.data.images.new("net_mesh", size, size, alpha=True)
+    yy, xx = np.mgrid[0:size, 0:size]
+    line = ((xx % (size // cells)) < 3) | ((yy % (size // cells)) < 3)
+    px = np.zeros((size, size, 4), np.float32)
+    px[line] = (0.78, 0.6, 0.18, 1.0)
+    img.pixels.foreach_set(px.ravel())
+    img.pack()
+    nm = bpy.data.materials.new("netting")
+    nm.use_nodes = True
+    nt = nm.node_tree
+    b = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    t = nt.nodes.new("ShaderNodeTexImage")
+    t.image = img
+    nt.links.new(t.outputs[0], b.inputs["Base Color"])
+    nt.links.new(t.outputs[1], b.inputs["Alpha"])
+    b.inputs["Roughness"].default_value = 0.8
+    nm.blend_method = "CLIP"
+    sack.data.materials.clear()
+    sack.data.materials.append(nm)
+    if not sack.data.uv_layers:
+        sack.data.uv_layers.new(name="UV")
+        bpy.ops.object.select_all(action="DESELECT")
+        sack.select_set(True)
+        bpy.context.view_layer.objects.active = sack
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.select_all(action="SELECT")
+        bpy.ops.uv.sphere_project()
+        bpy.ops.object.mode_set(mode="OBJECT")
+    # The rim and handle: the mirror-bright metal (it vanished
+    # into whatever's behind it at this size) made a duller steel, the
+    # grip kept dark.
+    for m in rim.data.materials:
+        bb = next((n for n in m.node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None) if m and m.use_nodes else None
+        if bb is not None and bb.inputs["Metallic"].default_value > 0.5:
+            bb.inputs["Base Color"].default_value = (0.42, 0.44, 0.47, 1)
+            bb.inputs["Metallic"].default_value = 0.6
+            bb.inputs["Roughness"].default_value = 0.4
+    # (the rim and handle kept whole: cut down, the thin shaft fell apart)
+    # The file's net has a grip out past the rim but nothing joining them:
+    # a steel shaft put in, from the rim's far edge to the grip.
+    co = np.array([(rim.matrix_world @ v.co)[:] for v in rim.data.vertices])
+    # (the grip is past the widest empty stretch along the handle's way)
+    ys = np.sort(co[:, 1])
+    gap = int(np.argmax(np.diff(ys)))
+    cut = (ys[gap] + ys[gap + 1]) / 2
+    grip = co[co[:, 1] > cut]
+    ring = co[co[:, 1] <= cut]
+    if len(grip) and ys[gap + 1] - ys[gap] > 0.2:
+        g0 = Vector((grip[:, 0].mean(), grip[:, 1].min(), grip[:, 2].mean()))
+        r0 = Vector((g0.x, ring[:, 1].max(), g0.z))
+        rad = max(float(grip[:, 0].max() - grip[:, 0].min()) * 0.32, 0.012)
+        bpy.ops.mesh.primitive_cylinder_add(radius=rad, depth=(g0 - r0).length + rad * 2, vertices=12,
+                                            location=(g0 + r0) / 2)
+        shaft = bpy.context.object
+        shaft.rotation_euler = (g0 - r0).to_track_quat("Z", "Y").to_euler()
+        steel = mat("steel", (0.42, 0.44, 0.47), metal=0.6, rough=0.4)
+        shaft.data.materials.append(steel)
+        bpy.ops.object.select_all(action="DESELECT")
+        shaft.select_set(True)
+        rim.select_set(True)
+        bpy.context.view_layer.objects.active = rim
+        bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+        bpy.ops.object.join()
+        rim = bpy.context.view_layer.objects.active
+    have = sum(len(p.vertices) - 2 for p in sack.data.polygons)
+    if have > 2000:
+        d = sack.modifiers.new("dec", "DECIMATE")
+        d.ratio = 2000 / have
+        bpy.context.view_layer.objects.active = sack
+        bpy.ops.object.modifier_apply(modifier="dec")
+    # Laid along +x (handle to -x), NET_LENGTH long, at the origin.
+    bpy.ops.object.select_all(action="DESELECT")
+    rim.select_set(True)
+    sack.select_set(True)
+    bpy.context.view_layer.objects.active = rim
+    bpy.ops.object.join()
+    o = bpy.context.view_layer.objects.active
+    o.name = "net"
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    place(o, (0, 0, 90), 0.5)
+    for p in o.data.polygons:
+        p.use_smooth = True
+    os.makedirs(OUT, exist_ok=True)
+    path = os.path.join(OUT, "net.glb")
+    bpy.ops.object.select_all(action="DESELECT")
+    o.select_set(True)
+    bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", use_selection=True,
+                              export_image_format="AUTO")
+    print("net", sum(len(p.vertices) - 2 for p in o.data.polygons), "tris,", os.path.getsize(path) // 1024, "KB", flush=True)
 
 
 def _loft(name, spine, widths, heights, ring=20, cap=True):
@@ -900,10 +1178,75 @@ def shrimp(src=None):
     bake("shrimp", high, 3200, reach=0.08)
 
 
+CRITTERS = os.path.join(ROOT, "art_src", "critter")
+
+
+def _critter(name, glb, clip, frame, turn, length, tris, reach=0.05):
+    """Round 8 (user request: what's caught on the map goes in the bag as a
+    live bait): the critter's own model (art_src/critter, rigged) posed at
+    `frame` of its `clip` and set down as a still - the bait's model in the
+    menus and its icon."""
+    fresh()
+    bpy.ops.import_scene.gltf(filepath=os.path.join(CRITTERS, glb))
+    arm = next((o for o in bpy.data.objects if o.type == "ARMATURE"), None)
+    act = next((a for a in bpy.data.actions if clip and clip in a.name), None)
+    if arm is not None and act is not None:
+        arm.animation_data_create()
+        for t in list(arm.animation_data.nla_tracks):
+            arm.animation_data.nla_tracks.remove(t)
+        arm.animation_data.action = act
+        bpy.context.scene.frame_set(frame)
+    # (the packs' "Icosphere" is a hidden ground marker)
+    objs = [o for o in bpy.data.objects if o.type == "MESH" and not o.name.startswith("Icosphere")]
+    # Fur, scales and chitin: matt (the packs' glossy setting washed the
+    # dark ones out grey under the icons' lights).
+    for o in objs:
+        for m in o.data.materials:
+            b = next((n for n in m.node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None) if m and m.use_nodes else None
+            if b is not None and not b.inputs["Roughness"].is_linked:
+                b.inputs["Roughness"].default_value = max(b.inputs["Roughness"].default_value, 0.85)
+    high = solid(objs)
+    # glTF keeps every face's corners apart (split along its seams): welded
+    # back up, or cutting it down shreds it.
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.mesh.remove_doubles(threshold=float(max(high.dimensions)) * 1e-4)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    place(high, turn, length, base=True)
+    bake(name, high, tris, reach=reach)
+
+
+def rat(src):
+    """老鼠 (big bait, only caught on the map)."""
+    _critter("rat", "rat.glb", "Rat_Idle", 4, (0, 0, -90), 0.14, 2400)
+
+
+def snake(src):
+    """蛇 (big bait, only caught on the map): curled mid-slither."""
+    _critter("snake", "snake.glb", "Snake_Walk", 3, (0, 0, -90), 0.16, 2400)
+
+
+def crab(src):
+    """螃蟹 (big bait, the beach's)."""
+    _critter("crab", "crab.glb", "Crab_Idle", 1, (0, 0, 0), 0.1, 2400)
+
+
+def bee(src):
+    """蜜蜂 (round 8: the bug-bait one that may sting)."""
+    _critter("bee", "wasp.glb", "Wasp_Flying", 2, (0, 0, -90), 0.08, 2000)
+
+
+def black_spider(src):
+    """黑蜘蛛 (the bait that may bite): its first colouring."""
+    _critter("black_spider", "black_spider.glb", "", 0, (0, 0, -90), 0.1, 2400)
+
+
 SOURCES = {"frog": frog, "spider": spider, "knife": knife, "machete": machete, "hatchet": hatchet,
            "glock": glock, "ammo": ammo, "battery": battery, "loaf": loaf, "flashlight": flashlight, "cup": cup, "cheese": cheese, "roll": roll,
            "worm": worm, "grasshopper": grasshopper, "minnow": minnow, "binoculars": binoculars, "potion_ward": potion_ward,
-           "potion_vigor": potion_vigor, "eyeball": eyeball, "shrimp": shrimp}
+           "potion_vigor": potion_vigor, "eyeball": eyeball, "shrimp": shrimp,
+           "eye_altar": eye_altar, "eye_ghost": eye_ghost, "net": net,
+           "rat": rat, "snake": snake, "crab": crab, "bee": bee, "black_spider": black_spider}
 
 
 def main():

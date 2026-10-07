@@ -1,8 +1,9 @@
 class_name GuideArrow
 extends Node2D
 
-## User request (round 7): the eyeball shows the way to the altar, the
-## binoculars where the 渡石 (the escape point) is. An arrow round the
+## User request (round 7, round 8): the eyes and the binoculars show the
+## way - to the 渡石, the altar, the nearest ghost (`track`: a moving
+## target), the nearest water. An arrow round the
 ## player pointing at the place, its name and how far beside it, and a
 ## ring pulsing on the place itself (seen when it's on screen) - for a
 ## while, then fading out. Drawn over the night on a layer of its own, in
@@ -23,6 +24,9 @@ var follow: Node2D
 var lift := Vector2(0, -14)
 var label := ""
 var color := Color.WHITE
+## Where the target is now, asked each frame (a Vector2, or null to keep
+## the last); unset for a place that doesn't move.
+var track: Callable
 ## Seconds left showing.
 var time_left := 0.0
 var _t := 0.0
@@ -42,6 +46,7 @@ func show_to(at: Vector2, what: String, tint: Color, seconds: float) -> void:
 	label = what
 	color = tint
 	time_left = seconds
+	track = Callable()
 	visible = true
 
 
@@ -55,6 +60,10 @@ func _process(delta: float) -> void:
 		visible = false
 		return
 	time_left -= delta
+	if track.is_valid():
+		var at = track.call()
+		if at is Vector2:
+			target = at
 	if follow != null:
 		position = follow.get_viewport().get_canvas_transform() * (follow.global_position + lift)
 	queue_redraw()

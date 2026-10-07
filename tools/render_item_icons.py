@@ -269,6 +269,14 @@ def round7():
         model_pic(name, (1, 1), turn)
 
 
+def round8():
+    """Round 8: pictures of the two new eyes, the eyeball again (its nerve
+    gone) and the net."""
+    for name, turn in (("eyeball", (0, 0, -105)), ("eye_altar", (0, 0, -105)), ("eye_ghost", (0, 0, -105))):
+        model_pic(name, (1, 1), turn)
+    model_pic("net", (2, 1), (0, 0, -20))
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     only = sys.argv[1:]

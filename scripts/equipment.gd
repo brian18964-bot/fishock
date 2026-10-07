@@ -24,6 +24,8 @@ const SLOT_LAYOUT := [
 	["light", "燈具", Rect2(258, 452, 206, 58), false],
 	# User request: the weapons (Profile.WEAPONS).
 	["weapon", "武器", Rect2(404, 116, 58, 58), false],
+	# Round 8 (user request): the landing net.
+	["net", "撈網", Rect2(404, 186, 58, 58), false],
 ]
 
 var _viewer: CharacterViewer
@@ -115,7 +117,7 @@ func _build() -> void:
 	_bag.name = "Bag"
 	_bag.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	(made3[1] as VBoxContainer).add_child(_bag)
-	var hint := UiKit.label("把釣竿、手電筒、武器拖到左邊的欄位就能換上；點一下看說明", 13, UiKit.DIM)
+	var hint := UiKit.label("把釣竿、手電筒、武器、撈網拖到左邊的欄位就能換上；點一下看說明", 13, UiKit.DIM)
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	(made3[1] as VBoxContainer).add_child(hint)
 	add_child(bagwin)

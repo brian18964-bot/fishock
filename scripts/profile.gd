@@ -67,8 +67,27 @@ const LIVE_BAITS := {
 	"spider": {"name": "活蜘蛛", "cost": 5, "flavor": "蜘蛛", "desc": "活餌：空竿的機率減半，假咬也減半"},
 	"frog": {"name": "活青蛙", "cost": 15, "flavor": "活青蛙",
 		"desc": "活餌（大餌）：稀有魚機率 x2，稀有魚升級成傳說魚的機率也 x2"},
+	# User request (round 8): what's caught on the map goes in the bag as a
+	# live bait - these only that way (shop: false; their cost only sets
+	# their rarity). The worm, grasshopper, frog and spider caught there
+	# are the ones above; the shrimp and the small fish are only bought.
+	"rat": {"name": "老鼠", "cost": 12, "flavor": "老鼠", "shop": false,
+		"desc": "活餌（大餌，只能在地圖上抓到）：稀有魚升級成傳說魚的機率 x2"},
+	"snake": {"name": "蛇", "cost": 14, "flavor": "蛇", "shop": false,
+		"desc": "活餌（大餌，只能在地圖上抓到）：稀有魚升級成傳說魚的機率 x2"},
+	"crab": {"name": "螃蟹", "cost": 12, "flavor": "螃蟹", "shop": false,
+		"desc": "活餌（大餌，只能在海邊抓到）：稀有魚升級成傳說魚的機率 x2"},
+	"bee": {"name": "蜜蜂", "cost": 5, "flavor": "蟲子", "shop": false,
+		"desc": "活餌（只能在地圖上抓到）：空竿的機率減半"},
+	"black_spider": {"name": "黑蜘蛛", "cost": 10, "flavor": "蜘蛛", "shop": false,
+		"desc": "活餌（只能在地圖上抓到）：空竿的機率減半，假咬也減半"},
 }
-const LIVE_ORDER := ["worm", "cricket", "spider", "shrimp", "minnow", "frog"]
+const LIVE_ORDER := ["worm", "cricket", "spider", "shrimp", "minnow", "frog", "rat", "snake", "crab", "bee", "black_spider"]
+## Round 8 (user request): the landing net - worn in its own slot
+## (equipped.net) and taken in hand in a run (Player.net_out, from the
+## bag): critters are caught from further off and bite less.
+const NET_COST := 70
+const NET_DESC := "裝備後在遊戲中可以從背包切換拿在手上：抓活餌的距離變遠，被咬中毒的機率減半（拿網時武器收起來）"
 ## User request: the flashlight is a shop item (bought once) that runs on
 ## batteries, also bought here and kept in stock until used (see Lantern).
 const FLASHLIGHT_COST := 120
@@ -111,7 +130,7 @@ var upgrade_levels: Dictionary = {
 ## it sells in the warehouse.
 var storage: Dictionary = {}
 var bag: Array = []
-var equipped: Dictionary = {"rod": "rod_0", "light": "", "weapon": ""}
+var equipped: Dictionary = {"rod": "rod_0", "light": "", "weapon": "", "net": ""}
 ## The best rod bought (the shop's rod line goes on from it).
 var rods_owned: int = 0
 ## Index into ROD_TIERS: the rod worn (kept in step with equipped.rod).
@@ -177,12 +196,18 @@ const USABLES := {
 		"desc": "喝下後 45 秒：跑得更快，搏魚時張力上升變慢"},
 	"potion_ward": {"name": "驅鬼藥水", "cost": 30, "stack": 3, "keep": false,
 		"desc": "喝下後 30 秒：鬼魂近不了身，身邊的鬼被逼退，水鬼也不敢偷襲"},
-	"eyeball": {"name": "眼球", "cost": 20, "stack": 5, "keep": false,
-		"desc": "使用後 20 秒，眼球會指出祭壇在哪個方向、有多遠"},
+	# Round 8 (user request): the eyeball shows the 渡石 now; a new eye the
+	# altar, another the ghosts; the binoculars the nearest water.
+	"eyeball": {"name": "渡石之眼", "cost": 20, "stack": 5, "keep": false,
+		"desc": "使用後 20 秒，眼球會指出渡石在哪個方向、有多遠"},
+	"eye_altar": {"name": "祭壇之眼", "cost": 20, "stack": 5, "keep": false,
+		"desc": "使用後 20 秒，金色的眼睛會盯著祭壇的方向、告訴你有多遠"},
+	"eye_ghost": {"name": "見鬼之眼", "cost": 35, "stack": 5, "keep": false,
+		"desc": "使用後 20 秒，看得見最近的鬼在哪個方向（會跟著鬼移動）"},
 	"binoculars": {"name": "望遠鏡", "cost": 90, "stack": 1, "keep": true,
-		"desc": "望向遠方找出渡石的位置（指引 20 秒）；不會用掉，用過要等 60 秒"},
+		"desc": "望向遠方找出最近的水域（指引 20 秒）；不會用掉，用過要等 60 秒"},
 }
-const USABLE_ORDER := ["potion_vigor", "potion_ward", "eyeball", "binoculars"]
+const USABLE_ORDER := ["potion_vigor", "potion_ward", "eyeball", "eye_altar", "eye_ghost", "binoculars"]
 
 ## User request (Camp v2): what's been done, for the achievements that
 ## earn the camp's tents (TENTS) - escapes, gold spent, legends caught.
@@ -571,6 +596,21 @@ func buy_weapon(id: String) -> bool:
 	gold_updated.emit(gold)
 	_changed()
 	return true
+
+
+## The landing net, bought once, into the warehouse.
+func buy_net() -> bool:
+	if owned("net") > 0 or gold < NET_COST:
+		return false
+	_spend(NET_COST)
+	_store("net", 1)
+	gold_updated.emit(gold)
+	_changed()
+	return true
+
+
+func has_net() -> bool:
+	return equipped.get("net", "") == "net"
 
 
 func buy_ammo() -> bool:
@@ -1040,6 +1080,8 @@ func load_data(data: Dictionary) -> void:
 	equipped = data.get("equipped", {"rod": "rod_0", "light": ""})
 	if not equipped.has("weapon"):
 		equipped["weapon"] = ""
+	if not equipped.has("net"):
+		equipped["net"] = ""
 	rods_owned = clampi(data.get("rods_owned", data.get("rod_tier", 0)), 0, ROD_TIERS.size() - 1)
 	tank = data.get("tank", [])
 	tank_news = data.get("tank_news", [])
@@ -1059,7 +1101,7 @@ func load_data(data: Dictionary) -> void:
 	achievements = data.get("achievements", {})
 	if not data.has("equipped"):
 		var tier := rods_owned
-		equipped = {"rod": "rod_%d" % tier, "light": "flashlight" if data.get("has_flashlight", false) else "", "weapon": ""}
+		equipped = {"rod": "rod_%d" % tier, "light": "flashlight" if data.get("has_flashlight", false) else "", "weapon": "", "net": ""}
 		for t in tier:
 			_store("rod_%d" % t, 1)
 		var lures: Dictionary = data.get("lure_stock", {})

@@ -32,6 +32,7 @@ var _panel: PanelContainer
 var _backdrop: ColorRect
 var _used: Label
 var _light_row: HBoxContainer
+var _hand_row: HBoxContainer
 var _mode: Label
 var _grid: GridView
 var _detail: Label
@@ -89,6 +90,10 @@ func _ready() -> void:
 	_light_row = HBoxContainer.new()
 	_light_row.add_theme_constant_override("separation", 6)
 	list.add_child(_light_row)
+	# Round 8 (user request): what's in hand - the weapon or the net.
+	_hand_row = HBoxContainer.new()
+	_hand_row.add_theme_constant_override("separation", 6)
+	list.add_child(_hand_row)
 	_mode = _label("", 14, UiKit.GOLD)
 	list.add_child(_mode)
 
@@ -185,6 +190,15 @@ func _rebuild() -> void:
 	else:
 		_light_row.add_child(_choice("手電筒（未裝備）", false, true, Callable()))
 
+	for c in _hand_row.get_children():
+		c.queue_free()
+	_hand_row.visible = Profile.has_net()
+	if Profile.has_net():
+		_hand_row.add_child(_label("手持", 14, UiKit.GOLD))
+		var weapon_name: String = Profile.weapon.get("name", "空手")
+		_hand_row.add_child(_choice(weapon_name, not player.net_out, false, player.set_net_out.bind(false)))
+		_hand_row.add_child(_choice("撈網", player.net_out, false, player.set_net_out.bind(true)))
+
 	var using: String = "浮標" if player.fishing_mode == Player.FishingMode.BOBBER else "路亞・" + Profile.LURES[player.current_lure].name
 	_mode.text = "釣法：%s%s" % [using, "　（油箱提在手上，不佔背包）" if player.carrying_oil_drum else ""]
 	_show_selected(player, items)
@@ -249,6 +263,8 @@ func _show_selected(player: Player, items: Array) -> void:
 			_detail.text = "電池 x%d（全部 %d）：手電筒沒電時按住燈鈕換上" % [item.count, Profile.batteries]
 		"gear":
 			_detail.text = "%s：備用的，要在主畫面的裝備頁換上" % item.label
+			if item.get("item", "") == "net" and not Profile.has_net():
+				_detail.text = "撈網：要在主畫面的裝備頁裝上撈網欄，遊戲中才能拿在手上"
 		"use":
 			# User request (round 7): the potions, the eyeball, the
 			# binoculars - used from here (Player.use_item()).
@@ -261,6 +277,8 @@ func _show_selected(player: Player, items: Array) -> void:
 				note = "（藥效還有 %d 秒）" % ceili(player.vigor_timer)
 			elif uid == "potion_ward" and player.ward_timer > 0.0:
 				note = "（藥效還有 %d 秒）" % ceili(player.ward_timer)
+			elif uid == "eye_ghost" and player.nearest_ghost() == null:
+				note = "（附近沒有鬼）"
 			elif uid == "binoculars" and player.binoculars_cooldown > 0.0:
 				note = "（%d 秒後才能再用）" % ceili(player.binoculars_cooldown)
 			_detail.text += note

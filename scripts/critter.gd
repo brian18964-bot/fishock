@@ -34,51 +34,62 @@ const BAIT_SIZE := 0.8
 ## move_fps / idle_fps: 8 samples over each clip's 24fps loop length.
 ## size: extra draw scale - user feedback: the small ones (frog, spider,
 ## wasp) were hard to spot on a phone, drawn at least ~20 px now.
-## flavor: the bait flavor it becomes - 青蛙 and 蟲子 reuse the roadside
-## flavors' effects; 老鼠, 蛇 and 螃蟹 are "big bait" (see Player).
+## bait: the live bait (Profile.LIVE_BAITS) it goes in the bag as when
+## caught (round 8, user request - was a flavor for the next cast).
 ## shore_only: only turns up where a map style puts it along the water
 ## (MapGenerator "shore_critters") - never dealt at random, and comes back
 ## as itself, on a shore. sideways: walks side-on, as crabs do.
 const SPECIES := {
-	"rat": {"label": "老鼠", "flavor": "老鼠",
+	# Round 8 (user request): the rat, frog, snake and bee are the user's
+	# models now (tools/prep_critters.py), and the grasshopper turns up too.
+	"rat": {"label": "老鼠", "bait": "rat",
 		"albedo": preload("res://assets/sprites/critter/rat_55deg_albedo.png"),
 		"normal": preload("res://assets/sprites/critter/rat_55deg_normal.png"),
-		"frames": 12, "cols": 39, "clips": 2, "offset": Vector2(0, -6.82), "move_fps": 24.0, "idle_fps": 5.05,
+		"frames": 12, "cols": 39, "clips": 2, "offset": Vector2(0, -5.42), "move_fps": 24.0, "idle_fps": 5.05,
 		"wander_speed": 45.0, "flee_speed": 120.0},
-	"frog": {"label": "青蛙", "flavor": "青蛙",
+	"frog": {"label": "青蛙", "bait": "frog",
 		"albedo": preload("res://assets/sprites/critter/frog_55deg_albedo.png"),
 		"normal": preload("res://assets/sprites/critter/frog_55deg_normal.png"),
-		"frames": 12, "cols": 56, "clips": 2, "offset": Vector2(0, -2.58), "move_fps": 13.71, "idle_fps": 4.8, "size": 1.3,
+		"frames": 12, "cols": 64, "clips": 2, "offset": Vector2(0, -2.27), "move_fps": 13.85, "idle_fps": 4.8, "size": 1.3,
 		"wander_speed": 35.0, "flee_speed": 95.0},
-	"snake": {"label": "蛇", "flavor": "蛇",
+	# User request (round 8): snakes and bees may poison too (venom: the
+	# chance a catch is bitten or stung).
+	"snake": {"label": "蛇", "bait": "snake", "venom": 0.3,
 		"albedo": preload("res://assets/sprites/critter/snake_55deg_albedo.png"),
 		"normal": preload("res://assets/sprites/critter/snake_55deg_normal.png"),
-		"frames": 12, "cols": 73, "clips": 2, "offset": Vector2(0, -10.93), "move_fps": 14.4, "idle_fps": 5.76,
+		"frames": 12, "cols": 85, "clips": 2, "offset": Vector2(0, -0.42), "move_fps": 12.0, "idle_fps": 12.0,
 		"wander_speed": 30.0, "flee_speed": 85.0},
-	"spider": {"label": "蜘蛛", "flavor": "蟲子",
+	"spider": {"label": "蜘蛛", "bait": "spider",
 		"albedo": preload("res://assets/sprites/critter/spider_55deg_albedo.png"),
 		"normal": preload("res://assets/sprites/critter/spider_55deg_normal.png"),
 		"frames": 12, "cols": 73, "clips": 2, "offset": Vector2(0, -0.81), "move_fps": 14.4, "idle_fps": 2.88, "size": 1.3,
 		"wander_speed": 40.0, "flee_speed": 110.0},
 	# User request: the beach style's crab (tools/render_crab.py).
-	"crab": {"label": "螃蟹", "flavor": "螃蟹", "shore_only": true, "sideways": true,
+	"crab": {"label": "螃蟹", "bait": "crab", "shore_only": true, "sideways": true,
 		"albedo": preload("res://assets/sprites/critter/crab_55deg_albedo.png"),
 		"normal": preload("res://assets/sprites/critter/crab_55deg_normal.png"),
 		"frames": 8, "cols": 73, "clips": 2, "offset": Vector2(0, -5.02), "move_fps": 16.0, "idle_fps": 5.71,
 		"size": 1.25, "wander_speed": 34.0, "flee_speed": 100.0},
 	# One clip (flying) for both moving and hovering; floats above the ground.
-	"wasp": {"label": "黃蜂", "flavor": "蟲子",
+	"wasp": {"label": "蜜蜂", "bait": "bee", "venom": 0.25, "sting": true,
 		"albedo": preload("res://assets/sprites/critter/wasp_55deg_albedo.png"),
 		"normal": preload("res://assets/sprites/critter/wasp_55deg_normal.png"),
-		"frames": 12, "cols": 60, "clips": 1, "offset": Vector2(0, -12.37), "move_fps": 8.0, "idle_fps": 8.0, "size": 1.6,
+		"frames": 12, "cols": 60, "clips": 1, "offset": Vector2(0, -3.62), "move_fps": 12.0, "idle_fps": 12.0, "size": 1.6,
 		"wander_speed": 40.0, "flee_speed": 115.0, "hover": 14.0},
+	# User request (round 8): grasshoppers can be caught on the map (the
+	# 蚱蜢 bait the shop sells).
+	"grasshopper": {"label": "蚱蜢", "bait": "cricket",
+		"albedo": preload("res://assets/sprites/critter/grasshopper_55deg_albedo.png"),
+		"normal": preload("res://assets/sprites/critter/grasshopper_55deg_normal.png"),
+		"frames": 12, "cols": 120, "clips": 2, "offset": Vector2(0, -5.19), "move_fps": 18.0, "idle_fps": 12.0, "size": 1.5,
+		"wander_speed": 36.0, "flee_speed": 110.0},
 
 	# User request: the real black spider (tools/prep_black_spider.py) - in
 	# 8 colourings, one drawn at random (skins: a picture sheet each over
-	# one normal sheet). Good bait (Player.BLACK_SPIDER_BAIT) but its bite
-	# may poison (venom, see Player._catch_black_spider). Also turns up
-	# under rocks and out of chopped trees (spawn_black_spider).
-	"black_spider": {"label": "黑蜘蛛", "flavor": "蜘蛛", "venom": true,
+	# one normal sheet). Good bait (two of it, Player.BLACK_SPIDER_BAIT)
+	# but its bite may poison (venom, see Player._catch_critter). Also turns
+	# up under rocks and out of chopped trees (spawn_black_spider).
+	"black_spider": {"label": "黑蜘蛛", "bait": "black_spider", "venom": 0.35,
 		"albedo": "res://assets/sprites/critter/black_spider_1_55deg_albedo.png",
 		"skins": ["res://assets/sprites/critter/black_spider_1_55deg_albedo.png",
 			"res://assets/sprites/critter/black_spider_2_55deg_albedo.png",
@@ -264,6 +275,8 @@ func _ready() -> void:
 	set_species(species)
 	if _hunts():
 		add_to_group("hunters")
+	if not ambient:
+		add_to_group("critters")
 	_player = get_tree().get_first_node_in_group("player")
 	_anim_time = randf() * 2.0
 	_anim_phase = randf() * 8.0
@@ -531,9 +544,24 @@ func get_label() -> String:
 	return _data.label
 
 
-## A black spider's: its bite may poison.
+## The chance catching it poisons (a black spider's or a snake's bite, a
+## bee's sting); 0 for the harmless ones.
+func venom() -> float:
+	return float(_data.get("venom", 0.0))
+
+
 func is_venomous() -> bool:
-	return _data.get("venom", false)
+	return venom() > 0.0
+
+
+## Stings (a bee) rather than bites.
+func stings() -> bool:
+	return _data.get("sting", false)
+
+
+## The live bait it becomes (Profile.LIVE_BAITS key).
+func bait_key() -> String:
+	return _data.get("bait", "")
 
 
 ## User request: a black spider out from under a turned rock or a chopped
@@ -550,7 +578,8 @@ static func spawn_black_spider(parent: Node, at: Vector2, from: Vector2) -> Crit
 	return c
 
 
-## Called by the player on a successful catch; returns the bait flavor.
+## Called by the player on a successful catch; returns the live bait it
+## becomes (bait_key()).
 func catch() -> String:
 	active = false
 	visible = false
@@ -558,7 +587,7 @@ func catch() -> String:
 	_respawn_timer = RESPAWN_DELAY
 	if one_shot:
 		queue_free()
-	return _data.flavor
+	return bait_key()
 
 
 func _respawn() -> void:

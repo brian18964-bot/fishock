@@ -146,9 +146,17 @@ func _refresh() -> void:
 					_card(wid, Items.icon(wid), w.name, "已擁有", 0, func(): buy_dialog(wid, 0, "已經擁有了（到裝備頁或倉庫換上）"))
 				else:
 					_card(wid, Items.icon(wid), w.name, "", int(w.cost), func(): buy_dialog(wid, int(w.cost)))
+			# Round 8 (user request): the landing net, for catching live bait.
+			if Profile.owned("net") > 0:
+				_card("net", Items.icon("net"), "撈網", "已擁有", 0, func(): buy_dialog("net", 0, "已經擁有了（到裝備頁或倉庫換上）"))
+			else:
+				_card("net", Items.icon("net"), "撈網", "", Profile.NET_COST, func(): buy_dialog("net", Profile.NET_COST))
 		"bait":
 			for key in Profile.LIVE_ORDER:
 				var lb: Dictionary = Profile.LIVE_BAITS[key]
+				# (round 8: some only caught on the map)
+				if not lb.get("shop", true):
+					continue
 				var id: String = "live_" + key
 				_card(id, Items.icon(id), lb.name, "擁有 %d" % Profile.owned(id), int(lb.cost),
 					func(): buy_dialog(id, int(lb.cost)))
@@ -518,6 +526,8 @@ func buy(id: String, n: int, where: String) -> int:
 			ok = Profile.buy_flashlight()
 		elif Profile.WEAPONS.has(id):
 			ok = Profile.buy_weapon(id)
+		elif id == "net":
+			ok = Profile.buy_net()
 		elif id == "ammo":
 			ok = Profile.buy_ammo()
 		elif Profile.USABLES.has(id):
