@@ -1,10 +1,10 @@
-"""Player sprite sheet from Mixamo clips, plus where the rod goes in each cell.
+"""Player sprite sheet from KayKit's clips, plus where the rod goes in each cell.
 
-User request: the carrying / casting / holding-the-rod animation. Trial
-built on Mixamo (free with an Adobe account; its raw files may not be
-redistributed, so they're not in art_src): the Y Bot character with the
-clips Fishing Cast, Fishing Idle, Idle and Standard Run (the same files ship
-with github.com/Kevin-Kwan/Unity3D-FishingRodMotion). This composes the
+User request: the carrying / casting / holding-the-rod animation - first
+built on Mixamo's fishing clips, and (user request: no Mixamo files, and
+the fishing KayKit has) since on Kay Lousberg's KayKit Character Animations
+(CC0, art_src/kaykit/) carried onto UAL's skeleton (CC0, art_src/player/)
+by tools/kaykit.py - mirrored, the rod in the left hand. This composes the
 game's clips from them (rows = CLIPS x 8 facings, FRAMES columns), renders
 the sheet through the 55deg pipeline (render_sprite.py) and writes, for
 every cell, where the rod is drawn: its grip and tip on screen and whether
@@ -12,39 +12,39 @@ it's behind the body - in the left hand while fishing, across the back
 otherwise. The game draws whichever rod is bought from that data
 (scripts/held_rod.gd), so rod tiers don't need sheets of their own.
 
-The clips (all baked to FRAMES poses):
-  idle      Idle, ping-ponged over its first 2 s (breathing)
-  run       Standard Run, made to run in place
-  cast      Fishing Cast 31-140: winding back (0-3, follows the charge), the
-            whip and follow-through (4-7). It's a long-rod cast - the tip
-            drops low behind at the top of the backswing.
-  hold      the arms-out hold after the cast (Fishing Cast 140-200, ping-pong)
-  busy      Idle bent forward, rummaging
-  reel      one crank of the reel (Fishing Cast's reeling-in stretch)
-  fight     reel, leaning back against the fish
-  hold_run  Standard Run's legs under hold's upper body
+The clips (all baked to FRAMES poses; KayKit's names):
+  idle      Idle_B (breathing)
+  run       Running_A
+  cast      Fishing_Cast: winding back (0-3, follows the charge) to the top
+            of the backswing, the whip and follow-through (4-7)
+  hold      Fishing_Idle, waiting
+  busy      idle bent forward, rummaging
+  reel      Fishing_Reeling
+  fight     Fishing_Struggling, its hardest pull at frame 1 (the game's yank)
+  hold_run  Running_A's legs under the hold's upper body
+  bite      Fishing_Bite: the float dunks (the bite, a nibble)
+  tug       Fishing_Tug: striking - the rod snatched up
+  catch     Fishing_Catch: landing the fish, the rod raised
 
---grip (the candidate, rounds 4-6): the left hand holds the rod (rod_grip.py),
-the reel is drawn with the character on top of the rod (reel.py) and, while
-the rod is held out, the right hand is on its crank - turning it once round
-over the reel clip; the fight is a braced pull (FIGHT_LEAN) - and the
-pixels in front of the rod (front layer) cover it bent as the game bends it.
+The left hand holds the rod (rod_grip.py), the reel is drawn with the
+character on top of the rod (reel.py) and, while the rod is held out, the
+right hand is on its crank - turning it once round over the reel clip -
+and the pixels in front of the rod (front layer) cover it bent as the game
+bends it.
 
 In the hand, the rod's grip follows the left hand's palm, and its angle is
-set per frame (ROD_ANGLES): Mixamo's hands wave the rod about the way a
-long-rod cast does (tip low behind at the top of the backswing), which
-reads poorly from above, so instead it swings up over the head and back
-with the charge, whips through overhead to the front on release, is held
-out low while waiting (low enough to show its length from any facing) and
-raised high against a running fish.
+set per frame (ROD_ANGLES): it swings up over the head and back with the
+charge, whips through overhead to the front on release, is held out low
+while waiting (low enough to show its length from any facing), twitches at
+a bite, is snatched up to strike, raised high against a running fish and
+to land one.
 
-  python tools/render_player.py MIXAMO_DIR OUT_PREFIX [--density 2]
+  python tools/render_player.py OUT_PREFIX [--density 2]
+      PLAYER=<animal> GREYBOX_DIR=<build>   (owl_character.player_files)
 
-MIXAMO_DIR holds "Fishing Idle.fbx" (With Skin), "Fishing Cast.fbx",
-"Y_Bot@idle.fbx" and "Y_Bot@standard_run.fbx" (60 fps). Writes
-OUT_PREFIX_albedo.png (density x), OUT_PREFIX_normal.png (original density:
-see scripts/art.gd) and OUT_PREFIX_rod.json, and prints the cell size and
-sprite offset.
+Writes OUT_PREFIX_albedo.png (density x), OUT_PREFIX_normal.png (original
+density: see scripts/art.gd) and OUT_PREFIX_rod.json, and prints the cell
+size and sprite offset.
 """
 import argparse
 import json
@@ -63,15 +63,23 @@ import render_sprite as rs  # noqa: E402
 import owl_character  # noqa: E402
 import rod_grip  # noqa: E402
 import reel  # noqa: E402
+import kaykit  # noqa: E402
 
 DENSITY = 27.108
 PAD = 0.08
-# Y Bot is 1.8 m; scaled to the old mannequin's height (UAL x1.3, 2.38).
-SCALE = 1.317
+# UAL's mannequin scaled to where Mixamo's Y Bot stood in the sheets
+# before (its hips 1.314 high: the characters bound at the same size).
+SCALE = 1.4337
 FRAMES = 8
 DIRS = ["down", "down_left", "left", "up_left", "up", "up_right", "right", "down_right"]
-CLIPS = ["idle", "run", "cast", "hold", "busy", "reel", "fight", "hold_run"]
-HAND_CLIPS = {"cast", "hold", "reel", "fight", "hold_run"}
+CLIPS = ["idle", "run", "cast", "hold", "busy", "reel", "fight", "hold_run", "bite", "tug", "catch"]
+HAND_CLIPS = {"cast", "hold", "reel", "fight", "hold_run", "bite", "tug", "catch"}
+# The KayKit clip each comes from: (file, clip, loops).
+SOURCES = {"idle": ("general", "Idle_B", True), "run": ("move", "Running_A", True),
+           "cast": ("tools", "Fishing_Cast", False), "hold": ("tools", "Fishing_Idle", True),
+           "reel": ("tools", "Fishing_Reeling", True), "fight": ("tools", "Fishing_Struggling", True),
+           "bite": ("tools", "Fishing_Bite", True), "tug": ("tools", "Fishing_Tug", False),
+           "catch": ("tools", "Fishing_Catch", False)}
 # Rod in the hand, per frame: degrees up from pointing straight ahead
 # (90 = straight up, 180 = straight back), and ROD_SIDE degrees out to
 # the character's left (the hand holding it).
@@ -81,6 +89,12 @@ ROD_ANGLES = {
     "reel": [25, 26.5, 25, 23.5, 25, 26.5, 25, 23.5],
     "fight": [50 + 6 * math.sin(i / 8 * math.tau) for i in range(8)],
     "hold_run": [25 + 3 * math.sin(i / 8 * math.tau * 2) for i in range(8)],
+    # (the KayKit clips) a bite: the tip twitching down and back; the
+    # strike: snatched up and held; the catch: raised high, lowered as the
+    # fish comes in
+    "bite": [18, 13, 20, 12, 19, 16, 20, 18],
+    "tug": [20, 48, 72, 80, 78, 72, 64, 56],
+    "catch": [56, 68, 78, 84, 82, 74, 60, 44],
 }
 # (--grip, user request round 6: the fight reads as the fish pulling.) Not
 # cranking - through a run the drag gives line - but braced on the reel,
@@ -98,13 +112,7 @@ BACK_GRIP = Vector((-0.14, 0.2, 0.92))
 BACK_DIR = Vector((0.33, 0.06, 0.94)).normalized()
 BACK_LENGTH = 1.25
 UPPER_ROOT = "mixamorig:Spine"
-HOLD_SETTLE = 0.75
-
-
-def import_fbx(path):
-    objs, acts = set(bpy.data.objects), set(bpy.data.actions)
-    bpy.ops.import_scene.fbx(filepath=path)
-    return [o for o in bpy.data.objects if o not in objs], [a for a in bpy.data.actions if a not in acts]
+HOLD_SETTLE = 0.5
 
 
 def fold_halves(path):
@@ -114,38 +122,26 @@ def fold_halves(path):
     Image.fromarray(np.concatenate([img[:half], img[half:]], axis=1), "RGBA").save(path)
 
 
-def load(mixamo):
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    objs, acts = import_fbx(os.path.join(mixamo, "Fishing Idle.fbx"))
-    arm = next(o for o in objs if o.type == 'ARMATURE')
-    meshes = [o for o in objs if o.type == 'MESH']
-    src = {"fish_idle": acts[0]}
-    for key, name in (("cast", "Fishing Cast.fbx"), ("idle", "Y_Bot@idle.fbx"), ("run", "Y_Bot@standard_run.fbx")):
-        o2, a2 = import_fbx(os.path.join(mixamo, name))
-        src[key] = a2[0]
-        for o in o2:
-            bpy.data.objects.remove(o, do_unlink=True)
-    for a in src.values():
-        a.use_fake_user = True
-    in_place(src["run"])
-    arm.location *= SCALE
-    arm.scale *= SCALE
-    bpy.context.view_layer.update()
+def load():
+    """UAL's skeleton with the player's character bound (PLAYER /
+    GREYBOX_DIR, owl_character.player_files), KayKit's clips carried onto
+    it (SOURCES, kaykit.bake), the feet drawn in over them, and its bones
+    renamed for the tools below (kaykit.rename_to_mixamo). Returns the
+    armature, the character's meshes and the source actions by clip."""
+    arm = kaykit.load_rig(SCALE)
+    meshes = owl_character.player(arm, "ual", [])
+    libs = {}
+    src = {}
+    for name, (kind, clip, _loops) in SOURCES.items():
+        if kind not in libs:
+            libs[kind] = kaykit.load_source(kaykit.path(kind))
+        src[name] = kaykit.bake(arm, libs[kind], clip, name="src_" + name)
+    for lib in libs.values():
+        bpy.data.objects.remove(lib, do_unlink=True)
+    owl_character.player_stance(arm, "ual", list(src.values()),
+                                standing=[a for n, a in src.items() if n != "run"])
+    kaykit.rename_to_mixamo(arm)
     return arm, meshes, src
-
-
-def in_place(action):
-    """Takes the forward root motion out of a locomotion clip."""
-    s, e = action.frame_range
-    for fc in action.fcurves:
-        if fc.data_path == 'pose.bones["mixamorig:Hips"].location' and fc.array_index == 2:
-            drift = fc.evaluate(e) - fc.evaluate(s)
-            for k in fc.keyframe_points:
-                d = drift * (k.co.x - s) / (e - s)
-                k.co.y -= d
-                k.handle_left.y -= d
-                k.handle_right.y -= d
-            fc.update()
 
 
 def capture(arm, action, frame):
@@ -178,33 +174,49 @@ def turned(arm, pose, bone, axis_world, deg):
     return out
 
 
-def pingpong(a, b):
-    return [a + (b - a) * t for t in (0, 0.25, 0.5, 0.75, 1, 0.75, 0.5, 0.25)]
+def frames_of(act, loop=True, start=0.0):
+    """FRAMES frames spread over an action keyed 1..N: a loop's last key
+    (its first again) left out, beginning `start` frames in (wrapping)."""
+    s, e = act.frame_range
+    if not loop:
+        return [s + (e - s) * i / (FRAMES - 1) for i in range(FRAMES)]
+    n = e - s
+    return [s + (start + n * i / FRAMES) % n for i in range(FRAMES)]
 
 
-def crank_cycle(arm, cast):
-    """One turn of the reel: the stretch of the reeling-in whose right arm
-    comes back to where it started."""
-    keys = ["mixamorig:RightArm", "mixamorig:RightForeArm", "mixamorig:RightHand"]
-    poses = {f: capture(arm, cast, f) for f in range(390, 505)}
-
-    def dist(a, b):
-        return sum((poses[a][k][1] - poses[b][k][1]).magnitude for k in keys)
-    return min(((dist(a, a + n), a, n) for a in range(400, 480) for n in range(18, 26)))[1:]
+def _bone_z(arm, bone):
+    return (arm.matrix_world @ arm.pose.bones[bone].head).z
 
 
-def build_clips(arm, src, two_hands=False):
-    """The clips, baked. two_hands (--grip, user request round 6): the
-    fight is FIGHT_LEAN's braced pull on the reel's first pose (both hands
-    then go on the reel, grip_clips)."""
+def _chest_pitch(arm):
+    up = (arm.matrix_world @ arm.pose.bones["mixamorig:Spine2"].matrix).to_3x3().col[1]
+    return math.degrees(math.atan2(-up.y, up.z))
+
+
+def run_pace(arm, act):
+    """The run's pace (world px/s at the game's run rate, PlayerVisual
+    RUN_PACE): how fast the planted foot slides back under the body."""
+    s, e = act.frame_range
+    speeds = []
+    prev = None
+    for f in range(int(s), int(e) + 1):
+        rs.set_pose(act, f)
+        feet = sorted((_bone_z(arm, "mixamorig:%sToeBase" % side), side) for side in ("Left", "Right"))
+        side = feet[0][1]
+        y = (arm.matrix_world @ arm.pose.bones["mixamorig:%sToeBase" % side].head).y
+        if prev is not None and prev[0] == side:
+            speeds.append(abs(y - prev[1]) * kaykit.FPS)
+        prev = (side, y)
+    per_s = float(np.median(speeds)) if speeds else 0.0
+    cycle = (e - s) / kaykit.FPS
+    # (the game plays the run's FRAMES at 10.9 a second)
+    return per_s * cycle * DENSITY / (FRAMES / 10.9)
+
+
+def build_clips(arm, src, two_hands=True):
+    """The clips, baked (two_hands: kept for the callers)."""
     upper = {b.name for b in arm.pose.bones[UPPER_ROOT].children_recursive} | {UPPER_ROOT}
-    idle_frames = pingpong(1, 121)
-    run_s, run_e = src["run"].frame_range
-    run_frames = [run_s + i * (run_e - run_s) / FRAMES for i in range(FRAMES)]
-    a, n = crank_cycle(arm, src["cast"])
-    reel_frames = [a + i * n / FRAMES for i in range(FRAMES)]
-    print(f"reel cycle {a}+{n}", flush=True)
-    # Lean back: the character faces -Y, its left is +X.
+    # Side to side the character faces -Y, its left is +X.
     side = Vector((1.0, 0.0, 0.0))
 
     def lean(pose, deg):
@@ -212,20 +224,41 @@ def build_clips(arm, src, two_hands=False):
             pose = turned(arm, pose, bone, side, deg * share)
         return pose
 
-    poses = {
-        "idle": [capture(arm, src["idle"], f) for f in idle_frames],
-        "run": [capture(arm, src["run"], f) for f in run_frames],
-        "cast": [capture(arm, src["cast"], f) for f in (31, 49, 67, 85, 100, 110, 122, 140)],
-        "hold": [capture(arm, src["cast"], f) for f in pingpong(140, 200)],
-        "reel": [capture(arm, src["cast"], f) for f in reel_frames],
-    }
+    def take(name, frames):
+        return [capture(arm, src[name], f) for f in frames]
+
+    poses = {name: take(name, frames_of(src[name], SOURCES[name][2]))
+             for name in ("idle", "run", "hold", "reel", "bite", "tug", "catch")}
+    # The cast: up to the top of the backswing (the rod hand highest) with
+    # the charge, then the whip.
+    cast = src["cast"]
+    s, e = (int(v) for v in cast.frame_range)
+    zs = {}
+    for f in range(s, e + 1):
+        rs.set_pose(cast, f)
+        zs[f] = _bone_z(arm, "mixamorig:LeftHand")
+    peak = max(range(s, s + int((e - s) * 0.75) + 1), key=lambda f: zs[f])
+    wind = [s + (peak - s) * t for t in (0.0, 0.4, 0.75, 1.0)]
+    whip = [peak + (e - peak) * t for t in (0.2, 0.42, 0.68, 1.0)]
+    print("cast: top of the backswing at %d of %d-%d" % (peak, s, e), flush=True)
+    poses["cast"] = take("cast", wind + whip)
+    # The fight: its hardest pull forward (the chest leant furthest toward
+    # the fish) at frame 1 - where the game jolts the body (YANK_FRAME).
+    fight = src["fight"]
+    s, e = fight.frame_range
+    pitches = {}
+    for f in range(int(s), int(e)):
+        rs.set_pose(fight, f)
+        pitches[f] = _chest_pitch(arm)
+    pull = max(pitches, key=pitches.get)
+    n = e - s
+    poses["fight"] = take("fight", frames_of(fight, True, (pull - s - n / FRAMES) % n))
+    print("fight: hardest pull at %d" % pull, flush=True)
+
     # User request (round 5: switching between waiting, reeling and the
-    # fight is checked): the hold is the cast's follow-through, stepped
-    # forward and sinking, its rod hand 6-11 px off the reel's, and the
-    # game cuts straight from one to the other - the hold (hips and all)
-    # HOLD_SETTLE of the way to the reel's first pose, the whip's last two
-    # frames a third and two thirds of that, so it ends where the hold
-    # starts.
+    # fight is checked): the hold HOLD_SETTLE of the way to the reel's
+    # first pose, the whip's last two frames a third and two thirds of
+    # that, so it ends where the hold starts.
 
     def toward(pose, target, w):
         return {b: (pose[b][0].lerp(target[b][0], w), pose[b][1].slerp(target[b][1], w)) for b in pose}
@@ -234,23 +267,21 @@ def build_clips(arm, src, two_hands=False):
     for i, k in ((6, 1 / 3), (7, 2 / 3)):
         poses["cast"][i] = toward(poses["cast"][i], poses["reel"][0], HOLD_SETTLE * k)
     poses["busy"] = [lean(p, 30.0 + 5.0 * math.sin(i / FRAMES * math.tau)) for i, p in enumerate(poses["idle"])]
-    if two_hands:
-        poses["fight"] = [lean(poses["reel"][0], deg) for deg in FIGHT_LEAN]
-    else:
-        poses["fight"] = [lean(p, -14.0 - 3.0 * math.sin(i / FRAMES * math.tau)) for i, p in enumerate(poses["reel"])]
     hold_top = poses["hold"][2]
     poses["hold_run"] = [{b: (hold_top[b] if b in upper else p[b]) for b in p} for p in poses["run"]]
-    return {name: bake(arm, name, poses[name]) for name in CLIPS}
+    clips = {name: bake(arm, name, poses[name]) for name in CLIPS}
+    print("run pace %.1f px/s (PlayerVisual.RUN_PACE)" % run_pace(arm, clips["run"]), flush=True)
+    return clips
 
 
 def check_lean(arm, clips):
-    """busy must bend forward (head toward -Y), fight lean back."""
+    """busy must bend forward (head toward -Y)."""
     head = arm.pose.bones["mixamorig:Head"]
     ys = {}
-    for name in ("idle", "busy", "fight", "reel"):
+    for name in ("idle", "busy"):
         rs.set_pose(clips[name], 1)
         ys[name] = (arm.matrix_world @ head.head).y
-    assert ys["busy"] < ys["idle"] and ys["fight"] > ys["reel"], ys
+    assert ys["busy"] < ys["idle"], ys
 
 
 def back_rod_local(arm):
@@ -274,7 +305,7 @@ def back_rod_local(arm):
 # pass through the character in any of its frames.
 GRIP_SIDE_STEP = 8.0
 GRIP_SIDE_MAX = 65.0
-SHARED_SIDE = ("hold", "reel", "fight")
+SHARED_SIDE = ("hold", "reel", "fight", "bite", "tug")
 GRIP_BONES = ("mixamorig:LeftArm", "mixamorig:LeftForeArm", "mixamorig:LeftHand")
 # The rods as the game draws them (scripts/held_rod.gd): each tier's
 # sprite, its canvas centre from the grip (OFFSET, orig px), the tier's
@@ -461,7 +492,7 @@ def rod_through(mesh, grip, d, from_t=0.15):
 # goes (in the chest's frame, so a lean carries the hands), searched per
 # character (Hands.search): the arms neither straight nor cramped, the
 # hands, knob and reel clear of the body.
-STANCE_CLIPS = ("hold", "reel", "fight", "hold_run")
+STANCE_CLIPS = ("hold", "reel", "fight", "hold_run", "bite", "tug", "catch")
 THETA0 = 225.0
 CRANK_STEP = 45.0
 KNOB_TUNE = {"axis": 0.0, "palm_at": -0.1, "handle_r": reel.KNOB_R}
@@ -728,10 +759,10 @@ def grip_clips(arm, mesh, clips, character):
     # frame needed it), and one for waiting, reeling and the fight together
     # (user request, round 5: the game cuts between them - the rod kept
     # its line across the cut)
-    sides = {name: clear_side([name]) for name in ("cast", "hold_run")}
+    sides = {name: clear_side([name]) for name in ("cast", "hold_run", "catch")}
     shared = clear_side(SHARED_SIDE)
     sides.update({name: shared for name in SHARED_SIDE})
-    for name in ("hold", "reel", "fight", "hold_run", "cast"):
+    for name in ("hold", "reel", "fight", "hold_run", "cast", "bite", "tug", "catch"):
         side = sides[name]
         rows = []
         for f in range(1, FRAMES + 1):
@@ -896,20 +927,15 @@ def front_atlas(out_prefix, masks, cells, cell, d, cols):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("mixamo")
     p.add_argument("out_prefix")
     p.add_argument("--density", type=int, default=2)
     p.add_argument("--dry", action="store_true", help="rod data and cell size only, no render")
-    p.add_argument("--grip", action="store_true",
-                   help="candidate: the hand holding the rod (rod_grip.py), and the pixels in front of the rod")
-    p.add_argument("--character", choices=("owl", "ybot"), default="owl",
-                   help="who's drawn: the player's character (owl_character.player: the owl person,"
-                   " or PLAYER=<animal> a greybox one) or Mixamo's Y Bot")
+    p.add_argument("--no-grip", dest="grip", action="store_false",
+                   help="the rod drawn from ROD_ANGLES off the hand, not held (rod_grip.py) - no reel,"
+                   " no front layer")
     args = p.parse_args()
 
-    arm, meshes, src = load(args.mixamo)
-    if args.character == "owl":
-        meshes = owl_character.player(arm, "mixamo", list(src.values()), standing=[src["idle"]])
+    arm, meshes, src = load()
     clips = build_clips(arm, src, two_hands=args.grip)
     check_lean(arm, clips)
     hand_grip = grip_report = hands = None

@@ -94,6 +94,10 @@ def turn_bone(arm, name, rot, about):
     R = Matrix(rot.tolist()).to_4x4()
     T = Matrix.Translation(Vector(about))
     pb.matrix = mw.inverted() @ T @ R @ T.inverted() @ mw @ pb.matrix
+    # Only turned: the rounding each turn leaves in the pose's scale taken
+    # out (on UAL's skeleton it built up turn after turn until a hand blew up).
+    loc, rot, _ = pb.matrix_basis.decompose()
+    pb.matrix_basis = Matrix.LocRotScale(loc, rot, None)
     bpy.context.view_layer.update()
 
 

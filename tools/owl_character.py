@@ -988,6 +988,24 @@ def bind(arm, rig_name, character="owl", files=None):
     return _join(parts, hd, arm)
 
 
+def player_files():
+    """The player's character (PLAYER, the owl by default) and its files:
+    a greybox's whenever GREYBOX_DIR is given - the owl's too; without it,
+    PLAYER=owl is the baked owl person (files None)."""
+    name = os.environ.get("PLAYER", "owl")
+    gb = os.environ.get("GREYBOX_DIR")
+    files = None
+    if gb or name != "owl":
+        files = (os.path.join(gb, name + "_greybox.glb"), os.path.join(gb, name + "_greybox.json"))
+    return name, files
+
+
+def player_stance(arm, rig_name, actions, standing=()):
+    """close_stance() for the player's character (player_files())."""
+    name, files = player_files()
+    close_stance(arm, rig_name, actions, standing=standing, character=name, files=files)
+
+
 def player(arm, rig_name, actions, standing=()):
     """The player's character on `arm`, for the tools that make the game's
     pictures of it (render_player.py, render_player_struggle.py,
@@ -998,13 +1016,7 @@ def player(arm, rig_name, actions, standing=()):
     the owl is its greybox too) in its trial colours
     (greybox_colour.py). Bound, its feet drawn in over `actions`; returns
     its meshes."""
-    name = os.environ.get("PLAYER", "owl")
-    files = None
-    gb = os.environ.get("GREYBOX_DIR")
-    # (the greybox whenever GREYBOX_DIR is given - the owl's too; without
-    # it, PLAYER=owl is the baked owl person)
-    if gb or name != "owl":
-        files = (os.path.join(gb, name + "_greybox.glb"), os.path.join(gb, name + "_greybox.json"))
+    name, files = player_files()
     meshes = bind(arm, rig_name, name, files=files)
     if actions:
         close_stance(arm, rig_name, actions, standing=standing, character=name, files=files)

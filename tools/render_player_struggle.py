@@ -1,10 +1,10 @@
 """The player in the big ghost's grip (user request, Camp v2: no more being
 carried off stiff to a cage - caught, the player struggles for a few
 seconds, and staggers free if they get loose). Motion from Quaternius'
-Universal Animation Library (CC0, not kept in the repo), carried
-over to the player's Mixamo skeleton by tools/retarget.py - the player's
-character on it (owl_character.player; --ybot: Mixamo's Y Bot, the old
-stand-in):
+Universal Animation Library (CC0, art_src/player/ual1_standard.glb), on
+the player's own skeleton - UAL's, the one tools/render_player.py poses
+(kaykit.load_rig) - with the player's character bound
+(owl_character.player):
 
   struggle  Push_Loop   shoving at the ghost's hold
   knock     Hit_Chest   struck free, staggering back a step
@@ -13,7 +13,8 @@ Framed like the player's own sheet (tools/render_player.py; 56x84
 cells, the feet at the same place), so PlayerVisual swaps sheets without
 moving the character. Rows = clip x 8 facings, FRAMES columns.
 
-  python tools/render_player_struggle.py MIXAMO_DIR UAL1_GLB OUT_PREFIX [--ybot]
+  python tools/render_player_struggle.py OUT_PREFIX
+      PLAYER=<animal> GREYBOX_DIR=<build>   (owl_character.player_files)
 
 writes OUT_PREFIX_albedo.png (2x density) and OUT_PREFIX_normal.png.
 """
@@ -29,6 +30,7 @@ import render_sprite as rs  # noqa: E402
 import render_player as rp  # noqa: E402
 import owl_character  # noqa: E402
 import retarget  # noqa: E402
+import kaykit  # noqa: E402
 from render_water_ghost import MIXAMO, AIMED  # noqa: E402
 
 # (name, source clip, loops, the part of it used, how much of the body's
@@ -50,19 +52,17 @@ HD = 2
 
 
 def main():
-    ybot = "--ybot" in sys.argv
-    mixamo, ual1, out = [a for a in sys.argv if a != "--ybot"][-3:]
-    arm, meshes, _ = rp.load(mixamo)
-    if not ybot:
-        meshes = owl_character.player(arm, "mixamo", [])
-    for a in [a for a in bpy.data.actions]:
-        a.use_fake_user = False
-    lib1 = retarget.load_library(ual1)
+    out = sys.argv[-1]
+    arm = kaykit.load_rig(rp.SCALE)
+    meshes = owl_character.player(arm, "ual", [])
+    # (the library's skeleton is the player's: bone for bone)
+    same = {b: b for b in MIXAMO}
+    lib1 = retarget.load_library(kaykit.UAL_GLB)
     libs = {"Push_Loop": lib1, "Hit_Chest": lib1}
     bones = list(MIXAMO)
     clips = [retarget.Clip(libs[src], src, bones, rp.FRAMES, loop=loop, ref="rest", span=span)
              for _, src, loop, span, _, _ in CLIPS]
-    hips = arm.matrix_world @ arm.data.bones[MIXAMO["pelvis"]].head_local
+    hips = arm.matrix_world @ arm.data.bones["pelvis"].head_local
     lift = hips.z / clips[0].rest_head.z
     yaw = rs.Yaw(0.0)
     ad = arm.animation_data or arm.animation_data_create()
@@ -82,7 +82,7 @@ def main():
         planted = [b for b in bones if b.split("_")[0] in LEGS] if not legs else []
         strength = {b: (k if b in TRUNK else (0.0 if b in planted else 1.0)) for b in bones}
         aim = {b: v for b, v in clip.dirs(i).items() if b in AIMED and b not in planted}
-        retarget.apply(arm, clip.delta(i), MIXAMO, strength, aim=aim, offset=off * (k if legs else 0.0))
+        retarget.apply(arm, clip.delta(i), same, strength, aim=aim, offset=off * (k if legs else 0.0))
         yaw.set(rs.DIRS[d])
 
     w, h = CELL
