@@ -460,12 +460,10 @@ const PLAYGROUND_SPOTS := [Vector2(-95, -40), Vector2(70, -55), Vector2(-20, 35)
 
 
 func _build_playground(parent: Node) -> int:
-	for _try in 60:
-		var mid := Vector2(randf_range(220.0, world.x - 220.0), randf_range(200.0, world.y - 160.0))
-		# The whole park's ground clear first, so it isn't left half built.
-		if not _clear(Rect2(mid - Vector2(170, 130), Vector2(340, 250)), true):
-			continue
-		var placed := 0
+	for _try in 300:
+		var mid := Vector2(randf_range(160.0, world.x - 160.0), randf_range(140.0, world.y - 120.0))
+		# Every piece's ground checked first, so it isn't left half built.
+		var plan := []
 		var spots := PLAYGROUND_SPOTS.duplicate()
 		spots.shuffle()
 		for i in PLAYGROUND.size():
@@ -474,13 +472,21 @@ func _build_playground(parent: Node) -> int:
 			if yaws.is_empty():
 				continue
 			var e := _entry(family, yaws.pick_random())
-			var at: Vector2 = mid + spots[i] + Vector2(randf_range(-10, 10), randf_range(-8, 8))
-			if _try_place(parent, e, at, true, 3.0):
-				placed += 1
+			var at: Vector2 = mid + spots[i] * 0.8 + Vector2(randf_range(-8, 8), randf_range(-6, 6))
+			var fp := RuinProp.footprint_rect(e)
+			var rect := Rect2(fp.position + at, fp.size).grow(3.0)
+			if not _clear(rect, true) or plan.any(func(q): return q[2].intersects(rect)):
+				plan.clear()
+				break
+			plan.append([e, at, rect])
+		if plan.size() < 4:
+			continue
+		for q in plan:
+			_try_place(parent, q[0], q[1], true, 3.0)
 		for k in 2:
 			var bench := _entry("bench_broken" if randf() < 0.6 else "bench", [0, 90, 180, 270].pick_random())
-			_try_place(parent, bench, mid + Vector2(randf_range(-160, 160), randf_range(90, 120)), true, 2.0)
-		return placed
+			_try_place(parent, bench, mid + Vector2(randf_range(-130, 130), randf_range(80, 100)), true, 2.0)
+		return plan.size()
 	return 0
 
 

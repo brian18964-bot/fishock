@@ -305,6 +305,9 @@ func test_ruined_town() -> void:
 		check(wrecks.size() >= 5, "seed %d: wrecked cars (%d)" % [s, wrecks.size()])
 		check(buildings.any(func(b): return b.entry.family == "gas_station"), "seed %d: the old gas station" % s)
 		check(props.any(func(p): return p.entry.family == "traffic_light"), "seed %d: traffic signals" % s)
+		# Round 8 (user request): the old playground in one of its lots.
+		var pg := props.filter(func(p): return p.entry.family.begins_with("pg_"))
+		check(pg.size() >= 4, "seed %d: the abandoned playground (%d pieces)" % [s, pg.size()])
 		var fixed := [MapGenerator.SPAWN_POS, main.get_node("Altar").global_position,
 			main.get_node("EscapePoint").global_position]
 		var bad := []
