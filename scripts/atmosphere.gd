@@ -3,8 +3,8 @@ extends Node2D
 
 ## User request: the scene felt lifeless - adds slow drifting fog over the
 ## world (shaders/fog.gdshader) and a breathing vignette of darkness at the
-## screen edges (shaders/vignette.gdshader). Both thicken at night and in
-## fog weather.
+## screen edges (drawn in the grade's pass, shaders/grade.gdshader - one
+## full-screen pass, for phones). Both thicken at night and in fog weather.
 
 ## User feedback: the picture looked hazy and old - day fog is now barely
 ## there, night and fog weather keep theirs lighter too, and a final grade
@@ -13,9 +13,9 @@ const FOG_DENSITY := {"day": 0.04, "fog": 0.26, "night": 0.1}
 const VIGNETTE := {"day": 0.28, "fog": 0.45, "night": 0.6}
 const GRADE_LAYER := 1
 const FOG_Z := 30
-const VIGNETTE_LAYER := 1
 
 var _fog_mat: ShaderMaterial
+## (the grade's material: the vignette's strength is set on it)
 var _vignette_mat: ShaderMaterial
 
 
@@ -44,22 +44,14 @@ func _ready() -> void:
 	grade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var grade_mat := ShaderMaterial.new()
 	grade_mat.shader = preload("res://shaders/grade.gdshader")
+	# (the vignette is drawn in the grade's pass - one full-screen pass
+	# fewer on phones)
+	grade_mat.set_shader_parameter("noise", _noise(5, 0.03))
+	grade_mat.set_shader_parameter("strength", VIGNETTE.day)
+	_vignette_mat = grade_mat
 	grade.material = grade_mat
 	grade_layer.add_child(grade)
 	add_child(grade_layer)
-
-	var layer := CanvasLayer.new()
-	layer.layer = VIGNETTE_LAYER
-	var vignette := ColorRect.new()
-	vignette.set_anchors_preset(Control.PRESET_FULL_RECT)
-	vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_vignette_mat = ShaderMaterial.new()
-	_vignette_mat.shader = preload("res://shaders/vignette.gdshader")
-	_vignette_mat.set_shader_parameter("noise", _noise(5, 0.03))
-	_vignette_mat.set_shader_parameter("strength", VIGNETTE.day)
-	vignette.material = _vignette_mat
-	layer.add_child(vignette)
-	add_child(layer)
 
 
 func _process(delta: float) -> void:
