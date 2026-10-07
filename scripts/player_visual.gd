@@ -4,19 +4,28 @@ extends Sprite2D
 ## The player on screen: the character travelling (Profile.character - a
 ## greybox animal person in its trial colours, tools/owl_character.py's
 ## player(); its sheets from CharacterArt)
-## moving as Mixamo's clips move (user request: the carrying / casting /
-## holding-the-rod animation), pre-rendered by tools/render_player.py,
+## moving as KayKit's clips move (user request: the carrying / casting /
+## holding-the-rod animation; KayKit Character Animations, CC0, since the
+## user asked to be off Mixamo's), pre-rendered by tools/render_player.py,
 ## 8 frames per clip (the cell fitted to the character); rows = clips x 8
 ## facings. Plays:
 ##   0 idle      breathing, rod across the back
 ##   1 run       rod across the back
-##   2 cast      winding back with the charge (0-3), whipped on release (4-7)
+##   2 cast      a long cast, two-handed: winding back with the charge (0-3),
+##               whipped on release (4-7)
 ##   3 hold      rod held out after the cast, waiting
 ##   4 busy      bent over (sacrificing, rummaging)
 ##   5 reel      cranking the reel in (reeling a fish, retrieving a lure)
 ##   6 fight     a running fish pulling: braced on the reel, yanked toward
 ##               it (frame YANK_FRAME) and hauling back
 ##   7 hold_run  running with the rod held out
+##   8 bite      a bite on the line: the rod twitching (the bite window,
+##               and a moment at each nibble)
+##   9 tug       striking: the rod snatched up (once, as the fish is hooked)
+##  10 catch     landing the fish: the rod raised (once, as it's caught)
+##  11 cast_short  a short cast, one-handed (KayKit's): as the long one -
+##               user request: casts reaching TWO_HAND_RATIO of the full
+##               charge or more are thrown two-handed, shorter ones with one
 ## (Candidate, user request round 6: the reeling cranked at the air.) In
 ## hold, reel, fight and hold_run both hands are on the rod: the right on
 ## the reel's crank, turning it once round over the reel clip.
@@ -54,10 +63,20 @@ const CLIP_BUSY := 4
 const CLIP_REEL := 5
 const CLIP_FIGHT := 6
 const CLIP_HOLD_RUN := 7
-const CLIPS := 8
+const CLIP_BITE := 8
+const CLIP_TUG := 9
+const CLIP_CATCH := 10
+const CLIP_CAST_SHORT := 11
+const CLIPS := 12
 ## Row names in the sheet (and in its rod data, see held_rod.gd).
-const CLIP_NAMES := ["idle", "run", "cast", "hold", "busy", "reel", "fight", "hold_run"]
-const FPS := [2.5, 10.9, 0.0, 3.0, 6.0, 14.0, 9.0, 10.9]
+const CLIP_NAMES := ["idle", "run", "cast", "hold", "busy", "reel", "fight", "hold_run", "bite", "tug", "catch",
+	"cast_short"]
+const FPS := [2.5, 10.9, 0.0, 3.0, 6.0, 14.0, 9.0, 10.9, 9.0, 16.0, 10.0, 0.0]
+## The share of the full charge from which a cast is thrown two-handed.
+const TWO_HAND_RATIO := 0.6
+## A nibble shows the bite clip this long (s); the strike and the landing
+## play their clip through once (FRAMES at their FPS).
+const NIBBLE_TIME := 0.45
 ## The fight clip's frame where the fish yanks: the rod dips, the arms are
 ## pulled out (render_player.py FIGHT_LEAN, FIGHT_REACH) - and, here, the
 ## body is jolted YANK_JOLT px toward the fish and the rod bent harder
@@ -81,6 +100,8 @@ var _phase := 0.0
 ## The main sheet's offset (its rod data, above).
 var _sheet_offset := Vector2.ZERO
 var _whip := -1.0
+## The cast showing: CLIP_CAST (long, two-handed) or CLIP_CAST_SHORT.
+var _cast_clip := CLIP_CAST
 ## The wind-up frame (0-3) the charge reached, -1 when none showed.
 var _wound := -1
 ## The whip's first frame: the one after where the wind-up got to.
@@ -91,6 +112,10 @@ var _struggle_tex: CanvasTexture
 var struggling := false
 ## A fish's yank, 1 at its frame easing to 0 (read by held_rod.gd).
 var yank := 0.0
+## A clip played once over the rest (the strike, the landing, a nibble's
+## twitch): which, and how long it has left (s).
+var _once := -1
+var _once_left := 0.0
 var _home := Vector2.ZERO
 
 @onready var _player: Player = get_parent()
@@ -112,7 +137,37 @@ func _ready() -> void:
 	Art.place(self, _sheet_offset, SPRITE_SCALE)
 	_player.cast_started.connect(func(_t, _tier):
 		_whip = 0.0
-		_whip_from = whip_start(_wound))
+		_whip_from = whip_start(_wound)
+		_cast_clip = cast_clip(_player.charge_time / Player.MAX_CHARGE_TIME))
+	# (KayKit's fishing) striking, landing a fish, a nibble at the float.
+	_player.hook_success.connect(func(): play_once(CLIP_TUG))
+	_player.catch_success.connect(func(_fish): play_once(CLIP_CATCH))
+	_player.nibble.connect(func(_fake): play_once(CLIP_BITE, NIBBLE_TIME))
+
+
+## Whether what the player does now cuts the clip played once short:
+## cranking or a running fish (the strike), the float gone (a nibble).
+func _once_cut(state: Player.State) -> bool:
+	match _once:
+		CLIP_TUG:
+			return _player._is_action_pressed() or _player.fish_run_active_time > 0.0
+		CLIP_BITE:
+			return state != Player.State.WAITING
+	return false
+
+
+## Plays `which` once over whatever else would show (for `seconds`; by
+## default its FRAMES at its FPS).
+func play_once(which: int, seconds := -1.0) -> void:
+	_once = which
+	_once_left = seconds if seconds > 0.0 else FRAMES / FPS[which]
+	_phase = 0.0
+
+
+## The cast clip for a throw at `ratio` of the full charge: two-handed from
+## TWO_HAND_RATIO on, one-handed below.
+static func cast_clip(ratio: float) -> int:
+	return CLIP_CAST if ratio >= TWO_HAND_RATIO else CLIP_CAST_SHORT
 
 
 ## User request (round 5: no jump from the charge into the release): a
@@ -184,14 +239,14 @@ func _process(delta: float) -> void:
 	if _whip >= 0.0:
 		# The cast: the whip and follow-through, fast.
 		_whip += delta
-		clip = CLIP_CAST
+		clip = _cast_clip
 		frame_in_clip = mini(_whip_from + int(_whip / WHIP_TIME * (FRAMES - _whip_from)), FRAMES - 1)
 		if _whip >= WHIP_TIME:
 			_whip = -1.0
 			_wound = -1
 	elif charging and not moving:
-		# Winding back with the charge.
-		clip = CLIP_CAST
+		# Winding back with the charge (one-handed until it's a long one).
+		clip = cast_clip(_player.charge_time / Player.MAX_CHARGE_TIME)
 		frame_in_clip = mini(int(_player.charge_time / Player.MAX_CHARGE_TIME * 4.0), 3)
 		_wound = frame_in_clip
 	elif charging:
@@ -202,8 +257,18 @@ func _process(delta: float) -> void:
 		_phase += delta * FPS[clip] * speed / RUN_PACE
 		frame_in_clip = int(_phase) % FRAMES
 		_wound = -1
+	elif _once >= 0 and not moving and not _once_cut(state):
+		# The strike, the landing or a nibble's twitch, once.
+		_wound = -1
+		_once_left -= delta
+		clip = _once
+		_phase += delta * FPS[clip]
+		frame_in_clip = mini(int(_phase), FRAMES - 1) if clip != CLIP_BITE else int(_phase) % FRAMES
+		if _once_left <= 0.0:
+			_once = -1
 	else:
 		_wound = -1
+		_once = -1
 		var fishing := state != Player.State.IDLE
 		var cranking := _player._is_action_pressed()
 		var was := clip
@@ -216,6 +281,8 @@ func _process(delta: float) -> void:
 				clip = CLIP_REEL if cranking else CLIP_HOLD
 		elif state == Player.State.WAITING and _player.fishing_mode == Player.FishingMode.LURE and cranking:
 			clip = CLIP_REEL  # retrieving the lure
+		elif state == Player.State.BITE:
+			clip = CLIP_BITE  # something's on: strike now
 		elif fishing:
 			clip = CLIP_HOLD
 		elif _player.sacrifice_progress > 0.0:

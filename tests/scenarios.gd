@@ -872,6 +872,11 @@ func test_cast_whip_follows_wind_up() -> void:
 	check(PlayerVisual.whip_start(-1) == 4, "no wind-up shown: the whip as before")
 	check(PlayerVisual.whip_start(3) == 4, "a full wind-up whips from frame 4")
 	check(PlayerVisual.whip_start(0) == 1 and PlayerVisual.whip_start(1) == 2, "an early release plays on from the next frame")
+	# User request: long casts two-handed, short ones one-handed.
+	check(PlayerVisual.cast_clip(1.0) == PlayerVisual.CLIP_CAST and PlayerVisual.cast_clip(PlayerVisual.TWO_HAND_RATIO) == PlayerVisual.CLIP_CAST,
+		"a long cast: two-handed")
+	check(PlayerVisual.cast_clip(Player.CAST_TAP_RATIO) == PlayerVisual.CLIP_CAST_SHORT and PlayerVisual.cast_clip(0.1) == PlayerVisual.CLIP_CAST_SHORT,
+		"a short one (a tap too): one-handed")
 	var zone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
 	var shore: Vector2 = zone.shore_point(Vector2.DOWN)
 	await put(shore + Vector2(0, 60))
@@ -884,7 +889,8 @@ func test_cast_whip_follows_wind_up() -> void:
 	var seen := []
 	for i in 30:
 		await frames(1)
-		if visual.clip == PlayerVisual.CLIP_CAST and (seen.is_empty() or seen[-1] != visual.frame_in_clip):
+		# (a tap is a short cast: one-handed, user request)
+		if visual.clip == PlayerVisual.CLIP_CAST_SHORT and (seen.is_empty() or seen[-1] != visual.frame_in_clip):
 			seen.append(visual.frame_in_clip)
 	check(not seen.is_empty() and seen[0] <= 2, "a tap's whip starts next to its wind-up (%s)" % [seen])
 	var steps_ok := true
@@ -1174,6 +1180,16 @@ func test_rod_bends_with_the_fish() -> void:
 	player().fish_habit = ""
 	player().is_heart_catch = false
 	player()._hook_fish()
+	await frames(2)
+	check(visual.clip == PlayerVisual.CLIP_TUG, "hooked: the strike plays (KayKit's Fishing_Tug)")
+	# the strike over (the rod raised in it), the bend measured on the hold
+	player().fight._run_timer = 99.0
+	player().fight._jump_cooldown = 99.0
+	for i in 60:
+		if visual.clip != PlayerVisual.CLIP_TUG:
+			break
+		await frames(1)
+	check(visual.clip == PlayerVisual.CLIP_HOLD, "the strike gives way to the hold")
 	var bends := []
 	for t in [0.1, 0.8]:
 		player().fight.tension = t
