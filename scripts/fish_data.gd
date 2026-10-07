@@ -2,7 +2,8 @@ class_name FishData
 extends RefCounted
 
 ## Cast-distance ratio (0..1) buckets into a tier; tier drives timing and
-## base reel difficulty. Which actual fish comes up - name, value, how hard
+## base reel difficulty. User feedback (the game's pace too quick): the
+## waits for a bite and the fights are about twice what they were. Which actual fish comes up - name, value, how hard
 ## it fights - is a separate roll against FISH: the map style's waters x
 ## the water zone type it was caught in x rarity x the cast's reach (see
 ## pick_species(), called from Player._roll_catch_outcome()).
@@ -11,27 +12,27 @@ const TIERS := {
 	"near": {
 		"label": "近岸小魚",
 		"value": 2.0,
-		"wait_min": 0.6, "wait_max": 1.4,
+		"wait_min": 1.5, "wait_max": 3.5,
 		"bite_window": 1.0,
-		"reel_speed": 0.55,
+		"reel_speed": 0.24,
 		"tension_rise": 0.35,
 		"tension_fall": 0.6,
 	},
 	"mid": {
 		"label": "近海魚",
 		"value": 5.0,
-		"wait_min": 1.0, "wait_max": 2.2,
+		"wait_min": 2.5, "wait_max": 5.5,
 		"bite_window": 0.7,
-		"reel_speed": 0.4,
+		"reel_speed": 0.24,
 		"tension_rise": 0.5,
 		"tension_fall": 0.55,
 	},
 	"far": {
 		"label": "遠海大魚",
 		"value": 10.0,
-		"wait_min": 1.6, "wait_max": 3.0,
+		"wait_min": 4.0, "wait_max": 7.5,
 		"bite_window": 0.45,
-		"reel_speed": 0.3,
+		"reel_speed": 0.22,
 		"tension_rise": 0.65,
 		"tension_fall": 0.5,
 	},
@@ -377,16 +378,16 @@ static func pick_species(tier: String, zone_key: String, rarity_key: String, pre
 ##   sweet: how wide the tension sweet spot is (reel faster inside it)
 const DIFFICULTY := {
 	"novice": {"label": "入門", "nibbles": Vector2i(0, 0), "fake": 0.0, "window": 1.1,
-		"stamina": 1.0, "pull": 0.8, "run_interval": Vector2(3.5, 5.5), "run_time": 0.5,
+		"stamina": 1.0, "pull": 0.8, "run_interval": Vector2(4.5, 7.0), "run_time": 0.5,
 		"side": 0.0, "jump": 0.0, "phases": 1, "sweet": 0.4},
 	"normal": {"label": "普通", "nibbles": Vector2i(0, 1), "fake": 0.0, "window": 0.8,
-		"stamina": 1.3, "pull": 1.0, "run_interval": Vector2(2.2, 3.6), "run_time": 0.6,
+		"stamina": 1.3, "pull": 1.0, "run_interval": Vector2(3.0, 5.0), "run_time": 0.6,
 		"side": 0.2, "jump": 0.06, "phases": 1, "sweet": 0.34},
 	"advanced": {"label": "進階", "nibbles": Vector2i(1, 3), "fake": 0.15, "window": 0.55,
-		"stamina": 1.7, "pull": 1.15, "run_interval": Vector2(1.7, 2.8), "run_time": 0.7,
+		"stamina": 1.7, "pull": 1.15, "run_interval": Vector2(2.4, 3.9), "run_time": 0.7,
 		"side": 0.5, "jump": 0.12, "phases": 1, "sweet": 0.28},
 	"master": {"label": "大師", "nibbles": Vector2i(2, 4), "fake": 0.35, "window": 0.38,
-		"stamina": 1.9, "pull": 1.3, "run_interval": Vector2(1.3, 2.3), "run_time": 0.8,
+		"stamina": 1.7, "pull": 1.3, "run_interval": Vector2(1.9, 3.2), "run_time": 0.8,
 		"side": 0.6, "jump": 0.16, "phases": 2, "sweet": 0.22},
 }
 const RARITY_SCORE := {"common": 0.0, "rare": 1.0, "epic": 2.5}

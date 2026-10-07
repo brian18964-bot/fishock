@@ -42,6 +42,11 @@ extends RefCounted
 ##   past DANGER of the line (line_max) it may snap any moment - more
 ##   likely the further out (DANGER_SNAP) - and a leap out there snaps it
 ##   outright; all of it out and it's gone ("line_out").
+## - User feedback (fights over too fast): worn out (progress 1) the fish
+##   isn't landed yet - it's spent: no more runs or leaps, it drifts out
+##   slowly and has to be reeled in to the bank (LAND_DISTANCE). Left
+##   un-reeled for RECOVER_AFTER it gets its breath back (RECOVER_TO) and
+##   fights on.
 
 const RUN_TENSION_MULT := 1.8
 ## Giving line to a run: the drag holds tension nearly level.
@@ -57,7 +62,7 @@ const ENRAGE_RUN_TIME := 1.4
 const ENRAGE_PULL := 1.15
 ## User request: berserk, the line tightens fast while you reel - ease off
 ## (let go) and it drops again. On top of ENRAGE_PULL.
-const ENRAGE_REEL_TENSION := 2.2
+const ENRAGE_REEL_TENSION := 1.7
 const ENRAGE_INTERVAL := 0.8
 const DIVE_INTERVAL := Vector2(4.0, 7.0)
 const DIVE_SPEED := 0.45
@@ -82,14 +87,25 @@ const HELD_AT := 0.06
 ## crank brings nothing in), SIDE_OUT_MULT on a sideways one not held,
 ## and only TIRED_OUT of it worn out; never nearer than MIN_DISTANCE.
 const REEL_IN := 2.6
-const RUN_OUT_MULT := 2.6
+const RUN_OUT_MULT := 2.0
 const SIDE_OUT_MULT := 1.4
 const TIRED_OUT := 0.35
 const MIN_DISTANCE := 2.0
+## User feedback (the big wild fish couldn't be brought in): while the reel
+## turns the fish swims out against the drag, only this share as fast (a
+## straight run aside - the drag slips) - line's lost resting the tension,
+## won back cranking.
+const HELD_OUT := 0.45
 ## Past this share of the line it's in danger: the chance a second that it
 ## snaps rises to DANGER_SNAP at the end.
 const DANGER := 0.75
 const DANGER_SNAP := 0.9
+## Spent: landed this near; the tension builds this share as fast; left
+## this long un-reeled it recovers to this much progress.
+const LAND_DISTANCE := 3.0
+const SPENT_TENSION := 0.35
+const RECOVER_AFTER := 2.5
+const RECOVER_TO := 0.82
 
 var diff: Dictionary
 var difficulty_key: String
@@ -108,6 +124,9 @@ var jump_strain := 1.0
 var progress := 0.0
 var tension := 0.15
 var enraged := false
+## Worn out - being reeled in to the bank (see above).
+var spent := false
+var _rest := 0.0
 var result := ""  # "", "landed", "line_break", "shook_off", "cover", "line_out"
 ## The line out (m), how much there is (m), and how fast this fish swims
 ## off with it (m/s) - see REEL_IN.
@@ -164,7 +183,7 @@ func label() -> String:
 ## line_dir: from the angler toward the fish. reel_mult: extra reel-speed
 ## factor (walking while reeling). Returns the events this frame started:
 ## "run", "side_run", "jump", "dive", "enrage", "dive_saved", "swipe_hit",
-## "swipe_miss".
+## "swipe_miss", "spent", "recover".
 func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, reel_mult: float = 1.0) -> Array:
 	var events := []
 	if result != "":
@@ -182,7 +201,20 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 	var out_mult := 1.0
 	var reel_in := k * reel_mult
 
-	if jump_left > 0.0:
+	if spent:
+		if held:
+			_rest = 0.0
+			tension += tension_rise * strain * pull * SPENT_TENSION * k * delta
+		else:
+			_rest += delta
+			tension -= tension_fall * delta
+			if _rest >= RECOVER_AFTER:
+				spent = false
+				_rest = 0.0
+				progress = RECOVER_TO
+				_run_timer = randf_range(diff.run_interval.x, diff.run_interval.y)
+				events.append("recover")
+	elif jump_left > 0.0:
 		jump_left -= delta
 		reel_in *= 0.5
 		if held:
@@ -255,12 +287,23 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 
 	tension = clampf(tension, 0.0, 1.0)
 	progress = clampf(progress, 0.0, 1.0)
+	if held and out_mult != RUN_OUT_MULT:
+		out_mult *= HELD_OUT
 	_line(delta, out_mult, reel_in if held else 0.0, pull)
 	if result == "":
 		if tension >= 1.0:
 			result = "shook_off" if jump_left > 0.0 else "line_break"
-		elif progress >= 1.0:
+		elif spent and distance <= LAND_DISTANCE:
 			result = "landed"
+		elif progress >= 1.0 and not spent:
+			spent = true
+			_rest = 0.0
+			run_left = 0.0
+			jump_left = 0.0
+			swipe_left = 0.0
+			dive_active = false
+			dive = 0.0
+			events.append("spent")
 	return events
 
 
@@ -344,8 +387,10 @@ func _swipe_check(delta: float, counter: Vector2, events: Array) -> bool:
 
 
 ## What the fish is doing, for the fight panel (FightPanel): "jump", "dive",
-## "run", "side_run", "enraged", "tired" or "".
+## "run", "side_run", "enraged", "spent", "tired" or "".
 func mood() -> String:
+	if spent:
+		return "spent"
 	if jump_left > 0.0:
 		return "jump"
 	if dive_active:

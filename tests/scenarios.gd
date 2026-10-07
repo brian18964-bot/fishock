@@ -44,7 +44,7 @@ const TESTS := [
 	"test_fight_swipe",
 	"test_fight_enrage_tension",
 	"test_fight_sweet_spot", "test_fight_line_distance", "test_fight_leap_far_out",
-	"test_fight_swim_out_by_fish", "test_crank_by_turning_the_stick", "test_offhand_swing_and_wear",
+	"test_fight_swim_out_by_fish", "test_fight_spent_reeled_in", "test_crank_by_turning_the_stick", "test_offhand_swing_and_wear",
 	"test_perfect_hook",
 	"test_light_lure",
 	"test_lure_retrieve",
@@ -1440,6 +1440,41 @@ func test_fight_leap_far_out() -> void:
 			check(f.result == "", "close in, the line holds")
 
 
+
+## User feedback (fights over too fast): worn out, the fish is spent, not
+## landed - it has to be reeled in to the bank; left too long it recovers.
+func test_fight_spent_reeled_in() -> void:
+	var tier: Dictionary = FishData.TIERS.values()[0]
+	var f := FishFight.new("normal", "", tier, 1.0)
+	f._jump_cooldown = 99.0
+	f._run_timer = 99.0
+	f.line_max = 40.0
+	f.distance = 15.0
+	f.swim_out = 1.0
+	f.progress = 0.995
+	var events := f.update(0.1, 1.0, Vector2.ZERO, Vector2.UP)
+	check(events.has("spent") and f.spent and f.result == "", "worn out it's spent, not landed (%s)" % f.result)
+	check(f.mood() == "spent", "the panel says so")
+	f.diff = f.diff.duplicate()
+	f.diff.jump = 1000.0
+	f._jump_cooldown = 0.0
+	f.update(0.1, 1.0, Vector2.ZERO, Vector2.UP)
+	check(f.jump_left <= 0.0 and f.run_left <= 0.0, "spent, it doesn't leap or run")
+	var recovered := false
+	for i in 40:
+		if f.update(0.1, 0.0, Vector2.ZERO, Vector2.UP).has("recover"):
+			recovered = true
+			break
+	check(recovered and not f.spent and f.progress < 1.0, "left un-reeled, it gets its breath back (%.2f)" % f.progress)
+	f.progress = 0.995
+	var t := 0.0
+	while f.result == "" and t < 30.0:
+		f.diff.jump = 0.0
+		f.update(0.1, FishFight.CRANK_NORMAL if f.tension < 0.6 else 0.0, Vector2.ZERO, Vector2.UP)
+		t += 0.1
+	check(f.result == "landed" and f.distance <= FishFight.LAND_DISTANCE, "reeled in to the bank, it's landed (%s, %.1f m)" % [f.result, f.distance])
+
+
 ## User request: rarer, wilder fish pull line away faster.
 func test_fight_swim_out_by_fish() -> void:
 	var p := player()
@@ -1454,7 +1489,7 @@ func test_fight_swim_out_by_fish() -> void:
 	p.is_epic_catch = true
 	p.current_tier = "far"
 	var legend := p.swim_out_rate()
-	check(wild > calm and legend > wild * 1.5, "calm %.2f < wild %.2f < legendary off the far water %.2f" % [calm, wild, legend])
+	check(wild > calm and legend > wild * 1.3, "calm %.2f < wild %.2f < legendary off the far water %.2f" % [calm, wild, legend])
 
 
 ## User request: the right stick turned round cranks the reel; held still
@@ -2686,7 +2721,7 @@ func test_campaign_levels_build() -> void:
 		check(rare == int(r.ponds[1]), "%s: %d dark pond(s), got %d" % [l.id, int(r.ponds[1]), rare])
 		if not gen.theme.get("sea", false) and int(r.ponds[0]) >= 0:
 			check(common == int(r.ponds[0]), "%s: %d pond(s), got %d" % [l.id, int(r.ponds[0]), common])
-		check(gs.quota_target == float(r.quota) and gs.day_duration == float(r.day), "%s: quota and day" % l.id)
+		check(gs.quota_target == float(r.quota) and is_equal_approx(gs.day_duration, float(r.day) * gs.DAY_PACE), "%s: quota and day" % l.id)
 		var big: Node = main.get_node("BigGhost")
 		check((big.process_mode != Node.PROCESS_MODE_DISABLED) == r.big_ghost, "%s: the big ghost %s" % [l.id, "in" if r.big_ghost else "out"])
 		var floating := get_tree().get_nodes_in_group("ghosts").filter(func(g): return not g is BigGhost).size()
@@ -2775,7 +2810,7 @@ func test_campaign_curses() -> void:
 	main = get_tree().current_scene
 	gs.start_run()
 	await frames(3)
-	check(is_equal_approx(gs.quota_target, 45.0) and is_equal_approx(gs.day_duration, 180.0), "貪念 and 急潮")
+	check(is_equal_approx(gs.quota_target, 45.0) and is_equal_approx(gs.day_duration, 180.0 * gs.DAY_PACE), "貪念 and 急潮")
 	var floating := get_tree().get_nodes_in_group("ghosts").filter(func(g): return not g is BigGhost).size()
 	check(floating == 3, "群鬼: three floating ghosts (%d)" % floating)
 	await frames(2)

@@ -31,6 +31,10 @@ const MAX_EVIL := 3
 const MAX_STARTING_EVIL := 2
 ## User request: a five-minute day.
 const DAY_DURATION := 300.0
+## User feedback (the game's pace too quick): bites and fights take about
+## twice as long as they did, and each level's day (Campaign rules.day)
+## runs this much longer to leave time for them.
+const DAY_PACE := 1.35
 ## User request: the day darkens in four stages (quarters of the day) - at
 ## first the lamp at its lowest setting is enough to see ahead; by the last
 ## you have to turn it right up. See light_stage(), DarknessController and
@@ -340,7 +344,7 @@ func reset_run() -> void:
 	run_over = false
 	_quota_since_offering = 0.0
 	quota_target = float(Campaign.rules.quota)
-	day_duration = float(Campaign.rules.day)
+	day_duration = float(Campaign.rules.day) * DAY_PACE
 	time_remaining = day_duration
 	_light_stage = 0
 	is_night = false

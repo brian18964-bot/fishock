@@ -105,6 +105,8 @@ static func mood_text(fight: FishFight) -> Array:
 			return ["狂暴衝刺！" if fight.enraged else "往外衝！放線", RAGE if fight.enraged else TENSION]
 		"enraged":
 			return ["狂暴", RAGE]
+		"spent":
+			return ["沒力了！收線上岸", STAMINA]
 		"tired":
 			return ["疲憊", STAMINA]
 	return ["角力中", DIM]

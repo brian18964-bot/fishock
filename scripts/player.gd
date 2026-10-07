@@ -119,7 +119,7 @@ const HOTSPOT_NO_BITE_MULT := 0.4
 ## the strike window, and the whole fight (FishFight: stamina, runs
 ## straight or sideways, leaps, dashes for cover, berserk masters).
 ## Seconds between nibbles:
-const NIBBLE_GAP := Vector2(0.55, 1.2)
+const NIBBLE_GAP := Vector2(0.9, 1.8)
 
 ## User feedback: rarity should go a step further than common/rare - a
 ## small chance for a rare catch to be upgraded to a legendary "epic" fish
@@ -253,12 +253,14 @@ var _crank_angle := 0.0
 var _crank_had := false
 ## User request: the fish's pull on the line (FishFight.swim_out, m/s) -
 ## by how hard it fights (DIFFICULTY's pull), rare and legendary fish,
-## wild ones, and big ones off the far water.
-const SWIM_OUT := 1.1
+## wild ones, and big ones off the far water. User feedback (the longer
+## fights): eased so the legends can be brought in - from the far water
+## with a better rod's longer line.
+const SWIM_OUT := 0.7
 const SWIM_OUT_RARE := 1.25
-const SWIM_OUT_EPIC := 1.6
-const SWIM_OUT_TRAIT := {"calm": 0.8, "normal": 1.0, "wild": 1.3}
-const SWIM_OUT_FAR := 1.15
+const SWIM_OUT_EPIC := 1.3
+const SWIM_OUT_TRAIT := {"calm": 0.8, "normal": 1.0, "wild": 1.15}
+const SWIM_OUT_FAR := 1.05
 ## The line on the reel (m): LINE_BASE, LINE_PER_TIER more each better rod.
 const LINE_BASE := 40.0
 const LINE_PER_TIER := 5.0
@@ -2349,6 +2351,11 @@ func _on_fight_event(kind: String) -> void:
 			GameState.push_message("把魚從石縫邊拉回來了")
 		"enrage":
 			GameState.push_message("魚暴走了！先放線撐住！")
+		"spent":
+			GameState.push_message("魚沒力了！繼續轉右搖桿，把牠拉上岸")
+			GameState.report("魚沒力了，收線拉上岸！", "info")
+		"recover":
+			GameState.push_message("停太久，魚緩過氣來了！")
 	fight_event.emit(kind)
 
 
