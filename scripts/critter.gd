@@ -304,6 +304,14 @@ func set_species(name: String) -> void:
 	sprite.vframes = ceili(float(cells) / _data.cols)
 	sprite.scale = Vector2.ONE * SPRITE_SCALE * _data.get("size", 1.0) * (1.0 if _data.get("ambient", false) else BAIT_SIZE)
 	sprite.offset = _data.offset
+	# User request (no walking into things): solid as big as it is - a
+	# horse or a dinosaur used to brush through trees and rocks on the
+	# small bugs' 5 px.
+	var body := get_node_or_null("CollisionShape2D") as CollisionShape2D
+	if body != null:
+		var circle := CircleShape2D.new()
+		circle.radius = body_radius(float(tex.get_width()) / sprite.hframes * sprite.scale.x)
+		body.shape = circle
 
 
 func _physics_process(delta: float) -> void:
@@ -472,6 +480,18 @@ func scare() -> void:
 	_mode_timer = SCARED_TIME
 	_cooldown = HUNT_COOLDOWN
 	_pick_target(true)
+
+
+## Its body's radius against trees and rocks, for a sheet cell `cell_w`
+## world px wide: BODY_SHARE of it (the cells hold the animal side-on with
+## room round it), BODY_MIN to BODY_MAX.
+const BODY_SHARE := 0.2
+const BODY_MIN := 5.0
+const BODY_MAX := 24.0
+
+
+static func body_radius(cell_w: float) -> float:
+	return clampf(cell_w * BODY_SHARE, BODY_MIN, BODY_MAX)
 
 
 func is_hunting() -> bool:

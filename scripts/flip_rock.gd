@@ -61,12 +61,24 @@ func _ready() -> void:
 	_visual.offset = Vector2.ZERO
 
 	var body := StaticBody2D.new()
-	var shape := CollisionShape2D.new()
-	var circle := CircleShape2D.new()
-	circle.radius = _patch_radius * 0.8
-	shape.shape = circle
-	shape.position = _patch
-	body.add_child(shape)
+	# User request (no walking onto the rocks): solid where its base is -
+	# the rock's traced outline (tools/rock_footprints.py), scaled and
+	# flipped as it's drawn; a circle where there's none.
+	var traced: Array = ROCK.footprints().get(variant.albedo, []) if variant.albedo is String else []
+	if traced.size() >= 3:
+		var poly := CollisionPolygon2D.new()
+		var pts := PackedVector2Array()
+		for pt in traced:
+			pts.append(Vector2(-pt[0] if _visual.flip_h else pt[0], pt[1]) * SIZE)
+		poly.polygon = pts
+		body.add_child(poly)
+	else:
+		var shape := CollisionShape2D.new()
+		var circle := CircleShape2D.new()
+		circle.radius = _patch_radius * 0.8
+		shape.shape = circle
+		shape.position = _patch
+		body.add_child(shape)
 	_roller.add_child(body)
 
 	var zone := Area2D.new()

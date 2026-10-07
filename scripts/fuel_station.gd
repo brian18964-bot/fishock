@@ -158,10 +158,11 @@ func _build_camp() -> void:
 	# Solid: the drums, the fire pit, the tent.
 	var drums := $Drums/CollisionShape2D as CollisionShape2D
 	var rect := RectangleShape2D.new()
-	rect.size = Vector2(40, 22)
+	# (down to the lying drum's front, at -12)
+	rect.size = Vector2(40, 26)
 	drums.shape = rect
 	$Drums.position = Vector2(-36, -27)
-	drums.position = Vector2.ZERO
+	drums.position = Vector2(0, 2)
 	var pit := CollisionShape2D.new()
 	var circle := CircleShape2D.new()
 	circle.radius = 12.0

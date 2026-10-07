@@ -8,6 +8,7 @@ extends StaticBody2D
 ## footprint, so it blocks movement and casts its shadow from its base.
 
 const SPRITE_SCALE := 0.5
+const FOOTPRINTS := "res://assets/sprites/rock_footprints.json"
 
 ## offset: ground point relative to the texture center, (center_x, -center_y)
 ## * 27.108.
@@ -96,11 +97,30 @@ func apply_variant(index: int) -> void:
 
 	var fp: Rect2 = variant.footprint
 	var outline := _octagon(Rect2(fp.position * size, fp.size * size))
+	# User request (no walking into the rocks): the base's own outline
+	# where it's been traced (tools/rock_footprints.py) - a long rock's
+	# ends, a slab's, are solid too.
+	var traced: Array = footprints().get(variant.albedo, []) if variant.albedo is String else []
+	if traced.size() >= 3:
+		outline = PackedVector2Array()
+		for pt in traced:
+			outline.append(Vector2(pt[0], pt[1]) * size)
 	collision.polygon = outline
 	# User request: shadows take the rock's own shape (SilhouetteShadow)
 	# instead of a wedge extruded from its footprint.
 	occluder.occluder = null
 	SilhouetteShadow.attach(self, sprite)
+
+
+## The rocks' traced bases: albedo path -> [[x, y], ...] (node px at size 1).
+static var _footprints := {}
+
+
+static func footprints() -> Dictionary:
+	if _footprints.is_empty():
+		var json := load(FOOTPRINTS) as JSON if ResourceLoader.exists(FOOTPRINTS) else null
+		_footprints = json.data if json != null and json.data is Dictionary else {"": []}
+	return _footprints
 
 
 func _octagon(r: Rect2) -> PackedVector2Array:
