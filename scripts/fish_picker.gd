@@ -47,7 +47,7 @@ func _ready() -> void:
 	_hint = UiKit.label("", 15, UiKit.DIM)
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(_hint)
-	var scroll := ScrollContainer.new()
+	var scroll := DragScroll.new()
 	scroll.custom_minimum_size = Vector2(WINDOW.x - 40.0, CARD.y * 2.0 + 30.0)
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED

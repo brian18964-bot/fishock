@@ -52,6 +52,7 @@ const TESTS := [
 	"test_main_menu",
 	"test_catch_details",
 	"test_warehouse_and_bag",
+	"test_lists_scroll_under_a_finger",
 	"test_lure_throw_and_drops",
 	"test_hud_top",
 	"test_bag_drag_out",
@@ -2045,6 +2046,112 @@ func test_warehouse_and_bag() -> void:
 	check(Profile.stored("battery") == 3 and Profile.batteries == 5, "two of them packed (%d left)" % Profile.stored("battery"))
 	page.queue_free()
 	await frames(1)
+	Profile.load_data(saved)
+	Profile._save()
+
+
+## User request: the bigger things to tap, and a window that runs on past
+## what shows scrolls under a finger from anywhere on it - over a ware's
+## card (a button) too, without picking it; a tap still picks it. The
+## warehouse's boxes scroll up and down, and a thing dragged sideways out of
+## them still goes to the bag.
+func _pointer(kind: String, at: Vector2) -> void:
+	var ev: InputEvent
+	if kind == "move":
+		ev = InputEventMouseMotion.new()
+		ev.button_mask = MOUSE_BUTTON_MASK_LEFT
+	else:
+		ev = InputEventMouseButton.new()
+		ev.button_index = MOUSE_BUTTON_LEFT
+		ev.pressed = kind == "down"
+	ev.position = at
+	ev.global_position = at
+	get_viewport().push_input(ev, true)
+	await frames(1)
+
+
+func _swipe(from: Vector2, by: Vector2) -> void:
+	await _pointer("down", from)
+	for k in range(1, 7):
+		await _pointer("move", from + by * k / 6.0)
+	await _pointer("up", from + by)
+
+
+func test_lists_scroll_under_a_finger() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 99999})
+	# The pages as at the camp: no run's camera moving the screen, nothing of
+	# the run's drawn over them.
+	var cam := get_viewport().get_camera_2d()
+	cam.enabled = false
+	var layers := main.find_children("*", "CanvasLayer", true, false).filter(func(l): return l.visible)
+	for l in layers:
+		l.visible = false
+	await frames(1)
+	check(Backpack.CELL >= 70.0, "the run's bag cells are bigger (%d)" % Backpack.CELL)
+	var shop: Control = load("res://scenes/shop.tscn").instantiate()
+	get_tree().root.add_child(shop)
+	await frames(3)
+	var scroll: DragScroll = shop.find_child("WareScroll", true, false)
+	check(scroll != null and scroll.get_v_scroll_bar().max_value > scroll.size.y, "the wares run past the window")
+	var card: Button = shop.find_child("Card_rod_1", true, false)
+	var picked := [0]
+	card.pressed.connect(func(): picked[0] += 1)
+	var on_card := card.get_global_rect().get_center()
+	await _pointer("down", on_card)
+	for k in range(1, 7):
+		await _pointer("move", on_card + Vector2(0, -25.0 * k))
+	var at := scroll.scroll_vertical
+	check(at > 100, "dragged up over a card, the list scrolls (%d)" % at)
+	await _pointer("up", on_card + Vector2(0, -150))
+	await frames(3)
+	check(picked[0] == 0, "and the card isn't picked")
+	check(scroll.scroll_vertical > at, "let go, it glides on a little")
+	await seconds(1.5)
+	scroll.scroll_vertical = 0
+	await frames(2)
+	await _pointer("down", card.get_global_rect().get_center())
+	await _pointer("up", card.get_global_rect().get_center())
+	check(picked[0] == 1, "a tap still picks it")
+	shop.queue_free()
+	await frames(1)
+
+	# The warehouse: up and down scrolls, sideways is a drag to the bag.
+	for k in Profile.LIVE_BAITS:
+		Profile._store("live_" + k, 3)
+	for l in Profile.LURES:
+		Profile._store("lure_" + l, 3)
+	var page: Control = load("res://scenes/warehouse.tscn").instantiate()
+	get_tree().root.add_child(page)
+	await frames(3)
+	page._show_tab("tackle")
+	await frames(2)
+	var wscroll: DragScroll = page.find_child("StorageScroll", true, false)
+	var storage = page._storage
+	check(storage.cell >= 90.0 and page._bag.cell >= 68.0, "the warehouse's boxes and the bag's cells are bigger")
+	check(wscroll.get_v_scroll_bar().max_value > wscroll.size.y, "a full tab runs past the window")
+	var first: String = storage.ids()[0]
+	var box_at: Vector2 = storage.global_position + storage.box(0).get_center()
+	await _swipe(box_at, Vector2(0, -120))
+	check(wscroll.scroll_vertical > 60 and not page._dragging and page._card == null,
+		"dragged up on a thing, the boxes scroll - no drag, no card (%d)" % wscroll.scroll_vertical)
+	await seconds(1.5)
+	wscroll.scroll_vertical = 0
+	await frames(2)
+	var had := Profile.stored(first)
+	var into: Vector2 = page._bag.global_position + Vector2(6.5, 3.5) * page._bag.cell
+	await _pointer("down", box_at)
+	for k in range(1, 7):
+		await _pointer("move", box_at.lerp(into, k / 6.0))
+	check(page._dragging and wscroll.scroll_vertical == 0, "dragged sideways, the thing is picked up")
+	await _pointer("up", into)
+	check(Profile.stored(first) < had and Profile.bag_count(first) > 0, "and goes into the bag")
+	page.queue_free()
+	await frames(1)
+	cam.enabled = true
+	for l in layers:
+		if is_instance_valid(l):
+			l.visible = true
 	Profile.load_data(saved)
 	Profile._save()
 

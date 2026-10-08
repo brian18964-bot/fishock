@@ -14,6 +14,7 @@ extends Control
 ## Mouse events only: touches arrive as mouse events too
 ## (input_devices/pointing/emulate_mouse_from_touch).
 
+## (not under DragScroll.SLOP: a list's scroll decides first)
 const DRAG_START := 8.0
 const TAB_COLORS := {
 	"gear": Color(0.3, 0.26, 0.4), "item": Color(0.42, 0.36, 0.18), "tackle": Color(0.2, 0.4, 0.34),
@@ -42,6 +43,13 @@ func pressed(source: Dictionary, at: Vector2) -> void:
 	_press = source.duplicate()
 	_press["at"] = at
 	_dragging = false
+
+
+## A DragScroll took the press for a scroll: it's neither a tap nor a drag.
+func cancel_press() -> void:
+	_press = {}
+	if _dragging:
+		_end_drag()
 
 
 func _input(event: InputEvent) -> void:
@@ -75,7 +83,7 @@ func _start_drag() -> void:
 	_ghost.texture = square if square != null else Items.icon(_press.id)
 	_ghost.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_ghost.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_ghost.size = Vector2.ONE * 52.0
+	_ghost.size = Vector2.ONE * 64.0
 	_ghost.modulate = Color(1, 1, 1, 0.8)
 	_ghost.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ghost.z_index = 50
@@ -356,7 +364,7 @@ static func draw_item(ci: CanvasItem, r: Rect2, id: String, count: int, _font: F
 			var sz := Vector2(tex.get_size()) * k
 			ci.draw_texture_rect(tex, Rect2(room.get_center() - sz / 2.0, sz), false)
 	if named:
-		UiKit.draw_text(ci, Vector2(r.position.x, r.end.y - 6.0), def.get("name", ""), 11,
+		UiKit.draw_text(ci, Vector2(r.position.x, r.end.y - 6.0), def.get("name", ""), 11 if r.size.x < 80.0 else 13,
 			UiKit.rarity_color(rarity), HORIZONTAL_ALIGNMENT_CENTER, r.size.x)
 	if count > 1:
 		UiKit.draw_text(ci, Vector2(r.position.x, r.end.y - (18.0 if named else 5.0)), str(count), 14, Color.WHITE,
@@ -430,22 +438,37 @@ class BagGrid extends Control:
 			draw_rect(r, Color(0.4, 1.0, 0.5, 0.8) if ok else Color(1.0, 0.35, 0.3, 0.8), false, 2.0)
 
 
-## The warehouse: one box per kind of thing on the chosen tab.
+## The warehouse: one box per kind of thing on the chosen tab. User request:
+## the boxes big enough to tap, the grid in a DragScroll - as tall as what's
+## on the tab (at least `min_rows`), scrolled when that's more than shows.
 class StorageGrid extends Control:
 	var board: ItemBoard
-	var tab := "gear"
+	var tab := "gear":
+		set(value):
+			tab = value
+			refit()
 	var columns := 6
 	var cell := 70.0
+	var min_rows := 1
 	var _lit := false
 
-	func _init(cols := 6, cell_size := 70.0) -> void:
+	func _init(cols := 6, cell_size := 70.0, rows := 1) -> void:
 		columns = cols
 		cell = cell_size
+		min_rows = rows
 		mouse_filter = Control.MOUSE_FILTER_STOP
-		Profile.profile_changed.connect(queue_redraw)
+		Profile.profile_changed.connect(func():
+			refit()
+			queue_redraw())
+		refit()
 
 	func ids() -> Array:
 		return Profile.storage_ids(tab)
+
+	func refit() -> void:
+		var rows := maxi(min_rows, ceili(ids().size() / float(columns)))
+		custom_minimum_size = Vector2(columns, rows) * cell
+		queue_redraw()
 
 	func box(i: int) -> Rect2:
 		return Rect2(Vector2(i % columns, i / columns) * cell, Vector2.ONE * cell).grow(-3.0)
@@ -549,9 +572,10 @@ class SlotBox extends Control:
 		UiKit.draw_text(self, Vector2(text_x, side * 0.5 - 4.0), title, 13, UiKit.DIM)
 		var line := "即將推出" if locked else ("（空）" if id == "" else Items.name_of(id))
 		if slot == "light" and id == "" and not locked:
-			line = "煤燈（隨身）"
+			line = "隨身煤燈"
 		var col := UiKit.DIM if locked or id == "" else UiKit.rarity_color(UiKit.item_rarity(id))
-		UiKit.draw_text(self, Vector2(text_x, side * 0.5 + 16.0), line, 16, col, HORIZONTAL_ALIGNMENT_LEFT, size.x - text_x, true)
+		UiKit.draw_text(self, Vector2(text_x, side * 0.5 + 16.0), line, 16 if size.x - text_x > 110.0 else 14, col,
+			HORIZONTAL_ALIGNMENT_LEFT, size.x - text_x, true)
 
 	func _lock(c: Vector2) -> void:
 		var ink := Color(0.6, 0.56, 0.5, 0.8)

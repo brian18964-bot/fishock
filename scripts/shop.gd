@@ -29,7 +29,9 @@ const UPGRADE_DESC := {
 	"reel_power": "收線時魚的體力掉得更快",
 }
 const LAMP_ICON := "res://assets/sprites/items/oil_lamp.png"
-const CARD := Vector2(262, 62)
+## User request: the wares bigger to tap - and the list scrolled under a
+## finger from anywhere on it (DragScroll).
+const CARD := Vector2(262, 84)
 
 var _tab := "gear"
 var _tabs := {}
@@ -70,9 +72,9 @@ func _build() -> void:
 		tabs.add_child(b)
 		_tabs[key] = b
 	col.add_child(tabs)
-	var scroll := ScrollContainer.new()
+	var scroll := DragScroll.new()
+	scroll.name = "WareScroll"
 	scroll.custom_minimum_size = Vector2(530, 364)
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_grid = GridContainer.new()
 	_grid.name = "Cards"
 	_grid.columns = 2
@@ -226,7 +228,7 @@ func _card(id: String, tex: Texture2D, title: String, sub: String, price: int, o
 	var pic := WareIcon.new()
 	pic.id = id
 	pic.texture = tex
-	pic.custom_minimum_size = Vector2(52, 52)
+	pic.custom_minimum_size = Vector2(72, 72)
 	pic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(pic)
@@ -235,7 +237,7 @@ func _card(id: String, tex: Texture2D, title: String, sub: String, price: int, o
 	words.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	words.add_theme_constant_override("separation", 0)
-	words.add_child(UiKit.label(title, 17, UiKit.rarity_color(_rarity(id)), true))
+	words.add_child(UiKit.label(title, 18, UiKit.rarity_color(_rarity(id)), true))
 	var bottom := HBoxContainer.new()
 	bottom.add_theme_constant_override("separation", 8)
 	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE

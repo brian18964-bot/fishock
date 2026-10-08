@@ -11,6 +11,14 @@ extends ItemBoard
 
 ## User request (the camp): the crate and the backpack leant on it both
 ## open it; a thing in the bag can be thrown away from its card.
+## User request: the boxes and the bag's cells bigger (they were hard to
+## tap) - the warehouse three big boxes across, scrolled up and down
+## (DragScroll; a thing dragged sideways goes to the bag), the bag wider.
+
+## The warehouse's boxes (3 across) and the bag's cells.
+const STORAGE_CELL := 96.0
+const BAG_CELL := 70.0
+const STORAGE_WIDTH := 326.0
 
 var _storage: ItemBoard.StorageGrid
 var _bag: ItemBoard.BagGrid
@@ -36,32 +44,37 @@ func _build() -> void:
 	var lcol: VBoxContainer = made[1]
 	left.name = "WarehouseWindow"
 	left.position = Vector2(14, 56)
-	left.custom_minimum_size = Vector2(454, 474)
+	left.custom_minimum_size = Vector2(STORAGE_WIDTH, 474)
 	var tabs := HBoxContainer.new()
-	tabs.add_theme_constant_override("separation", 6)
+	tabs.add_theme_constant_override("separation", 5)
 	tabs.alignment = BoxContainer.ALIGNMENT_CENTER
 	for key in Items.TAB_ORDER:
-		var b := UiKit.button(Items.TABS[key], 15)
+		var b := UiKit.button(Items.TABS[key], 14)
 		b.name = "Tab_" + key
-		b.custom_minimum_size = Vector2(98, 38)
+		b.custom_minimum_size = Vector2(68, 40)
 		b.pressed.connect(func(): _show_tab(key))
 		tabs.add_child(b)
 		_tabs[key] = b
 	lcol.add_child(tabs)
-	_storage = ItemBoard.StorageGrid.new(6, 68.0)
+	var scroll := DragScroll.new()
+	scroll.name = "StorageScroll"
+	scroll.sideways_free = true
+	scroll.custom_minimum_size = Vector2(STORAGE_CELL * 3.0 + 4.0, 0)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_storage = ItemBoard.StorageGrid.new(3, STORAGE_CELL, 3)
 	_storage.name = "Storage"
-	_storage.custom_minimum_size = Vector2(408, 340)
-	_storage.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	lcol.add_child(_storage)
-	var note := UiKit.label("商城買的東西會放在這裡", 13, UiKit.DIM)
+	scroll.add_child(_storage)
+	lcol.add_child(scroll)
+	var note := UiKit.label("上下滑動看更多・左右拖到背包", 13, UiKit.DIM)
 	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lcol.add_child(note)
 	add_child(left)
 	track(_storage)
 
 	# Right: the bag.
-	_build_bag(Vector2(478, 56), "背包・帶進下一輪", ["拖曳物品可以在倉庫和背包之間搬，或在背包裡換位置",
-		"點一下物品看說明、選數量", "背包裡的東西會帶進遊戲；釣到的魚、餌料會放進空格"])
+	_build_bag(Vector2(STORAGE_WIDTH + 24.0, 56), "背包・帶進下一輪", ["拖曳物品可以在倉庫和背包之間搬，或在背包裡換位置；點一下看說明、選數量",
+		"背包裡的東西會帶進遊戲；釣到的魚、餌料會放進空格"])
 	_show_tab("gear")
 
 
@@ -71,19 +84,19 @@ func _build_bag(at: Vector2, title: String, lines: Array) -> void:
 	var rcol: VBoxContainer = made2[1]
 	right.name = "BagWindow"
 	right.position = at
-	right.custom_minimum_size = Vector2(468, 474)
+	right.custom_minimum_size = Vector2(946.0 - at.x, 474)
 	_used = UiKit.label("", 14, UiKit.DIM)
 	_used.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	rcol.add_child(_used)
-	_bag = ItemBoard.BagGrid.new(54.0)
+	_bag = ItemBoard.BagGrid.new(BAG_CELL)
 	_bag.name = "Bag"
 	_bag.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	rcol.add_child(_bag)
-	rcol.add_child(UiKit.divider(360))
+	rcol.add_child(UiKit.divider(400))
 	for line in lines:
 		var l := UiKit.label(line, 14, UiKit.DIM)
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		l.custom_minimum_size.x = 420
+		l.custom_minimum_size.x = 540
 		rcol.add_child(l)
 	add_child(right)
 	track(_bag)
@@ -93,6 +106,7 @@ func _show_tab(key: String) -> void:
 	if _storage == null:
 		return
 	_storage.tab = key
+	(_storage.get_parent() as ScrollContainer).scroll_vertical = 0
 	for k in _tabs:
 		UiKit.style_tab(_tabs[k], k == key)
 	_storage.queue_redraw()

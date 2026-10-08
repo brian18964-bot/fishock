@@ -25,11 +25,12 @@ extends CanvasLayer
 ## with it. Picking fish (the altar's offering, the 誘惑 fish) opens a
 ## window of just the fish (FishPicker), not the bag.
 
-const CELL := 60.0
-const PANEL_SIZE := Vector2(720, 430)
+## (User request, again: bigger still - 60 was hard to hit on a phone.)
+const CELL := 72.0
+const PANEL_SIZE := Vector2(820, 470)
 ## The gear slots (EquipSlot): [Profile.equipped slot, its name].
 const GEAR_SLOTS := [["rod", "主手・釣竿"], ["offhand", "副手"], ["light", "燈具"]]
-const GEAR_SIDE := 66.0
+const GEAR_SIDE := 76.0
 const FONT := 16
 ## The tapped thing's card: its width, and its gap from the thing.
 const CARD_WIDTH := 300.0

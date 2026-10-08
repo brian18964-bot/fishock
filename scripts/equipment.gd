@@ -15,16 +15,23 @@ extends ItemBoard
 ## (Profile.TENTS), each earned by an achievement and only for looks: the
 ## ones earned are pitched with a tap, the others show how far along they
 ## are.
+## User request: the slots and cells bigger (they were hard to tap) - the
+## character's window narrower, and on the right one window with two tabs,
+## the warehouse's gear (big boxes, scrolled) or the bag.
+
+const CHAR_WIDTH := 360.0
+const STORAGE_CELL := 100.0
+const BAG_CELL := 64.0
 
 const SLOT_LAYOUT := [
-	["hat", "帽子", Rect2(34, 116, 58, 58), true],
-	["top", "上衣", Rect2(34, 186, 58, 58), true],
-	["pack", "背包", Rect2(34, 256, 58, 58), true],
-	["rod", "主手・釣竿", Rect2(40, 452, 206, 58), false],
-	["light", "燈具", Rect2(258, 452, 206, 58), false],
+	["hat", "帽子", Rect2(32, 106, 66, 66), true],
+	["top", "上衣", Rect2(32, 182, 66, 66), true],
+	["pack", "背包", Rect2(32, 258, 66, 66), true],
+	["rod", "主手・釣竿", Rect2(32, 442, 158, 70), false],
+	["light", "燈具", Rect2(196, 442, 160, 70), false],
 	# User request: the off hand - a weapon (Profile.WEAPONS) or the
 	# landing net, one of them.
-	["offhand", "副手", Rect2(404, 116, 58, 58), false],
+	["offhand", "副手", Rect2(290, 106, 66, 66), false],
 ]
 
 var _viewer: CharacterViewer
@@ -38,6 +45,10 @@ var _gear_windows: Array = []
 var _camp_window: PanelContainer
 var _tent_grid: GridContainer
 var _tent_note: Label
+## The right window's two tabs: "storage" or "bag".
+var _side := "storage"
+var _side_tabs := {}
+var _storage_scroll: DragScroll
 
 
 func _ready() -> void:
@@ -70,17 +81,17 @@ func _build() -> void:
 	var sheet: PanelContainer = made[0]
 	sheet.name = "CharacterWindow"
 	sheet.position = Vector2(14, 56)
-	sheet.custom_minimum_size = Vector2(462, 474)
+	sheet.custom_minimum_size = Vector2(CHAR_WIDTH, 474)
 	add_child(sheet)
 	var glow := TextureRect.new()
 	glow.texture = UiKit.glow()
 	glow.modulate = Color(1.0, 0.62, 0.3, 0.22)
-	glow.position = Vector2(90, 110)
+	glow.position = Vector2(34, 100)
 	glow.size = Vector2(320, 320)
 	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(glow)
 	_viewer = CharacterViewer.new()
-	_viewer.position = Vector2(100, 96)
+	_viewer.position = Vector2(44, 96)
 	_viewer.size = Vector2(300, 318)
 	_viewer.zoom = 0.9
 	add_child(_viewer)
@@ -91,45 +102,64 @@ func _build() -> void:
 		add_child(box)
 		track(box)
 	_stats = UiKit.label("", 14, UiKit.TEXT)
-	_stats.position = Vector2(40, 414)
-	_stats.custom_minimum_size = Vector2(424, 0)
+	_stats.position = Vector2(32, 412)
+	_stats.custom_minimum_size = Vector2(CHAR_WIDTH - 36.0, 0)
 	_stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(_stats)
 
-	# Right: the warehouse's 裝備 tab, and the bag.
-	var made2 := UiKit.window("倉庫・裝備")
+	# Right: the warehouse's 裝備 tab or the bag, by the window's tabs.
+	var right_x := CHAR_WIDTH + 24.0
+	var made2 := UiKit.window("裝備來源")
 	var gear: PanelContainer = made2[0]
-	gear.position = Vector2(486, 56)
-	gear.custom_minimum_size = Vector2(460, 180)
-	_storage = ItemBoard.StorageGrid.new(7, 60.0)
+	gear.name = "SourceWindow"
+	gear.position = Vector2(right_x, 56)
+	gear.custom_minimum_size = Vector2(946.0 - right_x, 474)
+	var gcol: VBoxContainer = made2[1]
+	var side_tabs := HBoxContainer.new()
+	side_tabs.alignment = BoxContainer.ALIGNMENT_CENTER
+	side_tabs.add_theme_constant_override("separation", 8)
+	for t in [["storage", "倉庫・裝備"], ["bag", "背包"]]:
+		var tb := UiKit.button(t[1], 15)
+		tb.name = "Side_" + t[0]
+		tb.custom_minimum_size = Vector2(150, 40)
+		var key: String = t[0]
+		tb.pressed.connect(func(): _show_side(key))
+		side_tabs.add_child(tb)
+		_side_tabs[key] = tb
+	gcol.add_child(side_tabs)
+	_storage_scroll = DragScroll.new()
+	_storage_scroll.name = "StorageScroll"
+	_storage_scroll.sideways_free = true
+	_storage_scroll.custom_minimum_size = Vector2(STORAGE_CELL * 5.0 + 4.0, 0)
+	_storage_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_storage_scroll.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_storage = ItemBoard.StorageGrid.new(5, STORAGE_CELL, 3)
 	_storage.name = "Storage"
 	_storage.tab = "gear"
-	_storage.custom_minimum_size = Vector2(420, 120)
-	_storage.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	(made2[1] as VBoxContainer).add_child(_storage)
-	add_child(gear)
-	var made3 := UiKit.window("背包")
-	var bagwin: PanelContainer = made3[0]
-	bagwin.position = Vector2(486, 244)
-	bagwin.custom_minimum_size = Vector2(460, 286)
-	_bag = ItemBoard.BagGrid.new(50.0)
+	_storage_scroll.add_child(_storage)
+	gcol.add_child(_storage_scroll)
+	_bag = ItemBoard.BagGrid.new(BAG_CELL)
 	_bag.name = "Bag"
 	_bag.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	(made3[1] as VBoxContainer).add_child(_bag)
+	_bag.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	gcol.add_child(_bag)
 	var hint := UiKit.label("把釣竿（主手）、手電筒、武器或撈網（副手）拖到左邊的欄位就能換上；點一下看說明", 13, UiKit.DIM)
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	(made3[1] as VBoxContainer).add_child(hint)
-	add_child(bagwin)
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.custom_minimum_size.x = 900.0 - right_x - 36.0
+	gcol.add_child(hint)
+	add_child(gear)
 	track(_storage)
 	track(_bag)
-	_gear_windows = [gear, bagwin]
+	_gear_windows = [gear]
+	_show_side("storage")
 
 	# The 營地 tab: the tents.
 	var made4 := UiKit.window("營地・帳篷")
 	_camp_window = made4[0]
 	_camp_window.name = "CampWindow"
-	_camp_window.position = Vector2(486, 56)
-	_camp_window.custom_minimum_size = Vector2(460, 474)
+	_camp_window.position = Vector2(right_x, 56)
+	_camp_window.custom_minimum_size = Vector2(946.0 - right_x, 474)
 	var camp_col: VBoxContainer = made4[1]
 	_tent_grid = GridContainer.new()
 	_tent_grid.name = "Tents"
@@ -142,10 +172,19 @@ func _build() -> void:
 	_tent_note.name = "TentNote"
 	_tent_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_tent_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_tent_note.custom_minimum_size = Vector2(420, 0)
+	_tent_note.custom_minimum_size = Vector2(900.0 - right_x - 36.0, 0)
 	camp_col.add_child(_tent_note)
 	add_child(_camp_window)
 	_show_tab("gear")
+
+
+## The right window's tab: the warehouse's gear or the bag.
+func _show_side(key: String) -> void:
+	_side = key
+	for k in _side_tabs:
+		UiKit.style_tab(_side_tabs[k], k == key)
+	_storage_scroll.visible = key == "storage"
+	_bag.visible = key == "bag"
 
 
 func _show_tab(key: String) -> void:

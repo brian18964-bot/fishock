@@ -371,7 +371,7 @@ func _depart_free() -> void:
 # ---------------------------------------------------------------- 成就
 
 func _build_achievements() -> void:
-	var scroll := ScrollContainer.new()
+	var scroll := DragScroll.new()
 	scroll.name = "Achievements"
 	scroll.custom_minimum_size = Vector2(890, 372)
 	scroll.size = scroll.custom_minimum_size

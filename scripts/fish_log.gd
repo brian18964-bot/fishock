@@ -35,7 +35,7 @@ func _build() -> void:
 	_count = UiKit.label("", 15, UiKit.DIM)
 	_count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(_count)
-	var scroll := ScrollContainer.new()
+	var scroll := DragScroll.new()
 	scroll.custom_minimum_size = Vector2(890, 376)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_rows = VBoxContainer.new()
