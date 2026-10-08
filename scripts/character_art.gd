@@ -1,8 +1,9 @@
 class_name CharacterArt
 extends RefCounted
 
-## User request: the four animal people in the game, the camp's fire
-## changing who's travelling (Profile.character). Each one's pictures:
+## User request: the animal people in the game (the four, then the deer
+## and the sheep), the camp's fire changing who's travelling
+## (Profile.character). Each one's pictures:
 ##   assets/sprites/player/<id>/player_55deg_*        the run sheet, its
 ##       front layer and rod data (tools/render_player.py --grip)
 ##   assets/sprites/player/<id>/player_struggle_55deg_*   in the big ghost's
@@ -17,12 +18,15 @@ const SPRITES := "res://assets/sprites/player/%s/"
 const MODEL := "res://assets/models/characters/%s.glb"
 ## The status card's portrait: the head in the idle sheet's first cell
 ## (facing down; texels of the 2x sheet), per character - 44 px square,
-## from 2 px over the head's top, centred on it.
+## from 2 px over the head's top, centred on it (the deer's lower, its
+## face in it with the antlers cut).
 const PORTRAIT := {
 	"cat": Rect2(34, 11, 44, 44),
 	"owl": Rect2(33, 25, 44, 44),
 	"dog": Rect2(41, 21, 44, 44),
 	"bear": Rect2(33, 27, 44, 44),
+	"deer": Rect2(40, 40, 44, 44),
+	"sheep": Rect2(34, 23, 44, 44),
 }
 ## Where the left hand gets to reaching out (CharacterRig.REACH_CLIP at
 ## REACH_AT; the character's frame, +z ahead, +x its left), per character:
@@ -33,6 +37,8 @@ const REACH := {
 	"owl": Vector3(0.13, 1.09, 0.49),
 	"dog": Vector3(0.14, 1.16, 0.51),
 	"bear": Vector3(0.20, 1.10, 0.50),
+	"deer": Vector3(0.14, 1.20, 0.47),
+	"sheep": Vector3(0.16, 1.09, 0.49),
 }
 
 

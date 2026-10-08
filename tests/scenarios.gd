@@ -911,7 +911,8 @@ func test_cast_whip_follows_wind_up() -> void:
 ## The rod is straight with no fish on; hooked, it bends toward the line,
 ## more as the tension rises; the line leaves its bent tip; a run's yank
 ## jolts the body toward the fish and bends the rod harder.
-## User request: the four animals in the game, tapping the camp's fire to
+## User request: the animals in the game (the four, then the deer and the
+## sheep), tapping the camp's fire to
 ## change who's travelling - each with its own pictures in the run (the
 ## sheet, its front layer and rod data, the struggle sheet) and its own
 ## model at camp.
@@ -971,7 +972,7 @@ func test_characters() -> void:
 		check(title.get("_page") == null, "no page opened")
 		if i == 0:
 			check(camp.spots.lamp.at.distance_to(lamp_was) > 0.01, "it stands where its own hand reaches the lamp")
-	check(seen == ["owl", "dog", "bear", "cat"], "round all four and back (%s)" % [seen])
+	check(seen == ["owl", "dog", "bear", "deer", "sheep", "cat"], "round all six and back (%s)" % [seen])
 	title.queue_free()
 	await frames(1)
 

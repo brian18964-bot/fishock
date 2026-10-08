@@ -180,9 +180,11 @@ var camp_tent: int = 8
 
 ## User request: the four greybox animal people in the game (tools/
 ## owl_character.py's player(), PLAYER=<id>), each with its own pictures
-## (CharacterArt); tapping the camp's fire changes who's travelling.
-## [id, name].
-const CHARACTERS := [["cat", "黑貓"], ["owl", "貓頭鷹"], ["dog", "犬"], ["bear", "熊"]]
+## (CharacterArt); tapping the camp's fire changes who's travelling. And
+## (user request) two more after the user's deer and ram: the stag and the
+## sheep. [id, name].
+const CHARACTERS := [["cat", "黑貓"], ["owl", "貓頭鷹"], ["dog", "犬"], ["bear", "熊"], ["deer", "鹿"],
+	["sheep", "羊"]]
 var character: String = "cat"
 
 ## User request (Camp v2): the traveller's spirit (精神), 0..SPIRIT_MAX.
