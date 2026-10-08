@@ -18,7 +18,14 @@ display poses are put on afterwards through the skeleton):
            band of anything shows between the two;
   button   on the shorts' fly, just under the jumper;
   collar   what the animal has at its neck (the owl's feather ruff, the
-           dog's neckerchief, the bear's fur collar; the cat none).
+           dog's neckerchief, the bear's fur collar, the sheep's fleece;
+           the cat and the deer none).
+
+User request: two more, after the deer and the ram the user gave as
+references - a red deer stag (antlers, big ears, a short tail) and a
+sheep with a ram's curled horns, white fleece, a dark face and dark lower
+legs (so it reads against the cream jumper); both on cloven hooves, their
+hands kept fingered to hold the rod.
 
 Writes OUT_DIR/ANIMAL.blend, ANIMAL_greybox.glb (the parts, no rig) and
 ANIMAL_greybox.json (its joints, as owl_character.bind reads them, plus
@@ -224,6 +231,48 @@ ANIMALS = {
         tail=None,
         jumper=dict(ease=0.015, hem=0.040, sleeve=0.70, v_depth=0.095, v_slope=1.25),
         trousers=dict(ease=0.010, waist=0.090, hem_above_knee=0.028, leg_r=0.018, crotch=0.028),
+    ),
+    # a red deer stag: tall and slim, long-legged, a long neck
+    "deer": dict(
+        ankle_z=0.072, shin=0.258, thigh=0.236, pelvis_up=0.044, leg_x=0.074,
+        thigh_r=(0.060, 0.045), shin_r=(0.040, 0.024), calf=0.010,
+        pelvis=((0.0, 0.012, 0.0), (0.110, 0.088, 0.080)),
+        belly=((0.0, 0.000, 0.104), (0.104, 0.088, 0.092)),
+        chest=((0.0, -0.008, 0.212), (0.128, 0.104, 0.106)),
+        shoulder=(0.150, 0.020, 0.250), shoulder_r=0.046,
+        upper=(0.150, 0.038, 0.031), fore=(0.142, 0.033, 0.025),
+        neck=((0.0, 0.022, 0.256), (0.0, 0.002, 0.392), 0.062, 0.050),
+        traps=(0.056, 0.056, 0.038, 0.026),
+        head=(0.0, -0.016, 0.454),
+        hand=dict(kind="paw", palm=(0.050, 0.060, 0.032), fingers=(0.017, 0.014, 0.011), finger_r=0.0122,
+                  thumb=(0.015, 0.012), thumb_r=0.0112, n=3, curl=(8, 14, 18), spread=10, claw=None),
+        foot=dict(kind="hoof", length=0.084, width=0.060, height=0.040, pastern_r=(0.025, 0.023)),
+        tail=dict(points=((0.0, 0.090, 0.044), (0.0, 0.116, 0.064), (0.0, 0.136, 0.060)),
+                  radii=(0.021, 0.019, 0.012), tufts=0, bones=2),
+        jumper=dict(ease=0.012, hem=0.034, sleeve=0.64, v_depth=0.060, v_slope=2.1),
+        trousers=dict(ease=0.007, waist=0.078, hem_above_knee=0.026, leg_r=0.015, crotch=0.024),
+    ),
+    # a sheep: stocky and round, shorter in the leg, a short thick neck
+    "sheep": dict(
+        ankle_z=0.066, shin=0.205, thigh=0.208, pelvis_up=0.046, leg_x=0.084,
+        thigh_r=(0.070, 0.054), shin_r=(0.043, 0.026), calf=0.010,
+        pelvis=((0.0, 0.014, 0.0), (0.134, 0.104, 0.092)),
+        belly=((0.0, -0.010, 0.116), (0.140, 0.120, 0.112)),
+        chest=((0.0, -0.004, 0.226), (0.150, 0.122, 0.118)),
+        shoulder=(0.168, 0.020, 0.264), shoulder_r=0.054,
+        upper=(0.146, 0.044, 0.036), fore=(0.136, 0.038, 0.029),
+        neck=((0.0, 0.020, 0.280), (0.0, 0.006, 0.364), 0.080, 0.068),
+        traps=(0.066, 0.064, 0.044, 0.032),
+        head=(0.0, -0.016, 0.438),
+        hand=dict(kind="paw", palm=(0.054, 0.064, 0.034), fingers=(0.017, 0.014, 0.012), finger_r=0.0130,
+                  thumb=(0.015, 0.012), thumb_r=0.0120, n=3, curl=(8, 14, 18), spread=10, claw=None),
+        foot=dict(kind="hoof", length=0.080, width=0.064, height=0.038, pastern_r=(0.027, 0.025)),
+        tail=dict(points=((0.0, 0.100, 0.036), (0.0, 0.124, 0.022), (0.0, 0.134, -0.004)),
+                  radii=(0.026, 0.024, 0.017), tufts=0, bones=2),
+        jumper=dict(ease=0.013, hem=0.036, sleeve=0.66, v_depth=0.070, v_slope=1.8),
+        trousers=dict(ease=0.008, waist=0.084, hem_above_knee=0.026, leg_r=0.016, crotch=0.025),
+        # its face, forearms, hands and legs below the knee dark (MUZZLE)
+        dark_limbs=True,
     ),
 }
 
@@ -453,6 +502,8 @@ class Animal:
         F = self.P["foot"]
         if F["kind"] == "bird":
             return self.bird_foot(s)
+        if F["kind"] == "hoof":
+            return self.hoof_foot(s)
         A = self.ankle.copy()
         L, w, tr, tl = F["length"], F["width"], F["toe_r"], F["toe_len"]
         x = A[0]
@@ -501,6 +552,33 @@ class Animal:
             pads = [_mirror_x(p) for p in pads]
             claws = [_mirror_x(c) for c in claws]
         return foot, pads, claws
+
+    def hoof_foot(self, s=1):
+        """A cloven hoof (the deer, the sheep): the leg's pastern running
+        down and a little forward into two rounded halves side by side, a
+        cleft between them at the front, flat on the ground. The hoof is
+        its own zone (PAD: dark)."""
+        F = self.P["foot"]
+        A = self.ankle.copy()
+        L, w, h = F["length"], F["width"], F["height"]
+        x = A[0]
+        y0 = A[1] - L * 0.05
+        pastern = S.round_cone(V(x, A[1] + 0.004, A[2]), V(x, y0 - L * 0.10, h * 0.90),
+                               F["pastern_r"][0], F["pastern_r"][1])
+        halves = [S.ellipsoid(V(x + sd * w * 0.24, y0 - L * 0.22, h * 0.52), (w * 0.27, L * 0.50, h * 0.56),
+                              S.rot("z", sd * 4)) for sd in (1, -1)]
+        hoof = S.smooth(halves, 0.008)
+        cleft = S.box(V(x, y0 - L * 0.62, h * 0.5), V(0.0022, L * 0.30, h * 0.8), round_r=0.0015)
+        hoof = S.cut(hoof, cleft, 0.0025)
+        # (the coronet: the hair just over the hoof's top edge)
+        foot = S.smooth([pastern, hoof], 0.010)
+        foot = S.cut(foot, below(0.0), 0.003)
+        zone = S.cut(S.offset(hoof, 0.0012), above(h * 0.80), 0.002)
+        zone = S.cut(zone, below(-0.01))
+        if s == -1:
+            foot = _mirror_x(foot)
+            zone = _mirror_x(zone)
+        return foot, [zone], []
 
     def bird_foot(self, s=1):
         """Three toes forward, one back, out of a padded root; each toe
@@ -691,6 +769,16 @@ class Animal:
             labels.append((HORN, lambda P, h=horn, b=bare: np.maximum(h(P), CLAW_OUT - b(P))))
         if pads:
             labels.append((PAD, S.union(pads)))
+        if self.P.get("dark_limbs"):
+            # (the sheep: its forearms and hands, its legs below the knee,
+            # dark like its face)
+            dark = [self.muzzle] if getattr(self, "muzzle", None) is not None else []
+            for sd in (1, -1):
+                el, wr = self.elbow * V(sd, 1, 1), self.wrist * V(sd, 1, 1)
+                dark.append(S.capsule(lerp(el, wr, 0.30), wr + V(sd * 0.09, 0, 0), 0.075))
+                kn, an_ = self.knee * V(sd, 1, 1), self.ankle * V(sd, 1, 1)
+                dark.append(S.capsule(kn + V(0, 0, -0.030), V(an_[0], an_[1], 0.0), 0.070))
+            self.muzzle = S.union(dark)
         if getattr(self, "muzzle", None) is not None:
             labels.append((MUZZLE, self.muzzle))
         # the eyes, the nose or beak: their own pieces (clean edges where
@@ -1339,7 +1427,155 @@ def head_bear(an):
     return head, eyes, [nose], [], {"top": float(H[2] + 0.104), "half_width": 0.122}
 
 
-HEADS = {"owl": head_owl, "dog": head_dog, "cat": head_cat, "bear": head_bear}
+def antler(root, s):
+    """A red deer's antler off the top of the head (side `s`): its beam
+    rising up and out and sweeping back, curving in again near the top,
+    a brow tine and a bez tine forward low on it, a trez tine halfway up
+    and a small crown of two points at the top; thick at the burr and
+    thinning to blunt points."""
+    beam = [root, root + V(s * 0.022, 0.006, 0.030), root + V(s * 0.050, 0.020, 0.066),
+            root + V(s * 0.072, 0.036, 0.104), root + V(s * 0.080, 0.046, 0.140), root + V(s * 0.072, 0.050, 0.168)]
+    rs = [0.0125, 0.0115, 0.0102, 0.0090, 0.0078, 0.0060]
+    parts = [S.smooth([S.round_cone(beam[i], beam[i + 1], rs[i], rs[i + 1]) for i in range(len(beam) - 1)], 0.004)]
+    # the burr round its base
+    parts.append(S.torus(root + V(s * 0.004, 0.0, 0.008), unit(beam[1] - beam[0]), 0.0125, 0.0036))
+
+    def tine(at, d, L, r0):
+        a = beam[0] + (beam[1] - beam[0]) * 0 if at is None else at
+        d = unit(d)
+        mid = a + d * L * 0.55 + V(0, 0, L * 0.12)
+        return S.smooth([S.round_cone(a, mid, r0, r0 * 0.75), S.round_cone(mid, mid + unit(d + V(0, 0, 0.6)) * L * 0.5,
+                                                                        r0 * 0.75, r0 * 0.30)], 0.003)
+    parts.append(tine(lerp(beam[0], beam[1], 0.60), V(s * 0.20, -1.0, 0.35), 0.060, 0.0085))
+    parts.append(tine(lerp(beam[1], beam[2], 0.50), V(s * 0.30, -1.0, 0.50), 0.050, 0.0075))
+    parts.append(tine(beam[3], V(s * 0.25, -0.8, 0.80), 0.040, 0.0066))
+    parts.append(tine(beam[4], V(s * 0.10, -0.5, 1.0), 0.030, 0.0056))
+    parts.append(tine(beam[4], V(s * 0.60, 0.40, 0.8), 0.028, 0.0052))
+    return S.smooth(parts, 0.004)
+
+
+def head_deer(an):
+    """A red deer stag: a long, narrow head - the brow rising to the crown
+    between the antlers, a long tapering muzzle sloping down to a broad
+    dark nose, a slim lower jaw; big, gentle eyes set on the sides of the
+    head; large ears out to the sides; branched antlers (HORN) off the
+    crown; the muzzle and chin pale (MUZZLE)."""
+    H = an.head_c
+    skull = S.ellipsoid(H + V(0, 0.022, 0.026), (0.056, 0.070, 0.056))
+    cheeks = [S.ellipsoid(H + V(s * 0.030, -0.020, -0.014), (0.026, 0.044, 0.032)) for s in (1, -1)]
+    nape = S.ellipsoid(H + V(0, 0.050, -0.022), (0.040, 0.036, 0.040))
+    head = S.smooth([skull, nape] + cheeks, 0.024)
+    # the long face: down from the brow to the nose
+    bridge = S.ellipsoid(H + V(0, -0.078, -0.006), (0.026, 0.062, 0.024), S.rot("x", -12))
+    snout = S.ellipsoid(H + V(0, -0.128, -0.024), (0.020, 0.026, 0.019))
+    jaw = S.ellipsoid(H + V(0, -0.082, -0.034), (0.017, 0.048, 0.011), S.rot("x", -6))
+    head = S.smooth([head, bridge, snout], 0.024)
+    head = S.smooth([head, jaw], 0.012)
+    mouth = S.tube([H + V(-0.016, -0.100, -0.040), H + V(-0.011, -0.130, -0.040), H + V(0, -0.143, -0.039),
+                    H + V(0.011, -0.130, -0.040), H + V(0.016, -0.100, -0.040)], [0.0017] * 5)
+    head = S.cut(head, mouth, 0.003)
+    ec = [set_eye(head, H + V(s * 0.030, -0.006, 0.020), V(s * 0.75, -1, 0.10), 0.0150, 0.46) for s in (1, -1)]
+    head = S.cut(head, S.union([S.sphere(c, 0.0168) for c in ec]), 0.005)
+    eyes = [S.sphere(c, 0.0150) for c in ec]
+    an.lids = [lid(c, 0.0150, 0.70, 0.0026, 0.05, sd) for c, sd in zip(ec, (1, -1))]
+    nose = S.smooth([S.ellipsoid(H + V(0, -0.149, -0.018), (0.016, 0.008, 0.012)),
+                     S.ellipsoid(H + V(0, -0.143, -0.008), (0.012, 0.010, 0.007))], 0.006)
+    head = S.smooth([head, S.offset(nose, -0.003)], 0.008)
+    an.muzzle = S.smooth([S.ellipsoid(H + V(0, -0.130, -0.030), (0.026, 0.028, 0.020)),
+                          S.ellipsoid(H + V(0, -0.086, -0.044), (0.022, 0.048, 0.014))], 0.008)
+    ears = []
+    an.ears = []
+    for s in (1, -1):
+        base = H + V(s * 0.038, 0.028, 0.046)
+        tip = H + V(s * 0.098, 0.040, 0.100)
+        an.ears.append({"points": [base, lerp(base, tip, 0.5), tip], "reach": 0.036, "from": 0.28})
+        R = S.rot("x", 12) @ S.rot("y", s * -26)
+        e = S.squash(S.round_cone(base, tip, 0.024, 0.006), lerp(base, tip, 0.5), (1.0, 0.40, 1.0), R)
+        hollow = S.squash(S.round_cone(base + V(s * 0.006, -0.010, 0.002), tip + V(-s * 0.002, -0.008, -0.004),
+                                       0.016, 0.003), lerp(base, tip, 0.55) + V(0, -0.008, 0), (1.0, 0.32, 1.0), R)
+        ears.append(S.cut(e, hollow, 0.003))
+    head = S.smooth([head] + ears, 0.010)
+    antlers = [antler(H + V(s * 0.026, 0.006, 0.066), s) for s in (1, -1)]
+    return head, eyes, [nose], antlers, {"top": float(H[2] + 0.082), "half_width": 0.078}
+
+
+def ram_horn(H, s):
+    """A ram's horn (side `s`): out of the top of the head behind the
+    brow, back and round down behind the ear and forward under it - a
+    curl of about a turn and a quarter, spiralling outward, thick at the
+    root and tapering to a blunt tip by the cheek - its front ridged
+    with growth rings."""
+    c = H + V(s * 0.070, 0.036, 0.004)
+    pts, rs = [], []
+    n = 14
+    for i in range(n):
+        t = i / (n - 1)
+        a = math.radians(-12 + t * 300)
+        r = 0.064 - 0.030 * t
+        x = 0.040 + 0.068 * t
+        pts.append(c + V(s * (x - 0.070), math.sin(a) * r, math.cos(a) * r))
+        rs.append(0.026 - 0.018 * t)
+    horn = S.smooth([S.round_cone(pts[i], pts[i + 1], rs[i], rs[i + 1]) for i in range(n - 1)], 0.004)
+    rings = []
+    for i in range(1, n - 2, 2):
+        d = unit(pts[i + 1] - pts[i - 1])
+        rings.append(S.torus(pts[i], d, rs[i] * 0.92, 0.0024))
+    return S.smooth([horn] + rings, 0.003)
+
+
+def head_sheep(an):
+    """A sheep with a ram's horns: a long face with a gently arched
+    (Roman) nose and a soft, rounded muzzle; the eyes on the sides of the
+    head; ears sticking out level under the horns; a tuft of fleece on the
+    crown between them; the face dark (MUZZLE), the fleece light; big
+    curled horns (HORN)."""
+    H = an.head_c
+    skull = S.ellipsoid(H + V(0, 0.018, 0.020), (0.060, 0.066, 0.060))
+    cheeks = [S.ellipsoid(H + V(s * 0.032, -0.020, -0.018), (0.030, 0.042, 0.034)) for s in (1, -1)]
+    nape = S.ellipsoid(H + V(0, 0.050, -0.026), (0.050, 0.040, 0.046))
+    head = S.smooth([skull, nape] + cheeks, 0.026)
+    bridge = S.ellipsoid(H + V(0, -0.068, -0.004), (0.028, 0.058, 0.028), S.rot("x", -20))
+    snout = S.ellipsoid(H + V(0, -0.114, -0.032), (0.024, 0.026, 0.023))
+    jaw = S.ellipsoid(H + V(0, -0.080, -0.042), (0.020, 0.044, 0.013), S.rot("x", -10))
+    head = S.smooth([head, bridge, snout], 0.026)
+    head = S.smooth([head, jaw], 0.012)
+    mouth = S.tube([H + V(-0.018, -0.096, -0.048), H + V(-0.011, -0.122, -0.049), H + V(0, -0.134, -0.048),
+                    H + V(0.011, -0.122, -0.049), H + V(0.018, -0.096, -0.048)], [0.0017] * 5)
+    head = S.cut(head, mouth, 0.003)
+    ec = [set_eye(head, H + V(s * 0.034, -0.006, 0.016), V(s * 0.80, -1, 0.12), 0.0135, 0.46) for s in (1, -1)]
+    head = S.cut(head, S.union([S.sphere(c, 0.0152) for c in ec]), 0.005)
+    eyes = [S.sphere(c, 0.0135) for c in ec]
+    an.lids = [lid(c, 0.0135, 0.62, 0.0026, 0.0, sd) for c, sd in zip(ec, (1, -1))]
+    nose = S.smooth([S.ellipsoid(H + V(s * 0.008, -0.137, -0.026), (0.006, 0.005, 0.004)) for s in (1, -1)], 0.004)
+    head = S.cut(head, S.offset(nose, 0.001), 0.003)
+    ears = []
+    an.ears = []
+    for s in (1, -1):
+        # (under the horn's curl, hanging out and a little down and forward)
+        base = H + V(s * 0.044, -0.008, -0.014)
+        tip = H + V(s * 0.106, -0.034, -0.046)
+        an.ears.append({"points": [base, lerp(base, tip, 0.5), tip], "reach": 0.034, "from": 0.30})
+        R = S.rot("x", 18)
+        e = S.squash(S.round_cone(base, tip, 0.021, 0.013), lerp(base, tip, 0.5), (1.0, 0.40, 1.0), R)
+        hollow = S.squash(S.round_cone(base + V(s * 0.008, -0.006, 0.0), tip + V(-s * 0.002, -0.006, 0.002),
+                                       0.011, 0.005), lerp(base, tip, 0.5) + V(0, -0.006, 0), (1.0, 0.30, 1.0), R)
+        ears.append(S.cut(e, hollow, 0.003))
+    # the fleece on the crown: a few soft lumps
+    tuft = S.smooth([S.sphere(H + V(dx, dy, 0.070 + dz), r) for dx, dy, dz, r in
+                     ((0.0, -0.010, 0.006, 0.026), (0.020, 0.004, 0.0, 0.022), (-0.020, 0.004, 0.0, 0.022),
+                      (0.0, 0.018, 0.002, 0.024), (0.010, -0.030, -0.008, 0.018), (-0.010, -0.030, -0.008, 0.018))],
+                    0.010)
+    head = S.smooth([head, tuft] + ears, 0.010)
+    # the face dark: from the brow down, round the eyes, the ears too
+    an.muzzle = S.smooth([S.ellipsoid(H + V(0, -0.074, -0.014), (0.048, 0.080, 0.060), S.rot("x", -14))] +
+                         [S.capsule(H + V(s * 0.040, -0.008, -0.012), H + V(s * 0.104, -0.032, -0.048), 0.024)
+                          for s in (1, -1)], 0.010)
+    horns = [ram_horn(H, s) for s in (1, -1)]
+    return head, eyes, [], horns, {"top": float(H[2] + 0.088), "half_width": 0.094}
+
+
+HEADS = {"owl": head_owl, "dog": head_dog, "cat": head_cat, "bear": head_bear, "deer": head_deer,
+         "sheep": head_sheep}
 
 
 # ---------------------------------------------------------------- collars
@@ -1438,7 +1674,23 @@ def bear_fur(an, upper):
     return S.smooth(out, 0.010)
 
 
-COLLARS = {"owl": collar_owl, "dog": collar_dog}
+def collar_sheep(an):
+    """The sheep's fleece at its neck: soft round lumps of wool all round
+    over the jumper's neckline, fuller at the back."""
+    n0, n1 = an.neck0, an.neck1
+    out = []
+    for row, (t, n, r0) in enumerate(((0.10, 13, 0.024), (0.34, 11, 0.021))):
+        c = lerp(n0, n1, t)
+        for i in range(n):
+            a = (i + 0.5 * row) / n * 2 * math.pi
+            d = V(math.sin(a), -math.cos(a), 0.0)
+            back = max(math.cos(a + math.pi), 0.0)
+            r = surface_r(an.body_node, c, d)
+            out.append(S.sphere(c + d * (r + 0.004) + V(0, 0, -0.004 * row), r0 * (1.0 + 0.25 * back)))
+    return S.smooth(out, 0.010), FUR
+
+
+COLLARS = {"owl": collar_owl, "dog": collar_dog, "sheep": collar_sheep}
 
 
 # ---------------------------------------------------------------- build

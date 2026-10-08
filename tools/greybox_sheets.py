@@ -19,8 +19,8 @@ import sys
 
 from PIL import Image, ImageDraw, ImageFont
 
-ANIMALS = ["owl", "dog", "cat", "bear"]
-NAMES = {"owl": "貓頭鷹", "dog": "犬", "cat": "黑貓", "bear": "熊"}
+ANIMALS = ["owl", "dog", "cat", "bear", "deer", "sheep"]
+NAMES = {"owl": "貓頭鷹", "dog": "犬", "cat": "黑貓", "bear": "熊", "deer": "鹿", "sheep": "羊"}
 VIEWS = ["front", "three", "side", "back"]
 VIEW_NAMES = {"front": "正面", "three": "四分之三", "side": "真側面", "back": "背面"}
 TESTS = ["bind", "arms_down", "arms_up", "arms_forward", "crouch", "squat", "head_turn", "tail_swing"]
@@ -111,7 +111,7 @@ def main(rev, out, fpath=None):
             im = load(rev, "%s_new_%s.png" % (a, v))
             cells.append(ruler(im) if im else None)
     grid(cells, 4, 420, [VIEW_NAMES[v] for v in VIEWS], [NAMES[a] for a in ANIMALS], f,
-         title="四隻灰模（技術綁定姿勢 T-pose）・同一鏡頭、燈光、地面；橫線每 25 cm").save(
+         title="%d 隻灰模" % len(ANIMALS) + "（技術綁定姿勢 T-pose）・同一鏡頭、燈光、地面；橫線每 25 cm").save(
         os.path.join(out, "greybox_all.png"))
     # today's against the greybox
     for a in ANIMALS:

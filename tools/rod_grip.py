@@ -69,6 +69,8 @@ GRIP_TUNE = {
     "dog": {"axis": 20.0, "palm_at": -0.25, "handle_r": 0.008},
     "cat": {"axis": 20.0, "palm_at": -0.25, "handle_r": 0.007},
     "bear": {"axis": 15.0, "palm_at": -0.30, "handle_r": 0.009},
+    "deer": {"axis": 20.0, "palm_at": -0.25, "handle_r": 0.008},
+    "sheep": {"axis": 20.0, "palm_at": -0.25, "handle_r": 0.008},
 }
 
 

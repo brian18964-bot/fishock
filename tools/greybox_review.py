@@ -815,6 +815,8 @@ DISPLAY = {
     "dog": ("Idle_Talking_Loop", 0.5, True, [("Head", "Z", 10), ("Head", "Y", -8)]),
     "cat": ("Idle_Loop", 0.5, True, [("Head", "X", -4), ("Head", "Z", 8)]),
     "bear": ("Idle_Loop", 0.5, False, [("Head", "X", -4)]),
+    "deer": ("Idle_Loop", 0.5, True, [("Head", "Z", -8)]),
+    "sheep": ("Idle_Loop", 0.5, True, [("Head", "X", -4), ("Head", "Z", 8)]),
 }
 
 

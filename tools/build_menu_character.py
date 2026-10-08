@@ -1,6 +1,6 @@
 """The camp's character, assets/models/characters/<PLAYER>.glb (user
-request: the four animals in the game, the camp's fire changing who's
-travelling - CharacterArt): Quaternius'
+request: the animals in the game - the four, then the deer and the sheep -
+the camp's fire changing who's travelling - CharacterArt): Quaternius'
 Universal Animation Library mannequin (CC0 - the libraries kept out of
 the repo, like the other source models) with the clips the menus play.
 UAL1 and UAL2 share the mannequin's skeleton, so their clips go onto it
