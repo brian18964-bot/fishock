@@ -38,6 +38,7 @@ const TESTS := [
 	"test_rod_bends_with_the_fish",
 	"test_characters",
 	"test_usable_items",
+	"test_quick_slots",
 	"test_live_bait_and_net",
 	"test_cast_only_near_water",
 	"test_walking_off_reels_in",
@@ -1089,6 +1090,71 @@ func test_usable_items() -> void:
 ## bag as a real live bait (the shrimp and the small fish only bought);
 ## the landing net, worn in its slot and taken in hand in a run, catches
 ## from further off and is bitten less; snakes and bees may poison too.
+## User request: three quick slots over the right stick, set by the
+## player (an empty one tapped, or one held, opens a picker of what's in
+## the bag) and used the moment they're tapped - any finger; kept between
+## runs.
+func _touch(at: Vector2, down: bool, finger := 1) -> void:
+	var ev := InputEventScreenTouch.new()
+	ev.index = finger
+	ev.pressed = down
+	ev.position = at
+	get_viewport().push_input(ev, true)
+	await frames(1)
+
+
+func test_quick_slots() -> void:
+	var saved := Profile.snapshot()
+	Profile.quick_slots = ["", "", ""]
+	Profile.bag = Profile.bag.filter(func(e): return not e.id in Profile.USABLES)
+	Profile.bag.append({"id": "potion_vigor", "count": 2, "cell": Vector2i(7, 0)})
+	Profile.bag.append({"id": "eyeball", "count": 1, "cell": Vector2i(7, 1)})
+	var quick: QuickSlots = main.get_node("QuickSlots")
+	check(quick.slots.size() == 3, "three quick slots")
+	for s in quick.slots:
+		check(s.position.y + s.size.y < TouchControls.AIM_CENTER.y - 140.0 and s.position.x > 640.0,
+			"over the right stick (%s)" % s.position)
+	var touch: TouchControls = main.find_children("*", "TouchControls", false, false)[0]
+	check(not touch._is_empty_spot(quick.CENTERS[0]), "a long press on one isn't the lamp's brightness")
+	# An empty one tapped (a second finger - the first on the left stick): the picker.
+	await _touch(quick.CENTERS[0], true, 1)
+	await _touch(quick.CENTERS[0], false, 1)
+	check(quick.picker_open(), "an empty slot tapped opens the picker")
+	var pick: Button = quick.find_child("Pick_potion_vigor", true, false)
+	check(pick != null and quick.find_child("Pick_binoculars", true, false) == null, "with what's in the bag to use")
+	pick.pressed.emit()
+	await frames(2)
+	check(Profile.quick_slots[0] == "potion_vigor" and not quick.picker_open(), "set to the potion")
+	var p := player()
+	await _touch(quick.CENTERS[0], true, 1)
+	await _touch(quick.CENTERS[0], false, 1)
+	check(Profile.bag_count("potion_vigor") == 1 and p.vigor_timer > 0.0, "tapped, it's drunk at once")
+	quick.open_picker(1)
+	await frames(1)
+	(quick.find_child("Pick_potion_vigor", true, false) as Button).pressed.emit()
+	await frames(1)
+	check(Profile.quick_slots[1] == "potion_vigor" and Profile.quick_slots[0] == "", "the same thing isn't in two slots")
+	quick.open_picker(2)
+	await frames(1)
+	(quick.find_child("Pick_eyeball", true, false) as Button).pressed.emit()
+	await frames(1)
+	quick.tap(2)
+	check(Profile.bag_count("eyeball") == 0 and p.get_node_or_null("TrueEye") != null, "the eye opens from its slot")
+	quick.tap(2)
+	check(quick.slots[2]._shake > 0.0 and Profile.quick_slots[2] == "eyeball", "none left: it shakes, still set")
+	# Held: the picker, to clear it.
+	await _touch(quick.CENTERS[1], true, 2)
+	await seconds(QuickSlots.HOLD + 0.1)
+	check(quick.picker_open(), "held, the picker opens")
+	await _touch(quick.CENTERS[1], false, 2)
+	(quick.find_child("ClearSlot", true, false) as Button).pressed.emit()
+	await frames(1)
+	check(Profile.quick_slots[1] == "" and Profile.bag_count("potion_vigor") == 1, "cleared, nothing used")
+	check(Profile.snapshot().quick_slots == ["", "", "eyeball"], "kept in the save")
+	Profile.load_data(saved)
+	Profile._save()
+
+
 func test_live_bait_and_net() -> void:
 	var saved := Profile.snapshot()
 	Profile.load_data({"gold": 1000})

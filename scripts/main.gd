@@ -120,6 +120,11 @@ func _ready() -> void:
 	# Phones (the web build on iPhone): on-screen buttons for the keys, and
 	# the long keyboard help text would sit right under them.
 	add_child(TouchControls.new())
+	# User request: three quick slots over the right stick (QuickSlots) -
+	# after the touch buttons, so a touch on them is theirs first.
+	var quick := QuickSlots.new()
+	quick.name = "QuickSlots"
+	add_child(quick)
 	# The object buttons (ActionPrompt) take a touch before the sticks and
 	# the on-screen buttons do: input goes to the last in the tree first.
 	move_child($ActionPrompt, -1)

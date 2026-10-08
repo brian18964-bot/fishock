@@ -186,6 +186,10 @@ var camp_tent: int = 8
 const CHARACTERS := [["cat", "黑貓"], ["owl", "貓頭鷹"], ["dog", "犬"], ["bear", "熊"], ["deer", "鹿"],
 	["sheep", "羊"]]
 var character: String = "cat"
+## User request: the run's three quick slots (QuickSlots, over the right
+## stick) - the item each is set to (one of USABLES), or "".
+const QUICK_SLOTS := 3
+var quick_slots: Array = ["", "", ""]
 
 ## User request (Camp v2): the traveller's spirit (精神), 0..SPIRIT_MAX.
 ## Lost when a ghost's grab isn't escaped; back with rest at the camp, a
@@ -390,6 +394,19 @@ func add_spirit(amount: float) -> void:
 	spirit = clampf(spirit + amount, 0.0, SPIRIT_MAX)
 	if spirit != was:
 		_changed()
+
+
+## Sets quick slot `i` to usable `id` ("" clears it); the same item isn't
+## in two slots.
+func set_quick_slot(i: int, id: String) -> void:
+	if i < 0 or i >= QUICK_SLOTS or (id != "" and not USABLES.has(id)):
+		return
+	if id != "":
+		for k in QUICK_SLOTS:
+			if quick_slots[k] == id:
+				quick_slots[k] = ""
+	quick_slots[i] = id
+	_changed()
 
 
 ## Buys the merchant's tea or food and has it there and then: false if
@@ -1178,6 +1195,7 @@ func snapshot() -> Dictionary:
 		"settings": settings,
 		"camp_tent": camp_tent,
 		"character": character,
+		"quick_slots": quick_slots,
 		"spirit": spirit,
 		"camp_since": camp_since,
 		"stats": stats,
@@ -1227,6 +1245,11 @@ func load_data(data: Dictionary) -> void:
 	settings.merge(data.get("settings", {}), true)
 	camp_tent = int(data.get("camp_tent", 8))
 	character = str(data.get("character", "cat"))
+	quick_slots = ["", "", ""]
+	var saved_slots: Array = data.get("quick_slots", [])
+	for i in mini(saved_slots.size(), QUICK_SLOTS):
+		if USABLES.has(str(saved_slots[i])):
+			quick_slots[i] = str(saved_slots[i])
 	if CHARACTERS.all(func(c): return c[0] != character):
 		character = "cat"
 	spirit = clampf(float(data.get("spirit", SPIRIT_MAX)), 0.0, SPIRIT_MAX)
