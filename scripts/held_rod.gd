@@ -194,7 +194,7 @@ func place(extra := 0.0) -> void:
 	rotation = along.angle() + extra
 	_length = along.length()
 	# (a swing's sheet has no front layer: behind the body or in front)
-	z_index = 1 if _has_front and _body.acting < 0 else (-1 if cell[4] else 1)
+	z_index = 1 if _has_front and not _body.off_main_sheet() else (-1 if cell[4] else 1)
 	_bend_curve()
 
 

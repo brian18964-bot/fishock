@@ -10,6 +10,8 @@ extends RefCounted
 ##       grip (tools/render_player_struggle.py)
 ##   assets/sprites/player/<id>/player_tools_55deg_*   swinging the off
 ##       hand's thing, and its rod and hand data (tools/render_player_tools.py)
+##   assets/sprites/player/<id>/player_moves_55deg_*   the moves (drinking,
+##       picking up, cheering...; tools/render_player_moves.py)
 ##   assets/models/characters/<id>.glb   the camp's 3D character
 ##       (tools/build_menu_character.py)
 ## Loaded when asked, for the one travelling (the others stay on disk).
@@ -81,6 +83,23 @@ static func tools(id := "") -> Array:
 ## the right hand and the hip (as rod_data()'s); {} when there's none.
 static func tools_data(id := "") -> Dictionary:
 	var path := SPRITES % _id(id) + "player_tools_55deg_rod.json"
+	return (load(path) as JSON).data if ResourceLoader.exists(path) else {}
+
+
+## The player's moves (user request: the user's Mixamo clips, played as
+## the player does things - tools/render_player_moves.py): [albedo, normal]
+## ([] when there's none).
+static func moves(id := "") -> Array:
+	var dir := SPRITES % _id(id)
+	if not ResourceLoader.exists(dir + "player_moves_55deg_albedo.png"):
+		return []
+	return [load(dir + "player_moves_55deg_albedo.png"), load(dir + "player_moves_55deg_normal.png")]
+
+
+## The moves sheet's data: its cell, offset, clips, sections, and per cell
+## the rod on the back, the right hand and the hip; {} when there's none.
+static func moves_data(id := "") -> Dictionary:
+	var path := SPRITES % _id(id) + "player_moves_55deg_rod.json"
 	return (load(path) as JSON).data if ResourceLoader.exists(path) else {}
 
 

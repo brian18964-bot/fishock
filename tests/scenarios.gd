@@ -39,6 +39,7 @@ const TESTS := [
 	"test_characters",
 	"test_usable_items",
 	"test_quick_slots",
+	"test_player_moves",
 	"test_live_bait_and_net",
 	"test_cast_only_near_water",
 	"test_walking_off_reels_in",
@@ -633,6 +634,9 @@ func test_escape() -> void:
 	check(escape.get_node("Light").visible, "runes lit once the quota is met")
 	check(player().interaction().get("verb", "") == "逃離", "escape offered")
 	await tap(KEY_E)
+	# (user request: down on a knee at the 渡石 a moment first)
+	check(player().move_kind == "kneel" and not gs.run_over, "a knee bent at the 渡石 first")
+	await seconds(Player.ESCAPE_KNEEL + 0.2)
 	check(gs.run_over, "run ended by escaping")
 
 
@@ -918,6 +922,12 @@ func test_cast_whip_follows_wind_up() -> void:
 ## change who's travelling - each with its own pictures in the run (the
 ## sheet, its front layer and rod data, the struggle sheet) and its own
 ## model at camp.
+## The Mixamo clips every camp model has (CampLife plays them).
+const CAMP_MIXAMO := ["Lie_Down", "Lying", "Sleep_B", "Ground_Sit", "Ground_Stand", "Seat_Rest", "Seat_Clap", "Seat_Drink",
+	"Drink", "Stretch_Neck", "Stretch_Arms", "Look_Around", "Peek", "Wave_Big", "Wave", "Beckon", "Clap", "Fist_Pump",
+	"Victory", "Disappointed", "Sad", "Sad_B"]
+
+
 func test_characters() -> void:
 	var saved := Profile.snapshot()
 	Profile.load_data({"gold": 100, "spirit": 95.0})
@@ -941,7 +951,37 @@ func test_characters() -> void:
 		var anim: AnimationPlayer = body.find_children("*", "AnimationPlayer", true, false)[0]
 		var clips := ["Idle", "Walk", "Interact", "Sitting_Idle", "Sitting_Enter", "Fixing_Kneeling"]
 		check(clips.all(func(n): return anim.has_animation(n)), "%s: its camp model has the camp's clips" % id)
+		# (user request: the user's Mixamo clips at the camp too)
+		var missing: Array = CAMP_MIXAMO.filter(func(n): return not anim.has_animation(n))
+		check(missing.is_empty(), "%s: and the Mixamo ones (%s)" % [id, ", ".join(missing)])
+		var loops := ["Lying", "Sleep_B", "Ground_Sit", "Seat_Rest", "Sad"].filter(func(n): return anim.has_animation(n))
+		check(loops.all(func(n): return anim.get_animation(n).loop_mode == Animation.LOOP_LINEAR), "%s: the loops loop" % id)
+		# Sat on the log as Sitting_Idle is (the hips where its seat is).
+		var sk: Skeleton3D = body.find_children("*", "Skeleton3D", true, false)[0]
+		var pelvis := sk.find_bone("pelvis")
+		var seat_at := {}
+		for n in ["Sitting_Idle", "Seat_Drink", "Seat_Clap", "Seat_Rest"]:
+			var a3 := anim.get_animation(n)
+			if a3 == null:
+				continue
+			var tr := a3.find_track(NodePath("%s:pelvis" % body.get_path_to(sk)), Animation.TYPE_POSITION_3D)
+			if tr >= 0:
+				seat_at[n] = a3.position_track_interpolate(tr, a3.length * 0.5)
+		var off := 0.0
+		for n in seat_at:
+			off = maxf(off, (seat_at[n] as Vector3).distance_to(seat_at.get("Sitting_Idle", seat_at[n])))
+		check(seat_at.size() == 4 and off < 0.01, "%s: tea, a clap, a rest on the log, sat as it sits (%.3f)" % [id, off])
 		body.free()
+		# Its moves in a run (the third sheet).
+		var moves := CharacterArt.moves(id)
+		var md := CharacterArt.moves_data(id)
+		check(moves.size() == 2 and moves[0] != null and md.get("clips", []) == PlayerVisual.MOVE_NAMES,
+			"%s: its moves sheet, every move" % id)
+		if moves.size() == 2:
+			var mc: Array = md.cell
+			check(moves[0].get_width() == int(mc[0]) * 2 * int(md.frames) * int(md.sections)
+				and moves[0].get_height() == int(mc[1]) * 2 * int(md.rows_per_section) and moves[0].get_height() <= 8192,
+				"%s: the moves sheet holds its cells, no taller than a phone takes (%dx%d)" % [id, moves[0].get_width(), moves[0].get_height()])
 		var p := CharacterArt.portrait(id)
 		var first := (sheet[0] as Texture2D).get_image().get_region(Rect2i(p))
 		check(not first.is_invisible(), "%s: the card's portrait has its head in it" % id)
@@ -1153,6 +1193,75 @@ func test_quick_slots() -> void:
 	check(Profile.snapshot().quick_slots == ["", "", "eyeball"], "kept in the save")
 	Profile.load_data(saved)
 	Profile._save()
+
+
+## User request: the user's Mixamo clips played as the player does things -
+## a potion drunk, a thing picked up, a rock turned, a fish landed (then a
+## fist pumped), the fish lost - off the moves sheet, facing the aim
+## (mirrored for the right-hand facings), cut short by walking off; dizzy
+## when poisoned, head hung when worn right out.
+func test_player_moves() -> void:
+	var p := player()
+	var body: PlayerVisual = p.get_node("Body")
+	await put(away_from_water(200.0))
+	p.aim_dir = Vector2.DOWN
+	await frames(3)
+	if body._move_tex == null:
+		check(false, "the moves sheet is there for %s" % Profile.character)
+		return
+	p.perform("drink", 1.0)
+	await frames(3)
+	check(body.move == "drink" and body.texture == body._move_tex, "drinking: the moves sheet")
+	check(body.rod_on_back() and body.off_main_sheet(), "the rod on the back, the front layer off")
+	var first := body.frame_in_clip
+	await seconds(0.6)
+	check(body.frame_in_clip > first, "playing through (%d -> %d)" % [first, body.frame_in_clip])
+	await seconds(0.6)
+	check(body.move == "" and body.texture == body._main_tex, "and back to the run sheet")
+	# Facing right: drawn from the left facing, mirrored - its rod too.
+	p.aim_dir = Vector2.RIGHT
+	p.perform("pick", 1.0)
+	await frames(3)
+	check(body.move == "pick" and body.flip_h and body.move_flip, "facing right: mirrored")
+	var raw: Array = body._move_data.rod["pick"][2][body.frame_in_clip]
+	check(is_equal_approx(float(body.rod_cell()[0]), -float(raw[0])), "the rod on the back turned over with it")
+	p.aim_dir = Vector2.DOWN
+	await seconds(1.1)
+	# Walking off cuts it short.
+	p.perform("look", 2.0)
+	await frames(2)
+	key(KEY_D, true)
+	await frames(8)
+	check(body.move == "" and p.move_left == 0.0, "walking off cuts a move short")
+	key(KEY_D, false)
+	await frames(10)
+	# A fish landed: the catch clip, then a fist pumped.
+	p.catch_success.emit({"name": "鯉魚", "rarity": "common"})
+	await frames(2)
+	check(body.clip == PlayerVisual.CLIP_CATCH, "the landing first")
+	await seconds(PlayerVisual.FRAMES / PlayerVisual.FPS[PlayerVisual.CLIP_CATCH] + 0.1)
+	check(p.move_kind == "fist" and body.move == "fist", "then a fist pumped")
+	await seconds(PlayerVisual.CHEER_TIME)
+	# Lost: hangs its head.
+	p._fail_catch("shook_off")
+	await frames(2)
+	check(body.move == "sad", "the fish lost: disappointed")
+	await seconds(2.0)
+	# Poisoned, standing: dizzy; worn right out: head hung.
+	p.poison_timer = 3.0
+	await frames(3)
+	check(body.move == "dizzy", "poisoned: dizzy")
+	p.poison_timer = 0.0
+	var spirit := Profile.spirit
+	Profile.spirit = 10.0
+	await frames(3)
+	check(body.move == "sad_idle", "worn right out: head hung")
+	Profile.spirit = spirit
+	await frames(3)
+	check(body.move == "", "and itself again")
+	# Things used: a potion drunk, a rock turned.
+	Profile.bag.append({"id": "potion_vigor", "count": 1, "cell": Vector2i(7, 3)})
+	check(p.use_item("potion_vigor") and p.move_kind == "drink", "a potion: drunk")
 
 
 func test_live_bait_and_net() -> void:
@@ -2736,8 +2845,8 @@ func test_camp_life() -> void:
 	check(life != null and CampLife.tier() == 3, "the camp has a life; at 95 it's busy")
 	# What it picks, by how it feels.
 	var allowed := {
-		0: ["sit"], 1: ["sit", "trough", "warm", "stand"],
-		2: ["sit", "crate", "trough", "lean", "lake", "merchant", "warm", "watch", "stand"],
+		0: ["sit"], 1: ["sit", "nap", "ground", "trough", "warm", "stand"],
+		2: ["sit", "nap", "ground", "crate", "trough", "lean", "lake", "look", "stretch", "merchant", "warm", "watch", "stand"],
 	}
 	for spirit in [20.0, 40.0, 60.0]:
 		Profile.spirit = spirit
@@ -2797,13 +2906,58 @@ func test_camp_life() -> void:
 	life.seated = false
 	Profile.spirit = 80.0
 	life.tap()
-	check(life._step.get("do", "") == "face" and life._plan.size() >= 1 and life._plan[0].get("clip", "") == "Interact",
-		"tapped, it turns and waves")
+	check(life._step.get("do", "") == "face" and life._plan.size() >= 1 and life._plan[0].get("clip", "") in CampLife.TAP_CLIPS[3],
+		"tapped, it turns and waves (or beckons)")
 	Profile.spirit = 10.0
 	life._plan.clear()
 	life._step = {}
 	life.tap()
 	check(life._plan.size() >= 1 and life._plan[0].get("clip", "") == "Idle_No", "spent, it shakes its head")
+	# User request (the Mixamo clips): a nap by the fire - down, asleep, up
+	# again; a tap wakes it, up first and then the wave.
+	Profile.spirit = 40.0
+	life._plan.clear()
+	life._step = {}
+	life.seated = false
+	life.down = ""
+	var nap: Array = life._activity("nap", 1)
+	var nap_clips: Array = nap.filter(func(st): return st.has("clip")).map(func(st): return st.clip)
+	check(nap_clips == ["Lie_Down", "Lying", "Sleep_B", "Lying", "LayToIdle"], "a nap: down, asleep, up (%s)" % ", ".join(nap_clips))
+	life.pivot.position = camp.spots.wake.at
+	life._plan = nap
+	life._next()
+	var lay := false
+	for _i in 600:
+		await frames(1)
+		if life.rig.anim.assigned_animation == "Lying":
+			lay = true
+			break
+	check(lay and life.down == "LayToIdle", "it lies down")
+	life.tap()
+	check(life._step.get("clip", "") == "LayToIdle" and life._plan.any(func(st): return st.get("clip", "") in CampLife.TAP_CLIPS[1]),
+		"tapped, it gets up first, then the wave")
+	await seconds(2.0)
+	check(life.down == "", "and it's up")
+	# Sat on the ground by the fire; worn out, head down where it stands.
+	var ground: Array = life._activity("ground", 2)
+	check(ground.any(func(st): return st.get("clip", "") == "Ground_Stand" and st.get("back", false))
+		and ground.any(func(st): return st.get("clip", "") == "Ground_Sit"), "it sits on the ground by the fire")
+	Profile.spirit = 40.0
+	check(life._idle() == "Sad" and life._activity("stand", 1)[0].clip in ["Sad", "Sad_B"], "worn out, it stands low")
+	Profile.spirit = 80.0
+	check(life._idle() == "Idle", "in good spirits, at ease")
+	# Every clip it plays is in the model.
+	var unknown := {}
+	for t in 4:
+		for _i in 30:
+			for n in CampLife.WEIGHTS:
+				for st in life._activity(n, t):
+					if st.has("clip") and not life.rig.anim.has_animation(st.clip):
+						unknown[st.clip] = true
+	check(unknown.is_empty(), "every clip it plays, the model has (%s)" % ", ".join(unknown.keys()))
+	life._plan.clear()
+	life._step = {}
+	Profile.spirit = 10.0
 	# Spent, it sits and stays sat.
 	life._plan.clear()
 	life._step = {}
@@ -2908,7 +3062,8 @@ func test_camp_life() -> void:
 	await frames(3)
 	life = (title.find_child("Camp", true, false) as CampStage).life
 	check(life.busy == "wake" and life.rig.anim.assigned_animation == "LayToIdle", "back from a run lost, it wakes by the fire")
-	await seconds(6.0)
+	check(life._plan.any(func(st): return st.get("clip", "") == "Disappointed"), "and sighs, getting up")
+	await seconds(8.0)
 	check(life.busy == "" and title._scene_piece == "", "and gets up")
 	title.queue_free()
 	await frames(1)

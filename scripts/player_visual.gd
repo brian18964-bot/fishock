@@ -43,6 +43,16 @@ extends Sprite2D
 ##   1 chop      the hatchet or machete at a tree
 ##   2 scoop     the net swept low
 ##   3 shoot     the pistol fired
+## User request: the player's moves - the user's Mixamo clips, a third
+## sheet (tools/render_player_moves.py; five facings drawn, the other three
+## mirrored - MOVE_FACING), the rod on the back drawn from its data, no
+## ears' sway over them: played as Player.perform() says (drink, look,
+## eye, pick, lift, throw, cheer, fist, sad, scared, pray, kneel - through
+## once over the move, standing still and not fishing; walking off cuts it
+## short), and the landing of a fish followed by a fist pumped (a rare one:
+## both arms up). And how it's feeling, standing about: poisoned it's dizzy,
+## worn right out (Profile.spirit_penalty() 3) it hangs its head; walking
+## slowly so (poisoned) it drags its feet.
 ## Where the rod goes, and the off hand's thing (in the right hand, or at
 ## the hip), comes from the sheet showing (rod_cell(), hand_cell(),
 ## belt_cell()).
@@ -104,6 +114,22 @@ const ACTIONS := ["slash", "chop", "scoop", "shoot"]
 ## The clips with the rod on the back (the off hand's thing in hand).
 const BACK_CLIPS := [CLIP_IDLE, CLIP_RUN, CLIP_BUSY]
 const SHAKE := 1.2
+## The moves sheet's facings for the game's eight (DIRS order): [its row,
+## mirrored].
+const MOVE_FACING := [[0, false], [1, false], [2, false], [3, false], [4, false], [3, true], [2, true], [1, true]]
+const MOVE_DIRS := 5
+## The moves on it (tools/render_player_moves.py's CLIPS, in order).
+const MOVE_NAMES := ["drink", "look", "eye", "pick", "lift", "throw", "cheer", "fist", "sad", "scared", "dizzy", "pray",
+	"kneel", "sad_idle", "sad_walk"]
+## The moves played by how it's feeling (looping): their pace (frames/s);
+## the dragging walk's own pace (world px/s) and the fastest it's used at.
+const MOOD_FPS := {"dizzy": 3.0, "sad_idle": 2.5, "sad_walk": 5.3}
+const SAD_PACE := 32.0
+const SAD_WALK_MAX := 55.0
+## After a fish is landed (the catch clip): a fist pumped, or both arms up
+## for a rare one - for this long.
+const CHEER_TIME := 1.4
+const CHEER_RARITIES := ["rare", "epic", "legendary"]
 
 ## What's showing (read by held_rod.gd).
 var clip := CLIP_IDLE
@@ -127,6 +153,15 @@ var _action_tex: CanvasTexture
 var struggling := false
 ## Showing a swing (the off hand's sheet): which (ACTIONS index), else -1.
 var acting := -1
+## Showing a move (the moves sheet): its name, else "".
+var move := ""
+var move_flip := false
+var _move_tex: CanvasTexture
+var _move_data: Dictionary
+var _move_offset := Vector2.ZERO
+var _move_phase := 0.0
+## The move to play once the clip played once is over (the landing's cheer).
+var _after_once := ""
 var _data: Dictionary
 var _action_data: Dictionary
 var _action_offset := Vector2.ZERO
@@ -175,6 +210,14 @@ func _ready() -> void:
 		_action_tex.normal_texture = tools[1]
 		var action_px: Array = _action_data.offset
 		_action_offset = Vector2(action_px[0], action_px[1])
+	var moves := CharacterArt.moves()
+	_move_data = CharacterArt.moves_data()
+	if not moves.is_empty() and not _move_data.is_empty():
+		_move_tex = CanvasTexture.new()
+		_move_tex.diffuse_texture = moves[0]
+		_move_tex.normal_texture = moves[1]
+		var move_px: Array = _move_data.offset
+		_move_offset = Vector2(move_px[0], move_px[1])
 	_main_tex = CanvasTexture.new()
 	_main_tex.diffuse_texture = sheet[0]
 	_main_tex.normal_texture = sheet[1]
@@ -194,7 +237,9 @@ func _ready() -> void:
 		_cast_clip = cast_clip(_player.charge_time / Player.MAX_CHARGE_TIME))
 	# (KayKit's fishing) striking, landing a fish, a nibble at the float.
 	_player.hook_success.connect(func(): play_once(CLIP_TUG))
-	_player.catch_success.connect(func(_fish): play_once(CLIP_CATCH))
+	_player.catch_success.connect(func(fish):
+		play_once(CLIP_CATCH)
+		_after_once = "cheer" if fish.get("rarity", "") in CHEER_RARITIES or _player.is_epic_catch else "fist")
 	_player.nibble.connect(func(_fake): play_once(CLIP_BITE, NIBBLE_TIME))
 
 
@@ -237,6 +282,9 @@ static func whip_start(wound: int) -> int:
 func _use_sheet(struggle: bool) -> void:
 	struggling = struggle
 	acting = -1
+	move = ""
+	flip_h = false
+	move_flip = false
 	texture = _struggle_tex if struggle else _main_tex
 	hframes = FRAMES if struggle else FRAMES * SHEET_HALVES
 	vframes = 2 * DIRS if struggle else CLIPS * DIRS / SHEET_HALVES
@@ -245,6 +293,8 @@ func _use_sheet(struggle: bool) -> void:
 ## The rod this frame: [grip x, grip y, tip x, tip y, behind] (sheet px
 ## from the feet; held_rod.gd).
 func rod_cell() -> Array:
+	if move != "":
+		return _mirrored(_move_data.rod[move][MOVE_FACING[dir][0]][frame_in_clip], [0, 2])
 	if acting >= 0:
 		return _action_data.rod[ACTIONS[acting]][dir][frame_in_clip]
 	return _data.rod[CLIP_NAMES[clip]][dir][frame_in_clip]
@@ -253,6 +303,9 @@ func rod_cell() -> Array:
 ## The right hand this frame: [x, y, fist axis x, y, fingers x, y, behind]
 ## ([] without the data) - offhand_prop.gd.
 func hand_cell() -> Array:
+	if move != "":
+		var mh: Dictionary = _move_data.get("hand", {})
+		return _mirrored(mh[move][MOVE_FACING[dir][0]][frame_in_clip], [0, 2, 4]) if mh.has(move) else []
 	var d: Dictionary = _action_data if acting >= 0 else _data
 	var key: String = ACTIONS[acting] if acting >= 0 else CLIP_NAMES[clip]
 	return d.hand[key][dir][frame_in_clip] if d.has("hand") and d.hand.has(key) else []
@@ -260,14 +313,36 @@ func hand_cell() -> Array:
 
 ## The right hip this frame: [x, y, thigh x, y, behind] ([] without).
 func belt_cell() -> Array:
+	if move != "":
+		var mb: Dictionary = _move_data.get("belt", {})
+		return _mirrored(mb[move][MOVE_FACING[dir][0]][frame_in_clip], [0, 2]) if mb.has(move) else []
 	var d: Dictionary = _action_data if acting >= 0 else _data
 	var key: String = ACTIONS[acting] if acting >= 0 else CLIP_NAMES[clip]
 	return d.belt[key][dir][frame_in_clip] if d.has("belt") and d.belt.has(key) else []
 
 
+## A moves sheet cell's data as drawn: its x values turned over when the
+## facing's mirrored.
+func _mirrored(cell, xs: Array) -> Array:
+	if cell == null or not (cell is Array):
+		return []
+	var out: Array = (cell as Array).duplicate()
+	if move_flip:
+		for i in xs:
+			if i < out.size():
+				out[i] = -float(out[i])
+	return out
+
+
 ## The rod's on the back this frame (the off hand's thing in the hand).
 func rod_on_back() -> bool:
-	return acting >= 0 or (not struggling and clip in BACK_CLIPS and _once < 0 and _whip < 0.0)
+	return acting >= 0 or move != "" or (not struggling and clip in BACK_CLIPS and _once < 0 and _whip < 0.0)
+
+
+## Showing another sheet than the run's (a swing or a move): no front layer
+## (body_front.gd), the rod placed by its own data.
+func off_main_sheet() -> bool:
+	return acting >= 0 or move != ""
 
 
 ## Swinging the off hand's thing (Player.swing_kind): its sheet, facing the
@@ -280,6 +355,9 @@ func _act() -> bool:
 			Art.place(self, _sheet_offset, SPRITE_SCALE)
 		return false
 	if acting < 0:
+		move = ""
+		flip_h = false
+		move_flip = false
 		texture = _action_tex
 		hframes = FRAMES
 		vframes = ACTIONS.size() * DIRS
@@ -291,6 +369,61 @@ func _act() -> bool:
 	var t := 1.0 - _player.swing_left / Player.SWING_TIME
 	frame_in_clip = clampi(int(t * FRAMES), 0, FRAMES - 1)
 	frame = (acting * DIRS + dir) * FRAMES + frame_in_clip
+	return true
+
+
+## A move (see above): Player.perform()'s, standing still and not fishing,
+## or how it's feeling. Its sheet, facing the aim (or the way it walks).
+func _move(delta: float) -> bool:
+	var speed := _player.velocity.length()
+	var moving := speed > 8.0
+	var idle: bool = _player.state == Player.State.IDLE and not _player.carrying_oil_drum and not _player._lure_charging
+	var name := _player.move_kind if _player.move_left > 0.0 else ""
+	if name != "" and (moving or not idle):
+		# Walked off (or back to fishing): it's cut short.
+		_player.move_left = 0.0
+		name = ""
+	var timed := name != ""
+	if not timed and idle and _once < 0 and _whip < 0.0:
+		var poisoned: bool = _player.poison_timer > 0.0
+		if moving:
+			if poisoned and speed <= SAD_WALK_MAX:
+				name = "sad_walk"
+		elif poisoned:
+			name = "dizzy"
+		elif Profile.spirit_penalty() >= 3:
+			name = "sad_idle"
+	if name == "" or _move_tex == null or not (_move_data.clips as Array).has(name):
+		if move != "":
+			_use_sheet(false)
+			Art.place(self, _sheet_offset, SPRITE_SCALE)
+		return false
+	if move == "":
+		texture = _move_tex
+		hframes = FRAMES * int(_move_data.sections)
+		vframes = int(_move_data.rows_per_section)
+		Art.place(self, _move_offset, SPRITE_SCALE)
+	if name != move:
+		_move_phase = 0.0
+	move = name
+	var face := _player.velocity if moving else _player.aim_dir
+	if face.length() > 0.01:
+		dir = SECTOR_TO_DIR[posmod(roundi(face.angle() / (PI / 4.0)), 8)]
+	var facing: Array = MOVE_FACING[dir]
+	move_flip = facing[1]
+	flip_h = move_flip
+	if timed:
+		var t := 1.0 - _player.move_left / maxf(_player.move_time, 0.01)
+		frame_in_clip = clampi(int(t * FRAMES), 0, FRAMES - 1)
+	else:
+		var fps: float = MOOD_FPS.get(name, 3.0)
+		if name == "sad_walk":
+			fps *= speed / SAD_PACE
+		_move_phase += delta * fps
+		frame_in_clip = int(_move_phase) % FRAMES
+	var row: int = (_move_data.clips as Array).find(name) * MOVE_DIRS + int(facing[0])
+	var per: int = int(_move_data.rows_per_section)
+	frame = (row % per) * hframes + (row / per) * FRAMES + frame_in_clip
 	return true
 
 
@@ -338,6 +471,10 @@ func _pick_frame(delta: float) -> void:
 		yank = 0.0
 		position = _home
 		return
+	if _move(delta):
+		yank = 0.0
+		position = _home
+		return
 	var speed := _player.velocity.length()
 	var moving := speed > 8.0
 	# User feedback: which way a cast will go has to read on the character -
@@ -382,6 +519,9 @@ func _pick_frame(delta: float) -> void:
 		frame_in_clip = mini(int(_phase), FRAMES - 1) if clip != CLIP_BITE else int(_phase) % FRAMES
 		if _once_left <= 0.0:
 			_once = -1
+			if _after_once != "":
+				_player.perform(_after_once, CHEER_TIME)
+				_after_once = ""
 	else:
 		_wound = -1
 		_once = -1
@@ -437,7 +577,7 @@ func _sway_update(delta: float) -> void:
 	_sway_reaches.clear()
 	var d: Dictionary = _action_data if acting >= 0 else _data
 	var key: String = ACTIONS[acting] if acting >= 0 else CLIP_NAMES[clip]
-	if struggling or not d.has("sway") or not d.sway.has(key):
+	if struggling or move != "" or not d.has("sway") or not d.sway.has(key):
 		return
 	var cells: Array = d.sway[key][dir][frame_in_clip]
 	var names: Array = d.get("sway_names", [])

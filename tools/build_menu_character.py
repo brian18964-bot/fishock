@@ -11,11 +11,18 @@ of it as the spirit runs low; see CampLife). Carrying, chopping and
 harvesting are left out (user request: the hands didn't close on what
 they held), and dancing (user request).
 
+User request: the user's Mixamo clips (MOVES_DIR - Y Bot, 30 fps, kept out
+of the repo) for more of the camp's life - lying down to sleep, sitting on
+the ground, tea on the log, stretching, looking about, waving to the
+merchant, cheering, low - carried onto the mannequin's skeleton by
+tools/kaykit.py (the hips kept over the feet, the feet on the ground), by
+the names in MIXAMO ("_Loop" ones loop, as UAL's do).
+
 The one wearing them is the player's character (owl_character.player, put
 on the mannequin's skeleton: the beginner owl person, or PLAYER=<animal>
 GREYBOX_DIR=<build> a greybox one); MANNEQUIN=1 keeps the mannequin instead.
 
-  UAL1=<UAL1_Standard.glb> UAL2=<UAL2_Standard.glb> \\
+  UAL1=<UAL1_Standard.glb> UAL2=<UAL2_Standard.glb> MOVES_DIR=<dir> \\
       bpyenv/bin/python tools/build_menu_character.py      (repo root)
 """
 import os
@@ -25,6 +32,7 @@ import bpy
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import owl_character  # noqa: E402
+import kaykit  # noqa: E402
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 # (OUT=<path>: elsewhere - a try-out of another character)
@@ -40,6 +48,152 @@ UAL1 = [
 UAL2 = [
     "Idle_FoldArms_Loop", "Idle_Rail_Loop", "Chest_Open", "Consume", "Yes", "Idle_No_Loop", "LayToIdle",
 ]
+
+# The Mixamo clips: the name it's played by, the file, the source frames
+# (None: all), and whether it's a standing one (the stance's stride check).
+MIXAMO = [
+    ("Lie_Down", "Lying.Down.fbx", None, False),
+    ("Lying_Loop", "Laying.fbx", None, False),
+    ("Sleep_B_Loop", "Male.Laying.Pose.1.fbx", None, False),
+    ("Ground_Sit_Loop", "Sitting.Idle.fbx", (1, 160), False),
+    ("Ground_Stand", "Standing.Up.fbx", (1, 70), False),
+    ("Seat_Rest_Loop", "Sitting.fbx", None, False),
+    ("Seat_Clap_Loop", "Clapping.1.fbx", None, False),
+    ("Seat_Drink", "Sitting.Drinking.fbx", (130, 400), False),
+    ("Drink", "Drinking.fbx", (62, 172), True),
+    ("Stretch_Neck", "Neck.Stretching.fbx", None, True),
+    ("Stretch_Arms", "Front.Raises.fbx", None, True),
+    ("Look_Around", "Look.Around.fbx", None, True),
+    ("Peek", "Crouch.Look.Around.Corner.fbx", None, False),
+    ("Wave_Big", "Waving.fbx", None, True),
+    ("Wave", "Waving.1.fbx", None, True),
+    ("Beckon", "Beckoning.fbx", None, True),
+    ("Clap_Loop", "Clapping.fbx", None, True),
+    ("Fist_Pump", "Fist.Pump.fbx", (1, 75), True),
+    ("Victory", "Victory.fbx", None, True),
+    ("Disappointed", "Disappointed.fbx", None, True),
+    ("Sad_Loop", "Sad.Idle.fbx", None, True),
+    ("Sad_B_Loop", "Sad.Idle.1.fbx", None, True),
+]
+# Every second source frame kept (the keys spread back out, so it plays at
+# the same pace): the model's size.
+MIXAMO_STEP = 2
+# Lying and sat on the ground, it's the body's lowest point that goes on
+# the ground, not a foot (a knee up, the feet off it) - ground_on_body().
+GROUNDED = ("Lie_Down", "Lying_Loop", "Sleep_B_Loop", "Ground_Sit_Loop", "Ground_Stand")
+# Sat on a log: Mixamo's seats are lower than the camp's logs (into the
+# wood by up to 14 cm), so the hips and legs are UAL's Sitting_Idle's (made
+# for the logs) and the body above them keeps the Mixamo clip's turn -
+# seat_on_log().
+ON_LOG = ("Seat_Rest_Loop", "Seat_Clap_Loop", "Seat_Drink")
+LOG_CLIP = "Sitting_Idle_Loop"
+LEGS = ("root", "pelvis", "thigh_l", "calf_l", "foot_l", "ball_l", "thigh_r", "calf_r", "foot_r", "ball_r")
+
+
+def mixamo_clips(arm):
+    """MIXAMO carried onto `arm` (the mannequin): {name: action}; none
+    without MOVES_DIR."""
+    folder = os.environ.get("MOVES_DIR", "")
+    out = {}
+    if folder == "":
+        return out
+    for name, fbx, span, _standing in MIXAMO:
+        lib = kaykit.load_mixamo(os.path.join(folder, fbx), "mx_" + name)
+        act = bpy.data.actions["mx_" + name]
+        s, e = span or act.frame_range
+        step = MIXAMO_STEP if e - s >= 8 else 1
+        baked = kaykit.bake(arm, lib, "mx_" + name, name=name, lift=0.0, rig="mixamo", span=(s, e), step=step)
+        if step > 1:
+            for fc in baked.fcurves:
+                for kp in fc.keyframe_points:
+                    kp.co.x = 1.0 + (kp.co.x - 1.0) * step
+                    kp.handle_left.x = 1.0 + (kp.handle_left.x - 1.0) * step
+                    kp.handle_right.x = 1.0 + (kp.handle_right.x - 1.0) * step
+        for o in [lib] + list(lib.children):
+            bpy.data.objects.remove(o, do_unlink=True)
+        bpy.data.actions.remove(act)
+        out[name] = baked
+    return out
+
+
+def ground_on_body(arm, body, act):
+    """`act` keyed again with the hips raised or lowered, frame by frame,
+    so the body's lowest point (the character bound, its meshes as posed)
+    just touches the ground - never lower than a foot would put it."""
+    ad = arm.animation_data
+    ad.action = act
+    hips = arm.pose.bones["pelvis"]
+    scene = bpy.context.scene
+    s0, s1 = (int(round(f)) for f in act.frame_range)
+    frames = sorted({int(round(kp.co.x)) for fc in act.fcurves for kp in fc.keyframe_points})
+    # (not the tail: hanging down it'd hold the feet up off the ground)
+    meshes = [o for o in body if o.type == "MESH"]
+    skip = {}
+    for o in meshes:
+        tails = {g.index for g in o.vertex_groups if g.name.startswith("tail")}
+        skip[o.name] = {v.index for v in o.data.vertices
+                        if sum(g.weight for g in v.groups if g.group in tails) > 0.3}
+    lifts = {}
+    for f in frames:
+        scene.frame_set(f)
+        dg = bpy.context.evaluated_depsgraph_get()
+        low = 0.0
+        for o in meshes:
+            mesh = o.evaluated_get(dg).to_mesh()
+            out = skip[o.name]
+            zs = [(o.matrix_world @ v.co).z for v in mesh.vertices if v.index not in out]
+            if zs:
+                low = min(low, min(zs)) if low != 0.0 else min(zs)
+        lifts[f] = -low
+    for f in frames:
+        scene.frame_set(f)
+        world = arm.matrix_world @ hips.matrix
+        world.translation.z += lifts[f]
+        hips.location = arm.convert_space(pose_bone=hips, matrix=world, from_space="WORLD", to_space="LOCAL").translation
+        hips.keyframe_insert("location", frame=f)
+    for o in body:
+        if o.type == "MESH":
+            o.evaluated_get(bpy.context.evaluated_depsgraph_get()).to_mesh_clear()
+    ad.action = None
+
+
+def seat_on_log(arm, act, seat):
+    """`act` keyed again with the hips and legs as `seat` has them (its
+    first frame) and spine_01 turned so the body above keeps the way it
+    faced in `act`."""
+    ad = arm.animation_data or arm.animation_data_create()
+    bones = arm.pose.bones
+    scene = bpy.context.scene
+    frames = sorted({int(round(kp.co.x)) for fc in act.fcurves for kp in fc.keyframe_points})
+    ad.action = act
+    turn = {}
+    for f in frames:
+        scene.frame_set(f)
+        turn[f] = bones["spine_01"].matrix.to_quaternion()
+    ad.action = seat
+    scene.frame_set(int(seat.frame_range[0]))
+    legs = {b: bones[b].matrix_basis.copy() for b in LEGS if b in bones}
+    ad.action = act
+    for f in frames:
+        scene.frame_set(f)
+        for b, m in legs.items():
+            bones[b].matrix_basis = m
+            bones[b].keyframe_insert("location", frame=f)
+            bones[b].keyframe_insert("rotation_quaternion", frame=f)
+        bpy.context.view_layer.update()
+        sp = bones["spine_01"]
+        at = sp.matrix.to_translation()
+        sp.matrix = _placed(turn[f], at)
+        sp.keyframe_insert("rotation_quaternion", frame=f)
+        sp.keyframe_insert("location", frame=f)
+    ad.action = None
+
+
+def _placed(q, at):
+    """A matrix turned `q`, at `at`."""
+    m = q.to_matrix().to_4x4()
+    m.translation = at
+    return m
 
 
 def clip_name(action, armature):
@@ -62,6 +216,8 @@ def load(path):
 
 def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
+    # (Mixamo's 30 a second, keyed a frame each; UAL's come in to match)
+    bpy.context.scene.render.fps = int(kaykit.FPS)
     arm, body, acts1 = load(os.environ["UAL1"])
     arm2, body2, acts2 = load(os.environ["UAL2"])
     keep = {}
@@ -73,11 +229,20 @@ def main():
     # The second library's mannequin goes; its clips stay.
     for o in [arm2] + body2:
         bpy.data.objects.remove(o, do_unlink=True)
+    mixamo = mixamo_clips(arm)
+    keep.update(mixamo)
+    standing = [a for n, a in keep.items() if n.startswith("Idle")]
+    standing += [mixamo[m[0]] for m in MIXAMO if m[3] and m[0] in mixamo]
     if os.environ.get("MANNEQUIN") != "1":
         for o in body:
             bpy.data.objects.remove(o, do_unlink=True)
-        body = owl_character.player(arm, "ual", list(keep.values()),
-                                    standing=[a for n, a in keep.items() if n.startswith("Idle")])
+        body = owl_character.player(arm, "ual", list(keep.values()), standing=standing)
+    for name in GROUNDED:
+        if name in mixamo:
+            ground_on_body(arm, body, mixamo[name])
+    for name in ON_LOG:
+        if name in mixamo:
+            seat_on_log(arm, mixamo[name], keep[LOG_CLIP])
     for a in list(bpy.data.actions):
         if a not in keep.values():
             bpy.data.actions.remove(a)

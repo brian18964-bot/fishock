@@ -9,21 +9,30 @@ extends Node
 ## (Profile.spirit) runs down. (Chopping wood and carrying it, gathering
 ## sticks: dropped - user request, the hands didn't close on what they
 ## held. Dancing: dropped too, user request.)
+## User request: the user's Mixamo clips too (tools/build_menu_character.py)
+## - a nap by the fire (lying down, asleep, up again), sitting on the
+## ground by the fire, tea, a clap or a rest on the log, stretching,
+## looking about at the edge of the dark (or peeking into it), a wave to
+## the merchant as it goes over and as he goes, a wave or a beckon when
+## tapped, low (head down) when worn out, and home again a cheer (escaped)
+## or a sigh (lost).
 ##   70-100  busy    all of it
 ##   50-69   tired   no mending; slower; sits more
-##   30-49   worn    mostly sits, a long while
+##   30-49   worn    mostly sits, a long while, or naps; stands low
 ##   0-29    spent   only sits
-## A tap (tap()): it waves - nods, shakes its head as it wearies; seated,
-## it talks. And the set pieces: setting out (depart(): the lamp from the
-## drum - it lights - and off, the game fading in as it goes), coming home
-## through the 渡石 (come_home("escaped")) and waking by the fire after a
-## run lost (come_home("lost")).
+## A tap (tap()): it waves - beckons, nods, shakes its head as it wearies;
+## seated, it talks; lying or sat on the ground, it gets up first. And the
+## set pieces: setting out (depart(): the lamp from the drum - it lights -
+## and off, the game fading in as it goes), coming home through the 渡石
+## (come_home("escaped")) and waking by the fire after a run lost
+## (come_home("lost")).
 ##
 ## A plan is a list of steps, each a Dictionary:
 ##   {do: "walk", to}            walk there round things (CampStage.route)
 ##   {do: "face", at}            turn to look at a point
 ##   {do: "play", clip, at, fn}  a clip through once (fn called `at` of
-##                               the way through)
+##                               the way through; `back`: backwards;
+##                               `time`: cut short at that)
 ##   {do: "loop", clip, time}    a looping clip a while
 ##   {do: "wait", time}          stand a moment
 ##   {do: "hold", time}          keep still, the clip paused where it is
@@ -37,11 +46,15 @@ const TURN_RATE := 7.0
 ## How often it does each thing, by how it feels: [spent, worn, tired, busy].
 const WEIGHTS := {
 	"sit": [1.0, 6.0, 3.0, 2.0],
+	"nap": [0.0, 1.2, 0.6, 0.15],
+	"ground": [0.0, 0.8, 0.7, 0.4],
 	"tent": [0.0, 0.0, 0.0, 0.7],
 	"crate": [0.0, 0.0, 0.5, 0.9],
 	"trough": [0.0, 0.6, 1.0, 1.0],
 	"lean": [0.0, 0.0, 1.2, 0.8],
 	"lake": [0.0, 0.0, 1.0, 0.8],
+	"look": [0.0, 0.0, 0.5, 0.7],
+	"stretch": [0.0, 0.0, 0.6, 0.8],
 	"merchant": [0.0, 0.0, 0.5, 0.7],
 	"warm": [0.0, 0.6, 1.2, 1.0],
 	"watch": [0.0, 0.0, 0.3, 0.6],
@@ -51,6 +64,12 @@ const WEIGHTS := {
 const PACE := [0.7, 0.75, 0.85, 1.0]
 const SIT_TIME := [Vector2(60, 90), Vector2(25, 45), Vector2(12, 20), Vector2(8, 14)]
 const REST_TIME := [Vector2(0.5, 1), Vector2(3, 6), Vector2(2, 4), Vector2(1, 3)]
+## How long a nap's sleep lasts, by tier.
+const NAP_TIME := [Vector2(30, 50), Vector2(20, 35), Vector2(12, 20), Vector2(8, 12)]
+## What a tap gets, by tier (standing).
+const TAP_CLIPS := [["Idle_No"], ["Idle_No"], ["Yes", "Wave"], ["Wave_Big", "Wave", "Beckon"]]
+## The longest a wave goes on (s; Mixamo's are long).
+const WAVE_TIME := 2.6
 
 var stage: CampStage
 var rig: CharacterRig
@@ -58,6 +77,8 @@ var pivot: Node3D
 var paused := false
 ## Sat on a log (stands up first, whatever comes next).
 var seated := false
+## Lying or sat on the ground: the clip that gets it up ("" standing).
+var down := ""
 ## Doing a set piece (depart, come_home): no taps, no choosing.
 var busy := ""
 var activity := ""
@@ -97,6 +118,7 @@ func sit_now() -> void:
 	pivot.position = seat.at
 	pivot.rotation.y = _yaw_of(seat.face - seat.at)
 	seated = true
+	down = ""
 	_play("Sitting_Idle", 0.0)
 	_plan.clear()
 	_step = {}
@@ -108,7 +130,8 @@ func sit_now() -> void:
 func restart() -> void:
 	_plan.clear()
 	_step = {}
-	_play("Sitting_Idle" if seated else "Idle", 0.0)
+	var lying: String = {"LayToIdle": "Sleep_B", "Ground_Stand": "Ground_Sit"}.get(down, "")
+	_play("Sitting_Idle" if seated else (lying if lying != "" else _idle()), 0.0)
 	_rest = 1.0
 
 
@@ -119,20 +142,25 @@ func hold(on: bool) -> void:
 		rig.anim.speed_scale = 0.0 if on else (_pace if _step.get("do", "") == "walk" else 1.0)
 
 
-## A tap on it: a wave (a nod, a shake of the head as it wearies); seated,
-## a few words. Then on with what it was doing.
+## A tap on it: a wave or a beckon (a nod, a shake of the head as it
+## wearies); seated, a few words; lying or sat on the ground, up first (and
+## the nap's over). Then on with what it was doing.
 func tap() -> void:
 	if busy != "" or paused:
 		return
 	var react: Array = []
+	if down != "":
+		_plan = _get_up() + [{"do": "face", "at": stage.camera.global_position}, _wave()]
+		_step = {}
+		_next()
+		return
 	if seated:
 		react = [{"do": "loop", "clip": "Sitting_Talking", "time": 2.9}]
 		if not _step.is_empty() and _step.do == "loop":
 			# Back to sitting after.
 			react.append(_step.duplicate())
 	else:
-		var clip: String = ["Idle_No", "Idle_No", "Yes", "Interact"][tier()]
-		react = [{"do": "face", "at": stage.camera.global_position}, {"do": "play", "clip": clip}]
+		react = [{"do": "face", "at": stage.camera.global_position}, _wave()]
 		if not _step.is_empty() and _step.do in ["walk", "face", "play", "loop"]:
 			react.append(_step.duplicate())
 	_plan = react + _plan
@@ -189,17 +217,23 @@ func _next() -> void:
 			"face":
 				var look: Vector3 = _step.at if _step.has("at") else stage.spots[_step.spot].face
 				_yaw_to = _yaw_of(look - pivot.position)
-				if not seated and rig.anim.current_animation != "Idle":
-					_play("Idle", 0.25)
+				if not seated and down == "" and rig.anim.current_animation != _idle():
+					_play(_idle(), 0.25)
 			"play":
-				_play(_step.clip, 0.25)
+				if _step.get("back", false) and rig.anim.has_animation(_step.clip):
+					rig.anim.speed_scale = 1.0
+					rig.anim.play_backwards(_step.clip, 0.25)
+				else:
+					_play(_step.clip, 0.25)
 				_len = rig.anim.current_animation_length
+				if _step.has("time"):
+					_len = minf(_len, float(_step.time))
 			"loop":
 				_play(_step.clip, 0.3)
 				_len = float(_step.time)
 			"wait":
-				if not seated:
-					_play("Idle", 0.3)
+				if not seated and down == "":
+					_play(_idle(), 0.3)
 				_len = float(_step.time)
 			"hold":
 				rig.anim.pause()
@@ -207,8 +241,19 @@ func _next() -> void:
 		return
 	_step = {}
 	_rest = _rng.randf_range(REST_TIME[tier()].x, REST_TIME[tier()].y)
-	if not seated and rig.anim.current_animation != "Idle":
-		_play("Idle", 0.3)
+	if not seated and down == "" and rig.anim.current_animation != _idle():
+		_play(_idle(), 0.3)
+
+
+## Standing about: worn out, head down (user request), else at ease.
+func _idle() -> String:
+	return "Sad" if tier() <= 1 and rig.anim.has_animation("Sad") else "Idle"
+
+
+## A wave (or a beckon, a nod, a shake of the head) as it feels.
+func _wave() -> Dictionary:
+	var clips: Array = TAP_CLIPS[tier()]
+	return {"do": "play", "clip": clips[_rng.randi_range(0, clips.size() - 1)], "time": WAVE_TIME + 0.6}
 
 
 func _play(clip: String, blend: float) -> void:
@@ -278,13 +323,27 @@ func _choose() -> Array:
 			break
 	activity = pick
 	var plan := _activity(pick, t)
-	if seated and pick != "sit":
-		plan = _stand_up() + plan
+	if (seated and pick != "sit") or down != "":
+		plan = _get_up() + plan
 	return plan
 
 
 func _stand_up() -> Array:
 	return [{"do": "play", "clip": "Sitting_Exit"}, {"do": "call", "fn": func(): seated = false}]
+
+
+## Up off the log or the ground, if it's on one.
+func _get_up() -> Array:
+	if seated:
+		return _stand_up()
+	if down != "":
+		return _get_up_from(down)
+	return []
+
+
+## Down on the ground (`up`: the clip that gets it up again).
+func _lie(up: String) -> Dictionary:
+	return {"do": "call", "fn": func(): down = up}
 
 
 func _go(spot: String) -> Array:
@@ -306,12 +365,47 @@ func _activity(name: String, t: int) -> Array:
 				plan += [{"do": "play", "clip": "Sitting_Enter"}, {"do": "call", "fn": func(): seated = true}]
 			var long := _span(SIT_TIME[t])
 			plan.append({"do": "loop", "clip": "Sitting_Idle", "time": long * 0.6})
-			if t >= 1 and _rng.randf() < 0.5:
-				plan.append({"do": "loop", "clip": "Sitting_Talking", "time": 2.9})
+			# Something to do while it sits: a word, tea, a clap, a lean back.
+			var also: Array = [["Seat_Rest", 1.0]]
+			if t >= 1:
+				also += [["Sitting_Talking", 1.0], ["Seat_Drink", 1.0]]
+			if t >= 3:
+				also.append(["Seat_Clap", 0.5])
+			if _rng.randf() < (0.4 if t == 0 else 0.7):
+				var pick := _weighted(also)
+				match pick:
+					"Seat_Drink":
+						plan.append({"do": "play", "clip": pick})
+					"Seat_Clap":
+						plan.append({"do": "loop", "clip": pick, "time": _rng.randf_range(2.4, 3.6)})
+					"Seat_Rest":
+						plan.append({"do": "loop", "clip": pick, "time": long * 0.3})
+					_:
+						plan.append({"do": "loop", "clip": pick, "time": 2.9})
 			plan.append({"do": "loop", "clip": "Sitting_Idle", "time": long * 0.4})
 			if t > 0:
 				plan += _stand_up()
 			return plan
+		"nap":
+			# A nap by the fire: down on its back, a while stirring, asleep,
+			# stirring again and up.
+			return _go("wake") + [_lie("LayToIdle"), {"do": "play", "clip": "Lie_Down"},
+				{"do": "loop", "clip": "Lying", "time": _rng.randf_range(3.0, 5.0)},
+				{"do": "loop", "clip": "Sleep_B", "time": _span(NAP_TIME[t])},
+				{"do": "loop", "clip": "Lying", "time": 3.5}] + _get_up_from("LayToIdle")
+		"ground":
+			# Sat on the ground by the fire (sitting down: the getting up
+			# played backwards).
+			return _go("ground") + [_lie("Ground_Stand"), {"do": "play", "clip": "Ground_Stand", "back": true},
+				{"do": "loop", "clip": "Ground_Sit", "time": _rng.randf_range(8.0, 14.0) * (1.5 if t <= 1 else 1.0)}] \
+				+ _get_up_from("Ground_Stand")
+		"look":
+			# At the edge of the dark: a look about, or a peek into it from a
+			# crouch.
+			var edge := "gather_%d" % _rng.randi_range(0, 2)
+			return _go(edge) + [{"do": "play", "clip": "Look_Around" if _rng.randf() < 0.6 else "Peek"}]
+		"stretch":
+			return [{"do": "play", "clip": "Stretch_Neck" if _rng.randf() < 0.5 else "Stretch_Arms"}]
 		"tent":
 			return _go("tent") + [{"do": "play", "clip": "Fixing_Kneeling"}]
 		"crate":
@@ -330,17 +424,26 @@ func _activity(name: String, t: int) -> Array:
 			var m := stage.merchant
 			if m == null:
 				return [{"do": "loop", "clip": "Idle_FoldArms", "time": 3.0}]
+			# (A wave to him first, from where it is; a wave as he goes.)
 			return [{"do": "call", "fn": func():
 					m.visit(pivot)
 					stage.spots["visit"] = {"at": m.visit_spot(pivot.position), "face": m.global_position}},
+				{"do": "face", "spot": "visit"}, {"do": "play", "clip": "Wave_Big", "time": WAVE_TIME},
 				{"do": "walk", "spot": "visit"}, {"do": "face", "spot": "visit"},
 				{"do": "call", "fn": func(): m.talk()},
 				{"do": "loop", "clip": "Idle_Talking", "time": _rng.randf_range(4.0, 7.0)},
-				{"do": "play", "clip": "Yes"}, {"do": "call", "fn": func(): m.release()}]
+				{"do": "play", "clip": "Yes"}, {"do": "call", "fn": func(): m.release()},
+				{"do": "play", "clip": "Wave", "time": WAVE_TIME}]
 		"warm":
-			var plan := _go("warm") + [{"do": "loop", "clip": "Idle", "time": _rng.randf_range(3.0, 5.0)}]
-			if _rng.randf() < 0.5:
-				plan.append({"do": "play", "clip": "Consume"})
+			var plan := _go("warm") + [{"do": "loop", "clip": _idle(), "time": _rng.randf_range(3.0, 5.0)}]
+			# A bite, a drink, or the hands clapped warm.
+			match _rng.randi_range(0, 3 if t >= 2 else 1):
+				0:
+					plan.append({"do": "play", "clip": "Consume"})
+				1:
+					plan.append({"do": "play", "clip": "Drink"})
+				2:
+					plan.append({"do": "loop", "clip": "Clap", "time": _rng.randf_range(1.8, 2.6)})
 			return plan
 		"watch":
 			# On watch: the lamp lit and held up at the edge of the dark.
@@ -348,8 +451,27 @@ func _activity(name: String, t: int) -> Array:
 			return _go("lamp") + [_reach(func(): take_lamp(true))] \
 				+ _go(edge) + [{"do": "loop", "clip": "Idle_Torch", "time": _rng.randf_range(3.0, 5.0)}] \
 				+ _go("lamp") + [_reach(func(): put_lamp(true))]
-	# "stand": a while where it is, arms folded.
-	return [{"do": "loop", "clip": "Idle_FoldArms", "time": _rng.randf_range(3.0, 6.0)}]
+	# "stand": a while where it is, arms folded - worn out, head down.
+	var low: String = ["Sad", "Sad_B"][_rng.randi_range(0, 1)]
+	return [{"do": "loop", "clip": low if t <= 1 else "Idle_FoldArms", "time": _rng.randf_range(3.0, 6.0)}]
+
+
+## Getting up (`clip`), down no longer.
+func _get_up_from(clip: String) -> Array:
+	return [{"do": "play", "clip": clip}, {"do": "call", "fn": func(): down = ""}]
+
+
+## One of [[name, weight], ...] at random by weight.
+func _weighted(options: Array) -> String:
+	var total := 0.0
+	for o in options:
+		total += float(o[1])
+	var roll := _rng.randf() * total
+	for o in options:
+		roll -= float(o[1])
+		if roll <= 0.0:
+			return o[0]
+	return options[-1][0]
 
 
 # ---------------------------------------------------------------- set pieces
@@ -366,7 +488,7 @@ func depart() -> void:
 	_step = {}
 	rig.equip("hand_r", null)
 	rig.equip("back", null)
-	var plan: Array = _stand_up() if seated else []
+	var plan: Array = _get_up()
 	plan += _go("lamp") + [_reach(func(): take_lamp(true))]
 	plan += [{"do": "call", "fn": func(): plan_done.emit("depart")}, {"do": "walk", "to": stage.spots.stone.at}]
 	_plan = plan
@@ -374,12 +496,14 @@ func depart() -> void:
 
 
 ## Home again (user request): "escaped" - out of the 渡石's light, the lamp
-## put back on the drum, then to the fire; "lost" -
-## waking up by the fire.
+## put back on the drum, a cheer (both arms up, in high spirits, else a
+## fist pumped), then to the fire; "lost" - waking up by the fire, and a
+## sigh.
 func come_home(how: String) -> void:
 	_plan.clear()
 	_step = {}
 	seated = false
+	down = ""
 	if how == "lost":
 		busy = "wake"
 		var s: Dictionary = stage.spots.wake
@@ -388,7 +512,7 @@ func come_home(how: String) -> void:
 		# Lying still a moment (the clip held at its start), then up.
 		_play("LayToIdle", 0.0)
 		rig.anim.seek(0.0, true)
-		_plan = [{"do": "hold", "time": 1.2}, {"do": "play", "clip": "LayToIdle"}, {"do": "play", "clip": "Idle_No"}]
+		_plan = [{"do": "hold", "time": 1.2}, {"do": "play", "clip": "LayToIdle"}, {"do": "play", "clip": "Disappointed"}]
 		_next()
 		return
 	busy = "home"
@@ -399,6 +523,7 @@ func come_home(how: String) -> void:
 	stage.stone_flare()
 	_plan = [{"do": "walk", "to": stage.spots.stone.at}]
 	_plan += _go("lamp") + [_reach(func(): put_lamp(true))]
+	_plan.append({"do": "play", "clip": "Victory" if tier() == 3 else "Fist_Pump"})
 	# Then to the fire.
 	_plan += _go("warm")
 	_next()
@@ -413,6 +538,7 @@ func finish() -> void:
 	busy = ""
 	_plan.clear()
 	_step = {}
+	down = ""
 	if tag == "depart":
 		plan_done.emit(tag)
 		return

@@ -283,6 +283,9 @@ func _places() -> void:
 	_spot("stone", STONE_AT + Vector3(0, 0, 0.95), STONE_AT)
 	_spot("stone_in", STONE_AT + Vector3(0, 0, 0.12), STONE_AT + Vector3(0, 0, -2.0))
 	_spot("wake", FIRE_AT + Vector3(-0.95, 0, 0.55), FIRE_AT)
+	# Sat on the ground by the fire, side on to the camera (by the lake the
+	# drums hid it).
+	_spot("ground", Vector3(1.75, 0, 0.55), FIRE_AT)
 	# What it walks round: everything on the ground, as capsules [a, b,
 	# radius] (a circle when a == b) - user request: never through things.
 	var crate_dir := Vector3(cos(0.55), 0, -sin(0.55))

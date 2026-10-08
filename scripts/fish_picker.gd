@@ -178,6 +178,10 @@ func _offer() -> void:
 	var offered := GameState.sacrifice_many(picked_indices())
 	if not offered.is_empty():
 		GameState.push_message("獻祭了 %d 條魚" % offered.size())
+		# (user request: a prayer at the altar, the user's Mixamo clip)
+		var player := get_tree().get_first_node_in_group("player") as Player
+		if player != null:
+			player.perform("pray", 2.4)
 	owner_bag.toggle()
 
 

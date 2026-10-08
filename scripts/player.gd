@@ -176,6 +176,15 @@ var cast_water_zone: WaterZone
 var water_ghost_timer: float = 0.0
 ## Poisoned (a black spider's bite): seconds left, see POISON_SPEED_MULT.
 var poison_timer: float = 0.0
+## User request: the player's moves (the user's Mixamo clips, PlayerVisual's
+## moves sheet) - what it's doing for a moment (perform()): the move, how
+## long it lasts, how long it has left. Walking off cuts it short.
+var move_kind := ""
+var move_time := 0.0
+var move_left := 0.0
+## Down on a knee at the 渡石 before slipping away (s; -1 not escaping).
+const ESCAPE_KNEEL := 1.1
+var _escape_left := -1.0
 ## User request (round 7): things used from the bag (Profile.USABLES,
 ## use_item()). The increase potion: VIGOR_TIME s running VIGOR_SPEED
 ## times as fast, the line's tension building VIGOR_STRAIN as fast in a
@@ -699,6 +708,7 @@ func _apply_water_ghost_attack(cause := "") -> void:
 		GameState.report("水鬼探出頭，又被藥水的氣味逼回水裡")
 		return
 	water_ghost_timer = WATER_GHOST_DEBUFF_DURATION
+	perform("scared", 1.2)
 	affliction_text = "水鬼異常狀態中"
 	cast_jittered = true
 	if fishing_mode == FishingMode.BOBBER:
@@ -718,6 +728,14 @@ func _apply_water_ghost_attack(cause := "") -> void:
 	GameState.report("水鬼偷襲！" if stolen.is_empty() else "水鬼偷襲，搶走了%s" % stolen.get("name", "魚"))
 
 
+## Plays a move (PlayerVisual: drink, look, eye, pick, lift, throw, cheer,
+## fist, sad, scared, pray, kneel) over `seconds`.
+func perform(kind: String, seconds: float) -> void:
+	move_kind = kind
+	move_time = seconds
+	move_left = seconds
+
+
 ## User request (round 7): uses one of Profile.USABLES from the bag (see
 ## VIGOR_TIME...); false (and why, in the event feed) if it can't be.
 func use_item(id: String) -> bool:
@@ -727,10 +745,12 @@ func use_item(id: String) -> bool:
 		"potion_vigor":
 			Profile.bag_take(id, 1)
 			vigor_timer = VIGOR_TIME
+			perform("drink", 1.8)
 			GameState.report("喝下增強藥水：腳步輕快，手上更有力", "good")
 		"potion_ward":
 			Profile.bag_take(id, 1)
 			ward_timer = WARD_TIME
+			perform("drink", 1.8)
 			for ghost in get_tree().get_nodes_in_group("ghosts"):
 				if ghost.global_position.distance_to(global_position) < WARD_RADIUS * 1.5 and ghost.has_method("stun"):
 					ghost.stun(1.5)
@@ -744,6 +764,7 @@ func use_item(id: String) -> bool:
 			Profile.bag_take(id, 1)
 			guide.show_to(stone.global_position, "渡石", STONE_GUIDE, GUIDE_TIME)
 			TrueEye.cast(self, id, stone.global_position)
+			perform("eye", 1.4)
 			GameState.report("眼球轉了過去，盯著渡石的方向", "info")
 		"eye_altar":
 			var altar: Node2D = get_tree().current_scene.get_node_or_null("Altar")
@@ -752,6 +773,7 @@ func use_item(id: String) -> bool:
 			Profile.bag_take(id, 1)
 			guide.show_to(altar.global_position, "祭壇", ALTAR_GUIDE, GUIDE_TIME)
 			TrueEye.cast(self, id, altar.global_position)
+			perform("eye", 1.4)
 			GameState.report("金色的眼睛亮了起來，盯著祭壇的方向", "info")
 		"eye_ghost":
 			var ghost := nearest_ghost()
@@ -761,6 +783,7 @@ func use_item(id: String) -> bool:
 			Profile.bag_take(id, 1)
 			guide.show_to(ghost.global_position, "鬼", GHOST_GUIDE, GUIDE_TIME)
 			TrueEye.cast(self, id, ghost.global_position)
+			perform("eye", 1.4)
 			guide.track = func():
 				var g := nearest_ghost()
 				return g.global_position if g != null else null
@@ -773,6 +796,7 @@ func use_item(id: String) -> bool:
 			if water.is_empty():
 				return false
 			binoculars_cooldown = GUIDE_TIME + BINOCULARS_COOLDOWN
+			perform("look", 2.0)
 			guide.show_to(water.at, water.name, WATER_GUIDE, GUIDE_TIME)
 			GameState.report("用望遠鏡望見了%s" % water.name, "info")
 		_:
@@ -1160,6 +1184,7 @@ func throw_lure() -> void:
 	dropped.global_position = global_position
 	dropped.setup(fish)
 	dropped.fly_to(to)
+	perform("throw", 0.8)
 	GameState.push_message("丟出誘餌 %s（大鬼會被引過去）" % fish.get("name", "魚"))
 	if Profile.settings.get("auto_lure", false):
 		# Settings: the cheapest fish carried is the next lure.
@@ -1215,6 +1240,7 @@ func _pick_up_item(item: DroppedItem) -> void:
 	if n <= 0:
 		GameState.push_message("背包滿了，放不下")
 		return
+	perform("pick", 0.9)
 	var key: String = Items.def(item.item_id).get("lure", "")
 	if key != "":
 		lure_stock[key] = int(lure_stock.get(key, 0)) + n
@@ -1264,6 +1290,13 @@ func _try_buy_upgrade(upgrade_key: String) -> void:
 func _physics_process(delta: float) -> void:
 	water_ghost_timer = max(water_ghost_timer - delta, 0.0)
 	poison_timer = maxf(poison_timer - delta, 0.0)
+	move_left = maxf(move_left - delta, 0.0)
+	if _escape_left >= 0.0:
+		_escape_left -= delta
+		if struggling:
+			_escape_left = -1.0
+		elif _escape_left < 0.0:
+			GameState.escape()
 	vigor_timer = maxf(vigor_timer - delta, 0.0)
 	ward_timer = maxf(ward_timer - delta, 0.0)
 	binoculars_cooldown = maxf(binoculars_cooldown - delta, 0.0)
@@ -1619,8 +1652,11 @@ func _handle_interaction(delta: float) -> void:
 			if use_pressed:
 				swing("chop")
 		"逃離":
-			if use_pressed:
-				GameState.escape()
+			# (The user's Kneeling clip) down on a knee at the 渡石 a moment,
+			# then away - struggling free of a ghost calls it off.
+			if use_pressed and _escape_left < 0.0:
+				perform("kneel", ESCAPE_KNEEL + 0.4)
+				_escape_left = ESCAPE_KNEEL
 		"補充站點":
 			if use_pressed:
 				_deliver_oil_drum()
@@ -1750,6 +1786,7 @@ func _pick_up_dropped_fish() -> void:
 		GameState.push_message("背包滿了，放不下這條魚")
 		return
 	var fish: Dictionary = _dropped_fish.pick_up()
+	perform("pick", 0.9)
 	_dropped_fish = null
 	in_dropped_fish_zone = false
 	GameState.add_carried_fish(fish)
@@ -1848,6 +1885,7 @@ func _turn_rock() -> void:
 	if _rock == null or not _rock.active:
 		return
 	var result: Dictionary = _rock.turn_over(global_position)
+	perform("lift", 1.0)
 	Campaign.stat("flip_rock")
 	if result.get("spider", false):
 		Critter.spawn_black_spider(get_parent(), _rock.global_position + Vector2(0, -4), global_position)
@@ -2450,6 +2488,7 @@ const FAIL_REPORTS := {
 
 func _fail_catch(reason: String) -> void:
 	catch_failed.emit(reason)
+	perform("sad", 1.8)
 	var msg := "魚跑掉了"
 	# A snapped or frayed line takes the lure with it.
 	var lure_gone: bool = reason in ["line_break", "cover"] and fishing_mode == FishingMode.LURE
