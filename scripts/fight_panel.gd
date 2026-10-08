@@ -112,6 +112,14 @@ static func mood_text(fight: FishFight) -> Array:
 			return ["沒力了！收線上岸", STAMINA]
 		"slack":
 			return ["線鬆了！按住", RAGE]
+		"rally":
+			return ["又有力氣了！", RAGE]
+		"swim_out":
+			return ["往外游", TENSION]
+		"swim_in":
+			return ["往岸邊游", DIM]
+		"swim_side":
+			return ["往%s游" % FishFight.describe(fight.swim_side_dir()), TENSION]
 		"surge":
 			return ["猛拉！頂住", RAGE]
 		"opening":

@@ -1984,7 +1984,7 @@ func _update_fishing(delta: float) -> void:
 			progress = fight.progress
 			tension = fight.tension
 			fish_run_active_time = fight.run_left
-			_follow_line(line_dir)
+			_follow_line(line_dir, delta)
 			if _snap_at >= 0.0 and progress >= _snap_at and fight.result == "":
 				_snap_at = -1.0
 				GameState.push_message("精神恍惚，手一抖——線斷了")
@@ -2041,13 +2041,20 @@ func is_cranking() -> bool:
 
 
 ## The fish out where the line says it is (FishFight.distance), along the
-## line - while that's still in the water it was hooked in.
-func _follow_line(line_dir: Vector2) -> void:
+## line - turned as it swims across it (FishFight.lateral) - while that's
+## still in the water it was hooked in; the bank in the way, it turns back.
+func _follow_line(line_dir: Vector2, delta: float) -> void:
 	if line_dir == Vector2.ZERO:
 		return
-	var at := global_position + line_dir * fight.distance * PX_PER_M
+	var dir := line_dir
+	if fight.lateral != 0.0 and fight.distance > 0.5:
+		# (orthogonal() is a quarter turn back: across it, the other way round)
+		dir = line_dir.rotated(-fight.lateral * delta / fight.distance)
+	var at := global_position + dir * fight.distance * PX_PER_M
 	if cast_water_zone == null or cast_water_zone.contains(at):
 		cast_target = at
+	else:
+		fight.turn_back()
 
 
 ## Where a cast at `ratio` of full charge lands. User feedback: overshooting
@@ -2379,6 +2386,8 @@ func _on_fight_event(kind: String) -> void:
 			GameState.push_message("把魚從石縫邊拉回來了")
 		"enrage":
 			GameState.push_message("魚暴走了！先放線撐住！")
+		"rally":
+			GameState.push_message("魚突然又有了力氣，猛地掙扎起來！")
 		"spent":
 			GameState.push_message("魚沒力了！繼續轉右搖桿，把牠拉上岸")
 			GameState.report("魚沒力了，收線拉上岸！", "info")

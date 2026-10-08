@@ -55,6 +55,19 @@ extends RefCounted
 ##   let go and the line goes slack (slack too long, it throws the hook);
 ##   crank straight away and the crank's strain goes on top (a surge snaps
 ##   it). Then the fight proper.
+## - User request: struck, the fish is at its liveliest and swims about the
+##   water - out, along the bank, in toward the angler - in bursts, each
+##   starting with a jerk on the line; the distance and the tension go
+##   with it. It tires as the fight goes (vigor, from 1 down to
+##   VIGOR_FLOOR with its stamina); a hard one may rally late on (the
+##   difficulty's "rally" chance, at RALLY_AT of the fight). The bigger,
+##   harder and rarer (heft, open()), the faster and further it goes and
+##   the harder it jerks. Player turns the line by `lateral` (m/s across
+##   it) and calls turn_back() when the bank's in the way.
+## - User request: a leap snaps the line only out far - a light touch on
+##   the crank while it's up (under JUMP_GRACE) is let off, and close in
+##   the strain of reeling into it is a share (JUMP_NEAR) of what it is
+##   out toward the danger.
 
 const RUN_TENSION_MULT := 1.8
 ## Giving line to a run: the drag holds tension nearly level.
@@ -63,6 +76,9 @@ const RUN_PROGRESS_PENALTY := 0.2
 const SIDE_COUNTER_THRESHOLD := 0.35
 const JUMP_TIME := 0.7
 const JUMP_HELD_TENSION := 2.4
+const JUMP_GRACE := 0.18
+const JUMP_NEAR := 0.25
+const JUMP_FAR_FROM := 0.35
 const JUMP_COOLDOWN := 2.5
 const JUMPER_JUMP_MULT := 1.8
 const ENRAGE_AT := 0.5
@@ -131,6 +147,33 @@ const OPEN_CRANK_TENSION := 0.9
 const OPEN_CRANK_EASE := 0.6
 const OPEN_SLACK_TENSION := 0.03
 const OPEN_SLACK_LOSE := 0.9
+## On its surge the fish takes line this much faster.
+const OPEN_SURGE_OUT := 1.8
+## The fish swimming (see above): its vigor at the end of its strength; a
+## burst's length and the rest between (s, the rest shorter the livelier),
+## its speed and its jerk on the line (light .. heavy fish), the tension
+## it adds swimming off (per s, x tension_rise, at the top speed), how
+## much of a burst toward the line the angler can take in; a sideways
+## run's speed (m/s; held against, RUN_HELD_SIDE of it); the rally.
+const VIGOR_FLOOR := 0.2
+const BURST_TIME := Vector2(0.6, 1.5)
+const BURST_GAP := Vector2(0.4, 1.6)
+const BURST_SPEED := Vector2(0.9, 3.0)
+const BURST_JERK := Vector2(0.05, 0.2)
+const BURST_PULL := 0.5
+## How often a burst heads out, and along the bank (the rest come in); a
+## burst out takes line this share as fast (the drag).
+const BURST_OUT := 0.3
+const BURST_ALONG := 0.45
+const BURST_OUT_SPEED := 0.6
+const SIDE_RUN_SPEED := 2.2
+const RUN_HELD_SIDE := 0.35
+const RALLY_AT := 0.78
+const RALLY_TIME := 5.0
+const RALLY_VIGOR := 0.85
+const RALLY_STAMINA := 0.08
+## A burst this fast (m/s) shows on the panel.
+const SWIM_SHOWN := 0.8
 
 var diff: Dictionary
 var difficulty_key: String
@@ -163,6 +206,23 @@ var heft := 0.0
 var hold := false
 var _open_extra := 0.0
 var slack := 0.0
+## Swimming (see above): on once struck (open()); how lively it is; the
+## burst it's on - its heading (rad from straight out: 0 out, +-PI/2 along
+## the bank, PI in), speed (m/s) and time left; the rest till the next;
+## this frame's swim across the line (m/s, + = line_dir.orthogonal()); a
+## jerk's share of the opening's tension, easing off; the rally.
+var lively := false
+var vigor := 1.0
+var heading := 0.0
+var burst_speed := 0.0
+var burst_left := 0.0
+var _burst_gap := 0.0
+var lateral := 0.0
+var _jerk := 0.0
+var rallied := false
+var rally_left := 0.0
+var _run_sign := 0.0
+var _line_dir := Vector2.UP
 var result := ""  # "", "landed", "line_break", "shook_off", "cover", "line_out"
 ## The line out (m), how much there is (m), and how fast this fish swims
 ## off with it (m/s) - see REEL_IN.
@@ -222,6 +282,8 @@ func open(fish_heft: float) -> void:
 	open_age = 0.0
 	_open_extra = 0.0
 	slack = 0.0
+	lively = true
+	_burst_gap = randf_range(0.05, 0.3)
 	if randf() < clampf((heft - 0.3) * 1.5, 0.0, 0.8):
 		open_curve = Vector3(randf_range(OPEN_SURGE_FROM.x, OPEN_SURGE_FROM.y),
 			lerpf(OPEN_SURGE_PEAK.x, OPEN_SURGE_PEAK.y, heft) + randf_range(-0.03, 0.03),
@@ -274,6 +336,14 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 	# The line: out with the fish, in with the crank (see below).
 	var out_mult := 1.0
 	var reel_in := k * reel_mult
+	# Swimming about: how lively, and this frame's swim (see _swim()).
+	lateral = 0.0
+	if line_dir != Vector2.ZERO:
+		_line_dir = line_dir
+	_vigor(delta, events)
+	var radial := 0.0
+	# (the line's out-take already eased for the rod held against it)
+	var resisted := false
 
 	if opening_left > 0.0:
 		opening_left -= delta
@@ -286,8 +356,10 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 			slack = maxf(slack - delta, 0.0)
 		else:
 			_open_extra = maxf(_open_extra - OPEN_CRANK_EASE * delta, 0.0)
+		radial = _swim(delta, held)
+		_jerk = maxf(_jerk - delta * 1.5, 0.0)
 		if held or hold:
-			want = minf(open_tension(), 0.96) + _open_extra
+			want = minf(open_tension() + _jerk, 0.96) + _open_extra
 			slack = maxf(slack - delta * 0.5, 0.0)
 		else:
 			slack += delta
@@ -295,8 +367,11 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 				snap_why = "slack"
 				result = "shook_off"
 		tension = want if want > tension else lerpf(tension, want, 1.0 - exp(-OPEN_FOLLOW * delta))
+		# Held up against it, the rod takes some of its pull (as the reel
+		# does); on its surge the drag slips.
+		out_mult = (OPEN_SURGE_OUT if surging() else 1.0) * (HELD_OUT if held or hold else 1.0)
+		resisted = true
 		if surging():
-			out_mult = RUN_OUT_MULT
 			reel_in = 0.0
 		if opening_left <= 0.0:
 			opening_left = 0.0
@@ -318,8 +393,12 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 	elif jump_left > 0.0:
 		jump_left -= delta
 		reel_in *= 0.5
-		if held:
-			tension += JUMP_HELD_TENSION * maxf(k, 1.0) * jump_strain / line_strength * delta
+		# Reeling into a leap: let off a light touch, and close in only a
+		# share of the strain (see above).
+		var hard := smoothstep(JUMP_GRACE, 1.0, crank) if held else 0.0
+		var far := lerpf(JUMP_NEAR, 1.0, smoothstep(JUMP_FAR_FROM, DANGER, line_share()))
+		if hard > 0.0:
+			tension += JUMP_HELD_TENSION * hard * far * jump_strain / line_strength * delta
 		else:
 			tension -= tension_fall * delta
 	elif dive_active:
@@ -353,6 +432,7 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 			pass
 		elif counter.length() > 0.3 and counter.normalized().dot(-run_side) > SIDE_COUNTER_THRESHOLD:
 			# Rod pulled against the run: it's held, and you can keep reeling.
+			lateral = _run_sign * SIDE_RUN_SPEED * maxf(vigor, 0.4) * RUN_HELD_SIDE
 			reel_in *= 0.5
 			if held:
 				progress += reel_speed * 0.5 * k * delta
@@ -360,6 +440,7 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 			else:
 				tension -= tension_fall * 0.5 * delta
 		else:
+			lateral = _run_sign * SIDE_RUN_SPEED * maxf(vigor, 0.4)
 			out_mult = SIDE_OUT_MULT
 			reel_in *= 0.5
 			progress -= RUN_PROGRESS_PENALTY * delta
@@ -367,6 +448,7 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 		if run_left <= 0.0:
 			swipe_left = 0.0
 	else:
+		radial = _swim(delta, held)
 		if held:
 			progress += reel_speed * reel_mult * k * (SWEET_REEL_MULT if in_sweet() else 1.0) * delta
 			tension += tension_rise * strain * pull * k * (ENRAGE_REEL_TENSION if enraged else 1.0) * delta
@@ -388,9 +470,9 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 
 	tension = clampf(tension, 0.0, 1.0)
 	progress = clampf(progress, 0.0, 1.0)
-	if held and out_mult != RUN_OUT_MULT:
+	if held and out_mult != RUN_OUT_MULT and not resisted:
 		out_mult *= HELD_OUT
-	_line(delta, out_mult, reel_in if held else 0.0, pull)
+	_line(delta, out_mult, reel_in if held else 0.0, pull, radial)
 	if result == "":
 		if tension >= 1.0:
 			result = "shook_off" if jump_left > 0.0 else "line_break"
@@ -407,17 +489,18 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 			swipe_left = 0.0
 			dive_active = false
 			dive = 0.0
+			burst_left = 0.0
 			events.append("spent")
 	return events
 
 
 ## The line out: the fish takes it (tired, less), the crank brings it in;
 ## all out, it's gone; out in the danger it may snap.
-func _line(delta: float, out_mult: float, reel_in: float, pull: float) -> void:
+func _line(delta: float, out_mult: float, reel_in: float, pull: float, radial := 0.0) -> void:
 	if result != "":
 		return
 	var out: float = swim_out * out_mult * pull / diff.pull * lerpf(TIRED_OUT, 1.0, stamina())
-	distance = clampf(distance + (out - REEL_IN * reel_in) * delta, MIN_DISTANCE, line_max)
+	distance = clampf(distance + (out - REEL_IN * reel_in + radial) * delta, MIN_DISTANCE, line_max)
 	if distance >= line_max:
 		snap_why = "far"
 		result = "line_out"
@@ -434,6 +517,82 @@ func danger() -> float:
 ## The line out as a share of all there is.
 func line_share() -> float:
 	return distance / maxf(line_max, 0.01)
+
+
+## How lively it is now (see above) - and its rally, when it comes.
+func _vigor(delta: float, events: Array) -> void:
+	vigor = lerpf(VIGOR_FLOOR, 1.0, pow(stamina(), 0.8))
+	if lively and not rallied and not spent and progress >= RALLY_AT:
+		rallied = true
+		if randf() < float(diff.get("rally", 0.0)):
+			rally_left = RALLY_TIME
+			progress = maxf(progress - RALLY_STAMINA, 0.0)
+			_burst_gap = 0.0
+			events.append("rally")
+	if rally_left > 0.0:
+		rally_left -= delta
+		vigor = maxf(vigor, RALLY_VIGOR)
+
+
+## Swimming about (see above): bursts this way and that, a jerk on the
+## line as each starts. Returns how fast it's taking line (m/s; less with
+## the reel turning against it, negative coming in); sets `lateral`.
+func _swim(delta: float, held: bool) -> float:
+	if not lively:
+		return 0.0
+	if burst_left > 0.0:
+		burst_left -= delta
+	else:
+		_burst_gap -= delta
+		if _burst_gap <= 0.0:
+			_start_burst()
+	if burst_left <= 0.0:
+		return 0.0
+	var radial := cos(heading) * burst_speed * (BURST_OUT_SPEED if cos(heading) > 0.0 else 1.0)
+	var across := sin(heading) * burst_speed
+	lateral += across
+	var effort := burst_speed / BURST_SPEED.y
+	if radial > 0.0:
+		# Off it goes: the line tightens (more with the reel against it).
+		tension += tension_rise * strain * BURST_PULL * effort * cos(heading) * (1.0 if held else 0.4) * delta
+		radial *= HELD_OUT if held else 1.0
+	else:
+		# Toward the angler: the line goes slack.
+		tension -= tension_fall * 0.4 * -cos(heading) * delta
+	tension += tension_rise * strain * BURST_PULL * 0.4 * effort * absf(sin(heading)) * (1.0 if held else 0.3) * delta
+	return radial
+
+
+func _start_burst() -> void:
+	var side := 1.0 if randf() < 0.5 else -1.0
+	var r := randf()
+	if r < BURST_OUT:
+		heading = randf_range(-0.5, 0.5)
+	elif r < BURST_OUT + BURST_ALONG:
+		heading = randf_range(0.9, 1.9) * side
+	else:
+		heading = (PI - randf_range(0.0, 0.6)) * side
+	burst_speed = lerpf(BURST_SPEED.x, BURST_SPEED.y, heft) * vigor * randf_range(0.7, 1.15)
+	burst_left = randf_range(BURST_TIME.x, BURST_TIME.y) * lerpf(0.8, 1.2, heft)
+	_burst_gap = randf_range(BURST_GAP.x, BURST_GAP.y) / maxf(vigor, 0.35)
+	var jerk := lerpf(BURST_JERK.x, BURST_JERK.y, heft) * vigor
+	if opening_left > 0.0:
+		_jerk = maxf(_jerk, jerk)
+	elif tension < 0.97:
+		tension = minf(tension + jerk, 0.97)
+
+
+## The bank's in the way: the fish turns back (Player).
+func turn_back() -> void:
+	if burst_left > 0.0:
+		heading = wrapf(heading + PI, -PI, PI)
+
+
+## Which way it's swimming across the line now (unit, or ZERO).
+func swim_side_dir() -> Vector2:
+	if burst_left <= 0.0 or absf(sin(heading)) < 0.3:
+		return Vector2.ZERO
+	return _line_dir.orthogonal() * signf(sin(heading))
 
 
 ## Between events: count down to the next run / leap / dash for cover.
@@ -458,7 +617,8 @@ func _schedule(delta: float, line_dir: Vector2) -> Array:
 		_run_timer = randf_range(interval.x, interval.y)
 		run_left = diff.run_time
 		if randf() < diff.side and line_dir != Vector2.ZERO:
-			run_side = line_dir.orthogonal() * (1.0 if randf() < 0.5 else -1.0)
+			_run_sign = 1.0 if randf() < 0.5 else -1.0
+			run_side = line_dir.orthogonal() * _run_sign
 			# Long enough to answer with a flick.
 			run_left = maxf(run_left, SWIPE_WINDOW)
 			swipe_left = SWIPE_WINDOW
@@ -492,7 +652,7 @@ func _swipe_check(delta: float, counter: Vector2, events: Array) -> bool:
 
 ## What the fish is doing, for the fight panel (FightPanel): "jump", "dive",
 ## "run", "side_run", "enraged", "spent", "tired", "slack", "surge",
-## "opening" or "".
+## "opening", "rally", "swim_out", "swim_in", "swim_side" or "".
 func mood() -> String:
 	if opening_left > 0.0:
 		if slack > 0.0 and not hold and crank < HELD_AT:
@@ -506,6 +666,14 @@ func mood() -> String:
 		return "dive"
 	if run_left > 0.0:
 		return "side_run" if run_side != Vector2.ZERO else "run"
+	if rally_left > 0.0:
+		return "rally"
+	if burst_left > 0.0 and burst_speed >= SWIM_SHOWN:
+		if cos(heading) > 0.6:
+			return "swim_out"
+		if cos(heading) < -0.6:
+			return "swim_in"
+		return "swim_side"
 	if enraged:
 		return "enraged"
 	if stamina() < TIRED_AT:

@@ -16,11 +16,11 @@ const CAST_RING_RADIUS := 20.0
 ## dragged in as the reel progress climbs. Purely visual - the fight's
 ## rules live in Player.
 ## User feedback: that was far too wild - the fish only shifts about a little
-## around where it bit, and comes in closer as its stamina (the reel
-## progress) runs down.
+## round where the line says it is (user request: struck, it swims about
+## the water itself - FishFight's bursts, Player._follow_line - and comes
+## in as the line's reeled in).
 const FISH_ROAM := 7.0
 const FISH_RUN_ROAM := 15.0
-const FISH_PULL_IN := 0.85
 const FISH_DIVE_REACH := 40.0
 
 ## User request: a hooked fish is felt, not just read in the top-left log -
@@ -33,7 +33,6 @@ const SHAKE_RUN := 2.0
 const SHAKE_DECAY := 14.0
 
 var _shake := 0.0
-var _shown_progress := 0.0
 
 ## User decision (Diablo II as the reference for scale): walking about, the
 ## camera sits close; the moment fishing starts - charging, waiting, the
@@ -314,8 +313,8 @@ func _fish_motion(delta: float, base: Vector2) -> Vector2:
 		Player.State.REELING:
 			var fight: FishFight = player.fight
 			var running: bool = fight.run_left > 0.0
-			_shown_progress = lerpf(_shown_progress, player.progress, minf(1.0, delta * 2.0))
-			base = base.lerp(player.global_position, _shown_progress * FISH_PULL_IN)
+			# (where the line says it is - FishFight.distance, the fish
+			# swimming about: Player._follow_line)
 			var away := (base - player.global_position).normalized()
 			_fish_goal_timer -= delta
 			if fight.dive_active:
@@ -333,7 +332,6 @@ func _fish_motion(delta: float, base: Vector2) -> Vector2:
 			_fish_offset = _fish_offset.lerp(_fish_goal, minf(1.0, delta * (6.0 if running or fight.dive_active else 2.5)))
 		_:
 			_fish_offset = Vector2.ZERO
-			_shown_progress = 0.0
 			return _keep_in_water(base)
 	var pos := base + _fish_offset
 	if Ripple.water_at(get_tree(), pos) == null:

@@ -44,7 +44,7 @@ const TESTS := [
 	"test_fight_swipe",
 	"test_fight_enrage_tension",
 	"test_fight_sweet_spot", "test_fight_line_distance", "test_fight_leap_far_out",
-	"test_fight_swim_out_by_fish", "test_fight_spent_reeled_in", "test_fight_opening", "test_crank_by_turning_the_stick", "test_offhand_swing_and_wear",
+	"test_fight_swim_out_by_fish", "test_fight_spent_reeled_in", "test_fight_opening", "test_fight_fish_swims", "test_fight_leap_close_in", "test_crank_by_turning_the_stick", "test_offhand_swing_and_wear",
 	"test_perfect_hook",
 	"test_light_lure",
 	"test_lure_retrieve",
@@ -1196,6 +1196,7 @@ func test_rod_bends_with_the_fish() -> void:
 	player().is_heart_catch = false
 	player()._hook_fish()
 	player().fight.opening_left = 0.0  # (the strike's opening: test_fight_opening)
+	player().fight.lively = false  # (its swimming about: test_fight_fish_swims)
 	await frames(2)
 	check(visual.clip == PlayerVisual.CLIP_TUG, "hooked: the strike plays (KayKit's Fishing_Tug)")
 	# the strike over (the rod raised in it), the bend measured on the hold
@@ -1494,6 +1495,7 @@ func test_fight_opening() -> void:
 		f.distance = 10.0
 		f.swim_out = 0.5
 		f.open(1.0)
+		f.lively = false  # (its swimming about: test_fight_fish_swims)
 		f.open_curve = curve
 		f.tension = curve.x
 		return f
@@ -1556,6 +1558,108 @@ func test_fight_opening() -> void:
 	check(light < 0.1 and p.fish_heft() > 0.9, "a small calm one is light, a far wild legend heavy (%.2f, %.2f)" % [light, p.fish_heft()])
 	p.is_rare_catch = false
 	p.is_epic_catch = false
+
+
+
+## User request: struck, the fish swims about the water - out, along the
+## bank, in - in bursts that jerk the line, the bigger and harder the
+## further and harder; it tires as the fight goes, and a hard one may
+## rally late on. The line turns with it (Player._follow_line).
+func test_fight_fish_swims() -> void:
+	seed(11)
+	var tier: Dictionary = FishData.TIERS.values()[0]
+	var across := []
+	var jumps := []
+	for h in [0.0, 1.0]:
+		var f := FishFight.new("master" if h > 0.5 else "novice", "", tier, 1.0)
+		f._jump_cooldown = 999.0
+		f._run_timer = 999.0
+		f.line_max = 60.0
+		f.distance = 15.0
+		f.swim_out = 0.0
+		f.open(h)
+		f.hold = true
+		var sideways := 0.0
+		var lo := 1.0
+		var hi := 0.0
+		for i in 240:
+			f.update(1.0 / 30.0, 0.0, Vector2.ZERO, Vector2.UP)
+			sideways += absf(f.lateral) / 30.0
+			if f.opening_left <= 0.0:
+				lo = minf(lo, f.tension)
+				hi = maxf(hi, f.tension)
+		across.append(sideways)
+		jumps.append(hi - lo)
+	check(across[0] > 0.2, "even a small calm fish swims about (%.1f m across)" % across[0])
+	check(across[1] > across[0] * 2.0 and across[1] > 2.0, "a big hard one much further (%.1f m vs %.1f m)" % [across[1], across[0]])
+	check(jumps[1] > jumps[0], "and jerks the line harder (tension ranging %.2f vs %.2f)" % [jumps[1], jumps[0]])
+	# It tires as the fight goes; a hard one may rally.
+	var f := FishFight.new("master", "", tier, 1.0)
+	f.open(1.0)
+	f._jump_cooldown = 999.0
+	f._run_timer = 999.0
+	f.opening_left = 0.0
+	f.update(0.02, 0.0, Vector2.ZERO, Vector2.UP)
+	var fresh := f.vigor
+	f.progress = 0.7
+	f.update(0.02, 0.0, Vector2.ZERO, Vector2.UP)
+	check(fresh > 0.95 and f.vigor < 0.6, "lively when struck, tiring as it's worn (%.2f -> %.2f)" % [fresh, f.vigor])
+	f.progress = FishFight.RALLY_AT + 0.01
+	var events := f.update(0.02, 0.0, Vector2.ZERO, Vector2.UP)
+	check(events.has("rally") and f.vigor >= FishFight.RALLY_VIGOR and f.progress < FishFight.RALLY_AT, "a master rallies late on (%s)" % [events])
+	# In the game: the line turns as it swims across it.
+	var zone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
+	await put(zone.shore_point(Vector2.DOWN) + Vector2(0, 60))
+	var p := player()
+	p.aim_dir = Vector2.UP
+	p.cast_target = p.global_position + Vector2(0, -150)
+	p.cast_water_zone = zone
+	p.tier_data = FishData.get_tier_data("mid").duplicate()
+	p.difficulty_key = "master"
+	p.fish_habit = ""
+	p.is_heart_catch = false
+	p.is_epic_catch = true
+	p._hook_fish()
+	p.fight.hold = true
+	p.fight.opening_left = 0.0
+	p.fight._jump_cooldown = 999.0
+	p.fight._run_timer = 999.0
+	p.fight.swim_out = 0.0
+	p.fight.tension_rise = 0.0
+	var start: Vector2 = (p.cast_target - p.global_position).normalized()
+	var turned := 0.0
+	for i in 120:
+		if p.fight == null:
+			break
+		p.fight.tension = 0.3
+		await frames(1)
+		turned = maxf(turned, absf(start.angle_to(p.cast_target - p.global_position)))
+	check(turned > 0.05, "the line swings round as it swims (%.2f rad)" % turned)
+	p._reset_line(Player.State.IDLE)
+
+
+## User request: a leap snaps the line only out far - close in, a light
+## touch on the crank is let off and even reeling into it is survived.
+func test_fight_leap_close_in() -> void:
+	var tier: Dictionary = FishData.TIERS.values()[0]
+	var leap := func(at: float, crank: float) -> FishFight:
+		var f := FishFight.new("normal", "", tier, 1.0)
+		f._jump_cooldown = 999.0
+		f._run_timer = 999.0
+		f.line_max = 40.0
+		f.distance = at
+		f.swim_out = 0.0
+		f.tension = 0.4
+		f.jump_left = FishFight.JUMP_TIME
+		for i in int(FishFight.JUMP_TIME * 30.0):
+			f.update(1.0 / 30.0, crank, Vector2.ZERO, Vector2.UP)
+		return f
+	var touch: FishFight = leap.call(8.0, 0.12)
+	check(touch.result == "" and touch.tension <= 0.41, "close in, a light touch on the crank is let off (%.2f)" % touch.tension)
+	var near: FishFight = leap.call(8.0, 1.0)
+	check(near.result == "", "close in, even reeling into the leap is survived (%.2f)" % near.tension)
+	var far: FishFight = leap.call(27.0, 1.0)
+	check(far.tension > near.tension + 0.3 or far.result != "", "further out it strains it far more (%.2f vs %.2f)" % [far.tension, near.tension])
 
 
 ## User request: rarer, wilder fish pull line away faster.
