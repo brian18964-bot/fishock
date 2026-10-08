@@ -1049,8 +1049,19 @@ func test_usable_items() -> void:
 	var stone: Node2D = main.get_node("EscapePoint")
 	check(p.use_item("eyeball") and p.guide.active() and p.guide.target == stone.global_position, "the eyeball points at the 渡石")
 	check(Profile.bag_count("eyeball") == 1, "and is used up")
+	# User request: a true eye opens over the head a moment, looking the
+	# way; the arrow lies faint on the ground at the feet.
+	var eye: TrueEye = p.get_node_or_null("TrueEye")
+	check(eye != null and eye.kind == "eyeball" and eye.look_dir.dot((stone.global_position - p.global_position).normalized()) > 0.99,
+		"a true eye opens over the head, looking the 渡石's way")
 	await seconds(0.2)
 	check(p.guide.visible, "the arrow shows")
+	check(p.guide.get_parent() == p and p.guide.position == Player.FEET and p.guide.show_behind_parent,
+		"lying on the ground at the feet, under the character")
+	await seconds(0.5)
+	check(is_instance_valid(eye) and eye.openness() == 1.0, "open wide")
+	await seconds(TrueEye.TIME)
+	check(not is_instance_valid(eye), "and gone again in a moment")
 	var altar: Node2D = main.get_node("Altar")
 	check(p.use_item("eye_altar") and p.guide.target == altar.global_position, "the golden eye points at the altar")
 	var ghost := p.nearest_ghost()

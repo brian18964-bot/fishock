@@ -3,35 +3,31 @@ extends Node2D
 
 ## User request (round 7, round 8): the eyes and the binoculars show the
 ## way - to the 渡石, the altar, the nearest ghost (`track`: a moving
-## target), the nearest water. An arrow round the
-## player pointing at the place, its name and how far beside it, and a
-## ring pulsing on the place itself (seen when it's on screen) - for a
-## while, then fading out. Drawn over the night on a layer of its own, in
-## screen pixels (the darkness doesn't dim it, the camera's zoom doesn't
-## blow it up), following `follow` (the player).
+## target), the nearest water - for a while, then fading out.
+## User request: not so loud - an arrow lying on the ground round the
+## character's feet (drawn squashed as the ground is), faint, its colour
+## soft; chevrons drifting out along it; the place's name and how far by
+## its head, small; a faint ring on the place itself. Unlit (so it reads in
+## the dark) but see-through. A child of the player, at its feet, under it.
 
-## User request: an arrow that reads as one - a shaft and a head, not a
-## lone triangle - with chevrons running out along it, outlined so it
-## shows on any ground; set out past the character (an ellipse round its
-## middle, BODY world px across and up - so the character never covers
-## it, however close the camera is - and GAP screen px more). Its size (screen px): LENGTH
-## tip to tail, HEAD wide, SHAFT thick.
-const BODY := Vector2(7, 10)
-const GAP := 8.0
-const LENGTH := 40.0
-const HEAD := 30.0
-const HEAD_LENGTH := 20.0
-const SHAFT := 10.0
-const FONT := 19
+## Where it starts out from the feet (world px), its length, the head's
+## width and length, the shaft's width; how flat the ground's drawn.
+const START := 15.0
+const LENGTH := 24.0
+const HEAD := 15.0
+const HEAD_LENGTH := 10.0
+const SHAFT := 5.0
+const SQUASH := 0.819
+const ALPHA := 0.42
+## How much of its colour (the rest grey).
+const SOFT := 0.5
+const FONT := 8
 ## World px to a 公尺 shown.
 const PX_PER_M := 16.0
 const FADE := 0.6
 
 var target := Vector2.ZERO
 var follow: Node2D
-## Where on `follow` it's centred (world px off its origin - the
-## character's middle).
-var lift := Vector2.ZERO
 var label := ""
 var color := Color.WHITE
 ## Where the target is now, asked each frame (a Vector2, or null to keep
@@ -44,6 +40,11 @@ var _font: Font
 
 
 func _ready() -> void:
+	z_index = -1
+	show_behind_parent = true
+	var unlit := CanvasItemMaterial.new()
+	unlit.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	material = unlit
 	_font = ThemeDB.fallback_font
 	var custom: String = ProjectSettings.get_setting("gui/theme/custom_font", "")
 	if custom != "":
@@ -74,65 +75,57 @@ func _process(delta: float) -> void:
 		var at = track.call()
 		if at is Vector2:
 			target = at
-	if follow != null:
-		position = follow.get_viewport().get_canvas_transform() * (follow.global_position + lift)
 	queue_redraw()
 
 
-## The target on screen, from this node.
-func _target_local() -> Vector2:
-	if follow == null:
-		return to_local(target)
-	return follow.get_viewport().get_canvas_transform() * target - position
+## A point of the ground round the feet: `along` the way, `across` it.
+func _ground(dir: Vector2, along: float, across: float) -> Vector2:
+	var p := dir * along + dir.orthogonal() * across
+	return Vector2(p.x, p.y * SQUASH)
 
 
 func _draw() -> void:
-	var alpha := clampf(time_left / FADE, 0.0, 1.0)
-	var to := _target_local()
-	var dir := to.normalized() if to.length() > 1.0 else Vector2.UP
-	var side := dir.orthogonal()
-	var radius := _radius(dir)
-	var tail := dir * radius
-	var tip := dir * (radius + LENGTH)
-	var neck := tip - dir * HEAD_LENGTH
-	var c := Color(color, alpha)
-	var ink := Color(0.02, 0.03, 0.05, alpha * 0.85)
-	# Chevrons running out from the character the way to go.
-	for i in 3:
-		var k := fmod(_t * 1.2 + i / 3.0, 1.0)
-		var at := dir * (radius * 0.55 + (radius * 0.45) * k)
-		var a := alpha * sin(k * PI) * 0.7
-		var wing := side * 7.0
-		draw_polyline(PackedVector2Array([at - dir * 6.0 + wing, at, at - dir * 6.0 - wing]), Color(color, a), 3.0)
+	var fade := clampf(time_left / FADE, 0.0, 1.0)
+	var to := to_local(target)
+	# (the way on the ground: the screen's way, unsquashed)
+	var flat := Vector2(to.x, to.y / SQUASH)
+	var dir := flat.normalized() if flat.length() > 1.0 else Vector2.UP
+	var soft := color.lerp(Color(0.75, 0.75, 0.75), 1.0 - SOFT)
+	var c := Color(soft, ALPHA * fade)
+	var tip := START + LENGTH
+	var neck := tip - HEAD_LENGTH
 	var arrow := PackedVector2Array([
-		tail + side * SHAFT * 0.5, neck + side * SHAFT * 0.5, neck + side * HEAD * 0.5, tip,
-		neck - side * HEAD * 0.5, neck - side * SHAFT * 0.5, tail - side * SHAFT * 0.5])
-	var outline := arrow.duplicate()
-	outline.append(arrow[0])
-	draw_polyline(outline, ink, 5.0, true)
+		_ground(dir, START, SHAFT * 0.5), _ground(dir, neck, SHAFT * 0.5), _ground(dir, neck, HEAD * 0.5),
+		_ground(dir, tip, 0.0), _ground(dir, neck, -HEAD * 0.5), _ground(dir, neck, -SHAFT * 0.5),
+		_ground(dir, START, -SHAFT * 0.5)])
+	# A soft halo, then the arrow itself.
+	var halo := PackedVector2Array()
+	var middle := _ground(dir, (START + tip) * 0.5, 0.0)
+	for p in arrow:
+		halo.append(middle + (p - middle) * 1.18)
+	draw_colored_polygon(halo, Color(soft, ALPHA * 0.3 * fade))
 	draw_colored_polygon(arrow, c)
-	draw_polyline(outline, Color(color.lerp(Color.WHITE, 0.6), alpha), 1.5, true)
-	var meters := roundi(target.distance_to(follow.global_position) / PX_PER_M) if follow != null else 0
+	# Chevrons drifting out ahead of it.
+	for i in 2:
+		var k := fmod(_t * 0.7 + i * 0.5, 1.0)
+		var at := tip + 4.0 + 14.0 * k
+		var a := ALPHA * 0.8 * sin(k * PI) * fade
+		draw_polyline(PackedVector2Array([_ground(dir, at - 4.0, 4.5), _ground(dir, at, 0.0), _ground(dir, at - 4.0, -4.5)]),
+			Color(soft, a), 1.6, true)
+	# The name and how far, small, past the head.
+	var meters := roundi(target.distance_to(global_position) / PX_PER_M)
 	var text := "%s %d 公尺" % [label, meters] if meters > 2 else label
 	var size := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT)
-	# The name past the head, pushed out as far as its box reaches the
-	# arrow's way (so it never sits on the arrow or the character).
 	var half := size * 0.5
-	var push := absf(dir.x) * half.x + absf(dir.y) * half.y
-	var centre := tip + dir * (push + 8.0)
+	var head_at := _ground(dir, tip + 20.0, 0.0)
+	var push := absf(dir.x) * half.x + absf(dir.y) * half.y * 0.6
+	var centre := head_at + Vector2(dir.x, dir.y * SQUASH) * push
 	var text_at := centre + Vector2(-half.x, FONT * 0.35)
-	draw_string_outline(_font, text_at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT, 5, Color(0, 0, 0, alpha * 0.85))
-	draw_string(_font, text_at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT, Color(color.lerp(Color.WHITE, 0.45), alpha))
-	# On the place itself: a ring that keeps opening out.
-	var k := fmod(_t * 0.8, 1.0)
-	draw_arc(to, 16.0 + 44.0 * k, 0.0, TAU, 40, Color(color, alpha * (1.0 - k)), 3.0)
-	draw_arc(to, 12.0, 0.0, TAU, 28, Color(color, alpha * 0.7), 2.0)
-
-
-## How far out from the character the arrow starts the way `dir` (screen
-## px): clear of it at the camera's zoom.
-func _radius(dir: Vector2) -> float:
-	var zoom := follow.get_viewport().get_canvas_transform().get_scale().x if follow != null else 2.6
-	var e := BODY * zoom
-	# (the ellipse's radius the way `dir` goes)
-	return e.x * e.y / sqrt(pow(e.y * dir.x, 2) + pow(e.x * dir.y, 2)) + GAP
+	draw_string_outline(_font, text_at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT, 2, Color(0, 0, 0, 0.45 * fade))
+	draw_string(_font, text_at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT, Color(soft.lerp(Color.WHITE, 0.3), 0.7 * fade))
+	# On the place itself: a faint ring on the ground, opening out.
+	var k := fmod(_t * 0.6, 1.0)
+	draw_set_transform(to, 0.0, Vector2(1.0, SQUASH))
+	draw_arc(Vector2.ZERO, 10.0 + 22.0 * k, 0.0, TAU, 40, Color(soft, ALPHA * (1.0 - k) * fade), 1.5, true)
+	draw_arc(Vector2.ZERO, 8.0, 0.0, TAU, 28, Color(soft, ALPHA * 0.8 * fade), 1.2, true)
+	draw_set_transform(Vector2.ZERO)

@@ -186,6 +186,8 @@ var poison_timer: float = 0.0
 ## 渡石, the golden eye (eye_altar) at the altar, the ghost eye at the
 ## nearest ghost (following it), the binoculars at the nearest water; the
 ## binoculars aren't used up, but wait BINOCULARS_COOLDOWN s after.
+## User request: an eye used opens a 'true eye' over the head for a moment
+## (TrueEye), looking the way; the arrow lies faint on the ground.
 const VIGOR_TIME := 45.0
 const VIGOR_SPEED := 1.3
 const VIGOR_STRAIN := 0.75
@@ -345,16 +347,13 @@ var _key_prev_held: Dictionary = {}
 
 func _ready() -> void:
 	add_to_group("player")
-	var guide_layer := CanvasLayer.new()
-	guide_layer.name = "GuideLayer"
-	# (over the things' buttons - ActionPrompt, 4 - so they don't hide it)
-	guide_layer.layer = 5
-	add_child(guide_layer)
+	# (user request: on the ground at the feet, under the character)
 	guide = GuideArrow.new()
 	guide.name = "Guide"
 	guide.follow = self
+	guide.position = FEET
 	guide.visible = false
-	guide_layer.add_child(guide)
+	add_child(guide)
 	var cam: Camera2D = get_node_or_null("Camera2D")
 	if cam != null:
 		cam.limit_right = int(WORLD_WIDTH)
@@ -744,6 +743,7 @@ func use_item(id: String) -> bool:
 				return false
 			Profile.bag_take(id, 1)
 			guide.show_to(stone.global_position, "渡石", STONE_GUIDE, GUIDE_TIME)
+			TrueEye.cast(self, id, stone.global_position)
 			GameState.report("眼球轉了過去，盯著渡石的方向", "info")
 		"eye_altar":
 			var altar: Node2D = get_tree().current_scene.get_node_or_null("Altar")
@@ -751,6 +751,7 @@ func use_item(id: String) -> bool:
 				return false
 			Profile.bag_take(id, 1)
 			guide.show_to(altar.global_position, "祭壇", ALTAR_GUIDE, GUIDE_TIME)
+			TrueEye.cast(self, id, altar.global_position)
 			GameState.report("金色的眼睛亮了起來，盯著祭壇的方向", "info")
 		"eye_ghost":
 			var ghost := nearest_ghost()
@@ -759,6 +760,7 @@ func use_item(id: String) -> bool:
 				return false
 			Profile.bag_take(id, 1)
 			guide.show_to(ghost.global_position, "鬼", GHOST_GUIDE, GUIDE_TIME)
+			TrueEye.cast(self, id, ghost.global_position)
 			guide.track = func():
 				var g := nearest_ghost()
 				return g.global_position if g != null else null
