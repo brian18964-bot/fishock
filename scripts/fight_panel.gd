@@ -19,6 +19,9 @@ extends CanvasLayer
 ## the reel) - red past FishFight.DANGER, where the line may snap - and,
 ## with the fish getting away and the reel still, a turning arrow round the
 ## right stick: turn it to reel.
+## User request: it doesn't say how rare or hard the fish is - that's read
+## from the line once struck (FishFight.open: hold the stick and watch the
+## tension; a ring round the stick says to hold while the line's slack).
 
 const CENTER_X := 480.0
 const TOP := 60.0
@@ -107,6 +110,12 @@ static func mood_text(fight: FishFight) -> Array:
 			return ["狂暴", RAGE]
 		"spent":
 			return ["沒力了！收線上岸", STAMINA]
+		"slack":
+			return ["線鬆了！按住", RAGE]
+		"surge":
+			return ["猛拉！頂住", RAGE]
+		"opening":
+			return ["咬住了，按住頂住", INK]
 		"tired":
 			return ["疲憊", STAMINA]
 	return ["角力中", DIM]
@@ -132,7 +141,7 @@ func _draw_panel() -> void:
 
 	var x := rect.position.x + 18.0
 	var mood := mood_text(fight)
-	UiKit.draw_text(_view, Vector2(x, rect.position.y + 25), fight.label(), 15, UiKit.GOLD, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	UiKit.draw_text(_view, Vector2(x, rect.position.y + 25), "上鉤的魚", 15, UiKit.GOLD, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 	UiKit.draw_text(_view, Vector2(rect.end.x - 18.0 - 170.0, rect.position.y + 25), mood[0], 16, mood[1],
 		HORIZONTAL_ALIGNMENT_RIGHT, 170.0, true)
 
@@ -174,6 +183,9 @@ func _draw_distance(fight: FishFight, at: Vector2, bar_x: float) -> void:
 ## The fish taking line while the reel's still: a turning arrow round the
 ## right stick (touch screens; Space on a keyboard - said in words).
 func _draw_crank_hint(fight: FishFight, player: Player) -> void:
+	if fight.opening_left > 0.0:
+		_draw_hold_hint(fight)
+		return
 	if fight.crank >= FishFight.HELD_AT or fight.jump_left > 0.0 or fight.run_left > 0.0 or fight.line_share() < 0.3:
 		return
 	var a := 0.45 + 0.35 * sin(_pulse * 6.0)
@@ -189,6 +201,19 @@ func _draw_crank_hint(fight: FishFight, player: Player) -> void:
 		UiKit.draw_text(_view, c + Vector2(-60, -CRANK_HINT_RADIUS - 12.0), "轉動收線", 15, Color(LINE, a + 0.2), HORIZONTAL_ALIGNMENT_CENTER, 120, true)
 	else:
 		UiKit.draw_text(_view, Vector2(CENTER_X - 120, CUE_Y + 6), "魚越跑越遠！按住空白鍵收線", 16, Color(LINE, a + 0.2), HORIZONTAL_ALIGNMENT_CENTER, 240, true)
+
+
+## Struck, the line slack: a ring round the right stick - hold it.
+func _draw_hold_hint(fight: FishFight) -> void:
+	if fight.hold or fight.crank >= FishFight.HELD_AT:
+		return
+	var a := 0.55 + 0.35 * sin(_pulse * 10.0)
+	if DisplayServer.is_touchscreen_available():
+		var c := TouchControls.AIM_CENTER
+		_view.draw_arc(c, CRANK_HINT_RADIUS, 0.0, TAU, 48, Color(RAGE, a), 4.0)
+		UiKit.draw_text(_view, c + Vector2(-60, -CRANK_HINT_RADIUS - 12.0), "按住頂住", 15, Color(RAGE, a + 0.2), HORIZONTAL_ALIGNMENT_CENTER, 120, true)
+	else:
+		UiKit.draw_text(_view, Vector2(CENTER_X - 120, CUE_Y + 6), "線鬆了！按住空白鍵頂住", 16, Color(RAGE, a + 0.2), HORIZONTAL_ALIGNMENT_CENTER, 240, true)
 
 
 func _row(at: Vector2, bar_x: float, text: String, value: float, color: Color, ink := DIM) -> void:

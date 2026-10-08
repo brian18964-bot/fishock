@@ -19,13 +19,21 @@ extends CanvasLayer
 ## puts it on (what was there goes into the bag in its place), off a slot
 ## onto the grid takes it off. Dragged, a thing shows as its simple square
 ## icon.
+##
+## User request: bigger (the cells were hard to tap), and a tapped thing
+## opens its own little card beside it - what it is and what can be done
+## with it. Picking fish (the altar's offering, the 誘惑 fish) opens a
+## window of just the fish (FishPicker), not the bag.
 
-const CELL := 46.0
-const PANEL_SIZE := Vector2(560, 452)
+const CELL := 60.0
+const PANEL_SIZE := Vector2(720, 430)
 ## The gear slots (EquipSlot): [Profile.equipped slot, its name].
 const GEAR_SLOTS := [["rod", "主手・釣竿"], ["offhand", "副手"], ["light", "燈具"]]
-const GEAR_SIDE := 58.0
-const FONT := 15
+const GEAR_SIDE := 66.0
+const FONT := 16
+## The tapped thing's card: its width, and its gap from the thing.
+const CARD_WIDTH := 300.0
+const CARD_GAP := 10.0
 const KIND_COLORS := {
 	"use": Color(0.55, 0.3, 0.6),
 	"fish": Color(0.32, 0.45, 0.55),
@@ -46,16 +54,23 @@ var _gear_col: VBoxContainer
 var _gear_slots: Array = []
 var _mode: Label
 var _grid: GridView
+var _hint: Label
+## The tapped thing's card (see above): its picture, name, what it is, what
+## can be done with it.
+var _card: PanelContainer
+var _card_pic: TextureRect
+var _card_name: Label
+var _card_sub: Label
 var _detail: Label
-var _actions: HBoxContainer
+var _actions: HFlowContainer
+var _picker: FishPicker
 var _key_held := false
 var _refresh := 0.0
 var _selected := {}  # {kind, index} of the tapped item
-## User request: the bag also opens to pick fish - "sacrifice" (at the
-## altar: mark the fish to offer, then offer them) and "pick_lure" (the
-## fish the 誘惑 button throws); "normal" otherwise.
+## User request: picking fish - "sacrifice" (at the altar: pick the fish
+## to offer, then offer them) and "pick_lure" (the fish the 誘惑 button
+## throws), in FishPicker; "normal" otherwise.
 var _mode_kind := "normal"
-var _marked := {}  # uid -> true, the fish marked to offer
 var _title: Label
 
 
@@ -108,14 +123,14 @@ func _ready() -> void:
 	var middle := HBoxContainer.new()
 	middle.add_theme_constant_override("separation", 14)
 	_gear_col = VBoxContainer.new()
-	_gear_col.add_theme_constant_override("separation", 6)
+	_gear_col.add_theme_constant_override("separation", 10)
 	for g in GEAR_SLOTS:
 		var box := EquipSlot.new()
 		box.name = "Gear_" + g[0]
 		box.slot = g[0]
 		box.title = g[1]
 		box.owner_bag = self
-		box.custom_minimum_size = Vector2(GEAR_SIDE + 40.0, GEAR_SIDE)
+		box.custom_minimum_size = Vector2(GEAR_SIDE + 96.0, GEAR_SIDE)
 		_gear_col.add_child(box)
 		_gear_slots.append(box)
 	middle.add_child(_gear_col)
@@ -126,50 +141,97 @@ func _ready() -> void:
 	middle.add_child(_grid)
 	list.add_child(middle)
 
-	_detail = _label("點一下格子裡的東西", 15, UiKit.TEXT)
+	_hint = _label("點一下東西看詳情・拖到左邊的裝備欄換裝・拖出背包就放在地上", 14, UiKit.DIM)
+	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	list.add_child(_hint)
+	_build_card()
+	_picker = FishPicker.new()
+	_picker.name = "FishPicker"
+	_picker.owner_bag = self
+	add_child(_picker)
+
+
+## The tapped thing's card (hidden until something's tapped).
+func _build_card() -> void:
+	_card = UiKit.tooltip_panel()
+	_card.name = "ItemCard"
+	_card.custom_minimum_size = Vector2(CARD_WIDTH, 0)
+	_card.mouse_filter = Control.MOUSE_FILTER_STOP
+	_card.visible = false
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 8)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 10)
+	_card_pic = TextureRect.new()
+	_card_pic.custom_minimum_size = Vector2(64, 64)
+	_card_pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_card_pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	head.add_child(_card_pic)
+	var words := VBoxContainer.new()
+	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	words.add_theme_constant_override("separation", 0)
+	_card_name = UiKit.label("", 19, UiKit.GOLD_BRIGHT, true)
+	_card_name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	words.add_child(_card_name)
+	_card_sub = UiKit.label("", 13, UiKit.DIM)
+	words.add_child(_card_sub)
+	head.add_child(words)
+	var close := UiKit.close_button()
+	close.pressed.connect(deselect)
+	head.add_child(close)
+	col.add_child(head)
+	_detail = _label("", 15, UiKit.TEXT)
 	_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	list.add_child(_detail)
-	_actions = HBoxContainer.new()
-	_actions.add_theme_constant_override("separation", 8)
-	list.add_child(_actions)
-	var bottom := _button("關閉背包")
-	bottom.pressed.connect(toggle)
-	list.add_child(bottom)
+	_detail.custom_minimum_size.x = CARD_WIDTH - 24.0
+	col.add_child(_detail)
+	_actions = HFlowContainer.new()
+	_actions.add_theme_constant_override("h_separation", 8)
+	_actions.add_theme_constant_override("v_separation", 8)
+	col.add_child(_actions)
+	_card.add_child(col)
+	add_child(_card)
 
 
 func is_open() -> bool:
-	return _panel.visible
+	return _panel.visible or _picker.visible
 
 
 func toggle() -> void:
+	if _picker.visible:
+		_picker.close()
+		_mode_kind = "normal"
+		set_sticks_enabled(get_tree(), true)
+		return
 	_panel.visible = not _panel.visible
 	_backdrop.visible = _panel.visible
 	set_sticks_enabled(get_tree(), not _panel.visible)
 	_selected = {}
-	if not _panel.visible:
-		_mode_kind = "normal"
-		_marked.clear()
+	_mode_kind = "normal"
+	_card.visible = false
 	if _panel.visible:
 		_rebuild()
+		_panel.reset_size()
+		_panel.position = ((Vector2(960, 540) - _panel.size) * 0.5).floor()
 
 
-## Opens the bag to pick fish: "sacrifice" or "pick_lure" (see _mode_kind).
+## Opens the fish picker (FishPicker): "sacrifice" or "pick_lure".
 func open_mode(kind: String) -> void:
-	_mode_kind = kind
-	_marked.clear()
-	_selected = {}
-	if not _panel.visible:
+	if _panel.visible:
 		toggle()
-		_mode_kind = kind
-	_rebuild()
+	_mode_kind = kind
+	_selected = {}
+	set_sticks_enabled(get_tree(), false)
+	_picker.open(kind)
 
 
 func mode() -> String:
 	return _mode_kind
 
 
-func marked() -> Dictionary:
-	return _marked
+## Nothing tapped: the card goes.
+func deselect() -> void:
+	_selected = {}
+	_rebuild()
 
 
 func _process(delta: float) -> void:
@@ -219,39 +281,43 @@ func _rebuild() -> void:
 
 	var using: String = "浮標" if player.fishing_mode == Player.FishingMode.BOBBER else "路亞・" + Profile.LURES[player.current_lure].name
 	_mode.text = "釣法：%s%s" % [using, "　（油箱提在手上，不佔背包）" if player.carrying_oil_drum else ""]
-	_show_selected(player, items)
+	_show_selected(player, items, placed)
 
 
-func _show_selected(player: Player, items: Array) -> void:
+## The tapped thing's card: filled in, and put beside it.
+func _show_selected(player: Player, items: Array, placed: Array) -> void:
 	for c in _actions.get_children():
 		_actions.remove_child(c)
 		c.queue_free()
-	_title.text = {"sacrifice": "獻祭：選擇要獻上的魚", "pick_lure": "誘惑：選擇要當誘餌的魚"}.get(_mode_kind, "背包")
-	if _mode_kind == "sacrifice":
-		_show_offering()
-		return
-	if _mode_kind == "pick_lure":
-		_show_lure_pick(items)
-		return
 	if not _selected.is_empty() and _selected.kind == "slot":
 		_show_slot(player, _selected.index)
+		for box in _gear_slots:
+			if box.slot == _selected.index:
+				_place_card(box.get_global_rect())
 		return
 	var item := {}
-	for it in items:
+	var at := Rect2()
+	for i in items.size():
+		var it: Dictionary = items[i]
 		if not _selected.is_empty() and it.kind == _selected.kind and it.index == _selected.index:
 			item = it
+			if i < placed.size():
+				var cells: Rect2i = placed[i]
+				at = _grid.get_global_transform() * Rect2(Vector2(cells.position) * CELL, Vector2(cells.size) * CELL)
 	if item.is_empty():
 		_selected = {}
-		_detail.text = "點一下格子裡的東西"
+		_card.visible = false
 		return
+	_card_head(item)
+	_place_card(at)
 	var busy := player.state != Player.State.IDLE
 	match item.kind:
 		"fish":
 			var fish: Dictionary = GameState.carried_fish[item.index]
 			if fish.get("rotten", false):
-				_detail.text = "腐敗的%s（%s型）：拿去獻祭會賭一把" % [item.label, item.grade]
+				_detail.text = "%s型・腐敗了：拿去獻祭會賭一把" % item.grade
 			else:
-				_detail.text = "%s（%s型，價值 %.0f）" % [item.label, item.grade, fish.get("value", 0.0)]
+				_detail.text = "%s型・價值 %.0f" % [item.grade, fish.get("value", 0.0)]
 			if GameState.lure_index() == item.index:
 				_detail.text += "　・已設為誘惑用的魚"
 				_actions.add_child(_action("取消誘餌", func():
@@ -284,7 +350,7 @@ func _show_selected(player: Player, items: Array) -> void:
 			_detail.text = "電池 x%d（全部 %d）：手電筒沒電時按住燈鈕換上" % [item.count, Profile.batteries]
 		"gear":
 			var gid: String = item.get("item", "")
-			_detail.text = "%s：備用的，拖到左邊的裝備欄就能換上（收竿時才能換）%s" % [item.label, _wear_text(gid)]
+			_detail.text = "備用的，拖到左邊的裝備欄就能換上（收竿時才能換）%s" % _wear_text(gid)
 			if Items.def(gid).get("slot", "") != "":
 				_actions.add_child(_action("裝備", func():
 					equip_from_bag(item.bag)
@@ -329,6 +395,41 @@ func _show_selected(player: Player, items: Array) -> void:
 			_rebuild(), busy))
 	if busy and item.kind in ["bait", "lure", "live"]:
 		_detail.text += "（收線後才能換）"
+
+
+## The card's head: the thing's picture and name (in its rarity's colour),
+## and what kind of thing it is.
+func _card_head(item: Dictionary) -> void:
+	var id: String = item.get("item", "")
+	var tex: Texture2D = null
+	if item.kind == "fish":
+		tex = FishData.icon(item.get("id", ""), item.label)
+	elif id != "":
+		tex = Items.square_icon(id)
+		if tex == null:
+			tex = Items.icon(id)
+	_card_pic.texture = tex
+	_card_pic.visible = tex != null
+	_card_pic.custom_minimum_size = Vector2(96, 48) if item.kind == "fish" else Vector2(64, 64)
+	var rarity := GridView.rarity_of(item)
+	_card_name.text = item.label
+	_card_name.add_theme_color_override("font_color", UiKit.rarity_color(rarity))
+	var kinds := {"fish": "魚", "heart": "心臟", "bait": "餌料", "lure": "路亞", "battery": "電池", "gear": "裝備",
+		"use": "道具", "live": "活餌"}
+	_card_sub.text = "%s　%s" % [UiKit.rarity_name(rarity), kinds.get(item.kind, "")]
+
+
+## The card beside `at` (a thing's rect on screen): to its right if it
+## fits, else its left; kept on the screen.
+func _place_card(at: Rect2) -> void:
+	_card.visible = true
+	_card.reset_size()
+	var sz := _card.size
+	var x := at.end.x + CARD_GAP
+	if x + sz.x > 950.0:
+		x = at.position.x - CARD_GAP - sz.x
+	var y := clampf(at.position.y - 10.0, 10.0, 530.0 - sz.y)
+	_card.position = Vector2(clampf(x, 10.0, 950.0 - sz.x), y)
 
 
 ## User request: things can be dragged out of the bag onto the ground;
@@ -451,7 +552,6 @@ func _ask_drop(item: Dictionary) -> void:
 	row.add_child(yes)
 	row.add_child(no)
 	col.add_child(row)
-	box.add_child(col)
 	shade.add_child(box)
 	box.reset_size()
 	box.position = (Vector2(960, 540) - box.size) / 2.0
@@ -530,6 +630,9 @@ func _show_slot(player: Player, slot: String) -> void:
 	for g in GEAR_SLOTS:
 		if g[0] == slot:
 			title = g[1]
+	_card_head({"kind": "gear", "item": id if id != "" else ("lamp" if slot == "light" else ""),
+		"label": Items.name_of(id) if id != "" else ("煤燈" if slot == "light" else title)})
+	_card_sub.text = "穿戴中・" + title
 	if id == "":
 		_detail.text = "%s：空的。把背包裡的%s拖過來就能換上" % [title, {"offhand": "武器或撈網", "light": "手電筒", "rod": "釣竿"}.get(slot, "裝備")]
 		if slot == "light":
@@ -538,7 +641,10 @@ func _show_slot(player: Player, slot: String) -> void:
 	var desc: String = Items.def(id).get("desc", "")
 	if id.begins_with("rod_"):
 		desc = Items.rod_effects(Profile.ROD_TIERS[int(id.substr(4))])
-	_detail.text = "%s：%s%s　%s" % [title, Items.name_of(id), _wear_text(id), desc]
+	var lines := [desc] if desc != "" else []
+	if Profile.max_durability(id) > 0:
+		lines.append("耐久度 %d / %d" % [Profile.durability(id), Profile.max_durability(id)])
+	_detail.text = "\n".join(lines)
 	if slot != "rod":
 		_actions.add_child(_action("卸下放進背包", func():
 			unequip_to_bag(slot)
@@ -546,67 +652,16 @@ func _show_slot(player: Player, slot: String) -> void:
 
 
 func select(kind: String, index) -> void:
-	if _mode_kind == "sacrifice":
+	if _mode_kind != "normal":
 		if kind == "fish":
-			var uid: int = int(GameState.carried_fish[index].get("uid", -1))
-			if _marked.has(uid):
-				_marked.erase(uid)
-			else:
-				_marked[uid] = true
-		_rebuild()
+			_picker.toggle(index)
 		return
-	if _mode_kind == "pick_lure" and kind != "fish":
+	# Tapped again: the card goes.
+	if not _selected.is_empty() and _selected.kind == kind and _selected.index == index:
+		deselect()
 		return
 	_selected = {"kind": kind, "index": index}
 	_rebuild()
-
-
-## Offering at the altar: the marked fish, what they'd add, offer them.
-func _show_offering() -> void:
-	var picked := _marked_indices()
-	var total := 0.0
-	for i in picked:
-		total += float(GameState.carried_fish[i].get("value", 0.0))
-	_detail.text = "點魚選擇要獻祭的（可多選）。已選 %d 條，額度 +%.0f" % [picked.size(), total] \
-		if not picked.is_empty() else "點魚選擇要獻祭的（可多選）"
-	_actions.add_child(_action("全選", func():
-		for f in GameState.carried_fish:
-			_marked[int(f.get("uid", -1))] = true
-		_rebuild()))
-	var go := _action("獻祭 %d 條" % picked.size(), func():
-		var offered := GameState.sacrifice_many(_marked_indices())
-		if not offered.is_empty():
-			GameState.push_message("獻祭了 %d 條魚" % offered.size())
-		toggle(), picked.is_empty())
-	go.name = "Offer"
-	_actions.add_child(go)
-	_actions.add_child(_action("取消", toggle))
-
-
-func _marked_indices() -> Array:
-	var out := []
-	for i in GameState.carried_fish.size():
-		if _marked.has(int(GameState.carried_fish[i].get("uid", -1))):
-			out.append(i)
-	return out
-
-
-## Picking the 誘惑 fish: tap one, then confirm.
-func _show_lure_pick(_items: Array) -> void:
-	if _selected.is_empty() or _selected.kind != "fish" or _selected.index >= GameState.carried_fish.size():
-		_selected = {}
-		_detail.text = "點一條魚，選它當誘餌"
-		_actions.add_child(_action("取消", toggle))
-		return
-	var fish: Dictionary = GameState.carried_fish[_selected.index]
-	_detail.text = "選定 %s 為誘餌？" % fish.get("name", "魚")
-	var ok := _action("確定", func():
-		GameState.set_lure(_selected.index)
-		GameState.push_message("誘餌：%s（按住誘惑鈕蓄力丟出）" % fish.get("name", "魚"))
-		toggle())
-	ok.name = "ConfirmLure"
-	_actions.add_child(ok)
-	_actions.add_child(_action("取消", toggle))
 
 
 func _label(text: String, size: int, color: Color) -> Label:
@@ -645,7 +700,7 @@ func _action(text: String, act: Callable, disabled := false) -> Button:
 	var b := _button(text)
 	b.disabled = disabled
 	b.pressed.connect(act)
-	if text in ["設為誘餌", "確定", "裝上", "改用浮標", "裝備"] or text.begins_with("獻祭"):
+	if text in ["設為誘餌", "裝上", "改用浮標", "裝備", "使用"]:
 		UiKit.style_button(b, "red", FONT)
 	return b
 
@@ -684,6 +739,8 @@ class GridView extends Control:
 						owner_bag.drag_end(items[_press], get_global_transform() * event.position)
 					else:
 						owner_bag.select(items[_press].kind, items[_press].index)
+				else:
+					owner_bag.deselect()
 				_press = -1
 				_dragging = false
 				accept_event()
@@ -706,7 +763,7 @@ class GridView extends Control:
 			var cells: Rect2i = placed[i]
 			var r := Rect2(Vector2(cells.position) * Backpack.CELL, Vector2(cells.size) * Backpack.CELL).grow(-2.0)
 			var is_sel: bool = not selected.is_empty() and selected.kind == item.kind and selected.index == item.index
-			var rarity := _rarity(item)
+			var rarity := rarity_of(item)
 			# A packed thing in one cell shows its square icon (the MMO look).
 			var square: Texture2D = Items.square_icon(item.item) if item.has("item") and cells.size.x == cells.size.y else null
 			UiKit.draw_slot(self, r, rarity, is_sel, square)
@@ -729,11 +786,6 @@ class GridView extends Control:
 					var sz := Vector2(tex.get_size()) * k
 					draw_texture_rect(tex, Rect2(inner.get_center() - sz / 2.0, sz), false)
 			if item.kind == "fish":
-				var uid: int = int(GameState.carried_fish[item.index].get("uid", -1))
-				if owner_bag.marked().has(uid):
-					draw_rect(r, Color(0.4, 1.0, 0.5, 0.25))
-					draw_rect(r, Color(0.4, 1.0, 0.5, 0.9), false, 2.5)
-					UiKit.draw_text(self, Vector2(r.position.x, r.end.y - 4), "✓", 16, Color(0.6, 1.0, 0.6), HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 4.0)
 				if GameState.lure_index() == item.index:
 					# The 誘惑 fish: a badge at the top right.
 					var at := Vector2(r.end.x - 10.0, r.position.y + 10.0)
@@ -741,18 +793,18 @@ class GridView extends Control:
 					draw_arc(at, 9.0, 0.0, TAU, 20, UiKit.GOLD, 1.5)
 					UiKit.draw_text(self, at + Vector2(-9, 5), "誘", 12, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, 18)
 			var name: String = item.label
-			var fs := 12 if cells.size.x > 1 else 11
+			var fs := 13 if cells.size.x > 1 else 12
 			var text_w := r.size.x - 8.0
 			UiKit.draw_text(self, r.position + Vector2(4, 15), name, fs, UiKit.rarity_color(rarity), HORIZONTAL_ALIGNMENT_LEFT, text_w)
 			if item.kind == "fish":
-				UiKit.draw_text(self, r.position + Vector2(4, r.size.y - 5), item.grade, 11, UiKit.DIM, HORIZONTAL_ALIGNMENT_LEFT, text_w)
+				UiKit.draw_text(self, r.position + Vector2(4, r.size.y - 5), item.grade, 12, UiKit.DIM, HORIZONTAL_ALIGNMENT_LEFT, text_w)
 			elif item.count > 0:
-				UiKit.draw_text(self, r.position + Vector2(0, r.size.y - 5), str(item.count), 13, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 5.0)
+				UiKit.draw_text(self, r.position + Vector2(0, r.size.y - 5), str(item.count), 15, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 5.0)
 			if item.has("item"):
 				ItemBoard.draw_wear(self, r, item.item)
 
 	## A thing's rarity: a fish's own, a packed thing's by its id.
-	func _rarity(item: Dictionary) -> String:
+	static func rarity_of(item: Dictionary) -> String:
 		if item.kind == "fish" and item.index < GameState.carried_fish.size():
 			return UiKit.fish_rarity(GameState.carried_fish[item.index])
 		if item.has("item"):
@@ -812,9 +864,9 @@ class EquipSlot extends Control:
 			UiKit.draw_slot(self, sq, UiKit.item_rarity(id), selected, Items.square_icon(id))
 			ItemBoard.draw_wear(self, sq, id)
 		var text_x := sq.end.x + 4.0
-		UiKit.draw_text(self, Vector2(text_x, 18.0), title.split("・")[0], 13, UiKit.GOLD)
+		UiKit.draw_text(self, Vector2(text_x, 24.0), title.split("・")[0], 15, UiKit.GOLD)
 		var line := Items.name_of(id) if id != "" else ("煤燈" if slot == "light" else "（空）")
-		UiKit.draw_text(self, Vector2(text_x, 36.0), line, 11, UiKit.DIM, HORIZONTAL_ALIGNMENT_LEFT, size.x - text_x)
+		UiKit.draw_text(self, Vector2(text_x, 46.0), line, 13, UiKit.DIM, HORIZONTAL_ALIGNMENT_LEFT, size.x - text_x)
 
 
 ## While a window's up, the sticks leave its touches alone (they'd walk the

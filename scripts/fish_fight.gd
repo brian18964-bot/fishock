@@ -47,6 +47,14 @@ extends RefCounted
 ##   slowly and has to be reeled in to the bank (LAND_DISTANCE). Left
 ##   un-reeled for RECOVER_AFTER it gets its breath back (RECOVER_TO) and
 ##   fights on.
+## - User request: the strike's first moments (open()): the fish puts its
+##   own tension on the line - the harder the catch (its difficulty, rarity,
+##   size, temper: `heft`), the higher it starts, or it starts low and next
+##   moment surges hard, the way a big fish takes a bait. Hold the stick
+##   (`hold`, no turning) and the line rides it, so you can read what's on;
+##   let go and the line goes slack (slack too long, it throws the hook);
+##   crank straight away and the crank's strain goes on top (a surge snaps
+##   it). Then the fight proper.
 
 const RUN_TENSION_MULT := 1.8
 ## Giving line to a run: the drag holds tension nearly level.
@@ -106,6 +114,23 @@ const LAND_DISTANCE := 3.0
 const SPENT_TENSION := 0.35
 const RECOVER_AFTER := 2.5
 const RECOVER_TO := 0.82
+## The opening (see open()): how long it lasts (light .. heavy fish), the
+## tension it starts at (steady), a surge's start, peak and when it comes,
+## how fast it climbs, the wobble; cranking's strain on top (per second,
+## at CRANK_NORMAL) and how it eases; slack: the tension, and how long of
+## it throws the hook.
+const OPEN_TIME := Vector2(1.2, 2.4)
+const OPEN_STEADY := Vector2(0.12, 0.62)
+const OPEN_SURGE_FROM := Vector2(0.1, 0.25)
+const OPEN_SURGE_PEAK := Vector2(0.62, 0.93)
+const OPEN_SURGE_AT := Vector2(0.4, 0.9)
+const OPEN_SURGE_RISE := 0.35
+const OPEN_WOBBLE := Vector2(0.02, 0.07)
+const OPEN_FOLLOW := 7.0
+const OPEN_CRANK_TENSION := 0.9
+const OPEN_CRANK_EASE := 0.6
+const OPEN_SLACK_TENSION := 0.03
+const OPEN_SLACK_LOSE := 0.9
 
 var diff: Dictionary
 var difficulty_key: String
@@ -127,6 +152,17 @@ var enraged := false
 ## Worn out - being reeled in to the bank (see above).
 var spent := false
 var _rest := 0.0
+## The opening (open()): time left, how long it's been, the fish's
+## tension curve ([start, peak, surge at] - start == peak: steady), the
+## crank's strain on top, slack so far. `hold`: the stick held (Player
+## sets it each frame).
+var opening_left := 0.0
+var open_age := 0.0
+var open_curve := Vector3.ZERO
+var heft := 0.0
+var hold := false
+var _open_extra := 0.0
+var slack := 0.0
 var result := ""  # "", "landed", "line_break", "shook_off", "cover", "line_out"
 ## The line out (m), how much there is (m), and how fast this fish swims
 ## off with it (m/s) - see REEL_IN.
@@ -178,12 +214,50 @@ func label() -> String:
 	return diff.label
 
 
+## The strike's first moments (see above) for a fish this hard to land
+## (0 easy .. 1 the hardest).
+func open(fish_heft: float) -> void:
+	heft = clampf(fish_heft, 0.0, 1.0)
+	opening_left = lerpf(OPEN_TIME.x, OPEN_TIME.y, heft)
+	open_age = 0.0
+	_open_extra = 0.0
+	slack = 0.0
+	if randf() < clampf((heft - 0.3) * 1.5, 0.0, 0.8):
+		open_curve = Vector3(randf_range(OPEN_SURGE_FROM.x, OPEN_SURGE_FROM.y),
+			lerpf(OPEN_SURGE_PEAK.x, OPEN_SURGE_PEAK.y, heft) + randf_range(-0.03, 0.03),
+			randf_range(OPEN_SURGE_AT.x, OPEN_SURGE_AT.y))
+	else:
+		var start := clampf(lerpf(OPEN_STEADY.x, OPEN_STEADY.y, heft) + randf_range(-0.05, 0.05), 0.05, 0.8)
+		open_curve = Vector3(start, start, 0.0)
+	tension = open_curve.x
+
+
+## Does it surge (start low, then pull hard)?
+func surges() -> bool:
+	return open_curve.y > open_curve.x + 0.1
+
+
+## Surging now (in the opening, past the surge's start).
+func surging() -> bool:
+	return opening_left > 0.0 and surges() and open_age >= open_curve.z
+
+
+## The fish's own tension on the line at this point of the opening.
+func open_tension() -> float:
+	var t := open_curve.x
+	if surges() and open_age >= open_curve.z:
+		var k := clampf((open_age - open_curve.z) / OPEN_SURGE_RISE, 0.0, 1.0)
+		t = lerpf(open_curve.x, open_curve.y, k * k * (3.0 - 2.0 * k))
+	var wobble := lerpf(OPEN_WOBBLE.x, OPEN_WOBBLE.y, heft)
+	return t + wobble * (sin(open_age * 9.0) * 0.6 + sin(open_age * 23.0 + 1.3) * 0.4)
+
+
 ## One frame. reel: the crank (0..1; a bool: held, at CRANK_NORMAL).
 ## counter: the direction the rod is being pulled (unit or ZERO).
 ## line_dir: from the angler toward the fish. reel_mult: extra reel-speed
 ## factor (walking while reeling). Returns the events this frame started:
 ## "run", "side_run", "jump", "dive", "enrage", "dive_saved", "swipe_hit",
-## "swipe_miss", "spent", "recover".
+## "swipe_miss", "spent", "recover", "opened".
 func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, reel_mult: float = 1.0) -> Array:
 	var events := []
 	if result != "":
@@ -201,7 +275,34 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 	var out_mult := 1.0
 	var reel_in := k * reel_mult
 
-	if spent:
+	if opening_left > 0.0:
+		opening_left -= delta
+		open_age += delta
+		var want := OPEN_SLACK_TENSION
+		if held:
+			# Cranked straight away: its strain on top of the fish's pull.
+			_open_extra += OPEN_CRANK_TENSION * k * strain / line_strength * delta
+			progress += reel_speed * 0.5 * k * delta
+			slack = maxf(slack - delta, 0.0)
+		else:
+			_open_extra = maxf(_open_extra - OPEN_CRANK_EASE * delta, 0.0)
+		if held or hold:
+			want = minf(open_tension(), 0.96) + _open_extra
+			slack = maxf(slack - delta * 0.5, 0.0)
+		else:
+			slack += delta
+			if slack >= OPEN_SLACK_LOSE:
+				snap_why = "slack"
+				result = "shook_off"
+		tension = want if want > tension else lerpf(tension, want, 1.0 - exp(-OPEN_FOLLOW * delta))
+		if surging():
+			out_mult = RUN_OUT_MULT
+			reel_in = 0.0
+		if opening_left <= 0.0:
+			opening_left = 0.0
+			_open_extra = 0.0
+			events.append("opened")
+	elif spent:
 		if held:
 			_rest = 0.0
 			tension += tension_rise * strain * pull * SPENT_TENSION * k * delta
@@ -293,6 +394,9 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 	if result == "":
 		if tension >= 1.0:
 			result = "shook_off" if jump_left > 0.0 else "line_break"
+			if opening_left > 0.0 and _open_extra > 0.05:
+				# Cranked into the fish's first pull.
+				snap_why = "rush"
 		elif spent and distance <= LAND_DISTANCE:
 			result = "landed"
 		elif progress >= 1.0 and not spent:
@@ -387,8 +491,13 @@ func _swipe_check(delta: float, counter: Vector2, events: Array) -> bool:
 
 
 ## What the fish is doing, for the fight panel (FightPanel): "jump", "dive",
-## "run", "side_run", "enraged", "spent", "tired" or "".
+## "run", "side_run", "enraged", "spent", "tired", "slack", "surge",
+## "opening" or "".
 func mood() -> String:
+	if opening_left > 0.0:
+		if slack > 0.0 and not hold and crank < HELD_AT:
+			return "slack"
+		return "surge" if surging() else "opening"
 	if spent:
 		return "spent"
 	if jump_left > 0.0:

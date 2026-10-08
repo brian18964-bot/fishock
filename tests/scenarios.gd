@@ -44,7 +44,7 @@ const TESTS := [
 	"test_fight_swipe",
 	"test_fight_enrage_tension",
 	"test_fight_sweet_spot", "test_fight_line_distance", "test_fight_leap_far_out",
-	"test_fight_swim_out_by_fish", "test_fight_spent_reeled_in", "test_crank_by_turning_the_stick", "test_offhand_swing_and_wear",
+	"test_fight_swim_out_by_fish", "test_fight_spent_reeled_in", "test_fight_opening", "test_crank_by_turning_the_stick", "test_offhand_swing_and_wear",
 	"test_perfect_hook",
 	"test_light_lure",
 	"test_lure_retrieve",
@@ -615,7 +615,9 @@ func test_turn_rock() -> void:
 	await tap(KEY_E)
 	check(not rock.active, "rock turned at a tap")
 	await seconds(1.0)
-	check(rock._roller.position.length() > 15.0, "rock rolled aside")
+	var moved: float = rock._roller.position.length()
+	check(moved > 6.0 and moved < 20.0, "rock tipped aside, only just (%.1f px)" % moved)
+	check(absf(rock._visual.rotation) < 0.6, "leaning over a little, not rolled (%.2f)" % rock._visual.rotation)
 
 
 func test_escape() -> void:
@@ -1192,6 +1194,7 @@ func test_rod_bends_with_the_fish() -> void:
 	player().fish_habit = ""
 	player().is_heart_catch = false
 	player()._hook_fish()
+	player().fight.opening_left = 0.0  # (the strike's opening: test_fight_opening)
 	await frames(2)
 	check(visual.clip == PlayerVisual.CLIP_TUG, "hooked: the strike plays (KayKit's Fishing_Tug)")
 	# the strike over (the rod raised in it), the bend measured on the hold
@@ -1475,6 +1478,85 @@ func test_fight_spent_reeled_in() -> void:
 	check(f.result == "landed" and f.distance <= FishFight.LAND_DISTANCE, "reeled in to the bank, it's landed (%s, %.1f m)" % [f.result, f.distance])
 
 
+
+## User request: struck, the fish puts its own tension on the line - the
+## harder the catch the higher, or low then a surge; hold the stick to ride
+## it (and read it), let go and it throws the hook, crank straight into a
+## surge and the line snaps.
+func test_fight_opening() -> void:
+	var tier: Dictionary = FishData.TIERS.values()[0]
+	var make := func(curve: Vector3) -> FishFight:
+		var f := FishFight.new("master", "", tier, 1.0)
+		f._jump_cooldown = 99.0
+		f._run_timer = 99.0
+		f.line_max = 40.0
+		f.distance = 10.0
+		f.swim_out = 0.5
+		f.open(1.0)
+		f.open_curve = curve
+		f.tension = curve.x
+		return f
+	# A surge: low at first, then it pulls hard - held, the line rides it.
+	var held: FishFight = make.call(Vector3(0.15, 0.9, 0.5))
+	held.hold = true
+	var early := 0.0
+	var peak := 0.0
+	var events := []
+	var t := 0.0
+	while held.result == "" and held.opening_left > 0.0:
+		events.append_array(held.update(0.05, 0.0, Vector2.ZERO, Vector2.UP))
+		t += 0.05
+		if t < 0.4:
+			early = maxf(early, held.tension)
+		peak = maxf(peak, held.tension)
+	check(early < 0.3 and peak > 0.75, "a surge: low at first (%.2f), then hard (%.2f)" % [early, peak])
+	check(held.result == "" and events.has("opened"), "held through it, the fish is still on (%s)" % held.result)
+	check(held.distance > 10.0, "and it took line on the surge (%.1f m)" % held.distance)
+	# Cranked straight into it: the line snaps.
+	var rushed: FishFight = make.call(Vector3(0.15, 0.9, 0.5))
+	rushed.hold = true
+	for i in 60:
+		rushed.update(0.05, 1.0, Vector2.ZERO, Vector2.UP)
+		if rushed.result != "":
+			break
+	check(rushed.result == "line_break" and rushed.snap_why == "rush", "cranked straight into the surge, it snaps (%s %s)" % [rushed.result, rushed.snap_why])
+	# Let go: slack, and it throws the hook.
+	var slack: FishFight = make.call(Vector3(0.3, 0.3, 0.0))
+	slack.hold = false
+	check(slack.mood() == "opening", "struck: it's on")
+	for i in 30:
+		slack.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
+		if slack.result != "":
+			break
+	check(slack.result == "shook_off" and slack.snap_why == "slack", "let go, the line slack, it's off (%s)" % slack.result)
+	# The harder the fish, the more it pulls at first.
+	var pulls := []
+	for h in [0.0, 1.0]:
+		var sum := 0.0
+		for i in 40:
+			var f := FishFight.new("normal", "", tier, 1.0)
+			f.open(h)
+			sum += maxf(f.open_curve.x, f.open_curve.y)
+		pulls.append(sum / 40.0)
+	check(pulls[1] > pulls[0] + 0.3, "a hard fish pulls far harder at first (%.2f vs %.2f)" % pulls)
+	# And how hard it is: its difficulty, size, rarity and temper.
+	var p := player()
+	p.difficulty_key = "novice"
+	p.current_tier = "near"
+	p.is_rare_catch = false
+	p.is_epic_catch = false
+	p.fish_trait = "calm"
+	var light := p.fish_heft()
+	p.difficulty_key = "master"
+	p.current_tier = "far"
+	p.is_rare_catch = true
+	p.is_epic_catch = true
+	p.fish_trait = "wild"
+	check(light < 0.1 and p.fish_heft() > 0.9, "a small calm one is light, a far wild legend heavy (%.2f, %.2f)" % [light, p.fish_heft()])
+	p.is_rare_catch = false
+	p.is_epic_catch = false
+
+
 ## User request: rarer, wilder fish pull line away faster.
 func test_fight_swim_out_by_fish() -> void:
 	var p := player()
@@ -1505,6 +1587,7 @@ func test_crank_by_turning_the_stick() -> void:
 	player().fish_habit = ""
 	player().is_heart_catch = false
 	player()._hook_fish()
+	player().fight.opening_left = 0.0  # (the strike's opening: test_fight_opening)
 	player().fight._run_timer = 99.0
 	player().fight._jump_cooldown = 99.0
 	check(player().fight.distance > 5.0 and player().fight.distance < player().fight.line_max, "hooked, the line's out to the fish (%.1f m)" % player().fight.distance)
@@ -2270,7 +2353,7 @@ func test_camp_spirit_and_tents() -> void:
 
 
 ## User request (Camp v2): the character lives at the camp by its spirit -
-## busy (all of it, dancing over 90), tired, worn (mostly sitting), spent
+## busy (all of it - no dancing, user request), tired, worn (mostly sitting), spent
 ## (only sitting); waves (nods, shakes its head) when tapped; holds still
 ## under a page; sets out with the lamp and the rod into the 渡石, comes
 ## home out of it, or wakes by the fire.
@@ -2303,14 +2386,8 @@ func test_camp_life() -> void:
 	for _i in 200:
 		life._choose()
 		busy[life.activity] = true
-	check(busy.has("dance") and busy.has("sit") and busy.has("tent"), "busy, it dances, mends and sits (%s)" % ", ".join(busy.keys()))
-	check(not busy.has("chop") and not busy.has("gather"), "no chopping or carrying (dropped)")
-	Profile.spirit = 80.0
-	var danced := false
-	for _i in 200:
-		life._choose()
-		danced = danced or life.activity == "dance"
-	check(not danced, "no dancing under 90")
+	check(busy.has("sit") and busy.has("tent"), "busy, it mends and sits (%s)" % ", ".join(busy.keys()))
+	check(not busy.has("chop") and not busy.has("gather") and not busy.has("dance"), "no chopping, carrying or dancing (dropped)")
 	# Its ways round the camp keep off the fire.
 	var path := camp.route(camp.spots.home.at, camp.spots.stone.at)
 	var clear := true

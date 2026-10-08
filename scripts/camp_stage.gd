@@ -268,7 +268,6 @@ func _places() -> void:
 		_spot("seat_%d" % i, SEATS[i][0] + f * 0.33, SEATS[i][0] + f * 3.0)
 	_spot("home", CHARACTER_AT, CHARACTER_AT + Vector3(0.35, 0, 1.0))
 	_spot("warm", FIRE_AT + Vector3(-0.6, 0, -0.85), FIRE_AT)
-	_spot("dance", FIRE_AT + Vector3(0.55, 0, 1.05), Vector3(0.6, 0, 6.0))
 	var tent_front := Vector3(sin(0.7), 0, cos(0.7))
 	_spot("tent", TENT_AT + tent_front * 1.7, TENT_AT)
 	var crate_side := Vector3(cos(0.55), 0, -sin(0.55))

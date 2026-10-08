@@ -5,11 +5,11 @@ extends Node
 ## sits by the fire, mends the tent, opens the crate and has a bite,
 ## crouches over the fish, leans on the drum looking at the lake, has a
 ## word with the merchant, warms itself, keeps watch with the lamp held up
-## at the edge of the dark, dances when it's in high spirits - less and
-## less of it as its spirit (Profile.spirit) runs down. (Chopping wood and
-## carrying it, gathering sticks: dropped - user request, the hands didn't
-## close on what they held.)
-##   70-100  busy    all of it (dancing only over 90)
+## at the edge of the dark - less and less of it as its spirit
+## (Profile.spirit) runs down. (Chopping wood and carrying it, gathering
+## sticks: dropped - user request, the hands didn't close on what they
+## held. Dancing: dropped too, user request.)
+##   70-100  busy    all of it
 ##   50-69   tired   no mending; slower; sits more
 ##   30-49   worn    mostly sits, a long while
 ##   0-29    spent   only sits
@@ -44,7 +44,6 @@ const WEIGHTS := {
 	"lake": [0.0, 0.0, 1.0, 0.8],
 	"merchant": [0.0, 0.0, 0.5, 0.7],
 	"warm": [0.0, 0.6, 1.2, 1.0],
-	"dance": [0.0, 0.0, 0.0, 1.2],
 	"watch": [0.0, 0.0, 0.3, 0.6],
 	"stand": [0.0, 0.4, 1.0, 0.5],
 }
@@ -265,8 +264,6 @@ func _choose() -> Array:
 	var options := []
 	for name in WEIGHTS:
 		var w: float = WEIGHTS[name][t]
-		if name == "dance" and Profile.spirit < 90.0:
-			w = 0.0
 		if name == activity and name != "sit":
 			w *= 0.2
 		if w > 0.0:
@@ -345,8 +342,6 @@ func _activity(name: String, t: int) -> Array:
 			if _rng.randf() < 0.5:
 				plan.append({"do": "play", "clip": "Consume"})
 			return plan
-		"dance":
-			return _go("dance") + [{"do": "loop", "clip": "Dance", "time": _rng.randf_range(3.0, 5.0)}]
 		"watch":
 			# On watch: the lamp lit and held up at the edge of the dark.
 			var edge := "gather_%d" % _rng.randi_range(0, 2)

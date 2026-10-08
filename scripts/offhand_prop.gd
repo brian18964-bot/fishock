@@ -10,9 +10,8 @@ extends Node2D
 ## (the fist's axis - a pistol's along the fingers) or down the thigh at
 ## the hip, foreshortened as they are; behind the body when they are.
 ## Where: the sheet's data for the frame showing (PlayerVisual.hand_cell(),
-## belt_cell()). A swing also leaves its stroke in the air, the way it's
-## aimed (it reads at a phone's size): a blade's arc (a chop's from high to
-## low), the net's low sweep, the pistol's flash and its shot.
+## belt_cell()). User request: a swing is only the character's own move
+## (no strokes drawn in the air).
 
 const SPRITE_SCALE := PlayerVisual.SPRITE_SCALE
 const DRAW_TIME := 0.22
@@ -31,12 +30,6 @@ const PROPS := {
 }
 ## Hung at the hip it's a little smaller (seen past the body's side).
 const BELT_SCALE := 0.85
-## The stroke: its radius from the body's middle (world px), how wide it
-## sweeps (rad), and the shot's length.
-const STROKE_RADIUS := 11.0
-const STROKE_SWEEP := 2.2
-const SHOT_LENGTH := 90.0
-const STROKE := Color(1.0, 0.97, 0.88)
 
 var _id := ""
 var _tex: Texture2D
@@ -95,7 +88,6 @@ func _place(hand: bool) -> Array:
 
 
 func _draw() -> void:
-	_draw_stroke()
 	if not visible or shown.is_empty() or _tex == null:
 		return
 	var spec: Dictionary = PROPS[_id]
@@ -115,31 +107,3 @@ func _draw() -> void:
 	draw_texture(_tex, -grip)
 	draw_set_transform(Vector2.ZERO)
 
-
-## The swing's stroke in the air (see above), over the swing's blow.
-func _draw_stroke() -> void:
-	if _player.swing_left <= 0.0:
-		return
-	var t := 1.0 - _player.swing_left / Player.SWING_TIME
-	var aim: Vector2 = _player.aim_dir
-	var middle := _body.position + Vector2(0, -8)
-	var a := clampf(1.0 - absf(t - 0.45) / 0.3, 0.0, 1.0)
-	if a <= 0.0:
-		return
-	match _player.swing_kind:
-		"shoot":
-			var muzzle := middle + aim * 10.0
-			draw_circle(muzzle, 3.5 * a, Color(1.0, 0.85, 0.4, a))
-			draw_line(muzzle, muzzle + aim * SHOT_LENGTH * minf(1.0, t * 2.5), Color(1.0, 0.9, 0.6, a * 0.7), 1.0)
-		_:
-			var low: bool = _player.swing_kind == "scoop"
-			var centre := middle + (Vector2(0, 5) if low else Vector2.ZERO)
-			var from := aim.angle() - STROKE_SWEEP * 0.5
-			var reach := clampf((t - 0.15) / 0.5, 0.0, 1.0)
-			if _player.swing_kind == "chop":
-				# high to low: the arc swept down through the aim
-				from = aim.angle() - STROKE_SWEEP * 0.5 * signf(aim.x if absf(aim.x) > 0.1 else 1.0)
-			var to := from + STROKE_SWEEP * reach * (1.0 if _player.swing_kind != "chop" or aim.x >= -0.1 else -1.0)
-			for i in 3:
-				var r := STROKE_RADIUS + i * 2.0
-				draw_arc(centre, r, from, to, 18, Color(STROKE, a * (0.75 - i * 0.22)), 2.0 - i * 0.5)

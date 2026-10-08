@@ -4,7 +4,9 @@ extends Node2D
 ## User request: no more roadside junk pile - instead 8-10 of each run's
 ## rocks are small ones the player can turn over (a tap, see
 ## Player._turn_rock()) for a chance at bait - or a black spider. Turned over, the rock
-## rolls off to the side and leaves a bare, damp patch where it lay; each
+## tips off to the side and leaves a bare, damp patch where it lay (user
+## request: only just - a heave, not a throw; it shifts enough to bare the
+## patch and leans over a little); each
 ## one can be turned once a run. Same rock art as the obstacles
 ## (obstacle.gd), smaller.
 
@@ -16,8 +18,12 @@ const SPIDER_CHANCE := 0.18
 const BAIT_FLAVORS := ["蚯蚓", "蟲子", "青蛙"]
 ## How close the player has to be to turn it.
 const REACH := 26.0
-const ROLL_DISTANCE := Vector2(22.0, 32.0)
-const ROLL_TIME := 0.8
+## How far it shifts (px; at least ROLL_BARE of the patch's radius, so the
+## patch shows), how far it leans over (rad), how long it takes.
+const ROLL_DISTANCE := Vector2(9.0, 13.0)
+const ROLL_BARE := 1.4
+const ROLL_LEAN := Vector2(0.25, 0.5)
+const ROLL_TIME := 0.7
 
 ## Map theme (map_generator.gd): obstacle rock pool (Obstacle.resolve_pool).
 var variant_pool: Array = []
@@ -106,8 +112,8 @@ func turn_over(from: Vector2) -> Dictionary:
 	if away.length() < 1.0:
 		away = Vector2.RIGHT.rotated(randf() * TAU)
 	var dir := away.normalized().rotated(randf_range(-0.6, 0.6))
-	var offset := dir * randf_range(ROLL_DISTANCE.x, ROLL_DISTANCE.y)
-	var spin := signf(dir.x if absf(dir.x) > 0.1 else 1.0) * randf_range(PI * 1.2, PI * 2.2)
+	var offset := dir * maxf(randf_range(ROLL_DISTANCE.x, ROLL_DISTANCE.y), _patch_radius * ROLL_BARE)
+	var spin := signf(dir.x if absf(dir.x) > 0.1 else 1.0) * randf_range(ROLL_LEAN.x, ROLL_LEAN.y)
 	var tween := create_tween()
 	tween.tween_method(_roll.bind(offset, spin), 0.0, 1.0, ROLL_TIME) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
@@ -119,8 +125,8 @@ func turn_over(from: Vector2) -> Dictionary:
 
 
 func _roll(t: float, offset: Vector2, spin: float) -> void:
-	# A little hop as it tips over, then it rolls out.
-	_roller.position = offset * t + Vector2(0, -sin(minf(t * 2.0, 1.0) * PI) * 3.0)
+	# Heaved up a touch as it tips, then it settles.
+	_roller.position = offset * t + Vector2(0, -sin(minf(t * 2.0, 1.0) * PI) * 1.5)
 	_visual.rotation = spin * t
 	_scar_alpha = t
 	_scar.queue_redraw()

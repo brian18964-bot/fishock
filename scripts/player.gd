@@ -1978,6 +1978,7 @@ func _update_fishing(delta: float) -> void:
 			var reel_mult := MOVE_REEL_PENALTY if moving and fight.run_side == Vector2.ZERO else 1.0
 			var line_dir := (cast_target - global_position).normalized()
 			fight.strain = VIGOR_STRAIN if vigor_timer > 0.0 else 1.0
+			fight.hold = _is_action_pressed()
 			for ev in fight.update(delta, crank, _counter_dir(), line_dir, reel_mult):
 				_on_fight_event(ev)
 			progress = fight.progress
@@ -1999,6 +2000,8 @@ func _update_fishing(delta: float) -> void:
 						_snap_note = fight.snap_why
 					_fail_catch("line_break")
 				"shook_off", "cover":
+					if fight.snap_why == "slack":
+						_snap_note = "slack"
 					_fail_catch(fight.result)
 		_:
 			pass
@@ -2020,6 +2023,10 @@ func _update_crank(delta: float) -> void:
 		_crank_had = false
 		if Input.is_key_pressed(KEY_SPACE):
 			want = 1.0 if Input.is_key_pressed(KEY_SHIFT) else FishFight.CRANK_NORMAL
+			# Struck: Space held is the stick held - it holds the line
+			# through the fish's first pull (Shift cranks).
+			if fight != null and fight.opening_left > 0.0 and not Input.is_key_pressed(KEY_SHIFT):
+				want = 0.0
 	crank = lerpf(crank, want, 1.0 - exp(-CRANK_EASE * delta)) if want < crank else want
 	if crank < 0.01:
 		crank = 0.0
@@ -2236,10 +2243,8 @@ func _start_bite() -> void:
 	GameState.report("咬鉤了！快揚竿", "good")
 	if is_heart_catch:
 		GameState.push_message("水花特別亮、震動特別強...是心臟！")
-	elif is_epic_catch:
-		GameState.push_message("水面掀起巨浪，感覺上鉤的是隻大傢伙...傳說級的魚！")
-	elif is_rare_catch:
-		GameState.push_message("水花聲跟震動都變強了，是稀有魚！")
+	# (User request: what's on isn't said - it's read from the line once
+	# struck, FishFight.open().)
 
 
 ## How long the perfect strike lasts on this bite.
@@ -2282,6 +2287,7 @@ var _snap_at := -1.0
 func _hook_fish(perfect := false) -> void:
 	fight = FishFight.new(difficulty_key, fish_habit, tier_data, reel_power_mult, Profile.rod())
 	_snap_at = randf_range(0.3, 0.8) if Profile.spirit_penalty() >= 3 and randf() < SPENT_SNAP_CHANCE else -1.0
+	fight.open(fish_heft())
 	if perfect:
 		fight.perfect_hook()
 	# The line out to the fish, all there is on the reel, and how hard this
@@ -2295,12 +2301,34 @@ func _hook_fish(perfect := false) -> void:
 	progress = fight.progress
 	tension = fight.tension
 	fish_run_active_time = 0.0
+	var hold := "按住右搖桿" if DisplayServer.is_touchscreen_available() else "按住空白鍵"
 	if perfect:
-		GameState.push_message("完美揚竿！魚一上鉤就掉了一截體力（難度：%s）" % fight.label())
+		GameState.push_message("完美揚竿！魚掉了一截體力——先%s頂住，看張力再收線" % hold)
 	else:
-		GameState.push_message("上鉤了！（難度：%s）" % fight.label())
+		GameState.push_message("上鉤了！先%s頂住，看張力再收線" % hold)
 	_set_state(State.REELING)
 	hook_success.emit()
+
+
+## User request: how hard the fish on the line is to land, for the strike's
+## opening (FishFight.open: 0 easy .. 1 the hardest) - its difficulty, its
+## size, its rarity and its temper.
+const HEFT_DIFFICULTY := {"novice": 0.0, "normal": 0.25, "advanced": 0.5, "master": 0.75}
+const HEFT_SIZE := {"small": 0.0, "medium": 0.05, "large": 0.1, "huge": 0.15}
+const HEFT_TRAIT := {"calm": -0.05, "normal": 0.0, "wild": 0.08}
+const HEFT_RARE := 0.07
+const HEFT_EPIC := 0.15
+
+
+func fish_heft() -> float:
+	var h: float = HEFT_DIFFICULTY.get(difficulty_key, 0.0)
+	h += float(HEFT_SIZE.get(Inventory.size_for_catch(current_tier, is_epic_catch), 0.0))
+	h += float(HEFT_TRAIT.get(fish_trait, 0.0))
+	if is_epic_catch:
+		h += HEFT_EPIC
+	elif is_rare_catch:
+		h += HEFT_RARE
+	return clampf(h, 0.0, 1.0)
 
 
 ## How fast the fish on the line swims off with it (m/s, FishFight.swim_out):
@@ -2422,6 +2450,8 @@ func _fail_catch(reason: String) -> void:
 				msg = "魚跑得太遠，線撐不住斷了（距離變紅時要快收線）"
 			"leap":
 				msg = "魚在遠處跳出水面，線一下就斷了"
+			"rush":
+				msg = "刺魚後馬上收線，正好撞上魚猛拉，線斷了（先按住頂住，看張力再收）"
 			_:
 				msg = "線斷了，魚跑了"
 		_snap_note = ""
@@ -2437,6 +2467,9 @@ func _fail_catch(reason: String) -> void:
 		msg = "等了老半天，這裡沒魚咬餌"
 	elif reason == "spooked":
 		msg = "太早揚竿，把魚嚇跑了（等浮標整個沉下去、水花濺起再拉）"
+	elif reason == "shook_off" and _snap_note == "slack":
+		msg = "刺魚後放了手，線一鬆魚就脫鉤了（刺魚後要按住頂住）"
+		_snap_note = ""
 	elif reason == "shook_off":
 		msg = "魚在空中甩掉了魚鉤（跳起來時要放手）"
 	elif reason == "cover":
