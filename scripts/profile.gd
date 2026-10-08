@@ -465,13 +465,23 @@ func character_name(id: String = character) -> String:
 
 ## The next character in CHARACTERS takes over (the camp's fire).
 func next_character() -> String:
+	choose_character(character_after())
+	return character
+
+
+## The one after `id` in CHARACTERS (round to the first).
+func character_after(id: String = character) -> String:
 	var i := 0
 	for j in CHARACTERS.size():
-		if CHARACTERS[j][0] == character:
+		if CHARACTERS[j][0] == id:
 			i = j
-	character = CHARACTERS[(i + 1) % CHARACTERS.size()][0]
+	return CHARACTERS[(i + 1) % CHARACTERS.size()][0]
+
+
+## `id` travels from now on.
+func choose_character(id: String) -> void:
+	character = id
 	_changed()
-	return character
 
 
 ## Pitches tent `tent` at the camp, if it's been earned.

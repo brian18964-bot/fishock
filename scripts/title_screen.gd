@@ -55,6 +55,8 @@ var _who: Label
 ## The new character's name shows over the fire this long (s).
 const NAME_TIME := 1.6
 var _name_time := 0.0
+## The character waited for (its pack being fetched - the fire tapped).
+var _waiting_for := ""
 ## A set piece playing (setting out, coming home): a tap skips it.
 var _scene_piece := ""
 var _skip_hint: Label
@@ -84,6 +86,15 @@ func _ready() -> void:
 	_crickets = CampCrickets.new()
 	_crickets.name = "Crickets"
 	add_child(_crickets)
+	# User request (the web build's size): the one travelling may be a
+	# character whose pack isn't fetched yet (CharacterPacks) - that first,
+	# behind a cover saying so; failing that (offline), the first character.
+	if not CharacterPacks.has(Profile.character):
+		var cover := CharacterPacks.cover(self, Profile.character)
+		var got: bool = await CharacterPacks.wait_for(Profile.character)
+		cover.queue_free()
+		if not got:
+			Profile.character = Profile.CHARACTERS[0][0]
 	_build()
 	# User report: on the web the camp was silent until something was
 	# tapped - browsers keep a page quiet until it's touched. The first time
@@ -101,6 +112,8 @@ func _ready() -> void:
 		_come_home(back)
 	if not Profile.tank_news.is_empty():
 		_tank_news()
+	# The next one round the fire, fetched quietly (the web build).
+	CharacterPacks.fetch(Profile.character_after())
 
 
 ## User request (fish tank): back from a run with fish, the main screen
@@ -409,11 +422,19 @@ func _near_character(at: Vector2) -> bool:
 
 
 ## User request: the fire tapped, the next character (Profile.CHARACTERS)
-## takes over - its name shown over the fire a moment.
+## takes over - its name shown over the fire a moment. On the web one not
+## fetched yet (CharacterPacks) is fetched first, how far along over the
+## fire, and the next one round behind it once it's in.
 func _next_character() -> void:
 	if _stage == null or _stage.life.busy != "":
 		return
-	var id := Profile.next_character()
+	var id := Profile.character_after()
+	if not CharacterPacks.has(id):
+		# (perhaps already coming, fetched quietly: waited for all the same)
+		if _waiting_for != id:
+			_fetch_character(id)
+		return
+	Profile.choose_character(id)
 	_stage.set_character(id)
 	Sfx.play("ui_open", -6.0)
 	_who.text = "釣客・" + Profile.character_name()
@@ -421,6 +442,30 @@ func _next_character() -> void:
 	_spot_label.visible = true
 	_spot_label.text = Profile.character_name()
 	_name_time = NAME_TIME
+	CharacterPacks.fetch(Profile.character_after())
+
+
+func _fetch_character(id: String) -> void:
+	_waiting_for = id
+	var who := Profile.character_name(id)
+	_spot = "character"
+	_spot_label.visible = true
+	_spot_label.text = "%s 下載中" % who
+	_name_time = 3600.0
+	var on_progress := func(which: String, ratio: float):
+		if which == id:
+			_spot_label.text = "%s 下載中 %d%%" % [who, roundi(ratio * 100.0)]
+	CharacterPacks.progressed.connect(on_progress)
+	var got: bool = await CharacterPacks.wait_for(id)
+	CharacterPacks.progressed.disconnect(on_progress)
+	_waiting_for = ""
+	if not is_inside_tree():
+		return
+	_name_time = NAME_TIME
+	if got:
+		_next_character()
+	else:
+		_spot_label.text = "%s 下載失敗，再點一次重試" % who
 
 
 func _wave() -> void:

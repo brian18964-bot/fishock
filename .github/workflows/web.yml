@@ -66,10 +66,13 @@ jobs:
       - name: Tests
         run: timeout 900 "$GODOT" --headless --fixed-fps 60 -s tests/run_tests.gd
 
+      # The game, and each character but the first as a pack of its own,
+      # fetched when it's wanted (tools/export_web.py).
       - name: Export
         run: |
-          "$GODOT" --headless --export-release "Web" build/web/index.html
+          python3 tools/export_web.py "$GODOT" build/web
           test -f build/web/index.wasm
+          ls -la build/web build/web/packs
 
       - uses: actions/upload-pages-artifact@v3
         with:

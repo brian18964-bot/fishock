@@ -20,6 +20,7 @@ Profile="*res://scripts/profile.gd"
 Campaign="*res://scripts/campaign.gd"
 Perf="*res://scripts/perf_governor.gd"
 Sfx="*res://scripts/sfx.gd"
+CharacterPacks="*res://scripts/character_packs.gd"
 
 [display]
 

@@ -37,6 +37,7 @@ const TESTS := [
 	"test_cast_whip_follows_wind_up",
 	"test_rod_bends_with_the_fish",
 	"test_characters",
+	"test_character_packs",
 	"test_usable_items",
 	"test_quick_slots",
 	"test_player_moves",
@@ -1026,6 +1027,51 @@ func test_characters() -> void:
 	var off: Array = CharacterArt.rod_data("bear").offset
 	check(visual._sheet_offset == Vector2(off[0], off[1]), "framed by its own rod data")
 	check(Profile.snapshot().character == "bear", "and it's saved")
+	Profile.load_data(saved)
+	Profile._save()
+
+
+## User request (the web build's size): on the web only the first
+## character comes with the game, each other one a pack fetched when it's
+## wanted (CharacterPacks) - the game opened with one not fetched waits for
+## it behind a cover; the fire tapped to one not fetched shows how far along
+## over the fire and switches once it's in. (Here they're all on disk:
+## `missing` makes them look not fetched, a fetch only pretending.)
+func test_character_packs() -> void:
+	var saved := Profile.snapshot()
+	check(Profile.CHARACTERS.all(func(c): return CharacterPacks.has(c[0])), "off the web every character's there")
+	Profile.load_data({"gold": 100, "spirit": 95.0, "character": "dog"})
+	CharacterPacks.missing = {"dog": true, "owl": true}
+	CharacterPacks.pretend_time = 0.6
+	var title: Control = load("res://scenes/title_screen.tscn").instantiate()
+	get_tree().root.add_child(title)
+	await frames(3)
+	check(title.find_child("PackCover", true, false) != null and title.find_child("Camp", true, false) == null,
+		"opened as one not fetched: a cover while it comes, no camp yet")
+	await seconds(1.0)
+	var camp: CampStage = title.find_child("Camp", true, false)
+	check(title.find_child("PackCover", true, false) == null and camp != null and camp.character.character == "dog",
+		"then the camp, with it there")
+	title.queue_free()
+	await frames(2)
+	# The fire tapped to one not fetched (the owl, after the cat).
+	Profile.choose_character("cat")
+	title = load("res://scenes/title_screen.tscn").instantiate()
+	get_tree().root.add_child(title)
+	await frames(3)
+	camp = title.find_child("Camp", true, false)
+	title._next_character()
+	await frames(2)
+	check(camp.character.character == "cat" and Profile.character == "cat" and CharacterPacks.fetching("owl")
+		and title._spot_label.visible and title._spot_label.text.contains("下載中"), "the owl not here: fetched first, said over the fire")
+	title._next_character()
+	await seconds(1.0)
+	check(camp.character.character == "owl" and Profile.character == "owl" and not title._spot_label.text.contains("下載"),
+		"once it's in, the owl takes over (a tap meanwhile didn't skip it)")
+	title.queue_free()
+	await frames(2)
+	CharacterPacks.missing = {}
+	CharacterPacks.pretend_time = 0.0
 	Profile.load_data(saved)
 	Profile._save()
 

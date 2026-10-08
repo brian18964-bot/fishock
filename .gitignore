@@ -12,3 +12,5 @@ build/
 # Python bytecode from tools/
 __pycache__/
 art_src/fish_tex/
+# The web build's list of character packs (tools/export_web.py)
+assets/packs.json
