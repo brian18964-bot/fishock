@@ -70,6 +70,13 @@ const NAP_TIME := [Vector2(30, 50), Vector2(20, 35), Vector2(12, 20), Vector2(8,
 const TAP_CLIPS := [["Idle_No"], ["Idle_No"], ["Yes", "Wave"], ["Wave_Big", "Wave", "Beckon"]]
 ## The longest a wave goes on (s; Mixamo's are long).
 const WAVE_TIME := 2.6
+## Room it wants round it to stand about in - arms out, a wave, a
+## stretch, turning to the camera (m past a thing's edge). User report:
+## leant on the drum, then stretching where it stood, its arms went into
+## the drum; so somewhere tight (by the drum, the crate, a log) it steps out
+## first (_step_clear()) - far enough that a long tail, turned to the
+## camera, is clear too.
+const ROOM := 0.4
 
 var stage: CampStage
 var rig: CharacterRig
@@ -81,6 +88,8 @@ var seated := false
 var down := ""
 ## Doing a set piece (depart, come_home): no taps, no choosing.
 var busy := ""
+## Turning to a tap and waving (tap()): another tap does nothing.
+var greeting := false
 var activity := ""
 
 var _plan: Array = []
@@ -122,6 +131,7 @@ func sit_now() -> void:
 	_play("Sitting_Idle", 0.0)
 	_plan.clear()
 	_step = {}
+	greeting = false
 
 
 ## Another character took over (CampStage.set_character, the fire tapped):
@@ -130,6 +140,7 @@ func sit_now() -> void:
 func restart() -> void:
 	_plan.clear()
 	_step = {}
+	greeting = false
 	var lying: String = {"LayToIdle": "Sleep_B", "Ground_Stand": "Ground_Sit"}.get(down, "")
 	_play("Sitting_Idle" if seated else (lying if lying != "" else _idle()), 0.0)
 	_rest = 1.0
@@ -142,30 +153,64 @@ func hold(on: bool) -> void:
 		rig.anim.speed_scale = 0.0 if on else (_pace if _step.get("do", "") == "walk" else 1.0)
 
 
-## A tap on it: a wave or a beckon (a nod, a shake of the head as it
-## wearies); seated, a few words; lying or sat on the ground, up first (and
-## the nap's over). Then on with what it was doing.
+## A tap on it (user request: from what it's doing to facing us and back,
+## smoothly - not spun round). Seated, it says a few words, still sat, and
+## sits on. Lying or sat on the ground, it gets up
+## first (the nap's over). Standing, it lets go of what it's doing, steps
+## out if it's somewhere tight, turns round to the camera and waves (a
+## beckon, a nod, a shake of the head as it wearies); then goes back to
+## where it was, turns the way it was and carries on - the rest of a while
+## leaning or crouching, the walk it was on, the merchant it was talking
+## to. A tap while it's greeting does nothing more.
 func tap() -> void:
-	if busy != "" or paused:
+	if busy != "" or paused or greeting:
 		return
+	var start := {"do": "call", "fn": func(): greeting = true}
+	var end := {"do": "call", "fn": func(): greeting = false}
 	var react: Array = []
 	if down != "":
-		_plan = _get_up() + [{"do": "face", "at": stage.camera.global_position}, _wave()]
-		_step = {}
-		_next()
-		return
-	if seated:
+		react = _get_up() + [{"do": "face", "at": stage.camera.global_position}, _wave()]
+		_plan.clear()
+	elif seated:
 		react = [{"do": "loop", "clip": "Sitting_Talking", "time": 2.9}]
 		if not _step.is_empty() and _step.do == "loop":
-			# Back to sitting after.
-			react.append(_step.duplicate())
+			# Back to sitting after, for what was left of it.
+			var rest := _step.duplicate()
+			rest.time = maxf(float(rest.time) - _t, 1.0)
+			react.append(rest)
 	else:
-		react = [{"do": "face", "at": stage.camera.global_position}, _wave()]
+		var here := pivot.position
+		var yaw := pivot.rotation.y
+		react = _step_clear() + [{"do": "face", "at": stage.camera.global_position}, _wave()]
 		if not _step.is_empty() and _step.do in ["walk", "face", "play", "loop"]:
-			react.append(_step.duplicate())
-	_plan = react + _plan
+			var rest := _step.duplicate()
+			if rest.do == "loop":
+				rest.time = maxf(float(rest.time) - _t, 1.0)
+			if rest.do != "walk":
+				# Back to its place, the way it faced, first.
+				react += [{"do": "walk", "to": here}, {"do": "face", "at": here + Vector3(sin(yaw), 0, cos(yaw))}]
+			react.append(rest)
+	_plan = [start] + react + [end] + _plan
 	_step = {}
 	_next()
+
+
+## A step out to where there's room (ROOM) if it's somewhere tight - by the
+## drum it leant on, the crate, a log - else nothing.
+func _step_clear() -> Array:
+	var here := pivot.position
+	if stage.roomy(here, ROOM):
+		return []
+	for r in [0.35, 0.55, 0.8, 1.1, 1.5]:
+		var best := Vector3.INF
+		for k in 16:
+			var a := k * TAU / 16.0
+			var p: Vector3 = here + Vector3(cos(a), 0.0, sin(a)) * float(r)
+			if stage.roomy(p, ROOM) and (best == Vector3.INF or p.distance_to(stage.camera.global_position) < best.distance_to(stage.camera.global_position)):
+				best = p
+		if best != Vector3.INF:
+			return [{"do": "walk", "to": best}]
+	return []
 
 
 func _process(delta: float) -> void:
@@ -405,7 +450,7 @@ func _activity(name: String, t: int) -> Array:
 			var edge := "gather_%d" % _rng.randi_range(0, 2)
 			return _go(edge) + [{"do": "play", "clip": "Look_Around" if _rng.randf() < 0.6 else "Peek"}]
 		"stretch":
-			return [{"do": "play", "clip": "Stretch_Neck" if _rng.randf() < 0.5 else "Stretch_Arms"}]
+			return _step_clear() + [{"do": "play", "clip": "Stretch_Neck" if _rng.randf() < 0.5 else "Stretch_Arms"}]
 		"tent":
 			return _go("tent") + [{"do": "play", "clip": "Fixing_Kneeling"}]
 		"crate":
@@ -453,7 +498,7 @@ func _activity(name: String, t: int) -> Array:
 				+ _go("lamp") + [_reach(func(): put_lamp(true))]
 	# "stand": a while where it is, arms folded - worn out, head down.
 	var low: String = ["Sad", "Sad_B"][_rng.randi_range(0, 1)]
-	return [{"do": "loop", "clip": low if t <= 1 else "Idle_FoldArms", "time": _rng.randf_range(3.0, 6.0)}]
+	return _step_clear() + [{"do": "loop", "clip": low if t <= 1 else "Idle_FoldArms", "time": _rng.randf_range(3.0, 6.0)}]
 
 
 ## Getting up (`clip`), down no longer.
@@ -486,6 +531,7 @@ func depart() -> void:
 	busy = "depart"
 	_plan.clear()
 	_step = {}
+	greeting = false
 	rig.equip("hand_r", null)
 	rig.equip("back", null)
 	var plan: Array = _get_up()
@@ -502,6 +548,7 @@ func depart() -> void:
 func come_home(how: String) -> void:
 	_plan.clear()
 	_step = {}
+	greeting = false
 	seated = false
 	down = ""
 	if how == "lost":

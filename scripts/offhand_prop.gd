@@ -49,7 +49,9 @@ func _process(delta: float) -> void:
 	if id != _id:
 		_id = id
 		_tex = Items.icon(id) if PROPS.has(id) else null
-	var hand := _player.offhand_in_hand() or _body.acting >= 0
+	# (a move - drinking, praying, turning a rock over - has its hands busy:
+	# the thing goes to the hip meanwhile)
+	var hand := (_player.offhand_in_hand() and _body.move == "") or _body.acting >= 0
 	var cell := _place(hand)
 	if hand != _was_hand and not shown.is_empty():
 		_from = shown.duplicate()

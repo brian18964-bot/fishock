@@ -2950,15 +2950,70 @@ func test_camp_life() -> void:
 	life._plan.clear()
 	life._step = {}
 	life.seated = false
+	life.pivot.position = camp.spots.home.at
+	check(camp.roomy(camp.spots.home.at, CampLife.ROOM), "where it stands at home there's room to turn and wave")
 	Profile.spirit = 80.0
 	life.tap()
 	check(life._step.get("do", "") == "face" and life._plan.size() >= 1 and life._plan[0].get("clip", "") in CampLife.TAP_CLIPS[3],
 		"tapped, it turns and waves (or beckons)")
+	var before := life._plan.size()
+	life.tap()
+	check(life.greeting and life._plan.size() == before, "a tap while it's greeting does nothing more")
 	Profile.spirit = 10.0
 	life._plan.clear()
 	life._step = {}
+	life.greeting = false
 	life.tap()
 	check(life._plan.size() >= 1 and life._plan[0].get("clip", "") == "Idle_No", "spent, it shakes its head")
+	# User request: tapped while it's at something, it goes from that to
+	# facing us and back - leaning on the drum, it steps out (no room to
+	# turn there), turns, waves, goes back to the drum and leans the rest of
+	# the while.
+	Profile.spirit = 80.0
+	life._plan.clear()
+	life.greeting = false
+	life.pivot.position = camp.spots.lean.at
+	life._step = {"do": "loop", "clip": "Idle_Rail", "time": 8.0}
+	life._t = 3.0
+	life.tap()
+	var steps: Array = [life._step] + life._plan
+	var kinds: Array = steps.map(func(st): return st.get("do", "") + ":" + str(st.get("clip", "")))
+	var stepped: Vector3 = steps[0].get("to", Vector3.ZERO)
+	check(steps[0].get("do", "") == "walk" and camp.roomy(stepped, CampLife.ROOM), "by the drum: a step out to where there's room first (%s)" % ", ".join(kinds))
+	var resume: Array = steps.filter(func(st): return st.get("clip", "") == "Idle_Rail")
+	var back_to: Array = steps.filter(func(st): return st.get("do", "") == "walk" and st.get("to", Vector3.INF).distance_to(camp.spots.lean.at) < 0.01)
+	check(resume.size() == 1 and absf(float(resume[0].time) - 5.0) < 0.01 and back_to.size() == 1,
+		"then back to the drum, leaning the rest of the while (%s)" % ", ".join(kinds))
+	# Standing about somewhere tight (by the drum), it steps out first too.
+	check(life._activity("stand", 3)[0].get("do", "") == "walk" and life._activity("stretch", 3)[0].get("do", "") == "walk",
+		"standing about or stretching by the drum: out from it first")
+	life.pivot.position = camp.spots.home.at
+	check(life._activity("stand", 3)[0].get("do", "") == "loop", "with room round it, just where it is")
+	life._plan.clear()
+	life._step = {}
+	life.greeting = false
+	# User request: a drag swipes the view left and right - the character
+	# isn't spun round by it any more.
+	var yaw_was := life.pivot.rotation.y
+	var swipe := InputEventMouseButton.new()
+	swipe.button_index = MOUSE_BUTTON_LEFT
+	swipe.pressed = true
+	swipe.position = Vector2(700, 420)
+	title._on_home_input(swipe)
+	for k in 10:
+		var mv := InputEventMouseMotion.new()
+		mv.position = Vector2(700 - k * 12, 420)
+		mv.relative = Vector2(-12, 0)
+		title._on_home_input(mv)
+	var up := swipe.duplicate() as InputEventMouseButton
+	up.pressed = false
+	title._on_home_input(up)
+	await frames(30)
+	check(camp.view_pan > 1.0 and absf(life.pivot.rotation.y - yaw_was) < 0.001 and camp.camera.global_position.x > CampStage.STATIONS.home[0].x + 0.8,
+		"a swipe to the left moves the view right (%.2f m), the character not turned" % camp.view_pan)
+	camp.pan_view(-10.0)
+	check(is_equal_approx(camp.view_pan, CampStage.PAN_RANGE.x), "as far as the camp goes")
+	camp.view_pan = 0.0
 	# User request (the Mixamo clips): a nap by the fire - down, asleep, up
 	# again; a tap wakes it, up first and then the wave.
 	Profile.spirit = 40.0
@@ -2989,7 +3044,8 @@ func test_camp_life() -> void:
 	check(ground.any(func(st): return st.get("clip", "") == "Ground_Stand" and st.get("back", false))
 		and ground.any(func(st): return st.get("clip", "") == "Ground_Sit"), "it sits on the ground by the fire")
 	Profile.spirit = 40.0
-	check(life._idle() == "Sad" and life._activity("stand", 1)[0].clip in ["Sad", "Sad_B"], "worn out, it stands low")
+	life.pivot.position = camp.spots.home.at
+	check(life._idle() == "Sad" and life._activity("stand", 1)[0].get("clip", "") in ["Sad", "Sad_B"], "worn out, it stands low")
 	Profile.spirit = 80.0
 	check(life._idle() == "Idle", "in good spirits, at ease")
 	# Every clip it plays is in the model.

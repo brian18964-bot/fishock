@@ -25,10 +25,12 @@ GREYBOX_DIR=<build> a greybox one); MANNEQUIN=1 keeps the mannequin instead.
   UAL1=<UAL1_Standard.glb> UAL2=<UAL2_Standard.glb> MOVES_DIR=<dir> \\
       bpyenv/bin/python tools/build_menu_character.py      (repo root)
 """
+import math
 import os
 import sys
 
 import bpy
+from mathutils import Matrix, Vector
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import owl_character  # noqa: E402
@@ -80,7 +82,22 @@ MIXAMO = [
 MIXAMO_STEP = 2
 # Lying and sat on the ground, it's the body's lowest point that goes on
 # the ground, not a foot (a knee up, the feet off it) - ground_on_body().
-GROUNDED = ("Lie_Down", "Lying_Loop", "Sleep_B_Loop", "Ground_Sit_Loop", "Ground_Stand")
+GROUNDED = ("Lie_Down", "Lying_Loop", "Sleep_B_Loop", "Ground_Sit_Loop", "Ground_Stand",
+            # (user report, checked on the camp: crouching, kneeling and the
+            # beckon's crouch put the feet or a knee in the ground)
+            "Beckon", "Peek", "Crouch_Idle_Loop", "Fixing_Kneeling",
+            # (and lying to getting up, the standing about and the walk -
+            # the bear's walk 7 cm in, the rest's toes 2-3 cm)
+            "LayToIdle", "Walk_Loop", "Idle_Loop", "Idle_FoldArms_Loop", "Idle_No_Loop",
+            "Idle_Talking_Loop", "Idle_Torch_Loop", "Sad_Loop")
+# User report (the bear sank into the log): the camp's logs (CampStage.SEATS)
+# have their top this high under the hips of one sat on them, m (measured
+# in the camp) - and the clips sat on one, whole and getting on and off.
+# sit_on_logs() puts each character's seat on it, its feet on the ground.
+SEAT_TOP = 0.442
+SEAT_REACH = 0.12
+SAT = ("Sitting_Idle_Loop", "Sitting_Talking_Loop")
+SITTING_DOWN = ("Sitting_Enter", "Sitting_Exit")
 # Sat on a log: Mixamo's seats are lower than the camp's logs (into the
 # wood by up to 14 cm), so the hips and legs are UAL's Sitting_Idle's (made
 # for the logs) and the body above them keeps the Mixamo clip's turn -
@@ -114,6 +131,128 @@ def mixamo_clips(arm):
         bpy.data.actions.remove(act)
         out[name] = baked
     return out
+
+
+def _not_tail(body):
+    """{mesh name: indices of its vertices that aren't the tail's}."""
+    keep = {}
+    for o in body:
+        if o.type != "MESH":
+            continue
+        tails = {g.index for g in o.vertex_groups if g.name.startswith("tail")}
+        keep[o.name] = {v.index for v in o.data.vertices
+                        if sum(g.weight for g in v.groups if g.group in tails) <= 0.3}
+    return keep
+
+
+def _lows(body, keep, around):
+    """As posed now (world): the lowest point of the body within SEAT_REACH
+    (across) of `around` - the seat - and the lowest point of a foot."""
+    dg = bpy.context.evaluated_depsgraph_get()
+    seat = foot = 9.0
+    for o in body:
+        if o.type != "MESH":
+            continue
+        feet = {g.index for g in o.vertex_groups if g.name.startswith(("foot", "ball"))}
+        mesh = o.evaluated_get(dg).to_mesh()
+        for v in o.data.vertices:
+            if v.index not in keep[o.name]:
+                continue
+            p = o.matrix_world @ mesh.vertices[v.index].co
+            if (p.x - around.x) ** 2 + (p.y - around.y) ** 2 < SEAT_REACH ** 2:
+                seat = min(seat, p.z)
+            if any(g.group in feet and g.weight > 0.5 for g in v.groups):
+                foot = min(foot, p.z)
+        o.evaluated_get(dg).to_mesh_clear()
+    return seat, foot
+
+
+def _leg_ik(arm, side, target, knee_was, foot_was):
+    """The leg bent (two bones, the knee the way it was) to put the ankle
+    at `target` (world) - as near as it reaches - the foot turned as
+    `foot_was` (its world matrix) was."""
+    mw = arm.matrix_world
+    inv = mw.inverted()
+    bones = arm.pose.bones
+    thigh, calf, foot = bones["thigh_" + side], bones["calf_" + side], bones["foot_" + side]
+    hip = mw @ thigh.head
+    knee_now = mw @ calf.head
+    a = (knee_now - hip).length
+    b = ((mw @ foot.head) - knee_now).length
+    d = target - hip
+    reach = min(max(d.length, abs(a - b) + 1e-4), a + b - 1e-4)
+    way = d.normalized()
+    pole = knee_was - hip
+    pole = pole - way * pole.dot(way)
+    pole = pole.normalized() if pole.length > 1e-5 else (knee_now - hip - way * (knee_now - hip).dot(way)).normalized()
+    cos_a = max(-1.0, min(1.0, (a * a + reach * reach - b * b) / (2 * a * reach)))
+    knee = hip + way * (a * cos_a) + pole * (a * math.sqrt(max(0.0, 1.0 - cos_a * cos_a)))
+
+    def turn(pb, about, frm, to):
+        q = frm.rotation_difference(to)
+        world = Matrix.Translation(about) @ q.to_matrix().to_4x4() @ Matrix.Translation(-about) @ (mw @ pb.matrix)
+        pb.matrix = inv @ world
+        bpy.context.view_layer.update()
+
+    turn(thigh, hip, (mw @ calf.head) - hip, knee - hip)
+    knee_now = mw @ calf.head
+    turn(calf, knee_now, (mw @ foot.head) - knee_now, hip + way * reach - knee_now)
+    at = (mw @ foot.matrix).translation
+    world = foot_was.copy()
+    world.translation = at
+    foot.matrix = inv @ world
+    bpy.context.view_layer.update()
+
+
+def sit_on_logs(arm, body, acts):
+    """SAT and SITTING_DOWN keyed again for this character: the hips raised
+    so the seat is on the log's top (SEAT_TOP) - as far as it's sat down,
+    the getting on and off - and each leg bent to keep its foot where it
+    was, on the ground (the short-legged's left hanging)."""
+    ad = arm.animation_data or arm.animation_data_create()
+    bones = arm.pose.bones
+    hips = bones["pelvis"]
+    mw = arm.matrix_world
+    scene = bpy.context.scene
+    keep = _not_tail(body)
+
+    def first(act):
+        ad.action = act
+        scene.frame_set(int(act.frame_range[0]))
+        return mw @ hips.head
+
+    stand = first(acts["Idle_Loop"]).z
+    sat_at = first(acts["Sitting_Idle_Loop"])
+    seat, foot = _lows(body, keep, sat_at)
+    lift = SEAT_TOP - seat
+    # (the soles brought up to the ground, sat, if the clip had them in it)
+    sole = max(0.0, -foot)
+    print("seat: lift %.3f, soles %.3f" % (lift, sole))
+    for name in SAT + SITTING_DOWN:
+        if name not in acts:
+            continue
+        act = acts[name]
+        ad.action = act
+        for pb in [hips] + [bones[b + s] for b in ("thigh_", "calf_", "foot_") for s in "lr"]:
+            pb.rotation_mode = "QUATERNION"
+        frames = sorted({int(round(kp.co.x)) for fc in act.fcurves for kp in fc.keyframe_points})
+        for f in frames:
+            scene.frame_set(f)
+            down = max(0.0, min(1.0, (stand - (mw @ hips.head).z) / max(stand - sat_at.z, 1e-4)))
+            feet = {s: (mw @ bones["foot_" + s].matrix).copy() for s in "lr"}
+            knees = {s: mw @ bones["calf_" + s].head for s in "lr"}
+            world = mw @ hips.matrix
+            world.translation.z += lift * down
+            hips.location = arm.convert_space(pose_bone=hips, matrix=world, from_space="WORLD", to_space="LOCAL").translation
+            bpy.context.view_layer.update()
+            for s in "lr":
+                target = feet[s].translation + Vector((0.0, 0.0, sole * down))
+                _leg_ik(arm, s, target, knees[s], feet[s])
+            hips.keyframe_insert("location", frame=f)
+            for s in "lr":
+                for b in ("thigh_", "calf_", "foot_"):
+                    bones[b + s].keyframe_insert("rotation_quaternion", frame=f)
+    ad.action = None
 
 
 def ground_on_body(arm, body, act):
@@ -238,8 +377,9 @@ def main():
             bpy.data.objects.remove(o, do_unlink=True)
         body = owl_character.player(arm, "ual", list(keep.values()), standing=standing)
     for name in GROUNDED:
-        if name in mixamo:
-            ground_on_body(arm, body, mixamo[name])
+        if name in keep:
+            ground_on_body(arm, body, keep[name])
+    sit_on_logs(arm, body, keep)
     for name in ON_LOG:
         if name in mixamo:
             seat_on_log(arm, mixamo[name], keep[LOG_CLIP])

@@ -182,11 +182,37 @@ func _on_profile_changed() -> void:
 
 # ---------------------------------------------------------------- camera
 
+## User request: the main screen swiped left and right (a drag no longer
+## spins the character round - that broke whatever it was doing): how far
+## the home view's moved sideways (m, + to the right), and how far it goes.
+const PAN_RANGE := Vector2(-2.0, 2.6)
+var view_pan := 0.0
+var _pan_now := 0.0
+var _station := "home"
+
+
+## Moves the home view sideways by `metres` (within PAN_RANGE).
+func pan_view(metres: float) -> void:
+	view_pan = clampf(view_pan + metres, PAN_RANGE.x, PAN_RANGE.y)
+
+
+## Where the camera is at `station` (home: moved sideways by `pan`).
+func station_transform(station: String, pan := 0.0) -> Transform3D:
+	var spot: Array = STATIONS.get(station, STATIONS.home)
+	var shift := Vector3.ZERO
+	if station == "home":
+		var ahead: Vector3 = spot[1] - spot[0]
+		shift = Vector3(-ahead.z, 0.0, ahead.x).normalized() * pan
+	return Transform3D(Basis.IDENTITY, spot[0] + shift).looking_at(spot[1] + shift, Vector3.UP)
+
+
 ## Glides the camera to a station ("home", "shop", ...); `done` is called
 ## once it's there.
 func go_to(station: String, animate := true, done := Callable()) -> void:
 	var spot: Array = STATIONS.get(station, STATIONS.home)
-	var to := Transform3D(Basis.IDENTITY, spot[0]).looking_at(spot[1], Vector3.UP)
+	_station = station
+	_pan_now = view_pan
+	var to := station_transform(station, view_pan)
 	if _cam_tween != null:
 		_cam_tween.kill()
 	if not animate or not is_inside_tree():
@@ -211,13 +237,12 @@ func set_character(id: String) -> void:
 	_fire_flare = 1.0
 
 
-## Turns the character by `amount` (radians), as a drag on it does.
-func turn_character(amount: float) -> void:
-	character_pivot.rotation.y += amount
-
-
 func _process(delta: float) -> void:
 	_time += delta
+	# The home view following a swipe (eased).
+	if _station == "home" and (_cam_tween == null or not _cam_tween.is_running()) and absf(_pan_now - view_pan) > 0.0005:
+		_pan_now = lerpf(_pan_now, view_pan, minf(1.0, delta * 12.0))
+		camera.transform = station_transform("home", _pan_now)
 	# The fire breathes: its light flickers, its glow swells, its embers pulse.
 	var flick := 0.85 + 0.1 * sin(_time * 7.3) + 0.06 * sin(_time * 13.1 + 1.3) + 0.04 * sin(_time * 23.0)
 	_fire_flare = maxf(_fire_flare - delta * 1.5, 0.0)
@@ -282,7 +307,10 @@ func _places() -> void:
 	_spot("rod", ROD_AT + Vector3(0.45, 0, 0.35), ROD_AT + Vector3(0, 0, 0))
 	_spot("stone", STONE_AT + Vector3(0, 0, 0.95), STONE_AT)
 	_spot("stone_in", STONE_AT + Vector3(0, 0, 0.12), STONE_AT + Vector3(0, 0, -2.0))
-	_spot("wake", FIRE_AT + Vector3(-0.95, 0, 0.55), FIRE_AT)
+	# Lying by the fire (waking after a run lost, a nap): its feet toward the
+	# fire, clear of its stones and of the log behind (checked: closer in,
+	# the feet were in the stones and the arms in the log).
+	_spot("wake", FIRE_AT + Vector3(-0.85, 0, 0.55).normalized() * 1.6, FIRE_AT)
 	# Sat on the ground by the fire, side on to the camera (by the lake the
 	# drums hid it).
 	_spot("ground", Vector3(1.75, 0, 0.55), FIRE_AT)
@@ -348,6 +376,12 @@ func _cell_of(p: Vector3) -> Vector2i:
 
 func _cell_point(c: Vector2i) -> Vector3:
 	return Vector3(GRID_AREA.position.x + (c.x + 0.5) * GRID_CELL, 0.0, GRID_AREA.position.y + (c.y + 0.5) * GRID_CELL)
+
+
+## Ground the character can stand on with `room` (m) round it past
+## things' edges: in the camp, not in the lake.
+func roomy(p: Vector3, room: float) -> bool:
+	return GRID_AREA.has_point(Vector2(p.x, p.z)) and not _in_lake(p, 0.3) and not blocked(p, room)
 
 
 ## Whether something stands within `pad` of `p` (the ground).

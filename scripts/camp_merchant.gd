@@ -21,7 +21,7 @@ const SPEED := 0.32
 const WALK_PACE := 0.55
 const STAY := Vector2(4.0, 10.0)
 ## A visit that never comes to talk (the visitor called away) ends itself.
-const VISIT_TIMEOUT := 25.0
+const VISIT_TIMEOUT := 40.0
 
 var places := {}
 var links := {}

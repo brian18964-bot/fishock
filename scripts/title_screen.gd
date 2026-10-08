@@ -55,6 +55,10 @@ var _who: Label
 ## The new character's name shows over the fire this long (s).
 const NAME_TIME := 1.6
 var _name_time := 0.0
+## A drag this long (px) is a swipe; the view moves this far a pixel (m,
+## about the ground under the finger at the camp's middle).
+const SWIPE_FROM := 12.0
+const SWIPE_METRES := 0.012
 ## The character waited for (its pack being fetched - the fire tapped).
 var _waiting_for := ""
 ## A set piece playing (setting out, coming home): a tap skips it.
@@ -370,7 +374,9 @@ func _light(page: String) -> void:
 
 
 ## A press on one of the camp's things lights it; let go on it, it opens.
-## Elsewhere, drags turn the character and a tap on it waves.
+## A tap on the character greets it (CampLife.tap()). A drag anywhere
+## swipes the view left and right (user request; it used to spin the
+## character round, whatever it was doing).
 func _on_home_input(event: InputEvent) -> void:
 	if _scene_piece != "":
 		# Setting out or coming home: a tap skips it.
@@ -403,8 +409,12 @@ func _on_home_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion:
 		if _drag:
 			_drag_moved += absf(event.relative.x) + absf(event.relative.y)
-			if _press_spot == "" and _stage != null:
-				_stage.turn_character(event.relative.x * 0.012)
+			if _stage != null and _drag_moved >= SWIPE_FROM:
+				if _press_spot != "":
+					# (a swipe, not a press on that thing after all)
+					_press_spot = ""
+					_light("")
+				_stage.pan_view(-event.relative.x * SWIPE_METRES)
 		else:
 			# Hovered (a mouse): lit, named.
 			_light(spot_at(event.position))
