@@ -43,7 +43,7 @@ const TESTS := [
 	"test_walking_off_reels_in",
 	"test_fight_swipe",
 	"test_fight_enrage_tension",
-	"test_fight_sweet_spot", "test_fight_line_distance", "test_fight_leap_far_out",
+	"test_fight_sweet_spot", "test_fight_line_distance", "test_fight_line_out", "test_fight_leap_far_out",
 	"test_fight_swim_out_by_fish", "test_fight_spent_reeled_in", "test_fight_opening", "test_fight_fish_swims", "test_fight_leap_close_in", "test_crank_by_turning_the_stick", "test_offhand_swing_and_wear",
 	"test_perfect_hook",
 	"test_light_lure",
@@ -1384,6 +1384,47 @@ func test_fight_sweet_spot() -> void:
 
 ## User request: the line out. Left alone the fish swims off with it,
 ## the crank brings it back - faster turned, faster in; all out, it's gone.
+## User request: the fight shows the line out (線長) - as long as the cast
+## at the strike (a far cast's line that much longer than a near one's),
+## and longer as the fish goes deep; reeled, it comes up.
+func test_fight_line_out() -> void:
+	var zone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
+	await put(zone.shore_point(Vector2.DOWN) + Vector2(0, 30))
+	var p := player()
+	p.aim_dir = Vector2.UP
+	var lines := []
+	for ratio in [0.0, 1.0]:
+		p.charge_time = ratio * Player.MAX_CHARGE_TIME
+		p._launch_cast()
+		var cast_m: float = p.global_position.distance_to(p.cast_target) / Player.PX_PER_M
+		p._hook_fish()
+		check(absf(p.fight.line_out() - cast_m) < 2.5, "the line out starts as long as the cast (%.1f m, cast %.1f m)" % [p.fight.line_out(), cast_m])
+		lines.append([cast_m, p.fight.line_out()])
+		p._reset_line(Player.State.IDLE)
+		await frames(2)
+	check(lines[1][1] / lines[0][1] > 0.6 * lines[1][0] / lines[0][0], "a far cast's line that much longer (%s)" % [lines])
+	var tier: Dictionary = FishData.TIERS.values()[0]
+	var f := FishFight.new("advanced", "", tier, 1.0)
+	f.open(0.8)
+	f.opening_left = 0.0
+	f.lively = false
+	f._jump_cooldown = 99.0
+	f._run_timer = 99.0
+	f.distance = 15.0
+	var at := f.line_out()
+	f.run_left = 3.0
+	f.run_side = Vector2.ZERO
+	for i in 40:
+		f.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
+	check(f.depth > FishFight.DEPTH_HOOKED + 1.0 and f.line_out() > at + 1.0,
+		"on its run it goes deep, the line out longer (%.1f m deep, %.1f -> %.1f m)" % [f.depth, at, f.line_out()])
+	var deep := f.depth
+	f.run_left = 0.0
+	for i in 40:
+		f.update(0.05, FishFight.CRANK_NORMAL, Vector2.ZERO, Vector2.UP)
+	check(f.depth < deep, "reeled, it comes up (%.1f m)" % f.depth)
+
+
 func test_fight_line_distance() -> void:
 	var tier: Dictionary = FishData.TIERS.values()[0]
 	var idle := FishFight.new("normal", "", tier, 1.0)

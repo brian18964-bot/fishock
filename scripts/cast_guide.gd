@@ -4,6 +4,8 @@ extends Node2D
 ## While charging, a dotted line runs out to where the cast will land
 ## (Player.landing_point) and a ring marks the spot - red when there's no
 ## water that way. (User feedback: no standing arrow in front of the feet.)
+## User request: how far it goes, in 公尺 by the ring - the line out (線長)
+## starts at that once a fish takes it.
 
 const SQUASH := 0.819  # sin 55deg: drawn lying on the ground
 const COLOR_AIM := Color(1.0, 0.92, 0.6, 0.55)
@@ -17,6 +19,10 @@ func _ready() -> void:
 	position = Player.FEET
 	z_index = -2
 	show_behind_parent = true
+	# (unlit: the far end and its 公尺 read in the dark too)
+	var unlit := CanvasItemMaterial.new()
+	unlit.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
+	material = unlit
 
 
 func _process(_delta: float) -> void:
@@ -42,3 +48,6 @@ func _draw() -> void:
 			var a := i * TAU / 24.0
 			ring.append(land + Vector2(cos(a) * 7.0, sin(a) * 7.0 * SQUASH))
 		draw_polyline(ring, color, 1.5, true)
+		var meters := (_player.landing_point(ratio) - _player.global_position).length() / Player.PX_PER_M
+		UiKit.draw_text(self, land + Vector2(-40, -10), "%.1f 公尺" % meters, 10, Color(color, 1.0),
+			HORIZONTAL_ALIGNMENT_CENTER, 80.0, true)

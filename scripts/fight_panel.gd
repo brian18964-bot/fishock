@@ -172,19 +172,21 @@ func _draw_panel() -> void:
 		UiKit.draw_text(_view, Vector2(CENTER_X - 100, CUE_Y + 6), "完美揚竿！", 24, Color(PERFECT, a), HORIZONTAL_ALIGNMENT_CENTER, 200, true)
 
 
-## The line out: how far off the fish is (m) on a bar of all the line,
-## its danger end marked - in red, pulsing, once it's out there.
+## The line out (user request: 線長 - as long as the cast at the strike,
+## longer as the fish goes out or deep; FishFight.line_out()) on a bar of
+## all the line, its danger end marked - in red, pulsing, once it's out
+## there - and how deep the fish is.
 func _draw_distance(fight: FishFight, at: Vector2, bar_x: float) -> void:
 	var share := fight.line_share()
 	var danger := fight.danger() > 0.0
 	var red := Color(RAGE, 0.7 + 0.3 * sin(_pulse * 12.0)) if danger else LINE
-	UiKit.draw_text(_view, at, "距離", 13, RAGE if danger else DIM)
+	UiKit.draw_text(_view, at, "線長", 13, RAGE if danger else DIM)
 	var bar := Rect2(bar_x, at.y - BAR_H + 1.0, BAR_W, BAR_H)
 	UiKit.draw_bar(_view, bar, share, red)
 	var mark := bar.position.x + 3.0 + (BAR_W - 6.0) * FishFight.DANGER
 	_view.draw_rect(Rect2(mark, bar.position.y, bar.end.x - 3.0 - mark, BAR_H), Color(RAGE, 0.18), true)
 	_view.draw_line(Vector2(mark, bar.position.y - 1.0), Vector2(mark, bar.end.y + 1.0), Color(RAGE, 0.85), 1.5)
-	UiKit.draw_text(_view, Vector2(bar.position.x, at.y), "%.0f / %.0f 公尺" % [fight.distance, fight.line_max], 11,
+	UiKit.draw_text(_view, Vector2(bar.position.x, at.y), "%.1f / %.0f 公尺・深 %.1f" % [fight.line_out(), fight.line_max, fight.depth], 11,
 		INK if not danger else Color(1, 0.9, 0.85), HORIZONTAL_ALIGNMENT_CENTER, BAR_W, true)
 
 

@@ -2300,7 +2300,9 @@ func _hook_fish(perfect := false) -> void:
 	# The line out to the fish, all there is on the reel, and how hard this
 	# one pulls it away.
 	fight.line_max = LINE_BASE + LINE_PER_TIER * Profile.rod_tier
-	fight.distance = clampf(global_position.distance_to(cast_target) / PX_PER_M, FishFight.MIN_DISTANCE, fight.line_max * 0.6)
+	# (user request: the line out starts as long as the cast - all the way
+	# out to the longest cast the best rod_distance makes)
+	fight.distance = clampf(global_position.distance_to(cast_target) / PX_PER_M, FishFight.MIN_DISTANCE, fight.line_max * 0.72)
 	fight.swim_out = swim_out_rate()
 	crank = 0.0
 	_crank_had = false
@@ -2456,7 +2458,7 @@ func _fail_catch(reason: String) -> void:
 			"out":
 				msg = "線被魚拉光了，斷了（魚越跑越遠時要轉右搖桿收線）"
 			"far":
-				msg = "魚跑得太遠，線撐不住斷了（距離變紅時要快收線）"
+				msg = "魚跑得太遠，線撐不住斷了（線長變紅時要快收線）"
 			"leap":
 				msg = "魚在遠處跳出水面，線一下就斷了"
 			"rush":

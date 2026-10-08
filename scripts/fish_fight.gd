@@ -68,6 +68,13 @@ extends RefCounted
 ##   the crank while it's up (under JUMP_GRACE) is let off, and close in
 ##   the strain of reeling into it is a share (JUMP_NEAR) of what it is
 ##   out toward the danger.
+## - User request: the line shown is the line out (線長, line_out()) - from
+##   the rod's tip out to the fish and down to it, so it starts as long as
+##   the cast and grows as the fish goes deep: `depth` (m) - it heads down
+##   on its runs, its bursts out and its dashes for cover (the harder,
+##   bigger and rarer, the deeper it goes - DEPTH_MAX by heft), comes up as
+##   it's reeled and as it tires, and to the top on a leap. The danger and
+##   the line running out go by the line out too.
 
 const RUN_TENSION_MULT := 1.8
 ## Giving line to a run: the drag holds tension nearly level.
@@ -127,6 +134,17 @@ const DANGER_SNAP := 0.9
 ## Spent: landed this near; the tension builds this share as fast; left
 ## this long un-reeled it recovers to this much progress.
 const LAND_DISTANCE := 3.0
+## The line out (see above): the fish's depth at the strike, the deepest it
+## goes (light .. heaviest fish), how fast it goes down (m/s, times its
+## vigor) and is brought up (m/s at CRANK_NORMAL), the depth it rests at
+## (a share of its deepest), how high the rod's tip is over the water.
+const DEPTH_HOOKED := 1.0
+const DEPTH_MAX := Vector2(2.0, 7.0)
+const DEPTH_DOWN := 1.4
+const DEPTH_UP := 0.8
+const DEPTH_REST := 0.4
+const DEPTH_SPENT := 0.3
+const TIP_HEIGHT := 1.2
 const SPENT_TENSION := 0.35
 const RECOVER_AFTER := 2.5
 const RECOVER_TO := 0.82
@@ -227,6 +245,7 @@ var result := ""  # "", "landed", "line_break", "shook_off", "cover", "line_out"
 ## The line out (m), how much there is (m), and how fast this fish swims
 ## off with it (m/s) - see REEL_IN.
 var distance := 12.0
+var depth := DEPTH_HOOKED
 var line_max := 40.0
 var swim_out := 1.0
 ## The crank this frame (0..1).
@@ -472,6 +491,7 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 	progress = clampf(progress, 0.0, 1.0)
 	if held and out_mult != RUN_OUT_MULT and not resisted:
 		out_mult *= HELD_OUT
+	_depth(delta, k if held else 0.0, radial)
 	_line(delta, out_mult, reel_in if held else 0.0, pull, radial)
 	if result == "":
 		if tension >= 1.0:
@@ -501,7 +521,7 @@ func _line(delta: float, out_mult: float, reel_in: float, pull: float, radial :=
 		return
 	var out: float = swim_out * out_mult * pull / diff.pull * lerpf(TIRED_OUT, 1.0, stamina())
 	distance = clampf(distance + (out - REEL_IN * reel_in + radial) * delta, MIN_DISTANCE, line_max)
-	if distance >= line_max:
+	if line_out() >= line_max:
 		snap_why = "far"
 		result = "line_out"
 	elif danger() > 0.0 and randf() < DANGER_SNAP * danger() * danger() * delta:
@@ -511,12 +531,43 @@ func _line(delta: float, out_mult: float, reel_in: float, pull: float, radial :=
 
 ## How far into the danger the line is (0 not yet .. 1 all out).
 func danger() -> float:
-	return clampf((distance / line_max - DANGER) / (1.0 - DANGER), 0.0, 1.0)
+	return clampf((line_share() - DANGER) / (1.0 - DANGER), 0.0, 1.0)
 
 
 ## The line out as a share of all there is.
 func line_share() -> float:
-	return distance / maxf(line_max, 0.01)
+	return minf(line_out() / maxf(line_max, 0.01), 1.0)
+
+
+## The line out (m, see above): from the rod's tip out to the fish and down.
+func line_out() -> float:
+	return Vector2(distance, depth + TIP_HEIGHT).length()
+
+
+## The deepest this fish goes.
+func depth_max() -> float:
+	return lerpf(DEPTH_MAX.x, DEPTH_MAX.y, heft)
+
+
+## Down on its runs, its bursts out and its dashes for cover; up to the
+## top on a leap, up as it's reeled (`k`, the crank against CRANK_NORMAL)
+## and once spent; otherwise it settles to where it rests.
+func _depth(delta: float, k: float, radial: float) -> void:
+	var deepest := depth_max()
+	var down := DEPTH_DOWN * maxf(vigor, 0.4)
+	if jump_left > 0.0:
+		depth = move_toward(depth, 0.0, 6.0 * delta)
+	elif spent:
+		depth = move_toward(depth, DEPTH_SPENT, DEPTH_UP * 1.5 * delta)
+	elif dive_active or (run_left > 0.0 and run_side == Vector2.ZERO) or radial > 0.0 \
+			or (opening_left > 0.0 and surging()):
+		depth = move_toward(depth, deepest, down * delta)
+	elif run_left > 0.0:
+		depth = move_toward(depth, deepest * 0.7, down * 0.6 * delta)
+	elif k > 0.0:
+		depth = move_toward(depth, 0.5, DEPTH_UP * k * delta)
+	else:
+		depth = move_toward(depth, deepest * DEPTH_REST, 0.3 * delta)
 
 
 ## How lively it is now (see above) - and its rally, when it comes.
