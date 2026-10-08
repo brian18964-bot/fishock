@@ -113,3 +113,13 @@ static func portrait(id := "") -> Rect2:
 
 static func reach(id := "") -> Vector3:
 	return REACH.get(_id(id), REACH.cat)
+
+
+## How much further off the drum it stands to lean on it (m; the camp's
+## clipping check: the bear's head and belly went into it at the others'
+## distance).
+const LEAN_BACK := {"bear": 0.1}
+
+
+static func lean_back(id := "") -> float:
+	return float(LEAN_BACK.get(_id(id), 0.0))

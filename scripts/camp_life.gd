@@ -201,13 +201,18 @@ func _step_clear() -> Array:
 	var here := pivot.position
 	if stage.roomy(here, ROOM):
 		return []
+	# (the nearest ring of places with room; of those, the one furthest from
+	# anything - not hugging the end of a log)
 	for r in [0.35, 0.55, 0.8, 1.1, 1.5]:
 		var best := Vector3.INF
+		var best_room := -INF
 		for k in 16:
 			var a := k * TAU / 16.0
 			var p: Vector3 = here + Vector3(cos(a), 0.0, sin(a)) * float(r)
-			if stage.roomy(p, ROOM) and (best == Vector3.INF or p.distance_to(stage.camera.global_position) < best.distance_to(stage.camera.global_position)):
+			var room := stage.clearance(p)
+			if stage.roomy(p, ROOM) and room > best_room:
 				best = p
+				best_room = room
 		if best != Vector3.INF:
 			return [{"do": "walk", "to": best}]
 	return []
@@ -459,7 +464,10 @@ func _activity(name: String, t: int) -> Array:
 		"trough":
 			return _go("trough") + [{"do": "loop", "clip": "Crouch_Idle", "time": _rng.randf_range(4.0, 8.0)}]
 		"lean":
-			return _go("lean") + [{"do": "loop", "clip": "Idle_Rail", "time": _rng.randf_range(5.0, 9.0)}]
+			var lean: Dictionary = stage.spots.lean
+			var off: Vector3 = (lean.at - lean.face).normalized() * CharacterArt.lean_back(rig.character)
+			return [{"do": "walk", "to": lean.at + off}, {"do": "face", "at": lean.face}] \
+				+ [{"do": "loop", "clip": "Idle_Rail", "time": _rng.randf_range(5.0, 9.0)}]
 		"lake":
 			return _go("lake") + [{"do": "loop", "clip": "Idle_FoldArms", "time": _rng.randf_range(5.0, 8.0)}]
 		"merchant":

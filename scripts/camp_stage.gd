@@ -388,6 +388,14 @@ func roomy(p: Vector3, room: float) -> bool:
 	return GRID_AREA.has_point(Vector2(p.x, p.z)) and not _in_lake(p, 0.3) and not blocked(p, room)
 
 
+## How far `p` is from the nearest thing's edge (m; the lake aside).
+func clearance(p: Vector3) -> float:
+	var near := INF
+	for o in obstacles:
+		near = minf(near, _to_segment(p, o[0], o[1]) - float(o[2]))
+	return near
+
+
 ## Whether something stands within `pad` of `p` (the ground).
 func blocked(p: Vector3, pad := 0.0) -> bool:
 	for o in obstacles:
