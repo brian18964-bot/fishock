@@ -292,13 +292,16 @@ func _places() -> void:
 		var f := seat_facing(i)
 		_spot("seat_%d" % i, SEATS[i][0] + f * 0.33, SEATS[i][0] + f * 3.0)
 	_spot("home", CHARACTER_AT, CHARACTER_AT + Vector3(0.35, 0, 1.0))
-	_spot("warm", FIRE_AT + Vector3(-0.6, 0, -0.85), FIRE_AT)
+	# (a step nearer the camera than it was: a long tail behind it reached
+	# the drums)
+	_spot("warm", FIRE_AT + Vector3(-0.8, 0, -0.6), FIRE_AT)
 	var tent_front := Vector3(sin(0.7), 0, cos(0.7))
 	_spot("tent", TENT_AT + tent_front * 1.7, TENT_AT)
 	var crate_side := Vector3(cos(0.55), 0, -sin(0.55))
 	_spot("crate", CRATE_AT + crate_side * 0.94, CRATE_AT)
 	_spot("trough", TROUGH_AT + Vector3(-0.78, 0, 0.1), TROUGH_AT)
-	_spot("lean", DRUM_AT + Vector3(0, 0, 0.3), DRUM_AT + Vector3(0, 0, -3.0))
+	# (a bigger one's belly and head went into the drum any nearer)
+	_spot("lean", DRUM_AT + Vector3(0, 0, 0.38), DRUM_AT + Vector3(0, 0, -3.0))
 	_spot("lake", Vector3(1.3, 0, -6.35), Vector3(1.7, 0, -10.0))
 	_spot("gather_0", Vector3(-2.3, 0, 1.6), Vector3(-2.6, 0, 2.6))
 	_spot("gather_1", Vector3(1.9, 0, 1.6), Vector3(2.2, 0, 2.6))
@@ -307,10 +310,11 @@ func _places() -> void:
 	_spot("rod", ROD_AT + Vector3(0.45, 0, 0.35), ROD_AT + Vector3(0, 0, 0))
 	_spot("stone", STONE_AT + Vector3(0, 0, 0.95), STONE_AT)
 	_spot("stone_in", STONE_AT + Vector3(0, 0, 0.12), STONE_AT + Vector3(0, 0, -2.0))
-	# Lying by the fire (waking after a run lost, a nap): its feet toward the
-	# fire, clear of its stones and of the log behind (checked: closer in,
-	# the feet were in the stones and the arms in the log).
-	_spot("wake", FIRE_AT + Vector3(-0.85, 0, 0.55).normalized() * 1.6, FIRE_AT)
+	# Lying by the fire (waking after a run lost, a nap): in front of it,
+	# side on to the camera, its feet toward the fire's side - clear of the
+	# stones and the logs (checked: by the log, the arms were in it and the
+	# feet in the stones).
+	_spot("wake", Vector3(0.2, 0, 1.1), Vector3(1.2, 0, 0.7))
 	# Sat on the ground by the fire, side on to the camera (by the lake the
 	# drums hid it).
 	_spot("ground", Vector3(1.75, 0, 0.55), FIRE_AT)

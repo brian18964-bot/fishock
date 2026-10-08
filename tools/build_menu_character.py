@@ -96,6 +96,10 @@ GROUNDED = ("Lie_Down", "Lying_Loop", "Sleep_B_Loop", "Ground_Sit_Loop", "Ground
 # sit_on_logs() puts each character's seat on it, its feet on the ground.
 SEAT_TOP = 0.442
 SEAT_REACH = 0.12
+# How far down a leg is pulled to keep its foot on the ground (m past the
+# hips' lift): further, its foot hangs (the bear's thighs, pulled down
+# further, went into the log's front).
+REACH_DOWN = 0.14
 SAT = ("Sitting_Idle_Loop", "Sitting_Talking_Loop")
 SITTING_DOWN = ("Sitting_Enter", "Sitting_Exit")
 # Sat on a log: Mixamo's seats are lower than the camp's logs (into the
@@ -225,8 +229,9 @@ def sit_on_logs(arm, body, acts):
     sat_at = first(acts["Sitting_Idle_Loop"])
     seat, foot = _lows(body, keep, sat_at)
     lift = SEAT_TOP - seat
-    # (the soles brought up to the ground, sat, if the clip had them in it)
-    sole = max(0.0, -foot)
+    # (the soles brought up to the ground, sat, if the clip had them in it;
+    # the short-legged's left hanging past REACH_DOWN)
+    sole = max(0.0, -foot, lift - REACH_DOWN)
     print("seat: lift %.3f, soles %.3f" % (lift, sole))
     for name in SAT + SITTING_DOWN:
         if name not in acts:
