@@ -58,6 +58,7 @@ const TESTS := [
 	"test_fish_tank",
 	"test_camp_spirit_and_tents",
 	"test_camp_life",
+	"test_ears_and_tails",
 	"test_light_button_tap_and_hold",
 	"test_light_button_relights",
 	"test_long_press_brightness",
@@ -2350,6 +2351,43 @@ func test_camp_spirit_and_tents() -> void:
 	await frames(1)
 	Profile.load_data(saved)
 	Profile._save()
+
+
+## User request: the ears (the owl's tufts) and tails move on their own -
+## on the camp's 3D character (its ear and tail bones, EarTailSway) and on
+## the game's sprite (PlayerVisual's lines for the shader to turn).
+func test_ears_and_tails() -> void:
+	var rig := CharacterRig.new()
+	rig.hold_gear = false
+	add_child(rig)
+	rig.set_character("cat")
+	await frames(3)
+	var sway: EarTailSway = rig.skeleton.get_node("EarTailSway")
+	await frames(2)
+	var kinds := sway.chains.map(func(c): return c.kind)
+	check(kinds.count("ear") == 2 and kinds.count("tail") == 1, "the cat's two ears and its tail (%s)" % [kinds])
+	var ear: Dictionary = sway.chains[kinds.find("ear")]
+	ear.next = sway._time
+	sway._schedule(ear)
+	sway._time += 0.08
+	check(absf(sway._angle(ear, 0, ear.bones.size())) > 3.0, "an ear flicks (%.1f deg)" % sway._angle(ear, 0, ear.bones.size()))
+	sway._time += 1.0
+	sway._schedule(ear)
+	check(ear.at < 0.0 or sway._time - ear.at < EarTailSway.EAR_TIME, "and settles")
+	rig.queue_free()
+	# In the game: the sheet's ear and tail lines, turned now and then.
+	var body: PlayerVisual = player().get_node("Body")
+	check(body._data.has("sway") and not body._data.get("sway_names", []).is_empty(), "the sheet has its ears' lines (%s)" % [body._data.get("sway_names", [])])
+	await frames(2)
+	check(not body._sway_lines.is_empty(), "the shader is given them")
+	for s in body._sway:
+		s.next = body._sway_time
+	await frames(4)
+	var turned := false
+	for t in body._sway_turns:
+		turned = turned or absf(t) > 0.01
+	check(turned, "and one turns (%s)" % [body._sway_turns])
+	check(body.material is ShaderMaterial and body.material.get_shader_parameter("sway_count") == body._sway_lines.size(), "the body's shader has them")
 
 
 ## User request (Camp v2): the character lives at the camp by its spirit -

@@ -9,7 +9,7 @@ camp's life (user request, Camp v2: the character rests at the camp on
 its own - walks about, sits by the fire, mends things... - less and less
 of it as the spirit runs low; see CampLife). Carrying, chopping and
 harvesting are left out (user request: the hands didn't close on what
-they held).
+they held), and dancing (user request).
 
 The one wearing them is the player's character (owl_character.player, put
 on the mannequin's skeleton: the beginner owl person, or PLAYER=<animal>
@@ -35,7 +35,7 @@ OUT = os.environ.get("OUT") or os.path.join(ROOT, "assets", "models", "character
 UAL1 = [
     "Idle_Loop", "Idle_Talking_Loop", "Interact", "Walk_Loop",
     "Sitting_Enter", "Sitting_Idle_Loop", "Sitting_Exit", "Sitting_Talking_Loop",
-    "Crouch_Idle_Loop", "Idle_Torch_Loop", "Fixing_Kneeling", "PickUp_Table", "Dance_Loop",
+    "Crouch_Idle_Loop", "Idle_Torch_Loop", "Fixing_Kneeling", "PickUp_Table",
 ]
 UAL2 = [
     "Idle_FoldArms_Loop", "Idle_Rail_Loop", "Chest_Open", "Consume", "Yes", "Idle_No_Loop", "LayToIdle",

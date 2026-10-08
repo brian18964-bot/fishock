@@ -138,6 +138,27 @@ var _once := -1
 var _once_left := 0.0
 var _home := Vector2.ZERO
 
+## User request: the ears (the owl's tufts) and the tail move on their own
+## - each one's line on the sheet (the data's "sway", named by "sway_names":
+## tools/render_player.py) turned about its root by the body's shader
+## (shaders/player_body.gdshader): now and then an ear flicks (sometimes
+## twice); the tail sways, and now and then flicks - not while it's behind
+## the body (seen from the front). Not in the struggle sheet (no data).
+## How far an ear flicks and the tail sways and flicks (rad), and how far
+## off its line the shader takes in (a share of its length, at least px).
+const SWAY_EAR := Vector2(0.3, 0.5)
+const SWAY_TAIL := 0.12
+const SWAY_TAIL_FLICK := 0.3
+const SWAY_REACH := Vector2(0.55, 5.0)
+## Each chain's timing: {next, at (the flick's start, -1 none), angle,
+## period} - as EarTailSway (the camp's 3D character) times them.
+var _sway: Array = []
+var _sway_time := 0.0
+var _sway_mat: ShaderMaterial
+var _sway_lines: Array = []
+var _sway_turns := PackedFloat32Array()
+var _sway_reaches := PackedFloat32Array()
+
 @onready var _player: Player = get_parent()
 
 
@@ -162,6 +183,9 @@ func _ready() -> void:
 	_struggle_tex.diffuse_texture = struggle[0]
 	_struggle_tex.normal_texture = struggle[1]
 	_home = position
+	_sway_mat = ShaderMaterial.new()
+	_sway_mat.shader = preload("res://shaders/player_body.gdshader")
+	material = _sway_mat
 	_use_sheet(false)
 	Art.place(self, _sheet_offset, SPRITE_SCALE)
 	_player.cast_started.connect(func(_t, _tier):
@@ -300,6 +324,12 @@ func _struggle(delta: float) -> bool:
 
 
 func _process(delta: float) -> void:
+	_pick_frame(delta)
+	_sway_update(delta)
+	apply_sway(_sway_mat)
+
+
+func _pick_frame(delta: float) -> void:
 	if _struggle(delta):
 		yank = 0.0
 		position = _home
@@ -397,6 +427,73 @@ func _process(delta: float) -> void:
 	var row := clip * DIRS + dir
 	var rows_per_half := CLIPS * DIRS / SHEET_HALVES
 	frame = (row % rows_per_half) * hframes + (row / rows_per_half) * FRAMES + frame_in_clip
+
+
+## The ears' and the tail's turn this frame (see SWAY_EAR).
+func _sway_update(delta: float) -> void:
+	_sway_time += delta
+	_sway_lines.clear()
+	_sway_turns.clear()
+	_sway_reaches.clear()
+	var d: Dictionary = _action_data if acting >= 0 else _data
+	var key: String = ACTIONS[acting] if acting >= 0 else CLIP_NAMES[clip]
+	if struggling or not d.has("sway") or not d.sway.has(key):
+		return
+	var cells: Array = d.sway[key][dir][frame_in_clip]
+	var names: Array = d.get("sway_names", [])
+	while _sway.size() < cells.size():
+		_sway.append({"next": randf_range(0.5, EarTailSway.EAR_GAP.y), "at": -1.0, "angle": 0.0,
+			"period": randf_range(EarTailSway.TAIL_PERIOD.x, EarTailSway.TAIL_PERIOD.y)})
+	for i in mini(cells.size(), 5):
+		var c: Array = cells[i]
+		var tail := i < names.size() and str(names[i]).begins_with("tail")
+		var turn := _sway_turn(_sway[i], tail)
+		if tail and int(c[4]) == 1:
+			turn = 0.0
+		var root := Vector2(c[0], c[1]) * Art.DENSITY
+		var tip := Vector2(c[2], c[3]) * Art.DENSITY
+		_sway_lines.append(Vector4(root.x, root.y, tip.x, tip.y))
+		_sway_turns.append(turn)
+		_sway_reaches.append(maxf(root.distance_to(tip) * SWAY_REACH.x, SWAY_REACH.y))
+
+
+## How far chain `s` is turned now (rad); starts its flicks when they're due.
+func _sway_turn(s: Dictionary, tail: bool) -> float:
+	var span := EarTailSway.TAIL_FLICK_TIME if tail else EarTailSway.EAR_TIME
+	if s.at >= 0.0 and _sway_time - s.at > span:
+		s.at = -1.0
+	if _sway_time >= s.next:
+		s.at = _sway_time
+		var side := 1.0 if randf() < 0.5 else -1.0
+		if tail:
+			s.angle = SWAY_TAIL_FLICK * side
+			s.next = _sway_time + randf_range(EarTailSway.TAIL_FLICK_GAP.x, EarTailSway.TAIL_FLICK_GAP.y)
+		else:
+			s.angle = randf_range(SWAY_EAR.x, SWAY_EAR.y) * side
+			var again := randf() < EarTailSway.EAR_TWICE
+			s.next = _sway_time + (EarTailSway.EAR_TIME + 0.05 if again else randf_range(EarTailSway.EAR_GAP.x, EarTailSway.EAR_GAP.y))
+	if tail:
+		var turn: float = SWAY_TAIL * sin(TAU * _sway_time / s.period)
+		if s.at >= 0.0:
+			var u := clampf((_sway_time - s.at) / EarTailSway.TAIL_FLICK_TIME, 0.0, 1.0)
+			turn += s.angle * sin(PI * u) * (1.0 - u * 0.5)
+		return turn
+	return s.angle * EarTailSway.flick(_sway_time - s.at) if s.at >= 0.0 else 0.0
+
+
+## The sway this frame onto `mat` (the body's, and its layer in front of
+## the rod's - body_front.gd): see sway.gdshaderinc.
+func apply_sway(mat: ShaderMaterial) -> void:
+	mat.set_shader_parameter("sway_count", _sway_lines.size())
+	if _sway_lines.is_empty():
+		return
+	mat.set_shader_parameter("sway_line", _sway_lines)
+	mat.set_shader_parameter("sway_turn", _sway_turns)
+	mat.set_shader_parameter("sway_reach", _sway_reaches)
+	if texture != null:
+		var cell := Vector2(1.0 / hframes, 1.0 / vframes)
+		var at := Vector2(frame % hframes, frame / hframes) * cell
+		mat.set_shader_parameter("sway_frame", Vector4(at.x, at.y, cell.x, cell.y))
 
 
 ## (Candidate, user request round 6.) The fish's yank: the body jolted

@@ -53,3 +53,5 @@ func _process(_delta: float) -> void:
 		region_rect.size.x / size.x, region_rect.size.y / size.y))
 	_mat.set_shader_parameter("mask_uv", Vector4(piece[0] / msize.x, piece[1] / msize.y, piece[2] / msize.x, piece[3] / msize.y))
 	_mat.set_shader_parameter("mask_half", Vector2(0.5 / msize.x, 0.5 / msize.y))
+	# (the ears and tail swayed as the body's are)
+	_body.apply_sway(_mat)

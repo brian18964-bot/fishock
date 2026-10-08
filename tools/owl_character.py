@@ -693,6 +693,7 @@ def _bind_greybox(arm, rig, joints, parts, heads, tails, targets, k, off):
                 for g in v.groups:
                     g.weight *= 1.0 - t
                 pg.add([v.index], t, "ADD")
+    _weigh_ears(body, arm, head_bone, joints, k, off, unit)
     if "owl_face" in parts:
         fc = parts["owl_face"]
         fc.vertex_groups.new(name=head_bone).add(range(len(fc.data.vertices)), 1.0, "REPLACE")
@@ -873,6 +874,10 @@ def _shorts_and_body(body, shorts, rig, unit, k):
 TAIL_REACH = 0.05
 
 
+# How far along an ear (a share of its length) it eases free of the head.
+EAR_EASE = 0.25
+
+
 def _seg_t(p, a, b):
     ab = b - a
     return 0.0 if ab.length_squared < 1e-12 else min(max((p - a).dot(ab) / ab.length_squared, 0.0), 1.0)
@@ -901,6 +906,66 @@ def _tail_bones(arm, pelvis, joints, k, off):
         names.append(b.name)
     bpy.ops.object.mode_set(mode="OBJECT")
     return names
+
+
+def _weigh_ears(body, arm, head_bone, joints, k, off, unit):
+    """User request: the ears (the owl's tufts) twitch - each a short
+    chain of bones from the head (joints["ears"]: its points root to tip,
+    `reach` round them, free of the head `from` this share of its length
+    on), the ear's points weighted along it, eased in from the head."""
+    ears = joints.get("ears") or []
+    if not ears:
+        return
+    chains = []
+    bpy.ops.object.select_all(action="DESELECT")
+    bpy.context.view_layer.objects.active = arm
+    arm.select_set(True)
+    bpy.ops.object.mode_set(mode="EDIT")
+    inv = arm.matrix_world.inverted()
+    eb = arm.data.edit_bones
+    per_side = {}
+    for ear in ears:
+        pts = ear["points"]
+        side = "l" if pts[-1][0] > 0 else "r"
+        per_side[side] = per_side.get(side, 0) + 1
+        parent = eb[head_bone]
+        names = []
+        for i in range(len(pts) - 1):
+            b = eb.new("ear_%s%d_%02d" % (side, per_side[side], i + 1))
+            b.head = inv @ (Vector(pts[i]) * k + off)
+            b.tail = inv @ (Vector(pts[i + 1]) * k + off)
+            b.parent = parent
+            b.use_connect = i > 0
+            parent = b
+            names.append(b.name)
+        chains.append(names)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    groups = [[body.vertex_groups.get(n) or body.vertex_groups.new(name=n) for n in names] for names in chains]
+    for ear, gs in zip(ears, groups):
+        pts = [Vector(p) for p in ear["points"]]
+        lengths = [(pts[j + 1] - pts[j]).length for j in range(len(pts) - 1)]
+        total = sum(lengths)
+        reach = ear["reach"]
+        start = ear["from"]
+        for v in body.data.vertices:
+            p = unit(v.co)
+            d, i, f = min((_seg_dist(p, pts[j], pts[j + 1]), j, _seg_t(p, pts[j], pts[j + 1]))
+                          for j in range(len(pts) - 1))
+            if d > reach:
+                continue
+            along = (sum(lengths[:i]) + lengths[i] * f) / total
+            w = _smooth(start, start + EAR_EASE, along) * (1.0 - _smooth(reach * 0.75, reach, d))
+            if w <= 1e-4:
+                continue
+            for g in v.groups:
+                g.weight *= 1.0 - w
+            # each bone's share peaks at its middle, shared at its ends
+            at = i + f
+            ws = {j: max(0.0, 1.0 - abs(at - j - 0.5)) for j in range(len(gs))}
+            tot = sum(ws.values())
+            for j, wj in ws.items():
+                if wj > 0.0:
+                    gs[j].add([v.index], w * wj / tot, "ADD")
 
 
 def _copy_weights(src, dst):

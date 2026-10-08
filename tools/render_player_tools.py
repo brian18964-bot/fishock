@@ -112,6 +112,7 @@ def main():
     rod = {n: [[None] * rp.FRAMES for _ in rp.DIRS] for n in NAMES}
     hand = {n: [[None] * rp.FRAMES for _ in rp.DIRS] for n in NAMES}
     belt = {n: [[None] * rp.FRAMES for _ in rp.DIRS] for n in NAMES}
+    sway = {n: [[None] * rp.FRAMES for _ in rp.DIRS] for n in NAMES}
 
     def pose_and_data(cell):
         pose(cell)
@@ -126,6 +127,7 @@ def main():
         i = rp.DIRS.index(dname)
         rod[name][i][f - 1] = [round(gx - ox, 2), round(gy - oy, 2), round(tx - ox, 2), round(ty - oy, 2), int(behind)]
         hand[name][i][f - 1], belt[name][i][f - 1] = rp.hand_cell(arm, px, ox, oy)
+        sway[name][i][f - 1] = rp.sway_cell(arm, px, ox, oy)
 
     if args.dry:
         for cell in cells:
@@ -142,7 +144,8 @@ def main():
         img[..., :3] = n * 0.5 + 0.5
         Image.fromarray((np.clip(img, 0, 1) * 255 + 0.5).astype(np.uint8), "RGBA").save(path)
     meta = {"cell": [w, h], "frames": rp.FRAMES, "clips": NAMES, "dirs": rp.DIRS,
-            "offset": [0.0, round(-cy * rp.DENSITY, 2)], "rod": rod, "hand": hand, "belt": belt}
+            "offset": [0.0, round(-cy * rp.DENSITY, 2)], "rod": rod, "hand": hand, "belt": belt, "sway": sway,
+            "sway_names": list(rp.sway_names(arm))}
     with open(f"{args.out_prefix}_rod.json", "w") as fh:
         json.dump(meta, fh, separators=(",", ":"))
     print(json.dumps({k: meta[k] for k in ("cell", "offset", "clips")}))

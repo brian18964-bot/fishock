@@ -954,6 +954,13 @@ class Animal:
             sp, _ = spline(pts, T["radii"], per=8)
             idx = np.linspace(0, len(sp) - 1, T.get("bones", 4) + 1).round().astype(int)
             j["tail"] = [list(map(float, sp[i])) for i in idx]
+        # User request: the ears (the owl's tufts) twitch - a short chain of
+        # bones up each (owl_character.bind adds them): its points root to
+        # tip, how far round them it takes in, and from how far along (a
+        # share of its length) it moves free of the head.
+        if getattr(self, "ears", None):
+            j["ears"] = [{"points": [list(map(float, p)) for p in e["points"]], "reach": float(e["reach"]),
+                          "from": float(e["from"])} for e in self.ears]
         return j
 
 
@@ -1129,13 +1136,16 @@ def head_owl(an):
     # round 4: no steps along it) - bending out and back from the root to
     # the tip, thinning and narrowing all the way, a little twisted
     tufts = []
+    an.ears = []
     for s in (1, -1):
         root = H + V(s * 0.080, -0.060, 0.062)
         pts = arc(root, V(s * 0.20, 0.02, 1.0), V(s * 0.62, 0.50, 0.62), 0.088, 5)
+        an.ears.append({"points": [pts[0], pts[2], pts[5]], "reach": 0.032, "from": 0.12})
         faces = [unit(lerp(V(0, -1, 0.25), V(s * 0.35, -0.85, 0.35), i / 5.0)) for i in range(6)]
         tufts.append(S.ribbon(pts, [0.042, 0.040, 0.034, 0.026, 0.015, 0.003],
                               [0.011, 0.0095, 0.008, 0.0062, 0.0046, 0.0026], faces))
         pts = arc(root + V(s * 0.008, 0.016, -0.012), V(s * 0.50, 0.22, 0.85), V(s * 0.85, 0.65, 0.25), 0.058, 4)
+        an.ears.append({"points": [pts[0], pts[2], pts[4]], "reach": 0.026, "from": 0.12})
         faces = [unit(lerp(V(0, -1, 0.2), V(s * 0.45, -0.8, 0.3), i / 4.0)) for i in range(5)]
         tufts.append(S.ribbon(pts, [0.032, 0.030, 0.024, 0.014, 0.003], [0.0085, 0.0074, 0.006, 0.0045, 0.0026],
                               faces))
@@ -1213,6 +1223,7 @@ def head_dog(an):
     # then down beside the cheek, broad above, narrowing to a rounded tip
     # turned a little forward, thin at the edges
     ears = []
+    an.ears = []
     for s in (1, -1):
         top = hit(head, H + V(0, 0.014, 0.056), V(s, 0, 0.30))
         c = top + V(s * 0.004, 0.0, 0.002)
@@ -1227,6 +1238,7 @@ def head_dog(an):
         flap = S.ribbon(pts, [0.040, 0.054, 0.056, 0.044, 0.026, 0.008],
                         [0.0120, 0.0088, 0.0078, 0.0070, 0.0064, 0.0058], out)
         ears.append(S.smooth([fold, flap], 0.006))
+        an.ears.append({"points": [pts[0], pts[2], pts[5]], "reach": 0.036, "from": 0.06})
     head = S.smooth([head] + ears, 0.008)
     return head, eyes, [nose], [], {"top": float(H[2] + 0.102), "half_width": 0.100}
 
@@ -1258,9 +1270,11 @@ def head_cat(an):
     an.muzzle = S.smooth([S.ellipsoid(H + V(0, -0.056, -0.020), (0.024, 0.016, 0.019)),
                           S.ellipsoid(H + V(0, -0.058, -0.004), (0.010, 0.012, 0.012))], 0.006)
     ears = []
+    an.ears = []
     for s in (1, -1):
         base = H + V(s * 0.040, 0.004, 0.044)
         tip = H + V(s * 0.062, 0.000, 0.106)
+        an.ears.append({"points": [base, lerp(base, tip, 0.55), tip], "reach": 0.032, "from": 0.3})
         R = S.rot("z", s * -8)
         e = S.squash(S.round_cone(base, tip, 0.025, 0.0035), lerp(base, tip, 0.45), (1.0, 0.42, 1.0), R)
         hollow = S.squash(S.round_cone(base + V(-s * 0.002, -0.010, 0.010), tip + V(-s * 0.002, -0.006, -0.012),
@@ -1312,8 +1326,11 @@ def head_bear(an):
                      S.ellipsoid(H + V(0, -0.148, -0.001), (0.020, 0.010, 0.011))], 0.006)
     head = S.smooth([head, S.offset(nose, -0.004)], 0.010)
     ears = []
+    an.ears = []
     for s in (1, -1):
         c = H + V(s * 0.080, 0.026, 0.076)
+        an.ears.append({"points": [c - V(s * 0.030, 0, 0.026), c, c + V(s * 0.022, 0, 0.026)], "reach": 0.04,
+                        "from": 0.42})
         R = S.rot("y", s * -28)
         e = S.ellipsoid(c, (0.034, 0.016, 0.032), R)
         hollow = S.ellipsoid(c + V(0, -0.010, 0.002), (0.022, 0.010, 0.020), R)

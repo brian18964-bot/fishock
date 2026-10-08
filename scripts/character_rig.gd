@@ -106,6 +106,10 @@ func _build(id: String) -> void:
 		_grip_mod.name = "Grip"
 		_grip_mod.influence = 0.0
 		skeleton.add_child(_grip_mod)
+		# User request: the ears and the tail move on their own.
+		var sway := EarTailSway.new()
+		sway.name = "EarTailSway"
+		skeleton.add_child(sway)
 	_dress(_body)
 	if anim != null:
 		anim.animation_finished.connect(func(_n):

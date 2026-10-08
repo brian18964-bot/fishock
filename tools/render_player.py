@@ -380,6 +380,46 @@ def hand_cell(arm, px, ox, oy):
     return hand, belt
 
 
+# User request: the ears (the owl's tufts) and the tail move on their own -
+# in the game, each one's line on the sheet (scripts/player_visual.gd
+# sways the pixels round it): the chains of bones owl_character.bind gives
+# them ("ear_*", "tail_*"), root to tip; behind when its middle is farther
+# from the camera than the head (an ear) or the hips (the tail) by this
+# much (world units).
+SWAY_BEHIND = 0.04
+
+
+def sway_names(arm):
+    """The ear and tail chains by name (sorted): {name: [pose bones, root
+    first]}."""
+    chains = {}
+    for pb in arm.pose.bones:
+        if pb.name.startswith("ear_") or pb.name.startswith("tail_"):
+            chains.setdefault(pb.name[:pb.name.rfind("_")], []).append(pb)
+    return {k: sorted(chains[k], key=lambda pb: pb.name) for k in sorted(chains)}
+
+
+def sway_cell(arm, px, ox, oy):
+    """[[root x, root y, tip x, tip y, behind] per ear and tail chain, in
+    the order of sway_names()] for the pose now (sheet px from the feet)."""
+    b = arm.pose.bones
+    mw = arm.matrix_world
+    chains = sway_names(arm)
+    head = px(mw @ b["mixamorig:Head"].head)[2]
+    hips = px(mw @ b["mixamorig:Hips"].head)[2]
+    out = []
+    for key, bones in chains.items():
+        root = mw @ bones[0].head
+        tip = mw @ bones[-1].tail
+        rx, ry, _ = px(root)
+        tx, ty, _ = px(tip)
+        mid = px((root + tip) * 0.5)[2]
+        ref = head if key.startswith("ear") else hips
+        out.append([round(rx - ox, 2), round(ry - oy, 2), round(tx - ox, 2), round(ty - oy, 2),
+                    int(mid > ref + SWAY_BEHIND * SCALE)])
+    return out
+
+
 # ---------------------------------------------------------------- the hand on the rod (candidate)
 # User request (round 4): the hand holds the rod - the rod fixed in the
 # hand (rod_grip.py), the arm turned toward the path wanted - in a
@@ -1016,7 +1056,7 @@ def main():
     p.add_argument("--density", type=int, default=2)
     p.add_argument("--dry", action="store_true", help="rod data and cell size only, no render")
     p.add_argument("--merge-hands", default="",
-                   help="(with --dry) add the hand and hip data to this rod json, rendered before")
+                   help="(with --dry) add the hand, hip, ear and tail data to this rod json, rendered before")
     p.add_argument("--no-grip", dest="grip", action="store_false",
                    help="the rod drawn from ROD_ANGLES off the hand, not held (rod_grip.py) - no reel,"
                    " no front layer")
@@ -1084,6 +1124,7 @@ def main():
     crank = {name: [[None] * FRAMES for _ in DIRS] for name in STANCE_CLIPS}
     hand_at = {name: [[None] * FRAMES for _ in DIRS] for name in CLIPS}
     belt_at = {name: [[None] * FRAMES for _ in DIRS] for name in CLIPS}
+    sway_at = {name: [[None] * FRAMES for _ in DIRS] for name in CLIPS}
     masks = {}
 
     def pose_and_rod(cell):
@@ -1115,6 +1156,7 @@ def main():
         behind = ((grip + tip) * 0.5).y > chest_at.y + 0.05
         rod[name][DIRS.index(dname)][f - 1] = [round(gx - ox, 2), round(gy - oy, 2), round(tx - ox, 2), round(ty - oy, 2), int(behind)]
         hand_at[name][DIRS.index(dname)][f - 1], belt_at[name][DIRS.index(dname)][f - 1] = hand_cell(arm, px, ox, oy)
+        sway_at[name][DIRS.index(dname)][f - 1] = sway_cell(arm, px, ox, oy)
         if hand_grip is not None and not args.dry:
             fish = None
             if name in STANCE_CLIPS:
@@ -1152,7 +1194,7 @@ def main():
 
     meta = {"cell": [w, h], "frames": FRAMES, "clips": CLIPS, "dirs": DIRS,
             "offset": [0.0, round(-cy * DENSITY, 2)], "rod_length": round(ROD_TIP * DENSITY, 2),
-            "rod": rod, "hand": hand_at, "belt": belt_at}
+            "rod": rod, "hand": hand_at, "belt": belt_at, "sway": sway_at, "sway_names": list(sway_names(arm))}
     if args.merge_hands:
         merge_hands(args.merge_hands, meta)
     if hand_grip is not None:
@@ -1185,6 +1227,8 @@ def merge_hands(path, meta):
     assert worst < 0.5, worst
     old["hand"] = meta["hand"]
     old["belt"] = meta["belt"]
+    old["sway"] = meta["sway"]
+    old["sway_names"] = meta["sway_names"]
     with open(path, "w") as fh:
         json.dump(old, fh, separators=(",", ":"))
     print("merge-hands: wrote", path, flush=True)
