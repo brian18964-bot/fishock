@@ -125,8 +125,9 @@ def main():
     args = p.parse_args()
     arm, meshes, clips = load()
     back_grip, back_tip = rp.back_rod_local(arm)
-    # (PlayerVisual.WALK_PACE: the walk's own pace at the run's frame rate)
-    print("walk pace %.1f px/s at 10.9 frames/s" % rp.run_pace(arm, clips["walk"]), flush=True)
+    # (the walk's own pace at the run's frame rate - PlayerVisual reads it)
+    walk_pace = rp.run_pace(arm, clips["walk"])
+    print("walk pace %.1f px/s at 10.9 frames/s" % walk_pace, flush=True)
     yaw = rs.Yaw(0.0)
     cells = [(name, d, f) for name in NAMES for d in DIRS for f in range(1, rp.FRAMES + 1)]
     mw = arm.matrix_world
@@ -214,7 +215,8 @@ def main():
             fold(f"{args.out_prefix}_{mode}.png", sections)
     meta = {"cell": [w, h], "frames": rp.FRAMES, "clips": NAMES, "dirs": DIRS, "sections": sections,
             "rows_per_section": per, "modes": {c[0]: c[3] for c in CLIPS},
-            "offset": [0.0, round(-cy * rp.DENSITY, 2)], "rod": rod, "hand": hand, "belt": belt}
+            "offset": [0.0, round(-cy * rp.DENSITY, 2)], "rod": rod, "hand": hand, "belt": belt,
+            "walk_pace": round(walk_pace, 1)}
     with open(f"{args.out_prefix}_rod.json", "w") as fh:
         json.dump(meta, fh, separators=(",", ":"))
     print(json.dumps({k: meta[k] for k in ("cell", "offset", "sections", "rows_per_section")}))

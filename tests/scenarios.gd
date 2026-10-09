@@ -1281,6 +1281,24 @@ func test_player_moves() -> void:
 	check(body.move == "" and p.move_left == 0.0, "walking off cuts a move short")
 	key(KEY_D, false)
 	await frames(10)
+	# User request: the left stick eased off, it walks (slow or brisk) -
+	# pushed all the way, it runs.
+	if (body._move_data.clips as Array).has("walk"):
+		p._move_joystick.output = Vector2(0.3, 0.0)
+		await frames(6)
+		var f0 := body.frame_in_clip
+		await seconds(0.4)
+		check(body.move == "walk" and body.frame_in_clip != f0, "stick eased off: it walks (%s)" % body.move)
+		p._move_joystick.output = Vector2(0.5, 0.0)
+		await frames(6)
+		check(body.move == "walk", "a little more: a brisk walk")
+		p._move_joystick.output = Vector2(1.0, 0.0)
+		await frames(6)
+		check(body.move == "" and body.clip == PlayerVisual.CLIP_RUN, "all the way: it runs")
+		p._move_joystick.output = Vector2.ZERO
+		await frames(10)
+	else:
+		check(false, "the walk is on %s's moves sheet" % Profile.character)
 	# A fish landed: the catch clip, then a fist pumped.
 	p.catch_success.emit({"name": "鯉魚", "rarity": "common"})
 	await frames(2)

@@ -120,12 +120,20 @@ const MOVE_FACING := [[0, false], [1, false], [2, false], [3, false], [4, false]
 const MOVE_DIRS := 5
 ## The moves on it (tools/render_player_moves.py's CLIPS, in order).
 const MOVE_NAMES := ["drink", "look", "eye", "pick", "lift", "throw", "cheer", "fist", "sad", "scared", "dizzy", "pray",
-	"kneel", "sad_idle", "sad_walk"]
+	"kneel", "sad_idle", "sad_walk", "walk"]
 ## The moves played by how it's feeling (looping): their pace (frames/s);
 ## the dragging walk's own pace (world px/s) and the fastest it's used at.
 const MOOD_FPS := {"dizzy": 3.0, "sad_idle": 2.5, "sad_walk": 5.3}
 const SAD_PACE := 32.0
 const SAD_WALK_MAX := 55.0
+## User request: the left stick eased off, it walks - not the run slowed
+## down, all long strides. Up to WALK_MAX (px/s) a walk (the moves sheet's,
+## Mixamo's), slow or brisk with the stick; past it the run. A little
+## either side of it before it changes (WALK_SLACK), so it doesn't flicker
+## between them. The walk's own pace (world px/s, at the run's 10.9 frames
+## a second) is the character's own, in its moves data ("walk_pace").
+const WALK_MAX := 62.0
+const WALK_SLACK := 5.0
 ## After a fish is landed (the catch clip): a fist pumped, or both arms up
 ## for a rare one - for this long.
 const CHEER_TIME := 1.4
@@ -137,6 +145,8 @@ var dir := 0
 var frame_in_clip := 0
 
 var _phase := 0.0
+## Walking, not running (WALK_MAX).
+var walking := false
 ## The main sheet's offset (its rod data, above).
 var _sheet_offset := Vector2.ZERO
 var _whip := -1.0
@@ -386,9 +396,12 @@ func _move(delta: float) -> bool:
 	var timed := name != ""
 	if not timed and idle and _once < 0 and _whip < 0.0:
 		var poisoned: bool = _player.poison_timer > 0.0
+		walking = moving and speed < WALK_MAX + (WALK_SLACK if walking else -WALK_SLACK)
 		if moving:
 			if poisoned and speed <= SAD_WALK_MAX:
 				name = "sad_walk"
+			elif walking:
+				name = "walk"
 		elif poisoned:
 			name = "dizzy"
 		elif Profile.spirit_penalty() >= 3:
@@ -419,6 +432,8 @@ func _move(delta: float) -> bool:
 		var fps: float = MOOD_FPS.get(name, 3.0)
 		if name == "sad_walk":
 			fps *= speed / SAD_PACE
+		elif name == "walk":
+			fps = FPS[CLIP_RUN] * speed / float(_move_data.get("walk_pace", 60.0))
 		_move_phase += delta * fps
 		frame_in_clip = int(_move_phase) % FRAMES
 	var row: int = (_move_data.clips as Array).find(name) * MOVE_DIRS + int(facing[0])
