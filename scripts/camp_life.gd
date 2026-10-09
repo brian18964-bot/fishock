@@ -54,8 +54,8 @@ const TURN_RATE := 7.0
 ## How often it does each thing, by how it feels: [spent, worn, tired, busy].
 ## (The fire and the log far the most: user request.)
 const WEIGHTS := {
-	"sit": [1.0, 6.0, 4.0, 3.0],
-	"fire": [0.0, 2.0, 4.0, 4.0],
+	"sit": [1.0, 6.0, 4.0, 3.5],
+	"fire": [0.0, 2.0, 4.0, 4.5],
 	"nap": [0.0, 0.5, 0.2, 0.0],
 	"ground": [0.0, 0.4, 0.3, 0.2],
 	"tent": [0.0, 0.0, 0.0, 0.3],
@@ -348,7 +348,7 @@ func _choose() -> Array:
 	var options := []
 	for name in WEIGHTS:
 		var w: float = WEIGHTS[name][t]
-		if name == activity and name != "sit":
+		if name == activity and not name in ["sit", "fire"]:
 			w *= 0.2
 		if w > 0.0:
 			options.append([name, w])
