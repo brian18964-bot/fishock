@@ -22,9 +22,8 @@ tents/ (EXPORT_9_VIKING_TENTS_PACK), crate/box2.blend, backpack/
 (Backpack.fbx + images), bookshop/ (BookShop.obj + Materials), boat/
 BoatColor.blend, log/ (log.fbx + 4k textures), barrel/ (Barrel_Metal.blend +
 its Textures/), lotus/Lotus+Leaf.stl, frog/ (tools/prep_frog.py's
-frog_low.npz and frog_high.npz). The rune stones and
-the trees come from art_src (Quaternius / user models already in
-the repo).
+frog_low.npz and frog_high.npz). The trees come from art_src
+(Quaternius / user models already in the repo); the 渡石 is made here.
 """
 import math
 import os
@@ -663,26 +662,257 @@ def drum_trough():
     _export_uv([o], "drum_trough")
 
 
-def rune_stone():
-    """The 渡石: the run's escape stones (render_props.build_runes), the runes
-    baked into their own glow picture."""
-    import render_props as rp
-    mask = os.path.join(tempfile.gettempdir(), "rune_mask.png")
-    rp.build_runes(mask)
-    objs = meshes()
-    # The runes as emission (render_props leaves them unused for the
-    # albedo pass; light them for the glow bake).
-    for o in objs:
-        nt = o.material_slots[0].material.node_tree
-        b = next(n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED')
-        glow = [n for n in nt.nodes if n.type == 'COMBINE_COLOR']
-        if glow:
-            nt.links.new(glow[0].outputs['Color'], b.inputs['Emission Color'])
-            b.inputs['Emission Strength'].default_value = 1.0
-    realize(objs)
-    place(objs, height=2.6)
-    bake(objs, "rune_stone", 512, glow=True)
-    export(objs, "rune_stone")
+def _rune_mask(path, w=512, h=1024):
+    """The 渡石's runes: a column of them down its face (white on black),
+    cut with a chisel's straight strokes, and a ring above them."""
+    from PIL import ImageDraw
+    import random
+    rng = random.Random(7)
+    img = Image.new("L", (w, h), 0)
+    d = ImageDraw.Draw(img)
+    # (strokes in a 0..1 box: Elder Futhark-like - staves and twigs)
+    glyphs = [
+        [((0.3, 0), (0.3, 1)), ((0.3, 0.15), (0.75, 0.35)), ((0.3, 0.45), (0.75, 0.65))],
+        [((0.5, 0), (0.5, 1)), ((0.5, 0.3), (0.15, 0.05)), ((0.5, 0.3), (0.85, 0.05))],
+        [((0.3, 0), (0.3, 1)), ((0.3, 0), (0.75, 0.25)), ((0.75, 0.25), (0.3, 0.5))],
+        [((0.2, 0), (0.2, 1)), ((0.8, 0), (0.8, 1)), ((0.2, 0.25), (0.8, 0.6))],
+        [((0.5, 0), (0.15, 0.5)), ((0.15, 0.5), (0.5, 1)), ((0.5, 0), (0.85, 0.5)), ((0.85, 0.5), (0.5, 1))],
+        [((0.5, 0), (0.5, 1)), ((0.15, 0.35), (0.85, 0.65)), ((0.85, 0.35), (0.15, 0.65))],
+        [((0.3, 0), (0.3, 1)), ((0.3, 0.2), (0.75, 0.45)), ((0.75, 0.45), (0.3, 0.7))],
+    ]
+    stroke = int(w * 0.035)
+    # A ring near the top (the way through).
+    cx, cy, r = w * 0.5, h * 0.16, w * 0.17
+    d.ellipse((cx - r, cy - r, cx + r, cy + r), outline=255, width=stroke)
+    d.ellipse((cx - r * 0.35, cy - r * 0.35, cx + r * 0.35, cy + r * 0.35), outline=255, width=stroke)
+    top, step, size = h * 0.29, h * 0.095, w * 0.2
+    for i in range(7):
+        g = glyphs[(i * 3 + 1) % len(glyphs)]
+        ox = w * 0.5 - size * 0.5 + rng.uniform(-w * 0.02, w * 0.02)
+        oy = top + i * step
+        for (a, b) in g:
+            d.line((ox + a[0] * size, oy + a[1] * size * 0.8, ox + b[0] * size, oy + b[1] * size * 0.8),
+                   fill=255, width=stroke)
+    # (Blender reads a picture from its bottom row up)
+    img.transpose(Image.FLIP_TOP_BOTTOM).save(path)
+
+
+def _front_uv(o, name="front"):
+    """A UV layer laid flat on the stone's face: across x, up z (0..1 over
+    the face)."""
+    me = o.data
+    lay = me.uv_layers.new(name=name)
+    xs = [v.co.x for v in me.vertices]
+    zs = [v.co.z for v in me.vertices]
+    x0, x1, z0, z1 = min(xs), max(xs), min(zs), max(zs)
+    for loop in me.loops:
+        co = me.vertices[loop.vertex_index].co
+        lay.data[loop.index].uv = ((co.x - x0) / (x1 - x0), (co.z - z0) / (z1 - z0))
+
+
+def _rock_material(name, runes=None):
+    """Weathered grey stone, darker in its cracks, moss where it faces up;
+    `runes` (a mask picture on the "front" UVs): cut into the face and
+    glowing."""
+    m = bpy.data.materials.new(name)
+    m.use_nodes = True
+    nt = m.node_tree
+    N, L = nt.nodes, nt.links
+    b = next(n for n in N if n.type == 'BSDF_PRINCIPLED')
+    b.inputs['Roughness'].default_value = 0.92
+    tc = N.new('ShaderNodeTexCoord')
+    big = N.new('ShaderNodeTexNoise')
+    big.inputs['Scale'].default_value = 2.2
+    big.inputs['Detail'].default_value = 10.0
+    L.new(tc.outputs['Object'], big.inputs['Vector'])
+    ramp = N.new('ShaderNodeValToRGB')
+    ramp.color_ramp.elements[0].position = 0.3
+    ramp.color_ramp.elements[1].position = 0.75
+    ramp.color_ramp.elements[0].color = (0.17, 0.175, 0.18, 1)
+    ramp.color_ramp.elements[1].color = (0.34, 0.34, 0.33, 1)
+    L.new(big.outputs['Fac'], ramp.inputs['Fac'])
+    # fine grain and pale lichen flecks
+    grain = N.new('ShaderNodeTexNoise')
+    grain.inputs['Scale'].default_value = 40.0
+    grain.inputs['Detail'].default_value = 4.0
+    L.new(tc.outputs['Object'], grain.inputs['Vector'])
+    gmix = N.new('ShaderNodeMix')
+    gmix.data_type = 'RGBA'
+    gmix.blend_type = 'MULTIPLY'
+    gmix.inputs['Factor'].default_value = 0.25
+    L.new(ramp.outputs['Color'], gmix.inputs['A'])
+    L.new(grain.outputs['Color'], gmix.inputs['B'])
+    # dark in the cracks
+    ao = N.new('ShaderNodeAmbientOcclusion')
+    ao.inputs['Distance'].default_value = 0.08
+    aomix = N.new('ShaderNodeMix')
+    aomix.data_type = 'RGBA'
+    aomix.blend_type = 'MULTIPLY'
+    aomix.inputs['Factor'].default_value = 0.85
+    L.new(gmix.outputs['Result'], aomix.inputs['A'])
+    L.new(ao.outputs['AO'], aomix.inputs['B'])
+    # moss on what faces up
+    geo = N.new('ShaderNodeNewGeometry')
+    sep = N.new('ShaderNodeSeparateXYZ')
+    L.new(geo.outputs['Normal'], sep.inputs['Vector'])
+    up = N.new('ShaderNodeMapRange')
+    up.inputs['From Min'].default_value = 0.35
+    up.inputs['From Max'].default_value = 0.8
+    L.new(sep.outputs['Z'], up.inputs['Value'])
+    mn = N.new('ShaderNodeTexNoise')
+    mn.inputs['Scale'].default_value = 9.0
+    mn.inputs['Detail'].default_value = 6.0
+    L.new(tc.outputs['Object'], mn.inputs['Vector'])
+    mr = N.new('ShaderNodeMapRange')
+    mr.inputs['From Min'].default_value = 0.45
+    mr.inputs['From Max'].default_value = 0.6
+    L.new(mn.outputs['Fac'], mr.inputs['Value'])
+    moss = N.new('ShaderNodeMath')
+    moss.operation = 'MULTIPLY'
+    L.new(up.outputs['Result'], moss.inputs[0])
+    L.new(mr.outputs['Result'], moss.inputs[1])
+    mmix = N.new('ShaderNodeMix')
+    mmix.data_type = 'RGBA'
+    mmix.inputs['B'].default_value = (0.08, 0.12, 0.045, 1)
+    L.new(moss.outputs['Value'], mmix.inputs['Factor'])
+    L.new(aomix.outputs['Result'], mmix.inputs['A'])
+    colour = mmix.outputs['Result']
+    if runes is not None:
+        uv = N.new('ShaderNodeUVMap')
+        uv.uv_map = "front"
+        t = N.new('ShaderNodeTexImage')
+        t.image = image(runes, colour=False)
+        L.new(uv.outputs['UV'], t.inputs['Vector'])
+        # only on the face (its normal toward -y, Blender's front)
+        face = N.new('ShaderNodeMapRange')
+        face.inputs['From Min'].default_value = -0.45
+        face.inputs['From Max'].default_value = -0.75
+        L.new(sep.outputs['Y'], face.inputs['Value'])
+        cut = N.new('ShaderNodeMath')
+        cut.operation = 'MULTIPLY'
+        L.new(t.outputs['Color'], cut.inputs[0])
+        L.new(face.outputs['Result'], cut.inputs[1])
+        dark = N.new('ShaderNodeMix')
+        dark.data_type = 'RGBA'
+        dark.inputs['B'].default_value = (0.10, 0.16, 0.19, 1)
+        L.new(cut.outputs['Value'], dark.inputs['Factor'])
+        L.new(colour, dark.inputs['A'])
+        colour = dark.outputs['Result']
+        L.new(cut.outputs['Value'], b.inputs['Emission Strength'])
+        b.inputs['Emission Color'].default_value = (1, 1, 1, 1)
+    L.new(colour, b.inputs['Base Color'])
+    return m
+
+
+def ferry_stone():
+    """The 渡石 (user request: moved up to the camp, drawn in close when
+    it's tapped - more detail than the far-off pair of slabs it was): one
+    tall weathered standing stone, a little tapered and leaning, chipped,
+    its face cut with a ring and a column of runes that glow, moss on its
+    shoulders, a few stones sunk round its foot. Made here (no source
+    pack): a detailed one sculpted by noise, baked onto a light one."""
+    import random
+    fresh()
+    rng = random.Random(3)
+    mask = os.path.join(tempfile.gettempdir(), "ferry_runes.png")
+    _rune_mask(mask)
+    # The stone: a block, rounded, tapered, then weathered.
+    bpy.ops.mesh.primitive_cube_add(size=1.0)
+    st = bpy.context.active_object
+    st.name = "stone"
+    st.scale = (0.62, 0.36, 1.8)
+    bpy.ops.object.transform_apply(scale=True)
+    st.location.z = 0.9
+    bpy.ops.object.transform_apply(location=True)
+    bev = st.modifiers.new("round", 'BEVEL')
+    bev.width = 0.09
+    bev.segments = 4
+    apply_modifiers([st])
+    sub = st.modifiers.new("fine", 'SUBSURF')
+    sub.subdivision_type = 'SIMPLE'
+    sub.levels = sub.render_levels = 5
+    apply_modifiers([st])
+    taper = st.modifiers.new("taper", 'SIMPLE_DEFORM')
+    taper.deform_method = 'TAPER'
+    taper.factor = -0.32
+    taper.deform_axis = 'Z'
+    apply_modifiers([st])
+    for scale, strength, kind in ((0.55, 0.07, 'CLOUDS'), (0.22, 0.03, 'VORONOI'), (0.06, 0.008, 'CLOUDS')):
+        tex = bpy.data.textures.new("n%s" % scale, kind)
+        tex.noise_scale = scale
+        if kind == 'VORONOI':
+            tex.distance_metric = 'DISTANCE'
+        dm = st.modifiers.new("d%s" % scale, 'DISPLACE')
+        dm.texture = tex
+        dm.strength = strength
+        dm.mid_level = 0.5
+        dm.texture_coords = 'GLOBAL'
+        apply_modifiers([st])
+    # The face's runes cut in.
+    _front_uv(st)
+    front = st.vertex_groups.new(name="front")
+    st.data.update()
+    ids = [v.index for v in st.data.vertices if v.normal.y < -0.55]
+    front.add(ids, 1.0, 'REPLACE')
+    rt = bpy.data.textures.new("runes", 'IMAGE')
+    rt.image = image(mask, colour=False)
+    rt.extension = 'CLIP'
+    cut = st.modifiers.new("runes", 'DISPLACE')
+    cut.texture = rt
+    cut.texture_coords = 'UV'
+    cut.uv_layer = "front"
+    cut.vertex_group = "front"
+    cut.mid_level = 0.0
+    cut.strength = -0.018
+    apply_modifiers([st])
+    # Leaning a touch, turned a little.
+    st.rotation_euler = (math.radians(3.0), math.radians(-2.5), math.radians(4.0))
+    bpy.ops.object.transform_apply(rotation=True)
+    st.data.materials.append(_rock_material("ferry", runes=mask))
+    # Stones round its foot, half sunk.
+    plain = _rock_material("foot")
+    parts = [st]
+    for i in range(7):
+        a = i / 7.0 * math.tau + rng.uniform(-0.25, 0.25)
+        r = rng.uniform(0.42, 0.62)
+        size = rng.uniform(0.09, 0.2)
+        bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=4, radius=size,
+                                              location=(math.cos(a) * r, math.sin(a) * r * 0.85, size * 0.15))
+        o = bpy.context.active_object
+        o.scale = (1.0, rng.uniform(0.7, 1.0), rng.uniform(0.5, 0.75))
+        bpy.ops.object.transform_apply(scale=True)
+        tex = bpy.data.textures.new("f%d" % i, 'CLOUDS')
+        tex.noise_scale = 0.12
+        dm = o.modifiers.new("d", 'DISPLACE')
+        dm.texture = tex
+        dm.strength = size * 0.35
+        dm.texture_coords = 'GLOBAL'
+        apply_modifiers([o])
+        _front_uv(o)
+        o.data.materials.append(plain)
+        parts.append(o)
+    # Into the ground a little, all of it on y = 0 after.
+    for o in parts:
+        for v in o.data.vertices:
+            v.co.z -= 0.03
+    high = []
+    for o in parts:
+        h = o.copy()
+        h.data = o.data.copy()
+        bpy.context.scene.collection.objects.link(h)
+        high.append(h)
+    select(high)
+    bpy.ops.object.join()
+    hi = bpy.context.view_layer.objects.active
+    decimate([parts[0]], 2600)
+    decimate(parts[1:], 700)
+    # (one mesh, so the surface detail is baked onto all of it)
+    select(parts, active=parts[0])
+    bpy.ops.object.join()
+    low = bpy.context.view_layer.objects.active
+    bake([low], "ferry_stone", 1024, normal_from=hi, glow=True)
+    bpy.data.objects.remove(hi, do_unlink=True)
+    export([low], "ferry_stone")
 
 
 def _npz_mesh(path, name):
@@ -866,7 +1096,7 @@ NO_COLOURS = {"export_vertex_color": "NONE"} if "export_vertex_color" in \
 
 BUILDERS = {
     "campfire": campfire, "crate": crate, "backpack": backpack, "bookshop": bookshop, "boat": boat,
-    "log": log, "drum": drum, "drum_trough": drum_trough, "rune_stone": rune_stone,
+    "log": log, "drum": drum, "drum_trough": drum_trough, "ferry_stone": ferry_stone,
     "frog_merchant": frog_merchant, "lotus_leaf": lotus_leaf,
 }
 for _i in range(1, 10):

@@ -2891,8 +2891,8 @@ func test_camp_life() -> void:
 	check(life != null and CampLife.tier() == 3, "the camp has a life; at 95 it's busy")
 	# What it picks, by how it feels.
 	var allowed := {
-		0: ["sit"], 1: ["sit", "nap", "ground", "trough", "warm", "stand"],
-		2: ["sit", "nap", "ground", "crate", "trough", "lean", "lake", "look", "stretch", "merchant", "warm", "watch", "stand"],
+		0: ["sit"], 1: ["sit", "fire", "nap", "ground", "trough", "stand"],
+		2: ["sit", "fire", "nap", "ground", "crate", "trough", "lean", "lake", "look", "stretch", "merchant", "watch", "stand"],
 	}
 	for spirit in [20.0, 40.0, 60.0]:
 		Profile.spirit = spirit
@@ -2906,10 +2906,39 @@ func test_camp_life() -> void:
 		check(stray.is_empty(), "spirit %d picks only what it can (%s)" % [spirit, ", ".join(stray)])
 	Profile.spirit = 95.0
 	var busy := {}
-	for _i in 200:
+	for _i in 400:
 		life._choose()
-		busy[life.activity] = true
+		busy[life.activity] = int(busy.get(life.activity, 0)) + 1
 	check(busy.has("sit") and busy.has("tent"), "busy, it mends and sits (%s)" % ", ".join(busy.keys()))
+	# User request: not forever on the go - mostly stood at the fire or sat
+	# on a log, a good while each.
+	var calm: int = int(busy.get("sit", 0)) + int(busy.get("fire", 0))
+	check(calm > 400 * 0.6, "mostly at the fire or on the log (%d of 400)" % calm)
+	var at_fire: Array = life._activity("fire", 3)
+	check(at_fire[-1].get("do", "") == "loop" and float(at_fire[-1].time) >= CampLife.FIRE_TIME[3].x,
+		"stood at the fire a good while (%.0f s)" % float(at_fire[-1].time))
+	# Nothing meant for another while it's on its own (the merchant aside:
+	# he's there), no drink it wasn't bought, and lying down only in the
+	# tent.
+	var lone := {}
+	for t in 4:
+		for _i in 40:
+			for n in CampLife.WEIGHTS:
+				if n == "merchant":
+					continue
+				for st in life._activity(n, t):
+					if str(st.get("clip", "")) in ["Sitting_Talking", "Seat_Clap", "Clap", "Wave", "Wave_Big", "Beckon", "Idle_Talking", "Seat_Drink", "Drink"]:
+						lone[n + ":" + str(st.clip)] = true
+	check(lone.is_empty(), "on its own: no clap, no talk, no wave, no drink (%s)" % ", ".join(lone.keys()))
+	var nap: Array = life._activity("nap", 1)
+	var nap_clips: Array = nap.filter(func(st): return st.has("clip")).map(func(st): return st.clip)
+	check(nap_clips == ["Lie_Down", "Lying", "Sleep_B", "Lying", "LayToIdle"], "a nap: down, asleep, up (%s)" % ", ".join(nap_clips))
+	var lie_at := Vector3.INF
+	for st in nap:
+		if st.get("straight", false):
+			lie_at = st.to
+			break
+	check(lie_at.distance_to(CampStage.TENT_AT) < 0.6, "it naps in the tent (%.2f m from its middle)" % lie_at.distance_to(CampStage.TENT_AT))
 	check(not busy.has("chop") and not busy.has("gather") and not busy.has("dance"), "no chopping, carrying or dancing (dropped)")
 	# Its ways round the camp keep off the fire.
 	var path := camp.route(camp.spots.home.at, camp.spots.stone.at)
@@ -2946,44 +2975,29 @@ func test_camp_life() -> void:
 	check(wild != null and not wild.walking() and wild.path.size() >= 2, "an animal now and then on the far bank (none at first)")
 	wild.start("deer")
 	check(wild.walking(), "one sets off")
-	# A tap: a wave when busy; worn out, a shake of the head.
+	# User request: no taps on it - a tap on the character leaves it be.
 	life._plan.clear()
 	life._step = {}
 	life.seated = false
 	life.pivot.position = camp.spots.home.at
-	check(camp.roomy(camp.spots.home.at, CampLife.ROOM), "where it stands at home there's room to turn and wave")
-	Profile.spirit = 80.0
-	life.tap()
-	check(life._step.get("do", "") == "face" and life._plan.size() >= 1 and life._plan[0].get("clip", "") in CampLife.TAP_CLIPS[3],
-		"tapped, it turns and waves (or beckons)")
-	var before := life._plan.size()
-	life.tap()
-	check(life.greeting and life._plan.size() == before, "a tap while it's greeting does nothing more")
-	Profile.spirit = 10.0
-	life._plan.clear()
-	life._step = {}
-	life.greeting = false
-	life.tap()
-	check(life._plan.size() >= 1 and life._plan[0].get("clip", "") == "Idle_No", "spent, it shakes its head")
-	# User request: tapped while it's at something, it goes from that to
-	# facing us and back - leaning on the drum, it steps out (no room to
-	# turn there), turns, waves, goes back to the drum and leans the rest of
-	# the while.
-	Profile.spirit = 80.0
-	life._plan.clear()
-	life.greeting = false
+	life.pivot.rotation.y = 0.0
+	life._plan = [{"do": "loop", "clip": "Idle", "time": 30.0}]
+	life._next()
+	await frames(2)
+	var on_it: Vector2 = camp.camera.unproject_position(life.pivot.global_position + Vector3(0, 0.7, 0)) / title.RENDER_SCALE
+	check(title._near_character(on_it), "(the tap is on it)")
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	press.position = on_it
+	title._on_home_input(press)
+	var let_go := press.duplicate() as InputEventMouseButton
+	let_go.pressed = false
+	title._on_home_input(let_go)
+	await frames(2)
+	check(life._step.get("clip", "") == "Idle" and life._plan.is_empty() and life.pivot.rotation.y == 0.0,
+		"a tap on the character: it carries on as it was")
 	life.pivot.position = camp.spots.lean.at
-	life._step = {"do": "loop", "clip": "Idle_Rail", "time": 8.0}
-	life._t = 3.0
-	life.tap()
-	var steps: Array = [life._step] + life._plan
-	var kinds: Array = steps.map(func(st): return st.get("do", "") + ":" + str(st.get("clip", "")))
-	var stepped: Vector3 = steps[0].get("to", Vector3.ZERO)
-	check(steps[0].get("do", "") == "walk" and camp.roomy(stepped, CampLife.ROOM), "by the drum: a step out to where there's room first (%s)" % ", ".join(kinds))
-	var resume: Array = steps.filter(func(st): return st.get("clip", "") == "Idle_Rail")
-	var back_to: Array = steps.filter(func(st): return st.get("do", "") == "walk" and st.get("to", Vector3.INF).distance_to(camp.spots.lean.at) < 0.01)
-	check(resume.size() == 1 and absf(float(resume[0].time) - 5.0) < 0.01 and back_to.size() == 1,
-		"then back to the drum, leaning the rest of the while (%s)" % ", ".join(kinds))
 	# Standing about somewhere tight (by the drum), it steps out first too.
 	check(life._activity("stand", 3)[0].get("do", "") == "walk" and life._activity("stretch", 3)[0].get("do", "") == "walk",
 		"standing about or stretching by the drum: out from it first")
@@ -2991,7 +3005,6 @@ func test_camp_life() -> void:
 	check(life._activity("stand", 3)[0].get("do", "") == "loop", "with room round it, just where it is")
 	life._plan.clear()
 	life._step = {}
-	life.greeting = false
 	# User request: a drag swipes the view left and right - the character
 	# isn't spun round by it any more.
 	var yaw_was := life.pivot.rotation.y
@@ -3013,32 +3026,68 @@ func test_camp_life() -> void:
 		"a swipe to the left moves the view right (%.2f m), the character not turned" % camp.view_pan)
 	camp.pan_view(-10.0)
 	check(is_equal_approx(camp.view_pan, CampStage.PAN_RANGE.x), "as far as the camp goes")
+	# User request: the 渡石 out on the left - swiped to it, it's there,
+	# and a tap on it is 出發夜釣 (the journey page).
+	camp.view_pan = CampStage.PAN_RANGE.x
+	await frames(90)
+	var stone_px: Vector2 = camp.camera.unproject_position(CampStage.STONE_AT + Vector3(0, 0.8, 0))
+	check(Rect2(Vector2.ZERO, Vector2(camp.get_viewport().size)).has_point(stone_px) and camp.hotspot_at(stone_px) == "journey",
+		"swiped left, the 渡石 is in view and tappable (%s)" % stone_px)
+	var on_stone := InputEventMouseButton.new()
+	on_stone.button_index = MOUSE_BUTTON_LEFT
+	on_stone.pressed = true
+	on_stone.position = stone_px / title.RENDER_SCALE
+	title._on_home_input(on_stone)
+	var off_stone := on_stone.duplicate() as InputEventMouseButton
+	off_stone.pressed = false
+	title._on_home_input(off_stone)
+	await frames(3)
+	check(title._page != null and title._page.name.to_lower().contains("journey"), "a tap on it opens the journey (出發夜釣)")
+	UiKit.page_back(title._page)
+	await seconds(0.8)
 	camp.view_pan = 0.0
-	# User request (the Mixamo clips): a nap by the fire - down, asleep, up
-	# again; a tap wakes it, up first and then the wave.
+	# User request: lying down only in the tent - in under it, down, asleep,
+	# up and out.
 	Profile.spirit = 40.0
 	life._plan.clear()
 	life._step = {}
 	life.seated = false
 	life.down = ""
-	var nap: Array = life._activity("nap", 1)
-	var nap_clips: Array = nap.filter(func(st): return st.has("clip")).map(func(st): return st.clip)
-	check(nap_clips == ["Lie_Down", "Lying", "Sleep_B", "Lying", "LayToIdle"], "a nap: down, asleep, up (%s)" % ", ".join(nap_clips))
-	life.pivot.position = camp.spots.wake.at
-	life._plan = nap
+	life.pivot.position = camp.spots.tent.at
+	life._plan = life._activity("nap", 1)
 	life._next()
 	var lay := false
-	for _i in 600:
+	for _i in 900:
 		await frames(1)
 		if life.rig.anim.assigned_animation == "Lying":
 			lay = true
 			break
-	check(lay and life.down == "LayToIdle", "it lies down")
-	life.tap()
-	check(life._step.get("clip", "") == "LayToIdle" and life._plan.any(func(st): return st.get("clip", "") in CampLife.TAP_CLIPS[1]),
-		"tapped, it gets up first, then the wave")
-	await seconds(2.0)
-	check(life.down == "", "and it's up")
+	check(lay and life.down == "LayToIdle" and life.pivot.position.distance_to(camp.spots.bed.at) < 0.05, "it lies down in the tent")
+	life._plan.clear()
+	life._step = {}
+	life.down = ""
+	# The merchant's tea bought: sat on the log, a cup of it; his food: a
+	# bite at the fire.
+	Profile.spirit = 60.0
+	Profile.gold = 500
+	life.pivot.position = camp.spots.home.at
+	title.open_page("shop")
+	await frames(2)
+	check(Profile.buy_snack("tea") and life.treat_due == "tea", "tea bought at the merchant's")
+	UiKit.page_back(title._page)
+	await seconds(0.8)
+	var tea: Array = [life._step] + life._plan
+	check(life.activity == "tea" and tea.any(func(st): return st.get("clip", "") == "Seat_Drink"), "back at the camp it sits and has its tea")
+	life._plan.clear()
+	life._step = {}
+	life.seated = false
+	Profile.spirit = 60.0
+	life.treat("roll")
+	var food: Array = life._choose()
+	check(food.any(func(st): return st.get("clip", "") == "Consume") and not food.any(func(st): return st.get("clip", "") == "Seat_Drink"),
+		"food: a bite at the fire")
+	life._plan.clear()
+	life._step = {}
 	# Sat on the ground by the fire; worn out, head down where it stands.
 	var ground: Array = life._activity("ground", 2)
 	check(ground.any(func(st): return st.get("clip", "") == "Ground_Stand" and st.get("back", false))
@@ -3086,7 +3135,7 @@ func test_camp_life() -> void:
 	gap.y = 0.0
 	var facing := Vector3(sin(life.pivot.rotation.y), 0, cos(life.pivot.rotation.y))
 	check(talked and gap.length() < 2.0 and facing.dot(gap.normalized()) > 0.9,
-		"it walks up to him, face to face, and he talks (%.2f m)" % gap.length())
+		"it walks up to him, face to face, and he talks (%.2f m, talked %s, facing %.2f)" % [gap.length(), talked, facing.dot(gap.normalized())])
 	for _i in 900:
 		await frames(1)
 		if frog.visitor == null:
@@ -3163,9 +3212,10 @@ func test_camp_life() -> void:
 	get_tree().root.add_child(title)
 	await frames(3)
 	life = (title.find_child("Camp", true, false) as CampStage).life
-	check(life.busy == "wake" and life.rig.anim.assigned_animation == "LayToIdle", "back from a run lost, it wakes by the fire")
+	check(life.busy == "wake" and life.rig.anim.assigned_animation == "LayToIdle"
+		and life.pivot.position.distance_to(CampStage.TENT_AT) < 0.6, "back from a run lost, it wakes in the tent")
 	check(life._plan.any(func(st): return st.get("clip", "") == "Disappointed"), "and sighs, getting up")
-	await seconds(8.0)
+	await seconds(16.0)
 	check(life.busy == "" and title._scene_piece == "", "and gets up")
 	title.queue_free()
 	await frames(1)

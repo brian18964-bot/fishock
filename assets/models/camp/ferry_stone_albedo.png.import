@@ -2,28 +2,28 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://d4gifv126w0en"
-path="res://.godot/imported/rune_stone_glow.png-aadee137f79a36ca113e4c82527a56e9.ctex"
+uid="uid://b2q63s4hgtf00"
+path="res://.godot/imported/ferry_stone_albedo.png-1446d96967067e0276ed531c6d867c47.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/models/camp/rune_stone_glow.png"
-dest_files=["res://.godot/imported/rune_stone_glow.png-aadee137f79a36ca113e4c82527a56e9.ctex"]
+source_file="res://assets/models/camp/ferry_stone_albedo.png"
+dest_files=["res://.godot/imported/ferry_stone_albedo.png-1446d96967067e0276ed531c6d867c47.ctex"]
 
 [params]
 
-compress/mode=1
+compress/mode=0
 compress/high_quality=false
-compress/lossy_quality=0.85
+compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""
@@ -37,4 +37,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=0
+detect_3d/compress_to=1

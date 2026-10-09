@@ -374,9 +374,10 @@ func _light(page: String) -> void:
 
 
 ## A press on one of the camp's things lights it; let go on it, it opens.
-## A tap on the character greets it (CampLife.tap()). A drag anywhere
-## swipes the view left and right (user request; it used to spin the
-## character round, whatever it was doing).
+## A drag anywhere swipes the view left and right (user request; it used
+## to spin the character round, whatever it was doing). A tap on the
+## character does nothing for now (user request: a greeting broke into
+## whatever it was doing - to come back as a proper word with it).
 func _on_home_input(event: InputEvent) -> void:
 	if _scene_piece != "":
 		# Setting out or coming home: a tap skips it.
@@ -404,8 +405,6 @@ func _on_home_input(event: InputEvent) -> void:
 				return
 			_press_spot = ""
 			_light(under)
-			if _drag_moved < 6.0 and _near_character(event.position):
-				_wave()
 	elif event is InputEventMouseMotion:
 		if _drag:
 			_drag_moved += absf(event.relative.x) + absf(event.relative.y)
@@ -476,13 +475,6 @@ func _fetch_character(id: String) -> void:
 		_next_character()
 	else:
 		_spot_label.text = "%s 下載失敗，再點一次重試" % who
-
-
-func _wave() -> void:
-	if _stage != null:
-		_stage.life.tap()
-	elif _viewer != null:
-		_viewer.wave()
 
 
 ## Opens a menu page over the camp: the list goes, the camera glides to the

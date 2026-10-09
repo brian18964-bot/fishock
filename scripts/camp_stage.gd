@@ -27,8 +27,8 @@ const STATIONS := {
 	"shop": [Vector3(3.3, 1.7, -1.3), Vector3(5.9, 1.1, -5.7), 40.0],
 	"fish_tank": [Vector3(2.25, 2.1, 1.6), Vector3(3.3, 0.25, 0.3), 40.0],
 	"fish_log": [Vector3(2.25, 2.1, 1.6), Vector3(3.3, 0.25, 0.3), 40.0],
-	"stone": [Vector3(-0.3, 1.8, -1.6), Vector3(-0.5, 0.9, -6.4), 42.0],
-	"journey": [Vector3(-0.3, 1.8, -1.6), Vector3(-0.5, 0.9, -6.4), 42.0],
+	"stone": [Vector3(-3.7, 1.55, 3.1), Vector3(-5.45, 0.8, -0.6), 40.0],
+	"journey": [Vector3(-3.7, 1.55, 3.1), Vector3(-5.45, 0.8, -0.6), 40.0],
 }
 const CHARACTER_AT := Vector3(-0.35, 0.0, 0.6)
 const FIRE_AT := Vector3(0.75, 0.0, -0.35)
@@ -38,6 +38,9 @@ const CRATE_AT := Vector3(-3.05, 0.0, 0.3)
 const CRATE_LENGTH := 1.56
 const BACKPACK_AT := Vector3(-2.2, 0.0, 1.05)
 const TENT_AT := Vector3(-4.6, 0.0, -3.5)
+## Where it stands to lie down in the tent (m out from its middle, toward
+## its mouth).
+const TENT_BED := 0.35
 const ROD_AT := Vector3(-2.95, 0.0, -2.55)
 const DRUM_AT := Vector3(0.2, 0.0, -2.05)
 ## A second drum beside it (no lamp).
@@ -51,10 +54,13 @@ const DRUM_SCALE := 1.2
 const TROUGH_SCALE := 1.3
 ## The lamp on the drum's lid.
 const LAMP_ON_DRUM := Vector3(0.05, 0.92 * DRUM_SCALE, 0.02)
-## The 渡石 far off, on the shore short of the water: part of the view,
-## not of the camp.
-const STONE_AT := Vector3(-0.6, 0.0, -6.45)
-const STONE_SCALE := 0.6
+## The 渡石 (user request: moved from far off by the water to the camp's
+## left, past the tent - the view swiped left to it - and tapped, it's
+## 出發夜釣: the journey page, the camera drawn in close to it). Turned a
+## little toward the camp.
+const STONE_AT := Vector3(-5.45, 0.0, -0.6)
+const STONE_YAW := 0.5
+const STONE_SCALE := 0.92
 const HUT_AT := Vector3(6.1, 0.0, -6.0)
 const HUT_YAW := -0.95
 const HUT_SCALE := 0.8
@@ -185,7 +191,7 @@ func _on_profile_changed() -> void:
 ## User request: the main screen swiped left and right (a drag no longer
 ## spins the character round - that broke whatever it was doing): how far
 ## the home view's moved sideways (m, + to the right), and how far it goes.
-const PAN_RANGE := Vector2(-2.0, 2.6)
+const PAN_RANGE := Vector2(-4.4, 2.6)
 var view_pan := 0.0
 var _pan_now := 0.0
 var _station := "home"
@@ -252,8 +258,8 @@ func _process(delta: float) -> void:
 	# The 渡石's runes breathe, slowly - and blaze as someone crosses.
 	_stone_flare = maxf(_stone_flare - delta * 0.6, 0.0)
 	# Far off, a faint glow: part of the view, not a beacon.
-	_stone_mat.emission_energy_multiplier = 0.16 + 0.08 * sin(_time * 1.3) + 3.0 * _stone_flare
-	_stone_light.light_energy = 0.25 + 5.0 * _stone_flare
+	_stone_mat.emission_energy_multiplier = 0.9 + 0.35 * sin(_time * 1.3) + 3.0 * _stone_flare
+	_stone_light.light_energy = 0.35 + 0.1 * sin(_time * 1.3) + 5.0 * _stone_flare
 	# The boat rides the water.
 	# The boat, tied up, rocks a little on the water.
 	_boat.rotation = Vector3(sin(_time * 0.9) * 0.01, _boat.rotation.y, sin(_time * 0.7 + 1.0) * 0.02)
@@ -295,8 +301,16 @@ func _places() -> void:
 	# (a step nearer the camera than it was: a long tail behind it reached
 	# the drums)
 	_spot("warm", FIRE_AT + Vector3(-0.8, 0, -0.6), FIRE_AT)
+	# Stood looking into the fire (user request: much of the time) - from
+	# its right side, and from in front of it to the left.
+	_spot("fire_0", FIRE_AT + Vector3(0.95, 0, 0.25), FIRE_AT)
+	_spot("fire_1", FIRE_AT + Vector3(-0.5, 0, 0.85), FIRE_AT)
 	var tent_front := Vector3(sin(0.7), 0, cos(0.7))
 	_spot("tent", TENT_AT + tent_front * 1.7, TENT_AT)
+	# In under the tent, on its middle line, facing out (lying down, it goes
+	# down on its back into the tent): a nap, and waking after a run lost
+	# (user request: lying down only in the tent).
+	_spot("bed", TENT_AT + tent_front * TENT_BED, TENT_AT + tent_front * 4.0)
 	var crate_side := Vector3(cos(0.55), 0, -sin(0.55))
 	_spot("crate", CRATE_AT + crate_side * 0.94, CRATE_AT)
 	_spot("trough", TROUGH_AT + Vector3(-0.78, 0, 0.1), TROUGH_AT)
@@ -308,13 +322,9 @@ func _places() -> void:
 	_spot("gather_2", Vector3(-0.7, 0, 1.95), Vector3(-0.9, 0, 3.0))
 	_lamp_spot()
 	_spot("rod", ROD_AT + Vector3(0.45, 0, 0.35), ROD_AT + Vector3(0, 0, 0))
-	_spot("stone", STONE_AT + Vector3(0, 0, 0.95), STONE_AT)
-	_spot("stone_in", STONE_AT + Vector3(0, 0, 0.12), STONE_AT + Vector3(0, 0, -2.0))
-	# Lying by the fire (waking after a run lost, a nap): in front of it,
-	# side on to the camera, its feet toward the fire's side - clear of the
-	# stones and the logs (checked: by the log, the arms were in it and the
-	# feet in the stones).
-	_spot("wake", Vector3(0.2, 0, 1.1), Vector3(1.2, 0, 0.7))
+	var stone_front := Vector3(sin(STONE_YAW), 0, cos(STONE_YAW))
+	_spot("stone", STONE_AT + stone_front * 0.95, STONE_AT)
+	_spot("stone_in", STONE_AT + stone_front * 0.12, STONE_AT - stone_front * 2.0)
 	# Sat on the ground by the fire, side on to the camera (by the lake the
 	# drums hid it).
 	_spot("ground", Vector3(1.75, 0, 0.55), FIRE_AT)
@@ -329,7 +339,7 @@ func _places() -> void:
 		[TROUGH_AT - Vector3(0, 0, 0.2), TROUGH_AT + Vector3(0, 0, 0.2), 0.4],
 		[WOODPILE_AT + Vector3(-0.55, 0, 0.1), WOODPILE_AT + Vector3(0.55, 0, 0.1), 0.35],
 		_round(ROD_AT, 0.15), _round(TENT_AT, 1.45),
-		[STONE_AT - Vector3(0.9, 0, 0), STONE_AT + Vector3(0.9, 0, 0), 0.25],
+		_round(STONE_AT, 0.55),
 		[t * Vector3(-0.9, 0, 0), t * Vector3(0.9, 0, 0), 0.9],
 	]
 	for i in SEATS.size():
@@ -1145,20 +1155,23 @@ void fragment() {
 	_hotspot("fish_tank", trough, "魚缸", TROUGH_AT + Vector3(0, 0.3, 0), 0.75, 0.012)
 
 
-## The 渡石: the stone the travellers cross by, its runes glowing faintly.
+## The 渡石: the stone the travellers cross by, its runes glowing faintly
+## (tools/build_camp_models.py ferry_stone()).
 func _stone() -> void:
-	var stone := _put("rune_stone", STONE_AT, 0.0, 1.0)
+	var stone := _put("ferry_stone", STONE_AT, STONE_YAW, 1.0)
 	stone.name = "Stone"
 	stone.scale = Vector3.ONE * STONE_SCALE
 	_stone_mat = stone.material_override as StandardMaterial3D
-	_stone_mat.albedo_color = Color(0.42, 0.44, 0.46)
 	_stone_mat.emission = Color(0.4, 0.8, 1.0)
+	# (the colour through the runes only - added, it lit the whole stone)
+	_stone_mat.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
 	_stone_light = OmniLight3D.new()
 	_stone_light.light_color = Color(0.45, 0.75, 1.0)
 	_stone_light.light_energy = 0.5
-	_stone_light.omni_range = 3.4
-	_stone_light.position = STONE_AT + Vector3(0, 0.9, 0.45)
+	_stone_light.omni_range = 2.6
+	_stone_light.position = STONE_AT + Vector3(sin(STONE_YAW), 0, cos(STONE_YAW)) * 0.8 + Vector3(0, 0.5, 0)
 	add_child(_stone_light)
+	_hotspot("journey", stone, "渡石", STONE_AT + Vector3(0, 0.8, 0), 0.75)
 
 
 ## The merchant's stall back by the water (the shop), a lamp at its corner;

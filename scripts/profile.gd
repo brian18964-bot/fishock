@@ -196,6 +196,8 @@ var quick_slots: Array = ["", "", ""]
 ## run escaped, or the merchant's tea and food (SNACKS).
 const SPIRIT_MAX := 100.0
 var spirit: float = SPIRIT_MAX
+## One of them bought (the character has it at the camp: CampLife.treat()).
+signal snack_had(key: String)
 const SNACKS := {
 	"tea": {"name": "熱茶", "cost": 15, "spirit": 20.0, "desc": "一杯熱騰騰的茶，暖手也暖心"},
 	# User request: the bread roll and the cheeses (the user's models).
@@ -419,6 +421,7 @@ func buy_snack(key: String) -> bool:
 	spirit = minf(spirit + float(d.spirit), SPIRIT_MAX)
 	gold_updated.emit(gold)
 	_changed()
+	snack_had.emit(key)
 	return true
 
 

@@ -30,7 +30,7 @@ import os
 import sys
 
 import bpy
-from mathutils import Matrix, Vector
+from mathutils import Matrix, Quaternion, Vector
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import owl_character  # noqa: E402
@@ -240,9 +240,10 @@ def sit_on_logs(arm, body, acts):
         ad.action = act
         for pb in [hips] + [bones[b + s] for b in ("thigh_", "calf_", "foot_") for s in "lr"]:
             pb.rotation_mode = "QUATERNION"
-        frames = sorted({int(round(kp.co.x)) for fc in act.fcurves for kp in fc.keyframe_points})
+        frames = _key_times(act)
+        _key_each(scene, [hips] + [bones[b + s] for b in ("thigh_", "calf_", "foot_") for s in "lr"], frames)
         for f in frames:
-            scene.frame_set(f)
+            _at(scene, f)
             down = max(0.0, min(1.0, (stand - (mw @ hips.head).z) / max(stand - sat_at.z, 1e-4)))
             feet = {s: (mw @ bones["foot_" + s].matrix).copy() for s in "lr"}
             knees = {s: mw @ bones["calf_" + s].head for s in "lr"}
@@ -269,7 +270,7 @@ def ground_on_body(arm, body, act):
     hips = arm.pose.bones["pelvis"]
     scene = bpy.context.scene
     s0, s1 = (int(round(f)) for f in act.frame_range)
-    frames = sorted({int(round(kp.co.x)) for fc in act.fcurves for kp in fc.keyframe_points})
+    frames = _key_times(act)
     # (not the tail: hanging down it'd hold the feet up off the ground)
     meshes = [o for o in body if o.type == "MESH"]
     skip = {}
@@ -277,9 +278,10 @@ def ground_on_body(arm, body, act):
         tails = {g.index for g in o.vertex_groups if g.name.startswith("tail")}
         skip[o.name] = {v.index for v in o.data.vertices
                         if sum(g.weight for g in v.groups if g.group in tails) > 0.3}
+    _key_each(scene, [hips], frames)
     lifts = {}
     for f in frames:
-        scene.frame_set(f)
+        _at(scene, f)
         dg = bpy.context.evaluated_depsgraph_get()
         low = 0.0
         for o in meshes:
@@ -289,8 +291,11 @@ def ground_on_body(arm, body, act):
             if zs:
                 low = min(low, min(zs)) if low != 0.0 else min(zs)
         lifts[f] = -low
+    name = clip_name(act, arm.name)
+    if name in SMOOTHED:
+        lifts = _smooth_lift(lifts, frames, loop=name.endswith("_Loop"))
     for f in frames:
-        scene.frame_set(f)
+        _at(scene, f)
         world = arm.matrix_world @ hips.matrix
         world.translation.z += lifts[f]
         hips.location = arm.convert_space(pose_bone=hips, matrix=world, from_space="WORLD", to_space="LOCAL").translation
@@ -301,6 +306,37 @@ def ground_on_body(arm, body, act):
     ad.action = None
 
 
+# How far either side the lift is smoothed (frames, at 30 a second), and
+# the clips it's smoothed in - on the ground, where what touches it goes
+# from a hand to an elbow to a hip (not the walk and the standing about:
+# their feet kept just on the ground frame by frame).
+LIFT_SPAN = 5
+SMOOTHED = ("Lie_Down", "Lying_Loop", "Sleep_B_Loop", "Ground_Sit_Loop", "Ground_Stand", "LayToIdle")
+
+
+def _smooth_lift(lifts, frames, loop=False):
+    """The lift frame by frame, smoothed (lying, the lowest point goes
+    from a hand to an elbow to a hip from one frame to the next, the body
+    lifted a little more or less with it). The most each frame needs over a
+    span either side, then averaged over the same span twice: smooth, and
+    never less than a frame needs (nothing goes into the ground)."""
+    n = len(frames)
+    v = [lifts[f] for f in frames]
+
+    def at(i):
+        return v[i % n] if loop else v[min(max(i, 0), n - 1)]
+
+    k = LIFT_SPAN * 2
+    top = [max(at(i + j) for j in range(-k, k + 1)) for i in range(n)]
+    for _ in range(2):
+        v = top  # (at() reads the latest)
+        top = [sum(at(i + j) for j in range(-LIFT_SPAN, LIFT_SPAN + 1)) / (2 * LIFT_SPAN + 1) for i in range(n)]
+    jump = max((abs(lifts[frames[i + 1]] - lifts[frames[i]]) for i in range(n - 1)), default=0.0)
+    after = max((abs(top[i + 1] - top[i]) for i in range(n - 1)), default=0.0)
+    print("lift smoothed: biggest step %.1f cm -> %.1f cm" % (jump * 100, after * 100))
+    return {f: top[i] for i, f in enumerate(frames)}
+
+
 def seat_on_log(arm, act, seat):
     """`act` keyed again with the hips and legs as `seat` has them (its
     first frame) and spine_01 turned so the body above keeps the way it
@@ -308,29 +344,74 @@ def seat_on_log(arm, act, seat):
     ad = arm.animation_data or arm.animation_data_create()
     bones = arm.pose.bones
     scene = bpy.context.scene
-    frames = sorted({int(round(kp.co.x)) for fc in act.fcurves for kp in fc.keyframe_points})
+    frames = _key_times(act)
     ad.action = act
     turn = {}
+    hips = {}
     for f in frames:
-        scene.frame_set(f)
+        _at(scene, f)
         turn[f] = bones["spine_01"].matrix.to_quaternion()
+        hips[f] = _hip_yaw(arm)
     ad.action = seat
     scene.frame_set(int(seat.frame_range[0]))
     legs = {b: bones[b].matrix_basis.copy() for b in LEGS if b in bones}
     ad.action = act
     for f in frames:
-        scene.frame_set(f)
+        _at(scene, f)
         for b, m in legs.items():
             bones[b].matrix_basis = m
             bones[b].keyframe_insert("location", frame=f)
             bones[b].keyframe_insert("rotation_quaternion", frame=f)
         bpy.context.view_layer.update()
+        # (User report: drinking on the log, the body above the hips was
+        # turned right round, the legs not - the clip's hips face another
+        # way than the seat's. So it keeps its turn from the hips up, turned
+        # as much as the hips were.)
+        spin = _hip_yaw(arm) - hips[f]
+        w = arm.matrix_world.to_quaternion()
+        up = Quaternion((0.0, 0.0, 1.0), spin)
         sp = bones["spine_01"]
         at = sp.matrix.to_translation()
-        sp.matrix = _placed(turn[f], at)
+        sp.matrix = _placed(w.inverted() @ up @ w @ turn[f], at)
         sp.keyframe_insert("rotation_quaternion", frame=f)
         sp.keyframe_insert("location", frame=f)
     ad.action = None
+
+
+def _key_times(act):
+    """The clip's key times, as they are (between whole frames too)."""
+    return sorted({round(kp.co.x, 4) for fc in act.fcurves for kp in fc.keyframe_points})
+
+
+def _key_each(scene, pbs, frames):
+    """`pbs` keyed at every one of `frames` as they are now - first, before
+    they're changed frame by frame (user report: lying down, sitting on the
+    ground and getting up, the character shook. Some clips' hips are keyed
+    every other frame, other bones every frame; changed a frame at a time,
+    a frame between two of the hips' keys was read with the key before it
+    already changed - half the lift already in, then the whole lift again:
+    every other frame centimetres higher, the body hopping up and down
+    fifteen times a second)."""
+    for f in frames:
+        _at(scene, f)
+        for pb in pbs:
+            pb.keyframe_insert("location", frame=f)
+            pb.keyframe_insert("rotation_quaternion", frame=f)
+
+
+def _at(scene, t):
+    """The scene at time `t` (frames, between whole frames too)."""
+    whole = math.floor(t)
+    scene.frame_set(int(whole), subframe=t - whole)
+
+
+def _hip_yaw(arm):
+    """Which way the hips face, about the world's up (radians): the line
+    from the right thigh to the left one, seen from above."""
+    m = arm.matrix_world
+    b = arm.pose.bones
+    d = m @ b["thigh_l"].head - m @ b["thigh_r"].head
+    return math.atan2(d.y, d.x)
 
 
 def _placed(q, at):
