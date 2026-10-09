@@ -25,6 +25,8 @@ var pretend_time := 0.0
 
 var _busy := {}
 var _manifest := {}
+## (a fetch that failed is tried once more before it's given up)
+var _tried := {}
 
 
 func _ready() -> void:
@@ -82,6 +84,10 @@ func fetch(id: String) -> void:
 	req.name = "Fetch_" + id
 	# (64 KB a frame by default: 2 MB/s at the camp's 30 frames a second)
 	req.download_chunk_size = 4 << 20
+	# (User report: every fetch failed on the site. GitHub Pages sends the
+	# packs gzipped; the browser has already unzipped them by the time
+	# they're here, so Godot unzipping them again fails.)
+	req.accept_gzip = false
 	add_child(req)
 	_busy[id] = req
 	req.request_completed.connect(func(result, code, _headers, body: PackedByteArray):
@@ -120,6 +126,11 @@ func _fetched(id: String, file: String, body: PackedByteArray) -> void:
 	_busy.erase(id)
 	if req is Node:
 		req.queue_free()
+	if body.is_empty() and not _tried.has(id):
+		_tried[id] = true
+		_refetch.call_deferred(id)
+		return
+	_tried.erase(id)
 	var ok := false
 	if body.is_empty():
 		push_warning("CharacterPacks: %s not fetched" % file)
@@ -130,14 +141,41 @@ func _fetched(id: String, file: String, body: PackedByteArray) -> void:
 			for f in dir.get_files():
 				if f.begins_with(id + "-") and f != file:
 					dir.remove(f)
-		var out := FileAccess.open(DIR + file, FileAccess.WRITE)
-		if out != null:
-			out.store_buffer(body)
-			out.close()
-			ok = _mount(DIR + file) and has(id)
+		ok = _keep(DIR + file, body) and has(id)
+		# (The browser won't keep it - a private window, no room: kept only
+		# till the page closes.)
+		if not ok:
+			ok = _keep("/tmp/" + file, body) and has(id)
 		if not ok:
 			push_warning("CharacterPacks: %s fetched but not kept (%s)" % [file, error_string(FileAccess.get_open_error())])
 	finished.emit(id, ok)
+
+
+## Once more - with the site's own list of them first (a game the browser
+## kept from before the site last changed asks for packs no longer there).
+func _refetch(id: String) -> void:
+	var req := HTTPRequest.new()
+	req.accept_gzip = false
+	add_child(req)
+	_busy[id] = true
+	if req.request(_base_url() + "packs/packs.json?t=%d" % Time.get_ticks_msec()) == OK:
+		var got: Array = await req.request_completed
+		if got[0] == HTTPRequest.RESULT_SUCCESS and got[1] == 200:
+			var data = JSON.parse_string((got[3] as PackedByteArray).get_string_from_utf8())
+			if data is Dictionary:
+				_manifest = data
+	req.queue_free()
+	_busy.erase(id)
+	fetch(id)
+
+
+func _keep(path: String, body: PackedByteArray) -> bool:
+	var out := FileAccess.open(path, FileAccess.WRITE)
+	if out == null:
+		return false
+	out.store_buffer(body)
+	out.close()
+	return _mount(path)
 
 
 ## (Its files only: the game's own copies of what the pack also carries -

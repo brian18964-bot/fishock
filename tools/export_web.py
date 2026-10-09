@@ -51,6 +51,9 @@ def main():
         print("pack", name, os.path.getsize(os.path.join(out, "packs", name)) // 1024, "KB")
     with open(MANIFEST, "w", encoding="utf-8") as fh:
         json.dump(listed, fh, indent=1)
+    # (and beside them, for a game kept in a browser from an earlier build)
+    with open(os.path.join(out, "packs", "packs.json"), "w", encoding="utf-8") as fh:
+        json.dump(listed, fh, indent=1)
     try:
         subprocess.run([godot, "--headless", "--path", ROOT, "--export-release", "Web",
                         os.path.join(out, "index.html")], check=True)
