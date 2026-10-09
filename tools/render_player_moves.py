@@ -19,6 +19,9 @@ character):
   kneel     Kneeling.Down     down on a knee at the 渡石 (held at its end)
   sad_idle  Sad.Idle          worn out, standing (a loop)
   sad_walk  Sad.Walk          worn out, walking (a loop)
+  walk      Walking           walking (a loop - user request: slowed down
+                              by the stick it walked, not a slowed-down
+                              run; the Locomotion Pack's)
 
 FRAMES frames a clip, five facings - down, down-left, left, up-left, up;
 the game draws the other three mirrored (memory on phones: this is a third
@@ -69,7 +72,8 @@ CLIPS = [("drink", "Drinking.fbx", (62, 172), "once", True),
          ("pray", "Praying.fbx", None, "loop", True),
          ("kneel", "Kneeling.Down.fbx", (15, 70), "once", False),
          ("sad_idle", "Sad.Idle.fbx", None, "loop", True),
-         ("sad_walk", "Sad.Walk.fbx", None, "loop", False)]
+         ("sad_walk", "Sad.Walk.fbx", None, "loop", False),
+         ("walk", "Walking.fbx", None, "loop", False)]
 NAMES = [c[0] for c in CLIPS]
 DIRS = ["down", "down_left", "left", "up_left", "up"]
 MAX_H = 8192
@@ -121,6 +125,8 @@ def main():
     args = p.parse_args()
     arm, meshes, clips = load()
     back_grip, back_tip = rp.back_rod_local(arm)
+    # (PlayerVisual.WALK_PACE: the walk's own pace at the run's frame rate)
+    print("walk pace %.1f px/s at 10.9 frames/s" % rp.run_pace(arm, clips["walk"]), flush=True)
     yaw = rs.Yaw(0.0)
     cells = [(name, d, f) for name in NAMES for d in DIRS for f in range(1, rp.FRAMES + 1)]
     mw = arm.matrix_world
