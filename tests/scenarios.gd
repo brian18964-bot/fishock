@@ -3691,11 +3691,25 @@ func test_run_3d() -> void:
 			waters += 1
 	check(waters == main.get_tree().get_nodes_in_group("water_zones").size(), "a surface for every pond")
 	check(view._trees.size() == main.get_tree().get_nodes_in_group("trees").size(), "the map's trees, each a pine")
-	var critters := 0
+	# User request: the animals, the ghosts, the willow as 3D models now
+	# (tools/build_run3d_models.py), not their pictures stood up.
+	var modelled := 0
+	var pictured := 0
+	for n in view._creatures:
+		if n is Critter:
+			modelled += 1
 	for n in view._sprites:
 		if n.get_parent() is Critter:
-			critters += 1
-	check(critters > 0, "its animals stood up as their pictures (%d)" % critters)
+			pictured += 1
+	check(modelled > 0 and pictured == 0, "its animals as 3D models (%d), none as pictures (%d)" % [modelled, pictured])
+	var ghoul: Node = main.get_node("BigGhost")
+	check(view._creatures.has(ghoul) and view._creatures.has(main.get_node("Willow")), "the big ghost and the willow as models")
+	ghoul.mode = BigGhost.Mode.CHASE
+	await frames(3)
+	check(view._creatures[ghoul].clip == "Chase", "the big ghost hunting: its chase clip (%s)" % view._creatures[ghoul].clip)
+	ghoul.mode = BigGhost.Mode.ASLEEP
+	var altar_visual: Node = main.get_node("Altar/Visual")
+	check(view._replaced.has(altar_visual), "the altar as its model")
 	# The screen's buttons over what they're for: the 3D camera's view.
 	var feet: Vector2 = player().global_position + Player.FEET
 	var at := RunView3D.screen_point(main.get_viewport(), feet)

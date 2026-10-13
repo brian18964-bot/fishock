@@ -258,6 +258,7 @@ func _build() -> void:
 	var t1 := Time.get_ticks_msec()
 	_trees_and_rocks()
 	_start_camp()
+	_landmarks()
 	_cover()
 	var t2 := Time.get_ticks_msec()
 	_character()
@@ -572,6 +573,49 @@ func _start_camp() -> void:
 			_replaced[n] = true
 
 
+## The altar and the rune stones of the way out (the escape point) as
+## their models (tools/build_run3d_models.py); the stones' runes glow
+## as the 2D ones do once the offering's made.
+func _landmarks() -> void:
+	for spec in [["Altar", "altar", 2.3], ["EscapePoint", "runes", 2.4]]:
+		var at := main.get_node_or_null(spec[0]) as Node2D
+		var path: String = CREATURE_DIR + spec[1] + ".glb"
+		if at == null or not ResourceLoader.exists(path):
+			continue
+		var model: Node3D = (load(path) as PackedScene).instantiate()
+		add_child(model)
+		var box := _aabb(model)
+		var k: float = float(spec[2]) / maxf(maxf(box.size.x, box.size.z), 0.001)
+		model.scale = Vector3.ONE * k
+		model.position = to3(at.global_position, LAND_Y) - Vector3(box.get_center().x, box.position.y, box.get_center().z) * k
+		_weather(model, spec[1])
+		for mi in model.find_children("*", "MeshInstance3D", true, false):
+			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		var visual := at.get_node_or_null("Visual")
+		if visual != null:
+			_replaced[visual] = true
+		if spec[1] == "runes":
+			var glow := at.get_node_or_null("Glow")
+			if glow != null:
+				_replaced[glow] = true
+				_rune_glow = [glow, model]
+
+
+func _sync_runes() -> void:
+	if _rune_glow.is_empty() or not is_instance_valid(_rune_glow[0]):
+		return
+	var glow: CanvasItem = _rune_glow[0]
+	var lit := glow.modulate.a * glow.self_modulate.a if _shown(glow) else 0.0
+	for mi in (_rune_glow[1] as Node3D).find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		for i in m.get_surface_override_material_count():
+			var mat := m.get_surface_override_material(i) as StandardMaterial3D
+			if mat != null:
+				mat.emission_enabled = lit > 0.01
+				mat.emission = Color(0.35, 0.85, 1.0)
+				mat.emission_energy_multiplier = lit * 1.6
+
+
 ## Grass, ferns, mushrooms, reeds and lily pads where the map's ground
 ## cover is (by its picture).
 func _cover() -> void:
@@ -787,12 +831,265 @@ func _scan(n: Node) -> void:
 		return
 	if n == player or n.name in ["Bobber", "Line", "GroundBackground", "Darkness"] and n.get_parent() == main:
 		return
-	if (n is Sprite2D or n is AnimatedSprite2D) and not _replaced.has(n):
+	if _creature_kind(n) != "":
+		_add_creature(n)
+	if (n is Sprite2D or n is AnimatedSprite2D) and not _replaced.has(n) and not _modelled(n):
 		_stand_up(n)
 	elif n is PointLight2D:
 		_add_light(n)
 	for c in n.get_children():
 		_scan(c)
+
+
+# ---------------------------------------------------------------- the creatures
+
+## User request: the animals, the ghosts and the willow were the 2D
+## pictures stood up - 3D models now (tools/build_run3d_models.py), each
+## moving and turning as its 2D one does, its clip by how fast it goes
+## (or what it's doing). kind: [size (m), sized by its height ("h") or its
+## length ("l"), raised off the ground (m)]. The small ones are made a
+## little larger than life, as the 2D pictures made them, to be seen.
+const CREATURES := {
+	"deer": [1.5, "h", 0.0], "stag": [1.8, "h", 0.0], "fox": [0.62, "h", 0.0], "wolf": [0.9, "h", 0.0],
+	"husky": [0.8, "h", 0.0], "shiba": [0.62, "h", 0.0], "horse": [1.9, "h", 0.0], "white_horse": [1.9, "h", 0.0],
+	"cow": [1.5, "h", 0.0], "bull": [1.6, "h", 0.0], "donkey": [1.35, "h", 0.0], "alpaca": [1.6, "h", 0.0],
+	"rat": [0.8, "l", 0.0], "frog": [0.5, "l", 0.0], "snake": [1.3, "l", 0.0], "spider": [0.65, "l", 0.0],
+	"black_spider": [0.6, "l", 0.0], "wasp": [0.45, "l", 0.55], "grasshopper": [0.45, "l", 0.0],
+	"ghost": [1.1, "h", 0.9], "big_ghost": [2.3, "h", 0.0], "water_ghost": [1.6, "h", 0.0], "willow": [1.2, "h", 0.0],
+}
+const CREATURE_DIR := "res://assets/models/run3d/"
+const BY_SCRIPT := {"ghost.gd": "ghost", "big_ghost.gd": "big_ghost", "water_ghost.gd": "water_ghost", "willow.gd": "willow"}
+## node -> {node: Node3D (the holder), model, anim, clip, yaw, last (2D pos)}
+var _creatures := {}
+var _rune_glow: Array = []
+
+
+## What 3D model `n` (a node of the 2D world) is shown as ("": none).
+func _creature_kind(n: Node) -> String:
+	var kind := ""
+	if n is Critter:
+		kind = (n as Critter).species
+	else:
+		kind = BY_SCRIPT.get(_script_name(n), "")
+	if kind == "" or not CREATURES.has(kind) or not ResourceLoader.exists(CREATURE_DIR + kind + ".glb"):
+		return ""
+	return kind
+
+
+## Under something shown as a model (its own pictures not stood up; its
+## glows - added on - still are).
+func _modelled(n: Node) -> bool:
+	var cm := (n as CanvasItem).material as CanvasItemMaterial if n is CanvasItem else null
+	if cm != null and cm.blend_mode == CanvasItemMaterial.BLEND_MODE_ADD:
+		return false
+	var p := n.get_parent()
+	while p != null and p != main:
+		if _creatures.has(p):
+			return true
+		p = p.get_parent()
+	return false
+
+
+func _add_creature(n: Node) -> void:
+	if _creatures.has(n):
+		return
+	var kind := _creature_kind(n)
+	var holder := Node3D.new()
+	holder.name = "Creature_" + kind
+	add_child(holder)
+	var model: Node3D = (load(CREATURE_DIR + kind + ".glb") as PackedScene).instantiate()
+	holder.add_child(model)
+	var box := _aabb(model)
+	var spec: Array = CREATURES[kind]
+	var along := box.size.y if spec[1] == "h" else maxf(box.size.x, box.size.z)
+	var k := float(spec[0]) / maxf(along, 0.001)
+	model.scale = Vector3.ONE * k
+	model.position = Vector3(-(box.position.x + box.size.x * 0.5) * k, -box.position.y * k + float(spec[2]),
+		-(box.position.z + box.size.z * 0.5) * k)
+	var small: bool = float(spec[0]) < 1.0 and spec[1] == "l"
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if small or _low \
+			else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	_weather(model, kind)
+	var anim: AnimationPlayer = null
+	var aps := model.find_children("*", "AnimationPlayer", true, false)
+	if not aps.is_empty():
+		anim = aps[0]
+		for a in anim.get_animation_list():
+			if a != "Claw" and a != "Eat" and a != "Attack":
+				anim.get_animation(a).loop_mode = Animation.LOOP_LINEAR
+	var at := (n as Node2D).global_position
+	_creatures[n] = {"node": holder, "model": model, "anim": anim, "clip": "", "kind": kind, "yaw": 0.0,
+		"last": at, "size": float(spec[0]), "lift": float(spec[2]), "time": _rng.randf() * 10.0}
+
+
+func _aabb(n: Node3D) -> AABB:
+	var box := AABB()
+	var first := true
+	for mi in n.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		var b := m.get_aabb()
+		var sk := m.get_node_or_null(m.skeleton) as Skeleton3D if m.skeleton != NodePath("") else null
+		if sk != null and m.skin != null and m.skin.get_bind_count() > 1:
+			# (a skinned mesh is drawn where its bones put it: its own space
+			# mapped by how the bones' bind places (in it) sit in the model)
+			b = _skinned_box(n, m, sk, b)
+		else:
+			b = m.transform * b
+			var p := m.get_parent()
+			while p != null and p != n and p is Node3D:
+				b = (p as Node3D).transform * b
+				p = p.get_parent()
+		box = b if first else box.merge(b)
+		first = false
+	return box
+
+
+func _skinned_box(n: Node3D, m: MeshInstance3D, sk: Skeleton3D, b: AABB) -> AABB:
+	# Where its vertices are drawn at rest, each by the bone weighing on it
+	# most (every few: enough for the box).
+	var to_model := n.global_transform.affine_inverse() * sk.global_transform
+	var binds := []
+	for i in m.skin.get_bind_count():
+		var bone := m.skin.get_bind_bone(i)
+		if bone < 0:
+			bone = sk.find_bone(m.skin.get_bind_name(i))
+		binds.append(to_model * sk.get_bone_global_rest(maxi(bone, 0)) * m.skin.get_bind_pose(i))
+	var lo := Vector3.INF
+	var hi := -Vector3.INF
+	for s in m.mesh.get_surface_count():
+		var arr := m.mesh.surface_get_arrays(s)
+		var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var bones = arr[Mesh.ARRAY_BONES]
+		var weights = arr[Mesh.ARRAY_WEIGHTS]
+		if bones == null or weights == null or verts.is_empty():
+			continue
+		var per: int = bones.size() / verts.size()
+		for v in range(0, verts.size(), 3):
+			var best := 0
+			for k in per:
+				if weights[v * per + k] > weights[v * per + best]:
+					best = k
+			var bi: int = int(bones[v * per + best])
+			if bi < 0 or bi >= binds.size():
+				continue
+			var p: Vector3 = (binds[bi] as Transform3D) * verts[v]
+			lo = lo.min(p)
+			hi = hi.max(p)
+	if lo == Vector3.INF:
+		return b
+	return AABB(lo, hi - lo)
+
+
+## The ghosts and the willow came without pictures (their paint was
+## Blender's own): weathered here - their colours under a mottled grime -
+## and the ghosts a little see-through and lit from within.
+func _weather(model: Node3D, kind: String) -> void:
+	if not kind in ["ghost", "big_ghost", "water_ghost", "willow", "altar", "runes"]:
+		return
+	var noise := FastNoiseLite.new()
+	noise.frequency = 0.08
+	noise.fractal_octaves = 3
+	var tex := NoiseTexture2D.new()
+	tex.seamless = true
+	tex.width = 128
+	tex.height = 128
+	tex.noise = noise
+	var ramp := Gradient.new()
+	ramp.colors = PackedColorArray([Color(0.45, 0.45, 0.45), Color(1, 1, 1)])
+	tex.color_ramp = ramp
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		for i in m.mesh.get_surface_count():
+			var src := m.mesh.surface_get_material(i) as BaseMaterial3D
+			var mat := StandardMaterial3D.new()
+			mat.albedo_color = src.albedo_color if src != null else Color(0.5, 0.5, 0.5)
+			if src != null and src.albedo_texture != null:
+				mat.albedo_texture = src.albedo_texture
+			else:
+				mat.albedo_texture = tex
+				mat.uv1_triplanar = true
+				mat.uv1_scale = Vector3.ONE * 0.6
+			mat.roughness = 0.85
+			if kind in ["ghost", "big_ghost"]:
+				mat.emission_enabled = true
+				mat.emission = mat.albedo_color * 0.6 + Color(0.05, 0.12, 0.08)
+				mat.emission_energy_multiplier = 0.5
+				mat.rim_enabled = true
+				mat.rim = 0.6
+			m.set_surface_override_material(i, mat)
+
+
+func _sync_creatures(delta: float) -> void:
+	for n in _creatures.keys():
+		var c: Dictionary = _creatures[n]
+		var holder: Node3D = c.node
+		if not is_instance_valid(n):
+			holder.queue_free()
+			_creatures.erase(n)
+			continue
+		var node := n as Node2D
+		var on := _shown(node)
+		if n is Critter and not (n as Critter).active:
+			on = false
+		holder.visible = on
+		if not on:
+			continue
+		c.time += delta
+		var at := node.global_position
+		var vel := (at - (c.last as Vector2)) / maxf(delta, 0.001)
+		if n is CharacterBody2D:
+			vel = (n as CharacterBody2D).velocity
+		c.last = at
+		var y := ground_y(at)
+		var kind: String = c.kind
+		var lift := 0.0
+		match kind:
+			"ghost":
+				lift = 0.15 * sin(c.time * 2.2)
+				holder.rotation.z = 0.08 * sin(c.time * 1.3)
+			"wasp":
+				lift = 0.06 * sin(c.time * 6.0)
+			"water_ghost":
+				# Sunk in the water as the 2D one is (its picture lowered).
+				var v: Node2D = n.get("_visual")
+				if v != null:
+					lift = -v.position.y / PX
+		holder.position = to3(at, y + lift)
+		var speed := vel.length() / PX
+		if speed > 0.08:
+			var want := atan2(vel.x, vel.y)
+			c.yaw = lerp_angle(float(c.yaw), want, minf(1.0, delta * 8.0))
+		elif kind in ["water_ghost", "big_ghost"] and player != null:
+			# (stood still: facing the traveller)
+			var to := player.global_position - at
+			if to.length() > 1.0:
+				c.yaw = lerp_angle(float(c.yaw), atan2(to.x, to.y), minf(1.0, delta * 4.0))
+		holder.rotation.y = c.yaw
+		var anim: AnimationPlayer = c.anim
+		if anim == null:
+			continue
+		var clip := "Idle"
+		var rate := 1.0
+		var size: float = c.size
+		match kind:
+			"big_ghost":
+				var mode: int = n.get("mode")
+				clip = "Chase" if mode in [BigGhost.Mode.CHASE, BigGhost.Mode.SEARCH, BigGhost.Mode.GRAB] else \
+					("Eat" if mode == BigGhost.Mode.EAT else "Float")
+			"water_ghost":
+				clip = "Claw" if int(n.get("_phase")) == 2 else "Walk"
+			_:
+				if speed > 0.08:
+					var run := speed > size * 2.2 and anim.has_animation("Run")
+					clip = "Run" if run else "Walk"
+					rate = clampf(speed / (size * (2.6 if run else 0.9)), 0.5, 2.5)
+		if not anim.has_animation(clip):
+			clip = "Idle" if anim.has_animation("Idle") else anim.get_animation_list()[0]
+		if clip != c.clip:
+			c.clip = clip
+			anim.play(clip, 0.25)
+		anim.speed_scale = rate
 
 
 ## Whether a new node is one to show (not under something modelled, a
@@ -806,8 +1103,10 @@ func _wanted(n: Node) -> bool:
 			return false
 		if p.get_parent() == main and p.name in ["Bobber", "Line", "GroundBackground"]:
 			return false
+		if _creature_kind(p) != "":
+			_add_creature(p)
 		p = p.get_parent()
-	return true
+	return not _replaced.has(n) and not _modelled(n)
 
 
 func _stand_up(n: Node2D) -> void:
@@ -1508,6 +1807,8 @@ func _process(delta: float) -> void:
 			_lights.erase(l)
 			continue
 		_sync_light(l, _lights[l])
+	_sync_creatures(delta)
+	_sync_runes()
 	for n in _flip_rocks:
 		if is_instance_valid(n):
 			var roller = n.get("_roller")
