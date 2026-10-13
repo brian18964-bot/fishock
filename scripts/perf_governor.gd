@@ -33,6 +33,12 @@ const STALL := 0.25
 
 const CALM_FPS := 30
 const CALM_AFTER := 0.6
+## User request (3D; a phone game - heat): a phone that can't hold SLOW_FPS
+## even at MIN_CAP runs flat out for 35-45 frames, hot and uneven; it's
+## held to a steady STRAINED_FPS instead (cooler, and even frames read
+## smoother than ragged ones).
+const STRAINED_FPS := 30
+var strained := false
 
 var cap := START_CAP
 var _touches := {}
@@ -78,6 +84,8 @@ func _process(delta: float) -> void:
 		cap = maxf(cap - STEP, MIN_CAP)
 		_apply()
 		_settle = SETTLE
+	elif fps < SLOW_FPS and Engine.max_fps == 0:
+		strained = true
 
 
 func _apply() -> void:
@@ -94,7 +102,7 @@ func _pace(delta: float) -> void:
 		_calm += delta
 	else:
 		_calm = 0.0
-	Engine.max_fps = CALM_FPS if _calm >= CALM_AFTER else 0
+	Engine.max_fps = CALM_FPS if _calm >= CALM_AFTER else (STRAINED_FPS if strained else 0)
 
 
 ## Nothing going on that needs every frame.

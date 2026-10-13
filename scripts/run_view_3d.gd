@@ -308,6 +308,7 @@ func _build() -> void:
 	_character()
 	_line_and_float()
 	_fireflies()
+	_rest_2d_only(main)
 	for n in main.get_children():
 		_scan(n)
 	print_verbose("RunView3D: land %d ms, props %d ms, the rest %d ms" % [t1 - t0, t2 - t1, Time.get_ticks_msec() - t2])
@@ -903,10 +904,31 @@ static func _script_name(n: Node) -> String:
 # ---------------------------------------------------------------- the rest
 
 func _on_node_added(n: Node) -> void:
+	if REST_2D.has(_script_name(n)):
+		_rest_2d_only.call_deferred(n)
 	if n is SplashFx:
 		_splash.call_deferred(n)
 	elif n is Sprite2D or n is AnimatedSprite2D or n is PointLight2D:
 		_pending.append(n)
+
+
+## User request (a phone game - heat): what only the hidden 2D world draws -
+## its light twins, silhouette shadows, the body's front layer, its rain
+## and fireflies (CPU particles) - stops working away unseen; the 3D view
+## has its own.
+const REST_2D := ["light_twin.gd", "silhouette_shadow.gd", "body_front.gd", "weather_fx.gd"]
+
+
+func _rest_2d_only(from: Node) -> void:
+	if not is_instance_valid(from):
+		return
+	var all := [from]
+	all.append_array(from.find_children("*", "", true, false))
+	for n in all:
+		if REST_2D.has(_script_name(n)):
+			n.process_mode = Node.PROCESS_MODE_DISABLED
+			if n is CanvasItem:
+				(n as CanvasItem).visible = false
 
 
 ## A splash (SplashFx) in 3D: droplets thrown up and a ring on the water;
