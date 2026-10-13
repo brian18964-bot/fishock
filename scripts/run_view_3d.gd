@@ -55,6 +55,14 @@ const TURN_RATE := 14.0
 const FADE_NEAR := 5.5
 const FADE_FAR := 8.6
 const MOON_DIR := Vector3(0.35, 0.55, -1.0)
+## User request (phones were slow): how much there is to draw. Scattered
+## things in CHUNK m squares (each drawn only on screen), plants none past
+## COVER_REACH m; the pines round the edge; the extra grass.
+const CHUNK := 12.0
+const LOW_SCALE := 0.7
+const COVER_REACH := 34.0
+const BORDER_TREES := 260
+const EXTRA_GRASS := 1300
 ## The rod while fishing, as in the 2D pictures (tools/render_player.py
 ## ROD_ANGLES): per frame of the clip, degrees up from pointing straight
 ## ahead (90 straight up, 180 straight back), ROD_SIDE out to the side of
@@ -71,11 +79,21 @@ const ROD_ANGLES := {
 	PlayerVisual.CLIP_CATCH: [56, 68, 78, 84, 82, 74, 60, 44],
 }
 const ROD_SIDE := 25.0
+## How fast the rod follows its angle (1/s), the arm comes in to hold it
+## (s), and how fully the arm's brought after it.
+const ROD_FOLLOW := 22.0
+const ROD_EASE_IN := 0.15
+const ARM_FOLLOW := 1.0
 ## The camera's room round the traveller and the float when it frames
 ## them both (m).
 const FRAME_ROOM := Vector2(3.6, 4.2)
 const FRAME_EASE := 3.0
 const MAX_DISTANCE := 30.0
+## Dodging the buttons (_dodge_buttons): how far toward the hidden thing
+## the view's aimed, how much further back, how fast.
+const DODGE_SHIFT := 0.45
+const DODGE_BACK := 0.25
+const DODGE_RATE := 1.6
 ## (scripts whose nodes are shown here by models of their own; the rest of
 ## the map's pictures are stood up as they are)
 const MODELLED := ["tree.gd", "bush.gd", "obstacle.gd", "ground_cover.gd", "dock.gd", "water_zone.gd",
@@ -88,6 +106,18 @@ const MODELLED := ["tree.gd", "bush.gd", "obstacle.gd", "ground_cover.gd", "dock
 static var wanted := false
 ## The one showing now.
 static var active: RunView3D
+## (tests: "low" or "high" in place of the device's own)
+static var quality := ""
+
+
+## User request (phones were slow): on a phone, lighter - one pass of the
+## moon's shadows, none from the lamp, no glow, the 3D drawn at
+## LOW_SCALE of the screen's resolution (the buttons stay sharp).
+static func low_end() -> bool:
+	if quality != "":
+		return quality == "low"
+	return OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios") \
+		or (OS.has_feature("web") and DisplayServer.is_touchscreen_available())
 
 var main: Node2D
 var player: Player
@@ -120,7 +150,20 @@ var _time := 0.0
 var _rng := RandomNumberGenerator.new()
 var _fade_mats: Array[StandardMaterial3D] = []
 var _models := {}
+var _low := false
+var _scaled := false
 var _dist := CAMERA_DISTANCE
+var _dodge := 0.0
+var _dodge_at := Vector3.ZERO
+var _blocked: Array = []
+var _ik: TwoBoneIK3D
+var _ik_target: Marker3D
+var _ik_pole: Marker3D
+var _arm_len := 0.5
+var _hand_bone := -1
+var _shoulder_bone := -1
+var _rod_up := 0.3
+var _rod_on := 0.0
 ## 2D pictures shown by models here instead (the start camp's).
 var _replaced := {}
 
@@ -196,6 +239,8 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	if active == self:
 		active = null
+	if _scaled:
+		get_viewport().scaling_3d_scale = 1.0
 
 
 func _build() -> void:
@@ -464,7 +509,7 @@ func _trees_and_rocks() -> void:
 		_trees.append([tree, mi])
 	# The edge: thick with them, out past where the map ends.
 	var rect := _map_rect()
-	for k in 420:
+	for k in BORDER_TREES:
 		var p := Vector2(_rng.randf_range(rect.position.x - MARGIN * PX, rect.end.x + MARGIN * PX),
 			_rng.randf_range(rect.position.y - MARGIN * PX, rect.end.y + MARGIN * PX))
 		var inside := rect.grow(-30.0).has_point(p)
@@ -474,17 +519,12 @@ func _trees_and_rocks() -> void:
 			maxf(maxf(rect.position.y - p.y, p.y - rect.end.y), 0.0)).length() / PX
 		spots[pines[k % 3]].append(to3(p, LAND_Y + 1.4 * smoothstep(0.0, MARGIN, out)))
 	for kind in pines:
-		var mm := MultiMesh.new()
-		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.mesh = meshes[kind]
-		mm.instance_count = spots[kind].size()
-		for i in spots[kind].size():
-			var s := _rng.randf_range(0.6, 1.05)
-			mm.set_instance_transform(i, Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(s, s, s)), spots[kind][i]))
-		var mmi := MultiMeshInstance3D.new()
-		mmi.multimesh = mm
-		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-		add_child(mmi)
+		var xfs := []
+		for at in spots[kind]:
+			var s := _rng.randf_range(0.75, 1.15)
+			xfs.append(Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(s, s, s)), at))
+		# (out past the edge: no shadows - the moon's are only near anyway)
+		_scatter(meshes[kind], xfs, false)
 	for n in main.get_children():
 		var path := _script_name(n)
 		if path == "obstacle.gd":
@@ -536,10 +576,11 @@ func _start_camp() -> void:
 ## cover is (by its picture).
 func _cover() -> void:
 	# kind: [model, size, sized by its width]
-	var kinds := {"grass": ["grass_wispy", 0.45, false], "tall": ["tall_grass", 0.65, false],
-		"clover": ["grass_wispy", 0.3, false], "plant": ["fern", 0.8, true], "shrub": ["fern", 0.65, true],
-		"mushroom": ["mushroom", 0.22, false], "reeds": ["tall_grass", 1.0, false],
-		"pebble": ["rock_path_round_wide", 0.28, true], "stone": ["rock_path_1", 0.55, true]}
+	# ("#card": the grass card, _grass_card)
+	var kinds := {"grass": ["#card", 0.45, false], "tall": ["#card", 0.65, false],
+		"clover": ["#card", 0.3, false], "plant": ["fern", 0.8, true], "shrub": ["fern", 0.65, true],
+		"mushroom": ["mushroom", 0.22, false], "reeds": ["#card", 0.95, false],
+		"pebble": ["rock_medium", 0.25, true], "stone": ["rock_path_1", 0.55, true]}
 	var at := {}
 	for n in main.get_children():
 		if _script_name(n) != "ground_cover.gd":
@@ -573,45 +614,81 @@ func _cover() -> void:
 		at.get_or_add(kind, []).append(s.global_position)
 	for kind in at:
 		var spec: Array = kinds[kind]
-		var mesh := _model_mesh(spec[0], spec[2])
+		var mesh := [_grass_card(), 1.0] if spec[0] == "#card" else _model_mesh(spec[0], spec[2])
 		if mesh.is_empty():
 			continue
 		var list: Array = at[kind]
+		var xfs := []
+		for p in list:
+			var s: float = float(spec[1]) / maxf(mesh[1], 0.01) * _rng.randf_range(0.75, 1.25)
+			xfs.append(Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(s, s, s)),
+				to3(p, maxf(_height_at(_depth(p, _zones())), WATER_Y))))
+		_scatter(mesh[0], xfs, false, COVER_REACH)
+	# Plenty more grass than the 2D map's: the 3D ground's bare without.
+	var card := _grass_card()
+	var rect := _map_rect()
+	var zones := _zones()
+	var xfs := []
+	for k in EXTRA_GRASS:
+		var p := Vector2(_rng.randf_range(rect.position.x, rect.end.x), _rng.randf_range(rect.position.y, rect.end.y))
+		if _depth(p, zones) > -14.0 or _on_walk(p):
+			continue
+		var s := _rng.randf_range(0.3, 0.5)
+		xfs.append(Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(s * 1.3, s, s * 1.3)), to3(p, LAND_Y)))
+	_scatter(card, xfs, false, COVER_REACH)
+
+
+## User request (phones were slow): grass as two crossed cards with a tuft
+## drawn on them - 4 triangles a tuft, not the model's 600. Lit as the
+## ground is (their normals straight up), so they sit in it.
+func _grass_card() -> Mesh:
+	if _models.has("#card"):
+		return _models["#card"]
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_normal(Vector3.UP)
+	for a in [0.0, PI * 0.5]:
+		var d := Vector3(cos(a), 0, sin(a)) * 0.5
+		var quad := [[-d, Vector2(0, 1)], [d, Vector2(1, 1)], [d + Vector3.UP, Vector2(1, 0)], [-d + Vector3.UP, Vector2(0, 0)]]
+		for k in [0, 1, 2, 0, 2, 3]:
+			st.set_uv(quad[k][1])
+			st.add_vertex(quad[k][0])
+	var m := st.commit()
+	var mat := StandardMaterial3D.new()
+	mat.albedo_texture = load("res://assets/models/run3d/grass_card.png")
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	mat.alpha_scissor_threshold = 0.4
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.roughness = 1.0
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	m.surface_set_material(0, mat)
+	_models["#card"] = m
+	return m
+
+
+## Many of one mesh, in square chunks of the map (CHUNK m) - each its own
+## MultiMesh, so the ones off screen aren't drawn - and none past `reach`
+## (m) from the camera (0: always).
+func _scatter(mesh: Mesh, xfs: Array, shadow: bool, reach := 0.0) -> void:
+	if mesh == null or xfs.is_empty():
+		return
+	var cells := {}
+	for xf in xfs:
+		var o: Vector3 = (xf as Transform3D).origin
+		cells.get_or_add(Vector2i(floori(o.x / CHUNK), floori(o.z / CHUNK)), []).append(xf)
+	for c in cells:
+		var list: Array = cells[c]
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.mesh = mesh[0]
+		mm.mesh = mesh
 		mm.instance_count = list.size()
 		for i in list.size():
-			var s: float = float(spec[1]) / maxf(mesh[1], 0.01) * _rng.randf_range(0.75, 1.25)
-			var p: Vector2 = list[i]
-			mm.set_instance_transform(i, Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(s, s, s)),
-				to3(p, maxf(_height_at(_depth(p, _zones())), WATER_Y))))
+			mm.set_instance_transform(i, list[i])
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
-		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		add_child(mmi)
-	# Plenty more grass than the 2D map's: the 3D ground's bare without.
-	var grass := _model_mesh("grass_wispy")
-	if not grass.is_empty():
-		var rect := _map_rect()
-		var spots := []
-		var zones := _zones()
-		for k in 1400:
-			var p := Vector2(_rng.randf_range(rect.position.x, rect.end.x), _rng.randf_range(rect.position.y, rect.end.y))
-			if _depth(p, zones) > -14.0 or _on_walk(p):
-				continue
-			spots.append(p)
-		var mm := MultiMesh.new()
-		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.mesh = grass[0]
-		mm.instance_count = spots.size()
-		for i in spots.size():
-			var s: float = 0.35 / maxf(grass[1], 0.01) * _rng.randf_range(0.7, 1.3)
-			mm.set_instance_transform(i, Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(s, s, s)),
-				to3(spots[i], LAND_Y)))
-		var mmi := MultiMeshInstance3D.new()
-		mmi.multimesh = mm
-		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadow else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		if reach > 0.0:
+			mmi.visibility_range_end = reach
 		add_child(mmi)
 
 
@@ -880,11 +957,38 @@ func _character() -> void:
 	rig = CharacterRig.new()
 	rig.auto_idle = false
 	pivot.add_child(rig)
+	_arm_ik()
+	if _low:
+		# (on a phone the character's 77 000 triangles aren't drawn a second
+		# time into the moon's shadow: a soft dark patch under it instead)
+		for mi in rig.find_children("*", "MeshInstance3D", true, false):
+			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var blob := MeshInstance3D.new()
+		var q := QuadMesh.new()
+		q.size = Vector2(0.9, 0.9)
+		q.orientation = PlaneMesh.FACE_Y
+		blob.mesh = q
+		var bm := StandardMaterial3D.new()
+		bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		bm.albedo_color = Color(0, 0, 0, 0.55)
+		var g := GradientTexture2D.new()
+		g.fill = GradientTexture2D.FILL_RADIAL
+		g.fill_from = Vector2(0.5, 0.5)
+		g.fill_to = Vector2(1.0, 0.5)
+		var grad := Gradient.new()
+		grad.colors = PackedColorArray([Color(1, 1, 1, 1), Color(1, 1, 1, 0)])
+		g.gradient = grad
+		bm.albedo_texture = g
+		blob.material_override = bm
+		blob.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		blob.position = Vector3(0, 0.03, 0)
+		pivot.add_child(blob)
 	_lamp = OmniLight3D.new()
 	_lamp.light_color = Color(1.0, 0.72, 0.4)
 	_lamp.omni_attenuation = 1.2
 	_lamp.light_specular = 0.3
-	_lamp.shadow_enabled = true
+	_lamp.shadow_enabled = not _low
 	add_child(_lamp)
 	_drum = CampModel.make("drum")
 	if _drum != null:
@@ -920,8 +1024,9 @@ func _place_traveller(delta: float) -> void:
 func _pick_clip() -> Array:
 	var v := _visual
 	var speed := player.velocity.length() / PX
+	# (in the ghost's grip: flailing - Sad_B, first used here, hardly moved)
 	if v.struggling:
-		return ["Sad_B", 1.6, -1.0]
+		return ["Disappointed", 1.8, -1.0]
 	if v.acting >= 0:
 		var t := float(v.frame_in_clip) / PlayerVisual.FRAMES
 		return ["PickUp_Table" if player.swing_kind == "scoop" else "Interact", 1.0, t]
@@ -934,10 +1039,10 @@ func _pick_clip() -> Array:
 			"sad_idle":
 				return ["Sad", 1.0, -1.0]
 			"dizzy":
-				return ["Sad_B", 0.7, -1.0]
+				return ["Sad", 0.6, -1.0]
 		var timed := {"drink": "Drink", "look": "Look_Around", "eye": "Peek", "pick": "PickUp_Table",
 			"lift": "Chest_Open", "throw": "Interact", "cheer": "Victory", "fist": "Fist_Pump", "sad": "Disappointed",
-			"scared": "Idle_No", "pray": "Fixing_Kneeling", "kneel": "Crouch_Idle"}
+			"scared": "Peek", "pray": "Fixing_Kneeling", "kneel": "Crouch_Idle"}
 		var t: float = 1.0 - player.move_left / maxf(player.move_time, 0.01) if player.move_left > 0.0 else -1.0
 		return [timed.get(v.move, "Idle"), 1.0, clampf(t, 0.0, 1.0) if t >= 0.0 else -1.0]
 	match v.clip:
@@ -991,29 +1096,101 @@ func _animate() -> void:
 		anim.speed_scale = float(pick[1])
 
 
-## The rod pointed as the 2D one is while fishing (ROD_ANGLES), out
-## toward where it's fishing; otherwise as the hand holds it.
-func _aim_rod() -> void:
+## User report: casting, the arm didn't move - the rod swung on its own.
+## The fishing clips (KayKit's) keep the rod hand almost still (the
+## rod's own bones did the work there), so while fishing the rod is
+## pointed as the 2D pictures point it (ROD_ANGLES) and the right arm is
+## brought after it (a two-bone IK on it, RodArm): low and forward
+## holding, raised for the strike and the fight, up over the shoulder in
+## the cast's backswing and down through the whip. The rod is held at the
+## hand's grip, wherever the arm has it.
+func _arm_ik() -> void:
+	var sk := rig.skeleton
+	if sk == null:
+		return
+	_ik_target = Marker3D.new()
+	_ik_target.name = "RodHand"
+	add_child(_ik_target)
+	_ik_pole = Marker3D.new()
+	_ik_pole.name = "RodElbow"
+	add_child(_ik_pole)
+	_ik = TwoBoneIK3D.new()
+	_ik.name = "RodArm"
+	sk.add_child(_ik)
+	_ik.setting_count = 1
+	_ik.set_root_bone_name(0, "upperarm_r")
+	_ik.set_middle_bone_name(0, "lowerarm_r")
+	_ik.set_end_bone_name(0, "hand_r")
+	_ik.set_target_node(0, _ik.get_path_to(_ik_target))
+	_ik.set_pole_node(0, _ik.get_path_to(_ik_pole))
+	_ik.influence = 0.0
+	var a := sk.find_bone("upperarm_r")
+	var b := sk.find_bone("lowerarm_r")
+	var c := sk.find_bone("hand_r")
+	_arm_len = sk.get_bone_global_rest(a).origin.distance_to(sk.get_bone_global_rest(b).origin) \
+		+ sk.get_bone_global_rest(b).origin.distance_to(sk.get_bone_global_rest(c).origin)
+	_hand_bone = c
+	_shoulder_bone = a
+	sk.skeleton_updated.connect(_hold_rod)
+
+
+func _rod() -> Node3D:
 	var att: Node3D = rig.attachments.get("hand_r")
 	if att == null or att.get_child_count() == 0:
-		return
+		return null
 	var rod := att.get_child(0) as Node3D
 	if not rod.has_meta("rest"):
 		rod.set_meta("rest", rod.transform)
-	var rest: Transform3D = rod.get_meta("rest")
+		# (placed by hand each frame, after the arm's been posed)
+		rod.top_level = true
+	return rod
+
+
+## How the rod's to be held this frame (ROD_ANGLES eased toward), and
+## where the arm's to reach for it.
+func _aim_rod(delta: float) -> void:
+	if _ik == null:
+		return
 	var plain := _visual.move == "" and _visual.acting < 0 and not _visual.struggling
 	var angles = ROD_ANGLES.get(_visual.clip) if plain else null
-	if angles == null or (_visual.clip == PlayerVisual.CLIP_HOLD_RUN and player.state == Player.State.IDLE):
-		rod.transform = rest
+	var fishing := angles != null and not (_visual.clip == PlayerVisual.CLIP_HOLD_RUN and player.state == Player.State.IDLE)
+	_rod_on = move_toward(_rod_on, 1.0 if fishing else 0.0, delta / ROD_EASE_IN)
+	if fishing:
+		var want := deg_to_rad(float(angles[clampi(_visual.frame_in_clip, 0, 7)]))
+		_rod_up = want if _rod_on < 0.05 else lerpf(_rod_up, want, minf(1.0, delta * ROD_FOLLOW))
+	_ik.influence = _rod_on * ARM_FOLLOW
+	var sk := rig.skeleton
+	var b := pivot.global_basis.orthonormalized()
+	var shoulder := sk.global_transform * sk.get_bone_global_pose(_shoulder_bone).origin
+	# (rod angle -> the arm's: holding low (18) the hand's at the waist,
+	# forward; straight up (90) at the brow; back over the shoulder past it)
+	var phi := deg_to_rad(-38.0) + (_rod_up - deg_to_rad(18.0)) * 0.95
+	var reach := b.z * cos(phi) + Vector3.UP * sin(phi)
+	_ik_target.global_position = shoulder - b.x * 0.05 + reach * _arm_len * 0.8
+	# (the elbow out to the side and down)
+	_ik_pole.global_position = shoulder - b.x * 0.5 + Vector3.DOWN * 0.35 - b.z * 0.15
+
+
+## Once the arm's posed: the rod in the hand, pointed (ROD_ANGLES) while
+## fishing, else as the hand holds it.
+func _hold_rod() -> void:
+	var rod := _rod()
+	if rod == null:
 		return
-	var up := deg_to_rad(float(angles[clampi(_visual.frame_in_clip, 0, 7)]))
+	var sk := rig.skeleton
+	var hand := sk.global_transform * sk.get_bone_global_pose(_hand_bone)
+	var rest: Transform3D = rod.get_meta("rest")
+	var held := hand * rest
+	if _rod_on <= 0.0:
+		rod.global_transform = held
+		return
 	var side := deg_to_rad(ROD_SIDE)
 	var b := pivot.global_basis.orthonormalized()
 	# (the model faces +z; its right hand's side is -x)
-	var dir := (b.z * cos(side) * cos(up) - b.x * sin(side) * cos(up) + Vector3.UP * sin(up)).normalized()
+	var dir := (b.z * cos(side) * cos(_rod_up) - b.x * sin(side) * cos(_rod_up) + Vector3.UP * sin(_rod_up)).normalized()
 	var x := dir.cross(b.x if absf(dir.dot(b.z)) > 0.9 else b.z).normalized()
-	var basis := Basis(x, dir, x.cross(dir)).scaled(Vector3.ONE * CharacterRig.ROD_SCALE)
-	rod.global_transform = Transform3D(basis, att.global_transform * rest.origin)
+	var aimed := Transform3D(Basis(x, dir, x.cross(dir)).scaled(Vector3.ONE * CharacterRig.ROD_SCALE), held.origin)
+	rod.global_transform = held.interpolate_with(aimed, _rod_on)
 
 
 func _line_and_float() -> void:
@@ -1237,9 +1414,15 @@ func _environment() -> void:
 	_env.fog_enabled = true
 	_env.fog_light_color = Color(0.05, 0.07, 0.11)
 	_env.fog_density = 0.018
-	_env.glow_enabled = true
+	_low = low_end()
+	_env.glow_enabled = not _low
 	_env.glow_intensity = 0.6
 	_env.glow_bloom = 0.08
+	if _low:
+		get_viewport().scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+		get_viewport().scaling_3d_scale = LOW_SCALE
+		_scaled = true
+		RenderingServer.directional_shadow_atlas_set_size(1024, true)
 	var we := WorldEnvironment.new()
 	we.environment = _env
 	add_child(we)
@@ -1250,7 +1433,8 @@ func _environment() -> void:
 	_moon.shadow_enabled = true
 	# (the moon's glare off the water kept small)
 	_moon.light_specular = 0.2
-	_moon.directional_shadow_max_distance = 30.0
+	_moon.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL if _low else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	_moon.directional_shadow_max_distance = 20.0 if _low else 28.0
 	add_child(_moon)
 	_moon.look_at(_moon.global_position - MOON_DIR.normalized(), Vector3.UP)
 	camera = Camera3D.new()
@@ -1336,7 +1520,7 @@ func _process(delta: float) -> void:
 			(pair[1] as Node3D).visible = (pair[0] as Node2D).visible
 	_place_traveller(delta)
 	_animate()
-	_aim_rod()
+	_aim_rod(delta)
 	if _drum != null:
 		_drum.visible = player.carrying_oil_drum
 		if _drum.visible:
@@ -1348,6 +1532,44 @@ func _process(delta: float) -> void:
 	_update_camera(delta)
 
 
+## User request: the float, the cast's ring and its metres were hidden
+## under the buttons at the bottom right (the lamp, 誘惑, the quick slots).
+## While one would be, the camera eases toward it and back a little
+## (_dodge 0..1), till it's clear; then eases home.
+func _dodge_buttons(delta: float) -> void:
+	if _blocked.is_empty():
+		# (where TouchControls draws the light and 誘惑 buttons round the
+		# right stick, and QuickSlots its three)
+		var aim := TouchControls.AIM_CENTER
+		for spec in [[TouchControls.SKILL_ANGLE, TouchControls.SKILL_DISTANCE, TouchControls.SKILL_RADIUS],
+				[TouchControls.LURE_ANGLE, TouchControls.LURE_DISTANCE, TouchControls.LURE_RADIUS]]:
+			var c: Vector2 = aim + Vector2.RIGHT.rotated(deg_to_rad(float(spec[0]))) * float(spec[1])
+			var r := float(spec[2]) + 16.0
+			_blocked.append(Rect2(c - Vector2(r, r), Vector2(r, r) * 2.0))
+		for c in QuickSlots.CENTERS:
+			var h := QuickSlots.SIDE * 0.5 + 12.0
+			_blocked.append(Rect2(c - Vector2(h, h), Vector2(h, h) * 2.0))
+	var points := []
+	var bobber: Node2D = main.get_node("Bobber")
+	if bobber.visible:
+		points.append(_float.position)
+	if player.state == Player.State.CHARGING:
+		var land := player.landing_point(player.charge_time / Player.MAX_CHARGE_TIME)
+		points.append(to3(land, ground_y(land)))
+		points.append(_guide_label.position)
+	var hidden: Variant = null
+	for p in points:
+		var at := camera.unproject_position(p)
+		for r in _blocked:
+			if (r as Rect2).has_point(at):
+				hidden = p
+	if hidden != null:
+		_dodge_at = hidden
+		_dodge = move_toward(_dodge, 1.0, delta * DODGE_RATE)
+	elif points.is_empty() or _dodge > 0.0:
+		_dodge = move_toward(_dodge, 0.0 if points.is_empty() else _dodge, delta * DODGE_RATE * 0.5)
+
+
 ## Up and behind it at CAMERA_PITCH: as far back as the 2D camera's zoom
 ## says, aimed where it frames (main.gd), and shaken when it is.
 func _update_camera(delta: float) -> void:
@@ -1356,6 +1578,8 @@ func _update_camera(delta: float) -> void:
 	if main.get("_shake") != null:
 		shake = float(main.get("_shake"))
 	var target := to3(_feet() + frame, ground_y(_feet()))
+	# (eased toward what's under the buttons: see _dodge_buttons)
+	target = target.lerp(_dodge_at, _dodge * DODGE_SHIFT)
 	if shake > 0.05:
 		target += Vector3(randf_range(-1, 1), 0, randf_range(-1, 1)) * shake / PX
 	# Back far enough to take in the frame (the traveller and the float,
@@ -1368,11 +1592,12 @@ func _update_camera(delta: float) -> void:
 		(half.y + FRAME_ROOM.y) * sin(deg_to_rad(CAMERA_PITCH)) / tan_v)
 	var want := clampf(need, CAMERA_DISTANCE, MAX_DISTANCE)
 	_dist = lerpf(_dist, want, minf(1.0, delta * FRAME_EASE))
-	var dist := _dist
+	var dist := _dist * (1.0 + _dodge * DODGE_BACK)
 	var pitch := deg_to_rad(CAMERA_PITCH)
 	var look := target + Vector3(0, 0.8, 0)
 	var at := look + Vector3(0, sin(pitch), cos(pitch)) * dist
 	camera.global_transform = Transform3D(Basis.looking_at(look - at, Vector3.UP), at)
+	_dodge_buttons(delta)
 	# Further out, the trees near the camera stay solid longer.
 	var k := dist / CAMERA_DISTANCE
 	for m in _fade_mats:

@@ -3733,6 +3733,24 @@ func test_run_3d() -> void:
 	var toward := view._float.position - view.pivot.global_position
 	toward.y = 0.0
 	check(tip.y > hand.y + 0.3 and (tip - hand).dot(toward.normalized()) > 0.4, "the rod held up and out toward the float")
+	# User report: the arm didn't move with the rod - it's brought after
+	# it now (RodArm).
+	var hold_hand: float = view.rig.attachments["hand_r"].global_position.y - view.pivot.global_position.y
+	check(view._ik != null and view._ik.influence > 0.9, "the rod arm follows the rod while fishing")
+	# The float under the buttons at the bottom right: the camera makes
+	# room (_dodge_buttons).
+	var lamp_at: Vector2 = TouchControls.AIM_CENTER + Vector2.RIGHT.rotated(deg_to_rad(TouchControls.SKILL_ANGLE)) * TouchControls.SKILL_DISTANCE
+	var from_cam := view.camera.project_ray_origin(lamp_at)
+	var ray := view.camera.project_ray_normal(lamp_at)
+	var under := RunView3D.to2(from_cam + ray * ((RunView3D.WATER_Y - from_cam.y) / ray.y))
+	player().cast_target = under
+	main.get_node("Bobber").global_position = under
+	await seconds(1.2)
+	var seen := view.camera.unproject_position(view._float.position)
+	var covered := false
+	for r in view._blocked:
+		covered = covered or (r as Rect2).has_point(seen)
+	check(view._dodge > 0.05 and not covered, "the float under the lamp button: the camera makes room (%.2f)" % view._dodge)
 	# A bite, the strike: their clips.
 	player().nibbles_left = 0
 	player().cast_outcome = Player.CastOutcome.BITE
@@ -3746,13 +3764,31 @@ func test_run_3d() -> void:
 	key(KEY_SPACE, true)
 	await frames(6)
 	check(player().state == Player.State.REELING and view._clip == "Fish_Tug", "struck: the strike clip (%s)" % view._clip)
+	await frames(14)
+	var strike_hand: float = view.rig.attachments["hand_r"].global_position.y - view.pivot.global_position.y
+	check(strike_hand > hold_hand + 0.15, "the strike raises the arm with the rod (%.2f -> %.2f m)" % [hold_hand, strike_hand])
 	key(KEY_SPACE, false)
 	player()._set_state(Player.State.IDLE)
 	player().fight = null
 	player().line_cleared.emit()
 	await frames(4)
 	check(not view._float.visible, "the line in: no float")
+	# On a phone: lighter (no glow, one shadow pass, none from the lamp,
+	# the 3D drawn smaller, grass as cards).
+	RunView3D.quality = "low"
+	await _fresh_game()
+	for _i in 120:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	check(view._low and not view._env.glow_enabled and not view._lamp.shadow_enabled
+		and is_equal_approx(main.get_viewport().scaling_3d_scale, RunView3D.LOW_SCALE)
+		and view._moon.directional_shadow_mode == DirectionalLight3D.SHADOW_ORTHOGONAL, "phone: the lighter settings")
+	RunView3D.quality = ""
 	RunView3D.leave()
+	await _fresh_game()
+	check(is_equal_approx(main.get_viewport().scaling_3d_scale, 1.0), "out of the 3D run: the screen's full resolution again")
 	check(not RunView3D.wanted and MapGenerator.forced_theme == "", "back at the camp: runs are 2D again")
 
 
