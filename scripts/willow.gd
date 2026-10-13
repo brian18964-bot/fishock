@@ -1,3 +1,4 @@
+class_name Willow
 extends Node2D
 
 ## User request: Willow, a harmless NPC by the altar (the user's little
@@ -22,7 +23,7 @@ const RING := Vector2(52.0, 100.0)
 const SPEED := 20.0
 const PAUSE := Vector2(1.5, 4.5)
 ## Where it stands to tend the altar: just in front of it.
-const FRONT := Vector2(0.0, 36.0)
+const FRONT := Vector2(0.0, 50.0)
 const TEND_FROM := 1.0 / 3.0
 const DIR_UP := 4
 const DIR_DOWN := 0
@@ -77,22 +78,14 @@ func _process(delta: float) -> void:
 			else:
 				_dir = DIR_DOWN
 				_watch(player)
-	elif _walking:
-		if global_position.distance_to(_target) < 2.0:
-			_walking = false
-			_pause = randf_range(PAUSE.x, PAUSE.y)
-		else:
-			_step_to(_target, delta)
 	else:
-		_pause -= delta
+		# User decision (3D): its model has no legs that walk (no rig) -
+		# a figure gliding about would be a statue sliding. It keeps its
+		# place before the altar, turning to watch the traveller.
+		_walking = false
+		if altar != null and global_position.distance_to(altar.global_position + FRONT) > 1.5:
+			global_position = altar.global_position + FRONT
 		_watch(player)
-		if _pause <= 0.0 and altar != null:
-			for _try in 8:  # somewhere dry
-				_target = altar.global_position + Vector2.RIGHT.rotated(randf() * TAU) * randf_range(RING.x, RING.y) * Vector2(1.0, 0.7)
-				if Ripple.water_at(get_tree(), _target) == null:
-					_walking = true
-					break
-			_pause = randf_range(PAUSE.x, PAUSE.y)
 	visual.frame = _dir
 	# A little hop in its step; breathing when it stands.
 	var hop := absf(sin(_time * 9.0)) * 1.5 if _walking else 0.0
@@ -116,7 +109,8 @@ func _process(delta: float) -> void:
 
 func _step_to(target: Vector2, delta: float) -> void:
 	var to := target - global_position
-	global_position += to.limit_length(SPEED * delta)
+	# User request (3D): round the altar, not through it.
+	global_position = Solids.step(get_tree(), global_position, global_position + to.limit_length(SPEED * delta), 15.0)
 	_dir = SECTOR_TO_DIR[posmod(roundi(to.angle() / (PI / 4.0)), 8)]
 
 

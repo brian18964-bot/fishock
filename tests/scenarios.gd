@@ -14,6 +14,7 @@ const TESTS := [
 	"test_journey_page",
 	"test_run_3d",
 	"test_map_generation",
+	"test_layout_clear",
 	"test_spawn_on_land_docks_out",
 	"test_catalog_and_sounds",
 	"test_creature_animation",
@@ -269,6 +270,49 @@ func test_spawn_on_land_docks_out() -> void:
 				dockless += 1
 	check(wet == 0, "the spawn point is on dry land on every map (%d wet)" % wet)
 	check(dockless <= 4, "(nearly) every pond has a dock out into it (%d without)" % dockless)
+
+
+## User request (3D): nothing in anything, nothing crowded. No two solid
+## bases overlap (the camp's own parts aside - laid out by hand), no two
+## trees' branches meet, none over the bank; and a ghost walked straight
+## at a tree goes round it, never into it.
+func test_layout_clear() -> void:
+	var camp: Vector2 = main.get_node("FuelStation").global_position
+	var bases := Solids.all(get_tree())
+	var hits := []
+	for i in bases.size():
+		for j in range(i + 1, bases.size()):
+			var a: Array = bases[i]
+			var b: Array = bases[j]
+			if (a[0] as Vector2).distance_to(camp) < 150.0 and (b[0] as Vector2).distance_to(camp) < 150.0:
+				continue
+			var gap: float = (a[0] as Vector2).distance_to(b[0]) - maxf(a[1].x, a[1].y) - maxf(b[1].x, b[1].y)
+			if gap < 0.0:
+				hits.append([a[0], b[0], gap])
+	check(bases.size() > 20 and hits.is_empty(), "no solid in another (%d solids; %s)" % [bases.size(), str(hits)])
+	var trees := get_tree().get_nodes_in_group("trees")
+	var crowns := 0
+	var over_bank := 0
+	for i in trees.size():
+		var t: MapTree = trees[i]
+		var shore := INF
+		for zone in get_tree().get_nodes_in_group("water_zones"):
+			shore = minf(shore, zone.distance_to_edge(t.global_position))
+		if shore < t.canopy():
+			over_bank += 1
+		for j in range(i + 1, trees.size()):
+			if t.global_position.distance_to(trees[j].global_position) < t.canopy() + trees[j].canopy():
+				crowns += 1
+	check(crowns == 0, "no two trees' branches meet (%d)" % crowns)
+	check(over_bank == 0, "no branches over the bank (%d)" % over_bank)
+	var tree: MapTree = trees[0]
+	var at := tree.global_position + Vector2(-80, 1)
+	var inside := 0
+	for _i in 120:
+		at = Solids.step(get_tree(), at, at + Vector2(2.5, 0), 16.0)
+		if at.distance_to(tree.global_position) < tree.trunk_radius + 15.5:
+			inside += 1
+	check(inside == 0 and at.x > tree.global_position.x + 20.0, "a ghost goes round a tree, not through (%d inside, got to %.0f)" % [inside, at.x - tree.global_position.x])
 
 
 ## The generated catalog's textures and every sound the game asks for exist.

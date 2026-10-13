@@ -218,6 +218,10 @@ func _leave() -> void:
 	_set_state(GhostState.LEAVE)
 
 
+## Its body's reach (px): RunView3D's model, 1.2 m across.
+const BODY := 16.0
+
+
 func _move_toward(target: Vector2, speed: float, delta: float, keep_out := true) -> void:
 	var to_target := target - global_position
 	var next_position := global_position
@@ -234,7 +238,8 @@ func _move_toward(target: Vector2, speed: float, delta: float, keep_out := true)
 		var off := next_position - player.global_position
 		if off.length() < Player.WARD_RADIUS:
 			next_position = player.global_position + (off.normalized() if off.length() > 0.01 else Vector2.UP) * Player.WARD_RADIUS
-	global_position = next_position
+	# User request (3D): round the trees and rocks, not through them.
+	global_position = Solids.step(get_tree(), global_position, next_position, BODY)
 
 
 func _clamp_outside_safe_zone(pos: Vector2, zone_center: Vector2) -> Vector2:

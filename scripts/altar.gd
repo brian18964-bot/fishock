@@ -42,9 +42,32 @@ var _haze: CPUParticles2D
 var _embers: CPUParticles2D
 
 
+## The stone's base (px): RunView3D's 2.3 m across.
+const SOLID_RADIUS := 31.5
+
+
+func solids() -> Array:
+	return [[global_position, Vector2(SOLID_RADIUS, SOLID_RADIUS)]]
+
+
 func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
+	# User request (3D: nothing walks into anything): the altar stone is
+	# solid, as wide as its model (RunView3D: 2.3 m across); you offer from
+	# beside it, in the ring round it.
+	add_to_group("solids")
+	var solid := StaticBody2D.new()
+	solid.name = "Solid"
+	var stone := CollisionShape2D.new()
+	var round_stone := CircleShape2D.new()
+	round_stone.radius = SOLID_RADIUS
+	stone.shape = round_stone
+	solid.add_child(stone)
+	add_child(solid)
+	var zone := CircleShape2D.new()
+	zone.radius = SOLID_RADIUS + 26.0
+	$CollisionShape2D.shape = zone
 	var tex := CanvasTexture.new()
 	visual.texture = tex
 	Art.place(visual, OFFSET, SPRITE_SCALE)

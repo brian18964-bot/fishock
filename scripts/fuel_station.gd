@@ -29,6 +29,17 @@ const OFFSET := Vector2(-40.22, -64.75 + 60.0)
 ## tent's spot.
 const FLAME := Vector2(0.0, -33.8)
 const TENT_AT := Vector2(56.0, -50.0)
+## User request (3D: nothing walks into anything): what RunView3D builds
+## here and the solids under it are the same - the fire ring (px radius),
+## the drums ([spot, yaw, lying]; a drum 0.62 m across, 0.92 m long), and
+## the tent at TENT_SCALE, beside the fire with room between.
+const FIRE_RADIUS := 17.0
+const DRUMS := [[Vector2(-40, -40), 0.3, false], [Vector2(-23, -50), 1.1, false], [Vector2(-30, -17), 0.6, true]]
+const DRUM_RADIUS := 8.8
+const DRUM_LYING_RADIUS := 12.8
+const TENT_SCALE := 0.8
+const TENT_GAP := 14.0
+const PX := 27.108
 ## Each tent's sprite offset (render_props.py camp_tents).
 const TENT_OFFSETS := {
 	1: Vector2(-0.22, -14.62), 2: Vector2(-0.71, -13.85), 3: Vector2(3.02, -21.87),
@@ -143,32 +154,62 @@ func _build_camp() -> void:
 	tent.name = "Tent"
 	var ttex := CanvasTexture.new()
 	tent.texture = ttex
-	tent.position = TENT_AT
+	tent.position = tent_spot()
 	Art.place(tent, TENT_OFFSETS[n], SPRITE_SCALE)
 	add_child(tent)
-	# Solid: the drums, the fire pit, the tent.
-	var drums := $Drums/CollisionShape2D as CollisionShape2D
-	var rect := RectangleShape2D.new()
-	# (down to the lying drum's front, at -12)
-	rect.size = Vector2(40, 26)
-	drums.shape = rect
-	$Drums.position = Vector2(-36, -27)
-	drums.position = Vector2(0, 2)
-	var pit := CollisionShape2D.new()
-	var circle := CircleShape2D.new()
-	circle.radius = 12.0
-	pit.shape = circle
-	pit.position = Vector2(36, -2)
-	$Drums.add_child(pit)
-	var tent_body := StaticBody2D.new()
-	tent_body.name = "TentBody"
-	tent_body.position = TENT_AT
-	var tshape := CollisionShape2D.new()
-	var trect := RectangleShape2D.new()
-	trect.size = Vector2(44, 14)
-	tshape.shape = trect
-	tent_body.add_child(tshape)
-	add_child(tent_body)
+	# Solid: the drums, the fire pit, the tent - each as big as its model.
+	$Drums.position = Vector2.ZERO
+	$Drums/CollisionShape2D.queue_free()
+	for b in solids_local():
+		var part := CollisionShape2D.new()
+		if is_equal_approx(b[1].x, b[1].y):
+			var circle := CircleShape2D.new()
+			circle.radius = b[1].x
+			part.shape = circle
+		else:
+			var rect := RectangleShape2D.new()
+			rect.size = b[1] * 2.0
+			part.shape = rect
+		part.position = b[0]
+		$Drums.add_child(part)
+	add_to_group("solids")
+
+
+## The tent's model's base (m: half across x, half across z, centre x, z).
+static func _tent_box() -> AABB:
+	var m := CampModel.mesh("tent_%d" % clampi(Profile.camp_tent, 1, 9))
+	return m.get_aabb() if m != null else AABB(Vector3(-1.75, 0, -2.5), Vector3(3.5, 2.5, 5.0))
+
+
+## Where the tent stands (px from the camp's origin): its near side
+## TENT_GAP past the fire's ring.
+static func tent_spot() -> Vector2:
+	var box := _tent_box()
+	var half := box.size.x * 0.5 * TENT_SCALE * PX
+	return Vector2(FLAME.x + FIRE_RADIUS + TENT_GAP + half, TENT_AT.y)
+
+
+## The solids here, from the camp's origin: [[centre, radii (equal: a
+## circle; else a box's half size)], ...].
+static func solids_local() -> Array:
+	var out := [[FLAME, Vector2(FIRE_RADIUS, FIRE_RADIUS)]]
+	for d in DRUMS:
+		var r: float = DRUM_LYING_RADIUS if d[2] else DRUM_RADIUS
+		out.append([d[0], Vector2(r, r)])
+	var box := _tent_box()
+	# (turned round, PI: its centre mirrored)
+	var c := Vector2(-box.get_center().x, -box.get_center().z) * TENT_SCALE * PX
+	out.append([tent_spot() + c, Vector2(box.size.x, box.size.z) * 0.5 * TENT_SCALE * PX])
+	return out
+
+
+## For Solids (the tent's box as the ellipse round it).
+func solids() -> Array:
+	var out := []
+	for b in solids_local():
+		var r: Vector2 = b[1]
+		out.append([global_position + b[0], r if is_equal_approx(r.x, r.y) else r * 1.41])
+	return out
 
 
 func _process(delta: float) -> void:

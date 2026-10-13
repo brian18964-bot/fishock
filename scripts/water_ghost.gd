@@ -175,7 +175,8 @@ func _cling_spot() -> Vector2:
 func _walk_to(target: Vector2, speed: float, delta: float) -> void:
 	var to := target - global_position
 	_face(to)
-	global_position += to.limit_length(speed * delta)
+	# User request (3D): round the trees and rocks, not through them.
+	global_position = Solids.step(get_tree(), global_position, global_position + to.limit_length(speed * delta), 11.0)
 	_anim += delta * WALK_FPS
 
 

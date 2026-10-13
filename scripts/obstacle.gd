@@ -28,6 +28,7 @@ var radii := Vector2.ZERO
 
 
 func _ready() -> void:
+	add_to_group("solids")
 	var pool := variant_pool.filter(func(v): return v is int and v >= 0 and v < KINDS.size())
 	apply_kind(pool.pick_random() if not pool.is_empty() else randi() % KINDS.size())
 	var occ := get_node_or_null("LightOccluder2D")
@@ -43,6 +44,10 @@ func apply_kind(index: int) -> void:
 	model = kind.model
 	radii = kind.base * 0.5 * size
 	collision.polygon = ellipse(radii)
+
+
+func solids() -> Array:
+	return [[global_position, radii]]
 
 
 ## An ellipse of `r` as a polygon round the origin.

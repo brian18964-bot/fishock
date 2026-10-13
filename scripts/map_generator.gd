@@ -35,6 +35,9 @@ const SPAWN_CLEAR_RADIUS := 220.0
 const FIXED_POINT_MARGIN := 150.0
 const FIXED_POINT_MIN_SEPARATION := 550.0
 const WILLOW_BESIDE_ALTAR := Vector2(72.0, 16.0)
+## How far out the willow stands from the altar's middle (Willow.FRONT
+## and its own breadth).
+const WILLOW_RING := 66.0
 
 ## User feedback follow-up: obstacles/trees/bushes were still at fixed
 ## main.tscn positions, so they could visually land inside a randomized
@@ -49,6 +52,13 @@ const PROP_NAMES := [
 ]
 const PROP_MARGIN := 80.0
 const PROP_MIN_SEPARATION := 90.0
+## User request (3D): nothing in anything, nothing crowded. Every solid
+## thing placed keeps this much ground (px) between its base and the next
+## one's - room to walk between; trees keep their branches clear of each
+## other's and of the camp, the altar, the stones and the bank.
+const PROP_GAP := 34.0
+## Branches clear of the water's edge by this much more (the rod's swing).
+const BANK_CLEAR := 40.0
 const PROP_AVOID_SPAWN_RADIUS := 180.0
 
 const DOCK_SCENE := preload("res://scenes/dock.tscn")
@@ -78,20 +88,20 @@ const THEMES := {
 	"forest_pine": {
 		"look": "detailed",
 		"floor": ["forest_floor", "grass", 0.35],
-		"trees": 28, "rocks": 3, "bushes": 4, "ground": 24,
+		"trees": 28, "rocks": 3, "bushes": 4, "ground": 0,
 		"tree_families": {"pine": 1.0},
 		"rock_pool": [0, 1, 2],
-		"ground_kinds": {"plant": 2.0, "shrub": 1.0},
+		"ground_kinds": {"plant": 1.0},
 		"animals": {"deer": 2.0, "stag": 1.5, "fox": 1.5, "wolf": 1.0, "husky": 1.0},
 	},}
 ## User feedback: the water's edge is grass, small shrubs, pebbles and
 ## boardwalks (no big trees or boulders there), with bugs and frogs about.
 ## Per shore sample: chance of a grass clump / low shrub / pebbles.
-const SHORE_ODDS := {"grass": 0.0, "shrub": 0.08, "pebbles": 0.0}
+const SHORE_ODDS := {"grass": 0.0, "shrub": 0.0, "pebbles": 0.0}
 ## User request (water plants): per shore sample, on top of the above - a
 ## reed clump at the waterline, lily pads out on the water, a washed-up
 ## log. Themes override with "shore_extras".
-const SHORE_EXTRAS := {"reeds": 0.0, "lilypad": 0.05, "driftwood": 0.01}
+const SHORE_EXTRAS := {"reeds": 0.0, "lilypad": 0.05, "driftwood": 0.0}
 const SHORE_HIDE_BUSH_CHANCE := 0.25  # of shrubs: a bush you can hide in
 const SHORE_CRITTERS := ["frog", "frog", "spider", "wasp"]
 const SHORE_CRITTER_COUNT := 5
@@ -140,6 +150,7 @@ func _ready() -> void:
 	_generate_water_zones()
 	_place_docks()
 	_place_altar_and_escape()
+	_take_fixed_points()
 	# Docks and shores before the trees and rocks, so those can keep clear
 	# of every walkway entrance.
 	_dress_shores()
@@ -365,7 +376,7 @@ func _place_altar_and_escape() -> void:
 	# big ghost's cage is a fixed point of its own, away from the rest.
 	var willow: Node2D = get_parent().get_node_or_null("Willow")
 	if willow != null:
-		willow.global_position = altar.global_position + WILLOW_BESIDE_ALTAR
+		willow.global_position = altar.global_position + Willow.FRONT
 	var cage: Node2D = get_parent().get_node_or_null("GhostCage")
 	if cage != null:
 		cage.global_position = _pick_fixed_point_position([SPAWN_POS, altar.global_position, escape_point.global_position])
@@ -432,29 +443,89 @@ func _in_any_water(pos: Vector2) -> bool:
 
 
 func _scatter_props() -> void:
-	var placed: Array = []
 	for prop_name in PROP_NAMES:
 		var prop: Node2D = get_parent().get_node_or_null(prop_name)
 		if prop == null:
 			continue
-		var pos := _pick_prop_position(placed)
-		prop.global_position = pos
-		placed.append(pos)
 		# Scene props haven't run _ready yet (this node is Main's first
 		# child), so the theme still decides what they become.
 		_theme_prop(prop)
+		var size := _footprint(prop)
+		var pos := _pick_prop_position(size[0], size[1])
+		if pos.x < 0.0:
+			# (no room left that keeps clear of everything: not placed)
+			prop.queue_free()
+			continue
+		prop.global_position = pos
+		_taken.append([pos, size[0], size[1]])
+	# The fuel can lying about (picked up and carried home).
+	var can := get_parent().get_node_or_null("OilDrum") as Node2D
+	if can != null:
+		var at := _pick_prop_position(16.0, 0.0)
+		if at.x >= 0.0:
+			can.global_position = at
+			_taken.append([at, 16.0, 0.0])
 
 
-## Spots taken by the themed props (the flip rocks keep clear of them too).
-var _themed_spots: Array = []
+## The camp, the altar (and the willow's walk round it), the rune stones
+## and the big ghost's lair: kept clear by everything.
+func _take_fixed_points() -> void:
+	var camp := get_parent().get_node_or_null("FuelStation") as Node2D
+	if camp != null:
+		for b in FuelStation.solids_local():
+			var r: Vector2 = b[1]
+			var reach := maxf(r.x, r.y) * (1.0 if is_equal_approx(r.x, r.y) else 1.42)
+			_taken.append([camp.global_position + b[0], reach, reach + 40.0])
+		# (and the player's start, with room to turn round)
+		_taken.append([camp.global_position, 30.0, 0.0])
+	var altar := get_parent().get_node_or_null("Altar") as Node2D
+	if altar != null:
+		var walk: float = WILLOW_RING + 16.0
+		_taken.append([altar.global_position, walk, walk])
+	var escape := get_parent().get_node_or_null("EscapePoint") as Node2D
+	if escape != null:
+		_taken.append([escape.global_position, 50.0, 60.0])
+	var cage := get_parent().get_node_or_null("GhostCage") as Node2D
+	if cage != null:
+		_taken.append([cage.global_position, 60.0, 60.0])
+
+
+## A prop's [base radius, branch reach] (px), its kind already chosen.
+func _footprint(prop: Node) -> Array:
+	if prop is MapTree:
+		var t := prop as MapTree
+		if not t.picked:
+			t.pick(randi())
+		return [float(MapTree.KINDS[t.kind]) * t.tree_scale * MapTree.PX, MapTree.canopy_of(t.kind, t.tree_scale)]
+	if prop is Obstacle:
+		var biggest := 0.0
+		for k in Obstacle.KINDS:
+			biggest = maxf(biggest, maxf(k.base.x, k.base.y) * 0.5)
+		return [biggest, 0.0]
+	if prop is FlipRock:
+		# (and where it rolls to when it's turned)
+		return [Obstacle.KINDS[1].base.x * 0.5 * FlipRock.SIZE + FlipRock.ROLL_DISTANCE.y, 0.0]
+	if "families" in prop:
+		return [24.0, 0.0]
+	return [20.0, 0.0]
+
+
+## Everything solid placed so far: [centre, base radius, branch reach]
+## (px; reach 0 for what has no branches). See _fits().
+var _taken: Array = []
 
 
 func _scatter_flip_rocks() -> void:
 	var count: Array = Campaign.rules.rocks
 	for _i in randi_range(int(count[0]), int(count[1])):
 		var rock: Node2D = FLIP_ROCK_SCENE.instantiate()
-		rock.position = _pick_prop_position(_themed_spots)
-		_themed_spots.append(rock.position)
+		var size := _footprint(rock)
+		var at := _pick_prop_position(size[0], size[1])
+		if at.x < 0.0:
+			rock.free()
+			continue
+		rock.position = at
+		_taken.append([at, size[0], size[1]])
 		# Small stones to turn over - not the standing slabs or the props.
 		rock.variant_pool = theme.rock_pool.filter(func(e): return not (e is String and e in NOT_FLIPPABLE))
 		get_parent().add_child.call_deferred(rock)
@@ -472,13 +543,17 @@ func _theme_prop(prop: Node) -> void:
 
 ## The theme's extra trees, rocks and bushes, spaced like the scene props.
 func _scatter_themed_props() -> void:
-	var placed: Array = _themed_spots
 	for spec in [[TREE_SCENE, theme.trees], [OBSTACLE_SCENE, theme.rocks], [BUSH_SCENE, theme.bushes]]:
 		for _i in spec[1]:
 			var prop: Node2D = spec[0].instantiate()
-			prop.position = _pick_prop_position(placed)
-			placed.append(prop.position)
 			_theme_prop(prop)
+			var size := _footprint(prop)
+			var at := _pick_prop_position(size[0], size[1])
+			if at.x < 0.0:
+				prop.free()
+				continue
+			prop.position = at
+			_taken.append([at, size[0], size[1]])
 			get_parent().add_child.call_deferred(prop)
 
 
@@ -518,9 +593,10 @@ func _dress_shores() -> void:
 				var pos := p + n * randf_range(10.0, 26.0)
 				if _shore_distance(pos) < 6.0:
 					continue
-				if randf() < SHORE_HIDE_BUSH_CHANCE:
+				if randf() < SHORE_HIDE_BUSH_CHANCE and _fits(pos + n * 10.0, 24.0, 0.0):
 					var bush: Node2D = BUSH_SCENE.instantiate()
 					bush.position = pos + n * 10.0
+					_taken.append([bush.position, 24.0, 0.0])
 					_theme_prop(bush)
 					get_parent().add_child.call_deferred(bush)
 				else:
@@ -593,7 +669,9 @@ func _scatter_ground_cover() -> void:
 ## (kept off the spawn point so the first few seconds aren't a chase).
 func _scatter_critters() -> void:
 	for _i in range(int(Campaign.rules.critters)):
-		var pos := _pick_prop_position([])
+		var pos := _pick_prop_position(12.0, 0.0)
+		if pos.x < 0.0:
+			continue
 		var critter: Node2D = CRITTER_SCENE.instantiate()
 		critter.position = pos
 		# Main is still mid-setup here; see _spawn_zone().
@@ -604,7 +682,11 @@ func _scatter_critters() -> void:
 		var animal: Critter = CRITTER_SCENE.instantiate()
 		animal.ambient = true
 		animal.species = _weighted_pick(theme.animals)
-		animal.position = _pick_prop_position([])
+		var spot := _pick_prop_position(26.0, 0.0)
+		if spot.x < 0.0:
+			animal.free()
+			continue
+		animal.position = spot
 		get_parent().add_child.call_deferred(animal)
 
 
@@ -612,11 +694,13 @@ func _scatter_critters() -> void:
 func _on_night_fell() -> void:
 	var player: Node2D = get_tree().get_first_node_in_group("player")
 	for _i in range(int(roundf(NIGHT_CRITTER_COUNT * Campaign.area_share()))):
-		var pos := _pick_prop_position([])
+		var pos := _pick_prop_position(12.0, 0.0)
 		for _try in range(6):
 			if player == null or pos.distance_to(player.global_position) > 250.0:
 				break
-			pos = _pick_prop_position([])
+			pos = _pick_prop_position(12.0, 0.0)
+		if pos.x < 0.0:
+			continue
 		var critter: Node2D = CRITTER_SCENE.instantiate()
 		critter.position = pos
 		get_parent().add_child(critter)
@@ -634,30 +718,37 @@ func _weighted_pick(weights: Dictionary) -> String:
 	return weights.keys()[0]
 
 
-func _pick_prop_position(placed: Array) -> Vector2:
-	var fallback := Vector2(-1, -1)
-	for _try in range(60):
+## Somewhere for a thing of base radius `base` and branch reach `reach`
+## (px): on land, off the paths and the docks' ways on, clear of
+## everything placed (_fits); (-1, -1) if there's no such place.
+func _pick_prop_position(base: float, reach: float) -> Vector2:
+	for _try in range(80):
 		var pos := Vector2(
 			randf_range(PROP_MARGIN, Player.WORLD_WIDTH - PROP_MARGIN),
 			randf_range(PROP_MARGIN, Player.WORLD_HEIGHT - PROP_MARGIN)
 		)
 		if pos.distance_to(SPAWN_POS) < PROP_AVOID_SPAWN_RADIUS:
 			continue
-		# Clear of the water with room for a rock's footprint or a trunk,
-		# and off any footpath.
-		if _shore_distance(pos) < 30.0:
+		# Clear of the water with room for its base - and its branches
+		# clear of the bank, where the rod swings.
+		var shore := _shore_distance(pos)
+		if shore < maxf(30.0, base + 8.0) or (reach > 0.0 and shore < reach + BANK_CLEAR):
 			continue
 		# User bug report: rocks were landing across a boardwalk's way on.
-		if _near_entrance(pos, ENTRANCE_CLEARANCE) or _near_walkway(pos, 30.0):
+		if _near_entrance(pos, ENTRANCE_CLEARANCE) or _near_walkway(pos, maxf(30.0, reach)):
 			continue
-		if fallback.x < 0.0:
-			fallback = pos
-		var too_close := false
-		for p in placed:
-			if pos.distance_to(p) < PROP_MIN_SEPARATION:
-				too_close = true
-				break
-		if not too_close:
+		if _fits(pos, base, reach):
 			return pos
-	# Crowded: staying out of the water beats the spacing rule.
-	return fallback if fallback.x >= 0.0 else Vector2(PROP_MARGIN, PROP_MARGIN)
+	return Vector2(-1, -1)
+
+
+## Whether a thing at `pos` (base radius, branch reach; px) keeps clear of
+## everything placed: bases PROP_GAP apart; branches clear of branches.
+func _fits(pos: Vector2, base: float, reach: float) -> bool:
+	for t in _taken:
+		var d := pos.distance_to(t[0])
+		if d < base + float(t[1]) + PROP_GAP:
+			return false
+		if reach > 0.0 and float(t[2]) > 0.0 and d < reach + float(t[2]):
+			return false
+	return true

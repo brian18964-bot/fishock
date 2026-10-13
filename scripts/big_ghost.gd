@@ -29,6 +29,9 @@ signal mode_changed(mode: String)
 
 enum Mode { ASLEEP, WANDER, SUSPICIOUS, CHASE, SEARCH, EAT, GRAB, REST }
 
+## Its body's reach (px): RunView3D's model, 1.9 m deep.
+const BODY := 26.0
+
 ## User feedback: it was stiff - one still pose per facing. It moves now
 ## (tools/render_big_ghost.py - clips from the user's animation library
 ## laid over the sculpt's own pose): swaying and lolling as it floats about,
@@ -412,6 +415,8 @@ func _move_toward(target: Vector2, speed: float, delta: float, keep_out := true)
 			next = _player.global_position + (off.normalized() if off.length() > 0.01 else Vector2.UP) * Player.WARD_RADIUS
 	next.x = clampf(next.x, 20.0, Player.WORLD_WIDTH - 20.0)
 	next.y = clampf(next.y, 20.0, Player.WORLD_HEIGHT - 20.0)
+	# User request (3D): round the trees and rocks, not through them.
+	next = Solids.step(get_tree(), global_position, next, BODY)
 	var moved := next - global_position
 	if moved.length() > 0.01:
 		_dir = Art.facing8(moved, _dir)

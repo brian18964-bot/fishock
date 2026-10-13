@@ -136,7 +136,7 @@ const DODGE_RATE := 1.6
 ## the map's pictures are stood up as they are)
 const MODELLED := ["tree.gd", "bush.gd", "obstacle.gd", "ground_cover.gd", "dock.gd", "water_zone.gd",
 	"flip_rock.gd", "silhouette_shadow.gd", "player.gd", "map_generator.gd", "light_twin.gd", "day_vision.gd",
-	"ripple.gd", "atmosphere.gd", "weather_fx.gd"]
+	"ripple.gd", "atmosphere.gd", "weather_fx.gd", "dropped_fish.gd"]
 
 ## Asked for by the way the run was set off (the journey's 3D button, the
 ## settings'): the run that's starting is in 3D, and the ones after it (a
@@ -694,7 +694,7 @@ func _start_camp() -> void:
 		fire.position = to3(at + FuelStation.FLAME, LAND_Y)
 		fire.scale = Vector3.ONE * 0.8
 		add_child(fire)
-	for spec in [[Vector2(-40, -40), 0.3, false], [Vector2(-27, -48), 1.1, false], [Vector2(-31, -22), 0.6, true]]:
+	for spec in FuelStation.DRUMS:
 		var drum := CampModel.make("drum")
 		if drum == null:
 			continue
@@ -704,9 +704,9 @@ func _start_camp() -> void:
 		add_child(drum)
 	var tent := CampModel.make("tent_%d" % clampi(Profile.camp_tent, 1, 9))
 	if tent != null:
-		tent.position = to3(at + FuelStation.TENT_AT, LAND_Y)
+		tent.position = to3(at + FuelStation.tent_spot(), LAND_Y)
 		tent.rotation.y = PI
-		tent.scale = Vector3.ONE * 0.8
+		tent.scale = Vector3.ONE * FuelStation.TENT_SCALE
 		tent.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		add_child(tent)
 	for name in ["Visual", "Tent"]:
@@ -1195,11 +1195,37 @@ func _sync_creatures(delta: float) -> void:
 				var v: Node2D = n.get("_visual")
 				if v != null:
 					lift = -v.position.y / PX
-		holder.position = to3(at, y + lift)
-		var speed := vel.length() / PX
-		if speed > 0.08:
+		# User request (3D: smooth, no "it was 2D"): the 2D world moves in
+		# physics steps, the picture in frames - eased toward where it is,
+		# so a step never shows as a hitch; its pace eased too, so a clip
+		# doesn't flick between walking and standing.
+		var target := to3(at, y + lift)
+		if not c.has("shown") or (c.shown as Vector3).distance_to(target) > 3.0:
+			c.shown = target
+		c.shown = (c.shown as Vector3).lerp(target, 1.0 - exp(-delta * 16.0))
+		holder.position = c.shown
+		c.pace = lerpf(float(c.get("pace", 0.0)), vel.length() / PX, 1.0 - exp(-delta * 7.0))
+		var speed: float = c.pace
+		if kind == "ghost":
+			# (it leans into where it drifts, and its sheet sways)
+			var lean := clampf(speed * 0.12, 0.0, 0.3)
+			holder.rotation.x = lerpf(holder.rotation.x, lean, minf(1.0, delta * 4.0))
+			holder.scale = Vector3(1.0 - 0.04 * sin(c.time * 3.1), 1.0 + 0.05 * sin(c.time * 3.1), 1.0 - 0.04 * sin(c.time * 3.1))
+		elif kind == "willow":
+			# (no rig: it stands - breathing, and swaying in its rite)
+			var v2: Node2D = n.get("visual")
+			if v2 != null:
+				holder.rotation.z = v2.rotation
+				holder.scale = Vector3(1.0, v2.scale.y / maxf(v2.scale.x, 0.0001), 1.0)
+		if speed > 0.08 or (vel.length() / PX > 0.2):
 			var want := atan2(vel.x, vel.y)
-			c.yaw = lerp_angle(float(c.yaw), want, minf(1.0, delta * 8.0))
+			c.yaw = lerp_angle(float(c.yaw), want, minf(1.0, delta * 6.0))
+		elif kind == "willow":
+			# (turned the way the 2D one faces: the altar, or the traveller)
+			var sector: int = Willow.SECTOR_TO_DIR.find(int(n.get("_dir")))
+			if sector >= 0:
+				var face := Vector2.RIGHT.rotated(sector * PI / 4.0)
+				c.yaw = lerp_angle(float(c.yaw), atan2(face.x, face.y), minf(1.0, delta * 3.0))
 		elif kind in ["water_ghost", "big_ghost"] and player != null:
 			# (stood still: facing the traveller)
 			var to := player.global_position - at
@@ -1220,8 +1246,10 @@ func _sync_creatures(delta: float) -> void:
 			"water_ghost":
 				clip = "Claw" if int(n.get("_phase")) == 2 else "Walk"
 			_:
-				if speed > 0.08:
-					var run := speed > size * 2.2 and anim.has_animation("Run")
+				# (hysteresis: it starts walking past 0.12 m/s, stops under 0.05)
+				var moving := speed > (0.05 if c.clip in ["Walk", "Run"] else 0.12)
+				if moving:
+					var run := speed > size * (2.0 if c.clip == "Run" else 2.4) and anim.has_animation("Run")
 					clip = "Run" if run else "Walk"
 					rate = clampf(speed / (size * (2.6 if run else 0.9)), 0.5, 2.5)
 		if not anim.has_animation(clip):
@@ -1230,6 +1258,62 @@ func _sync_creatures(delta: float) -> void:
 			c.clip = clip
 			anim.play(clip, 0.25)
 		anim.speed_scale = rate
+
+
+## A fish dropped or thrown (DroppedFish; user decision: no pictures - its
+## own 3D model, lying on its side, flapping a while, arcing when thrown;
+## going grey as it spoils).
+var _drops := {}
+
+
+func _sync_dropped_fish(delta: float) -> void:
+	for n in _drops.keys():
+		if not is_instance_valid(n):
+			(_drops[n] as Node3D).queue_free()
+			_drops.erase(n)
+	for n in get_tree().get_nodes_in_group("dropped_fish"):
+		var d := n as Node2D
+		if d == null:
+			continue
+		if not _drops.has(d):
+			var id: String = str(d.get("fish_id"))
+			var fish := FishModel.make(id)
+			if fish == null:
+				fish = FishModel.make(JUMP_FISH.get_file().get_basename())
+			if fish == null:
+				continue
+			var holder := Node3D.new()
+			holder.name = "Dropped_" + id
+			add_child(holder)
+			var pivot := Node3D.new()
+			holder.add_child(pivot)
+			pivot.add_child(fish)
+			var box := fish.mesh.get_aabb()
+			var lengthwise_x := box.size.x >= box.size.z
+			var want: float = float(DroppedFish.LENGTH.get(str(d.get("size")), 26.0)) / PX
+			var k := want / maxf(maxf(box.size.x, box.size.z), 0.001)
+			fish.position = -box.get_center()
+			pivot.scale = Vector3.ONE * k
+			# (on its side: rolled about its length, its flank on the ground)
+			if lengthwise_x:
+				pivot.rotation.x = PI * 0.5
+			else:
+				pivot.rotation.z = PI * 0.5
+			pivot.position.y = (box.size.z if lengthwise_x else box.size.x) * k * 0.5
+			holder.rotation.y = randf() * TAU
+			_drops[d] = holder
+		var h: Node3D = _drops[d]
+		h.visible = _shown(d)
+		var visual := d.get_node_or_null("Visual") as Node2D
+		var up := -visual.position.y / PX if visual != null else 0.0
+		h.position = to3(d.global_position, ground_y(d.global_position) + 0.02 + up)
+		var fresh: float = clampf(d.call("_freshness"), 0.0, 1.0) if d.has_method("_freshness") else 1.0
+		var fishmi := h.get_child(0).get_child(0) as MeshInstance3D
+		if fishmi != null:
+			# (a fresh one flaps; up in the air it tumbles)
+			FishModel.swim(fishmi, delta, 0.6 * fresh if up < 0.05 else 1.0)
+			if up > 0.05:
+				h.rotation.y += delta * 6.0
 
 
 ## Whether a new node is one to show (not under something modelled, a
@@ -2211,6 +2295,7 @@ func _process(delta: float) -> void:
 			continue
 		_sync_light(l, _lights[l])
 	_sync_creatures(delta)
+	_sync_dropped_fish(delta)
 	_sync_runes()
 	# (a stone being turned over: where it's rolled to, tipped over)
 	for n in _flip_rocks:
@@ -2231,8 +2316,13 @@ func _process(delta: float) -> void:
 	_animate()
 	_aim_rod(delta)
 	if _drum != null:
-		_drum.visible = player.carrying_oil_drum
-		if _drum.visible:
+		# (user decision: no pictures - the can lying about is the model too)
+		var lying := main.get_node_or_null("OilDrum") as Node2D
+		_drum.visible = player.carrying_oil_drum or (lying != null and lying.visible and _shown(lying))
+		if _drum.visible and not player.carrying_oil_drum:
+			_drum.global_position = to3(lying.global_position, LAND_Y)
+			_drum.global_rotation = Vector3.ZERO
+		elif _drum.visible:
 			# (held in both arms in front, walked home)
 			var b := pivot.global_basis.orthonormalized()
 			_drum.global_position = pivot.global_position + b.z * 0.42 + Vector3(0, 0.55, 0)

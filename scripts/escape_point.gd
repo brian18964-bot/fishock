@@ -19,9 +19,23 @@ var _time := 0.0
 @onready var light: PointLight2D = $Light
 @onready var glow: Sprite2D = $Glow
 
+func solids() -> Array:
+	var out := []
+	for s in $Stones.get_children():
+		var r: float = (s.shape as CircleShape2D).radius
+		out.append([s.global_position, Vector2(r, r)])
+	return out
+
+
 func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
+	add_to_group("solids")
+	# (the rune pillars' bases, as wide as RunView3D's model's)
+	for s in $Stones.get_children():
+		var pillar := CircleShape2D.new()
+		pillar.radius = 10.5
+		s.shape = pillar
 	var tex := CanvasTexture.new()
 	var visual: Sprite2D = $Visual
 	visual.texture = tex

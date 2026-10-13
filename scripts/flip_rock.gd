@@ -37,6 +37,7 @@ var _spin := 0.0
 
 
 func _ready() -> void:
+	add_to_group("solids")
 	var pool := variant_pool.filter(func(v): return v is int and v >= 0 and v < Obstacle.KINDS.size())
 	var kind: Dictionary = Obstacle.KINDS[pool.pick_random() if not pool.is_empty() else randi() % Obstacle.KINDS.size()]
 	model = kind.model
@@ -103,3 +104,7 @@ func _on_body_entered(body: Node2D) -> void:
 func _on_body_exited(body: Node2D) -> void:
 	if body.has_method("set_in_rock"):
 		body.set_in_rock(false, self)
+
+
+func solids() -> Array:
+	return [[_roller.global_position if _roller != null else global_position, Vector2(radius, radius)]]

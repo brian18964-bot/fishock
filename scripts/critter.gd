@@ -42,27 +42,27 @@ const BAIT_SIZE := 0.8
 const SPECIES := {
 	# Round 8 (user request): the rat, frog, snake and bee are the user's
 	# models now (tools/prep_critters.py), and the grasshopper turns up too.
-	"rat": {"body": 8.3, "label": "老鼠", "bait": "rat",
+	"rat": {"body": 11.0, "label": "老鼠", "bait": "rat",
 		"frames": 12, "cols": 39, "clips": 2, "offset": Vector2(0, -5.42), "move_fps": 24.0, "idle_fps": 5.05,
 		"wander_speed": 45.0, "flee_speed": 120.0},
-	"frog": {"body": 6.7, "label": "青蛙", "bait": "frog",
+	"frog": {"body": 7.0, "label": "青蛙", "bait": "frog",
 		"frames": 12, "cols": 64, "clips": 2, "offset": Vector2(0, -2.27), "move_fps": 13.85, "idle_fps": 4.8, "size": 1.3,
 		"wander_speed": 35.0, "flee_speed": 95.0},
 	# User request (round 8): snakes and bees may poison too (venom: the
 	# chance a catch is bitten or stung).
-	"snake": {"body": 5.0, "label": "蛇", "bait": "snake", "venom": 0.3,
+	"snake": {"body": 17.0, "label": "蛇", "bait": "snake", "venom": 0.3,
 		"frames": 12, "cols": 85, "clips": 2, "offset": Vector2(0, -0.42), "move_fps": 12.0, "idle_fps": 12.0,
 		"wander_speed": 30.0, "flee_speed": 85.0},
-	"spider": {"body": 5.8, "label": "蜘蛛", "bait": "spider",
+	"spider": {"body": 9.0, "label": "蜘蛛", "bait": "spider",
 		"frames": 12, "cols": 73, "clips": 2, "offset": Vector2(0, -0.81), "move_fps": 14.4, "idle_fps": 2.88, "size": 1.3,
 		"wander_speed": 40.0, "flee_speed": 110.0},
 	# One clip (flying) for both moving and hovering; floats above the ground.
-	"wasp": {"body": 5.0, "label": "蜜蜂", "bait": "bee", "venom": 0.25, "sting": true,
+	"wasp": {"body": 6.0, "label": "蜜蜂", "bait": "bee", "venom": 0.25, "sting": true,
 		"frames": 12, "cols": 60, "clips": 1, "offset": Vector2(0, -3.62), "move_fps": 12.0, "idle_fps": 12.0, "size": 1.6,
 		"wander_speed": 40.0, "flee_speed": 115.0, "hover": 14.0},
 	# User request (round 8): grasshoppers can be caught on the map (the
 	# 蚱蜢 bait the shop sells).
-	"grasshopper": {"body": 5.0, "label": "蚱蜢", "bait": "cricket",
+	"grasshopper": {"body": 6.0, "label": "蚱蜢", "bait": "cricket",
 		"frames": 12, "cols": 120, "clips": 2, "offset": Vector2(0, -5.19), "move_fps": 18.0, "idle_fps": 12.0, "size": 1.5,
 		"wander_speed": 36.0, "flee_speed": 110.0},
 
@@ -71,33 +71,33 @@ const SPECIES := {
 	# one normal sheet). Good bait (two of it, Player.BLACK_SPIDER_BAIT)
 	# but its bite may poison (venom, see Player._catch_critter). Also turns
 	# up under rocks and out of chopped trees (spawn_black_spider).
-	"black_spider": {"body": 7.5, "skinned": true, "label": "黑蜘蛛", "bait": "black_spider", "venom": 0.35,
+	"black_spider": {"body": 8.0, "skinned": true, "label": "黑蜘蛛", "bait": "black_spider", "venom": 0.35,
 		"frames": 12, "cols": 56, "clips": 2, "offset": Vector2(0, -5.79), "move_fps": 10.0, "idle_fps": 6.0,
 		"size": 1.3, "wander_speed": 38.0, "flee_speed": 105.0},
 
 	# Ambient animals: not catchable. Grazers and dogs ignore the player
 	# (flee_speed 0); deer, stag, fox and wolf bolt at a gallop, faster than the
 	# player can follow.
-	"deer": {"body": 9.6, "label": "鹿", "ambient": true, "frames": 16, "cols": 42,
+	"deer": {"body": 21.0, "label": "鹿", "ambient": true, "frames": 16, "cols": 42,
 		"clips": 3, "offset": Vector2(0, -19.1), "move_fps": 13.71, "idle_fps": 2.67,
 		"flee_fps": 32.0, "flee_clip": 2, "flee_radius": 120.0, "calm_radius": 260.0,
 		"wander_speed": 28.0, "flee_speed": 170.0, "idle_time": Vector2(3, 8)},
-	"stag": {"body": 10.4, "label": "雄鹿", "ambient": true, "frames": 16, "cols": 39,
+	"stag": {"body": 19.0, "label": "雄鹿", "ambient": true, "frames": 16, "cols": 39,
 		"clips": 3, "offset": Vector2(0, -22.28), "move_fps": 13.71, "idle_fps": 4.8,
 		"flee_fps": 32.0, "flee_clip": 2, "flee_radius": 120.0, "calm_radius": 260.0,
 		"wander_speed": 28.0, "flee_speed": 170.0, "idle_time": Vector2(3, 8)},
-	"fox": {"body": 5.6, "label": "狐狸", "ambient": true, "frames": 16, "cols": 73,
+	"fox": {"body": 18.0, "label": "狐狸", "ambient": true, "frames": 16, "cols": 73,
 		"clips": 3, "offset": Vector2(0, -7.87), "move_fps": 15.36, "idle_fps": 4.8,
 		"flee_fps": 29.54, "flee_clip": 2, "flee_radius": 100.0, "calm_radius": 220.0,
 		"wander_speed": 32.0, "flee_speed": 160.0, "idle_time": Vector2(2, 6)},
 	# User decision: dogs trot after the player for a little while when
 	# they come close (just company - no game effect).
-	"husky": {"body": 6.4, "label": "哈士奇", "ambient": true, "frames": 16, "cols": 64, "follow": true,
+	"husky": {"body": 13.0, "label": "哈士奇", "ambient": true, "frames": 16, "cols": 64, "follow": true,
 		"clips": 2, "offset": Vector2(0, -10.38), "move_fps": 15.36, "idle_fps": 4.8,
 		"wander_speed": 34.0, "flee_speed": 0.0, "idle_time": Vector2(2, 6)},
 	# User decision: wolves hunt the player - see Mode.CHASE. flee_speed is
 	# only used when scared off.
-	"wolf": {"body": 7.2, "label": "狼", "ambient": true, "frames": 16, "cols": 56,
+	"wolf": {"body": 25.0, "label": "狼", "ambient": true, "frames": 16, "cols": 56,
 		"clips": 3, "offset": Vector2(0, -10.74), "move_fps": 15.36, "idle_fps": 4.8,
 		"flee_fps": 29.54, "flee_clip": 2,
 		"chase_radius": 150.0, "chase_speed": 118.0,
@@ -188,9 +188,9 @@ func set_species(name: String) -> void:
 	sprite.vframes = ceili(float(cells) / _data.cols)
 	sprite.scale = Vector2.ONE * SPRITE_SCALE * _data.get("size", 1.0) * (1.0 if _data.get("ambient", false) else BAIT_SIZE)
 	sprite.offset = _data.offset
-	# User request (no walking into things): solid as big as it is - a
-	# horse or a dinosaur used to brush through trees and rocks on the
-	# small bugs' 5 px.
+	# User request (no walking into things): solid as big as it is - its
+	# 3D model's half length ("body", px), so turning about it doesn't put
+	# a nose or a tail into a tree or a rock.
 	var body := get_node_or_null("CollisionShape2D") as CollisionShape2D
 	if body != null:
 		var circle := CircleShape2D.new()

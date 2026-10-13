@@ -12,12 +12,20 @@ extends Node2D
 ## (m, at scale 1 - the root flare); the size range.
 const KINDS := {"pine_b": 0.8, "pine_c": 0.94}
 const SCALE := Vector2(0.78, 1.0)
+## (pine_b's lowest branches are at 2.87 m: not under 0.9, so they clear
+## the big ghost's 2.3 m)
+const SCALE_OF := {"pine_b": Vector2(0.9, 1.0), "pine_c": Vector2(0.78, 1.0)}
+## Its branches' reach (m, at scale 1).
+const CANOPY := {"pine_b": 3.44, "pine_c": 3.26}
 const PX := 27.108
 
 var kind := "pine_b"
 var tree_scale := 0.9
 ## The trunk's base (px).
 var trunk_radius := 20.0
+## Kind and size already chosen (map_generator picks them first, to space
+## the trees by their branches).
+var picked := false
 
 
 ## User request (the hatchet and the machete): chopped once a run (see
@@ -31,9 +39,9 @@ const CHOP_BAIT := ["蟲子", "蟲子", "蚯蚓"]
 
 func _ready() -> void:
 	add_to_group("trees")
-	var kinds := KINDS.keys()
-	kind = kinds[absi(hash(name + str(global_position))) % kinds.size()]
-	tree_scale = randf_range(SCALE.x, SCALE.y)
+	add_to_group("solids")
+	if not picked:
+		pick(absi(hash(name + str(global_position))))
 	trunk_radius = float(KINDS[kind]) * tree_scale * PX
 	var trunk := CircleShape2D.new()
 	trunk.radius = trunk_radius
@@ -41,6 +49,29 @@ func _ready() -> void:
 	$TrunkBody/CollisionShape2D.shape = trunk
 	for n in [$TrunkBody/LightOccluder2D, $Canopy/Visual]:
 		n.queue_free()
+
+
+## Which pine and how big (from `roll`, any number).
+func pick(roll: int) -> void:
+	var kinds := KINDS.keys()
+	kind = kinds[roll % kinds.size()]
+	var lo: Vector2 = SCALE_OF.get(kind, SCALE)
+	tree_scale = lo.x + (lo.y - lo.x) * float((roll / 7) % 1000) / 999.0
+	picked = true
+
+
+## How far its branches reach (px) - for spacing them (no two trees'
+## branches through each other; none over the fishing bank).
+static func canopy_of(which: String, s: float) -> float:
+	return float(CANOPY.get(which, 3.44)) * s * PX
+
+
+func canopy() -> float:
+	return canopy_of(kind, tree_scale)
+
+
+func solids() -> Array:
+	return [[global_position, Vector2(trunk_radius, trunk_radius)]]
 
 
 ## A chop (Player._chop_tree): the tree shudders and says what fell out -
