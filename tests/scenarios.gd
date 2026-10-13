@@ -12,6 +12,7 @@ const TESTS := [
 	"test_campaign_curses",
 	"test_campaign_unlocks_and_achievements",
 	"test_journey_page",
+	"test_proto3d",
 	"test_map_generation",
 	"test_all_themes",
 	"test_ruined_town",
@@ -3616,6 +3617,52 @@ func test_campaign_unlocks_and_achievements() -> void:
 	var got: Array = camp().check_achievements()
 	check("catch_100" in got and Profile.has_achievement("catch_100"), "百尾 at 100")
 	check(not "catch_100" in camp().check_achievements(), "and only once")
+
+
+## User request (after Vaultbreakers): the run's trial in 3D perspective -
+## walked about with the stick, walking when it's eased off and running when
+## it's pushed, round things, not into the lake, out along the dock; the
+## camera after it from up and behind.
+func test_proto3d() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 100, "spirit": 90.0})
+	var p: Node3D = load("res://scenes/proto3d.tscn").instantiate()
+	get_tree().root.add_child(p)
+	await frames(5)
+	var cam: Camera3D = p.camera
+	var down := rad_to_deg(-cam.global_transform.basis.z.angle_to(Vector3(cam.global_transform.basis.z.x, 0, cam.global_transform.basis.z.z)))
+	check(absf(absf(down) - p.CAMERA_PITCH) < 2.0, "the camera looks down at %.0f degrees" % absf(down))
+	var stick = p._joystick
+	var from: Vector3 = p.pivot.position
+	stick.output = Vector2(0.3, 0.0)
+	await seconds(1.0)
+	check(p.character.anim.current_animation == "Walk" and p.pivot.position.x > from.x + 0.8,
+		"stick eased off: it walks (%s)" % p.character.anim.current_animation)
+	stick.output = Vector2(1.0, 0.0)
+	await seconds(0.6)
+	check(p.character.anim.current_animation == "Run", "pushed all the way: it runs (%s)" % p.character.anim.current_animation)
+	# Round the fire, not through it.
+	p.pivot.position = p.PLAZA + Vector3(0, 0, 2.5)
+	stick.output = Vector2(0.0, -1.0)
+	var nearest := INF
+	for _i in 60:
+		await frames(1)
+		nearest = minf(nearest, Vector2(p.pivot.position.x, p.pivot.position.z).distance_to(Vector2(p.PLAZA.x, p.PLAZA.z)))
+	check(nearest > 0.85, "not through the fire (%.2f m)" % nearest)
+	# Not into the lake; out along the dock.
+	p.pivot.position = Vector3(-6.0, 0, p._shore_z(-6.0) + 2.0)
+	await seconds(1.5)
+	check(p.pivot.position.z >= p._shore_z(p.pivot.position.x) + 0.3, "it stops at the water's edge")
+	p.pivot.position = Vector3(2.4, 0.32, float(p._dock_span[1]) - 0.5)
+	await seconds(1.2)
+	check(p._on_dock(p.pivot.position) and p.pivot.position.z < p._shore_z(2.4) - 1.0 and is_equal_approx(p.pivot.position.y, 0.32),
+		"out along the dock over the water")
+	stick.output = Vector2.ZERO
+	await frames(10)
+	check(p.character.anim.current_animation == "Idle", "let go: it stands")
+	p.queue_free()
+	await frames(2)
+	Profile.load_data(saved)
 
 
 ## The journey page: the camp's 出發夜釣 opens it; a locked level can't be

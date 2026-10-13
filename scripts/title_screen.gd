@@ -685,6 +685,14 @@ func _on_settings() -> void:
 		get_tree().change_scene_to_file("res://scenes/title_screen.tscn"))
 	col.add_child(camp)
 	col.move_child(camp, col.get_child_count() - 2)
+	# User request (after Vaultbreakers' picture): the run's trial in true 3D
+	# perspective (scenes/proto3d.tscn) - one place to walk about in.
+	var trial := UiKit.button("3D 試作場景：夜釣湖畔", 15, "red")
+	trial.name = "Proto3D"
+	trial.custom_minimum_size = Vector2(0, 40)
+	trial.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/proto3d.tscn"))
+	col.add_child(trial)
+	col.move_child(trial, col.get_child_count() - 2)
 
 
 func _go(page: String) -> void:

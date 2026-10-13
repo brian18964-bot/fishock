@@ -76,6 +76,8 @@ MIXAMO = [
     ("Disappointed", "Disappointed.fbx", None, True),
     ("Sad_Loop", "Sad.Idle.fbx", None, True),
     ("Sad_B_Loop", "Sad.Idle.1.fbx", None, True),
+    # (the 3D run trial, scripts/proto3d.gd: the user's Locomotion Pack)
+    ("Run_Loop", "Running.fbx", None, False),
 ]
 # Every second source frame kept (the keys spread back out, so it plays at
 # the same pace): the model's size.
@@ -89,7 +91,7 @@ GROUNDED = ("Lie_Down", "Lying_Loop", "Sleep_B_Loop", "Ground_Sit_Loop", "Ground
             # (and lying to getting up, the standing about and the walk -
             # the bear's walk 7 cm in, the rest's toes 2-3 cm)
             "LayToIdle", "Walk_Loop", "Idle_Loop", "Idle_FoldArms_Loop", "Idle_No_Loop",
-            "Idle_Talking_Loop", "Idle_Torch_Loop", "Sad_Loop")
+            "Idle_Talking_Loop", "Idle_Torch_Loop", "Sad_Loop", "Run_Loop")
 # User report (the bear sank into the log): the camp's logs (CampStage.SEATS)
 # have their top this high under the hips of one sat on them, m (measured
 # in the camp) - and the clips sat on one, whole and getting on and off.
