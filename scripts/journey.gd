@@ -355,7 +355,19 @@ func _build_free() -> void:
 	go.custom_minimum_size = Vector2(180, 52)
 	go.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	go.pressed.connect(_depart_free)
-	box.add_child(go)
+	# User request: the same free run in true 3D, by the lakeside forest
+	# (RunView3D).
+	var go3d := UiKit.button("出發：3D 湖畔森林", 20, "red")
+	go3d.name = "GoFree3D"
+	go3d.custom_minimum_size = Vector2(240, 52)
+	go3d.pressed.connect(func():
+		RunView3D.request()
+		_depart_free())
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	row.add_child(go)
+	row.add_child(go3d)
+	box.add_child(row)
 
 
 func _depart_free() -> void:

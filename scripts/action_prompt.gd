@@ -94,7 +94,7 @@ func _send(down: bool) -> void:
 func _draw_prompt() -> void:
 	if _offer.is_empty():
 		return
-	var at: Vector2 = get_viewport().get_canvas_transform() * (_offer.at as Vector2)
+	var at: Vector2 = RunView3D.screen_point(get_viewport(), _offer.at as Vector2)
 	at.y = maxf(at.y, TOP_MARGIN + 34.0)
 	var verb: String = _offer.verb
 	if not _touchscreen:

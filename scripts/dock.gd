@@ -64,6 +64,9 @@ const STAIRS := {
 const STAIRS_HALF_WIDTH := 20.0
 
 var _is_boat := false
+## (a boat's bow, a flight of steps' way down - for the 3D run's models)
+var bow := ""
+var descend := ""
 ## World-space area the player can walk on over deep water (docks and
 ## stairs; empty for boats).
 var walk_rect := Rect2()
@@ -101,14 +104,16 @@ static func boat_half_beam(vertical: bool) -> float:
 
 
 ## bow: "down", "up", "left" or "right".
-func setup_boat(bow: String) -> void:
+func setup_boat(toward: String) -> void:
 	_is_boat = true
-	_apply(BOATS[bow])
+	bow = toward
+	_apply(BOATS[toward])
 
 
 ## descend: "down", "up", "left" or "right" - the way the steps lead.
-func setup_stairs(descend: String) -> void:
-	_apply(STAIRS[descend])
+func setup_stairs(down: String) -> void:
+	descend = down
+	_apply(STAIRS[down])
 	var vertical := descend == "up" or descend == "down"
 	var along := stairs_half_length(vertical)
 	var across := STAIRS_HALF_WIDTH * (1.0 if vertical else sin(deg_to_rad(55.0)))

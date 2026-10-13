@@ -79,6 +79,19 @@ MIXAMO = [
     # (the 3D run trial, scripts/proto3d.gd: the user's Locomotion Pack)
     ("Run_Loop", "Running.fbx", None, False),
 ]
+# The run in 3D (scripts/run_view_3d.gd): KayKit's fishing clips (CC0,
+# art_src/kaykit - the same the run's sprites are drawn from), the rod in
+# the right hand as KayKit has it (CharacterRig.equip_rod): the name it's
+# played by, the clip.
+KAYKIT_FISHING = [
+    ("Fish_Cast", "Fishing_Cast"),
+    ("Fish_Hold_Loop", "Fishing_Idle"),
+    ("Fish_Bite_Loop", "Fishing_Bite"),
+    ("Fish_Tug", "Fishing_Tug"),
+    ("Fish_Reel_Loop", "Fishing_Reeling"),
+    ("Fish_Fight_Loop", "Fishing_Struggling"),
+    ("Fish_Catch", "Fishing_Catch"),
+]
 # Every second source frame kept (the keys spread back out, so it plays at
 # the same pace): the model's size.
 MIXAMO_STEP = 2
@@ -136,6 +149,17 @@ def mixamo_clips(arm):
             bpy.data.objects.remove(o, do_unlink=True)
         bpy.data.actions.remove(act)
         out[name] = baked
+    return out
+
+
+def kaykit_clips(arm):
+    """KAYKIT_FISHING carried onto `arm`: {name: action}."""
+    lib = kaykit.load_source(kaykit.path("tools"))
+    out = {}
+    for name, clip in KAYKIT_FISHING:
+        out[name] = kaykit.bake(arm, lib, clip, name=name, mirror=False, lift=0.0)
+    for o in [lib] + list(lib.children):
+        bpy.data.objects.remove(o, do_unlink=True)
     return out
 
 
@@ -458,8 +482,11 @@ def main():
         bpy.data.objects.remove(o, do_unlink=True)
     mixamo = mixamo_clips(arm)
     keep.update(mixamo)
+    fishing = kaykit_clips(arm)
+    keep.update(fishing)
     standing = [a for n, a in keep.items() if n.startswith("Idle")]
     standing += [mixamo[m[0]] for m in MIXAMO if m[3] and m[0] in mixamo]
+    standing += list(fishing.values())
     if os.environ.get("MANNEQUIN") != "1":
         for o in body:
             bpy.data.objects.remove(o, do_unlink=True)

@@ -187,7 +187,7 @@ func _draw_arrow(world: Vector2) -> void:
 	if world == Vector2.INF:
 		return
 	var vp := _view.get_viewport()
-	var screen: Vector2 = vp.get_canvas_transform() * world
+	var screen: Vector2 = RunView3D.screen_point(vp, world)
 	var size := vp.get_visible_rect().size
 	var bob := sin(_t * 4.0) * 5.0
 	if Rect2(Vector2.ZERO, size).grow(-20.0).has_point(screen):
@@ -195,7 +195,7 @@ func _draw_arrow(world: Vector2) -> void:
 		_chevron(screen + Vector2(0, -38.0 + bob), Vector2.DOWN, 1.0)
 		return
 	# Off screen: circling the player, pointing its way.
-	var me: Vector2 = vp.get_canvas_transform() * Campaign._player.global_position
+	var me: Vector2 = RunView3D.screen_point(vp, Campaign._player.global_position)
 	var dir := (screen - me).normalized()
 	_chevron(me + Vector2(0, -16) + dir * (ORBIT + bob), dir, 1.15)
 

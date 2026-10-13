@@ -13,6 +13,7 @@ const TESTS := [
 	"test_campaign_unlocks_and_achievements",
 	"test_journey_page",
 	"test_proto3d",
+	"test_run_3d",
 	"test_map_generation",
 	"test_all_themes",
 	"test_ruined_town",
@@ -3663,6 +3664,96 @@ func test_proto3d() -> void:
 	p.queue_free()
 	await frames(2)
 	Profile.load_data(saved)
+
+
+## User request: the lakeside forest as a whole run in 3D (RunView3D) -
+## the same run, shown in 3D: the map's things where the map put them, the
+## traveller acting out the 2D one's clips, fishing and all.
+func test_run_3d() -> void:
+	RunView3D.request()
+	await _fresh_game()
+	var view: RunView3D = null
+	for _i in 120:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	check(view != null and view.built and main.get_node("MapGenerator").theme_name == RunView3D.THEME,
+		"set off in 3D: the lakeside forest, shown in 3D")
+	if view == null or not view.built:
+		RunView3D.leave()
+		return
+	check(not main.visible and main.get_node("HUD/Panel").is_visible_in_tree() and view.camera.current,
+		"the 2D world hidden, the screen's layers still up, the 3D camera on")
+	var waters := 0
+	for c in view.get_children():
+		if c.name.begins_with("Water"):
+			waters += 1
+	check(waters == main.get_tree().get_nodes_in_group("water_zones").size(), "a surface for every pond")
+	check(view._trees.size() == main.get_tree().get_nodes_in_group("trees").size(), "the map's trees, each a pine")
+	var critters := 0
+	for n in view._sprites:
+		if n.get_parent() is Critter:
+			critters += 1
+	check(critters > 0, "its animals stood up as their pictures (%d)" % critters)
+	# The screen's buttons over what they're for: the 3D camera's view.
+	var feet: Vector2 = player().global_position + Player.FEET
+	var at := RunView3D.screen_point(main.get_viewport(), feet)
+	var size := main.get_viewport().get_visible_rect().size
+	check(Rect2(Vector2.ZERO, size).has_point(at), "the traveller on screen (%s)" % at)
+	var from := view.camera.project_ray_origin(at)
+	var dir := view.camera.project_ray_normal(at)
+	var hit := from + dir * ((view.ground_y(feet) - from.y) / dir.y)
+	check(RunView3D.to2(hit).distance_to(feet) < 3.0, "and back from the screen to the same spot")
+	# Running about: the run clip; it faces the way it goes.
+	key(KEY_D, true)
+	await seconds(0.6)
+	check(view._clip == "Run" and view.rig.anim.current_animation == "Run", "running: the run clip (%s)" % view._clip)
+	check(view.pivot.global_basis.z.x > 0.8, "facing the way it runs")
+	key(KEY_D, false)
+	await seconds(0.3)
+	# Fishing: the cast wound up and thrown, the float out on the water.
+	var zone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
+	await put(zone.shore_point(Vector2.DOWN) + Vector2(0, 40))
+	player().aim_dir = Vector2.UP
+	key(KEY_SPACE, true)
+	await seconds(0.5)
+	check(view._clip == "Fish_Cast" and view._guide_label.visible, "winding a cast: the cast clip, how far it'll go")
+	key(KEY_SPACE, false)
+	for _i in 60:
+		await frames(1)
+		if player().state == Player.State.WAITING:
+			break
+	await seconds(0.5)
+	check(player().state == Player.State.WAITING and view._float.visible
+		and absf(view._float.position.y - RunView3D.WATER_Y) < 0.1, "the float out on the water")
+	check(view._clip == "Fish_Hold", "waiting with the rod out (%s)" % view._clip)
+	var tip := view._rod_tip()
+	var hand: Vector3 = view.rig.attachments["hand_r"].global_position
+	var toward := view._float.position - view.pivot.global_position
+	toward.y = 0.0
+	check(tip.y > hand.y + 0.3 and (tip - hand).dot(toward.normalized()) > 0.4, "the rod held up and out toward the float")
+	# A bite, the strike: their clips.
+	player().nibbles_left = 0
+	player().cast_outcome = Player.CastOutcome.BITE
+	player().wait_timer = 0.01
+	for _i in 120:
+		await frames(1)
+		if player().state == Player.State.BITE:
+			break
+	await frames(3)
+	check(view._clip == "Fish_Bite", "a bite: the bite clip (%s)" % view._clip)
+	key(KEY_SPACE, true)
+	await frames(6)
+	check(player().state == Player.State.REELING and view._clip == "Fish_Tug", "struck: the strike clip (%s)" % view._clip)
+	key(KEY_SPACE, false)
+	player()._set_state(Player.State.IDLE)
+	player().fight = null
+	player().line_cleared.emit()
+	await frames(4)
+	check(not view._float.visible, "the line in: no float")
+	RunView3D.leave()
+	check(not RunView3D.wanted and MapGenerator.forced_theme == "", "back at the camp: runs are 2D again")
 
 
 ## The journey page: the camp's 出發夜釣 opens it; a locked level can't be

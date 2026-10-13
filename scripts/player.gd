@@ -1352,7 +1352,7 @@ func _update_aim() -> void:
 		# The right stick aims the cast (and the light with it).
 		aim_dir = _aim_joystick.output.normalized()
 	elif _mouse_aiming():
-		var to_mouse := get_global_mouse_position() - global_position
+		var to_mouse := RunView3D.mouse_world(get_viewport(), get_global_mouse_position()) - global_position
 		if to_mouse.length() > 4.0:
 			aim_dir = to_mouse.normalized()
 	elif state == State.IDLE and velocity.length() > 5.0:

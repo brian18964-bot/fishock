@@ -92,7 +92,7 @@ func _float_pos() -> Vector2:
 	var bobber := get_tree().current_scene.get_node_or_null("Bobber") as Node2D
 	if bobber == null:
 		return Vector2(-100, -100)
-	return get_viewport().get_canvas_transform() * bobber.global_position
+	return RunView3D.screen_point(get_viewport(), bobber.global_position)
 
 
 ## What the fish is doing, in words, and in what color.

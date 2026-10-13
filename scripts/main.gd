@@ -152,6 +152,10 @@ func _ready() -> void:
 	# User request (the campaign): the run's rules set the threats, and a
 	# level puts up its objectives and tutorial (once the map's in).
 	Campaign.attach.call_deferred(self)
+	# User request: the lakeside forest in true 3D, set off that way
+	# (RunView3D shows this same run in 3D).
+	if RunView3D.wants($MapGenerator.theme_name):
+		RunView3D.attach(self)
 
 
 func _process(delta: float) -> void:
