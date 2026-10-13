@@ -376,11 +376,6 @@ func _ready() -> void:
 	hand.name = "CarriedCan"
 	var can := Sprite2D.new()
 	can.name = "Can"
-	var tex := CanvasTexture.new()
-	tex.diffuse_texture = preload("res://assets/sprites/gas_can/gas_can_55deg_albedo.png")
-	tex.normal_texture = preload("res://assets/sprites/gas_can/gas_can_55deg_normal.png")
-	can.texture = tex
-	Art.place(can, Vector2(0, -5.56), 0.5)
 	hand.add_child(can)
 	hand.set_script(preload("res://scripts/carried_can.gd"))
 	hand.visible = false

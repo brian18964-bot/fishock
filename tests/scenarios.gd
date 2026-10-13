@@ -12,12 +12,8 @@ const TESTS := [
 	"test_campaign_curses",
 	"test_campaign_unlocks_and_achievements",
 	"test_journey_page",
-	"test_proto3d",
 	"test_run_3d",
 	"test_map_generation",
-	"test_all_themes",
-	"test_ruined_town",
-	"test_beach_sea",
 	"test_spawn_on_land_docks_out",
 	"test_catalog_and_sounds",
 	"test_creature_animation",
@@ -78,7 +74,6 @@ const TESTS := [
 	"test_shop_new_wares",
 	"test_black_spider",
 	"test_chop_and_weapons",
-	"test_desert_bones",
 ]
 
 var main: Node
@@ -99,7 +94,7 @@ func _run() -> void:
 			only = a.substr(5)
 	gs = get_tree().root.get_node("GameState")
 	for t in TESTS:
-		if only != "" and t != only:
+		if only != "" and not t in only.split(","):
 			continue
 		_current = t
 		var before := failures.size()
@@ -241,202 +236,6 @@ func test_map_generation() -> void:
 	check(escape.get_node("Light").visible == false, "escape dark before the quota")
 
 
-## Every map style builds: trees, rocks and bushes from its families, its
-## ground, light and pond colour.
-func test_all_themes() -> void:
-	var gen_script = load("res://scripts/map_generator.gd")
-	for theme in gen_script.THEMES:
-		gen_script.forced_theme = theme
-		await _fresh_game()
-		var gen = main.get_node("MapGenerator")
-		check(gen.theme_name == theme, "%s: picked" % theme)
-		var trees := of_script("tree.gd")
-		var ok := trees.size() > 0
-		for t in trees:
-			ok = ok and t.sprite.texture != null
-		check(ok, "%s: %d trees, all drawn" % [theme, trees.size()])
-		var rocks := of_script("obstacle.gd")
-		check(rocks.all(func(r): return r.sprite.texture != null), "%s: rocks drawn" % theme)
-		var look: String = gen.theme.look
-		var strays := {}
-		for n in _all_nodes(main):
-			if n is Sprite2D and n.texture is CanvasTexture and n.texture.diffuse_texture != null:
-				var path: String = n.texture.diffuse_texture.resource_path
-				var art := _art_look(path)
-				if art != "" and art != look:
-					strays[path.get_file()] = true
-		check(strays.is_empty(), "%s (%s): no art of the other look %s" % [theme, look, str(strays.keys())])
-		if gen.theme.has("shore_critters"):
-			var kinds := {}
-			for c in of_script("/critter.gd"):
-				kinds[c.species] = true
-			check(gen.theme.shore_critters.all(func(k): return kinds.has(k)), "%s: its shore creatures %s" % [theme, str(kinds.keys())])
-		var floors: Array = gen.theme.floor.slice(0, 2)
-		check(floors.all(func(f): return f.begins_with("lp_") == (look == "lowpoly")), "%s: its look's floor" % theme)
-		var tint: Color = main.get_node("Darkness").tint
-		check(tint == gen.theme.get("tint", Color.WHITE), "%s: its light" % theme)
-		if gen.theme.has("water"):
-			var zone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
-			var base: Color = zone._surface_material.get_shader_parameter("base_color")
-			check(base.is_equal_approx(gen.theme.water.base), "%s: its pond colour" % theme)
-	gen_script.forced_theme = ""
-	# User decision: only the detailed look is dealt to players for now.
-	var gen = main.get_node("MapGenerator")
-	var dealt := {}
-	for i in 400:
-		dealt[gen._pick_theme()] = true
-	check(dealt.keys().all(func(t): return gen_script.THEMES[t].look == "detailed"),
-		"only detailed styles are played %s" % str(dealt.keys()))
-	check(dealt.size() >= 8, "and all of them turn up (%d)" % dealt.size())
-
-
-## User request: a ruined town, fishing in its flooded streets - its old
-## gas station behind the spawn point, signals at the crossings. Its streets
-## are painted into the ground (no wooden docks: user feedback); buildings line them, clear of the ponds,
-## the landmarks and each other, their walls never rising over a road;
-## wrecked cars stand on the roads; everything built is solid.
-func test_ruined_town() -> void:
-	var gen_script = load("res://scripts/map_generator.gd")
-	for s in [7, 21, 99]:
-		gen_script.forced_theme = "ruins"
-		await _fresh_game(s)
-		var gen = main.get_node("MapGenerator")
-		var town: TownBuilder = gen.town
-		check(town != null, "seed %d: a town was built" % s)
-		if town == null:
-			continue
-		var streets := false
-		for n in _all_nodes(main):
-			if n is CanvasItem and n.material is ShaderMaterial and n.material.get_shader_parameter("streets_on"):
-				streets = n.material.get_shader_parameter("streets") != null
-		check(streets, "seed %d: streets painted into the ground" % s)
-		var props := of_script("ruin_prop.gd")
-		var buildings := props.filter(func(p): return p.entry.kind == "building")
-		var wrecks := props.filter(func(p): return p.entry.kind == "wreck")
-		check(buildings.size() >= 10, "seed %d: buildings line the streets (%d)" % [s, buildings.size()])
-		check(wrecks.size() >= 5, "seed %d: wrecked cars (%d)" % [s, wrecks.size()])
-		check(buildings.any(func(b): return b.entry.family == "gas_station"), "seed %d: the old gas station" % s)
-		check(props.any(func(p): return p.entry.family == "traffic_light"), "seed %d: traffic signals" % s)
-		# Round 8 (user request): the old playground in one of its lots.
-		var pg := props.filter(func(p): return p.entry.family.begins_with("pg_"))
-		check(pg.size() >= 4, "seed %d: the abandoned playground (%d pieces)" % [s, pg.size()])
-		var fixed := [MapGenerator.SPAWN_POS, main.get_node("Altar").global_position,
-			main.get_node("EscapePoint").global_position]
-		var bad := []
-		for i in buildings.size():
-			var b: RuinProp = buildings[i]
-			var r := b.base_rect()
-			for z in get_tree().get_nodes_in_group("water_zones"):
-				if z.contains(r.get_center()):
-					bad.append("%s in water" % b.entry.name)
-			for f in fixed:
-				# The gas station stands behind the spawn point's drums on purpose.
-				if b.entry.family == "gas_station" and f == MapGenerator.SPAWN_POS:
-					if r.grow(20.0).has_point(f):
-						bad.append("gas station over the spawn point")
-					continue
-				if r.grow(TownBuilder.CLEAR_OF_FIXED - 1.0).has_point(f):
-					bad.append("%s on a landmark" % b.entry.name)
-			for j in range(i + 1, buildings.size()):
-				if r.grow(-1.0).intersects(buildings[j].base_rect()):
-					bad.append("%s overlaps %s" % [b.entry.name, buildings[j].entry.name])
-			if town._hangs_over_road(b.entry, b.position):
-				bad.append("%s over a road" % b.entry.name)
-		check(bad.is_empty(), "seed %d: buildings placed clear %s" % [s, str(bad.slice(0, 4))])
-		var off_road := wrecks.filter(func(w): return not town.road_rects.any(
-			func(r: Rect2): return r.grow(4.0).has_point(w.position)))
-		check(off_road.is_empty(), "seed %d: the cars are on the roads" % s)
-		check(props.all(func(p): return p.get_children().any(func(c): return c is CollisionPolygon2D)),
-			"seed %d: all solid" % s)
-		check(props.all(func(p): return p.sprite.texture != null), "seed %d: all drawn" % s)
-		var town_ways := get_tree().get_nodes_in_group("walkways")
-		check(town_ways.all(func(w): return w is Jetty and w.style == "concrete"),
-			"seed %d: no wooden docks in town - concrete platforms" % s)
-		check(not town_ways.is_empty(), "seed %d: a platform out over a pond" % s)
-	gen_script.forced_theme = ""
-
-
-## User request: the beach's water is the sea - a big sweep of it along
-## one side, no docks; the rocky coast with rock ridges running in from
-## it, the palm beach with its palms along the sand; the spawn point dry. And every leafless tree in one weathered colour.
-func test_beach_sea() -> void:
-	var gen_script = load("res://scripts/map_generator.gd")
-	for run in [[7, "beach_rocky"], [21, "beach_sandy"], [99, "beach_rocky"], [5, "beach_sandy"]]:
-		var s: int = run[0]
-		gen_script.forced_theme = run[1]
-		await _fresh_game(s)
-		var gen = main.get_node("MapGenerator")
-		var commons := get_tree().get_nodes_in_group("water_zones_common")
-		var wet := 0
-		var total := 0
-		for x in range(20, int(Player.WORLD_WIDTH), 40):
-			for y in range(20, int(Player.WORLD_HEIGHT), 40):
-				total += 1
-				if commons.any(func(z): return z.contains(Vector2(x, y))):
-					wet += 1
-		check(float(wet) / total > 0.25, "seed %d: the sea covers a good part of the map (%d%%)" % [s, 100 * wet / total])
-		var ways := get_tree().get_nodes_in_group("walkways")
-		check(ways.all(func(w): return w is Jetty), "seed %d: no wooden docks on the beach" % s)
-		# User request: a rock jetty out into the deep instead.
-		check(not ways.is_empty(), "seed %d: a rock jetty out into the sea" % s)
-		for j in ways:
-			var tip: Vector2 = j.position - j.dir * (j.half_length - 6.0)
-			check(Dock.on_walkway(get_tree(), tip) and commons.any(func(z): return z.contains(tip)),
-				"seed %d: its end stands over the sea" % s)
-		if gen.theme.get("ridges", 0) > 0:
-			var big := of_script("obstacle.gd").filter(func(r): return r.size > 1.2)
-			check(big.size() >= 10, "seed %d: rock ridges (%d boulders)" % [s, big.size()])
-		if gen.theme.get("beach_trees", 0) > 0:
-			var palms := of_script("tree.gd").filter(func(t): return gen._sea_distance(t.position) < gen.theme.coast.sand_width)
-			check(palms.size() >= 12, "seed %d: palms along the beach (%d)" % [s, palms.size()])
-		check(not get_tree().get_nodes_in_group("water_zones").any(
-			func(z): return z.distance_to_edge(MapGenerator.SPAWN_POS) < 80.0), "seed %d: the spawn point is dry" % s)
-	gen_script.forced_theme = ""
-	var colours := []
-	for name in ["dead_tree/dead_tree_%d", "bare_tree/bare_tree_%d"]:
-		for i in range(1, 11 if name.begins_with("bare") else 6):
-			var img: Image = load("res://assets/sprites/%s_55deg_albedo.png" % (name % i)).get_image()
-			if img.is_compressed():
-				img.decompress()
-			var sum := Vector3.ZERO
-			var n := 0
-			for y in range(0, img.get_height(), 4):
-				for x in range(0, img.get_width(), 4):
-					var c := img.get_pixel(x, y)
-					if c.a > 0.5:
-						sum += Vector3(c.r, c.g, c.b)
-						n += 1
-			colours.append(sum / maxf(n, 1))
-	var spread := 0.0
-	for a in colours:
-		for b in colours:
-			spread = maxf(spread, (a - b).length())
-	check(spread < 0.12, "leafless trees all one colour (spread %.2f)" % spread)
-
-
-## User feedback: the finely drawn and the flat-coloured art don't mix.
-## Which look a scenery texture belongs to ("" for the shared art - the
-## player, the landmarks, animals, lily pads).
-const DETAILED_DIRS := ["bare_tree", "birch_tree", "bush", "dead_tree", "ground_cover", "leafy_tree", "maple_tree",
-	"oak_tree", "palm_tree", "pine", "rock", "twisted_tree", "props", "beach_palm", "ruins", "bones"]
-const LOWPOLY_DIRS := ["autumn_tree", "bonsai_tree", "bush2", "conifer", "jungle_tree", "lowpoly", "meadow_tree",
-	"snow_tree", "rock2"]
-
-
-func _art_look(path: String) -> String:
-	var dir := path.get_base_dir().get_file()
-	var file := path.get_file()
-	if dir == "shore":
-		return "" if file.begins_with("lilypads") else "detailed"
-	if dir == "rock2" and (file.begins_with("boulder2_") or file.begins_with("sea_rock_")):
-		return "detailed"
-	if dir in DETAILED_DIRS:
-		return "detailed"
-	if dir in LOWPOLY_DIRS:
-		return "lowpoly"
-	return ""
-
-
 func _all_nodes(n: Node) -> Array:
 	var out := [n]
 	for c in n.get_children():
@@ -457,7 +256,7 @@ func test_spawn_on_land_docks_out() -> void:
 		await frames(3)
 		main = get_tree().current_scene
 		var docked: bool = main.get_node("MapGenerator").theme.get("docks", true)
-		var spawn := Vector2(1200, 700)
+		var spawn := MapGenerator.SPAWN_POS
 		for z in main.get_tree().get_nodes_in_group("water_zones"):
 			if z.distance_to_edge(spawn) < 80.0:
 				wet += 1
@@ -474,13 +273,6 @@ func test_spawn_on_land_docks_out() -> void:
 
 ## The generated catalog's textures and every sound the game asks for exist.
 func test_catalog_and_sounds() -> void:
-	var missing := []
-	for table in [NatureCatalog.TREES, NatureCatalog.ROCKS, NatureCatalog.BUSHES]:
-		for v in table:
-			for key in ["albedo", "normal"]:
-				if not ResourceLoader.exists(v[key]):
-					missing.append(v[key])
-	check(missing.is_empty(), "catalog textures all there %s" % str(missing))
 	var sounds := ["cast", "plop", "nibble", "splash", "splash_small", "reel_loop", "creak_loop", "snap",
 		"perfect", "catch", "fail", "ignite", "extinguish", "flash", "step_soft", "step_hard", "step_wood",
 		"step_snow", "chain_loop", "whisper", "moan", "emerge", "cage", "heartbeat_loop", "offering",
@@ -545,30 +337,11 @@ func test_creature_animation() -> void:
 		await frames(10)
 		check(wg._visual.frame >= WaterGhost.DIRS * WaterGhost.COLS, "and claws on its claw rows (frame %d)" % wg._visual.frame)
 		wg.queue_free()
+	# (user decision: 3D only) every critter and animal about is shown as
+	# its own model.
 	for c in of_script("/critter.gd"):
-		c._dir = Art.facing8(Vector2.RIGHT, 0)
-		c.velocity = Vector2.ZERO
-		c._animate(0.1)
-		var sprite: Sprite2D = c.sprite
-		check(sprite.flip_h and sprite.frame < sprite.hframes * sprite.vframes,
-			"%s facing right: mirrored, frame %d of %d" % [c.species, sprite.frame, sprite.hframes * sprite.vframes])
-		c._dir = Art.facing8(Vector2.LEFT, 0)
-		c._animate(0.1)
-		check(not sprite.flip_h, "%s facing left: as rendered" % c.species)
-	# User request (beach): crabs walk side-on, and never turn up at random.
-	var crab: Critter = load("res://scenes/critter.tscn").instantiate()
-	crab.species = "crab"
-	main.add_child(crab)
-	crab.global_position = player().global_position + Vector2(200, 0)
-	crab._mode = crab.Mode.WANDER
-	crab._target = crab.global_position + Vector2(300, 0)
-	await frames(20)
-	check(crab._dir == 0 or crab._dir == 4, "a crab walking right faces across its way (facing %d)" % crab._dir)
-	var dealt := {}
-	for i in 200:
-		dealt[crab._pick_species()] = true
-	check(not dealt.has("crab"), "crabs aren't dealt at random")
-	crab.queue_free()
+		check(RunView3D.CREATURES.has(c.species) and ResourceLoader.exists(RunView3D.CREATURE_DIR + c.species + ".glb"),
+			"%s: a 3D model" % c.species)
 
 
 func test_refuel() -> void:
@@ -624,7 +397,7 @@ func test_turn_rock() -> void:
 	await seconds(1.0)
 	var moved: float = rock._roller.position.length()
 	check(moved > 6.0 and moved < 20.0, "rock tipped aside, only just (%.1f px)" % moved)
-	check(absf(rock._visual.rotation) < 0.6, "leaning over a little, not rolled (%.2f)" % rock._visual.rotation)
+	check(absf(rock._roller.rotation) < 0.6, "leaning over a little, not rolled (%.2f)" % rock._roller.rotation)
 
 
 func test_escape() -> void:
@@ -936,20 +709,11 @@ func test_characters() -> void:
 	Profile.load_data({"gold": 100, "spirit": 95.0})
 	for c in Profile.CHARACTERS:
 		var id: String = c[0]
-		var sheet := CharacterArt.sheet(id)
 		var data := CharacterArt.rod_data(id)
-		var cell: Array = data.cell
-		check(sheet[0] != null and sheet[1] != null, "%s: its run sheet" % id)
-		# (2x density; the clips' rows in two halves side by side)
-		check(sheet[0].get_width() == int(cell[0]) * 2 * PlayerVisual.FRAMES * PlayerVisual.SHEET_HALVES
-			and sheet[0].get_height() == int(cell[1]) * 2 * PlayerVisual.CLIPS * PlayerVisual.DIRS / PlayerVisual.SHEET_HALVES,
-			"%s: the sheet holds its cells (%dx%d)" % [id, sheet[0].get_width(), sheet[0].get_height()])
+		# (user decision: 3D only - its model and its portrait, no sheets)
+		check(CharacterArt.model(id) != null and CharacterArt.portrait_texture(id) != null, "%s: its model and portrait" % id)
 		check(data.clips == PlayerVisual.CLIP_NAMES and data.rod.has("fight") and data.has("front") and data.has("crank"),
 			"%s: its rod data has every clip, the front layer and the crank" % id)
-		check(CharacterArt.front_mask(id) != null, "%s: its front layer" % id)
-		var struggle := CharacterArt.struggle(id)
-		check(struggle[0] != null and struggle[0].get_width() == 56 * 2 * PlayerVisual.FRAMES
-			and struggle[0].get_height() == 84 * 2 * 2 * PlayerVisual.DIRS, "%s: its struggle sheet" % id)
 		var body: Node3D = CharacterArt.model(id).instantiate()
 		var anim: AnimationPlayer = body.find_children("*", "AnimationPlayer", true, false)[0]
 		var clips := ["Idle", "Walk", "Interact", "Sitting_Idle", "Sitting_Enter", "Fixing_Kneeling"]
@@ -975,19 +739,11 @@ func test_characters() -> void:
 			off = maxf(off, (seat_at[n] as Vector3).distance_to(seat_at.get("Sitting_Idle", seat_at[n])))
 		check(seat_at.size() == 4 and off < 0.01, "%s: tea, a clap, a rest on the log, sat as it sits (%.3f)" % [id, off])
 		body.free()
-		# Its moves in a run (the third sheet).
-		var moves := CharacterArt.moves(id)
+		# Its moves in a run (their data: the 3D view plays them as clips).
 		var md := CharacterArt.moves_data(id)
-		check(moves.size() == 2 and moves[0] != null and md.get("clips", []) == PlayerVisual.MOVE_NAMES,
-			"%s: its moves sheet, every move" % id)
-		if moves.size() == 2:
-			var mc: Array = md.cell
-			check(moves[0].get_width() == int(mc[0]) * 2 * int(md.frames) * int(md.sections)
-				and moves[0].get_height() == int(mc[1]) * 2 * int(md.rows_per_section) and moves[0].get_height() <= 8192,
-				"%s: the moves sheet holds its cells, no taller than a phone takes (%dx%d)" % [id, moves[0].get_width(), moves[0].get_height()])
-		var p := CharacterArt.portrait(id)
-		var first := (sheet[0] as Texture2D).get_image().get_region(Rect2i(p))
-		check(not first.is_invisible(), "%s: the card's portrait has its head in it" % id)
+		check(md.get("clips", []) == PlayerVisual.MOVE_NAMES, "%s: every move" % id)
+		var face := CharacterArt.portrait_texture(id).get_image()
+		check(not face.is_invisible(), "%s: the card's portrait has its head in it" % id)
 
 	# At camp: the fire is a thing to tap, and each tap the next one.
 	var title: Control = load("res://scenes/title_screen.tscn").instantiate()
@@ -1070,6 +826,28 @@ func test_character_packs() -> void:
 	await seconds(1.0)
 	check(camp.character.character == "owl" and Profile.character == "owl" and not title._spot_label.text.contains("下載"),
 		"once it's in, the owl takes over (a tap meanwhile didn't skip it)")
+	title.queue_free()
+	await frames(2)
+	# User report: stuck on 下載角色 with an empty bar on a phone. A slow
+	# one offers a way in as the cat after a few seconds.
+	Profile.load_data({"gold": 100, "spirit": 95.0, "character": "dog"})
+	CharacterPacks.missing = {"dog": true}
+	CharacterPacks.pretend_time = 9.0
+	title = load("res://scenes/title_screen.tscn").instantiate()
+	get_tree().root.add_child(title)
+	await seconds(7.0)
+	var skip: Button = null
+	var cover := title.find_child("PackCover", true, false)
+	if cover != null:
+		for b in cover.find_children("*", "Button", true, false):
+			skip = b
+	check(skip != null and skip.visible, "a slow fetch: the cover offers a way in")
+	if skip != null:
+		skip.pressed.emit()
+	await frames(4)
+	camp = title.find_child("Camp", true, false)
+	check(camp != null and Profile.character == "cat" and camp.character.character == "cat", "in as the cat")
+	await seconds(2.5)
 	title.queue_free()
 	await frames(2)
 	CharacterPacks.missing = {}
@@ -1254,12 +1032,12 @@ func test_player_moves() -> void:
 	await put(away_from_water(200.0))
 	p.aim_dir = Vector2.DOWN
 	await frames(3)
-	if body._move_tex == null:
-		check(false, "the moves sheet is there for %s" % Profile.character)
+	if body._move_data.is_empty():
+		check(false, "the moves data is there for %s" % Profile.character)
 		return
 	p.perform("drink", 1.0)
 	await frames(3)
-	check(body.move == "drink" and body.texture == body._move_tex, "drinking: the moves sheet")
+	check(body.move == "drink", "drinking: the drink move")
 	check(body.rod_on_back() and body.off_main_sheet(), "the rod on the back, the front layer off")
 	var first := body.frame_in_clip
 	await seconds(0.6)
@@ -1740,7 +1518,6 @@ func test_fight_leap_far_out() -> void:
 			check(f.result == "", "close in, the line holds")
 
 
-
 ## User feedback (fights over too fast): worn out, the fish is spent, not
 ## landed - it has to be reeled in to the bank; left too long it recovers.
 func test_fight_spent_reeled_in() -> void:
@@ -1773,7 +1550,6 @@ func test_fight_spent_reeled_in() -> void:
 		f.update(0.1, FishFight.CRANK_NORMAL if f.tension < 0.6 else 0.0, Vector2.ZERO, Vector2.UP)
 		t += 0.1
 	check(f.result == "landed" and f.distance <= FishFight.LAND_DISTANCE, "reeled in to the bank, it's landed (%s, %.1f m)" % [f.result, f.distance])
-
 
 
 ## User request: struck, the fish puts its own tension on the line - the
@@ -1853,7 +1629,6 @@ func test_fight_opening() -> void:
 	check(light < 0.1 and p.fish_heft() > 0.9, "a small calm one is light, a far wild legend heavy (%.2f, %.2f)" % [light, p.fish_heft()])
 	p.is_rare_catch = false
 	p.is_epic_catch = false
-
 
 
 ## User request: struck, the fish swims about the water - out, along the
@@ -2128,9 +1903,6 @@ func test_fish_by_style() -> void:
 		for id in own + [FishData.STYLE_FISH[style][1]]:
 			check(not ids.has(id), "%s: %s belongs to one style only" % [style, id])
 			ids[id] = true
-	var gen_script = load("res://scripts/map_generator.gd")
-	for theme in gen_script.STYLES.values().map(func(st): return st.themes).reduce(func(a, b): return a + b, []):
-		check(FishData.THEME_WATERS.has(theme), "%s: has waters" % theme)
 	# Sampling: the forest's fish stay in the forest, the sea's in the sea.
 	for water in ["forest", "ruins", "sea"]:
 		var seen := {}
@@ -2149,14 +1921,9 @@ func test_fish_by_style() -> void:
 			check(seen.has(FishData.STYLE_FISH[water][1]), "%s: its rarest can turn up" % water)
 			check(FishData.pick_species("mid", "common", "epic", "", water).id == FishData.STYLE_FISH[water][1],
 				"%s: a legendary catch is its rarest" % water)
-	# The map sets the waters.
-	gen_script.forced_theme = "beach_sandy"
+	# The map sets the waters (the forest's, the one place now).
 	await _fresh_game()
-	check(FishData.waters == "sea", "a beach fishes the sea")
-	gen_script.forced_theme = "ruins"
-	await _fresh_game()
-	check(FishData.waters == "ruins", "the ruined town fishes its own")
-	gen_script.forced_theme = ""
+	check(FishData.waters == "forest", "the forest fishes its own (%s)" % FishData.waters)
 	# Reach: the sardine only close in, the swordfish only far out.
 	check(FishData.FISH.sardine.reach == ["near"] and FishData.FISH.swordfish.reach == ["far"], "reach")
 	for _i in 40:
@@ -3504,11 +3271,11 @@ func test_campaign_levels_build() -> void:
 	for l in camp().LEVELS:
 		var r: Dictionary = camp().rules_for(l.id)
 		await play_level(l.id)
-		var size: Vector2 = camp().MAP_SIZES[r.map]
+		var size: Vector2 = (camp().MAP_SIZES[r.map] * RunView3D.MAP_SCALE).round()
 		check(is_equal_approx(Player.WORLD_WIDTH, size.x) and is_equal_approx(Player.WORLD_HEIGHT, size.y),
 			"%s: the %s map" % [l.id, r.map])
 		var gen: MapGenerator = main.get_node("MapGenerator")
-		check(gen.theme_name == r.theme, "%s: its look (%s)" % [l.id, gen.theme_name])
+		check(gen.theme_name == MapGenerator.THEME, "%s: the forest (%s)" % [l.id, gen.theme_name])
 		var rare := get_tree().get_nodes_in_group("water_zones_rare").size()
 		var common := get_tree().get_nodes_in_group("water_zones_common").size()
 		check(rare == int(r.ponds[1]), "%s: %d dark pond(s), got %d" % [l.id, int(r.ponds[1]), rare])
@@ -3543,7 +3310,7 @@ func test_campaign_level_one() -> void:
 		if c is CampaignHud:
 			hud = c
 	check(hud != null and hud.step == 0, "the tutorial starts at its first line")
-	check(Player.WORLD_WIDTH < 1400.0 and gs.day_duration == 0.0, "a small map with no clock")
+	check(Player.WORLD_WIDTH < 1400.0 * RunView3D.MAP_SCALE and gs.day_duration == 0.0, "a small map with no clock")
 	await put(get_tree().get_nodes_in_group("water_zones_common")[0].shore_point(Vector2.DOWN) + Vector2(0, 14))
 	await seconds(1.6)
 	check(hud.step >= 1, "walking to the water moves the tutorial on")
@@ -3608,7 +3375,7 @@ func test_campaign_curses() -> void:
 	check(floating == 3, "群鬼: three floating ghosts (%d)" % floating)
 	await frames(2)
 	check(main.get_node("BigGhost").mode != BigGhost.Mode.ASLEEP, "早醒: the big ghost's up from the start")
-	check(Player.WORLD_WIDTH == 2400.0, "the free run's full map")
+	check(Player.WORLD_WIDTH == roundf(2400.0 * RunView3D.MAP_SCALE), "the free run's full map")
 	gs.quota_progress = 50.0
 	gs._enter_escape_phase()
 	var gold: int = Profile.gold
@@ -3641,57 +3408,10 @@ func test_campaign_unlocks_and_achievements() -> void:
 	check(not "catch_100" in camp().check_achievements(), "and only once")
 
 
-## User request (after Vaultbreakers): the run's trial in 3D perspective -
-## walked about with the stick, walking when it's eased off and running when
-## it's pushed, round things, not into the lake, out along the dock; the
-## camera after it from up and behind.
-func test_proto3d() -> void:
-	var saved := Profile.snapshot()
-	Profile.load_data({"gold": 100, "spirit": 90.0})
-	var p: Node3D = load("res://scenes/proto3d.tscn").instantiate()
-	get_tree().root.add_child(p)
-	await frames(5)
-	var cam: Camera3D = p.camera
-	var down := rad_to_deg(-cam.global_transform.basis.z.angle_to(Vector3(cam.global_transform.basis.z.x, 0, cam.global_transform.basis.z.z)))
-	check(absf(absf(down) - p.CAMERA_PITCH) < 2.0, "the camera looks down at %.0f degrees" % absf(down))
-	var stick = p._joystick
-	var from: Vector3 = p.pivot.position
-	stick.output = Vector2(0.3, 0.0)
-	await seconds(1.0)
-	check(p.character.anim.current_animation == "Walk" and p.pivot.position.x > from.x + 0.8,
-		"stick eased off: it walks (%s)" % p.character.anim.current_animation)
-	stick.output = Vector2(1.0, 0.0)
-	await seconds(0.6)
-	check(p.character.anim.current_animation == "Run", "pushed all the way: it runs (%s)" % p.character.anim.current_animation)
-	# Round the fire, not through it.
-	p.pivot.position = p.PLAZA + Vector3(0, 0, 2.5)
-	stick.output = Vector2(0.0, -1.0)
-	var nearest := INF
-	for _i in 60:
-		await frames(1)
-		nearest = minf(nearest, Vector2(p.pivot.position.x, p.pivot.position.z).distance_to(Vector2(p.PLAZA.x, p.PLAZA.z)))
-	check(nearest > 0.85, "not through the fire (%.2f m)" % nearest)
-	# Not into the lake; out along the dock.
-	p.pivot.position = Vector3(-6.0, 0, p._shore_z(-6.0) + 2.0)
-	await seconds(1.5)
-	check(p.pivot.position.z >= p._shore_z(p.pivot.position.x) + 0.3, "it stops at the water's edge")
-	p.pivot.position = Vector3(2.4, 0.32, float(p._dock_span[1]) - 0.5)
-	await seconds(1.2)
-	check(p._on_dock(p.pivot.position) and p.pivot.position.z < p._shore_z(2.4) - 1.0 and is_equal_approx(p.pivot.position.y, 0.32),
-		"out along the dock over the water")
-	stick.output = Vector2.ZERO
-	await frames(10)
-	check(p.character.anim.current_animation == "Idle", "let go: it stands")
-	p.queue_free()
-	await frames(2)
-	Profile.load_data(saved)
-
-
 ## User request: the lakeside forest as a whole run in 3D (RunView3D) -
 ## the same run, shown in 3D: the map's things where the map put them, the
 ## traveller acting out the 2D one's clips, fishing and all.
 func test_run_3d() -> void:
-	RunView3D.request()
 	await _fresh_game()
 	var view: RunView3D = null
 	for _i in 120:
@@ -3702,7 +3422,6 @@ func test_run_3d() -> void:
 	check(view != null and view.built and main.get_node("MapGenerator").theme_name == RunView3D.THEME,
 		"set off in 3D: the lakeside forest, shown in 3D")
 	if view == null or not view.built:
-		RunView3D.leave()
 		return
 	check(not main.visible and main.get_node("HUD/Panel").is_visible_in_tree() and view.camera.current,
 		"the 2D world hidden, the screen's layers still up, the 3D camera on")
@@ -3855,10 +3574,6 @@ func test_run_3d() -> void:
 		and is_equal_approx(main.get_viewport().scaling_3d_scale, RunView3D.LOW_SCALE)
 		and view._moon.directional_shadow_mode == DirectionalLight3D.SHADOW_ORTHOGONAL, "phone: the lighter settings")
 	RunView3D.quality = ""
-	RunView3D.leave()
-	await _fresh_game()
-	check(is_equal_approx(main.get_viewport().scaling_3d_scale, 1.0), "out of the 3D run: the screen's full resolution again")
-	check(not RunView3D.wanted and MapGenerator.forced_theme == "", "back at the camp: runs are 2D again")
 
 
 ## The journey page: the camp's 出發夜釣 opens it; a locked level can't be
@@ -3892,7 +3607,7 @@ func test_journey_page() -> void:
 			break
 	main = get_tree().current_scene
 	check(main != null and main.name == "Main" and camp().level_id == "1-1", "off into 1-1")
-	check(Player.WORLD_WIDTH < 1400.0, "on its small map")
+	check(Player.WORLD_WIDTH < 1400.0 * RunView3D.MAP_SCALE, "on its small map")
 
 
 ## The profile's things as they are, to put back after a test that buys.
@@ -3972,7 +3687,6 @@ func test_black_spider() -> void:
 	await frames(2)
 	check(spider.species == "black_spider" and spider.is_venomous(), "a venomous black spider")
 	check(spider.skin >= 1 and spider.skin <= 8, "in one of the 8 colourings (%d)" % spider.skin)
-	check(spider.sprite.texture.diffuse_texture != null, "its colouring loads")
 	var skins := {}
 	for i in 40:
 		spider.set_species("black_spider")
@@ -4160,25 +3874,3 @@ func test_offhand_swing_and_wear() -> void:
 	await frames(1)
 
 
-## User request: a desert map strewn with the animal carcasses - bones
-## among the rocks (solid, never turned over), oases with their own fish,
-## black spiders about the water.
-func test_desert_bones() -> void:
-	var gen_script = load("res://scripts/map_generator.gd")
-	gen_script.forced_theme = "desert"
-	await _fresh_game(5)
-	gen_script.forced_theme = ""
-	var gen = main.get_node("MapGenerator")
-	check(gen.theme_name == "desert", "the desert picked")
-	var bones := of_script("obstacle.gd").filter(func(r): return r.sprite.texture.diffuse_texture.resource_path.contains("/bones/"))
-	check(bones.size() >= 3, "bones lie about (%d)" % bones.size())
-	check(bones.all(func(b): return b.collision.polygon.size() > 0), "and are solid")
-	var flips := of_script("flip_rock.gd")
-	check(flips.all(func(f): return not f._visual.texture.diffuse_texture.resource_path.contains("/bones/")),
-		"no bones among the rocks to turn")
-	check(FishData.waters == "desert", "the oases have their own fish")
-	var own: Array = FishData.STYLE_FISH.desert[0] + [FishData.STYLE_FISH.desert[1]]
-	check(own.all(func(id): return FishData.FISH.has(id) and ResourceLoader.exists("res://assets/sprites/fish/%s.png" % id)),
-		"each with its picture")
-	var spiders := of_script("/critter.gd").filter(func(c): return c.species == "black_spider")
-	check(not spiders.is_empty(), "black spiders about the water")

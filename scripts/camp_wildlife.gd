@@ -1,11 +1,11 @@
 class_name CampWildlife
 extends Node3D
 
-## Now and then (user request: rarely - a small surprise) an animal from
-## the runs' own sheets (Critter.SPECIES) walks along the far bank at the
-## foot of the forest across the lake, a dark shape: fading in somewhere
-## along `path`, walking a stretch of it (WALK m), fading out. The sheets are seen from 55deg above, so the side-on
-## row (left, mirrored for right) reads as a walking silhouette.
+## Now and then (user request: rarely - a small surprise) an animal walks
+## along the far bank at the foot of the forest across the lake, a dark
+## shape: fading in somewhere along `path`, walking a stretch of it (WALK
+## m), fading out. (User decision: the game is 3D now - the runs' own
+## animal models, RunView3D.CREATURES, walking their own Walk clip.)
 
 const KINDS := ["deer", "stag", "fox", "wolf"]
 ## Seconds between them.
@@ -17,14 +17,14 @@ const SPEED := 1.1
 const WALK := Vector2(10.0, 16.0)
 const SIZE := 1.5
 const FADE := 1.5
-## The sheets' density (pixels a metre, as the runs draw them).
-const PIXEL := 1.0 / 44.7
 const SHADE := Color(0.015, 0.02, 0.03, 0.92)
 
 ## Points (the camp's ground) it walks along, either way round.
 var path: PackedVector3Array
 
-var _sprite: Sprite3D
+var _model: Node3D
+var _kind := ""
+var _mat: StandardMaterial3D
 var _wait := 0.0
 var _walking := false
 var _pos := 0.0
@@ -33,22 +33,17 @@ var _length := 0.0
 var _from := 0.0
 var _span := 0.0
 var _backward := false
-var _phase := 0.0
-var _data := {}
 var _rng := RandomNumberGenerator.new()
 
 
 func _ready() -> void:
 	_rng.randomize()
 	_wait = _rng.randf_range(FIRST.x, FIRST.y)
-	_sprite = Sprite3D.new()
-	_sprite.name = "Silhouette"
-	_sprite.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
-	_sprite.shaded = false
-	_sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
-	_sprite.pixel_size = PIXEL
-	_sprite.visible = false
-	add_child(_sprite)
+	# One dark see-through material over every part: a silhouette.
+	_mat = StandardMaterial3D.new()
+	_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_mat.albedo_color = Color(SHADE.r, SHADE.g, SHADE.b, 0.0)
 	for k in range(1, path.size()):
 		_length += path[k].distance_to(path[k - 1])
 
@@ -64,41 +59,61 @@ func _process(delta: float) -> void:
 	_pos += SPEED * delta
 	if _pos >= _span:
 		_walking = false
-		_sprite.visible = false
+		if _model != null:
+			_model.visible = false
 		_wait = _rng.randf_range(GAP.x, GAP.y)
 		return
 	var along := _from + (_span - _pos if _backward else _pos)
 	position = _point_at(along)
 	var fade := clampf(minf(_pos, _span - _pos) / (FADE * SPEED), 0.0, 1.0)
-	_sprite.modulate = Color(SHADE.r, SHADE.g, SHADE.b, SHADE.a * fade)
-	var frames: int = _data.get("frames", 12)
-	_phase += delta * float(_data.get("move_fps", 14.0)) * 0.8
-	# Walk clip (0), the side-on row (2: left); mirrored going right.
-	_sprite.frame = (0 * Critter.ROWS + 2) * frames + int(_phase) % frames
-	# The sheet's row faces left; going right, mirrored.
+	_mat.albedo_color.a = SHADE.a * fade
 	var ahead := _point_at(clampf(along + (-0.2 if _backward else 0.2), 0.0, _length)) - position
-	_sprite.flip_h = ahead.x > 0.0
+	if Vector2(ahead.x, ahead.z).length() > 0.001:
+		rotation.y = atan2(ahead.x, ahead.z)
 
 
 ## An animal on its way (now, whatever the wait).
 func start(kind: String) -> void:
-	_data = Critter.SPECIES[kind]
-	var tex: Texture2D = load(_data.albedo)
-	_sprite.texture = tex
-	var cells: int = _data.get("frames", 12) * _data.clips * Critter.ROWS
-	_sprite.hframes = _data.cols
-	_sprite.vframes = ceili(float(cells) / _data.cols)
-	_sprite.pixel_size = PIXEL * SIZE * _data.get("size", 1.0)
-	var off: Vector2 = _data.offset
-	_sprite.offset = Vector2(off.x, -off.y)
+	if kind != _kind:
+		if _model != null:
+			_model.queue_free()
+		_model = _build(kind)
+		_kind = kind
 	_backward = _rng.randf() < 0.5
 	_span = minf(_rng.randf_range(WALK.x, WALK.y), _length)
 	_from = _rng.randf_range(0.0, _length - _span)
 	_pos = 0.0
-	_phase = 0.0
 	_walking = true
-	_sprite.visible = true
-	_sprite.modulate = Color(SHADE.r, SHADE.g, SHADE.b, 0.0)
+	_mat.albedo_color.a = 0.0
+	if _model != null:
+		_model.visible = true
+	position = _point_at(_from + (_span if _backward else 0.0))
+
+
+func _build(kind: String) -> Node3D:
+	var path_glb: String = RunView3D.CREATURE_DIR + kind + ".glb"
+	if not ResourceLoader.exists(path_glb):
+		return null
+	var model: Node3D = (load(path_glb) as PackedScene).instantiate()
+	model.name = "Animal"
+	add_child(model)
+	var box := RunView3D._aabb(model)
+	var k := float(RunView3D.CREATURES[kind][0]) * SIZE / maxf(box.size.y, 0.001)
+	model.scale = Vector3.ONE * k
+	model.position = Vector3(-(box.position.x + box.size.x * 0.5) * k, -box.position.y * k,
+		-(box.position.z + box.size.z * 0.5) * k)
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		(mi as MeshInstance3D).material_override = _mat
+		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var aps := model.find_children("*", "AnimationPlayer", true, false)
+	if not aps.is_empty():
+		var anim := aps[0] as AnimationPlayer
+		for clip in ["Walk", "walk", "Gallop"]:
+			if anim.has_animation(clip):
+				anim.get_animation(clip).loop_mode = Animation.LOOP_LINEAR
+				anim.play(clip)
+				break
+	return model
 
 
 func walking() -> bool:

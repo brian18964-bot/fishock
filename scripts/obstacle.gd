@@ -1,133 +1,54 @@
+class_name Obstacle
 extends StaticBody2D
 
-## Rock obstacles pre-rendered from Quaternius' Stylized Nature MegaKit (CC0)
-## via tools/render_sprite.py, all x1.45 so they're about the old 60px
-## placeholder box; boulders from Quaternius' nature collection, x3.5 (that
-## pack's rocks are pebble-sized) to land in the same size range. One variant per obstacle each run; collision and the
-## light occluder are an octagon fitted to that rock's measured ground
-## footprint, so it blocks movement and casts its shadow from its base.
+## A rock in the way (user decision: the game is 3D now - RunView3D shows
+## it as a rock model; this is its place and its solid base only, no
+## picture). Its base is an ellipse (radii, node px), and the 3D rock is
+## sized to that same ellipse (user request: nothing walks into anything).
+## One of KINDS each run (the theme's rock_pool indices).
 
-const SPRITE_SCALE := 0.5
-const FOOTPRINTS := "res://assets/sprites/rock_footprints.json"
-
-## offset: ground point relative to the texture center, (center_x, -center_y)
-## * 27.108.
-## footprint: the rock's base in node-local px (from the model's bottom
-## quarter, depth foreshortened by sin 55deg).
-const VARIANTS := [
-	{"albedo": "res://assets/sprites/rock/rock_medium_55deg_albedo.png",
-	 "normal": "res://assets/sprites/rock/rock_medium_55deg_normal.png",
-	 "offset": Vector2(0, -18.16), "footprint": Rect2(-34, -19, 60, 40)},
-	{"albedo": "res://assets/sprites/rock/rock_medium_2_55deg_albedo.png",
-	 "normal": "res://assets/sprites/rock/rock_medium_2_55deg_normal.png",
-	 "offset": Vector2(0, -20.33), "footprint": Rect2(-32.7, -26.1, 65.4, 52.2)},
-	{"albedo": "res://assets/sprites/rock/rock_medium_3_55deg_albedo.png",
-	 "normal": "res://assets/sprites/rock/rock_medium_3_55deg_normal.png",
-	 "offset": Vector2(0, -20.33), "footprint": Rect2(-31.3, -24.1, 62.6, 48.2)},
-	{"albedo": "res://assets/sprites/rock/boulder_1_55deg_albedo.png",
-	 "normal": "res://assets/sprites/rock/boulder_1_55deg_normal.png",
-	 "offset": Vector2(-1.55, -17.81), "footprint": Rect2(-16.1, -17.2, 32.2, 34.5)},
-	{"albedo": "res://assets/sprites/rock/boulder_2_55deg_albedo.png",
-	 "normal": "res://assets/sprites/rock/boulder_2_55deg_normal.png",
-	 "offset": Vector2(0.0, -18.76), "footprint": Rect2(-25.0, -20.9, 50.0, 41.8)},
-	{"albedo": "res://assets/sprites/rock/boulder_3_55deg_albedo.png",
-	 "normal": "res://assets/sprites/rock/boulder_3_55deg_normal.png",
-	 "offset": Vector2(3.96, -21.96), "footprint": Rect2(-16.9, -17.4, 33.9, 34.9)},
-	{"albedo": "res://assets/sprites/rock/boulder_4_55deg_albedo.png",
-	 "normal": "res://assets/sprites/rock/boulder_4_55deg_normal.png",
-	 "offset": Vector2(1.36, -33.72), "footprint": Rect2(-19.7, -15.8, 39.4, 31.6)},
-	{"albedo": "res://assets/sprites/rock/boulder_5_55deg_albedo.png",
-	 "normal": "res://assets/sprites/rock/boulder_5_55deg_normal.png",
-	 "offset": Vector2(0.0, -24.15), "footprint": Rect2(-30.6, -25.6, 61.2, 51.2)},
+## The rock models (assets/models/proto3d) and their bases' sizes (px
+## across, deep) - about a metre and a half to two across.
+const KINDS := [
+	{"model": "rock_medium", "base": Vector2(52, 38)},
+	{"model": "rock_medium_2", "base": Vector2(58, 44)},
+	{"model": "rock_medium", "base": Vector2(46, 40)},
 ]
 
-## Plus the user's packs (NatureCatalog.ROCKS), then these under snow
-## (DerivedArt, family "rock_snow"), after these.
-static var _all: Array = []
-
-
-static func variants() -> Array:
-	if _all.is_empty():
-		_all = VARIANTS + NatureCatalog.ROCKS + DerivedArt.derive(VARIANTS, "rock")
-	return _all
-
-
-## A theme's rock pool: VARIANTS indices, and/or family names (the
-## catalog's, or rock_snow) standing for every rock of that family.
-static func resolve_pool(pool: Array) -> Array:
-	var out := []
-	var all := variants()
-	for entry in pool:
-		if entry is String:
-			for i in range(VARIANTS.size(), all.size()):
-				if all[i].family == entry:
-					out.append(i)
-		else:
-			out.append(entry)
-	return out
-
-
-@onready var sprite: Sprite2D = $Visual
 @onready var collision: CollisionPolygon2D = $CollisionPolygon2D
-@onready var occluder: LightOccluder2D = $LightOccluder2D
 
-
-## Map theme (map_generator.gd): VARIANTS indices and/or catalog rock
-## families to choose from (resolve_pool). Empty = any of VARIANTS. Set
-## before the rock enters the tree.
+## Map theme (map_generator.gd): KINDS indices to choose from (empty: any).
+## Set before the rock enters the tree.
 var variant_pool: Array = []
-## Drawn and solid this much bigger (a beach's rock ridges). Set before it
-## enters the tree.
+## This much bigger. Set before it enters the tree.
 var size := 1.0
+## What it is (KINDS) and its base's radii (px).
+var model := ""
+var radii := Vector2.ZERO
 
 
 func _ready() -> void:
-	var pool := resolve_pool(variant_pool)
-	apply_variant(pool.pick_random() if not pool.is_empty() else randi() % VARIANTS.size())
+	var pool := variant_pool.filter(func(v): return v is int and v >= 0 and v < KINDS.size())
+	apply_kind(pool.pick_random() if not pool.is_empty() else randi() % KINDS.size())
+	var occ := get_node_or_null("LightOccluder2D")
+	if occ != null:
+		occ.queue_free()
+	var visual := get_node_or_null("Visual")
+	if visual != null:
+		visual.queue_free()
 
 
-func apply_variant(index: int) -> void:
-	var variant: Dictionary = variants()[index]
-
-	var tex := CanvasTexture.new()
-	tex.diffuse_texture = Art.tex(variant.albedo)
-	tex.normal_texture = Art.tex(variant.normal)
-	sprite.texture = tex
-	Art.place(sprite, variant.offset, SPRITE_SCALE * size)
-
-	var fp: Rect2 = variant.footprint
-	var outline := _octagon(Rect2(fp.position * size, fp.size * size))
-	# User request (no walking into the rocks): the base's own outline
-	# where it's been traced (tools/rock_footprints.py) - a long rock's
-	# ends, a slab's, are solid too.
-	var traced: Array = footprints().get(variant.albedo, []) if variant.albedo is String else []
-	if traced.size() >= 3:
-		outline = PackedVector2Array()
-		for pt in traced:
-			outline.append(Vector2(pt[0], pt[1]) * size)
-	collision.polygon = outline
-	# User request: shadows take the rock's own shape (SilhouetteShadow)
-	# instead of a wedge extruded from its footprint.
-	occluder.occluder = null
-	SilhouetteShadow.attach(self, sprite)
+func apply_kind(index: int) -> void:
+	var kind: Dictionary = KINDS[index]
+	model = kind.model
+	radii = kind.base * 0.5 * size
+	collision.polygon = ellipse(radii)
 
 
-## The rocks' traced bases: albedo path -> [[x, y], ...] (node px at size 1).
-static var _footprints := {}
-
-
-static func footprints() -> Dictionary:
-	if _footprints.is_empty():
-		var json := load(FOOTPRINTS) as JSON if ResourceLoader.exists(FOOTPRINTS) else null
-		_footprints = json.data if json != null and json.data is Dictionary else {"": []}
-	return _footprints
-
-
-func _octagon(r: Rect2) -> PackedVector2Array:
-	var c := r.get_center()
-	var e := r.size / 2.0
+## An ellipse of `r` as a polygon round the origin.
+static func ellipse(r: Vector2, sides := 12) -> PackedVector2Array:
 	var pts := PackedVector2Array()
-	for i in 8:
-		var a := i * TAU / 8.0
-		pts.append(c + Vector2(cos(a) * e.x, sin(a) * e.y))
+	for i in sides:
+		var a := i * TAU / sides
+		pts.append(Vector2(cos(a) * r.x, sin(a) * r.y))
 	return pts

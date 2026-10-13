@@ -51,12 +51,18 @@ static func _id(id: String) -> String:
 ## The run sheet: [albedo, normal].
 static func sheet(id := "") -> Array:
 	var dir := SPRITES % _id(id)
-	return [load(dir + "player_55deg_albedo.png"), load(dir + "player_55deg_normal.png")]
+	return [_pic(dir + "player_55deg_albedo.png"), _pic(dir + "player_55deg_normal.png")]
+
+
+## (User decision: the game is 3D now - the 2D sheets are gone; the
+## character's sheet data, its .json, stays for the run's rules.)
+static func _pic(path: String) -> Texture2D:
+	return load(path) if ResourceLoader.exists(path) else null
 
 
 ## The run sheet's front layer (its alpha the mask).
 static func front_mask(id := "") -> Texture2D:
-	return load(SPRITES % _id(id) + "player_55deg_front_albedo.png")
+	return _pic(SPRITES % _id(id) + "player_55deg_front_albedo.png")
 
 
 ## The run sheet's rod data (held_rod.gd, body_front.gd).
@@ -67,7 +73,7 @@ static func rod_data(id := "") -> Dictionary:
 ## The struggle sheet: [albedo, normal].
 static func struggle(id := "") -> Array:
 	var dir := SPRITES % _id(id)
-	return [load(dir + "player_struggle_55deg_albedo.png"), load(dir + "player_struggle_55deg_normal.png")]
+	return [_pic(dir + "player_struggle_55deg_albedo.png"), _pic(dir + "player_struggle_55deg_normal.png")]
 
 
 ## The off hand's swings (user request): [albedo, normal].
@@ -109,6 +115,12 @@ static func model(id := "") -> PackedScene:
 
 static func portrait(id := "") -> Rect2:
 	return PORTRAIT.get(_id(id), PORTRAIT.cat)
+
+
+## The status card's face, rendered from the 3D model (the 2D sheets are gone).
+static func portrait_texture(id := "") -> Texture2D:
+	var path := "res://assets/ui/portraits/%s.png" % _id(id)
+	return load(path) if ResourceLoader.exists(path) else null
 
 
 static func reach(id := "") -> Vector3:

@@ -11,7 +11,6 @@ extends Node2D
 ## quota's met it turns round, and the player can talk to it - it tells
 ## them what offerings turned up this run (Player.interaction(): 對話).
 
-const SHEET := [preload("res://assets/sprites/willow/willow_55deg_albedo.png"), preload("res://assets/sprites/willow/willow_55deg_normal.png")]
 const SPRITE_SCALE := 0.5
 ## (0, -center_y) * 27.108 for the render's camera.
 const OFFSET := Vector2(0.0, -14.36)
@@ -41,8 +40,6 @@ var _rite := 0.0  # 0..1, easing into and out of the rite
 func _ready() -> void:
 	add_to_group("willow")
 	var tex := CanvasTexture.new()
-	tex.diffuse_texture = SHEET[0]
-	tex.normal_texture = SHEET[1]
 	visual.texture = tex
 	visual.hframes = DIRS
 	Art.place(visual, OFFSET, SPRITE_SCALE)

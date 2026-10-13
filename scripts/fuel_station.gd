@@ -18,10 +18,6 @@ extends Area2D
 ## 渡石 here: the way out is a rune pillar somewhere on the map.)
 
 const BASE_TOTAL_FUEL := 500.0
-const DIR := "res://assets/sprites/start_camp/"
-const SHEET := [preload("res://assets/sprites/start_camp/start_camp_55deg_albedo.png"),
-	preload("res://assets/sprites/start_camp/start_camp_55deg_normal.png")]
-const EMBERS := preload("res://assets/sprites/start_camp/start_camp_55deg_glow.png")
 const FLAMES := preload("res://assets/models/camp/fire_flames.png")
 const SPRITE_SCALE := 0.5
 ## The fire pit and drums: drawn from VISUAL_AT (their y-sort point, behind
@@ -65,8 +61,6 @@ func _ready() -> void:
 	total_fuel = max_total_fuel
 
 	var tex := CanvasTexture.new()
-	tex.diffuse_texture = SHEET[0]
-	tex.normal_texture = SHEET[1]
 	visual.texture = tex
 	visual.position = VISUAL_AT
 	Art.place(visual, OFFSET, SPRITE_SCALE)
@@ -100,7 +94,6 @@ func _build_camp() -> void:
 	add.light_mode = CanvasItemMaterial.LIGHT_MODE_UNSHADED
 	_embers = Sprite2D.new()
 	_embers.name = "Embers"
-	_embers.texture = EMBERS
 	_embers.material = add
 	_embers.z_index = 1
 	_embers.position = VISUAL_AT
@@ -149,8 +142,6 @@ func _build_camp() -> void:
 	var tent := Sprite2D.new()
 	tent.name = "Tent"
 	var ttex := CanvasTexture.new()
-	ttex.diffuse_texture = load(DIR + "camp_tent_%d_55deg_albedo.png" % n)
-	ttex.normal_texture = load(DIR + "camp_tent_%d_55deg_normal.png" % n)
 	tent.texture = ttex
 	tent.position = TENT_AT
 	Art.place(tent, TENT_OFFSETS[n], SPRITE_SCALE)

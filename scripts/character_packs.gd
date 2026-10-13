@@ -25,6 +25,15 @@ var pretend_time := 0.0
 
 var _busy := {}
 var _manifest := {}
+## User report: the cover sat at 下載角色 with an empty bar on a phone (the
+## site sends the packs gzipped with no size, so there was nothing to show,
+## and a stalled fetch never ended). Now the bytes so far are shown, a
+## fetch that gets nothing for STALL seconds is dropped (and tried once
+## more), and the cover offers a way in with the first character.
+const STALL := 20.0
+const TIMEOUT := 240.0
+## {id: [bytes so far, seconds since they last grew]}
+var _flow := {}
 ## (a fetch that failed is tried once more before it's given up)
 var _tried := {}
 
@@ -88,8 +97,10 @@ func fetch(id: String) -> void:
 	# packs gzipped; the browser has already unzipped them by the time
 	# they're here, so Godot unzipping them again fails.)
 	req.accept_gzip = false
+	req.timeout = TIMEOUT
 	add_child(req)
 	_busy[id] = req
+	_flow[id] = [0, 0.0]
 	req.request_completed.connect(func(result, code, _headers, body: PackedByteArray):
 		_fetched(id, file, body if result == HTTPRequest.RESULT_SUCCESS and code == 200 else PackedByteArray()))
 	if req.request(_base_url() + "packs/" + file) != OK:
@@ -113,17 +124,41 @@ func wait_for(id: String) -> bool:
 	return got[1] and has(id)
 
 
-func _process(_delta: float) -> void:
-	for id in _busy:
-		var req = _busy[id]
-		if req is HTTPRequest:
-			var total: int = req.get_body_size()
-			progressed.emit(id, clampf(float(req.get_downloaded_bytes()) / total, 0.0, 1.0) if total > 0 else 0.0)
+func _process(delta: float) -> void:
+	for id in _busy.keys():
+		var req = _busy.get(id)
+		if not req is HTTPRequest:
+			continue
+		var total: int = req.get_body_size()
+		var got: int = req.get_downloaded_bytes()
+		var flow: Array = _flow.get(id, [0, 0.0])
+		flow[1] = 0.0 if got > flow[0] else flow[1] + delta
+		flow[0] = got
+		_flow[id] = flow
+		progressed.emit(id, clampf(float(got) / total, 0.0, 1.0) if total > 0 else 0.0)
+		if flow[1] > STALL:
+			push_warning("CharacterPacks: %s stalled" % id)
+			req.cancel_request()
+			_fetched(id, str(_manifest.get(id, "")), PackedByteArray())
+
+
+## Bytes of `id`'s pack fetched so far (the cover's "1.2 MB" when the site
+## doesn't say how big it is).
+func downloaded(id: String) -> int:
+	var req = _busy.get(id)
+	return req.get_downloaded_bytes() if req is HTTPRequest else 0
+
+
+## Stops waiting for `id` (the cover's way in without it): wait_for() gets
+## false; the fetch itself goes on quietly and keeps the pack if it comes.
+func give_up(id: String) -> void:
+	finished.emit(id, false)
 
 
 func _fetched(id: String, file: String, body: PackedByteArray) -> void:
 	var req = _busy.get(id)
 	_busy.erase(id)
+	_flow.erase(id)
 	if req is Node:
 		req.queue_free()
 	if body.is_empty() and not _tried.has(id):
@@ -225,10 +260,28 @@ func cover(parent: Control, id: String) -> Control:
 	bar.show_percentage = false
 	bar.max_value = 1.0
 	col.add_child(bar)
+	var note := UiKit.label("連線中…", 14, UiKit.DIM, false, 0)
+	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(note)
+	var skip := UiKit.button("先用%s進入" % Profile.character_name(Profile.CHARACTERS[0][0]), 16)
+	skip.visible = false
+	skip.pressed.connect(func(): give_up(id))
+	col.add_child(skip)
 	parent.add_child(shade)
 	var on_progress := func(which: String, ratio: float):
-		if which == id and is_instance_valid(bar):
+		if which != id or not is_instance_valid(bar):
+			return
+		var mb := downloaded(id) / 1048576.0
+		if ratio > 0.0:
 			bar.value = ratio
+			note.text = "%d%%（%.1f MB）" % [roundi(ratio * 100.0), mb]
+		else:
+			# (no size from the site: the bar creeps toward full instead)
+			bar.value = 1.0 - 1.0 / (1.0 + mb / 4.0)
+			note.text = "已下載 %.1f MB" % mb
 	progressed.connect(on_progress)
+	get_tree().create_timer(6.0).timeout.connect(func():
+		if is_instance_valid(skip):
+			skip.visible = true)
 	shade.tree_exiting.connect(func(): progressed.disconnect(on_progress))
 	return shade

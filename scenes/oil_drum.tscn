@@ -1,22 +1,15 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/oil_drum.gd" id="1"]
-[ext_resource type="Texture2D" path="res://assets/sprites/gas_can/gas_can_55deg_albedo.png" id="2"]
-[ext_resource type="Texture2D" path="res://assets/sprites/gas_can/gas_can_55deg_normal.png" id="3"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_drum"]
 size = Vector2(28, 28)
-
-[sub_resource type="CanvasTexture" id="CanvasTexture_drum"]
-diffuse_texture = ExtResource("2")
-normal_texture = ExtResource("3")
 
 [node name="OilDrum" type="Area2D"]
 script = ExtResource("1")
 z_index = 3
 
 [node name="Visual" type="Sprite2D" parent="."]
-texture = SubResource("CanvasTexture_drum")
 scale = Vector2(0.25, 0.25)
 offset = Vector2(0, -11.12)
 

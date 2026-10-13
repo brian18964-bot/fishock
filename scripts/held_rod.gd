@@ -69,11 +69,11 @@ const OFFSET := Vector2(31.99, -1.63)
 const GRIP_SHIFT := [0.0, 0.0, 11.8, 7.5, 7.9]
 const TIP_END := [56.0, 56.0, 75.0, 75.5, 79.5]
 const TIERS := [
-	[preload("res://assets/sprites/rod/rod_lvl1_55deg_albedo.png"), preload("res://assets/sprites/rod/rod_lvl1_55deg_normal.png")],
-	[preload("res://assets/sprites/rod/rod_lvl2_55deg_albedo.png"), preload("res://assets/sprites/rod/rod_lvl2_55deg_normal.png")],
-	[preload("res://assets/sprites/rod/rod_lvl3_55deg_albedo.png"), preload("res://assets/sprites/rod/rod_lvl3_55deg_normal.png")],
-	[preload("res://assets/sprites/rod/rod_lvl4_55deg_albedo.png"), preload("res://assets/sprites/rod/rod_lvl4_55deg_normal.png")],
-	[preload("res://assets/sprites/rod/rod_lvl5_55deg_albedo.png"), preload("res://assets/sprites/rod/rod_lvl5_55deg_normal.png")],
+	null,
+	null,
+	null,
+	null,
+	null,
 ]
 
 @onready var _player: Node2D = get_parent()
@@ -303,9 +303,9 @@ func _tween_swing(steps: Array) -> void:
 
 func _apply_tier() -> void:
 	var tier: int = clampi(Profile.rod_tier, 0, TIERS.size() - 1)
-	_tex = CanvasTexture.new()
-	_tex.diffuse_texture = TIERS[tier][0]
-	_tex.normal_texture = TIERS[tier][1]
+	# (user decision: no 2D pictures - RunView3D shows the rod; this one
+	# only says where the line leaves it)
+	_tex = null
 	_tier = tier
 	_offset = (OFFSET - Vector2(GRIP_SHIFT[tier], 0.0)) * Art.DENSITY
 	queue_redraw()

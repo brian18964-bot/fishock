@@ -29,7 +29,6 @@ signal mode_changed(mode: String)
 
 enum Mode { ASLEEP, WANDER, SUSPICIOUS, CHASE, SEARCH, EAT, GRAB, REST }
 
-const SHEET := [preload("res://assets/sprites/big_ghost/big_ghost_55deg_albedo.png"), preload("res://assets/sprites/big_ghost/big_ghost_55deg_normal.png")]
 ## User feedback: it was stiff - one still pose per facing. It moves now
 ## (tools/render_big_ghost.py - clips from the user's animation library
 ## laid over the sculpt's own pose): swaying and lolling as it floats about,
@@ -114,8 +113,6 @@ func _ready() -> void:
 	add_to_group("big_ghost")
 	_player = get_tree().current_scene.get_node("Player")
 	var tex := CanvasTexture.new()
-	tex.diffuse_texture = SHEET[0]
-	tex.normal_texture = SHEET[1]
 	visual.texture = tex
 	var cells := 0
 	for n in CLIPS.values():

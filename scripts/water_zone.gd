@@ -70,7 +70,6 @@ var field_texel := FIELD_TEXEL
 ## Part of a sea (MapGenerator, a "sea" theme): drawn as one (set before
 ## setup()) - a wider depth range, the theme's "water"."sea" colours.
 var sea := false
-const SEA_FOAM := preload("res://assets/sprites/water/sea_foam.png")
 ## A sea's depth gradient reaches this far out from the shore (px).
 const SEA_FIELD_FAR := 420.0
 ## Bounding radius around the zone's origin (covers every lobe).
@@ -278,7 +277,6 @@ func _build_surface() -> void:
 	if sea and not is_rare():
 		var look: Dictionary = theme_water.get("sea", {})
 		mat.set_shader_parameter("sea", true)
-		mat.set_shader_parameter("foam_tex", SEA_FOAM)
 		_ensure_shore_noise()
 		mat.set_shader_parameter("blot_tex", _shore_noise_tex)
 		mat.set_shader_parameter("field_range", Vector2(-8.0, SEA_FIELD_FAR))

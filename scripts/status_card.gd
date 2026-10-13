@@ -46,7 +46,7 @@ const GEAR_LABELS := ["主手", "副手", "餌"]
 var feed: Array = []
 
 var _view: Node2D
-var _portrait: AtlasTexture
+var _portrait: Texture2D
 var _font: Font
 var _touchscreen := false
 
@@ -58,11 +58,8 @@ func _ready() -> void:
 	var custom_path: String = ProjectSettings.get_setting("gui/theme/custom_font", "")
 	if custom_path != "":
 		_font = load(custom_path)
-	_portrait = AtlasTexture.new()
-	# The portrait: the character's sheet's first frame (idle, facing
-	# down), head and shoulders.
-	_portrait.atlas = CharacterArt.sheet()[0]
-	_portrait.region = CharacterArt.portrait()
+	# The portrait: a head-and-shoulders render of the 3D model.
+	_portrait = CharacterArt.portrait_texture()
 	_view = Node2D.new()
 	_view.draw.connect(_draw_card)
 	add_child(_view)
@@ -186,7 +183,8 @@ func _draw_card() -> void:
 	var c := POS + Vector2(PORTRAIT * 0.5, SIZE.y * 0.5)
 	_view.draw_circle(c, PORTRAIT * 0.36, Color(0.06, 0.07, 0.09))
 	var face := PORTRAIT * 0.62
-	_view.draw_texture_rect(_portrait, Rect2(c - Vector2.ONE * face * 0.5, Vector2.ONE * face), false)
+	if _portrait:
+		_view.draw_texture_rect(_portrait, Rect2(c - Vector2.ONE * face * 0.5, Vector2.ONE * face), false)
 	_view.draw_texture_rect(UiKit.tex("medallion"), Rect2(c - Vector2.ONE * PORTRAIT * 0.5, Vector2.ONE * PORTRAIT), false)
 	# User request (Camp v2): the spirit, under the name.
 	SpiritBar.paint(_view, Rect2(Vector2(x, plate.end.y + 4), Vector2(96, 8)))

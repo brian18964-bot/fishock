@@ -358,7 +358,7 @@ func off_main_sheet() -> bool:
 ## Swinging the off hand's thing (Player.swing_kind): its sheet, facing the
 ## aim, through its FRAMES over the swing.
 func _act() -> bool:
-	var which := ACTIONS.find(_player.swing_kind) if _player.swing_left > 0.0 and _action_tex != null else -1
+	var which := ACTIONS.find(_player.swing_kind) if _player.swing_left > 0.0 and not _action_data.is_empty() else -1
 	if which < 0:
 		if acting >= 0:
 			_use_sheet(false)
@@ -406,7 +406,7 @@ func _move(delta: float) -> bool:
 			name = "dizzy"
 		elif Profile.spirit_penalty() >= 3:
 			name = "sad_idle"
-	if name == "" or _move_tex == null or not (_move_data.clips as Array).has(name):
+	if name == "" or _move_data.is_empty() or not (_move_data.clips as Array).has(name):
 		if move != "":
 			_use_sheet(false)
 			Art.place(self, _sheet_offset, SPRITE_SCALE)

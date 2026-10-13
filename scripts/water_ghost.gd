@@ -12,8 +12,6 @@ extends Node2D
 ## walk and its clawing now come from the user's animation library (a
 ## zombie's lurch, a zombie's scratch; see the render script).
 
-const SHEET := [preload("res://assets/sprites/water_ghost/water_ghost_55deg_albedo.png"),
-	preload("res://assets/sprites/water_ghost/water_ghost_55deg_normal.png")]
 const SPRITE_SCALE := 0.5
 ## (0, -center_y) * 27.108 for the render's camera.
 const OFFSET := Vector2(0.0, -17.0)
@@ -94,8 +92,6 @@ func _ready() -> void:
 	add_to_group("water_ghosts")
 	_visual = Sprite2D.new()
 	var tex := CanvasTexture.new()
-	tex.diffuse_texture = SHEET[0]
-	tex.normal_texture = SHEET[1]
 	_visual.texture = tex
 	_visual.hframes = COLS
 	_visual.vframes = DIRS * 2

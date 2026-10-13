@@ -28,7 +28,6 @@ extends Node3D
 ##                one's zoom says and framed where it frames (main.gd)
 ## 2D world px -> metres: PX (the pictures' own density, Art.DENSITY's).
 
-const PROTO := preload("res://scripts/proto3d.gd")
 const PROTO_MODELS := "res://assets/models/proto3d/"
 const PX := 27.108
 ## The theme it's for.
@@ -142,7 +141,6 @@ const MODELLED := ["tree.gd", "bush.gd", "obstacle.gd", "ground_cover.gd", "dock
 ## Asked for by the way the run was set off (the journey's 3D button, the
 ## settings'): the run that's starting is in 3D, and the ones after it (a
 ## retry) - until back at the camp (leave()).
-static var wanted := false
 ## The one showing now.
 static var active: RunView3D
 ## (tests: "low" or "high" in place of the device's own)
@@ -222,25 +220,11 @@ var _tool := Lantern.Tool.LAMP
 var _replaced := {}
 
 
-## Whether `theme` is to be shown in 3D now.
-static func wants(theme: String) -> bool:
-	return wanted and theme == THEME
-
-
-## A run in 3D next (and the map it's for).
-static func request() -> void:
-	wanted = true
-	MapGenerator.forced_theme = THEME
-	Campaign._apply_world()
-
-
-## Back at the camp: runs are 2D again.
-static func leave() -> void:
-	if wanted and MapGenerator.forced_theme == THEME:
-		MapGenerator.forced_theme = ""
-	if wanted:
-		wanted = false
-		Campaign._apply_world()
+## User decision: the game is 3D from now on - every run (free runs, the
+## campaign's levels, the tutorial) is the lakeside forest shown here; the
+## 2D world under it holds the rules only, its pictures gone.
+static func wants(_theme := "") -> bool:
+	return true
 
 
 static func to3(p: Vector2, y := 0.0) -> Vector3:
@@ -288,8 +272,10 @@ func _ready() -> void:
 	_visual = player.get_node("Body")
 	_environment()
 	# The map's docks and boats come in a frame after it's made.
-	await get_tree().process_frame
-	await get_tree().process_frame
+	for _i in 2:
+		await get_tree().process_frame
+		if not is_inside_tree():
+			return
 	_build()
 	get_tree().node_added.connect(_on_node_added)
 
@@ -347,6 +333,8 @@ func _depth(p: Vector2, zones: Array) -> float:
 	var best := -1000.0
 	for z in zones:
 		var zone: WaterZone = z
+		if not zone.has_meta("bounds"):
+			continue
 		var r: Rect2 = zone.get_meta("bounds")
 		if not r.has_point(p):
 			continue
@@ -423,7 +411,7 @@ func _ground() -> void:
 	mi.name = "Ground"
 	mi.mesh = st.commit()
 	var sh := Shader.new()
-	sh.code = PROTO.GROUND_SHADER
+	sh.code = GROUND_SHADER
 	var mat := ShaderMaterial.new()
 	mat.shader = sh
 	# (the theme's two floors: its forest floor under the trees, grass in
@@ -620,14 +608,16 @@ func _trees_and_rocks() -> void:
 	for p in pines:
 		meshes[p] = _faded(CampModel.tree_mesh(p))
 	var spots := {"pine_a": [], "pine_b": [], "pine_c": []}
+	# (each the pine its 2D trunk was sized for - MapTree.kind, tree_scale:
+	# the trunk's base as wide as its solid one, its branches over the head)
 	for t in get_tree().get_nodes_in_group("trees"):
 		var tree := t as Node2D
 		if tree == null:
 			continue
-		var kind: String = pines[absi(hash(tree.name)) % pines.size()]
+		var kind: String = str(tree.get("kind")) if tree.get("kind") != null else "pine_b"
 		var mi := MeshInstance3D.new()
-		mi.mesh = meshes[kind]
-		var s := _rng.randf_range(0.7, 1.0)
+		mi.mesh = meshes.get(kind, meshes.pine_b)
+		var s: float = float(tree.get("tree_scale")) if tree.get("tree_scale") != null else 0.9
 		mi.scale = Vector3(s, s, s)
 		mi.rotation.y = _rng.randf() * TAU
 		mi.position = to3(tree.global_position, LAND_Y)
@@ -654,18 +644,42 @@ func _trees_and_rocks() -> void:
 			var s := _rng.randf_range(BORDER_SCALE.x, BORDER_SCALE.y)
 			xfs.append(Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(s, s, s)), at))
 		_scatter(meshes[kind], xfs, false)
+	# The rocks, bushes and turning stones: each exactly as big as its 2D
+	# base (user request: nothing walks into anything).
 	for n in main.get_children():
 		var path := _script_name(n)
+		var at: Vector2 = (n as Node2D).global_position if n is Node2D else Vector2.ZERO
 		if path == "obstacle.gd":
-			var w := _footprint(n) / PX
-			_prop(["rock_medium", "rock_medium_2"][absi(hash(n.name)) % 2], to3((n as Node2D).global_position, LAND_Y - 0.05),
-				clampf(w * 1.1, 0.5, 3.0), _rng.randf() * TAU, true, true)
+			var r: Vector2 = n.get("radii")
+			_fitted(str(n.get("model")), to3(at, LAND_Y - 0.05), r * 2.0 / PX, 0.0, true)
 		elif path == "bush.gd":
-			_prop("fern", to3((n as Node2D).global_position, LAND_Y), _rng.randf_range(1.1, 1.5), _rng.randf() * TAU, false, true)
+			var d: float = float(n.get("radius")) * 2.0 / PX
+			_fitted("fern", to3(at, LAND_Y), Vector2(d, d), _rng.randf() * TAU, false)
 		elif path == "flip_rock.gd":
-			var rock := _prop("rock_medium_2", to3((n as Node2D).global_position, LAND_Y - 0.05), 0.55, _rng.randf() * TAU, true, true)
+			var d: float = float(n.get("radius")) * 2.0 / PX
+			var rock := _fitted(str(n.get("model")), to3(at, LAND_Y - 0.03), Vector2(d, d), _rng.randf() * TAU, true)
 			if rock != null:
 				_flip_rocks[n] = rock
+
+
+## A model of the trial's (`name`) at `at`, as wide and deep as `base` (m;
+## across x, z before `yaw`), its height in proportion.
+func _fitted(name: String, at: Vector3, base: Vector2, yaw: float, shadow: bool) -> Node3D:
+	var found := _model_mesh(name, true)
+	if found.is_empty():
+		return null
+	var mesh: Mesh = found[0]
+	var box := mesh.get_aabb()
+	var sx := base.x / maxf(box.size.x, 0.01)
+	var sz := base.y / maxf(box.size.z, 0.01)
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.scale = Vector3(sx, (sx + sz) * 0.5, sz)
+	mi.rotation.y = yaw
+	mi.position = at - Basis(Vector3.UP, yaw) * Vector3(box.get_center().x * sx, 0.0, box.get_center().z * sz)
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadow and not _low else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+	return mi
 
 
 ## The camp at the start (FuelStation): its fire, drums and tent as the
@@ -744,57 +758,38 @@ func _sync_runes() -> void:
 				mat.emission_energy_multiplier = lit * 1.6
 
 
-## Ferns, mushrooms, pebbles and lily pads where the map's ground cover is
-## (by its picture). User request: the grass tufts drawn here didn't look
-## good - gone (the map's grass, clover and reeds aren't shown).
+## Ferns, lily pads and washed-up logs where the map's ground cover is
+## (GroundCover.kind). User request: not crowded - the map scatters few.
 func _cover() -> void:
-	# kind: [model, size, sized by its width]
-	var kinds := {"plant": ["fern", 0.8, true], "shrub": ["fern", 0.65, true],
-		"mushroom": ["mushroom", 0.22, false], "pebble": ["rock_medium", 0.25, true], "stone": ["rock_path_1", 0.55, true]}
-	var at := {}
+	var ferns := []
+	var mesh := _model_mesh("fern", true)
 	for n in main.get_children():
 		if _script_name(n) != "ground_cover.gd":
 			continue
-		var s := n as Sprite2D
-		var tex: Texture2D = s.texture
-		if tex is CanvasTexture:
-			tex = (tex as CanvasTexture).diffuse_texture
-		var file := tex.resource_path.get_file() if tex != null else ""
-		var kind := "grass"
-		if file.contains("lily"):
-			var leaf := CampModel.make("lotus_leaf")
-			if leaf != null:
-				leaf.position = to3(s.global_position, WATER_Y + 0.01)
-				leaf.rotation.y = _rng.randf() * TAU
-				leaf.scale = Vector3.ONE * _rng.randf_range(0.22, 0.34)
-				add_child(leaf)
-			continue
-		if file.contains("drift"):
-			var log := CampModel.make("log")
-			if log != null:
-				log.position = to3(s.global_position, WATER_Y + 0.05)
-				log.rotation.y = _rng.randf() * TAU
-				log.scale = Vector3.ONE * 0.6
-				add_child(log)
-			continue
-		for key in ["mushroom", "clover", "shrub", "plant", "reed", "pebble", "rock_path", "tall"]:
-			if file.contains(key):
-				kind = {"reed": "reeds", "rock_path": "stone"}.get(key, key)
-				break
-		if kinds.has(kind):
-			at.get_or_add(kind, []).append(s.global_position)
-	for kind in at:
-		var spec: Array = kinds[kind]
-		var mesh := _model_mesh(spec[0], spec[2])
-		if mesh.is_empty():
-			continue
-		var list: Array = at[kind]
-		var xfs := []
-		for p in list:
-			var s: float = float(spec[1]) / maxf(mesh[1], 0.01) * _rng.randf_range(0.75, 1.25)
-			xfs.append(Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(s, s, s)),
-				to3(p, maxf(_height_at(_depth(p, _zones())), WATER_Y))))
-		_scatter(mesh[0], xfs, false, COVER_REACH)
+		var p: Vector2 = (n as Node2D).global_position
+		match str(n.get("kind")):
+			"lilypad":
+				var leaf := CampModel.make("lotus_leaf")
+				if leaf != null:
+					leaf.position = to3(p, WATER_Y + 0.01)
+					leaf.rotation.y = _rng.randf() * TAU
+					leaf.scale = Vector3.ONE * _rng.randf_range(0.22, 0.34)
+					add_child(leaf)
+			"driftwood":
+				var log := CampModel.make("log")
+				if log != null:
+					log.position = to3(p, WATER_Y + 0.05)
+					log.rotation.y = _rng.randf() * TAU
+					log.scale = Vector3.ONE * 0.6
+					add_child(log)
+			"plant", "shrub":
+				if mesh.is_empty():
+					continue
+				var s: float = _rng.randf_range(0.55, 0.8) / maxf(mesh[1], 0.01)
+				ferns.append(Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(s, s, s)),
+					to3(p, maxf(_height_at(_depth(p, _zones())), WATER_Y))))
+	if not mesh.is_empty():
+		_scatter(mesh[0], ferns, false, COVER_REACH)
 
 
 ## Many of one mesh, in square chunks of the map (CHUNK m) - each its own
@@ -908,8 +903,66 @@ static func _script_name(n: Node) -> String:
 # ---------------------------------------------------------------- the rest
 
 func _on_node_added(n: Node) -> void:
-	if n is Sprite2D or n is AnimatedSprite2D or n is PointLight2D:
+	if n is SplashFx:
+		_splash.call_deferred(n)
+	elif n is Sprite2D or n is AnimatedSprite2D or n is PointLight2D:
 		_pending.append(n)
+
+
+## A splash (SplashFx) in 3D: droplets thrown up and a ring on the water;
+## a fish leaping clear in an arc and back in.
+const JUMP_FISH := "res://assets/models/fish/rainbow_trout.glb"
+
+
+func _splash(fx: SplashFx) -> void:
+	if not is_instance_valid(fx) or not built:
+		return
+	var at: Vector2 = fx.global_position
+	var y := WATER_Y + 0.02
+	var drops := CPUParticles3D.new()
+	drops.one_shot = true
+	drops.emitting = true
+	drops.amount = 14 if not _low else 8
+	drops.lifetime = 0.7
+	drops.explosiveness = 0.9
+	drops.direction = Vector3.UP
+	drops.spread = 35.0
+	drops.initial_velocity_min = 1.0
+	drops.initial_velocity_max = 2.2 if fx.kind != "splash_bite" else 1.4
+	drops.gravity = Vector3(0, -6.0, 0)
+	drops.scale_amount_min = 0.6
+	drops.scale_amount_max = 1.2
+	var q := SphereMesh.new()
+	q.radius = 0.025
+	q.height = 0.05
+	q.radial_segments = 4
+	q.rings = 2
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = Color(0.8, 0.9, 1.0, 0.85)
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	q.material = m
+	drops.mesh = q
+	drops.position = to3(at, y)
+	add_child(drops)
+	get_tree().create_timer(1.2).timeout.connect(drops.queue_free)
+	_splash_ring(at)
+	if fx.kind.begins_with("fish_jump") and ResourceLoader.exists(JUMP_FISH):
+		var fish: Node3D = (load(JUMP_FISH) as PackedScene).instantiate()
+		add_child(fish)
+		var box := _aabb(fish)
+		var k := 0.45 / maxf(maxf(box.size.x, box.size.z), 0.01)
+		fish.scale = Vector3.ONE * k
+		var dir := Vector3(1 if fx.kind.ends_with("right") else -1, 0, 0)
+		var from := to3(at, WATER_Y) - dir * 0.4
+		fish.position = from
+		fish.look_at(fish.position + dir, Vector3.UP)
+		var tw := create_tween()
+		tw.tween_method(func(t: float):
+			if is_instance_valid(fish):
+				fish.position = from + dir * 0.8 * t + Vector3.UP * 0.55 * sin(t * PI)
+				fish.rotation.z = (t - 0.5) * 1.6, 0.0, 1.0, 0.7)
+		tw.tween_callback(fish.queue_free)
 
 
 ## Stands up the pictures (and lights) under `n` that nothing else shows.
@@ -1010,7 +1063,7 @@ func _add_creature(n: Node) -> void:
 		"last": at, "size": float(spec[0]), "lift": float(spec[2]), "time": _rng.randf() * 10.0}
 
 
-func _aabb(n: Node3D) -> AABB:
+static func _aabb(n: Node3D) -> AABB:
 	var box := AABB()
 	var first := true
 	for mi in n.find_children("*", "MeshInstance3D", true, false):
@@ -1032,7 +1085,7 @@ func _aabb(n: Node3D) -> AABB:
 	return box
 
 
-func _skinned_box(n: Node3D, m: MeshInstance3D, sk: Skeleton3D, b: AABB) -> AABB:
+static func _skinned_box(n: Node3D, m: MeshInstance3D, sk: Skeleton3D, b: AABB) -> AABB:
 	# Where its vertices are drawn at rest, each by the bone weighing on it
 	# most (every few: enough for the box).
 	var to_model := n.global_transform.affine_inverse() * sk.global_transform
@@ -2159,13 +2212,18 @@ func _process(delta: float) -> void:
 		_sync_light(l, _lights[l])
 	_sync_creatures(delta)
 	_sync_runes()
+	# (a stone being turned over: where it's rolled to, tipped over)
 	for n in _flip_rocks:
-		if is_instance_valid(n):
+		if is_instance_valid(n) and float(n.get("turned")) > 0.0 and not n.has_meta("settled"):
 			var roller = n.get("_roller")
-			if roller is Node2D:
-				var r3: Node3D = _flip_rocks[n]
-				r3.position = to3((roller as Node2D).global_position, LAND_Y - 0.05)
-				r3.rotation.z = (roller as Node2D).rotation
+			var r3: Node3D = _flip_rocks[n]
+			if not r3.has_meta("home"):
+				r3.set_meta("home", r3.position - to3((n as Node2D).global_position))
+			r3.position = to3((roller as Node2D).global_position, 0.0) + (r3.get_meta("home") as Vector3) \
+				+ Vector3(0, 0.08 * sin(float(n.get("turned")) * PI), 0)
+			r3.rotation.z = (roller as Node2D).rotation
+			if float(n.get("turned")) >= 1.0:
+				n.set_meta("settled", true)
 	for pair in _trees:
 		if is_instance_valid(pair[0]):
 			(pair[1] as Node3D).visible = (pair[0] as Node2D).visible
@@ -2256,3 +2314,38 @@ func _update_camera(delta: float) -> void:
 	for m in _fade_mats:
 		m.distance_fade_min_distance = FADE_NEAR * k
 		m.distance_fade_max_distance = FADE_FAR * k
+
+
+## The ground: grass in the open, forest floor under the trees, dirt
+## paths, stone and mud by the water (from the first 3D trial).
+const GROUND_SHADER := """
+shader_type spatial;
+render_mode specular_disabled;
+uniform sampler2D grass_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform sampler2D grass_nrm : hint_normal, filter_linear_mipmap, repeat_enable;
+uniform sampler2D forest_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform sampler2D forest_nrm : hint_normal, filter_linear_mipmap, repeat_enable;
+uniform sampler2D path_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform sampler2D path_nrm : hint_normal, filter_linear_mipmap, repeat_enable;
+uniform sampler2D stone_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform sampler2D stone_nrm : hint_normal, filter_linear_mipmap, repeat_enable;
+uniform sampler2D mud_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform sampler2D mud_nrm : hint_normal, filter_linear_mipmap, repeat_enable;
+varying vec4 paint;
+void vertex() { paint = COLOR; }
+void fragment() {
+	vec2 uv = UV * 0.25;
+	vec3 c = mix(texture(grass_tex, uv).rgb, texture(forest_tex, uv * 0.9).rgb, paint.a);
+	vec3 n = mix(texture(grass_nrm, uv).rgb, texture(forest_nrm, uv * 0.9).rgb, paint.a);
+	c = mix(c, texture(mud_tex, uv).rgb * 0.8, paint.b);
+	n = mix(n, texture(mud_nrm, uv).rgb, paint.b);
+	c = mix(c, texture(path_tex, uv * 1.2).rgb, paint.r);
+	n = mix(n, texture(path_nrm, uv * 1.2).rgb, paint.r);
+	c = mix(c, texture(stone_tex, uv * 0.8).rgb * 0.6, paint.g);
+	n = mix(n, texture(stone_nrm, uv * 0.8).rgb, paint.g);
+	ALBEDO = c * 0.85;
+	NORMAL_MAP = n;
+	NORMAL_MAP_DEPTH = 1.2;
+	ROUGHNESS = 0.92;
+}
+"""

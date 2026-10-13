@@ -42,45 +42,27 @@ const BAIT_SIZE := 0.8
 const SPECIES := {
 	# Round 8 (user request): the rat, frog, snake and bee are the user's
 	# models now (tools/prep_critters.py), and the grasshopper turns up too.
-	"rat": {"label": "老鼠", "bait": "rat",
-		"albedo": preload("res://assets/sprites/critter/rat_55deg_albedo.png"),
-		"normal": preload("res://assets/sprites/critter/rat_55deg_normal.png"),
+	"rat": {"body": 8.3, "label": "老鼠", "bait": "rat",
 		"frames": 12, "cols": 39, "clips": 2, "offset": Vector2(0, -5.42), "move_fps": 24.0, "idle_fps": 5.05,
 		"wander_speed": 45.0, "flee_speed": 120.0},
-	"frog": {"label": "青蛙", "bait": "frog",
-		"albedo": preload("res://assets/sprites/critter/frog_55deg_albedo.png"),
-		"normal": preload("res://assets/sprites/critter/frog_55deg_normal.png"),
+	"frog": {"body": 6.7, "label": "青蛙", "bait": "frog",
 		"frames": 12, "cols": 64, "clips": 2, "offset": Vector2(0, -2.27), "move_fps": 13.85, "idle_fps": 4.8, "size": 1.3,
 		"wander_speed": 35.0, "flee_speed": 95.0},
 	# User request (round 8): snakes and bees may poison too (venom: the
 	# chance a catch is bitten or stung).
-	"snake": {"label": "蛇", "bait": "snake", "venom": 0.3,
-		"albedo": preload("res://assets/sprites/critter/snake_55deg_albedo.png"),
-		"normal": preload("res://assets/sprites/critter/snake_55deg_normal.png"),
+	"snake": {"body": 5.0, "label": "蛇", "bait": "snake", "venom": 0.3,
 		"frames": 12, "cols": 85, "clips": 2, "offset": Vector2(0, -0.42), "move_fps": 12.0, "idle_fps": 12.0,
 		"wander_speed": 30.0, "flee_speed": 85.0},
-	"spider": {"label": "蜘蛛", "bait": "spider",
-		"albedo": preload("res://assets/sprites/critter/spider_55deg_albedo.png"),
-		"normal": preload("res://assets/sprites/critter/spider_55deg_normal.png"),
+	"spider": {"body": 5.8, "label": "蜘蛛", "bait": "spider",
 		"frames": 12, "cols": 73, "clips": 2, "offset": Vector2(0, -0.81), "move_fps": 14.4, "idle_fps": 2.88, "size": 1.3,
 		"wander_speed": 40.0, "flee_speed": 110.0},
-	# User request: the beach style's crab (tools/render_crab.py).
-	"crab": {"label": "螃蟹", "bait": "crab", "shore_only": true, "sideways": true,
-		"albedo": preload("res://assets/sprites/critter/crab_55deg_albedo.png"),
-		"normal": preload("res://assets/sprites/critter/crab_55deg_normal.png"),
-		"frames": 8, "cols": 73, "clips": 2, "offset": Vector2(0, -5.02), "move_fps": 16.0, "idle_fps": 5.71,
-		"size": 1.25, "wander_speed": 34.0, "flee_speed": 100.0},
 	# One clip (flying) for both moving and hovering; floats above the ground.
-	"wasp": {"label": "蜜蜂", "bait": "bee", "venom": 0.25, "sting": true,
-		"albedo": preload("res://assets/sprites/critter/wasp_55deg_albedo.png"),
-		"normal": preload("res://assets/sprites/critter/wasp_55deg_normal.png"),
+	"wasp": {"body": 5.0, "label": "蜜蜂", "bait": "bee", "venom": 0.25, "sting": true,
 		"frames": 12, "cols": 60, "clips": 1, "offset": Vector2(0, -3.62), "move_fps": 12.0, "idle_fps": 12.0, "size": 1.6,
 		"wander_speed": 40.0, "flee_speed": 115.0, "hover": 14.0},
 	# User request (round 8): grasshoppers can be caught on the map (the
 	# 蚱蜢 bait the shop sells).
-	"grasshopper": {"label": "蚱蜢", "bait": "cricket",
-		"albedo": preload("res://assets/sprites/critter/grasshopper_55deg_albedo.png"),
-		"normal": preload("res://assets/sprites/critter/grasshopper_55deg_normal.png"),
+	"grasshopper": {"body": 5.0, "label": "蚱蜢", "bait": "cricket",
 		"frames": 12, "cols": 120, "clips": 2, "offset": Vector2(0, -5.19), "move_fps": 18.0, "idle_fps": 12.0, "size": 1.5,
 		"wander_speed": 36.0, "flee_speed": 110.0},
 
@@ -89,128 +71,37 @@ const SPECIES := {
 	# one normal sheet). Good bait (two of it, Player.BLACK_SPIDER_BAIT)
 	# but its bite may poison (venom, see Player._catch_critter). Also turns
 	# up under rocks and out of chopped trees (spawn_black_spider).
-	"black_spider": {"label": "黑蜘蛛", "bait": "black_spider", "venom": 0.35,
-		"albedo": "res://assets/sprites/critter/black_spider_1_55deg_albedo.png",
-		"skins": ["res://assets/sprites/critter/black_spider_1_55deg_albedo.png",
-			"res://assets/sprites/critter/black_spider_2_55deg_albedo.png",
-			"res://assets/sprites/critter/black_spider_3_55deg_albedo.png",
-			"res://assets/sprites/critter/black_spider_4_55deg_albedo.png",
-			"res://assets/sprites/critter/black_spider_5_55deg_albedo.png",
-			"res://assets/sprites/critter/black_spider_6_55deg_albedo.png",
-			"res://assets/sprites/critter/black_spider_7_55deg_albedo.png",
-			"res://assets/sprites/critter/black_spider_8_55deg_albedo.png"],
-		"normal": "res://assets/sprites/critter/black_spider_55deg_normal.png",
+	"black_spider": {"body": 7.5, "skinned": true, "label": "黑蜘蛛", "bait": "black_spider", "venom": 0.35,
 		"frames": 12, "cols": 56, "clips": 2, "offset": Vector2(0, -5.79), "move_fps": 10.0, "idle_fps": 6.0,
 		"size": 1.3, "wander_speed": 38.0, "flee_speed": 105.0},
 
 	# Ambient animals: not catchable. Grazers and dogs ignore the player
 	# (flee_speed 0); deer, stag, fox and wolf bolt at a gallop, faster than the
 	# player can follow.
-	"cow": {"label": "牛", "ambient": true, "frames": 16, "cols": 34,
-		"albedo": "res://assets/sprites/animal/cow_55deg_albedo.png",
-		"normal": "res://assets/sprites/animal/cow_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -18.25), "move_fps": 13.71, "idle_fps": 2.67,
-		"wander_speed": 18.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
-	"bull": {"label": "公牛", "ambient": true, "frames": 16, "cols": 34,
-		"albedo": "res://assets/sprites/animal/bull_55deg_albedo.png",
-		"normal": "res://assets/sprites/animal/bull_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -18.42), "move_fps": 13.71, "idle_fps": 2.67,
-		"wander_speed": 18.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
-	"donkey": {"label": "驢子", "ambient": true, "frames": 16, "cols": 46,
-		"albedo": "res://assets/sprites/animal/donkey_55deg_albedo.png",
-		"normal": "res://assets/sprites/animal/donkey_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -15.13), "move_fps": 13.71, "idle_fps": 2.67,
-		"wander_speed": 20.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
-	"alpaca": {"label": "羊駝", "ambient": true, "frames": 16, "cols": 39,
-		"albedo": "res://assets/sprites/animal/alpaca_55deg_albedo.png",
-		"normal": "res://assets/sprites/animal/alpaca_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -15.24), "move_fps": 10.97, "idle_fps": 2.13,
-		"wander_speed": 20.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
-	"deer": {"label": "鹿", "ambient": true, "frames": 16, "cols": 42,
-		"albedo": "res://assets/sprites/animal/deer_55deg_albedo.png",
-		"normal": "res://assets/sprites/animal/deer_55deg_normal.png",
+	"deer": {"body": 9.6, "label": "鹿", "ambient": true, "frames": 16, "cols": 42,
 		"clips": 3, "offset": Vector2(0, -19.1), "move_fps": 13.71, "idle_fps": 2.67,
 		"flee_fps": 32.0, "flee_clip": 2, "flee_radius": 120.0, "calm_radius": 260.0,
 		"wander_speed": 28.0, "flee_speed": 170.0, "idle_time": Vector2(3, 8)},
-	"horse": {"label": "馬", "ambient": true, "frames": 16, "cols": 34,
-		"albedo": "res://assets/sprites/animal/horse_55deg_albedo.png",
-		"normal": "res://assets/sprites/animal/horse_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -21.77), "move_fps": 13.71, "idle_fps": 2.67,
-		"wander_speed": 22.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
-	"stag": {"label": "雄鹿", "ambient": true, "frames": 16, "cols": 39,
-		"albedo": "res://assets/sprites/animal/stag_55deg_albedo.png",
-		"normal": "res://assets/sprites/animal/stag_55deg_normal.png",
+	"stag": {"body": 10.4, "label": "雄鹿", "ambient": true, "frames": 16, "cols": 39,
 		"clips": 3, "offset": Vector2(0, -22.28), "move_fps": 13.71, "idle_fps": 4.8,
 		"flee_fps": 32.0, "flee_clip": 2, "flee_radius": 120.0, "calm_radius": 260.0,
 		"wander_speed": 28.0, "flee_speed": 170.0, "idle_time": Vector2(3, 8)},
-	"fox": {"label": "狐狸", "ambient": true, "frames": 16, "cols": 73,
-		"albedo": "res://assets/sprites/animal/fox_55deg_albedo.png",
-		"normal": "res://assets/sprites/animal/fox_55deg_normal.png",
+	"fox": {"body": 5.6, "label": "狐狸", "ambient": true, "frames": 16, "cols": 73,
 		"clips": 3, "offset": Vector2(0, -7.87), "move_fps": 15.36, "idle_fps": 4.8,
 		"flee_fps": 29.54, "flee_clip": 2, "flee_radius": 100.0, "calm_radius": 220.0,
 		"wander_speed": 32.0, "flee_speed": 160.0, "idle_time": Vector2(2, 6)},
 	# User decision: dogs trot after the player for a little while when
 	# they come close (just company - no game effect).
-	"husky": {"label": "哈士奇", "ambient": true, "frames": 16, "cols": 64, "follow": true,
-		"albedo": "res://assets/sprites/animal/husky_55deg_albedo.png",
-		"normal": "res://assets/sprites/animal/husky_55deg_normal.png",
+	"husky": {"body": 6.4, "label": "哈士奇", "ambient": true, "frames": 16, "cols": 64, "follow": true,
 		"clips": 2, "offset": Vector2(0, -10.38), "move_fps": 15.36, "idle_fps": 4.8,
 		"wander_speed": 34.0, "flee_speed": 0.0, "idle_time": Vector2(2, 6)},
-	"shiba": {"label": "柴犬", "ambient": true, "frames": 16, "cols": 85, "follow": true,
-		"albedo": "res://assets/sprites/animal/shiba_55deg_albedo.png",
-		"normal": "res://assets/sprites/animal/shiba_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -8.23), "move_fps": 15.36, "idle_fps": 4.8,
-		"wander_speed": 34.0, "flee_speed": 0.0, "idle_time": Vector2(2, 6)},
-	# User decision: wolves (and the meat-eating dinosaurs below) hunt the
-	# player - see Mode.CHASE. flee_speed is only used when scared off.
-	"wolf": {"label": "狼", "ambient": true, "frames": 16, "cols": 56,
-		"albedo": "res://assets/sprites/animal/wolf_55deg_albedo.png",
-		"normal": "res://assets/sprites/animal/wolf_55deg_normal.png",
+	# User decision: wolves hunt the player - see Mode.CHASE. flee_speed is
+	# only used when scared off.
+	"wolf": {"body": 7.2, "label": "狼", "ambient": true, "frames": 16, "cols": 56,
 		"clips": 3, "offset": Vector2(0, -10.74), "move_fps": 15.36, "idle_fps": 4.8,
 		"flee_fps": 29.54, "flee_clip": 2,
 		"chase_radius": 150.0, "chase_speed": 118.0,
 		"wander_speed": 32.0, "flee_speed": 160.0, "idle_time": Vector2(2, 6)},
-	"white_horse": {"label": "白馬", "ambient": true, "frames": 16, "cols": 34,
-		"albedo": "res://assets/sprites/animal/white_horse_55deg_albedo.png",
-		"normal": "res://assets/sprites/animal/white_horse_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -21.77), "move_fps": 13.71, "idle_fps": 2.67,
-		"wander_speed": 22.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
-	# Dinosaurs (prehistoric maps only): scaled well below life size so they
-	# fit the screen. Plant-eaters are slow, unbothered wanderers; the T-rex
-	# and raptor hunt like wolves. The sauropod's 125-frame walk plays ~1.7x
-	# fast.
-	"stegosaurus": {"label": "劍龍", "ambient": true, "frames": 16, "cols": 18,
-		"albedo": "res://assets/sprites/animal/stegosaurus_55deg_albedo.png",
-		"normal": "res://assets/sprites/animal/stegosaurus_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -10.16), "move_fps": 5.49, "idle_fps": 6.3,
-		"wander_speed": 16.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
-	"apatosaurus": {"label": "迷惑龍", "ambient": true, "frames": 16, "cols": 14,
-		"albedo": "res://assets/sprites/animal/apatosaurus_55deg_albedo.png",
-		"normal": "res://assets/sprites/animal/apatosaurus_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -15.42), "move_fps": 3.07, "idle_fps": 3.76,
-		"wander_speed": 14.0, "flee_speed": 0.0, "idle_time": Vector2(5, 12)},
-	"parasaurolophus": {"label": "副櫛龍", "ambient": true, "frames": 16, "cols": 28,
-		"albedo": "res://assets/sprites/animal/parasaurolophus_55deg_albedo.png",
-		"normal": "res://assets/sprites/animal/parasaurolophus_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -15.57), "move_fps": 13.71, "idle_fps": 6.4,
-		"wander_speed": 24.0, "flee_speed": 0.0, "idle_time": Vector2(3, 8)},
-	"trex": {"label": "暴龍", "ambient": true, "frames": 16, "cols": 16,
-		"albedo": "res://assets/sprites/animal/trex_55deg_albedo.png",
-		"normal": "res://assets/sprites/animal/trex_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -35.69), "move_fps": 11.64, "idle_fps": 6.4,
-		"chase_radius": 170.0, "chase_speed": 96.0,
-		"wander_speed": 20.0, "flee_speed": 110.0, "idle_time": Vector2(4, 10)},
-	"triceratops": {"label": "三角龍", "ambient": true, "frames": 16, "cols": 23,
-		"albedo": "res://assets/sprites/animal/triceratops_55deg_albedo.png",
-		"normal": "res://assets/sprites/animal/triceratops_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -11.39), "move_fps": 5.49, "idle_fps": 6.3,
-		"wander_speed": 14.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
-	"velociraptor": {"label": "迅猛龍", "ambient": true, "frames": 16, "cols": 34,
-		"albedo": "res://assets/sprites/animal/velociraptor_55deg_albedo.png",
-		"normal": "res://assets/sprites/animal/velociraptor_55deg_normal.png",
-		"clips": 2, "offset": Vector2(0, -12.69), "move_fps": 6.62, "idle_fps": 6.4,
-		"chase_radius": 170.0, "chase_speed": 126.0,
-		"wander_speed": 30.0, "flee_speed": 150.0, "idle_time": Vector2(2, 6)},
 }
 
 enum Mode { IDLE, WANDER, FLEE, FOLLOW, CHASE }
@@ -287,18 +178,11 @@ func _ready() -> void:
 func set_species(name: String) -> void:
 	species = name
 	_data = SPECIES[name]
-	var tex := CanvasTexture.new()
-	# Ambient animals name their sheets by path, loaded when one spawns:
-	# preloading every species held them all in memory at once, though a
-	# map only uses a few (and the sharper props need the room, see Art).
-	var albedo = _data.albedo
+	# (user decision: no 2D pictures - RunView3D shows it as its model;
+	# the black spider's skins pick one of its colourings there)
 	skin = 0
-	if _data.has("skins"):
-		skin = randi() % _data.skins.size() + 1
-		albedo = _data.skins[skin - 1]
-	tex.diffuse_texture = albedo if albedo is Texture2D else load(albedo)
-	tex.normal_texture = _data.normal if _data.normal is Texture2D else load(_data.normal)
-	sprite.texture = tex
+	if _data.get("skinned", false):
+		skin = randi() % 8 + 1
 	var cells: int = _data.get("frames", 12) * _data.clips * ROWS
 	sprite.hframes = _data.cols
 	sprite.vframes = ceili(float(cells) / _data.cols)
@@ -310,7 +194,7 @@ func set_species(name: String) -> void:
 	var body := get_node_or_null("CollisionShape2D") as CollisionShape2D
 	if body != null:
 		var circle := CircleShape2D.new()
-		circle.radius = body_radius(float(tex.get_width()) / sprite.hframes * sprite.scale.x)
+		circle.radius = float(_data.get("body", 6.0))
 		body.shape = circle
 
 

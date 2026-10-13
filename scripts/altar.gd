@@ -16,8 +16,6 @@ extends Area2D
 ## sickly and flickers, dark smoke and violet embers rise off it - worse
 ## with each one.
 
-const SHEET := [preload("res://assets/sprites/altar/altar_55deg_albedo.png"),
-	preload("res://assets/sprites/altar/altar_55deg_normal.png")]
 const SPRITE_SCALE := 0.5
 ## (0, -center_y) * 27.108 for the render's camera (render_props.py).
 const OFFSET := Vector2(0.0, -8.8)
@@ -48,8 +46,6 @@ func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
 	var tex := CanvasTexture.new()
-	tex.diffuse_texture = SHEET[0]
-	tex.normal_texture = SHEET[1]
 	visual.texture = tex
 	Art.place(visual, OFFSET, SPRITE_SCALE)
 	light.texture = LightTextureFactory.make_radial_texture()

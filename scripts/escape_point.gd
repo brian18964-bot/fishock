@@ -6,9 +6,6 @@ extends Area2D
 ## phase) do the runes light up - and only then is it a way out, and a
 ## ghost-proof light like a lit fuel station.
 
-const SHEET := [preload("res://assets/sprites/rune_stones/rune_stones_55deg_albedo.png"),
-	preload("res://assets/sprites/rune_stones/rune_stones_55deg_normal.png")]
-const GLOW := preload("res://assets/sprites/rune_stones/rune_stones_55deg_glow.png")
 const SPRITE_SCALE := 0.5
 ## (center_x, -center_y) * 27.108 for the render's camera (render_props.py).
 const OFFSET := Vector2(0.71, -27.6)
@@ -26,12 +23,9 @@ func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
 	var tex := CanvasTexture.new()
-	tex.diffuse_texture = SHEET[0]
-	tex.normal_texture = SHEET[1]
 	var visual: Sprite2D = $Visual
 	visual.texture = tex
 	Art.place(visual, OFFSET, SPRITE_SCALE)
-	glow.texture = GLOW
 	Art.place(glow, OFFSET, SPRITE_SCALE)
 	var add := CanvasItemMaterial.new()
 	add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD

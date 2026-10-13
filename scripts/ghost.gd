@@ -20,7 +20,6 @@ enum GhostState { WANDER, HAUNT, LEAVE }
 ## the air), faster when it hurries. It floats - hovering and bobbing over
 ## a soft shadow - and its state reads as a tint on the pale sheet: stunned
 ## yellow, frenzied pink, the night hunt red.
-const GHOST_SHEET := [preload("res://assets/sprites/ghost/ghost_55deg_albedo.png"), preload("res://assets/sprites/ghost/ghost_55deg_normal.png")]
 const GHOST_OFFSET := Vector2(0.0, 14.13)
 ## Sheet rows: the 8 facings (Art.facing8).
 const GHOST_DIRS := 8
@@ -269,8 +268,6 @@ func _process(delta: float) -> void:
 
 func _setup_visual() -> void:
 	var tex := CanvasTexture.new()
-	tex.diffuse_texture = GHOST_SHEET[0]
-	tex.normal_texture = GHOST_SHEET[1]
 	visual.texture = tex
 	visual.hframes = FRAMES
 	visual.vframes = GHOST_DIRS
