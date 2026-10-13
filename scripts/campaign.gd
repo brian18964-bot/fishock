@@ -586,6 +586,10 @@ func is_level() -> bool:
 
 func _apply_world() -> void:
 	var size: Vector2 = MAP_SIZES.get(rules.map, MAP_SIZES.L)
+	# User request: the 3D run's map (and its ponds) bigger - the 2D one's
+	# was made for a closer camera.
+	if RunView3D.wanted and not is_level():
+		size = (size * RunView3D.MAP_SCALE).round()
 	Player.WORLD_WIDTH = size.x
 	Player.WORLD_HEIGHT = size.y
 	MapGenerator.SPAWN_POS = Vector2(roundf(size.x * 0.5), roundf(size.y * 0.5185))

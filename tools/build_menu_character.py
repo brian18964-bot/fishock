@@ -46,9 +46,15 @@ UAL1 = [
     "Idle_Loop", "Idle_Talking_Loop", "Interact", "Walk_Loop",
     "Sitting_Enter", "Sitting_Idle_Loop", "Sitting_Exit", "Sitting_Talking_Loop",
     "Crouch_Idle_Loop", "Idle_Torch_Loop", "Fixing_Kneeling", "PickUp_Table",
+    # (the 3D run's acts - user request: each thing done its own move -
+    # the pistol fired, a blow taken)
+    "Pistol_Shoot", "Hit_Chest",
 ]
 UAL2 = [
     "Idle_FoldArms_Loop", "Idle_Rail_Loop", "Chest_Open", "Consume", "Yes", "Idle_No_Loop", "LayToIdle",
+    # (the 3D run: chopping a tree, the blade's slash, scooping a live bait
+    # up, throwing the 誘惑 bait, knocked back, carrying the oil drum)
+    "TreeChopping_Loop", "Sword_Regular_A", "Farm_Harvest", "OverhandThrow", "Hit_Knockback", "Walk_Carry_Loop",
 ]
 
 # The Mixamo clips: the name it's played by, the file, the source frames
@@ -78,6 +84,18 @@ MIXAMO = [
     ("Sad_B_Loop", "Sad.Idle.1.fbx", None, True),
     # (the 3D run trial, scripts/proto3d.gd: the user's Locomotion Pack)
     ("Run_Loop", "Running.fbx", None, False),
+    # (the 3D run's acts, as the 2D moves sheet has them -
+    # tools/render_player_moves.py: the offering's prayer, a rock turned
+    # over, a fright, dizzy, terrified in a ghost's grip, kneeling)
+    ("Pray_Loop", "Praying.fbx", None, False),
+    ("Lift", "Lifting.fbx", (20, 100), False),
+    ("Pick_Up", "Picking.Up.fbx", (20, 170), False),
+    ("Scared", "Scared.fbx", (205, 255), False),
+    ("Dizzy_Loop", "Dizzy.Idle.fbx", None, True),
+    ("Terrified_Loop", "Terrified.fbx", None, True),
+    ("Kneel", "Kneeling.Down.fbx", (15, 70), False),
+    ("Use_Eye", "Magic.Heal.fbx", (41, 81), True),
+    ("Look_Far", "Looking.fbx", (12, 138), True),
 ]
 # The run in 3D (scripts/run_view_3d.gd): KayKit's fishing clips (CC0,
 # art_src/kaykit - the same the run's sprites are drawn from), the rod in
@@ -104,7 +122,9 @@ GROUNDED = ("Lie_Down", "Lying_Loop", "Sleep_B_Loop", "Ground_Sit_Loop", "Ground
             # (and lying to getting up, the standing about and the walk -
             # the bear's walk 7 cm in, the rest's toes 2-3 cm)
             "LayToIdle", "Walk_Loop", "Idle_Loop", "Idle_FoldArms_Loop", "Idle_No_Loop",
-            "Idle_Talking_Loop", "Idle_Torch_Loop", "Sad_Loop", "Run_Loop")
+            "Idle_Talking_Loop", "Idle_Torch_Loop", "Sad_Loop", "Run_Loop",
+            # (the 3D run's: down on the ground, and bent to it)
+            "Pray_Loop", "Lift", "Pick_Up", "Kneel", "Farm_Harvest", "TreeChopping_Loop", "Walk_Carry_Loop")
 # User report (the bear sank into the log): the camp's logs (CampStage.SEATS)
 # have their top this high under the hips of one sat on them, m (measured
 # in the camp) - and the clips sat on one, whole and getting on and off.

@@ -30,17 +30,26 @@ const STATIONS := {
 	"stone": [Vector3(-3.7, 1.55, 3.1), Vector3(-5.45, 0.8, -0.6), 40.0],
 	"journey": [Vector3(-3.7, 1.55, 3.1), Vector3(-5.45, 0.8, -0.6), 40.0],
 }
-const CHARACTER_AT := Vector3(-0.35, 0.0, 0.6)
+const CHARACTER_AT := Vector3(-0.2, 0.0, 0.85)
 const FIRE_AT := Vector3(0.75, 0.0, -0.35)
 const CRATE_AT := Vector3(-3.05, 0.0, 0.3)
 ## The crate drawn out longer than the pack's (user request: 30%, then
 ## 20% more).
 const CRATE_LENGTH := 1.56
 const BACKPACK_AT := Vector3(-2.2, 0.0, 1.05)
-const TENT_AT := Vector3(-4.6, 0.0, -3.5)
+const TENT_AT := Vector3(-5.0, 0.0, -3.9)
+## User request: the tent, the crate, the backpack, the fire and the logs
+## bigger, in proportion to the character (and the fish trough half as big
+## again).
+const TENT_SCALE := 1.1
+const CRATE_SCALE := 1.25
+const PACK_SCALE := 1.4
+const FIRE_SCALE := 1.12
+## The logs longer (not higher: the clips sit on them at their height).
+const SEAT_LONGER := 1.2
 ## Where it stands to lie down in the tent (m out from its middle, toward
 ## its mouth).
-const TENT_BED := 0.35
+const TENT_BED := 0.45
 const ROD_AT := Vector3(-2.95, 0.0, -2.55)
 const DRUM_AT := Vector3(0.2, 0.0, -2.05)
 ## A second drum beside it (no lamp).
@@ -51,7 +60,7 @@ const TROUGH_YAW := PI / 2.0
 ## The drums made bigger than life, easier to tap (user request: the drum
 ## 20%, the fish trough 30%).
 const DRUM_SCALE := 1.2
-const TROUGH_SCALE := 1.3
+const TROUGH_SCALE := 1.95
 ## The lamp on the drum's lid.
 const LAMP_ON_DRUM := Vector3(0.05, 0.92 * DRUM_SCALE, 0.02)
 ## The 渡石 (user request: moved from far off by the water to the camp's
@@ -61,8 +70,10 @@ const LAMP_ON_DRUM := Vector3(0.05, 0.92 * DRUM_SCALE, 0.02)
 const STONE_AT := Vector3(-5.45, 0.0, -0.6)
 const STONE_YAW := 0.5
 const STONE_SCALE := 0.92
-const HUT_AT := Vector3(6.1, 0.0, -6.0)
-const HUT_YAW := -0.95
+## (user request: the merchant's stall in the home view - nearer, turned
+## to the camp)
+const HUT_AT := Vector3(4.7, 0.0, -4.7)
+const HUT_YAW := -0.75
 const HUT_SCALE := 0.8
 ## Where the frog merchant potters, round his stall (its own frame, before
 ## its scale): its front corners and counter, its sides, round the back
@@ -79,7 +90,7 @@ const MERCHANT_PLACES := {
 ## it by his boat, and a spot on the open ground toward the camp - still
 ## well clear of the fire.
 const MERCHANT_OUT := {
-	"dock_base": Vector3(3.0, 0.0, -6.6), "dock": Vector3(3.15, 0.225, -8.2), "lookout": Vector3(3.5, 0.0, -4.3),
+	"dock_base": Vector3(2.7, 0.0, -6.6), "dock": Vector3(3.15, 0.225, -8.2), "lookout": Vector3(2.4, 0.0, -2.9),
 }
 ## His ways between them (none through the stall: in by the back).
 const MERCHANT_LINKS := {
@@ -91,7 +102,7 @@ const MERCHANT_LINKS := {
 	"dock": ["dock_base"], "lookout": ["corner", "front", "dock_base"],
 }
 ## The frog's size (the model is 1.25 m): small enough to stand inside.
-const MERCHANT_SCALE := 0.7
+const MERCHANT_SCALE := 0.85
 const DOCK_AT := Vector3(2.9, 0.0, -7.05)
 ## The boat afloat, tied up against the dock (its right side), its bow
 ## just short of the beach (user request); the pack's boat drawn in to 60%
@@ -107,7 +118,7 @@ const MOON_DIR := Vector3(0.1, 0.17, -1.0)
 ## hips sit on it: its top at about 0.52 m): [where, which way one sits on
 ## it (null: facing the fire)] - the second lies across behind the fire,
 ## sat on facing out. And the woodpile by the tent.
-const SEATS := [[Vector3(-0.75, 0.0, -0.6), null], [Vector3(1.95, 0.0, -1.45), Vector3(0, 0, 1)]]
+const SEATS := [[Vector3(-0.95, 0.0, -0.7), null], [Vector3(2.0, 0.0, -1.6), Vector3(0, 0, 1)]]
 const SEAT_SCALE := Vector3(1.18, 1.18, 1.15)
 const WOODPILE_AT := Vector3(-2.0, 0.0, -2.6)
 ## The water in the cut drum (its surface's height and size), and the lotus
@@ -306,14 +317,15 @@ func _places() -> void:
 	_spot("fire_0", FIRE_AT + Vector3(0.95, 0, 0.25), FIRE_AT)
 	_spot("fire_1", FIRE_AT + Vector3(-0.5, 0, 0.85), FIRE_AT)
 	var tent_front := Vector3(sin(0.7), 0, cos(0.7))
-	_spot("tent", TENT_AT + tent_front * 1.7, TENT_AT)
+	_spot("tent", TENT_AT + tent_front * 2.2, TENT_AT)
 	# In under the tent, on its middle line, facing out (lying down, it goes
 	# down on its back into the tent): a nap, and waking after a run lost
 	# (user request: lying down only in the tent).
 	_spot("bed", TENT_AT + tent_front * TENT_BED, TENT_AT + tent_front * 4.0)
 	var crate_side := Vector3(cos(0.55), 0, -sin(0.55))
-	_spot("crate", CRATE_AT + crate_side * 0.94, CRATE_AT)
-	_spot("trough", TROUGH_AT + Vector3(-0.78, 0, 0.1), TROUGH_AT)
+	_spot("crate", CRATE_AT + crate_side * 0.94 * CRATE_SCALE, CRATE_AT)
+	_spot("pack", BACKPACK_AT + Vector3(0.15, 0, 0.62), BACKPACK_AT)
+	_spot("trough", TROUGH_AT + Vector3(-1.05, 0, 0.1), TROUGH_AT)
 	# (a bigger one's belly and head went into the drum any nearer)
 	_spot("lean", DRUM_AT + Vector3(0, 0, 0.38), DRUM_AT + Vector3(0, 0, -3.0))
 	_spot("lake", Vector3(1.3, 0, -6.35), Vector3(1.7, 0, -10.0))
@@ -331,14 +343,14 @@ func _places() -> void:
 	# What it walks round: everything on the ground, as capsules [a, b,
 	# radius] (a circle when a == b) - user request: never through things.
 	var crate_dir := Vector3(cos(0.55), 0, -sin(0.55))
-	var crate_half := 0.575 * CRATE_LENGTH - 0.3
+	var crate_half := (0.575 * CRATE_LENGTH - 0.3) * CRATE_SCALE
 	var t := Transform3D(Basis(Vector3.UP, HUT_YAW).scaled(Vector3.ONE * HUT_SCALE), HUT_AT)
 	obstacles = [
-		_round(FIRE_AT, 0.62), [CRATE_AT - crate_dir * crate_half, CRATE_AT + crate_dir * crate_half, 0.32],
-		_round(BACKPACK_AT, 0.26), _round(DRUM_AT, 0.36), _round(DRUM_2_AT, 0.36),
-		[TROUGH_AT - Vector3(0, 0, 0.2), TROUGH_AT + Vector3(0, 0, 0.2), 0.4],
+		_round(FIRE_AT, 0.62 * FIRE_SCALE), [CRATE_AT - crate_dir * crate_half, CRATE_AT + crate_dir * crate_half, 0.32 * CRATE_SCALE],
+		_round(BACKPACK_AT, 0.26 * PACK_SCALE), _round(DRUM_AT, 0.36), _round(DRUM_2_AT, 0.36),
+		[TROUGH_AT - Vector3(0, 0, 0.3), TROUGH_AT + Vector3(0, 0, 0.3), 0.6],
 		[WOODPILE_AT + Vector3(-0.55, 0, 0.1), WOODPILE_AT + Vector3(0.55, 0, 0.1), 0.35],
-		_round(ROD_AT, 0.15), _round(TENT_AT, 1.45),
+		_round(ROD_AT, 0.15), _round(TENT_AT, 1.45 * TENT_SCALE / 0.85),
 		_round(STONE_AT, 0.55),
 		[t * Vector3(-0.9, 0, 0), t * Vector3(0.9, 0, 0), 0.9],
 	]
@@ -346,7 +358,7 @@ func _places() -> void:
 		var f := seat_facing(i)
 		var along := Vector3(-f.z, 0, f.x)
 		var at: Vector3 = SEATS[i][0]
-		obstacles.append([at - along * 0.62, at + along * 0.62, 0.34])
+		obstacles.append([at - along * 0.62 * SEAT_LONGER, at + along * 0.62 * SEAT_LONGER, 0.34])
 	_build_grid()
 
 
@@ -543,13 +555,19 @@ func _hotspot(page: String, node: Node3D, label: String, center: Vector3, radius
 	hotspots[page] = spot
 
 
+## Which of its parts the last hotspot_at() found (e.g. which log).
+var hit_part := 0
+
+
 ## The page whose thing is under `at` (viewport pixels), nearest first; ""
 ## if none.
 func hotspot_at(at: Vector2) -> String:
 	var best := ""
 	var best_d := INF
 	for page in hotspots:
+		var k := -1
 		for part in hotspots[page].parts:
+			k += 1
 			var c: Vector3 = part[1]
 			if camera.is_position_behind(c):
 				continue
@@ -561,6 +579,7 @@ func hotspot_at(at: Vector2) -> String:
 			if d < reach and depth < best_d:
 				best = page
 				best_d = depth
+				hit_part = k
 	return best
 
 
@@ -572,6 +591,25 @@ func highlight(page: String) -> void:
 	for p in hotspots:
 		for mat in hotspots[p].overlays:
 			(mat as ShaderMaterial).set_shader_parameter("strength", 0.7 if p == page else 0.12)
+
+
+## User request: a thing's name pops up as the character comes near it:
+## [page, part] of the nearest within `reach` (m) of `at`, or [] - and
+## where its name goes (world).
+func near_spot(at: Vector3, reach: float) -> Array:
+	var best: Array = []
+	var best_d := reach
+	for page in hotspots:
+		if page == "character":
+			continue
+		var parts: Array = hotspots[page].parts
+		for k in parts.size():
+			var c: Vector3 = parts[k][1]
+			var d := Vector2(c.x - at.x, c.z - at.z).length() - float(parts[k][2]) * 0.5
+			if d < best_d:
+				best_d = d
+				best = [page, k, c + Vector3(0, float(parts[k][2]) * 0.9 + 0.2, 0)]
+	return best
 
 
 ## Where to show `page`'s name (world): over its first part.
@@ -805,11 +843,8 @@ func _rocks() -> void:
 		if absf(p.x - DOCK_AT.x) < 1.2:
 			continue  # the dock
 		spots.append(p + Vector3(_rng.randf_range(-0.4, 0.4), 0, _rng.randf_range(-0.2, 0.5)))
-	for i in 14:
-		var a := _rng.randf() * TAU
-		var p := Vector3(cos(a), 0, sin(a)) * _rng.randf_range(4.5, 9.0)
-		if not _in_lake(p, 1.0) and not (p.z > 2.0 and absf(p.x) < 4.0):
-			spots.append(p)
+	# (user request: the rocks scattered over the camp's ground stood out -
+	# gone; the shore's stay)
 	mm.instance_count = spots.size()
 	for i in spots.size():
 		var s := _rng.randf_range(0.4, 1.3)
@@ -890,7 +925,7 @@ func _fire() -> void:
 	fire.position = FIRE_AT
 	add_child(fire)
 	var pit := CampModel.make("campfire", 0.5)
-	pit.scale = Vector3.ONE * 0.85
+	pit.scale = Vector3.ONE * 0.85 * FIRE_SCALE
 	fire.add_child(pit)
 	# User request: tapping the fire changes who's travelling.
 	_hotspot("character", pit, "換角色", FIRE_AT + Vector3(0, 0.3, 0), 0.6)
@@ -1020,7 +1055,10 @@ func _seats() -> void:
 	for i in SEATS.size():
 		# Lying across the way one sits on it (its length along its z).
 		var f := seat_facing(i)
-		_put("log", SEATS[i][0], atan2(-f.z, f.x)).scale = SEAT_SCALE
+		var seat := _put("log", SEATS[i][0], atan2(-f.z, f.x))
+		seat.scale = SEAT_SCALE * Vector3(SEAT_LONGER, 1.0, 1.0)
+		# User request: a tap on a log, it goes and sits on it.
+		_hotspot("sit", seat, "坐下", SEATS[i][0] + Vector3(0, 0.4, 0), 0.7, 0.01)
 	# A few logs stacked by the tent.
 	for k in 3:
 		var l := _put("log", WOODPILE_AT + Vector3(-0.05 + k * 0.05, 0.17 if k == 2 else 0.0, -0.15 + k * 0.24 - (0.12 if k == 2 else 0.0)), 1.5)
@@ -1031,12 +1069,13 @@ func _seats() -> void:
 ## The crate and the backpack leant against it (the warehouse, both).
 func _crate() -> void:
 	var crate := _put("crate", CRATE_AT, 0.55)
-	crate.scale = Vector3(CRATE_LENGTH, 1.0, 1.0)
-	_hotspot("warehouse", crate, "倉庫", CRATE_AT + Vector3(0, 0.35, 0), 0.9)
+	crate.scale = Vector3(CRATE_LENGTH, 1.0, 1.0) * CRATE_SCALE
+	_hotspot("warehouse", crate, "倉庫", CRATE_AT + Vector3(0, 0.4, 0), 0.9 * CRATE_SCALE)
 	# The backpack by it opens the warehouse too (user request).
 	var pack := _put("backpack", BACKPACK_AT, 0.25)
 	pack.rotation.x = -0.18
-	_hotspot("warehouse", pack, "倉庫", BACKPACK_AT + Vector3(0, 0.28, 0), 0.38, 0.012)
+	pack.scale = Vector3.ONE * PACK_SCALE
+	_hotspot("backpack", pack, "背包", BACKPACK_AT + Vector3(0, 0.35, 0), 0.38 * PACK_SCALE, 0.012)
 
 
 ## The tent (the equipment page): the one Profile.camp_tent names, and the
@@ -1046,7 +1085,7 @@ func _tent() -> void:
 	_tent_holder.name = "Tent"
 	_tent_holder.position = TENT_AT
 	_tent_holder.rotation.y = 0.7
-	_tent_holder.scale = Vector3.ONE * 0.85
+	_tent_holder.scale = Vector3.ONE * TENT_SCALE
 	add_child(_tent_holder)
 	_rod_holder = Node3D.new()
 	_rod_holder.name = "Rod"
@@ -1066,7 +1105,7 @@ func _dress_tent() -> void:
 		tent = CampModel.make("tent_8")
 	_tent_holder.add_child(tent)
 	hotspots.erase("equipment")
-	_hotspot("equipment", _tent_holder, "裝備", TENT_AT + Vector3(0, 1.0, 0), 1.35)
+	_hotspot("equipment", _tent_holder, "裝備", TENT_AT + Vector3(0, 1.2, 0), 1.35 * TENT_SCALE / 0.85)
 	# The rod belongs with the tent's hotspot too.
 	_hotspot("equipment", _rod_holder, "裝備", ROD_AT + Vector3(0, 0.9, 0), 0.4, 0.01)
 
@@ -1152,7 +1191,7 @@ void fragment() {
 			mi.rotation.y = pad[0] * 9.0
 			trough.add_child(mi)
 		leaf.free()
-	_hotspot("fish_tank", trough, "魚缸", TROUGH_AT + Vector3(0, 0.3, 0), 0.75, 0.012)
+	_hotspot("fish_tank", trough, "魚缸", TROUGH_AT + Vector3(0, 0.4, 0), 1.1, 0.012)
 
 
 ## The 渡石: the stone the travellers cross by, its runes glowing faintly

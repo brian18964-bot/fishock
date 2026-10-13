@@ -681,7 +681,9 @@ func _generate_water_zones() -> void:
 ## Ponds (and the room kept round the start) shrink a little on a smaller
 ## map (the campaign's), so they fit with land to walk round them.
 static func _pond_scale() -> float:
-	return clampf(sqrt(Campaign.area_share()), 0.72, 1.0)
+	var k := sqrt(Campaign.area_share())
+	# (the 3D run's bigger map: its ponds bigger with it)
+	return k if k > 1.0 else clampf(k, 0.72, 1.0)
 
 
 ## User request: the beach's water is the sea - one great sweep of it

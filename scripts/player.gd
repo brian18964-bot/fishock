@@ -39,6 +39,9 @@ const MOVE_REEL_PENALTY := 0.5
 ## The map's size: the full map, or a campaign level's smaller one
 ## (Campaign sets these before the run's scene loads).
 static var WORLD_WIDTH := 2400.0
+## How near the map's edge one may walk (px): further in in 3D, where the
+## edge is a wall of tall pines (RunView3D.EDGE).
+var edge := 16.0
 static var WORLD_HEIGHT := 1350.0
 const START_BAIT := 20
 const START_LURES := 5
@@ -720,6 +723,7 @@ func _apply_water_ghost_attack(cause := "") -> void:
 	var stolen: Dictionary = GameState.steal_one_carried()
 	Campaign.stat("water_ghost_hit")
 	if not stolen.is_empty():
+		move_note = "stolen"
 		Campaign.stat("stolen")
 	var msg := "水鬼從水裡冒出來偷襲！身上狀態異常中"
 	if not stolen.is_empty():
@@ -728,9 +732,15 @@ func _apply_water_ghost_attack(cause := "") -> void:
 	GameState.report("水鬼偷襲！" if stolen.is_empty() else "水鬼偷襲，搶走了%s" % stolen.get("name", "魚"))
 
 
+## What the move playing is for (the 3D run plays each its own: a fail's
+## reason, "stolen" - the water ghost's grab).
+var move_note := ""
+
+
 ## Plays a move (PlayerVisual: drink, look, eye, pick, lift, throw, cheer,
-## fist, sad, scared, pray, kneel) over `seconds`.
-func perform(kind: String, seconds: float) -> void:
+## fist, sad, scared, pray, kneel) over `seconds`, for `note` (move_note).
+func perform(kind: String, seconds: float, note := "") -> void:
+	move_note = note
 	move_kind = kind
 	move_time = seconds
 	move_left = seconds
@@ -1447,8 +1457,8 @@ func _update_movement() -> void:
 	velocity = input_dir * SPEED * carry_ratio * affliction_ratio * drum_ratio * spirit_ratio * vigor_ratio
 	var before := position
 	move_and_slide()
-	position.x = clamp(position.x, 16.0, WORLD_WIDTH - 16.0)
-	position.y = clamp(position.y, 16.0, WORLD_HEIGHT - 16.0)
+	position.x = clamp(position.x, edge, WORLD_WIDTH - edge)
+	position.y = clamp(position.y, edge, WORLD_HEIGHT - edge)
 	# Keep out of deep water, sliding along the shallows' edge. (Only
 	# blocks stepping deeper - never traps someone already out there.)
 	if _too_deep(position) and not _too_deep(before):
@@ -2488,7 +2498,7 @@ const FAIL_REPORTS := {
 
 func _fail_catch(reason: String) -> void:
 	catch_failed.emit(reason)
-	perform("sad", 1.8)
+	perform("sad", 1.8, reason)
 	var msg := "魚跑掉了"
 	# A snapped or frayed line takes the lure with it.
 	var lure_gone: bool = reason in ["line_break", "cover"] and fishing_mode == FishingMode.LURE

@@ -112,6 +112,8 @@ var _rest := 2.0
 var _pace := 1.0
 var _rng := RandomNumberGenerator.new()
 var _lamp_light: OmniLight3D
+## Doing what a tap asked (act_on): briskly.
+var _asked := false
 
 
 func _ready() -> void:
@@ -245,7 +247,7 @@ func _next() -> void:
 				var to: Vector3 = _step.to if _step.has("to") else stage.spots[_step.spot].at
 				_path = [to] if _step.get("straight", false) else stage.route(pivot.position, to)
 				# Set pieces go briskly (a tap skips them anyway).
-				_pace = PACE[tier()] if busy == "" else 1.25
+				_pace = PACE[tier()] if busy == "" and not _asked else 1.25
 				_play("Walk", 0.25)
 				rig.anim.speed_scale = _pace
 			"face":
@@ -277,6 +279,7 @@ func _next() -> void:
 				_len = float(_step.time)
 		return
 	_step = {}
+	_asked = false
 	_rest = _rng.randf_range(REST_TIME[tier()].x, REST_TIME[tier()].y)
 	if not seated and down == "" and rig.anim.current_animation != _idle():
 		_play(_idle(), 0.3)
@@ -516,6 +519,73 @@ func _weighted(options: Array) -> String:
 		if roll <= 0.0:
 			return o[0]
 	return options[-1][0]
+
+
+# ---------------------------------------------------------------- asked to
+
+## User request: a tap on one of the camp's things, the character goes to
+## it and does what it's for, and then (`done`) its page opens: a log - it
+## sits down (no page); the merchant - it walks up to him, they talk; the
+## tent - in under it, tidying; the fish trough - crouched over it; the
+## crate - opened; the backpack - down at it, rummaging; the 渡石 - a hand
+## on it. Whatever it was doing it lets go of (getting up first). False if
+## it can't now (a set piece on).
+func act_on(kind: String, part := 0, done := Callable()) -> bool:
+	if busy != "":
+		return false
+	var opens := func():
+		if done.is_valid():
+			done.call()
+	var plan: Array = []
+	match kind:
+		"sit":
+			var seat := "seat_%d" % clampi(part, 0, CampStage.SEATS.size() - 1)
+			if seated and pivot.position.distance_to(stage.spots[seat].at) < 0.6:
+				return true
+			plan = _get_up() + _go(seat) + [{"do": "play", "clip": "Sitting_Enter"}, {"do": "call", "fn": func(): seated = true},
+				{"do": "loop", "clip": "Sitting_Idle", "time": _span(SIT_TIME[tier()])}]
+			if tier() > 0:
+				plan += _stand_up()
+			activity = "sit"
+		"shop":
+			var m := stage.merchant
+			if m == null:
+				plan = [{"do": "call", "fn": opens}]
+			else:
+				plan = _get_up() + [{"do": "call", "fn": func():
+						m.visit(pivot)
+						stage.spots["visit"] = {"at": m.visit_spot(pivot.position), "face": m.global_position}},
+					{"do": "walk", "spot": "visit"}, {"do": "face", "spot": "visit", "node": m},
+					{"do": "call", "fn": func(): m.talk()},
+					{"do": "loop", "clip": "Idle_Talking", "time": 1.6, "at": 0.55, "fn": opens},
+					{"do": "play", "clip": "Yes"}, {"do": "call", "fn": func(): m.release()}]
+			activity = "merchant"
+		"equipment":
+			plan = _get_up() + _into_tent() + [{"do": "play", "clip": "Fixing_Kneeling", "at": 0.35, "fn": opens}] + _out_of_tent()
+			activity = "tent"
+		"fish_tank", "fish_log":
+			plan = _get_up() + _go("trough") + [{"do": "loop", "clip": "Crouch_Idle", "time": 1.8, "at": 0.55, "fn": opens},
+				{"do": "loop", "clip": "Crouch_Idle", "time": 1.5}]
+			activity = "trough"
+		"warehouse":
+			plan = _get_up() + _go("crate") + [{"do": "play", "clip": "Chest_Open", "at": 0.6, "fn": opens}]
+			activity = "crate"
+		"backpack":
+			plan = _get_up() + _go("pack") + [{"do": "loop", "clip": "Crouch_Idle", "time": 0.6},
+				{"do": "play", "clip": "PickUp_Table", "at": 0.7, "fn": opens}, {"do": "loop", "clip": "Crouch_Idle", "time": 0.8}]
+			activity = "crate"
+		"journey":
+			plan = _get_up() + _go("stone") + [{"do": "play", "clip": "Interact", "at": 0.4, "fn": opens}]
+			activity = "stone"
+		_:
+			plan = [{"do": "call", "fn": opens}]
+	_plan = plan
+	_step = {}
+	_rest = 0.0
+	_asked = true
+	if not seated and down == "" and rig.anim.current_animation != "Walk":
+		_play(_idle(), 0.2)
+	return true
 
 
 # ---------------------------------------------------------------- set pieces

@@ -2710,6 +2710,13 @@ func test_main_menu() -> void:
 	for want in ["warehouse", "equipment", "fish_tank", "shop"]:
 		check(camp.hotspots.has(want), "the camp's thing for " + want)
 	check(not camp.hotspots.has("bag"), "no bag page of its own")
+	# User request: a log tapped, it goes and sits on it.
+	camp.life.act_on("sit", 1)
+	for _i in 60 * 20:
+		await frames(1)
+		if camp.life.seated:
+			break
+	check(camp.life.seated and camp.character_pivot.position.distance_to(camp.spots.seat_1.at) < 0.3, "a log tapped: it sits on it")
 	# The frog merchant potters about his stall (user request).
 	var frog: CampMerchant = camp.merchant
 	# (Not while the character happens to be visiting him: he stands to talk.)
@@ -2728,19 +2735,29 @@ func test_main_menu() -> void:
 	var card: Control = title.find_child("PlayerCard", true, false)
 	check(card != null and card.position.x < 40 and card.position.y < 40 and card.find_child("Spirit", true, false) != null,
 		"the player's card top left, with the spirit")
-	# A tap on the backpack (by the crate) opens the warehouse too.
-	var pack: Node3D = camp.hotspots.warehouse.parts.filter(func(p): return p[0].name == "backpack")[0][0]
+	# A tap on the backpack (by the crate) opens the warehouse too - user
+	# request: the character goes to it first and rummages in it.
+	var pack: Node3D = camp.hotspots.backpack.parts[0][0]
 	var at: Vector2 = camp.camera.unproject_position(pack.global_position + Vector3(0, 0.25, 0)) / title.RENDER_SCALE
-	check(title.spot_at(at) == "warehouse", "the backpack is the warehouse's too")
+	check(title.spot_at(at) == "backpack", "the backpack's own thing")
 	for down in [true, false]:
 		var tap := InputEventMouseButton.new()
 		tap.button_index = MOUSE_BUTTON_LEFT
 		tap.pressed = down
 		tap.position = at
 		title._on_home_input(tap)
+	await seconds(0.5)
+	check(title._page == null and camp.life._asked, "tapped: the character goes to it first")
+	for _i in 60 * 20:
+		await frames(1)
+		if title._page != null:
+			break
+	check(camp.character_pivot.position.distance_to(camp.spots.pack.at) < 0.3, "and gets down at the backpack (%s)" % camp.character_pivot.position)
+	# (its name popped up as it came near)
+	check(title._near == "backpack" or title._near == "warehouse" or not title._home.visible, "the name of what it's near")
 	await seconds(0.8)
 	var bag_page: Control = title._page
-	check(bag_page != null and bag_page.find_child("WarehouseWindow", true, false) != null, "tapping the backpack opens the warehouse")
+	check(bag_page != null and bag_page.find_child("WarehouseWindow", true, false) != null, "then the warehouse opens")
 	UiKit.page_back(bag_page)
 	await seconds(1.0)
 	# A page opens over the camp (the camera glides to its spot) and closes
@@ -3061,7 +3078,11 @@ func test_camp_life() -> void:
 	var off_stone := on_stone.duplicate() as InputEventMouseButton
 	off_stone.pressed = false
 	title._on_home_input(off_stone)
-	await frames(3)
+	# (user request: it walks over and lays a hand on the stone first)
+	for _i in 60 * 25:
+		await frames(1)
+		if title._page != null:
+			break
 	check(title._page != null and title._page.name.to_lower().contains("journey"), "a tap on it opens the journey (出發夜釣)")
 	UiKit.page_back(title._page)
 	await seconds(0.8)
@@ -3685,6 +3706,13 @@ func test_run_3d() -> void:
 		return
 	check(not main.visible and main.get_node("HUD/Panel").is_visible_in_tree() and view.camera.current,
 		"the 2D world hidden, the screen's layers still up, the 3D camera on")
+	# User request: its map and ponds bigger, the edge a wall of pines kept
+	# off, no grass cards.
+	check(is_equal_approx(Player.WORLD_WIDTH, roundf(2400.0 * RunView3D.MAP_SCALE)) and MapGenerator._pond_scale() > 1.4,
+		"the 3D run's map and ponds bigger (%d px across)" % Player.WORLD_WIDTH)
+	check(player().edge == RunView3D.EDGE and not view._models.has("#card"), "kept off the edge's pines; no grass cards")
+	# Walking about: the rod slung on the back, the lamp in hand.
+	check(view._stow > 0.99 and view._lamp_in > 0.99, "between casts: the rod on the back, the lamp in hand")
 	var waters := 0
 	for c in view.get_children():
 		if c.name.begins_with("Water"):
@@ -3733,6 +3761,8 @@ func test_run_3d() -> void:
 	key(KEY_SPACE, true)
 	await seconds(0.5)
 	check(view._clip == "Fish_Cast" and view._guide_label.visible, "winding a cast: the cast clip, how far it'll go")
+	check(view._stow < 0.01 and view._lamp_in < 0.01 and view._left_ik.influence > 0.9,
+		"fishing: the rod drawn, both hands on it, the lamp at the hip")
 	key(KEY_SPACE, false)
 	for _i in 60:
 		await frames(1)
@@ -3765,6 +3795,20 @@ func test_run_3d() -> void:
 	for r in view._blocked:
 		covered = covered or (r as Rect2).has_point(seen)
 	check(view._dodge > 0.05 and not covered, "the float under the lamp button: the camera makes room (%.2f)" % view._dodge)
+	# (that spot may be on the bank - the line in again: cast again)
+	if player().state != Player.State.WAITING:
+		player()._set_state(Player.State.IDLE)
+		await put(zone.shore_point(Vector2.DOWN) + Vector2(0, 40))
+		player().aim_dir = Vector2.UP
+		key(KEY_SPACE, true)
+		await seconds(0.5)
+		key(KEY_SPACE, false)
+		for _i in 90:
+			await frames(1)
+			if player().state == Player.State.WAITING:
+				break
+		await seconds(1.0)
+	check(player().state == Player.State.WAITING, "out on the water again")
 	# A bite, the strike: their clips.
 	player().nibbles_left = 0
 	player().cast_outcome = Player.CastOutcome.BITE
@@ -3787,6 +3831,17 @@ func test_run_3d() -> void:
 	player().line_cleared.emit()
 	await frames(4)
 	check(not view._float.visible, "the line in: no float")
+	# User request: each thing done its own move.
+	for pair in [["lift", "", "Lift"], ["pray", "", "Pray"], ["sad", "line_break", "Hit_Chest"], ["sad", "bait_stolen", "Idle_No"]]:
+		player().perform(pair[0], 1.5, pair[1])
+		await frames(6)
+		check(view._clip == pair[2], "%s %s: the %s clip (%s)" % [pair[0], pair[1], pair[2], view._clip])
+		player().move_left = 0.0
+		await seconds(0.3)
+	player().carrying_oil_drum = true
+	await frames(4)
+	check(view._clip == "Walk_Carry" and view._lamp_in < 1.0, "carrying the oil drum: in both arms")
+	player().carrying_oil_drum = false
 	# On a phone: lighter (no glow, one shadow pass, none from the lamp,
 	# the 3D drawn smaller, grass as cards).
 	RunView3D.quality = "low"

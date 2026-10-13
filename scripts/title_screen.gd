@@ -50,6 +50,11 @@ var _drag_moved := 0.0
 var _spot := ""
 var _press_spot := ""
 var _spot_label: Label
+var _near_label: Label
+var _near := ""
+## The page a tap asked for, opened when the character's done its bit
+## there (CampLife.act_on) - or at once, tapped again.
+var _asked_page := ""
 ## The card's name line (釣客・<the character>).
 var _who: Label
 ## The new character's name shows over the fire this long (s).
@@ -236,6 +241,15 @@ func _build() -> void:
 	_spot_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_spot_label.visible = false
 	_home.add_child(_spot_label)
+	# User request: the name of what the character's come near, popped up
+	# over it.
+	_near_label = UiKit.label("", 17, UiKit.GOLD, true, 4)
+	_near_label.name = "NearLabel"
+	_near_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_near_label.custom_minimum_size = Vector2(140, 0)
+	_near_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_near_label.visible = false
+	_home.add_child(_near_label)
 
 	# Bottom: play, and multiplayer (not yet).
 	var play := UiKit.button("出發夜釣", 24, "red")
@@ -358,6 +372,55 @@ func _process(_delta: float) -> void:
 		if _spot != "":
 			var over := _stage.camera.unproject_position(_stage.label_point(_spot)) / RENDER_SCALE
 			_spot_label.position = over - Vector2(_spot_label.size.x * 0.5, _spot_label.size.y)
+		_near_name(_delta)
+
+
+## What the character's near (NEAR_REACH): its name popped up over it,
+## fading in and out (not while that thing's lit anyway).
+const NEAR_REACH := 1.1
+
+
+func _near_name(delta: float) -> void:
+	var near := _stage.near_spot(_stage.character_pivot.global_position, NEAR_REACH)
+	var page: String = near[0] if not near.is_empty() else ""
+	if page != "" and page != _spot:
+		if page != _near:
+			_near_label.modulate.a = 0.0
+		_near = page
+		_near_label.text = _stage.hotspots[page].label
+		_near_label.visible = true
+		_near_label.modulate.a = minf(_near_label.modulate.a + delta * 3.0, 1.0)
+		var over := _stage.camera.unproject_position(near[2]) / RENDER_SCALE
+		_near_label.position = over - Vector2(_near_label.size.x * 0.5, _near_label.size.y)
+	else:
+		_near_label.modulate.a = maxf(_near_label.modulate.a - delta * 3.0, 0.0)
+		if _near_label.modulate.a <= 0.0:
+			_near_label.visible = false
+			_near = ""
+
+
+## User request: a tap on a camp thing, the character goes to it and does
+## what it's for (CampLife.act_on); then its page opens. Tapped again
+## meanwhile (or anything else that opens a page), it opens at once.
+const PAGE_OF := {"backpack": "warehouse", "sit": ""}
+
+
+func _ask(spot: String) -> void:
+	var page: String = PAGE_OF.get(spot, spot)
+	if _asked_page != "" and _asked_page == page:
+		_open_asked()
+		return
+	_asked_page = page
+	var acted := _stage.life.act_on(spot, _stage.hit_part, _open_asked)
+	if not acted:
+		_open_asked()
+
+
+func _open_asked() -> void:
+	var page := _asked_page
+	_asked_page = ""
+	if page != "" and _page == null and _home.visible:
+		open_page(page)
 
 
 ## The camp's thing at `at` (screen), "" if none.
@@ -402,7 +465,7 @@ func _on_home_input(event: InputEvent) -> void:
 				if page == "character":
 					_next_character()
 				else:
-					open_page(page)
+					_ask(page)
 				return
 			_press_spot = ""
 			_light(under)
@@ -482,6 +545,7 @@ func _fetch_character(id: String) -> void:
 ## page's spot, the page fades in; the camp holds still under it (one
 ## frame drawn - cheaper on a phone) till it closes.
 func open_page(page: String) -> void:
+	_asked_page = ""
 	if _page != null:
 		_page.queue_free()
 		_page = null
