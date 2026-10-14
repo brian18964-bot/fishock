@@ -15,6 +15,7 @@ const TESTS := [
 	"test_run_3d",
 	"test_map_generation",
 	"test_layout_clear",
+	"test_proto3d",
 	"test_spawn_on_land_docks_out",
 	"test_catalog_and_sounds",
 	"test_creature_animation",
@@ -261,15 +262,19 @@ func test_spawn_on_land_docks_out() -> void:
 		for z in main.get_tree().get_nodes_in_group("water_zones"):
 			if z.distance_to_edge(spawn) < 80.0:
 				wet += 1
-		for z in main.get_tree().get_nodes_in_group("water_zones_common"):
+		# (user request: one dock, on the biggest water)
+		var commons: Array = main.get_tree().get_nodes_in_group("water_zones_common")
+		commons.sort_custom(func(a, b): return MapGenerator._zone_area(a) > MapGenerator._zone_area(b))
+		for i in commons.size():
+			var z = commons[i]
 			var has := false
 			for w in main.get_tree().get_nodes_in_group("walkways"):
 				if z.contains(w.walk_rect.get_center()) or z.distance_to_edge(w.walk_rect.get_center()) < 1.0:
 					has = true
-			if docked and not has:
+			if docked and has != (i == 0):
 				dockless += 1
 	check(wet == 0, "the spawn point is on dry land on every map (%d wet)" % wet)
-	check(dockless <= 4, "(nearly) every pond has a dock out into it (%d without)" % dockless)
+	check(dockless <= 2, "a dock on the biggest water only (%d maps otherwise)" % dockless)
 
 
 ## User request (3D): nothing in anything, nothing crowded. No two solid
@@ -438,7 +443,9 @@ func test_turn_rock() -> void:
 	check(player().interaction().get("verb", "") == "翻開", "turn offered by a rock")
 	await tap(KEY_E)
 	check(not rock.active, "rock turned at a tap")
-	await seconds(1.0)
+	# (user request: the heave seen first - the stone tips as it comes)
+	check(rock._roller.position.length() < 0.5, "not tipped before the heave")
+	await seconds(Player.ROCK_HEAVE_AT + FlipRock.ROLL_TIME + 0.2)
 	var moved: float = rock._roller.position.length()
 	check(moved > 6.0 and moved < 20.0, "rock tipped aside, only just (%.1f px)" % moved)
 	check(absf(rock._roller.rotation) < 0.6, "leaning over a little, not rolled (%.2f)" % rock._roller.rotation)
@@ -1213,7 +1220,7 @@ func test_live_bait_and_net() -> void:
 	p.live_bait = ""
 	var wear := Profile.durability("net")
 	check(p.swing() and p.swing_kind == "scoop", "a tap swings the net: a scoop")
-	await seconds(Player.SWING_TIME + 0.1)
+	await seconds(Player.swing_time("scoop") + 0.1)
 	check(Profile.bag_count("live_rat") == 1 and not rat.active, "scooped: a live rat in the bag")
 	check(Profile.durability("net") == wear - 1, "and the net wears a little (%d -> %d)" % [wear, Profile.durability("net")])
 	check(p.live_bait == "rat", "and on the hook, nothing else being on")
@@ -3788,7 +3795,7 @@ func test_chop_and_weapons() -> void:
 	check(p.interaction().get("verb", "") == "砍樹", "chopping offered at the tree")
 	await tap(KEY_E)
 	check(p.swing_kind == "chop", "the hatchet swung (a chop)")
-	await seconds(Player.SWING_TIME)
+	await seconds(Player.swing_time("chop"))
 	check(tree.chopped, "chopped with a tap")
 	check(p.choppable_tree() != tree, "each tree once")
 	# Chopped all over, the trees give bait and spiders.
@@ -3918,3 +3925,48 @@ func test_offhand_swing_and_wear() -> void:
 	await frames(1)
 
 
+
+## User request (after Vaultbreakers): the run's trial in 3D perspective -
+## walked about with the stick, walking when it's eased off and running when
+## it's pushed, round things, not into the lake, out along the dock; the
+## camera after it from up and behind.
+func test_proto3d() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 100, "spirit": 90.0})
+	var p: Node3D = load("res://scenes/proto3d.tscn").instantiate()
+	get_tree().root.add_child(p)
+	await frames(5)
+	var cam: Camera3D = p.camera
+	var down := rad_to_deg(-cam.global_transform.basis.z.angle_to(Vector3(cam.global_transform.basis.z.x, 0, cam.global_transform.basis.z.z)))
+	check(absf(absf(down) - p.CAMERA_PITCH) < 2.0, "the camera looks down at %.0f degrees" % absf(down))
+	var stick = p._joystick
+	var from: Vector3 = p.pivot.position
+	stick.output = Vector2(0.3, 0.0)
+	await seconds(1.0)
+	check(p.character.anim.current_animation == "Walk" and p.pivot.position.x > from.x + 0.8,
+		"stick eased off: it walks (%s)" % p.character.anim.current_animation)
+	stick.output = Vector2(1.0, 0.0)
+	await seconds(0.6)
+	check(p.character.anim.current_animation == "Run", "pushed all the way: it runs (%s)" % p.character.anim.current_animation)
+	# Round the fire, not through it.
+	p.pivot.position = p.PLAZA + Vector3(0, 0, 2.5)
+	stick.output = Vector2(0.0, -1.0)
+	var nearest := INF
+	for _i in 60:
+		await frames(1)
+		nearest = minf(nearest, Vector2(p.pivot.position.x, p.pivot.position.z).distance_to(Vector2(p.PLAZA.x, p.PLAZA.z)))
+	check(nearest > 0.85, "not through the fire (%.2f m)" % nearest)
+	# Not into the lake; out along the dock.
+	p.pivot.position = Vector3(-6.0, 0, p._shore_z(-6.0) + 2.0)
+	await seconds(1.5)
+	check(p.pivot.position.z >= p._shore_z(p.pivot.position.x) + 0.3, "it stops at the water's edge")
+	p.pivot.position = Vector3(2.4, 0.32, float(p._dock_span[1]) - 0.5)
+	await seconds(1.2)
+	check(p._on_dock(p.pivot.position) and p.pivot.position.z < p._shore_z(2.4) - 1.0 and is_equal_approx(p.pivot.position.y, 0.32),
+		"out along the dock over the water")
+	stick.output = Vector2.ZERO
+	await frames(10)
+	check(p.character.anim.current_animation == "Idle", "let go: it stands")
+	p.queue_free()
+	await frames(2)
+	Profile.load_data(saved)

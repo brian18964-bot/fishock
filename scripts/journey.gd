@@ -350,9 +350,9 @@ func _build_free() -> void:
 			int(Profile.campaign.get("best_curses", 0))], 15, UiKit.GOLD_BRIGHT))
 	else:
 		box.add_child(UiKit.label("通過第五章後，可以加上「詛咒」挑戰更高難度。", 14, UiKit.DIM))
-	var go := UiKit.button("出發", 20, "red")
+	var go := UiKit.button("出發：3D 湖畔森林", 20, "red")
 	go.name = "GoFree"
-	go.custom_minimum_size = Vector2(180, 52)
+	go.custom_minimum_size = Vector2(240, 52)
 	go.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	go.pressed.connect(_depart_free)
 	var row := HBoxContainer.new()

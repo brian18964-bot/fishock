@@ -749,9 +749,17 @@ func _on_settings() -> void:
 		get_tree().change_scene_to_file("res://scenes/title_screen.tscn"))
 	col.add_child(camp)
 	col.move_child(camp, col.get_child_count() - 2)
+	# User request (after Vaultbreakers' picture): the walkable 3D lakeside
+	# camp (scenes/proto3d.tscn) - one place to walk about in.
+	var trial := UiKit.button("3D 試作場景：夜釣湖畔", 15, "red")
+	trial.name = "Proto3D"
+	trial.custom_minimum_size = Vector2(0, 40)
+	trial.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/proto3d.tscn"))
+	col.add_child(trial)
+	col.move_child(trial, col.get_child_count() - 2)
 	# User request: a free run (the lakeside forest, in 3D), open here
 	# before the journey opens free runs.
-	var run3d := UiKit.button("湖畔森林：自由夜釣", 15, "red")
+	var run3d := UiKit.button("3D 湖畔森林：自由夜釣", 15, "red")
 	run3d.name = "Run3D"
 	run3d.custom_minimum_size = Vector2(0, 40)
 	run3d.pressed.connect(func():

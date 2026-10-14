@@ -227,8 +227,18 @@ var guide: GuideArrow
 ## GUN_CONE of the aim). A swing takes SWING_TIME, its blow landing
 ## SWING_HIT in; each wears the thing (Profile.wear_out). A press on the
 ## stick held past SWING_TAP, or dragged, draws the rod and casts instead.
-const SWING_TIME := 0.55
-const SWING_HIT := 0.25
+const SWING_TIME := 1.0
+const SWING_HIT := 0.6
+## User request (3D): the off hand's thing is drawn from the hip only to
+## use it (SWING_DRAW s), and each use is played out at its clip's own
+## pace - the net's scoop, two blows of the axe, a slash, a shot - long
+## enough to be seen: [whole time, when the blow lands] (s). The traveller
+## stands to it meanwhile.
+const SWING_DRAW := 0.35
+const ROCK_HEAVE_TIME := 2.7
+const ROCK_HEAVE_AT := 1.2
+const PICK_TIME := 1.8
+const SWINGS := {"slash": [1.0, 0.6], "chop": [2.3, 1.3], "scoop": [2.9, 1.75], "shoot": [1.0, 0.55]}
 const SWING_TAP := 0.2
 const SWING_DRAG := 0.3
 const SWING_REACH := 46.0
@@ -238,6 +248,8 @@ const GUN_CONE := 0.5
 ## seconds left.
 var swing_kind := ""
 var swing_left := 0.0
+## (the swing on's whole time)
+var swing_total := SWING_TIME
 var _swing_landed := false
 ## Seconds the right stick's been pressed while the off hand's held (a tap
 ## swings; -1: not deciding).
@@ -892,6 +904,10 @@ func swing_move() -> String:
 	return "slash"
 
 
+static func swing_time(kind: String) -> float:
+	return float(SWINGS.get(kind, [SWING_TIME, SWING_HIT])[0])
+
+
 ## Swings the off hand's thing (see SWING_TIME); false if it can't now.
 func swing(kind := "") -> bool:
 	if kind == "":
@@ -899,7 +915,8 @@ func swing(kind := "") -> bool:
 	if kind == "" or swing_left > 0.0 or not offhand_in_hand():
 		return false
 	swing_kind = kind
-	swing_left = SWING_TIME
+	swing_total = swing_time(kind)
+	swing_left = swing_total
 	_swing_landed = false
 	return true
 
@@ -908,7 +925,7 @@ func _update_swing(delta: float) -> void:
 	if swing_left <= 0.0:
 		return
 	swing_left = maxf(swing_left - delta, 0.0)
-	if not _swing_landed and SWING_TIME - swing_left >= SWING_HIT:
+	if not _swing_landed and swing_total - swing_left >= float(SWINGS.get(swing_kind, [SWING_TIME, SWING_HIT])[1]):
 		_swing_landed = true
 		_swing_lands()
 	if swing_left <= 0.0:
@@ -1245,7 +1262,7 @@ func _pick_up_item(item: DroppedItem) -> void:
 	if n <= 0:
 		GameState.push_message("背包滿了，放不下")
 		return
-	perform("pick", 0.9)
+	perform("pick", PICK_TIME)
 	var key: String = Items.def(item.item_id).get("lure", "")
 	if key != "":
 		lure_stock[key] = int(lure_stock.get(key, 0)) + n
@@ -1449,6 +1466,9 @@ func _update_movement() -> void:
 	# Low spirit: heavier on their feet (Profile.SPIRIT_SPEED).
 	var spirit_ratio: float = Profile.SPIRIT_SPEED[Profile.spirit_penalty()]
 	var vigor_ratio: float = VIGOR_SPEED if vigor_timer > 0.0 else 1.0
+	# (a swing of the off hand's thing is stood to - SWINGS)
+	if swing_left > 0.0:
+		input_dir = Vector2.ZERO
 	velocity = input_dir * SPEED * carry_ratio * affliction_ratio * drum_ratio * spirit_ratio * vigor_ratio
 	var before := position
 	move_and_slide()
@@ -1791,7 +1811,7 @@ func _pick_up_dropped_fish() -> void:
 		GameState.push_message("背包滿了，放不下這條魚")
 		return
 	var fish: Dictionary = _dropped_fish.pick_up()
-	perform("pick", 0.9)
+	perform("pick", PICK_TIME)
 	_dropped_fish = null
 	in_dropped_fish_zone = false
 	GameState.add_carried_fish(fish)
@@ -1889,8 +1909,10 @@ func _catch_critter() -> void:
 func _turn_rock() -> void:
 	if _rock == null or not _rock.active:
 		return
-	var result: Dictionary = _rock.turn_over(global_position)
-	perform("lift", 1.0)
+	# User request: long enough to see - the whole heave (Lift, 2.7 s), the
+	# stone tipping as the hands come up.
+	var result: Dictionary = _rock.turn_over(global_position, ROCK_HEAVE_AT)
+	perform("lift", ROCK_HEAVE_TIME)
 	Campaign.stat("flip_rock")
 	if result.get("spider", false):
 		Critter.spawn_black_spider(get_parent(), _rock.global_position + Vector2(0, -4), global_position)

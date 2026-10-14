@@ -278,17 +278,19 @@ func _spawn_zone(type: int, radius: float, lobe_range: Vector2i) -> void:
 ## the four directions whose shore point (where a ray from the zone's origin
 ## leaves the water) is on open land - inside the map, not in another zone -
 ## and lays the dock across it, pointing back toward the zone's origin.
+## Roughly how much water a zone holds (its lobes' areas, px²).
+static func _zone_area(zone: WaterZone) -> float:
+	var total := 0.0
+	for l in zone.world_lobes():
+		total += PI * l.z * l.z
+	return total
+
+
 func _place_docks() -> void:
 	var commons: Array = water_zones.filter(func(z): return not z.is_rare())
-	commons.shuffle()
-	# User request: every common pond gets a dock out into deep water (some
-	# get two, on different sides) - no boardwalks lying along the bank.
-	var jobs := []
-	for zone in commons:
-		jobs.append(zone)
-	for zone in commons:
-		if randf() < SECOND_DOCK_CHANCE:
-			jobs.append(zone)
+	# User request: one dock, on the biggest water - not one on every pond.
+	commons.sort_custom(func(a, b): return _zone_area(a) > _zone_area(b))
+	var jobs := commons.slice(0, 1)
 	var used := {}
 	for zone in jobs:
 		var dirs := [Vector2.DOWN, Vector2.UP, Vector2.LEFT, Vector2.RIGHT]

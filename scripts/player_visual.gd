@@ -150,6 +150,9 @@ var walking := false
 ## The main sheet's offset (its rod data, above).
 var _sheet_offset := Vector2.ZERO
 var _whip := -1.0
+## (3D: where in the cast it is, smoothly - 0..FRAMES-1 as a float, not the
+## sheet's whole frames; -1 when not casting)
+var cast_f := -1.0
 ## The cast showing: CLIP_CAST (long, two-handed) or CLIP_CAST_SHORT.
 var _cast_clip := CLIP_CAST
 ## The wind-up frame (0-3) the charge reached, -1 when none showed.
@@ -376,7 +379,7 @@ func _act() -> bool:
 	var face: Vector2 = _player.aim_dir
 	if face.length() > 0.01:
 		dir = SECTOR_TO_DIR[posmod(roundi(face.angle() / (PI / 4.0)), 8)]
-	var t := 1.0 - _player.swing_left / Player.SWING_TIME
+	var t := 1.0 - _player.swing_left / maxf(_player.swing_total, 0.01)
 	frame_in_clip = clampi(int(t * FRAMES), 0, FRAMES - 1)
 	frame = (acting * DIRS + dir) * FRAMES + frame_in_clip
 	return true
@@ -504,11 +507,13 @@ func _pick_frame(delta: float) -> void:
 		var sector := posmod(roundi(face.angle() / (PI / 4.0)), 8)
 		dir = SECTOR_TO_DIR[sector]
 
+	cast_f = -1.0
 	if _whip >= 0.0:
 		# The cast: the whip and follow-through, fast.
 		_whip += delta
 		clip = _cast_clip
 		frame_in_clip = mini(_whip_from + int(_whip / WHIP_TIME * (FRAMES - _whip_from)), FRAMES - 1)
+		cast_f = minf(_whip_from + _whip / WHIP_TIME * (FRAMES - 1 - _whip_from), FRAMES - 1)
 		if _whip >= WHIP_TIME:
 			_whip = -1.0
 			_wound = -1
@@ -516,6 +521,7 @@ func _pick_frame(delta: float) -> void:
 		# Winding back with the charge (one-handed until it's a long one).
 		clip = cast_clip(_player.charge_time / Player.MAX_CHARGE_TIME)
 		frame_in_clip = mini(int(_player.charge_time / Player.MAX_CHARGE_TIME * 4.0), 3)
+		cast_f = minf(_player.charge_time / Player.MAX_CHARGE_TIME * 3.0, 3.0)
 		_wound = frame_in_clip
 	elif charging:
 		# User feedback: walking while holding the cast froze the legs (the

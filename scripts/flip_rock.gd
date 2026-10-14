@@ -71,9 +71,8 @@ func prompt_anchor() -> Vector2:
 
 ## One completed turn: it rolls away from `from` (the player) and says
 ## whether there was bait under it.
-func turn_over(from: Vector2) -> Dictionary:
+func turn_over(from: Vector2, delay := 0.0) -> Dictionary:
 	active = false
-	Sfx.play_at("rock_flip", global_position, -2.0)
 	var away := global_position - from
 	if away.length() < 1.0:
 		away = Vector2.RIGHT.rotated(randf() * TAU)
@@ -81,6 +80,10 @@ func turn_over(from: Vector2) -> Dictionary:
 	var offset := dir * maxf(randf_range(ROLL_DISTANCE.x, ROLL_DISTANCE.y), radius * ROLL_BARE)
 	_spin = signf(dir.x if absf(dir.x) > 0.1 else 1.0) * randf_range(ROLL_LEAN.x, ROLL_LEAN.y)
 	var tween := create_tween()
+	# (user request: the heave seen first - it tips as the hands come up)
+	if delay > 0.0:
+		tween.tween_interval(delay)
+	tween.tween_callback(func(): Sfx.play_at("rock_flip", global_position, -2.0))
 	tween.tween_method(_roll.bind(offset), 0.0, 1.0, ROLL_TIME) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	if randf() < SPIDER_CHANCE:

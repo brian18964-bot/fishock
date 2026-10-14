@@ -94,6 +94,13 @@ const ROD_ANGLES := {
 	PlayerVisual.CLIP_CATCH: [56, 68, 78, 84, 82, 74, 60, 44],
 }
 const ROD_SIDE := 25.0
+## (the rod hand in toward the body's middle while fishing - CENTRED_CLIPS:
+## this share of the way out to the shoulder kept; the rod's side angle
+## then)
+const CENTRE_KEEP := 0.3
+const ROD_SIDE_CENTRED := 12.0
+const CENTRED_CLIPS := [PlayerVisual.CLIP_HOLD, PlayerVisual.CLIP_BITE, PlayerVisual.CLIP_TUG,
+	PlayerVisual.CLIP_REEL, PlayerVisual.CLIP_FIGHT]
 ## How fast the rod follows its angle (1/s), the arm comes in to hold it
 ## (s), and how fully the arm's brought after it.
 const ROD_FOLLOW := 22.0
@@ -179,6 +186,7 @@ var _lights := {}
 ## New nodes to look at next frame.
 var _pending: Array = []
 var _walk: Array = []  # [Rect2 (2D), deck height]
+var _raised: Array = []
 var _flip_rocks := {}
 var _trees := []  # [MapTree, MeshInstance3D]
 var _drum: Node3D
@@ -207,6 +215,7 @@ var _rod_on := 0.0
 ## the left hand let go of the rod (1).
 var _stow := 1.0
 var _lamp_in := 1.0
+var _centred := 0.0
 var _off_in := 1.0
 var _left_free := 0.0
 var _left_ik: TwoBoneIK3D
@@ -351,6 +360,10 @@ func _height_at(depth: float) -> float:
 
 ## The ground's height under `p` (2D): a deck's, else the land's.
 func ground_y(p: Vector2) -> float:
+	# (the altar stone - stepped up onto: [centre, radius px, top m])
+	for r in _raised:
+		if (r[0] as Vector2).distance_to(p) < float(r[1]):
+			return LAND_Y + float(r[2])
 	for w in _walk:
 		if (w[0] as Rect2).has_point(p):
 			return float(w[1])
@@ -729,6 +742,9 @@ func _landmarks() -> void:
 		add_child(model)
 		var box := _aabb(model)
 		var k: float = float(spec[2]) / maxf(maxf(box.size.x, box.size.z), 0.001)
+		if spec[1] == "altar":
+			# User request: the altar stone can be stood on (its top).
+			_raised.append([at.global_position, float(spec[2]) * 0.5 * PX * 0.92, box.size.y * k])
 		model.scale = Vector3.ONE * k
 		model.position = to3(at.global_position, LAND_Y) - Vector3(box.get_center().x, box.position.y, box.get_center().z) * k
 		_weather(model, spec[1])
@@ -1564,7 +1580,10 @@ func _feet() -> Vector2:
 
 func _place_traveller(delta: float) -> void:
 	var feet := _feet()
-	pivot.position = to3(feet, ground_y(feet))
+	# (eased up and down: stepping onto the altar stone, off a dock)
+	var to_y := ground_y(feet)
+	var y_now := pivot.position.y if absf(pivot.position.y - to_y) < 1.0 else to_y
+	pivot.position = to3(feet, move_toward(y_now, to_y, get_process_delta_time() * 2.4))
 	# Which way it faces: as the 2D one does (the way it runs; the aim
 	# when it's fishing or still; the ghost holding it).
 	var moving := player.velocity.length() > 8.0
@@ -1594,12 +1613,21 @@ func _pick_clip() -> Array:
 	if v.struggling:
 		return ["Terrified", 1.4, -1.0]
 	if v.acting >= 0:
-		var t := float(v.frame_in_clip) / PlayerVisual.FRAMES
+		# (user request: each use played out at its clip's own pace, after
+		# the thing's drawn from the hip - Player.SWINGS; scrubbed smoothly
+		# by the time, not the 2D sheet's frames)
 		var act: String = ACT_CLIPS.get(player.swing_kind, "Interact")
-		if act == "TreeChopping":
-			# (one blow of the loop's two, the axe coming down at the hit)
-			return [act, 1.0, 0.5 * t]
-		return [act, 1.0, t]
+		var since: float = player.swing_total - player.swing_left - Player.SWING_DRAW
+		var play: float = player.swing_total - Player.SWING_DRAW
+		var t := clampf(since / maxf(play, 0.01), 0.0, 1.0)
+		match act:
+			"TreeChopping":
+				# (the loop's two blows, the second landing at the hit)
+				return [act, 1.0, fposmod(t * 2.0, 1.0) if t < 0.999 else 0.999]
+			"Sword_Regular_A":
+				# (the slash in the first part, then held a moment)
+				return [act, 1.0, clampf(t / 0.7, 0.0, 0.999)]
+		return [act, 1.0, minf(t, 0.999)]
 	if v.move != "":
 		match v.move:
 			"walk":
@@ -1643,8 +1671,11 @@ func _pick_clip() -> Array:
 			return ["Run", clampf(speed / RUN_PACE, 0.6, 2.0), -1.0]
 		PlayerVisual.CLIP_CAST, PlayerVisual.CLIP_CAST_SHORT:
 			# Wound back with the charge (frames 0-3), the whip (4-7).
-			var f := v.frame_in_clip
-			var t: float = [0.0, 0.1, 0.2, 0.3, 0.4, 0.52, 0.68, 0.9][clampi(f, 0, 7)]
+			# (smoothly between the sheet's frames - v.cast_f)
+			var f: float = v.cast_f if v.cast_f >= 0.0 else float(v.frame_in_clip)
+			var keys := [0.0, 0.1, 0.2, 0.3, 0.4, 0.52, 0.68, 0.9]
+			var lo := clampi(floori(f), 0, 7)
+			var t: float = lerpf(keys[lo], keys[mini(lo + 1, 7)], f - lo)
 			return ["Fish_Cast", 1.0, t]
 		PlayerVisual.CLIP_HOLD:
 			return ["Fish_Hold", 1.0, -1.0]
@@ -1679,10 +1710,12 @@ func _animate() -> void:
 			a.loop_mode = Animation.LOOP_LINEAR
 		anim.play(name, 0.18)
 	if scrub >= 0.0:
-		anim.speed_scale = 0.0
-		var at := scrub * a.length
-		if absf(anim.current_animation_position - at) > 0.001:
-			anim.seek(at, true)
+		# (bug: at speed 0 the player's crossfade into the clip never moved
+		# on - the body stayed in the pose it came from and the act wasn't
+		# seen at all. It runs at speed 1, the fade going on, and is put
+		# where the act's time has it every frame.)
+		anim.speed_scale = 1.0
+		anim.seek(scrub * a.length, true)
 	else:
 		anim.speed_scale = float(pick[1])
 
@@ -1765,7 +1798,9 @@ func _aim_rod(delta: float) -> void:
 	var fishing := angles != null and not (_visual.clip == PlayerVisual.CLIP_HOLD_RUN and player.state == Player.State.IDLE)
 	_rod_on = move_toward(_rod_on, 1.0 if fishing else 0.0, delta / ROD_EASE_IN)
 	if fishing:
-		var want := deg_to_rad(float(angles[clampi(_visual.frame_in_clip, 0, 7)]))
+		var f: float = _visual.cast_f if _visual.cast_f >= 0.0 else float(_visual.frame_in_clip)
+		var lo := clampi(floori(f), 0, 7)
+		var want := deg_to_rad(lerpf(float(angles[lo]), float(angles[mini(lo + 1, 7)]), clampf(f - lo, 0.0, 1.0)))
 		_rod_up = want if _rod_on < 0.05 else lerpf(_rod_up, want, minf(1.0, delta * ROD_FOLLOW))
 	_ik.influence = _rod_on * ARM_FOLLOW
 	_gear_state(delta)
@@ -1776,7 +1811,15 @@ func _aim_rod(delta: float) -> void:
 	# forward; straight up (90) at the brow; back over the shoulder past it)
 	var phi := deg_to_rad(-38.0) + (_rod_up - deg_to_rad(18.0)) * 0.95
 	var reach := b.z * cos(phi) + Vector3.UP * sin(phi)
-	_ik_target.global_position = shoulder - b.x * 0.05 + reach * _arm_len * 0.8
+	# User request: holding, waiting, reeling and fighting, the rod hand
+	# comes in toward the middle of the body (the reeling hand meets it
+	# there, not reaching across); out to its side only for the cast.
+	var settled := fishing and _visual.clip in CENTRED_CLIPS
+	_centred = move_toward(_centred, 1.0 if settled else 0.0, delta / 0.4)
+	var shoulder_l := sk.global_transform * sk.get_bone_global_pose(sk.find_bone("upperarm_l")).origin
+	var middle := (shoulder + shoulder_l) * 0.5
+	var from := (shoulder - b.x * 0.05).lerp(middle + (shoulder - middle) * CENTRE_KEEP, smoothstep(0.0, 1.0, _centred))
+	_ik_target.global_position = from + reach * _arm_len * 0.8
 	# (the elbow out to the side and down)
 	_ik_pole.global_position = shoulder - b.x * 0.5 + Vector3.DOWN * 0.35 - b.z * 0.15
 	# The left hand up the rod from the right (as it was placed last frame),
@@ -1791,7 +1834,6 @@ func _aim_rod(delta: float) -> void:
 			_crank += delta * TAU * CRANK_TURNS
 			at = rod.global_position + rb.y * REEL_AT + (rb.x * cos(_crank) + rb.z * sin(_crank)) * CRANK_R + b.x * 0.06
 		_left_target.global_position = at
-		var shoulder_l := sk.global_transform * sk.get_bone_global_pose(sk.find_bone("upperarm_l")).origin
 		_left_pole.global_position = shoulder_l + b.x * 0.5 + Vector3.DOWN * 0.4 - b.z * 0.1
 
 
@@ -1807,7 +1849,7 @@ func _hold_rod() -> void:
 		var rest: Transform3D = rod.get_meta("rest")
 		var held := hand * rest
 		if _rod_on > 0.0:
-			var side := deg_to_rad(ROD_SIDE)
+			var side := deg_to_rad(lerpf(ROD_SIDE, ROD_SIDE_CENTRED, smoothstep(0.0, 1.0, _centred)))
 			# (the model faces +z; its right hand's side is -x)
 			var dir := (b.z * cos(side) * cos(_rod_up) - b.x * sin(side) * cos(_rod_up) + Vector3.UP * sin(_rod_up)).normalized()
 			var x := dir.cross(b.x if absf(dir.dot(b.z)) > 0.9 else b.z).normalized()
@@ -1889,12 +1931,15 @@ func _gear_state(delta: float) -> void:
 	var rod_out := not _visual.rod_on_back() and not (_visual.clip == PlayerVisual.CLIP_HOLD_RUN
 		and player.state == Player.State.IDLE) and not player.carrying_oil_drum
 	_stow = move_toward(_stow, 0.0 if rod_out else 1.0, delta / STOW_TIME)
-	var both := rod_out or _visual.move in TWO_HANDED or (_visual.acting >= 0 and player.swing_kind == "chop")
+	var both := rod_out or _visual.move in TWO_HANDED or (_visual.acting >= 0 and player.swing_kind in ["chop", "scoop"])
 	# (the left hand off the rod: the struggle in the ghost's grip)
 	_left_free = move_toward(_left_free, 1.0 if _visual.struggling else 0.0, delta / STOW_TIME)
 	_lamp_in = move_toward(_lamp_in, 0.0 if both or player.carrying_oil_drum else 1.0, delta / STOW_TIME)
 	var swinging := _visual.acting >= 0
-	_off_in = move_toward(_off_in, 1.0 if swinging or not (both or player.carrying_oil_drum) else 0.0, delta / STOW_TIME)
+	# User request: walking about, only the lamp in hand; the off hand's
+	# thing stays at the hip till it's used (drawn for the swing, put back
+	# after).
+	_off_in = move_toward(_off_in, 1.0 if swinging else 0.0, delta / Player.SWING_DRAW)
 	_sync_offhand()
 
 
@@ -2193,7 +2238,8 @@ func _environment() -> void:
 	_moon = DirectionalLight3D.new()
 	_moon.name = "Moon"
 	_moon.light_color = Color(0.62, 0.72, 0.95)
-	_moon.light_energy = 0.55
+	# (user request: the moonlight half what it was - the lamp matters)
+	_moon.light_energy = 0.275
 	_moon.shadow_enabled = true
 	# (the moon's glare off the water kept small)
 	_moon.light_specular = 0.2
