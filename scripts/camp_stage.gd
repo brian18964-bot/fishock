@@ -72,8 +72,9 @@ const LAMP_ON_DRUM := Vector3(0.05, 0.92 * DRUM_SCALE, 0.02)
 ## left, past the tent - the view swiped left to it - and tapped, it's
 ## 出發夜釣: the journey page, the camera drawn in close to it). Turned a
 ## little toward the camp.
-## User request (the walkable camp): further off, out to the left.
-const STONE_AT := Vector3(-8.7, 0.0, -1.9)
+## User request (the walkable camp): further off, out to the left, at the
+## forest's edge.
+const STONE_AT := Vector3(-10.3, 0.0, -1.6)
 const STONE_YAW := 1.0
 const STONE_SCALE := 0.92
 ## (user request: the merchant's stall in the home view - nearer, turned
@@ -934,7 +935,11 @@ func _forest() -> void:
 			continue
 		if p.z > 3.0 and absf(p.x) < 7.0:
 			continue  # keep the view from the camera clear
-		if p.distance_to(STONE_AT) < 2.6:
+		# (nor between the walkable camp's following camera and the
+		# character, all along its south side)
+		if p.z > 0.3 and p.z < 13.0 and absf(p.x) < 13.5:
+			continue
+		if p.distance_to(STONE_AT) < 2.0:
 			continue
 		near.append(p)
 	# User request (the walkable camp): the edges thick with trees - left
@@ -944,9 +949,11 @@ func _forest() -> void:
 		var p := Vector3(_rng.randf_range(-15.0, 15.0), 0, _rng.randf_range(-10.5, 7.0))
 		if absf(p.x) < 9.6 and p.z < 5.6:
 			continue
-		if p.z > 4.0 and absf(p.x) < 11.0:
+		# (none between the following camera and the character, at the
+		# camp's south side)
+		if p.z > 0.3 and p.z < 13.0 and absf(p.x) < 13.5:
 			continue
-		if _in_lake(p, 1.0) or p.distance_to(STONE_AT) < 2.6:
+		if _in_lake(p, 1.0) or p.distance_to(STONE_AT) < 2.0:
 			continue
 		near.append(p)
 		if GRID_AREA.has_point(Vector2(p.x, p.z)):

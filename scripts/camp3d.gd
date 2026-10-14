@@ -17,8 +17,9 @@ const SCENE := "res://scenes/camp3d.tscn"
 const OLD_CAMP := "res://scenes/title_screen.tscn"
 ## The camera: how far it looks down (degrees), how far back (m), its field
 ## of view, how fast it follows.
-const CAMERA_PITCH := 40.0
-const CAMERA_DISTANCE := 6.0
+## (user request: halfway out to the run's camera - RunView3D)
+const CAMERA_PITCH := 43.0
+const CAMERA_DISTANCE := 7.75
 const CAMERA_FOV := 42.0
 const CAMERA_EASE := 4.0
 ## Walking up to WALK_MAX m/s (the Walk clip at its own pace WALK_PACE),
@@ -64,7 +65,7 @@ func _build() -> void:
 	stick.set("visibility_mode", 2)
 	_home.add_child(stick)
 	_joystick = stick
-	# User request: a menu along the bottom - each opens its page at once,
+	# User request: a menu - each opens its page at once,
 	# the character going over to do its bit behind it (出發夜釣 is its
 	# 出發 now; 多人連線 up under the gold).
 	var play := _home.get_node_or_null("Play") as Control
@@ -75,18 +76,31 @@ func _build() -> void:
 		multi.position = Vector2(764, 94)
 		multi.custom_minimum_size = Vector2(126, 34)
 		multi.size = Vector2(126, 34)
-	var bar := HBoxContainer.new()
+	# (user request: folded into one button, bottom right - tapped, the
+	# five open up above it)
+	var bar := VBoxContainer.new()
 	bar.name = "QuickMenu"
-	bar.add_theme_constant_override("separation", 8)
-	bar.position = Vector2(318, 474)
+	bar.add_theme_constant_override("separation", 6)
+	bar.visible = false
 	for entry in QUICK:
-		var b := UiKit.button(entry[1], 17, "red" if entry[0] == "journey" else "gray")
+		var b := UiKit.button(entry[1], 16, "red" if entry[0] == "journey" else "gray")
 		b.name = "Quick_" + entry[0]
-		b.custom_minimum_size = Vector2(118 if entry[0] == "journey" else 112, 50)
+		b.custom_minimum_size = Vector2(116, 42)
 		var page: String = entry[0]
-		b.pressed.connect(func(): quick(page))
+		b.pressed.connect(func():
+			bar.visible = false
+			quick(page))
 		bar.add_child(b)
 	_home.add_child(bar)
+	bar.position = Vector2(828, 476 - QUICK.size() * 48)
+	var menu := UiKit.button("功能 ▲", 17, "red")
+	menu.name = "QuickToggle"
+	menu.position = Vector2(828, 478)
+	menu.custom_minimum_size = Vector2(116, 48)
+	menu.pressed.connect(func():
+		bar.visible = not bar.visible
+		menu.text = "功能 ▼" if bar.visible else "功能 ▲")
+	_home.add_child(menu)
 	var old := UiKit.button("舊營地", 14, "gray")
 	old.name = "OldCamp"
 	old.position = Vector2(764, 54)
