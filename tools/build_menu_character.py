@@ -96,6 +96,9 @@ MIXAMO = [
     ("Kneel", "Kneeling.Down.fbx", (15, 70), False),
     ("Use_Eye", "Magic.Heal.fbx", (41, 81), True),
     ("Look_Far", "Looking.fbx", (12, 138), True),
+    # (user request: a rock kicked over, not heaved - the user's Mixamo
+    # "Kick Soccerball")
+    ("Kick", "Kick.Soccerball.fbx", None, False),
 ]
 # The run in 3D (scripts/run_view_3d.gd): KayKit's fishing clips (CC0,
 # art_src/kaykit - the same the run's sprites are drawn from), the rod in
@@ -124,7 +127,7 @@ GROUNDED = ("Lie_Down", "Lying_Loop", "Sleep_B_Loop", "Ground_Sit_Loop", "Ground
             "LayToIdle", "Walk_Loop", "Idle_Loop", "Idle_FoldArms_Loop", "Idle_No_Loop",
             "Idle_Talking_Loop", "Idle_Torch_Loop", "Sad_Loop", "Run_Loop",
             # (the 3D run's: down on the ground, and bent to it)
-            "Pray_Loop", "Lift", "Pick_Up", "Kneel", "Farm_Harvest", "TreeChopping_Loop", "Walk_Carry_Loop")
+            "Pray_Loop", "Lift", "Pick_Up", "Kneel", "Kick", "Farm_Harvest", "TreeChopping_Loop", "Walk_Carry_Loop")
 # User report (the bear sank into the log): the camp's logs (CampStage.SEATS)
 # have their top this high under the hips of one sat on them, m (measured
 # in the camp) - and the clips sat on one, whole and getting on and off.

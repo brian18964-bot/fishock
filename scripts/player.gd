@@ -235,8 +235,11 @@ const SWING_HIT := 0.6
 ## enough to be seen: [whole time, when the blow lands] (s). The traveller
 ## stands to it meanwhile.
 const SWING_DRAW := 0.35
-const ROCK_HEAVE_TIME := 2.7
-const ROCK_HEAVE_AT := 1.2
+## (user request: a rock kicked over - the Kick clip, 0.57 s, played a
+## little slower, the stone tipping as the foot meets it; then a moment
+## looking down at what's under it)
+const ROCK_HEAVE_TIME := 1.7
+const ROCK_HEAVE_AT := 0.55
 const PICK_TIME := 1.8
 const SWINGS := {"slash": [1.0, 0.6], "chop": [2.3, 1.3], "scoop": [2.9, 1.75], "shoot": [1.0, 0.55]}
 const SWING_TAP := 0.2
@@ -1909,8 +1912,11 @@ func _catch_critter() -> void:
 func _turn_rock() -> void:
 	if _rock == null or not _rock.active:
 		return
-	# User request: long enough to see - the whole heave (Lift, 2.7 s), the
-	# stone tipping as the hands come up.
+	# User request: kicked over (not heaved), long enough to see.
+	# (facing the stone to kick it)
+	var at_rock := _rock.global_position - global_position
+	if at_rock.length() > 1.0:
+		aim_dir = at_rock.normalized()
 	var result: Dictionary = _rock.turn_over(global_position, ROCK_HEAVE_AT)
 	perform("lift", ROCK_HEAVE_TIME)
 	Campaign.stat("flip_rock")

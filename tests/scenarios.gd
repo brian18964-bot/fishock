@@ -16,6 +16,7 @@ const TESTS := [
 	"test_map_generation",
 	"test_layout_clear",
 	"test_proto3d",
+	"test_camp3d",
 	"test_spawn_on_land_docks_out",
 	"test_catalog_and_sounds",
 	"test_creature_animation",
@@ -3970,3 +3971,39 @@ func test_proto3d() -> void:
 	p.queue_free()
 	await frames(2)
 	Profile.load_data(saved)
+
+
+## User request: the walkable 3D camp is the main screen - a tap on a
+## thing, the traveller walks over, does it, and its page opens; a log, it
+## sits; the old camp a button away.
+func test_camp3d() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 100, "spirit": 90.0})
+	TitleScreen.sound_unlocked = true
+	var camp = load("res://scenes/camp3d.tscn").instantiate()
+	get_tree().root.add_child(camp)
+	await seconds(1.0)
+	check(camp.spots.size() >= 8, "its things to tap (%d)" % camp.spots.size())
+	for name in ["crate", "backpack", "trough", "tent", "merchant", "stone"]:
+		camp.go_do(name)
+		var t := 0.0
+		while camp.page == null and t < 25.0:
+			await frames(6)
+			t += 0.1
+		var s: Dictionary = camp.spots[name]
+		check(camp.page != null and camp.page.scene_file_path.ends_with(s.page + ".tscn"),
+			"%s: walked over, did it, %s opened (%.1f s; at %s, stand %s, errand %s)" % [name, s.page, t,
+			str(camp.pivot.position), str(s.stand), str(camp._errand)])
+		camp.close_page()
+		await frames(3)
+	camp.go_do("log_0")
+	var w := 0.0
+	while not camp._sat and w < 20.0:
+		await frames(6)
+		w += 0.1
+	await seconds(1.5)
+	check(camp._sat and camp.character.anim.current_animation == "Sitting_Idle", "a log: sat on it (%s)" % camp.character.anim.current_animation)
+	camp.queue_free()
+	await frames(2)
+	Profile.load_data(saved)
+	Profile._save()

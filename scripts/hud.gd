@@ -291,7 +291,7 @@ func _on_run_ended(success: bool, message: String) -> void:
 
 
 func _on_back_to_title_pressed() -> void:
-	get_tree().change_scene_to_file("res://scenes/title_screen.tscn")
+	get_tree().change_scene_to_file(Camp3D.SCENE)
 
 
 func _on_night_fell() -> void:

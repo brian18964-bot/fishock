@@ -56,6 +56,10 @@ const FADE_FAR := 8.6
 ## (user request: the trees' shadows were far too long - the moon was low,
 ## 27 degrees up; high now, about 57: a shadow two thirds of a tree's
 ## height)
+## User requests: the moonlight half what it was, then the whole night's
+## light (moon, ambient, fog) half again.
+const MOON_DIM := 0.5
+const NIGHT_DIM := 0.5
 const MOON_DIR := Vector3(0.3, 1.2, -0.7)
 ## User request (phones were slow): how much there is to draw. Scattered
 ## things in CHUNK m squares (each drawn only on screen), plants none past
@@ -85,11 +89,13 @@ const LAMP_POWER := 1.15
 const ROD_ANGLES := {
 	PlayerVisual.CLIP_CAST: [30, 70, 115, 150, 115, 70, 30, 18],
 	PlayerVisual.CLIP_CAST_SHORT: [30, 70, 115, 150, 115, 70, 30, 18],
-	PlayerVisual.CLIP_HOLD: [18, 18.5, 19, 19.5, 20, 19.5, 19, 18.5],
-	PlayerVisual.CLIP_REEL: [25, 26.5, 25, 23.5, 25, 26.5, 25, 23.5],
+	# (user request: the hands sat awkwardly round a rod held flat - it's
+	# held up toward the water now, the hands in front of the waist)
+	PlayerVisual.CLIP_HOLD: [34, 34.5, 35, 35.5, 36, 35.5, 35, 34.5],
+	PlayerVisual.CLIP_REEL: [32, 33.5, 32, 30.5, 32, 33.5, 32, 30.5],
 	PlayerVisual.CLIP_FIGHT: [50, 54, 56, 54, 50, 46, 44, 46],
 	PlayerVisual.CLIP_HOLD_RUN: [25, 28, 25, 22, 25, 28, 25, 22],
-	PlayerVisual.CLIP_BITE: [18, 13, 20, 12, 19, 16, 20, 18],
+	PlayerVisual.CLIP_BITE: [34, 29, 36, 28, 35, 32, 36, 34],
 	PlayerVisual.CLIP_TUG: [20, 48, 72, 80, 78, 72, 64, 56],
 	PlayerVisual.CLIP_CATCH: [56, 68, 78, 84, 82, 74, 60, 44],
 }
@@ -97,7 +103,7 @@ const ROD_SIDE := 25.0
 ## (the rod hand in toward the body's middle while fishing - CENTRED_CLIPS:
 ## this share of the way out to the shoulder kept; the rod's side angle
 ## then)
-const CENTRE_KEEP := 0.3
+const CENTRE_KEEP := 0.55
 const ROD_SIDE_CENTRED := 12.0
 const CENTRED_CLIPS := [PlayerVisual.CLIP_HOLD, PlayerVisual.CLIP_BITE, PlayerVisual.CLIP_TUG,
 	PlayerVisual.CLIP_REEL, PlayerVisual.CLIP_FIGHT]
@@ -120,15 +126,19 @@ const CRANK_TURNS := 1.4
 const HIP_SIDE := 0.21
 ## The moves that take both hands (the lamp and the off hand's thing at
 ## the hips meanwhile).
-const TWO_HANDED := ["pray", "lift", "pick", "kneel", "throw", "drink"]
+const TWO_HANDED := ["pray", "pick", "kneel", "throw", "drink"]
+## (the share of the rock's act the kick takes)
+const KICK_SHARE := 0.55
 ## The moves (PlayerVisual) and the off hand's swings (Player.swing_kind)
 ## as the character's clips.
-const MOVE_CLIPS := {"drink": "Drink", "look": "Look_Far", "eye": "Use_Eye", "pick": "Pick_Up", "lift": "Lift",
+const MOVE_CLIPS := {"drink": "Drink", "look": "Look_Far", "eye": "Use_Eye", "pick": "Pick_Up", "lift": "Kick",
 	"throw": "OverhandThrow", "cheer": "Victory", "fist": "Fist_Pump", "sad": "Disappointed", "scared": "Scared",
 	"kneel": "Kneel"}
 const ACT_CLIPS := {"chop": "TreeChopping", "slash": "Sword_Regular_A", "scoop": "Farm_Harvest", "shoot": "Pistol_Shoot"}
 ## The off hand's things, how long (m).
-const OFFHAND_LENGTH := {"knife": 0.3, "hatchet": 0.48, "machete": 0.6, "glock": 0.2, "net": 1.0}
+const OFFHAND_LENGTH := {"knife": 0.3, "hatchet": 0.48, "machete": 0.6, "glock": 0.2, "net": 0.7}
+## (user request: the net's hoop smaller still - its breadth to its length)
+const OFFHAND_GIRTH := {"net": 0.75}
 ## The camera's room round the traveller and the float when it frames
 ## them both (m).
 const FRAME_ROOM := Vector2(3.6, 4.2)
@@ -1644,6 +1654,11 @@ func _pick_clip() -> Array:
 		var t: float = 1.0 - player.move_left / maxf(player.move_time, 0.01) if player.move_left > 0.0 else -1.0
 		var name: String = MOVE_CLIPS.get(v.move, "Idle")
 		t = clampf(t, 0.0, 1.0) if t >= 0.0 else -1.0
+		if name == "Kick" and t >= 0.0:
+			# (the kick in the first part - its foot on the stone at
+			# Player.ROCK_HEAVE_AT - then stood looking down)
+			var kick := Player.ROCK_HEAVE_TIME * KICK_SHARE
+			return ["Kick", 1.0, minf(t * Player.ROCK_HEAVE_TIME / kick, 0.999)]
 		match player.move_note:
 			"line_break", "lure_knocked":
 				# (the line gone slack all at once: rocked back on its heels,
@@ -1715,6 +1730,10 @@ func _animate() -> void:
 		# seen at all. It runs at speed 1, the fade going on, and is put
 		# where the act's time has it every frame.)
 		anim.speed_scale = 1.0
+		# (a clip shorter than its act runs off its end and stops on its
+		# own - put back on, at the act's time)
+		if anim.current_animation != name:
+			anim.play(name, 0.0)
 		anim.seek(scrub * a.length, true)
 	else:
 		anim.speed_scale = float(pick[1])
@@ -1810,6 +1829,12 @@ func _aim_rod(delta: float) -> void:
 	# (rod angle -> the arm's: holding low (18) the hand's at the waist,
 	# forward; straight up (90) at the brow; back over the shoulder past it)
 	var phi := deg_to_rad(-38.0) + (_rod_up - deg_to_rad(18.0)) * 0.95
+	# (fishing: the hands low, in front of the waist, whatever the rod's
+	# angle - it's the wrist that tips it up, not the arm)
+	var settled_now := fishing and _visual.clip in CENTRED_CLIPS
+	if settled_now or _centred > 0.0:
+		var low := deg_to_rad(-58.0) + (_rod_up - deg_to_rad(35.0)) * 0.4
+		phi = lerpf(phi, low, smoothstep(0.0, 1.0, _centred))
 	var reach := b.z * cos(phi) + Vector3.UP * sin(phi)
 	# User request: holding, waiting, reeling and fighting, the rod hand
 	# comes in toward the middle of the body (the reeling hand meets it
@@ -1819,9 +1844,14 @@ func _aim_rod(delta: float) -> void:
 	var shoulder_l := sk.global_transform * sk.get_bone_global_pose(sk.find_bone("upperarm_l")).origin
 	var middle := (shoulder + shoulder_l) * 0.5
 	var from := (shoulder - b.x * 0.05).lerp(middle + (shoulder - middle) * CENTRE_KEEP, smoothstep(0.0, 1.0, _centred))
-	_ik_target.global_position = from + reach * _arm_len * 0.8
+	# (reaching less far out while fishing: the elbow bent, the hands in
+	# close in front of the waist)
+	_ik_target.global_position = from + reach * _arm_len * lerpf(0.8, 0.58, smoothstep(0.0, 1.0, _centred))
 	# (the elbow out to the side and down)
-	_ik_pole.global_position = shoulder - b.x * 0.5 + Vector3.DOWN * 0.35 - b.z * 0.15
+	# (the elbow out to the side and down; tucked in, down by the ribs, while
+	# fishing with the hands in front)
+	var tuck := smoothstep(0.0, 1.0, _centred)
+	_ik_pole.global_position = shoulder - b.x * lerpf(0.5, 0.2, tuck) + Vector3.DOWN * lerpf(0.35, 0.6, tuck) - b.z * lerpf(0.15, 0.25, tuck)
 	# The left hand up the rod from the right (as it was placed last frame),
 	# going round the reel's crank while it reels.
 	var rod := _rod()
@@ -1834,7 +1864,8 @@ func _aim_rod(delta: float) -> void:
 			_crank += delta * TAU * CRANK_TURNS
 			at = rod.global_position + rb.y * REEL_AT + (rb.x * cos(_crank) + rb.z * sin(_crank)) * CRANK_R + b.x * 0.06
 		_left_target.global_position = at
-		_left_pole.global_position = shoulder_l + b.x * 0.5 + Vector3.DOWN * 0.4 - b.z * 0.1
+		var tuck_l := smoothstep(0.0, 1.0, _centred)
+		_left_pole.global_position = shoulder_l + b.x * lerpf(0.5, 0.22, tuck_l) + Vector3.DOWN * lerpf(0.4, 0.6, tuck_l) - b.z * lerpf(0.1, 0.25, tuck_l)
 
 
 ## Once the arms are posed: the rod in the hand, pointed (ROD_ANGLES)
@@ -1979,7 +2010,9 @@ func _sync_offhand() -> void:
 			rot = Basis.IDENTITY if heavy > 0.0 else Basis(Vector3.RIGHT, PI)
 		2:
 			rot = Basis(Vector3.RIGHT, PI * 0.5 * (-1.0 if heavy > 0.0 else 1.0))
-	model.transform = Transform3D(rot.scaled(Vector3.ONE * k), rot * (-box.get_center() * k))
+	var sc := Vector3.ONE * k * float(OFFHAND_GIRTH.get(id, 1.0))
+	sc[axis] = k
+	model.transform = Transform3D(rot * Basis.from_scale(sc), rot * (-box.get_center() * sc))
 	holder.set_meta("length", length)
 	for mi in model.find_children("*", "MeshInstance3D", true, false):
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -2238,8 +2271,7 @@ func _environment() -> void:
 	_moon = DirectionalLight3D.new()
 	_moon.name = "Moon"
 	_moon.light_color = Color(0.62, 0.72, 0.95)
-	# (user request: the moonlight half what it was - the lamp matters)
-	_moon.light_energy = 0.275
+	_moon.light_energy = 0.55 * MOON_DIM
 	_moon.shadow_enabled = true
 	# (the moon's glare off the water kept small)
 	_moon.light_specular = 0.2
@@ -2266,11 +2298,13 @@ func _update_light() -> void:
 	var k := clampf((level - 0.035) / (0.26 - 0.035), 0.0, 1.0)
 	# (user request: too bright - finding the water is part of it; the
 	# lamp's what shows it)
-	_env.ambient_light_energy = lerpf(0.09, 0.3, k)
+	# (user requests: the moonlight halved, then the whole night halved
+	# again - NIGHT_DIM; the lamp as it was)
+	_env.ambient_light_energy = lerpf(0.09, 0.3, k) * NIGHT_DIM
 	_env.ambient_light_color = Color(0.2, 0.26, 0.38).lerp(Color(0.42, 0.45, 0.5), k)
-	_moon.light_energy = lerpf(0.12, 0.34, k)
+	_moon.light_energy = lerpf(0.12, 0.34, k) * MOON_DIM * NIGHT_DIM
 	_moon.light_color = Color(0.62, 0.72, 0.95).lerp(Color(0.9, 0.88, 0.85), k)
-	_env.fog_light_color = Color(0.05, 0.07, 0.11).lerp(Color(0.2, 0.22, 0.25), k)
+	_env.fog_light_color = (Color(0.05, 0.07, 0.11).lerp(Color(0.2, 0.22, 0.25), k) * NIGHT_DIM)
 	_env.background_color = _env.fog_light_color * 0.5
 	# The traveller's own light: the lamp's (or flashlight's) reach and
 	# strength, at the hand.

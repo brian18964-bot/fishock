@@ -134,7 +134,7 @@ func _ready() -> void:
 	var home := UiKit.button("回營地", 17)
 	home.name = "BackHome"
 	home.custom_minimum_size = Vector2(130, 46)
-	home.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/title_screen.tscn"))
+	home.pressed.connect(func(): get_tree().change_scene_to_file(Camp3D.SCENE))
 	row.add_child(home)
 	col.add_child(row)
 	scroll.add_child(col)

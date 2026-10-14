@@ -313,7 +313,7 @@ static func page_back(page: Control) -> void:
 	if camp != null and is_instance_valid(camp):
 		camp.call("close_page")
 	else:
-		page.get_tree().change_scene_to_file("res://scenes/title_screen.tscn")
+		page.get_tree().change_scene_to_file(Camp3D.SCENE)
 
 
 ## From one menu page to another ("shop", "fish_log", ...): over the camp
