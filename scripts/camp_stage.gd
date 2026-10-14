@@ -20,24 +20,29 @@ extends Node3D
 ## thing a hotspot (hotspot_at(), highlight()): a faint gold rim always,
 ## bright with its name while pressed or hovered.
 
+## User request: the camp's things further apart (15%), out from its
+## middle - all but the dock and the boat, at the water.
+const SPREAD := 1.15
+const MID := Vector3(0.3, 0.0, -1.2)
+const FLAT := Vector3(SPREAD, 1.0, SPREAD)
 const STATIONS := {
-	"home": [Vector3(0.3, 2.3, 6.9), Vector3(-0.15, 0.75, -2.2), 42.0],
-	"warehouse": [Vector3(-1.6, 1.5, 2.9), Vector3(-3.05, 0.45, 0.35), 38.0],
-	"equipment": [Vector3(-1.4, 1.7, 1.6), Vector3(-3.4, 0.9, -2.6), 40.0],
-	"shop": [Vector3(3.3, 1.7, -1.3), Vector3(5.9, 1.1, -5.7), 40.0],
-	"fish_tank": [Vector3(2.25, 2.1, 1.6), Vector3(3.3, 0.25, 0.3), 40.0],
-	"fish_log": [Vector3(2.25, 2.1, 1.6), Vector3(3.3, 0.25, 0.3), 40.0],
-	"stone": [Vector3(-3.7, 1.55, 3.1), Vector3(-5.45, 0.8, -0.6), 40.0],
-	"journey": [Vector3(-3.7, 1.55, 3.1), Vector3(-5.45, 0.8, -0.6), 40.0],
+	"home": [MID + (Vector3(0.3, 2.3, 6.9) - MID) * FLAT, MID + (Vector3(-0.15, 0.75, -2.2) - MID) * FLAT, 42.0],
+	"warehouse": [MID + (Vector3(-1.6, 1.5, 2.9) - MID) * FLAT, MID + (Vector3(-3.05, 0.45, 0.35) - MID) * FLAT, 38.0],
+	"equipment": [MID + (Vector3(-1.4, 1.7, 1.6) - MID) * FLAT, MID + (Vector3(-3.4, 0.9, -2.6) - MID) * FLAT, 40.0],
+	"shop": [MID + (Vector3(3.3, 1.7, -1.3) - MID) * FLAT, MID + (Vector3(5.9, 1.1, -5.7) - MID) * FLAT, 40.0],
+	"fish_tank": [MID + (Vector3(2.25, 2.1, 1.6) - MID) * FLAT, MID + (Vector3(3.3, 0.25, 0.3) - MID) * FLAT, 40.0],
+	"fish_log": [MID + (Vector3(2.25, 2.1, 1.6) - MID) * FLAT, MID + (Vector3(3.3, 0.25, 0.3) - MID) * FLAT, 40.0],
+	"stone": [STONE_AT + Vector3(2.1, 1.55, 3.4), STONE_AT + Vector3(0, 0.8, 0), 40.0],
+	"journey": [STONE_AT + Vector3(2.1, 1.55, 3.4), STONE_AT + Vector3(0, 0.8, 0), 40.0],
 }
-const CHARACTER_AT := Vector3(-0.2, 0.0, 0.85)
-const FIRE_AT := Vector3(0.75, 0.0, -0.35)
-const CRATE_AT := Vector3(-3.05, 0.0, 0.3)
+const CHARACTER_AT := MID + (Vector3(-0.2, 0.0, 0.85) - MID) * FLAT
+const FIRE_AT := MID + (Vector3(0.75, 0.0, -0.35) - MID) * FLAT
+const CRATE_AT := MID + (Vector3(-3.05, 0.0, 0.3) - MID) * FLAT
 ## The crate drawn out longer than the pack's (user request: 30%, then
 ## 20% more).
 const CRATE_LENGTH := 1.56
-const BACKPACK_AT := Vector3(-2.2, 0.0, 1.05)
-const TENT_AT := Vector3(-5.0, 0.0, -3.9)
+const BACKPACK_AT := MID + (Vector3(-2.2, 0.0, 1.05) - MID) * FLAT
+const TENT_AT := MID + (Vector3(-5.0, 0.0, -3.9) - MID) * FLAT
 ## User request: the tent, the crate, the backpack, the fire and the logs
 ## bigger, in proportion to the character (and the fish trough half as big
 ## again).
@@ -50,12 +55,12 @@ const SEAT_LONGER := 1.2
 ## Where it stands to lie down in the tent (m out from its middle, toward
 ## its mouth).
 const TENT_BED := 0.45
-const ROD_AT := Vector3(-2.95, 0.0, -2.55)
-const DRUM_AT := Vector3(0.2, 0.0, -2.05)
+const ROD_AT := MID + (Vector3(-2.95, 0.0, -2.55) - MID) * FLAT
+const DRUM_AT := MID + (Vector3(0.2, 0.0, -2.05) - MID) * FLAT
 ## A second drum beside it (no lamp).
-const DRUM_2_AT := Vector3(0.95, 0.0, -2.55)
+const DRUM_2_AT := MID + (Vector3(0.95, 0.0, -2.55) - MID) * FLAT
 ## The fish trough out on the right, its length toward the camera.
-const TROUGH_AT := Vector3(3.3, 0.0, 0.3)
+const TROUGH_AT := MID + (Vector3(3.3, 0.0, 0.3) - MID) * FLAT
 const TROUGH_YAW := PI / 2.0
 ## The drums made bigger than life, easier to tap (user request: the drum
 ## 20%, the fish trough 30%).
@@ -67,12 +72,13 @@ const LAMP_ON_DRUM := Vector3(0.05, 0.92 * DRUM_SCALE, 0.02)
 ## left, past the tent - the view swiped left to it - and tapped, it's
 ## 出發夜釣: the journey page, the camera drawn in close to it). Turned a
 ## little toward the camp.
-const STONE_AT := Vector3(-5.45, 0.0, -0.6)
-const STONE_YAW := 0.5
+## User request (the walkable camp): further off, out to the left.
+const STONE_AT := Vector3(-8.7, 0.0, -1.9)
+const STONE_YAW := 1.0
 const STONE_SCALE := 0.92
 ## (user request: the merchant's stall in the home view - nearer, turned
 ## to the camp)
-const HUT_AT := Vector3(4.7, 0.0, -4.7)
+const HUT_AT := MID + (Vector3(4.7, 0.0, -4.7) - MID) * FLAT
 const HUT_YAW := -0.75
 const HUT_SCALE := 0.8
 ## Where the frog merchant potters, round his stall (its own frame, before
@@ -90,7 +96,7 @@ const MERCHANT_PLACES := {
 ## it by his boat, and a spot on the open ground toward the camp - still
 ## well clear of the fire.
 const MERCHANT_OUT := {
-	"dock_base": Vector3(2.7, 0.0, -6.6), "dock": Vector3(3.15, 0.225, -8.2), "lookout": Vector3(2.4, 0.0, -2.9),
+	"dock_base": Vector3(2.7, 0.0, -6.6), "dock": Vector3(3.15, 0.225, -8.2), "lookout": MID + (Vector3(2.4, 0.0, -2.9) - MID) * FLAT,
 }
 ## His ways between them (none through the stall: in by the back).
 const MERCHANT_LINKS := {
@@ -115,8 +121,14 @@ const DOCK_LAMP := Vector3(-0.52, 0.0, -3.9)
 ## of its length.
 ## The model stands on its rudder, its keel half a metre up: sunk so the
 ## hull sits in the water.
-const BOAT_AT := Vector3(3.97, -0.6, -9.05)
+const BOAT_AT := Vector3(4.12, -0.7, -9.3)
 const BOAT_LENGTH := 0.6
+## User request: the boat 20% bigger, its mast 30% shorter (the part over
+## the cabin roof - BOAT_MAST_FROM up, at BOAT_MAST_X - drawn down).
+const BOAT_SIZE := 1.2
+const BOAT_MAST_X := -0.868
+const BOAT_MAST_FROM := 1.55
+const BOAT_MAST_KEEP := 0.56
 const LAKE_CENTER := Vector3(0.0, 0.0, -20.6)
 const LAKE_RADIUS := 13.5
 const MOON_DIR := Vector3(0.1, 0.17, -1.0)
@@ -124,9 +136,9 @@ const MOON_DIR := Vector3(0.1, 0.17, -1.0)
 ## hips sit on it: its top at about 0.52 m): [where, which way one sits on
 ## it (null: facing the fire)] - the second lies across behind the fire,
 ## sat on facing out. And the woodpile by the tent.
-const SEATS := [[Vector3(-0.95, 0.0, -0.7), null], [Vector3(2.0, 0.0, -1.6), Vector3(0, 0, 1)]]
+const SEATS := [[MID + (Vector3(-0.95, 0.0, -0.7) - MID) * FLAT, null], [MID + (Vector3(2.0, 0.0, -1.6) - MID) * FLAT, Vector3(0, 0, 1)]]
 const SEAT_SCALE := Vector3(1.18, 1.18, 1.15)
-const WOODPILE_AT := Vector3(-2.0, 0.0, -2.6)
+const WOODPILE_AT := MID + (Vector3(-2.0, 0.0, -2.6) - MID) * FLAT
 ## The water in the cut drum (its surface's height and size), and the lotus
 ## leaves floating on it, as in the fish tank page's ([x, z, radius], the
 ## drum's own frame).
@@ -161,6 +173,8 @@ var _stone_light: OmniLight3D
 var _stone_flare := 0.0
 var _lit := ""
 var _tent_shown := -1
+## The trees on the walkable ground (walked round, CampStage obstacles).
+var _edge_trees: Array = []
 var _rod_shown := -1
 var _time := 0.0
 var _cam_tween: Tween
@@ -344,9 +358,9 @@ func _places() -> void:
 	# (a bigger one's belly and head went into the drum any nearer)
 	_spot("lean", DRUM_AT + Vector3(0, 0, 0.38), DRUM_AT + Vector3(0, 0, -3.0))
 	_spot("lake", Vector3(1.3, 0, -6.35), Vector3(1.7, 0, -10.0))
-	_spot("gather_0", Vector3(-2.3, 0, 1.6), Vector3(-2.6, 0, 2.6))
-	_spot("gather_1", Vector3(1.9, 0, 1.6), Vector3(2.2, 0, 2.6))
-	_spot("gather_2", Vector3(-0.7, 0, 1.95), Vector3(-0.9, 0, 3.0))
+	_spot("gather_0", spread(Vector3(-2.3, 0, 1.6)), spread(Vector3(-2.6, 0, 2.6)))
+	_spot("gather_1", spread(Vector3(1.9, 0, 1.6)), spread(Vector3(2.2, 0, 2.6)))
+	_spot("gather_2", spread(Vector3(-0.7, 0, 1.95)), spread(Vector3(-0.9, 0, 3.0)))
 	_lamp_spot()
 	_spot("rod", ROD_AT + Vector3(0.45, 0, 0.35), ROD_AT + Vector3(0, 0, 0))
 	var stone_front := Vector3(sin(STONE_YAW), 0, cos(STONE_YAW))
@@ -354,7 +368,7 @@ func _places() -> void:
 	_spot("stone_in", STONE_AT + stone_front * 0.12, STONE_AT - stone_front * 2.0)
 	# Sat on the ground by the fire, side on to the camera (by the lake the
 	# drums hid it).
-	_spot("ground", Vector3(1.75, 0, 0.55), FIRE_AT)
+	_spot("ground", spread(Vector3(1.75, 0, 0.55)), FIRE_AT)
 	# What it walks round: everything on the ground, as capsules [a, b,
 	# radius] (a circle when a == b) - user request: never through things.
 	var crate_dir := Vector3(cos(0.55), 0, -sin(0.55))
@@ -367,14 +381,22 @@ func _places() -> void:
 		[WOODPILE_AT + Vector3(-0.55, 0, 0.1), WOODPILE_AT + Vector3(0.55, 0, 0.1), 0.35],
 		_round(ROD_AT, 0.15), _round(TENT_AT, 1.45 * TENT_SCALE / 0.85),
 		_round(STONE_AT, 0.55),
-		[t * Vector3(-0.9, 0, 0), t * Vector3(0.9, 0, 0), 0.9],
+		# (the stall, its awning's edge too - user report: walked into it)
+		[t * Vector3(-1.0, 0, 0), t * Vector3(0.8, 0, 0), 1.1],
 	]
+	for p in _edge_trees:
+		obstacles.append(_round(p, 0.42))
 	for i in SEATS.size():
 		var f := seat_facing(i)
 		var along := Vector3(-f.z, 0, f.x)
 		var at: Vector3 = SEATS[i][0]
 		obstacles.append([at - along * 0.62 * SEAT_LONGER, at + along * 0.62 * SEAT_LONGER, 0.34])
 	_build_grid()
+
+
+## A point of the camp as first laid out, moved out with the rest (SPREAD).
+static func spread(p: Vector3) -> Vector3:
+	return MID + (p - MID) * FLAT
 
 
 static func _round(at: Vector3, r: float) -> Array:
@@ -391,7 +413,7 @@ func seat_facing(i: int) -> Vector3:
 
 ## The ground the character walks on, in cells (GRID_CELL m), solid where
 ## something stands (its body's width round it) or the lake is.
-const GRID_AREA := Rect2(-9.0, -10.0, 19.0, 15.0)
+const GRID_AREA := Rect2(-11.5, -11.0, 23.0, 17.0)
 const GRID_CELL := 0.2
 const BODY := 0.18
 var _grid: AStarGrid2D
@@ -912,7 +934,23 @@ func _forest() -> void:
 			continue
 		if p.z > 3.0 and absf(p.x) < 7.0:
 			continue  # keep the view from the camera clear
+		if p.distance_to(STONE_AT) < 2.6:
+			continue
 		near.append(p)
+	# User request (the walkable camp): the edges thick with trees - left
+	# and right past the camp's things, round behind the 渡石, and a few
+	# along the shore; none where the camera follows from (south).
+	for i in 110:
+		var p := Vector3(_rng.randf_range(-15.0, 15.0), 0, _rng.randf_range(-10.5, 7.0))
+		if absf(p.x) < 9.6 and p.z < 5.6:
+			continue
+		if p.z > 4.0 and absf(p.x) < 11.0:
+			continue
+		if _in_lake(p, 1.0) or p.distance_to(STONE_AT) < 2.6:
+			continue
+		near.append(p)
+		if GRID_AREA.has_point(Vector2(p.x, p.z)):
+			_edge_trees.append(p)
 	# The far shore: a dark line of pines against the sky.
 	var far := []
 	for i in 56:
@@ -1273,11 +1311,31 @@ func _stall() -> void:
 	if merchant.body() != null:
 		_hotspot("shop", merchant.body(), "商人", HUT_AT + Vector3(0, 1.2, 0), 1.3, 0.012)
 	_boat = CampModel.make("boat")
+	_boat.mesh = _short_mast(_boat.mesh)
 	_boat.position = BOAT_AT
 	_boat.rotation.y = PI / 2.0
-	_boat.scale = Vector3(BOAT_LENGTH, 1.0, 1.0)
+	_boat.scale = Vector3(BOAT_LENGTH, 1.0, 1.0) * BOAT_SIZE
 	add_child(_boat)
 	_hotspot("shop", _boat, "商人", BOAT_AT + Vector3(0, 1.1, 0), 1.2, 0.015)
+
+
+## The boat's mesh with its mast drawn down (BOAT_MAST_KEEP of it left
+## over BOAT_MAST_FROM).
+static func _short_mast(mesh: Mesh) -> Mesh:
+	if mesh == null:
+		return mesh
+	var out := ArrayMesh.new()
+	for i in mesh.get_surface_count():
+		var arrays := mesh.surface_get_arrays(i)
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		for k in verts.size():
+			var v := verts[k]
+			if v.y > BOAT_MAST_FROM and absf(v.x - BOAT_MAST_X) < 0.06:
+				verts[k].y = BOAT_MAST_FROM + (v.y - BOAT_MAST_FROM) * BOAT_MAST_KEEP
+		arrays[Mesh.ARRAY_VERTEX] = verts
+		out.add_surface_from_arrays(mesh.surface_get_primitive_type(i), arrays)
+		out.surface_set_material(i, mesh.surface_get_material(i))
+	return out
 
 
 ## Now and then an animal's dark shape walks the far bank, at the foot of

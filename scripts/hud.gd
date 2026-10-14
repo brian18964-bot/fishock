@@ -109,6 +109,14 @@ func _build_top() -> void:
 	message_label.add_theme_constant_override("outline_size", 4)
 	relight_bar.position = Vector2(762, 84)
 	relight_bar.size = Vector2(190, 8)
+	# User request: a menu, to leave the run for the camp (left of the
+	# speaker, under the light's energy).
+	var menu := UiKit.button("選單", 13, "gray")
+	menu.name = "RunMenu"
+	menu.position = Vector2(858, 74)
+	menu.custom_minimum_size = Vector2(56, 30)
+	menu.pressed.connect(open_run_menu)
+	$Panel.add_child(menu)
 	_sticks = [$Panel/MoveJoystick, $Panel/AimJoystick]
 	for stick in _sticks:
 		stick.modulate.a = 0.0
@@ -288,6 +296,37 @@ func _on_run_ended(success: bool, message: String) -> void:
 		t.tween_interval(0.9)
 		t.tween_property(shade, "color:a", 0.75, 0.8)
 		t.parallel().tween_property(scroll, "modulate:a", 1.0, 0.6)
+
+
+## The run paused under a menu: carry on, or back to the camp - the run
+## given up (what's carried stays here, as when it's lost).
+func open_run_menu() -> void:
+	if GameState.run_over or $Panel.get_node_or_null("RunMenuShade") != null:
+		return
+	get_tree().paused = true
+	var shade := MenuStyle.notice($Panel, "選單", ["回到營地會放棄這趟夜釣：身上的魚和這趟撿到的裝備都會留在這裡。"])
+	shade.name = "RunMenuShade"
+	shade.process_mode = Node.PROCESS_MODE_ALWAYS
+	var ok: Button = null
+	for b in shade.find_children("*", "Button", true, false):
+		ok = b
+	var col := ok.get_parent()
+	ok.text = "繼續夜釣"
+	ok.pressed.connect(func(): get_tree().paused = false)
+	var home := UiKit.button("回到營地", 16, "red")
+	home.name = "LeaveRun"
+	home.custom_minimum_size = Vector2(140, 42)
+	home.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	home.pressed.connect(leave_run)
+	col.add_child(home)
+
+
+func leave_run() -> void:
+	get_tree().paused = false
+	GameState.end_run(false, "中途返回營地")
+	# (home by the path, not waking in the tent as after a loss)
+	GameState.last_return = ""
+	get_tree().change_scene_to_file(Camp3D.SCENE)
 
 
 func _on_back_to_title_pressed() -> void:

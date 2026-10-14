@@ -917,6 +917,29 @@ static func swing_time(kind: String) -> float:
 	return float(SWINGS.get(kind, [SWING_TIME, SWING_HIT])[0])
 
 
+## User request: a beast coming for you this near (px), the blade in hand
+## is swung at it by itself - no tap needed. (The pistol fires by itself
+## already, as one starts after you - Critter.)
+const AUTO_DEFEND_REACH := 110.0
+
+
+func _auto_defend() -> void:
+	if swing_left > 0.0 or not offhand_in_hand():
+		return
+	var kind := swing_move()
+	if kind in ["", "scoop", "shoot"]:
+		return
+	for c in get_tree().get_nodes_in_group("hunters"):
+		var beast := c as Critter
+		if beast == null or not beast.is_hunting():
+			continue
+		var to := beast.global_position - global_position
+		if to.length() < AUTO_DEFEND_REACH:
+			aim_dir = to.normalized()
+			swing("slash")
+			return
+
+
 ## The nearest beast come for you within SHOO_REACH (null: none).
 func shoo_target() -> Critter:
 	var best: Critter = null
@@ -1406,6 +1429,7 @@ func _physics_process(delta: float) -> void:
 	_handle_shop_input()
 	_handle_drop_input()
 	_update_swing(delta)
+	_auto_defend()
 	# Q swings the off hand's thing (a tap of the right stick on a phone).
 	if _key_just_pressed(KEY_Q):
 		tap_right()
@@ -2579,7 +2603,10 @@ const FAIL_REPORTS := {
 
 func _fail_catch(reason: String) -> void:
 	catch_failed.emit(reason)
-	perform("sad", 1.8, reason)
+	# User request: the sigh for a fish lost after a fight (off the hook,
+	# into cover, walked off with) - not a snapped line or bait gone.
+	if state == State.REELING and not reason in ["line_break", "line_cut", "lure_knocked"]:
+		perform("sad", 1.8, "escaped")
 	var msg := "魚跑掉了"
 	# A snapped or frayed line takes the lure with it.
 	var lure_gone: bool = reason in ["line_break", "cover"] and fishing_mode == FishingMode.LURE

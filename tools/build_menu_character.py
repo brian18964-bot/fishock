@@ -360,7 +360,10 @@ def ground_on_body(arm, body, act):
 # from a hand to an elbow to a hip (not the walk and the standing about:
 # their feet kept just on the ground frame by frame).
 LIFT_SPAN = 5
-SMOOTHED = ("Lie_Down", "Lying_Loop", "Sleep_B_Loop", "Ground_Sit_Loop", "Ground_Stand", "LayToIdle")
+SMOOTHED = ("Lie_Down", "Lying_Loop", "Sleep_B_Loop", "Ground_Sit_Loop", "Ground_Stand", "LayToIdle",
+            # (user report: the owl walked in jerks - its lowest point going
+            # from one talon to the other lifted the hips 2 cm in a frame)
+            "Walk_Loop", "Run_Loop", "Walk_Carry_Loop")
 
 
 def _smooth_lift(lifts, frames, loop=False):

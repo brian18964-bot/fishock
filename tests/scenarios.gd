@@ -17,6 +17,7 @@ const TESTS := [
 	"test_layout_clear",
 	"test_proto3d",
 	"test_camp3d",
+	"test_run_menu_and_auto_defend",
 	"test_spawn_on_land_docks_out",
 	"test_catalog_and_sounds",
 	"test_creature_animation",
@@ -1138,7 +1139,13 @@ func test_player_moves() -> void:
 	await seconds(PlayerVisual.FRAMES / PlayerVisual.FPS[PlayerVisual.CLIP_CATCH] + 0.1)
 	check(p.move_kind == "fist" and body.move == "fist", "then a fist pumped")
 	await seconds(PlayerVisual.CHEER_TIME)
-	# Lost: hangs its head.
+	# A snapped line: no sigh (user request) ...
+	p.state = Player.State.REELING
+	p._fail_catch("line_break")
+	await frames(2)
+	check(p.move_left <= 0.0 or p.move_kind != "sad", "the line snapped: no sigh")
+	# ... but a fish lost after the fight: hangs its head.
+	p.state = Player.State.REELING
 	p._fail_catch("shook_off")
 	await frames(2)
 	check(body.move == "sad", "the fish lost: disappointed")
@@ -3603,7 +3610,7 @@ func test_run_3d() -> void:
 	await frames(4)
 	check(not view._float.visible, "the line in: no float")
 	# User request: each thing done its own move.
-	for pair in [["lift", "", "Kick"], ["pray", "", "Pray"], ["sad", "line_break", "Hit_Chest"], ["sad", "bait_stolen", "Idle_No"]]:
+	for pair in [["lift", "", "Kick"], ["pray", "", "Pray"], ["sad", "escaped", "Disappointed"]]:
 		player().perform(pair[0], 1.5, pair[1])
 		await frames(6)
 		check(view._clip == pair[2], "%s %s: the %s clip (%s)" % [pair[0], pair[1], pair[2], view._clip])
@@ -4059,7 +4066,56 @@ func test_camp3d() -> void:
 		await frames(1)
 	camp._joystick.output = Vector2.ZERO
 	check(not stage.life.seated, "up off the log, walked off")
+	# The menu along the bottom: the page at once, the character off to the
+	# crate behind it.
+	await seconds(1.0)
+	var before: Vector3 = pivot.position
+	camp.quick("warehouse")
+	await frames(3)
+	check(camp._page != null and camp._page.scene_file_path.ends_with("warehouse.tscn"), "the menu: the warehouse at once")
+	await seconds(1.0)
+	check(not stage.life.paused and pivot.position.distance_to(before) > 0.3, "the character goes to the crate behind it")
+	camp.close_page()
+	await frames(3)
+	# Never through the merchant.
+	var m: Node3D = stage.merchant
+	check(not camp.walkable(m.global_position + Vector3(0.2, 0, 0)), "the merchant's a body to walk round")
 	camp.queue_free()
 	await frames(2)
 	Profile.load_data(saved)
 	Profile._save()
+
+
+## User requests: a blade in hand is swung at a beast coming for you by
+## itself; and a menu in the run leaves it for the camp.
+func test_run_menu_and_auto_defend() -> void:
+	var kept := _keep_profile()
+	await _fresh_game()
+	var p := player()
+	Profile.equipped["offhand"] = "knife"
+	var wolf: Critter = load("res://scenes/critter.tscn").instantiate()
+	wolf.ambient = true
+	wolf.species = "wolf"
+	main.add_child(wolf)
+	wolf.global_position = p.global_position + Vector2(80, 0)
+	wolf._cooldown = 0.0
+	wolf._mode = Critter.Mode.CHASE
+	wolf._mode_timer = 5.0
+	await frames(3)
+	check(p.swing_kind == "slash", "the blade swung by itself (%s)" % p.swing_kind)
+	await seconds(Player.swing_time("slash"))
+	check(not wolf.is_hunting(), "the wolf driven off")
+	wolf.queue_free()
+	Profile.equipped["offhand"] = ""
+	# The menu: the run paused under it; back to the camp from it.
+	var hud: Node = main.get_node("HUD")
+	hud.open_run_menu()
+	await frames(2)
+	check(get_tree().paused and hud.get_node_or_null("Panel/RunMenuShade") != null, "the menu, the run paused")
+	var leave: Button = hud.find_child("LeaveRun", true, false)
+	check(leave != null, "回到營地 offered")
+	leave.pressed.emit()
+	await frames(6)
+	check(not get_tree().paused and get_tree().current_scene.scene_file_path == Camp3D.SCENE, "back at the camp")
+	_restore_profile(kept)
+	await frames(1)

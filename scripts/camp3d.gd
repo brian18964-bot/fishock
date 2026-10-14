@@ -30,8 +30,16 @@ const RUN_SPEED := 3.2
 const TURN_RATE := 12.0
 ## Left alone this long (s), it goes back to its own life at the camp.
 const LIVE_AGAIN := 25.0
+## How near (m) it can come to the frog merchant.
+const MERCHANT_ROOM := 0.55
+
+## The menu along the bottom: [page, its name].
+const QUICK := [["shop", "商城"], ["warehouse", "倉庫"], ["equipment", "裝備"], ["fish_tank", "魚缸"], ["journey", "出發"]]
 
 var _joystick: Control
+## A page opened from the menu: the camp stays live under it, the character
+## off doing its bit.
+var _quick_on := false
 ## The stick's walking it (CampLife paused), it's getting up first (off a
 ## log, off the ground), how long it's been left alone.
 var _driving := false
@@ -56,9 +64,29 @@ func _build() -> void:
 	stick.set("visibility_mode", 2)
 	_home.add_child(stick)
 	_joystick = stick
+	# User request: a menu along the bottom - each opens its page at once,
+	# the character going over to do its bit behind it (出發夜釣 is its
+	# 出發 now; 多人連線 up under the gold).
+	var play := _home.get_node_or_null("Play") as Control
+	if play != null:
+		play.visible = false
 	var multi := _home.get_node_or_null("Multiplayer") as Control
 	if multi != null:
-		multi.position = Vector2(806, 484)
+		multi.position = Vector2(764, 94)
+		multi.custom_minimum_size = Vector2(126, 34)
+		multi.size = Vector2(126, 34)
+	var bar := HBoxContainer.new()
+	bar.name = "QuickMenu"
+	bar.add_theme_constant_override("separation", 8)
+	bar.position = Vector2(318, 474)
+	for entry in QUICK:
+		var b := UiKit.button(entry[1], 17, "red" if entry[0] == "journey" else "gray")
+		b.name = "Quick_" + entry[0]
+		b.custom_minimum_size = Vector2(118 if entry[0] == "journey" else 112, 50)
+		var page: String = entry[0]
+		b.pressed.connect(func(): quick(page))
+		bar.add_child(b)
+	_home.add_child(bar)
 	var old := UiKit.button("舊營地", 14, "gray")
 	old.name = "OldCamp"
 	old.position = Vector2(764, 54)
@@ -181,6 +209,10 @@ func _drive(delta: float) -> void:
 ## Ground it can stand on: in the camp, clear of its things, not in the
 ## lake - or out on the dock.
 func walkable(p: Vector3) -> bool:
+	# (round the merchant too - user report: walked through him)
+	var m := _stage.merchant
+	if m != null and Vector2(p.x - m.global_position.x, p.z - m.global_position.z).length() < MERCHANT_ROOM:
+		return false
 	return _stage.on_dock(p) or _stage.roomy(p, CampStage.BODY)
 
 
@@ -198,3 +230,35 @@ func _ask(spot: String) -> void:
 	_idle_for = 0.0
 	_stage.life.paused = false
 	super._ask(spot)
+
+
+## The menu's `page` at once (user request), the character off to do its
+## bit there meanwhile - the camp kept moving under the page.
+func quick(page: String) -> void:
+	if _stage == null or _page != null or _scene_piece != "":
+		return
+	_driving = false
+	_rising = false
+	_idle_for = 0.0
+	_asked_page = ""
+	var life := _stage.life
+	life.paused = false
+	life.act_on(page, 0, Callable())
+	_quick_on = true
+	open_page(page)
+
+
+func open_page(page: String) -> void:
+	super.open_page(page)
+	if _quick_on and _stage != null:
+		_stage.life.hold(false)
+		_live(true)
+
+
+func close_page() -> void:
+	_quick_on = false
+	super.close_page()
+
+
+func _live(on: bool) -> void:
+	super._live(on or _quick_on)

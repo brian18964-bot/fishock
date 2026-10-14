@@ -1666,15 +1666,6 @@ func _pick_clip() -> Array:
 			var kick := Player.ROCK_HEAVE_TIME * KICK_SHARE
 			return ["Kick", 1.0, minf(t * Player.ROCK_HEAVE_TIME / kick, 0.999)]
 		match player.move_note:
-			"line_break", "lure_knocked":
-				# (the line gone slack all at once: rocked back on its heels,
-				# then the sigh)
-				if t >= 0.0 and t < 0.35:
-					return ["Hit_Chest", 1.0, t / 0.35]
-				return ["Disappointed", 1.0, (t - 0.35) / 0.65 if t >= 0.0 else -1.0]
-			"bait_stolen", "bait_nibbled":
-				# (the bait gone: a shake of the head)
-				return ["Idle_No", 1.4, -1.0]
 			"stolen":
 				# (the water ghost's grab: knocked staggering - not off its feet
 				# - a fish gone, then the fright)
