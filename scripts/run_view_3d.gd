@@ -226,6 +226,9 @@ var _rod_on := 0.0
 var _stow := 1.0
 var _lamp_in := 1.0
 var _centred := 0.0
+## (how much of the rod's angle the centred arm follows: a little holding,
+## most of it on the strike so the arms come up with the rod)
+var _arm_follow := 0.4
 var _off_in := 1.0
 var _left_free := 0.0
 var _left_ik: TwoBoneIK3D
@@ -1833,7 +1836,8 @@ func _aim_rod(delta: float) -> void:
 	# angle - it's the wrist that tips it up, not the arm)
 	var settled_now := fishing and _visual.clip in CENTRED_CLIPS
 	if settled_now or _centred > 0.0:
-		var low := deg_to_rad(-58.0) + (_rod_up - deg_to_rad(35.0)) * 0.4
+		_arm_follow = move_toward(_arm_follow, 1.5 if _visual.clip == PlayerVisual.CLIP_TUG else 0.4, delta / 0.15)
+		var low := deg_to_rad(-58.0) + (_rod_up - deg_to_rad(35.0)) * _arm_follow
 		phi = lerpf(phi, low, smoothstep(0.0, 1.0, _centred))
 	var reach := b.z * cos(phi) + Vector3.UP * sin(phi)
 	# User request: holding, waiting, reeling and fighting, the rod hand
@@ -1846,7 +1850,7 @@ func _aim_rod(delta: float) -> void:
 	var from := (shoulder - b.x * 0.05).lerp(middle + (shoulder - middle) * CENTRE_KEEP, smoothstep(0.0, 1.0, _centred))
 	# (reaching less far out while fishing: the elbow bent, the hands in
 	# close in front of the waist)
-	_ik_target.global_position = from + reach * _arm_len * lerpf(0.8, 0.58, smoothstep(0.0, 1.0, _centred))
+	_ik_target.global_position = from + reach * _arm_len * lerpf(0.8, 0.58 + (_arm_follow - 0.4) * 0.2, smoothstep(0.0, 1.0, _centred))
 	# (the elbow out to the side and down)
 	# (the elbow out to the side and down; tucked in, down by the ribs, while
 	# fishing with the hands in front)

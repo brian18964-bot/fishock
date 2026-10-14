@@ -3603,7 +3603,7 @@ func test_run_3d() -> void:
 	await frames(4)
 	check(not view._float.visible, "the line in: no float")
 	# User request: each thing done its own move.
-	for pair in [["lift", "", "Lift"], ["pray", "", "Pray"], ["sad", "line_break", "Hit_Chest"], ["sad", "bait_stolen", "Idle_No"]]:
+	for pair in [["lift", "", "Kick"], ["pray", "", "Pray"], ["sad", "line_break", "Hit_Chest"], ["sad", "bait_stolen", "Idle_No"]]:
 		player().perform(pair[0], 1.5, pair[1])
 		await frames(6)
 		check(view._clip == pair[2], "%s %s: the %s clip (%s)" % [pair[0], pair[1], pair[2], view._clip])
