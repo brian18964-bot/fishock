@@ -65,13 +65,6 @@ var _stone_mat: StandardMaterial3D
 var _dock_span := [0.0, 0.0]
 var _time := 0.0
 var _rng := RandomNumberGenerator.new()
-## (for the 3D camp built on this - scripts/camp3d.gd: the stone place and
-## stepping stones laid, the grass and ferns strewn, each place's model by
-## name, and how much bigger it's set)
-var stones := true
-var strew := true
-var places := {}
-var prop_scale := {}
 
 
 func _ready() -> void:
@@ -81,8 +74,7 @@ func _ready() -> void:
 	_water()
 	_places()
 	_trees()
-	if strew:
-		_cover()
+	_cover()
 	_character()
 	_hud()
 	camera.global_transform = _camera_at(pivot.position)
@@ -133,8 +125,6 @@ func _ground() -> void:
 			# forest floor (else grass)
 			var path := 1.0 - smoothstep(PATH_HALF - 0.35, PATH_HALF + 0.35, _path_dist(p) + wob * 0.5)
 			var plaza := 1.0 - smoothstep(PLAZA_R - 0.25, PLAZA_R + 0.25, p.distance_to(PLAZA) + wob * 0.3)
-			if not stones:
-				plaza = 0.0
 			var shore := 1.0 - smoothstep(0.3, 2.2 + wob, z - _shore_z(x))
 			var forest := clampf(0.5 + noise.get_noise_2d(x * 0.6 + 40.0, z * 0.6) * 1.6, 0.0, 1.0)
 			forest = maxf(forest, smoothstep(9.0, 15.0, absf(x)))
@@ -169,9 +159,7 @@ func _ground() -> void:
 	mi.material_override = mat
 	add_child(mi)
 	# Stepping stones down the path, a ring of them round the stone place.
-	if not stones:
-		return
-	var stone_kinds := ["rock_path_1", "rock_path_round_wide", "rock_path_square_1"]
+	var stones := ["rock_path_1", "rock_path_round_wide", "rock_path_square_1"]
 	var d := 0.0
 	for i in PATH.size() - 1:
 		var a: Vector3 = PATH[i]
@@ -182,13 +170,13 @@ func _ground() -> void:
 			if p.distance_to(PLAZA) > PLAZA_R + 0.3:
 				var side := Vector3(-(b - a).z, 0, (b - a).x).normalized()
 				p += side * _rng.randf_range(-0.45, 0.45)
-				_prop(stone_kinds[_rng.randi() % stone_kinds.size()], p, _rng.randf_range(0.5, 0.75),
+				_prop(stones[_rng.randi() % stones.size()], p, _rng.randf_range(0.5, 0.75),
 					_rng.randf() * TAU, false, 0.0, true)
 			d += _rng.randf_range(0.9, 1.3)
 		d -= len
 	for k in 22:
 		var a := k * TAU / 22.0
-		_prop(stone_kinds[k % 3], PLAZA + Vector3(cos(a), 0, sin(a)) * (PLAZA_R + 0.05), 0.55, a, false, 0.0, true)
+		_prop(stones[k % 3], PLAZA + Vector3(cos(a), 0, sin(a)) * (PLAZA_R + 0.05), 0.55, a, false, 0.0, true)
 
 
 func _water() -> void:
@@ -225,9 +213,7 @@ func _places() -> void:
 	# The fire in the stone place, logs to sit on round it.
 	var fire := CampModel.make("campfire", 1.6)
 	fire.position = PLAZA
-	fire.scale = Vector3.ONE * float(prop_scale.get("campfire", 1.0))
 	add_child(fire)
-	places["fire"] = fire
 	_block(PLAZA, 0.7)
 	_fire_light = _light(PLAZA + Vector3(0, 0.9, 0), Color(1.0, 0.55, 0.22), 2.6, 7.5)
 	for k in 2:
@@ -236,7 +222,6 @@ func _places() -> void:
 		log.position = PLAZA + Vector3(cos(a), 0, sin(a)) * 2.1
 		log.rotation.y = -a
 		add_child(log)
-		places["log_%d" % k] = log
 		_block(log.position, 0.55)
 	# Lantern posts along the path and at the dock.
 	for at in [Vector3(1.8, 0, 6.5), Vector3(-2.9, 0, 2.2), Vector3(3.3, 0, -3.8), Vector3(0.9, 0, -8.2)]:
@@ -251,9 +236,6 @@ func _places() -> void:
 		m.rotation.y = spec[2]
 		if spec[0] == "drum":
 			m.scale = Vector3.ONE * 1.15
-		m.scale *= float(prop_scale.get(spec[0], 1.0))
-		if spec[0] != "drum":
-			places[spec[0]] = m
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		add_child(m)
 	_block(left + Vector3(0.0, 0, 0.2), 1.6)
@@ -262,8 +244,7 @@ func _places() -> void:
 	var tent := CampModel.make("tent_3")
 	tent.position = Vector3(7.4, 0, 0.6)
 	tent.rotation.y = -1.9
-	tent.scale = Vector3.ONE * 0.85 * float(prop_scale.get("tent", 1.0))
-	places["tent"] = tent
+	tent.scale = Vector3.ONE * 0.85
 	tent.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	add_child(tent)
 	_block(tent.position, 2.0)
@@ -279,7 +260,6 @@ func _places() -> void:
 	stone.position = Vector3(-5.2, 0, -7.6)
 	stone.rotation.y = 0.4
 	stone.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	places["stone"] = stone
 	_stone_mat = stone.material_override as StandardMaterial3D
 	_stone_mat.emission = Color(0.4, 0.85, 1.0)
 	_stone_mat.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
@@ -626,7 +606,6 @@ func _process(delta: float) -> void:
 		return
 	var stick := _input_dir()
 	var move := Vector3(stick.x, 0, stick.y) * RUN_SPEED
-	var held := _held_clip()
 	var speed := move.length()
 	if speed > 0.05:
 		var to := pivot.position + move * delta
@@ -645,22 +624,16 @@ func _process(delta: float) -> void:
 	var anim := character.anim
 	var clip := "Idle"
 	var rate := 1.0
-	if held != "":
-		# (an act of the 3D camp's own - camp3d.gd)
-		if anim.current_animation != held and anim.has_animation(held):
-			anim.play(held, 0.25)
-		anim.speed_scale = 1.0
-	elif speed > 0.05:
+	if speed > 0.05:
 		if speed <= WALK_MAX or not anim.has_animation("Run"):
 			clip = "Walk"
 			rate = speed / WALK_PACE
 		else:
 			clip = "Run"
 			rate = speed / RUN_PACE
-	if held == "":
-		if anim.current_animation != clip and anim.has_animation(clip):
-			anim.play(clip, 0.2)
-		anim.speed_scale = clampf(rate, 0.4, 2.2) if clip != "Idle" else 1.0
+	if anim.current_animation != clip and anim.has_animation(clip):
+		anim.play(clip, 0.2)
+	anim.speed_scale = clampf(rate, 0.4, 2.2) if clip != "Idle" else 1.0
 	# The camera after it, eased.
 	var want := _camera_at(pivot.position)
 	camera.global_transform = camera.global_transform.interpolate_with(want, minf(1.0, delta * CAMERA_EASE))
@@ -671,11 +644,6 @@ func _process(delta: float) -> void:
 		(_lanterns[i] as OmniLight3D).light_energy = 1.5 + 0.08 * sin(_time * 7.0 + i)
 	if _stone_mat != null:
 		_stone_mat.emission_energy_multiplier = 0.9 + 0.35 * sin(_time * 1.3)
-
-
-## A clip the traveller's held in, whatever the stick says ("": none).
-func _held_clip() -> String:
-	return ""
 
 
 func _on_dock(p: Vector3) -> bool:

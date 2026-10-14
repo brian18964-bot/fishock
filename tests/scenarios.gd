@@ -3840,6 +3840,20 @@ func test_chop_and_weapons() -> void:
 		check(bg.mode == bg.Mode.SUSPICIOUS, "the big ghost comes to look")
 	Profile.bag = Profile.bag.filter(func(e): return e.id != "ammo")
 	check(not p.shoot_at(wolf), "no rounds, no shot")
+	# User request: nothing in hand, a tap shoos a beast come close off.
+	Profile.equipped["offhand"] = ""
+	wolf._cooldown = 0.0
+	wolf._mode = Critter.Mode.CHASE
+	check(p.shoos(), "a wolf near, empty-handed: a tap shoos")
+	# (the parry's slash above played out)
+	p.swing_left = 0.0
+	p.swing_kind = ""
+	await tap(KEY_Q)
+	check(p.swing_kind == "shoo", "waving it off (%s)" % p.swing_kind)
+	await seconds(Player.swing_time("shoo"))
+	check(not wolf.is_hunting() and wolf._cooldown > 0.0, "the wolf runs")
+	wolf.global_position = p.global_position + Vector2(Player.SHOO_REACH + 60.0, 0)
+	check(not p.shoos(), "none near: nothing to shoo")
 	wolf.queue_free()
 	_restore_profile(kept)
 	await frames(1)
@@ -3983,26 +3997,68 @@ func test_camp3d() -> void:
 	var camp = load("res://scenes/camp3d.tscn").instantiate()
 	get_tree().root.add_child(camp)
 	await seconds(1.0)
-	check(camp.spots.size() >= 8, "its things to tap (%d)" % camp.spots.size())
-	for name in ["crate", "backpack", "trough", "tent", "merchant", "stone"]:
-		camp.go_do(name)
+	var stage: CampStage = camp._stage
+	check(stage != null and stage.free_camera, "the old camp's place, the camera free")
+	for name in ["warehouse", "equipment", "fish_tank", "shop", "character"]:
+		check(stage.hotspots.has(name), "%s still there to tap" % name)
+	var pivot: Node3D = stage.character_pivot
+	# The stick walks it (its own life let go), the camera after it.
+	var from := pivot.position
+	var cam_from: Vector3 = stage.camera.position
+	for _i in 40:
+		camp._joystick.output = Vector2(1, 0)
+		await frames(1)
+	camp._joystick.output = Vector2.ZERO
+	check(pivot.position.x > from.x + 1.0 and stage.life.paused, "walked right with the stick (%s)" % str(pivot.position))
+	await frames(10)
+	check(stage.camera.position.x > cam_from.x + 0.5, "the camera followed")
+	# Into nothing: pushed at the crate, it stops at it.
+	var crate_spot: Vector3 = stage.spots.crate.at
+	pivot.position = crate_spot
+	var crate_room: float = stage.clearance(crate_spot)
+	var at_crate := Vector2(CampStage.CRATE_AT.x - crate_spot.x, CampStage.CRATE_AT.z - crate_spot.z).normalized()
+	for _i in 90:
+		camp._joystick.output = at_crate
+		await frames(1)
+		check(stage.clearance(pivot.position) >= crate_room - 0.01, "never into the crate (%s)" % str(pivot.position)) if _i % 30 == 29 else null
+	camp._joystick.output = Vector2.ZERO
+	# Nor into the lake - but out along the dock, up on its planks.
+	pivot.position = CampStage.DOCK_AT + Vector3(0, 0, 0.6)
+	for _i in 60:
+		camp._joystick.output = Vector2(0, -1)
+		await frames(1)
+	camp._joystick.output = Vector2.ZERO
+	check(stage.on_dock(pivot.position) and pivot.position.z < CampStage.DOCK_AT.z - 1.0 and pivot.position.y > 0.1,
+		"out on the dock (%s)" % str(pivot.position))
+	pivot.position = Vector3(-1.0, 0, -5.0)
+	for _i in 60:
+		camp._joystick.output = Vector2(0, -1)
+		await frames(1)
+	camp._joystick.output = Vector2.ZERO
+	check(not stage._in_lake(pivot.position, 0.25), "not into the lake (%s)" % str(pivot.position))
+	pivot.position = CampStage.CHARACTER_AT
+	# A tap on a thing: over to it, then its page.
+	for page in ["warehouse", "fish_tank", "equipment", "shop"]:
+		camp._ask(page)
 		var t := 0.0
-		while camp.page == null and t < 25.0:
+		while camp._page == null and t < 30.0:
 			await frames(6)
 			t += 0.1
-		var s: Dictionary = camp.spots[name]
-		check(camp.page != null and camp.page.scene_file_path.ends_with(s.page + ".tscn"),
-			"%s: walked over, did it, %s opened (%.1f s; at %s, stand %s, errand %s)" % [name, s.page, t,
-			str(camp.pivot.position), str(s.stand), str(camp._errand)])
+		check(camp._page != null and camp._page.scene_file_path.ends_with(page + ".tscn"), "%s: walked over, opened (%.1f s)" % [page, t])
 		camp.close_page()
 		await frames(3)
-	camp.go_do("log_0")
+	# Sat on a log, the stick gets it up first, then walks.
+	camp._ask("sit")
 	var w := 0.0
-	while not camp._sat and w < 20.0:
+	while not stage.life.seated and w < 25.0:
 		await frames(6)
 		w += 0.1
-	await seconds(1.5)
-	check(camp._sat and camp.character.anim.current_animation == "Sitting_Idle", "a log: sat on it (%s)" % camp.character.anim.current_animation)
+	check(stage.life.seated, "sat on the log")
+	for _i in 150:
+		camp._joystick.output = Vector2(0, 1)
+		await frames(1)
+	camp._joystick.output = Vector2.ZERO
+	check(not stage.life.seated, "up off the log, walked off")
 	camp.queue_free()
 	await frames(2)
 	Profile.load_data(saved)

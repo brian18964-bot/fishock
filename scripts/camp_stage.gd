@@ -104,6 +104,12 @@ const MERCHANT_LINKS := {
 ## The frog's size (the model is 1.25 m): small enough to stand inside.
 const MERCHANT_SCALE := 0.85
 const DOCK_AT := Vector3(2.9, 0.0, -7.05)
+## The dock's planks: how far out (m), half their width (walked on), how
+## high; its lamp post (from DOCK_AT), on the side away from the boat.
+const DOCK_LENGTH := 4.4
+const DOCK_HALF := 0.3
+const DOCK_DECK := 0.225
+const DOCK_LAMP := Vector3(-0.52, 0.0, -3.9)
 ## The boat afloat, tied up against the dock (its right side), its bow
 ## just short of the beach (user request); the pack's boat drawn in to 60%
 ## of its length.
@@ -203,6 +209,9 @@ func _on_profile_changed() -> void:
 ## spins the character round - that broke whatever it was doing): how far
 ## the home view's moved sideways (m, + to the right), and how far it goes.
 const PAN_RANGE := Vector2(-4.4, 2.6)
+## (the walkable camp - Camp3D - moves the camera itself, after the
+## character: no home view then, only the glide to a page's spot)
+var free_camera := false
 var view_pan := 0.0
 var _pan_now := 0.0
 var _station := "home"
@@ -228,6 +237,12 @@ func station_transform(station: String, pan := 0.0) -> Transform3D:
 func go_to(station: String, animate := true, done := Callable()) -> void:
 	var spot: Array = STATIONS.get(station, STATIONS.home)
 	_station = station
+	if free_camera and station == "home":
+		if _cam_tween != null:
+			_cam_tween.kill()
+		if done.is_valid():
+			done.call()
+		return
 	_pan_now = view_pan
 	var to := station_transform(station, view_pan)
 	if _cam_tween != null:
@@ -257,7 +272,7 @@ func set_character(id: String) -> void:
 func _process(delta: float) -> void:
 	_time += delta
 	# The home view following a swipe (eased).
-	if _station == "home" and (_cam_tween == null or not _cam_tween.is_running()) and absf(_pan_now - view_pan) > 0.0005:
+	if _station == "home" and not free_camera and (_cam_tween == null or not _cam_tween.is_running()) and absf(_pan_now - view_pan) > 0.0005:
 		_pan_now = lerpf(_pan_now, view_pan, minf(1.0, delta * 12.0))
 		camera.transform = station_transform("home", _pan_now)
 	# The fire breathes: its light flickers, its glow swells, its embers pulse.
@@ -1307,6 +1322,51 @@ func _dock() -> void:
 			post.material_override = wood
 			post.position = Vector3(x, 0.05, -i * 1.6)
 			dock.add_child(post)
+	# User request: the camp's one lamp post, out on the dock (the fire and
+	# the moon light the rest).
+	var pole := MeshInstance3D.new()
+	var pc := CylinderMesh.new()
+	pc.top_radius = 0.045
+	pc.bottom_radius = 0.06
+	pc.height = 1.9
+	pc.radial_segments = 6
+	pole.mesh = pc
+	pole.material_override = wood
+	pole.position = Vector3(DOCK_LAMP.x, 0.2 + pc.height * 0.5, DOCK_LAMP.z)
+	dock.add_child(pole)
+	var arm := MeshInstance3D.new()
+	var am := BoxMesh.new()
+	am.size = Vector3(0.42, 0.05, 0.05)
+	arm.mesh = am
+	arm.material_override = wood
+	arm.position = Vector3(DOCK_LAMP.x - 0.18, 2.05, DOCK_LAMP.z)
+	dock.add_child(arm)
+	var lamp: Node3D = load("res://assets/models/oil_lamp.glb").instantiate()
+	lamp.scale = Vector3.ONE * 0.8
+	lamp.position = Vector3(DOCK_LAMP.x - 0.34, 1.68, DOCK_LAMP.z)
+	dock.add_child(lamp)
+	var flame := MeshInstance3D.new()
+	var fs := SphereMesh.new()
+	fs.radius = 0.04
+	fs.height = 0.08
+	flame.mesh = fs
+	var fm := StandardMaterial3D.new()
+	fm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fm.albedo_color = Color(1.0, 0.8, 0.45)
+	flame.material_override = fm
+	flame.position = Vector3(DOCK_LAMP.x - 0.34, 1.8, DOCK_LAMP.z)
+	dock.add_child(flame)
+	var light := OmniLight3D.new()
+	light.light_color = Color(1.0, 0.68, 0.35)
+	light.light_energy = 1.3
+	light.omni_range = 4.0
+	light.position = Vector3(DOCK_LAMP.x - 0.34, 1.85, DOCK_LAMP.z)
+	dock.add_child(light)
+
+
+## Whether `p` is on the dock's planks (Camp3D walks out on them).
+func on_dock(p: Vector3) -> bool:
+	return absf(p.x - DOCK_AT.x) < DOCK_HALF and p.z < DOCK_AT.z + 0.15 and p.z > DOCK_AT.z - DOCK_LENGTH
 
 
 ## The character by the fire, resting: its hands empty (the lamp is on the

@@ -1625,6 +1625,9 @@ func _pick_clip() -> Array:
 	# (in the ghost's grip: terrified, struggling)
 	if v.struggling:
 		return ["Terrified", 1.4, -1.0]
+	if player.swing_kind == "shoo" and player.swing_left > 0.0:
+		# (a beast waved off - user request: no weapon needed)
+		return ["Wave_Big", 1.0, minf(1.0 - player.swing_left / maxf(player.swing_total, 0.01), 0.999)]
 	if v.acting >= 0:
 		# (user request: each use played out at its clip's own pace, after
 		# the thing's drawn from the hip - Player.SWINGS; scrubbed smoothly

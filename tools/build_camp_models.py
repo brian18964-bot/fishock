@@ -915,12 +915,15 @@ def ferry_stone():
     export([low], "ferry_stone")
 
 
-def _npz_mesh(path, name):
+def _npz_mesh(path, name, keep=None):
     """A mesh from tools/prep_frog.py's arrays (ZBrush is y-up), its colour
-    per face in a colour layer read by a plain material."""
+    per face in a colour layer read by a plain material (`keep`: which
+    faces, all if None - the vertices stay, numbered as they were)."""
     import numpy as np
     d = np.load(path)
     V, F, C = d["V"], d["F"], d["C"]
+    if keep is not None:
+        F, C = F[keep], C[keep]
     me = bpy.data.meshes.new(name)
     me.vertices.add(len(V))
     me.vertices.foreach_set("co", np.stack([V[:, 0], -V[:, 2], V[:, 1]], 1).ravel())
@@ -948,6 +951,36 @@ def _npz_mesh(path, name):
     return o
 
 
+def _plain_clothes(V, F, C):
+    """User request: a simple frog merchant in plain clothes - no hood, no
+    cloak (its cape, lining, the long coat and its trim) and no sword (or
+    the strap it hung from on his back): the shirt, sash, trousers, the
+    scarf and his sack left. Which faces stay."""
+    import numpy as np
+    import prep_frog
+    import scipy.sparse as sp
+    from scipy.sparse.csgraph import connected_components
+    keep = np.ones(len(F), bool)
+    for col in [prep_frog.HOOD, prep_frog.CAPE, prep_frog.LINING, prep_frog.COAT, prep_frog.TRIM,
+                prep_frog.HILT, prep_frog.GUARD, prep_frog.SCABBARD]:
+        keep &= ~np.all(np.abs(C - np.array(col)) < 0.006, 1)
+    # The strap: the leather up his back on the right (the sculpt's +x, -z).
+    leather = np.where(np.all(np.abs(C - np.array(prep_frog.LEATHER)) < 0.006, 1))[0]
+    f = F[leather]
+    i = np.r_[f[:, 0], f[:, 1], f[:, 2]]
+    j = np.r_[f[:, 1], f[:, 2], f[:, 0]]
+    _, lab = connected_components(sp.coo_matrix((np.ones(len(i)), (i, j)), shape=(len(V), len(V))), directed=False)
+    lab = lab[f[:, 0]]
+    for k in np.unique(lab):
+        s = leather[lab == k]
+        c = V[F[s]].reshape(-1, 3)
+        mid, ext = c.mean(0), np.ptp(c, 0)
+        # (the strap's pieces; and the coat's pointed flaps at the elbows)
+        if (mid[0] > 1.3 and mid[1] > -0.5 and mid[2] < -0.5) or ext[2] > 1.0:
+            keep[s] = False
+    return keep
+
+
 def frog_merchant():
     """The merchant: the frog wanderer (ASSET2's ZBrush sculpt), cut down and
     coloured part by part by tools/prep_frog.py. Its parts are plain
@@ -958,9 +991,9 @@ def frog_merchant():
     import rig_frog
     fresh()
     path = os.path.join(SRC, "frog", "frog_low.npz")
-    o = _npz_mesh(path, "frog_merchant")
     d = np.load(path)
     V, F, C = d["V"], d["F"], d["C"]
+    o = _npz_mesh(path, "frog_merchant", _plain_clothes(V, F, C))
     # The sculpt -> metres, standing on the ground (as _npz_mesh lays it, then
     # place()).
     k = 1.25 / float(V[:, 1].max() - V[:, 1].min())

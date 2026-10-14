@@ -241,7 +241,13 @@ const SWING_DRAW := 0.35
 const ROCK_HEAVE_TIME := 1.7
 const ROCK_HEAVE_AT := 0.55
 const PICK_TIME := 1.8
-const SWINGS := {"slash": [1.0, 0.6], "chop": [2.3, 1.3], "scoop": [2.9, 1.75], "shoot": [1.0, 0.55]}
+const SWINGS := {"slash": [1.0, 0.6], "chop": [2.3, 1.3], "scoop": [2.9, 1.75], "shoot": [1.0, 0.55],
+	"shoo": [1.3, 0.45]}
+## User request: walking about, a tap of the right stick (Q) with a beast
+## come for you this near (SHOO_REACH px) and nothing in hand to drive it
+## off with (a blade, the pistol), shoos it - stood, arms waved at it
+## ("shoo", a swing of no thing), and the beasts that near run.
+const SHOO_REACH := 170.0
 const SWING_TAP := 0.2
 const SWING_DRAG := 0.3
 const SWING_REACH := 46.0
@@ -911,6 +917,47 @@ static func swing_time(kind: String) -> float:
 	return float(SWINGS.get(kind, [SWING_TIME, SWING_HIT])[0])
 
 
+## The nearest beast come for you within SHOO_REACH (null: none).
+func shoo_target() -> Critter:
+	var best: Critter = null
+	var near := SHOO_REACH
+	for c in get_tree().get_nodes_in_group("hunters"):
+		var beast := c as Critter
+		if beast == null or not beast.active or not beast.is_hunter():
+			continue
+		var d := beast.global_position.distance_to(global_position)
+		if d < near:
+			near = d
+			best = beast
+	return best
+
+
+## Whether a tap of the right stick shoos (a beast near, nothing in hand
+## that drives one off) rather than swings.
+func shoos() -> bool:
+	return state == State.IDLE and not held and shoo_target() != null and swing_move() in ["", "scoop"]
+
+
+## Waves a beast off (see SHOO_REACH); false if it can't now.
+func shoo() -> bool:
+	var beast := shoo_target()
+	if beast == null or swing_left > 0.0 or state != State.IDLE or held:
+		return false
+	aim_dir = (beast.global_position - global_position).normalized()
+	swing_kind = "shoo"
+	swing_total = swing_time("shoo")
+	swing_left = swing_total
+	_swing_landed = false
+	return true
+
+
+## A tap of the right stick (Q) walking about: shoo a beast off, or swing
+## the off hand's thing.
+func tap_right() -> void:
+	if not (shoos() and shoo()):
+		swing()
+
+
 ## Swings the off hand's thing (see SWING_TIME); false if it can't now.
 func swing(kind := "") -> bool:
 	if kind == "":
@@ -937,6 +984,17 @@ func _update_swing(delta: float) -> void:
 
 ## The swing's blow, as it lands.
 func _swing_lands() -> void:
+	if swing_kind == "shoo":
+		var gone := []
+		for c in get_tree().get_nodes_in_group("hunters"):
+			var beast := c as Critter
+			if beast != null and beast.is_hunter() and beast.global_position.distance_to(global_position) < SHOO_REACH:
+				beast.scare()
+				gone.append(beast.get_label())
+		Sfx.play_at("swipe_hit", global_position, -14.0)
+		if not gone.is_empty():
+			GameState.report("揮手把%s趕走了" % gone[0], "good")
+		return
 	var id := Profile.offhand()
 	if id == "":
 		return
@@ -962,7 +1020,7 @@ func _swing_lands() -> void:
 ## A blade swung: the beasts close by run.
 func _drive_off_beasts() -> void:
 	var hit := 0
-	for c in get_tree().get_nodes_in_group("critters"):
+	for c in get_tree().get_nodes_in_group("hunters"):
 		var beast := c as Critter
 		if beast != null and beast.is_hunter() and beast.global_position.distance_to(global_position) < SWING_REACH * 1.3:
 			beast.scare()
@@ -982,7 +1040,7 @@ func _fire() -> void:
 	Sfx.play_at("gunshot", global_position, -2.0, 0.03)
 	Campaign.stat("gunshot")
 	var hit: Critter = null
-	for c in get_tree().get_nodes_in_group("critters"):
+	for c in get_tree().get_nodes_in_group("hunters"):
 		var beast := c as Critter
 		if beast == null or not beast.is_hunter():
 			continue
@@ -1350,7 +1408,7 @@ func _physics_process(delta: float) -> void:
 	_update_swing(delta)
 	# Q swings the off hand's thing (a tap of the right stick on a phone).
 	if _key_just_pressed(KEY_Q):
-		swing()
+		tap_right()
 	_update_lure_throw(get_physics_process_delta_time())
 	_handle_action_input(delta)
 
@@ -1733,11 +1791,11 @@ func _handle_action_input(delta: float) -> void:
 				var dragged: bool = _aim_joystick.is_pressed and _aim_joystick.output.length() > SWING_DRAG
 				if not held:
 					_stick_press = -1.0
-					swing()
+					tap_right()
 				elif dragged or _stick_press > SWING_TAP:
 					_stick_press = -1.0
 					_try_start_charge()
-			elif just_pressed and _cast_stick_touched() and offhand_in_hand():
+			elif just_pressed and _cast_stick_touched() and (offhand_in_hand() or shoos()):
 				_stick_press = 0.0
 			elif just_pressed:
 				_try_start_charge()
