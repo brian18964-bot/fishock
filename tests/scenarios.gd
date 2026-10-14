@@ -4176,8 +4176,9 @@ func test_run_intro_and_eye_guide() -> void:
 	await seconds(1.5)
 	var c: Dictionary = view._creatures.get(bg, {})
 	check(c.get("kind") == "dragon" and c.has("lamp") and c.anim != null, "the big ghost shown as the dragon, lantern and all")
-	check(c.get("clip") == "Idle" and (c.node as Node3D).find_children("*", "EarTailSway", true, false).size() == 1,
-		"standing: Idle, the tail and wings swaying")
+	var rig: DragonRig = c.get("rig")
+	check(c.get("clip") == "Idle" and (c.node as Node3D).find_children("*", "EarTailSway", true, false).size() == 1
+		and rig != null and rig.spread == 0.0, "standing: Idle, its tail swaying, its wings folded")
 	var hand: Vector3 = (c.hand as Node3D).global_position
 	var bail: Vector3 = (c.lamp as Node3D).global_transform * CharacterRig.LAMP_BAIL
 	check(hand.distance_to(bail) < 0.05, "the lantern hangs from its hand (%.2f m)" % hand.distance_to(bail))
@@ -4185,9 +4186,15 @@ func test_run_intro_and_eye_guide() -> void:
 	var flame: Vector3 = (c.lamp as Node3D).get_node("Flame").global_position
 	check(glow != null and glow.global_position.distance_to(flame) < 0.01 and glow.light_color.g > glow.light_color.r,
 		"its green light from the lantern")
+	# Holding the traveller: its wings open - and its body kept out of
+	# theirs, however near the 2D one is (user request: no clipping).
+	bg.global_position = player().global_position + Vector2(6, 3)
 	bg.mode = bg.Mode.GRAB
-	await seconds(0.3)
-	check(c.clip == "Grab", "grabbing: Grab")
+	await seconds(0.6)
+	var apart := Vector2((c.node as Node3D).global_position.x - view.pivot.global_position.x,
+		(c.node as Node3D).global_position.z - view.pivot.global_position.z).length()
+	check(c.clip == "Grab" and rig.spread == 1.0 and apart > RunView3D.DRAGON_ROOM - 0.05,
+		"grabbing: Grab, wings open, held off the traveller (%.2f m)" % apart)
 	bg.mode = bg.Mode.ASLEEP
 	bg.set_physics_process(true)
 	_restore_profile(kept)

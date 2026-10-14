@@ -1105,7 +1105,15 @@ var _rune_glow: Array = []
 ## (CharacterRig.LAMP_BAIL), swinging as the dragon moves; the 2D one's
 ## light (BigGhost.lamp_light) is drawn from it.
 const DRAGON_HAND := "hand_r"
-const DRAGON_LAMP_SIZE := 1.6
+const DRAGON_LAMP_SIZE := 1.3
+## (user request: no clipping) It's drawn never nearer the traveller than
+## this (m) - the 2D one catches from closer (BigGhost.CATCH_RADIUS) - so
+## its body stays out of theirs, reaching for them; and its long tail is
+## swung aside, up to TAIL_DODGE (rad), when it would sweep through a tree
+## or a rock (checked at these shares of its length from the root).
+const DRAGON_ROOM := 1.2
+const TAIL_DODGE := 0.9
+const TAIL_CHECK := [0.5, 1.0]
 const DRAGON_LAMP_GREEN := Color(0.55, 1.0, 0.6)
 
 
@@ -1177,7 +1185,18 @@ func _dragon_gear(c: Dictionary, model: Node3D) -> void:
 	if sks.is_empty():
 		return
 	var sk := sks[0] as Skeleton3D
+	var rig := DragonRig.new()
+	sk.add_child(rig)
 	sk.add_child(EarTailSway.new())
+	c.rig = rig
+	# (its tail at rest, in the model: the root and the tip - the dodge)
+	var root := sk.find_bone("tail_01")
+	var last := sk.find_bone("tail_07")
+	if root >= 0 and last >= 0:
+		var to_model := model.global_transform.affine_inverse() * sk.global_transform
+		var tip_rest := sk.get_bone_global_rest(last)
+		c.tail_root = to_model * sk.get_bone_global_rest(root).origin
+		c.tail_tip = to_model * (tip_rest.origin + tip_rest.basis.y * (tip_rest.origin - sk.get_bone_global_rest(sk.get_bone_parent(last)).origin).length())
 	var hand := BoneAttachment3D.new()
 	hand.bone_name = DRAGON_HAND
 	sk.add_child(hand)
@@ -1209,6 +1228,40 @@ func _dragon_gear(c: Dictionary, model: Node3D) -> void:
 	c.swing = Vector2.ZERO
 	c.swing_vel = Vector2.ZERO
 	c.hand_last = Vector3.ZERO
+
+
+## The dragon's wings open when it hunts or holds someone, folded calm; its
+## tail swung clear of any tree or rock it would sweep through.
+func _dragon_rig(c: Dictionary, n: Node, mode: int) -> void:
+	var rig: DragonRig = c.get("rig")
+	if rig == null:
+		return
+	match mode:
+		BigGhost.Mode.CHASE, BigGhost.Mode.GRAB:
+			rig.spread = 1.0
+		BigGhost.Mode.SEARCH, BigGhost.Mode.SUSPICIOUS:
+			rig.spread = 0.45
+		_:
+			rig.spread = 0.0
+	if not c.has("tail_root"):
+		return
+	var holder: Node3D = c.node
+	var model: Node3D = c.model
+	var to_world := holder.global_transform * model.transform
+	var root: Vector3 = to_world * (c.tail_root as Vector3)
+	var tip: Vector3 = to_world * (c.tail_tip as Vector3)
+	var best := 0.0
+	for turn in [0.0, 0.45, -0.45, TAIL_DODGE, -TAIL_DODGE]:
+		var clear := true
+		for share in TAIL_CHECK:
+			var at := root + (tip - root).rotated(Vector3.UP, turn) * float(share)
+			if not Solids.is_free(get_tree(), to2(at), 6.0):
+				clear = false
+				break
+		if clear:
+			best = turn
+			break
+	rig.tail_turn = best
 
 
 ## Hung from the dragon's hand by its bail, upright, swinging as the hand
@@ -1381,6 +1434,14 @@ func _sync_creatures(delta: float) -> void:
 		if not c.has("shown") or (c.shown as Vector3).distance_to(target) > 3.0:
 			c.shown = target
 		c.shown = (c.shown as Vector3).lerp(target, 1.0 - exp(-delta * 16.0))
+		if kind == "dragon" and player != null:
+			# (never into the traveller: held off at DRAGON_ROOM)
+			var me := Vector2(c.shown.x, c.shown.z)
+			var them := Vector2(pivot.global_position.x, pivot.global_position.z)
+			if me.distance_to(them) < DRAGON_ROOM:
+				var away := (me - them).normalized() if me.distance_to(them) > 0.01 else Vector2.UP
+				var held := them + away * DRAGON_ROOM
+				c.shown = Vector3(held.x, (c.shown as Vector3).y, held.y)
 		holder.position = c.shown
 		c.pace = lerpf(float(c.get("pace", 0.0)), vel.length() / PX, 1.0 - exp(-delta * 7.0))
 		var speed: float = c.pace
@@ -1419,6 +1480,7 @@ func _sync_creatures(delta: float) -> void:
 		match kind:
 			"dragon":
 				var mode: int = n.get("mode")
+				_dragon_rig(c, n, mode)
 				match mode:
 					BigGhost.Mode.GRAB:
 						clip = "Grab"
