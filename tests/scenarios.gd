@@ -3530,7 +3530,7 @@ func test_run_3d() -> void:
 	player().aim_dir = Vector2.UP
 	key(KEY_SPACE, true)
 	await seconds(0.5)
-	check(view._clip == "Fish_Cast" and view._guide_label.visible, "winding a cast: the cast clip, how far it'll go")
+	check(view._clip == "Fish_Throw" and view._guide_label.visible, "winding a cast: the cast clip, how far it'll go")
 	check(view._stow < 0.01 and view._lamp_in < 0.01 and view._left_ik.influence > 0.9,
 		"fishing: the rod drawn, both hands on it, the lamp at the hip")
 	key(KEY_SPACE, false)
@@ -3541,7 +3541,7 @@ func test_run_3d() -> void:
 	await seconds(0.5)
 	check(player().state == Player.State.WAITING and view._float.visible
 		and absf(view._float.position.y - RunView3D.WATER_Y) < 0.1, "the float out on the water")
-	check(view._clip == "Fish_Hold", "waiting with the rod out (%s)" % view._clip)
+	check(view._clip == "Fish_Wait", "waiting with the rod out (%s)" % view._clip)
 	var tip := view._rod_tip()
 	var hand: Vector3 = view.rig.attachments["hand_r"].global_position
 	var toward := view._float.position - view.pivot.global_position
@@ -3595,6 +3595,17 @@ func test_run_3d() -> void:
 	await frames(14)
 	var strike_hand: float = view.rig.attachments["hand_r"].global_position.y - view.pivot.global_position.y
 	check(strike_hand > hold_hand + 0.15, "the strike raises the arm with the rod (%.2f -> %.2f m)" % [hold_hand, strike_hand])
+	# User request (the fight stood stiff): the fish running, hauling on it
+	# low and braced; reeled in, stepping back - the arms still on the rod.
+	player().fight.opening_left = 0.0
+	player().fight.run_left = 3.0
+	await frames(6)
+	check(view._clip == "Fish_Pull" and view._ik.influence > 0.9, "the fish running: hauling on it (%s)" % view._clip)
+	player().fight.run_left = 0.0
+	key(KEY_SHIFT, true)
+	await frames(8)
+	check(view._clip == "Fish_Back" and view.rig.anim.speed_scale > 0.4, "reeling it in: stepping back (%s)" % view._clip)
+	key(KEY_SHIFT, false)
 	key(KEY_SPACE, false)
 	player()._set_state(Player.State.IDLE)
 	player().fight = null

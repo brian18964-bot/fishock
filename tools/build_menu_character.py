@@ -99,6 +99,14 @@ MIXAMO = [
     # (user request: a rock kicked over, not heaved - the user's Mixamo
     # "Kick Soccerball")
     ("Kick", "Kick.Soccerball.fbx", None, False),
+    # (user request: the fight played out with the body, not stood stiff -
+    # the user's Mixamo fishing clips: leaning back hauling on the rod while
+    # the fish runs, stepping back as it's reeled in, the waiting stance,
+    # the cast)
+    ("Fish_Pull_Loop", "Pull.Heavy.Object.fbx", None, False),
+    ("Fish_Back_Loop", "Walking.Backward.fbx", None, False),
+    ("Fish_Wait_Loop", "Fishing.Idle.fbx", None, True),
+    ("Fish_Throw", "Fishing.Cast.fbx", None, False),
 ]
 # The run in 3D (scripts/run_view_3d.gd): KayKit's fishing clips (CC0,
 # art_src/kaykit - the same the run's sprites are drawn from), the rod in
@@ -127,7 +135,8 @@ GROUNDED = ("Lie_Down", "Lying_Loop", "Sleep_B_Loop", "Ground_Sit_Loop", "Ground
             "LayToIdle", "Walk_Loop", "Idle_Loop", "Idle_FoldArms_Loop", "Idle_No_Loop",
             "Idle_Talking_Loop", "Idle_Torch_Loop", "Sad_Loop", "Run_Loop",
             # (the 3D run's: down on the ground, and bent to it)
-            "Pray_Loop", "Lift", "Pick_Up", "Kneel", "Kick", "Farm_Harvest", "TreeChopping_Loop", "Walk_Carry_Loop")
+            "Pray_Loop", "Lift", "Pick_Up", "Kneel", "Kick", "Farm_Harvest", "TreeChopping_Loop", "Walk_Carry_Loop",
+            "Fish_Pull_Loop", "Fish_Back_Loop", "Fish_Wait_Loop", "Fish_Throw")
 # User report (the bear sank into the log): the camp's logs (CampStage.SEATS)
 # have their top this high under the hips of one sat on them, m (measured
 # in the camp) - and the clips sat on one, whole and getting on and off.

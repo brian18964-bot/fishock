@@ -100,6 +100,16 @@ const ROD_ANGLES := {
 	PlayerVisual.CLIP_CATCH: [56, 68, 78, 84, 82, 74, 60, 44],
 }
 const ROD_SIDE := 25.0
+## User request (the fight stood stiff): the user's Mixamo fishing clips
+## on the body - its arms still brought to the rod (RodArm). The cast
+## (Fish_Throw): the cast's eight frames at these times (s) of it - wound
+## back over the shoulder by 1.55, the whip through by 2.4. While the fish
+## runs, hauling on it low and braced (Fish_Pull), quicker the harder it
+## pulls; reeling it in, stepping back (Fish_Back), at the crank's pace;
+## waiting, the angler's stance (Fish_Wait).
+const THROW_KEYS := [0.5, 0.85, 1.2, 1.55, 1.75, 1.95, 2.15, 2.4]
+const PULL_RATE := Vector2(0.7, 1.3)
+const BACK_RATE := Vector2(0.45, 0.9)
 ## (the rod hand in toward the body's middle while fishing - CENTRED_CLIPS:
 ## this share of the way out to the shoulder kept; the rod's side angle
 ## then)
@@ -1074,13 +1084,14 @@ func _scan(n: Node) -> void:
 ## (or what it's doing). kind: [size (m), sized by its height ("h") or its
 ## length ("l"), raised off the ground (m)]. The small ones are made a
 ## little larger than life, as the 2D pictures made them, to be seen.
+## (the dragon: user request, 20% bigger than first made)
 const CREATURES := {
 	"deer": [1.5, "h", 0.0], "stag": [1.8, "h", 0.0], "fox": [0.62, "h", 0.0], "wolf": [0.9, "h", 0.0],
 	"husky": [0.8, "h", 0.0], "shiba": [0.62, "h", 0.0], "horse": [1.9, "h", 0.0], "white_horse": [1.9, "h", 0.0],
 	"cow": [1.5, "h", 0.0], "bull": [1.6, "h", 0.0], "donkey": [1.35, "h", 0.0], "alpaca": [1.6, "h", 0.0],
 	"rat": [0.8, "l", 0.0], "frog": [0.5, "l", 0.0], "snake": [1.3, "l", 0.0], "spider": [0.65, "l", 0.0],
 	"black_spider": [0.6, "l", 0.0], "wasp": [0.45, "l", 0.55], "grasshopper": [0.45, "l", 0.0],
-	"ghost": [1.1, "h", 0.9], "dragon": [2.3, "h", 0.0], "water_ghost": [1.6, "h", 0.0], "willow": [1.2, "h", 0.0],
+	"ghost": [1.1, "h", 0.9], "dragon": [2.76, "h", 0.0], "water_ghost": [1.6, "h", 0.0], "willow": [1.2, "h", 0.0],
 }
 const CREATURE_DIR := "res://assets/models/run3d/"
 const BY_SCRIPT := {"ghost.gd": "ghost", "big_ghost.gd": "dragon", "water_ghost.gd": "water_ghost", "willow.gd": "willow"}
@@ -1819,16 +1830,26 @@ func _pick_clip() -> Array:
 			var keys := [0.0, 0.1, 0.2, 0.3, 0.4, 0.52, 0.68, 0.9]
 			var lo := clampi(floori(f), 0, 7)
 			var t: float = lerpf(keys[lo], keys[mini(lo + 1, 7)], f - lo)
+			if rig.anim.has_animation("Fish_Throw"):
+				var sec: float = lerpf(THROW_KEYS[lo], THROW_KEYS[mini(lo + 1, 7)], clampf(f - lo, 0.0, 1.0))
+				return ["Fish_Throw", 1.0, sec / rig.anim.get_animation("Fish_Throw").length]
 			return ["Fish_Cast", 1.0, t]
 		PlayerVisual.CLIP_HOLD:
+			if rig.anim.has_animation("Fish_Wait"):
+				return ["Fish_Wait", 1.0, -1.0]
 			return ["Fish_Hold", 1.0, -1.0]
 		PlayerVisual.CLIP_BITE:
 			return ["Fish_Bite", 1.2, -1.0]
 		PlayerVisual.CLIP_TUG:
 			return ["Fish_Tug", 1.3, -1.0]
 		PlayerVisual.CLIP_REEL:
+			if player.state == Player.State.REELING and rig.anim.has_animation("Fish_Back"):
+				var crank := clampf(player.crank / FishFight.CRANK_NORMAL, 0.0, 1.5)
+				return ["Fish_Back", lerpf(BACK_RATE.x, BACK_RATE.y, clampf(crank, 0.0, 1.0)), -1.0]
 			return ["Fish_Reel", 1.0, -1.0]
 		PlayerVisual.CLIP_FIGHT:
+			if rig.anim.has_animation("Fish_Pull"):
+				return ["Fish_Pull", lerpf(PULL_RATE.x, PULL_RATE.y, clampf(player.tension, 0.0, 1.0)), -1.0]
 			return ["Fish_Fight", 1.0, -1.0]
 		PlayerVisual.CLIP_CATCH:
 			return ["Fish_Catch", 1.0, -1.0]

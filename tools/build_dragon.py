@@ -47,9 +47,16 @@ TAIL_X = 0.06
 FOOT_X = (-0.30, -0.16)
 FOOT_Z = 0.065
 # The wings smaller than the rest of it (the body's a man's, not a
-# dragon's), and how much bulkier than the mannequin the body is (m).
-WING_SCALE = 0.72
-BULK = 0.018
+# dragon's - user request: 30% bigger than first made), and how much
+# bulkier than the mannequin the body is (m) - more again round the chest,
+# the shoulders and the arms (user request: a stronger body), by how much
+# those bones carry each part.
+WING_SCALE = 0.936
+BULK = 0.03
+UPPER_BULK = 0.035
+UPPER = ("spine_02", "spine_03", "clavicle_l", "clavicle_r", "upperarm_l", "upperarm_r", "neck_01")
+ARM_BULK = 0.015
+ARMS = ("lowerarm_l", "lowerarm_r")
 TAIL_BONES = 5
 SCALES = (0.20, 0.045, 0.04)
 CLOTH = (0.075, 0.068, 0.065)
@@ -132,8 +139,12 @@ def strip_head(body, arm):
             or (sum(v[dl].get(g, 0.0) for g in feet) > 0.5 and (body.matrix_world @ v.co).z < ankle + 0.03)]
     bmesh.ops.delete(bm, geom=gone, context='VERTS')
     bm.normal_update()
+    upper = {body.vertex_groups[n].index for n in UPPER if n in body.vertex_groups}
+    arms = {body.vertex_groups[n].index for n in ARMS if n in body.vertex_groups}
     for v in bm.verts:
-        v.co += v.normal * BULK
+        more = UPPER_BULK * min(1.0, sum(v[dl].get(g, 0.0) for g in upper)) \
+            + ARM_BULK * min(1.0, sum(v[dl].get(g, 0.0) for g in arms))
+        v.co += v.normal * (BULK + more)
     bm.to_mesh(body.data)
     bm.free()
 
@@ -364,11 +375,11 @@ def main():
     for side, sign in (("wing_l", 1), ("wing_r", -1)):
         w = parts[side]
         root = anchor(w, lambda p: abs(p.y) < WING_Y + 0.03)
-        to = chest + Vector((sign * 0.1, 0.14, 0.02))
+        to = chest + Vector((sign * 0.11, 0.17, 0.02))
         place(w, root, to, turn=sign * -0.35, tilt=0.25, size=WING_SCALE)
         decimate(w, 1600)
         rigid(w, side)
-        wing_bones[side] = (to, to + Vector((sign * 0.3, 0.12, 0.2)), "spine_03")
+        wing_bones[side] = (to, to + Vector((sign * 0.39, 0.16, 0.26)), "spine_03")
     # The clawed feet for the mannequin's.
     for side in ("foot_l", "foot_r"):
         f = parts[side]
