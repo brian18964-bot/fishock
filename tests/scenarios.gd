@@ -18,6 +18,7 @@ const TESTS := [
 	"test_proto3d",
 	"test_camp3d",
 	"test_run_menu_and_auto_defend",
+	"test_run_intro_and_eye_guide",
 	"test_spawn_on_land_docks_out",
 	"test_catalog_and_sounds",
 	"test_creature_animation",
@@ -97,6 +98,8 @@ func _run() -> void:
 		if a.begins_with("only="):
 			only = a.substr(5)
 	gs = get_tree().root.get_node("GameState")
+	# (runs start straight away - the opening has its own test)
+	RunView3D.intro = false
 	for t in TESTS:
 		if only != "" and not t in only.split(","):
 			continue
@@ -3015,34 +3018,23 @@ func test_camp_life() -> void:
 	UiKit.page_back(title._page)
 	await seconds(0.8)
 	check(not life.paused, "and carries on after")
-	# Setting out: the lamp off the drum (lit, hanging from its fingers),
-	# and the game fades in as it goes.
+	# Setting out (user request): no going for the lamp - it stays on the
+	# drum (picked up out in the night, the run's opening); off at once.
 	Profile.spirit = 80.0
 	title._setting_off = true
-	title._on_solo()
-	check(life.busy == "depart" and title._scene_piece == "depart", "出發夜釣 sets it off")
-	var lamp: Node3D = camp.find_child("DrumLamp", true, false)
-	var took := false
-	for _i in 900:
-		await frames(1)
-		if not lamp.visible:
-			took = true
-			break
-	check(took and camp.character.attachments.hand_l.get_child_count() == 1, "it takes the lamp from the drum")
-	check(camp.character.find_child("LampLight", true, false) != null, "and it's lit")
 	var done := {"gone": false}
 	life.plan_done.connect(func(tag): done.gone = done.gone or tag == "depart")
-	await seconds(0.6)
-	var held: Node3D = camp.character.attachments.hand_l.get_child(0)
-	var grip: Vector3 = camp.character._grip()
-	var bail: Vector3 = held.global_transform * CharacterRig.LAMP_BAIL
-	check(bail.distance_to(grip) < 0.02 and held.global_transform.basis.y.normalized().dot(Vector3.UP) > 0.9,
-		"the lamp hangs upright by its bail from the fingers (%.3f m off)" % bail.distance_to(grip))
+	title._on_solo()
+	check(life.busy == "depart" and title._scene_piece == "depart", "出發夜釣 sets it off")
 	for _i in 240:
 		if done.gone:
 			break
 		await frames(1)
-	check(done.gone, "lamp in hand, off it goes (the game fades in)")
+	check(done.gone, "off it goes at once, up off a log first if sat (the game fades in)")
+	var lamp: Node3D = camp.find_child("DrumLamp", true, false)
+	await seconds(1.0)
+	check(lamp.visible and camp.character.attachments.hand_l.get_child_count() == 0, "the lamp left on the drum")
+	check(life._step.get("do", "") == "walk", "walking off to the 渡石")
 	check(camp.find_child("Rod", true, false).visible and camp.character.attachments.hand_r.get_child_count() == 0,
 		"the rod stays by the tent")
 	title.queue_free()
@@ -4117,5 +4109,75 @@ func test_run_menu_and_auto_defend() -> void:
 	leave.pressed.emit()
 	await frames(6)
 	check(not get_tree().paused and get_tree().current_scene.scene_file_path == Camp3D.SCENE, "back at the camp")
+	_restore_profile(kept)
+	await frames(1)
+
+
+## User requests: a run opens on the traveller picking up the lamp (the
+## camera close, then drawing back out); and the eye items' way and eye
+## show in 3D.
+func test_run_intro_and_eye_guide() -> void:
+	var kept := _keep_profile()
+	RunView3D.intro = true
+	await _fresh_game()
+	var view: RunView3D = null
+	for _i in 120:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	check(view != null and view._intro_t >= 0.0 and not view._intro_grabbed, "the opening: the lamp on the ground")
+	await seconds(0.6)
+	var close := view.camera.global_position.distance_to(view.pivot.global_position)
+	check(player().move_kind == "pick" and close < 3.5, "picked up, the camera close (%.1f m)" % close)
+	await seconds(3.2)
+	var far := view.camera.global_position.distance_to(view.pivot.global_position)
+	check(view._intro_t < 0.0 and view._intro_grabbed and far > close + 2.0, "the lamp in hand, the camera back out (%.1f m)" % far)
+	RunView3D.intro = false
+	# An eye: its way on the ground, named, and the eye over the head.
+	Profile.storage["eyeball"] = 1
+	Profile.to_bag("eyeball", 1)
+	check(player().use_item("eyeball"), "the eye used")
+	await frames(4)
+	check(view._eye_label.visible and view._eye_label.text.begins_with("渡石"), "the way shown: %s" % view._eye_label.text)
+	check(view._eye_sprite != null, "the true eye over the head")
+	await seconds(TrueEye.TIME + 0.3)
+	check(view._eye_sprite == null, "the eye gone again")
+	# Walked, the lamp swings in the hand, its light with it.
+	var biggest := 0.0
+	var lights := []
+	for _i in 90:
+		player()._move_joystick.output = Vector2(0.6, 0.0)
+		await frames(1)
+		biggest = maxf(biggest, view.light_swing().length())
+		lights.append(view._lamp.global_position - view.pivot.global_position)
+	player()._move_joystick.output = Vector2.ZERO
+	var spread := 0.0
+	for l in lights:
+		spread = maxf(spread, (l - lights[0]).length())
+	check(biggest > 0.05 and spread > 0.04, "walking: the lamp swings (%.2f rad), its light moves (%.2f m)" % [biggest, spread])
+	# User request: the big ghost is a dragon now - a skeleton, its clip by
+	# what it's doing, a green lantern in its hand, its light from it.
+	var bg = main.get_node("BigGhost")
+	bg.set_physics_process(false)
+	bg.global_position = player().global_position + Vector2(-110, -40)
+	bg.mode = bg.Mode.WANDER
+	await seconds(1.5)
+	var c: Dictionary = view._creatures.get(bg, {})
+	check(c.get("kind") == "dragon" and c.has("lamp") and c.anim != null, "the big ghost shown as the dragon, lantern and all")
+	check(c.get("clip") == "Idle" and (c.node as Node3D).find_children("*", "EarTailSway", true, false).size() == 1,
+		"standing: Idle, the tail and wings swaying")
+	var hand: Vector3 = (c.hand as Node3D).global_position
+	var bail: Vector3 = (c.lamp as Node3D).global_transform * CharacterRig.LAMP_BAIL
+	check(hand.distance_to(bail) < 0.05, "the lantern hangs from its hand (%.2f m)" % hand.distance_to(bail))
+	var glow: OmniLight3D = view._lights.get(bg.lamp_light)
+	var flame: Vector3 = (c.lamp as Node3D).get_node("Flame").global_position
+	check(glow != null and glow.global_position.distance_to(flame) < 0.01 and glow.light_color.g > glow.light_color.r,
+		"its green light from the lantern")
+	bg.mode = bg.Mode.GRAB
+	await seconds(0.3)
+	check(c.clip == "Grab", "grabbing: Grab")
+	bg.mode = bg.Mode.ASLEEP
+	bg.set_physics_process(true)
 	_restore_profile(kept)
 	await frames(1)

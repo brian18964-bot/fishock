@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://nocc4a2ijg0k"
-path="res://.godot/imported/big_ghost.glb-d330320aa96460f000482e4add7d2eb9.scn"
+uid="uid://b1k44yuc631mq"
+path="res://.godot/imported/dragon.glb-f64127049f4ade2d5e9bbeedc395d1f4.scn"
 
 [deps]
 
-source_file="res://assets/models/run3d/big_ghost.glb"
-dest_files=["res://.godot/imported/big_ghost.glb-d330320aa96460f000482e4add7d2eb9.scn"]
+source_file="res://assets/models/run3d/dragon.glb"
+dest_files=["res://.godot/imported/dragon.glb-f64127049f4ade2d5e9bbeedc395d1f4.scn"]
 
 [params]
 

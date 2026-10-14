@@ -66,6 +66,9 @@ var _grip_last := Vector3.ZERO
 var _grip_vel := Vector3.ZERO
 var _swing := Vector2.ZERO
 var _swing_vel := Vector2.ZERO
+## A push on the hanging lamp from the stride (set each frame by whoever
+## walks it - RunView3D: user request, the lamp swings as it's walked).
+var gait_push := Vector2.ZERO
 ## The left fingers closed round the lamp's bail while it's held (whatever
 ## the clip does with them).
 var _grip_mod: Grip
@@ -331,6 +334,11 @@ func _on_skeleton_updated() -> void:
 			_hang_lamp(get_process_delta_time())
 
 
+## How the lamp's swinging (radians about the world's z and x).
+func lamp_swing() -> Vector2:
+	return _swing
+
+
 ## Keeps the lamp hanging from the fingers: upright, swinging back as the
 ## hand speeds up and forward as it stops, a damped pendulum.
 func _hang_lamp(delta: float) -> void:
@@ -339,7 +347,7 @@ func _hang_lamp(delta: float) -> void:
 		var vel := (grip - _grip_last) / delta
 		var acc := (vel - _grip_vel) / delta
 		_grip_vel = vel
-		var push := Vector2(-acc.x, -acc.z) * 0.012
+		var push := Vector2(-acc.x, -acc.z) * 0.012 + gait_push
 		_swing_vel += (push.limit_length(0.45) - _swing) * 60.0 * delta - _swing_vel * 6.0 * delta
 		_swing = (_swing + _swing_vel * delta).limit_length(0.5)
 	_grip_last = grip

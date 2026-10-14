@@ -162,6 +162,13 @@ const MODELLED := ["tree.gd", "bush.gd", "obstacle.gd", "ground_cover.gd", "dock
 static var active: RunView3D
 ## (tests: "low" or "high" in place of the device's own)
 static var quality := ""
+## User request: a run opens close on the traveller, who picks the lamp up
+## off the ground (the rod already slung), then the camera draws back out
+## and the night begins - INTRO: [the pick-up starting, its length, the
+## hand closing on the lamp (share of it), the pull-out from .. to] (s).
+## (Off for the tests that play a run straight away.)
+static var intro := true
+const INTRO := {"pick_at": 0.35, "pick": 1.8, "grab": 0.55, "pull_from": 2.0, "pull_to": 3.4}
 
 
 ## User request (phones were slow): on a phone, lighter - one pass of the
@@ -189,6 +196,14 @@ var _float_body: MeshInstance3D
 var _line: MeshInstance3D
 var _guide: MeshInstance3D
 var _guide_label: Label3D
+## The eye items in 3D (user report: their effect and their guide never
+## showed): the guide's name and how far; the 'true eye' over the head -
+## the 2D one drawn again into a small view of its own, shown as a
+## picture over the character (_sync_true_eye).
+var _eye_label: Label3D
+var _eye_view: SubViewport
+var _eye_sprite: Sprite3D
+var _eye_of := 0
 var _ring: MeshInstance3D
 ## 2D picture -> its stand-in; 2D light -> its 3D light.
 var _sprites := {}
@@ -209,6 +224,11 @@ var _models := {}
 var _low := false
 var _scaled := false
 var _dist := CAMERA_DISTANCE
+## The opening (INTRO): its time (-1 once over), whether the lamp's in
+## hand yet, the lamp on the ground meanwhile.
+var _intro_t := -1.0
+var _intro_grabbed := true
+var _intro_lamp: Node3D
 var _dodge := 0.0
 var _dodge_at := Vector3.ZERO
 var _blocked: Array = []
@@ -238,6 +258,17 @@ var _crank := 0.0
 var _offhand: Node3D
 var _offhand_id := ""
 var _tool := Lantern.Tool.LAMP
+## User request: the light carried sways as it's walked - the lamp swinging
+## in the hand or from the belt, the flashlight bobbing with the arm - and
+## its light with it. The lamp at the hip: a damped pendulum of its own
+## (as CharacterRig's in the hand), pushed by the hips' moves and the
+## stride (GAIT_SWING: radians of push at a full walk, across and along).
+const GAIT_SWING := Vector2(0.16, 0.07)
+const LIGHT_SWAY := 1.3
+var _hip_swing := Vector2.ZERO
+var _hip_swing_vel := Vector2.ZERO
+var _hip_last := Vector3.ZERO
+var _hip_vel := Vector3.ZERO
 ## 2D pictures shown by models here instead (the start camp's).
 var _replaced := {}
 
@@ -336,6 +367,9 @@ func _build() -> void:
 	print_verbose("RunView3D: land %d ms, props %d ms, the rest %d ms" % [t1 - t0, t2 - t1, Time.get_ticks_msec() - t2])
 	player.cast_started.connect(func(at: Vector2, _t): _splash_ring(at))
 	built = true
+	if intro:
+		_intro_t = 0.0
+		_intro_grabbed = false
 
 
 # ---------------------------------------------------------------- the land
@@ -1046,13 +1080,22 @@ const CREATURES := {
 	"cow": [1.5, "h", 0.0], "bull": [1.6, "h", 0.0], "donkey": [1.35, "h", 0.0], "alpaca": [1.6, "h", 0.0],
 	"rat": [0.8, "l", 0.0], "frog": [0.5, "l", 0.0], "snake": [1.3, "l", 0.0], "spider": [0.65, "l", 0.0],
 	"black_spider": [0.6, "l", 0.0], "wasp": [0.45, "l", 0.55], "grasshopper": [0.45, "l", 0.0],
-	"ghost": [1.1, "h", 0.9], "big_ghost": [2.3, "h", 0.0], "water_ghost": [1.6, "h", 0.0], "willow": [1.2, "h", 0.0],
+	"ghost": [1.1, "h", 0.9], "dragon": [2.3, "h", 0.0], "water_ghost": [1.6, "h", 0.0], "willow": [1.2, "h", 0.0],
 }
 const CREATURE_DIR := "res://assets/models/run3d/"
-const BY_SCRIPT := {"ghost.gd": "ghost", "big_ghost.gd": "big_ghost", "water_ghost.gd": "water_ghost", "willow.gd": "willow"}
+const BY_SCRIPT := {"ghost.gd": "ghost", "big_ghost.gd": "dragon", "water_ghost.gd": "water_ghost", "willow.gd": "willow"}
 ## node -> {node: Node3D (the holder), model, anim, clip, yaw, last (2D pos)}
 var _creatures := {}
 var _rune_glow: Array = []
+## User request: the big ghost is a dragon now (tools/build_dragon.py) -
+## the characters' skeleton under a dragon's head, wings, feet and tail,
+## a ragged robe - and, as the ghost did, a lantern glowing green, in the
+## hand its Idle (Idle_Lantern) holds up. The lantern hangs from its bail
+## (CharacterRig.LAMP_BAIL), swinging as the dragon moves; the 2D one's
+## light (BigGhost.lamp_light) is drawn from it.
+const DRAGON_HAND := "hand_r"
+const DRAGON_LAMP_SIZE := 1.6
+const DRAGON_LAMP_GREEN := Color(0.55, 1.0, 0.6)
 
 
 ## What 3D model `n` (a node of the 2D world) is shown as ("": none).
@@ -1112,6 +1155,73 @@ func _add_creature(n: Node) -> void:
 	var at := (n as Node2D).global_position
 	_creatures[n] = {"node": holder, "model": model, "anim": anim, "clip": "", "kind": kind, "yaw": 0.0,
 		"last": at, "size": float(spec[0]), "lift": float(spec[2]), "time": _rng.randf() * 10.0}
+	if kind == "dragon":
+		_dragon_gear(_creatures[n], model)
+
+
+## The dragon's lantern on its hand, its tail and wings swaying
+## (EarTailSway: the tail_* and wing_* bones).
+func _dragon_gear(c: Dictionary, model: Node3D) -> void:
+	var sks := model.find_children("*", "Skeleton3D", true, false)
+	if sks.is_empty():
+		return
+	var sk := sks[0] as Skeleton3D
+	sk.add_child(EarTailSway.new())
+	var hand := BoneAttachment3D.new()
+	hand.bone_name = DRAGON_HAND
+	sk.add_child(hand)
+	var lamp: Node3D = CharacterRig.LAMP.instantiate()
+	lamp.name = "GreenLantern"
+	add_child(lamp)
+	for mi in lamp.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		for i in m.mesh.get_surface_count():
+			var src := m.mesh.surface_get_material(i) as BaseMaterial3D
+			if src == null:
+				continue
+			var mat := src.duplicate() as BaseMaterial3D
+			mat.albedo_color = src.albedo_color * Color(0.6, 1.0, 0.65)
+			mat.emission_enabled = true
+			mat.emission = DRAGON_LAMP_GREEN * 0.5
+			mat.emission_energy_multiplier = 0.6
+			m.set_surface_override_material(i, mat)
+	var glow := OmniLight3D.new()
+	glow.name = "Flame"
+	glow.light_color = DRAGON_LAMP_GREEN
+	glow.light_energy = 0.6
+	glow.omni_range = 0.9
+	glow.position = Vector3(0, 0.13, 0)
+	lamp.add_child(glow)
+	c.hand = hand
+	c.lamp = lamp
+	c.swing = Vector2.ZERO
+	c.swing_vel = Vector2.ZERO
+	c.hand_last = Vector3.ZERO
+
+
+## Hung from the dragon's hand by its bail, upright, swinging as the hand
+## moves (a pendulum, as the traveller's).
+func _hang_dragon_lamp(c: Dictionary, delta: float) -> void:
+	var hand: Node3D = c.hand
+	var lamp: Node3D = c.lamp
+	lamp.visible = (c.node as Node3D).visible
+	var model: Node3D = c.model
+	var k := model.global_basis.get_scale().x * DRAGON_LAMP_SIZE
+	var grip := hand.global_position
+	var last: Vector3 = c.hand_last
+	var vel := (grip - last) / maxf(delta, 0.001) if last != Vector3.ZERO else Vector3.ZERO
+	c.hand_last = grip
+	var yaw := Basis(Vector3.UP, float(c.yaw))
+	var push := Vector2((yaw.inverse() * vel).x, (yaw.inverse() * vel).z).limit_length(4.0)
+	var sw: Vector2 = c.swing
+	var sv: Vector2 = c.swing_vel
+	sv += (-sw * 30.0 - push * 0.9 * 6.0 - sv * 3.0) * delta
+	sw = (sw + sv * delta).limit_length(0.6)
+	c.swing = sw
+	c.swing_vel = sv
+	var b := yaw * Basis(Vector3.BACK, -sw.x) * Basis(Vector3.RIGHT, sw.y)
+	lamp.global_transform = Transform3D(b.scaled(Vector3.ONE * k), grip - (b.scaled(Vector3.ONE * k)) * CharacterRig.LAMP_BAIL)
 
 
 static func _aabb(n: Node3D) -> AABB:
@@ -1217,6 +1327,8 @@ func _sync_creatures(delta: float) -> void:
 		var holder: Node3D = c.node
 		if not is_instance_valid(n):
 			holder.queue_free()
+			if c.has("lamp"):
+				(c.lamp as Node).queue_free()
 			_creatures.erase(n)
 			continue
 		var node := n as Node2D
@@ -1224,6 +1336,10 @@ func _sync_creatures(delta: float) -> void:
 		if n is Critter and not (n as Critter).active:
 			on = false
 		holder.visible = on
+		if c.has("lamp"):
+			_hang_dragon_lamp(c, delta)
+			# (asleep its lantern's out, as the 2D one's)
+			(c.lamp as Node).get_node("Flame").visible = int(n.get("mode")) != BigGhost.Mode.ASLEEP
 		if not on:
 			continue
 		c.time += delta
@@ -1277,7 +1393,7 @@ func _sync_creatures(delta: float) -> void:
 			if sector >= 0:
 				var face := Vector2.RIGHT.rotated(sector * PI / 4.0)
 				c.yaw = lerp_angle(float(c.yaw), atan2(face.x, face.y), minf(1.0, delta * 3.0))
-		elif kind in ["water_ghost", "big_ghost"] and player != null:
+		elif kind in ["water_ghost", "dragon"] and player != null:
 			# (stood still: facing the traveller)
 			var to := player.global_position - at
 			if to.length() > 1.0:
@@ -1290,10 +1406,21 @@ func _sync_creatures(delta: float) -> void:
 		var rate := 1.0
 		var size: float = c.size
 		match kind:
-			"big_ghost":
+			"dragon":
 				var mode: int = n.get("mode")
-				clip = "Chase" if mode in [BigGhost.Mode.CHASE, BigGhost.Mode.SEARCH, BigGhost.Mode.GRAB] else \
-					("Eat" if mode == BigGhost.Mode.EAT else "Float")
+				match mode:
+					BigGhost.Mode.GRAB:
+						clip = "Grab"
+					BigGhost.Mode.EAT:
+						clip = "Eat" if speed < 0.3 else "Chase"
+					BigGhost.Mode.CHASE, BigGhost.Mode.SEARCH:
+						clip = "Chase" if speed > 0.3 else "Walk"
+						rate = clampf(speed / 2.2, 0.7, 1.4)
+					_:
+						var moving := speed > (0.05 if c.clip == "Walk" else 0.12)
+						clip = "Walk" if moving else "Idle"
+						if moving:
+							rate = clampf(speed / 0.9, 0.5, 1.6)
 			"water_ghost":
 				clip = "Claw" if int(n.get("_phase")) == 2 else "Walk"
 			_:
@@ -1520,6 +1647,10 @@ func _sync_light(l: PointLight2D, o: OmniLight3D) -> void:
 	o.light_color = l.color
 	o.light_energy = l.energy * 1.4
 	o.position = to3(l.global_position, ground_y(l.global_position) + 1.2)
+	# (the dragon's: from its lantern)
+	var c: Dictionary = _creatures.get(l.get_parent(), {})
+	if c.has("lamp"):
+		o.global_position = (c.lamp as Node3D).get_node("Flame").global_position
 
 
 # ---------------------------------------------------------------- the traveller
@@ -1913,10 +2044,17 @@ func _hang_gear(sk: Skeleton3D, b: Basis) -> void:
 	if lamp != null and lamp == rig._hang:
 		# (the oil lamp: the rig hangs it from the fingers; down at the hip
 		# here instead, upright)
+		rig.gait_push = _gait() * 0.6
 		if _lamp_in < 1.0:
 			var sc := lamp.global_basis.get_scale().x
-			var hip := Transform3D(Basis(Vector3.UP, pivot.global_rotation.y).scaled(Vector3.ONE * sc),
-				pelvis + b.x * HIP_SIDE + b.z * 0.03 + Vector3.DOWN * 0.12)
+			# (hung from the belt by its bail, swinging)
+			var hook := pelvis + b.x * HIP_SIDE + b.z * 0.03 + Vector3.DOWN * 0.12 + Vector3.UP * CharacterRig.LAMP_BAIL.y * sc
+			_swing_hip_lamp(hook)
+			var bs := Basis(Vector3.UP, pivot.global_rotation.y)
+			if _hip_swing.length() > 0.001:
+				bs = Basis(Vector3(_hip_swing.y, 0.0, -_hip_swing.x).normalized(), _hip_swing.length()) * bs
+			bs = bs.scaled(Vector3.ONE * sc)
+			var hip := Transform3D(bs, hook - bs * CharacterRig.LAMP_BAIL)
 			lamp.global_transform = hip.interpolate_with(lamp.global_transform, smoothstep(0.0, 1.0, _lamp_in))
 	elif lamp != null:
 		# (the flashlight: clipped at the hip, pointed ahead)
@@ -1942,6 +2080,43 @@ func _hang_gear(sk: Skeleton3D, b: Basis) -> void:
 		var in_hand := _along(up, hand.origin + up * len * 0.35, b)
 		var at_hip := _along((Vector3.DOWN * 0.95 + b.z * 0.2).normalized(), pelvis - b.x * HIP_SIDE + Vector3.DOWN * 0.1, b)
 		_offhand.global_transform = at_hip.interpolate_with(in_hand, smoothstep(0.0, 1.0, _off_in))
+
+
+## The stride's push on a hanging light: side to side with each step,
+## forward and back twice a stride, as hard as the walk is quick.
+func _gait() -> Vector2:
+	var speed := player.velocity.length() / PX
+	if speed < 0.2 or rig == null or rig.anim == null or rig.anim.current_animation not in ["Walk", "Run", "Walk_Carry"]:
+		return Vector2.ZERO
+	var phase := rig.anim.current_animation_position / maxf(rig.anim.current_animation_length, 0.01) * TAU
+	var k := clampf(speed / 1.6, 0.0, 1.3)
+	var b := pivot.global_basis.orthonormalized()
+	var across := sin(phase) * GAIT_SWING.x * k
+	var along := cos(phase * 2.0) * GAIT_SWING.y * k
+	var push := b.x * across + b.z * along
+	return Vector2(push.x, push.z)
+
+
+## The lamp at the hip as a pendulum from `hook` (world).
+func _swing_hip_lamp(hook: Vector3) -> void:
+	var delta := get_process_delta_time()
+	if delta <= 0.0:
+		return
+	var vel := (hook - _hip_last) / delta
+	var acc := (vel - _hip_vel) / delta
+	if _hip_last == Vector3.ZERO:
+		acc = Vector3.ZERO
+	_hip_vel = vel
+	_hip_last = hook
+	var push := Vector2(-acc.x, -acc.z) * 0.012 + _gait()
+	_hip_swing_vel += (push.limit_length(0.45) - _hip_swing) * 60.0 * delta - _hip_swing_vel * 5.0 * delta
+	_hip_swing = (_hip_swing + _hip_swing_vel * delta).limit_length(0.5)
+
+
+## How the light carried is swinging now (radians, the world's x and z),
+## in the hand or at the hip.
+func light_swing() -> Vector2:
+	return rig.lamp_swing().lerp(_hip_swing, 1.0 - _lamp_in) if rig != null else Vector2.ZERO
 
 
 ## The off hand's thing placed along `dir`, its middle at `at`.
@@ -2080,6 +2255,8 @@ func _line_and_float() -> void:
 	gm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	gm.no_depth_test = true
 	gm.render_priority = 2
+	# (seen from above whichever way its triangles wind)
+	gm.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_guide.material_override = gm
 	_guide.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_guide)
@@ -2091,6 +2268,9 @@ func _line_and_float() -> void:
 	_guide_label.pixel_size = 0.006
 	_guide_label.visible = false
 	add_child(_guide_label)
+	_eye_label = _guide_label.duplicate() as Label3D
+	_eye_label.font_size = 34
+	add_child(_eye_label)
 
 
 ## The rod's tip (world), or the hand if there's no rod.
@@ -2136,6 +2316,7 @@ func _update_guide() -> void:
 	var im := _guide.mesh as ImmediateMesh
 	im.clear_surfaces()
 	_guide_label.visible = false
+	_eye_guide(im)
 	var target := Vector2.INF
 	var color := Color(1.0, 0.92, 0.6, 0.7)
 	if player.state == Player.State.CHARGING:
@@ -2175,6 +2356,110 @@ func _update_guide() -> void:
 			im.surface_set_color(color)
 			im.surface_add_vertex(p)
 	im.surface_end()
+
+
+## The eyes' and the binoculars' way (Player.guide - GuideArrow's, in 3D):
+## a soft arrow on the ground from the feet toward the place, chevrons
+## drifting out along it, the place's name and how far past its head, and
+## a ring opening out on the place itself.
+const EYE_ARROW := {"start": 0.55, "length": 1.25, "head": 0.55, "head_length": 0.45, "shaft": 0.17}
+
+
+func _eye_guide(im: ImmediateMesh) -> void:
+	var g: GuideArrow = player.guide
+	_eye_label.visible = false
+	if g == null or not g.active():
+		return
+	var fade := clampf(g.time_left / GuideArrow.FADE, 0.0, 1.0)
+	var soft := g.color.lerp(Color(0.8, 0.8, 0.8), 1.0 - GuideArrow.SOFT)
+	var feet := _feet()
+	var y := ground_y(feet) + 0.04
+	var from := to3(feet, y)
+	var at := to3(g.target, ground_y(g.target) + 0.04)
+	var flat := Vector3(at.x - from.x, 0, at.z - from.z)
+	var dir := flat.normalized() if flat.length() > 0.01 else Vector3.FORWARD
+	var side := Vector3(-dir.z, 0, dir.x)
+	var a: Dictionary = EYE_ARROW
+	var tip: float = a.start + a.length
+	var neck: float = tip - float(a.head_length)
+	var pt := func(along: float, across: float) -> Vector3: return from + dir * along + side * across
+	var c := Color(soft, 0.55 * fade)
+	im.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	var shaft: float = a.shaft * 0.5
+	for p in [pt.call(a.start, shaft), pt.call(neck, shaft), pt.call(neck, -shaft),
+			pt.call(a.start, shaft), pt.call(neck, -shaft), pt.call(a.start, -shaft),
+			pt.call(neck, float(a.head) * 0.5), pt.call(tip, 0.0), pt.call(neck, -float(a.head) * 0.5)]:
+		im.surface_set_color(c)
+		im.surface_add_vertex(p)
+	# (chevrons drifting out ahead of it)
+	for i in 2:
+		var k := fmod(_time * 0.7 + i * 0.5, 1.0)
+		var along := tip + 0.15 + 0.55 * k
+		var ca := Color(soft, 0.5 * sin(k * PI) * fade)
+		for seg in [[pt.call(along - 0.15, 0.17), pt.call(along, 0.0)], [pt.call(along, 0.0), pt.call(along - 0.15, -0.17)]]:
+			var d: Vector3 = (seg[1] - seg[0]).normalized()
+			var w := Vector3(-d.z, 0, d.x) * 0.025
+			for p in [seg[0] + w, seg[1] + w, seg[1] - w, seg[0] + w, seg[1] - w, seg[0] - w]:
+				im.surface_set_color(ca)
+				im.surface_add_vertex(p)
+	# (on the place: a faint ring opening out, a still one inside it)
+	var k := fmod(_time * 0.6, 1.0)
+	for ring in [[0.35 + 0.9 * k, 0.05, 0.5 * (1.0 - k)], [0.3, 0.04, 0.45]]:
+		var r: float = ring[0]
+		var cr := Color(soft, float(ring[2]) * fade)
+		for i in 32:
+			var a0 := i * TAU / 32.0
+			var a1 := (i + 1) * TAU / 32.0
+			var o0 := Vector3(cos(a0), 0, sin(a0))
+			var o1 := Vector3(cos(a1), 0, sin(a1))
+			for p in [at + o0 * r, at + o0 * (r + ring[1]), at + o1 * (r + ring[1]), at + o0 * r, at + o1 * (r + ring[1]), at + o1 * r]:
+				im.surface_set_color(cr)
+				im.surface_add_vertex(p)
+	im.surface_end()
+	var meters := roundi(g.target.distance_to(player.global_position) / GuideArrow.PX_PER_M)
+	_eye_label.text = "%s %d 公尺" % [g.label, meters] if meters > 2 else g.label
+	_eye_label.modulate = Color(soft.lerp(Color.WHITE, 0.3), 0.85 * fade)
+	_eye_label.position = pt.call(tip + 0.9, 0.0) + Vector3(0, 0.25, 0)
+	_eye_label.visible = true
+
+
+## The 'true eye' over the head (TrueEye), while the 2D one's open.
+func _sync_true_eye() -> void:
+	var eye := player.get_node_or_null("TrueEye")
+	var id := eye.get_instance_id() if eye != null else 0
+	if id != _eye_of:
+		_eye_of = id
+		if _eye_view != null:
+			_eye_view.queue_free()
+			_eye_sprite.queue_free()
+			_eye_view = null
+			_eye_sprite = null
+		if eye != null:
+			_eye_view = SubViewport.new()
+			_eye_view.size = Vector2i(320, 240)
+			_eye_view.transparent_bg = true
+			_eye_view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+			add_child(_eye_view)
+			var holder := Node2D.new()
+			holder.position = Vector2(160, 120) - TrueEye.LIFT * 2.0
+			holder.scale = Vector2.ONE * 2.0
+			_eye_view.add_child(holder)
+			var copy := TrueEye.new()
+			copy.kind = eye.kind
+			copy.look_dir = eye.look_dir
+			holder.add_child(copy)
+			_eye_sprite = Sprite3D.new()
+			_eye_sprite.texture = _eye_view.get_texture()
+			_eye_sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+			_eye_sprite.shaded = false
+			_eye_sprite.no_depth_test = true
+			_eye_sprite.render_priority = 3
+			_eye_sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISABLED
+			_eye_sprite.pixel_size = 0.011
+			add_child(_eye_sprite)
+	if _eye_sprite != null:
+		# (well over the head - clear of a button over it)
+		_eye_sprite.global_position = pivot.global_position + Vector3(0, 3.1, 0)
 
 
 func _disc(im: ImmediateMesh, at: Vector3, r: float, color: Color) -> void:
@@ -2334,14 +2619,60 @@ func _update_light() -> void:
 				var aim := Vector3(player.aim_dir.x, 0, player.aim_dir.y).normalized()
 				if aim.length() < 0.5:
 					aim = pivot.global_basis.z.normalized()
-				_beam.look_at(_beam.global_position + aim * 4.0 + Vector3.DOWN * 1.4, Vector3.UP)
+				var dir := (aim * 4.0 + Vector3.DOWN * 1.4).normalized()
+				if held != null:
+					# (where the flashlight itself points - bobbing with the
+					# arm in the hand, with the hips at the belt - half of it)
+					var points := held.global_basis.x.normalized()
+					dir = dir.lerp(points, 0.45 if _lamp_in > 0.5 else 0.25).normalized()
+				_beam.look_at(_beam.global_position + dir * 4.0, Vector3.UP)
 			else:
 				_lamp.omni_range = reach
 				_lamp.light_energy = lantern.energy * LAMP_POWER
 				_lamp.light_color = lantern.color
 				# (held up over the head, as a lantern lights the way: not glaring
 				# off the one under it)
-				_lamp.global_position = at + pivot.global_basis.z.normalized() * 0.45 + Vector3(0, 0.85, 0)
+				# (swinging with the lamp - user request)
+				var sw := light_swing() * LIGHT_SWAY
+				_lamp.global_position = at + pivot.global_basis.z.normalized() * 0.45 + Vector3(0, 0.85, 0) \
+					+ Vector3(sw.x, 0.0, sw.y)
+
+
+## The opening (INTRO): the lamp on the ground at the feet, picked up, then
+## in the hand and lit there; walked off, it's over at once.
+func _update_intro(delta: float) -> void:
+	if _intro_t < 0.0:
+		return
+	var held := _held_light()
+	if _intro_lamp == null and held != null:
+		_intro_lamp = held.duplicate() as Node3D
+		_intro_lamp.top_level = true
+		add_child(_intro_lamp)
+		var b := pivot.global_basis.orthonormalized()
+		var at := pivot.global_position + b.z * 0.42 + b.x * 0.12
+		_intro_lamp.global_transform = Transform3D(Basis(Vector3.UP, pivot.global_rotation.y).scaled(held.global_basis.get_scale()),
+			Vector3(at.x, ground_y(_feet()), at.z))
+	var was := _intro_t
+	_intro_t += delta
+	var pick_at: float = INTRO.pick_at
+	if was < pick_at and _intro_t >= pick_at and player.state == Player.State.IDLE:
+		player.perform("pick", float(INTRO.pick))
+	var grab := pick_at + float(INTRO.pick) * float(INTRO.grab)
+	var walked := player.velocity.length() > 8.0 or player.state != Player.State.IDLE
+	if not _intro_grabbed and (_intro_t >= grab or walked):
+		_intro_grabbed = true
+		if _intro_lamp != null:
+			_intro_lamp.queue_free()
+			_intro_lamp = null
+	if held != null:
+		held.visible = _intro_grabbed
+	if not _intro_grabbed and _intro_lamp != null:
+		# (its light on the ground with it till then)
+		_lamp.global_position = _intro_lamp.global_position + Vector3(0, 0.45, 0)
+	if walked and _intro_t < float(INTRO.pull_from):
+		_intro_t = float(INTRO.pull_from)
+	if _intro_t >= float(INTRO.pull_to):
+		_intro_t = -1.0
 
 
 ## The lamp (or flashlight) model the character has.
@@ -2388,13 +2719,14 @@ func _process(delta: float) -> void:
 			_sprites.erase(n)
 			continue
 		_sync_sprite(n, _sprites[n])
+	# (the creatures first: the dragon's light is from its lantern)
+	_sync_creatures(delta)
 	for l in _lights.keys():
 		if not is_instance_valid(l):
 			(_lights[l] as Node).queue_free()
 			_lights.erase(l)
 			continue
 		_sync_light(l, _lights[l])
-	_sync_creatures(delta)
 	_sync_dropped_fish(delta)
 	_sync_runes()
 	# (a stone being turned over: where it's rolled to, tipped over)
@@ -2429,7 +2761,9 @@ func _process(delta: float) -> void:
 			_drum.global_rotation = Vector3(0, pivot.global_rotation.y, 0)
 	_update_line()
 	_update_guide()
+	_sync_true_eye()
 	_update_light()
+	_update_intro(delta)
 	_update_camera(delta)
 
 
@@ -2498,6 +2832,15 @@ func _update_camera(delta: float) -> void:
 	var look := target + Vector3(0, 0.8, 0)
 	var at := look + Vector3(0, sin(pitch), cos(pitch)) * dist
 	camera.global_transform = Transform3D(Basis.looking_at(look - at, Vector3.UP), at)
+	if _intro_t >= 0.0:
+		# (the opening: close in front of the traveller, drawing back out
+		# to the usual view)
+		var b := pivot.global_basis.orthonormalized()
+		var head := pivot.global_position + Vector3(0, 0.95, 0)
+		var close_at := head + b.z * 2.1 + b.x * 0.8 + Vector3(0, 0.55, 0)
+		var close := Transform3D(Basis.looking_at(head - close_at, Vector3.UP), close_at)
+		var k := smoothstep(float(INTRO.pull_from), float(INTRO.pull_to), _intro_t)
+		camera.global_transform = close.interpolate_with(camera.global_transform, k)
 	_dodge_buttons(delta)
 	# Further out, the trees near the camera stay solid longer.
 	var k := dist / CAMERA_DISTANCE

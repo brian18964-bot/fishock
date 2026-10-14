@@ -602,8 +602,9 @@ func depart() -> void:
 	_step = {}
 	rig.equip("hand_r", null)
 	rig.equip("back", null)
+	# (user request: no going for the lamp first - it's picked up out in
+	# the night, the run's opening; straight off to the 渡石)
 	var plan: Array = _get_up()
-	plan += _go("lamp") + [_reach(func(): take_lamp(true))]
 	plan += [{"do": "call", "fn": func(): plan_done.emit("depart")}, {"do": "walk", "to": stage.spots.stone.at}]
 	_plan = plan
 	_next()

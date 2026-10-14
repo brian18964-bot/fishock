@@ -26,6 +26,12 @@ const TAIL_LAG := 0.16
 const TAIL_FLICK_GAP := Vector2(3.0, 7.0)
 const TAIL_FLICK := 16.0
 const TAIL_FLICK_TIME := 0.9
+## The dragon's wings ("wing_*", tools/build_dragon.py): breathing open
+## and shut a little (deg, s), now and then a bigger beat (gap s, deg).
+const WING_SWAY := 5.0
+const WING_PERIOD := 2.8
+const WING_BEAT_GAP := Vector2(4.0, 9.0)
+const WING_BEAT := 18.0
 
 ## [{bones: [index], kind: "ear"|"drop"|"tail", axis: Vector3 (skeleton
 ## space), next: s, at: s (the flick's start, -1 none), angle: deg,
@@ -66,8 +72,8 @@ func _build(sk: Skeleton3D) -> void:
 	var groups := {}
 	for i in sk.get_bone_count():
 		var n := sk.get_bone_name(i)
-		if n.begins_with("ear_") or n.begins_with("tail_"):
-			var key := n.substr(0, n.rfind("_"))
+		if n.begins_with("ear_") or n.begins_with("tail_") or n.begins_with("wing_"):
+			var key := n if n.begins_with("wing_") else n.substr(0, n.rfind("_"))
 			if not groups.has(key):
 				groups[key] = []
 			groups[key].append(i)
@@ -77,8 +83,17 @@ func _build(sk: Skeleton3D) -> void:
 		var root := sk.get_bone_global_rest(bones[0]).origin
 		var tip := sk.get_bone_global_rest(bones[-1]).origin
 		var along := (tip - root).normalized()
+		if bones.size() == 1:
+			# (one bone - a wing: the way it points)
+			along = sk.get_bone_global_rest(bones[0]).basis.y.normalized()
 		var c := {"bones": bones, "at": -1.0, "angle": 0.0, "period": 1.0}
-		if key.begins_with("tail"):
+		if key.begins_with("wing"):
+			# (about the axis along the body: up and out, mirrored by side)
+			c.kind = "wing"
+			c.axis = along.cross(Vector3.UP).normalized() if along.cross(Vector3.UP).length() > 0.1 else Vector3.BACK
+			c.period = WING_PERIOD
+			c.next = _rng.randf_range(WING_BEAT_GAP.x, WING_BEAT_GAP.y)
+		elif key.begins_with("tail"):
 			c.kind = "tail"
 			c.axis = Vector3.UP
 			c.period = _rng.randf_range(TAIL_PERIOD.x, TAIL_PERIOD.y)
@@ -98,13 +113,16 @@ func _build(sk: Skeleton3D) -> void:
 
 ## Starts a flick when one's due.
 func _schedule(c: Dictionary) -> void:
-	var span := TAIL_FLICK_TIME if c.kind == "tail" else EAR_TIME
+	var span := TAIL_FLICK_TIME if c.kind in ["tail", "wing"] else EAR_TIME
 	if c.at >= 0.0 and _time - c.at > span:
 		c.at = -1.0
 	if _time < c.next:
 		return
 	c.at = _time
-	if c.kind == "tail":
+	if c.kind == "wing":
+		c.angle = WING_BEAT
+		c.next = _time + _rng.randf_range(WING_BEAT_GAP.x, WING_BEAT_GAP.y)
+	elif c.kind == "tail":
 		c.angle = TAIL_FLICK * (1.0 if _rng.randf() < 0.5 else -1.0)
 		c.next = _time + _rng.randf_range(TAIL_FLICK_GAP.x, TAIL_FLICK_GAP.y)
 	else:
@@ -117,6 +135,10 @@ func _schedule(c: Dictionary) -> void:
 func _angle(c: Dictionary, k: int, n: int) -> float:
 	var deg := 0.0
 	match c.kind:
+		"wing":
+			deg = WING_SWAY * sin(TAU * _time / c.period)
+			if c.at >= 0.0:
+				deg += c.angle * sin(TAU * clampf((_time - c.at) / TAIL_FLICK_TIME, 0.0, 1.0))
 		"tail":
 			var t := _time - TAIL_LAG * k
 			deg = TAIL_SWAY * sin(TAU * t / c.period) * (0.6 + 0.4 * float(k) / maxf(n - 1, 1))
