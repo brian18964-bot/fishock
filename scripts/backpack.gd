@@ -188,6 +188,9 @@ func _build_card() -> void:
 	_detail.custom_minimum_size.x = CARD_WIDTH - 24.0
 	col.add_child(_detail)
 	_actions = HFlowContainer.new()
+	# (laid out at the card's width from the start - else the card is sized
+	# for its buttons one under another)
+	_actions.custom_minimum_size.x = CARD_WIDTH - 24.0
 	_actions.add_theme_constant_override("h_separation", 8)
 	_actions.add_theme_constant_override("v_separation", 8)
 	col.add_child(_actions)
@@ -302,7 +305,7 @@ func _show_selected(player: Player, items: Array, placed: Array) -> void:
 		for box in _gear_slots:
 			if box.slot == _selected.index:
 				_place_card(box.get_global_rect())
-				_place_card.call_deferred(box.get_global_rect())
+				_place_later(box.get_global_rect())
 		return
 	var item := {}
 	var at := Rect2()
@@ -407,7 +410,7 @@ func _show_selected(player: Player, items: Array, placed: Array) -> void:
 	# its buttons out of reach - placed once it's filled, and again once
 	# it's laid out)
 	_place_card(at)
-	_place_card.call_deferred(at)
+	_place_later(at)
 
 
 ## The card's head: the thing's picture and name (in its rarity's colour),
@@ -434,6 +437,13 @@ func _card_head(item: Dictionary) -> void:
 
 ## The card beside `at` (a thing's rect on screen): to its right if it
 ## fits, else its left; kept on the screen.
+## (once its words have been laid out at their width)
+func _place_later(at: Rect2) -> void:
+	await get_tree().process_frame
+	if is_inside_tree():
+		_place_card(at)
+
+
 func _place_card(at: Rect2) -> void:
 	if _selected.is_empty():
 		return
