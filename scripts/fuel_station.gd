@@ -34,7 +34,12 @@ const TENT_AT := Vector2(56.0, -50.0)
 ## the drums ([spot, yaw, lying]; a drum 0.62 m across, 0.92 m long), and
 ## the tent at TENT_SCALE, beside the fire with room between.
 const FIRE_RADIUS := 17.0
-const DRUMS := [[Vector2(-40, -40), 0.3, false], [Vector2(-23, -50), 1.1, false], [Vector2(-30, -17), 0.6, true]]
+const DRUMS := [[Vector2(-44, -42), 0.3, false], [Vector2(-28, -52), 1.1, false], [Vector2(-20, -8), 0.6, true]]
+## User request: a run opens with the lamp on a drum (DRUMS[LAMP_DRUM]) and
+## the traveller at INTRO_SPOT before it, its back to the camera, taking
+## it down - room round the spot for the drums and the fire.
+const LAMP_DRUM := 1
+const INTRO_SPOT := Vector2(-28, -35)
 const DRUM_RADIUS := 8.8
 const DRUM_LYING_RADIUS := 12.8
 const TENT_SCALE := 0.8

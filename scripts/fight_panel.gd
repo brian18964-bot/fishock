@@ -133,7 +133,9 @@ func _draw_panel() -> void:
 	var player := _player()
 	if player == null:
 		return
-	if player.state == Player.State.BITE:
+	if player.state == Player.State.BITE and player.fishing_mode == Player.FishingMode.LURE:
+		_draw_lure_strike(player)
+	elif player.state == Player.State.BITE:
 		_draw_strike_ring(player)
 	elif player.light_lure > 0.0:
 		_draw_lure_glow(player.light_lure)
@@ -233,9 +235,30 @@ func _row(at: Vector2, bar_x: float, text: String, value: float, color: Color, i
 
 ## Which way to flick, and how long is left to do it.
 func _draw_swipe_cue(fight: FishFight) -> void:
+	_draw_way_cue(-fight.run_side.normalized(), fight.swipe_left / FishFight.SWIPE_WINDOW, "往%s甩！")
+
+
+## User request: a lure's bite - which way to strike (Player.strike_dir),
+## as the fight's runs show which way to flick: the cue in the middle, an
+## arrow out from the right stick, the float marked.
+func _draw_lure_strike(player: Player) -> void:
+	var total: float = float(player.tier_data.get("bite_window", 1.0)) * Player.LURE_STRIKE_TIME
+	var dir := player.strike_dir.normalized()
+	_draw_way_cue(dir, clampf(player.bite_timer / maxf(total, 0.01), 0.0, 1.0), "往%s揚竿！")
+	_view.draw_arc(_float_pos(), RING_TO, 0.0, TAU, 32, Color(PERFECT, 0.9), 2.0)
+	if DisplayServer.is_touchscreen_available():
+		var c := TouchControls.AIM_CENTER
+		var a := 0.6 + 0.3 * sin(_pulse * 10.0)
+		var tip := c + dir * CRANK_HINT_RADIUS
+		var side := dir.orthogonal() * 12.0
+		_view.draw_line(c, tip - dir * 10.0, Color(PERFECT, a), 6.0)
+		_view.draw_colored_polygon(PackedVector2Array([tip + dir * 6.0, tip - dir * 14.0 + side, tip - dir * 14.0 - side]), Color(PERFECT, a))
+
+
+## A way to flick (dir), the time left (0..1), the words (with the way's
+## name for %s).
+func _draw_way_cue(dir: Vector2, left: float, words: String) -> void:
 	var c := Vector2(CENTER_X, CUE_Y)
-	var dir := -fight.run_side.normalized()
-	var left := fight.swipe_left / FishFight.SWIPE_WINDOW
 	_view.draw_circle(c, CUE_RADIUS, FILL)
 	_view.draw_arc(c, CUE_RADIUS, -PI * 0.5, -PI * 0.5 + TAU * left, 32, TENSION, 3.0)
 	var tip := c + dir * 15.0
@@ -243,7 +266,7 @@ func _draw_swipe_cue(fight: FishFight) -> void:
 	var side := dir.orthogonal() * 8.0
 	_view.draw_line(tail, tip - dir * 6.0, INK, 4.0)
 	_view.draw_colored_polygon(PackedVector2Array([tip, tip - dir * 11.0 + side, tip - dir * 11.0 - side]), INK)
-	_view.draw_string(_font, c + Vector2(-40, CUE_RADIUS + 16), "往%s甩！" % FishFight.describe(dir), HORIZONTAL_ALIGNMENT_CENTER, 80, 13, INK)
+	_view.draw_string(_font, c + Vector2(-50, CUE_RADIUS + 16), words % FishFight.describe(dir), HORIZONTAL_ALIGNMENT_CENTER, 100, 13, INK)
 
 
 ## The bite: a ring closes in on the float - strike as it meets the float

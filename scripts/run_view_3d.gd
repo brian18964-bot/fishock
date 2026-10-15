@@ -172,13 +172,21 @@ const MODELLED := ["tree.gd", "bush.gd", "obstacle.gd", "ground_cover.gd", "dock
 static var active: RunView3D
 ## (tests: "low" or "high" in place of the device's own)
 static var quality := ""
-## User request: a run opens close on the traveller, who picks the lamp up
-## off the ground (the rod already slung), then the camera draws back out
-## and the night begins - INTRO: [the pick-up starting, its length, the
-## hand closing on the lamp (share of it), the pull-out from .. to] (s).
-## (Off for the tests that play a run straight away.)
+## User request: a run opens (once it's loaded - main.gd) close behind the
+## traveller, its back to us, taking the lamp down off a drum
+## (FuelStation.LAMP_DRUM) as the fog clears; it turns round to face us,
+## then the camera draws back out and the night begins. INTRO, s from when
+## it's shown (show_intro): [the reach starting, its length, the hand on
+## the lamp (share of the reach), the turn starting, its length, the
+## pull-out from .. to]. (Off for the tests that play a run straight away.)
 static var intro := true
-const INTRO := {"pick_at": 0.35, "pick": 1.8, "grab": 0.55, "pull_from": 2.0, "pull_to": 3.4}
+const INTRO := {"reach_at": 0.8, "reach": 1.7, "grab": 0.36, "turn_at": 2.7, "turn": 1.1,
+	"pull_from": 3.6, "pull_to": 5.4}
+## (the turn's pace, 1/s, against TURN_RATE's; the close camera behind
+## its left shoulder, where the reaching arm shows: aside, above the head,
+## behind (m))
+const INTRO_TURN_RATE := 3.2
+const INTRO_CAMERA := Vector3(1.1, 0.45, 1.5)
 
 
 ## User request (phones were slow): on a phone, lighter - one pass of the
@@ -234,11 +242,19 @@ var _models := {}
 var _low := false
 var _scaled := false
 var _dist := CAMERA_DISTANCE
-## The opening (INTRO): its time (-1 once over), whether the lamp's in
-## hand yet, the lamp on the ground meanwhile.
+## The opening (INTRO): its time (-1 once over), whether it's shown yet
+## (the loading screen gone), whether the lamp's in hand yet, the lamp on
+## the drum meanwhile, the drum, the way the traveller faced at first.
 var _intro_t := -1.0
+var _intro_shown := false
 var _intro_grabbed := true
 var _intro_lamp: Node3D
+var _lamp_drum: Node3D
+var _lamp_drum_top := 0.0
+var _intro_ahead := Vector3.FORWARD
+var _intro_bail := Vector3.ZERO
+## (the screen's buttons and bars put away for the close-up)
+var _intro_hidden: Array = []
 var _dodge := 0.0
 var _dodge_at := Vector3.ZERO
 var _blocked: Array = []
@@ -359,6 +375,13 @@ func _build() -> void:
 		if (layer as CanvasLayer).follow_viewport_enabled:
 			(layer as CanvasLayer).visible = false
 	var t0 := Time.get_ticks_msec()
+	if intro:
+		# (the opening: stood at the lamp's drum, facing it)
+		var station := main.get_node_or_null("FuelStation") as Node2D
+		if station != null:
+			player.global_position = station.global_position + FuelStation.INTRO_SPOT
+			player.velocity = Vector2.ZERO
+		player.aim_dir = Vector2.UP
 	_ground()
 	_water()
 	_docks()
@@ -765,7 +788,8 @@ func _start_camp() -> void:
 		fire.position = to3(at + FuelStation.FLAME, LAND_Y)
 		fire.scale = Vector3.ONE * 0.8
 		add_child(fire)
-	for spec in FuelStation.DRUMS:
+	for i in FuelStation.DRUMS.size():
+		var spec: Array = FuelStation.DRUMS[i]
 		var drum := CampModel.make("drum")
 		if drum == null:
 			continue
@@ -773,6 +797,9 @@ func _start_camp() -> void:
 		drum.rotation = Vector3(0, spec[1], PI * 0.5 if spec[2] else 0.0)
 		drum.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		add_child(drum)
+		if i == FuelStation.LAMP_DRUM:
+			_lamp_drum = drum
+			_lamp_drum_top = drum.position.y + drum.get_aabb().end.y * drum.scale.y
 	var tent := CampModel.make("tent_%d" % clampi(Profile.camp_tent, 1, 9))
 	if tent != null:
 		tent.position = to3(at + FuelStation.tent_spot(), LAND_Y)
@@ -1847,7 +1874,8 @@ func _place_traveller(delta: float) -> void:
 		face = player.velocity
 	if face.length() > 0.01:
 		var want := atan2(face.x, face.y)
-		_yaw = want if delta <= 0.0 else lerp_angle(_yaw, want, minf(1.0, delta * TURN_RATE))
+		var rate := TURN_RATE if _intro_t < 0.0 else INTRO_TURN_RATE
+		_yaw = want if delta <= 0.0 else lerp_angle(_yaw, want, minf(1.0, delta * rate))
 	pivot.rotation.y = _yaw
 
 
@@ -1865,6 +1893,14 @@ func _pick_clip() -> Array:
 	# (in the ghost's grip: terrified, struggling)
 	if v.struggling:
 		return ["Terrified", 1.4, -1.0]
+	if _intro_t >= 0.0 and player.velocity.length() < 8.0 and player.state == Player.State.IDLE:
+		# (the opening: the lamp taken off the drum, then turned round)
+		var reach := (_intro_t - float(INTRO.reach_at)) / float(INTRO.reach)
+		if reach >= 0.0 and reach < 1.0:
+			return ["PickUp_Table", 1.0, reach]
+		var turn := (_intro_t - float(INTRO.turn_at)) / float(INTRO.turn)
+		if turn >= 0.0 and turn < 1.0:
+			return ["Walk", 0.55, -1.0]
 	if player.swing_kind == "shoo" and player.swing_left > 0.0:
 		# (a beast waved off - user request: no weapon needed)
 		return ["Wave_Big", 1.0, minf(1.0 - player.swing_left / maxf(player.swing_total, 0.01), 0.999)]
@@ -2120,12 +2156,35 @@ func _aim_rod(delta: float) -> void:
 		_left_target.global_position = at
 		var tuck_l := smoothstep(0.0, 1.0, _centred)
 		_left_pole.global_position = shoulder_l + b.x * lerpf(0.5, 0.22, tuck_l) + Vector3.DOWN * lerpf(0.4, 0.6, tuck_l) - b.z * lerpf(0.1, 0.25, tuck_l)
+	# (the opening: the left hand onto the lamp's bail on the drum, as
+	# PickUp_Table reaches out - and off again as it lifts it)
+	var take := _intro_take()
+	if take > 0.0:
+		if _intro_lamp != null:
+			_intro_bail = _intro_lamp.global_transform * CharacterRig.LAMP_BAIL
+		_left_ik.influence = maxf(_left_ik.influence, take)
+		_left_target.global_position = _intro_bail
+		_left_pole.global_position = shoulder_l + b.x * 0.45 + Vector3.DOWN * 0.5 - b.z * 0.1
+
+
+## How far the left hand's on the lamp in the opening's reach (0..1).
+func _intro_take() -> float:
+	if _intro_t < 0.0:
+		return 0.0
+	var s := (_intro_t - float(INTRO.reach_at)) / float(INTRO.reach)
+	var grab: float = INTRO.grab
+	if s <= 0.0 or s >= 1.0:
+		return 0.0
+	return smoothstep(0.08, grab, s) if s < grab else 1.0 - smoothstep(grab + 0.05, grab + 0.35, s)
 
 
 ## Once the arms are posed: the rod in the hand, pointed (ROD_ANGLES)
 ## while fishing, else as the hand holds it - or slung on the back; the
 ## lamp and the off hand's thing in hand, or hung at the hips.
 func _hold_rod() -> void:
+	# (the skeleton can still update as the run's being taken down)
+	if not is_inside_tree():
+		return
 	var rod := _rod()
 	var sk := rig.skeleton
 	var b := pivot.global_basis.orthonormalized()
@@ -2763,26 +2822,24 @@ func _update_light() -> void:
 					+ Vector3(sw.x, 0.0, sw.y)
 
 
-## The opening (INTRO): the lamp on the ground at the feet, picked up, then
-## in the hand and lit there; walked off, it's over at once.
+## The opening (INTRO): the lamp on the drum before the traveller, taken
+## down, then in the hand and lit there; turned round to face the camera;
+## walked off, it's over at once.
 func _update_intro(delta: float) -> void:
 	if _intro_t < 0.0:
 		return
 	var held := _held_light()
-	if _intro_lamp == null and held != null:
+	if _intro_lamp == null and held != null and not _intro_grabbed:
 		_intro_lamp = held.duplicate() as Node3D
 		_intro_lamp.top_level = true
 		add_child(_intro_lamp)
-		var b := pivot.global_basis.orthonormalized()
-		var at := pivot.global_position + b.z * 0.42 + b.x * 0.12
-		_intro_lamp.global_transform = Transform3D(Basis(Vector3.UP, pivot.global_rotation.y).scaled(held.global_basis.get_scale()),
-			Vector3(at.x, ground_y(_feet()), at.z))
+		_intro_lamp.global_transform = Transform3D(Basis(Vector3.UP, _yaw + 0.5).scaled(held.global_basis.get_scale()),
+			_lamp_rest())
+		_intro_ahead = Vector3(sin(_yaw), 0.0, cos(_yaw))
 	var was := _intro_t
-	_intro_t += delta
-	var pick_at: float = INTRO.pick_at
-	if was < pick_at and _intro_t >= pick_at and player.state == Player.State.IDLE:
-		player.perform("pick", float(INTRO.pick))
-	var grab := pick_at + float(INTRO.pick) * float(INTRO.grab)
+	if _intro_shown:
+		_intro_t += delta
+	var grab := float(INTRO.reach_at) + float(INTRO.reach) * float(INTRO.grab)
 	var walked := player.velocity.length() > 8.0 or player.state != Player.State.IDLE
 	if not _intro_grabbed and (_intro_t >= grab or walked):
 		_intro_grabbed = true
@@ -2792,12 +2849,69 @@ func _update_intro(delta: float) -> void:
 	if held != null:
 		held.visible = _intro_grabbed
 	if not _intro_grabbed and _intro_lamp != null:
-		# (its light on the ground with it till then)
-		_lamp.global_position = _intro_lamp.global_position + Vector3(0, 0.45, 0)
+		# (its light on the drum with it till then)
+		_lamp.global_position = _intro_lamp.global_position + Vector3(0, 0.3, 0)
+	var turn_at: float = INTRO.turn_at
+	if was < turn_at and _intro_t >= turn_at and not walked:
+		# (round over its left shoulder, to face the camera behind it)
+		var to_camera := camera.global_position - pivot.global_position
+		player.aim_dir = Vector2(to_camera.x, to_camera.z).normalized()
 	if walked and _intro_t < float(INTRO.pull_from):
 		_intro_t = float(INTRO.pull_from)
+	_intro_screen(_intro_t < float(INTRO.pull_from))
 	if _intro_t >= float(INTRO.pull_to):
 		_intro_t = -1.0
+
+
+## The close-up without the buttons and bars over it (user request: a
+## scene, then the game) - back as the camera draws out.
+func _intro_screen(hide: bool) -> void:
+	if hide == not _intro_hidden.is_empty():
+		return
+	if not hide:
+		for layer in _intro_hidden:
+			if is_instance_valid(layer):
+				(layer as CanvasLayer).visible = true
+		_intro_hidden.clear()
+		return
+	for n in main.get_children():
+		var layer := n as CanvasLayer
+		if layer != null and layer.visible and not layer.follow_viewport_enabled \
+				and not String(layer.name) in ["Loading", "ArrivalFog"]:
+			layer.visible = false
+			_intro_hidden.append(layer)
+
+
+## The opening goes on (main.gd: once the loading screen's gone).
+func show_intro() -> void:
+	_intro_shown = true
+
+
+## Where the lamp stands on its drum before it's taken: on the top, at the
+## rim nearest the traveller.
+func _lamp_rest() -> Vector3:
+	if _lamp_drum == null:
+		var b := pivot.global_basis.orthonormalized()
+		var at := pivot.global_position + b.z * 0.42 + b.x * 0.12
+		return Vector3(at.x, ground_y(_feet()), at.z)
+	var top := Vector3(_lamp_drum.global_position.x, _lamp_drum_top, _lamp_drum.global_position.z)
+	var to := pivot.global_position - top
+	to.y = 0.0
+	return top + to.normalized() * FuelStation.DRUM_RADIUS / PX * 0.6
+
+
+## The close camera of the opening: over the left shoulder, looking past
+## the traveller at the lamp; once it's turned round, at its face.
+func _intro_camera() -> Transform3D:
+	var ahead := _intro_ahead
+	var left := Vector3(ahead.z, 0.0, -ahead.x)
+	var head := pivot.global_position + Vector3(0, 1.0, 0)
+	var at := head - ahead * INTRO_CAMERA.z + left * INTRO_CAMERA.x + Vector3(0, INTRO_CAMERA.y, 0)
+	var lamp := _lamp_rest() + Vector3(0, 0.2, 0)
+	var look := head.lerp(lamp, 0.55)
+	var k := smoothstep(float(INTRO.turn_at), float(INTRO.turn_at) + float(INTRO.turn), _intro_t)
+	look = look.lerp(head - Vector3(0, 0.1, 0), k)
+	return Transform3D(Basis.looking_at(look - at, Vector3.UP), at)
 
 
 ## The lamp (or flashlight) model the character has.
@@ -2958,14 +3072,10 @@ func _update_camera(delta: float) -> void:
 	var at := look + Vector3(0, sin(pitch), cos(pitch)) * dist
 	camera.global_transform = Transform3D(Basis.looking_at(look - at, Vector3.UP), at)
 	if _intro_t >= 0.0:
-		# (the opening: close in front of the traveller, drawing back out
-		# to the usual view)
-		var b := pivot.global_basis.orthonormalized()
-		var head := pivot.global_position + Vector3(0, 0.95, 0)
-		var close_at := head + b.z * 2.1 + b.x * 0.8 + Vector3(0, 0.55, 0)
-		var close := Transform3D(Basis.looking_at(head - close_at, Vector3.UP), close_at)
+		# (the opening: close behind the traveller, drawing back out to
+		# the usual view)
 		var k := smoothstep(float(INTRO.pull_from), float(INTRO.pull_to), _intro_t)
-		camera.global_transform = close.interpolate_with(camera.global_transform, k)
+		camera.global_transform = _intro_camera().interpolate_with(camera.global_transform, k)
 	_dodge_buttons(delta)
 	# Further out, the trees near the camera stay solid longer.
 	var k := dist / CAMERA_DISTANCE

@@ -745,6 +745,12 @@ func in_sweet() -> bool:
 
 ## Struck right as the float went under: the fish starts worn and the
 ## line slack.
+## Worn down from the start by this share of its stamina (a lure struck
+## true - Player.LURE_TRUE_WORN).
+func wear(share: float) -> void:
+	progress = minf(progress + share, 0.9)
+
+
 func perfect_hook() -> void:
 	perfect = true
 	progress = minf(progress + PERFECT_HOOK_STAMINA, 0.9)

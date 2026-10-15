@@ -796,7 +796,7 @@ func _on_catch(fish: Dictionary) -> void:
 			stat("catch_jumper")
 
 
-const LOSSES := ["line_break", "shook_off", "cover", "missed_bite", "spooked", "walked_off", "line_cut", "lure_knocked"]
+const LOSSES := ["line_break", "shook_off", "cover", "missed_bite", "bad_strike", "spooked", "walked_off", "line_cut", "lure_knocked"]
 
 
 func _on_failed(reason: String) -> void:

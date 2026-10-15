@@ -54,6 +54,7 @@ const TESTS := [
 	"test_perfect_hook",
 	"test_light_lure",
 	"test_lure_retrieve",
+	"test_lure_strike_direction",
 	"test_fish_by_style",
 	"test_main_menu",
 	"test_catch_details",
@@ -1949,7 +1950,65 @@ func test_lure_retrieve() -> void:
 	player()._set_state(Player.State.IDLE)
 
 
-## User request: each map style has its fish - the shared freshwater ones,
+## User request: a lure's bite shows which way to strike; how near the
+## flick comes decides it - true (under 20 deg): on, a tenth of its stamina
+## gone; 20-40: 80%; 40-90: 70%; beyond (or no way given): 60%; not struck
+## in time: away.
+func test_lure_strike_direction() -> void:
+	check(Player.lure_strike_chance(10.0) == 1.0 and Player.lure_strike_chance(30.0) == 0.8
+		and Player.lure_strike_chance(60.0) == 0.7 and Player.lure_strike_chance(120.0) == 0.6
+		and Player.lure_strike_chance(-1.0) == 0.6, "the tiers")
+	var zone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
+	await put(zone.shore_point(Vector2.DOWN) + Vector2(0, 60))
+	player().aim_dir = Vector2.UP
+	player().lure_stock = {"minnow": 3}
+	player()._sync_lures()
+	player().fishing_mode = Player.FishingMode.LURE
+	var stick = main.get_node("HUD/Panel/AimJoystick")
+	stick._touch_index = 7
+	await frames(4)
+	stick._reset()
+	await frames(2)
+	check(player().state == Player.State.WAITING, "lure cast")
+	player().cast_outcome = Player.CastOutcome.BITE
+	player()._lure_nibbles.clear()
+	player().retrieve_progress = 0.5
+	player()._lure_bite_at = 0.5
+	await frames(2)
+	check(player().state == Player.State.BITE and player().strike_dir.length() > 0.99, "a bite, a way to strike")
+	var line: Vector2 = (player().cast_target - player().global_position).normalized()
+	check(absf(player().strike_dir.dot(line.orthogonal())) > 0.7 and player().strike_dir.dot(line) <= 0.01,
+		"across the line, back toward the bank")
+	await frames(2)
+	check(main.get_node("FightPanel")._drawn, "the way shown")
+	# Flicked true: on, worn a tenth.
+	player().touch_aim = player().strike_dir.rotated(deg_to_rad(10.0))
+	stick._touch_index = 7
+	await frames(2)
+	stick._reset()
+	player().touch_aim = Vector2.ZERO
+	check(player().state == Player.State.REELING and player().fight.stamina() <= 0.9 + 0.001,
+		"struck true: on, %.0f%% stamina" % (player().fight.stamina() * 100.0))
+	player()._set_state(Player.State.IDLE)
+	# Off by more: the chance it's on, each tier.
+	for case in [[30.0, 0.8], [60.0, 0.7], [150.0, 0.6]]:
+		var on := 0
+		for _i in 300:
+			player()._start_bite()
+			player()._strike_lure(player().strike_dir.rotated(deg_to_rad(case[0])))
+			if player().state == Player.State.REELING:
+				on += 1
+				check(player().fight.stamina() > 0.95, "off the way: nothing off it")
+			player()._set_state(Player.State.IDLE)
+		check(absf(on / 300.0 - case[1]) < 0.09, "%d deg off: on %.0f%% (%.0f%%)" % [case[0], on / 3.0, case[1] * 100.0])
+	# Not struck in time: away.
+	player()._set_state(Player.State.WAITING)
+	player()._start_bite()
+	await seconds(player().bite_timer + 0.3)
+	check(player().state == Player.State.IDLE, "not struck in time: away")
+
+
+
 ## its own four and its rarest; the sea its own. A cast only brings up fish
 ## of the map's waters, the rare pools only the style's own and better,
 ## small fish close in and big ones far out.
@@ -4195,13 +4254,30 @@ func test_run_intro_and_eye_guide() -> void:
 		if view != null and view.built:
 			break
 		await frames(1)
-	check(view != null and view._intro_t >= 0.0 and not view._intro_grabbed, "the opening: the lamp on the ground")
-	await seconds(0.6)
+	await frames(2)
+	check(view != null and view._intro_t >= 0.0 and not view._intro_grabbed and view._intro_lamp != null
+		and view._intro_lamp.global_position.y > 0.7, "the opening: the lamp on the drum")
+	# (user request: a loading screen till it's built and drawn, then the
+	# fog clears and the opening plays)
+	for _i in 300:
+		if view._intro_shown:
+			break
+		await frames(1)
+	check(view._intro_shown and view._intro_t < 0.2, "the opening waits for the loading screen")
+	await seconds(0.5)
+	check(main.get_node_or_null("Loading") == null, "the loading screen gone")
+	await seconds(0.7)
 	var close := view.camera.global_position.distance_to(view.pivot.global_position)
-	check(player().move_kind == "pick" and close < 3.5, "picked up, the camera close (%.1f m)" % close)
-	await seconds(3.2)
+	var behind := (view.camera.global_position - view.pivot.global_position).dot(view.pivot.global_basis.z)
+	check(view._clip == "PickUp_Table" and close < 3.5 and behind < 0.0 and not main.get_node("HUD").visible,
+		"taking the lamp off the drum, the camera close behind (%.1f m), no buttons" % close)
+	await seconds(2.0)
+	var faces := (view.camera.global_position - view.pivot.global_position).dot(view.pivot.global_basis.z)
+	check(view._intro_grabbed and faces > 0.0, "the lamp in hand, turned round to the camera")
+	await seconds(2.4)
 	var far := view.camera.global_position.distance_to(view.pivot.global_position)
-	check(view._intro_t < 0.0 and view._intro_grabbed and far > close + 2.0, "the lamp in hand, the camera back out (%.1f m)" % far)
+	check(view._intro_t < 0.0 and far > close + 2.0 and main.get_node("HUD").visible,
+		"the camera back out (%.1f m), the buttons back" % far)
 	RunView3D.intro = false
 	# An eye: its way on the ground, named, and the eye over the head.
 	Profile.storage["eyeball"] = 1

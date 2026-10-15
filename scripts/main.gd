@@ -70,6 +70,87 @@ void fragment() {
 """
 
 
+## User request: the fog stood frozen a second or two while the night was
+## built behind it. A loading screen first - the app's own picture, a bar -
+## till the 3D world's built and its first frames drawn smoothly; then the
+## fog clears and the opening plays (RunView3D.show_intro). LOAD: frames
+## after it's built, how many smooth frames in a row (under LOAD_SMOOTH_MS),
+## the longest it waits (s), how long it takes to fade.
+const LOAD := {"after": 5, "smooth": 3, "longest": 8.0, "fade": 0.35}
+const LOAD_SMOOTH_MS := 70
+var _loading: CanvasLayer
+
+
+func _show_loading() -> void:
+	_loading = CanvasLayer.new()
+	_loading.name = "Loading"
+	_loading.layer = 30
+	add_child(_loading)
+	var cover := ColorRect.new()
+	cover.name = "Cover"
+	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
+	cover.color = ProjectSettings.get_setting("application/boot_splash/bg_color", Color(0.02, 0.027, 0.043))
+	cover.mouse_filter = Control.MOUSE_FILTER_STOP
+	_loading.add_child(cover)
+	var splash := TextureRect.new()
+	splash.texture = load(ProjectSettings.get_setting("application/boot_splash/image", "res://assets/boot_splash.png"))
+	splash.set_anchors_preset(Control.PRESET_FULL_RECT)
+	splash.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	splash.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	splash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cover.add_child(splash)
+	# The bar where the web page's was (11% up from the bottom).
+	var track := ColorRect.new()
+	track.color = Color(0.91, 0.76, 0.35, 0.18)
+	track.anchor_left = 0.3
+	track.anchor_right = 0.7
+	track.anchor_top = 0.89
+	track.anchor_bottom = 0.89
+	track.offset_bottom = 5.0
+	track.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cover.add_child(track)
+	var bar := ColorRect.new()
+	bar.name = "Bar"
+	bar.color = Color(0.91, 0.76, 0.35)
+	bar.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bar.anchor_right = 0.0
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	track.add_child(bar)
+	# (most of the way while it's built - the rest once it's ready)
+	create_tween().tween_property(bar, "anchor_right", 0.85, 1.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+
+
+## Waits for the 3D world (RunView3D), then takes the loading screen away
+## onto the fog, and the fog clears.
+func _open_when_ready(clear_fog: Callable) -> void:
+	var start := Time.get_ticks_msec()
+	var last := start
+	var after := 0
+	var smooth := 0
+	while is_inside_tree():
+		await get_tree().process_frame
+		var now := Time.get_ticks_msec()
+		var view := get_node_or_null("RunView3D") as RunView3D
+		if view != null and view.built:
+			after += 1
+			smooth = smooth + 1 if now - last < LOAD_SMOOTH_MS else 0
+		last = now
+		if (after >= int(LOAD.after) and smooth >= int(LOAD.smooth)) or now - start > float(LOAD.longest) * 1000.0:
+			break
+	if not is_inside_tree():
+		return
+	var bar := _loading.find_child("Bar", true, false) as ColorRect
+	if bar != null:
+		bar.anchor_right = 1.0
+	var t := create_tween()
+	t.tween_property(_loading.get_node("Cover"), "modulate:a", 0.0, float(LOAD.fade)).set_trans(Tween.TRANS_SINE)
+	t.tween_callback(_loading.queue_free)
+	clear_fog.call()
+	var view := get_node_or_null("RunView3D") as RunView3D
+	if view != null:
+		view.show_intro()
+
+
 func _arrive_from_fog() -> void:
 	var layer := CanvasLayer.new()
 	layer.name = "ArrivalFog"
@@ -95,10 +176,13 @@ func _arrive_from_fog() -> void:
 	mat.set_shader_parameter("aspect", vp.x / maxf(vp.y, 1.0))
 	fog.material = mat
 	layer.add_child(fog)
-	var t := create_tween()
-	t.tween_method(func(v: float): mat.set_shader_parameter("clear", v), 0.0, 1.0, FOG_ARRIVAL) \
-		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	t.tween_callback(layer.queue_free)
+	# (cleared once the loading screen's gone)
+	_show_loading()
+	_open_when_ready.call_deferred(func():
+		var t := create_tween()
+		t.tween_method(func(v: float): mat.set_shader_parameter("clear", v), 0.0, 1.0, FOG_ARRIVAL) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		t.tween_callback(layer.queue_free))
 	# The player stepping out of it.
 	player.modulate.a = 0.0
 	create_tween().tween_property(player, "modulate:a", 1.0, 1.2).set_delay(0.3)

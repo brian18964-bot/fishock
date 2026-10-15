@@ -61,6 +61,25 @@ const LURE_CLICK_AMOUNT := 0.03
 ## User feedback: lure bites all came right at the end, by the player -
 ## a fish strikes somewhere along the retrieve (this share of the way in).
 const LURE_BITE_RANGE := Vector2(0.15, 0.85)
+## User request: a lure's bite shows which way to strike, as the fight's
+## sideways runs do (strike_dir: the rod swept across the fish's way, a
+## little back toward the bank). Flicked the right stick (on a keyboard,
+## Space with the way walked) how near it: under the first tier's degrees
+## the fish is on and starts LURE_TRUE_WORN of its stamina down; then each
+## tier's chance it's on (nothing off it); off by more, or a tap with no
+## way at all, the last. Not struck in time, it's away.
+## [degrees under, chance]
+const LURE_STRIKE_TIERS := [[20.0, 1.0], [40.0, 0.8], [90.0, 0.7], [INF, 0.6]]
+const LURE_TRUE_WORN := 0.1
+## (how far the stick's flicked to count; the strike's time against a
+## float's, the reading of the way taking a moment)
+const LURE_FLICK := 0.5
+const LURE_STRIKE_TIME := 1.4
+var strike_dir := Vector2.ZERO
+## The last lure strike: how far off the way (deg; -1 none given), and
+## whether it held.
+var strike_off := -1.0
+var _strike_press := false
 
 ## Design doc request: common water is easy to reach and cast into but
 ## pays worse; rare water pays much better for the precision (and risk -
@@ -1855,7 +1874,9 @@ func _handle_action_input(delta: float) -> void:
 					charge_time = CAST_TAP_RATIO * MAX_CHARGE_TIME
 				_launch_cast()
 		State.BITE:
-			if just_pressed:
+			if fishing_mode == FishingMode.LURE:
+				_lure_strike_input(just_pressed, just_released)
+			elif just_pressed:
 				_hook_fish(perfect_hook_left() > 0.0)
 		State.WAITING:
 			# Design doc request: each tap nudges the retrieve forward a bit
@@ -2414,6 +2435,15 @@ func _start_bite() -> void:
 	if fishing_mode == FishingMode.LURE:
 		cast_target = get_line_target_position()
 	bite_timer = tier_data.bite_window
+	if fishing_mode == FishingMode.LURE:
+		# (which way to strike: across the line, a little back to the bank)
+		var line := (cast_target - global_position).normalized()
+		if line == Vector2.ZERO:
+			line = aim_dir
+		var side := 1.0 if randf() < 0.5 else -1.0
+		strike_dir = (line.orthogonal() * side - line * randf_range(0.0, 0.8)).normalized()
+		bite_timer *= LURE_STRIKE_TIME
+		_strike_press = false
 	_set_state(State.BITE)
 	bite_started.emit()
 	GameState.report("咬鉤了！快揚竿", "good")
@@ -2421,6 +2451,47 @@ func _start_bite() -> void:
 		GameState.push_message("水花特別亮、震動特別強...是心臟！")
 	# (User request: what's on isn't said - it's read from the line once
 	# struck, FishFight.open().)
+
+
+## A lure's bite: a fresh press on the right stick, flicked (or let go
+## without), or Space (with the way walked), strikes.
+func _lure_strike_input(just_pressed: bool, just_released: bool) -> void:
+	if just_pressed:
+		_strike_press = true
+		if not _cast_stick_touched() and touch_aim == Vector2.ZERO:
+			_strike_lure(velocity.normalized() if velocity.length() > 1.0 else Vector2.ZERO)
+			return
+	if not _strike_press:
+		return
+	if touch_aim != Vector2.ZERO:
+		_strike_lure(touch_aim.normalized())
+	elif _aim_joystick.is_pressed and _aim_joystick.output.length() > LURE_FLICK:
+		_strike_lure(_aim_joystick.output.normalized())
+	elif just_released:
+		_strike_lure(Vector2.ZERO)
+
+
+## The strike's chance by how far off strike_dir it went (deg; -1: no way
+## given at all).
+static func lure_strike_chance(off: float) -> float:
+	var deg := INF if off < 0.0 else off
+	for tier in LURE_STRIKE_TIERS:
+		if deg < float(tier[0]):
+			return float(tier[1])
+	return float(LURE_STRIKE_TIERS[-1][1])
+
+
+func _strike_lure(dir: Vector2) -> void:
+	_strike_press = false
+	strike_off = rad_to_deg(absf(dir.angle_to(strike_dir))) if dir != Vector2.ZERO else -1.0
+	var true_strike := strike_off >= 0.0 and strike_off < float(LURE_STRIKE_TIERS[0][0])
+	if not true_strike and randf() >= lure_strike_chance(strike_off):
+		_fail_catch("bad_strike")
+		return
+	_hook_fish()
+	if true_strike:
+		fight.wear(LURE_TRUE_WORN)
+		GameState.push_message("刺得正！魚一開始就少了一成體力")
 
 
 ## How long the perfect strike lasts on this bite.
@@ -2608,7 +2679,7 @@ func _succeed_catch() -> void:
 ## What a lost cast or fish says under the character card (user request),
 ## in a few words.
 const FAIL_REPORTS := {
-	"bait_nibbled": "餌被小魚偷吃了", "no_bite": "等了很久，沒魚咬餌", "missed_bite": "沒及時揚竿，魚跑了",
+	"bait_nibbled": "餌被小魚偷吃了", "no_bite": "等了很久，沒魚咬餌", "missed_bite": "沒及時揚竿，魚跑了", "bad_strike": "揚竿方向不對，魚跑了",
 	"spooked": "太早揚竿，魚嚇跑了", "line_break": "線斷了，魚跑了", "shook_off": "魚甩掉了鉤",
 	"cover": "魚鑽進石縫，線磨斷了", "walked_off": "離岸太遠，魚脫鉤了", "line_cut": "小鬼剪斷了釣線",
 	"lure_knocked": "小鬼弄掉了假餌", "bait_stolen": "小鬼偷走了餌",
@@ -2649,6 +2720,8 @@ func _fail_catch(reason: String) -> void:
 		msg = "餌被小魚偷吃掉了，什麼都沒釣到"
 	elif reason == "no_bite":
 		msg = "等了老半天，這裡沒魚咬餌"
+	elif reason == "bad_strike":
+		msg = "揚竿方向不對，魚吐鉤跑了（照著箭頭的方向甩右搖桿）"
 	elif reason == "spooked":
 		msg = "太早揚竿，把魚嚇跑了（等浮標整個沉下去、水花濺起再拉）"
 	elif reason == "shook_off" and _snap_note == "slack":

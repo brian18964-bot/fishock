@@ -472,7 +472,10 @@ func buy_dialog(id: String, cost: int, note := "") -> void:
 		_pane.add_child(price)
 	_spacer()
 	if not can_buy:
-		_pane.add_child(UiKit.label(note, 15, Color(1.0, 0.7, 0.5)))
+		var why := UiKit.label(note, 15, Color(1.0, 0.7, 0.5))
+		why.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		why.custom_minimum_size.x = 320
+		_pane.add_child(why)
 		return
 	var amount := [1]
 	var total := UiKit.label("", 16, UiKit.GOLD_BRIGHT)
