@@ -86,3 +86,77 @@ static func is_free(tree: SceneTree, p: Vector2, pad: float) -> bool:
 		if float(_inside(p, b[0], b[1], pad)[0]) < 1.0:
 			return false
 	return true
+
+
+## User report: a beast or a ghost after you on the far side of the camp
+## pressed into it and stuck there (sliding to and fro along its near
+## side). The way to `to` round whatever's in the straight line from
+## `from` (the solids - each as the circle round it - and `extra` circles
+## [[centre, radius], ...], the lit camp's keep-out): the nearer side's
+## tangent point, a little past it - kept to that side (`memo`, the mover's
+## own) while it's going round the same thing, so it doesn't dither. `to`
+## itself when the way is clear.
+static func detour(tree: SceneTree, from: Vector2, to: Vector2, pad: float, memo: Dictionary, extra: Array = []) -> Vector2:
+	var way := to - from
+	var length := way.length()
+	if length < 1.0:
+		memo.clear()
+		return to
+	var u := way / length
+	var hit_c := Vector2.ZERO
+	var hit_r := 0.0
+	var best := INF
+	# (the camp gone round as one - its drums, fire and tent - not one by one)
+	var circles := []
+	for st in tree.get_nodes_in_group("fuel_stations"):
+		var round_camp: Array = FuelStation.bounds()
+		circles.append([(st as Node2D).global_position + (round_camp[0] as Vector2), float(round_camp[1])])
+	var camps := circles.duplicate()
+	for b in all(tree):
+		var r: Vector2 = b[1]
+		var inside := false
+		for c in camps:
+			inside = inside or (b[0] as Vector2).distance_to(c[0]) < float(c[1])
+		if not inside:
+			circles.append([b[0], maxf(r.x, r.y)])
+	circles.append_array(extra)
+	for c in circles:
+		var centre: Vector2 = c[0]
+		var reach: float = float(c[1]) + pad
+		# (in it already, or what's wanted is: nothing to go round)
+		if (from - centre).length() < float(c[1]) or (to - centre).length() < float(c[1]):
+			continue
+		var t := (centre - from).dot(u)
+		if t < 0.0 or t > length:
+			continue
+		if (from + u * t - centre).length() >= reach:
+			continue
+		if t < best:
+			best = t
+			hit_c = centre
+			hit_r = reach
+	if best == INF:
+		memo.clear()
+		return to
+	var key := Vector2i(hit_c.round())
+	var away := from - hit_c
+	var dist := away.length()
+	var round_r := hit_r * 1.15
+	var theta := acos(clampf(round_r / maxf(dist, round_r), -1.0, 1.0))
+	var sides := [away.normalized().rotated(theta), away.normalized().rotated(-theta)]
+	var side: int
+	if memo.get("key") == key:
+		side = int(memo.side)
+	else:
+		# (the side whose way round is the shorter to the target)
+		var a: Vector2 = hit_c + sides[0] * round_r
+		var b: Vector2 = hit_c + sides[1] * round_r
+		side = 0 if a.distance_to(to) + a.distance_to(from) <= b.distance_to(to) + b.distance_to(from) else 1
+		memo.key = key
+		memo.side = side
+	var tangent: Vector2 = hit_c + (sides[side] as Vector2) * round_r
+	if dist <= round_r * 1.02:
+		# (up against it already: along its rim, the chosen way)
+		var along := away.orthogonal().normalized() * (1.0 if side == 1 else -1.0)
+		return from + along * hit_r
+	return tangent + (tangent - from).normalized() * hit_r * 0.5

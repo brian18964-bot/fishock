@@ -395,7 +395,22 @@ func _roam(delta: float) -> void:
 	_move_toward(_target, WANDER_SPEED, delta)
 
 
+## (Solids.detour: the way round something, kept)
+var _detour := {}
+
+
 func _move_toward(target: Vector2, speed: float, delta: float, keep_out := true) -> void:
+	# (user report: stuck pressing into the camp from its far side, after
+	# someone on the other - round it, and round a lit light)
+	var walls := []
+	if keep_out:
+		for station in get_tree().get_nodes_in_group("fuel_stations"):
+			if station.light.visible:
+				walls.append([station.global_position, SAFE_RADIUS])
+		var lit := get_tree().current_scene.get_node_or_null("EscapePoint")
+		if lit != null and lit.get_node("Light").visible:
+			walls.append([lit.global_position, SAFE_RADIUS])
+	target = Solids.detour(get_tree(), global_position, target, BODY, _detour, walls)
 	var to := target - global_position
 	if to.length() < 0.5:
 		return

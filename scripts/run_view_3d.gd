@@ -105,11 +105,11 @@ const ROD_SIDE := 25.0
 ## (Fish_Throw): the cast's eight frames at these times (s) of it - wound
 ## back over the shoulder by 1.55, the whip through by 2.4. While the fish
 ## runs, hauling on it low and braced (Fish_Pull), quicker the harder it
-## pulls; reeling it in, stepping back (Fish_Back), at the crank's pace;
-## waiting, the angler's stance (Fish_Wait).
+## pulls; reeling, the reel's sway; held, still; walked backward away
+## from the line, stepping back (Fish_Back); waiting for a bite, the
+## angler's stance (Fish_Wait).
 const THROW_KEYS := [0.5, 0.85, 1.2, 1.55, 1.75, 1.95, 2.15, 2.4]
 const PULL_RATE := Vector2(0.7, 1.3)
-const BACK_RATE := Vector2(0.45, 0.9)
 ## (the rod hand in toward the body's middle while fishing - CENTRED_CLIPS:
 ## this share of the way out to the shoulder kept; the rod's side angle
 ## then)
@@ -1098,14 +1098,22 @@ const BY_SCRIPT := {"ghost.gd": "ghost", "big_ghost.gd": "dragon", "water_ghost.
 ## node -> {node: Node3D (the holder), model, anim, clip, yaw, last (2D pos)}
 var _creatures := {}
 var _rune_glow: Array = []
-## User request: the big ghost is a dragon now (tools/build_dragon.py) -
-## the characters' skeleton under a dragon's head, wings, feet and tail,
-## a ragged robe - and, as the ghost did, a lantern glowing green, in the
-## hand its Idle (Idle_Lantern) holds up. The lantern hangs from its bail
-## (CharacterRig.LAMP_BAIL), swinging as the dragon moves; the 2D one's
-## light (BigGhost.lamp_light) is drawn from it.
+## User request: the big ghost is a dragon now (tools/build_dragon_meshy.py:
+## the user's Meshy model, rigged) - and, as the ghost did, a lantern
+## glowing green in its right hand, hung from its bail (CharacterRig.
+## LAMP_BAIL), swinging as it moves; the 2D one's light (BigGhost.
+## lamp_light) drawn from it - set a little off its body (DRAGON_LIGHT_OFF)
+## and dimmer (user report: lit from that close it was a glare). User
+## request: the lantern down at its side as it goes about; held up -
+## Idle_Lamp stood, the arm raised (DragonRig.raise) on the move - when the
+## traveller's within DRAGON_NOTICE or another creature within
+## DRAGON_NOTICE_ANY (m).
 const DRAGON_HAND := "hand_r"
 const DRAGON_LAMP_SIZE := 1.3
+const DRAGON_LIGHT_OFF := 0.35
+const DRAGON_LIGHT_POWER := 0.65
+const DRAGON_NOTICE := 7.0
+const DRAGON_NOTICE_ANY := 4.0
 ## (user request: no clipping) It's drawn never nearer the traveller than
 ## this (m) - the 2D one catches from closer (BigGhost.CATCH_RADIUS) - so
 ## its body stays out of theirs, reaching for them; and its long tail is
@@ -1228,6 +1236,18 @@ func _dragon_gear(c: Dictionary, model: Node3D) -> void:
 	c.swing = Vector2.ZERO
 	c.swing_vel = Vector2.ZERO
 	c.hand_last = Vector3.ZERO
+
+
+## Whether the dragon at `at` has someone near: the traveller within
+## DRAGON_NOTICE, another creature within DRAGON_NOTICE_ANY.
+func _dragon_notices(n: Node, at: Vector2) -> bool:
+	if player != null and player.global_position.distance_to(at) < DRAGON_NOTICE * PX:
+		return true
+	for other in _creatures:
+		if other != n and is_instance_valid(other) and (_creatures[other].node as Node3D).visible \
+				and (other as Node2D).global_position.distance_to(at) < DRAGON_NOTICE_ANY * PX:
+			return true
+	return false
 
 
 ## The dragon's wings open when it hunts or holds someone, folded calm; its
@@ -1481,6 +1501,7 @@ func _sync_creatures(delta: float) -> void:
 			"dragon":
 				var mode: int = n.get("mode")
 				_dragon_rig(c, n, mode)
+				var near := _dragon_notices(n, at)
 				match mode:
 					BigGhost.Mode.GRAB:
 						clip = "Grab"
@@ -1491,9 +1512,20 @@ func _sync_creatures(delta: float) -> void:
 						rate = clampf(speed / 2.2, 0.7, 1.4)
 					_:
 						var moving := speed > (0.05 if c.clip == "Walk" else 0.12)
-						clip = "Walk" if moving else "Idle"
+						clip = "Walk" if moving else ("Idle_Lamp" if near else "Idle")
 						if moving:
 							rate = clampf(speed / 0.9, 0.5, 1.6)
+				var rig: DragonRig = c.get("rig")
+				if rig != null:
+					# (the arm up on the move when someone's near - stood, the
+					# clip holds it up; holding someone, the hands are busy)
+					rig.raise = 1.0 if near and clip in ["Walk", "Chase"] else 0.0
+					var model_yaw := Basis(Vector3.UP, float(c.yaw))
+					var v3 := Vector3(vel.x, 0.0, vel.y) / PX
+					rig.motion = model_yaw.inverse() * v3
+					rig.pace = clampf(speed / 1.2, 0.0, 1.0) if clip in ["Walk", "Chase"] else 0.0
+					if anim.current_animation != "" and anim.has_animation(anim.current_animation):
+						rig.stride = anim.current_animation_position / maxf(anim.get_animation(anim.current_animation).length, 0.01)
 			"water_ghost":
 				clip = "Claw" if int(n.get("_phase")) == 2 else "Walk"
 			_:
@@ -1720,10 +1752,14 @@ func _sync_light(l: PointLight2D, o: OmniLight3D) -> void:
 	o.light_color = l.color
 	o.light_energy = l.energy * 1.4
 	o.position = to3(l.global_position, ground_y(l.global_position) + 1.2)
-	# (the dragon's: from its lantern)
+	# (the dragon's: from its lantern, a little off its body, dimmer)
 	var c: Dictionary = _creatures.get(l.get_parent(), {})
 	if c.has("lamp"):
-		o.global_position = (c.lamp as Node3D).get_node("Flame").global_position
+		var flame: Vector3 = (c.lamp as Node3D).get_node("Flame").global_position
+		var body: Vector3 = (c.node as Node3D).global_position
+		var off := Vector3(flame.x - body.x, 0.0, flame.z - body.z)
+		o.global_position = flame + (off.normalized() * DRAGON_LIGHT_OFF if off.length() > 0.01 else Vector3.ZERO)
+		o.light_energy *= DRAGON_LIGHT_POWER
 
 
 # ---------------------------------------------------------------- the traveller
@@ -1882,6 +1918,11 @@ func _pick_clip() -> Array:
 		return ["Walk_Carry", clampf(speed / WALK_PACE, 0.0, 2.0), -1.0]
 	match v.clip:
 		PlayerVisual.CLIP_RUN, PlayerVisual.CLIP_HOLD_RUN:
+			# (user request: stepping back only when walked back during the
+			# fight - away from the line)
+			if player.state == Player.State.REELING and rig.anim.has_animation("Fish_Back") \
+					and player.velocity.dot(player.cast_target - player.global_position) < 0.0:
+				return ["Fish_Back", clampf(speed / WALK_PACE * 0.7, 0.4, 1.4), -1.0]
 			if speed * PX < PlayerVisual.WALK_MAX:
 				return ["Walk", clampf(speed / WALK_PACE, 0.4, 2.4), -1.0]
 			return ["Run", clampf(speed / RUN_PACE, 0.6, 2.0), -1.0]
@@ -1897,7 +1938,9 @@ func _pick_clip() -> Array:
 				return ["Fish_Throw", 1.0, sec / rig.anim.get_animation("Fish_Throw").length]
 			return ["Fish_Cast", 1.0, t]
 		PlayerVisual.CLIP_HOLD:
-			if rig.anim.has_animation("Fish_Wait"):
+			# (the fight, not reeling: held still - user request: no swaying
+			# the whole time; waiting for a bite: the angler's stance)
+			if player.state != Player.State.REELING and rig.anim.has_animation("Fish_Wait"):
 				return ["Fish_Wait", 1.0, -1.0]
 			return ["Fish_Hold", 1.0, -1.0]
 		PlayerVisual.CLIP_BITE:
@@ -1905,10 +1948,9 @@ func _pick_clip() -> Array:
 		PlayerVisual.CLIP_TUG:
 			return ["Fish_Tug", 1.3, -1.0]
 		PlayerVisual.CLIP_REEL:
-			if player.state == Player.State.REELING and rig.anim.has_animation("Fish_Back"):
-				var crank := clampf(player.crank / FishFight.CRANK_NORMAL, 0.0, 1.5)
-				return ["Fish_Back", lerpf(BACK_RATE.x, BACK_RATE.y, clampf(crank, 0.0, 1.0)), -1.0]
-			return ["Fish_Reel", 1.0, -1.0]
+			# (reeling in: the reel's own sway, at the crank's pace)
+			var crank := clampf(player.crank / FishFight.CRANK_NORMAL, 0.4, 1.3) if player.state == Player.State.REELING else 1.0
+			return ["Fish_Reel", crank, -1.0]
 		PlayerVisual.CLIP_FIGHT:
 			if rig.anim.has_animation("Fish_Pull"):
 				return ["Fish_Pull", lerpf(PULL_RATE.x, PULL_RATE.y, clampf(player.tension, 0.0, 1.0)), -1.0]

@@ -203,6 +203,24 @@ static func solids_local() -> Array:
 	return out
 
 
+## The whole camp as one circle round all its solids, [centre (from its
+## origin), radius] px - one thing to go round (Solids.detour), not a drum
+## at a time.
+static func bounds() -> Array:
+	var lo := Vector2.INF
+	var hi := -Vector2.INF
+	for b in solids_local():
+		var r: Vector2 = b[1]
+		lo = lo.min((b[0] as Vector2) - r)
+		hi = hi.max((b[0] as Vector2) + r)
+	var centre := (lo + hi) * 0.5
+	var out := 0.0
+	for b in solids_local():
+		var r: Vector2 = b[1]
+		out = maxf(out, (b[0] as Vector2).distance_to(centre) + r.length())
+	return [centre, out]
+
+
 ## For Solids (the tent's box as the ellipse round it).
 func solids() -> Array:
 	var out := []

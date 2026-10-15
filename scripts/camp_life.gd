@@ -492,6 +492,11 @@ func _activity(name: String, t: int) -> Array:
 	return _step_clear() + [{"do": "loop", "clip": low if t <= 1 else "Idle_FoldArms", "time": _rng.randf_range(3.0, 6.0)}]
 
 
+## A little way into the tent from its mouth: what's faced at the flap.
+func _tent_inside() -> Vector3:
+	return stage.spots.bed.at
+
+
 ## In under the tent: to its mouth, straight in, turned to face out.
 func _into_tent() -> Array:
 	var bed: Dictionary = stage.spots.bed
@@ -561,7 +566,10 @@ func act_on(kind: String, part := 0, done := Callable()) -> bool:
 					{"do": "play", "clip": "Yes"}, {"do": "call", "fn": func(): m.release()}]
 			activity = "merchant"
 		"equipment":
-			plan = _get_up() + _into_tent() + [{"do": "play", "clip": "Fixing_Kneeling", "at": 0.35, "fn": opens}] + _out_of_tent()
+			# (user request: not in under it - too deep, too long: at its
+			# mouth, a hand to the flap, the page open)
+			plan = _get_up() + _go("tent") + [{"do": "face", "at": _tent_inside()},
+				{"do": "play", "clip": "Interact", "at": 0.3, "fn": opens}]
 			activity = "tent"
 		"fish_tank", "fish_log":
 			plan = _get_up() + _go("trough") + [{"do": "loop", "clip": "Crouch_Idle", "time": 1.8, "at": 0.55, "fn": opens},

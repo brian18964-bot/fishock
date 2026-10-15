@@ -832,10 +832,11 @@ func use_item(id: String) -> bool:
 
 
 ## The nearest ghost about (a floating one or the big one), or null.
+## (user request: the big ghost only - the small ones not shown)
 func nearest_ghost() -> Node2D:
 	var best: Node2D = null
 	var best_d := INF
-	for group in ["ghosts", "big_ghost"]:
+	for group in ["big_ghost"]:
 		for g in get_tree().get_nodes_in_group(group):
 			var ghost := g as Node2D
 			if ghost == null or not ghost.is_inside_tree() or not ghost.visible:
@@ -921,10 +922,20 @@ static func swing_time(kind: String) -> float:
 ## is swung at it by itself - no tap needed. (The pistol fires by itself
 ## already, as one starts after you - Critter.)
 const AUTO_DEFEND_REACH := 110.0
+## (user report: a wolf held at the camp's edge was swung at again and
+## again, and the player, stood to each swing, couldn't get away) The
+## blade's own swings don't stop the player, and come no oftener than this
+## (s).
+const AUTO_DEFEND_GAP := 1.2
+var _auto_swing := false
+var _auto_gap := 0.0
 
 
 func _auto_defend() -> void:
-	if swing_left > 0.0 or not offhand_in_hand():
+	if swing_left <= 0.0:
+		_auto_swing = false
+	_auto_gap = maxf(_auto_gap - get_physics_process_delta_time(), 0.0)
+	if swing_left > 0.0 or _auto_gap > 0.0 or not offhand_in_hand():
 		return
 	var kind := swing_move()
 	if kind in ["", "scoop", "shoot"]:
@@ -937,6 +948,8 @@ func _auto_defend() -> void:
 		if to.length() < AUTO_DEFEND_REACH:
 			aim_dir = to.normalized()
 			swing("slash")
+			_auto_swing = true
+			_auto_gap = AUTO_DEFEND_GAP
 			return
 
 
@@ -987,6 +1000,7 @@ func swing(kind := "") -> bool:
 		kind = swing_move()
 	if kind == "" or swing_left > 0.0 or not offhand_in_hand():
 		return false
+	_auto_swing = false
 	swing_kind = kind
 	swing_total = swing_time(kind)
 	swing_left = swing_total
@@ -1552,7 +1566,7 @@ func _update_movement() -> void:
 	var spirit_ratio: float = Profile.SPIRIT_SPEED[Profile.spirit_penalty()]
 	var vigor_ratio: float = VIGOR_SPEED if vigor_timer > 0.0 else 1.0
 	# (a swing of the off hand's thing is stood to - SWINGS)
-	if swing_left > 0.0:
+	if swing_left > 0.0 and not _auto_swing:
 		input_dir = Vector2.ZERO
 	velocity = input_dir * SPEED * carry_ratio * affliction_ratio * drum_ratio * spirit_ratio * vigor_ratio
 	var before := position

@@ -47,17 +47,19 @@ NORMAL_SIZE = 2048
 # and the roughness smaller - the web build's size.
 SHIP_COLOUR = 1536
 SHIP_DETAIL = 1024
-CLIPS = {"Idle": "Idle_Lantern_Loop", "Walk": "Zombie_Walk_Fwd_Loop", "Chase": "Jog_Fwd_Loop",
+# (user request: the lantern down at its side, the arms easy, as it goes
+# about - held up, Idle_Lamp, only when someone's near; an upright walk)
+CLIPS = {"Idle": "Idle_Loop", "Idle_Lamp": "Idle_Lantern_Loop", "Walk": "Walk_Loop", "Chase": "Jog_Fwd_Loop",
          "Grab": "Zombie_Scratch", "Eat": "Consume"}
-LOOPING = ("Idle", "Walk", "Chase")
+LOOPING = ("Idle", "Idle_Lamp", "Walk", "Chase")
 # How much of a clip's trunk motion is kept (the rest at 1): the scratch
 # turns the whole body side-on - with the wings out it reads as flailing -
-# the zombie walk's hunch thrusts the head forward (user report: the head
-# too far forward); a man's jog on a dragon's legs (the knee already
-# forward) kicks them out level.
+# a man's walk and jog on a dragon's legs (the knee already forward) kick
+# them out level.
 TRUNK_BONES = ("pelvis", "spine_01", "spine_02", "spine_03", "neck_01", "Head")
 DAMP = {"Grab": {"pelvis": 0.4, "spine_01": 0.4, "spine_02": 0.4, "spine_03": 0.5},
-        "Walk": {"spine_01": 0.5, "spine_02": 0.4, "spine_03": 0.4, "neck_01": 0.4, "Head": 0.4},
+        "Walk": {"thigh_l": 0.75, "thigh_r": 0.75, "calf_l": 0.75, "calf_r": 0.75,
+                 "foot_l": 0.75, "foot_r": 0.75, "ball_l": 0.75, "ball_r": 0.75},
         "Chase": {"pelvis": 0.7, "thigh_l": 0.6, "thigh_r": 0.6, "calf_l": 0.6, "calf_r": 0.6,
                   "foot_l": 0.6, "foot_r": 0.6, "ball_l": 0.6, "ball_r": 0.6}}
 SAMPLES = 24
@@ -114,6 +116,8 @@ TAIL_POINTS = [_p(0, -0.02, 0.05), _p(-0.13, 0.17, 0.0), _p(-0.3, 0.22, -0.15), 
 # Meshy's swept forward round the left leg): each bone's angle down from
 # level (deg), straight back, the tip just lifting.
 TAIL_DROP = (50, 45, 35, 25, 15, 5, -5)
+# How far from the tail's bones its skin reaches (m, Meshy's scale).
+TAIL_REACH = 0.11
 ARM_AIM = ("upperarm_l", "lowerarm_l", "hand_l", "upperarm_r", "lowerarm_r", "hand_r")
 
 
@@ -231,11 +235,58 @@ def bind(body, arm):
     bpy.ops.object.parent_set(type='ARMATURE_AUTO')
     empty = sum(1 for v in body.data.vertices if not v.groups)
     print("bound: %d vertices with no bone" % empty)
+    tail_only(body, arm)
     hang_tail(body, arm)
     # At most four bones, adding up to one.
     select([body])
     bpy.ops.object.vertex_group_limit_total(group_select_mode='ALL', limit=4)
     bpy.ops.object.vertex_group_normalize_all(lock_active=False)
+
+
+def tail_only(body, arm):
+    """The tail's skin on the tail's bones alone (user report: two tails -
+    Meshy's swept round the left leg, so bone heat gave some of it to the
+    leg, and that part stayed by the leg when the tail was laid back): what
+    lies nearer the tail's line than any other bone, within TAIL_REACH of
+    it, keeps only its tail (and, at the root, pelvis) weights."""
+    segs = []
+    for b in arm.data.bones:
+        segs.append((b.name, arm.matrix_world @ b.head_local, arm.matrix_world @ b.tail_local))
+
+    def seg_dist(p, a, b):
+        ab = b - a
+        t = max(0.0, min(1.0, (p - a).dot(ab) / max(ab.length_squared, 1e-9)))
+        return (a + ab * t - p).length, t
+
+    groups = {g.name: g for g in body.vertex_groups}
+    index = {g.index: g.name for g in body.vertex_groups}
+    moved = 0
+    for v in body.data.vertices:
+        p = body.matrix_world @ v.co
+        best_tail, tail_bone, other = 9.0, None, 9.0
+        for name, a, b in segs:
+            d, _t = seg_dist(p, a, b)
+            if name.startswith("tail"):
+                if d < best_tail:
+                    best_tail, tail_bone = d, name
+            elif not name.startswith(("wing", "root")):
+                other = min(other, d)
+        if tail_bone is None or best_tail > TAIL_REACH or best_tail >= other:
+            continue
+        keep = {}
+        for g in v.groups:
+            name = index[g.group]
+            if name.startswith("tail") or (name == "pelvis" and tail_bone == "tail_01"):
+                keep[name] = g.weight
+        if not keep:
+            keep = {tail_bone: 1.0}
+        for g in list(v.groups):
+            if index[g.group] not in keep:
+                groups[index[g.group]].remove([v.index])
+        for name, w in keep.items():
+            groups[name].add([v.index], w, 'REPLACE')
+        moved += 1
+    print("tail skin kept to the tail: %d vertices" % moved)
 
 
 def hang_tail(body, arm):

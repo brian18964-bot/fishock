@@ -172,7 +172,12 @@ func _cling_spot() -> Vector2:
 	return _player.global_position + from.normalized() * CLING_GAP
 
 
+## (Solids.detour: the way round something, kept)
+var _detour := {}
+
+
 func _walk_to(target: Vector2, speed: float, delta: float) -> void:
+	target = Solids.detour(get_tree(), global_position, target, 11.0, _detour)
 	var to := target - global_position
 	_face(to)
 	# User request (3D): round the trees and rocks, not through them.

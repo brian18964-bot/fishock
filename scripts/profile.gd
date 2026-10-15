@@ -224,7 +224,7 @@ const USABLES := {
 	"eye_altar": {"name": "祭壇之眼", "cost": 20, "stack": 5, "keep": false,
 		"desc": "使用後 20 秒，金色的眼睛會盯著祭壇的方向、告訴你有多遠"},
 	"eye_ghost": {"name": "見鬼之眼", "cost": 35, "stack": 5, "keep": false,
-		"desc": "使用後 20 秒，看得見最近的鬼在哪個方向（會跟著鬼移動）"},
+		"desc": "使用後 20 秒，看得見大鬼在哪個方向（會跟著牠移動）"},
 	"binoculars": {"name": "望遠鏡", "cost": 90, "stack": 1, "keep": true,
 		"desc": "望向遠方找出最近的水域（指引 20 秒）；不會用掉，用過要等 60 秒"},
 }

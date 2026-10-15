@@ -198,6 +198,10 @@ func set_species(name: String) -> void:
 		body.shape = circle
 
 
+## (Solids.detour: the way round something, kept)
+var _detour := {}
+
+
 func _physics_process(delta: float) -> void:
 	if not active:
 		_respawn_timer -= delta
@@ -208,6 +212,12 @@ func _physics_process(delta: float) -> void:
 	_update_mode(delta)
 	var speed := _speed()
 	var to_target := _target - global_position
+	if _mode == Mode.CHASE or _mode == Mode.FOLLOW:
+		# (user report: a wolf after you on the far side of the camp pressed
+		# into it and stuck there - round it instead)
+		var goal := Solids.detour(get_tree(), global_position, _target, float(_data.get("body", 6.0)) + 4.0, _detour)
+		if goal != _target:
+			to_target = (goal - global_position).normalized() * to_target.length()
 	# User feedback: the animals moved stiffly. They now steer - speed up,
 	# ease in to where they're going and turn through an arc - instead of
 	# snapping between full speed and a dead stop.

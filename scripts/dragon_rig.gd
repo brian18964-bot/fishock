@@ -30,6 +30,34 @@ const EASE := 2.5
 
 ## 0 folded .. 1 open (what it's doing - RunView3D sets it).
 var spread := 0.0
+## User request: the tail and the wings swing with its going - they lag
+## behind when it sets off, swing on when it stops or turns, and the tail
+## sways with its stride. `motion`: how it's moving, in its own frame
+## (m/s: x to its left, z ahead - RunView3D sets it); `stride`: where in
+## its walk it is (0..1) and `pace` how much it's walking (0..1).
+var motion := Vector3.ZERO
+var stride := 0.0
+var pace := 0.0
+## (the lag: a spring - deg per m/s² of its change of pace, how stiff, how
+## damped; the stride's sway of the tail, deg)
+const LAG := 9.0
+const LAG_STIFF := 28.0
+const LAG_DAMP := 5.5
+const STRIDE_SWAY := 9.0
+var _was := Vector3.ZERO
+var _lag := Vector2.ZERO
+var _lag_vel := Vector2.ZERO
+## User request: the lantern down at its side as it goes about, held up
+## when someone's near (`raise` 0..1, eased): the right arm brought round
+## to hold it up and out ahead, as its Idle_Lamp holds it.
+var raise := 0.0
+const RAISE := {
+	"upperarm_r": Vector3(-0.32, -0.25, 0.91),
+	"lowerarm_r": Vector3(-0.12, 0.72, 0.68),
+	"hand_r": Vector3(-0.08, 0.86, 0.5),
+}
+var _raised := 0.0
+var _arm: Array = []
 ## The tail swung aside (rad, + to its left) - out of a tree's way
 ## (RunView3D sets it): the most at its root, less down it.
 var tail_turn := 0.0
@@ -57,14 +85,30 @@ func _process_modification() -> void:
 	_time += dt
 	_open = move_toward(_open, clampf(spread, 0.0, 1.0), dt * EASE)
 	_tail_now = lerpf(_tail_now, tail_turn, 1.0 - exp(-dt * 4.0))
+	# The lag: its change of pace (side to side, ahead and back) drives a
+	# spring the tail and wings hang on.
+	if dt > 0.0:
+		var accel := (motion - _was) / dt
+		_was = motion
+		var push := Vector2(-accel.x, -accel.z).limit_length(12.0) * deg_to_rad(LAG)
+		_lag_vel += (push - _lag * LAG_STIFF - _lag_vel * LAG_DAMP) * dt
+		_lag += _lag_vel * dt
+		_lag = _lag.limit_length(deg_to_rad(35.0))
+	var sway := deg_to_rad(STRIDE_SWAY) * pace * sin(TAU * stride)
 	for k in _tail.size():
 		var bone: int = _tail[k]
-		var a: float = _tail_now * float(TAIL_SHARE[k])
-		if absf(a) < 0.001:
+		var share := float(TAIL_SHARE[k])
+		var yaw := _tail_now * share + (_lag.x * 0.8 + sway) * (0.5 + 0.5 * share)
+		var pitch := _lag.y * 0.6 * share
+		if absf(yaw) + absf(pitch) < 0.0005:
 			continue
 		var gt := sk.get_bone_global_pose(bone)
 		var pt := sk.get_bone_global_pose(sk.get_bone_parent(bone))
-		sk.set_bone_pose_rotation(bone, (pt.basis.inverse() * (Basis(Vector3.UP, a) * gt.basis)).get_rotation_quaternion())
+		var turn := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch)
+		sk.set_bone_pose_rotation(bone, (pt.basis.inverse() * (turn * gt.basis)).get_rotation_quaternion())
+	_raised = move_toward(_raised, clampf(raise, 0.0, 1.0), dt * 1.8)
+	if _raised > 0.001:
+		_raise_arm(sk)
 	if _chest < 0 or _wings.is_empty():
 		return
 	# The chest as it is now against its rest: the frame the fold is in.
@@ -78,9 +122,11 @@ func _process_modification() -> void:
 			else w.fold.lerp(rest_dir, _open).normalized()
 		if w.root:
 			# (up and down about the body's forward axis, the left and the
-			# right wing mirrored)
-			var deg: float = BEAT * _open * beat + BREATH * (1.0 - _open) * sin(TAU * _time / 3.3)
+			# right wing mirrored; swung by the lag, and a little by the stride)
+			var deg: float = BEAT * _open * beat + BREATH * (1.0 - _open) * sin(TAU * _time / 3.3) \
+				+ rad_to_deg(_lag.y) * 0.5 + 3.0 * pace * sin(TAU * stride * 2.0)
 			want = Basis(Vector3.BACK, deg_to_rad(deg) * float(w.side)) * want
+			want = Basis(Vector3.UP, _lag.x * 0.4) * want
 		want = (frame * want).normalized()
 		var g := sk.get_bone_global_pose(w.bone)
 		var dir := (g.basis * Vector3.UP).normalized()
@@ -93,8 +139,30 @@ func _process_modification() -> void:
 		sk.set_bone_pose_rotation(w.bone, local.get_rotation_quaternion())
 
 
+## The right arm toward RAISE (in the chest's frame), as far as `_raised`.
+func _raise_arm(sk: Skeleton3D) -> void:
+	if _chest < 0:
+		return
+	var frame := sk.get_bone_global_pose(_chest).basis.orthonormalized() \
+		* sk.get_bone_global_rest(_chest).basis.orthonormalized().inverse()
+	for a in _arm:
+		var g := sk.get_bone_global_pose(a.bone)
+		var dir := (g.basis * Vector3.UP).normalized()
+		var want: Vector3 = (frame * (a.dir as Vector3)).normalized()
+		want = dir.slerp(want, _raised).normalized()
+		if dir.angle_to(want) < 0.001:
+			continue
+		var new_basis := Basis(Quaternion(dir, want)) * g.basis
+		var pg := sk.get_bone_global_pose(a.parent)
+		sk.set_bone_pose_rotation(a.bone, (pg.basis.inverse() * new_basis).get_rotation_quaternion())
+
+
 func _build(sk: Skeleton3D) -> void:
 	_built = true
+	for name in RAISE:
+		var i := sk.find_bone(name)
+		if i >= 0:
+			_arm.append({"bone": i, "parent": sk.get_bone_parent(i), "dir": (RAISE[name] as Vector3).normalized()})
 	for i in TAIL_SHARE.size():
 		var t := sk.find_bone("tail_%02d" % (i + 1))
 		if t >= 0:

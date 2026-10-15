@@ -222,7 +222,20 @@ func _leave() -> void:
 const BODY := 16.0
 
 
+## (Solids.detour: the way round something, kept)
+var _detour := {}
+
+
 func _move_toward(target: Vector2, speed: float, delta: float, keep_out := true) -> void:
+	# (user report: stuck pressing into the camp from its far side - round
+	# it, and round a lit light it can't cross)
+	var walls := []
+	if keep_out:
+		if escape_light.visible:
+			walls.append([escape_point.global_position, FIXED_LIGHT_SAFE_RADIUS])
+		if fuel_light.visible:
+			walls.append([fuel_station.global_position, FIXED_LIGHT_SAFE_RADIUS])
+	target = Solids.detour(get_tree(), global_position, target, BODY, _detour, walls)
 	var to_target := target - global_position
 	var next_position := global_position
 	if to_target.length() > 1.0:

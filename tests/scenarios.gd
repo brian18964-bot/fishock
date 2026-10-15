@@ -3596,7 +3596,7 @@ func test_run_3d() -> void:
 	var strike_hand: float = view.rig.attachments["hand_r"].global_position.y - view.pivot.global_position.y
 	check(strike_hand > hold_hand + 0.15, "the strike raises the arm with the rod (%.2f -> %.2f m)" % [hold_hand, strike_hand])
 	# User request (the fight stood stiff): the fish running, hauling on it
-	# low and braced; reeled in, stepping back - the arms still on the rod.
+	# low and braced - the arms still on the rod.
 	player().fight.opening_left = 0.0
 	player().fight.run_left = 3.0
 	await frames(6)
@@ -3604,9 +3604,16 @@ func test_run_3d() -> void:
 	player().fight.run_left = 0.0
 	key(KEY_SHIFT, true)
 	await frames(8)
-	check(view._clip == "Fish_Back" and view.rig.anim.speed_scale > 0.4, "reeling it in: stepping back (%s)" % view._clip)
+	check(view._clip == "Fish_Reel", "reeling it in: the reel's sway (%s)" % view._clip)
 	key(KEY_SHIFT, false)
 	key(KEY_SPACE, false)
+	await frames(30)
+	check(view._clip == "Fish_Hold", "neither: held still (%s)" % view._clip)
+	# (user request: stepping back only when walked back, away from the line)
+	key(KEY_S, true)
+	await frames(10)
+	check(view._clip == "Fish_Back", "walked back from the line: stepping back (%s)" % view._clip)
+	key(KEY_S, false)
 	player()._set_state(Player.State.IDLE)
 	player().fight = null
 	player().line_cleared.emit()
@@ -4108,8 +4115,59 @@ func test_run_menu_and_auto_defend() -> void:
 	check(p.swing_kind == "slash", "the blade swung by itself (%s)" % p.swing_kind)
 	await seconds(Player.swing_time("slash"))
 	check(not wolf.is_hunting(), "the wolf driven off")
+	# User report: a wolf held at the camp's edge was swung at again and
+	# again and the player, stood to each swing, was stuck: the blade's own
+	# swings don't stop them walking, and come no oftener than AUTO_DEFEND_GAP.
+	wolf._mode = Critter.Mode.CHASE
+	wolf._mode_timer = 5.0
+	wolf.global_position = p.global_position + Vector2(70, 0)
+	await seconds(Player.AUTO_DEFEND_GAP + 0.1)
+	var from := p.global_position
+	key(KEY_A, true)
+	await seconds(0.4)
+	key(KEY_A, false)
+	check(p.global_position.distance_to(from) > 20.0, "walking on through the blade's own swing (%.0f px)" % p.global_position.distance_to(from))
 	wolf.queue_free()
 	Profile.equipped["offhand"] = ""
+	# User report: a beast after you from the camp's far side stuck there,
+	# pressed into it: it goes round now - a wolf (the camp's narrow way),
+	# and the big ghost round the lit camp it can't come into.
+	var camp: Node2D = main.get_tree().get_nodes_in_group("fuel_stations")[0]
+	var round_camp: Array = FuelStation.bounds()
+	var mid: Vector2 = camp.global_position + (round_camp[0] as Vector2)
+	var r: float = round_camp[1]
+	await put(mid + Vector2(0, r + 12))
+	var hunter: Critter = load("res://scenes/critter.tscn").instantiate()
+	hunter.ambient = true
+	hunter.species = "wolf"
+	main.add_child(hunter)
+	hunter.global_position = mid + Vector2(0, -(r + 30))
+	var nearest := INF
+	for _i in 60 * 8:
+		hunter._mode = Critter.Mode.CHASE
+		hunter._mode_timer = 5.0
+		hunter._cooldown = 0.0
+		await frames(1)
+		nearest = minf(nearest, hunter.global_position.distance_to(p.global_position))
+	check(nearest < 60.0, "a wolf on the camp's far side came round it (%.0f px, %.0f apart)" % [nearest, 2.0 * r + 42.0])
+	hunter.queue_free()
+	var bg = main.get_node("BigGhost")
+	var lit: Vector2 = camp.global_position
+	await put(lit + Vector2(0, BigGhost.SAFE_RADIUS + 40))
+	bg.global_position = lit + Vector2(0, -(BigGhost.SAFE_RADIUS + 60))
+	var closest := INF
+	for _i in 60 * 12:
+		if bg.mode != BigGhost.Mode.GRAB:
+			bg.mode = BigGhost.Mode.CHASE
+			bg._timer = 5.0
+			bg._lost = 0.0
+			bg._target = p.global_position
+		await frames(1)
+		closest = minf(closest, bg.global_position.distance_to(p.global_position))
+	check(closest < BigGhost.CATCH_RADIUS + 10.0, "the big ghost came round the lit camp to you (%.0f px)" % closest)
+	bg.mode = BigGhost.Mode.ASLEEP
+	p.release()
+	await frames(2)
 	# The menu: the run paused under it; back to the camp from it.
 	var hud: Node = main.get_node("HUD")
 	hud.open_run_menu()
@@ -4177,15 +4235,21 @@ func test_run_intro_and_eye_guide() -> void:
 	var c: Dictionary = view._creatures.get(bg, {})
 	check(c.get("kind") == "dragon" and c.has("lamp") and c.anim != null, "the big ghost shown as the dragon, lantern and all")
 	var rig: DragonRig = c.get("rig")
-	check(c.get("clip") == "Idle" and (c.node as Node3D).find_children("*", "EarTailSway", true, false).size() == 1
-		and rig != null and rig.spread == 0.0, "standing: Idle, its tail swaying, its wings folded")
+	check(c.get("clip") == "Idle_Lamp" and (c.node as Node3D).find_children("*", "EarTailSway", true, false).size() == 1
+		and rig != null and rig.spread == 0.0, "standing, the traveller near: the lantern held up, its tail swaying, its wings folded")
+	# (user request: the lantern down at its side when no one's near)
+	bg.global_position = player().global_position + Vector2(-RunView3D.DRAGON_NOTICE * RunView3D.PX - 120, 0)
+	await seconds(1.5)
+	check(c.clip == "Idle", "no one near: the lantern down (%s)" % c.clip)
+	bg.global_position = player().global_position + Vector2(-110, -40)
+	await seconds(1.5)
 	var hand: Vector3 = (c.hand as Node3D).global_position
 	var bail: Vector3 = (c.lamp as Node3D).global_transform * CharacterRig.LAMP_BAIL
 	check(hand.distance_to(bail) < 0.05, "the lantern hangs from its hand (%.2f m)" % hand.distance_to(bail))
 	var glow: OmniLight3D = view._lights.get(bg.lamp_light)
 	var flame: Vector3 = (c.lamp as Node3D).get_node("Flame").global_position
-	check(glow != null and glow.global_position.distance_to(flame) < 0.01 and glow.light_color.g > glow.light_color.r,
-		"its green light from the lantern")
+	check(glow != null and glow.global_position.distance_to(flame) < RunView3D.DRAGON_LIGHT_OFF + 0.01
+		and glow.light_color.g > glow.light_color.r, "its green light from the lantern (a little off its body)")
 	# Holding the traveller: its wings open - and its body kept out of
 	# theirs, however near the 2D one is (user request: no clipping).
 	bg.global_position = player().global_position + Vector2(6, 3)

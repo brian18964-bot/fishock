@@ -39,6 +39,10 @@ var _grid: GridContainer
 var _purse: PanelContainer
 ## The right-hand pane: the chosen thing's tooltip and the buying.
 var _pane: VBoxContainer
+## The buy dialog's amount, total and where-to buttons: pinned under the
+## (scrolling) description - user report: a long description pushed them
+## out of reach.
+var _actions: VBoxContainer
 var _selected := ""
 var _toast: Label
 var _toast_tween: Tween
@@ -89,9 +93,22 @@ func _build() -> void:
 	detail.position = Vector2(590, 56)
 	detail.custom_minimum_size = Vector2(356, 474)
 	detail.size = detail.custom_minimum_size
+	var inner := VBoxContainer.new()
+	inner.add_theme_constant_override("separation", 6)
+	detail.add_child(inner)
+	var words := DragScroll.new()
+	words.name = "DetailScroll"
+	words.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	words.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	inner.add_child(words)
 	_pane = VBoxContainer.new()
 	_pane.add_theme_constant_override("separation", 6)
-	detail.add_child(_pane)
+	_pane.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	words.add_child(_pane)
+	_actions = VBoxContainer.new()
+	_actions.name = "Actions"
+	_actions.add_theme_constant_override("separation", 6)
+	inner.add_child(_actions)
 	add_child(detail)
 
 	_toast = UiKit.label("", 17, UiKit.GOLD_BRIGHT, true, 5)
@@ -271,6 +288,9 @@ func _mark_selected() -> void:
 
 ## Empties the right-hand pane (at once - its old buttons mustn't linger).
 func _clear_pane() -> void:
+	for c in _actions.get_children():
+		_actions.remove_child(c)
+		c.queue_free()
 	for c in _pane.get_children():
 		_pane.remove_child(c)
 		c.queue_free()
@@ -483,10 +503,10 @@ func buy_dialog(id: String, cost: int, note := "") -> void:
 		more.pressed.connect(func(): slider.value += 1)
 		for c in [less, slider, more, shown]:
 			row.add_child(c)
-		_pane.add_child(row)
+		_actions.add_child(row)
 	show_total.call()
-	_pane.add_child(total)
-	_pane.add_child(UiKit.label("買了要放到哪裡？", 15, UiKit.TEXT))
+	_actions.add_child(total)
+	_actions.add_child(UiKit.label("買了要放到哪裡？", 15, UiKit.TEXT))
 	var acts := HBoxContainer.new()
 	acts.add_theme_constant_override("separation", 6)
 	var places := []
@@ -504,7 +524,7 @@ func buy_dialog(id: String, cost: int, note := "") -> void:
 			buy(id, amount[0], where)
 			_reselect(id))
 		acts.add_child(b)
-	_pane.add_child(acts)
+	_actions.add_child(acts)
 
 
 ## After buying: the wares again (prices, counts, what's owned) and the
