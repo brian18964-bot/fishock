@@ -58,6 +58,10 @@ const MIN_SPEED_RATIO := 0.4
 ## both cut to about a quarter.
 const LURE_HOLD_RATE := 0.25
 const LURE_CLICK_AMOUNT := 0.03
+## (the retrieve's pace against LURE_HOLD_RATE: the stick held still; the
+## fastest cranking)
+const LURE_STILL_PACE := 0.3
+const LURE_FAST_PACE := 1.8
 ## User feedback: lure bites all came right at the end, by the player -
 ## a fish strikes somewhere along the retrieve (this share of the way in).
 const LURE_BITE_RANGE := Vector2(0.15, 0.85)
@@ -71,11 +75,23 @@ const LURE_BITE_RANGE := Vector2(0.15, 0.85)
 ## [degrees under, chance]
 const LURE_STRIKE_TIERS := [[20.0, 1.0], [40.0, 0.8], [90.0, 0.7], [INF, 0.6]]
 const LURE_TRUE_WORN := 0.1
-## (how far the stick's flicked to count; the strike's time against a
-## float's, the reading of the way taking a moment)
-const LURE_FLICK := 0.5
+## User request: struck without letting go of the stick - cranking the
+## lure in, the bite comes, the thumb goes on to the way shown and stops
+## there: the stick moved off where it was at the bite (LURE_MOVED), then
+## held out (past LURE_FLICK) and still (turning under LURE_STILL rad/s)
+## for LURE_DWELL s strikes that way. Let go mid-way, it strikes the way it
+## last pointed. (The strike's time against a float's, the reading of the
+## way taking a moment.)
+const LURE_FLICK := 0.55
+const LURE_MOVED := 0.35
+const LURE_STILL := 3.0
+const LURE_DWELL := 0.12
 const LURE_STRIKE_TIME := 1.4
 var strike_dir := Vector2.ZERO
+var _strike_from := Vector2.ZERO
+var _strike_last := Vector2.ZERO
+var _strike_moved := false
+var _strike_still := 0.0
 ## The last lure strike: how far off the way (deg; -1 none given), and
 ## whether it held.
 var strike_off := -1.0
@@ -114,7 +130,15 @@ const BLACK_SPIDER_BAIT := 2
 ## held between casts - offhand_in_hand()) reaches a critter NET_REACH px
 ## off (bare-handed: standing on it) and halves the chance it bites or
 ## stings.
-const NET_REACH := 46.0
+## User request: the net reaches further than a hand (px) - and holds on to
+## the critter it was swept at a little past that as the net comes down.
+const NET_REACH := 80.0
+const NET_HOLD := 1.4
+## Caught bare-handed: a quick grab (no bending down - user request), this
+## long (s) - RunView3D plays it.
+const GRAB_TIME := 0.45
+var grab_left := 0.0
+var _scoop_target: Critter
 const NET_VENOM_MULT := 0.5
 ## Round 8 (user request): what turns up under a rock or drops from a tree
 ## goes in the bag as a live bait (Profile.LIVE_BAITS) - by its flavor.
@@ -260,7 +284,9 @@ const SWING_DRAW := 0.35
 const ROCK_HEAVE_TIME := 1.7
 const ROCK_HEAVE_AT := 0.55
 const PICK_TIME := 1.8
-const SWINGS := {"slash": [1.0, 0.6], "chop": [2.3, 1.3], "scoop": [2.9, 1.75], "shoot": [1.0, 0.55],
+## (user report: the net's scoop took so long the bait was gone before it
+## came down - a quick sweep now)
+const SWINGS := {"slash": [1.0, 0.6], "chop": [2.3, 1.3], "scoop": [1.0, 0.5], "shoot": [1.0, 0.55],
 	"shoo": [1.3, 0.45]}
 ## User request: walking about, a tap of the right stick (Q) with a beast
 ## come for you this near (SHOO_REACH px) and nothing in hand to drive it
@@ -1028,6 +1054,7 @@ func swing(kind := "") -> bool:
 
 
 func _update_swing(delta: float) -> void:
+	grab_left = maxf(grab_left - delta, 0.0)
 	if swing_left <= 0.0:
 		return
 	swing_left = maxf(swing_left - delta, 0.0)
@@ -1062,7 +1089,12 @@ func _swing_lands() -> void:
 			else:
 				_drive_off_beasts()
 		"scoop":
-			if reachable_critter() != null:
+			var target := _scoop_target
+			_scoop_target = null
+			if target != null and is_instance_valid(target) and target.active and target.visible \
+					and target.global_position.distance_to(global_position) < NET_REACH * NET_HOLD:
+				_catch_critter(target)
+			elif reachable_critter() != null:
 				_catch_critter()
 		"slash":
 			_drive_off_beasts()
@@ -1569,6 +1601,10 @@ func _update_movement() -> void:
 		if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
 			input_dir.y += 1.0
 		input_dir = input_dir.normalized()
+		# (a fish on, the keys walk - there's no half-push on a key, and at
+		# a run off from the fish the line goes: turned_away)
+		if state == State.REELING:
+			input_dir *= KEY_FIGHT_WALK
 
 	# Design doc request: a water ghost hit scrambles steering for a bit -
 	# the input direction wobbles randomly instead of going where aimed.
@@ -1822,8 +1858,12 @@ func _handle_interaction(delta: float) -> void:
 			if use_pressed:
 				_pick_up_dropped_fish()
 		"抓餌":
-			if use_pressed and not (net_in_hand() and swing("scoop")):
-				_catch_critter()
+			if use_pressed:
+				var target := reachable_critter()
+				if net_in_hand() and swing("scoop"):
+					_scoop_target = target
+				else:
+					_catch_critter()
 		"對話":
 			if use_pressed:
 				Campaign.stat("willow_talk")
@@ -1875,7 +1915,7 @@ func _handle_action_input(delta: float) -> void:
 				_launch_cast()
 		State.BITE:
 			if fishing_mode == FishingMode.LURE:
-				_lure_strike_input(just_pressed, just_released)
+				_lure_strike_input(just_pressed, just_released, delta)
 			elif just_pressed:
 				_hook_fish(perfect_hook_left() > 0.0)
 		State.WAITING:
@@ -1991,10 +2031,13 @@ func pocket_live_bait(key: String, count := 1) -> int:
 ## Catches the critter in reach (reachable_critter()) into the bag as a
 ## live bait - BLACK_SPIDER_BAIT of a black spider. One that bites or
 ## stings (Critter.venom(); halved with the net) may poison.
-func _catch_critter() -> void:
-	var critter := reachable_critter()
+func _catch_critter(critter: Critter = null) -> void:
+	if critter == null:
+		critter = reachable_critter()
 	if critter == null:
 		return
+	if not net_in_hand():
+		grab_left = GRAB_TIME
 	var key := critter.bait_key()
 	if not _room_for_live(key):
 		GameState.push_message("背包滿了，放不下%s" % critter.get_label())
@@ -2134,8 +2177,12 @@ func _update_fishing(delta: float) -> void:
 				# Design doc request: lure retrieval speed is player-paced -
 				# steady while held, plus click bumps from
 				# _handle_action_input() - rather than an automatic timer.
+				# User request: cranked faster, it comes in faster (the stick
+				# turned as in a fight - _update_crank; held still, slowly;
+				# Space reels at the usual pace, Shift+Space faster).
+				_update_crank(delta)
 				if _is_action_pressed():
-					retrieve_progress += LURE_HOLD_RATE * delta / max(_wait_duration, 0.1)
+					retrieve_progress += LURE_HOLD_RATE * lure_reel_pace() * delta / max(_wait_duration, 0.1)
 				# Nibbles on a lure are just a tell (taps on the line).
 				if not _lure_nibbles.is_empty() and retrieve_progress >= _lure_nibbles[0]:
 					_lure_nibbles.pop_front()
@@ -2175,6 +2222,16 @@ func _update_fishing(delta: float) -> void:
 			tension = fight.tension
 			fish_run_active_time = fight.run_left
 			_follow_line(line_dir, delta)
+			# User request: turned round and run off mid-fight, the line
+			# snaps (stepping back at a walk, facing the fish, is fine).
+			if turned_away():
+				_turned_for += delta
+				if _turned_for >= TURN_SNAP_TIME and fight.result == "":
+					_snap_note = "turned"
+					_fail_catch("line_break")
+					return
+			else:
+				_turned_for = maxf(_turned_for - delta, 0.0)
 			if _snap_at >= 0.0 and progress >= _snap_at and fight.result == "":
 				_snap_at = -1.0
 				GameState.push_message("精神恍惚，手一抖——線斷了")
@@ -2220,6 +2277,11 @@ func _update_crank(delta: float) -> void:
 	crank = lerpf(crank, want, 1.0 - exp(-CRANK_EASE * delta)) if want < crank else want
 	if crank < 0.01:
 		crank = 0.0
+
+
+## How fast the lure's coming in against LURE_HOLD_RATE (the crank's pace).
+func lure_reel_pace() -> float:
+	return clampf(maxf(crank / FishFight.CRANK_NORMAL, LURE_STILL_PACE), LURE_STILL_PACE, LURE_FAST_PACE)
 
 
 ## The reel turning (a fish on: the crank; else the action held - a lure
@@ -2444,6 +2506,13 @@ func _start_bite() -> void:
 		strike_dir = (line.orthogonal() * side - line * randf_range(0.0, 0.8)).normalized()
 		bite_timer *= LURE_STRIKE_TIME
 		_strike_press = false
+		_strike_from = _aim_joystick.output if _aim_joystick.is_pressed else Vector2.ZERO
+		_strike_last = _strike_from
+		_strike_moved = false
+		_strike_still = 0.0
+		# (keys already down don't count as pressed for the strike)
+		for k in [KEY_W, KEY_A, KEY_S, KEY_D, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT]:
+			_key_just_pressed(k)
 	_set_state(State.BITE)
 	bite_started.emit()
 	GameState.report("咬鉤了！快揚竿", "good")
@@ -2453,22 +2522,53 @@ func _start_bite() -> void:
 	# struck, FishFight.open().)
 
 
-## A lure's bite: a fresh press on the right stick, flicked (or let go
-## without), or Space (with the way walked), strikes.
-func _lure_strike_input(just_pressed: bool, just_released: bool) -> void:
-	if just_pressed:
-		_strike_press = true
-		if not _cast_stick_touched() and touch_aim == Vector2.ZERO:
-			_strike_lure(velocity.normalized() if velocity.length() > 1.0 else Vector2.ZERO)
-			return
-	if not _strike_press:
-		return
+## A lure's bite: on a touch screen, the stick taken on to a way and held
+## there (or let go of after it moved); on a keyboard, Space or a way key
+## (W/A/S/D) pressed - the way the keys point.
+func _lure_strike_input(just_pressed: bool, just_released: bool, delta: float) -> void:
 	if touch_aim != Vector2.ZERO:
 		_strike_lure(touch_aim.normalized())
-	elif _aim_joystick.is_pressed and _aim_joystick.output.length() > LURE_FLICK:
-		_strike_lure(_aim_joystick.output.normalized())
-	elif just_released:
-		_strike_lure(Vector2.ZERO)
+		return
+	if _aim_joystick.is_pressed:
+		var p: Vector2 = _aim_joystick.output
+		if p.distance_to(_strike_from) > LURE_MOVED:
+			_strike_moved = true
+		var turning := 0.0
+		if p.length() > 0.3 and _strike_last.length() > 0.3 and delta > 0.0:
+			turning = absf(angle_difference(_strike_last.angle(), p.angle())) / delta
+		if _strike_moved and p.length() > LURE_FLICK and turning < LURE_STILL:
+			_strike_still += delta
+		else:
+			_strike_still = 0.0
+		_strike_last = p
+		if _strike_still >= LURE_DWELL:
+			_strike_lure(p.normalized())
+		return
+	if just_released and _cast_stick_touched() == false and _strike_last.length() > 0.3:
+		# (let go of the stick: the way it last pointed, if it had moved)
+		_strike_lure(_strike_last.normalized() if _strike_moved else Vector2.ZERO)
+		return
+	var keys := _way_keys()
+	var key_pressed := false
+	for k in [KEY_W, KEY_A, KEY_S, KEY_D, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT]:
+		if _key_just_pressed(k):
+			key_pressed = true
+	if just_pressed or (key_pressed and keys != Vector2.ZERO):
+		_strike_lure(keys)
+
+
+## The way the keyboard's way keys point (ZERO: none held).
+func _way_keys() -> Vector2:
+	var v := Vector2.ZERO
+	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
+		v.x -= 1.0
+	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
+		v.x += 1.0
+	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
+		v.y -= 1.0
+	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
+		v.y += 1.0
+	return v.normalized()
 
 
 ## The strike's chance by how far off strike_dir it went (deg; -1: no way
@@ -2525,6 +2625,22 @@ func _update_light_lure(delta: float) -> void:
 		_apply_water_ghost_attack("水面的燈光把水鬼引來了！")
 
 
+## Running away from the fish on the line (faster than a walk, more than
+## TURN_AWAY degrees off the line): the body turns round - for this long,
+## and the line snaps.
+const TURN_AWAY := 120.0
+const KEY_FIGHT_WALK := 0.5
+const TURN_SNAP_TIME := 0.35
+var _turned_for := 0.0
+
+
+func turned_away() -> bool:
+	if state != State.REELING or velocity.length() <= PlayerVisual.WALK_MAX + PlayerVisual.WALK_SLACK:
+		return false
+	var line := cast_target - global_position
+	return line.length() > 1.0 and absf(rad_to_deg(velocity.angle_to(line))) > TURN_AWAY
+
+
 ## Worn right out (spirit under 30), now and then the hand slips mid-fight
 ## and the line snaps: where in the fight (progress), or -1.
 const SPENT_SNAP_CHANCE := 0.15
@@ -2534,6 +2650,7 @@ var _snap_at := -1.0
 func _hook_fish(perfect := false) -> void:
 	fight = FishFight.new(difficulty_key, fish_habit, tier_data, reel_power_mult, Profile.rod())
 	_snap_at = randf_range(0.3, 0.8) if Profile.spirit_penalty() >= 3 and randf() < SPENT_SNAP_CHANCE else -1.0
+	_turned_for = 0.0
 	fight.open(fish_heft())
 	if perfect:
 		fight.perfect_hook()
@@ -2707,6 +2824,8 @@ func _fail_catch(reason: String) -> void:
 				msg = "魚在遠處跳出水面，線一下就斷了"
 			"rush":
 				msg = "刺魚後馬上收線，正好撞上魚猛拉，線斷了（先按住頂住，看張力再收）"
+			"turned":
+				msg = "博魚時轉身跑開，線一下就被扯斷了（要退後就慢慢走，面向魚）"
 			_:
 				msg = "線斷了，魚跑了"
 		_snap_note = ""

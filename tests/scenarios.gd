@@ -49,7 +49,7 @@ const TESTS := [
 	"test_walking_off_reels_in",
 	"test_fight_swipe",
 	"test_fight_enrage_tension",
-	"test_fight_sweet_spot", "test_fight_line_distance", "test_fight_line_out", "test_fight_leap_far_out",
+	"test_fight_sweet_spot", "test_fight_line_distance", "test_fight_fish_keeps_its_water", "test_fight_line_out", "test_fight_leap_far_out",
 	"test_fight_swim_out_by_fish", "test_fight_spent_reeled_in", "test_fight_opening", "test_fight_fish_swims", "test_fight_leap_close_in", "test_crank_by_turning_the_stick", "test_offhand_swing_and_wear",
 	"test_perfect_hook",
 	"test_light_lure",
@@ -1237,6 +1237,34 @@ func test_live_bait_and_net() -> void:
 	check(Profile.durability("net") == wear - 1, "and the net wears a little (%d -> %d)" % [wear, Profile.durability("net")])
 	check(p.live_bait == "rat", "and on the hook, nothing else being on")
 	check(Inventory.items(p).any(func(it): return it.kind == "live" and it.item == "live_rat"), "it shows in the bag")
+	# User report: the net came down too late - the bait gone. A quick
+	# sweep, further than a hand reaches, and the critter it was swept at
+	# still caught if it's scuttled a little off meanwhile.
+	check(Player.swing_time("scoop") <= 1.2 and Player.NET_REACH > 70.0, "a quick sweep, a long reach")
+	var mouse: Critter = load("res://scenes/critter.tscn").instantiate()
+	mouse.species = "rat"
+	main.add_child(mouse)
+	mouse.set_physics_process(false)
+	mouse.global_position = p.global_position + Vector2(70, 0)
+	await frames(3)
+	var rats := Profile.bag_count("live_rat")
+	check(p.interaction().get("verb", "") == "抓餌", "the net reaches it at %d px" % 70)
+	check(p.swing("scoop"), "swept")
+	p._scoop_target = mouse
+	mouse.global_position = p.global_position + Vector2(100, 0)
+	await seconds(Player.swing_time("scoop") + 0.1)
+	check(Profile.bag_count("live_rat") == rats + 1, "scuttled a little off, still scooped up")
+	# Bare-handed: caught at a touch, a quick grab (no bending down).
+	Profile.equip("hatchet")
+	var bug: Critter = load("res://scenes/critter.tscn").instantiate()
+	bug.species = "rat"
+	main.add_child(bug)
+	bug.set_physics_process(false)
+	bug.global_position = p.global_position + Vector2(10, 0)
+	await frames(3)
+	p._catch_critter()
+	check(not bug.active and p.grab_left > 0.0 and p.swing_left == 0.0, "bare-handed: snatched up at once")
+	Profile.equip("net")
 	# Found under a rock: a live bait too.
 	var worms := Profile.bag_count("live_worm")
 	check(p.pocket_live_bait(Player.FOUND_BAIT["蚯蚓"]) == 1 and Profile.bag_count("live_worm") == worms + 1, "a worm found goes in the bag")
@@ -1558,6 +1586,59 @@ func test_fight_line_distance() -> void:
 	run.run_left = 1.0
 	run.update(0.5, 1.0, Vector2.ZERO, Vector2.UP)
 	check(run.distance > 15.0, "on a run the drag slips - line goes out (%.1f)" % run.distance)
+
+
+## User request: a hooked fish keeps to its water - fresh, it won't be
+## cranked in past the near edge of where it took the bait (the line
+## tightening instead); the bigger and rarer, the wider it roams; tired,
+## it comes in.
+func test_fight_fish_keeps_its_water() -> void:
+	var tier: Dictionary = FishData.TIERS.values()[0]
+	var light := FishFight.new("normal", "", tier, 1.0)
+	light.open(0.0)
+	var heavy := FishFight.new("normal", "", tier, 1.0)
+	heavy.open(1.0)
+	for f in [light, heavy]:
+		f.opening_left = 0.0
+		f._jump_cooldown = 99.0
+		f._run_timer = 99.0
+		f.line_max = 40.0
+		f.distance = 16.0
+		f.swim_out = 0.5
+		f.lively = false
+		f.update(0.01, 0.0, Vector2.ZERO, Vector2.UP)
+	check(heavy.roam > light.roam + 3.0, "a heavy fish roams wider (%.1f m vs %.1f m)" % [heavy.roam, light.roam])
+	var top := 0.0
+	for i in 200:
+		light.progress = 0.05
+		light.tension = minf(light.tension, 0.5)
+		light.update(0.05, FishFight.CRANK_NORMAL, Vector2.ZERO, Vector2.UP)
+		top = maxf(top, light.tension)
+	check(light.distance >= light.home - light.roam - 1.0,
+		"fresh, cranked 10 s: kept to its water (%.1f m, edge %.1f m)" % [light.distance, light.home - light.roam])
+	check(top >= 0.5, "dragged at the edge, the line tight (%.2f)" % top)
+	# Tired, it comes in.
+	light.progress = 0.95
+	light.tension = 0.2
+	for i in 60:
+		light.update(0.05, FishFight.CRANK_NORMAL, Vector2.ZERO, Vector2.UP)
+		light.tension = minf(light.tension, 0.5)
+	check(light.distance < light.home - light.roam - 2.0, "worn out, it's brought in (%.1f m)" % light.distance)
+	# Let be at the edge, it swims back out.
+	var back := FishFight.new("normal", "", tier, 1.0)
+	back.open(0.5)
+	back.opening_left = 0.0
+	back._jump_cooldown = 99.0
+	back._run_timer = 99.0
+	back.lively = false
+	back.distance = 16.0
+	back.swim_out = 0.0
+	back.update(0.01, 0.0, Vector2.ZERO, Vector2.UP)
+	back.distance = back.near_limit()
+	var at := back.distance
+	for i in 20:
+		back.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
+	check(back.distance > at + 0.5, "let be at the edge, it heads back out (%.1f -> %.1f m)" % [at, back.distance])
 
 
 ## Out in the red, a leap snaps the line outright; near, it's only the
@@ -1947,6 +2028,26 @@ func test_lure_retrieve() -> void:
 		player()._roll_catch_outcome()
 		bites.append(player()._lure_bite_at)
 	check(bites.min() < 0.3 and bites.max() > 0.7, "anywhere along the retrieve (%.2f-%.2f)" % [bites.min(), bites.max()])
+	# User request: cranked faster, it comes in faster.
+	var paces := []
+	for turning in [0.0, 0.25]:
+		player()._set_state(Player.State.WAITING)
+		player()._lure_bite_at = 5.0
+		player().retrieve_progress = 0.0
+		stick._touch_index = 7
+		stick.is_pressed = true
+		for i in 60:
+			stick.output = Vector2.RIGHT.rotated(i * turning) * 0.9
+			await frames(1)
+		paces.append(player().retrieve_progress)
+		stick.is_pressed = false
+		stick.output = Vector2.ZERO
+		stick._reset()
+		await frames(1)
+	# (less the press's own nudge)
+	var tap_in := Player.LURE_CLICK_AMOUNT
+	check(paces[1] - tap_in > (paces[0] - tap_in) * 2.5,
+		"cranked, it comes in faster than held still (%.3f vs %.3f)" % [paces[1] - tap_in, paces[0] - tap_in])
 	player()._set_state(Player.State.IDLE)
 
 
@@ -2001,6 +2102,27 @@ func test_lure_strike_direction() -> void:
 				check(player().fight.stamina() > 0.95, "off the way: nothing off it")
 			player()._set_state(Player.State.IDLE)
 		check(absf(on / 300.0 - case[1]) < 0.09, "%d deg off: on %.0f%% (%.0f%%)" % [case[0], on / 3.0, case[1] * 100.0])
+	# User request: struck without letting go - cranking the lure in, the
+	# bite comes, the thumb goes on round to the way and stops there.
+	player()._set_state(Player.State.WAITING)
+	stick._touch_index = 7
+	stick.is_pressed = true
+	stick.output = Vector2.RIGHT * 0.9
+	await frames(1)
+	player()._start_bite()
+	for i in 8:
+		stick.output = Vector2.RIGHT.rotated(i * 0.3) * 0.9
+		await frames(1)
+	check(player().state == Player.State.BITE, "cranking on doesn't strike")
+	stick.output = player().strike_dir * 0.9
+	await frames(14)
+	check(player().state == Player.State.REELING and player().strike_off >= 0.0 and player().strike_off < 5.0,
+		"taken on to the way and held there: struck that way (%.0f deg)" % player().strike_off)
+	stick.is_pressed = false
+	stick.output = Vector2.ZERO
+	stick._reset()
+	player()._set_state(Player.State.IDLE)
+	await frames(2)
 	# Not struck in time: away.
 	player()._set_state(Player.State.WAITING)
 	player()._start_bite()
@@ -3312,6 +3434,32 @@ func test_backpack_grid() -> void:
 	check(bag.is_open(), "backpack opens")
 	var stick: Node = main.get_node("HUD/Panel/AimJoystick")
 	check(stick.process_mode == Node.PROCESS_MODE_DISABLED, "the sticks ignore touches under the open bag")
+	# User report: a thing in the bag's bottom row - its card ran off the
+	# screen, 使用 out of reach. Its card stays on the screen, buttons and all.
+	bag.toggle()
+	gs.carried_fish.clear()
+	Profile.storage["eyeball"] = 1
+	Profile.to_bag("eyeball", 1)
+	bag.toggle()
+	var eye := {}
+	for it in Inventory.items(p):
+		if it.kind == "use" and it.item == "eyeball":
+			eye = it
+	bag._selected = {"kind": eye.kind, "index": eye.index}
+	bag._rebuild()
+	bag._place_card(Rect2(Vector2(420, 488), Vector2(48, 48)))
+	await frames(3)
+	var card: Control = bag._card
+	var use_button: Control = null
+	for b in card.find_children("*", "Button", true, false):
+		if (b as Button).text == "使用":
+			use_button = b
+	check(use_button != null and card.get_global_rect().end.y <= 540.0
+		and Rect2(0, 0, 960, 540).encloses(use_button.get_global_rect()),
+		"a bottom-row thing's card on the screen, 使用 in reach (%s)" % str(card.get_global_rect()))
+	await seconds(1.0)
+	check(use_button != null and is_instance_valid(use_button) and use_button.is_inside_tree(),
+		"its buttons not swapped under the finger by the bag's refresh")
 	bag.toggle()
 	check(not bag.is_open(), "backpack closes")
 	check(stick.process_mode != Node.PROCESS_MODE_DISABLED, "the sticks work again")
@@ -3672,7 +3820,18 @@ func test_run_3d() -> void:
 	key(KEY_S, true)
 	await frames(10)
 	check(view._clip == "Fish_Back", "walked back from the line: stepping back (%s)" % view._clip)
+	var faced := Vector2(sin(view._yaw), cos(view._yaw)).dot((player().cast_target - player().global_position).normalized())
+	check(faced > 0.5 and player().state == Player.State.REELING, "stepping back facing the fish, still on")
 	key(KEY_S, false)
+	# User request: turned round and run off, the line snaps.
+	var away: Vector2 = -(player().cast_target - player().global_position).normalized()
+	for _i in 40:
+		player()._move_joystick.output = away
+		await frames(1)
+		if player().state != Player.State.REELING:
+			break
+	player()._move_joystick.output = Vector2.ZERO
+	check(player().state == Player.State.IDLE, "run off from the fish: the line snapped")
 	player()._set_state(Player.State.IDLE)
 	player().fight = null
 	player().line_cleared.emit()

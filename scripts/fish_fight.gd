@@ -76,6 +76,19 @@ extends RefCounted
 ##   it's reeled and as it tires, and to the top on a leap. The danger and
 ##   the line running out go by the line out too.
 
+## User request (fish came in to the bank still fresh): a hooked fish keeps
+## to its water - within `roam` m of where it took the bait (`home`, the
+## line out at the strike), the harder, bigger and rarer the wider (ROAM,
+## light .. heavy). Its bursts turn back toward it once it's strayed. Fresh,
+## it won't be brought nearer than the near edge of it: reeled past that
+## (near_limit()) the reel brings only HOLD_REEL of the line in and the
+## tension climbs (HOLD_TENSION) - the line and the tension go with how far
+## it's dragged from its water; let be, it swims back out (HOME_BACK m/s).
+## As it tires the near edge comes in, all the way once it's spent.
+const ROAM := Vector2(2.5, 8.0)
+const HOLD_REEL := 0.15
+const HOLD_TENSION := 1.6
+const HOME_BACK := 0.9
 const RUN_TENSION_MULT := 1.8
 ## Giving line to a run: the drag holds tension nearly level.
 const RUN_SLACK_TENSION := 0.15
@@ -245,6 +258,11 @@ var result := ""  # "", "landed", "line_break", "shook_off", "cover", "line_out"
 ## The line out (m), how much there is (m), and how fast this fish swims
 ## off with it (m/s) - see REEL_IN.
 var distance := 12.0
+## Its water (see ROAM): the line out at the strike (-1 till the first
+## frame), how far it'll roam, how far it's gone across the line (m).
+var home := -1.0
+var roam := 4.0
+var side_off := 0.0
 var depth := DEPTH_HOOKED
 var line_max := 40.0
 var swim_out := 1.0
@@ -347,6 +365,9 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 		reel = CRANK_NORMAL if reel else 0.0
 	crank = clampf(float(reel), 0.0, 1.0)
 	var held := crank >= HELD_AT
+	if home < 0.0:
+		home = distance
+		roam = lerpf(ROAM.x, ROAM.y, heft)
 	# How hard it's cranked, against holding the button the old way.
 	var k := crank / CRANK_NORMAL
 	var pull: float = diff.pull * (ENRAGE_PULL if enraged else 1.0)
@@ -492,6 +513,7 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 	if held and out_mult != RUN_OUT_MULT and not resisted:
 		out_mult *= HELD_OUT
 	_depth(delta, k if held else 0.0, radial)
+	side_off += lateral * delta
 	_line(delta, out_mult, reel_in if held else 0.0, pull, radial)
 	if result == "":
 		if tension >= 1.0:
@@ -520,13 +542,34 @@ func _line(delta: float, out_mult: float, reel_in: float, pull: float, radial :=
 	if result != "":
 		return
 	var out: float = swim_out * out_mult * pull / diff.pull * lerpf(TIRED_OUT, 1.0, stamina())
-	distance = clampf(distance + (out - REEL_IN * reel_in + radial) * delta, MIN_DISTANCE, line_max)
+	var reeled := REEL_IN * reel_in
+	var limit := near_limit()
+	if not spent and home > 0.0:
+		var past := limit + 0.2 - distance
+		if past > 0.0 and reel_in > 0.0:
+			# Dragged out of its water: it pulls back (see ROAM) - the
+			# further, the harder.
+			reeled *= HOLD_REEL
+			out += HOME_BACK * vigor * clampf(past, 0.0, 1.5)
+			tension = minf(tension + tension_rise * strain * pull * HOLD_TENSION * clampf(past / 1.5 + 0.4, 0.4, 1.6) * reel_in * delta, 1.0)
+		elif reel_in <= 0.0 and distance < home:
+			# Let be, it heads back to its water.
+			out += HOME_BACK * vigor * clampf((home - distance) / maxf(roam, 0.1), 0.0, 1.0)
+	distance = clampf(distance + (out - reeled + radial) * delta, MIN_DISTANCE, line_max)
 	if line_out() >= line_max:
 		snap_why = "far"
 		result = "line_out"
 	elif danger() > 0.0 and randf() < DANGER_SNAP * danger() * danger() * delta:
 		snap_why = "far"
 		result = "line_break"
+
+
+## The nearest the fish lets itself be brought now (see ROAM): the near
+## edge of its water fresh, in to the bank as it tires.
+func near_limit() -> float:
+	if spent or home < 0.0:
+		return MIN_DISTANCE
+	return lerpf(MIN_DISTANCE, maxf(home - roam, MIN_DISTANCE), pow(stamina(), 0.7))
 
 
 ## How far into the danger the line is (0 not yet .. 1 all out).
@@ -616,10 +659,21 @@ func _swim(delta: float, held: bool) -> float:
 
 func _start_burst() -> void:
 	var side := 1.0 if randf() < 0.5 else -1.0
+	# (strayed from its water: back toward it - see ROAM)
+	if home > 0.0 and absf(side_off) > roam:
+		side = -signf(side_off)
 	var r := randf()
-	if r < BURST_OUT:
+	var out_share := BURST_OUT
+	var in_share := 1.0 - BURST_OUT - BURST_ALONG
+	if home > 0.0 and distance < home - roam * 0.5:
+		out_share = 0.65
+		in_share = 0.05
+	elif home > 0.0 and distance > home + roam:
+		out_share = 0.05
+		in_share = 0.65
+	if r < out_share:
 		heading = randf_range(-0.5, 0.5)
-	elif r < BURST_OUT + BURST_ALONG:
+	elif r < 1.0 - in_share:
 		heading = randf_range(0.9, 1.9) * side
 	else:
 		heading = (PI - randf_range(0.0, 0.6)) * side

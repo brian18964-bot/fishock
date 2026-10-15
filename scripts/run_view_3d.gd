@@ -112,9 +112,10 @@ const THROW_KEYS := [0.5, 0.85, 1.2, 1.55, 1.75, 1.95, 2.15, 2.4]
 const PULL_RATE := Vector2(0.7, 1.3)
 ## (the rod hand in toward the body's middle while fishing - CENTRED_CLIPS:
 ## this share of the way out to the shoulder kept; the rod's side angle
-## then)
-const CENTRE_KEEP := 0.55
-const ROD_SIDE_CENTRED := 12.0
+## then. User report: in to the middle, the camera behind saw no hand on
+## the rod at all - it's kept out by the hip, where the arm shows.)
+const CENTRE_KEEP := 1.25
+const ROD_SIDE_CENTRED := 22.0
 const CENTRED_CLIPS := [PlayerVisual.CLIP_HOLD, PlayerVisual.CLIP_BITE, PlayerVisual.CLIP_TUG,
 	PlayerVisual.CLIP_REEL, PlayerVisual.CLIP_FIGHT]
 ## How fast the rod follows its angle (1/s), the arm comes in to hold it
@@ -144,7 +145,9 @@ const KICK_SHARE := 0.55
 const MOVE_CLIPS := {"drink": "Drink", "look": "Look_Far", "eye": "Use_Eye", "pick": "Pick_Up", "lift": "Kick",
 	"throw": "OverhandThrow", "cheer": "Victory", "fist": "Fist_Pump", "sad": "Disappointed", "scared": "Scared",
 	"kneel": "Kneel"}
-const ACT_CLIPS := {"chop": "TreeChopping", "slash": "Sword_Regular_A", "scoop": "Farm_Harvest", "shoot": "Pistol_Shoot"}
+## (the net swept down at a critter - Sword_Regular_A's sweep; user report:
+## no bending down for it)
+const ACT_CLIPS := {"chop": "TreeChopping", "slash": "Sword_Regular_A", "scoop": "Sword_Regular_A", "shoot": "Pistol_Shoot"}
 ## The off hand's things, how long (m).
 const OFFHAND_LENGTH := {"knife": 0.3, "hatchet": 0.48, "machete": 0.6, "glock": 0.2, "net": 0.7}
 ## (user request: the net's hoop smaller still - its breadth to its length)
@@ -1870,6 +1873,10 @@ func _place_traveller(delta: float) -> void:
 	var face: Vector2 = player.aim_dir
 	if _visual.struggling:
 		face = player.grab_from - player.global_position
+	elif moving and player.state == Player.State.REELING and not player.turned_away():
+		# (fighting a fish: facing it, stepping about - turned round only
+		# running off, and then the line goes - Player.turned_away)
+		face = player.aim_dir
 	elif moving and player.state != Player.State.CHARGING:
 		face = player.velocity
 	if face.length() > 0.01:
@@ -1901,6 +1908,9 @@ func _pick_clip() -> Array:
 		var turn := (_intro_t - float(INTRO.turn_at)) / float(INTRO.turn)
 		if turn >= 0.0 and turn < 1.0:
 			return ["Walk", 0.55, -1.0]
+	if player.grab_left > 0.0:
+		# (a critter grabbed bare-handed: a quick reach and snatch)
+		return ["Interact", 1.0, (1.0 - player.grab_left / Player.GRAB_TIME) * 0.5]
 	if player.swing_kind == "shoo" and player.swing_left > 0.0:
 		# (a beast waved off - user request: no weapon needed)
 		return ["Wave_Big", 1.0, minf(1.0 - player.swing_left / maxf(player.swing_total, 0.01), 0.999)]
@@ -1957,7 +1967,8 @@ func _pick_clip() -> Array:
 			# (user request: stepping back only when walked back during the
 			# fight - away from the line)
 			if player.state == Player.State.REELING and rig.anim.has_animation("Fish_Back") \
-					and player.velocity.dot(player.cast_target - player.global_position) < 0.0:
+					and player.velocity.dot(player.cast_target - player.global_position) < 0.0 \
+					and not player.turned_away():
 				return ["Fish_Back", clampf(speed / WALK_PACE * 0.7, 0.4, 1.4), -1.0]
 			if speed * PX < PlayerVisual.WALK_MAX:
 				return ["Walk", clampf(speed / WALK_PACE, 0.4, 2.4), -1.0]
@@ -2426,8 +2437,11 @@ func _line_and_float() -> void:
 	_line.mesh = ImmediateMesh.new()
 	var lm := StandardMaterial3D.new()
 	lm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	lm.albedo_color = Color(0.9, 0.92, 0.95, 0.75)
-	lm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	# (user report: cast toward the camera, the line went missing - a
+	# one-pixel line, see-through, sorted under the water. Drawn solid, as
+	# a strip a pixel or two wide facing the camera.)
+	lm.albedo_color = Color(0.82, 0.85, 0.88)
+	lm.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_line.material_override = lm
 	_line.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_line)
@@ -2465,6 +2479,12 @@ func _rod_tip() -> Vector3:
 	return pivot.global_position + Vector3(0, 1.2, 0)
 
 
+## The line's width on screen (its breadth per metre off the camera: about
+## a pixel and a half), and how far over the water it keeps.
+const LINE_WIDTH := 0.0024
+const LINE_CLEAR := 0.03
+
+
 func _update_line() -> void:
 	var bobber: Node2D = main.get_node("Bobber")
 	var on := bobber.visible
@@ -2485,12 +2505,27 @@ func _update_line() -> void:
 	var to := _float.position + Vector3(0, 0.06, 0)
 	# Slack when it's waiting, drawn tight on a fish.
 	var sag := 0.45 if player.state == Player.State.WAITING else 0.08
-	im.surface_begin(Mesh.PRIMITIVE_LINE_STRIP)
+	var points: Array[Vector3] = []
 	for i in 17:
 		var t := i / 16.0
 		var p := from.lerp(to, t)
 		p.y -= sag * 4.0 * t * (1.0 - t) * minf(from.distance_to(to) / 6.0, 1.5)
-		im.surface_add_vertex(p)
+		if i < 16:
+			# (never down into the water or the ground on its way out)
+			var flat := to2(p)
+			var under := WATER_Y if _depth(flat, _zones()) > 0.0 else ground_y(flat)
+			p.y = maxf(p.y, under + LINE_CLEAR)
+		points.append(p)
+	var eye := camera.global_position
+	im.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in 16:
+		var a := points[i]
+		var b := points[i + 1]
+		var along := (b - a).normalized()
+		var wa := (along.cross(a - eye)).normalized() * a.distance_to(eye) * LINE_WIDTH * 0.5
+		var wb := (along.cross(b - eye)).normalized() * b.distance_to(eye) * LINE_WIDTH * 0.5
+		for v in [a - wa, a + wa, b + wb, a - wa, b + wb, b - wb]:
+			im.surface_add_vertex(v)
 	im.surface_end()
 
 

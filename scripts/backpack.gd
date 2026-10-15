@@ -64,6 +64,8 @@ var _card_name: Label
 var _card_sub: Label
 var _detail: Label
 var _actions: HFlowContainer
+## The thing whose card is up.
+var _shown := {}
 var _picker: FishPicker
 var _key_held := false
 var _refresh := 0.0
@@ -243,14 +245,16 @@ func _process(delta: float) -> void:
 	if _panel.visible:
 		_refresh -= delta
 		if _refresh <= 0.0:
-			_rebuild()
+			_rebuild(true)
 
 
 func _player() -> Player:
 	return get_tree().get_first_node_in_group("player") as Player
 
 
-func _rebuild() -> void:
+## (`periodic`: the regular refresh - the open card is left as it is, so a
+## button half pressed isn't swapped for a new one under the finger)
+func _rebuild(periodic := false) -> void:
 	_refresh = 0.4
 	var player := _player()
 	if player == null:
@@ -282,6 +286,9 @@ func _rebuild() -> void:
 
 	var using: String = "浮標" if player.fishing_mode == Player.FishingMode.BOBBER else "路亞・" + Profile.LURES[player.current_lure].name
 	_mode.text = "釣法：%s%s" % [using, "　（油箱提在手上，不佔背包）" if player.carrying_oil_drum else ""]
+	if periodic and _card.visible and _shown == _selected:
+		return
+	_shown = _selected.duplicate()
 	_show_selected(player, items, placed)
 
 
@@ -295,6 +302,7 @@ func _show_selected(player: Player, items: Array, placed: Array) -> void:
 		for box in _gear_slots:
 			if box.slot == _selected.index:
 				_place_card(box.get_global_rect())
+				_place_card.call_deferred(box.get_global_rect())
 		return
 	var item := {}
 	var at := Rect2()
@@ -310,7 +318,6 @@ func _show_selected(player: Player, items: Array, placed: Array) -> void:
 		_card.visible = false
 		return
 	_card_head(item)
-	_place_card(at)
 	var busy := player.state != Player.State.IDLE
 	match item.kind:
 		"fish":
@@ -396,6 +403,11 @@ func _show_selected(player: Player, items: Array, placed: Array) -> void:
 			_rebuild(), busy))
 	if busy and item.kind in ["bait", "lure", "live"]:
 		_detail.text += "（收線後才能換）"
+	# (user report: a thing low in the bag had its card run off the bottom,
+	# its buttons out of reach - placed once it's filled, and again once
+	# it's laid out)
+	_place_card(at)
+	_place_card.call_deferred(at)
 
 
 ## The card's head: the thing's picture and name (in its rarity's colour),
@@ -423,6 +435,8 @@ func _card_head(item: Dictionary) -> void:
 ## The card beside `at` (a thing's rect on screen): to its right if it
 ## fits, else its left; kept on the screen.
 func _place_card(at: Rect2) -> void:
+	if _selected.is_empty():
+		return
 	_card.visible = true
 	_card.reset_size()
 	var sz := _card.size
