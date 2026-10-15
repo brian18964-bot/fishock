@@ -246,7 +246,7 @@ func _fill_card() -> void:
 	if r.safe:
 		_line("安全模式：失敗也不會失去任何東西", 12, Color(0.2, 0.3, 0.1))
 	var stars: Array = Profile.level_stars(selected)
-	var conds: Array = [{"text": "從符文石成功離開"}]
+	var conds: Array = [{"text": "從渡石成功離開"}]
 	conds.append_array(l.stars)
 	for i in conds.size():
 		_line("%s %s　%s" % ["★".repeat(i + 1), conds[i].text, "✓" if bool(stars[i]) else ""], 12,

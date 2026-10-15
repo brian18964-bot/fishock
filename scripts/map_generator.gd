@@ -92,7 +92,9 @@ const THEMES := {
 		"tree_families": {"pine": 1.0},
 		"rock_pool": [0, 1, 2],
 		"ground_kinds": {"plant": 1.0},
-		"animals": {"deer": 2.0, "stag": 1.5, "fox": 1.5, "wolf": 1.0, "husky": 1.0},
+		# (user report: too many wolves - one following about without biting
+		# was the husky, a wolf to look at in the dark: gone; wolves fewer)
+		"animals": {"deer": 2.0, "stag": 1.5, "fox": 1.5, "wolf": 0.5},
 	},}
 ## User feedback: the water's edge is grass, small shrubs, pebbles and
 ## boardwalks (no big trees or boulders there), with bugs and frogs about.
@@ -120,6 +122,9 @@ const CRITTER_SCENE := preload("res://scenes/critter.tscn")
 ## User decision: 6 catchable critters by day, more come out at night.
 const CRITTER_COUNT := 6
 const NIGHT_CRITTER_COUNT := 6
+## (user report: too many wolves - a level's own beasts at this share of
+## their weight)
+const BEAST_SHARE := 0.5
 ## User decision: ambient animals follow the map style, ~8 per map.
 const AMBIENT_ANIMAL_COUNT := 8
 
@@ -176,7 +181,7 @@ func _fit_theme() -> void:
 				animals.erase(kind)
 	var beasts: Dictionary = Campaign.rules.beasts
 	for kind in beasts:
-		animals[kind] = float(beasts[kind])
+		animals[kind] = float(beasts[kind]) * BEAST_SHARE
 	if animals.is_empty():
 		animals = {"fox": 1.0, "deer": 1.0}
 	theme["animals"] = animals

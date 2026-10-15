@@ -22,6 +22,7 @@ extends CanvasLayer
 ##                  button - press and drag (further throws further, like the
 ##                  cast) and let go to throw it there; a tap throws it close
 ##                  by. The big ghost goes for it.
+const BRIGHTNESS_SLIDER := false
 ## The lamp's brightness: long-press any empty spot on the screen, then
 ## slide up or down - like iPhone's brightness in Control Center; all the
 ## way down puts the lamp out, and with the lamp out the long press relights
@@ -134,7 +135,9 @@ func _process(delta: float) -> void:
 		_ring.progress = clampf(_press_time / LONG_PRESS, 0.0, 1.0) if not _press_active else lantern.relight_progress
 		_ring.visible = _press_time > 0.1 and not _slider.visible
 		_ring.queue_redraw()
-		if _press_active and lantern.lit and not _slider.visible:
+		# (user request: the brightness isn't set by hand any more - the
+		# long press only relights the lamp; no slider)
+		if BRIGHTNESS_SLIDER and _press_active and lantern.lit and not _slider.visible:
 			_level = OFF_ZONE + (1.0 - OFF_ZONE) * inverse_lerp(Lantern.MIN_BRIGHTNESS, Lantern.MAX_BRIGHTNESS, lantern.brightness)
 			_slider.visible = true
 			_slider.set_active(true)

@@ -132,7 +132,8 @@ const BLACK_SPIDER_BAIT := 2
 ## stings.
 ## User request: the net reaches further than a hand (px) - and holds on to
 ## the critter it was swept at a little past that as the net comes down.
-const NET_REACH := 80.0
+## (user request: 30% less than it was - 80)
+const NET_REACH := 56.0
 const NET_HOLD := 1.4
 ## Caught bare-handed: a quick grab (no bending down - user request), this
 ## long (s) - RunView3D plays it.
@@ -1722,7 +1723,7 @@ func interaction() -> Dictionary:
 	if in_altar_zone and not GameState.carried_fish.is_empty():
 		return _offer(get_parent().get_node("Altar"), "祭壇", "獻祭", false, -34.0)
 	if in_escape_zone and GameState.day_phase == GameState.DayPhase.ESCAPE:
-		return _offer(get_parent().get_node("EscapePoint"), "符文石柱", "逃離", false, -30.0)
+		return _offer(get_parent().get_node("EscapePoint"), "渡石", "逃離", false, -30.0)
 	var item := _nearest_dropped_item()
 	if item != null:
 		return _offer(item, item.title(), "撿起", false, -22.0)
@@ -1793,7 +1794,7 @@ func _talk_to_willow() -> void:
 	if GameState.offering_pool.is_empty():
 		lines.append("・（什麼都沒有）")
 	lines.append("")
-	lines.append("「去符文石柱吧，離開時會帶走其中一個不是邪惡的供品。」")
+	lines.append("「去渡石吧，離開時會帶走其中一個不是邪惡的供品。」")
 	box.say("Willow", "\n".join(lines))
 
 

@@ -43,7 +43,9 @@ const INTRO_SPOT := Vector2(-28, -35)
 const DRUM_RADIUS := 8.8
 const DRUM_LYING_RADIUS := 12.8
 const TENT_SCALE := 0.8
-const TENT_GAP := 14.0
+## (user report: stuck between the fire and the tent - the gap was just
+## the traveller's width: room to walk through now)
+const TENT_GAP := 30.0
 const PX := 27.108
 ## Each tent's sprite offset (render_props.py camp_tents).
 const TENT_OFFSETS := {

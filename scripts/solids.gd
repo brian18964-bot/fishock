@@ -110,7 +110,11 @@ static func detour(tree: SceneTree, from: Vector2, to: Vector2, pad: float, memo
 	var circles := []
 	for st in tree.get_nodes_in_group("fuel_stations"):
 		var round_camp: Array = FuelStation.bounds()
-		circles.append([(st as Node2D).global_position + (round_camp[0] as Vector2), float(round_camp[1])])
+		var at: Vector2 = (st as Node2D).global_position + (round_camp[0] as Vector2)
+		# (already inside the circle round it - between its fire, drums and
+		# tent: those gone round one by one instead)
+		if from.distance_to(at) >= float(round_camp[1]):
+			circles.append([at, float(round_camp[1])])
 	var camps := circles.duplicate()
 	for b in all(tree):
 		var r: Vector2 = b[1]

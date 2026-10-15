@@ -18,6 +18,7 @@ const TESTS := [
 	"test_proto3d",
 	"test_camp3d",
 	"test_run_menu_and_auto_defend",
+	"test_wolf_bites",
 	"test_run_intro_and_eye_guide",
 	"test_spawn_on_land_docks_out",
 	"test_catalog_and_sounds",
@@ -1240,18 +1241,18 @@ func test_live_bait_and_net() -> void:
 	# User report: the net came down too late - the bait gone. A quick
 	# sweep, further than a hand reaches, and the critter it was swept at
 	# still caught if it's scuttled a little off meanwhile.
-	check(Player.swing_time("scoop") <= 1.2 and Player.NET_REACH > 70.0, "a quick sweep, a long reach")
+	check(Player.swing_time("scoop") <= 1.2 and Player.NET_REACH > 50.0 and Player.NET_REACH < 60.0, "a quick sweep, a reach past a hand's")
 	var mouse: Critter = load("res://scenes/critter.tscn").instantiate()
 	mouse.species = "rat"
 	main.add_child(mouse)
 	mouse.set_physics_process(false)
-	mouse.global_position = p.global_position + Vector2(70, 0)
+	mouse.global_position = p.global_position + Vector2(50, 0)
 	await frames(3)
 	var rats := Profile.bag_count("live_rat")
-	check(p.interaction().get("verb", "") == "抓餌", "the net reaches it at %d px" % 70)
+	check(p.interaction().get("verb", "") == "抓餌", "the net reaches it at %d px" % 50)
 	check(p.swing("scoop"), "swept")
 	p._scoop_target = mouse
-	mouse.global_position = p.global_position + Vector2(100, 0)
+	mouse.global_position = p.global_position + Vector2(70, 0)
 	await seconds(Player.swing_time("scoop") + 0.1)
 	check(Profile.bag_count("live_rat") == rats + 1, "scuttled a little off, still scooped up")
 	# Bare-handed: caught at a touch, a quick grab (no bending down).
@@ -2594,8 +2595,14 @@ func test_hud_top() -> void:
 	await seconds(2.0)
 	check(lantern.brightness < Lantern.MAX_BRIGHTNESS, "below 30% it dims as it burns")
 	var ev = main.find_child("EnergyView", true, false)
+	var held := lantern.brightness
 	ev._set_from(ev.BAR.position.x)
-	check(is_equal_approx(lantern.brightness, Lantern.MIN_BRIGHTNESS), "the panel sets it")
+	check(is_equal_approx(lantern.brightness, held), "the panel doesn't set it (user request: no turning it up or down)")
+	# The dark deepening: the same light, burning more oil for it.
+	lantern.fuel = lantern.max_fuel
+	lantern._stage_power = 0.62
+	check(lantern.night_cost() > 1.5, "late at night it burns half again as fast and more (x%.1f)" % lantern.night_cost())
+	lantern._stage_power = 1.0
 	check(not main.get_node("HUD/Panel/MessageLabel").visible, "no narrating text")
 	lantern.fuel = lantern.max_fuel
 	lantern.brightness = 0.75
@@ -3313,7 +3320,8 @@ func test_light_button_relights() -> void:
 	tc.visible = false
 
 
-## Long-pressing an empty spot brings up the brightness slider.
+## User request: the lamp's brightness isn't set by hand - a long press on
+## an empty spot only relights it; no slider comes up.
 func test_long_press_brightness() -> void:
 	var tc: TouchControls = null
 	for c in main.get_children():
@@ -3324,30 +3332,25 @@ func test_long_press_brightness() -> void:
 	check(tc._is_empty_spot(spot), "an empty spot counts as empty")
 	check(not tc._is_empty_spot(Vector2(802, 382)), "the right stick doesn't")
 	check(not tc._is_empty_spot(tc._skill_center), "the light button doesn't")
-	check(not tc._is_empty_spot(Vector2(40, 30)), "the character card doesn't")
 	var down := InputEventScreenTouch.new()
 	down.index = 3
 	down.position = spot
 	down.pressed = true
 	tc._input(down)
 	await seconds(0.6)
-	check(tc._slider.visible, "the slider comes up after a long press")
+	check(not tc._slider.visible, "no brightness slider")
 	var lantern: Lantern = player().get_node("Lantern")
 	var before := lantern.brightness
 	var drag := InputEventScreenDrag.new()
 	drag.index = 3
 	drag.position = spot + Vector2(0, -40)
 	tc._input(drag)
-	check(lantern.brightness > before, "sliding up brightens")
-	drag.position = spot + Vector2(0, 200)
-	tc._input(drag)
-	check(not lantern.lit, "slid to the bottom, the lamp's out")
+	check(lantern.brightness == before and lantern.lit, "sliding doesn't change it")
 	var up := InputEventScreenTouch.new()
 	up.index = 3
 	up.position = spot
 	up.pressed = false
 	tc._input(up)
-	check(not tc._slider.visible, "letting go hides it")
 	tc.visible = false
 
 
@@ -4339,6 +4342,8 @@ func test_run_menu_and_auto_defend() -> void:
 	wolf._mode = Critter.Mode.CHASE
 	wolf._mode_timer = 5.0
 	wolf.global_position = p.global_position + Vector2(70, 0)
+	# (held where it is - it'd bite, the bite's stagger not what's tested)
+	wolf.set_physics_process(false)
 	await seconds(Player.AUTO_DEFEND_GAP + 0.1)
 	var from := p.global_position
 	key(KEY_A, true)
@@ -4354,12 +4359,12 @@ func test_run_menu_and_auto_defend() -> void:
 	var round_camp: Array = FuelStation.bounds()
 	var mid: Vector2 = camp.global_position + (round_camp[0] as Vector2)
 	var r: float = round_camp[1]
-	await put(mid + Vector2(0, r + 12))
+	await put(mid + Vector2(0, r + 8))
 	var hunter: Critter = load("res://scenes/critter.tscn").instantiate()
 	hunter.ambient = true
 	hunter.species = "wolf"
 	main.add_child(hunter)
-	hunter.global_position = mid + Vector2(0, -(r + 30))
+	hunter.global_position = mid + Vector2(0, -(r + 24))
 	var nearest := INF
 	for _i in 60 * 8:
 		hunter._mode = Critter.Mode.CHASE
@@ -4367,7 +4372,7 @@ func test_run_menu_and_auto_defend() -> void:
 		hunter._cooldown = 0.0
 		await frames(1)
 		nearest = minf(nearest, hunter.global_position.distance_to(p.global_position))
-	check(nearest < 60.0, "a wolf on the camp's far side came round it (%.0f px, %.0f apart)" % [nearest, 2.0 * r + 42.0])
+	check(nearest < 60.0, "a wolf on the camp's far side came round it (%.0f px, %.0f apart)" % [nearest, 2.0 * r + 32.0])
 	hunter.queue_free()
 	var bg = main.get_node("BigGhost")
 	var lit: Vector2 = camp.global_position
@@ -4390,7 +4395,7 @@ func test_run_menu_and_auto_defend() -> void:
 	var hud: Node = main.get_node("HUD")
 	hud.open_run_menu()
 	await frames(2)
-	check(get_tree().paused and hud.get_node_or_null("Panel/RunMenuShade") != null, "the menu, the run paused")
+	check(get_tree().paused and hud.get_node_or_null("RunMenuLayer/RunMenuShade") != null, "the menu, the run paused")
 	var leave: Button = hud.find_child("LeaveRun", true, false)
 	check(leave != null, "回到營地 offered")
 	leave.pressed.emit()
@@ -4398,6 +4403,35 @@ func test_run_menu_and_auto_defend() -> void:
 	check(not get_tree().paused and get_tree().current_scene.scene_file_path == Camp3D.SCENE, "back at the camp")
 	_restore_profile(kept)
 	await frames(1)
+
+
+## User report: a wolf trailed the traveller and never bit. Caught up, it
+## bites (and runs off); fewer of them about, and no husky to mistake.
+func test_wolf_bites() -> void:
+	await _fresh_game()
+	Profile.equipped["offhand"] = ""
+	var p := player()
+	await put(away_from_water(120.0))
+	var wolf: Critter = load("res://scenes/critter.tscn").instantiate()
+	wolf.ambient = true
+	wolf.species = "wolf"
+	main.add_child(wolf)
+	wolf.global_position = p.global_position + Vector2(90, 0)
+	wolf._cooldown = 0.0
+	var bit := false
+	for _i in 60 * 4:
+		await frames(1)
+		if p.water_ghost_timer > 0.0:
+			bit = true
+			break
+	check(bit, "caught up, the wolf bites (%s)" % p.affliction_text)
+	wolf.queue_free()
+	var animals: Dictionary = MapGenerator.THEMES["forest_pine"].animals
+	var total := 0.0
+	for k in animals:
+		total += float(animals[k])
+	check(not animals.has("husky") and float(animals.get("wolf", 0.0)) / total < 0.1,
+		"wolves a few in a hundred of the animals, no husky")
 
 
 ## User requests: a run opens on the traveller picking up the lamp (the

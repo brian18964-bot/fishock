@@ -301,10 +301,20 @@ func _on_run_ended(success: bool, message: String) -> void:
 ## The run paused under a menu: carry on, or back to the camp - the run
 ## given up (what's carried stays here, as when it's lost).
 func open_run_menu() -> void:
-	if GameState.run_over or $Panel.get_node_or_null("RunMenuShade") != null:
+	if GameState.run_over or get_node_or_null("RunMenuLayer/RunMenuShade") != null:
 		return
 	get_tree().paused = true
-	var shade := MenuStyle.notice($Panel, "選單", ["回到營地會放棄這趟夜釣：身上的魚和這趟撿到的裝備都會留在這裡。"])
+	# (user report: the game's own buttons - 補充, the quick slots, the
+	# brightness bar - showed through over the menu: it's on a layer above
+	# them all, its shade taking every touch)
+	var layer := get_node_or_null("RunMenuLayer") as CanvasLayer
+	if layer == null:
+		layer = CanvasLayer.new()
+		layer.name = "RunMenuLayer"
+		layer.layer = 40
+		layer.process_mode = Node.PROCESS_MODE_ALWAYS
+		add_child(layer)
+	var shade := MenuStyle.notice(layer, "選單", ["回到營地會放棄這趟夜釣：身上的魚和這趟撿到的裝備都會留在這裡。"])
 	shade.name = "RunMenuShade"
 	shade.process_mode = Node.PROCESS_MODE_ALWAYS
 	var ok: Button = null
@@ -380,7 +390,7 @@ class QuotaView extends Control:
 			under = "夜晚降臨"
 			col = UiKit.DANGER
 		elif GameState.day_phase == GameState.DayPhase.ESCAPE:
-			under = "額度已滿！去發光的符文石柱逃離"
+			under = "額度已滿！去發光的渡石逃離"
 			col = FULL
 		elif GameState.day_phase == GameState.DayPhase.FISHING and GameState.day_duration <= 0.0:
 			under = "不限時"
@@ -425,14 +435,11 @@ class EnergyView extends Control:
 			_drag_x = event.position.x
 			accept_event()
 		elif event is InputEventMouseMotion and _dragging:
-			if lantern != null and lantern.lit:
-				lantern.set_brightness_share(lantern.brightness_share() + (event.position.x - _drag_x) / 120.0)
-			_drag_x = event.position.x
+			# (user request: the lamp's brightness isn't set by hand any more)
 			accept_event()
 
-	func _set_from(x: float) -> void:
-		if lantern != null and lantern.lit:
-			lantern.set_brightness_share((x - BAR.position.x) / BAR.size.x)
+	func _set_from(_x: float) -> void:
+		pass
 
 	## The light's output as shown: its brightness (0.35..1) as a percentage.
 	func output_percent() -> int:
@@ -457,5 +464,6 @@ class EnergyView extends Control:
 		var pct := "%d%%" % roundi(share * 100.0)
 		UiKit.draw_text(self, BAR.position + Vector2(0, 14), pct, 13, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, BAR.size.x, true)
 		# The light's output, small.
-		var out := "熄滅（長按燈鈕點燃）" if not lantern.lit else "亮度 %d%%　←拖曳調整→" % output_percent()
+		var cost := lantern.night_cost()
+		var out := "熄滅（長按燈鈕點燃）" if not lantern.lit else ("夜深了，耗油 ×%.1f" % cost if cost > 1.05 else "亮度自動維持")
 		UiKit.draw_text(self, Vector2(16, 62), out, 12, low if not lantern.lit else UiKit.DIM)

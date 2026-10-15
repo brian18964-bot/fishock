@@ -820,7 +820,8 @@ func _start_camp() -> void:
 ## their models (tools/build_run3d_models.py); the stones' runes glow
 ## as the 2D ones do once the offering's made.
 func _landmarks() -> void:
-	for spec in [["Altar", "altar", 2.3], ["EscapePoint", "runes", 2.4]]:
+	_ferry_stone()
+	for spec in [["Altar", "altar", 2.3]]:
 		var at := main.get_node_or_null(spec[0]) as Node2D
 		var path: String = CREATURE_DIR + spec[1] + ".glb"
 		if at == null or not ResourceLoader.exists(path):
@@ -840,26 +841,50 @@ func _landmarks() -> void:
 		var visual := at.get_node_or_null("Visual")
 		if visual != null:
 			_replaced[visual] = true
-		if spec[1] == "runes":
-			var glow := at.get_node_or_null("Glow")
-			if glow != null:
-				_replaced[glow] = true
-				_rune_glow = [glow, model]
+
+
+## User request: the way out is the camp's own 渡石 (one stone,
+## CampModel "ferry_stone", as big as at the camp) - its runes faint till
+## the offering's made, then lit as the 2D glow is.
+func _ferry_stone() -> void:
+	var at := main.get_node_or_null("EscapePoint") as Node2D
+	if at == null:
+		return
+	var stone := CampModel.make("ferry_stone")
+	if stone == null:
+		return
+	stone.name = "FerryStone"
+	stone.material_override = (stone.material_override as StandardMaterial3D).duplicate()
+	var mat := stone.material_override as StandardMaterial3D
+	mat.emission_enabled = true
+	mat.emission = Color(0.4, 0.8, 1.0)
+	mat.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
+	mat.emission_energy_multiplier = 0.4
+	stone.scale = Vector3.ONE * CampStage.STONE_SCALE
+	stone.position = to3(at.global_position, LAND_Y)
+	stone.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	add_child(stone)
+	var light := OmniLight3D.new()
+	light.light_color = Color(0.45, 0.75, 1.0)
+	light.omni_range = 3.0
+	light.position = stone.position + Vector3(0, 0.6, 0.7)
+	add_child(light)
+	for name in ["Visual", "Glow"]:
+		var n := at.get_node_or_null(name)
+		if n != null:
+			_replaced[n] = true
+	_rune_glow = [at.get_node_or_null("Glow"), stone, light]
 
 
 func _sync_runes() -> void:
-	if _rune_glow.is_empty() or not is_instance_valid(_rune_glow[0]):
+	if _rune_glow.is_empty() or not is_instance_valid(_rune_glow[1]):
 		return
 	var glow: CanvasItem = _rune_glow[0]
-	var lit := glow.modulate.a * glow.self_modulate.a if _shown(glow) else 0.0
-	for mi in (_rune_glow[1] as Node3D).find_children("*", "MeshInstance3D", true, false):
-		var m := mi as MeshInstance3D
-		for i in m.get_surface_override_material_count():
-			var mat := m.get_surface_override_material(i) as StandardMaterial3D
-			if mat != null:
-				mat.emission_enabled = lit > 0.01
-				mat.emission = Color(0.35, 0.85, 1.0)
-				mat.emission_energy_multiplier = lit * 1.6
+	var lit := glow.modulate.a * glow.self_modulate.a if glow != null and is_instance_valid(glow) and _shown(glow) else 0.0
+	var mat := (_rune_glow[1] as MeshInstance3D).material_override as StandardMaterial3D
+	var breath := 0.5 + 0.5 * sin(_time * 1.3)
+	mat.emission_energy_multiplier = 0.4 + 0.15 * breath + lit * 2.4
+	(_rune_glow[2] as OmniLight3D).light_energy = 0.15 + lit * (1.2 + 0.3 * breath)
 
 
 ## Ferns, lily pads and washed-up logs where the map's ground cover is
@@ -1185,6 +1210,11 @@ func _add_creature(n: Node) -> void:
 	if _creatures.has(n):
 		return
 	var kind := _creature_kind(n)
+	# (user report: a green ball by the dragon's tail - the 2D ghost's lamp
+	# glow stood up as a picture; its lantern's the light now)
+	var glow := n.get_node_or_null("Glow")
+	if glow != null and kind == "dragon":
+		_replaced[glow] = true
 	var holder := Node3D.new()
 	holder.name = "Creature_" + kind
 	add_child(holder)
@@ -1782,7 +1812,12 @@ func _sync_light(l: PointLight2D, o: OmniLight3D) -> void:
 	o.light_color = l.color
 	o.light_energy = l.energy * 1.4
 	o.position = to3(l.global_position, ground_y(l.global_position) + 1.2)
-	# (the dragon's: from its lantern, a little off its body, dimmer)
+	# (the dragon's: from its lantern, a little off its body, dimmer. User
+	# report: a green ball of light by its tail - its light's 2D twin
+	# (LightTwin) was left at the 2D lamp's spot, low by the tail: none of it.)
+	if l.get_parent() is PointLight2D and _creatures.get(l.get_parent().get_parent(), {}).has("lamp"):
+		o.visible = false
+		return
 	var c: Dictionary = _creatures.get(l.get_parent(), {})
 	if c.has("lamp"):
 		var flame: Vector3 = (c.lamp as Node3D).get_node("Flame").global_position

@@ -7,6 +7,8 @@ extends Area2D
 ## ghost-proof light like a lit fuel station.
 
 const SPRITE_SCALE := 0.5
+## The 渡石's base (px) - the camp's stone at CampStage.STONE_SCALE.
+const STONE_RADIUS := 15.0
 ## (center_x, -center_y) * 27.108 for the render's camera (render_props.py).
 const OFFSET := Vector2(0.71, -27.6)
 const RUNE_COLOR := Color(0.45, 1.0, 0.85)
@@ -31,11 +33,19 @@ func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
 	add_to_group("solids")
-	# (the rune pillars' bases, as wide as RunView3D's model's)
-	for s in $Stones.get_children():
-		var pillar := CircleShape2D.new()
-		pillar.radius = 10.5
-		s.shape = pillar
+	# User request: one stone, the camp's 渡石 (RunView3D's model) - its
+	# base, at the middle; the second pillar's gone.
+	var stones := $Stones.get_children()
+	for i in stones.size():
+		var s: CollisionShape2D = stones[i]
+		if i > 0:
+			$Stones.remove_child(s)
+			s.queue_free()
+			continue
+		var base := CircleShape2D.new()
+		base.radius = STONE_RADIUS
+		s.shape = base
+		s.position = Vector2.ZERO
 	var tex := CanvasTexture.new()
 	var visual: Sprite2D = $Visual
 	visual.texture = tex

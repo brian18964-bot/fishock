@@ -99,11 +99,11 @@ func _draw_panel() -> void:
 	UiKit.draw_text(_view, PANEL_AT + Vector2(10, 18), title, 14, UiKit.GOLD, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 	var y := PANEL_AT.y + 26.0
 	# ★: out - the quota first, then the rune stones.
-	var out_text := "湊滿額度，從符文石離開"
+	var out_text := "湊滿額度，從渡石離開"
 	var status := "%d/%d" % [int(GameState.quota_progress), int(GameState.quota_target)]
 	var met := GameState.day_phase != GameState.DayPhase.FISHING
 	if met:
-		out_text = "去發光的符文石離開"
+		out_text = "去發光的渡石離開"
 		status = ""
 	_row(y, met, out_text, status, OK if met else UiKit.TEXT)
 	y += ROW

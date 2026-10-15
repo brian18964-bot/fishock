@@ -477,8 +477,8 @@ func _trigger_night() -> void:
 	is_night = true
 	if Campaign.rules.night_fails:
 		# A level with nothing deadly in the dark: the night is the end.
-		report("天黑了，符文石沒有亮起來")
-		end_run(false, "天黑了，額度沒有補滿，符文石沒有亮起來……\n下次早一點開始獻祭吧。")
+		report("天黑了，渡石沒有亮起來")
+		end_run(false, "天黑了，額度沒有補滿，渡石沒有亮起來……\n下次早一點開始獻祭吧。")
 		return
 	night_fell.emit()
 	push_message("時間到了，額度沒補滿...夜晚降臨，鬼進入獵殺模式！")
@@ -536,7 +536,7 @@ func _enter_escape_phase() -> void:
 	if Campaign.rules.escalate:
 		_escalate_threat()
 	push_message("額度已滿！鬼群警覺起來了 - 前往逃離點離開，或繼續釣魚賭更好的供品")
-	report("額度滿了！可以去符文石柱離開", "good")
+	report("額度滿了！可以去渡石離開", "good")
 
 
 ## Design doc request: meeting quota also raises the stakes of staying -

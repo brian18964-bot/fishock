@@ -58,7 +58,7 @@ func _ready() -> void:
 	_stars.draw.connect(_draw_stars)
 	col.add_child(_stars)
 	# Each star's condition, done or not.
-	var conds: Array = [{"text": "從符文石成功離開"}]
+	var conds: Array = [{"text": "從渡石成功離開"}]
 	conds.append_array(lv.get("stars", []))
 	var got: Array = res.get("stars", [false, false, false])
 	var before: Array = Profile.level_stars(str(lv.get("id", "")))

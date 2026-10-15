@@ -118,7 +118,9 @@ func _process(delta: float) -> void:
 	_handle_light_toggle(delta)
 
 	if lit:
-		var burn := brightness * (1.0 + boost)  # charging burns faster
+		# (user request: the lamp holds its brightness by itself - the
+		# darker the night, the more it burns to: night_cost())
+		var burn := brightness * (1.0 + boost) * night_cost()  # charging burns faster
 		var before := energy_share()
 		if tool == Tool.LAMP:
 			fuel = max(fuel - DRAIN_RATE * float(Campaign.rules.drain) * burn * delta, 0.0)
@@ -145,8 +147,8 @@ func _process(delta: float) -> void:
 	var stage := GameState.light_stage()
 	_stage_reach = lerpf(_stage_reach, STAGE_REACH[stage], minf(1.0, delta))
 	_stage_power = lerpf(_stage_power, STAGE_POWER[stage], minf(1.0, delta))
-	texture_scale = lerp(spec.min_scale, spec.max_scale, brightness) * _stage_reach * (1.0 + BOOST_REACH * boost)
-	energy = lerp(spec.energy.x, spec.energy.y, brightness) * _stage_power * (1.0 + BOOST_POWER * boost)
+	texture_scale = lerp(spec.min_scale, spec.max_scale, brightness) * (1.0 + BOOST_REACH * boost)
+	energy = lerp(spec.energy.x, spec.energy.y, brightness) * (1.0 + BOOST_POWER * boost)
 	if tool == Tool.LAMP:
 		energy *= _flame(delta)
 
@@ -251,11 +253,17 @@ func switch_tool(to: Tool) -> void:
 		GameState.push_message("換成手電筒，但沒有電池了")
 
 
-func _handle_brightness_input(delta: float) -> void:
-	if Input.is_key_pressed(KEY_BRACKETLEFT):
-		brightness = clamp(brightness - BRIGHTNESS_STEP * delta, MIN_BRIGHTNESS, MAX_BRIGHTNESS)
-	elif Input.is_key_pressed(KEY_BRACKETRIGHT):
-		brightness = clamp(brightness + BRIGHTNESS_STEP * delta, MIN_BRIGHTNESS, MAX_BRIGHTNESS)
+## User request: no turning the lamp up or down - it holds the same light
+## all night by itself (bar the last of the oil), burning more for it the
+## darker it gets: night_cost() (the old dimming of the dark, STAGE_POWER,
+## made up for in oil).
+func _handle_brightness_input(_delta: float) -> void:
+	pass
+
+
+## How much faster the lamp burns to hold its light now (1 at dusk).
+func night_cost() -> float:
+	return 1.0 / maxf(_stage_power, 0.3)
 
 
 func _handle_flash_input(delta: float) -> void:

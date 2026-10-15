@@ -129,6 +129,7 @@ const FOLLOW_SPEED := 120.0
 const CHASE_GIVE_UP := 1.8
 const CHASE_TIME := 8.0
 const ATTACK_RANGE := 20.0
+const PLAYER_BODY := 7.0
 const SCARED_TIME := 1.5
 const HUNT_COOLDOWN := 12.0
 
@@ -326,7 +327,10 @@ func _update_hunt(delta: float, dist: float) -> void:
 	match _mode:
 		Mode.CHASE:
 			_mode_timer -= delta
-			if dist < ATTACK_RANGE:
+			# (user report: a wolf trailed the traveller and never bit - its
+			# body and theirs kept it further off than ATTACK_RANGE: reach
+			# from its edge)
+			if dist < ATTACK_RANGE + float(_data.get("body", 0.0)) + PLAYER_BODY:
 				_player.animal_attack(_data.label)
 				scare()
 				return
