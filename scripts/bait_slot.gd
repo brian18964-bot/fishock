@@ -13,13 +13,13 @@ extends CanvasLayer
 
 ## The slot's centre and size (the 960x540 layout, over the quick slots -
 ## TouchControls).
-const AT := Vector2(835, 152)
+const AT := TouchControls.AIM_CENTER + Vector2(33, -230)
 const SIDE := 56.0
 ## The rod: along ROD_DIR from the stick, its butt ROD_BUTT behind it; the
 ## line back in from the screen's edge at LINE_FROM.
 const ROD_DIR := Vector2(0.62, -0.785)
 const ROD_BUTT := 150.0
-const LINE_FROM := Vector2(962, 120)
+const LINE_FROM := Vector2(962, AT.y - 34.0)
 const INK := Color(0.92, 0.88, 0.8)
 const PICK := 54.0
 

@@ -10,6 +10,9 @@ const RADIUS := 15.0
 const INK := Color(1.0, 0.96, 0.88, 0.75)
 
 var _view: Node2D
+## (user request, round 3: in a run the speaker's in the gear menu instead -
+## not drawn or tapped here; M still works)
+var shown := true
 
 
 func _ready() -> void:
@@ -20,7 +23,7 @@ func _ready() -> void:
 
 
 func contains(pos: Vector2) -> bool:
-	return pos.distance_to(CENTER) <= RADIUS + 6.0
+	return shown and pos.distance_to(CENTER) <= RADIUS + 6.0
 
 
 func _input(event: InputEvent) -> void:
@@ -40,6 +43,8 @@ func _input(event: InputEvent) -> void:
 
 
 func _draw_icon() -> void:
+	if not shown:
+		return
 	var c := CENTER
 	_view.draw_circle(c, RADIUS, Color(0.08, 0.07, 0.05, 0.45))
 	var body := PackedVector2Array([c + Vector2(-8, -3), c + Vector2(-4, -3), c + Vector2(1, -8),

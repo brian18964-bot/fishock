@@ -230,7 +230,10 @@ func _ready() -> void:
 	add_child(AudioDirector.new())
 	# Rain, snow, falling leaves, fireflies (WeatherFx).
 	add_child(WeatherFx.new())
-	add_child(SoundToggle.new())
+	var speaker := SoundToggle.new()
+	# (user request: the sound's in the gear menu in a run - HUD)
+	speaker.shown = false
+	add_child(speaker)
 	# User request: a landed fish shows itself (CatchCard).
 	var card := CatchCard.new()
 	add_child(card)

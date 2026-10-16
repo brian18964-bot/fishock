@@ -341,18 +341,24 @@ func test_catalog_and_sounds() -> void:
 		"gunshot"]
 	var lost := sounds.filter(func(n): return Sfx.stream(n) == null)
 	check(lost.is_empty(), "every sound loads %s" % str(lost))
+	# (user request, round 3: the sound's switch is in the gear menu in a run)
 	var toggle: SoundToggle = null
 	for c in main.get_children():
 		if c is SoundToggle:
 			toggle = c
-	var tap := InputEventScreenTouch.new()
-	tap.pressed = true
-	tap.position = SoundToggle.CENTER
+	check(toggle != null and not toggle.shown and not toggle.contains(SoundToggle.CENTER), "no speaker on the screen in a run")
+	var hud = main.get_node("HUD")
+	hud.open_run_menu()
+	await frames(2)
+	var switch: Button = hud.find_child("SoundSwitch", true, false)
 	var was: bool = Sfx.muted
-	toggle._input(tap)
-	check(Sfx.muted != was, "the speaker mutes")
-	toggle._input(tap)
+	switch.pressed.emit()
+	check(Sfx.muted != was and switch.text.contains("關" if Sfx.muted else "開"), "the menu's switch mutes")
+	switch.pressed.emit()
 	check(Sfx.muted == was, "and unmutes")
+	get_tree().paused = false
+	hud.get_node("RunMenuLayer/RunMenuShade").queue_free()
+	await frames(2)
 	for bed in ["amb_rain", "amb_camp", "camp_crickets_loop", "music_camp"]:
 		var s := Sfx.stream(bed)
 		var loops: bool = s.loop if s is AudioStreamOggVorbis else \
@@ -772,6 +778,9 @@ func test_bait_slot() -> void:
 			if a.distance_to(spots[j][0]) < float(spots[i][1]) + float(spots[j][1]) + 4.0:
 				clear = false
 	check(clear, "the buttons clear of each other and of the stick")
+	var stick: Control = main.get_node("HUD/Panel/AimJoystick")
+	check(stick.get_global_rect().get_center().distance_to(TouchControls.AIM_CENTER) < 2.0,
+		"the stick where the reel's drawn (%s)" % stick.get_global_rect().get_center())
 	check(TouchControls.SKILL_AT.y > TouchControls.LURE_AT.y and TouchControls.LURE_AT.y > QuickSlots.CENTERS[0].y
 		and QuickSlots.CENTERS[0].y > BaitSlot.AT.y, "bottom up: light, 誘惑, the quick slots, the bait")
 	var p := player()
@@ -3949,10 +3958,43 @@ func test_run_3d() -> void:
 	check(view._ik != null and view._ik.influence > 0.9, "the rod arm follows the rod while fishing")
 	# The float under the buttons at the bottom right: the camera makes
 	# room (_dodge_buttons).
-	var lamp_at: Vector2 = TouchControls.SKILL_AT
-	var from_cam := view.camera.project_ray_origin(lamp_at)
-	var ray := view.camera.project_ray_normal(lamp_at)
-	var under := RunView3D.to2(from_cam + ray * ((RunView3D.WATER_Y - from_cam.y) / ray.y))
+	# (a button on the right with water under it - the layout moved round
+	# the stick, not every one's over the lake)
+	# (the ground under each button; the traveller stepped a little so the
+	# nearest bit of water to one is under it - on its own shore still)
+	var unders := []
+	for button_at in [TouchControls.SKILL_AT, TouchControls.LURE_AT] + QuickSlots.CENTERS + [BaitSlot.AT]:
+		var from_cam := view.camera.project_ray_origin(button_at)
+		var ray := view.camera.project_ray_normal(button_at)
+		unders.append(RunView3D.to2(from_cam + ray * ((RunView3D.WATER_Y - from_cam.y) / ray.y)))
+	var step := Vector2.INF
+	for u in unders:
+		for r in range(0, 420, 20):
+			for k in 16:
+				var w: Vector2 = u + Vector2.RIGHT.rotated(k * TAU / 16.0) * r
+				if player()._find_water_zone(w) != null and (w - u).length() < step.length() \
+						and player()._find_water_zone(player().global_position + (w - u)) == null:
+					step = w - u
+			if step != Vector2.INF:
+				break
+	check(step != Vector2.INF, "water near one of the buttons")
+	var stand: Vector2 = player().global_position + step
+	# (held still meanwhile: a step while the float's out would wind it in)
+	player().set_physics_process(false)
+	var stood: Vector2 = player().global_position
+	var float_was: Vector2 = main.get_node("Bobber").global_position
+	var target_was: Vector2 = player().cast_target
+	player().global_position = stand
+	await frames(4)
+	var under := Vector2.ZERO
+	for button_at in [TouchControls.SKILL_AT, TouchControls.LURE_AT] + QuickSlots.CENTERS + [BaitSlot.AT]:
+		var from_cam := view.camera.project_ray_origin(button_at)
+		var ray := view.camera.project_ray_normal(button_at)
+		var spot := RunView3D.to2(from_cam + ray * ((RunView3D.WATER_Y - from_cam.y) / ray.y))
+		if player()._find_water_zone(spot) != null:
+			under = spot
+			break
+	check(under != Vector2.ZERO, "water under one of the buttons")
 	player().cast_target = under
 	main.get_node("Bobber").global_position = under
 	await seconds(1.2)
@@ -3960,7 +4002,12 @@ func test_run_3d() -> void:
 	var covered := false
 	for r in view._blocked:
 		covered = covered or (r as Rect2).has_point(seen)
-	check(view._dodge > 0.05 and not covered, "the float under the lamp button: the camera makes room (%.2f)" % view._dodge)
+	check(view._dodge > 0.05 and not covered, "the float under a button: the camera makes room (%.2f)" % view._dodge)
+	player().global_position = stood
+	main.get_node("Bobber").global_position = float_was
+	player().cast_target = target_was
+	await frames(2)
+	player().set_physics_process(true)
 	# (that spot may be on the bank - the line in again: cast again)
 	if player().state != Player.State.WAITING:
 		player()._set_state(Player.State.IDLE)

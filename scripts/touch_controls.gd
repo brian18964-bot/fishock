@@ -33,15 +33,17 @@ const BRIGHTNESS_SLIDER := false
 ## a keyboard; the controls hide where there's no touchscreen.
 
 ## Right stick centre in the 960x540 layout (AimJoystick in main.tscn: a
-## 300x300 control at the bottom-right corner, 8 px in).
-const AIM_CENTER := Vector2(802, 382)
+## 300x300 control round it, partly off the screen's corner). (User
+## request, round 3: further into the bottom-right corner for the thumb -
+## everything round it placed from it.)
+const AIM_CENTER := Vector2(842, 430)
 
 ## User request (round 3 layout): round the right stick - drawn as a reel
 ## on a faint rod (BaitSlot) - from the bottom up: the light button left of
 ## it, 誘惑 over that, the three quick slots in a row (QuickSlots), the bait
 ## on the line at the top (BaitSlot). The light and 誘惑 buttons see-through:
 ## a ring round the picture, no box.
-const SKILL_AT := Vector2(636, 408)
+const SKILL_AT := AIM_CENTER + Vector2(-166, 26)
 const SKILL_RADIUS := 38.0
 ## Drag this far off the button's center before it steers the light; the
 ## knob shows the direction, clamped to the rim.
@@ -51,7 +53,7 @@ const BUTTONS := [
 	# [label, key, angle around the right stick (deg, clockwise from right), distance, radius]
 ]
 ## The 誘惑 button; a drag this long throws furthest.
-const LURE_AT := Vector2(653, 311)
+const LURE_AT := AIM_CENTER + Vector2(-149, -71)
 const LURE_RADIUS := 30.0
 const LURE_FULL_PULL := 90.0
 ## A press on an empty spot held this long (and still) opens the slider.

@@ -17,7 +17,8 @@ extends CanvasLayer
 ## TouchControls.AIM_CENTER), their size; a hold this long opens the picker.
 ## (user request, round 3: a row between 誘惑 and the bait on the line -
 ## TouchControls' layout)
-const CENTERS := [Vector2(700, 232), Vector2(767, 232), Vector2(835, 232)]
+const CENTERS := [TouchControls.AIM_CENTER + Vector2(-102, -150), TouchControls.AIM_CENTER + Vector2(-35, -150),
+	TouchControls.AIM_CENTER + Vector2(33, -150)]
 const SIDE := 56.0
 const HOLD := 0.45
 const KEYS := [KEY_Z, KEY_X, KEY_C]

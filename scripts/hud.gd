@@ -109,12 +109,12 @@ func _build_top() -> void:
 	message_label.add_theme_constant_override("outline_size", 4)
 	relight_bar.position = Vector2(762, 84)
 	relight_bar.size = Vector2(190, 8)
-	# User request: a menu, to leave the run for the camp (left of the
-	# speaker, under the light's energy).
-	var menu := UiKit.button("選單", 13, "gray")
+	# User request: a menu, to leave the run for the camp - (round 3) a gear,
+	# right of the light's box, the sound's switch in it too.
+	var menu := GearButton.new()
 	menu.name = "RunMenu"
-	menu.position = Vector2(858, 74)
-	menu.custom_minimum_size = Vector2(56, 30)
+	menu.position = GEAR_AT
+	menu.size = Vector2(GEAR_SIZE, GEAR_SIZE)
 	menu.pressed.connect(open_run_menu)
 	$Panel.add_child(menu)
 	_sticks = [$Panel/MoveJoystick, $Panel/AimJoystick]
@@ -332,6 +332,15 @@ func open_run_menu() -> void:
 	home.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	home.pressed.connect(leave_run)
 	col.add_child(home)
+	# (user request: the sound switched here)
+	var sound := UiKit.button("音效：關" if Sfx.muted else "音效：開", 15, "gray")
+	sound.name = "SoundSwitch"
+	sound.custom_minimum_size = Vector2(140, 38)
+	sound.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	sound.pressed.connect(func():
+		Sfx.muted = not Sfx.muted
+		sound.text = "音效：關" if Sfx.muted else "音效：開")
+	col.add_child(sound)
 
 
 func leave_run() -> void:
@@ -419,22 +428,53 @@ class QuotaView extends Control:
 ## light is (its real output: the dimmest setting still gives 35%; drag
 ## across the panel to turn it up or down). The light dims by itself once
 ## the fuel's low (Lantern.AUTO_DIM_BELOW); brighter burns faster.
+## The gear (the run's menu), top right.
+const GEAR_SIZE := 40.0
+const GEAR_AT := Vector2(960.0 - 8.0 - GEAR_SIZE, 8.0)
+
+
+## A round button with a gear drawn on it.
+class GearButton extends Button:
+	func _ready() -> void:
+		flat = true
+		focus_mode = Control.FOCUS_NONE
+		add_to_group("hud_block")
+
+	func _draw() -> void:
+		var c := size * 0.5
+		var r := size.x * 0.5
+		draw_circle(c, r, Color(0.08, 0.06, 0.04, 0.6 if not is_pressed() else 0.85))
+		draw_arc(c, r - 1.0, 0.0, TAU, 40, Color(UiKit.GOLD, 0.8), 2.0, true)
+		var ink := Color(1.0, 0.92, 0.75, 0.92)
+		var teeth := 8
+		var pts := PackedVector2Array()
+		for i in teeth * 4:
+			var a := TAU * i / (teeth * 4.0)
+			var out := (i % 4) in [0, 1]
+			pts.append(c + Vector2.RIGHT.rotated(a - TAU / (teeth * 8.0)) * (r * (0.66 if out else 0.5)))
+		draw_colored_polygon(pts, ink)
+		draw_circle(c, r * 0.22, Color(0.08, 0.06, 0.04, 1.0))
+
+
 class EnergyView extends Control:
-	const W := 200.0
-	const BAR := Rect2(14, 28, 172, 18)
+	## (user request, round 3: bigger, the 熄燈 button inside its frame;
+	## left of the gear)
+	const W := 236.0
+	const H := 88.0
+	const BAR := Rect2(16, 30, W - 32.0, 20)
 	var lantern: Lantern
 	var _dragging := false
 	var _drag_x := 0.0
 
 	func _ready() -> void:
-		position = Vector2(960.0 - W - 8.0, 4)
-		size = Vector2(W, 74)
+		position = Vector2(GEAR_AT.x - W - 6.0, 4)
+		size = Vector2(W, H)
 		mouse_filter = Control.MOUSE_FILTER_STOP
 		add_to_group("hud_block")
 
 	## (user request, round 3: a button here puts the light out at once -
 	## the lamp then hung at the hip)
-	const OUT_BUTTON := Rect2(W - 62.0, 50.0, 50.0, 20.0)
+	const OUT_BUTTON := Rect2(W - 72.0, 56.0, 56.0, 22.0)
 
 	func _gui_input(event: InputEvent) -> void:
 		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
@@ -466,7 +506,7 @@ class EnergyView extends Control:
 		var low := UiKit.DANGER
 		var share := lantern.energy_share()
 		var name := "煤燈燃料" if lantern.tool == Lantern.Tool.LAMP else "手電筒電量"
-		UiKit.draw_text(self, Vector2(16, 21), name, 13, UiKit.GOLD, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+		UiKit.draw_text(self, Vector2(16, 23), name, 14, UiKit.GOLD, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 		if lantern.tool == Lantern.Tool.FLASHLIGHT:
 			UiKit.draw_text(self, Vector2(0, 21), "電池 ×%d" % Profile.batteries, 12, UiKit.DIM, HORIZONTAL_ALIGNMENT_RIGHT, W - 16.0)
 		# The fuel: the main thing.
@@ -475,15 +515,15 @@ class EnergyView extends Control:
 			col = Color(1.0, 0.45, 0.15) if share >= 0.12 else low
 		UiKit.draw_bar(self, BAR, share, col)
 		var pct := "%d%%" % roundi(share * 100.0)
-		UiKit.draw_text(self, BAR.position + Vector2(0, 14), pct, 13, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, BAR.size.x, true)
+		UiKit.draw_text(self, BAR.position + Vector2(0, 15), pct, 14, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, BAR.size.x, true)
 		# The light's output, small.
 		var cost := lantern.night_cost()
 		var out := "熄滅（長按燈鈕點燃）" if not lantern.lit else ("夜深了，耗油 ×%.1f" % cost if cost > 1.05 else "亮度自動維持")
 		if not lantern.lit and lantern.relight_progress > 0.0:
 			# (relighting: its progress here, a thin bar under the fuel)
 			out = "點燃中…" if lantern.tool == Lantern.Tool.LAMP else "換電池中…"
-			UiKit.draw_bar(self, Rect2(BAR.position.x + 70.0, 52.0, BAR.size.x - 70.0, 11.0), lantern.relight_progress, Color(1.0, 0.85, 0.45))
-		UiKit.draw_text(self, Vector2(16, 62), out, 12, low if not lantern.lit else UiKit.DIM)
+			UiKit.draw_bar(self, Rect2(BAR.position.x + 70.0, 60.0, BAR.size.x - 70.0, 11.0), lantern.relight_progress, Color(1.0, 0.85, 0.45))
+		UiKit.draw_text(self, Vector2(16, 72), out, 12, low if not lantern.lit else UiKit.DIM)
 		if lantern.lit:
 			UiKit.button_box("gray", "normal").draw(get_canvas_item(), OUT_BUTTON)
 			UiKit.draw_text(self, OUT_BUTTON.position + Vector2(0, 15), "熄燈", 12, UiKit.TEXT, HORIZONTAL_ALIGNMENT_CENTER, OUT_BUTTON.size.x, true)
