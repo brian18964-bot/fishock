@@ -3322,7 +3322,11 @@ func test_light_button_relights() -> void:
 	tc._input(down)
 	await frames(2)
 	check(not player().skill_held, "held while out, it doesn't charge a flash")
-	await seconds(Lantern.RELIGHT_DURATION + 0.3)
+	await seconds(Lantern.RELIGHT_DURATION * 0.5)
+	# (user request: no ring on the screen - the progress is a bar in the
+	# fuel box)
+	check(not tc._ring.visible and lantern.relight_progress > 0.2, "relighting: no ring, the bar in the fuel box (%.2f)" % lantern.relight_progress)
+	await seconds(Lantern.RELIGHT_DURATION * 0.5 + 0.3)
 	check(lantern.lit, "held, the lamp relights")
 	var up := InputEventScreenTouch.new()
 	up.index = 4

@@ -466,4 +466,8 @@ class EnergyView extends Control:
 		# The light's output, small.
 		var cost := lantern.night_cost()
 		var out := "熄滅（長按燈鈕點燃）" if not lantern.lit else ("夜深了，耗油 ×%.1f" % cost if cost > 1.05 else "亮度自動維持")
+		if not lantern.lit and lantern.relight_progress > 0.0:
+			# (relighting: its progress here, a thin bar under the fuel)
+			out = "點燃中…" if lantern.tool == Lantern.Tool.LAMP else "換電池中…"
+			UiKit.draw_bar(self, Rect2(BAR.position.x + 70.0, 52.0, BAR.size.x - 70.0, 11.0), lantern.relight_progress, Color(1.0, 0.85, 0.45))
 		UiKit.draw_text(self, Vector2(16, 62), out, 12, low if not lantern.lit else UiKit.DIM)

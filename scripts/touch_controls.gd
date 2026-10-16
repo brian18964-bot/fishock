@@ -133,7 +133,9 @@ func _process(delta: float) -> void:
 				_press_key_down = true
 				_send(KEY_L, true)
 		_ring.progress = clampf(_press_time / LONG_PRESS, 0.0, 1.0) if not _press_active else lantern.relight_progress
-		_ring.visible = _press_time > 0.1 and not _slider.visible
+		# (user request: no ring on the screen - the relighting shows as a bar
+		# in the fuel box, top right; it stuck on over the menu button)
+		_ring.visible = false
 		_ring.queue_redraw()
 		# (user request: the brightness isn't set by hand any more - the
 		# long press only relights the lamp; no slider)
@@ -145,8 +147,7 @@ func _process(delta: float) -> void:
 	elif _skill_relight:
 		_ring.position = _skill_center
 		_ring.progress = lantern.relight_progress
-		_ring.visible = not lantern.lit
-		_ring.queue_redraw()
+		_ring.visible = false
 
 
 func _input(event: InputEvent) -> void:

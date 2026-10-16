@@ -672,6 +672,11 @@ func _docks() -> void:
 		var size := r.size / PX
 		var centre := to3(r.get_center())
 		var vertical := size.y > size.x
+		if stairs:
+			# (user report: the second flight was a thin strip - the steps,
+			# nearly square, were laid the wrong way across; they run the way
+			# they lead down)
+			vertical = dock.descend == "up" or dock.descend == "down"
 		var along := size.y if vertical else size.x
 		var across := size.x if vertical else size.y
 		if stairs:
