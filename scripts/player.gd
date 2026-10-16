@@ -286,8 +286,9 @@ const ROCK_HEAVE_TIME := 1.7
 const ROCK_HEAVE_AT := 0.55
 const PICK_TIME := 1.8
 ## (user report: the net's scoop took so long the bait was gone before it
-## came down - a quick sweep now)
-const SWINGS := {"slash": [1.0, 0.6], "chop": [2.3, 1.3], "scoop": [1.0, 0.5], "shoot": [1.0, 0.55],
+## came down - a quick sweep now; again, quicker still, and the bait aimed
+## at freezes as the net comes over it - Critter.pin)
+const SWINGS := {"slash": [1.0, 0.6], "chop": [2.3, 1.3], "scoop": [0.6, 0.25], "shoot": [1.0, 0.55],
 	"shoo": [1.3, 0.45]}
 ## User request: walking about, a tap of the right stick (Q) with a beast
 ## come for you this near (SHOO_REACH px) and nothing in hand to drive it
@@ -1051,6 +1052,11 @@ func swing(kind := "") -> bool:
 	swing_total = swing_time(kind)
 	swing_left = swing_total
 	_swing_landed = false
+	if kind == "scoop":
+		# (the bait under the net held there till it comes down)
+		var under := reachable_critter()
+		if under != null:
+			under.pin(swing_total)
 	return true
 
 

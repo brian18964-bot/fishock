@@ -183,13 +183,27 @@ static var quality := ""
 ## the lamp (share of the reach), the turn starting, its length, the
 ## pull-out from .. to]. (Off for the tests that play a run straight away.)
 static var intro := true
-const INTRO := {"reach_at": 0.8, "reach": 1.7, "grab": 0.36, "turn_at": 2.7, "turn": 1.1,
-	"pull_from": 3.6, "pull_to": 5.4}
+## User request (round 2): the hand on the lamp before it leaves the drum
+## (grabbed once the fingers are on its bail - by "grab" of the reach at the
+## latest); then held up and lit - the right hand brought to its glass
+## (light_from .. light_to), the flame catching at light_at - before the
+## turn.
+const INTRO := {"reach_at": 0.8, "reach": 1.7, "grab": 0.36, "light_from": 2.6, "light_at": 3.25,
+	"light_to": 3.75, "turn_at": 3.8, "turn": 1.1, "pull_from": 4.6, "pull_to": 6.4}
+## (the fingers this near the bail (m) and it's in hand; held up to be lit:
+## ahead, up, aside of the feet (m))
+const INTRO_TOUCH := 0.06
+const INTRO_TURN_IN := 0.5
+## (where the hand takes it: round its body, under the glass - its bail,
+## up top, out of a short arm's reach over the drum)
+const INTRO_TAKE_AT := Vector3(0.0, 0.12, 0.0)
+const INTRO_HOLD := Vector3(0.05, 1.05, 0.34)
 ## (the turn's pace, 1/s, against TURN_RATE's; the close camera behind
 ## its left shoulder, where the reaching arm shows: aside, above the head,
 ## behind (m))
 const INTRO_TURN_RATE := 3.2
 const INTRO_CAMERA := Vector3(1.1, 0.45, 1.5)
+const INTRO_CAMERA_LIGHT := Vector3(-1.2, 0.3, 1.0)
 
 
 ## User request (phones were slow): on a phone, lighter - one pass of the
@@ -256,6 +270,9 @@ var _lamp_drum: Node3D
 var _lamp_drum_top := 0.0
 var _intro_ahead := Vector3.FORWARD
 var _intro_bail := Vector3.ZERO
+## (how far the fingers are from it, as posed - measured once the arm's
+## been brought to it: _hold_rod)
+var _intro_gap := INF
 ## (the screen's buttons and bars put away for the close-up)
 var _intro_hidden: Array = []
 var _dodge := 0.0
@@ -384,7 +401,9 @@ func _build() -> void:
 		if station != null:
 			player.global_position = station.global_position + FuelStation.INTRO_SPOT
 			player.velocity = Vector2.ZERO
-		player.aim_dir = Vector2.UP
+		# (turned a little to its right, the left shoulder - the hand that
+		# takes the lamp - toward the drum)
+		player.aim_dir = Vector2.UP.rotated(INTRO_TURN_IN)
 	_ground()
 	_water()
 	_docks()
@@ -1272,20 +1291,12 @@ func _dragon_gear(c: Dictionary, model: Node3D) -> void:
 	lamp.name = "GreenLantern"
 	add_child(lamp)
 	for mi in lamp.find_children("*", "MeshInstance3D", true, false):
-		var m := mi as MeshInstance3D
-		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		for i in m.mesh.get_surface_count():
-			var src := m.mesh.surface_get_material(i) as BaseMaterial3D
-			if src == null:
-				continue
-			var mat := src.duplicate() as BaseMaterial3D
-			mat.albedo_color = src.albedo_color * Color(0.6, 1.0, 0.65)
-			mat.emission_enabled = true
-			mat.emission = DRAGON_LAMP_GREEN * 0.5
-			mat.emission_energy_multiplier = 0.6
-			m.set_surface_override_material(i, mat)
+		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# (user request: green only where it burns, not the whole lantern)
+	lamp_glow(lamp, DRAGON_LAMP_GREEN).set_shader_parameter("glow", 1.6)
 	var glow := OmniLight3D.new()
 	glow.name = "Flame"
+	glow.light_cull_mask = ~LAMP_LAYER
 	glow.light_color = DRAGON_LAMP_GREEN
 	glow.light_energy = 0.6
 	glow.omni_range = 0.9
@@ -1483,7 +1494,9 @@ func _sync_creatures(delta: float) -> void:
 		if c.has("lamp"):
 			_hang_dragon_lamp(c, delta)
 			# (asleep its lantern's out, as the 2D one's)
-			(c.lamp as Node).get_node("Flame").visible = int(n.get("mode")) != BigGhost.Mode.ASLEEP
+			var awake := int(n.get("mode")) != BigGhost.Mode.ASLEEP
+			(c.lamp as Node).get_node("Flame").visible = awake
+			lamp_glow(c.lamp, DRAGON_LAMP_GREEN).set_shader_parameter("glow", 1.6 if awake else 0.0)
 		if not on:
 			continue
 		c.time += delta
@@ -1793,6 +1806,7 @@ func _add_light(l: PointLight2D) -> void:
 	if _lights.has(l) or l.get_parent() == player:
 		return
 	var o := OmniLight3D.new()
+	o.light_cull_mask = ~LAMP_LAYER
 	o.omni_attenuation = 1.3
 	o.shadow_enabled = false
 	add_child(o)
@@ -1868,6 +1882,7 @@ func _character() -> void:
 	blob.position = Vector3(0, 0.05, 0)
 	pivot.add_child(blob)
 	_lamp = OmniLight3D.new()
+	_lamp.light_cull_mask = ~LAMP_LAYER
 	_lamp.light_color = Color(1.0, 0.72, 0.4)
 	# (falling off gently: lighting the ground far round without burning
 	# out the one holding it)
@@ -2139,7 +2154,151 @@ func _rod() -> Node3D:
 		rod.set_meta("rest", rod.transform)
 		# (placed by hand each frame, after the arm's been posed)
 		rod.top_level = true
+		_bendable(rod)
 	return rod
+
+
+## User request: the rod bends as the fish pulls and struggles - more or
+## less as it pulls (held_rod.gd's weights, the 2D rod's): a little with a
+## fish on, more with the line's tension, pulsing through a run, a kick at
+## each yank, tugs at a bite - toward the line, the butt stiff, the tip soft
+## (the bend's angle along it as (distance / length) ^ BEND_GATHER). It
+## eases to it within about 1 / BEND_EASE s; the body sways with it
+## (BODY_LEAN rad toward the fish at the most, BODY_SWAY more through a run).
+const BEND_FISH := 0.25
+const BEND_TENSION := 1.0
+const BEND_RUN := 0.4
+const BEND_YANK := 0.45
+const BEND_BITE := 0.35
+const BEND_LURE := 0.1
+const BEND_MAX := 1.3
+const BEND_EASE := 10.0
+const BEND_GATHER := 2.0
+const BEND_DOWN := 0.35
+const BODY_LEAN := 0.14
+const BODY_SWAY := 0.07
+const ROD_TIP := 6.0
+const ROD_SHADER := """
+shader_type spatial;
+uniform vec4 albedo : source_color = vec4(1.0);
+uniform float metallic = 0.0;
+uniform float roughness = 0.8;
+uniform float bend = 0.0;
+uniform vec2 bend_dir = vec2(1.0, 0.0);
+uniform float rod_len = 0.06;
+uniform float gather = 2.0;
+void vertex() {
+	float s = clamp(VERTEX.z / rod_len, 0.0, 1.0);
+	VERTEX.xy += bend_dir * rod_len * bend * pow(s, gather + 1.0) / (gather + 1.0);
+	VERTEX.z -= rod_len * bend * bend * pow(s, 2.0 * gather + 1.0) / (2.0 * (2.0 * gather + 1.0));
+}
+void fragment() {
+	ALBEDO = albedo.rgb;
+	METALLIC = metallic;
+	ROUGHNESS = roughness;
+}
+"""
+## (the rod's bend now, rad at the tip, and the body's sway)
+var bend := 0.0
+var _bend_time := 0.0
+var _lean := Vector2.ZERO
+
+
+## The rod's meshes on the bending shader, its colours kept.
+func _bendable(rod: Node3D) -> void:
+	var shader := Shader.new()
+	shader.code = ROD_SHADER
+	var meshes := []
+	for m in rod.find_children("*", "MeshInstance3D", true, false):
+		var mi := m as MeshInstance3D
+		var top := maxf(mi.get_aabb().end.z, 0.001)
+		for k in mi.mesh.get_surface_count():
+			var was := mi.get_active_material(k) as BaseMaterial3D
+			var mat := ShaderMaterial.new()
+			mat.shader = shader
+			if was != null:
+				mat.set_shader_parameter("albedo", was.albedo_color)
+				mat.set_shader_parameter("metallic", was.metallic)
+				mat.set_shader_parameter("roughness", was.roughness)
+			mat.set_shader_parameter("rod_len", top)
+			mat.set_shader_parameter("gather", BEND_GATHER)
+			mi.set_surface_override_material(k, mat)
+		mi.extra_cull_margin = 2.0
+		meshes.append(mi)
+	rod.set_meta("bend_meshes", meshes)
+
+
+## How hard the rod's bent this frame (the fish's pull, as the 2D rod).
+func _bend_rod(delta: float) -> void:
+	_bend_time += delta
+	var want := 0.0
+	var run := player.fish_run_active_time > 0.0
+	match player.state:
+		Player.State.BITE:
+			want = pow(maxf(0.0, sin(_bend_time * 13.0)), 6.0) * BEND_BITE
+		Player.State.REELING:
+			want = BEND_FISH + BEND_TENSION * clampf(player.tension, 0.0, 1.0) + BEND_YANK * _visual.yank
+			if run:
+				want += BEND_RUN * (0.6 + 0.4 * sin(_bend_time * 7.0))
+			# (the fish shaking its head on the line)
+			want += sin(_bend_time * 23.0) * 0.03 * (1.0 + clampf(player.tension, 0.0, 1.0))
+		Player.State.WAITING:
+			if player.fishing_mode == Player.FishingMode.LURE and player._is_action_pressed():
+				want = BEND_LURE
+	want = clampf(want, 0.0, BEND_MAX) * _rod_on * (1.0 - _stow)
+	bend = lerpf(bend, want, 1.0 - exp(-BEND_EASE * delta))
+	# The body with it: leant toward the line as it pulls, swaying through a
+	# run and at a yank.
+	var lean := Vector2.ZERO
+	if bend > 0.02 and _float.visible:
+		var to := pivot.global_basis.inverse() * (_float.global_position - pivot.global_position)
+		var flat := Vector2(to.x, to.z).normalized()
+		var share := bend / BEND_MAX
+		lean = flat * BODY_LEAN * share
+		var sway := BODY_SWAY * (share * 0.5 + (1.0 if run else 0.0) * 0.6 + _visual.yank)
+		lean += Vector2(-flat.y, flat.x) * sin(_bend_time * 5.3) * sway + flat * sin(_bend_time * 8.1) * sway * 0.5
+	_lean = _lean.lerp(lean, 1.0 - exp(-8.0 * delta))
+	rig.rotation.x = _lean.y
+	rig.rotation.z = -_lean.x
+
+
+## The bend onto the rod as it's placed (toward the line, a little down),
+## its tip where the line leaves.
+func _apply_bend(rod: Node3D) -> void:
+	var meshes: Array = rod.get_meta("bend_meshes", [])
+	if meshes.is_empty():
+		return
+	var axis := rod.global_basis.y.normalized()
+	var tip := rod.global_transform * Vector3(0, ROD_TIP, 0)
+	var pull := (_float.global_position - tip) if _float.visible else Vector3.DOWN
+	pull = pull.normalized() + Vector3.DOWN * BEND_DOWN
+	pull -= axis * pull.dot(axis)
+	if pull.length() < 0.001:
+		pull = -rod.global_basis.z
+	for m in meshes:
+		var mi := m as MeshInstance3D
+		if not is_instance_valid(mi):
+			continue
+		var d := mi.global_basis.inverse() * pull
+		var dir := Vector2(d.x, d.y).normalized()
+		for k in mi.mesh.get_surface_count():
+			var mat := mi.get_surface_override_material(k) as ShaderMaterial
+			if mat != null:
+				mat.set_shader_parameter("bend", bend)
+				mat.set_shader_parameter("bend_dir", dir)
+
+
+## Where a point along the rod's mesh is drawn, bent (mesh-local z).
+func _bent(mi: MeshInstance3D, z: float) -> Vector3:
+	var mat := mi.get_surface_override_material(0) as ShaderMaterial
+	var top: float = mat.get_shader_parameter("rod_len") if mat != null else 0.06
+	var dir: Vector2 = mat.get_shader_parameter("bend_dir") if mat != null else Vector2.ZERO
+	var g := BEND_GATHER
+	var s := clampf(z / top, 0.0, 1.0)
+	var over := maxf(z - top, 0.0)
+	var off := top * bend * pow(s, g + 1.0) / (g + 1.0) + over * sin(bend)
+	var back := top * bend * bend * pow(s, 2.0 * g + 1.0) / (2.0 * (2.0 * g + 1.0))
+	return Vector3(dir.x * off, dir.y * off, z - back - over * (1.0 - cos(bend)))
 
 
 ## How the rod's to be held this frame (ROD_ANGLES eased toward), and
@@ -2158,6 +2317,7 @@ func _aim_rod(delta: float) -> void:
 		_rod_up = want if _rod_on < 0.05 else lerpf(_rod_up, want, minf(1.0, delta * ROD_FOLLOW))
 	_ik.influence = _rod_on * ARM_FOLLOW
 	_gear_state(delta)
+	_bend_rod(delta)
 	var sk := rig.skeleton
 	var b := pivot.global_basis.orthonormalized()
 	var shoulder := sk.global_transform * sk.get_bone_global_pose(_shoulder_bone).origin
@@ -2207,10 +2367,43 @@ func _aim_rod(delta: float) -> void:
 	var take := _intro_take()
 	if take > 0.0:
 		if _intro_lamp != null:
-			_intro_bail = _intro_lamp.global_transform * CharacterRig.LAMP_BAIL
+			_intro_bail = _intro_lamp.global_transform * INTRO_TAKE_AT
 		_left_ik.influence = maxf(_left_ik.influence, take)
-		_left_target.global_position = _intro_bail
+		# (the fingers - where the bail's held - onto it, not the wrist)
+		var wrist := sk.global_transform * sk.get_bone_global_pose(sk.find_bone("hand_l")).origin
+		_left_target.global_position = _intro_bail - (rig._grip() - wrist)
 		_left_pole.global_position = shoulder_l + b.x * 0.45 + Vector3.DOWN * 0.5 - b.z * 0.1
+	# (lit: the lamp held up before the chest, the right hand to its glass,
+	# striking the light)
+	var lighting := _intro_lighting()
+	if lighting > 0.0:
+		var ahead := pivot.global_basis.z.normalized()
+		var left := Vector3(ahead.z, 0.0, -ahead.x)
+		var hold := pivot.global_position + ahead * INTRO_HOLD.z + left * INTRO_HOLD.x + Vector3.UP * INTRO_HOLD.y
+		var wrist_l := sk.global_transform * sk.get_bone_global_pose(sk.find_bone("hand_l")).origin
+		_left_ik.influence = maxf(_left_ik.influence, lighting)
+		_left_target.global_position = hold - (rig._grip() - wrist_l)
+		_left_pole.global_position = shoulder_l + b.x * 0.4 + Vector3.DOWN * 0.5
+		var held := _held_light()
+		if held != null:
+			var sc := held.global_basis.get_scale().x
+			var glass := held.global_position + Vector3.UP * 0.17 * sc
+			# (a strike or two before it catches)
+			var strike := 0.0
+			if _intro_t < float(INTRO.light_at):
+				strike = absf(sin((_intro_t - float(INTRO.light_from)) * 16.0)) * 0.035
+			_ik.influence = maxf(_ik.influence, lighting)
+			_ik_target.global_position = glass - left * 0.07 - ahead * 0.02 + Vector3.UP * strike
+			_ik_pole.global_position = shoulder - b.x * 0.45 + Vector3.DOWN * 0.45
+
+
+## How far into lighting the lamp the opening is (0..1, eased in and out).
+func _intro_lighting() -> float:
+	if _intro_t < 0.0:
+		return 0.0
+	var a: float = INTRO.light_from
+	var c: float = INTRO.light_to
+	return smoothstep(a - 0.1, a + 0.25, _intro_t) * (1.0 - smoothstep(c - 0.15, c + 0.2, _intro_t))
 
 
 ## How far the left hand's on the lamp in the opening's reach (0..1).
@@ -2221,7 +2414,9 @@ func _intro_take() -> float:
 	var grab: float = INTRO.grab
 	if s <= 0.0 or s >= 1.0:
 		return 0.0
-	return smoothstep(0.08, grab, s) if s < grab else 1.0 - smoothstep(grab + 0.05, grab + 0.35, s)
+	if not _intro_grabbed:
+		return smoothstep(0.08, grab, s)
+	return 1.0 - smoothstep(grab + 0.05, grab + 0.35, s)
 
 
 ## Once the arms are posed: the rod in the hand, pointed (ROD_ANGLES)
@@ -2231,6 +2426,8 @@ func _hold_rod() -> void:
 	# (the skeleton can still update as the run's being taken down)
 	if not is_inside_tree():
 		return
+	if _intro_lamp != null:
+		_intro_gap = rig._grip().distance_to(_intro_lamp.global_transform * INTRO_TAKE_AT)
 	var rod := _rod()
 	var sk := rig.skeleton
 	var b := pivot.global_basis.orthonormalized()
@@ -2248,6 +2445,7 @@ func _hold_rod() -> void:
 		if _stow > 0.0:
 			held = held.interpolate_with(_on_back(sk, b), smoothstep(0.0, 1.0, _stow))
 		rod.global_transform = held
+		_apply_bend(rod)
 	_hang_gear(sk, b)
 
 
@@ -2368,7 +2566,11 @@ func _gear_state(delta: float) -> void:
 	var both := rod_out or _visual.move in TWO_HANDED or (_visual.acting >= 0 and player.swing_kind in ["chop", "scoop"])
 	# (the left hand off the rod: the struggle in the ghost's grip)
 	_left_free = move_toward(_left_free, 1.0 if _visual.struggling else 0.0, delta / STOW_TIME)
-	_lamp_in = move_toward(_lamp_in, 0.0 if both or player.carrying_oil_drum else 1.0, delta / STOW_TIME)
+	# (user request: out - put out, or out of oil or charge - it's hung at
+	# the hip, not carried about doing nothing; lit again, back in hand)
+	var lantern := player.get_node_or_null("Lantern") as Lantern
+	var dark := lantern != null and _intro_t < 0.0 and not (lantern.lit and lantern.power() > 0.0)
+	_lamp_in = move_toward(_lamp_in, 0.0 if both or player.carrying_oil_drum or dark else 1.0, delta / STOW_TIME)
 	var swinging := _visual.acting >= 0
 	# User request: walking about, only the lamp in hand; the off hand's
 	# thing stays at the hip till it's used (drawn for the swing, put back
@@ -2506,11 +2708,27 @@ func _line_and_float() -> void:
 	add_child(_eye_label)
 
 
+## Where the rod's tip would be unbent (read by the tests).
+func rod_tip_straight() -> Vector3:
+	var att: Node3D = rig.attachments.get("hand_r")
+	if att != null and att.get_child_count() > 0:
+		return (att.get_child(0) as Node3D).global_transform * Vector3(0, ROD_TIP, 0)
+	return _rod_tip()
+
+
 ## The rod's tip (world), or the hand if there's no rod.
 func _rod_tip() -> Vector3:
 	var att: Node3D = rig.attachments.get("hand_r")
 	if att != null and att.get_child_count() > 0:
-		return (att.get_child(0) as Node3D).global_transform * Vector3(0, 6.0, 0)
+		var rod := att.get_child(0) as Node3D
+		var meshes: Array = rod.get_meta("bend_meshes", [])
+		if bend > 0.001 and not meshes.is_empty() and is_instance_valid(meshes[0]):
+			# (bent: the tip where the shader draws it)
+			var mi := meshes[0] as MeshInstance3D
+			var local := mi.global_transform.affine_inverse() * (rod.global_transform * Vector3(0, ROD_TIP, 0))
+			var at := _bent(mi, local.z)
+			return mi.global_transform * Vector3(local.x + at.x, local.y + at.y, at.z)
+		return rod.global_transform * Vector3(0, ROD_TIP, 0)
 	return pivot.global_position + Vector3(0, 1.2, 0)
 
 
@@ -2850,6 +3068,15 @@ func _update_light() -> void:
 		var on := lantern.enabled and lantern.visible
 		_sync_tool(lantern)
 		var beam := _tool == Lantern.Tool.FLASHLIGHT
+		# (the oil lamp's glass glowing as it burns - lamp_glow; dark out,
+		# and not yet lit in the opening)
+		var lit_now := on and not beam and lamp_lit()
+		var held_lamp := _held_light()
+		if not beam and held_lamp != null:
+			var catching := 1.0 if _intro_t < 0.0 else smoothstep(float(INTRO.light_at), float(INTRO.light_at) + 0.35, _intro_t)
+			lamp_glow(held_lamp, LAMP_FLAME).set_shader_parameter("glow",
+				clampf(lantern.energy / maxf(LAMP_GLOW_AT, 0.01), 0.3, 1.4) * LAMP_GLOW * catching if lit_now else 0.0)
+		on = on and (beam or lamp_lit())
 		_lamp.visible = on and not beam
 		_beam.visible = on and beam
 		if on:
@@ -2882,7 +3109,8 @@ func _update_light() -> void:
 				_beam.look_at(_beam.global_position + dir * 4.0, Vector3.UP)
 			else:
 				_lamp.omni_range = reach
-				_lamp.light_energy = lantern.energy * LAMP_POWER
+				_lamp.light_energy = lantern.energy * LAMP_POWER \
+					* (1.0 if _intro_t < 0.0 else smoothstep(float(INTRO.light_at), float(INTRO.light_at) + 0.35, _intro_t))
 				_lamp.light_color = lantern.color
 				# (held up over the head, as a lantern lights the way: not glaring
 				# off the one under it)
@@ -2900,20 +3128,31 @@ func _update_intro(delta: float) -> void:
 		return
 	var held := _held_light()
 	if _intro_lamp == null and held != null and not _intro_grabbed:
+		_intro_ahead = Vector3(sin(_yaw - INTRO_TURN_IN), 0.0, cos(_yaw - INTRO_TURN_IN))
+		if _lamp_drum != null:
+			var to_drum := _lamp_drum.global_position - pivot.global_position
+			to_drum.y = 0.0
+			_intro_ahead = to_drum.normalized()
 		_intro_lamp = held.duplicate() as Node3D
 		_intro_lamp.top_level = true
 		add_child(_intro_lamp)
 		_intro_lamp.global_transform = Transform3D(Basis(Vector3.UP, _yaw + 0.5).scaled(held.global_basis.get_scale()),
 			_lamp_rest())
-		_intro_ahead = Vector3(sin(_yaw), 0.0, cos(_yaw))
 	var was := _intro_t
 	if _intro_shown:
 		_intro_t += delta
 	var grab := float(INTRO.reach_at) + float(INTRO.reach) * float(INTRO.grab)
 	var walked := player.velocity.length() > 8.0 or player.state != Player.State.IDLE
-	if not _intro_grabbed and (_intro_t >= grab or walked):
+	# (taken once the fingers are on its bail - not lifted off the drum
+	# from a hand still away from it; at the latest a little past the grab)
+	var touching := _intro_lamp != null and _intro_gap < INTRO_TOUCH
+	var reach_share := (_intro_t - float(INTRO.reach_at)) / float(INTRO.reach)
+	if not _intro_grabbed and ((touching and reach_share > float(INTRO.grab) * 0.7) or reach_share > float(INTRO.grab) + 0.15 or walked):
 		_intro_grabbed = true
 		if _intro_lamp != null:
+			# (eased from the drum into the fingers)
+			rig._hang_from = _intro_lamp.global_transform
+			rig._hang_in = 0.0
 			_intro_lamp.queue_free()
 			_intro_lamp = null
 	if held != null:
@@ -2924,7 +3163,9 @@ func _update_intro(delta: float) -> void:
 	var turn_at: float = INTRO.turn_at
 	if was < turn_at and _intro_t >= turn_at and not walked:
 		# (round over its left shoulder, to face the camera behind it)
-		var to_camera := camera.global_position - pivot.global_position
+		# (the camera it turns to: where it'll be by then, behind it)
+		var left := Vector3(_intro_ahead.z, 0.0, -_intro_ahead.x)
+		var to_camera := -_intro_ahead * INTRO_CAMERA.z + left * INTRO_CAMERA.x
 		player.aim_dir = Vector2(to_camera.x, to_camera.z).normalized()
 	if walked and _intro_t < float(INTRO.pull_from):
 		_intro_t = float(INTRO.pull_from)
@@ -2952,6 +3193,15 @@ func _intro_screen(hide: bool) -> void:
 			_intro_hidden.append(layer)
 
 
+## Whether the lamp's lit now - the opening has it lit only once it's been
+## lit (INTRO.light_at).
+func lamp_lit() -> bool:
+	var lantern := player.get_node_or_null("Lantern") as Lantern if player != null else null
+	if lantern != null and not (lantern.lit and lantern.power() > 0.0):
+		return false
+	return _intro_t < 0.0 or _intro_t >= float(INTRO.get("light_at", 0.0))
+
+
 ## The opening goes on (main.gd: once the loading screen's gone).
 func show_intro() -> void:
 	_intro_shown = true
@@ -2965,9 +3215,11 @@ func _lamp_rest() -> Vector3:
 		var at := pivot.global_position + b.z * 0.42 + b.x * 0.12
 		return Vector3(at.x, ground_y(_feet()), at.z)
 	var top := Vector3(_lamp_drum.global_position.x, _lamp_drum_top, _lamp_drum.global_position.z)
-	var to := pivot.global_position - top
+	# (at the rim nearest the left shoulder - the hand that takes it)
+	var facing := Vector3(sin(_yaw), 0.0, cos(_yaw))
+	var to := pivot.global_position + Vector3(facing.z, 0.0, -facing.x) * 0.16 - top
 	to.y = 0.0
-	return top + to.normalized() * FuelStation.DRUM_RADIUS / PX * 0.6
+	return top + to.normalized() * FuelStation.DRUM_RADIUS / PX * 0.85
 
 
 ## The close camera of the opening: over the left shoulder, looking past
@@ -2976,12 +3228,82 @@ func _intro_camera() -> Transform3D:
 	var ahead := _intro_ahead
 	var left := Vector3(ahead.z, 0.0, -ahead.x)
 	var head := pivot.global_position + Vector3(0, 1.0, 0)
+	# (round to its left side while it lights the lamp - held up before it,
+	# out of sight from behind)
+	var side := smoothstep(float(INTRO.light_from) - 0.6, float(INTRO.light_from), _intro_t) \
+		* (1.0 - smoothstep(float(INTRO.light_to), float(INTRO.turn_at) + 0.4, _intro_t))
 	var at := head - ahead * INTRO_CAMERA.z + left * INTRO_CAMERA.x + Vector3(0, INTRO_CAMERA.y, 0)
+	if side > 0.0:
+		# (out ahead at its right - the drums on its left - facing the lamp
+		# it holds up)
+		var facing := pivot.global_basis.z.normalized()
+		var its_left := Vector3(facing.z, 0.0, -facing.x)
+		var by_lamp := head + its_left * INTRO_CAMERA_LIGHT.x + facing * INTRO_CAMERA_LIGHT.z + Vector3(0, INTRO_CAMERA_LIGHT.y, 0)
+		# (swung round it, not through it)
+		var from_head := at - head
+		var to_head := by_lamp - head
+		at = head + from_head.normalized().slerp(to_head.normalized(), side) * lerpf(from_head.length(), to_head.length(), side)
 	var lamp := _lamp_rest() + Vector3(0, 0.2, 0)
 	var look := head.lerp(lamp, 0.55)
+	var held := _held_light()
+	if held != null and _intro_grabbed:
+		look = look.lerp(head.lerp(held.global_position, 0.6), smoothstep(float(INTRO.light_from) - 0.4, float(INTRO.light_from), _intro_t))
 	var k := smoothstep(float(INTRO.turn_at), float(INTRO.turn_at) + float(INTRO.turn), _intro_t)
 	look = look.lerp(head - Vector3(0, 0.1, 0), k)
 	return Transform3D(Basis.looking_at(look - at, Vector3.UP), at)
+
+
+## User request: a lit lamp glows where it burns - the glass round its wick
+## - not all over. The oil lamp drawn with LAMP_SHADER (its dark chimney
+## glass lit from within, brightest at the flame, `glow` 0 unlit .. 1), and
+## kept out of its own light (LAMP_LAYER: the light right by it washed the
+## whole lamp out).
+const LAMP_LAYER := 1 << 10
+const LAMP_FLAME := Color(1.0, 0.62, 0.25)
+## (the glass's glow at full: and the 2D lantern's energy it's full at)
+const LAMP_GLOW := 1.4
+const LAMP_GLOW_AT := 1.0
+const LAMP_SHADER := """
+shader_type spatial;
+uniform sampler2D albedo_tex : source_color, filter_linear_mipmap;
+uniform vec3 flame_color : source_color = vec3(1.0, 0.62, 0.25);
+uniform float glow = 0.0;
+varying float h;
+void vertex() {
+	// (the lamp's mesh: 0.01 scale, its -z up - 0 at the base, 0.305 the top)
+	h = -VERTEX.z * 0.01;
+}
+void fragment() {
+	vec4 t = texture(albedo_tex, UV);
+	ALBEDO = t.rgb;
+	METALLIC = 0.3;
+	ROUGHNESS = 0.55;
+	float dark = 1.0 - smoothstep(0.05, 0.16, max(t.r, max(t.g, t.b)));
+	float glass = smoothstep(0.128, 0.142, h) * (1.0 - smoothstep(0.24, 0.252, h));
+	float core = exp(-pow((h - 0.172) / 0.032, 2.0));
+	EMISSION = flame_color * glow * dark * glass * (0.25 + 2.2 * core);
+}
+"""
+
+
+## The lamp drawn so (once); its ShaderMaterial (set `glow` on it).
+static func lamp_glow(lamp: Node3D, flame: Color) -> ShaderMaterial:
+	if lamp.has_meta("glow"):
+		return lamp.get_meta("glow")
+	var mat := ShaderMaterial.new()
+	var sh := Shader.new()
+	sh.code = LAMP_SHADER
+	mat.shader = sh
+	mat.set_shader_parameter("flame_color", Vector3(flame.r, flame.g, flame.b))
+	for mi in lamp.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		var src := m.mesh.surface_get_material(0) as BaseMaterial3D
+		if src != null and src.albedo_texture != null:
+			mat.set_shader_parameter("albedo_tex", src.albedo_texture)
+		m.material_override = mat
+		m.layers = LAMP_LAYER
+	lamp.set_meta("glow", mat)
+	return mat
 
 
 ## The lamp (or flashlight) model the character has.

@@ -1255,6 +1255,20 @@ func test_live_bait_and_net() -> void:
 	mouse.global_position = p.global_position + Vector2(70, 0)
 	await seconds(Player.swing_time("scoop") + 0.1)
 	check(Profile.bag_count("live_rat") == rats + 1, "scuttled a little off, still scooped up")
+	# (user report, again: too slow, the bait ran - quicker still, and the
+	# bait the net's come down over held still under it)
+	check(Player.swing_time("scoop") <= 0.7 and float(Player.SWINGS.scoop[1]) <= 0.3, "the sweep quicker still")
+	var frog: Critter = load("res://scenes/critter.tscn").instantiate()
+	frog.species = "rat"
+	main.add_child(frog)
+	frog.global_position = p.global_position + Vector2(30, 0)
+	await frames(3)
+	var frog_at := frog.global_position
+	check(p.interaction().get("verb", "") == "抓餌", "another in reach")
+	frog.pin(0.5)
+	await seconds(0.3)
+	check(frog.global_position.distance_to(frog_at) < 1.0, "held still under the net (%.1f px)" % frog.global_position.distance_to(frog_at))
+	frog.queue_free()
 	# Bare-handed: caught at a touch, a quick grab (no bending down).
 	Profile.equip("hatchet")
 	var bug: Critter = load("res://scenes/critter.tscn").instantiate()
@@ -3808,9 +3822,27 @@ func test_run_3d() -> void:
 	# User request (the fight stood stiff): the fish running, hauling on it
 	# low and braced - the arms still on the rod.
 	player().fight.opening_left = 0.0
+	# (user request: the rod bends with the fish's pull - more the harder -
+	# and the body sways with it)
+	player().fight.run_left = 0.0
+	await frames(30)
+	var light_bend := view.bend
+	var straight_tip := view.rod_tip_straight()
 	player().fight.run_left = 3.0
 	await frames(6)
 	check(view._clip == "Fish_Pull" and view._ik.influence > 0.9, "the fish running: hauling on it (%s)" % view._clip)
+	var most := 0.0
+	var lean := 0.0
+	var tip_off := 0.0
+	for _i in 40:
+		player().tension = 0.9
+		await frames(1)
+		most = maxf(most, view.bend)
+		lean = maxf(lean, view._lean.length())
+		tip_off = maxf(tip_off, view._rod_tip().distance_to(view.rod_tip_straight()))
+	check(light_bend > 0.02 and most > light_bend + 0.4 and most <= RunView3D.BEND_MAX,
+		"the rod bent with the pull: %.2f held, %.2f running hard" % [light_bend, most])
+	check(tip_off > 0.1 and lean > 0.03, "its tip bowed (%.2f m), the line from it; the body swaying (%.2f rad)" % [tip_off, lean])
 	player().fight.run_left = 0.0
 	key(KEY_SHIFT, true)
 	await frames(8)
@@ -4464,10 +4496,30 @@ func test_run_intro_and_eye_guide() -> void:
 	var behind := (view.camera.global_position - view.pivot.global_position).dot(view.pivot.global_basis.z)
 	check(view._clip == "PickUp_Table" and close < 3.5 and behind < 0.0 and not main.get_node("HUD").visible,
 		"taking the lamp off the drum, the camera close behind (%.1f m), no buttons" % close)
-	await seconds(2.0)
+	# (user request: the hand on the lamp before it comes off the drum, then
+	# a strike at its glass, the glow only once it's lit)
+	var gap_at_grab := INF
+	while not view._intro_grabbed and view._intro_t >= 0.0:
+		gap_at_grab = view._intro_gap
+		await frames(1)
+	check(view._intro_grabbed and gap_at_grab < RunView3D.INTRO_TOUCH + 0.02,
+		"the lamp taken only with the hand on it (%.3f m)" % gap_at_grab)
+	while view._intro_t >= 0.0 and view._intro_t < float(RunView3D.INTRO.light_from) + 0.1:
+		await frames(1)
+	check(not view.lamp_lit(), "not lit yet while the hand strikes")
+	while view._intro_t >= 0.0 and view._intro_t < float(RunView3D.INTRO.light_at) + 0.4:
+		await frames(1)
+	var held := view._held_light()
+	var glow_mat := RunView3D.lamp_glow(held, RunView3D.LAMP_FLAME) if held != null else null
+	check(view.lamp_lit() and glow_mat != null and float(glow_mat.get_shader_parameter("glow")) > 0.0,
+		"lit: the glass glows")
+	while view._intro_t >= 0.0 and view._intro_t < float(RunView3D.INTRO.turn_at) + float(RunView3D.INTRO.turn) + 0.1:
+		await frames(1)
 	var faces := (view.camera.global_position - view.pivot.global_position).dot(view.pivot.global_basis.z)
 	check(view._intro_grabbed and faces > 0.0, "the lamp in hand, turned round to the camera")
-	await seconds(2.4)
+	while view._intro_t >= 0.0:
+		await frames(1)
+	await seconds(0.2)
 	var far := view.camera.global_position.distance_to(view.pivot.global_position)
 	check(view._intro_t < 0.0 and far > close + 2.0 and main.get_node("HUD").visible,
 		"the camera back out (%.1f m), the buttons back" % far)
@@ -4494,6 +4546,14 @@ func test_run_intro_and_eye_guide() -> void:
 	for l in lights:
 		spread = maxf(spread, (l - lights[0]).length())
 	check(biggest > 0.05 and spread > 0.04, "walking: the lamp swings (%.2f rad), its light moves (%.2f m)" % [biggest, spread])
+	# (user request: an unlit lamp, or one with no fuel, hangs at the hip)
+	var lantern: Lantern = player().get_node("Lantern")
+	lantern.lit = false
+	await seconds(RunView3D.STOW_TIME + 0.3)
+	check(view._lamp_in == 0.0 and not view.lamp_lit(), "unlit: the lamp hung at the hip")
+	lantern.lit = true
+	await seconds(RunView3D.STOW_TIME + 0.3)
+	check(view._lamp_in == 1.0, "lit again: back in the hand")
 	# User request: the big ghost is a dragon now - a skeleton, its clip by
 	# what it's doing, a green lantern in its hand, its light from it.
 	var bg = main.get_node("BigGhost")

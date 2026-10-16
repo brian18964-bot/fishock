@@ -201,6 +201,14 @@ func set_species(name: String) -> void:
 
 ## (Solids.detour: the way round something, kept)
 var _detour := {}
+## (frozen still this many seconds more - a net coming down over it)
+var _pinned := 0.0
+
+
+## Holds it still (s): user report - the net's scoop was slow enough that
+## the bait ran from under it.
+func pin(time: float) -> void:
+	_pinned = maxf(_pinned, time)
 
 
 func _physics_process(delta: float) -> void:
@@ -208,6 +216,11 @@ func _physics_process(delta: float) -> void:
 		_respawn_timer -= delta
 		if _respawn_timer <= 0.0:
 			_respawn()
+		return
+	if _pinned > 0.0:
+		_pinned -= delta
+		velocity = Vector2.ZERO
+		_animate(delta)
 		return
 
 	_update_mode(delta)
