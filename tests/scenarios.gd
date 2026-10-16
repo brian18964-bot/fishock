@@ -4737,10 +4737,17 @@ func test_run_intro_and_eye_guide() -> void:
 	# (user request, round 3: then straight out - no turning round)
 	var yaw_lit: float = view._yaw
 	var swung := 0.0
+	var drift := 0.0
+	var screen := view.get_viewport().get_visible_rect().size
 	while view._intro_t >= 0.0:
 		swung = maxf(swung, absf(angle_difference(yaw_lit, view._yaw)))
+		# (user report: drawing out, the traveller slid off to the bottom
+		# right - kept near the middle of the frame now)
+		var seen := view.camera.unproject_position(view.pivot.global_position + Vector3(0, 0.8, 0))
+		drift = maxf(drift, ((seen - screen * 0.5) / screen).length())
 		await frames(1)
 	check(swung < 0.05, "no turn after lighting it (%.2f rad)" % swung)
+	check(drift < 0.2, "drawing out, the traveller kept near the middle (%.2f of the screen at most)" % drift)
 	await seconds(0.2)
 	var far := view.camera.global_position.distance_to(view.pivot.global_position)
 	check(view._intro_t < 0.0 and far > close + 2.0 and main.get_node("HUD").visible,

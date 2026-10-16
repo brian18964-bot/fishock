@@ -3396,7 +3396,34 @@ func _intro_camera() -> Transform3D:
 	var held := _held_light()
 	if held != null and _intro_grabbed:
 		look = look.lerp(head.lerp(held.global_position, 0.6), smoothstep(float(INTRO.light_from) - 0.4, float(INTRO.light_from), _intro_t))
+	_intro_look = look
 	return Transform3D(Basis.looking_at(look - at, Vector3.UP), at)
+
+
+## User request (round 3: drawing out of the lighting shot, the traveller
+## slid off to the bottom right - the camera's place and its aim were
+## blended apart): out round the traveller instead - from the close shot
+## to the game's view by angle round them (first), then distance (after),
+## its aim eased from the lamp to the game's mark all along - so they stay
+## near the middle of the frame the whole way.
+var _intro_look := Vector3.ZERO
+
+
+func _intro_blend(close: Transform3D, close_look: Vector3, far_at: Vector3, far_look: Vector3, k: float) -> Transform3D:
+	if k <= 0.0:
+		return close
+	var centre := pivot.global_position + Vector3(0, 1.0, 0)
+	var a := close.origin - centre
+	var b := far_at - centre
+	var turn := smoothstep(0.0, 0.7, k)
+	var out := smoothstep(0.2, 1.0, k)
+	var yaw := lerp_angle(atan2(a.x, a.z), atan2(b.x, b.z), turn)
+	var pitch := lerpf(asin(clampf(a.y / maxf(a.length(), 0.001), -1.0, 1.0)), asin(clampf(b.y / maxf(b.length(), 0.001), -1.0, 1.0)), turn)
+	var dist := lerpf(a.length(), b.length(), out)
+	var at := centre + Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch)) * dist
+	var look := close_look.lerp(far_look, smoothstep(0.0, 0.75, k))
+	return Transform3D(Basis.looking_at(look - at, Vector3.UP), at)
+
 
 
 ## User request: a lit lamp glows where it burns - the glass round its wick
@@ -3613,7 +3640,7 @@ func _update_camera(delta: float) -> void:
 		# (the opening: close behind the traveller, drawing back out to
 		# the usual view)
 		var k := smoothstep(float(INTRO.pull_from), float(INTRO.pull_to), _intro_t)
-		camera.global_transform = _intro_camera().interpolate_with(camera.global_transform, k)
+		camera.global_transform = _intro_blend(_intro_camera(), _intro_look, at, look, k)
 	_dodge_buttons(delta)
 	# Further out, the trees near the camera stay solid longer.
 	var k := dist / CAMERA_DISTANCE
