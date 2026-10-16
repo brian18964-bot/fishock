@@ -36,6 +36,7 @@ const TESTS := [
 	"test_big_ghost_eats_thrown_fish",
 	"test_big_ghost_fish_taken_back",
 	"test_big_ghost_appears_on_waking",
+	"test_touch_flash_holds_ghosts",
 	"test_light_flash_stuns",
 	"test_right_stick_casts",
 	"test_right_stick_tap_cast",
@@ -683,6 +684,72 @@ func test_big_ghost_appears_on_waking() -> void:
 		"awake: out on the map, not at its lair")
 	Campaign.rules.big_wake = -1
 	bg._go_home()
+
+
+## User report: aimed and charged on the light button and let go at a ghost
+## - nothing: it didn't stop, no flash. The whole touch path, at a floating
+## ghost and at the dragon, both moving.
+func test_touch_flash_holds_ghosts() -> void:
+	var tc: TouchControls = null
+	for c in main.get_children():
+		if c is TouchControls:
+			tc = c
+	tc.visible = true
+	var lantern: Lantern = player().get_node("Lantern")
+	lantern.lit = true
+	lantern.fuel = lantern.max_fuel
+	await put(Vector2(1300, 400))
+	var ghost: Node2D = main.get_node("Ghost")
+	var bg = main.get_node("BigGhost")
+	for target in [ghost, bg]:
+		lantern.flash_cooldown = 0.0
+		# (user report: 58% left - a full charge must still go off)
+		lantern.fuel = lantern.max_fuel * 0.58
+		if target == bg:
+			bg.mode = bg.Mode.WANDER
+			ghost.global_position = player().global_position + Vector2(-600, -600)
+		target.global_position = player().global_position + Vector2(0, 130)
+		await frames(2)
+		var down := InputEventScreenTouch.new()
+		down.index = 5
+		down.position = tc._skill_center
+		down.pressed = true
+		tc._input(down)
+		var drag := InputEventScreenDrag.new()
+		drag.index = 5
+		drag.position = tc._skill_center + Vector2(0, 60)
+		tc._input(drag)
+		for _i in 90:
+			target.global_position = player().global_position + Vector2(0, 130)
+			await frames(1)
+		var up := InputEventScreenTouch.new()
+		up.index = 5
+		up.position = drag.position
+		up.pressed = false
+		tc._input(up)
+		await frames(3)
+		var at: Vector2 = target.global_position
+		check(target.stun_timer > Lantern.FLASH_STUN_DURATION, "%s: flashed, held (%.2f s)" % [target.name, target.stun_timer])
+		var view: RunView3D = RunView3D.active
+		if view != null:
+			check(view._flash_light.visible, "%s: the flash seen" % target.name)
+		await seconds(1.0)
+		check(target.global_position.distance_to(at) < 2.0, "%s: and stays put (%.1f px)" % [target.name, target.global_position.distance_to(at)])
+	# Short of a full charge's cost: it goes off as strong as it can; with
+	# nothing to pay for one, it says so (in the feed), not silently.
+	lantern.fuel = lantern.max_fuel * (Lantern.FLASH_SHARE * 1.2)
+	check(lantern.affordable_charge() > 0.0 and lantern.affordable_charge() < 1.0, "a little fuel: part of a charge")
+	lantern.fuel = lantern.max_fuel * Lantern.FLASH_SHARE * 0.5
+	var card: StatusCard = main.find_child("StatusCard", true, false)
+	lantern.flash_cooldown = 0.0
+	lantern.boost = 1.0
+	lantern.release_flash()
+	await frames(2)
+	check(lantern.affordable_charge() < 0.0 and card != null and card.feed.size() > 0 and str(card.feed[0][0]).contains("燈油不夠"),
+		"too little: told so")
+	lantern.fuel = lantern.max_fuel
+	bg._go_home()
+	tc.visible = false
 
 
 func test_light_flash_stuns() -> void:

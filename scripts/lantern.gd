@@ -59,8 +59,13 @@ const TEXTURE_HALF_SIZE := 128.0
 const FLASH_RANGE := 160.0
 ## A flash's cost: this share of a full tank / battery.
 const FLASH_SHARE := 0.2
-## A fully charged flash costs this much more (x2.5 the share).
-const FLASH_CHARGE_EXTRA := 1.5
+## A fully charged flash costs this much more (x1.5 the share). (User
+## report: at x2.5 a full charge wanted half the tank, and short of it the
+## flash just didn't go - now it goes as strong as what's left pays for.)
+const FLASH_CHARGE_EXTRA := 0.5
+## Let go after charging this far, it flashes even with no ghost in the fan
+## (it's seen - and spent); a quick drag and release with less, nothing.
+const FLASH_ANYWAY_FROM := 0.3
 ## Below this share of energy the light dims by itself, losing AUTO_DIM
 ## brightness per whole tank burned (0.6 over the last 30%).
 const AUTO_DIM_BELOW := 0.3
@@ -374,17 +379,31 @@ func release_flash(stun_scale: float = 1.0) -> void:
 	rotation = _player.aim_dir.angle()
 	if not lit or power() <= 0.0:
 		return
-	var reach := flash_reach(charged)
 	var target := false
 	for ghost in get_tree().get_nodes_in_group("ghosts"):
-		if _flash_hits(ghost, reach):
+		if _flash_hits(ghost, flash_reach(charged)):
 			target = true
-	if not target:
+	if not target and charged < FLASH_ANYWAY_FROM:
 		return
 	if flash_cooldown > 0.0:
-		GameState.push_message("強光還在冷卻（%.0f 秒）" % ceilf(flash_cooldown))
+		GameState.report("強光還在冷卻（%.0f 秒）" % ceilf(flash_cooldown))
 		return
-	_try_flash(reach, flash_stun(charged) * stun_scale, charged)
+	# (as strong as the fuel left pays for)
+	var can := affordable_charge()
+	if can < 0.0:
+		GameState.report("燈油不夠，強光發不出來")
+		return
+	charged = minf(charged, can)
+	_try_flash(flash_reach(charged), flash_stun(charged) * stun_scale, charged)
+
+
+## The most charge the energy left pays a flash for (0..1; -1: not even an
+## uncharged one).
+func affordable_charge() -> float:
+	var have := fuel / maxf(max_fuel, 0.001) if tool == Tool.LAMP else charge / 100.0
+	if have < FLASH_SHARE:
+		return -1.0
+	return clampf((have / FLASH_SHARE - 1.0) / FLASH_CHARGE_EXTRA, 0.0, 1.0)
 
 
 ## In the flash: within `reach` and in the light - its feet or its body (the
@@ -407,13 +426,13 @@ func _try_flash(reach: float = FLASH_RANGE, stun: float = FLASH_STUN_DURATION, c
 	if tool == Tool.LAMP:
 		var cost := max_fuel * share
 		if fuel < cost:
-			GameState.push_message("能源不足，無法使用強光")
+			GameState.report("燈油不夠，強光發不出來")
 			return
 		fuel -= cost
 	else:
 		var cost := 100.0 * share
 		if charge < cost:
-			GameState.push_message("能源不足，無法使用強光")
+			GameState.report("電量不夠，強光發不出來")
 			return
 		charge -= cost
 		# User request: the flashlight wears with each flash (Profile.wear_out).
@@ -452,7 +471,7 @@ func _try_flash(reach: float = FLASH_RANGE, stun: float = FLASH_STUN_DURATION, c
 	elif scared_any:
 		GameState.push_message("強光把野獸嚇跑了！")
 	else:
-		GameState.push_message("強光沒有照到任何鬼")
+		GameState.report("強光沒照到鬼", "info")
 
 
 ## True if `point` currently falls inside the lit area (design doc §3.1:
