@@ -26,7 +26,7 @@ const GOOD := Color(0.72, 0.95, 0.55)
 ## taken, a long wait for nothing, a ghost meddling, a wolf on you - a few
 ## words each under the card, the newest on top; each stays a few seconds
 ## and fades, and the same thing again just refreshes its line.
-const FEED_AT := Vector2(10, 128)
+const FEED_AT := Vector2(10, 84)
 const FEED_LINES := 3
 const FEED_LIFE := 4.5
 const FEED_FADE := 0.8
@@ -36,7 +36,10 @@ const FEED_GAP := 21.0
 ## User request: under the card, what's in hand - the main hand (the rod),
 ## the off hand (a weapon or the net) and the bait on the hook with how many
 ## are left - each a slot with its icon (the one in hand now lit, the worn
-## ones with their durability); a tap on any opens the bag.
+## ones with their durability); a tap on any opens the bag. (User request,
+## round 3: not drawn any more - the bait and its count are by the right
+## pad now; SHOW_GEAR.)
+const SHOW_GEAR := false
 const GEAR_AT := Vector2(10, 80)
 const GEAR_SLOT := 40.0
 const GEAR_GAP := 6.0
@@ -76,7 +79,7 @@ func _on_event(text: String, tone: String) -> void:
 
 
 func contains(pos: Vector2) -> bool:
-	return Rect2(POS, SIZE).has_point(pos) or gear_rect().has_point(pos)
+	return Rect2(POS, SIZE).has_point(pos) or (SHOW_GEAR and gear_rect().has_point(pos))
 
 
 ## The gear slots' strip.
@@ -190,7 +193,8 @@ func _draw_card() -> void:
 	SpiritBar.paint(_view, Rect2(Vector2(x, plate.end.y + 4), Vector2(96, 8)))
 	# User request (HUD cleanup): no speed or fish count - just what's
 	# wrong, if anything.
-	_draw_gear(p)
+	if SHOW_GEAR:
+		_draw_gear(p)
 	_draw_feed()
 	var line := x
 	for cond in conditions(p):

@@ -186,9 +186,12 @@ func _on_sacrifice_progress_updated(progress: float) -> void:
 	sacrifice_bar.value = progress
 
 
+## (user request, round 3: the relighting shown once - in the fuel box
+## (EnergyView), not a second bar under it as well)
 func _on_relight_progress_updated(progress: float) -> void:
-	relight_bar.visible = progress > 0.0
+	relight_bar.visible = false
 	relight_bar.value = progress
+	_energy_view.queue_redraw()
 
 
 func _on_quota_updated(progress: float, target: float) -> void:
@@ -429,8 +432,18 @@ class EnergyView extends Control:
 		mouse_filter = Control.MOUSE_FILTER_STOP
 		add_to_group("hud_block")
 
+	## (user request, round 3: a button here puts the light out at once -
+	## the lamp then hung at the hip)
+	const OUT_BUTTON := Rect2(W - 62.0, 50.0, 50.0, 20.0)
+
 	func _gui_input(event: InputEvent) -> void:
 		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+			if event.pressed and lantern != null and lantern.lit and OUT_BUTTON.grow(6.0).has_point(event.position):
+				lantern.put_out()
+				Sfx.play("ui_click", -6.0)
+				queue_redraw()
+				accept_event()
+				return
 			_dragging = event.pressed
 			_drag_x = event.position.x
 			accept_event()
@@ -471,3 +484,6 @@ class EnergyView extends Control:
 			out = "點燃中…" if lantern.tool == Lantern.Tool.LAMP else "換電池中…"
 			UiKit.draw_bar(self, Rect2(BAR.position.x + 70.0, 52.0, BAR.size.x - 70.0, 11.0), lantern.relight_progress, Color(1.0, 0.85, 0.45))
 		UiKit.draw_text(self, Vector2(16, 62), out, 12, low if not lantern.lit else UiKit.DIM)
+		if lantern.lit:
+			UiKit.button_box("gray", "normal").draw(get_canvas_item(), OUT_BUTTON)
+			UiKit.draw_text(self, OUT_BUTTON.position + Vector2(0, 15), "熄燈", 12, UiKit.TEXT, HORIZONTAL_ALIGNMENT_CENTER, OUT_BUTTON.size.x, true)

@@ -187,9 +187,10 @@ static var intro := true
 ## (grabbed once the fingers are on its bail - by "grab" of the reach at the
 ## latest); then held up and lit - the right hand brought to its glass
 ## (light_from .. light_to), the flame catching at light_at - before the
-## turn.
+## camera drawing out. (User request, round 3: no turning round to the
+## camera after - straight out from the lit lamp, pull_from .. pull_to.)
 const INTRO := {"reach_at": 0.8, "reach": 1.7, "grab": 0.36, "light_from": 2.6, "light_at": 3.25,
-	"light_to": 3.75, "turn_at": 3.8, "turn": 1.1, "pull_from": 4.6, "pull_to": 6.4}
+	"light_to": 3.75, "pull_from": 3.85, "pull_to": 5.9}
 ## (the fingers this near the bail (m) and it's in hand; held up to be lit:
 ## ahead, up, aside of the feet (m))
 const INTRO_TOUCH := 0.06
@@ -1202,6 +1203,13 @@ const DRAGON_ROOM := 1.2
 const TAIL_DODGE := 0.9
 const TAIL_CHECK := [0.5, 1.0]
 const DRAGON_LAMP_GREEN := Color(0.55, 1.0, 0.6)
+## (user request: the glass's glow too bright, gone white - soft, the green
+## of its light kept)
+const DRAGON_LAMP_GLOW := 0.4
+## (user request: the lantern stiff on the hand - it hangs from it, a
+## pendulum swung by how the hand moves; its damping per second)
+const DRAGON_LAMP_DAMP := 0.35
+const DRAGON_LAMP_TILT := 0.9
 
 
 ## What 3D model `n` (a node of the 2D world) is shown as ("": none).
@@ -1298,7 +1306,7 @@ func _dragon_gear(c: Dictionary, model: Node3D) -> void:
 	for mi in lamp.find_children("*", "MeshInstance3D", true, false):
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	# (user request: green only where it burns, not the whole lantern)
-	lamp_glow(lamp, DRAGON_LAMP_GREEN).set_shader_parameter("glow", 1.6)
+	lamp_glow(lamp, DRAGON_LAMP_GREEN).set_shader_parameter("glow", DRAGON_LAMP_GLOW)
 	var glow := OmniLight3D.new()
 	glow.name = "Flame"
 	glow.light_cull_mask = ~LAMP_LAYER
@@ -1369,18 +1377,37 @@ func _hang_dragon_lamp(c: Dictionary, delta: float) -> void:
 	var model: Node3D = c.model
 	var k := model.global_basis.get_scale().x * DRAGON_LAMP_SIZE
 	var grip := hand.global_position
-	var last: Vector3 = c.hand_last
-	var vel := (grip - last) / maxf(delta, 0.001) if last != Vector3.ZERO else Vector3.ZERO
-	c.hand_last = grip
+	# The lamp's weight hanging from the bail (verlet): the hand drags the
+	# bail about, the weight swings after it under its own gravity.
+	var arm := CharacterRig.LAMP_BAIL.length() * k
 	var yaw := Basis(Vector3.UP, float(c.yaw))
-	var push := Vector2((yaw.inverse() * vel).x, (yaw.inverse() * vel).z).limit_length(4.0)
-	var sw: Vector2 = c.swing
-	var sv: Vector2 = c.swing_vel
-	sv += (-sw * 30.0 - push * 0.9 * 6.0 - sv * 3.0) * delta
-	sw = (sw + sv * delta).limit_length(0.6)
-	c.swing = sw
-	c.swing_vel = sv
-	var b := yaw * Basis(Vector3.BACK, -sw.x) * Basis(Vector3.RIGHT, sw.y)
+	if not c.has("bob") or (c.bob as Vector3).distance_to(grip) > arm * 3.0 or delta <= 0.0:
+		c.bob = grip + Vector3.DOWN * arm
+		c.bob_last = c.bob
+	var bob: Vector3 = c.bob
+	var last: Vector3 = c.bob_last
+	var step := minf(delta, 1.0 / 30.0)
+	var next := bob + (bob - last) * pow(DRAGON_LAMP_DAMP, step) + Vector3.DOWN * 9.8 * step * step
+	var hang := next - grip
+	if hang.length() < 0.001:
+		hang = Vector3.DOWN
+	# (no further out than DRAGON_LAMP_TILT from straight down)
+	var down := hang.normalized()
+	var tilt := down.angle_to(Vector3.DOWN)
+	if tilt > DRAGON_LAMP_TILT:
+		var axis := Vector3.DOWN.cross(down).normalized()
+		down = Vector3.DOWN.rotated(axis, DRAGON_LAMP_TILT) if axis.length() > 0.5 else Vector3.DOWN
+	next = grip + down * arm
+	c.bob_last = bob
+	c.bob = next
+	# Its up the way from the weight to the bail; facing kept to the body's.
+	var up := -down
+	var fwd := yaw.z - up * yaw.z.dot(up)
+	if fwd.length() < 0.01:
+		fwd = yaw.x.cross(up)
+	fwd = fwd.normalized()
+	var b := Basis(up.cross(fwd).normalized(), up, fwd)
+	c.swing = Vector2(b.y.x, b.y.z)
 	lamp.global_transform = Transform3D(b.scaled(Vector3.ONE * k), grip - (b.scaled(Vector3.ONE * k)) * CharacterRig.LAMP_BAIL)
 
 
@@ -1501,7 +1528,7 @@ func _sync_creatures(delta: float) -> void:
 			# (asleep its lantern's out, as the 2D one's)
 			var awake := int(n.get("mode")) != BigGhost.Mode.ASLEEP
 			(c.lamp as Node).get_node("Flame").visible = awake
-			lamp_glow(c.lamp, DRAGON_LAMP_GREEN).set_shader_parameter("glow", 1.6 if awake else 0.0)
+			lamp_glow(c.lamp, DRAGON_LAMP_GREEN).set_shader_parameter("glow", DRAGON_LAMP_GLOW if awake else 0.0)
 		if not on:
 			continue
 		c.time += delta
@@ -1960,9 +1987,6 @@ func _pick_clip() -> Array:
 		var reach := (_intro_t - float(INTRO.reach_at)) / float(INTRO.reach)
 		if reach >= 0.0 and reach < 1.0:
 			return ["PickUp_Table", 1.0, reach]
-		var turn := (_intro_t - float(INTRO.turn_at)) / float(INTRO.turn)
-		if turn >= 0.0 and turn < 1.0:
-			return ["Walk", 0.55, -1.0]
 	if player.grab_left > 0.0:
 		# (a critter grabbed bare-handed: a quick reach and snatch)
 		return ["Interact", 1.0, (1.0 - player.grab_left / Player.GRAB_TIME) * 0.5]
@@ -2395,17 +2419,24 @@ func _aim_rod(delta: float) -> void:
 			var glass := held.global_position + Vector3.UP * 0.17 * sc
 			# (a strike or two before it catches)
 			var strike := 0.0
-			if _intro_t < float(INTRO.light_at):
+			if _intro_t >= 0.0 and _intro_t < float(INTRO.light_at):
 				strike = absf(sin((_intro_t - float(INTRO.light_from)) * 16.0)) * 0.035
+			elif _intro_t < 0.0 and not lamp_lit():
+				strike = absf(sin(_time * 16.0)) * 0.035
 			_ik.influence = maxf(_ik.influence, lighting)
 			_ik_target.global_position = glass - left * 0.07 - ahead * 0.02 + Vector3.UP * strike
 			_ik_pole.global_position = shoulder - b.x * 0.45 + Vector3.DOWN * 0.45
 
 
-## How far into lighting the lamp the opening is (0..1, eased in and out).
+const RELIGHT_IN := 0.35
+var _relight := 0.0
+
+
+## How far into lighting the lamp the opening is (0..1, eased in and out) -
+## or the lamp's being relit (_relight).
 func _intro_lighting() -> float:
 	if _intro_t < 0.0:
-		return 0.0
+		return smoothstep(0.0, 1.0, _relight)
 	var a: float = INTRO.light_from
 	var c: float = INTRO.light_to
 	return smoothstep(a - 0.1, a + 0.25, _intro_t) * (1.0 - smoothstep(c - 0.15, c + 0.2, _intro_t))
@@ -2575,6 +2606,15 @@ func _gear_state(delta: float) -> void:
 	# the hip, not carried about doing nothing; lit again, back in hand)
 	var lantern := player.get_node_or_null("Lantern") as Lantern
 	var dark := lantern != null and _intro_t < 0.0 and not (lantern.lit and lantern.power() > 0.0)
+	# (user request, round 3: relighting it, it's taken up and lit by hand -
+	# the opening's move; RELIGHT_IN to bring it up, out as it catches)
+	var relighting := lantern != null and not lantern.lit and lantern.relight_progress > 0.0 \
+		and lantern.tool == Lantern.Tool.LAMP and not both and not player.carrying_oil_drum
+	_relight = move_toward(_relight, 1.0 if relighting else 0.0, delta / RELIGHT_IN)
+	if relighting:
+		dark = false
+	elif _relight > 0.0 and lantern != null and lantern.lit:
+		dark = false
 	_lamp_in = move_toward(_lamp_in, 0.0 if both or player.carrying_oil_drum or dark else 1.0, delta / STOW_TIME)
 	var swinging := _visual.acting >= 0
 	# User request: walking about, only the lamp in hand; the off hand's
@@ -3143,7 +3183,7 @@ func _update_intro(delta: float) -> void:
 		add_child(_intro_lamp)
 		_intro_lamp.global_transform = Transform3D(Basis(Vector3.UP, _yaw + 0.5).scaled(held.global_basis.get_scale()),
 			_lamp_rest())
-	var was := _intro_t
+
 	if _intro_shown:
 		_intro_t += delta
 	var grab := float(INTRO.reach_at) + float(INTRO.reach) * float(INTRO.grab)
@@ -3165,13 +3205,6 @@ func _update_intro(delta: float) -> void:
 	if not _intro_grabbed and _intro_lamp != null:
 		# (its light on the drum with it till then)
 		_lamp.global_position = _intro_lamp.global_position + Vector3(0, 0.3, 0)
-	var turn_at: float = INTRO.turn_at
-	if was < turn_at and _intro_t >= turn_at and not walked:
-		# (round over its left shoulder, to face the camera behind it)
-		# (the camera it turns to: where it'll be by then, behind it)
-		var left := Vector3(_intro_ahead.z, 0.0, -_intro_ahead.x)
-		var to_camera := -_intro_ahead * INTRO_CAMERA.z + left * INTRO_CAMERA.x
-		player.aim_dir = Vector2(to_camera.x, to_camera.z).normalized()
 	if walked and _intro_t < float(INTRO.pull_from):
 		_intro_t = float(INTRO.pull_from)
 	_intro_screen(_intro_t < float(INTRO.pull_from))
@@ -3235,8 +3268,7 @@ func _intro_camera() -> Transform3D:
 	var head := pivot.global_position + Vector3(0, 1.0, 0)
 	# (round to its left side while it lights the lamp - held up before it,
 	# out of sight from behind)
-	var side := smoothstep(float(INTRO.light_from) - 0.6, float(INTRO.light_from), _intro_t) \
-		* (1.0 - smoothstep(float(INTRO.light_to), float(INTRO.turn_at) + 0.4, _intro_t))
+	var side := smoothstep(float(INTRO.light_from) - 0.6, float(INTRO.light_from), _intro_t)
 	var at := head - ahead * INTRO_CAMERA.z + left * INTRO_CAMERA.x + Vector3(0, INTRO_CAMERA.y, 0)
 	if side > 0.0:
 		# (out ahead at its right - the drums on its left - facing the lamp
@@ -3253,8 +3285,6 @@ func _intro_camera() -> Transform3D:
 	var held := _held_light()
 	if held != null and _intro_grabbed:
 		look = look.lerp(head.lerp(held.global_position, 0.6), smoothstep(float(INTRO.light_from) - 0.4, float(INTRO.light_from), _intro_t))
-	var k := smoothstep(float(INTRO.turn_at), float(INTRO.turn_at) + float(INTRO.turn), _intro_t)
-	look = look.lerp(head - Vector3(0, 0.1, 0), k)
 	return Transform3D(Basis.looking_at(look - at, Vector3.UP), at)
 
 

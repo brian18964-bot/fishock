@@ -210,11 +210,15 @@ func _physics_process(delta: float) -> void:
 		_start_hunt()
 	match mode:
 		Mode.ASLEEP:
+			# (user request: not on the map at all till it sets out - then
+			# somewhere on it at random, away from the traveller)
 			global_position = _lair.global_position + HOME
 			var wake: int = int(Campaign.rules.big_wake) if int(Campaign.rules.big_wake) >= 0 else ACTIVE_FROM_STAGE
 			if GameState.run_started and (GameState.is_night or GameState.light_stage() >= wake):
+				global_position = _spawn_point()
+				_last_pos = global_position
 				_set_mode(Mode.WANDER)
-				GameState.push_message("遠處傳來鐵鍊拖地的聲音...大鬼醒了")
+				GameState.push_message("遠處傳來鐵鍊拖地的聲音...大鬼出現了")
 		Mode.WANDER, Mode.REST:
 			if mode == Mode.REST:
 				_timer -= delta
@@ -452,6 +456,35 @@ func _in_safe_zone(pos: Vector2) -> bool:
 	return false
 
 
+## Where it comes out when it sets out: on dry land, out of the lit
+## circles, SPAWN_AWAY px or more from the traveller (the farthest of a
+## few tries if none is).
+const SPAWN_AWAY := 600.0
+
+
+func _spawn_point() -> Vector2:
+	var best := global_position
+	var best_d := -1.0
+	for _i in 40:
+		var at := Vector2(randf_range(120.0, Player.WORLD_WIDTH - 120.0), randf_range(120.0, Player.WORLD_HEIGHT - 120.0))
+		if _in_safe_zone(at) or _wet(at):
+			continue
+		var d := at.distance_to(_player.global_position) if _player != null else 0.0
+		if d >= SPAWN_AWAY:
+			return at
+		if d > best_d:
+			best = at
+			best_d = d
+	return best
+
+
+func _wet(pos: Vector2) -> bool:
+	for zone in get_tree().get_nodes_in_group("water_zones"):
+		if zone.contains(pos):
+			return true
+	return false
+
+
 func _pick_wander_target(away_from_player := false) -> void:
 	_repick = randf_range(WANDER_REPICK.x, WANDER_REPICK.y)
 	for _i in 12:
@@ -492,6 +525,8 @@ func _on_day_phase(phase: String) -> void:
 
 
 func _process(delta: float) -> void:
+	# (asleep it isn't on the map - see _spawn_point)
+	visible = mode != Mode.ASLEEP
 	_bob += delta
 	# Smoothed: it moves on physics ticks, which don't line up with frames.
 	var step := global_position.distance_to(_last_pos) / maxf(delta, 0.001)

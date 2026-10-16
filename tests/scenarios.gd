@@ -35,6 +35,7 @@ const TESTS := [
 	"test_big_ghost_night_hunt",
 	"test_big_ghost_eats_thrown_fish",
 	"test_big_ghost_fish_taken_back",
+	"test_big_ghost_appears_on_waking",
 	"test_light_flash_stuns",
 	"test_right_stick_casts",
 	"test_right_stick_tap_cast",
@@ -655,6 +656,33 @@ func test_big_ghost_fish_taken_back() -> void:
 	dropped.pick_up()
 	await frames(3)
 	check(bg.mode == bg.Mode.WANDER, "picked back up: nothing eaten, back to wandering (mode %s)" % bg.Mode.keys()[bg.mode])
+
+
+## User request: the dragon isn't on the map till it sets out; then it comes
+## out somewhere at random, on land, well away from the traveller.
+func test_big_ghost_appears_on_waking() -> void:
+	var bg = main.get_node("BigGhost")
+	bg._go_home()
+	await frames(2)
+	check(bg.mode == bg.Mode.ASLEEP and not bg.visible, "asleep: not on the map")
+	var lair: Vector2 = bg._lair.global_position + BigGhost.HOME
+	var far := 0
+	for _i in 8:
+		var at: Vector2 = bg._spawn_point()
+		if at.distance_to(player().global_position) >= BigGhost.SPAWN_AWAY and not bg._wet(at) and not bg._in_safe_zone(at):
+			far += 1
+	check(far >= 7, "where it comes out: on land, far from the traveller (%d/8)" % far)
+	gs.time_remaining = gs.DAY_DURATION * 0.3
+	Campaign.rules.big_wake = 0
+	for _i in 30:
+		await frames(1)
+		if bg.mode != bg.Mode.ASLEEP:
+			break
+	await frames(2)
+	check(bg.mode != bg.Mode.ASLEEP and bg.visible and bg.global_position.distance_to(lair) > 10.0,
+		"awake: out on the map, not at its lair")
+	Campaign.rules.big_wake = -1
+	bg._go_home()
 
 
 func test_light_flash_stuns() -> void:
@@ -4517,12 +4545,15 @@ func test_run_intro_and_eye_guide() -> void:
 	var glow_mat := RunView3D.lamp_glow(held, RunView3D.LAMP_FLAME) if held != null else null
 	check(view.lamp_lit() and glow_mat != null and float(glow_mat.get_shader_parameter("glow")) > 0.0,
 		"lit: the glass glows")
-	while view._intro_t >= 0.0 and view._intro_t < float(RunView3D.INTRO.turn_at) + float(RunView3D.INTRO.turn) + 0.1:
-		await frames(1)
 	var faces := (view.camera.global_position - view.pivot.global_position).dot(view.pivot.global_basis.z)
-	check(view._intro_grabbed and faces > 0.0, "the lamp in hand, turned round to the camera")
+	check(view._intro_grabbed and faces > 0.0, "lighting it: the camera round in front, at the lamp")
+	# (user request, round 3: then straight out - no turning round)
+	var yaw_lit: float = view._yaw
+	var swung := 0.0
 	while view._intro_t >= 0.0:
+		swung = maxf(swung, absf(angle_difference(yaw_lit, view._yaw)))
 		await frames(1)
+	check(swung < 0.05, "no turn after lighting it (%.2f rad)" % swung)
 	await seconds(0.2)
 	var far := view.camera.global_position.distance_to(view.pivot.global_position)
 	check(view._intro_t < 0.0 and far > close + 2.0 and main.get_node("HUD").visible,
@@ -4555,9 +4586,27 @@ func test_run_intro_and_eye_guide() -> void:
 	lantern.lit = false
 	await seconds(RunView3D.STOW_TIME + 0.3)
 	check(view._lamp_in == 0.0 and not view.lamp_lit(), "unlit: the lamp hung at the hip")
+	# (user request, round 3: relit by hand - taken up, the other hand
+	# striking at its glass - then held)
+	key(KEY_L, true)
+	await seconds(Lantern.RELIGHT_DURATION * 0.6)
+	check(not lantern.lit and view._relight > 0.9 and view._lamp_in > 0.9 and view._ik.influence > 0.9,
+		"relighting: lamp up in the hand, the other at its glass")
+	await seconds(Lantern.RELIGHT_DURATION * 0.5 + 0.2)
+	key(KEY_L, false)
+	await seconds(RunView3D.STOW_TIME + 0.4)
+	check(lantern.lit and view._lamp_in == 1.0 and view._relight == 0.0, "lit again: back in the hand")
+	# (and the fuel box's button puts it straight out)
+	var energy = main.get_node("HUD/Panel/EnergyView")
+	var tap := InputEventMouseButton.new()
+	tap.button_index = MOUSE_BUTTON_LEFT
+	tap.pressed = true
+	tap.position = energy.OUT_BUTTON.get_center()
+	energy._gui_input(tap)
+	await seconds(RunView3D.STOW_TIME + 0.3)
+	check(not lantern.lit and view._lamp_in == 0.0, "熄燈: out at a tap, hung at the hip")
 	lantern.lit = true
 	await seconds(RunView3D.STOW_TIME + 0.3)
-	check(view._lamp_in == 1.0, "lit again: back in the hand")
 	# User request: the big ghost is a dragon now - a skeleton, its clip by
 	# what it's doing, a green lantern in its hand, its light from it.
 	var bg = main.get_node("BigGhost")
