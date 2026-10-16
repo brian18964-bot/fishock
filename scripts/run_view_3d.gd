@@ -1931,6 +1931,7 @@ func _character() -> void:
 	_beam.shadow_enabled = not _low
 	_beam.visible = false
 	add_child(_beam)
+	_build_flash_aim()
 	_drum = CampModel.make("drum")
 	if _drum != null:
 		_drum.scale = Vector3.ONE * 0.55
@@ -3165,6 +3166,116 @@ func _update_light() -> void:
 					+ Vector3(sw.x, 0.0, sw.y)
 
 
+## User request (round 3): aiming the flash shows its reach - a fan on the
+## ground ahead (Lantern.flash_half_angle, out to flash_reach for the charge
+## so far), filling from the feet out as it charges; let go, a flash bright
+## for its charge (FLASH_BURST light, and the screen whitening by up to
+## FLASH_WHITE), then fading over FLASH_FADE s.
+const FLASH_AIM_SHADER := """
+shader_type spatial;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
+uniform float half_angle = 0.55;
+uniform float charge = 0.0;
+uniform float burst = 0.0;
+uniform vec3 tint : source_color = vec3(1.0, 0.82, 0.5);
+varying vec2 p;
+void vertex() { p = VERTEX.xz; }
+void fragment() {
+	float r = length(p);
+	float a = abs(atan(p.x, p.y));
+	float inside = step(a, half_angle) * step(r, 1.0);
+	float edge = smoothstep(half_angle - 0.05, half_angle, a) + smoothstep(0.95, 1.0, r);
+	float fill = 1.0 - smoothstep(charge - 0.04, charge, r);
+	float alpha = inside * (0.05 + 0.45 * edge + 0.14 * fill * (0.4 + 0.6 * charge) + 0.7 * burst * (1.0 - r * 0.6));
+	ALBEDO = tint * 0.8;
+	ALPHA = clamp(alpha, 0.0, 1.0);
+}
+"""
+const FLASH_BURST := Vector2(6.0, 26.0)
+const FLASH_WHITE := Vector2(0.15, 0.42)
+const FLASH_FADE := 0.45
+var _flash_aim: MeshInstance3D
+var _flash_light: SpotLight3D
+var _flash_white: ColorRect
+var _flash_left := 0.0
+var _flash_power := 0.0
+var _flash_reach := 0.0
+
+
+func _build_flash_aim() -> void:
+	_flash_aim = MeshInstance3D.new()
+	_flash_aim.name = "FlashAim"
+	var quad := PlaneMesh.new()
+	quad.size = Vector2(2.0, 2.0)
+	_flash_aim.mesh = quad
+	var mat := ShaderMaterial.new()
+	mat.shader = Shader.new()
+	mat.shader.code = FLASH_AIM_SHADER
+	_flash_aim.material_override = mat
+	_flash_aim.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_flash_aim.visible = false
+	add_child(_flash_aim)
+	_flash_light = SpotLight3D.new()
+	_flash_light.name = "FlashBurst"
+	_flash_light.spot_angle = 40.0
+	_flash_light.light_color = Color(1.0, 0.95, 0.85)
+	_flash_light.visible = false
+	add_child(_flash_light)
+	var layer := CanvasLayer.new()
+	layer.name = "FlashWhite"
+	layer.layer = 30
+	add_child(layer)
+	_flash_white = ColorRect.new()
+	_flash_white.color = Color(1.0, 0.97, 0.9, 0.0)
+	_flash_white.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_flash_white.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(_flash_white)
+	var lantern := player.get_node_or_null("Lantern") as Lantern
+	if lantern != null:
+		lantern.flashed.connect(_on_flashed)
+
+
+func _on_flashed(charged: float, reach: float) -> void:
+	_flash_left = FLASH_FADE
+	_flash_power = charged
+	_flash_reach = reach / PX
+
+
+## The fan while the flash is aimed, the burst after it's let go.
+func _update_flash_aim(delta: float) -> void:
+	var lantern := player.get_node_or_null("Lantern") as Lantern
+	if lantern == null or _flash_aim == null:
+		return
+	var aiming: bool = (player.skill_held or player._mouse_aiming()) and lantern.lit and lantern.power() > 0.0
+	_flash_left = maxf(_flash_left - delta, 0.0)
+	var burst := _flash_left / FLASH_FADE
+	var mat := _flash_aim.material_override as ShaderMaterial
+	var dir := Vector3(player.aim_dir.x, 0.0, player.aim_dir.y)
+	if dir.length() < 0.1:
+		dir = pivot.global_basis.z
+	dir = dir.normalized()
+	var reach := lantern.flash_reach(lantern.boost) / PX if aiming else _flash_reach
+	_flash_aim.visible = aiming or burst > 0.0
+	if _flash_aim.visible:
+		var feet := pivot.global_position
+		_flash_aim.global_transform = Transform3D(Basis(Vector3.UP, atan2(dir.x, dir.z)).scaled(Vector3(reach, 1.0, reach)),
+			Vector3(feet.x, ground_y(_feet()) + 0.06, feet.z))
+		mat.set_shader_parameter("half_angle", deg_to_rad(lantern.flash_half_angle()))
+		mat.set_shader_parameter("charge", lantern.boost if aiming else 1.0)
+		mat.set_shader_parameter("burst", burst * burst)
+	# The burst: a white-hot light thrown down the fan, and the screen
+	# blanching - both by the charge.
+	_flash_light.visible = burst > 0.0
+	if burst > 0.0:
+		var power := lerpf(FLASH_BURST.x, FLASH_BURST.y, _flash_power)
+		_flash_light.light_energy = power * burst * burst
+		_flash_light.spot_range = _flash_reach * 1.4
+		_flash_light.spot_angle = lantern.flash_half_angle() + 8.0
+		_flash_light.global_position = pivot.global_position + Vector3(0, 1.3, 0)
+		_flash_light.look_at(_flash_light.global_position + dir * 4.0 + Vector3.DOWN * 0.9, Vector3.UP)
+	_flash_white.color.a = lerpf(FLASH_WHITE.x, FLASH_WHITE.y, _flash_power) * pow(burst, 3.0)
+
+
 ## The opening (INTRO): the lamp on the drum before the traveller, taken
 ## down, then in the hand and lit there; turned round to face the camera;
 ## walked off, it's over at once.
@@ -3429,6 +3540,7 @@ func _process(delta: float) -> void:
 	_update_guide()
 	_sync_true_eye()
 	_update_light()
+	_update_flash_aim(delta)
 	_update_intro(delta)
 	_update_camera(delta)
 

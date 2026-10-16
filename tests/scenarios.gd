@@ -1522,11 +1522,29 @@ func test_light_button_tap_and_hold() -> void:
 	player().skill_held = true
 	player().skill_aim = Vector2.DOWN
 	player().skill_dragged = true
-	await seconds(1.5)
+	await seconds(0.6)
+	var view: RunView3D = RunView3D.active
+	var half_reach := 0.0
+	if view != null:
+		half_reach = view._flash_aim.global_basis.get_scale().x
+		check(view._flash_aim.visible, "aiming: the fan shows on the ground ahead")
+	await seconds(0.9)
 	check(lantern.boost > 0.9, "held, the light charges (%.2f)" % lantern.boost)
+	if view != null:
+		check(view._flash_aim.global_basis.get_scale().x > half_reach + 0.3,
+			"charged, the fan reaches further (%.1f -> %.1f m)" % [half_reach, view._flash_aim.global_basis.get_scale().x])
 	player().skill_held = false
 	await frames(3)
-	check(ghost.stun_timer > Lantern.FLASH_STUN_DURATION, "a charged flash holds it longer (%.2f)" % ghost.stun_timer)
+	check(ghost.stun_timer > Lantern.FLASH_STUN_DURATION * 2.0, "a charged flash holds it longer (%.2f)" % ghost.stun_timer)
+	if view != null:
+		check(view._flash_light.visible and view._flash_light.light_energy > RunView3D.FLASH_BURST.x and view._flash_white.color.a > 0.2,
+			"the flash: a bright burst, the screen blanching (%.1f, %.2f)" % [view._flash_light.light_energy, view._flash_white.color.a])
+		await seconds(RunView3D.FLASH_FADE + 0.1)
+		check(not view._flash_aim.visible and not view._flash_light.visible, "then gone")
+	# (user request: held longer, stuns longer - in proportion)
+	check(lantern.flash_stun(0.0) < lantern.flash_stun(0.5) and lantern.flash_stun(0.5) < lantern.flash_stun(1.0)
+		and is_equal_approx(lantern.flash_stun(0.5) - lantern.flash_stun(0.0), lantern.flash_stun(1.0) - lantern.flash_stun(0.5)),
+		"the hold sets the stun, in proportion")
 	ghost.set_physics_process(true)
 
 
