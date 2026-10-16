@@ -37,6 +37,7 @@ const TESTS := [
 	"test_big_ghost_fish_taken_back",
 	"test_big_ghost_appears_on_waking",
 	"test_touch_flash_holds_ghosts",
+	"test_bait_slot",
 	"test_light_flash_stuns",
 	"test_right_stick_casts",
 	"test_right_stick_tap_cast",
@@ -752,6 +753,59 @@ func test_touch_flash_holds_ghosts() -> void:
 	tc.visible = false
 
 
+## User request (round 3): the right side, bottom up - the light, 誘惑, the
+## three quick slots, the bait on the line - none over another or the
+## stick's middle; the bait slot shows what's on the hook and swaps it from
+## a little window over it (between casts).
+func test_bait_slot() -> void:
+	var bs: BaitSlot = main.get_node("BaitSlot")
+	var spots := [[TouchControls.SKILL_AT, TouchControls.SKILL_RADIUS], [TouchControls.LURE_AT, TouchControls.LURE_RADIUS],
+		[BaitSlot.AT, BaitSlot.SIDE * 0.5]]
+	for c in QuickSlots.CENTERS:
+		spots.append([c, QuickSlots.SIDE * 0.5])
+	var clear := true
+	for i in spots.size():
+		var a: Vector2 = spots[i][0]
+		if a.distance_to(TouchControls.AIM_CENTER) < float(spots[i][1]) + 60.0 or a.x + float(spots[i][1]) > 960.0:
+			clear = false
+		for j in range(i + 1, spots.size()):
+			if a.distance_to(spots[j][0]) < float(spots[i][1]) + float(spots[j][1]) + 4.0:
+				clear = false
+	check(clear, "the buttons clear of each other and of the stick")
+	check(TouchControls.SKILL_AT.y > TouchControls.LURE_AT.y and TouchControls.LURE_AT.y > QuickSlots.CENTERS[0].y
+		and QuickSlots.CENTERS[0].y > BaitSlot.AT.y, "bottom up: light, 誘惑, the quick slots, the bait")
+	var p := player()
+	p.live_bait = ""
+	p.fishing_mode = Player.FishingMode.BOBBER
+	check(BaitSlot.current(p)[0] == "bait" and int(BaitSlot.current(p)[1]) == p.bait_count, "the base bait shown, and how many")
+	Profile.bag_put("live_worm", 2)
+	p.lure_stock["minnow"] = 1
+	var ids := BaitSlot.choices(p).map(func(c): return c[0])
+	check("bait" in ids and "live_worm" in ids and "lure_minnow" in ids, "what there is to fish with: %s" % [ids])
+	bs.tap()
+	await frames(2)
+	check(bs.picker_open(), "tapped: the window over it")
+	var b: Button = bs.find_child("Bait_live_worm", true, false)
+	check(b != null, "the worms in it")
+	b.pressed.emit()
+	await frames(2)
+	check(not bs.picker_open() and p.live_bait == "worm" and BaitSlot.current(p)[0] == "live_worm", "picked: the worm on the hook")
+	bs.tap()
+	await frames(2)
+	(bs.find_child("Bait_lure_minnow", true, false) as Button).pressed.emit()
+	await frames(2)
+	check(p.fishing_mode == Player.FishingMode.LURE and BaitSlot.current(p)[0] == "lure_minnow", "and a lure on the line")
+	p.state = Player.State.WAITING
+	bs.tap()
+	await frames(2)
+	check(not bs.picker_open(), "mid-cast: not now")
+	p.state = Player.State.IDLE
+	(BaitSlot.choices(p)[0][3] as Callable).call()
+	check(p.fishing_mode == Player.FishingMode.BOBBER and p.live_bait == "", "back to the base bait")
+	var card: StatusCard = main.find_child("StatusCard", true, false)
+	check(not StatusCard.SHOW_GEAR, "no bait under the character card any more")
+
+
 func test_light_flash_stuns() -> void:
 	var lantern: Lantern = player().get_node("Lantern")
 	var bg = main.get_node("BigGhost")
@@ -1131,8 +1185,9 @@ func test_quick_slots() -> void:
 	var quick: QuickSlots = main.get_node("QuickSlots")
 	check(quick.slots.size() == 3, "three quick slots")
 	for s in quick.slots:
-		check(s.position.y + s.size.y < TouchControls.AIM_CENTER.y - 140.0 and s.position.x > 640.0,
-			"over the right stick (%s)" % s.position)
+		# (user request, round 3: between 誘惑 and the bait on the line)
+		check(s.position.y + s.size.y < TouchControls.LURE_AT.y - TouchControls.LURE_RADIUS + 20.0 and s.position.y > BaitSlot.AT.y
+			and s.position.x > 640.0, "over the right stick, under the bait (%s)" % s.position)
 	var touch: TouchControls = main.find_children("*", "TouchControls", false, false)[0]
 	check(not touch._is_empty_spot(quick.CENTERS[0]), "a long press on one isn't the lamp's brightness")
 	# An empty one tapped (a second finger - the first on the left stick): the picker.
@@ -3894,7 +3949,7 @@ func test_run_3d() -> void:
 	check(view._ik != null and view._ik.influence > 0.9, "the rod arm follows the rod while fishing")
 	# The float under the buttons at the bottom right: the camera makes
 	# room (_dodge_buttons).
-	var lamp_at: Vector2 = TouchControls.AIM_CENTER + Vector2.RIGHT.rotated(deg_to_rad(TouchControls.SKILL_ANGLE)) * TouchControls.SKILL_DISTANCE
+	var lamp_at: Vector2 = TouchControls.SKILL_AT
 	var from_cam := view.camera.project_ray_origin(lamp_at)
 	var ray := view.camera.project_ray_normal(lamp_at)
 	var under := RunView3D.to2(from_cam + ray * ((RunView3D.WATER_Y - from_cam.y) / ray.y))

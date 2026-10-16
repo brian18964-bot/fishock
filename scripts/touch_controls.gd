@@ -36,10 +36,13 @@ const BRIGHTNESS_SLIDER := false
 ## 300x300 control at the bottom-right corner, 8 px in).
 const AIM_CENTER := Vector2(802, 382)
 
-## The light button, where the cast button used to be.
-const SKILL_ANGLE := 165.0
-const SKILL_DISTANCE := 150.0
-const SKILL_RADIUS := 42.0
+## User request (round 3 layout): round the right stick - drawn as a reel
+## on a faint rod (BaitSlot) - from the bottom up: the light button left of
+## it, 誘惑 over that, the three quick slots in a row (QuickSlots), the bait
+## on the line at the top (BaitSlot). The light and 誘惑 buttons see-through:
+## a ring round the picture, no box.
+const SKILL_AT := Vector2(636, 408)
+const SKILL_RADIUS := 38.0
 ## Drag this far off the button's center before it steers the light; the
 ## knob shows the direction, clamped to the rim.
 const DRAG_DEADZONE := 10.0
@@ -47,9 +50,8 @@ const DRAG_DEADZONE := 10.0
 const BUTTONS := [
 	# [label, key, angle around the right stick (deg, clockwise from right), distance, radius]
 ]
-## The 誘惑 button, where 丟魚 was; a drag this long throws furthest.
-const LURE_ANGLE := 222.0
-const LURE_DISTANCE := 152.0
+## The 誘惑 button; a drag this long throws furthest.
+const LURE_AT := Vector2(653, 311)
 const LURE_RADIUS := 30.0
 const LURE_FULL_PULL := 90.0
 ## A press on an empty spot held this long (and still) opens the slider.
@@ -93,8 +95,8 @@ func _ready() -> void:
 	for spec in BUTTONS:
 		var center: Vector2 = AIM_CENTER + Vector2.RIGHT.rotated(deg_to_rad(spec[2])) * spec[3]
 		_add_button(spec[0], spec[1], center, spec[4])
-	_skill_center = AIM_CENTER + Vector2.RIGHT.rotated(deg_to_rad(SKILL_ANGLE)) * SKILL_DISTANCE
-	_lure_center = AIM_CENTER + Vector2.RIGHT.rotated(deg_to_rad(LURE_ANGLE)) * LURE_DISTANCE
+	_skill_center = SKILL_AT
+	_lure_center = LURE_AT
 	_lure_view = LureButtonView.new()
 	_lure_view.name = "LureButton"
 	_lure_view.position = _lure_center
@@ -368,6 +370,17 @@ static func draw_action(ci: CanvasItem, r: Rect2, tint: Color, pressed: bool, on
 		ci.draw_rect(inner, Color(0, 0, 0, 0.35))
 
 
+## A see-through round button (user request): a faint disc, a ring, the
+## picture inside the circle; brighter pressed or lit.
+static func draw_round(ci: CanvasItem, radius: float, pressed: bool, on: bool, icon: Texture2D) -> void:
+	ci.draw_circle(Vector2.ZERO, radius, Color(0, 0, 0, 0.32 if pressed else 0.16))
+	if icon != null:
+		var side := radius * 1.5
+		ci.draw_texture_rect(icon, Rect2(-Vector2(side, side) * 0.5 - Vector2(0, 3), Vector2(side, side)), false,
+			Color.WHITE if on else Color(0.5, 0.5, 0.55, 0.8))
+	ci.draw_arc(Vector2.ZERO, radius, 0.0, TAU, 48, Color(1.0, 0.88, 0.66, 0.75 if pressed else 0.48), 2.0, true)
+
+
 ## A cooldown's dark sweep over `r`: `left` (1..0) of the way round still
 ## to go, clockwise from the top.
 static func draw_sweep(ci: CanvasItem, r: Rect2, left: float) -> void:
@@ -433,9 +446,9 @@ class SkillButtonView extends Node2D:
 	## cools down, a golden glow as the light charges.
 	func _draw() -> void:
 		var r := Rect2(-Vector2(radius, radius), Vector2(radius, radius) * 2.0)
-		# The light's square icon (the MMO look), or a drawing of it.
+		# The light's picture in a see-through ring, or a drawing of it.
 		var icon := Items.square_icon("flashlight" if _flashlight else "lamp")
-		TouchControls.draw_action(self, r, Color(1.0, 0.6, 0.2) if not _flashlight else Color(0.45, 0.65, 1.0), _pressed, _lit, icon)
+		TouchControls.draw_round(self, radius, _pressed, _lit, icon)
 		if icon == null:
 			var ink := Color(1.0, 0.94, 0.75, 0.95 if _lit else 0.45)
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE * 1.5)
@@ -444,12 +457,12 @@ class SkillButtonView extends Node2D:
 			else:
 				_draw_lamp(ink)
 			draw_set_transform(Vector2.ZERO)
+		UiKit.draw_text(self, Vector2(-radius, radius - 4.0), "閃燈", 11, UiKit.GOLD_BRIGHT, HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, true)
 		if _cooldown > 0.0:
-			TouchControls.draw_sweep(self, r.grow(-5.0), _cooldown)
+			draw_arc(Vector2.ZERO, radius - 3.0, -PI / 2.0, -PI / 2.0 + TAU * _cooldown, 40, Color(0, 0, 0, 0.6), 5.0, true)
 		if _charge > 0.0:
 			draw_texture_rect(UiKit.tex("action_glow"), r.grow(radius * 0.22), false, Color(1.0, 0.85, 0.35, _charge))
-			var fill := Rect2(r.position + Vector2(6, r.size.y - 11), Vector2((r.size.x - 12) * _charge, 5))
-			draw_rect(fill, Color(1.0, 0.85, 0.4, 0.95))
+			draw_arc(Vector2.ZERO, radius, -PI / 2.0, -PI / 2.0 + TAU * _charge, 48, Color(1.0, 0.85, 0.4, 0.95), 3.5, true)
 		if _pressed and _knob != Vector2.ZERO:
 			var dir := _knob.normalized()
 			draw_line(Vector2.ZERO, dir * (radius + 26.0), Color(1, 0.9, 0.5, 0.75), 3.0)
@@ -509,18 +522,18 @@ class LureButtonView extends Node2D:
 		var r := Rect2(-Vector2(radius, radius), Vector2(radius, radius) * 2.0)
 		if _fish.is_empty():
 			# No fish picked yet: the action's own icon (a fish flung).
-			TouchControls.draw_action(self, r, Color(0.3, 0.7, 0.45), _pressed, true, Items.texture(THROW_ICON))
-			UiKit.draw_text(self, Vector2(-radius, radius - 7.0), "誘惑", 11, UiKit.GOLD_BRIGHT, HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, true)
+			TouchControls.draw_round(self, radius, _pressed, true, Items.texture(THROW_ICON))
+			UiKit.draw_text(self, Vector2(-radius, radius - 3.0), "誘惑", 11, UiKit.GOLD_BRIGHT, HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, true)
 			return
-		TouchControls.draw_action(self, r, Color(0.3, 0.7, 0.45), _pressed, true)
+		TouchControls.draw_round(self, radius, _pressed, true, null)
 		var tex := FishData.icon(_fish.get("id", ""), _fish.get("name", ""))
 		if tex != null:
 			var w := radius * 1.6
 			draw_texture_rect(tex, Rect2(Vector2(-w / 2.0, -w / 4.0 - 5.0), Vector2(w, w / 2.0)), false)
-		UiKit.draw_text(self, Vector2(-radius, radius - 7.0), "誘惑", 11, UiKit.GOLD_BRIGHT, HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, true)
+		UiKit.draw_text(self, Vector2(-radius, radius - 3.0), "誘惑", 11, UiKit.GOLD_BRIGHT, HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, true)
 		if _charge > 0.0:
 			draw_texture_rect(UiKit.tex("action_glow"), r.grow(radius * 0.22), false, Color(1.0, 0.55, 0.35, _charge))
-			draw_rect(Rect2(r.position + Vector2(5, r.size.y - 9), Vector2((r.size.x - 10) * _charge, 4)), Color(1.0, 0.6, 0.4, 0.95))
+			draw_arc(Vector2.ZERO, radius, -PI / 2.0, -PI / 2.0 + TAU * _charge, 40, Color(1.0, 0.6, 0.4, 0.95), 3.5, true)
 		if _pressed and _knob != Vector2.ZERO:
 			draw_line(Vector2.ZERO, _knob.normalized() * (radius + 22.0), Color(1, 0.7, 0.5, 0.8), 3.0)
 

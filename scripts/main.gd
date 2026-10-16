@@ -209,6 +209,11 @@ func _ready() -> void:
 	var quick := QuickSlots.new()
 	quick.name = "QuickSlots"
 	add_child(quick)
+	# User request (round 3): the bait on the line over them, the right stick
+	# dressed as a reel on a rod (BaitSlot).
+	var bait := BaitSlot.new()
+	bait.name = "BaitSlot"
+	add_child(bait)
 	# The object buttons (ActionPrompt) take a touch before the sticks and
 	# the on-screen buttons do: input goes to the last in the tree first.
 	move_child($ActionPrompt, -1)

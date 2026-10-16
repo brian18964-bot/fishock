@@ -3553,11 +3553,10 @@ func _dodge_buttons(delta: float) -> void:
 	if _blocked.is_empty():
 		# (where TouchControls draws the light and 誘惑 buttons round the
 		# right stick, and QuickSlots its three)
-		var aim := TouchControls.AIM_CENTER
-		for spec in [[TouchControls.SKILL_ANGLE, TouchControls.SKILL_DISTANCE, TouchControls.SKILL_RADIUS],
-				[TouchControls.LURE_ANGLE, TouchControls.LURE_DISTANCE, TouchControls.LURE_RADIUS]]:
-			var c: Vector2 = aim + Vector2.RIGHT.rotated(deg_to_rad(float(spec[0]))) * float(spec[1])
-			var r := float(spec[2]) + 16.0
+		for spec in [[TouchControls.SKILL_AT, TouchControls.SKILL_RADIUS], [TouchControls.LURE_AT, TouchControls.LURE_RADIUS],
+				[BaitSlot.AT, BaitSlot.SIDE * 0.5]]:
+			var c: Vector2 = spec[0]
+			var r := float(spec[1]) + 16.0
 			_blocked.append(Rect2(c - Vector2(r, r), Vector2(r, r) * 2.0))
 		for c in QuickSlots.CENTERS:
 			var h := QuickSlots.SIDE * 0.5 + 12.0
