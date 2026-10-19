@@ -271,6 +271,10 @@ var _lamp_drum: Node3D
 var _lamp_drum_top := 0.0
 var _intro_ahead := Vector3.FORWARD
 var _intro_bail := Vector3.ZERO
+## (what's still between the fingers and the bail once the arm's reached -
+## gathered frame on frame into the hand's aim, so a long hand, the cat's,
+## gets there too)
+var _intro_fix := Vector3.ZERO
 ## (how far the fingers are from it, as posed - measured once the arm's
 ## been brought to it: _hold_rod)
 var _intro_gap := INF
@@ -299,6 +303,10 @@ var _arm_follow := 0.4
 var _off_in := 1.0
 var _left_free := 0.0
 var _left_ik: TwoBoneIK3D
+## (the opening's take: the left wrist straight, the hand on along the
+## arm - a long hand, the cat's, held bent down, kept its fingers off the
+## bail on the drum)
+var _wrist: StraightWrist
 var _left_target: Marker3D
 var _left_pole: Marker3D
 var _crank := 0.0
@@ -2165,6 +2173,10 @@ func _arm_ik() -> void:
 	_left_ik = TwoBoneIK3D.new()
 	_left_ik.name = "ReelArm"
 	sk.add_child(_left_ik)
+	_wrist = StraightWrist.new()
+	_wrist.name = "StraightWrist"
+	_wrist.influence = 0.0
+	sk.add_child(_wrist)
 	_left_ik.setting_count = 1
 	_left_ik.set_root_bone_name(0, "upperarm_l")
 	_left_ik.set_middle_bone_name(0, "lowerarm_l")
@@ -2395,13 +2407,18 @@ func _aim_rod(delta: float) -> void:
 	# (the opening: the left hand onto the lamp's bail on the drum, as
 	# PickUp_Table reaches out - and off again as it lifts it)
 	var take := _intro_take()
+	if _wrist != null:
+		_wrist.influence = take
 	if take > 0.0:
 		if _intro_lamp != null:
 			_intro_bail = _intro_lamp.global_transform * INTRO_TAKE_AT
 		_left_ik.influence = maxf(_left_ik.influence, take)
 		# (the fingers - where the bail's held - onto it, not the wrist)
 		var wrist := sk.global_transform * sk.get_bone_global_pose(sk.find_bone("hand_l")).origin
-		_left_target.global_position = _intro_bail - (rig._grip() - wrist)
+		# (the wrist held straight: the fingers on out along the arm's
+		# line from the shoulder to the bail)
+		var toward := (_intro_bail - shoulder_l).normalized()
+		_left_target.global_position = _intro_bail - toward * rig._grip().distance_to(wrist) + _intro_fix * take
 		_left_pole.global_position = shoulder_l + b.x * 0.45 + Vector3.DOWN * 0.5 - b.z * 0.1
 	# (lit: the lamp held up before the chest, the right hand to its glass,
 	# striking the light)
@@ -2464,7 +2481,10 @@ func _hold_rod() -> void:
 	if not is_inside_tree():
 		return
 	if _intro_lamp != null:
-		_intro_gap = rig._grip().distance_to(_intro_lamp.global_transform * INTRO_TAKE_AT)
+		var miss := _intro_lamp.global_transform * INTRO_TAKE_AT - rig._grip()
+		_intro_gap = miss.length()
+		if _intro_take() > 0.95 and not _intro_grabbed:
+			_intro_fix = (_intro_fix + miss * 0.25).limit_length(0.12)
 	var rod := _rod()
 	var sk := rig.skeleton
 	var b := pivot.global_basis.orthonormalized()
@@ -3682,3 +3702,19 @@ void fragment() {
 	ROUGHNESS = 0.92;
 }
 """
+
+
+## The left hand set straight on along the forearm, as it lies at rest
+## (blended by `influence`).
+class StraightWrist extends SkeletonModifier3D:
+	var _bone := -1
+
+	func _process_modification() -> void:
+		var sk := get_skeleton()
+		if sk == null:
+			return
+		if _bone < 0:
+			_bone = sk.find_bone("hand_l")
+			if _bone < 0:
+				return
+		sk.set_bone_pose_rotation(_bone, sk.get_bone_rest(_bone).basis.get_rotation_quaternion())
