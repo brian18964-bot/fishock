@@ -112,6 +112,7 @@ func _build(id: String) -> void:
 		# User request: the ears and the tail move on their own.
 		var sway := EarTailSway.new()
 		sway.name = "EarTailSway"
+		sway.follow_steps = true
 		skeleton.add_child(sway)
 	_dress(_body)
 	if anim != null:

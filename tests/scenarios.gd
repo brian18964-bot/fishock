@@ -3104,6 +3104,14 @@ func test_ears_and_tails() -> void:
 	sway._time += 1.0
 	sway._schedule(ear)
 	check(ear.at < 0.0 or sway._time - ear.at < EarTailSway.EAR_TIME, "and settles")
+	# User request: they go with its steps too - set off, they swing back.
+	check(sway.follow_steps, "the ears and tail follow its steps")
+	var most := 0.0
+	for i in 20:
+		rig.position.z += 0.004 * i
+		await frames(1)
+		most = maxf(most, sway._lag.length())
+	check(most > 2.0, "setting off swings them (%.1f deg)" % most)
 	rig.queue_free()
 	# In the game: the sheet's ear and tail lines, turned now and then.
 	var body: PlayerVisual = player().get_node("Body")

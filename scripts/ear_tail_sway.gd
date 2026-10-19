@@ -27,6 +27,31 @@ const TAIL_FLICK_GAP := Vector2(3.0, 7.0)
 const TAIL_FLICK := 16.0
 const TAIL_FLICK_TIME := 0.9
 
+## User request (the cat): the tail and the ears go with its steps as well -
+## they hang on a spring from the hips, so the clip's bob and sway and the
+## character's own setting off, stopping and turning swing them (deg they
+## settle at per m/s² of the hips' change of pace, how stiff, how damped,
+## the most).
+## Off unless asked for (the dragon swings its own tail - DragonRig).
+var follow_steps := false
+const STEP_LAG := 2.5
+const STEP_STIFF := 38.0
+const STEP_DAMP := 5.0
+const STEP_MOST := 22.0
+## How much of the swing the ears take.
+const STEP_EARS := 0.5
+## The hips' twist with each step swings the tail's root across as well,
+## as if this far behind them (m).
+const STEP_TWIST := 1.2
+var _twist_was := 0.0
+var _twist_vel := 0.0
+var _hips := -1
+var _hip_was := Vector3.ZERO
+var _hip_vel := Vector3.ZERO
+var _hip_seen := 0
+var _lag := Vector3.ZERO
+var _lag_vel := Vector3.ZERO
+
 ## [{bones: [index], kind: "ear"|"drop"|"tail", axis: Vector3 (skeleton
 ## space), next: s, at: s (the flick's start, -1 none), angle: deg,
 ## period: s}]
@@ -44,19 +69,76 @@ func _process_modification() -> void:
 	if not _built:
 		_build(sk)
 	var now := Time.get_ticks_usec() / 1000000.0
-	_time += clampf(now - _last, 0.0, 0.1) if _last >= 0.0 else 0.0
+	var dt := clampf(now - _last, 0.0, 0.1) if _last >= 0.0 else 0.0
+	_time += dt
 	_last = now
+	if follow_steps:
+		_step(sk, get_process_delta_time())
 	for c in chains:
 		_schedule(c)
 		var bones: Array = c.bones
 		for k in bones.size():
 			var deg := _angle(c, k, bones.size())
-			if absf(deg) < 0.01:
-				continue
-			var i: int = bones[k]
-			var basis := sk.get_bone_global_pose(i).basis
-			var local: Vector3 = (basis.inverse() * c.axis).normalized()
-			sk.set_bone_pose_rotation(i, sk.get_bone_pose_rotation(i) * Quaternion(local, deg_to_rad(deg)))
+			if follow_steps and c.kind != "tail":
+				deg += _lag.y * STEP_EARS / bones.size()
+			_turn(sk, bones[k], c.axis, deg)
+		if follow_steps and c.kind == "tail":
+			# (side to side about the up; up and down, ahead and back
+			# about the across - spread down the tail)
+			var n := float(bones.size())
+			for k in bones.size():
+				_turn(sk, bones[k], Vector3.UP, -_lag.x / n)
+				_turn(sk, bones[k], Vector3.RIGHT, (_lag.y + _lag.z) / n)
+
+
+## Bone `i` turned `deg` about `axis` (skeleton space) on top of its pose.
+static func _turn(sk: Skeleton3D, i: int, axis: Vector3, deg: float) -> void:
+	if absf(deg) < 0.01:
+		return
+	var basis := sk.get_bone_global_pose(i).basis
+	var local: Vector3 = (basis.inverse() * axis).normalized()
+	sk.set_bone_pose_rotation(i, sk.get_bone_pose_rotation(i) * Quaternion(local, deg_to_rad(deg)))
+
+
+## The spring: the hips' change of pace (in the skeleton's frame: x across,
+## y up, z ahead) pushes the hanging tail and ears the other way.
+func _step(sk: Skeleton3D, dt: float) -> void:
+	if _hips < 0:
+		_hips = sk.find_bone("pelvis")
+		if _hips < 0:
+			follow_steps = false
+			return
+	if dt <= 0.0:
+		return
+	var at := sk.global_transform * sk.get_bone_global_pose(_hips).origin
+	var vel := (at - _hip_was) / dt
+	_hip_was = at
+	# (a jump - placed somewhere new - is no step)
+	if vel.length() > 20.0:
+		_hip_seen = 0
+	_hip_seen += 1
+	if _hip_seen < 3:
+		_hip_vel = vel if _hip_seen == 2 else Vector3.ZERO
+		var ahead0 := sk.get_bone_global_pose(_hips).basis * sk.get_bone_global_rest(_hips).basis.inverse() * Vector3.BACK
+		var twist0 := atan2(ahead0.x, ahead0.z)
+		_twist_vel = angle_difference(_twist_was, twist0) / dt if _hip_seen == 2 else 0.0
+		_twist_was = twist0
+		return
+	var accel := (vel - _hip_vel) / dt
+	_hip_vel = vel
+	var local := sk.global_transform.basis.orthonormalized().inverse() * accel
+	# (the twist: the hips' turn about the up from their rest, its change
+	# of pace a push across at the tail's root)
+	var ahead := sk.get_bone_global_pose(_hips).basis * sk.get_bone_global_rest(_hips).basis.inverse() * Vector3.BACK
+	var twist := atan2(ahead.x, ahead.z)
+	var spin := angle_difference(_twist_was, twist) / dt
+	_twist_was = twist
+	local.x -= (spin - _twist_vel) / dt * STEP_TWIST
+	_twist_vel = spin
+	var push := -local.limit_length(15.0) * STEP_LAG * STEP_STIFF
+	_lag_vel += (push - _lag * STEP_STIFF - _lag_vel * STEP_DAMP) * dt
+	_lag += _lag_vel * dt
+	_lag = _lag.limit_length(STEP_MOST)
 
 
 ## The ear and tail chains, by their bones' names (root first).
