@@ -187,7 +187,7 @@ var camp_tent: int = 8
 ## (tools/build_meshy_character.py). [id, name].
 const CHARACTERS := [["cat", "黑貓"], ["owl", "貓頭鷹"], ["dog", "犬"], ["bear", "熊"], ["deer", "鹿"],
 	["sheep", "羊"], ["bear2", "棕熊"], ["dog2", "柴犬"], ["dog3", "牧羊犬"], ["deer2", "紅鹿"],
-	["owl2", "角鴞"], ["croc", "鱷魚"]]
+	["owl2", "角鴞"], ["croc", "鱷魚"], ["sheep2", "綿羊"]]
 var character: String = "cat"
 ## User request: the run's three quick slots (QuickSlots, over the right
 ## stick) - the item each is set to (one of USABLES), or "".

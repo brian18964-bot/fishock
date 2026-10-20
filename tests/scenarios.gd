@@ -20,6 +20,7 @@ const TESTS := [
 	"test_run_menu_and_auto_defend",
 	"test_wolf_bites",
 	"test_run_intro_and_eye_guide",
+	"test_intro_lamp_clear",
 	"test_spawn_on_land_docks_out",
 	"test_catalog_and_sounds",
 	"test_creature_animation",
@@ -960,6 +961,10 @@ func test_characters() -> void:
 		check(md.get("clips", []) == PlayerVisual.MOVE_NAMES, "%s: every move" % id)
 		var face := CharacterArt.portrait_texture(id).get_image()
 		check(not face.is_invisible(), "%s: the card's portrait has its head in it" % id)
+		# (user request: each one's own body measured - tools/measure_bodies.gd)
+		var fit := CharacterArt.fit(id)
+		check(["grip", "grip_axis", "hand_l", "hand_r", "forearm", "shoulder", "pelvis", "arm", "front", "side", "walk"].all(
+			func(k): return fit.has(k)) and float(fit.grip_room) > 0.005, "%s: its body measured, a hole in its fist" % id)
 
 	# At camp: the fire is a thing to tap, and each tap the next one.
 	var title: Control = load("res://scenes/title_screen.tscn").instantiate()
@@ -4692,6 +4697,64 @@ func test_wolf_bites() -> void:
 		total += float(animals[k])
 	check(not animals.has("husky") and float(animals.get("wolf", 0.0)) / total < 0.1,
 		"wolves a few in a hundred of the animals, no husky")
+
+
+## User request: the big hands into the lamp in the opening, the lamp into
+## the bellies - nothing of the traveller in the lamp, nor in the drum it's
+## taken off, the whole opening through (its skin posed after the arms are
+## brought round - SkinPoints), for a big-handed one, a round one and the
+## smallest. The lamp as solid: [from, to, radius] up it (its own frame).
+const LAMP_SOLID := [[0.0, 0.11, 0.065], [0.11, 0.23, 0.058], [0.23, 0.25, 0.079], [0.25, 0.305, 0.044]]
+
+
+func test_intro_lamp_clear() -> void:
+	var kept := _keep_profile()
+	var was: String = Profile.character
+	for id in ["croc", "bear2", "cat"]:
+		Profile.character = id
+		RunView3D.intro = true
+		await _fresh_game()
+		var view: RunView3D = null
+		for _i in 300:
+			view = RunView3D.active
+			if view != null and view.built:
+				break
+			await frames(1)
+		view.show_intro()
+		var pts := SkinPoints.new(view.rig, 2)
+		var worst := {"lamp": 0.0, "drum": 0.0}
+		var n := [0]
+		var rr := FuelStation.DRUM_RADIUS / RunView3D.PX
+		var look := func():
+			n[0] += 1
+			if n[0] % 3 != 0 or view._intro_t < 0.0:
+				return
+			var lamp: Node3D = view._intro_lamp if view._intro_lamp != null else view._held_light()
+			if lamp == null:
+				return
+			var inv := lamp.global_transform.affine_inverse()
+			var k := lamp.global_basis.get_scale().x
+			for p in pts.world():
+				var l := inv * p
+				var r := Vector2(l.x, l.z).length()
+				for seg in LAMP_SOLID:
+					if l.y > seg[0] and l.y < seg[1] and r < seg[2]:
+						worst.lamp = maxf(worst.lamp, minf(seg[2] - r, minf(l.y - seg[0], seg[1] - l.y)) * k)
+				if view._lamp_drum != null:
+					var d := view._lamp_drum.global_position
+					var flat := Vector2(p.x - d.x, p.z - d.z).length()
+					if flat < rr and p.y < view._lamp_drum_top:
+						worst.drum = maxf(worst.drum, minf(rr - flat, view._lamp_drum_top - p.y))
+		view.rig.skeleton.skeleton_updated.connect(look)
+		while view._intro_t >= 0.0 and view._intro_t < float(RunView3D.INTRO.pull_from) + 0.3:
+			await frames(1)
+		view.rig.skeleton.skeleton_updated.disconnect(look)
+		check(view._intro_grabbed and view.lamp_lit(), "%s: the lamp taken and lit" % id)
+		check(worst.lamp < 0.004, "%s: nothing of it in the lamp (%.3f m at most)" % [id, worst.lamp])
+		check(worst.drum < 0.004, "%s: nor in the drum (%.3f m)" % [id, worst.drum])
+	RunView3D.intro = false
+	Profile.character = was
+	_restore_profile(kept)
 
 
 ## User requests: a run opens on the traveller picking up the lamp (the

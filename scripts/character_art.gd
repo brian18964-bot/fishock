@@ -42,12 +42,13 @@ const REACH := {
 	"bear": Vector3(0.20, 1.10, 0.50),
 	"deer": Vector3(0.14, 1.20, 0.47),
 	"sheep": Vector3(0.16, 1.09, 0.49),
-	"bear2": Vector3(0.07, 1.00, 0.70),
+	"bear2": Vector3(0.10, 0.99, 0.64),
 	"dog2": Vector3(-0.06, 1.18, 0.55),
-	"dog3": Vector3(0.00, 1.15, 0.57),
-	"deer2": Vector3(-0.01, 1.18, 0.65),
-	"owl2": Vector3(-0.06, 1.02, 0.62),
+	"dog3": Vector3(0.06, 1.15, 0.55),
+	"deer2": Vector3(0.01, 1.18, 0.62),
+	"owl2": Vector3(0.00, 1.03, 0.57),
 	"croc": Vector3(-0.09, 1.11, 0.67),
+	"sheep2": Vector3(0.00, 1.06, 0.60),
 }
 
 
@@ -142,3 +143,45 @@ const LEAN_BACK := {"bear": 0.1}
 
 static func lean_back(id := "") -> float:
 	return float(LEAN_BACK.get(_id(id), 0.0))
+
+
+## Each one's own body (user request: one way of moving for all of them
+## had the big hands in the lamp, the lamp in the round bellies) - measured
+## off its model by tools/measure_bodies.gd: where its fist leaves room for
+## the lamp's bail, how far its hands reach, its front and side per height,
+## its arm and leg, the pace its feet keep. {} when it's not been measured.
+static var _fits := {}
+
+
+static func fit(id := "") -> Dictionary:
+	var key := _id(id)
+	if not _fits.has(key):
+		var path := SPRITES % key + "fit.json"
+		var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null
+		_fits[key] = data if data is Dictionary else {}
+	return _fits[key]
+
+
+## How far forward (m, from its feet) its body comes between two heights;
+## `fallback` where it's not been measured.
+static func front_between(id: String, low: float, high: float, fallback := 0.2) -> float:
+	return _band(fit(id).get("front", []), low, high, fallback)
+
+
+## How far out to its left its body comes between two heights.
+static func side_between(id: String, low: float, high: float, fallback := 0.2) -> float:
+	return _band(fit(id).get("side", []), low, high, fallback)
+
+
+static func _band(bins: Array, low: float, high: float, fallback: float) -> float:
+	if bins.is_empty():
+		return fallback
+	var most := -INF
+	for i in range(maxi(int(floor(low / FIT_BIN)), 0), mini(int(floor(high / FIT_BIN)) + 1, bins.size())):
+		most = maxf(most, float(bins[i]))
+	return most if most > -INF else fallback
+
+
+## (tools/measure_bodies.gd's bins, m)
+const FIT_BIN := 0.04
+

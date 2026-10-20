@@ -531,6 +531,44 @@ def pose_rest(body, rough, game):
         print("posed: the tail's lowest %.2f above the ground" % low)
 
 
+# User request: the Meshy hands came big - into the lamp they held (a
+# person's reaches about 0.11 of the height past the wrist; these 0.13 to
+# 0.16). A hand reaching further than HAND_MAX of the height is brought
+# down to it (about the wrist, no smaller than HAND_FLOOR of itself).
+HAND_MAX = 0.11
+HAND_FLOOR = 0.75
+
+
+def shrink_hands(body, rough):
+    """The hands (on the posed, T mesh) brought down to HAND_MAX of the
+    height: each point past the wrist drawn in toward it, eased in over the
+    cuff so the sleeve's not cut."""
+    me = body.data
+    co = coords(body)
+    height = co[:, 2].max() - co[:, 2].min()
+    for s in ("l", "r"):
+        hb = rough.data.bones["hand_" + s]
+        wrist = np.array(rough.matrix_world @ hb.head_local)
+        u = np.array((rough.matrix_world @ hb.tail_local) - (rough.matrix_world @ hb.head_local))
+        u /= np.linalg.norm(u)
+        rel = co - wrist
+        t = rel @ u
+        side = np.linalg.norm(rel - np.outer(t, u), axis=1)
+        hand = (t > -0.01) & (side < 0.12) & (np.sign(co[:, 0]) == np.sign(wrist[0]))
+        reach = t[hand].max()
+        k = max(HAND_FLOOR, min(1.0, HAND_MAX * height / reach))
+        print("hand_%s: %.3f past the wrist (%.3f of the height) -> x%.2f" % (s, reach, reach / height, k))
+        if k >= 0.999:
+            continue
+        f = np.clip((t + 0.01) / 0.04, 0.0, 1.0)
+        f = f * f * (3 - 2 * f)
+        scale = 1.0 - (1.0 - k) * f
+        co[hand] = wrist + rel[hand] * scale[hand, None]
+    me.vertices.foreach_set("co", (co @ np.linalg.inv(np.array(body.matrix_world)[:3, :3]).T
+                                   - np.array(body.matrix_world)[:3, 3] @ np.linalg.inv(np.array(body.matrix_world)[:3, :3]).T).ravel())
+    me.update()
+
+
 def fingers(body, rough):
     """The left hand's digits on the posed (T) mesh: each one's four joints,
     knuckle first. The hand along its bone; the fingers are the four bands
@@ -677,6 +715,7 @@ def main():
     heat(body, rough)
     tail_only(body, rough)
     pose_rest(body, rough, game)
+    shrink_hands(body, rough)
     digits = fingers(body, rough)
     refit(game, rough, digits)
     bpy.data.objects.remove(rough, do_unlink=True)

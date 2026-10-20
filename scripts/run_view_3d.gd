@@ -135,6 +135,8 @@ const REEL_AT := 0.22
 const CRANK_R := 0.07
 const CRANK_TURNS := 1.4
 const HIP_SIDE := 0.21
+## (the lamp's bail hooked on the belt, this far over the hips' joint)
+const HIP_BELT := 0.05
 ## The moves that take both hands (the lamp and the off hand's thing at
 ## the hips meanwhile).
 const TWO_HANDED := ["pray", "pick", "kneel", "throw", "drink"]
@@ -195,10 +197,32 @@ const INTRO := {"reach_at": 0.8, "reach": 1.7, "grab": 0.36, "light_from": 2.6, 
 ## ahead, up, aside of the feet (m))
 const INTRO_TOUCH := 0.06
 const INTRO_TURN_IN := 0.5
-## (where the hand takes it: round its body, under the glass - its bail,
-## up top, out of a short arm's reach over the drum)
-const INTRO_TAKE_AT := Vector3(0.0, 0.12, 0.0)
-const INTRO_HOLD := Vector3(0.05, 1.05, 0.34)
+## (where the hand takes it: by its bail, CharacterRig.LAMP_BAIL; held up to
+## be lit before the chest - each its own height and reach (_intro_hold):
+## the hand INTRO_HOLD.y
+## under the shoulder, INTRO_HOLD.x to its left, the lamp INTRO_HOLD.z clear
+## of the body's front; the lighting hand's fingertips INTRO_STRIKE off the
+## glass)
+## (the bail lies folded over INTRO_FOLD toward it on the drum - lower and
+## nearer than upright, in a short arm's reach - and comes up as it's
+## lifted by it)
+const INTRO_FOLD := 1.25
+static var INTRO_TAKE_AT := CharacterRig.bail_top(INTRO_FOLD)
+const INTRO_HOLD := Vector3(0.12, 0.0, 0.07)
+const INTRO_STRIKE := 0.08
+const INTRO_SWING := 0.15
+## (the reach taken over by INTRO_ABOVE_IN of it, the hand coming down onto
+## the bail from INTRO_ABOVE over it)
+const INTRO_ABOVE := 0.2
+const INTRO_ABOVE_IN := 0.06
+const INTRO_LIFT := 0.12
+## (the hand brought up near the body first, this share of the way back
+## from the bail; drawn out after to its left - at least this far aside,
+## this far ahead - then let down)
+const INTRO_NEAR := 0.35
+const INTRO_BESIDE := Vector3(0.55, 0.0, 0.0)
+## (the lamp's arm out at least this share of its length)
+const INTRO_UNFOLD := 0.6
 ## (the turn's pace, 1/s, against TURN_RATE's; the close camera behind
 ## its left shoulder, where the reaching arm shows: aside, above the head,
 ## behind (m))
@@ -1994,7 +2018,10 @@ func _pick_clip() -> Array:
 	if _intro_t >= 0.0 and player.velocity.length() < 8.0 and player.state == Player.State.IDLE:
 		# (the opening: the lamp taken off the drum, then turned round)
 		var reach := (_intro_t - float(INTRO.reach_at)) / float(INTRO.reach)
-		if reach >= 0.0 and reach < 1.0:
+		# (the reach only till it's in hand: the clip's lift after, made for
+		# a thing off a table, brought the lamp down before the knees - the
+		# arm back to its side, the lamp held out from the leg, LampClear)
+		if reach >= 0.0 and reach < 1.0 and not _intro_grabbed:
 			return ["PickUp_Table", 1.0, reach]
 	if player.grab_left > 0.0:
 		# (a critter grabbed bare-handed: a quick reach and snatch)
@@ -2408,7 +2435,7 @@ func _aim_rod(delta: float) -> void:
 	# PickUp_Table reaches out - and off again as it lifts it)
 	var take := _intro_take()
 	if _wrist != null:
-		_wrist.influence = take
+		_wrist.influence = 0.0
 	if take > 0.0:
 		if _intro_lamp != null:
 			_intro_bail = _intro_lamp.global_transform * INTRO_TAKE_AT
@@ -2417,24 +2444,84 @@ func _aim_rod(delta: float) -> void:
 		var wrist := sk.global_transform * sk.get_bone_global_pose(sk.find_bone("hand_l")).origin
 		# (the wrist held straight: the fingers on out along the arm's
 		# line from the shoulder to the bail)
-		var toward := (_intro_bail - shoulder_l).normalized()
-		_left_target.global_position = _intro_bail - toward * rig._grip().distance_to(wrist) + _intro_fix * take
+		# (coming down onto it from over it - a big hand reaching in low went
+		# through the lamp - INTRO_ABOVE over the bail, then on)
+		var away := (_intro_bail - pivot.global_position) * Vector3(1, 0, 1)
+		var k := _rig_scale()
+		var onto := _intro_bail + (Vector3.UP * INTRO_ABOVE * k - away * INTRO_NEAR) * (1.0 - _intro_landing())
+		# (taken: lifted up off the drum first, then drawn back in off it
+		# before the arm lets it down to its side - the lamp coming into
+		# the hand meanwhile)
+		onto += Vector3.UP * INTRO_LIFT * k * _intro_lift()
+		var back := _intro_back()
+		if back > 0.0:
+			# (out to its left at that height - clear of the drum before it and
+			# of its own side - then let down)
+			var side := CharacterArt.side_between(rig.character, 0.0, float(CharacterArt.fit(rig.character).get("shoulder", 1.2)), 0.25) * k
+			var out := maxf(INTRO_BESIDE.x * k, side + 0.2 * k)
+			var beside := pivot.global_position + b.x * out + b.z * INTRO_BESIDE.z * k
+			onto = onto.lerp(Vector3(beside.x, onto.y, beside.z), back)
+		# (the wrist over the fist as the hand hangs from it - posed last
+		# frame: the forearm over the bail, clear of the lamp under it)
+		var off := _take_off if _take_off.is_finite() else rig._grip() - wrist
+		_left_target.global_position = onto - off + _intro_fix * take
 		_left_pole.global_position = shoulder_l + b.x * 0.45 + Vector3.DOWN * 0.5 - b.z * 0.1
 	# (lit: the lamp held up before the chest, the right hand to its glass,
 	# striking the light)
 	var lighting := _intro_lighting()
+	if lighting <= 0.0:
+		_light_start = Vector3.INF
 	if lighting > 0.0:
 		var ahead := pivot.global_basis.z.normalized()
 		var left := Vector3(ahead.z, 0.0, -ahead.x)
-		var hold := pivot.global_position + ahead * INTRO_HOLD.z + left * INTRO_HOLD.x + Vector3.UP * INTRO_HOLD.y
+		var at := _intro_hold()
+		var hold := pivot.global_position + ahead * at.z + left * at.x + Vector3.UP * at.y
+		# (not over the drum - a round belly's hold reached out over it, the
+		# hand coming down through it after: in toward its right till clear)
+		if _lamp_drum != null:
+			var dc := _lamp_drum.global_position
+			var rr := FuelStation.DRUM_RADIUS / PX
+			for _i in 60:
+				if Vector2(hold.x - dc.x, hold.z - dc.z).length() > rr + 0.2 * _rig_scale():
+					break
+				hold -= left * 0.01
+		# (taken there along a way of its own from where the fist was - not
+		# the arm's pose blended, which swept through the drum - up first,
+		# then across, higher halfway; back down the same way)
+		if not _light_start.is_finite():
+			# (from, and back down to, the fist held out from the leg so far
+			# the lamp under it is clear of it - LampClear's, which the arm
+			# hanging at the hip meanwhile hadn't)
+			var k := _rig_scale()
+			var to_me := rig.global_transform.affine_inverse()
+			var at_me := to_me * rig._grip()
+			var need := CharacterArt.side_between(rig.character, at_me.y / k - CharacterRig.LAMP_BAIL.y, at_me.y / k, 0.2) * k \
+				+ (0.08 + CharacterRig.LampClear.ROOM) * k
+			at_me.x = maxf(at_me.x, need)
+			_light_start = rig.global_transform * at_me
+		var e := smoothstep(0.0, 1.0, lighting)
+		var up := smoothstep(0.0, 0.55, lighting)
+		var across := smoothstep(0.35, 1.0, lighting)
+		var flat := _light_start.lerp(hold, across)
+		hold = Vector3(flat.x, lerpf(_light_start.y, hold.y, up), flat.z) + Vector3.UP * INTRO_SWING * sin(PI * e) * _rig_scale()
 		var wrist_l := sk.global_transform * sk.get_bone_global_pose(sk.find_bone("hand_l")).origin
-		_left_ik.influence = maxf(_left_ik.influence, lighting)
-		_left_target.global_position = hold - (rig._grip() - wrist_l)
+		_left_ik.influence = maxf(_left_ik.influence, clampf(lighting * 4.0, 0.0, 1.0))
+		# (the wrist where the fist's hole meets the bail - kept far enough
+		# out from the shoulder for its own arm to reach there unfolded, a
+		# long hand's grip being well past its wrist)
+		# (the hole from the wrist as the arm was posed last frame - the hand
+		# turns with the arm, a long one far)
+		var off := _hold_off if _hold_off.is_finite() else rig._grip() - wrist_l
+		var wrist_at := hold - off
+		var arm_l := float(CharacterArt.fit(rig.character).get("arm", 0.45)) * _rig_scale()
+		while (wrist_at - shoulder_l).length() < arm_l * INTRO_UNFOLD and (wrist_at - shoulder_l).dot(ahead) < arm_l:
+			wrist_at += ahead * 0.01
+		_left_target.global_position = wrist_at
 		_left_pole.global_position = shoulder_l + b.x * 0.4 + Vector3.DOWN * 0.5
 		var held := _held_light()
 		if held != null:
 			var sc := held.global_basis.get_scale().x
-			var glass := held.global_position + Vector3.UP * 0.17 * sc
+			var glass := held.global_position + Vector3.UP * LAMP_GLASS.y * sc
 			# (a strike or two before it catches)
 			var strike := 0.0
 			if _intro_t >= 0.0 and _intro_t < float(INTRO.light_at):
@@ -2442,12 +2529,56 @@ func _aim_rod(delta: float) -> void:
 			elif _intro_t < 0.0 and not lamp_lit():
 				strike = absf(sin(_time * 16.0)) * 0.035
 			_ik.influence = maxf(_ik.influence, lighting)
-			_ik_target.global_position = glass - left * 0.07 - ahead * 0.02 + Vector3.UP * strike
+			# (the fingertips just off the glass on its right, the wrist a
+			# hand's reach - its own - further out)
+			var out := (-left - ahead * 0.3).normalized()
+			var tips := glass + out * (LAMP_CAP * sc + INTRO_STRIKE)
+			_ik_target.global_position = tips + out * float(CharacterArt.fit(rig.character).get("hand_r", 0.07)) * _rig_scale() + Vector3.UP * strike
 			_ik_pole.global_position = shoulder - b.x * 0.45 + Vector3.DOWN * 0.45
 
 
 const RELIGHT_IN := 0.35
 var _relight := 0.0
+## (the left fist's hole from its wrist as last posed, lighting)
+var _hold_off := Vector3.INF
+## (where the fist was as the lamp began to be brought up to be lit)
+var _light_start := Vector3.INF
+## (and taking it off the drum)
+var _take_off := Vector3.INF
+## The lamp's glass: its radius, and its middle's height (its own frame).
+const LAMP_GLASS := Vector2(0.058, 0.15)
+## (and its cap over the glass, wider: the lighting hand kept off it too)
+const LAMP_CAP := 0.08
+
+
+## Where the lamp's held up to be lit (the hand on its bail; m, the
+## character's frame: x to its left, y up, z ahead): the hand under the
+## shoulder, out before the chest far enough that the lamp under it is
+## clear of the body there - each character's own (CharacterArt.fit()).
+func _intro_hold() -> Vector3:
+	var id := rig.character
+	var fit := CharacterArt.fit(id)
+	var k := _rig_scale()
+	var hand := (float(fit.get("shoulder", 1.25)) - INTRO_HOLD.y) * k
+	var bail := CharacterRig.LAMP_BAIL.y * k
+	var front := CharacterArt.front_between(id, (hand - bail) / k, hand / k, 0.24) * k
+	return Vector3(INTRO_HOLD.x * k, hand, front + 0.08 * k + INTRO_HOLD.z * k)
+
+
+func _rig_scale() -> float:
+	return rig.global_basis.get_scale().x if rig != null else 1.0
+
+
+## How far out to its left the lamp hangs at the hip: clear of the thigh
+## and hip beside it - each character's own.
+func _hip_side(lamp_scale: float) -> float:
+	var k := _rig_scale()
+	var fit := CharacterArt.fit(rig.character)
+	if fit.is_empty():
+		return HIP_SIDE
+	var belt := float(fit.get("pelvis", 0.8)) + HIP_BELT
+	var low := belt - CharacterRig.LAMP_BAIL.y * lamp_scale / k
+	return (CharacterArt.side_between(rig.character, low, belt, HIP_SIDE) + 0.08 * lamp_scale / k + 0.025) * k
 
 
 ## How far into lighting the lamp the opening is (0..1, eased in and out) -
@@ -2469,8 +2600,32 @@ func _intro_take() -> float:
 	if s <= 0.0 or s >= 1.0:
 		return 0.0
 	if not _intro_grabbed:
-		return smoothstep(0.08, grab, s)
-	return 1.0 - smoothstep(grab + 0.05, grab + 0.35, s)
+		return smoothstep(0.0, INTRO_ABOVE_IN, s)
+	return 1.0 - smoothstep(grab + 0.45, grab + 0.62, s)
+
+
+## How far it's been drawn back off the drum once lifted (0..1).
+func _intro_back() -> float:
+	if _intro_t < 0.0 or not _intro_grabbed:
+		return 0.0
+	var s := (_intro_t - float(INTRO.reach_at)) / float(INTRO.reach)
+	return smoothstep(float(INTRO.grab) + 0.18, float(INTRO.grab) + 0.42, s)
+
+
+## How far it's been lifted off the drum once in hand (0..1).
+func _intro_lift() -> float:
+	if _intro_t < 0.0 or not _intro_grabbed:
+		return 0.0
+	var s := (_intro_t - float(INTRO.reach_at)) / float(INTRO.reach)
+	return smoothstep(float(INTRO.grab), float(INTRO.grab) + 0.2, s)
+
+
+## How far the hand's come down onto the bail from over it (0..1).
+func _intro_landing() -> float:
+	if _intro_t < 0.0 or _intro_grabbed:
+		return 1.0
+	var s := (_intro_t - float(INTRO.reach_at)) / float(INTRO.reach)
+	return smoothstep(INTRO_ABOVE_IN, float(INTRO.grab) * 0.9, s)
 
 
 ## Once the arms are posed: the rod in the hand, pointed (ROD_ANGLES)
@@ -2480,10 +2635,23 @@ func _hold_rod() -> void:
 	# (the skeleton can still update as the run's being taken down)
 	if not is_inside_tree():
 		return
+	if _intro_take() > 0.0:
+		var sk_t := rig.skeleton
+		var now_t := rig._grip() - sk_t.global_transform * sk_t.get_bone_global_pose(sk_t.find_bone("hand_l")).origin
+		_take_off = now_t if not _take_off.is_finite() else _take_off.lerp(now_t, 0.5)
+	else:
+		_take_off = Vector3.INF
+	if _intro_lighting() > 0.0:
+		var ske := rig.skeleton
+		var hand_l := ske.global_transform * ske.get_bone_global_pose(ske.find_bone("hand_l")).origin
+		var now := rig._grip() - hand_l
+		_hold_off = now if not _hold_off.is_finite() else _hold_off.lerp(now, 0.5)
+	else:
+		_hold_off = Vector3.INF
 	if _intro_lamp != null:
 		var miss := _intro_lamp.global_transform * INTRO_TAKE_AT - rig._grip()
 		_intro_gap = miss.length()
-		if _intro_take() > 0.95 and not _intro_grabbed:
+		if _intro_take() > 0.95 and _intro_landing() > 0.98 and not _intro_grabbed:
 			_intro_fix = (_intro_fix + miss * 0.25).limit_length(0.12)
 	var rod := _rod()
 	var sk := rig.skeleton
@@ -2526,6 +2694,7 @@ func _hang_gear(sk: Skeleton3D, b: Basis) -> void:
 		var att: Node3D = rig.attachments.get("hand_l")
 		if att != null and att.get_child_count() > 0:
 			lamp = att.get_child(0) as Node3D
+	rig.lamp_in_hand = _lamp_in > 0.5
 	if lamp != null and lamp == rig._hang:
 		# (the oil lamp: the rig hangs it from the fingers; down at the hip
 		# here instead, upright)
@@ -2533,7 +2702,7 @@ func _hang_gear(sk: Skeleton3D, b: Basis) -> void:
 		if _lamp_in < 1.0:
 			var sc := lamp.global_basis.get_scale().x
 			# (hung from the belt by its bail, swinging)
-			var hook := pelvis + b.x * HIP_SIDE + b.z * 0.03 + Vector3.DOWN * 0.12 + Vector3.UP * CharacterRig.LAMP_BAIL.y * sc
+			var hook := pelvis + b.x * _hip_side(sc) + b.z * 0.03 + Vector3.UP * HIP_BELT * _rig_scale()
 			_swing_hip_lamp(hook)
 			var bs := Basis(Vector3.UP, pivot.global_rotation.y)
 			if _hip_swing.length() > 0.001:
@@ -3312,8 +3481,12 @@ func _update_intro(delta: float) -> void:
 		_intro_lamp = held.duplicate() as Node3D
 		_intro_lamp.top_level = true
 		add_child(_intro_lamp)
-		_intro_lamp.global_transform = Transform3D(Basis(Vector3.UP, _yaw + 0.5).scaled(held.global_basis.get_scale()),
-			_lamp_rest())
+		# (turned so its bail lies over toward the traveller)
+		var rest := _lamp_rest()
+		var to_me := pivot.global_position - rest
+		_intro_lamp.global_transform = Transform3D(Basis(Vector3.UP, atan2(to_me.x, to_me.z)).scaled(held.global_basis.get_scale()),
+			rest)
+		CharacterRig.fold_bail(_intro_lamp, INTRO_FOLD)
 
 	if _intro_shown:
 		_intro_t += delta
@@ -3326,9 +3499,12 @@ func _update_intro(delta: float) -> void:
 	if not _intro_grabbed and ((touching and reach_share > float(INTRO.grab) * 0.7) or reach_share > float(INTRO.grab) + 0.15 or walked):
 		_intro_grabbed = true
 		if _intro_lamp != null:
-			# (eased from the drum into the fingers)
+			# (eased from the drum into the fingers - quickly, the bail there
+			# already: a slow ease left it behind the hand as it lifted, the
+			# arm through it)
 			rig._hang_from = _intro_lamp.global_transform
 			rig._hang_in = 0.0
+			rig._fold_from = INTRO_FOLD
 			_intro_lamp.queue_free()
 			_intro_lamp = null
 	if held != null:
@@ -3384,11 +3560,13 @@ func _lamp_rest() -> Vector3:
 		var at := pivot.global_position + b.z * 0.42 + b.x * 0.12
 		return Vector3(at.x, ground_y(_feet()), at.z)
 	var top := Vector3(_lamp_drum.global_position.x, _lamp_drum_top, _lamp_drum.global_position.z)
-	# (at the rim nearest the left shoulder - the hand that takes it)
+	# (on the side nearest the left shoulder - the hand that takes it)
 	var facing := Vector3(sin(_yaw), 0.0, cos(_yaw))
 	var to := pivot.global_position + Vector3(facing.z, 0.0, -facing.x) * 0.16 - top
 	to.y = 0.0
-	return top + to.normalized() * FuelStation.DRUM_RADIUS / PX * 0.85
+	# (in from the rim - a wide body's hand hanging by the drum came by it;
+	# its bail lies over toward the traveller to be reached)
+	return top + to.normalized() * FuelStation.DRUM_RADIUS / PX * 0.45
 
 
 ## The close camera of the opening: over the left shoulder, looking past

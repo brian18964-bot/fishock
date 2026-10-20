@@ -33,8 +33,13 @@ const LAMP := preload("res://assets/models/oil_lamp.glb")
 const REACH_CLIP := "Interact"
 const REACH_AT := 0.32
 ## Where the lamp is held (its own frame): the top of its bail - it hangs
-## from the fingers by it (user request: the lamp held exactly).
-const LAMP_BAIL := Vector3(0.0, 0.29, 0.0)
+## from the fingers by it (user request: the lamp held exactly). The bail
+## runs across the lamp's x there (tools/make_menu_lamp.py), turned to go
+## through the fist the way its hole goes (CharacterArt.fit().grip_axis).
+const LAMP_BAIL := Vector3(0.0, 0.47, 0.0)
+## (it's hinged on lugs BAIL_FOOT up the lamp, and lies folded over to its
+## +z on a lamp stood down - fold_bail())
+const BAIL_FOOT := 0.24
 
 ## The flashlight (built along +x, lens forward, about 1.05 long), held
 ## out in the left hand in place of the lamp - the shop's try-on.
@@ -62,6 +67,8 @@ var auto_idle := true
 var _hang: Node3D
 var _hang_from := Transform3D.IDENTITY
 var _hang_in := 1.0
+## (how far its bail was folded down where it was picked up)
+var _fold_from := 0.0
 var _grip_last := Vector3.ZERO
 var _grip_vel := Vector3.ZERO
 var _swing := Vector2.ZERO
@@ -72,6 +79,12 @@ var gait_push := Vector2.ZERO
 ## The left fingers closed round the lamp's bail while it's held (whatever
 ## the clip does with them).
 var _grip_mod: Grip
+## The lamp's arm held out from the side as far as the lamp needs to clear
+## the leg under it (each character's own width - CharacterArt.fit()),
+## while it's in the hand; off where something else holds the lamp
+## (RunView3D at the hip).
+var lamp_in_hand := true
+var _clear_mod: LampClear
 
 
 func _ready() -> void:
@@ -92,6 +105,7 @@ func set_character(id: String) -> void:
 	anim = null
 	skeleton = null
 	_grip_mod = null
+	_clear_mod = null
 	_hang = null
 	attachments = {}
 	_build(id)
@@ -109,6 +123,11 @@ func _build(id: String) -> void:
 		_grip_mod.name = "Grip"
 		_grip_mod.influence = 0.0
 		skeleton.add_child(_grip_mod)
+		_clear_mod = LampClear.new()
+		_clear_mod.name = "LampClear"
+		_clear_mod.rig = self
+		_clear_mod.influence = 0.0
+		skeleton.add_child(_clear_mod)
 		# User request: the ears and the tail move on their own.
 		var sway := EarTailSway.new()
 		sway.name = "EarTailSway"
@@ -281,12 +300,18 @@ func equip_lamp(from: Variant = null) -> void:
 	_hang_lamp(0.0)
 
 
-## Between the fingers of the left hand (world).
+## Where the left fist leaves room for the bail (world): measured on each
+## character (CharacterArt.fit().grip, the hand_l bone's frame) - else
+## between the fingers.
 func _grip() -> Vector3:
+	var fit := CharacterArt.fit(character)
+	var h := skeleton.find_bone("hand_l")
+	if fit.has("grip") and h >= 0:
+		var g: Array = fit.grip
+		return skeleton.global_transform * (skeleton.get_bone_global_pose(h) * Vector3(g[0], g[1], g[2]))
 	var a := skeleton.find_bone("middle_01_l")
 	var b := skeleton.find_bone("middle_02_l")
 	if a < 0 or b < 0:
-		var h := skeleton.find_bone("hand_l")
 		return skeleton.global_transform * skeleton.get_bone_global_pose(h).origin
 	var mid := (skeleton.get_bone_global_pose(a).origin + skeleton.get_bone_global_pose(b).origin) / 2.0
 	return skeleton.global_transform * mid
@@ -296,6 +321,9 @@ func _process(delta: float) -> void:
 	if _grip_mod != null:
 		var want := 1.0 if _hang != null and is_instance_valid(_hang) else 0.0
 		_grip_mod.influence = move_toward(_grip_mod.influence, want, delta / 0.2)
+	if _clear_mod != null:
+		var on := 1.0 if _hang != null and is_instance_valid(_hang) and lamp_in_hand else 0.0
+		_clear_mod.influence = move_toward(_clear_mod.influence, on, delta / 0.25)
 
 
 ## User report: getting up off the ground after a run lost (CampLife,
@@ -352,15 +380,140 @@ func _hang_lamp(delta: float) -> void:
 		_swing_vel += (push.limit_length(0.45) - _swing) * 60.0 * delta - _swing_vel * 6.0 * delta
 		_swing = (_swing + _swing_vel * delta).limit_length(0.5)
 	_grip_last = grip
-	var b := Basis(Vector3.UP, global_rotation.y)
-	if _swing.length() > 0.001:
-		b = Basis(Vector3(_swing.y, 0.0, -_swing.x).normalized(), _swing.length()) * b
-	b = b.scaled(Vector3.ONE * global_transform.basis.get_scale().x)
+	var yaw := Basis(Vector3.UP, _bail_yaw(delta))
+	var b := yaw
+	var k := global_transform.basis.get_scale().x
+	# (not swung into the body: as far as it can go short of it)
+	for share in [1.0, 0.6, 0.3, 0.0]:
+		var sw: Vector2 = _swing * share
+		b = yaw
+		if sw.length() > 0.001:
+			b = Basis(Vector3(sw.y, 0.0, -sw.x).normalized(), sw.length()) * yaw
+		if share == 0.0 or not _into_body(grip, b.scaled(Vector3.ONE * k)):
+			if share < 1.0:
+				_swing = sw
+				_swing_vel *= share
+			break
+	b = _off_forearm(grip, b, k) * b
+	b = b.scaled(Vector3.ONE * k)
 	var to := Transform3D(b, grip - b * LAMP_BAIL)
 	if _hang_in < 1.0:
 		_hang_in = minf(_hang_in + delta / 0.3, 1.0)
 		to = _hang_from.interpolate_with(to, smoothstep(0.0, 1.0, _hang_in))
+		# (its bail coming up from folded as it's lifted by it)
+		fold_bail(_hang, _fold_from * (1.0 - smoothstep(0.0, 1.0, _hang_in)))
+	elif _fold_from != 0.0:
+		_fold_from = 0.0
+		fold_bail(_hang, 0.0)
 	_hang.global_transform = to
+
+
+## The lamp pushed aside by the forearm it hangs under (raised steeply, a
+## short arm's lay over its top): turned about the bail just far enough
+## that its top and cap clear the forearm - its own thickness.
+func _off_forearm(grip: Vector3, b: Basis, k: float) -> Basis:
+	var e := skeleton.find_bone("lowerarm_l")
+	var w := skeleton.find_bone("hand_l")
+	if e < 0 or w < 0:
+		return Basis.IDENTITY
+	var elbow := skeleton.global_transform * skeleton.get_bone_global_pose(e).origin
+	var wrist := skeleton.global_transform * skeleton.get_bone_global_pose(w).origin
+	var thick := float(CharacterArt.fit(character).get("forearm", 0.04)) * k
+	# (the forearm, and the hand on from it - each finger, a long one's
+	# claws hanging down past the fist)
+	var limbs := [[elbow, wrist, thick]]
+	for digit in ["thumb", "index", "middle", "ring", "pinky"]:
+		var leaf := skeleton.find_bone(digit + "_04_leaf_l")
+		if leaf >= 0:
+			var tip := skeleton.global_transform * skeleton.get_bone_global_pose(leaf).origin
+			limbs.append([wrist, tip + (tip - wrist) * 0.15, thick * 0.6])
+	var turn := Basis.IDENTITY
+	for limb in limbs:
+		turn = _push_off(grip, b, k, limb[0], limb[1], limb[2]) * turn
+	return turn
+
+
+func _push_off(grip: Vector3, b: Basis, k: float, from: Vector3, to_: Vector3, thick: float) -> Basis:
+	var turn := Basis.IDENTITY
+	for part in LAMP_TOP:
+		var c: Vector3 = grip + turn * b * (Vector3(0.0, part.x, 0.0) - LAMP_BAIL) * k
+		var on := Geometry3D.get_closest_point_to_segment(c, from, to_)
+		var away := c - on
+		var room: float = part.y * k + thick + 0.025 * k
+		if away.length() >= room or away.length() < 0.001:
+			continue
+		var arm := c - grip
+		var to := arm + away.normalized() * (room - away.length())
+		var axis := arm.cross(to)
+		if axis.length() > 0.000001:
+			turn = Basis(axis.normalized(), minf(arm.angle_to(to), 0.7)) * turn
+	return turn
+
+
+## (the lamp's top and its cap: height, radius - its own frame)
+const LAMP_TOP := [Vector2(0.28, 0.044), Vector2(0.24, 0.08)]
+
+
+## Whether the lamp hanging from `grip` so (its basis, scaled) would be in
+## the body: its base, middle and cap against the body's front and sides at
+## their heights (CharacterArt.fit(); the back taken as far as the front).
+func _into_body(grip: Vector3, b: Basis) -> bool:
+	var fit := CharacterArt.fit(character)
+	if fit.is_empty():
+		return false
+	var k := global_transform.basis.get_scale().x
+	var to_me := global_transform.affine_inverse()
+	for h in [0.03, 0.15, 0.24]:
+		var p: Vector3 = to_me * (grip + b * (Vector3(0.0, h, 0.0) - LAMP_BAIL))
+		var r := 0.075 * b.get_scale().x / k
+		var front := CharacterArt.front_between(character, p.y - r, p.y + r, -1.0)
+		var side := CharacterArt.side_between(character, p.y - r, p.y + r, -1.0)
+		if front < 0.0 or side < 0.0:
+			continue
+		if absf(p.x) - r < side and p.z - r < front and p.z + r > -front:
+			return true
+	return false
+
+
+## Which way the lamp's turned about the up (its bail, along its x, through
+## the fist as the hole goes): eased round, never flipped end for end -
+## the bail's the same either way.
+var _bail := NAN
+
+
+func _bail_yaw(delta: float) -> float:
+	var want := global_rotation.y
+	var fit := CharacterArt.fit(character)
+	var h := skeleton.find_bone("hand_l")
+	if fit.has("grip_axis") and h >= 0:
+		var g: Array = fit.grip_axis
+		var axis := (skeleton.global_transform.basis * skeleton.get_bone_global_pose(h).basis) * Vector3(g[0], g[1], g[2])
+		axis.y = 0.0
+		if axis.length() > 0.05:
+			# (the lamp's x along it: its yaw is the axis's, less a right angle -
+			# whichever of the two ways is nearer the lamp as it is)
+			want = atan2(-axis.z, axis.x)
+			var ref := _bail if not is_nan(_bail) else global_rotation.y
+			if absf(angle_difference(ref, want + PI)) < absf(angle_difference(ref, want)):
+				want += PI
+	if is_nan(_bail) or delta <= 0.0:
+		_bail = want
+	else:
+		_bail = lerp_angle(_bail, want, minf(delta * 10.0, 1.0))
+	return _bail
+
+
+## A lamp's bail laid over toward its +z by `angle` (radians; 0 upright).
+static func fold_bail(lamp: Node3D, angle: float) -> void:
+	var bail := lamp.find_child("Bail", true, false) as Node3D
+	if bail != null:
+		bail.rotation.x = angle
+
+
+## Where the middle of the bail's top is (the lamp's frame), folded so.
+static func bail_top(angle: float) -> Vector3:
+	var span := LAMP_BAIL.y - BAIL_FOOT
+	return Vector3(0.0, BAIL_FOOT + span * cos(angle), span * sin(angle))
 
 
 ## The flashlight in the left hand, pointed ahead and a little down.
@@ -409,3 +562,48 @@ class Grip extends SkeletonModifier3D:
 			return
 		for b in _rotations:
 			sk.set_bone_pose_rotation(b, _rotations[b])
+
+
+## The left arm turned out at the shoulder (about the body's front-back) as
+## far as the lamp hanging from its fist needs to clear the body beside it -
+## the hips and the leg at the lamp's height (CharacterArt.fit()'s side) -
+## eased, over whatever the clip does.
+class LampClear extends SkeletonModifier3D:
+	const ROOM := 0.05
+	const MOST := 0.6
+	var rig: CharacterRig
+	var _turn := 0.0
+
+	func _process_modification() -> void:
+		var sk := get_skeleton()
+		if sk == null or rig == null or rig._hang == null or not is_instance_valid(rig._hang):
+			return
+		var arm := sk.find_bone("upperarm_l")
+		if arm < 0:
+			return
+		var to_rig := rig.global_transform.affine_inverse() * sk.global_transform
+		var k := rig.global_basis.get_scale().x
+		var lamp := rig._hang.global_basis.get_scale().x / maxf(k, 0.001)
+		var shoulder := to_rig * sk.get_bone_global_pose(arm).origin
+		var grip := rig.global_transform.affine_inverse() * rig._grip()
+		var top := grip.y - 0.1 * lamp
+		var low := grip.y - LAMP_BAIL.y * lamp
+		var need := CharacterArt.side_between(rig.character, low, top, -1.0)
+		var want := 0.0
+		if need > 0.0:
+			need += 0.08 * lamp + ROOM
+			var v := Vector2(grip.x - shoulder.x, grip.y - shoulder.y)
+			var r := v.length()
+			var t := need - shoulder.x
+			if grip.x < need and r > 0.05 and absf(t) < r:
+				want = clampf(-acos(t / r) - atan2(v.y, v.x), 0.0, MOST)
+		_turn = lerpf(_turn, want, 0.25)
+		if _turn < 0.002:
+			return
+		var axis := (sk.global_basis.inverse() * rig.global_basis.z).normalized()
+		var pose := sk.get_bone_global_pose(arm)
+		var turned := Basis(axis, _turn) * pose.basis
+		var parent := sk.get_bone_parent(arm)
+		var up := sk.get_bone_global_pose(parent).basis if parent >= 0 else Basis.IDENTITY
+		sk.set_bone_pose_rotation(arm, (up.inverse() * turned).get_rotation_quaternion())
+

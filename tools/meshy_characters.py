@@ -83,6 +83,18 @@ CHARACTERS = {
         ears=[[(0.09, -0.02, 0.84), (0.14, -0.05, 0.89), (0.18, -0.08, 0.945)]],
         tail=dict(root=(0.0, 0.06, 0.08), behind=0.07, below=0.12, bones=3, angles=None, reach=0.06),
     ),
+    "sheep2": dict(
+        name="綿羊", meshy="Woolly_Wayfarer", height=1.62,
+        joints=dict(
+            pelvis=(0.06, -0.12), spine_01=(0.06, 0.0), spine_02=(0.06, 0.14), spine_03=(0.06, 0.29),
+            neck_01=(0.05, 0.51), Head=(0.02, 0.66), head_end=(-0.02, 0.92),
+            clavicle=(0.03, 0.06, 0.47), upperarm=(0.17, 0.06, 0.47), lowerarm=(0.33, 0.07, 0.26),
+            hand=(0.50, 0.03, 0.02), hand_end=(0.60, 0.0, -0.17),
+            thigh=(0.10, 0.06, -0.15), calf=(0.14, 0.02, -0.50), foot=(0.20, 0.08, -0.84),
+            ball=(0.21, -0.08, -0.93), toe=(0.21, -0.16, -0.945)),
+        ears=[[(0.10, 0.05, 0.78), (0.18, 0.05, 0.755), (0.27, 0.05, 0.72)]],
+        tail=dict(root=(0.0, 0.19, 0.11), behind=0.21, below=0.2, bones=1, angles=None, reach=0.05),
+    ),
     "croc": dict(
         name="鱷魚", meshy="Cozy_Croc_Guy", height=1.65,
         joints=dict(
