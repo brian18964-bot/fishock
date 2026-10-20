@@ -40,6 +40,14 @@ def packed():
     return [c for c in characters() if c != BUNDLED]
 
 
+def pictures_of(cid):
+    """The pictures Godot takes out of a character's model on import (a
+    Meshy one's: its colour, normal and roughness - "<id>_*.jpg")."""
+    return sorted(os.path.relpath(f, ROOT).replace(os.sep, "/")
+                  for f in glob.glob(os.path.join(ROOT, os.path.dirname(MODEL), cid + "_*"))
+                  if not f.endswith(".import"))
+
+
 def files_of(cid):
     """A character's files (res:// paths), the json data aside."""
     out = []
@@ -49,6 +57,7 @@ def files_of(cid):
             continue
         out.append("res://" + os.path.relpath(f, ROOT).replace(os.sep, "/"))
     out.append("res://" + MODEL % cid)
+    out += ["res://" + f for f in pictures_of(cid)]
     return out
 
 
@@ -64,7 +73,8 @@ def main():
     head, secs = sections(text)
     web = next(i for i, (h, b) in enumerate(secs) if h == "[preset.0]")
     web_opts = next(b for h, b in secs if h == "[preset.0.options]")
-    excludes = BASE_EXCLUDE + [SPRITES % c + "/*" for c in packed()] + [MODEL % c for c in packed()]
+    excludes = (BASE_EXCLUDE + [SPRITES % c + "/*" for c in packed()] + [MODEL % c for c in packed()]
+                + [f for c in packed() for f in pictures_of(c)])
     body = re.sub(r'(?m)^exclude_filter=".*"$', 'exclude_filter="%s"' % ", ".join(excludes), secs[web][1])
     out = [("[preset.0]", body), ("[preset.0.options]", web_opts)]
     for i, cid in enumerate(packed(), start=1):

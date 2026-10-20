@@ -182,9 +182,12 @@ var camp_tent: int = 8
 ## owl_character.py's player(), PLAYER=<id>), each with its own pictures
 ## (CharacterArt); tapping the camp's fire changes who's travelling. And
 ## (user request) two more after the user's deer and ram: the stag and the
-## sheep. [id, name].
+## sheep. And (user request) the user's own Meshy ones beside them - the old
+## ones stay: a brown bear, two dogs, a red deer, a horned owl and a croc
+## (tools/build_meshy_character.py). [id, name].
 const CHARACTERS := [["cat", "黑貓"], ["owl", "貓頭鷹"], ["dog", "犬"], ["bear", "熊"], ["deer", "鹿"],
-	["sheep", "羊"]]
+	["sheep", "羊"], ["bear2", "棕熊"], ["dog2", "柴犬"], ["dog3", "牧羊犬"], ["deer2", "紅鹿"],
+	["owl2", "角鴞"], ["croc", "鱷魚"]]
 var character: String = "cat"
 ## User request: the run's three quick slots (QuickSlots, over the right
 ## stick) - the item each is set to (one of USABLES), or "".

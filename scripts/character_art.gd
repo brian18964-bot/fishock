@@ -33,14 +33,21 @@ const PORTRAIT := {
 ## Where the left hand gets to reaching out (CharacterRig.REACH_CLIP at
 ## REACH_AT; the character's frame, +z ahead, +x its left), per character:
 ## where the camp's lamp hangs to be picked up. Measured on each model (its
-## index fingertip, index_04_leaf_l).
+## index fingertip, index_04_leaf_l; the Meshy ones - the cat, bear2 on -
+## have bigger hands and reach further).
 const REACH := {
-	"cat": Vector3(0.10, 1.00, 0.42),
+	"cat": Vector3(0.01, 0.94, 0.62),
 	"owl": Vector3(0.13, 1.09, 0.49),
 	"dog": Vector3(0.14, 1.16, 0.51),
 	"bear": Vector3(0.20, 1.10, 0.50),
 	"deer": Vector3(0.14, 1.20, 0.47),
 	"sheep": Vector3(0.16, 1.09, 0.49),
+	"bear2": Vector3(0.07, 1.00, 0.70),
+	"dog2": Vector3(-0.06, 1.18, 0.55),
+	"dog3": Vector3(0.00, 1.15, 0.57),
+	"deer2": Vector3(-0.01, 1.18, 0.65),
+	"owl2": Vector3(-0.06, 1.02, 0.62),
+	"croc": Vector3(-0.09, 1.11, 0.67),
 }
 
 

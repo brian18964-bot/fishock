@@ -989,7 +989,8 @@ func test_characters() -> void:
 		check(title.get("_page") == null, "no page opened")
 		if i == 0:
 			check(camp.spots.lamp.at.distance_to(lamp_was) > 0.01, "it stands where its own hand reaches the lamp")
-	check(seen == ["owl", "dog", "bear", "deer", "sheep", "cat"], "round all six and back (%s)" % [seen])
+	var round := Profile.CHARACTERS.slice(1).map(func(c): return c[0]) + ["cat"]
+	check(seen == round, "round them all and back (%s)" % [seen])
 	title.queue_free()
 	await frames(1)
 
