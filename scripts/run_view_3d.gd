@@ -205,6 +205,8 @@ static var INTRO_TAKE_AT := CharacterRig.bail_top(INTRO_FOLD)
 ## (the hand held up, its lamp hung so from it that the glass is where
 ## the old lamp's was, by its knob LAMP_KNOB up it)
 const LAMP_KNOB := 0.29
+## (the hand brought in this far over the bail, then down onto it)
+const INTRO_OVER := 0.15
 const INTRO_HOLD := Vector3(0.05, 1.05, 0.34)
 ## (the turn's pace, 1/s, against TURN_RATE's; the close camera behind
 ## its left shoulder, where the reaching arm shows: aside, above the head,
@@ -2426,7 +2428,13 @@ func _aim_rod(delta: float) -> void:
 		# line from the shoulder to the bail)
 		var toward := (_intro_bail - shoulder_l).normalized()
 		_left_target.global_position = _intro_bail - toward * rig._grip().distance_to(wrist) + _intro_fix * take
-		_left_pole.global_position = shoulder_l + b.x * 0.45 + Vector3.DOWN * 0.5 - b.z * 0.1
+		# (coming in over the drum's rim, then down onto the bail - from the
+		# side a short one's hand went through the drum)
+		if not _intro_grabbed:
+			_left_target.global_position += Vector3.UP * INTRO_OVER * _rig_scale() * (1.0 - smoothstep(0.6, 1.0, take))
+		# (the elbow out to the side, not down - a short one's reaching over
+		# the drum dipped it into the rim)
+		_left_pole.global_position = shoulder_l + b.x * 0.5 + Vector3.DOWN * 0.15 - b.z * 0.1
 	# (lit: the lamp held up before the chest, the right hand to its glass,
 	# striking the light)
 	var lighting := _intro_lighting()
@@ -2488,7 +2496,9 @@ func _intro_take() -> float:
 	if s <= 0.0 or s >= 1.0:
 		return 0.0
 	if not _intro_grabbed:
-		return smoothstep(0.08, grab, s)
+		# (from the start: the clip's own reach swings the hand forward low,
+		# into the side of the drum by it)
+		return smoothstep(0.0, grab * 0.75, s)
 	return 1.0 - smoothstep(grab + 0.05, grab + 0.35, s)
 
 
