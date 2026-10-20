@@ -36,6 +36,7 @@ func _measure(id: String) -> void:
 	var world := pts.world()
 	fit.shoulder = at.call("upperarm_l").y
 	fit.pelvis = at.call("pelvis").y
+	fit.hips_z = snappedf(at.call("pelvis").z, 0.001)
 	fit.arm = at.call("upperarm_l").distance_to(at.call("lowerarm_l")) + at.call("lowerarm_l").distance_to(at.call("hand_l"))
 	fit.leg = at.call("thigh_l").distance_to(at.call("calf_l")) + at.call("calf_l").distance_to(at.call("foot_l"))
 	# The hands: how far past the wrist (to the furthest fingertip).
@@ -46,48 +47,79 @@ func _measure(id: String) -> void:
 			if sk.find_bone("%s_04_leaf_%s" % [f, side]) >= 0:
 				far = maxf(far, (at.call("%s_04_leaf_%s" % [f, side]) as Vector3).distance_to(wrist))
 		fit["hand_" + side] = snappedf(far, 0.001)
-	# The forearm's thickness (round the left one, elbow to wrist).
+	# The forearm's thickness (round the left one, elbow to wrist - its
+	# middling, not a loose sleeve's furthest).
 	var elbow: Vector3 = at.call("lowerarm_l")
 	var wrist_l: Vector3 = at.call("hand_l")
 	var radii := []
+	var at_elbow := []
+	var fore := elbow.distance_to(wrist_l)
 	for i in world.size():
 		if pts.part[i] != SkinPoints.Part.ARM_L:
 			continue
 		var p := to_rig * world[i]
 		var along := (p - elbow).dot((wrist_l - elbow).normalized())
-		if along > 0.0 and along < elbow.distance_to(wrist_l):
-			radii.append(p.distance_to(elbow + (wrist_l - elbow).normalized() * along))
+		if along > 0.0 and along < fore:
+			var r := p.distance_to(elbow + (wrist_l - elbow).normalized() * along)
+			radii.append(r)
+			if along < 0.25 * fore:
+				at_elbow.append(r)
 	radii.sort()
-	fit.forearm = snappedf(float(radii[int(radii.size() * 0.9)]) if radii.size() else 0.04, 0.001)
-	# The body's front and left side per height (the hips' depth only for
-	# the side - not a tail swung out behind).
+	at_elbow.sort()
+	fit.forearm = snappedf(float(radii[int(radii.size() * 0.5)]) if radii.size() else 0.04, 0.001)
+	# (and round the elbow - a sleeve's bunched there - its furthest)
+	fit.elbow = snappedf(float(at_elbow[int(at_elbow.size() * 0.8)]) if at_elbow.size() else fit.forearm, 0.001)
+	# The body's (not the arms') furthest forward, back and out to each side
+	# per height - standing and over a walk (its hips sway): the
+	# sides at the hips' depth only (not a tail swung out behind).
 	var hips_z: float = at.call("pelvis").z
-	var front := []
-	var side_l := []
-	for i in world.size():
-		if pts.part[i] != SkinPoints.Part.BODY:
-			continue
-		var p := to_rig * world[i]
-		var b := int(floor(p.y / BIN))
-		if b < 0:
-			continue
-		while front.size() <= b:
-			front.append(-1.0)
-			side_l.append(0.0)
-		front[b] = maxf(front[b], p.z)
-		if absf(p.z - hips_z) < 0.3:
-			side_l[b] = maxf(side_l[b], p.x)
-	fit.front = front.map(func(v): return snappedf(v, 0.001))
-	fit.side = side_l.map(func(v): return snappedf(v, 0.001))
+	var prof := {"front": [], "back": [], "side": [], "side_r": []}
+	var poses := [["Idle", 0.0]]
+	for clip in ["Walk"]:
+		if rig.anim.has_animation(clip):
+			for i in 6:
+				poses.append([clip, rig.anim.get_animation(clip).length * i / 6.0])
+	for pose in poses:
+		_pose(rig, pose[0], pose[1])
+		var now := pts.world([SkinPoints.Part.BODY])
+		for i in now.size():
+			if pts.part[i] != SkinPoints.Part.BODY:
+				continue
+			var p := to_rig * now[i]
+			var k := int(floor(p.y / BIN))
+			if k < 0:
+				continue
+			while prof.front.size() <= k:
+				prof.front.append(-1.0)
+				prof.back.append(1.0)
+				prof.side.append(0.0)
+				prof.side_r.append(0.0)
+			prof.front[k] = maxf(prof.front[k], p.z)
+			prof.back[k] = minf(prof.back[k], p.z)
+			if absf(p.z - hips_z) < 0.3:
+				prof.side[k] = maxf(prof.side[k], p.x)
+				prof.side_r[k] = maxf(prof.side_r[k], -p.x)
+	_pose(rig, "Idle", 0.0)
+	for key in prof:
+		fit[key] = prof[key].map(func(v): return snappedf(v, 0.001))
 	_grip(rig, pts, world, fit)
 	fit.walk = snappedf(_pace(rig, "Walk"), 0.01)
 	fit.run = snappedf(_pace(rig, "Run"), 0.01)
 	var path := "res://assets/sprites/player/%s/fit.json" % id
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
-	var f := FileAccess.open(path, FileAccess.WRITE)
-	f.store_string(JSON.stringify(fit, "", false))
-	print("FIT %s grip %s room %.3f hands %.3f/%.3f walk %.2f run %.2f" % [id, fit.grip, fit.grip_room,
-		fit.hand_l, fit.hand_r, fit.walk, fit.run])
+	_write(path, fit)
+	# The camp's idles its body can't do: its forearms and hands still in
+	# it (deeper than AWKWARD) with its arms kept off it (ArmRoom, with the
+	# measures above) - CharacterArt.clip_for() stands another in.
+	CharacterArt._fits.erase(id)
+	fit.awkward = []
+	for clip in CharacterArt.STAND_INS:
+		if rig.anim.has_animation(clip) and await _into_self(rig, pts, clip) > AWKWARD:
+			fit.awkward.append(clip)
+	_write(path, fit)
+	CharacterArt._fits.erase(id)
+	print("FIT %s grip %s room %.3f hands %.3f/%.3f walk %.2f run %.2f awkward %s" % [id, fit.grip, fit.grip_room,
+		fit.hand_l, fit.hand_r, fit.walk, fit.run, fit.awkward])
 	rig.queue_free()
 	await get_tree().process_frame
 
@@ -200,3 +232,33 @@ func _pace(rig: CharacterRig, clip: String) -> float:
 		return 0.0
 	speeds.sort()
 	return speeds[speeds.size() / 2]
+
+
+func _write(path: String, fit: Dictionary) -> void:
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string(JSON.stringify(fit, "", false))
+	f.close()
+
+
+## How deep its forearms and hands go into its body over a clip (m, the
+## deepest of a few moments) - posed as the game poses it, its modifiers
+## and all.
+const AWKWARD := 0.03
+
+
+func _into_self(rig: CharacterRig, pts: SkinPoints, clip: String) -> float:
+	var len := rig.anim.get_animation(clip).length
+	var worst := 0.0
+	var got := []
+	for i in 6:
+		rig.anim.play(clip)
+		rig.anim.seek(len * i / 6.0, true)
+		rig.anim.pause()
+		var cb := func(): got.assign([pts.world(), pts.world_normals()])
+		rig.skeleton.skeleton_updated.connect(cb, CONNECT_ONE_SHOT)
+		for _f in 6:
+			await get_tree().process_frame
+		if got.size() == 2:
+			worst = maxf(worst, pts.forearms_into_body(got[0], got[1]))
+	return worst
+

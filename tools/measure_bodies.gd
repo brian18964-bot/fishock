@@ -10,11 +10,16 @@ extends SceneTree
 ##                hand_l bone's frame; grip_axis the hole's way through
 ##                (index to pinky), grip_room its radius
 ##   hand_l/r     how far the hand reaches past the wrist; forearm, how thick
-##                the forearm is (round it)
-##   shoulder, pelvis, arm, leg   heights and lengths
-##   front, side  the body's (not the arms') furthest forward and furthest
-##                out to its left, per BIN m of height from the ground
+##                the forearm is (round it), elbow, round the elbow
+##   shoulder, pelvis, arm, leg   heights and lengths (hips_z: the hips'
+##                joint ahead of its feet)
+##   front, back, side, side_r   the body's (not the arms') furthest
+##                forward, back, out to its left and to its right, per BIN m
+##                of height from the ground - standing and walking
 ##   walk, run    the ground speed the Walk and Run clips' feet keep (m/s)
+##   awkward      the camp's idles its own arms go into its body in, with
+##                them kept off it as the game keeps them (CharacterArt
+##                .clip_for() stands another in)
 ##
 ##   godot --headless --path . -s "$PWD/tools/measure_bodies.gd" [-- id ...]
 ## (the measuring's in measure_bodies_work.gd, loaded once the game's

@@ -185,3 +185,24 @@ static func _band(bins: Array, low: float, high: float, fallback: float) -> floa
 ## (tools/measure_bodies.gd's bins, m)
 const FIT_BIN := 0.04
 
+
+## The camp's idles and what stands in for one a body can't do (its arms
+## into its own round belly, a long snout - CharacterArt.fit().awkward).
+const STAND_INS := {"Idle_FoldArms": "Idle", "Stretch_Arms": "Stretch_Neck", "Idle_Talking": "Idle",
+	"Peek": "Look_Around", "Clap": "Wave", "Fist_Pump": "Victory", "Idle_Rail": "Idle", "Seat_Clap": "Seat_Rest"}
+
+
+## The clip a character plays for `clip`: its own stand-in for one its body
+## can't do.
+static func clip_for(id: String, clip: String) -> String:
+	if STAND_INS.has(clip) and clip in fit(id).get("awkward", []):
+		return STAND_INS[clip]
+	return clip
+
+
+## How fast its feet go back under it walking (m/s, at the Walk clip's own
+## pace) - its own legs' stride.
+static func walk_pace(id := "", fallback := 0.8) -> float:
+	var w := float(fit(id).get("walk", 0.0))
+	return w if w > 0.3 else fallback
+

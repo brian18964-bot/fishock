@@ -48,7 +48,8 @@ extends Node
 
 signal plan_done(tag: String)
 
-## The Walk clip's own pace (m/s).
+## The Walk clip's own pace (m/s) - a character not measured; each one's
+## own, CharacterArt.walk_pace().
 const WALK_SPEED := 0.8
 const TURN_RATE := 7.0
 ## How often it does each thing, by how it feels: [spent, worn, tired, busy].
@@ -292,6 +293,7 @@ func _idle() -> String:
 
 func _play(clip: String, blend: float) -> void:
 	rig.anim.speed_scale = 1.0
+	clip = CharacterArt.clip_for(rig.character, clip)
 	if rig.anim.has_animation(clip):
 		rig.anim.play(clip, blend)
 
@@ -308,7 +310,8 @@ func _walk(delta: float) -> void:
 	var target: Vector3 = _path[0]
 	var to := target - pivot.position
 	to.y = 0.0
-	var speed := WALK_SPEED * _pace
+	# (each its own stride: the Walk clip's feet keep its own legs' pace)
+	var speed := CharacterArt.walk_pace(rig.character, WALK_SPEED) * _pace
 	if to.length() <= speed * delta + 0.01:
 		pivot.position = Vector3(target.x, 0.0, target.z)
 		_path.pop_front()

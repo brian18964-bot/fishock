@@ -21,6 +21,7 @@ const TESTS := [
 	"test_wolf_bites",
 	"test_run_intro_and_eye_guide",
 	"test_intro_lamp_clear",
+	"test_arms_off_body",
 	"test_spawn_on_land_docks_out",
 	"test_catalog_and_sounds",
 	"test_creature_animation",
@@ -4755,6 +4756,34 @@ func test_intro_lamp_clear() -> void:
 	RunView3D.intro = false
 	Profile.character = was
 	_restore_profile(kept)
+
+
+## User request: each one's own arms - the clips were made for a slim body,
+## the round ones' hands went into their hips: standing and walking, the
+## forearms and hands kept off its own body (ArmRoom), for the round ones.
+func test_arms_off_body() -> void:
+	for id in ["bear2", "owl2", "croc"]:
+		var rig := CharacterRig.new()
+		rig.hold_gear = false
+		rig.auto_idle = false
+		get_tree().root.add_child(rig)
+		rig.set_character(id)
+		await frames(1)
+		var pts := SkinPoints.new(rig, 2)
+		for clip in ["Idle", "Walk"]:
+			var worst := 0.0
+			var length := rig.anim.get_animation(clip).length
+			for i in 4:
+				rig.anim.play(clip)
+				rig.anim.seek(length * i / 4.0, true)
+				rig.anim.pause()
+				var got := []
+				rig.skeleton.skeleton_updated.connect(func(): got.assign([pts.world(), pts.world_normals()]), CONNECT_ONE_SHOT)
+				await frames(6)
+				worst = maxf(worst, pts.forearms_into_body(got[0], got[1]))
+			check(worst < 0.02, "%s, %s: its hands off its own body (%.3f m in at most)" % [id, clip, worst])
+		rig.queue_free()
+		await frames(1)
 
 
 ## User requests: a run opens on the traveller picking up the lamp (the

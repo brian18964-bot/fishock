@@ -45,7 +45,9 @@ const DECK_Y := 0.32
 const CELL := 0.5
 const MARGIN := 14.0
 ## Walking up to WALK_PACE m/s is the walk clip at its own pace; RUN_PACE
-## the run's.
+## the run's - for a character not measured: each one's own legs' stride
+## (CharacterArt.walk_pace(), the run's in step with it), short legs
+## stepping quicker.
 const WALK_PACE := 0.8
 const RUN_PACE := 3.0
 const TURN_RATE := 14.0
@@ -2048,9 +2050,9 @@ func _pick_clip() -> Array:
 	if v.move != "":
 		match v.move:
 			"walk":
-				return ["Walk", clampf(speed / WALK_PACE, 0.4, 2.4), -1.0]
+				return ["Walk", clampf(speed / _walk_pace(), 0.4, 2.4), -1.0]
 			"sad_walk":
-				return ["Walk", clampf(speed / WALK_PACE * 0.8, 0.3, 1.5), -1.0]
+				return ["Walk", clampf(speed / _walk_pace() * 0.8, 0.3, 1.5), -1.0]
 			"sad_idle":
 				return ["Sad", 1.0, -1.0]
 			"dizzy":
@@ -2076,7 +2078,7 @@ func _pick_clip() -> Array:
 		return [name, 1.0, t]
 	if player.carrying_oil_drum:
 		# (the drum held in both arms, walking it home)
-		return ["Walk_Carry", clampf(speed / WALK_PACE, 0.0, 2.0), -1.0]
+		return ["Walk_Carry", clampf(speed / _walk_pace(), 0.0, 2.0), -1.0]
 	match v.clip:
 		PlayerVisual.CLIP_RUN, PlayerVisual.CLIP_HOLD_RUN:
 			# (user request: stepping back only when walked back during the
@@ -2084,10 +2086,10 @@ func _pick_clip() -> Array:
 			if player.state == Player.State.REELING and rig.anim.has_animation("Fish_Back") \
 					and player.velocity.dot(player.cast_target - player.global_position) < 0.0 \
 					and not player.turned_away():
-				return ["Fish_Back", clampf(speed / WALK_PACE * 0.7, 0.4, 1.4), -1.0]
+				return ["Fish_Back", clampf(speed / _walk_pace() * 0.7, 0.4, 1.4), -1.0]
 			if speed * PX < PlayerVisual.WALK_MAX:
-				return ["Walk", clampf(speed / WALK_PACE, 0.4, 2.4), -1.0]
-			return ["Run", clampf(speed / RUN_PACE, 0.6, 2.0), -1.0]
+				return ["Walk", clampf(speed / _walk_pace(), 0.4, 2.4), -1.0]
+			return ["Run", clampf(speed / (RUN_PACE * _walk_pace() / WALK_PACE), 0.6, 2.0), -1.0]
 		PlayerVisual.CLIP_CAST, PlayerVisual.CLIP_CAST_SHORT:
 			# Wound back with the charge (frames 0-3), the whip (4-7).
 			# (smoothly between the sheet's frames - v.cast_f)
@@ -3463,6 +3465,10 @@ func _update_flash_aim(delta: float) -> void:
 		_flash_light.global_position = pivot.global_position + Vector3(0, 1.3, 0)
 		_flash_light.look_at(_flash_light.global_position + dir * 4.0 + Vector3.DOWN * 0.9, Vector3.UP)
 	_flash_white.color.a = lerpf(FLASH_WHITE.x, FLASH_WHITE.y, _flash_power) * pow(burst, 3.0)
+
+
+func _walk_pace() -> float:
+	return CharacterArt.walk_pace(rig.character if rig != null else "", WALK_PACE) * _rig_scale()
 
 
 ## The opening (INTRO): the lamp on the drum before the traveller, taken

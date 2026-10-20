@@ -123,6 +123,12 @@ func _build(id: String) -> void:
 		_grip_mod.name = "Grip"
 		_grip_mod.influence = 0.0
 		skeleton.add_child(_grip_mod)
+		# User request: each one's arms kept off its own body - the clips were
+		# made for a slim one, the round ones' hands went into their hips.
+		var room := ArmRoom.new()
+		room.name = "ArmRoom"
+		room.rig = self
+		skeleton.add_child(room)
 		_clear_mod = LampClear.new()
 		_clear_mod.name = "LampClear"
 		_clear_mod.rig = self
@@ -426,10 +432,15 @@ func _off_forearm(grip: Vector3, b: Basis, k: float) -> Basis:
 		var leaf := skeleton.find_bone(digit + "_04_leaf_l")
 		if leaf >= 0:
 			var tip := skeleton.global_transform * skeleton.get_bone_global_pose(leaf).origin
-			limbs.append([wrist, tip + (tip - wrist) * 0.15, thick * 0.6])
+			limbs.append([wrist, tip + (tip - wrist) * 0.15, thick * 0.75])
 	var turn := Basis.IDENTITY
-	for limb in limbs:
-		turn = _push_off(grip, b, k, limb[0], limb[1], limb[2]) * turn
+	# (looked at again after each push - one finger's push can bring it to
+	# the next)
+	for _pass in 3:
+		for limb in limbs:
+			turn = _push_off(grip, turn * b, k, limb[0], limb[1], limb[2]) * turn
+	if turn.get_rotation_quaternion().get_angle() > 0.9:
+		turn = Basis(Quaternion.IDENTITY.slerp(turn.get_rotation_quaternion(), 0.9 / turn.get_rotation_quaternion().get_angle()))
 	return turn
 
 
@@ -439,12 +450,18 @@ func _push_off(grip: Vector3, b: Basis, k: float, from: Vector3, to_: Vector3, t
 		var c: Vector3 = grip + turn * b * (Vector3(0.0, part.x, 0.0) - LAMP_BAIL) * k
 		var on := Geometry3D.get_closest_point_to_segment(c, from, to_)
 		var away := c - on
-		var room: float = part.y * k + thick + 0.025 * k
-		if away.length() >= room or away.length() < 0.001:
+		var room: float = part.y * k + thick + 0.035 * k
+		if away.length() >= room:
 			continue
 		var arm := c - grip
-		var to := arm + away.normalized() * (room - away.length())
+		var to := arm + away.normalized() * (room - away.length()) if away.length() > 0.001 else arm
 		var axis := arm.cross(to)
+		if axis.length() <= 0.000001:
+			# (a finger straight down the bail at it gives no way aside: then
+			# away to the lamp's front, as far as it's short)
+			var side := b.z - arm.normalized() * b.z.dot(arm.normalized())
+			to = arm + side.normalized() * (room - away.length())
+			axis = arm.cross(to)
 		if axis.length() > 0.000001:
 			turn = Basis(axis.normalized(), minf(arm.angle_to(to), 0.7)) * turn
 	return turn
@@ -607,3 +624,102 @@ class LampClear extends SkeletonModifier3D:
 		var up := sk.get_bone_global_pose(parent).basis if parent >= 0 else Basis.IDENTITY
 		sk.set_bone_pose_rotation(arm, (up.inverse() * turned).get_rotation_quaternion())
 
+
+## Each arm turned out at the shoulder as far as it needs to keep the elbow,
+## the forearm and the hand off the body - its own front and sides at their
+## heights (CharacterArt.fit(), an ellipse about the hips' line), its own
+## forearm's thickness - eased. Standing only (the hips down, sat or
+## knelt, the shape's another).
+class ArmRoom extends SkeletonModifier3D:
+	const ROOM := -0.015
+	const MOST := 0.5
+	var rig: CharacterRig
+	var _turn := {"l": Basis.IDENTITY, "r": Basis.IDENTITY}
+
+	func _process_modification() -> void:
+		var sk := get_skeleton()
+		if sk == null or rig == null:
+			return
+		var fit := CharacterArt.fit(rig.character)
+		if fit.is_empty():
+			return
+		var to_rig := rig.global_transform.affine_inverse() * sk.global_transform
+		var pelvis := sk.find_bone("pelvis")
+		var standing := smoothstep(0.75, 0.9, (to_rig * sk.get_bone_global_pose(pelvis).origin).y / float(fit.pelvis))
+		var thick := float(fit.get("forearm", 0.05))
+		for side in ["l", "r"]:
+			var arm := sk.find_bone("upperarm_" + side)
+			if arm < 0:
+				continue
+			var shoulder := to_rig * sk.get_bone_global_pose(arm).origin
+			var elbow := to_rig * sk.get_bone_global_pose(sk.find_bone("lowerarm_" + side)).origin
+			var wrist := to_rig * sk.get_bone_global_pose(sk.find_bone("hand_" + side)).origin
+			var leaf := sk.find_bone("middle_04_leaf_" + side)
+			var tip := to_rig * sk.get_bone_global_pose(leaf).origin if leaf >= 0 else wrist
+			var round_elbow := float(fit.get("elbow", thick))
+			var probes := [[elbow, round_elbow], [elbow.lerp(wrist, 0.3), lerpf(round_elbow, thick, 0.6)], [elbow.lerp(wrist, 0.65), thick],
+				[wrist, thick], [wrist.lerp(tip, 0.6), thick * 0.8]]
+			# (and each finger's end - a long hand's splay in to the hip)
+			for digit in ["thumb", "index", "ring", "pinky"]:
+				var end := sk.find_bone("%s_04_leaf_%s" % [digit, side])
+				if end >= 0:
+					probes.append([to_rig * sk.get_bone_global_pose(end).origin, thick * 0.4])
+			# (turned a little at a time, looked at again, till it's out)
+			var want := Basis.IDENTITY
+			for _step in 4:
+				var most := 0.0
+				var axis := Vector3.ZERO
+				for q in probes:
+					var at: Vector3 = shoulder + want * (q[0] - shoulder)
+					var d := _out_of_body(fit, at, q[1])
+					if d.length() < 0.001:
+						continue
+					var from := at - shoulder
+					var a := d.length() / maxf(from.length(), 0.05)
+					var ax := from.cross(d)
+					if a > most and ax.length() > 0.000001:
+						most = a
+						axis = ax.normalized()
+				if most <= 0.0:
+					break
+				want = Basis(axis, most) * want
+			if want.get_rotation_quaternion().get_angle() > MOST:
+				want = Basis(Quaternion.IDENTITY.slerp(want.get_rotation_quaternion(), MOST / want.get_rotation_quaternion().get_angle()))
+			want = Basis(Quaternion.IDENTITY.slerp(want.get_rotation_quaternion(), standing))
+			_turn[side] = Basis((_turn[side] as Basis).get_rotation_quaternion().slerp(want.get_rotation_quaternion(), 0.35))
+			var q_turn := (_turn[side] as Basis).get_rotation_quaternion()
+			if q_turn.get_angle() < 0.002:
+				continue
+			# (the turn's in the character's frame; the bone's in the skeleton's)
+			var in_sk := to_rig.basis.inverse() * Basis(q_turn) * to_rig.basis
+			var pose := sk.get_bone_global_pose(arm)
+			var parent := sk.get_bone_parent(arm)
+			var up := sk.get_bone_global_pose(parent).basis if parent >= 0 else Basis.IDENTITY
+			sk.set_bone_pose_rotation(arm, (up.inverse() * (in_sk * pose.basis)).get_rotation_quaternion())
+
+	## How far (and which way, flat) a point `r` round has to go to be out of
+	## the body at its height - its outline a rounded box (a superellipse)
+	## out to its own front, back and sides there; zero if it's out.
+	static func _out_of_body(fit: Dictionary, q: Vector3, r: float) -> Vector3:
+		var right := q.x < 0.0
+		var side := _band(fit.get("side_r" if right else "side", []), q.y)
+		var zc := float(fit.get("hips_z", 0.0))
+		var ahead := q.z >= zc
+		var reach := _band(fit.get("front", []), q.y) - zc if ahead else zc - _band(fit.get("back", []), q.y, -1.0)
+		if side <= 0.0 or reach <= 0.0:
+			return Vector3.ZERO
+		var a := side + r + ROOM
+		var b := reach + r + ROOM
+		var x := absf(q.x) / a
+		var z := absf(q.z - zc) / b
+		var e := pow(x, 4.0) + pow(z, 4.0)
+		if e >= 1.0 or e < 0.000001:
+			return Vector3.ZERO
+		var k := pow(1.0 / e, 0.25)
+		return Vector3(q.x * (k - 1.0), 0.0, (q.z - zc) * (k - 1.0))
+
+	static func _band(bins: Array, y: float, sign := 1.0) -> float:
+		var i := int(floor(y / CharacterArt.FIT_BIN))
+		if i < 0 or i >= bins.size():
+			return -1.0 if sign > 0.0 else 1.0
+		return float(bins[i])
