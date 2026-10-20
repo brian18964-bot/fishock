@@ -51,6 +51,7 @@ var _hip_vel := Vector3.ZERO
 var _hip_seen := 0
 var _lag := Vector3.ZERO
 var _lag_vel := Vector3.ZERO
+var _stepped := -1
 
 ## [{bones: [index], kind: "ear"|"drop"|"tail", axis: Vector3 (skeleton
 ## space), next: s, at: s (the flick's start, -1 none), angle: deg,
@@ -72,7 +73,10 @@ func _process_modification() -> void:
 	var dt := clampf(now - _last, 0.0, 0.1) if _last >= 0.0 else 0.0
 	_time += dt
 	_last = now
-	if follow_steps:
+	# (the spring once a frame: the skeleton can be posed twice in one, and
+	# a second step saw the hips not moving - a kick, the tail jumping)
+	if follow_steps and Engine.get_process_frames() != _stepped:
+		_stepped = Engine.get_process_frames()
 		_step(sk, get_process_delta_time())
 	for c in chains:
 		_schedule(c)
@@ -180,7 +184,9 @@ func _build(sk: Skeleton3D) -> void:
 
 ## Starts a flick when one's due.
 func _schedule(c: Dictionary) -> void:
-	var span := TAIL_FLICK_TIME if c.kind == "tail" else EAR_TIME
+	# (a tail's flick over only once it's run down to the tip - each bone
+	# down it lags; cut short at the root's end, the rest snapped back)
+	var span := TAIL_FLICK_TIME + TAIL_LAG * ((c.bones as Array).size() - 1) if c.kind == "tail" else EAR_TIME
 	if c.at >= 0.0 and _time - c.at > span:
 		c.at = -1.0
 	if _time < c.next:

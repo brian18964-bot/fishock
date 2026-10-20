@@ -33,8 +33,8 @@ const PORTRAIT := {
 ## Where the left hand gets to reaching out (CharacterRig.REACH_CLIP at
 ## REACH_AT; the character's frame, +z ahead, +x its left), per character:
 ## where the camp's lamp hangs to be picked up. Measured on each model (its
-## index fingertip, index_04_leaf_l; the Meshy ones - the cat, bear2 on -
-## have bigger hands and reach further).
+## index fingertip, index_04_leaf_l; the Meshy cat's bigger hands reach
+## further).
 const REACH := {
 	"cat": Vector3(0.01, 0.94, 0.62),
 	"owl": Vector3(0.13, 1.09, 0.49),
@@ -42,13 +42,13 @@ const REACH := {
 	"bear": Vector3(0.20, 1.10, 0.50),
 	"deer": Vector3(0.14, 1.20, 0.47),
 	"sheep": Vector3(0.16, 1.09, 0.49),
-	"bear2": Vector3(0.10, 0.99, 0.64),
-	"dog2": Vector3(-0.06, 1.18, 0.55),
-	"dog3": Vector3(0.06, 1.15, 0.55),
-	"deer2": Vector3(0.01, 1.18, 0.62),
-	"owl2": Vector3(0.00, 1.03, 0.57),
-	"croc": Vector3(-0.09, 1.11, 0.67),
-	"sheep2": Vector3(0.00, 1.06, 0.60),
+	"bear2": Vector3(0.14, 0.98, 0.56),
+	"dog2": Vector3(0.06, 1.15, 0.47),
+	"dog3": Vector3(0.07, 1.13, 0.47),
+	"deer2": Vector3(0.07, 1.18, 0.54),
+	"owl2": Vector3(0.07, 1.04, 0.49),
+	"croc": Vector3(0.04, 1.10, 0.53),
+	"sheep2": Vector3(0.05, 1.07, 0.53),
 }
 
 
@@ -184,20 +184,6 @@ static func _band(bins: Array, low: float, high: float, fallback: float) -> floa
 
 ## (tools/measure_bodies.gd's bins, m)
 const FIT_BIN := 0.04
-
-
-## The camp's idles and what stands in for one a body can't do (its arms
-## into its own round belly, a long snout - CharacterArt.fit().awkward).
-const STAND_INS := {"Idle_FoldArms": "Idle", "Stretch_Arms": "Stretch_Neck", "Idle_Talking": "Idle",
-	"Peek": "Look_Around", "Clap": "Wave", "Fist_Pump": "Victory", "Idle_Rail": "Idle", "Seat_Clap": "Seat_Rest"}
-
-
-## The clip a character plays for `clip`: its own stand-in for one its body
-## can't do.
-static func clip_for(id: String, clip: String) -> String:
-	if STAND_INS.has(clip) and clip in fit(id).get("awkward", []):
-		return STAND_INS[clip]
-	return clip
 
 
 ## How fast its feet go back under it walking (m/s, at the Walk clip's own

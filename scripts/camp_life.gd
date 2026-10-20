@@ -293,7 +293,6 @@ func _idle() -> String:
 
 func _play(clip: String, blend: float) -> void:
 	rig.anim.speed_scale = 1.0
-	clip = CharacterArt.clip_for(rig.character, clip)
 	if rig.anim.has_animation(clip):
 		rig.anim.play(clip, blend)
 

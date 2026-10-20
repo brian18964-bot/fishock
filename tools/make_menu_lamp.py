@@ -42,7 +42,7 @@ lamp.data.materials.append(m)
 # BAIL_TOP, squarer than a half circle so its top runs level a fist's width.
 BAIL_FOOT = 0.24
 BAIL_HALF = 0.072
-BAIL_TOP = 0.47
+BAIL_TOP = 0.38
 WIRE = 0.0045
 pts = []
 for i in range(25):

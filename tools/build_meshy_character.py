@@ -531,12 +531,16 @@ def pose_rest(body, rough, game):
         print("posed: the tail's lowest %.2f above the ground" % low)
 
 
-# User request: the Meshy hands came big - into the lamp they held (a
+# User requests: the Meshy hands came big - into the lamp they held (a
 # person's reaches about 0.11 of the height past the wrist; these 0.13 to
-# 0.16). A hand reaching further than HAND_MAX of the height is brought
-# down to it (about the wrist, no smaller than HAND_FLOOR of itself).
-HAND_MAX = 0.11
-HAND_FLOOR = 0.75
+# 0.17) - and their long fingers splayed like claws; the old characters'
+# small round paws read well. A hand reaching further than HAND_MAX of the
+# height is brought down to it (about the wrist, no smaller than HAND_FLOOR
+# of itself) - the old ones' size.
+HAND_MAX = 0.06
+HAND_FLOOR = 0.3
+# (the spread between the fingers kept, past the knuckles)
+FINGERS_TOGETHER = 0.7
 
 
 def shrink_hands(body, rough):
@@ -554,7 +558,9 @@ def shrink_hands(body, rough):
         rel = co - wrist
         t = rel @ u
         side = np.linalg.norm(rel - np.outer(t, u), axis=1)
-        hand = (t > -0.01) & (side < 0.12) & (np.sign(co[:, 0]) == np.sign(wrist[0]))
+        # (all of it past the wrist - a spread finger's tip left out was
+        # stretched out to where it was, a web)
+        hand = (t > -0.01) & (side < 0.3) & (np.sign(co[:, 0]) == np.sign(wrist[0]))
         reach = t[hand].max()
         k = max(HAND_FLOOR, min(1.0, HAND_MAX * height / reach))
         print("hand_%s: %.3f past the wrist (%.3f of the height) -> x%.2f" % (s, reach, reach / height, k))
@@ -564,6 +570,20 @@ def shrink_hands(body, rough):
         f = f * f * (3 - 2 * f)
         scale = 1.0 - (1.0 - k) * f
         co[hand] = wrist + rel[hand] * scale[hand, None]
+        # (and the fingers drawn together across the hand, past the
+        # knuckles - a paw, not a fan)
+        v = np.array((0.0, -1.0, 0.0))
+        v = v - u * v.dot(u)
+        v /= np.linalg.norm(v)
+        rel = co - wrist
+        t = rel @ u
+        a = rel @ v
+        kt = 0.5 * reach * k
+        mid = np.median(a[hand & (np.abs(t - kt) < 0.01)]) if (hand & (np.abs(t - kt) < 0.01)).any() else 0.0
+        g = np.clip((t - kt + 0.01) / 0.03, 0.0, 1.0)
+        g = g * g * (3 - 2 * g)
+        pull = (1.0 - FINGERS_TOGETHER) * g * (a - mid)
+        co[hand] -= np.outer(pull[hand], v)
     me.vertices.foreach_set("co", (co @ np.linalg.inv(np.array(body.matrix_world)[:3, :3]).T
                                    - np.array(body.matrix_world)[:3, 3] @ np.linalg.inv(np.array(body.matrix_world)[:3, :3]).T).ravel())
     me.update()
@@ -628,6 +648,30 @@ def fingers(body, rough):
         print("finger %s: knuckle %s tip %s" % (name, tuple(round(c, 3) for c in pts_[0]),
                                                 tuple(round(c, 3) for c in pts_[-1])))
     return {k: [tuple(p) for p in vals_] for k, vals_ in out.items()}
+
+
+def mitten(body):
+    """The four fingers bending as one, a mitten (the thumb its own): each
+    one's skin on the middle finger's bones - the clips spread them apart,
+    long claws fanned out."""
+    groups = {g.name: g for g in body.vertex_groups}
+    index = {g.index: g.name for g in body.vertex_groups}
+    moved = 0
+    for v in body.data.vertices:
+        add = {}
+        for g in list(v.groups):
+            name = index[g.group]
+            if name.startswith(("index_", "ring_", "pinky_")):
+                to = "middle_" + name.split("_", 1)[1]
+                add[to] = add.get(to, 0.0) + g.weight
+                groups[name].remove([v.index])
+        for to, w in add.items():
+            if to not in groups:
+                groups[to] = body.vertex_groups.new(name=to)
+            have = next((g.weight for g in v.groups if index.get(g.group) == to), 0.0)
+            groups[to].add([v.index], have + w, 'REPLACE')
+        moved += bool(add)
+    print("mitten: %d vertices on the middle finger's bones" % moved)
 
 
 # ---------------------------------------------------------------- pass 2
@@ -724,6 +768,7 @@ def main():
     body.parent = None
     heat(body, game)
     tail_only(body, game)
+    mitten(body)
     select([body])
     bpy.ops.object.vertex_group_limit_total(group_select_mode='ALL', limit=4)
     bpy.ops.object.vertex_group_normalize_all(lock_active=False)

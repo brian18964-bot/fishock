@@ -108,18 +108,9 @@ func _measure(id: String) -> void:
 	var path := "res://assets/sprites/player/%s/fit.json" % id
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	_write(path, fit)
-	# The camp's idles its body can't do: its forearms and hands still in
-	# it (deeper than AWKWARD) with its arms kept off it (ArmRoom, with the
-	# measures above) - CharacterArt.clip_for() stands another in.
 	CharacterArt._fits.erase(id)
-	fit.awkward = []
-	for clip in CharacterArt.STAND_INS:
-		if rig.anim.has_animation(clip) and await _into_self(rig, pts, clip) > AWKWARD:
-			fit.awkward.append(clip)
-	_write(path, fit)
-	CharacterArt._fits.erase(id)
-	print("FIT %s grip %s room %.3f hands %.3f/%.3f walk %.2f run %.2f awkward %s" % [id, fit.grip, fit.grip_room,
-		fit.hand_l, fit.hand_r, fit.walk, fit.run, fit.awkward])
+	print("FIT %s grip %s room %.3f hands %.3f/%.3f walk %.2f run %.2f" % [id, fit.grip, fit.grip_room,
+		fit.hand_l, fit.hand_r, fit.walk, fit.run])
 	rig.queue_free()
 	await get_tree().process_frame
 
@@ -238,27 +229,3 @@ func _write(path: String, fit: Dictionary) -> void:
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	f.store_string(JSON.stringify(fit, "", false))
 	f.close()
-
-
-## How deep its forearms and hands go into its body over a clip (m, the
-## deepest of a few moments) - posed as the game poses it, its modifiers
-## and all.
-const AWKWARD := 0.03
-
-
-func _into_self(rig: CharacterRig, pts: SkinPoints, clip: String) -> float:
-	var len := rig.anim.get_animation(clip).length
-	var worst := 0.0
-	var got := []
-	for i in 6:
-		rig.anim.play(clip)
-		rig.anim.seek(len * i / 6.0, true)
-		rig.anim.pause()
-		var cb := func(): got.assign([pts.world(), pts.world_normals()])
-		rig.skeleton.skeleton_updated.connect(cb, CONNECT_ONE_SHOT)
-		for _f in 6:
-			await get_tree().process_frame
-		if got.size() == 2:
-			worst = maxf(worst, pts.forearms_into_body(got[0], got[1]))
-	return worst
-
