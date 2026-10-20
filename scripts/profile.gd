@@ -180,14 +180,17 @@ var camp_tent: int = 8
 
 ## User request: the four greybox animal people in the game (tools/
 ## owl_character.py's player(), PLAYER=<id>), each with its own pictures
-## (CharacterArt); tapping the camp's fire changes who's travelling. And
-## (user request) two more after the user's deer and ram: the stag and the
-## sheep. And (user request) the user's own Meshy ones beside them - the old
-## ones stay: a brown bear, two dogs, a red deer, a horned owl and a croc
-## (tools/build_meshy_character.py). [id, name].
-const CHARACTERS := [["cat", "黑貓"], ["owl", "貓頭鷹"], ["dog", "犬"], ["bear", "熊"], ["deer", "鹿"],
-	["sheep", "羊"], ["bear2", "棕熊"], ["dog2", "柴犬"], ["dog3", "牧羊犬"], ["deer2", "紅鹿"],
-	["owl2", "角鴞"], ["croc", "鱷魚"], ["sheep2", "綿羊"]]
+## (CharacterArt); the camp's fire opens the picker (CharacterPage) to
+## choose who's travelling. And (user request) two more after the user's
+## deer and ram: the stag and the sheep. And (user request) the user's own
+## Meshy ones beside them - the old ones stay: a bear, two dogs, a deer, a
+## horned owl, a croc and a sheep (tools/build_meshy_character.py). Made
+## less alike (user request): the old owl a snowy owl (tools/snowy_owl.py),
+## the Meshy bear a Formosan black bear, its deer a sika deer and its sheep
+## black-faced (build_meshy_character's recolour). [id, name].
+const CHARACTERS := [["cat", "黑貓"], ["owl", "雪鴞"], ["dog", "犬"], ["bear", "熊"], ["deer", "鹿"],
+	["sheep", "羊"], ["bear2", "台灣黑熊"], ["dog2", "柴犬"], ["dog3", "牧羊犬"], ["deer2", "梅花鹿"],
+	["owl2", "角鴞"], ["croc", "鱷魚"], ["sheep2", "黑面羊"]]
 var character: String = "cat"
 ## User request: the run's three quick slots (QuickSlots, over the right
 ## stick) - the item each is set to (one of USABLES), or "".
@@ -467,21 +470,6 @@ func character_name(id: String = character) -> String:
 		if c[0] == id:
 			return c[1]
 	return id
-
-
-## The next character in CHARACTERS takes over (the camp's fire).
-func next_character() -> String:
-	choose_character(character_after())
-	return character
-
-
-## The one after `id` in CHARACTERS (round to the first).
-func character_after(id: String = character) -> String:
-	var i := 0
-	for j in CHARACTERS.size():
-		if CHARACTERS[j][0] == id:
-			i = j
-	return CHARACTERS[(i + 1) % CHARACTERS.size()][0]
 
 
 ## `id` travels from now on.

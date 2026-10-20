@@ -15,11 +15,15 @@ sized to `height` and stood on the ground. Then, in two passes:
 
   1. a rough skeleton at the measured joints, bound by bone heat, turns
      the arms up and the legs straight to the game's rest (a T pose) and
-     lays the tail at rest (`angles`); the mesh is kept so;
+     lays the tail at rest (`angles`); the mesh is kept so - its picture
+     repainted if the config says (`recolour`), and its hands cut off and
+     the old characters' paws grown on in their place (paws(): each its
+     own arm's girth, out of the sleeve or run on from the bare wrist);
   2. the game's skeleton is moved onto it - each bone to its joint here,
      keeping its turn (so every clip plays as it does) - the fingers at
-     the knuckles found on the posed hands, the ears and the tail from
-     pass 1 (EarTailSway moves them) - and the mesh bound to it.
+     the paws' own knuckles, the ears and the tail from pass 1
+     (EarTailSway moves them) - and the mesh bound to it, the paws on
+     their own parts' bones (paw_skin()).
 
   bpyenv/bin/python tools/build_meshy_character.py -- ID MESHY SKELETON OUT.glb [LOW.blend]
 
@@ -58,7 +62,6 @@ TURNED = ("upperarm", "lowerarm", "hand", "thigh", "calf", "foot", "ball")
 # The game's bones that take pass 1's joints.
 FROM_PASS1 = ("pelvis", "spine_01", "spine_02", "spine_03", "neck_01", "Head", "clavicle", "upperarm",
               "lowerarm", "hand", "thigh", "calf", "foot", "ball")
-DIGITS = ("index", "middle", "ring", "pinky")
 
 
 def _p(x, y, z):
@@ -531,147 +534,713 @@ def pose_rest(body, rough, game):
         print("posed: the tail's lowest %.2f above the ground" % low)
 
 
-# User requests: the Meshy hands came big - into the lamp they held (a
-# person's reaches about 0.11 of the height past the wrist; these 0.13 to
-# 0.17) - and their long fingers splayed like claws; the old characters'
-# small round paws read well. A hand reaching further than HAND_MAX of the
-# height is brought down to it (about the wrist, no smaller than HAND_FLOOR
-# of itself) - the old ones' size.
-HAND_MAX = 0.06
-HAND_FLOOR = 0.3
-# (the spread between the fingers kept, past the knuckles)
-FINGERS_TOGETHER = 0.7
+# User requests: the new ones told apart from their old namesakes - the red
+# deer a sika (lighter, white spots), the sheep a black-faced one, the bear
+# a Formosan black bear (a white V on its chest). Their pictures repainted
+# where on the body each texel is (texels(): baked off the posed mesh), each
+# by its own rule (RECOLOUR) - before the paws are grown, so a paw takes the
+# new colour at its wrist.
 
-
-def shrink_hands(body, rough):
-    """The hands (on the posed, T mesh) brought down to HAND_MAX of the
-    height: each point past the wrist drawn in toward it, eased in over the
-    cuff so the sleeve's not cut."""
+def texels(body):
+    """The colour picture, and where on the body (the game's frame) and
+    which way out each of its texels is - baked; `on` the texels painted on
+    the body at all."""
     me = body.data
+    mat = me.materials[0]
+    nt = mat.node_tree
+    bsdf = next(n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED')
+    node = bsdf.inputs['Base Color'].links[0].from_node
+    while node.type != 'TEX_IMAGE':
+        node = next(i for i in node.inputs if i.links).links[0].from_node
+    img = node.image
+    w, h = img.size
+    out = next(n for n in nt.nodes if n.type == 'OUTPUT_MATERIAL')
+    was = out.inputs['Surface'].links[0].from_socket
+    geo = nt.nodes.new('ShaderNodeNewGeometry')
+    emit = nt.nodes.new('ShaderNodeEmission')
+    nt.links.new(emit.outputs[0], out.inputs['Surface'])
+    target = nt.nodes.new('ShaderNodeTexImage')
+    maps = {}
+    sc = bpy.context.scene
+    sc.render.engine = 'CYCLES'
+    sc.cycles.device = 'CPU'
+    sc.cycles.samples = 1
+    sc.render.bake.use_selected_to_active = False
+    sc.render.bake.margin = 2
+    for what in ("Position", "Normal"):
+        buf = bpy.data.images.new("Bake" + what, w, h, alpha=True, float_buffer=True)
+        buf.generated_color = (0.0, 0.0, 0.0, 0.0)
+        target.image = buf
+        for n in nt.nodes:
+            n.select = False
+        target.select = True
+        nt.nodes.active = target
+        nt.links.new(geo.outputs[what], emit.inputs['Color'])
+        select([body])
+        bpy.ops.object.bake(type='EMIT')
+        px = np.array(buf.pixels[:]).reshape(h, w, 4)
+        maps[what] = px
+        bpy.data.images.remove(buf)
+    nt.links.new(was, out.inputs['Surface'])
+    for n in (geo, emit, target):
+        nt.nodes.remove(n)
+    colour = np.array(img.pixels[:]).reshape(h, w, img.channels)
+    on = maps["Position"][:, :, 3] > 0.5
+    return img, colour, maps["Position"][:, :, :3], maps["Normal"][:, :, :3], on
+
+
+def _lum(c):
+    return c[..., 0] * 0.299 + c[..., 1] * 0.587 + c[..., 2] * 0.114
+
+
+def _bone(rough, name):
+    b = rough.data.bones[name]
+    return np.array(rough.matrix_world @ b.head_local), np.array(rough.matrix_world @ b.tail_local)
+
+
+def _to_segment(P, a, b):
+    ab = b - a
+    t = np.clip(((P - a) @ ab) / max(ab @ ab, 1e-9), 0.0, 1.0)
+    return np.linalg.norm(P - (a + t[:, None] * ab), axis=1)
+
+
+def _black_bear(P, N, C, rough):
+    """Formosan black bear: the fur black (its own shading kept), the muzzle
+    left tan, a cream V on the chest under the chin."""
+    lum = _lum(C)
+    fur = (lum < 0.40) & (C[:, 0] > C[:, 2])
+    k = np.clip(lum[fur] / max(float(np.median(lum[fur])), 1e-3), 0.5, 1.8)
+    C[fur] = np.array([0.065, 0.058, 0.056])[None, :] * k[:, None]
+    # the V: on the chest's fur facing ahead, from its lowest point at the
+    # middle up and out to each side
+    chest = _bone(rough, "spine_03")[0][2]
+    front = fur & (N[:, 1] < -0.45) & (np.abs(P[:, 0]) < 0.16) & (P[:, 2] > chest - 0.05)
+    # (the fur shows in a V down into the jumper's neck: the bear's own V
+    # inside it, its point a little above the jumper's)
+    z0 = float(np.percentile(P[front, 2], 3)) + 0.035
+    rise = 0.09
+    up = P[:, 2] - z0
+    arm = np.abs(np.abs(P[:, 0]) - up * (0.085 / rise) - 0.006)
+    band = 0.018 + 0.008 * (1.0 - np.clip(up / rise, 0.0, 1.0))
+    v = front & (up > -0.01) & (up < rise) & (arm < band)
+    soft = np.clip((band - arm) / 0.006, 0.0, 1.0)[v]
+    C[v] = C[v] * (1.0 - soft[:, None]) + np.array([0.92, 0.89, 0.80])[None, :] * soft[:, None]
+    print("black bear: %d texels of fur, %d of the V (from %.2f up %.2f)" % (fur.sum(), v.sum(), z0, rise))
+
+
+def _sika(P, N, C, rough):
+    """Sika deer: the red-brown fur lighter and yellower, white spots where
+    it shows - down the neck and the outsides of the legs."""
+    rgb = C
+    fur = (rgb[:, 0] > rgb[:, 1] * 1.32) & (rgb[:, 0] > 0.22) & (_lum(rgb) < 0.62)
+    mean = rgb[fur].mean(0)
+    target = np.array([0.76, 0.53, 0.31])
+    C[fur] = np.clip(rgb[fur] * (target / mean), 0.0, 1.0)
+    neck = _bone(rough, "neck_01")
+    head = _bone(rough, "Head")
+    near_neck = _to_segment(P, neck[0] - np.array([0, 0, 0.04]), head[0]) < 0.11
+    legs = np.zeros(len(P), bool)
+    for s in ("l", "r"):
+        for seg in ("thigh", "calf"):
+            a, b = _bone(rough, "%s_%s" % (seg, s))
+            out = (P[:, 0] - a[0]) * np.sign(a[0])
+            legs |= (_to_segment(P, a, b) < 0.09) & (out > -0.005) & (P[:, 2] > 0.18)
+    where = fur & ((near_neck & (N[:, 1] > -0.4)) | legs)
+    from scipy.spatial import cKDTree
+    rng = np.random.default_rng(7)
+    idx = np.where(where)[0]
+    rng.shuffle(idx)
+    spots = []
+    for i in idx[:20000]:
+        if spots and np.min(np.linalg.norm(np.array(spots) - P[i], axis=1)) < 0.034:
+            continue
+        spots.append(P[i])
+        if len(spots) > 260:
+            break
+    if spots:
+        d, j = cKDTree(np.array(spots)).query(P[where])
+        r = 0.0085 + 0.003 * rng.random(len(spots))[j]
+        soft = np.clip((r - d) / 0.003, 0.0, 1.0)
+        C[where] = C[where] * (1.0 - soft[:, None]) + np.array([0.97, 0.94, 0.86])[None, :] * soft[:, None]
+    print("sika: %d texels of fur lightened, %d spots" % (fur.sum(), len(spots)))
+
+
+def _black_face(P, N, C, rough):
+    """Black-faced sheep: its face below the wool, its ears, its legs below
+    the knee and its hands black - the wool and the jumper white."""
+    mf = _meshy(P)
+    f = CFG["face"]
+    y, z = mf[:, 1], mf[:, 2]
+    # (the face: up to the brow in front, the cheeks up to the wool's edge,
+    # back to the ears; down to the chin - not the wool round the neck)
+    face = (y < f["back"]) & (z < np.where(y < f["snout"], f["brow"], f["cap"])) \
+        & (z > np.where(y < f["snout"] - 0.02, f["chin"], f["collar"]))
+    ears = np.zeros(len(P), bool)
+    for chain in CFG.get("ears", []):
+        for k in (1.0, -1.0):
+            pts = [np.array(_p(x * k, y, z)) for x, y, z in chain]
+            for a, b in zip(pts, pts[1:]):
+                ears |= _to_segment(P, a, b) < 0.05
+    legs = np.zeros(len(P), bool)
+    hands = np.zeros(len(P), bool)
+    for s in ("l", "r"):
+        kn = _bone(rough, "calf_" + s)[0]
+        legs |= (P[:, 2] < kn[2]) & (np.sign(P[:, 0]) == np.sign(kn[0])) & (np.abs(P[:, 0]) < 0.4)
+        w, t = _bone(rough, "hand_" + s)
+        u = (t - w) / np.linalg.norm(t - w)
+        hands |= ((P - w) @ u > 0.005) & (np.linalg.norm(P - w, axis=1) < 0.35)
+    black = face | ears | legs | hands
+    lum = _lum(C)
+    k = np.clip(lum[black] / max(float(np.median(lum[black])), 1e-3), 0.55, 1.6)
+    C[black] = np.array([0.075, 0.07, 0.07])[None, :] * k[:, None]
+    print("black face: %d texels of face, %d ears, %d legs, %d hands" % (face.sum(), ears.sum(), legs.sum(),
+                                                                         hands.sum()))
+
+
+RECOLOUR = {"black_bear": _black_bear, "sika": _sika, "black_face": _black_face}
+
+
+def recolour(body, rough):
+    how = CFG.get("recolour")
+    if how is None:
+        return
+    img, colour, pos, nrm, on = texels(body)
+    flat = colour[:, :, :3][on].copy()
+    RECOLOUR[how](pos[on], nrm[on], flat, rough)
+    colour[:, :, :3][on] = flat
+    img.pixels.foreach_set(colour.astype(np.float32).ravel())
+    img.update()
+    img.pack()
+
+
+# User requests: the Meshy hands came big, then were shrunk too far - not
+# meeting the arm, their palms badly made, long fingers fanned out like
+# claws. All of them made the old characters' way instead
+# (tools/greybox_animals.py's hands): a thick palm, short round fingers and a
+# thumb, pads under them (claws on some) - each sized to its own wrist and
+# grown out of it, the arm cut CUT short of the wrist and run on into it.
+# The old dog's paw (the greybox's units) and the wrist it's on: a new one is
+# it at its own wrist's size, as wide and as thick as that wrist is.
+PAW = dict(wrist=0.029, palm=(0.056, 0.068, 0.036), fingers=(0.018, 0.015, 0.012), finger_r=0.0138,
+           thumb=(0.016, 0.013), thumb_r=0.0125, curl=(8, 14, 18), spread=10, claw=(0.013, 0.0045))
+CUT = 0.012
+# (the paw's own wrist runs this far back in under the arm, a little inside
+# it - SNUG of its girth - its edge where the arm's is brought onto it)
+UNDER = 0.03
+SNUG = 0.88
+PAD = (0.16, 0.12, 0.11)
+CLAW = (0.13, 0.11, 0.10)
+# (how many faces a paw comes to)
+PAW_FACES = 3200
+# (a paw out of a sleeve to the wrist starts this far past its cuff, its
+# wrist FILL of the cuff's girth - filling it, the arm run on into the paw
+# as the old characters' are (user request: smaller than the sleeve, the
+# paws didn't go with the arms); and none more than F_MAX times the old
+# dog's - the old bear's and cat's 1.3 to 1.4, a big bear's sleeve more)
+COVERED = 0.012
+# (a sleeve ending less than HEM short of the wrist: the paw out of that)
+HEM = 0.07
+FILL = 0.9
+F_MAX = 1.9
+# (a bare arm's cut edge brought onto the paw just outside it - on it, the
+# two surfaces fought, the seam ragged)
+SEAM_OUT = 1.015
+
+
+def _paw_shapes(f, wide, thick, n, claw):
+    """The old characters' paw (greybox_animals.Animal.hand, a paw's) off a
+    wrist at the origin, along +x, its back +z, its thumb toward -y - `f`
+    times the old dog's, `wide` and `thick` times more across and through:
+    its shapes, pads, claws and the digits' joints."""
+    import sdf_mesh as S
+
+    def V(*a):
+        return np.array(a, dtype=float)
+
+    def unit(v):
+        return v / np.linalg.norm(v)
+    H = PAW
+    pl, pw, pt = H["palm"][0] * f, H["palm"][1] * f * wide, H["palm"][2] * f * thick
+    fr = H["finger_r"] * f * min(wide, thick) ** 0.5
+    W = V(0, 0, 0)
+    shapes, pads, claws = [], [], []
+    shapes.append(S.ellipsoid(W + V(pl * 0.50, 0.0, -pt * 0.04), (pl * 0.60, pw * 0.50, pt * 0.50)))
+    shapes.append(S.ellipsoid(W + V(pl * 0.14, 0.0, -pt * 0.08), (pl * 0.32, pw * 0.42, pt * 0.46)))
+    # (each part's bone: the skin goes with the part it's on)
+    parts = [("hand", shapes[0]), ("hand", shapes[1])]
+    joints = {}
+    span = pw * 0.5 - fr * 1.02
+    for i, nm in enumerate(["index", "middle", "ring", "pinky"][:n]):
+        a = (i / (n - 1)) * 2.0 - 1.0
+        d = S.rot((0, 0, 1), a * H["spread"]) @ V(1, 0, 0)
+        reach = 1.0 - abs(a) * 0.18
+        p = W + V(pl * 0.86, a * span, -pt * 0.04)
+        pts = [p.copy()]
+        for L, c in zip(H["fingers"], H["curl"]):
+            d = S.rot(unit(np.cross(V(0, 0, 1), d)), c) @ d
+            p = p + d * L * f * reach
+            pts.append(p.copy())
+        joints[nm] = pts
+        rs = [fr * 1.05, fr * 1.0, fr * 0.97, fr * 0.95]
+        segs = [S.round_cone(pts[j], pts[j + 1], rs[j], rs[j + 1]) for j in range(3)]
+        parts += [("%s_%02d" % (nm, j + 1), seg) for j, seg in enumerate(segs)]
+        shapes.append(S.smooth(segs, 0.004 * f))
+        pads.append(S.sphere(pts[3] + d * fr * 0.15 + V(0, 0, -fr * 0.42), fr * 0.72))
+        pads.append(S.sphere(pts[0] + V(fr * 0.2, 0, -pt * 0.36), fr * 0.82))
+        if claw:
+            L, r = H["claw"][0] * f, H["claw"][1] * f
+            down = unit(S.rot(unit(np.cross(V(0, 0, 1), d)), 38) @ d)
+            base = pts[3] - d * fr * 0.20 + V(0, 0, fr * 0.78)
+            mid = base + d * L * 0.62 + V(0, 0, r * 0.3)
+            claws.append(S.smooth([S.round_cone(base, mid, r, r * 0.72),
+                                   S.round_cone(mid, mid + down * L * 0.55, r * 0.72, r * 0.15)], 0.002 * f))
+    if n == 3:
+        joints["pinky"] = [q + V(-0.006, 0.004, 0) * f for q in joints["ring"]]
+    T = W + V(pl * 0.32, -pw * 0.40, -pt * 0.16)
+    d = unit(V(0.55, -0.72, -0.42))
+    pts = [T.copy()]
+    p = T.copy()
+    for L in (H["thumb"][0] * 0.6,) + tuple(H["thumb"]):
+        p = p + d * L * f
+        pts.append(p.copy())
+        d = unit(d + V(0.20, 0.06, -0.04))
+    joints["thumb"] = pts
+    tr = H["thumb_r"] * f * min(wide, thick) ** 0.5
+    trs = [tr * 1.12, tr * 1.06, tr * 1.0, tr * 0.95]
+    segs = [S.round_cone(pts[j], pts[j + 1], trs[j], trs[j + 1]) for j in range(3)]
+    parts += [("thumb_%02d" % (j + 1), seg) for j, seg in enumerate(segs)]
+    shapes.append(S.smooth(segs, 0.005 * f))
+    pads.append(S.sphere(pts[3] + V(0, 0, -tr * 0.45), tr * 0.7))
+    if claw:
+        L, r = H["claw"][0] * f, H["claw"][1] * f
+        base = pts[3] - d * tr * 0.3 + V(0, 0, tr * 0.55)
+        claws.append(S.round_cone(base, base + unit(d + V(0, 0, -0.55)) * L * 0.85, r, r * 0.15))
+    pads.append(S.ellipsoid(W + V(pl * 0.52, 0.0, -pt * 0.40), (pl * 0.30, pw * 0.32, pt * 0.18)))
+    return shapes, pads, claws, joints, parts
+
+
+def _fewer(verts, faces, zone, target, longest=None):
+    """A paw's mesh brought down to about `target` faces (its zones kept),
+    with no doubled or degenerate bits left - bone heat fails on those; and
+    `longest` (length, from x, to x): no edge across that stretch longer
+    than that (bringing it down drew a round wrist out into slivers its
+    whole length - its bend all across one face)."""
+    me = bpy.data.meshes.new("Paw")
+    me.from_pydata(verts.tolist(), [], faces.tolist())
+    me.validate()
+    me.polygons.foreach_set("material_index", zone.astype(int)[:len(me.polygons)])
+    ob = bpy.data.objects.new("Paw", me)
+    bpy.context.scene.collection.objects.link(ob)
+    select([ob])
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.mesh.remove_doubles(threshold=0.0002)
+    bpy.ops.mesh.dissolve_degenerate(threshold=0.0002)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    m = ob.modifiers.new("Less", 'DECIMATE')
+    m.ratio = min(1.0, target / max(len(me.polygons), 1))
+    m.use_collapse_triangulate = True
+    bpy.ops.object.modifier_apply(modifier="Less")
+    if longest is not None:
+        import bmesh
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        most, x0, x1 = longest
+        for _ in range(8):
+            long = [e for e in bm.edges if e.calc_length() > most
+                    and min(e.verts[0].co.x, e.verts[1].co.x) < x1 and max(e.verts[0].co.x, e.verts[1].co.x) > x0]
+            if not long:
+                break
+            bmesh.ops.subdivide_edges(bm, edges=long, cuts=1, use_grid_fill=False)
+            bmesh.ops.triangulate(bm, faces=bm.faces[:])
+        bm.to_mesh(me)
+        bm.free()
+    v = np.zeros(len(me.vertices) * 3)
+    me.vertices.foreach_get("co", v)
+    f = np.array([list(p.vertices) for p in me.polygons], dtype=int)
+    z = np.zeros(len(me.polygons), dtype=int)
+    me.polygons.foreach_get("material_index", z)
+    bpy.data.objects.remove(ob, do_unlink=True)
+    bpy.data.meshes.remove(me)
+    return v.reshape(-1, 3), f, z
+
+
+# The paws' skin by their parts (paws(), as they're built; paw_skin() puts
+# it on after bone heat - which gave a paw's palm to its short fingers: shut
+# round the lamp the paw tore).
+PAW_SKIN = []
+# And where each wrist is (paws(): its side, middle, way along the hand,
+# where the arm's cut, out of a sleeve or not, how far into the paw the
+# wrist bends): the arm's end round it bends with the paw the same way
+# (WRIST_BLEND back from the cut on a bare wrist; out of a sleeve the cuff
+# stays with the forearm, the paw turning out of it - the paw's own wrist
+# in under the cuff with it: a bigger paw's, bent, stuck out through it).
+PAW_WRISTS = []
+WRIST_BLEND = 0.03
+
+
+def _wrist_share(x, w):
+    """How much of the hand's turn a point `x` along the wrist `w` takes
+    (0 the forearm's, 1 the hand's), eased."""
+    lo = 0.0 if w["covered"] else -w["cut"] - WRIST_BLEND
+    t = np.clip((np.asarray(x) - lo) / (w["end"] - lo), 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+
+def paw_skin(body):
+    """The paws' skin on their own bones, over what bone heat gave them -
+    and the arm's end at each wrist bending as the paw's wrist does."""
+    groups = {g.name: g for g in body.vertex_groups}
+    idx = [i for i, _ in PAW_SKIN]
+    for g in body.vertex_groups:
+        g.remove(idx)
+    for i, wts in PAW_SKIN:
+        for name, w in wts.items():
+            if name not in groups:
+                groups[name] = body.vertex_groups.new(name=name)
+            groups[name].add([i], w, 'REPLACE')
+    print("paws: %d vertices on their own bones" % len(idx))
     co = coords(body)
-    height = co[:, 2].max() - co[:, 2].min()
+    paw = np.zeros(len(co), bool)
+    paw[idx] = True
+    me = body.data
+    for w in PAW_WRISTS:
+        rel = co - w["W"]
+        x = rel @ w["u"]
+        r = np.linalg.norm(rel - np.outer(x, w["u"]), axis=1)
+        x0 = -w["cut"] - 2.0 * WRIST_BLEND
+        m = np.where(~paw & (np.sign(co[:, 0]) == np.sign(w["W"][0])) & (x > x0) & (x < 0.01) & (r < 0.15))[0]
+        hand, fore = "hand_" + w["s"], "lowerarm_" + w["s"]
+        for name in (hand, fore):
+            if name not in groups:
+                groups[name] = body.vertex_groups.new(name=name)
+        h = _wrist_share(x[m], w)
+        # (eased in from bone heat's over the first WRIST_BLEND)
+        a = np.clip((x[m] - x0) / WRIST_BLEND, 0.0, 1.0)
+        for k, i in enumerate(m.tolist()):
+            had = {body.vertex_groups[g.group].name: g.weight for g in me.vertices[i].groups}
+            total = sum(had.values()) or 1.0
+            want = {n: v / total * (1.0 - a[k]) for n, v in had.items()}
+            want[hand] = want.get(hand, 0.0) + h[k] * a[k]
+            want[fore] = want.get(fore, 0.0) + (1.0 - h[k]) * a[k]
+            for g in list(me.vertices[i].groups):
+                body.vertex_groups[g.group].remove([i])
+            for n, v in want.items():
+                if v > 1e-4:
+                    if n not in groups:
+                        groups[n] = body.vertex_groups.new(name=n)
+                    groups[n].add([i], v, 'REPLACE')
+        mine = np.array([i for i, _ in PAW_SKIN if np.sign(co[i, 0]) == np.sign(w["W"][0])])
+        print("wrist_%s: %d of the arm's end bending with the paw (its paw from %.3f along)"
+              % (w["s"], len(m), float(np.percentile(x[mine], 1)) if len(mine) else 0.0))
+
+
+def _centre_arms(body, rough):
+    """The rough skeleton's elbows and wrists put on their arms' middle
+    lines (their joints were read off the A pose by eye: dog2's wrist sat
+    9 cm behind its arm) - the forearm, and the paw, turn about them."""
+    co = coords(body)
+    select([rough])
+    bpy.ops.object.mode_set(mode='EDIT')
+    eb = rough.data.edit_bones
+    inv = rough.matrix_world.inverted()
+    for s in ("l", "r"):
+        lo, hand = eb["lowerarm_" + s], eb["hand_" + s]
+        for joint, along in (("elbow", lo.tail - lo.head), ("wrist", hand.tail - hand.head)):
+            at = rough.matrix_world @ (lo.head if joint == "elbow" else hand.head)
+            u = np.array(rough.matrix_world.to_3x3() @ along)
+            u /= np.linalg.norm(u)
+            rel = co - np.array(at)
+            x = rel @ u
+            side_ = rel - np.outer(x, u)
+            m = (np.sign(co[:, 0]) == np.sign(at.x)) & (np.abs(x) < 0.02) & (np.linalg.norm(side_, axis=1) < 0.2)
+            if m.sum() < 8:
+                continue
+            mid = (np.percentile(side_[m], 95, axis=0) + np.percentile(side_[m], 5, axis=0)) / 2.0
+            mid -= u * (mid @ u)
+            new = inv @ Vector(tuple(np.array(at) + mid))
+            if joint == "elbow":
+                lo.head = new
+                eb["upperarm_" + s].tail = new
+            else:
+                # (the hand moved whole - its way kept)
+                hand.tail = hand.tail + (new - hand.head)
+                lo.tail = new
+                hand.head = new
+            print("%s_%s: moved %.3f onto the arm's middle" % (joint, s, float(np.linalg.norm(mid))))
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+
+def _move_wrist(rough, s, W):
+    """The rough skeleton's wrist (s) at W (world): where the paw grows."""
+    select([rough])
+    bpy.ops.object.mode_set(mode='EDIT')
+    eb = rough.data.edit_bones
+    p = rough.matrix_world.inverted() @ Vector(tuple(W))
+    eb["lowerarm_" + s].tail = p
+    eb["hand_" + s].tail = eb["hand_" + s].tail + (p - eb["hand_" + s].head)
+    eb["hand_" + s].head = p
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+
+def paws(body, rough):
+    """The hands (on the posed, T mesh) cut off CUT short of the wrist and
+    the old characters' paws grown on in their place, each from the arm's
+    own girth there - the arm's cut edge brought onto the paw's wrist, the
+    paw coloured as the wrist is (its faces take the picture there, the
+    same way round), its pads and claws their own colours. Its digits'
+    joints for the skeleton, per side."""
+    import bmesh
+    import sdf_mesh as S
+    cfg = CFG.get("paw", {})
+    me = body.data
+    _centre_arms(body, rough)
+    co = coords(body)
+    col = colours(body)
+    luv = np.zeros(len(me.loops) * 2)
+    me.uv_layers[0].data.foreach_get("uv", luv)
+    luv = luv.reshape(-1, 2)
+    fcen = np.array([co[list(p.vertices)].mean(0) for p in me.polygons])
+    floops = [list(p.loop_indices) for p in me.polygons]
+    built = {}
     for s in ("l", "r"):
         hb = rough.data.bones["hand_" + s]
-        wrist = np.array(rough.matrix_world @ hb.head_local)
+        W = np.array(rough.matrix_world @ hb.head_local)
         u = np.array((rough.matrix_world @ hb.tail_local) - (rough.matrix_world @ hb.head_local))
         u /= np.linalg.norm(u)
-        rel = co - wrist
-        t = rel @ u
-        side = np.linalg.norm(rel - np.outer(t, u), axis=1)
-        # (all of it past the wrist - a spread finger's tip left out was
-        # stretched out to where it was, a web)
-        hand = (t > -0.01) & (side < 0.3) & (np.sign(co[:, 0]) == np.sign(wrist[0]))
-        reach = t[hand].max()
-        k = max(HAND_FLOOR, min(1.0, HAND_MAX * height / reach))
-        print("hand_%s: %.3f past the wrist (%.3f of the height) -> x%.2f" % (s, reach, reach / height, k))
-        if k >= 0.999:
-            continue
-        f = np.clip((t + 0.01) / 0.04, 0.0, 1.0)
-        f = f * f * (3 - 2 * f)
-        scale = 1.0 - (1.0 - k) * f
-        co[hand] = wrist + rel[hand] * scale[hand, None]
-        # (and the fingers drawn together across the hand, past the
-        # knuckles - a paw, not a fan)
-        v = np.array((0.0, -1.0, 0.0))
-        v = v - u * v.dot(u)
-        v /= np.linalg.norm(v)
-        rel = co - wrist
-        t = rel @ u
-        a = rel @ v
-        kt = 0.5 * reach * k
-        mid = np.median(a[hand & (np.abs(t - kt) < 0.01)]) if (hand & (np.abs(t - kt) < 0.01)).any() else 0.0
-        g = np.clip((t - kt + 0.01) / 0.03, 0.0, 1.0)
-        g = g * g * (3 - 2 * g)
-        pull = (1.0 - FINGERS_TOGETHER) * g * (a - mid)
-        co[hand] -= np.outer(pull[hand], v)
-    me.vertices.foreach_set("co", (co @ np.linalg.inv(np.array(body.matrix_world)[:3, :3]).T
-                                   - np.array(body.matrix_world)[:3, 3] @ np.linalg.inv(np.array(body.matrix_world)[:3, :3]).T).ravel())
+        Y = np.array((0.0, 1.0, 0.0)) - u * u[1]
+        Y /= np.linalg.norm(Y)
+        Z = np.cross(u, Y)
+        if Z[2] < 0.0:
+            Z = -Z
+
+        def local(p, W=W, u=u, Y=Y, Z=Z):
+            q = p - W
+            return q @ u, q @ Y, q @ Z
+        side = np.sign(co[:, 0]) == np.sign(W[0])
+        x, y, z = local(co)
+        near = side & (np.hypot(y, z) < 0.2)
+        # (the wrist past the sleeve, if it has one - the sleeve's colour up
+        # the forearm, not the hand's: no more of it in the slices across
+        # the arm than a few flecks - a sleeve to the wrist isn't cut into)
+        hand_c = col[near & (x > 0.08) & (x < 0.14)].mean(0)
+        sleeve_c = col[near & (x > -0.16) & (x < -0.10)].mean(0)
+        xw, cut, covered = 0.0, CUT, False
+        end = cfg.get("sleeve")
+        if end is None and np.linalg.norm(sleeve_c - hand_c) > 0.3:
+            end = -1.0
+            for a in np.arange(-0.10, 0.07, 0.01):
+                m = near & (x >= a) & (x < a + 0.01)
+                if m.sum() >= 3 and (np.linalg.norm(col[m] - sleeve_c, axis=1) < 0.2).mean() > 0.15:
+                    end = a + 0.01
+        if end is not None:
+            covered = end > -HEM
+            if end > -0.03:
+                # (a sleeve down to the wrist - its cuff wider than any wrist:
+                # cut at its end, the paw coming out of it, its own wrist in
+                # under the cuff)
+                xw, cut = min(end, 0.06) + COVERED, COVERED
+            elif covered:
+                # (a sleeve a little short of it - the dogs': cut at its hem
+                # all the same, the paw's forearm coming out of it, its
+                # wrist where it was - the bare bit of arm between, the cut
+                # across it, showed as a seam)
+                cut = -end
+            else:
+                xw = min(max(0.0, end + CUT + 0.005), 0.05)
+        W = W + u * xw
+        x, y, z = local(co, W)
+        band = side & (x > -cut - 0.035) & (x < -cut) & (np.hypot(y, z) < 0.2)
+        # (the wrist's own middle, and its girth across the hand and up)
+        cy = (np.percentile(y[band], 95) + np.percentile(y[band], 5)) / 2.0
+        cz = (np.percentile(z[band], 95) + np.percentile(z[band], 5)) / 2.0
+        W = W + Y * cy + Z * cz
+        x, y, z = local(co, W)
+        ry = float(np.percentile(np.abs(y[band]), 92))
+        rz = float(np.percentile(np.abs(z[band]), 92))
+        cap = F_MAX * PAW["wrist"]
+        if covered:
+            ry, rz = ry * FILL, rz * FILL
+            asp = min(max(ry / rz, 0.8), 1.25)
+            ry, rz = (ry * rz * asp) ** 0.5, (ry * rz / asp) ** 0.5
+        r = (ry * rz) ** 0.5
+        f = min(r, cap) / PAW["wrist"]
+        shapes, pads, claws, joints, parts = _paw_shapes(f, ry / r * cfg.get("wide", 1.0), rz / r, cfg.get("fingers", 3),
+                                                  cfg.get("claw", False))
+        wrist = S.squash(S.round_cone((-cut - UNDER, 0, 0), (PAW["palm"][0] * f * 0.3, 0, 0), r, r),
+                         (0, 0, 0), (1.0, ry / r * SNUG, rz / r * SNUG))
+        hand = S.smooth([S.smooth(shapes, 0.010 * f), wrist], 0.012 * f)
+        node = hand
+        voxel = r / 13.0
+        verts, faces = S.polygonise(node, voxel)
+        verts, faces = S.drop_crumbs(verts, faces)
+        # (what of it is in under the arm, past the arm's edge, off - before
+        # it's brought down: after, its wrist's long faces reached past it)
+        start = -cut - (UNDER if covered else 0.004)
+        faces = faces[(verts[faces][:, :, 0] > start).all(1)]
+        # (brought down first, the pads marked after - cut along their
+        # outlines, not moved about by the bringing down)
+        bend = PAW["palm"][0] * f * 0.3
+        verts, faces, _ = _fewer(verts, faces, np.zeros(len(faces), int), PAW_FACES,
+                                 longest=(bend / 2.0, -bend, 2.0 * bend))
+        verts, faces, zone = S.split_labels(verts, faces, [(1, S.union(pads))], voxel)
+        if claws:
+            # (the claws on their own, finer - a paw's grid lost them - set
+            # into the fingertips they stand out of)
+            cv, cf = S.polygonise(S.union(claws), voxel / 3.0)
+            cv, cf, cz = _fewer(cv, cf, np.full(len(cf), 2), 60 * len(claws))
+            faces = np.concatenate([faces, cf + len(verts)])
+            zone = np.concatenate([zone, cz])
+            verts = np.concatenate([verts, cv])
+        zone_v = np.zeros(len(verts), int)
+        zone_v[faces[zone == 2].ravel()] = 2
+        keep = (verts[faces][:, :, 0] > start - 1e-6).all(1)
+        faces, zone = faces[keep], zone[keep]
+        used = np.unique(faces)
+        remap = -np.ones(len(verts), int)
+        remap[used] = np.arange(len(used))
+        verts, faces, zone_v = verts[used], remap[faces], zone_v[used]
+        # (its picture: a bare wrist's just short of the cut - the paw the
+        # arm's own fur, run on - and out of a sleeve, the hand's that was
+        # (fur, not sleeve); the face there nearest the middling colour, the
+        # paw spread over that bit of the picture: one fur, as the old paws
+        # were one colour)
+        fx, fy, fz = local(fcen, W)
+        lo_x, hi_x = (-cut, -cut + 0.04) if covered else (-cut - 0.035, -cut - 0.004)
+        bf = np.where((np.sign(fcen[:, 0]) == np.sign(W[0])) & (fx > lo_x) & (fx < hi_x)
+                      & (np.hypot(fy, fz) < 0.2))[0]
+        # (its back, as the arm shows it from above and outside)
+        bf = bf[fz[bf] > 0.0] if (fz[bf] > 0.0).sum() >= 3 else bf
+        fcol = np.array([col[list(me.polygons[k].vertices)].mean(0) for k in bf])
+        src = bf[int(np.argmin(np.linalg.norm(fcol - np.median(fcol, axis=0), axis=1)))]
+        # (each vertex's bones: the parts it's nearest, blended over a
+        # finger's width at a joint; the wrist half the forearm's; a claw
+        # its fingertip's)
+        wrist = dict(s=s, W=W, u=u, cut=cut, covered=covered, end=bend)
+        PAW_WRISTS.append(wrist)
+        dist = np.stack([node_(verts) for _, node_ in parts], axis=1)
+        names = [nm for nm, _ in parts]
+        near = dist.min(1, keepdims=True)
+        blend = 0.35 * PAW["finger_r"] * f
+        w = np.clip(1.0 - (dist - near) / blend, 0.0, 1.0) ** 2
+        weights = []
+        for i in range(len(verts)):
+            d = {}
+            for j in np.nonzero(w[i] > 0.01)[0]:
+                d[names[j]] = d.get(names[j], 0.0) + float(w[i, j])
+            tip = max(d, key=d.get)
+            if zone_v[i] == 2 and tip != "hand":
+                d = {tip[:-2] + "03": 1.0}
+            if "hand" in d:
+                h = float(_wrist_share(verts[i, 0], wrist))
+                if h < 1.0:
+                    d["lowerarm"] = d.get("lowerarm", 0.0) + d["hand"] * (1.0 - h)
+                    d["hand"] *= h
+                    if d["hand"] <= 0.0:
+                        del d["hand"]
+            t = sum(d.values())
+            weights.append({k + "_" + s: v / t for k, v in d.items()})
+        built[s] = dict(W=W, u=u, Y=Y, Z=Z, node=node, faces=faces, zone=zone, src=luv[floops[src]], cut=cut,
+                        weights=weights,
+                        covered=covered,
+                        local=verts, world=W + verts[:, :1] * u + verts[:, 1:2] * Y + verts[:, 2:3] * Z,
+                        joints={k: [tuple(W + q[0] * u + q[1] * Y + q[2] * Z) for q in v] for k, v in joints.items()})
+        _move_wrist(rough, s, W)
+        print("paw_%s: wrist %.3f by %.3f (x%.2f the old dog's%s) %.3f on%s, %d faces (%d pad, %d claw)"
+              % (s, ry, rz, f, ", held down" if r > cap else "", xw, ", out of its sleeve" if covered else "",
+                 len(faces), (zone == 1).sum(), (zone == 2).sum()))
+    # The arms cut, their edges brought onto the paws' wrists; the paws in.
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    uvl = bm.loops.layers.uv.active
+    for s, b in built.items():
+        W, u, Y, Z, node = b["W"], b["u"], b["Y"], b["Z"], b["node"]
+
+        def arm(v, W=W, u=u, Y=Y, Z=Z):
+            q = np.array(v.co) - W
+            return (np.sign(v.co.x) == np.sign(W[0]) and q @ u > -b["cut"] - 0.03
+                    and math.hypot(q @ Y, q @ Z) < 0.25)
+        # (cut across on a plane - a clean edge, not the coarse mesh's
+        # jagged one - the hand past it gone)
+        faces = [f for f in bm.faces if all(arm(v) for v in f.verts)]
+        geom = list({e for f in faces for e in f.edges}) + faces + list({v for f in faces for v in f.verts})
+        bmesh.ops.bisect_plane(bm, geom=geom, plane_co=Vector(tuple(W - u * b["cut"])), plane_no=Vector(tuple(u)),
+                               clear_outer=True)
+        # (and whatever of the hand was out of reach of that - a finger far
+        # off the arm's line)
+        bmesh.ops.delete(bm, geom=[v for v in bm.verts if np.sign(v.co.x) == np.sign(W[0])
+                                   and (np.array(v.co) - W) @ u > -b["cut"] + 0.001
+                                   and np.linalg.norm(np.array(v.co) - W) < 0.45], context='VERTS')
+        bm.verts.ensure_lookup_table()
+        moved = 0
+        for v in bm.verts:
+            # (a sleeve's cuff stays as it is, the paw out of it)
+            if b["covered"] or not v.is_boundary or not arm(v):
+                continue
+            q = np.array(v.co) - W
+            px, py, pz = q @ u, q @ Y, q @ Z
+            rad = math.hypot(py, pz)
+            if px < -CUT - 0.004 or rad < 1e-6:
+                continue
+            dy, dz = py / rad, pz / rad
+            lo, hi = 0.0, rad * 2.0
+            for _ in range(30):
+                m = (lo + hi) / 2.0
+                if node(np.array([[px, dy * m, dz * m]]))[0] < 0.0:
+                    lo = m
+                else:
+                    hi = m
+            v.co = Vector(tuple(W + px * u + (dy * Y + dz * Z) * lo * SEAM_OUT))
+            moved += 1
+        new = [bm.verts.new(tuple(q)) for q in b["world"]]
+        b["new"] = new
+        # (the paw's fur, its pads, its claws: their materials, put on below)
+        base = len(me.materials)
+        slot = {0: base + 2, 1: base, 2: base + 1}
+        A, B, C = b["src"][0], b["src"][1], b["src"][-1]
+        lv = b["local"]
+        reach = max(float(lv[:, 0].max()) + b["cut"], 1e-3)
+        for tri, zone in zip(b["faces"], b["zone"]):
+            try:
+                face = bm.faces.new([new[i] for i in tri])
+            except ValueError:
+                continue
+            face.material_index = slot[int(zone)]
+            face.smooth = True
+            for loop, i in zip(face.loops, tri):
+                a = 0.5 + 0.5 * math.cos(math.atan2(lv[i, 2], lv[i, 1]))
+                t = min(max((lv[i, 0] + b["cut"]) / reach, 0.0), 1.0)
+                loop[uvl].uv = tuple(A + (B - A) * (0.2 + 0.5 * a) + (C - A) * (0.25 * t))
+        print("paw_%s: the arm's edge brought onto it at %d points" % (s, moved))
+    bm.verts.index_update()
+    for b in built.values():
+        b["index"] = [v.index if v.is_valid else -1 for v in b["new"]]
+        del b["new"]
+    bm.to_mesh(me)
+    bm.free()
     me.update()
-
-
-def fingers(body, rough):
-    """The left hand's digits on the posed (T) mesh: each one's four joints,
-    knuckle first. The hand along its bone; the fingers are the four bands
-    across it past the knuckles (front to back: index to pinky), the thumb
-    the front of the palm."""
-    hb = rough.data.bones["hand_l"]
-    wrist = rough.matrix_world @ hb.head_local
-    u = ((rough.matrix_world @ hb.tail_local) - wrist).normalized()
-    v = Vector((0.0, -1.0, 0.0))
-    v = (v - u * v.dot(u)).normalized()       # the hand's front
-    w = u.cross(v)
-    co = coords(body)
-    rel = co - np.array(wrist)
-    t = rel @ np.array(u)
-    a = rel @ np.array(v)
-    b = rel @ np.array(w)
-    reach = (rough.matrix_world @ hb.tail_local - wrist).length
-    m = (t > -0.005) & (t < reach * 1.5) & (np.hypot(a, b) < reach * 0.9) & (co[:, 0] > wrist.x - 0.01)
-    t, a, b, pts = t[m], a[m], b[m], co[m]
-    tip_t = t.max()
-    kt = 0.52 * tip_t
-    sl = np.abs(t - (kt + 0.35 * (tip_t - kt))) < 0.008
-    vals = np.sort(-a[sl])        # back to front -> front first after the sign
-    bands = []
-    if len(vals) > 8:
-        gaps = np.diff(vals)
-        cut = np.sort(np.argsort(gaps)[-3:])
-        if gaps[cut].min() > 0.004:
-            edges_ = [vals[0] - 1e-3] + [(vals[c] + vals[c + 1]) / 2 for c in cut] + [vals[-1] + 1e-3]
-            bands = [(edges_[i], edges_[i + 1]) for i in range(4)]
-    if not bands:
-        fa = -a[t > kt]
-        lo, hi = np.percentile(fa, 3), np.percentile(fa, 97)
-        bands = [(lo + (hi - lo) * i / 4, lo + (hi - lo) * (i + 1) / 4) for i in range(4)]
-    out = {}
-    for name, (lo, hi) in zip(DIGITS, bands):
-        inb = (-a >= lo) & (-a <= hi) & (t > kt - 0.01)
-        if inb.sum() < 4:
-            inb = (-a >= lo) & (-a <= hi)
-        tt = t[inb]
-        k = int(np.argmax(tt))
-        tip = Vector(pts[inb][k])
-        near = np.abs(tt - kt) < 0.012
-        knuckle = Vector(pts[inb][near].mean(0)) if near.sum() else wrist + u * kt
-        out[name] = [knuckle.lerp(tip, f) for f in (0.0, 0.36, 0.7, 1.0)]
-    # the thumb: from the palm's front edge near the wrist out to its tip
-    front = -a < np.percentile(-a, 20)
-    palm = front & (t < kt)
-    if palm.sum() >= 4:
-        base = Vector(pts[palm & (t < 0.45 * kt)].mean(0)) if (palm & (t < 0.45 * kt)).sum() else wrist + u * 0.2 * kt
-        far = np.linalg.norm(pts[palm] - np.array(base), axis=1)
-        tip = Vector(pts[palm][int(np.argmax(far))])
-    else:
-        base, tip = wrist + u * 0.2 * kt - v * 0.02, wrist + u * 0.6 * kt - v * 0.05
-    out["thumb"] = [base.lerp(tip, f) for f in (0.0, 0.36, 0.7, 1.0)]
-    for name, pts_ in out.items():
-        print("finger %s: knuckle %s tip %s" % (name, tuple(round(c, 3) for c in pts_[0]),
-                                                tuple(round(c, 3) for c in pts_[-1])))
-    return {k: [tuple(p) for p in vals_] for k, vals_ in out.items()}
-
-
-def mitten(body):
-    """The four fingers bending as one, a mitten (the thumb its own): each
-    one's skin on the middle finger's bones - the clips spread them apart,
-    long claws fanned out."""
-    groups = {g.name: g for g in body.vertex_groups}
-    index = {g.index: g.name for g in body.vertex_groups}
-    moved = 0
-    for v in body.data.vertices:
-        add = {}
-        for g in list(v.groups):
-            name = index[g.group]
-            if name.startswith(("index_", "ring_", "pinky_")):
-                to = "middle_" + name.split("_", 1)[1]
-                add[to] = add.get(to, 0.0) + g.weight
-                groups[name].remove([v.index])
-        for to, w in add.items():
-            if to not in groups:
-                groups[to] = body.vertex_groups.new(name=to)
-            have = next((g.weight for g in v.groups if index.get(g.group) == to), 0.0)
-            groups[to].add([v.index], have + w, 'REPLACE')
-        moved += bool(add)
-    print("mitten: %d vertices on the middle finger's bones" % moved)
+    global PAW_SKIN
+    PAW_SKIN = [(i, wts) for b in built.values() for i, wts in zip(b["index"], b["weights"]) if i >= 0]
+    # (its pads and claws: their own colours)
+    # (named as the game keeps a character's own colours - CharacterRig._dress)
+    for name, colour in (("pad", cfg.get("pad", PAD)), ("claw", cfg.get("claw_colour", CLAW))):
+        m = bpy.data.materials.new("col_" + name)
+        m.use_nodes = True
+        bsdf = next(nd for nd in m.node_tree.nodes if nd.type == 'BSDF_PRINCIPLED')
+        bsdf.inputs['Base Color'].default_value = (*[c ** 2.2 for c in colour], 1.0)
+        bsdf.inputs['Roughness'].default_value = 0.75 if name == "pad" else 0.45
+        me.materials.append(m)
+    # (its fur: the body's picture without its bumps - spread over the paw
+    # from one bit of the arm, that bit's bumps tilted the whole paw dark)
+    fur = me.materials[0].copy()
+    fur.name = ID + "_Paw"
+    nt = fur.node_tree
+    bsdf = next(nd for nd in nt.nodes if nd.type == 'BSDF_PRINCIPLED')
+    for link in list(nt.links):
+        if link.to_socket == bsdf.inputs['Normal']:
+            nt.links.remove(link)
+    me.materials.append(fur)
+    return {s: b["joints"] for s, b in built.items()}
 
 
 # ---------------------------------------------------------------- pass 2
@@ -709,9 +1278,9 @@ def refit(game, rough, digits):
     for b in rough.data.bones:
         joints[b.name] = (inv @ (rough.matrix_world @ b.head_local), inv @ (rough.matrix_world @ b.tail_local))
     fing = {}
-    for digit, pts in digits.items():
-        for s, k in (("l", 1.0), ("r", -1.0)):
-            ps = [inv @ Vector((p[0] * k, p[1], p[2])) for p in pts]
+    for s in ("l", "r"):
+        for digit, pts in digits[s].items():
+            ps = [inv @ Vector(p) for p in pts]
             for i in range(3):
                 fing["%s_%02d_%s" % (digit, i + 1, s)] = (ps[i], ps[i + 1])
             fing["%s_04_leaf_%s" % (digit, s)] = (ps[3], ps[3] + (ps[3] - ps[2]) * 0.5)
@@ -759,8 +1328,8 @@ def main():
     heat(body, rough)
     tail_only(body, rough)
     pose_rest(body, rough, game)
-    shrink_hands(body, rough)
-    digits = fingers(body, rough)
+    recolour(body, rough)
+    digits = paws(body, rough)
     refit(game, rough, digits)
     bpy.data.objects.remove(rough, do_unlink=True)
     for m in list(body.modifiers):
@@ -768,7 +1337,7 @@ def main():
     body.parent = None
     heat(body, game)
     tail_only(body, game)
-    mitten(body)
+    paw_skin(body)
     select([body])
     bpy.ops.object.vertex_group_limit_total(group_select_mode='ALL', limit=4)
     bpy.ops.object.vertex_group_normalize_all(lock_active=False)

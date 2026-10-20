@@ -966,7 +966,10 @@ func test_characters() -> void:
 		check(["grip", "grip_axis", "hand_l", "hand_r", "forearm", "shoulder", "pelvis", "arm", "front", "side", "walk"].all(
 			func(k): return fit.has(k)) and float(fit.grip_room) > 0.005, "%s: its body measured, a hole in its fist" % id)
 
-	# At camp: the fire is a thing to tap, and each tap the next one.
+	# At camp: the fire is a thing to tap - it opens the characters' page
+	# (user request): the camera in close on the fire, everyone's portrait
+	# down the left, the one picked whole on the right; 選擇 and it takes
+	# over at the fire.
 	var title: Control = load("res://scenes/title_screen.tscn").instantiate()
 	get_tree().root.add_child(title)
 	await frames(3)
@@ -976,6 +979,7 @@ func test_characters() -> void:
 	var fire: Vector2 = camp.camera.unproject_position(camp.hotspots.character.parts[0][1]) / TitleScreen.RENDER_SCALE
 	check(title.spot_at(fire) == "character", "the fire's where it's tapped")
 	var lamp_was: Vector3 = camp.spots.lamp.at
+	var home_cam: Vector3 = camp.camera.global_position
 	var seen := []
 	for i in Profile.CHARACTERS.size():
 		var press := InputEventMouseButton.new()
@@ -986,14 +990,34 @@ func test_characters() -> void:
 		var lift := press.duplicate() as InputEventMouseButton
 		lift.pressed = false
 		title._on_home_input(lift)
-		await frames(2)
+		await seconds(0.8)
+		var page = title.get("_page")
+		check(page is CharacterPage, "tap %d: the characters' page opens" % (i + 1))
+		if not page is CharacterPage:
+			break
+		if i == 0:
+			var near_fire: float = camp.camera.global_position.distance_to(CampStage.FIRE_AT)
+			check(near_fire < home_cam.distance_to(CampStage.FIRE_AT) - 2.0, "the camera's in close on the fire (%.1f m)" % near_fire)
+			check(page._cells.size() == Profile.CHARACTERS.size(), "every character's portrait in the list")
+			check(page._cells.cat.get_node("InUse").visible and not page._cells.owl.get_node("InUse").visible,
+				"the one travelling marked")
+			check(page._viewer.rig.character == "cat" and page._choose.disabled, "it shows the one travelling first, not to choose again")
+		var id: String = Profile.CHARACTERS[(i + 1) % Profile.CHARACTERS.size()][0]
+		page.pick(id)
+		await frames(3)
+		check(page._viewer.rig.character == id and page._viewer.rig.anim != null and not page._choose.disabled,
+			"%s picked: shown whole on the right" % id)
+		check(page._title.text == Profile.character_name(id), "named over it (%s)" % page._title.text)
+		page.choose()
+		await frames(3)
 		seen.append(Profile.character)
-		check(camp.character.character == Profile.character and camp.character.anim != null and camp.character.anim.is_playing(),
-			"tap %d: %s at the fire, alive" % [i + 1, Profile.character])
+		check(camp.character.character == Profile.character and Profile.character == id and camp.character.anim != null
+			and camp.character.anim.is_playing(), "chosen: %s at the fire, alive" % id)
 		check(title._who.text.ends_with(Profile.character_name()), "the card names it (%s)" % title._who.text)
-		check(title.get("_page") == null, "no page opened")
+		check(title.get("_page") == null and title._spot_label.text == Profile.character_name(), "the page closed, its name over the fire")
 		if i == 0:
 			check(camp.spots.lamp.at.distance_to(lamp_was) > 0.01, "it stands where its own hand reaches the lamp")
+		await seconds(0.6)
 	var round := Profile.CHARACTERS.slice(1).map(func(c): return c[0]) + ["cat"]
 	check(seen == round, "round them all and back (%s)" % [seen])
 	title.queue_free()
@@ -1014,8 +1038,8 @@ func test_characters() -> void:
 ## User request (the web build's size): on the web only the first
 ## character comes with the game, each other one a pack fetched when it's
 ## wanted (CharacterPacks) - the game opened with one not fetched waits for
-## it behind a cover; the fire tapped to one not fetched shows how far along
-## over the fire and switches once it's in. (Here they're all on disk:
+## it behind a cover; one not fetched picked on the fire's page shows how far
+## along where it'll stand, and can be chosen once it's in. (Here they're all on disk:
 ## `missing` makes them look not fetched, a fetch only pretending.)
 func test_character_packs() -> void:
 	var saved := Profile.snapshot()
@@ -1034,20 +1058,27 @@ func test_character_packs() -> void:
 		"then the camp, with it there")
 	title.queue_free()
 	await frames(2)
-	# The fire tapped to one not fetched (the owl, after the cat).
+	# One not fetched picked at the fire (the owl).
 	Profile.choose_character("cat")
 	title = load("res://scenes/title_screen.tscn").instantiate()
 	get_tree().root.add_child(title)
 	await frames(3)
 	camp = title.find_child("Camp", true, false)
-	title._next_character()
+	title.open_page("character")
 	await frames(2)
-	check(camp.character.character == "cat" and Profile.character == "cat" and CharacterPacks.fetching("owl")
-		and title._spot_label.visible and title._spot_label.text.contains("下載中"), "the owl not here: fetched first, said over the fire")
-	title._next_character()
+	var page: CharacterPage = title.get("_page")
+	page.pick("owl")
+	await frames(2)
+	check(CharacterPacks.fetching("owl") and page._cover.visible and page._cover_text.text.contains("下載中")
+		and page._choose.disabled and page._viewer.rig.character == "cat", "the owl not here: fetched first, how far along where it'll stand")
+	page.choose()
+	await frames(2)
+	check(Profile.character == "cat" and camp.character.character == "cat", "not to be chosen till it's in")
 	await seconds(1.0)
-	check(camp.character.character == "owl" and Profile.character == "owl" and not title._spot_label.text.contains("下載"),
-		"once it's in, the owl takes over (a tap meanwhile didn't skip it)")
+	check(not page._cover.visible and page._viewer.rig.character == "owl" and not page._choose.disabled, "once it's in, shown")
+	page.choose()
+	await frames(2)
+	check(camp.character.character == "owl" and Profile.character == "owl", "and chosen, the owl takes over")
 	title.queue_free()
 	await frames(2)
 	# User report: stuck on 下載角色 with an empty bar on a phone. A slow

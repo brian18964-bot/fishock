@@ -21,6 +21,9 @@ const SKIN := CharacterRig.SKIN
 ## The height (m) the camera looks at: the middle of the body; higher to
 ## frame the chest and hands (the shop's try-on).
 @export var look_height := 0.95
+## The rod and the lamp in its hands (off: empty-handed, the characters'
+## page showing each one whole).
+@export var hold_gear := true
 
 var _viewport: SubViewport
 var _pivot: Node3D
@@ -114,6 +117,7 @@ func _build_stage() -> void:
 	_pivot = Node3D.new()
 	_viewport.add_child(_pivot)
 	rig = CharacterRig.new()
+	rig.hold_gear = hold_gear
 	_pivot.add_child(rig)
 
 	_camera = Camera3D.new()
