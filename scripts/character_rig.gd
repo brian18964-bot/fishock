@@ -369,6 +369,7 @@ func _hang_lamp(delta: float) -> void:
 	if _swing.length() > 0.001:
 		b = Basis(Vector3(_swing.y, 0.0, -_swing.x).normalized(), _swing.length()) * b
 	b = b.scaled(Vector3.ONE * global_transform.basis.get_scale().x)
+	b = off_legs(grip, b) * b
 	var to := Transform3D(b, grip - b * LAMP_BAIL)
 	if _hang_in < 1.0:
 		_hang_in = minf(_hang_in + delta / 0.3, 1.0)
@@ -379,6 +380,49 @@ func _hang_lamp(delta: float) -> void:
 		_fold_from = 0.0
 		fold_bail(_hang, 0.0)
 	_hang.global_transform = to
+
+
+## A lamp hanging by its bail from `at` (its basis `b`, scaled) swung
+## aside by the legs it would be in, as a leg would push it: turned about
+## where it hangs till its body is clear of each thigh and shin - each
+## character's own girth (CharacterArt.fit()). The arm's as it was.
+func off_legs(at: Vector3, b: Basis) -> Basis:
+	var k := global_basis.get_scale().x
+	var fit := CharacterArt.fit(character)
+	var lamp_r := LAMP_R * b.get_scale().x
+	var turn := Basis.IDENTITY
+	for side in ["_l", "_r"]:
+		var hip := skeleton.find_bone("thigh" + side)
+		var knee := skeleton.find_bone("calf" + side)
+		var ankle := skeleton.find_bone("foot" + side)
+		if hip < 0 or knee < 0 or ankle < 0:
+			continue
+		var g := skeleton.global_transform
+		var p := [g * skeleton.get_bone_global_pose(hip).origin, g * skeleton.get_bone_global_pose(knee).origin,
+			g * skeleton.get_bone_global_pose(ankle).origin]
+		var limbs := [[p[0], p[1], float(fit.get("thigh", 0.08)) * k], [p[1], p[2], float(fit.get("calf", 0.06)) * k]]
+		for limb in limbs:
+			for h in LAMP_BODY:
+				var c: Vector3 = at + turn * b * (Vector3(0.0, h, 0.0) - LAMP_BAIL)
+				var away: Vector3 = c - Geometry3D.get_closest_point_to_segment(c, limb[0], limb[1])
+				var room: float = limb[2] + lamp_r + 0.01 * k
+				if away.length() >= room or away.length() < 0.0001:
+					continue
+				var arm := c - at
+				var to := arm + away.normalized() * (room - away.length())
+				var axis := arm.cross(to)
+				if axis.length() > 0.000001:
+					turn = Basis(axis.normalized(), arm.angle_to(to)) * turn
+	var q := turn.get_rotation_quaternion()
+	if q.get_angle() > 0.8:
+		turn = Basis(Quaternion.IDENTITY.slerp(q, 0.8 / q.get_angle()))
+	return turn
+
+
+## (the lamp's body: how far round, and the heights looked at up it - its
+## own frame)
+const LAMP_R := 0.065
+const LAMP_BODY := [0.04, 0.12, 0.2, 0.28]
 
 
 ## Which way the lamp's turned about the up (its bail, along its x, through

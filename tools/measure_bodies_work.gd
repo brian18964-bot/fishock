@@ -69,6 +69,26 @@ func _measure(id: String) -> void:
 	fit.forearm = snappedf(float(radii[int(radii.size() * 0.5)]) if radii.size() else 0.04, 0.001)
 	# (and round the elbow - a sleeve's bunched there - its furthest)
 	fit.elbow = snappedf(float(at_elbow[int(at_elbow.size() * 0.8)]) if at_elbow.size() else fit.forearm, 0.001)
+	# How thick the left leg is round the thigh and round the shin (its
+	# middling) - a lamp hung by it kept off it (CharacterRig._off_legs).
+	for pair in [["thigh", "thigh_l", "calf_l"], ["calf", "calf_l", "foot_l"]]:
+		var top: Vector3 = at.call(pair[1])
+		var low: Vector3 = at.call(pair[2])
+		var way := (low - top).normalized()
+		var span := top.distance_to(low)
+		var round_ := []
+		for i in world.size():
+			if pts.part[i] != SkinPoints.Part.BODY:
+				continue
+			var p := to_rig * world[i]
+			var along := (p - top).dot(way)
+			if signf(p.x) != signf(top.x) or along < span * 0.2 or along > span * 0.8:
+				continue
+			var r := p.distance_to(top + way * along)
+			if r < 0.25:
+				round_.append(r)
+		round_.sort()
+		fit[pair[0]] = snappedf(float(round_[int(round_.size() * 0.5)]) if round_.size() else 0.07, 0.001)
 	# The body's (not the arms') furthest forward, back and out to each side
 	# per height - standing and over a walk (its hips sway): the
 	# sides at the hips' depth only (not a tail swung out behind).

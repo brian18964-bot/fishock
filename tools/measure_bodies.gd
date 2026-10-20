@@ -11,6 +11,7 @@ extends SceneTree
 ##                (index to pinky), grip_room its radius
 ##   hand_l/r     how far the hand reaches past the wrist; forearm, how thick
 ##                the forearm is (round it), elbow, round the elbow
+##   thigh, calf  how thick the leg is round them
 ##   shoulder, pelvis, arm, leg   heights and lengths (hips_z: the hips'
 ##                joint ahead of its feet)
 ##   front, back, side, side_r   the body's (not the arms') furthest

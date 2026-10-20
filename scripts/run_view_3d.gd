@@ -200,7 +200,7 @@ const INTRO_TURN_IN := 0.5
 ## (where the hand takes it: by its bail, CharacterRig.LAMP_BAIL - lying
 ## folded over INTRO_FOLD toward it on the drum, lower and nearer than
 ## upright, in a short arm's reach, and coming up as it's lifted by it)
-const INTRO_FOLD := 1.25
+const INTRO_FOLD := 0.7
 static var INTRO_TAKE_AT := CharacterRig.bail_top(INTRO_FOLD)
 ## (the hand held up, its lamp hung so from it that the glass is where
 ## the old lamp's was, by its knob LAMP_KNOB up it)
@@ -2436,7 +2436,13 @@ func _aim_rod(delta: float) -> void:
 		var hold := pivot.global_position + ahead * INTRO_HOLD.z + left * INTRO_HOLD.x + Vector3.UP * INTRO_HOLD.y
 		var held_l := _held_light()
 		if held_l != null:
-			hold += Vector3.UP * (CharacterRig.LAMP_BAIL.y - LAMP_KNOB) * held_l.global_basis.get_scale().x
+			var lsc := held_l.global_basis.get_scale().x
+			hold += Vector3.UP * (CharacterRig.LAMP_BAIL.y - LAMP_KNOB) * lsc
+			# (out past a round belly at the lamp's height - its own front)
+			var k := _rig_scale()
+			var low := (hold.y - pivot.global_position.y) / k - CharacterRig.LAMP_BAIL.y * lsc / k
+			var front := CharacterArt.front_between(rig.character, low, low + 0.3 * lsc / k, 0.0) * k
+			hold += ahead * maxf(front + (CharacterRig.LAMP_R + 0.03) * lsc - INTRO_HOLD.z, 0.0)
 		var wrist_l := sk.global_transform * sk.get_bone_global_pose(sk.find_bone("hand_l")).origin
 		_left_ik.influence = maxf(_left_ik.influence, lighting)
 		_left_target.global_position = hold - (rig._grip() - wrist_l)
@@ -2452,7 +2458,10 @@ func _aim_rod(delta: float) -> void:
 			elif _intro_t < 0.0 and not lamp_lit():
 				strike = absf(sin(_time * 16.0)) * 0.035
 			_ik.influence = maxf(_ik.influence, lighting)
-			_ik_target.global_position = glass - left * 0.07 - ahead * 0.02 + Vector3.UP * strike
+			# (the wrist out from the glass by the hand's own length - the
+			# fingertips at it, not in it)
+			var off := 0.012 + float(CharacterArt.fit(rig.character).get("hand_r", 0.06)) * _rig_scale()
+			_ik_target.global_position = glass - left * (0.058 * sc + off) - ahead * 0.02 + Vector3.UP * strike
 			_ik_pole.global_position = shoulder - b.x * 0.45 + Vector3.DOWN * 0.45
 
 
@@ -2549,6 +2558,7 @@ func _hang_gear(sk: Skeleton3D, b: Basis) -> void:
 			if _hip_swing.length() > 0.001:
 				bs = Basis(Vector3(_hip_swing.y, 0.0, -_hip_swing.x).normalized(), _hip_swing.length()) * bs
 			bs = bs.scaled(Vector3.ONE * sc)
+			bs = rig.off_legs(hook, bs) * bs
 			var hip := Transform3D(bs, hook - bs * CharacterRig.LAMP_BAIL)
 			lamp.global_transform = hip.interpolate_with(lamp.global_transform, smoothstep(0.0, 1.0, _lamp_in))
 	elif lamp != null:
