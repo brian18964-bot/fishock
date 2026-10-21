@@ -25,14 +25,7 @@ picture, a normal map and a roughness map:
 
 Its shape, skeleton and clips are as they were.
 
-And (user request) the Meshy shiba and black bear on old-style bodies
-(greybox_animals' dog2 and bear2, their Meshy heads grafted on -
-tools/graft_head.py): the grafted head keeps its own picture; the body's
-fur is taken off the Meshy character's picture (graft_head.surface /
-sample - GRAFT_DIR the Meshy builds), its clothes painted as the others'.
-
     bpyenv/bin/python tools/paint_pelt.py -- ANIMAL IN.glb OUT.glb
-    GRAFT_DIR=<Meshy builds> bpyenv/bin/python tools/paint_pelt.py -- dog2 IN.glb OUT.glb
 """
 import math
 import os
@@ -180,13 +173,11 @@ def load():
 
 
 def zone_of_faces(body):
-    """Each face's zone (ZONE_NAMES' index) from its material's name; -1
-    for a grafted head's (tools/graft_head.py), which keeps its own
-    picture."""
+    """Each face's zone (ZONE_NAMES' index) from its material's name."""
     names = []
     for m in body.data.materials:
         n = m.name.split(".")[0]
-        names.append(ZONE_NAMES.index(n[4:]) if n.startswith("col_") and n[4:] in ZONE_NAMES else -1)
+        names.append(ZONE_NAMES.index(n[4:]) if n.startswith("col_") and n[4:] in ZONE_NAMES else 0)
     mi = np.zeros(len(body.data.polygons), np.int64)
     body.data.polygons.foreach_get("material_index", mi)
     return np.array(names)[mi]
@@ -260,7 +251,7 @@ def hidden_faces(body, fz, cen, nrm):
     tree = BVHTree.FromPolygons([Vector(c) for c in co], polys)
     out = np.zeros(len(fz), bool)
     for i, z in enumerate(fz):
-        if z in cloth or z < 0:
+        if z in cloth:
             continue
         hit = tree.ray_cast(Vector(cen[i] + nrm[i] * 0.0005), Vector(nrm[i]), 0.06)
         out[i] = hit[0] is not None
@@ -280,26 +271,20 @@ def unwrap(body, marks, fz):
     nrm = unit(nrm)
     H = marks.head
     neck = marks["neck_01"]
-    ours = fz >= 0
-    head = (cen[:, 2] > neck[2] + 0.35 * (H[2] - neck[2])) & (np.abs(cen[:, 0]) < 0.30) & ours
+    head = (cen[:, 2] > neck[2] + 0.35 * (H[2] - neck[2])) & (np.abs(cen[:, 0]) < 0.30)
     hidden = hidden_faces(body, fz, cen, nrm) & ~head
     print("faces: %d head, %d under the clothes" % (head.sum(), hidden.sum()))
     select([body])
     bpy.ops.object.mode_set(mode='EDIT')
     bm = bmesh.from_edit_mesh(me)
     bm.faces.ensure_lookup_table()
-    for part in (head, hidden, ours & ~head & ~hidden):
+    for part in (head, hidden, ~head & ~hidden):
         for f in bm.faces:
             f.select_set(bool(part[f.index]))
         bmesh.update_edit_mesh(me)
         bpy.ops.uv.smart_project(angle_limit=math.radians(64), island_margin=0.003, scale_to_bounds=False)
-    # (a grafted head's faces keep their own layout: left out)
-    uv0 = bm.loops.layers.uv.active
     for f in bm.faces:
-        f.select_set(bool(ours[f.index]))
-        for lp in f.loops:
-            lp[uv0].select = bool(ours[f.index])
-            lp[uv0].select_edge = bool(ours[f.index])
+        f.select_set(True)
     bmesh.update_edit_mesh(me)
     bpy.ops.uv.average_islands_scale()
     bm = bmesh.from_edit_mesh(me)
@@ -307,16 +292,9 @@ def unwrap(body, marks, fz):
     uv = bm.loops.layers.uv.active
     for f in bm.faces:
         k = HEAD_DENSITY if head[f.index] else (0.2 if hidden[f.index] else 1.0)
-        if k != 1.0 and ours[f.index]:
+        if k != 1.0:
             for lp in f.loops:
                 lp[uv].uv = lp[uv].uv * k
-    # (every one of ours selected in the picture too, or packing leaves some
-    # where they were, over the others; a grafted head's not)
-    bpy.context.scene.tool_settings.use_uv_select_sync = False
-    for f in bm.faces:
-        for lp in f.loops:
-            lp[uv].select = bool(ours[f.index])
-            lp[uv].select_edge = bool(ours[f.index])
     bmesh.update_edit_mesh(me)
     bpy.ops.uv.pack_islands(rotate=True, margin=0.0025)
     bpy.ops.object.mode_set(mode='OBJECT')
@@ -343,20 +321,6 @@ def bake_maps(body, fz):
         vals[p.loop_start:p.loop_start + p.loop_total, 0] = (fz[p.index] + 0.5) / 16.0
     vals[:, 3] = 1.0
     attr.data.foreach_set("color", vals.ravel())
-    occ = None
-    if (fz < 0).any():
-        # a grafted head's faces: not baked into the picture (they keep
-        # their own), but still shading the neck under them
-        occ = dup.copy()
-        occ.data = me.copy()
-        bpy.context.scene.collection.objects.link(occ)
-        for obj, drop in ((dup, fz < 0), (occ, fz >= 0)):
-            bm = bmesh.new()
-            bm.from_mesh(obj.data)
-            bm.faces.ensure_lookup_table()
-            bmesh.ops.delete(bm, geom=[f for f in bm.faces if drop[f.index]], context='FACES')
-            bm.to_mesh(obj.data)
-            bm.free()
     mat = bpy.data.materials.new("Bake")
     mat.use_nodes = True
     nt = mat.node_tree
@@ -397,8 +361,6 @@ def bake_maps(body, fz):
         maps[what] = np.array(buf.pixels[:], dtype=np.float32).reshape(size, size, 4)
         bpy.data.images.remove(buf)
     bpy.data.objects.remove(dup, do_unlink=True)
-    if occ is not None:
-        bpy.data.objects.remove(occ, do_unlink=True)
     bpy.data.materials.remove(mat)
     body.hide_render = False
     N = maps["Normal"][:, :, :3].astype(np.float64)
@@ -485,42 +447,6 @@ def paint_fur(q, n, ao, mk, look, zone):
     col *= (0.40 + 0.60 * ao ** 0.8)[:, None]
     h = 0.55 * s1 + 0.45 * s2
     return col, h
-
-
-def paint_projected(q, n, ao, mk, look, zone):
-    """The coat taken off the Meshy character's own picture (user request:
-    the new characters on old-style bodies, looking as they did -
-    tools/graft_head.py): each point the colour of the Meshy surface
-    nearest it, on the old-style body's own hair (for its normal map and a
-    touch of light and dark); where no Meshy surface is near (and under
-    the clothes, where nothing shows) the coat's colour."""
-    import graft_head
-    col = look["coat"](q, n, mk, zone)
-    seen = ao > 0.12
-    got = graft_head.sample(q[seen], n[seen], SURF["s"], reach=look.get("reach", 0.06))
-    ok = ~np.isnan(got[:, 0])
-    # (where the Meshy character's clothes come further than the body's do
-    # - its higher collar, its longer shorts - the nearest of it is cloth:
-    # those points keep the coat's own colour)
-    fur_ok = look.get("fur_ok")
-    if fur_ok is not None:
-        good = ok.copy()
-        good[ok] = fur_ok(got[ok], q[seen][ok], mk)
-        print("  %d of them cloth, left the coat's colour" % (ok & ~good).sum())
-        ok = good
-    sub = col[seen]
-    sub[ok] = got[ok]
-    col[seen] = sub
-    print("projected %d of %d texels from the Meshy picture" % (ok.sum(), len(q)))
-    s1, s2, d = hair(q, n, mk, look)
-    v = 0.6 * s1 + 0.4 * s2
-    col = col * (0.90 + 0.20 * v)[:, None]
-    col *= (0.62 + 0.38 * ao ** 0.8)[:, None]
-    return col, 0.55 * s1 + 0.45 * s2
-
-
-# the Meshy surface paint_projected samples (main loads it)
-SURF = {}
 
 
 # ---------------------------------------------------------------- owl
@@ -1101,27 +1027,6 @@ LOOKS = {
                 iris=(srgb(0.93, 0.74, 0.10), srgb(0.99, 0.86, 0.25), srgb(0.30, 0.22, 0.05)), pupil=0.46,
                 iris_share=0.92, eye_side=0.1, nose=srgb(0.30, 0.26, 0.20), pad=srgb(0.40, 0.38, 0.37), horn=horn_owl),
 }
-# the Meshy shiba and black bear on old-style bodies: their fur off their
-# own pictures (GRAFT_DIR: tools/build_meshy_character.py's builds)
-def _not_khaki(c, q, mk):
-    """Not the Meshy shorts' khaki (a shiba's coat is orange and white)."""
-    r, g, b = c[:, 0] + 1e-6, c[:, 1], c[:, 2]
-    return ~((g / r > 0.74) & (g / r < 0.97) & (b / r > 0.42) & (b / r < 0.78) & (r < 0.85))
-
-
-def _black_or_moon(c, q, mk):
-    """A Formosan black bear's coat: black, but for the pale V on its chest
-    (its moon) - anything else is the Meshy sweater or shorts."""
-    lum = c @ np.array([0.3, 0.59, 0.11])
-    chest = (q[:, 2] > mk["spine_02"][2]) & (q[:, 2] < mk["neck_01"][2] + 0.02) & \
-        (np.abs(q[:, 0]) < 0.16) & ((q[:, 1] - mk["spine_03"][1]) * np.sign(mk.fwd[1]) > 0.02)
-    return (lum < 0.18) | chest
-
-
-LOOKS["dog2"] = dict(LOOKS["dog"], kind="project", meshy="dog2", coat=lambda q, n, mk, z: np.tile(
-    srgb(0.78, 0.45, 0.22), (len(q), 1)), scarf=srgb(0.48, 0.12, 0.12), fur_ok=_not_khaki)
-LOOKS["bear2"] = dict(LOOKS["bear"], kind="project", meshy="bear2", coat=lambda q, n, mk, z: np.tile(
-    srgb(0.05, 0.045, 0.045), (len(q), 1)), tips=None, fur_ok=_black_or_moon)
 COMMON = dict(knit=srgb(0.93, 0.92, 0.88), cloth=srgb(0.64, 0.53, 0.37), button=srgb(0.50, 0.32, 0.17))
 # roughness by zone
 ROUGH = {"fur": 0.88, "skin": 0.38, "horn": 0.45, "eye": 0.06, "knit": 0.95, "cloth": 0.86, "button": 0.42,
@@ -1144,8 +1049,6 @@ def paint(P, N, Z, AO, on, mk, look):
         if zn in ("fur", "muzzle"):
             if look["kind"] == "feathers":
                 c, h = paint_feathers(q, n, ao, mk, look, zi)
-            elif look["kind"] == "project":
-                c, h = paint_projected(q, n, ao, mk, look, zi)
             elif look["kind"] == "wool":
                 c1, h1 = paint_fur(q, n, ao, mk, look, zi)
                 c2, h2 = paint_wool(q, n, ao, mk, look, zi)
@@ -1248,40 +1151,28 @@ def dress(body, col, nm, rough):
     """One material over all of it: the picture, its normal map, its
     roughness (in the green, as glTF has it)."""
     mat = bpy.data.materials.new(ANIMAL + "_Pelt")
-    # (beside a grafted head's own pictures - named <id>_Normal and so on -
-    # the body's are told apart)
-    tag = ANIMAL + ("_Pelt" if (zone_of_faces(body) < 0).any() else "")
     mat.use_nodes = True
     nt = mat.node_tree
     b = next(n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED')
     t = nt.nodes.new('ShaderNodeTexImage')
-    t.image = image(tag + "_Colour", col)
+    t.image = image(ANIMAL + "_Colour", col)
     nt.links.new(t.outputs['Color'], b.inputs['Base Color'])
     tn = nt.nodes.new('ShaderNodeTexImage')
-    tn.image = image(tag + "_Normal", nm, True)
+    tn.image = image(ANIMAL + "_Normal", nm, True)
     nmap = nt.nodes.new('ShaderNodeNormalMap')
     nt.links.new(tn.outputs['Color'], nmap.inputs['Color'])
     nt.links.new(nmap.outputs['Normal'], b.inputs['Normal'])
     tr = nt.nodes.new('ShaderNodeTexImage')
     mr = np.stack([np.zeros_like(rough), rough, np.zeros_like(rough)], axis=2)
-    tr.image = image(tag + "_Roughness", mr, True)
+    tr.image = image(ANIMAL + "_Roughness", mr, True)
     sep = nt.nodes.new('ShaderNodeSeparateColor')
     nt.links.new(tr.outputs['Color'], sep.inputs['Color'])
     nt.links.new(sep.outputs['Green'], b.inputs['Roughness'])
     nt.links.new(sep.outputs['Blue'], b.inputs['Metallic'])
     me = body.data
-    # (a grafted head's faces keep their own materials, after the pelt)
-    fz = zone_of_faces(body)
-    mi = np.zeros(len(me.polygons), np.int64)
-    me.polygons.foreach_get("material_index", mi)
-    kept = sorted(set(mi[fz < 0].tolist()))
-    olds = list(me.materials)
     me.materials.clear()
     me.materials.append(mat)
-    for i in kept:
-        me.materials.append(olds[i])
-    remap = {i: k + 1 for k, i in enumerate(kept)}
-    me.polygons.foreach_set("material_index", [remap.get(int(i), 0) if z < 0 else 0 for i, z in zip(mi, fz)])
+    me.polygons.foreach_set("material_index", [0] * len(me.polygons))
 
 
 def main():
@@ -1295,9 +1186,6 @@ def main():
     P, N, Z, AO, on = bake_maps(body, fz)
     print("baked %.0fs, %d texels on" % (time.time() - t0, on.sum()))
     look = LOOKS[ANIMAL]
-    if look["kind"] == "project":
-        import graft_head
-        SURF["s"] = graft_head.surface(arm, os.path.join(os.environ["GRAFT_DIR"], look["meshy"] + ".glb"))
     col, hgt, rough = paint(P, N, Z, AO, on, mk, look)
     print("painted %.0fs" % (time.time() - t0))
     nm = normal_map(P, hgt, on)

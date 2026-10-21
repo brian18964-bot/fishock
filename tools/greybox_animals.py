@@ -296,60 +296,6 @@ ANIMALS = {
         jumper=dict(ease=0.013, hem=0.036, sleeve=0.66, v_depth=0.070, v_slope=1.8),
         trousers=dict(ease=0.008, waist=0.084, hem_above_knee=0.026, leg_r=0.016, crotch=0.025),
     ),
-    # User request (the new characters move as the old ones do): the
-    # Meshy shiba and Formosan black bear (tools/build_meshy_character.py)
-    # on an old-style body - proportioned off their Meshy rigs (bones at
-    # the same places, its 1.52 m to the unit), the body their fur and
-    # clothes, their Meshy heads grafted on (head_graft; owl_character's
-    # graft; GRAFT_DIR the Meshy builds) and their fur painted from the
-    # Meshy pictures (paint_pelt.py's project)
-    "dog2": dict(
-        graft="dog2", graft_r=0.045, head_top=1.1046, half_width=0.090,
-        neck_joint=[0.0, 0.0061, 0.8848], head_joint=[0.0, 0.0296, 0.9434], ears=[{'points': [(0.0526, 0.0409, 1.0954), (0.0704, -0.0058, 1.0868), (0.0941, -0.0479, 1.0717)], 'reach': 0.03, 'from': 0.2}, {'points': [(-0.0526, 0.0409, 1.0954), (-0.0704, -0.0058, 1.0868), (-0.0941, -0.0479, 1.0717)], 'reach': 0.03, 'from': 0.2}],
-        ankle_z=0.0555, shin=0.2427, thigh=0.2412, pelvis_up=0.0059, leg_x=0.0586,
-        thigh_r=(0.062, 0.046), shin_r=(0.042, 0.027), calf=0.012,
-        pelvis=((0.0, 0.006, 0.0), (0.090, 0.078, 0.075)),
-        belly=((0.0, -0.022, 0.095), (0.088, 0.082, 0.090)),
-        chest=((0.0, -0.033, 0.211), (0.090, 0.090, 0.105)),
-        shoulder=(0.1171, 0.0296, 0.2868), shoulder_r=0.044,
-        upper=(0.1535, 0.036, 0.031), fore=(0.1549, 0.030, 0.024),
-        neck=((0.0, -0.024, 0.290), (0.0, -0.021, 0.372), 0.072, 0.062),
-        traps=(0.050, 0.052, 0.036, 0.026),
-        head=(0.0, -0.020, 0.400),
-        hand=dict(kind="paw", palm=(0.056, 0.068, 0.036), fingers=(0.018, 0.015, 0.012), finger_r=0.0138,
-                  thumb=(0.016, 0.013), thumb_r=0.0125, n=3, curl=(8, 14, 18), spread=10,
-                  claw=(0.013, 0.0045)),
-        foot=dict(kind="paw", length=0.150, width=0.080, toe_r=0.0170, toe_len=0.036, toes=4, heel=0.034,
-                  claw=(0.013, 0.0048)),
-        tail=dict(points=((0.0, 0.0706, 0.0935), (0.0, 0.1404, 0.0363), (0.0, 0.2240, -0.0025), (0.0, 0.3161, -0.0190),
-                          (0.0, 0.4068, -0.0111), (0.0, 0.4904, 0.0198), (0.0, 0.5673, 0.0639)),
-                  radii=(0.020, 0.026, 0.030, 0.031, 0.029, 0.022, 0.008), tufts=0, bones=6),
-        jumper=dict(ease=0.013, hem=0.035, sleeve=0.64, v_depth=0.062, v_slope=2.1),
-        trousers=dict(ease=0.007, waist=0.080, hem_above_knee=0.026, leg_r=0.016, crotch=0.024),
-    ),
-    "bear2": dict(
-        graft="bear2", graft_r=0.058, head_top=1.027, half_width=0.118,
-        neck_joint=[0.0, 0.012, 0.7935], head_joint=[0.0, -0.0158, 0.8601], ears=[{'points': [(0.0829, -0.0268, 1.0046), (0.1, -0.0268, 1.0263), (0.1138, -0.0268, 1.0507)], 'reach': 0.03, 'from': 0.2}, {'points': [(-0.0829, -0.0268, 1.0046), (-0.1, -0.0268, 1.0263), (-0.1138, -0.0268, 1.0507)], 'reach': 0.03, 'from': 0.2}],
-        ankle_z=0.0576, shin=0.1736, thigh=0.1741, pelvis_up=0.0277, leg_x=0.0776,
-        thigh_r=(0.098, 0.080), shin_r=(0.084, 0.070), calf=0.010,
-        pelvis=((0.0, 0.004, 0.0), (0.180, 0.140, 0.110)),
-        belly=((0.0, -0.050, 0.126), (0.215, 0.172, 0.165)),
-        chest=((0.0, -0.020, 0.290), (0.185, 0.140, 0.140)),
-        shoulder=(0.1553, -0.0158, 0.3161), shoulder_r=0.075,
-        upper=(0.1538, 0.066, 0.058), fore=(0.1582, 0.054, 0.046),
-        neck=((0.0, 0.000, 0.300), (0.0, -0.010, 0.395), 0.112, 0.100),
-        traps=(0.090, 0.090, 0.060, 0.042),
-        head=(0.0, -0.034, 0.470),
-        hand=dict(kind="paw", palm=(0.070, 0.104, 0.048), fingers=(0.018, 0.015, 0.012), finger_r=0.0158,
-                  thumb=(0.018, 0.015), thumb_r=0.0158, n=4, curl=(8, 14, 16), spread=6,
-                  claw=(0.024, 0.0072)),
-        foot=dict(kind="paw", length=0.192, width=0.108, toe_r=0.0170, toe_len=0.032, toes=5, heel=0.046,
-                  claw=(0.018, 0.0075), arc=0.25),
-        tail=dict(points=((0.0, 0.100, -0.011), (0.0, 0.125, 0.015), (0.0, 0.135, 0.030)),
-                  radii=(0.030, 0.028, 0.015), tufts=0, bones=2),
-        jumper=dict(ease=0.015, hem=0.040, sleeve=0.70, v_depth=0.095, v_slope=1.25),
-        trousers=dict(ease=0.010, waist=0.090, hem_above_knee=0.028, leg_r=0.018, crotch=0.028),
-    ),
 }
 
 
@@ -1144,10 +1090,6 @@ class Animal:
         tz = [self.pz, self.pz + 0.09, self.at(self.P["chest"][0])[2], self.neck0[2] + 0.03, self.neck1[2]]
         ty = [0.012, 0.010, 0.004, self.neck0[1], self.neck1[1]]
         trunk = [[0.0, y, z] for y, z in zip(ty, tz)]
-        # (a grafted head's neck and head bones where its own rig has them)
-        for i, key in ((3, "neck_joint"), (4, "head_joint")):
-            if key in self.P:
-                trunk[i] = list(self.P[key])
         j = {
             "trunk": trunk,
             "head_top": [0.0, self.head_c[1], self.head_info["top"]],
@@ -1167,8 +1109,6 @@ class Animal:
         j = {k: ([list(map(float, p)) for p in v] if isinstance(v[0], (list, np.ndarray)) else list(map(float, v)))
              for k, v in j.items()}
         j["size"] = float(self.P.get("size", 1.0))
-        if self.P.get("graft"):
-            j["graft"] = self.P["graft"]
         if self.P["jumper"].get("long", LONG_SLEEVE):
             # (owl_character: the sleeve down the forearm moves with it)
             j["long_sleeves"] = True
@@ -1690,19 +1630,8 @@ def head_sheep(an):
     return head, eyes, [], horns, {"top": float(H[2] + 0.088), "half_width": 0.094}
 
 
-def head_graft(an):
-    """A head to be replaced (user request: the Meshy characters' own
-    heads on old-style bodies - owl_character's graft): only a small
-    round top to the neck, hidden inside the grafted head; its ears' bones
-    where the Meshy ones are."""
-    P = an.P
-    an.ears = [dict(e) for e in P["ears"]]
-    head = S.sphere(an.head_c, P["graft_r"])
-    return head, [], [], [], {"top": float(P["head_top"]), "half_width": float(P["half_width"])}
-
-
 HEADS = {"owl": head_owl, "dog": head_dog, "cat": head_cat, "bear": head_bear, "deer": head_deer,
-         "sheep": head_sheep, "dog2": head_graft, "bear2": head_graft}
+         "sheep": head_sheep}
 
 
 # ---------------------------------------------------------------- collars
@@ -1818,7 +1747,7 @@ def collar_sheep(an):
     return S.smooth(out, 0.010), FUR
 
 
-COLLARS = {"owl": collar_owl, "dog": collar_dog, "sheep": collar_sheep, "dog2": collar_dog}
+COLLARS = {"owl": collar_owl, "dog": collar_dog, "sheep": collar_sheep}
 
 
 # ---------------------------------------------------------------- build
