@@ -815,7 +815,7 @@ def _garment_weights(parts, rig, joints, unit):
                 d = (q - sh).length
                 keep = 1.0 - _smooth(0.06, 0.14, d)
                 _move(w, arm, spine + [pelvis], 1.0 - keep)
-            elif t > 0.45:
+            elif t > 0.45 and not joints.get("long_sleeves"):
                 # the sleeve's end and cuff: with the upper arm only
                 _move(w, arm[1:], arm[0])
             if p.z < hem + 0.06:

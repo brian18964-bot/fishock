@@ -22,16 +22,18 @@ import greybox_review as gr  # noqa: E402
 # By zone (fur, skin, horn, eye, knit, cloth, button, scarf, pad, muzzle -
 # the muzzle the fur's colour unless given):
 # (colour, roughness, sheen). The clothes the same on them all: the
-# beginner's cream jumper, khaki shorts, wooden button.
-COMMON = {"knit": ((0.80, 0.75, 0.62), 0.92, 0.35), "cloth": ((0.47, 0.41, 0.27), 0.85, 0.15),
+# beginner's white knit jumper (the new characters' - user request), khaki
+# shorts, wooden button.
+COMMON = {"knit": ((0.93, 0.92, 0.88), 0.92, 0.35), "rib": ((0.93, 0.92, 0.88), 0.92, 0.35), "cloth": ((0.47, 0.41, 0.27), 0.85, 0.15),
           "button": ((0.33, 0.21, 0.11), 0.55, 0.0), "eye": ((0.025, 0.02, 0.018), 0.08, 0.0)}
 PALETTES = {
-    # a brown horned owl: warm brown, a buff face would come with texture
-    "owl": {"fur": ((0.36, 0.26, 0.17), 0.85, 0.25), "skin": ((0.30, 0.26, 0.20), 0.6, 0.0),
-            "horn": ((0.30, 0.27, 0.22), 0.45, 0.0), "pad": ((0.42, 0.36, 0.24), 0.7, 0.0),
-            "eye": ((0.62, 0.36, 0.04), 0.08, 0.0), "scarf": ((0.80, 0.75, 0.62), 0.9, 0.3)},
-    # a tan shepherd-type dog with a red neckerchief
-    "dog": {"fur": ((0.60, 0.40, 0.21), 0.85, 0.25), "skin": ((0.06, 0.05, 0.05), 0.35, 0.0),
+    # a snowy owl: white, yellow eyes, black beak (tools/paint_pelt.py
+    # paints its feathers)
+    "owl": {"fur": ((0.95, 0.95, 0.93), 0.85, 0.25), "skin": ((0.30, 0.26, 0.20), 0.6, 0.0),
+            "horn": ((0.10, 0.09, 0.09), 0.45, 0.0), "pad": ((0.40, 0.38, 0.37), 0.7, 0.0),
+            "eye": ((0.95, 0.80, 0.14), 0.08, 0.0), "scarf": ((0.95, 0.95, 0.93), 0.9, 0.3)},
+    # a fawn chihuahua with a red neckerchief
+    "dog": {"fur": ((0.78, 0.58, 0.36), 0.85, 0.25), "skin": ((0.06, 0.05, 0.05), 0.35, 0.0),
             "horn": ((0.20, 0.17, 0.14), 0.45, 0.0), "pad": ((0.10, 0.08, 0.08), 0.6, 0.0),
             "scarf": ((0.55, 0.10, 0.08), 0.8, 0.2)},
     # a black cat: near black, its eyes amber so they read on it
@@ -49,15 +51,14 @@ PALETTES = {
     "deer": {"fur": ((0.47, 0.27, 0.14), 0.85, 0.25), "skin": ((0.06, 0.05, 0.05), 0.35, 0.0),
              "horn": ((0.72, 0.64, 0.50), 0.55, 0.0), "pad": ((0.10, 0.08, 0.07), 0.5, 0.0),
              "eye": ((0.12, 0.07, 0.04), 0.08, 0.0), "muzzle": ((0.80, 0.72, 0.60), 0.8, 0.2)},
-    # a sheep with a ram's horns (user request): white fleece, a dark face,
-    # forearms, hands and lower legs (so it reads against the cream jumper),
-    # tan horns, black hooves, amber eyes
+    # a sheep with a ram's horns (user request): white all over (its face
+    # too - user request), tan horns, black hooves, amber eyes
     "sheep": {"fur": ((0.93, 0.91, 0.86), 0.95, 0.45), "skin": ((0.05, 0.04, 0.04), 0.35, 0.0),
               "horn": ((0.66, 0.55, 0.38), 0.55, 0.0), "pad": ((0.06, 0.05, 0.05), 0.5, 0.0),
-              "eye": ((0.62, 0.44, 0.10), 0.08, 0.0), "muzzle": ((0.16, 0.13, 0.12), 0.8, 0.1),
+              "eye": ((0.62, 0.44, 0.10), 0.08, 0.0), "muzzle": ((0.92, 0.90, 0.85), 0.8, 0.1),
               "scarf": ((0.93, 0.91, 0.86), 0.95, 0.45)},
 }
-ZONE_NAMES = ["fur", "skin", "horn", "eye", "knit", "cloth", "button", "scarf", "pad", "muzzle"]
+ZONE_NAMES = ["fur", "skin", "horn", "eye", "knit", "cloth", "button", "scarf", "pad", "muzzle", "rib"]
 
 
 def materials(animal):

@@ -2,16 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bjpk0gefnet4"
-path="res://.godot/imported/owl_owl_Feathers.jpg-d838c0b4d39d80f42e5f726259a84750.ctex"
+uid="uid://b0sayoklj6rrh"
+path="res://.godot/imported/sheep_sheep_Colour.jpg-b99c8fa1f4552b31d253e421c745b0c9.ctex"
 metadata={
 "vram_texture": false
+}
+generator_parameters={
+"md5": "4fb1d09eed97dd3e508b30b223034d5c"
 }
 
 [deps]
 
-source_file="res://assets/models/characters/owl_owl_Feathers.jpg"
-dest_files=["res://.godot/imported/owl_owl_Feathers.jpg-d838c0b4d39d80f42e5f726259a84750.ctex"]
+source_file="res://assets/models/characters/sheep_sheep_Colour.jpg"
+dest_files=["res://.godot/imported/sheep_sheep_Colour.jpg-b99c8fa1f4552b31d253e421c745b0c9.ctex"]
 
 [params]
 
@@ -23,7 +26,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

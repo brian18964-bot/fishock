@@ -37,11 +37,11 @@ const PORTRAIT := {
 ## further).
 const REACH := {
 	"cat": Vector3(0.01, 0.94, 0.62),
-	"owl": Vector3(0.13, 1.09, 0.49),
-	"dog": Vector3(0.14, 1.16, 0.51),
-	"bear": Vector3(0.20, 1.10, 0.50),
-	"deer": Vector3(0.14, 1.20, 0.47),
-	"sheep": Vector3(0.16, 1.09, 0.49),
+	"owl": Vector3(0.11, 0.93, 0.41),
+	"dog": Vector3(0.10, 0.90, 0.36),
+	"bear": Vector3(0.23, 1.16, 0.53),
+	"deer": Vector3(0.15, 1.33, 0.53),
+	"sheep": Vector3(0.20, 1.21, 0.56),
 	"bear2": Vector3(0.09, 0.98, 0.60),
 	"dog2": Vector3(0.01, 1.14, 0.46),
 	"dog3": Vector3(0.05, 1.11, 0.47),

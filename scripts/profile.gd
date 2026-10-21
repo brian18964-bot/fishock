@@ -185,11 +185,14 @@ var camp_tent: int = 8
 ## deer and ram: the stag and the sheep. And (user request) the user's own
 ## Meshy ones beside them - the old ones stay: a bear, two dogs, a deer, a
 ## horned owl, a croc and a sheep (tools/build_meshy_character.py). Made
-## less alike (user request): the old owl a snowy owl (tools/snowy_owl.py),
-## the Meshy bear a Formosan black bear, its deer a sika deer and its sheep
-## black-faced (build_meshy_character's recolour). [id, name].
-const CHARACTERS := [["cat", "黑貓"], ["owl", "雪鴞"], ["dog", "犬"], ["bear", "熊"], ["deer", "鹿"],
-	["sheep", "羊"], ["bear2", "台灣黑熊"], ["dog2", "柴犬"], ["dog3", "牧羊犬"], ["deer2", "梅花鹿"],
+## less alike (user request): the old owl a snowy owl, the Meshy bear a
+## Formosan black bear, its deer a sika deer and its sheep black-faced
+## (build_meshy_character's recolour). Then (user request) the old ones in
+## the new ones' outfit and painted as finely (tools/paint_pelt.py): the
+## dog a chihuahua, the bear a brown bear, the deer a red deer stag, the
+## sheep white all over. [id, name].
+const CHARACTERS := [["cat", "黑貓"], ["owl", "雪鴞"], ["dog", "吉娃娃"], ["bear", "棕熊"], ["deer", "紅鹿"],
+	["sheep", "綿羊"], ["bear2", "台灣黑熊"], ["dog2", "柴犬"], ["dog3", "牧羊犬"], ["deer2", "梅花鹿"],
 	["owl2", "角鴞"], ["croc", "鱷魚"], ["sheep2", "黑面羊"]]
 var character: String = "cat"
 ## User request: the run's three quick slots (QuickSlots, over the right
