@@ -22,9 +22,9 @@ import greybox_review as gr  # noqa: E402
 # By zone (fur, skin, horn, eye, knit, cloth, button, scarf, pad, muzzle -
 # the muzzle the fur's colour unless given):
 # (colour, roughness, sheen). The clothes the same on them all: the
-# beginner's white knit jumper (the new characters' - user request), khaki
-# shorts, wooden button.
-COMMON = {"knit": ((0.93, 0.92, 0.88), 0.92, 0.35), "rib": ((0.93, 0.92, 0.88), 0.92, 0.35), "cloth": ((0.47, 0.41, 0.27), 0.85, 0.15),
+# beginner's knit jumper iron grey, its ribbing charcoal, navy shorts (user
+# request: iron grey and charcoal with navy), wooden button.
+COMMON = {"knit": ((0.43, 0.44, 0.46), 0.92, 0.35), "rib": ((0.21, 0.22, 0.24), 0.92, 0.35), "cloth": ((0.15, 0.20, 0.33), 0.85, 0.15),
           "button": ((0.33, 0.21, 0.11), 0.55, 0.0), "eye": ((0.025, 0.02, 0.018), 0.08, 0.0)}
 PALETTES = {
     # a snowy owl: white, yellow eyes, black beak (tools/paint_pelt.py

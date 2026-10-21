@@ -1313,9 +1313,11 @@ def head_owl(an):
     an.ears = []
     crown = S.ellipsoid(H + V(0, 0.004, 0.048), (0.112, 0.092, 0.074))
     head = S.smooth([head, crown, S.ellipsoid(H + V(0, -0.110, 0.012), (0.026, 0.024, 0.032))], 0.020)
-    ec = [H + V(s * 0.049, -0.096, 0.008) for s in (1, -1)]
-    eyes = [S.sphere(c, 0.031) for c in ec]
-    an.lids = [lid(c, 0.031, 0.58, 0.0030, 0.18, sd) for c, sd in zip(ec, (1, -1))]
+    # (user request: the eyes too big, staring - smaller, set further in,
+    # the lids lower over them)
+    ec = [H + V(s * 0.049, -0.091, 0.008) for s in (1, -1)]
+    eyes = [S.sphere(c, 0.025) for c in ec]
+    an.lids = [lid(c, 0.025, 0.36, 0.0030, 0.18, sd) for c, sd in zip(ec, (1, -1))]
     beak = S.smooth([S.round_cone(H + V(0, -0.110, 0.026), H + V(0, -0.138, 0.000), 0.019, 0.013),
                      S.round_cone(H + V(0, -0.138, 0.000), H + V(0, -0.148, -0.026), 0.013, 0.0068),
                      S.round_cone(H + V(0, -0.148, -0.026), H + V(0, -0.139, -0.044), 0.0068, 0.0016)], 0.004)

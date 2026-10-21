@@ -464,11 +464,24 @@ def _ease(a, b, x):
 EAR_FROM = 0.25
 EAR_REACH = 0.33
 SHOULDER_EASE = (-0.12, 0.09)
+# (the arm's share eased out between these times its own girth from its line)
+ARM_REACH = (1.15, 1.6)
 # (and the clavicle's share of the torso by the shoulder - the old dog's
 # 0.65 to 0.8 - taken from the spine's)
 CLAVICLE_SHARE = 0.7
-SMOOTH_R = 0.025
+SMOOTH_R = 0.035
 SMOOTH_TIMES = 4
+# The trunk laid along the spine from this far over the hips' joints (eased
+# in up to the second; m)
+TRUNK_FROM = (0.02, 0.10)
+# ... and the weights smoothed this far round the neck's root (m)
+NECK_SMOOTH = 0.22
+# ... and round the knees and the hips' joints
+KNEE_SMOOTH = 0.12
+# (the knee's thigh-to-calf split eased over this either side of the joint,
+# within KNEE_SPLIT of it)
+KNEE_BLEND = 0.05
+KNEE_SPLIT = 0.16
 
 
 def tidy_skin(body, arm):
@@ -477,7 +490,8 @@ def tidy_skin(body, arm):
     me = body.data
     for b in arm.data.bones:
         if b.use_deform and body.vertex_groups.get(b.name) is None and (
-                b.name.startswith(("ear_", "clavicle", "thigh", "calf", "foot", "ball")) or b.name == "Head"):
+                b.name.startswith(("ear_", "clavicle", "thigh", "calf", "foot", "ball", "spine")) or
+            b.name in ("Head", "pelvis")):
             body.vertex_groups.new(name=b.name)
     groups = {g.name: g for g in body.vertex_groups}
     names = list(groups)
@@ -547,25 +561,85 @@ def tidy_skin(body, arm):
             tot = sum(np.clip(1.0 - np.abs(best_at[idx] - k - 0.5), 0.0, 1.0) for k in range(len(bones)))
             W[idx, col[b]] += w[idx] * share / np.maximum(tot, 1e-6)
         print("ear %s: %d points on it" % (key, len(idx)))
+    # The trunk: by height up the spine (user report: the black bear's belly
+    # dented and tore - heat gave its whole round front to the pelvis and
+    # thighs, the spine's bones running down its back far from it, so the
+    # chest went with the spine and the belly with the hips). Above the
+    # hips' joints the thighs' share and the trunk bones' (pelvis, spine)
+    # are laid again along the spine by height, the old characters' way;
+    # the arms' and neck's left as they are.
+    trunk = [n for n in ("pelvis", "spine_01", "spine_02", "spine_03") if n in col]
+    tz = np.array([bone(n)[2] for n in trunk])
+    legs_ = [col[n] for n in names if n.startswith(("thigh_", "calf_"))]
+    tcols = [col[n] for n in trunk]
+    hip_z = bone("thigh_l")[2]
+    up = _ease(hip_z + TRUNK_FROM[0], hip_z + TRUNK_FROM[1], co[:, 2]) * (1.0 - hw)
+    moved = W[:, legs_].sum(axis=1) * up
+    W[:, legs_] *= (1.0 - up)[:, None]
+    # (and the tail's well up the back, heat's: user report, the black
+    # bear's back taking a quarter of its little tail's sway)
+    tails = [col[n] for n in names if n.startswith("tail")]
+    if tails and "tail_01" in arm.data.bones:
+        tz0 = bone("tail_01")[2]
+        off = _ease(tz0 + 0.08, tz0 + 0.14, co[:, 2]) * (1.0 - hw)
+        moved += W[:, tails].sum(axis=1) * off
+        W[:, tails] *= (1.0 - off)[:, None]
+    share = W[:, tcols].sum(axis=1) + moved
+    zc = np.clip(co[:, 2], tz[0], tz[-1])
+    tent = np.zeros((len(co), len(trunk)))
+    for j in range(len(trunk)):
+        lo = tz[j - 1] if j > 0 else tz[j] - 1.0
+        hi = tz[j + 1] if j + 1 < len(trunk) else tz[j] + 1.0
+        tent[:, j] = np.where(zc <= tz[j], (zc - lo) / max(tz[j] - lo, 1e-6), (hi - zc) / max(hi - tz[j], 1e-6))
+    tent = np.clip(tent, 0.0, 1.0)
+    tent /= np.maximum(tent.sum(axis=1, keepdims=True), 1e-9)
+    # (by height where it's the trunk's; below the hips' joints - the legs'
+    # tops, the seat - as heat had it)
+    keep = 1.0 - _ease(hip_z + TRUNK_FROM[0], hip_z + TRUNK_FROM[1], co[:, 2])
+    W[:, tcols] = W[:, tcols] * keep[:, None] + (share * (1.0 - keep))[:, None] * tent
+    print("trunk: %d points laid along the spine" % (up > 0.5).sum())
     # The shoulders: the arm's share of the torso eased in across the joint.
     for s, sign in (("l", 1.0), ("r", -1.0)):
         S = bone("upperarm_" + s)
         u = bone("upperarm_" + s, "tail") - S
         u /= np.linalg.norm(u)
         t = (co - S) @ u
-        near = (np.sign(co[:, 0]) == sign) & (np.linalg.norm(co - S, axis=1) < 0.3)
         arm_cols = [col[n] for n in names if n.endswith("_" + s) and not n.startswith(
             ("clavicle", "thigh", "calf", "foot", "ball", "ear"))]
         need("clavicle_" + s)
         a = W[:, arm_cols].sum(axis=1)
         allowed = _ease(SHOULDER_EASE[0], SHOULDER_EASE[1], t)
-        over = near & (a > allowed + 1e-6)
+        # (and none of it on the torso well away from the arm's own line,
+        # however far from the shoulder - user report, the black bear's
+        # belly crumpled with its arms down: heat had given its front, a
+        # third of a metre below and in from the shoulder, wholly to the
+        # upper arm)
+        E = bone("upperarm_" + s, "tail")
+        L = np.linalg.norm(E - S)
+        # (below the arm only - the belly under it - its girth measured
+        # round the top of the upper arm, where no torso is)
+        on_line = S + np.clip(t, 0.0, L)[:, None] * u
+        r = np.linalg.norm(co - on_line, axis=1)
+        down = np.clip(on_line[:, 2] - co[:, 2], 0.0, None)
+        mid = (a > 0.95) & (t > 0.3 * L) & (t < 0.7 * L) & (down == 0.0)
+        girth = np.percentile(r[mid], 75) if mid.sum() > 20 else 0.06
+        radial = np.maximum(1.0 - _ease(ARM_REACH[0] * girth, ARM_REACH[1] * girth, down), _ease(0.5 * L, 0.8 * L, t))
+        allowed = allowed * radial
+        over = a > allowed + 1e-6
         k = np.where(over, allowed / np.maximum(a, 1e-9), 1.0)
         moved = (a * (1.0 - k))
         W[:, arm_cols] *= k[:, None]
-        W[:, col["clavicle_" + s]] += moved
+        # (what's taken: round the joint to the clavicle, further down the
+        # side to the trunk, by height as the rest of it)
+        cw = 1.0 - _ease(0.12, 0.22, np.linalg.norm(co - S, axis=1))
+        W[:, col["clavicle_" + s]] += moved * cw
+        W[:, tcols] += (moved * (1.0 - cw))[:, None] * tent
+        print("shoulder_%s: arm's girth %.3f, %d points off it" % (s, girth, (over & (radial < 0.5)).sum()))
         spine = [col[n] for n in ("spine_03", "spine_02") if n in col]
-        want = CLAVICLE_SHARE * _ease(-0.24, -0.12, t) * (1.0 - _ease(-0.02, 0.06, t)) * near
+        # (faded out toward the edge of the shoulder's reach, not cut there:
+        # on the black bear's broad chest the cut ran across its front)
+        fade = (np.sign(co[:, 0]) == sign) * (1.0 - _ease(0.18, 0.3, np.linalg.norm(co - S, axis=1)))
+        want = CLAVICLE_SHARE * _ease(-0.24, -0.12, t) * (1.0 - _ease(-0.02, 0.06, t)) * fade
         have = W[:, col["clavicle_" + s]]
         sp = W[:, spine].sum(axis=1)
         take = np.clip(want - have, 0.0, None)
@@ -573,11 +647,25 @@ def tidy_skin(body, arm):
         ratio = np.where(sp > 1e-9, 1.0 - take / np.maximum(sp, 1e-9), 1.0)
         W[:, spine] *= ratio[:, None]
         W[:, col["clavicle_" + s]] += take
-        print("shoulder_%s: %d points of the torso given back to the clavicle" % (s, over.sum()))
+        print("shoulder_%s: %d points of the torso taken off the arm" % (s, over.sum()))
     # ... and smoothed there, by where the points are, not how they're joined.
     zone = np.zeros(len(co), bool)
     for s in ("l", "r"):
         zone |= np.linalg.norm(co - bone("upperarm_" + s), axis=1) < 0.18
+    # (and round the neck's root down into the V of the collar: user report,
+    # the black bear's chest tore there - the collar and the fur inside it
+    # lie over each other, and heat weighted them apart)
+    zone |= (np.linalg.norm(co - bone("neck_01"), axis=1) < NECK_SMOOTH) & (hw < 0.5)
+    # (and round the knees and hips: user report, the legs came apart
+    # behind the knee as it bent - the fur's layers there weighted apart)
+    for s in ("l", "r"):
+        side = np.sign(co[:, 0]) == (1.0 if s == "l" else -1.0)
+        for b, r in (("calf_" + s, KNEE_SMOOTH), ("thigh_" + s, KNEE_SMOOTH)):
+            zone |= side & (np.linalg.norm(co - bone(b), axis=1) < r)
+    # (and over the whole trunk, the shirt's front and the fur under it
+    # lying over each other there too)
+    zone |= (co[:, 2] > hip_z + TRUNK_FROM[0]) & (co[:, 2] < bone("neck_01")[2]) & \
+        (np.abs(co[:, 0]) < abs(bone("upperarm_l")[0])) & (hw < 0.5)
     idx = np.nonzero(zone)[0]
     tree = cKDTree(co)
     nbrs = tree.query_ball_point(co[idx], SMOOTH_R)
@@ -595,6 +683,25 @@ def tidy_skin(body, arm):
                 need(part + "_" + s)
                 W[m, col[part + "_" + s]] += W[m, col[part + "_" + o]]
                 W[m, col[part + "_" + o]] = 0.0
+    # The knees: the thigh's and calf's shares split again across the joint
+    # by how far along the leg each point is, eased over KNEE_BLEND either
+    # side (user report: behind the knee the legs pinched and stepped as it
+    # bent - heat had split them unevenly round it, front and back).
+    for s, sign in (("l", 1.0), ("r", -1.0)):
+        th, ca = col["thigh_" + s], col["calf_" + s]
+        K = bone("calf_" + s)
+        a = K - bone("thigh_" + s)
+        b = bone("foot_" + s) - K
+        d = a / np.linalg.norm(a) + b / np.linalg.norm(b)
+        d /= np.linalg.norm(d)
+        t = (co - K) @ d
+        m = (np.sign(co[:, 0]) == sign) & (co[:, 2] < crotch) & (np.linalg.norm(co - K, axis=1) < KNEE_SPLIT)
+        both = W[:, th] + W[:, ca]
+        m &= both > 0.5 * W.sum(axis=1)
+        f = _ease(-KNEE_BLEND, KNEE_BLEND, t)
+        W[m, ca] = both[m] * f[m]
+        W[m, th] = both[m] * (1.0 - f[m])
+        print("knee_%s: %d points split across it" % (s, m.sum()))
     W /= np.maximum(W.sum(axis=1, keepdims=True), 1e-9)
     for g in body.vertex_groups:
         g.remove(range(len(co)))
@@ -867,8 +974,46 @@ def _sika(P, N, C, rough):
             a, b = _bone(rough, "%s_%s" % (seg, s))
             out = (P[:, 0] - a[0]) * np.sign(a[0])
             legs |= (_to_segment(P, a, b) < 0.09) & (out > -0.005) & (P[:, 2] > 0.18)
-    where = fur & ((near_neck & (N[:, 1] > -0.4)) | legs)
     from scipy.spatial import cKDTree
+    # (user report: pale grey-green smudges high on the inside of the thighs
+    # - the Meshy picture's, not red enough to be taken for fur: below the
+    # shorts' hem each leg's texels that aren't fur, down to the hooves,
+    # take the nearest fur's colour)
+    tube = np.zeros(len(P), bool)
+    for s in ("l", "r"):
+        for seg in ("thigh", "calf"):
+            a, b = _bone(rough, "%s_%s" % (seg, s))
+            tube |= _to_segment(P, a, b) < 0.10
+    hip = _bone(rough, "thigh_l")[0][2]
+    hoof = _bone(rough, "foot_l")[0][2] + 0.05
+    # (the hem: down from the hip, the last 1 cm band of the legs still
+    # mostly cloth)
+    hem = hip
+    for z in np.arange(hip, hoof, -0.01):
+        band = tube & (P[:, 2] < z) & (P[:, 2] >= z - 0.01)
+        if band.sum() < 20 or (~fur[band]).mean() < 0.7:
+            break
+        hem = z - 0.01
+    leg = tube & (P[:, 2] < hem - 0.01) & (P[:, 2] > hoof)
+    # (by hue: the smudges yellow-green against the fur's red-brown, some
+    # of them red enough to have passed for fur)
+    gr = C[:, 1] / np.maximum(C[:, 0], 0.02)
+    ref = np.median(gr[leg & fur]) if (leg & fur).any() else 0.7
+    odd = leg & ((~fur & (_lum(rgb) < 0.85)) | (gr > ref + 0.08))
+    print("sika: leg g/r median %.2f, percentiles %s" % (ref, np.round(np.percentile(gr[leg], [50, 90, 97, 99]), 2)))
+    # (each from the nearest of the leg's typical fur - the fur at the
+    # smudges' edges yellowed too)
+    lum = _lum(C)
+    src = leg & fur & ~odd & (np.abs(gr - ref) < 0.04)
+    if src.sum() > 100:
+        lo, hi = np.percentile(lum[src], [25, 85])
+        src &= (lum > lo) & (lum < hi)
+    if odd.any() and src.any():
+        _, j = cKDTree(P[src]).query(P[odd])
+        C[odd] = C[src][j]
+        fur = fur | odd
+    print("sika: hem at %.2f, %d off-colour leg texels made fur" % (hem, odd.sum()))
+    where = fur & ((near_neck & (N[:, 1] > -0.4)) | legs)
     rng = np.random.default_rng(7)
     idx = np.where(where)[0]
     rng.shuffle(idx)

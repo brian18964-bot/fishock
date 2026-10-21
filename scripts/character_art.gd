@@ -43,7 +43,6 @@ const REACH := {
 	"deer": Vector3(0.15, 1.33, 0.53),
 	"sheep": Vector3(0.20, 1.21, 0.56),
 	"bear2": Vector3(0.09, 0.98, 0.60),
-	"dog2": Vector3(0.01, 1.14, 0.46),
 	"dog3": Vector3(0.05, 1.11, 0.47),
 	"deer2": Vector3(0.06, 1.18, 0.52),
 	"owl2": Vector3(0.01, 1.07, 0.52),

@@ -722,8 +722,7 @@ def paint_knit(q, n, ao, mk, look, rib):
         ru = np.where(collar, phi * 0.08, u)
         rv = np.where(collar, r_neck + (neck[2] - q[:, 2]) * 0.5, v)
         h[rib] = rib_cells(ru[rib], rv[rib])
-    white = look.get("knit", srgb(0.93, 0.92, 0.88))
-    col = np.tile(white, (len(q), 1))
+    col = np.where(rib[:, None], COMMON["rib"][None, :], COMMON["knit"][None, :])
     col *= (0.62 + 0.42 * h + 0.05 * (sid - 0.5))[:, None]
     col *= (1.0 - 0.18 * seam)[:, None]
     col *= (0.42 + 0.58 * ao ** 0.9)[:, None]
@@ -1024,10 +1023,13 @@ LOOKS = {
                   horn=horn_sheep, nostril=0.0065),
     "owl": dict(coat=coat_owl, kind="feathers", feather=0.019, white=srgb(0.97, 0.97, 0.95),
                 shade=srgb(0.72, 0.75, 0.80), shaft=srgb(0.82, 0.82, 0.82), dark=srgb(0.24, 0.21, 0.19), fleck=5,
-                iris=(srgb(0.93, 0.74, 0.10), srgb(0.99, 0.86, 0.25), srgb(0.30, 0.22, 0.05)), pupil=0.46,
+                iris=(srgb(0.86, 0.72, 0.26), srgb(0.93, 0.83, 0.42), srgb(0.32, 0.25, 0.10)), pupil=0.48,
                 iris_share=0.92, eye_side=0.1, nose=srgb(0.30, 0.26, 0.20), pad=srgb(0.40, 0.38, 0.37), horn=horn_owl),
 }
-COMMON = dict(knit=srgb(0.93, 0.92, 0.88), cloth=srgb(0.64, 0.53, 0.37), button=srgb(0.50, 0.32, 0.17))
+# (user request: the beginner's outfit iron grey and charcoal with navy - the
+# jumper iron grey, its collar, cuffs and hem charcoal, the shorts navy)
+COMMON = dict(knit=srgb(0.43, 0.44, 0.46), rib=srgb(0.21, 0.22, 0.24), cloth=srgb(0.15, 0.20, 0.33),
+              button=srgb(0.50, 0.32, 0.17))
 # roughness by zone
 ROUGH = {"fur": 0.88, "skin": 0.38, "horn": 0.45, "eye": 0.06, "knit": 0.95, "cloth": 0.86, "button": 0.42,
          "scarf": 0.80, "pad": 0.70, "muzzle": 0.88, "rib": 0.95}

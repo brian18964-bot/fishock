@@ -190,10 +190,11 @@ var camp_tent: int = 8
 ## (build_meshy_character's recolour). Then (user request) the old ones in
 ## the new ones' outfit and painted as finely (tools/paint_pelt.py): the
 ## dog a chihuahua, the bear a brown bear, the deer a red deer stag, the
-## sheep white all over. [id, name].
-const CHARACTERS := [["cat", "黑貓"], ["owl", "雪鴞"], ["dog", "吉娃娃"], ["bear", "棕熊"], ["deer", "紅鹿"],
-	["sheep", "綿羊"], ["bear2", "台灣黑熊"], ["dog2", "柴犬"], ["dog3", "牧羊犬"], ["deer2", "梅花鹿"],
-	["owl2", "角鴞"], ["croc", "鱷魚"], ["sheep2", "黑面羊"]]
+## sheep white all over. (User request: the shiba taken out; the same kinds
+## side by side in the picker, to compare.) [id, name].
+const CHARACTERS := [["cat", "黑貓"], ["owl", "雪鴞"], ["owl2", "角鴞"], ["dog", "吉娃娃"], ["dog3", "牧羊犬"],
+	["bear", "棕熊"], ["bear2", "台灣黑熊"], ["deer", "紅鹿"], ["deer2", "梅花鹿"], ["sheep", "綿羊"],
+	["sheep2", "黑面羊"], ["croc", "鱷魚"]]
 var character: String = "cat"
 ## User request: the run's three quick slots (QuickSlots, over the right
 ## stick) - the item each is set to (one of USABLES), or "".
