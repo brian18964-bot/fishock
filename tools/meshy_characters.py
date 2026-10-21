@@ -20,6 +20,9 @@ left side (x, y, z; the right mirrored):
               where its sleeve ends (m along the forearm from the wrist
               joint - read off its arm's colours): within 3 cm of the
               wrist, the paw comes out of the cuff
+  part_legs   its legs made as one, touching all the way down (the croc):
+              each leg's inner side drawn in toward its own line, by this
+              much, and the skin joining them taken off
   recolour    how its picture's repainted (build_meshy_character.RECOLOUR):
               black_bear, sika, black_face (its face's bounds, Meshy's
               frame: behind which y is the back of the head, in front of
@@ -131,5 +134,6 @@ CHARACTERS = {
                   angles=(20, 6, 0, -4, -7, -10, -13, -16), reach=0.10),
         remove=[((-0.012, -0.227, 0.08), 0.09)],
         paw=dict(sleeve=-0.022, claw=True, pad=(0.42, 0.44, 0.30), claw_colour=(0.80, 0.76, 0.64)),
+        part_legs=0.72,
     ),
 }

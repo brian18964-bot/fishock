@@ -442,6 +442,228 @@ def heat(body, arm):
     print("bound: %d loose vertices on their nearest bone" % loose)
 
 
+def _ease(a, b, x):
+    t = np.clip((np.asarray(x, float) - a) / (b - a), 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+
+# The skin laid as the old characters' is (owl_character._bind_greybox) where
+# bone heat on a generated mesh - its shells lying over each other, the
+# sweater over the body - went wrong (user report: the snouts tore as the
+# ears swayed and the head turned; the shoulders pulled the sides up into
+# wings as the arms rose; the croc's legs stuck together):
+#   the head rigid above the neck, the snout and jaw with it (heat gave
+#   the face to the ears, the neck);
+#   each ear on its own bones only round its own line, from EAR_FROM of
+#   its length on, EAR_REACH of that length round it;
+#   the arms' share of the torso no more than an easing over SHOULDER_EASE
+#   (m, across the shoulder's joint), the rest the clavicle's; round the
+#   shoulders each point's skin its neighbours' within SMOOTH_R (the
+#   sweater and the body under it moving as one);
+#   a leg's skin below the crotch on that leg's bones alone.
+EAR_FROM = 0.25
+EAR_REACH = 0.33
+SHOULDER_EASE = (-0.12, 0.09)
+# (and the clavicle's share of the torso by the shoulder - the old dog's
+# 0.65 to 0.8 - taken from the spine's)
+CLAVICLE_SHARE = 0.7
+SMOOTH_R = 0.025
+SMOOTH_TIMES = 4
+
+
+def tidy_skin(body, arm):
+    from scipy.spatial import cKDTree
+    co = coords(body)
+    me = body.data
+    for b in arm.data.bones:
+        if b.use_deform and body.vertex_groups.get(b.name) is None and (
+                b.name.startswith(("ear_", "clavicle", "thigh", "calf", "foot", "ball")) or b.name == "Head"):
+            body.vertex_groups.new(name=b.name)
+    groups = {g.name: g for g in body.vertex_groups}
+    names = list(groups)
+    col = {n: i for i, n in enumerate(names)}
+
+    def need(n):
+        assert n in col, n
+    W = np.zeros((len(co), len(names)))
+    gi = {g.index: col[g.name] for g in body.vertex_groups}
+    for v in me.vertices:
+        for g in v.groups:
+            W[v.index, gi[g.group]] = g.weight
+
+    def bone(n, end="head"):
+        b = arm.data.bones[n]
+        return np.array(arm.matrix_world @ (b.head_local if end == "head" else b.tail_local))
+    # (the ears' heat back on the head; laid again below)
+    need("Head")
+    ears = sorted(n for n in names if n.startswith("ear_"))
+    for n in ears:
+        W[:, col["Head"]] += W[:, col[n]]
+        W[:, col[n]] = 0.0
+    # The head: rigid from the neck's middle up, and anything ahead of the
+    # neck above its root (the snout, the jaw).
+    H, N = bone("Head"), bone("neck_01")
+    L = H[2] - N[2]
+    z0, z1 = N[2] + 0.3 * L, N[2] + 0.8 * L
+    shoulder = abs(bone("upperarm_l")[0])
+    flat = np.hypot(co[:, 0] - N[0], co[:, 1] - N[1])
+    hw = _ease(z0, z1, co[:, 2]) * (flat < 0.7 * shoulder)
+    ahead = (co[:, 2] > z0) & (co[:, 1] < N[1] - 0.06) & (np.abs(co[:, 0]) < 0.7 * shoulder)
+    hw = np.maximum(hw, ahead * _ease(z0, 0.5 * (z0 + z1), co[:, 2]))
+    hw = np.where((co[:, 2] >= z1) & (np.linalg.norm(co - H, axis=1) < 0.5), 1.0, hw)
+    W *= (1.0 - hw)[:, None]
+    W[:, col["Head"]] += hw
+    print("head: %d points rigid with it, %d eased" % ((hw > 0.999).sum(), ((hw > 0.0) & (hw <= 0.999)).sum()))
+    # The ears, each round its own line.
+    chains = {}
+    for n in ears:
+        chains.setdefault(n[:-3], []).append(n)
+    for key, bones in chains.items():
+        bones.sort()
+        pts = [bone(bones[0])] + [bone(b, "tail") for b in bones]
+        lens = [np.linalg.norm(pts[i + 1] - pts[i]) for i in range(len(bones))]
+        total = sum(lens)
+        reach = min(EAR_REACH * total, 0.07)
+        best_d = np.full(len(co), 9.0)
+        best_at = np.zeros(len(co))
+        for i in range(len(bones)):
+            a, b = pts[i], pts[i + 1]
+            ab = b - a
+            t = np.clip((co - a) @ ab / max(ab @ ab, 1e-9), 0.0, 1.0)
+            d = np.linalg.norm(co - (a + t[:, None] * ab), axis=1)
+            better = d < best_d
+            best_d[better] = d[better]
+            best_at[better] = i + t[better]
+        along = np.array([sum(lens[:int(min(a_, len(bones) - 1e-6))]) + lens[int(min(a_, len(bones) - 1e-6))]
+                          * (a_ - int(min(a_, len(bones) - 1e-6))) for a_ in best_at]) / total
+        w = _ease(EAR_FROM, EAR_FROM + 0.2, along) * (1.0 - _ease(0.75 * reach, reach, best_d))
+        w *= best_d < reach
+        for b in bones:
+            need(b)
+        idx = np.nonzero(w > 1e-4)[0]
+        W[idx] *= (1.0 - w[idx])[:, None]
+        for j, b in enumerate(bones):
+            share = np.clip(1.0 - np.abs(best_at[idx] - j - 0.5), 0.0, 1.0)
+            tot = sum(np.clip(1.0 - np.abs(best_at[idx] - k - 0.5), 0.0, 1.0) for k in range(len(bones)))
+            W[idx, col[b]] += w[idx] * share / np.maximum(tot, 1e-6)
+        print("ear %s: %d points on it" % (key, len(idx)))
+    # The shoulders: the arm's share of the torso eased in across the joint.
+    for s, sign in (("l", 1.0), ("r", -1.0)):
+        S = bone("upperarm_" + s)
+        u = bone("upperarm_" + s, "tail") - S
+        u /= np.linalg.norm(u)
+        t = (co - S) @ u
+        near = (np.sign(co[:, 0]) == sign) & (np.linalg.norm(co - S, axis=1) < 0.3)
+        arm_cols = [col[n] for n in names if n.endswith("_" + s) and not n.startswith(
+            ("clavicle", "thigh", "calf", "foot", "ball", "ear"))]
+        need("clavicle_" + s)
+        a = W[:, arm_cols].sum(axis=1)
+        allowed = _ease(SHOULDER_EASE[0], SHOULDER_EASE[1], t)
+        over = near & (a > allowed + 1e-6)
+        k = np.where(over, allowed / np.maximum(a, 1e-9), 1.0)
+        moved = (a * (1.0 - k))
+        W[:, arm_cols] *= k[:, None]
+        W[:, col["clavicle_" + s]] += moved
+        spine = [col[n] for n in ("spine_03", "spine_02") if n in col]
+        want = CLAVICLE_SHARE * _ease(-0.24, -0.12, t) * (1.0 - _ease(-0.02, 0.06, t)) * near
+        have = W[:, col["clavicle_" + s]]
+        sp = W[:, spine].sum(axis=1)
+        take = np.clip(want - have, 0.0, None)
+        take = np.minimum(take, sp)
+        ratio = np.where(sp > 1e-9, 1.0 - take / np.maximum(sp, 1e-9), 1.0)
+        W[:, spine] *= ratio[:, None]
+        W[:, col["clavicle_" + s]] += take
+        print("shoulder_%s: %d points of the torso given back to the clavicle" % (s, over.sum()))
+    # ... and smoothed there, by where the points are, not how they're joined.
+    zone = np.zeros(len(co), bool)
+    for s in ("l", "r"):
+        zone |= np.linalg.norm(co - bone("upperarm_" + s), axis=1) < 0.18
+    idx = np.nonzero(zone)[0]
+    tree = cKDTree(co)
+    nbrs = tree.query_ball_point(co[idx], SMOOTH_R)
+    keep_head = hw[idx] > 0.5
+    for _ in range(SMOOTH_TIMES):
+        W[idx] = np.array([W[nb].mean(axis=0) for nb in nbrs])
+    W[idx[keep_head]] = 0.0
+    W[idx[keep_head], col["Head"]] = 1.0
+    # The legs: below the crotch, each on its own.
+    crotch = bone("thigh_l")[2] - 0.02
+    for s, sign, o in (("l", 1.0, "r"), ("r", -1.0, "l")):
+        m = (co[:, 2] < crotch) & (np.sign(co[:, 0]) == sign)
+        for part in ("thigh", "calf", "foot", "ball"):
+            if part + "_" + o in col:
+                need(part + "_" + s)
+                W[m, col[part + "_" + s]] += W[m, col[part + "_" + o]]
+                W[m, col[part + "_" + o]] = 0.0
+    W /= np.maximum(W.sum(axis=1, keepdims=True), 1e-9)
+    for g in body.vertex_groups:
+        g.remove(range(len(co)))
+    for n, c in col.items():
+        idx = np.nonzero(W[:, c] > 1e-4)[0]
+        for i in idx.tolist():
+            groups[n].add([i], float(W[i, c]), 'REPLACE')
+
+
+def part_legs(body, rough):
+    """Legs the generation made as one (the croc's, touching from the
+    crotch to the feet - walking, the skin between them stretched like a
+    web): below the crotch each leg's inner side drawn in toward its own
+    line (CFG part_legs of the way it was, eased in from the crotch), the
+    faces still joining the two taken off and the holes they leave closed,
+    the closing coloured as the skin round it."""
+    import bmesh
+    squeeze = CFG.get("part_legs")
+    if not squeeze:
+        return
+    me = body.data
+    M = np.array(body.matrix_world)
+    inv = np.linalg.inv(M)
+
+    def joint(n):
+        return np.array(rough.matrix_world @ rough.data.bones[n].head_local)
+    crotch = joint("thigh_l")[2]
+    axes = {s: [joint("thigh_" + s), joint("calf_" + s), joint("foot_" + s)] for s in ("l", "r")}
+
+    def axis_x(s, z):
+        pts = axes[s]
+        zs = [p[2] for p in pts][::-1]
+        xs = [p[0] for p in pts][::-1]
+        return np.interp(z, zs, xs)
+    co = coords(body)
+    below = co[:, 2] < crotch
+    f = 1.0 - (1.0 - squeeze) * _ease(crotch, crotch - 0.08, co[:, 2])
+    moved = 0
+    for s, sign in (("l", 1.0), ("r", -1.0)):
+        m = below & (np.sign(co[:, 0]) == sign)
+        ax = axis_x(s, co[m, 2])
+        inner = (co[m, 0] - ax) * sign < 0.0
+        nx = np.where(inner, ax + (co[m, 0] - ax) * f[m], co[m, 0])
+        moved += int(inner.sum())
+        co[np.nonzero(m)[0], 0] = nx
+    local = co @ inv[:3, :3].T + inv[:3, 3]
+    me.vertices.foreach_set("co", local.ravel())
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.verts.ensure_lookup_table()
+    web = [fc for fc in bm.faces
+           if all(co[v.index, 2] < crotch - 0.03 for v in fc.verts)
+           and min(co[v.index, 0] for v in fc.verts) < 0.0 < max(co[v.index, 0] for v in fc.verts)]
+    bmesh.ops.delete(bm, geom=web, context='FACES_ONLY')
+    edges = [e for e in bm.edges if e.is_boundary and all(co[v.index, 2] < crotch for v in e.verts)]
+    filled = bmesh.ops.holes_fill(bm, edges=edges, sides=0)["faces"]
+    tri = bmesh.ops.triangulate(bm, faces=filled)["faces"] if filled else []
+    uvl = bm.loops.layers.uv.active
+    for fc in tri:
+        for loop in fc.loops:
+            others = [l for l in loop.vert.link_loops if l.face not in tri]
+            if others:
+                loop[uvl].uv = others[0][uvl].uv.copy()
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    print("legs parted: %d points drawn in, %d faces between them off, %d holes closed" % (moved, len(web), len(filled)))
+
+
 def tail_only(body, arm):
     """The tail's skin on the tail's bones alone."""
     if not CFG.get("tail"):
@@ -1328,6 +1550,7 @@ def main():
     heat(body, rough)
     tail_only(body, rough)
     pose_rest(body, rough, game)
+    part_legs(body, rough)
     recolour(body, rough)
     digits = paws(body, rough)
     refit(game, rough, digits)
@@ -1336,6 +1559,7 @@ def main():
         body.modifiers.remove(m)
     body.parent = None
     heat(body, game)
+    tidy_skin(body, game)
     tail_only(body, game)
     paw_skin(body)
     select([body])
