@@ -1088,6 +1088,15 @@ def player(arm, rig_name, actions, standing=()):
     if files:
         import greybox_colour
         greybox_colour.recolour(meshes, name)
+        with open(files[1]) as fh:
+            graft = json.load(fh).get("graft")
+        if graft:
+            # (user request: a Meshy character's own head on its old-style
+            # body - tools/graft_head.py; GRAFT_DIR the Meshy builds,
+            # tools/build_meshy_character.py's)
+            import graft_head
+            graft_head.graft(arm, meshes[0], os.path.join(os.environ["GRAFT_DIR"], graft + ".glb"),
+                             drop_red=name in greybox_colour.SCARVES)
     return meshes
 
 

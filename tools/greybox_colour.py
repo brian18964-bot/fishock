@@ -57,7 +57,17 @@ PALETTES = {
               "horn": ((0.66, 0.55, 0.38), 0.55, 0.0), "pad": ((0.06, 0.05, 0.05), 0.5, 0.0),
               "eye": ((0.62, 0.44, 0.10), 0.08, 0.0), "muzzle": ((0.92, 0.90, 0.85), 0.8, 0.1),
               "scarf": ((0.93, 0.91, 0.86), 0.95, 0.45)},
+    # the Meshy shiba's and black bear's bodies (their fur painted from the
+    # Meshy pictures - paint_pelt.py)
+    "dog2": {"fur": ((0.78, 0.45, 0.22), 0.85, 0.25), "skin": ((0.06, 0.05, 0.05), 0.35, 0.0),
+             "horn": ((0.20, 0.17, 0.14), 0.45, 0.0), "pad": ((0.10, 0.08, 0.08), 0.6, 0.0),
+             "scarf": ((0.48, 0.12, 0.12), 0.8, 0.2)},
+    "bear2": {"fur": ((0.05, 0.045, 0.045), 0.88, 0.25), "skin": ((0.05, 0.04, 0.04), 0.4, 0.0),
+              "horn": ((0.70, 0.64, 0.54), 0.45, 0.0), "pad": ((0.08, 0.06, 0.06), 0.6, 0.0)},
 }
+# (the ones with a neckerchief of their own - a grafted head's own is left
+# off: owl_character, graft_head)
+SCARVES = ("dog", "dog2")
 ZONE_NAMES = ["fur", "skin", "horn", "eye", "knit", "cloth", "button", "scarf", "pad", "muzzle", "rib"]
 
 
