@@ -28,6 +28,11 @@ sized to `height` and stood on the ground. Then, in two passes:
   bpyenv/bin/python tools/build_meshy_character.py -- ID MESHY SKELETON OUT.glb [LOW.blend]
 
 LOW.blend (optional) keeps the brought-down, baked mesh between runs.
+
+A config's `mixamo` names a Mixamo auto-rig of the same Meshy model (the
+user's upload, beside MESHY): its joints are then pass 1's and its skin
+both passes', in place of the measured joints and bone heat (user report:
+the black bear's fat, jumpered body never came out right under bone heat).
 """
 import heapq
 import math
@@ -47,6 +52,7 @@ args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
 ID, MESHY, SKELETON, OUT = args[:4]
 LOW = args[4] if len(args) > 4 else ""
 CFG = CHARACTERS[ID]
+MIXAMO = os.path.join(os.path.dirname(MESHY), CFG["mixamo"]) if CFG.get("mixamo") else ""
 TRIS = 36000
 NORMAL_SIZE = 2048
 SHIP_COLOUR = 1536
@@ -367,14 +373,110 @@ def even(pts, n):
     return out
 
 
+# Mixamo's bones (less their "mixamorig:") as the game's, the sides as
+# "Left"/"Right" -> "_l"/"_r"; the fingers the hand's.
+MIX_TRUNK = {"Hips": "pelvis", "Spine": "spine_01", "Spine1": "spine_02", "Spine2": "spine_03", "Neck": "neck_01",
+             "Head": "Head", "HeadTop_End": "Head"}
+MIX_SIDE = {"Shoulder": "clavicle", "Arm": "upperarm", "ForeArm": "lowerarm", "Hand": "hand", "UpLeg": "thigh",
+            "Leg": "calf", "Foot": "foot", "ToeBase": "ball", "Toe_End": "ball"}
+# (pass 1's joints from Mixamo's bones' heads)
+MIX_JOINTS = {"pelvis": "Hips", "spine_01": "Spine", "spine_02": "Spine1", "spine_03": "Spine2",
+              "neck_01": "Neck", "Head": "Head", "head_end": "HeadTop_End", "clavicle": "Shoulder",
+              "upperarm": "Arm", "lowerarm": "ForeArm", "hand": "Hand", "hand_end": "HandMiddle4",
+              "thigh": "UpLeg", "calf": "Leg", "foot": "Foot", "ball": "ToeBase", "toe": "Toe_End"}
+MIX = None
+
+
+def _mix_name(n):
+    n = n.split(":")[-1]
+    if n in MIX_TRUNK:
+        return MIX_TRUNK[n]
+    for side, s in (("Left", "_l"), ("Right", "_r")):
+        if n.startswith(side):
+            rest = n[len(side):]
+            if rest.startswith("Hand"):
+                return "hand" + s
+            if rest in MIX_SIDE:
+                return MIX_SIDE[rest] + s
+    return None
+
+
+def load_mixamo():
+    """The Mixamo rig at rest, in the game's frame: its points, their skin
+    (on the game's bones' names) and its joints."""
+    global MIX
+    before = set(bpy.data.objects)
+    bpy.ops.import_scene.fbx(filepath=MIXAMO)
+    new = list(set(bpy.data.objects) - before)
+    arm = next(o for o in new if o.type == 'ARMATURE')
+    me = next(o for o in new if o.type == 'MESH')
+    if arm.animation_data:
+        arm.animation_data.action = None
+    for pb in arm.pose.bones:
+        pb.matrix_basis.identity()
+    bpy.context.view_layer.update()
+    M = np.array(me.matrix_world)
+    co = np.array([v.co for v in me.data.vertices]) @ M[:3, :3].T + M[:3, 3]
+
+    def game(p):
+        p = np.asarray(p, float)
+        return (p - np.array([0.0, CFG["joints"]["pelvis"][0], FEET])) * SCALE + np.array([0.0, HIPS_BACK, 0.0])
+    names = sorted({_mix_name(g.name) for g in me.vertex_groups} - {None})
+    col = {n: i for i, n in enumerate(names)}
+    gmap = {g.index: _mix_name(g.name) for g in me.vertex_groups}
+    W = np.zeros((len(co), len(names)))
+    for v in me.data.vertices:
+        for g in v.groups:
+            n = gmap[g.group]
+            if n:
+                W[v.index, col[n]] += g.weight
+    W /= np.maximum(W.sum(axis=1, keepdims=True), 1e-9)
+    joints = {b.name.split(":")[-1]: game(arm.matrix_world @ b.head_local) for b in arm.data.bones}
+    for o in new:
+        bpy.data.objects.remove(o, do_unlink=True)
+    MIX = dict(co=game(co), W=W, names=names, joints=joints)
+    print("mixamo: %d points, %d bones' skin, from %s" % (len(co), len(names), os.path.basename(MIXAMO)))
+
+
+def mix_skin(body, arm):
+    """The Mixamo rig's skin on the body (each point its nearest few of the
+    rig's, by distance) - bound to `arm` without bone heat."""
+    from scipy.spatial import cKDTree
+    for m in list(body.modifiers):
+        if m.type == 'ARMATURE':
+            body.modifiers.remove(m)
+    body.vertex_groups.clear()
+    select([body, arm], active=arm)
+    bpy.ops.object.parent_set(type='ARMATURE_NAME')
+    co = coords(body)
+    d, j = cKDTree(MIX["co"]).query(co, k=4)
+    w = 1.0 / np.maximum(d, 1e-5)
+    W = (MIX["W"][j] * w[:, :, None]).sum(axis=1) / w.sum(axis=1)[:, None]
+    groups = {g.name: g for g in body.vertex_groups}
+    for c, n in enumerate(MIX["names"]):
+        if n not in groups:
+            groups[n] = body.vertex_groups.new(name=n)
+        idx = np.nonzero(W[:, c] > 1e-3)[0]
+        for i in idx.tolist():
+            groups[n].add([i], float(W[i, c]), 'REPLACE')
+    print("mixamo skin: %d points, farthest from the rig's %.3f" % (len(co), float(d[:, 0].max())))
+
+
 def rough_skeleton(body):
     j = CFG["joints"]
 
     def mid(name):
+        if MIX:
+            return Vector(tuple(MIX["joints"][MIX_JOINTS[name]]))
         y, z = j[name]
         return _p(0.0, y, z)
 
     def side(name, k):
+        # (the wrist where it was measured: the hand's cut off there and its
+        # paw grown on - at Mixamo's, a cm further in, a scrap of the old
+        # hand's black fur was left outside the cuff)
+        if MIX and name not in ("hand", "hand_end"):
+            return Vector(tuple(MIX["joints"][("Left" if k > 0 else "Right") + MIX_JOINTS[name]]))
         x, y, z = j[name]
         return _p(x * k, y, z)
     trunk = ["pelvis", "spine_01", "spine_02", "spine_03", "neck_01", "Head", "head_end"]
@@ -410,6 +512,48 @@ def rough_skeleton(body):
             b.parent = eb[parent]
     bpy.ops.object.mode_set(mode='OBJECT')
     return arm
+
+
+def _centre_legs(body, rough):
+    """The rough skeleton's knees and ankles put on each leg's own middle
+    (user report: in game the right calf was set off from the thigh at the
+    knee, the left not - the joints are read off one side and mirrored, and
+    a generated body isn't: the collie's right shin stood 5 cm outside its
+    bones). Each cut across its leg at the joint, the joint moved to the
+    middle of what's within LEG_FIND of it."""
+    co = coords(body)
+    select([rough])
+    bpy.ops.object.mode_set(mode='EDIT')
+    eb = rough.data.edit_bones
+    M = rough.matrix_world
+    inv = M.inverted()
+    for s in ("l", "r"):
+        for joint, bone in (("knee", "calf_" + s), ("ankle", "foot_" + s)):
+            b = eb[bone]
+            at = np.array(M @ b.head)
+            par = b.parent
+            u = np.array(M.to_3x3() @ (par.tail - par.head))
+            u /= np.linalg.norm(u)
+            rel = co - at
+            x = rel @ u
+            m = (np.abs(x) < 0.012) & (np.sign(co[:, 0]) == np.sign(at[0]))
+            c = at.copy()
+            for _ in range(4):
+                near = m & (np.linalg.norm(co - c - np.outer((co - c) @ u, u), axis=1) < LEG_FIND)
+                if near.sum() < 8:
+                    break
+                side_ = co[near] - at
+                side_ -= np.outer(side_ @ u, u)
+                c = at + (np.percentile(side_, 95, axis=0) + np.percentile(side_, 5, axis=0)) / 2.0
+            d = Vector(tuple(c - at))
+            if d.length < 1e-4:
+                continue
+            d = inv.to_3x3() @ d
+            # (the ankle alone: the ball and toes stay on the foot's own)
+            b.head = b.head + d
+            par.tail = b.head
+            print("%s_%s: moved %.3f onto the leg's middle" % (joint, s, float(np.linalg.norm(c - at))))
+    bpy.ops.object.mode_set(mode='OBJECT')
 
 
 def heat(body, arm):
@@ -481,6 +625,8 @@ KNEE_SMOOTH = 0.12
 # (the knee's thigh-to-calf split eased over this either side of the joint,
 # within KNEE_SPLIT of it)
 KNEE_BLEND = 0.05
+# (a leg's middle at a joint: what's within this of the joint across it)
+LEG_FIND = 0.11
 KNEE_SPLIT = 0.16
 
 
@@ -573,7 +719,8 @@ def tidy_skin(body, arm):
     legs_ = [col[n] for n in names if n.startswith(("thigh_", "calf_"))]
     tcols = [col[n] for n in trunk]
     hip_z = bone("thigh_l")[2]
-    up = _ease(hip_z + TRUNK_FROM[0], hip_z + TRUNK_FROM[1], co[:, 2]) * (1.0 - hw)
+    # (a Mixamo skin's trunk kept as it is)
+    up = _ease(hip_z + TRUNK_FROM[0], hip_z + TRUNK_FROM[1], co[:, 2]) * (1.0 - hw) * (0.0 if MIX else 1.0)
     moved = W[:, legs_].sum(axis=1) * up
     W[:, legs_] *= (1.0 - up)[:, None]
     # (and the tail's well up the back, heat's: user report, the black
@@ -596,9 +743,25 @@ def tidy_skin(body, arm):
     # (by height where it's the trunk's; below the hips' joints - the legs'
     # tops, the seat - as heat had it)
     keep = 1.0 - _ease(hip_z + TRUNK_FROM[0], hip_z + TRUNK_FROM[1], co[:, 2])
+    if MIX:
+        keep[:] = 1.0
     W[:, tcols] = W[:, tcols] * keep[:, None] + (share * (1.0 - keep))[:, None] * tent
     print("trunk: %d points laid along the spine" % (up > 0.5).sum())
     # The shoulders: the arm's share of the torso eased in across the joint.
+    def arm_girth(s):
+        # (round the top of the upper arm, where no torso is)
+        S = bone("upperarm_" + s)
+        u = bone("upperarm_" + s, "tail") - S
+        L = np.linalg.norm(u)
+        u /= L
+        t = (co - S) @ u
+        on_line = S + np.clip(t, 0.0, L)[:, None] * u
+        a = W[:, [col[n] for n in names if n.endswith("_" + s) and n.startswith(("upperarm", "lowerarm"))]].sum(axis=1)
+        mid = (a > 0.95) & (t > 0.3 * L) & (t < 0.7 * L) & (on_line[:, 2] <= co[:, 2])
+        return np.percentile(np.linalg.norm(co - on_line, axis=1)[mid], 75) if mid.sum() > 20 else 0.06
+    # (the two arms the same girth - the larger, a generated body's two
+    # sides weighted unlike)
+    girth = max(arm_girth("l"), arm_girth("r"))
     for s, sign in (("l", 1.0), ("r", -1.0)):
         S = bone("upperarm_" + s)
         u = bone("upperarm_" + s, "tail") - S
@@ -608,7 +771,8 @@ def tidy_skin(body, arm):
             ("clavicle", "thigh", "calf", "foot", "ball", "ear"))]
         need("clavicle_" + s)
         a = W[:, arm_cols].sum(axis=1)
-        allowed = _ease(SHOULDER_EASE[0], SHOULDER_EASE[1], t)
+        # (a Mixamo skin's shoulders kept)
+        allowed = np.ones(len(co)) if MIX else _ease(SHOULDER_EASE[0], SHOULDER_EASE[1], t)
         # (and none of it on the torso well away from the arm's own line,
         # however far from the shoulder - user report, the black bear's
         # belly crumpled with its arms down: heat had given its front, a
@@ -616,13 +780,9 @@ def tidy_skin(body, arm):
         # upper arm)
         E = bone("upperarm_" + s, "tail")
         L = np.linalg.norm(E - S)
-        # (below the arm only - the belly under it - its girth measured
-        # round the top of the upper arm, where no torso is)
+        # (below the arm only - the belly under it)
         on_line = S + np.clip(t, 0.0, L)[:, None] * u
-        r = np.linalg.norm(co - on_line, axis=1)
         down = np.clip(on_line[:, 2] - co[:, 2], 0.0, None)
-        mid = (a > 0.95) & (t > 0.3 * L) & (t < 0.7 * L) & (down == 0.0)
-        girth = np.percentile(r[mid], 75) if mid.sum() > 20 else 0.06
         radial = np.maximum(1.0 - _ease(ARM_REACH[0] * girth, ARM_REACH[1] * girth, down), _ease(0.5 * L, 0.8 * L, t))
         allowed = allowed * radial
         over = a > allowed + 1e-6
@@ -635,6 +795,8 @@ def tidy_skin(body, arm):
         W[:, col["clavicle_" + s]] += moved * cw
         W[:, tcols] += (moved * (1.0 - cw))[:, None] * tent
         print("shoulder_%s: arm's girth %.3f, %d points off it" % (s, girth, (over & (radial < 0.5)).sum()))
+        if MIX:
+            continue
         spine = [col[n] for n in ("spine_03", "spine_02") if n in col]
         # (faded out toward the edge of the shoulder's reach, not cut there:
         # on the black bear's broad chest the cut ran across its front)
@@ -648,6 +810,10 @@ def tidy_skin(body, arm):
         W[:, spine] *= ratio[:, None]
         W[:, col["clavicle_" + s]] += take
         print("shoulder_%s: %d points of the torso taken off the arm" % (s, over.sum()))
+    if MIX:
+        # (a Mixamo skin: its arms off the body under them, the rest as is)
+        _write_skin(body, W, col, groups)
+        return
     # ... and smoothed there, by where the points are, not how they're joined.
     zone = np.zeros(len(co), bool)
     for s in ("l", "r"):
@@ -702,9 +868,13 @@ def tidy_skin(body, arm):
         W[m, ca] = both[m] * f[m]
         W[m, th] = both[m] * (1.0 - f[m])
         print("knee_%s: %d points split across it" % (s, m.sum()))
+    _write_skin(body, W, col, groups)
+
+
+def _write_skin(body, W, col, groups):
     W /= np.maximum(W.sum(axis=1, keepdims=True), 1e-9)
     for g in body.vertex_groups:
-        g.remove(range(len(co)))
+        g.remove(range(len(W)))
     for n, c in col.items():
         idx = np.nonzero(W[:, c] > 1e-4)[0]
         for i in idx.tolist():
@@ -1691,8 +1861,14 @@ def main():
     bpy.context.scene.render.fps = 30
     game = game_skeleton()
     body = mesh()
+    if MIXAMO:
+        load_mixamo()
     rough = rough_skeleton(body)
-    heat(body, rough)
+    if MIX:
+        mix_skin(body, rough)
+    else:
+        _centre_legs(body, rough)
+        heat(body, rough)
     tail_only(body, rough)
     pose_rest(body, rough, game)
     part_legs(body, rough)
@@ -1703,7 +1879,25 @@ def main():
     for m in list(body.modifiers):
         body.modifiers.remove(m)
     body.parent = None
-    heat(body, game)
+    if MIX:
+        # (the skin pass 1 had - the same bones' names - kept; but the hand's
+        # the forearm's: the hands are cut off and the old characters' paws
+        # grown on, the arm's end bending with its paw as paw_skin() has it
+        # - Mixamo's hand reached up into the cuff)
+        for s in ("l", "r"):
+            h, lo = body.vertex_groups.get("hand_" + s), body.vertex_groups.get("lowerarm_" + s)
+            if h is None or lo is None:
+                continue
+            for v in body.data.vertices:
+                w = next((g.weight for g in v.groups if g.group == h.index), 0.0)
+                if w > 0.0:
+                    had = next((g.weight for g in v.groups if g.group == lo.index), 0.0)
+                    lo.add([v.index], had + w, 'REPLACE')
+                    h.remove([v.index])
+        select([body, game], active=game)
+        bpy.ops.object.parent_set(type='ARMATURE_NAME')
+    else:
+        heat(body, game)
     tidy_skin(body, game)
     tail_only(body, game)
     paw_skin(body)

@@ -28,6 +28,9 @@ left side (x, y, z; the right mirrored):
               frame: behind which y is the back of the head, in front of
               which the snout; the brow over the snout, the wool cap over
               the cheeks; the chin, the wool collar)
+  mixamo      a Mixamo auto-rig of the same model (.fbx beside the Meshy
+              export): its joints and skin in place of `joints` and bone
+              heat
   remove      [(centre, radius)]: bits of the generation to take off - a
               loose piece of the mesh lying wholly within `radius` of
               `centre`, pale (the croc's stray white ball on its back)
@@ -48,6 +51,8 @@ CHARACTERS = {
         ears=[[(0.15, 0.03, 0.86), (0.18, 0.03, 0.90), (0.20, 0.03, 0.935)]],
         tail=dict(root=(0.0, 0.26, -0.19), behind=0.27, below=-0.12, bones=2, angles=None, reach=0.05),
         recolour="black_bear",
+        # (user's Mixamo auto-rig of the same model - its joints and skin)
+        mixamo="Meshy_AI_Cozy_Bear_in_Shorts_1020055041_generate_mixamo.fbx",
         paw=dict(sleeve=0.0, fingers=4, claw=True, pad=(0.10, 0.09, 0.09), claw_colour=(0.78, 0.74, 0.66)),
     ),
     "dog2": dict(
