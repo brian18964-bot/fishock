@@ -53,6 +53,9 @@ ID, MESHY, SKELETON, OUT = args[:4]
 LOW = args[4] if len(args) > 4 else ""
 CFG = CHARACTERS[ID]
 MIXAMO = os.path.join(os.path.dirname(MESHY), CFG["mixamo"]) if CFG.get("mixamo") else ""
+# (a Mixamo auto-rig of the finished body itself - its T pose, paws and all,
+# as tools/export_tpose.py writes it out of the game's model)
+MIXAMO_FINAL = os.path.join(os.path.dirname(MESHY), CFG["mixamo_final"]) if CFG.get("mixamo_final") else ""
 TRIS = 36000
 NORMAL_SIZE = 2048
 SHIP_COLOUR = 1536
@@ -401,12 +404,14 @@ def _mix_name(n):
     return None
 
 
-def load_mixamo():
+def load_mixamo(path=None, final=False):
     """The Mixamo rig at rest, in the game's frame: its points, their skin
-    (on the game's bones' names) and its joints."""
+    (on the game's bones' names) and its joints. `final`: a rig of the
+    finished body, already in the game's frame."""
     global MIX
+    path = path or MIXAMO
     before = set(bpy.data.objects)
-    bpy.ops.import_scene.fbx(filepath=MIXAMO)
+    bpy.ops.import_scene.fbx(filepath=path)
     new = list(set(bpy.data.objects) - before)
     arm = next(o for o in new if o.type == 'ARMATURE')
     me = next(o for o in new if o.type == 'MESH')
@@ -420,6 +425,8 @@ def load_mixamo():
 
     def game(p):
         p = np.asarray(p, float)
+        if final:
+            return p
         return (p - np.array([0.0, CFG["joints"]["pelvis"][0], FEET])) * SCALE + np.array([0.0, HIPS_BACK, 0.0])
     names = sorted({_mix_name(g.name) for g in me.vertex_groups} - {None})
     col = {n: i for i, n in enumerate(names)}
@@ -434,8 +441,92 @@ def load_mixamo():
     joints = {b.name.split(":")[-1]: game(arm.matrix_world @ b.head_local) for b in arm.data.bones}
     for o in new:
         bpy.data.objects.remove(o, do_unlink=True)
-    MIX = dict(co=game(co), W=W, names=names, joints=joints)
-    print("mixamo: %d points, %d bones' skin, from %s" % (len(co), len(names), os.path.basename(MIXAMO)))
+    MIX = dict(co=game(co), W=W, names=names, joints=joints, final=final)
+    print("mixamo: %d points, %d bones' skin, from %s" % (len(co), len(names), os.path.basename(path)))
+
+
+# The game's bones moved onto a final Mixamo rig's joints (their turn kept, so
+# every clip plays as it does): its skin was made for them. The hands, their
+# fingers, the head, the ears and the tail stay pass 1's - the paws are the
+# old characters', grown on; Mixamo's head joint sat off the head's skin (the
+# black-faced sheep's head tore).
+MIX_MOVE = {"pelvis": "Hips", "spine_01": "Spine", "spine_02": "Spine1", "spine_03": "Spine2", "neck_01": "Neck",
+            "clavicle": "Shoulder", "upperarm": "Arm", "lowerarm": "ForeArm", "thigh": "UpLeg",
+            "calf": "Leg", "foot": "Foot", "ball": "ToeBase"}
+
+
+def mix_refit(game):
+    inv = np.array(game.matrix_world.inverted())
+    J = MIX["joints"]
+
+    def at(name):
+        side = name[-2:] if name[-2:] in ("_l", "_r") else ""
+        part = name[:-2] if side else name
+        key = MIX_MOVE.get(part)
+        if key is None:
+            return None
+        key = ({"_l": "Left", "_r": "Right"}.get(side, "")) + key
+        if key not in J:
+            return None
+        p = np.asarray(J[key])
+        return Vector(tuple(p @ inv[:3, :3].T + inv[:3, 3]))
+    select([game])
+    bpy.ops.object.mode_set(mode='EDIT')
+    eb = game.data.edit_bones
+    heads = {b.name: at(b.name) for b in eb}
+    moved = 0
+    for b in eb:
+        h = heads[b.name]
+        if h is None:
+            continue
+        # (its length to its child's new head, where there's one)
+        kids = [heads[c.name] for c in b.children if heads.get(c.name) is not None]
+        if b.name.startswith("lowerarm"):
+            t = b.tail
+        elif kids:
+            t = min(kids, key=lambda k: (k - h).length)
+        else:
+            t = h + (b.tail - b.head)
+        roll = b.roll
+        way = (b.tail - b.head).normalized()
+        b.head = h
+        b.tail = h + way * max((t - h).length, 0.01)
+        b.roll = roll
+        moved += 1
+    bpy.ops.object.mode_set(mode='OBJECT')
+    print("mixamo joints: %d of the game's bones moved onto them" % moved)
+
+
+def slim(body):
+    """The trunk drawn in (CFG `slim`: (across, front, back) - how much less),
+    between the hips' joints and the shoulders - the arms, legs and head as
+    they are (user request: the black bear thinner). The Mixamo rig's points
+    drawn in alike, so its skin still lies on them."""
+    k = CFG.get("slim")
+    if not k or not MIX:
+        return
+    from scipy.spatial import cKDTree
+    J = MIX["joints"]
+    hip, sh, y0 = J["LeftUpLeg"][2], J["LeftArm"][2], J["Spine1"][1]
+    names = MIX["names"]
+    trunk = MIX["W"][:, [i for i, n in enumerate(names) if n.startswith(("pelvis", "spine"))]].sum(axis=1)
+    arms = MIX["W"][:, [i for i, n in enumerate(names) if n.startswith(("clavicle", "upperarm", "lowerarm", "hand"))]].sum(axis=1)
+
+    def drawn(co, t, a):
+        f = _ease(hip - 0.03, hip + 0.13, co[:, 2]) * (1.0 - _ease(sh - 0.19, sh, co[:, 2])) * np.clip(t - a, 0.0, 1.0)
+        out = co.copy()
+        out[:, 0] *= 1.0 - k[0] * f
+        dy = co[:, 1] - y0
+        out[:, 1] = y0 + dy * np.where(dy < 0, 1.0 - k[1] * f, 1.0 - k[2] * f)
+        return out
+    co = coords(body)
+    _, j = cKDTree(MIX["co"]).query(co)
+    new = drawn(co, trunk[j], arms[j])
+    inv = np.array(body.matrix_world.inverted())
+    body.data.vertices.foreach_set("co", (new @ inv[:3, :3].T + inv[:3, 3]).ravel())
+    body.data.update()
+    MIX["co"] = drawn(MIX["co"], trunk, arms)
+    print("slim: the trunk drawn in by %s" % (k,))
 
 
 def mix_skin(body, arm):
@@ -1863,6 +1954,7 @@ def main():
     body = mesh()
     if MIXAMO:
         load_mixamo()
+        slim(body)
     rough = rough_skeleton(body)
     if MIX:
         mix_skin(body, rough)
@@ -1879,7 +1971,31 @@ def main():
     for m in list(body.modifiers):
         body.modifiers.remove(m)
     body.parent = None
-    if MIX:
+    if MIXAMO_FINAL:
+        # (pass 1 was bone heat's; pass 2 the finished body's own Mixamo rig)
+        load_mixamo(MIXAMO_FINAL, final=True)
+        mix_refit(game)
+        # (the tail, the ears, the head and the hands kept as pass 1 had them: Mixamo
+        # gave the tail to the hips and legs - bits of it flew off with a
+        # stride - and the paws are the old characters')
+        kept = {}
+        names = {g.index: g.name for g in body.vertex_groups}
+        for v in body.data.vertices:
+            had = {names[g.group]: g.weight for g in v.groups if g.weight > 1e-4}
+            if sum(w for n, w in had.items() if n.startswith(("tail_", "ear_", "hand_"))) > 0.01 or \
+                    had.get("Head", 0.0) > 0.5:
+                kept[v.index] = had
+        mix_skin(body, game)
+        groups = {g.name: g for g in body.vertex_groups}
+        for i, had in kept.items():
+            for g in body.vertex_groups:
+                g.remove([i])
+            for n, w in had.items():
+                if n not in groups:
+                    groups[n] = body.vertex_groups.new(name=n)
+                groups[n].add([i], w, 'REPLACE')
+        print("mixamo: %d points kept as pass 1 had them (tail, ears, head, hands)" % len(kept))
+    elif MIX:
         # (the skin pass 1 had - the same bones' names - kept; but the hand's
         # the forearm's: the hands are cut off and the old characters' paws
         # grown on, the arm's end bending with its paw as paw_skin() has it

@@ -31,6 +31,11 @@ left side (x, y, z; the right mirrored):
   mixamo      a Mixamo auto-rig of the same model (.fbx beside the Meshy
               export): its joints and skin in place of `joints` and bone
               heat
+  mixamo_final a Mixamo auto-rig of the finished body (.fbx beside the
+              Meshy export; the T pose tools/export_tpose.py writes out of
+              the game's model): pass 2's joints and skin
+  slim        (across, front, back): the trunk drawn in by these fractions
+              (needs `mixamo`)
   remove      [(centre, radius)]: bits of the generation to take off - a
               loose piece of the mesh lying wholly within `radius` of
               `centre`, pale (the croc's stray white ball on its back)
@@ -53,6 +58,9 @@ CHARACTERS = {
         recolour="black_bear",
         # (user's Mixamo auto-rig of the same model - its joints and skin)
         mixamo="Meshy_AI_Cozy_Bear_in_Shorts_1020055041_generate_mixamo.fbx",
+        # (user request: thinner - the trunk this much less across, in front
+        # and behind)
+        slim=(0.18, 0.28, 0.12),
         paw=dict(sleeve=0.0, fingers=4, claw=True, pad=(0.10, 0.09, 0.09), claw_colour=(0.78, 0.74, 0.66)),
     ),
     "dog2": dict(
@@ -82,6 +90,7 @@ CHARACTERS = {
         tail=dict(root=(0.05, 0.07, 0.12), behind=0.09, below=0.2, bones=6, angles=(40, 25, 10, -5, -20, -30),
                   reach=0.10),
         paw=dict(sleeve=-0.045, claw=True, pad=(0.13, 0.11, 0.10)),
+        mixamo_final="dog3_tpose_mixamo.fbx",
     ),
     "deer2": dict(
         name="紅鹿", meshy="Cozy_Woodland_Gentlem", height=1.97,
@@ -96,6 +105,7 @@ CHARACTERS = {
         tail=None,
         recolour="sika",
         paw=dict(sleeve=-0.012, pad=(0.20, 0.14, 0.10)),
+        mixamo_final="deer2_tpose_mixamo.fbx",
     ),
     "owl2": dict(
         name="角鴞", meshy="Professor_Hootsworth", height=1.62,
@@ -109,6 +119,7 @@ CHARACTERS = {
         ears=[[(0.09, -0.02, 0.84), (0.14, -0.05, 0.89), (0.18, -0.08, 0.945)]],
         tail=dict(root=(0.0, 0.06, 0.08), behind=0.07, below=0.12, bones=3, angles=None, reach=0.06),
         paw=dict(sleeve=-0.008, claw=True, pad=(0.62, 0.52, 0.30), claw_colour=(0.10, 0.09, 0.09)),
+        mixamo_final="owl2_tpose_mixamo.fbx",
     ),
     "sheep2": dict(
         name="綿羊", meshy="Woolly_Wayfarer", height=1.62,
@@ -124,6 +135,7 @@ CHARACTERS = {
         recolour="black_face",
         face=dict(back=0.04, snout=-0.15, brow=0.885, cap=0.845, chin=0.612, collar=0.64),
         paw=dict(sleeve=-0.01, pad=(0.07, 0.06, 0.06)),
+        mixamo_final="sheep2_tpose_mixamo.fbx",
     ),
     "croc": dict(
         name="鱷魚", meshy="Cozy_Croc_Guy", height=1.65,
@@ -140,5 +152,6 @@ CHARACTERS = {
         remove=[((-0.012, -0.227, 0.08), 0.09)],
         paw=dict(sleeve=-0.022, claw=True, pad=(0.42, 0.44, 0.30), claw_colour=(0.80, 0.76, 0.64)),
         part_legs=0.72,
+        mixamo_final="croc_tpose_mixamo.fbx",
     ),
 }
