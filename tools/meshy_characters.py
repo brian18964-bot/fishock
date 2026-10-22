@@ -34,6 +34,7 @@ left side (x, y, z; the right mirrored):
   mixamo_final a Mixamo auto-rig of the finished body (.fbx beside the
               Meshy export; the T pose tools/export_tpose.py writes out of
               the game's model): pass 2's joints and skin
+  pass1_skin  pass 1's skin (its bone heat) kept for pass 2, as with `mixamo`
   slim        (across, front, back): the trunk drawn in by these fractions
               (needs `mixamo`)
   remove      [(centre, radius)]: bits of the generation to take off - a
@@ -45,22 +46,26 @@ The sources (the user's ASSET1 release) stay out of the repo.
 
 CHARACTERS = {
     "bear2": dict(
-        name="棕熊", meshy="Cozy_Bear_in_Shorts", height=1.60,
+        # (user's own remake: bear_Mixamo_v2.zip's bear_Mixamo_textured.fbx -
+        # slimmer, its picture already black, standing in a T pose. Joints from
+        # the user's Mixamo rig of it, bear_Mixamo_upload_1.fbx, taken 5.2 cm
+        # back to the right: Mixamo had set the whole skeleton off the middle
+        # line, the right hand's knuckles inside its palm. Bone heat skins it.
+        # The hips out on the thighs' own middles: at Mixamo's, its splayed
+        # legs stood straight came together, and crossed in the clips.)
+        name="棕熊", meshy="bear_Mixamo", height=1.60,
         joints=dict(
-            pelvis=(0.10, -0.17), spine_01=(0.12, -0.02), spine_02=(0.13, 0.15), spine_03=(0.13, 0.30),
-            neck_01=(0.10, 0.48), Head=(0.05, 0.60), head_end=(0.0, 0.85),
-            clavicle=(0.04, 0.08, 0.40), upperarm=(0.28, 0.05, 0.40), lowerarm=(0.46, 0.04, 0.19),
-            hand=(0.645, 0.02, -0.01), hand_end=(0.80, 0.0, -0.24),
-            thigh=(0.14, 0.06, -0.22), calf=(0.23, 0.04, -0.52), foot=(0.27, 0.07, -0.83),
-            ball=(0.27, -0.17, -0.93), toe=(0.27, -0.27, -0.945)),
-        ears=[[(0.15, 0.03, 0.86), (0.18, 0.03, 0.90), (0.20, 0.03, 0.935)]],
-        tail=dict(root=(0.0, 0.26, -0.19), behind=0.27, below=-0.12, bones=2, angles=None, reach=0.05),
-        recolour="black_bear",
-        # (user's Mixamo auto-rig of the same model - its joints and skin)
-        mixamo="Meshy_AI_Cozy_Bear_in_Shorts_1020055041_generate_mixamo.fbx",
-        # (user request: thinner - the trunk this much less across, in front
-        # and behind)
-        slim=(0.18, 0.28, 0.12),
+            pelvis=(0.018, 0.553), spine_01=(0.022, 0.652), spine_02=(0.026, 0.768), spine_03=(0.032, 0.901),
+            neck_01=(0.037, 1.050), Head=(0.013, 1.181), head_end=(-0.022, 1.367),
+            clavicle=(0.081, 0.038, 1.029), upperarm=(0.215, 0.038, 0.988), lowerarm=(0.433, 0.046, 0.993),
+            hand=(0.649, 0.012, 1.000), hand_end=(0.783, -0.034, 0.963),
+            thigh=(0.130, 0.007, 0.498), calf=(0.187, 0.030, 0.257), foot=(0.222, 0.026, 0.112),
+            ball=(0.204, -0.123, 0.018), toe=(0.188, -0.202, 0.014)),
+        ears=[[(0.100, 0.0, 1.320), (0.110, -0.003, 1.360), (0.112, -0.005, 1.395)]],
+        tail=dict(root=(0.0, 0.235, 0.550), behind=0.235, below=0.62, bones=2, angles=None, reach=0.05),
+        # (pass 1's bone heat kept for pass 2: with the paws on, pass 2's
+        # found no solution for most of the body)
+        pass1_skin=True,
         paw=dict(sleeve=0.0, fingers=4, claw=True, pad=(0.10, 0.09, 0.09), claw_colour=(0.78, 0.74, 0.66)),
     ),
     "dog2": dict(

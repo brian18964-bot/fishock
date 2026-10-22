@@ -1032,6 +1032,33 @@ def part_legs(body, rough):
     print("legs parted: %d points drawn in, %d faces between them off, %d holes closed" % (moved, len(web), len(filled)))
 
 
+def own_legs(body, arm):
+    """Below the crotch each point on its own side's leg bones only (user
+    report, the black bear's remake: its legs nearly touch inside, and bone
+    heat gave bits of each leg's inner side to the other leg - shards of
+    skin tore across between them as they parted)."""
+    crotch = (arm.matrix_world @ arm.data.bones["thigh_l"].head_local).z - 0.02
+    co = coords(body)
+    groups = {g.name: g for g in body.vertex_groups}
+    names = {g.index: g.name for g in body.vertex_groups}
+    moves = []
+    for v in body.data.vertices:
+        if co[v.index][2] >= crotch:
+            continue
+        own, other = ("_l", "_r") if co[v.index][0] > 0.0 else ("_r", "_l")
+        w = {names[g.group]: g.weight for g in v.groups}
+        for n, x in w.items():
+            if n.endswith(other) and n[:-2] in ("thigh", "calf", "foot", "ball"):
+                moves.append((v.index, n, n[:-2] + own, x + w.get(n[:-2] + own, 0.0)))
+    for i, n, to, x in moves:
+        groups[n].remove([i])
+        if to not in groups:
+            groups[to] = body.vertex_groups.new(name=to)
+        groups[to].add([i], x, 'REPLACE')
+    moved = len(moves)
+    print("legs: %d of the other leg's weights moved to the point's own" % moved)
+
+
 def tail_only(body, arm):
     """The tail's skin on the tail's bones alone."""
     if not CFG.get("tail"):
@@ -1961,6 +1988,7 @@ def main():
     else:
         _centre_legs(body, rough)
         heat(body, rough)
+        own_legs(body, rough)
     tail_only(body, rough)
     pose_rest(body, rough, game)
     part_legs(body, rough)
@@ -1995,7 +2023,7 @@ def main():
                     groups[n] = body.vertex_groups.new(name=n)
                 groups[n].add([i], w, 'REPLACE')
         print("mixamo: %d points kept as pass 1 had them (tail, ears, head, hands)" % len(kept))
-    elif MIX:
+    elif MIX or CFG.get("pass1_skin"):
         # (the skin pass 1 had - the same bones' names - kept; but the hand's
         # the forearm's: the hands are cut off and the old characters' paws
         # grown on, the arm's end bending with its paw as paw_skin() has it
@@ -2015,6 +2043,7 @@ def main():
     else:
         heat(body, game)
     tidy_skin(body, game)
+    own_legs(body, game)
     tail_only(body, game)
     paw_skin(body)
     select([body])

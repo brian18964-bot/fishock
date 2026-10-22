@@ -2,19 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bnnnggde2lkht"
-path="res://.godot/imported/bear2_texture_0_roughness.jpg-6dc25dfab8eee04d8ca47ff07b3dd190.ctex"
+uid="uid://bvnr7i0w1138t"
+path="res://.godot/imported/bear2_bear_base_color.jpg-e685c204d45211481aadd1cb6246ccd5.ctex"
 metadata={
 "vram_texture": false
-}
-generator_parameters={
-"md5": "62a012e2d796583795b1a5fe196bc57d"
 }
 
 [deps]
 
-source_file="res://assets/models/characters/bear2_texture_0_roughness.jpg"
-dest_files=["res://.godot/imported/bear2_texture_0_roughness.jpg-6dc25dfab8eee04d8ca47ff07b3dd190.ctex"]
+source_file="res://assets/models/characters/bear2_bear_base_color.jpg"
+dest_files=["res://.godot/imported/bear2_bear_base_color.jpg-e685c204d45211481aadd1cb6246ccd5.ctex"]
 
 [params]
 
@@ -26,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""
