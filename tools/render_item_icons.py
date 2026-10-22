@@ -277,6 +277,12 @@ def round8():
     model_pic("net", (2, 1), (0, 0, -20))
 
 
+def glow_mushroom():
+    """The glow mushroom (user request: picked under the trees on the map;
+    tools/make_glow_mushroom.py)."""
+    model_pic("glow_mushroom", (1, 1), (0, 0, 20))
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     only = sys.argv[1:]

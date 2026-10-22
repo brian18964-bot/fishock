@@ -162,6 +162,8 @@ func _ready() -> void:
 	_scatter_props()
 	_scatter_themed_props()
 	_scatter_flip_rocks()
+	# (once the trees are in - they go in deferred)
+	_scatter_mushrooms.call_deferred()
 	_scatter_ground_cover()
 	_scatter_critters()
 
@@ -536,6 +538,44 @@ func _scatter_flip_rocks() -> void:
 		# Small stones to turn over - not the standing slabs or the props.
 		rock.variant_pool = theme.rock_pool.filter(func(e): return not (e is String and e in NOT_FLIPPABLE))
 		get_parent().add_child.call_deferred(rock)
+
+
+## User request: the glow mushrooms, only under trees - each at the foot of
+## one (a few trees, picked at random), on dry ground clear of the docks'
+## and shores' walkways and of every other thing's base.
+func _scatter_mushrooms() -> void:
+	var trees := get_tree().get_nodes_in_group("trees").filter(func(t): return t is MapTree and _inside_map(t.global_position, 40.0))
+	trees.shuffle()
+	# (a rare find: no more on a bigger map, fewer on a smaller one)
+	var share := minf(Campaign.area_share(), 1.0)
+	var want := maxi(1, roundi(randi_range(GlowMushroom.PER_MAP.x, GlowMushroom.PER_MAP.y) * share))
+	var made := 0
+	for t in trees:
+		if made >= want:
+			break
+		var tree := t as MapTree
+		for _try in 6:
+			var a := randf() * TAU
+			var at := tree.global_position + Vector2(cos(a), sin(a)) * (tree.trunk_radius + randf_range(GlowMushroom.FROM_TRUNK.x, GlowMushroom.FROM_TRUNK.y))
+			if water_zones.any(func(z): return z.contains(at)) or _near_walkway(at, 20.0) or not _clear_of_bases(at, tree):
+				continue
+			var m := GlowMushroom.new()
+			m.name = "GlowMushroom%d" % made
+			m.position = at
+			get_parent().add_child(m)
+			made += 1
+			break
+
+
+## Whether `at` is off every solid thing's base but `tree`'s (a mushroom's
+## room).
+func _clear_of_bases(at: Vector2, tree: Node2D) -> bool:
+	for entry in _taken:
+		if (entry[0] as Vector2).distance_to(tree.global_position) < 1.0:
+			continue
+		if (entry[0] as Vector2).distance_to(at) < float(entry[1]) + 8.0:
+			return false
+	return true
 
 
 func _theme_prop(prop: Node) -> void:

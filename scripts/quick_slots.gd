@@ -313,7 +313,8 @@ class SlotView extends Control:
 						Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]))
 					for poly in clipped:
 						draw_colored_polygon(poly, Color(0, 0, 0, 0.55))
-			"potion_vigor", "potion_ward":
-				var left := player.vigor_timer / Player.VIGOR_TIME if id == "potion_vigor" else player.ward_timer / Player.WARD_TIME
+			"potion_vigor", "potion_ward", "glow_mushroom":
+				var left := player.vigor_timer / Player.VIGOR_TIME if id == "potion_vigor" else (player.ward_timer / Player.WARD_TIME
+					if id == "potion_ward" else minf(player.glow_timer / Player.GLOW_TIME, 1.0))
 				if left > 0.0:
 					draw_arc(c, size.x * 0.56, -PI / 2.0, -PI / 2.0 + TAU * left, 40, Color(0.6, 1.0, 0.65, 0.8), 2.5, true)

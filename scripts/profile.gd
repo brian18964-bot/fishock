@@ -237,8 +237,12 @@ const USABLES := {
 		"desc": "使用後 20 秒，看得見大鬼在哪個方向（會跟著牠移動）"},
 	"binoculars": {"name": "望遠鏡", "cost": 90, "stack": 1, "keep": true,
 		"desc": "望向遠方找出最近的水域（指引 20 秒）；不會用掉，用過要等 60 秒"},
+	# User request: the glow mushroom - not sold, only picked under the
+	# map's trees (GlowMushroom); its cost only ranks it (UiKit's rarity).
+	"glow_mushroom": {"name": "發光蘑菇", "cost": 12, "stack": 5, "keep": false, "sold": false,
+		"desc": "長在樹下、在黑暗裡默默發著藍光的蘑菇。揉碎撒在身上，30 秒內全身散發微弱的藍光，照亮身邊一圈（約 2.4 公尺）"},
 }
-const USABLE_ORDER := ["potion_vigor", "potion_ward", "eyeball", "eye_altar", "eye_ghost", "binoculars"]
+const USABLE_ORDER := ["potion_vigor", "potion_ward", "eyeball", "eye_altar", "eye_ghost", "binoculars", "glow_mushroom"]
 
 ## User request (Camp v2): what's been done, for the achievements that
 ## earn the camp's tents (TENTS) - escapes, gold spent, legends caught.
@@ -740,7 +744,7 @@ func buy_usable(id: String) -> bool:
 	if not USABLES.has(id):
 		return false
 	var d: Dictionary = USABLES[id]
-	if gold < int(d.cost) or (d.keep and owned(id) > 0):
+	if not d.get("sold", true) or gold < int(d.cost) or (d.keep and owned(id) > 0):
 		return false
 	_spend(int(d.cost))
 	_store(id, 1)

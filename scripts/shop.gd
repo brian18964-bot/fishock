@@ -196,6 +196,8 @@ func _refresh() -> void:
 			for key in Profile.USABLE_ORDER:
 				var u: Dictionary = Profile.USABLES[key]
 				var uid: String = key
+				if not u.get("sold", true):
+					continue
 				if u.keep and Profile.owned(uid) > 0:
 					_card(uid, Items.icon(uid), u.name, "已擁有", 0, func(): buy_dialog(uid, 0, "已經擁有了"))
 				else:

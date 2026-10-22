@@ -9,7 +9,7 @@ kind's colour, a dark edge round it. 128x128, shown at 64 or less.
 Writes assets/sprites/icons/<name>.png - rod_0..rod_4, flashlight,
 battery, lamp, worm, cricket, shrimp, minnow, tea, roll, loaf, cheese,
 potion_vigor, potion_ward, eyeball, binoculars, eye_altar, eye_ghost, net,
-rat, snake, crab, bee, black_spider,
+rat, snake, crab, bee, black_spider, glow_mushroom,
 frog, spider, knife, machete, hatchet, glock, ammo, tent_1..tent_9,
 lure_1..lure_6, and throw (the 誘惑 action button) (Items.square_icon()
 maps the things' ids onto these).
@@ -72,6 +72,9 @@ THINGS = {
     "crab": dict(model="items/crab.glb", turn=(30, 0, 20), fill=0.86, ground=BAIT),
     "bee": dict(model="items/bee.glb", turn=(20, 0, 35), fill=0.86, ground=BAIT),
     "black_spider": dict(model="items/black_spider.glb", turn=(35, 0, 25), fill=0.9, ground=BAIT),
+    # User request: the glow mushroom, picked under the trees on the map
+    # (tools/make_glow_mushroom.py).
+    "glow_mushroom": dict(model="items/glow_mushroom.glb", turn=(12, 0, 25), fill=0.9, ground=TACKLE),
     # The merchant's tea (Camp v2): had at once, for spirit.
     # User request: the tea served in the user's cup.
     "tea": dict(model="items/cup.glb", turn=(28, 0, -30), fill=0.8, ground=ITEM),

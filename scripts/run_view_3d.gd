@@ -168,7 +168,7 @@ const DODGE_RATE := 1.6
 ## the map's pictures are stood up as they are)
 const MODELLED := ["tree.gd", "bush.gd", "obstacle.gd", "ground_cover.gd", "dock.gd", "water_zone.gd",
 	"flip_rock.gd", "silhouette_shadow.gd", "player.gd", "map_generator.gd", "light_twin.gd", "day_vision.gd",
-	"ripple.gd", "atmosphere.gd", "weather_fx.gd", "dropped_fish.gd"]
+	"ripple.gd", "atmosphere.gd", "weather_fx.gd", "dropped_fish.gd", "glow_mushroom.gd"]
 
 ## Asked for by the way the run was set off (the journey's 3D button, the
 ## settings'): the run that's starting is in 3D, and the ones after it (a
@@ -258,6 +258,19 @@ var _pending: Array = []
 var _walk: Array = []  # [Rect2 (2D), deck height]
 var _raised: Array = []
 var _flip_rocks := {}
+## User request: the glow mushrooms (GlowMushroom) - each its model, its
+## glow's material and its little light: {node: [Node3D, material, light]}.
+var _mushrooms := {}
+## The glow mushroom rubbed over the traveller (Player.glow_strength()): its
+## light, the crumbs falling from the hands, the faint motes off the body.
+var _glow_light: OmniLight3D
+var _crumbs: CPUParticles3D
+var _motes: CPUParticles3D
+const MUSHROOM_MODEL := "res://assets/models/items/glow_mushroom.glb"
+## (the model's own 0.34 m made bigger to read from the camera; its light's
+## reach, m)
+const MUSHROOM_SCALE := 1.35
+const MUSHROOM_LIGHT := 1.5
 var _trees := []  # [MapTree, MeshInstance3D]
 var _drum: Node3D
 var _clip := ""
@@ -432,6 +445,7 @@ func _build() -> void:
 	_cover()
 	var t2 := Time.get_ticks_msec()
 	_character()
+	_build_glow()
 	_line_and_float()
 	_fireflies()
 	_rest_2d_only(main)
@@ -799,6 +813,138 @@ func _trees_and_rocks() -> void:
 			var rock := _fitted(str(n.get("model")), to3(at, LAND_Y - 0.03), Vector2(d, d), _rng.randf() * TAU, true)
 			if rock != null:
 				_flip_rocks[n] = rock
+		elif path == "glow_mushroom.gd":
+			_mushroom(n, at)
+
+
+## A glow mushroom's model at `at` (2D), glowing, a small blue light over
+## it (not on a low-end phone: the glow alone).
+func _mushroom(n: Node, at: Vector2) -> void:
+	var scene: PackedScene = load(MUSHROOM_MODEL) if ResourceLoader.exists(MUSHROOM_MODEL) else null
+	if scene == null:
+		return
+	var holder := Node3D.new()
+	holder.name = "GlowMushroom"
+	holder.position = to3(at, LAND_Y)
+	holder.rotation.y = _rng.randf() * TAU
+	holder.scale = Vector3.ONE * MUSHROOM_SCALE
+	add_child(holder)
+	var model := scene.instantiate() as Node3D
+	holder.add_child(model)
+	var glow: StandardMaterial3D = null
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var src := m.mesh.surface_get_material(0) as StandardMaterial3D
+		if src != null and glow == null:
+			glow = src.duplicate() as StandardMaterial3D
+			glow.emission_enabled = true
+		if glow != null:
+			m.set_surface_override_material(0, glow)
+	var light: OmniLight3D = null
+	if not _low:
+		light = OmniLight3D.new()
+		light.light_color = GlowMushroom.GLOW
+		light.omni_range = MUSHROOM_LIGHT
+		light.omni_attenuation = 1.4
+		light.shadow_enabled = false
+		light.light_specular = 0.2
+		light.position = Vector3(0, 0.3, 0)
+		holder.add_child(light)
+	_mushrooms[n] = [holder, glow, light]
+
+
+## The mushrooms breathe (GlowMushroom.glow()); picked, they're gone.
+func _sync_mushrooms() -> void:
+	for n in _mushrooms.keys():
+		var parts: Array = _mushrooms[n]
+		if not is_instance_valid(n):
+			(parts[0] as Node).queue_free()
+			_mushrooms.erase(n)
+			continue
+		var k: float = n.glow()
+		if parts[1] != null:
+			(parts[1] as StandardMaterial3D).emission_energy_multiplier = 1.4 + 2.2 * k
+		if parts[2] != null:
+			(parts[2] as OmniLight3D).light_energy = 0.25 + 0.55 * k
+
+
+## The glow mushroom's light on the traveller, and its crumbs and motes
+## (soft blue dots, unlit, added).
+func _build_glow() -> void:
+	_glow_light = OmniLight3D.new()
+	_glow_light.name = "MushroomGlow"
+	_glow_light.light_cull_mask = ~LAMP_LAYER
+	_glow_light.light_color = Player.GLOW_COLOR
+	_glow_light.omni_range = Player.GLOW_RADIUS / PX
+	_glow_light.omni_attenuation = 0.9
+	_glow_light.shadow_enabled = false
+	_glow_light.light_specular = 0.3
+	_glow_light.position = Vector3(0, 1.0, 0)
+	_glow_light.visible = false
+	pivot.add_child(_glow_light)
+	var dot := QuadMesh.new()
+	dot.size = Vector2(0.05, 0.05)
+	var dm := StandardMaterial3D.new()
+	dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	dm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	dm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	dm.vertex_color_use_as_albedo = true
+	dm.albedo_texture = UiKit.glow()
+	dot.material = dm
+	# (the crumbs: rubbed off the hands, falling over the body)
+	_crumbs = CPUParticles3D.new()
+	_crumbs.name = "Crumbs"
+	_crumbs.mesh = dot
+	_crumbs.amount = 48
+	_crumbs.lifetime = 1.1
+	_crumbs.emitting = false
+	_crumbs.local_coords = false
+	_crumbs.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	_crumbs.emission_sphere_radius = 0.18
+	_crumbs.direction = Vector3.UP
+	_crumbs.spread = 70.0
+	_crumbs.initial_velocity_min = 0.3
+	_crumbs.initial_velocity_max = 0.8
+	_crumbs.gravity = Vector3(0, -2.2, 0)
+	_crumbs.scale_amount_min = 0.6
+	_crumbs.scale_amount_max = 1.4
+	_crumbs.color = Color(0.6, 0.88, 1.0)
+	_crumbs.position = Vector3(0, 1.25, 0.25)
+	pivot.add_child(_crumbs)
+	# (the motes: a few drifting up off it while it glows)
+	_motes = CPUParticles3D.new()
+	_motes.name = "Motes"
+	_motes.mesh = dot
+	_motes.amount = 14
+	_motes.lifetime = 1.8
+	_motes.emitting = false
+	_motes.local_coords = false
+	_motes.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	_motes.emission_box_extents = Vector3(0.25, 0.6, 0.2)
+	_motes.direction = Vector3.UP
+	_motes.spread = 20.0
+	_motes.initial_velocity_min = 0.08
+	_motes.initial_velocity_max = 0.2
+	_motes.gravity = Vector3.ZERO
+	_motes.scale_amount_min = 0.4
+	_motes.scale_amount_max = 0.9
+	_motes.color = Color(0.45, 0.75, 1.0, 0.7)
+	_motes.position = Vector3(0, 0.8, 0)
+	pivot.add_child(_motes)
+
+
+func _sync_glow() -> void:
+	if _glow_light == null:
+		return
+	var k := player.glow_strength()
+	_glow_light.visible = k > 0.0
+	# (a faint flicker, a light that's alive)
+	_glow_light.light_energy = 2.0 * k * (0.92 + 0.08 * sin(Time.get_ticks_msec() * 0.006))
+	var t := 1.0 - player.move_left / maxf(player.move_time, 0.01) if player.move_left > 0.0 else -1.0
+	_crumbs.emitting = player.move_kind == "crumble" and t > 0.35 and t < 0.85
+	_motes.emitting = k > 0.3
 
 
 ## A model of the trial's (`name`) at `at`, as wide and deep as `base` (m;
@@ -2011,6 +2157,10 @@ func _pick_clip() -> Array:
 	if player.swing_kind == "shoo" and player.swing_left > 0.0:
 		# (a beast waved off - user request: no weapon needed)
 		return ["Wave_Big", 1.0, minf(1.0 - player.swing_left / maxf(player.swing_total, 0.01), 0.999)]
+	if player.move_left > 0.0 and player.move_kind == "crumble" and player.velocity.length() < 8.0:
+		# (the glow mushroom: rubbed to crumbs between the hands, then
+		# sprinkled - the crumbs fall: _sync_glow)
+		return ["Clap", 1.0, -1.0]
 	if v.acting >= 0:
 		# (user request: each use played out at its clip's own pace, after
 		# the thing's drawn from the hip - Player.SWINGS; scrubbed smoothly
@@ -2653,7 +2803,8 @@ func _gear_state(delta: float) -> void:
 	var rod_out := not _visual.rod_on_back() and not (_visual.clip == PlayerVisual.CLIP_HOLD_RUN
 		and player.state == Player.State.IDLE) and not player.carrying_oil_drum
 	_stow = move_toward(_stow, 0.0 if rod_out else 1.0, delta / STOW_TIME)
-	var both := rod_out or _visual.move in TWO_HANDED or (_visual.acting >= 0 and player.swing_kind in ["chop", "scoop"])
+	var both := rod_out or _visual.move in TWO_HANDED or (_visual.acting >= 0 and player.swing_kind in ["chop", "scoop"]) \
+		or (player.move_left > 0.0 and player.move_kind == "crumble")
 	# (the left hand off the rod: the struggle in the ghost's grip)
 	_left_free = move_toward(_left_free, 1.0 if _visual.struggling else 0.0, delta / STOW_TIME)
 	# (user request: out - put out, or out of oil or charge - it's hung at
@@ -3600,6 +3751,8 @@ func _process(delta: float) -> void:
 		_sync_light(l, _lights[l])
 	_sync_dropped_fish(delta)
 	_sync_runes()
+	_sync_mushrooms()
+	_sync_glow()
 	# (a stone being turned over: where it's rolled to, tipped over)
 	for n in _flip_rocks:
 		if is_instance_valid(n) and float(n.get("turned")) > 0.0 and not n.has_meta("settled"):

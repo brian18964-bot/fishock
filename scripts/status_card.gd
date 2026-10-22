@@ -45,6 +45,13 @@ const GEAR_SLOT := 40.0
 const GEAR_GAP := 6.0
 const GEAR_LABELS := ["主手", "副手", "餌"]
 
+## User request (the glow mushroom): what's been used and is still working
+## - the glow, the potions - a slot each under the card, its icon, the time
+## left sweeping round it and counted; the feed's lines under them then.
+const EFFECT_AT := Vector2(10, 80)
+const EFFECT_SLOT := 34.0
+const EFFECT_GAP := 5.0
+
 ## The lines showing: [text, tone, age], newest first.
 var feed: Array = []
 
@@ -156,17 +163,44 @@ static func conditions(p: Player) -> Array:
 		out.append(["中毒了，腳步沉重（%d 秒）" % ceili(p.poison_timer), WARN])
 	if p.carrying_oil_drum:
 		out.append(["提著油箱", DIM])
-	# User request (round 7): what's been drunk, while it lasts.
-	if p.ward_timer > 0.0:
-		out.append(["驅鬼 %d 秒" % ceili(p.ward_timer), GOOD])
-	if p.vigor_timer > 0.0:
-		out.append(["增強 %d 秒" % ceili(p.vigor_timer), GOOD])
+	# (what's been drunk or rubbed on: slots of their own - effects())
 	if GameState.has_heart:
 		out.append(["❤ 心臟", Color(1.0, 0.5, 0.5)])
 	var worn := Profile.spirit_penalty()
 	if worn > 0:
 		out.append([SpiritBar.WORDS[worn], SpiritBar.COLORS[worn]])
 	return out
+
+
+## What's working now: [item id (its icon), seconds left, of how long].
+static func effects(p: Player) -> Array:
+	var out := []
+	if p.glow_timer > 0.0:
+		out.append(["glow_mushroom", minf(p.glow_timer, Player.GLOW_TIME), Player.GLOW_TIME])
+	if p.ward_timer > 0.0:
+		out.append(["potion_ward", p.ward_timer, Player.WARD_TIME])
+	if p.vigor_timer > 0.0:
+		out.append(["potion_vigor", p.vigor_timer, Player.VIGOR_TIME])
+	return out
+
+
+func _draw_effects(list: Array) -> void:
+	for i in list.size():
+		var e: Array = list[i]
+		var r := Rect2(EFFECT_AT + Vector2((EFFECT_SLOT + EFFECT_GAP) * i, 0), Vector2.ONE * EFFECT_SLOT)
+		UiKit.draw_slot(_view, r, "", false, Items.square_icon(e[0]))
+		# (the time gone swept dark round from the top)
+		var gone := 1.0 - clampf(float(e[1]) / float(e[2]), 0.0, 1.0)
+		if gone > 0.0:
+			var c := r.get_center()
+			var pts := PackedVector2Array([c])
+			for k in 25:
+				var a := -PI / 2.0 + TAU * gone * k / 24.0
+				pts.append(c + Vector2(cos(a), sin(a)) * r.size.x)
+			for poly in Geometry2D.intersect_polygons(pts, PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)])):
+				_view.draw_colored_polygon(poly, Color(0, 0, 0, 0.5))
+		UiKit.draw_text(_view, Vector2(r.position.x, r.end.y - 2.0), str(ceili(float(e[1]))), 13,
+			GOOD if float(e[1]) > 5.0 else WARN, HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 2.0, true)
 
 
 func _draw_card() -> void:
@@ -195,7 +229,9 @@ func _draw_card() -> void:
 	# wrong, if anything.
 	if SHOW_GEAR:
 		_draw_gear(p)
-	_draw_feed()
+	var working := effects(p)
+	_draw_effects(working)
+	_draw_feed(EFFECT_SLOT + 6.0 if not working.is_empty() else 0.0)
 	var line := x
 	for cond in conditions(p):
 		var w := UiKit.font().get_string_size(cond[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
@@ -223,7 +259,7 @@ func _draw_gear(p: Player) -> void:
 				Color.WHITE if n > 0 else WARN, HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 4.0)
 
 
-func _draw_feed() -> void:
+func _draw_feed(down := 0.0) -> void:
 	var font := UiKit.font()
 	for i in feed.size():
 		var line: Array = feed[i]
@@ -231,7 +267,7 @@ func _draw_feed() -> void:
 		var alpha := clampf(minf(age / 0.15, (FEED_LIFE + FEED_FADE - age) / FEED_FADE), 0.0, 1.0)
 		var color: Color = {"good": GOOD, "info": INK}.get(line[1], WARN)
 		var w := font.get_string_size(line[0], HORIZONTAL_ALIGNMENT_LEFT, -1, FEED_SIZE).x
-		var at := FEED_AT + Vector2(0, i * FEED_GAP)
+		var at := FEED_AT + Vector2(0, i * FEED_GAP + down)
 		_view.draw_rect(Rect2(at, Vector2(w + 14.0, FEED_GAP - 3.0)), Color(0, 0, 0, 0.45 * alpha))
 		_view.draw_rect(Rect2(at, Vector2(2.0, FEED_GAP - 3.0)), Color(color, 0.9 * alpha))
 		var text_at := at + Vector2(8, FEED_SIZE + 1.0)

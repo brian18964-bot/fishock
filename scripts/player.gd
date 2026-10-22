@@ -261,6 +261,21 @@ const BINOCULARS_SKIP := 60.0
 var vigor_timer := 0.0
 var ward_timer := 0.0
 var binoculars_cooldown := 0.0
+## User request: the glow mushroom (Profile.USABLES "glow_mushroom") rubbed
+## to crumbs and sprinkled over oneself (CRUMBLE_TIME s, the "crumble"
+## move): a faint blue light all round for GLOW_TIME s - GLOW_RADIUS px
+## (2.4 m) every way, the lamp's fan only reaching ahead; fading in, and
+## out over its last GLOW_FADE s. RunView3D lights it (and the falling
+## sparks); _glow_light in a 2D run.
+const GLOW_TIME := 30.0
+const GLOW_RADIUS := 65.0
+const GLOW_FADE := 4.0
+const GLOW_COLOR := Color(0.45, 0.72, 1.0)
+const CRUMBLE_TIME := 1.8
+## (the light comes on as the crumbs fall: this far through the crumble)
+const GLOW_FROM := 0.55
+var glow_timer := 0.0
+var _glow_light: PointLight2D
 var guide: GuideArrow
 ## User request: the off hand (Profile.offhand() - a weapon or the net) is
 ## held while the rod's on the back - between casts (offhand_in_hand()) -
@@ -861,6 +876,12 @@ func use_item(id: String) -> bool:
 				var g := nearest_ghost()
 				return g.global_position if g != null else null
 			GameState.report("眼裡浮出一縷白霧，看見了鬼的方向", "info")
+		"glow_mushroom":
+			Profile.bag_take(id, 1)
+			# (a second one starts the time again, it isn't added on)
+			glow_timer = GLOW_TIME + CRUMBLE_TIME * GLOW_FROM
+			perform("crumble", CRUMBLE_TIME)
+			GameState.report("揉碎發光蘑菇撒在身上：全身散發微弱的藍光", "good")
 		"binoculars":
 			if binoculars_cooldown > 0.0:
 				GameState.report("望遠鏡的鏡片還起著霧（%d 秒）" % ceili(binoculars_cooldown), "warn")
@@ -876,6 +897,61 @@ func use_item(id: String) -> bool:
 			return false
 	Sfx.play("ui_open", -8.0)
 	return true
+
+
+## How strong the glow mushroom's light is now (0..1): nothing until the
+## crumbs fall, then on; easing out over its last GLOW_FADE s.
+func glow_strength() -> float:
+	if glow_timer <= 0.0:
+		return 0.0
+	var since := GLOW_TIME + CRUMBLE_TIME * GLOW_FROM - glow_timer
+	if since < 0.0:
+		return 0.0
+	return minf(1.0, since / 0.8) * minf(1.0, glow_timer / GLOW_FADE)
+
+
+## The glow's own light in a 2D run (none until it's wanted).
+func _sync_glow_light() -> void:
+	var k := glow_strength()
+	if k <= 0.0 and _glow_light == null:
+		return
+	if _glow_light == null:
+		_glow_light = PointLight2D.new()
+		_glow_light.name = "GlowLight"
+		var tex := LightTextureFactory.make_radial_texture(128)
+		_glow_light.texture = tex
+		_glow_light.texture_scale = GLOW_RADIUS * 2.0 / 128.0
+		_glow_light.color = GLOW_COLOR
+		add_child(_glow_light)
+	_glow_light.enabled = k > 0.0
+	_glow_light.energy = 0.55 * k
+
+
+## The glow mushroom nearest, within reach to pick (or null).
+func reachable_mushroom() -> GlowMushroom:
+	var best: GlowMushroom = null
+	var best_d := GlowMushroom.PICK_RANGE
+	for n in get_tree().get_nodes_in_group("glow_mushrooms"):
+		var d := global_position.distance_to((n as Node2D).global_position)
+		if d < best_d:
+			best = n
+			best_d = d
+	return best
+
+
+## Picks `m` (crouched, PICK_TIME), into the bag - if there's room.
+func _pick_mushroom(m: GlowMushroom) -> void:
+	if m == null:
+		return
+	if Profile.bag_put("glow_mushroom", 1) <= 0:
+		GameState.push_message("背包滿了，放不下發光蘑菇")
+		return
+	var at := m.global_position - global_position
+	if at.length() > 1.0:
+		aim_dir = at.normalized()
+	perform("pick", PICK_TIME)
+	m.pick()
+	GameState.push_message("採到一株發光蘑菇，放進背包")
 
 
 ## The nearest ghost about (a floating one or the big one), or null.
@@ -1477,6 +1553,8 @@ func _physics_process(delta: float) -> void:
 			GameState.escape()
 	vigor_timer = maxf(vigor_timer - delta, 0.0)
 	ward_timer = maxf(ward_timer - delta, 0.0)
+	glow_timer = maxf(glow_timer - delta, 0.0)
+	_sync_glow_light()
 	binoculars_cooldown = maxf(binoculars_cooldown - delta, 0.0)
 	if _knock_time > 0.0:
 		# Staggering back, free.
@@ -1752,6 +1830,9 @@ func interaction() -> Dictionary:
 	var willow := get_tree().get_first_node_in_group("willow") as Node2D
 	if willow != null and willow.can_talk() and global_position.distance_to(willow.global_position) < TALK_RANGE:
 		return _offer(willow, "Willow", "對話", false, -34.0)
+	var mushroom := reachable_mushroom()
+	if mushroom != null:
+		return _offer(mushroom, "發光蘑菇", "採集", false, -24.0)
 	if in_rock_zone and _rock != null and _rock.active:
 		return {"at": _rock.prompt_anchor(), "name": "石頭", "verb": "翻開", "hold": false}
 	var tree := choppable_tree()
@@ -1834,6 +1915,9 @@ func _handle_interaction(delta: float) -> void:
 		"翻開":
 			if use_pressed:
 				_turn_rock()
+		"採集":
+			if use_pressed:
+				_pick_mushroom(reachable_mushroom())
 		"砍樹":
 			if use_pressed:
 				swing("chop")

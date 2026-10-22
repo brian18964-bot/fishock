@@ -17,6 +17,7 @@ const TESTS := [
 	"test_layout_clear",
 	"test_proto3d",
 	"test_camp3d",
+	"test_glow_mushroom",
 	"test_run_menu_and_auto_defend",
 	"test_wolf_bites",
 	"test_run_intro_and_eye_guide",
@@ -1124,7 +1125,11 @@ func test_usable_items() -> void:
 	check(Profile.LIVE_BAITS.cricket.name == "蚱蜢", "the grasshopper in the cricket's place")
 	check(not Profile.SNACKS.has("rations") and not "rations" in Profile.SNACK_ORDER, "no more rations")
 	for id in Profile.USABLE_ORDER:
-		check(Profile.buy_usable(id), "%s can be bought" % Profile.USABLES[id].name)
+		if Profile.USABLES[id].get("sold", true):
+			check(Profile.buy_usable(id), "%s can be bought" % Profile.USABLES[id].name)
+	# (the glow mushroom isn't sold - only picked on the map)
+	check(not Profile.buy_usable("glow_mushroom"), "the glow mushroom isn't for sale")
+	Profile._store("glow_mushroom", 1)
 	check(not Profile.buy_usable("binoculars"), "the binoculars only once")
 	check(Profile.buy_usable("potion_ward") and Profile.buy_usable("eyeball"), "the rest by the many")
 	for id in Profile.USABLE_ORDER:
@@ -1139,7 +1144,7 @@ func test_usable_items() -> void:
 	check(p.use_item("potion_vigor") and p.vigor_timer > 0.0, "drunk: stronger for a while")
 	check(Profile.bag_count("potion_vigor") == 0, "and it's gone from the bag")
 	check(StatusCard.speed_share(p) > before * 1.2, "faster on its feet")
-	check(StatusCard.conditions(p).any(func(c): return c[0].begins_with("增強")), "the card says so")
+	check(StatusCard.effects(p).any(func(e): return e[0] == "potion_vigor"), "the card shows it (a slot under it)")
 	check(not p.use_item("potion_vigor"), "none left to drink")
 
 	# The ghost-ward potion: the big ghost can't grab, a floating one can't
@@ -4630,6 +4635,58 @@ func test_camp3d() -> void:
 	check(not camp._near_label.visible or camp._near_label.modulate.a < 0.05, "no name up while it sits")
 	camp.queue_free()
 	await frames(2)
+	Profile.load_data(saved)
+	Profile._save()
+
+
+## User request: the glow mushroom - only under the trees, glowing on the
+## map; picked (採集) into the bag; rubbed to crumbs and sprinkled on, a
+## faint blue light all round for 30 s, its slot under the card.
+func test_glow_mushroom() -> void:
+	var saved := Profile.snapshot()
+	await _fresh_game()
+	var view: RunView3D = null
+	for _i in 120:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	var shrooms := get_tree().get_nodes_in_group("glow_mushrooms")
+	check(shrooms.size() >= 1, "glow mushrooms on the map (%d)" % shrooms.size())
+	var under_trees := true
+	for m in shrooms:
+		var near := INF
+		for t in get_tree().get_nodes_in_group("trees"):
+			near = minf(near, (m as Node2D).global_position.distance_to(t.global_position) - float(t.trunk_radius))
+		under_trees = under_trees and near < GlowMushroom.FROM_TRUNK.y + 1.0
+	check(under_trees, "each at a tree's foot")
+	if view != null:
+		check(view._mushrooms.size() == shrooms.size(), "each shown in 3D, glowing (%d)" % view._mushrooms.size())
+	var p := player()
+	var m: GlowMushroom = shrooms[0]
+	p.global_position = m.global_position + Vector2(12, 0)
+	await frames(2)
+	check(p.interaction().get("verb", "") == "採集", "by one: 採集 offered")
+	var had := Profile.bag_count("glow_mushroom")
+	p._pick_mushroom(p.reachable_mushroom())
+	await frames(2)
+	check(Profile.bag_count("glow_mushroom") == had + 1 and not is_instance_valid(m), "picked: in the bag, gone from the map")
+	check(p.move_kind == "pick", "crouched to pick it")
+	if view != null:
+		await frames(2)
+		check(view._mushrooms.size() == shrooms.size() - 1, "and gone in 3D")
+	p.move_left = 0.0
+	check(p.use_item("glow_mushroom") and Profile.bag_count("glow_mushroom") == had, "used from the bag")
+	check(p.move_kind == "crumble" and p.glow_strength() == 0.0, "rubbed to crumbs first - not lit yet")
+	check(StatusCard.effects(p).any(func(e): return e[0] == "glow_mushroom"), "its slot under the card")
+	await seconds(Player.CRUMBLE_TIME + 0.5)
+	check(p.glow_strength() > 0.5, "then a faint blue light all round (%.2f)" % p.glow_strength())
+	if view != null:
+		check(view._glow_light.visible and is_equal_approx(view._glow_light.omni_range, Player.GLOW_RADIUS / RunView3D.PX),
+			"lit in 3D, %.1f m round" % view._glow_light.omni_range)
+	p.glow_timer = 1.0
+	await seconds(1.2)
+	check(p.glow_strength() == 0.0 and StatusCard.effects(p).is_empty(), "30 s on, it's out")
 	Profile.load_data(saved)
 	Profile._save()
 

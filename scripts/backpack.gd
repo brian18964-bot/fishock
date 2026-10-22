@@ -378,6 +378,8 @@ func _show_selected(player: Player, items: Array, placed: Array) -> void:
 				note = "（藥效還有 %d 秒）" % ceili(player.vigor_timer)
 			elif uid == "potion_ward" and player.ward_timer > 0.0:
 				note = "（藥效還有 %d 秒）" % ceili(player.ward_timer)
+			elif uid == "glow_mushroom" and player.glow_timer > 0.0:
+				note = "（藍光還有 %d 秒；再用會重新計時）" % ceili(minf(player.glow_timer, Player.GLOW_TIME))
 			elif uid == "eye_ghost" and player.nearest_ghost() == null:
 				note = "（附近沒有鬼）"
 			elif uid == "binoculars" and player.binoculars_cooldown > 0.0:

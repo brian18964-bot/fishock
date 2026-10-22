@@ -18,8 +18,8 @@ extends RefCounted
 ##                  in the off hand (user request: one thing there, the
 ##                  net or a weapon)
 ##   ammo           the pistol's rounds, twelve to a cell
-##   potion_vigor, potion_ward, eyeball, eye_altar, eye_ghost, binoculars
-##                  things used in a run (Profile.USABLES; Player.use_item())
+##   potion_vigor, potion_ward, eyeball, eye_altar, eye_ghost, binoculars,
+##   glow_mushroom  things used in a run (Profile.USABLES; Player.use_item())
 ##   net            the landing net (round 8), worn in the off hand
 ## A thing's {name, tab, size (cells), stack (per cell), slot (the
 ## equipment slot it's worn in, if any), icon, desc}.
@@ -130,7 +130,7 @@ static func model_path(id: String) -> String:
 		return "res://assets/models/fishing_rod_lvl%d.glb" % (int(id.substr(4)) + 1)
 	match id:
 		"flashlight", "battery", "roll", "loaf", "cheese", "ammo", "knife", "hatchet", "machete", "glock", \
-				"potion_vigor", "potion_ward", "eyeball", "eye_altar", "eye_ghost", "binoculars", "net":
+				"potion_vigor", "potion_ward", "eyeball", "eye_altar", "eye_ghost", "binoculars", "net", "glow_mushroom":
 			return MODELS % id
 		"tea":
 			# User request: the tea in the user's cup.
@@ -156,7 +156,7 @@ static func square_icon(id: String) -> Texture2D:
 	var key := ""
 	if id.begins_with("rod_") or id in ["flashlight", "battery", "lamp", "tea", "roll", "loaf", "cheese", "ammo",
 			"knife", "hatchet", "machete", "glock", "potion_vigor", "potion_ward", "eyeball", "eye_altar", "eye_ghost",
-			"binoculars", "net"]:
+			"binoculars", "net", "glow_mushroom"]:
 		key = id
 	elif id == "bait":
 		key = "worm"
