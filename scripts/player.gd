@@ -939,7 +939,15 @@ func reachable_mushroom() -> GlowMushroom:
 	return best
 
 
-## Picks `m` (crouched, PICK_TIME), into the bag - if there's room.
+## Picking a glow mushroom: down on the haunches, gathering it, up again
+## (user request: the user's Mixamo "Gathering Objects" - RunView3D's
+## Gathering, played through over GATHER_TIME s).
+const GATHER_TIME := 3.0
+## (the hands at the ground, the mushroom taken: this far through)
+const GATHER_TAKE := 0.45
+
+
+## Picks `m` (gathered: GATHER_TIME), into the bag - if there's room.
 func _pick_mushroom(m: GlowMushroom) -> void:
 	if m == null:
 		return
@@ -949,8 +957,8 @@ func _pick_mushroom(m: GlowMushroom) -> void:
 	var at := m.global_position - global_position
 	if at.length() > 1.0:
 		aim_dir = at.normalized()
-	perform("pick", PICK_TIME)
-	m.pick()
+	perform("gather", GATHER_TIME)
+	m.pick(GATHER_TIME * GATHER_TAKE)
 	GameState.push_message("採到一株發光蘑菇，放進背包")
 
 

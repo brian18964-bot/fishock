@@ -2157,6 +2157,10 @@ func _pick_clip() -> Array:
 	if player.swing_kind == "shoo" and player.swing_left > 0.0:
 		# (a beast waved off - user request: no weapon needed)
 		return ["Wave_Big", 1.0, minf(1.0 - player.swing_left / maxf(player.swing_total, 0.01), 0.999)]
+	if player.move_left > 0.0 and player.move_kind == "gather" and player.velocity.length() < 8.0:
+		# (a glow mushroom picked: crouched, gathered, up - the clip played
+		# through over the gathering's time)
+		return ["Gathering", 1.0, minf(1.0 - player.move_left / maxf(player.move_time, 0.01), 0.999)]
 	if player.move_left > 0.0 and player.move_kind == "crumble" and player.velocity.length() < 8.0:
 		# (the glow mushroom: rubbed to crumbs between the hands, then
 		# sprinkled - the crumbs fall: _sync_glow)
@@ -2804,7 +2808,7 @@ func _gear_state(delta: float) -> void:
 		and player.state == Player.State.IDLE) and not player.carrying_oil_drum
 	_stow = move_toward(_stow, 0.0 if rod_out else 1.0, delta / STOW_TIME)
 	var both := rod_out or _visual.move in TWO_HANDED or (_visual.acting >= 0 and player.swing_kind in ["chop", "scoop"]) \
-		or (player.move_left > 0.0 and player.move_kind == "crumble")
+		or (player.move_left > 0.0 and player.move_kind in ["crumble", "gather"])
 	# (the left hand off the rod: the struggle in the ghost's grip)
 	_left_free = move_toward(_left_free, 1.0 if _visual.struggling else 0.0, delta / STOW_TIME)
 	# (user request: out - put out, or out of oil or charge - it's hung at

@@ -65,7 +65,7 @@ class Glb:
             o += 8 + n
         self.j = json.loads(self.chunks[0][1].decode().rstrip(" \0"))
         self.bin = self.chunks[1][1]
-        self.prim = self.j["meshes"][0]["primitives"][0]
+        self.prim = self.j["meshes"][0]["primitives"][0] if self.j.get("meshes") else None
 
     def get(self, i):
         a = self.j["accessors"][i]

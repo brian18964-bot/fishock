@@ -4670,14 +4670,24 @@ func test_glow_mushroom() -> void:
 	var had := Profile.bag_count("glow_mushroom")
 	p._pick_mushroom(p.reachable_mushroom())
 	await frames(2)
-	check(Profile.bag_count("glow_mushroom") == had + 1 and not is_instance_valid(m), "picked: in the bag, gone from the map")
-	check(p.move_kind == "pick", "crouched to pick it")
+	check(Profile.bag_count("glow_mushroom") == had + 1 and is_instance_valid(m) and p.reachable_mushroom() != m,
+		"picked: in the bag (still there till the hands reach it)")
+	await seconds(Player.GATHER_TIME * Player.GATHER_TAKE + 0.2)
+	check(not is_instance_valid(m), "then gone from the map")
+	check(p.move_kind == "gather", "gathered (crouched, picked, up)")
 	if view != null:
 		await frames(2)
 		check(view._mushrooms.size() == shrooms.size() - 1, "and gone in 3D")
 	p.move_left = 0.0
 	check(p.use_item("glow_mushroom") and Profile.bag_count("glow_mushroom") == had, "used from the bag")
 	check(p.move_kind == "crumble" and p.glow_strength() == 0.0, "rubbed to crumbs first - not lit yet")
+	# User request: the gathering and the digging (for later), the user's
+	# Mixamo clips, on every character (tools/add_clips.py).
+	for id in CharacterArt.REACH:
+		var body: Node = CharacterArt.model(id).instantiate()
+		var ap: AnimationPlayer = body.find_children("*", "AnimationPlayer", true, false)[0]
+		check(ap.has_animation("Gathering") and ap.has_animation("Digging"), "%s can gather and dig" % id)
+		body.free()
 	check(StatusCard.effects(p).any(func(e): return e[0] == "glow_mushroom"), "its slot under the card")
 	await seconds(Player.CRUMBLE_TIME + 0.5)
 	check(p.glow_strength() > 0.5, "then a faint blue light all round (%.2f)" % p.glow_strength())

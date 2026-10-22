@@ -57,7 +57,11 @@ func _process(delta: float) -> void:
 	_sprite.modulate = Color(1, 1, 1).lerp(Color(1.3, 1.5, 1.8), glow() * 0.5)
 
 
-## Picked (Player._pick_mushroom): gone from the map.
-func pick() -> void:
+## Picked (Player._pick_mushroom): no longer to be picked at once, gone
+## from the map `after` s on (when the hands reach it).
+func pick(after := 0.0) -> void:
 	remove_from_group("glow_mushrooms")
-	queue_free()
+	if after <= 0.0 or not is_inside_tree():
+		queue_free()
+		return
+	get_tree().create_timer(after).timeout.connect(queue_free)
