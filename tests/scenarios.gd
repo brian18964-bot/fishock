@@ -2997,7 +2997,10 @@ func test_main_menu() -> void:
 		await frames(1)
 		if title._page != null:
 			break
-	check(camp.character_pivot.position.distance_to(camp.spots.pack.at) < 0.3, "and gets down at the backpack (%s)" % camp.character_pivot.position)
+	# (at whichever side of it was nearest - CampStage.stand_at)
+	var by_pack := Vector2(camp.character_pivot.position.x - pack.global_position.x, camp.character_pivot.position.z - pack.global_position.z).length()
+	check(by_pack < 1.3 and camp.clearance(camp.character_pivot.position) > 0.0,
+		"and gets down at the backpack (%s, %.2f m off it)" % [camp.character_pivot.position, by_pack])
 	# (its name popped up as it came near)
 	check(title._near == "backpack" or title._near == "warehouse" or not title._home.visible, "the name of what it's near")
 	await seconds(0.8)
@@ -3997,6 +4000,10 @@ func test_run_3d() -> void:
 	var toward := view._float.position - view.pivot.global_position
 	toward.y = 0.0
 	check(tip.y > hand.y + 0.3 and (tip - hand).dot(toward.normalized()) > 0.4, "the rod held up and out toward the float")
+	# User report: the rod's guides were on top - under it now (the models'
+	# guides on the rod's -z).
+	var guides := -view._rod().global_basis.z.normalized()
+	check(guides.y < -0.5, "the rod's guides hang under it (%s)" % guides)
 	# User report: the arm didn't move with the rod - it's brought after
 	# it now (RodArm).
 	var hold_hand: float = view.rig.attachments["hand_r"].global_position.y - view.pivot.global_position.y
@@ -4554,7 +4561,9 @@ func test_camp3d() -> void:
 	for _i in 90:
 		camp._joystick.output = at_crate
 		await frames(1)
-		check(stage.clearance(pivot.position) >= crate_room - 0.01, "never into the crate (%s)" % str(pivot.position)) if _i % 30 == 29 else null
+		# (up to it, no nearer than its own body - CampStage.body)
+		check(stage.clearance(pivot.position) >= minf(crate_room, stage.body) - 0.01,
+			"never into the crate (%s, %.2f m off)" % [str(pivot.position), stage.clearance(pivot.position)]) if _i % 30 == 29 else null
 	camp._joystick.output = Vector2.ZERO
 	# Nor into the lake - but out along the dock, up on its planks.
 	pivot.position = CampStage.DOCK_AT + Vector3(0, 0, 0.6)
@@ -4607,6 +4616,18 @@ func test_camp3d() -> void:
 	# Never through the merchant.
 	var m: Node3D = stage.merchant
 	check(not camp.walkable(m.global_position + Vector3(0.2, 0, 0)), "the merchant's a body to walk round")
+	# User request: the fish tank from whichever side it's nearest - from
+	# its right, the right side; and stood clear of it.
+	var trough: Node3D = stage.hotspots.fish_tank.parts[0][0]
+	for side in [1.0, -1.0]:
+		var spot: Dictionary = stage.stand_at("trough", trough.global_position + Vector3(2.0 * side, 0, 0), 0.3)
+		check((spot.at.x - trough.global_position.x) * side > 0.8 and stage.clearance(spot.at) > 0.3,
+			"the trough from its %s side (%s)" % ["right" if side > 0 else "left", spot.at])
+	# User report: sat on a log, 坐下 stayed up in front of it - a thing's
+	# name goes once it's tapped, and while sat.
+	stage.life.sit_now()
+	await frames(30)
+	check(not camp._near_label.visible or camp._near_label.modulate.a < 0.05, "no name up while it sits")
 	camp.queue_free()
 	await frames(2)
 	Profile.load_data(saved)

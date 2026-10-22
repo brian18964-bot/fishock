@@ -2525,8 +2525,11 @@ func _hold_rod() -> void:
 			var side := deg_to_rad(lerpf(ROD_SIDE, ROD_SIDE_CENTRED, smoothstep(0.0, 1.0, _centred)))
 			# (the model faces +z; its right hand's side is -x)
 			var dir := (b.z * cos(side) * cos(_rod_up) - b.x * sin(side) * cos(_rod_up) + Vector3.UP * sin(_rod_up)).normalized()
-			var x := dir.cross(b.x if absf(dir.dot(b.z)) > 0.9 else b.z).normalized()
-			var aimed := Transform3D(Basis(x, dir, x.cross(dir)).scaled(Vector3.ONE * CharacterRig.ROD_SCALE), held.origin)
+			# (turned on its length so its guides - the rod's -z - hang under
+			# it, toward the water; user report: they stood out to the side)
+			var z := (Vector3.UP - dir * Vector3.UP.dot(dir))
+			z = z.normalized() if z.length() > 0.01 else b.z
+			var aimed := Transform3D(Basis(dir.cross(z), dir, z).scaled(Vector3.ONE * CharacterRig.ROD_SCALE), held.origin)
 			held = held.interpolate_with(aimed, _rod_on)
 		if _stow > 0.0:
 			held = held.interpolate_with(_on_back(sk, b), smoothstep(0.0, 1.0, _stow))

@@ -375,9 +375,25 @@ func _process(_delta: float) -> void:
 const NEAR_REACH := 1.1
 
 
+## What was tapped (or opened) while near it: its name kept down until the
+## character's away from it (user report: sat on the log, 坐下 stayed up
+## over it, in front of the character).
+var _near_used := ""
+var _near_reached := false
+
+
 func _near_name(delta: float) -> void:
 	var near := _stage.near_spot(_stage.character_pivot.global_position, NEAR_REACH)
 	var page: String = near[0] if not near.is_empty() else ""
+	if page == _near_used:
+		_near_reached = true
+	elif _near_reached:
+		_near_used = ""
+		_near_reached = false
+	var life := _stage.life
+	# (nor while it's sat or down on the ground, or the page is open)
+	if page == _near_used or _page != null or (life != null and (life.seated or life.down != "")):
+		page = ""
 	if page != "" and page != _spot:
 		if page != _near:
 			_near_label.modulate.a = 0.0
@@ -401,6 +417,8 @@ const PAGE_OF := {"backpack": "warehouse", "sit": ""}
 
 
 func _ask(spot: String) -> void:
+	_near_used = spot
+	_near_reached = false
 	var page: String = PAGE_OF.get(spot, spot)
 	if _asked_page != "" and _asked_page == page:
 		_open_asked()

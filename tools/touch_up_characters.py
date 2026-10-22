@@ -15,7 +15,10 @@ pictures) changed. Run once on a freshly built model:
         fine as the sika's - each half of the cloven hoof narrowed to a
         point in front, its top sloping down to the tip, the hoof taller;
         and its picture's hoof a glossy dark brown (the sika's), the fur's
-        grain off it
+        grain off it. And its antlers as fine as the sika's too (user
+        request): smoothed (their lumps gone, not shrunk - Taubin), each
+        tine drawn to a point over its last TINE m, dark brown at the
+        burr to cream at the tips, smooth and with a sheen
 
 The glTF's frame: +y up, the front +z, the left +x; the feet on y = 0.
 For the deer, the pictures Godot extracts beside the model
@@ -38,6 +41,14 @@ EYE = 0.80
 EYE_REACH = 1.9
 HOOF = dict(taper=0.75, drop=0.6, ext=0.035, tall=1.3, height=0.045, pastern=0.07)
 HOOF_COLOUR = (66, 44, 36)
+ANTLER_SMOOTH = 40
+TINE = 0.09
+TIP_THIN = 0.2
+# (the burr's dark, the beam's tan, the tips' cream - and how far from the
+# burr and from a tip each reaches, m)
+ANTLER_RAMP = [(0.0, (74, 52, 36)), (0.35, (142, 110, 78)), (1.0, (232, 220, 196))]
+ANTLER_BURR = 0.06
+ANTLER_TIPS = 0.14
 
 TYPES = {5126: np.float32, 5123: np.uint16, 5125: np.uint32, 5121: np.uint8}
 SIZES = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4, "MAT4": 16}
@@ -159,6 +170,120 @@ def owl(g):
     g.put(g.prim["attributes"]["POSITION"], Q)
 
 
+def _welded(P, tri):
+    """The points welded (the .glb's split at its picture's seams): each
+    point's welded index, and each welded point's neighbours."""
+    _, w = np.unique(np.round(P / 1e-5).astype(np.int64), axis=0, return_inverse=True)
+    w = w.ravel()
+    n = w.max() + 1
+    nb = [set() for _ in range(n)]
+    for t in w[tri]:
+        for a, b in ((t[0], t[1]), (t[1], t[2]), (t[2], t[0])):
+            nb[a].add(b)
+            nb[b].add(a)
+    return w, [np.array(sorted(x), int) for x in nb]
+
+
+def antlers(P, L, tri, N):
+    """The antlers smoothed and their tines pointed (P and N changed); each
+    antler point's place on ANTLER_RAMP (0 the burr, 0.35 the beam, 1 a tip;
+    -1 off the antlers)."""
+    import heapq
+    share = np.full(len(P), -1.0)
+    w, nb = _welded(P, tri)
+    for c in np.unique(L):
+        m = L == c
+        lo, hi = P[m].min(0), P[m].max(0)
+        if not (lo[1] > 1.85 and hi[1] > 2.0):
+            continue
+        ids = np.unique(w[m])
+        at = np.zeros((w.max() + 1, 3))
+        at[w[m]] = P[m]
+        q = at[ids].copy()
+        index = {v: i for i, v in enumerate(ids)}
+        near = [np.array([index[x] for x in nb[v] if x in index], int) for v in ids]
+        burr = q[:, 1] < lo[1] + 0.025
+        # (Taubin: a step in, a step back out - the lumps go, the size stays)
+        for k in range(ANTLER_SMOOTH * 2):
+            f = 0.5 if k % 2 == 0 else -0.53
+            mean = np.array([q[nn].mean(0) if len(nn) else q[i] for i, nn in enumerate(near)])
+            step = (mean - q) * f
+            step[burr] = 0.0
+            q += step
+        # how far over the antler from the burr, and from the nearest tip
+        def spread(src):
+            d = np.full(len(q), np.inf)
+            heap = [(0.0, int(i)) for i in src]
+            for _, i in heap:
+                d[i] = 0.0
+            heapq.heapify(heap)
+            while heap:
+                dd, i = heapq.heappop(heap)
+                if dd > d[i]:
+                    continue
+                for j in near[i]:
+                    nd = dd + float(np.linalg.norm(q[i] - q[j]))
+                    if nd < d[j]:
+                        d[j] = nd
+                        heapq.heappush(heap, (nd, int(j)))
+            return d
+        from_burr = spread(np.nonzero(burr)[0])
+        tips = [i for i in range(len(q)) if len(near[i]) and from_burr[i] >= from_burr[near[i]].max() - 1e-9
+                and from_burr[i] > 0.05]
+        to_tip = spread(tips)
+        # each tine thinned toward its tip, to its own middle there (its
+        # points' mean over the nearby ring)
+        thin = TIP_THIN + (1.0 - TIP_THIN) * np.clip(to_tip / TINE, 0.0, 1.0)
+        mid = q.copy()
+        for _ in range(30):
+            mid = np.array([mid[nn].mean(0) if len(nn) else mid[i] for i, nn in enumerate(near)])
+        q = mid + (q - mid) * thin[:, None]
+        at[ids] = q
+        P[m] = at[w[m]]
+        sh = np.zeros(w.max() + 1)
+        tipness = np.clip(1.0 - to_tip / ANTLER_TIPS, 0.0, 1.0)
+        burr_off = np.clip(from_burr / ANTLER_BURR, 0.0, 1.0)
+        sh[ids] = 0.35 * burr_off + 0.65 * tipness
+        share[m] = sh[w[m]]
+        print("antler (%+.0f): %d points, %d tips" % (np.sign(lo[0] + hi[0]), len(ids), len(tips)))
+    # their normals again, off their faces
+    on = share >= 0.0
+    acc = np.zeros((w.max() + 1, 3))
+    for t in tri[on[tri].all(1)]:
+        a, b, c = P[t]
+        acc[w[t]] += np.cross(b - a, c - a)
+    nn = acc[w[on]]
+    nn /= np.maximum(np.linalg.norm(nn, axis=1, keepdims=True), 1e-9)
+    # (facing the way they did)
+    flip = (nn * N[on]).sum(1).mean() < 0.0
+    N[on] = -nn if flip else nn
+    return share
+
+
+def _paint(img, uv, tri, value, colour_of):
+    """Each triangle's texels (by its UVs) painted colour_of(texels' value,
+    their old colour) - `value` per point, spread over the triangle."""
+    W, H = img.shape[1], img.shape[0]
+    for t in tri:
+        x, y = uv[t, 0] * W, uv[t, 1] * H
+        x0, x1 = int(np.floor(x.min())) - 1, int(np.ceil(x.max())) + 1
+        y0, y1 = int(np.floor(y.min())) - 1, int(np.ceil(y.max())) + 1
+        gx, gy = np.meshgrid(np.arange(max(x0, 0), min(x1, W)) + 0.5, np.arange(max(y0, 0), min(y1, H)) + 0.5)
+        den = (y[1] - y[2]) * (x[0] - x[2]) + (x[2] - x[1]) * (y[0] - y[2])
+        if abs(den) < 1e-9 or gx.size == 0:
+            continue
+        a = ((y[1] - y[2]) * (gx - x[2]) + (x[2] - x[1]) * (gy - y[2])) / den
+        b = ((y[2] - y[0]) * (gx - x[2]) + (x[0] - x[2]) * (gy - y[2])) / den
+        c = 1.0 - a - b
+        # (a texel past each edge too: no seam showing the old colour)
+        inside = (a > -0.08) & (b > -0.08) & (c > -0.08)
+        if not inside.any():
+            continue
+        v = a * value[t[0]] + b * value[t[1]] + c * value[t[2]]
+        px, py = gx[inside].astype(int), gy[inside].astype(int)
+        img[py, px] = colour_of(np.clip(v[inside], 0.0, 1.0), img[py, px])
+
+
 def deer(g, out):
     P, L, tri = pieces(g)
     rest = P.copy()
@@ -183,7 +308,10 @@ def deer(g, out):
         y, tall = q[:, 1], HOOF["tall"]
         q[:, 1] = np.where(y < H, y * tall, np.where(y > B, y, H * tall + (y - H) * (B - H * tall) / (B - H)))
         P[m] = q
+    nrm, _ = g.get(g.prim["attributes"]["NORMAL"])
+    share = antlers(P, L, tri, nrm)
     g.put(g.prim["attributes"]["POSITION"], P)
+    g.put(g.prim["attributes"]["NORMAL"], nrm)
 
     # The picture: the hoof's black (on the triangles under the hoof's top,
     # as made) a glossy dark brown, its fur's grain off.
@@ -205,14 +333,32 @@ def deer(g, out):
     f = np.clip(lum[hoof] / max(lum[hoof].mean(), 1.0), 0.3, 2.5) ** 0.25
     C[hoof] = np.clip(np.array(HOOF_COLOUR, float) * f[:, None], 0, 255)
 
-    def scaled(img):
-        return np.array(Image.fromarray(hoof.astype(np.uint8) * 255).resize(img.size, Image.BILINEAR)).astype(float) / 255
+    # The antlers: burr to tips, dark brown to cream (the sika's), their
+    # grain kept faintly.
+    on = tri[(share[tri] >= 0.0).all(1)]
+    stops = np.array([x for x, _ in ANTLER_RAMP])
+    ramp = np.array([c for _, c in ANTLER_RAMP], float)
+
+    def antler_colour(v, old):
+        k = np.clip(old.mean(1) / max(float(old.mean()), 1.0), 0.8, 1.2)[:, None] ** 0.35
+        rgb = np.stack([np.interp(v, stops, ramp[:, i]) for i in range(3)], 1)
+        return np.clip(rgb * k, 0, 255)
+    _paint(C, uv, on, np.clip(share, 0.0, 1.0), antler_colour)
+    horn = np.zeros(lum.shape + (1,))
+    _paint(horn, uv, on, np.clip(share, 0.0, 1.0), lambda v, old: np.ones((len(v), 1)))
+    horn = horn[..., 0] > 0.5
+
+    def scaled(mask):
+        return np.array(Image.fromarray(mask.astype(np.uint8) * 255).resize(normal.size, Image.BILINEAR)).astype(float) / 255
     rough = g.image(ri)
     R = np.array(rough).astype(float)
-    R[scaled(rough) > 0.5, 1] *= 0.55
+    rs = lambda mask: np.array(Image.fromarray(mask.astype(np.uint8) * 255).resize(rough.size, Image.BILINEAR)) > 127
+    R[rs(hoof), 1] *= 0.55
+    R[rs(horn), 1] *= 0.7
     normal = g.image(ni)
     N = np.array(normal).astype(float)
-    a = gaussian_filter(scaled(normal), 1.5)[..., None] * 0.85
+    a = gaussian_filter(scaled(hoof), 1.5)[..., None] * 0.85 + gaussian_filter(scaled(horn), 1.5)[..., None] * 0.8
+    a = np.clip(a, 0.0, 0.9)
     N = N * (1.0 - a) + np.array([128.0, 128.0, 255.0]) * a
     name = os.path.splitext(os.path.basename(out))[0]
     for k, arr in ((ci, C), (ri, R), (ni, N)):

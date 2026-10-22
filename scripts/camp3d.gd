@@ -227,7 +227,7 @@ func walkable(p: Vector3) -> bool:
 	var m := _stage.merchant
 	if m != null and Vector2(p.x - m.global_position.x, p.z - m.global_position.z).length() < MERCHANT_ROOM:
 		return false
-	return _stage.on_dock(p) or _stage.roomy(p, CampStage.BODY)
+	return _stage.on_dock(p) or _stage.roomy(p, _stage.body)
 
 
 func _play(clip: String, blend: float) -> void:
@@ -255,6 +255,8 @@ func quick(page: String) -> void:
 	_rising = false
 	_idle_for = 0.0
 	_asked_page = ""
+	_near_used = page
+	_near_reached = false
 	var life := _stage.life
 	life.paused = false
 	life.act_on(page, 0, Callable())

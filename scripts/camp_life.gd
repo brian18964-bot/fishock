@@ -391,7 +391,10 @@ func _lie(up: String) -> Dictionary:
 
 
 func _go(spot: String) -> Array:
-	var s: Dictionary = stage.spots[spot]
+	# (the trough, the crate, the pack: from the side of it nearest -
+	# CampStage.stand_at; its body clear of it)
+	var front := CharacterArt.front_between(rig.character, 0.2, 1.4, 0.25)
+	var s: Dictionary = stage.stand_at(spot, pivot.position, front)
 	return [{"do": "walk", "to": s.at}, {"do": "face", "at": s.face}]
 
 

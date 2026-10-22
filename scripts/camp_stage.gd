@@ -20,9 +20,10 @@ extends Node3D
 ## thing a hotspot (hotspot_at(), highlight()): a faint gold rim always,
 ## bright with its name while pressed or hovered.
 
-## User request: the camp's things further apart (15%), out from its
-## middle - all but the dock and the boat, at the water.
-const SPREAD := 1.15
+## User request: the camp's things further apart (15%, then 13% more -
+## user report: crowded to walk about in), out from its middle - all but
+## the dock and the boat, at the water.
+const SPREAD := 1.3
 const MID := Vector3(0.3, 0.0, -1.2)
 const FLAT := Vector3(SPREAD, 1.0, SPREAD)
 const STATIONS := {
@@ -203,6 +204,7 @@ func _ready() -> void:
 	_wildlife()
 	_places()
 	_character()
+	_fit_body()
 	camera = Camera3D.new()
 	camera.near = 0.1
 	camera.far = 120.0
@@ -283,6 +285,7 @@ func go_to(station: String, animate := true, done := Callable()) -> void:
 func set_character(id: String) -> void:
 	character.set_character(id)
 	_lamp_spot()
+	_fit_body()
 	life.restart()
 	_fire_flare = 1.0
 
@@ -359,6 +362,8 @@ func _places() -> void:
 	_spot("crate", CRATE_AT + crate_side * 0.94 * CRATE_SCALE, CRATE_AT)
 	_spot("pack", BACKPACK_AT + Vector3(0.15, 0, 0.62), BACKPACK_AT)
 	_spot("trough", TROUGH_AT + Vector3(-1.05, 0, 0.1), TROUGH_AT)
+	for name in ["crate", "pack", "trough"]:
+		_laid_out[name] = spots[name].at
 	# (a bigger one's belly and head went into the drum any nearer)
 	_spot("lean", DRUM_AT + Vector3(0, 0, 0.38), DRUM_AT + Vector3(0, 0, -3.0))
 	_spot("lake", Vector3(1.3, 0, -6.35), Vector3(1.7, 0, -10.0))
@@ -375,19 +380,20 @@ func _places() -> void:
 	_spot("ground", spread(Vector3(1.75, 0, 0.55)), FIRE_AT)
 	# What it walks round: everything on the ground, as capsules [a, b,
 	# radius] (a circle when a == b) - user request: never through things.
-	var crate_dir := Vector3(cos(0.55), 0, -sin(0.55))
-	var crate_half := (0.575 * CRATE_LENGTH - 0.3) * CRATE_SCALE
 	var t := Transform3D(Basis(Vector3.UP, HUT_YAW).scaled(Vector3.ONE * HUT_SCALE), HUT_AT)
 	obstacles = [
-		_round(FIRE_AT, 0.62 * FIRE_SCALE), [CRATE_AT - crate_dir * crate_half, CRATE_AT + crate_dir * crate_half, 0.32 * CRATE_SCALE],
-		_round(BACKPACK_AT, 0.26 * PACK_SCALE), _round(DRUM_AT, 0.36), _round(DRUM_2_AT, 0.36),
-		[TROUGH_AT - Vector3(0, 0, 0.3), TROUGH_AT + Vector3(0, 0, 0.3), 0.6],
+		_round(FIRE_AT, 0.62 * FIRE_SCALE), _round(DRUM_AT, 0.36), _round(DRUM_2_AT, 0.36),
 		[WOODPILE_AT + Vector3(-0.55, 0, 0.1), WOODPILE_AT + Vector3(0.55, 0, 0.1), 0.35],
 		_round(ROD_AT, 0.15), _round(TENT_AT, 1.45 * TENT_SCALE / 0.85),
 		_round(STONE_AT, 0.55),
 		# (the stall, its awning's edge too - user report: walked into it)
 		[t * Vector3(-1.0, 0, 0), t * Vector3(0.8, 0, 0), 1.1],
 	]
+	# (the crate, the pack, the trough off their own meshes - user report:
+	# the black bear stood in the crate; its capsule had been laid across
+	# it, short of its long sides)
+	for name in _sided:
+		obstacles.append(_capsule(_footprint(_sided[name])))
 	for p in _edge_trees:
 		obstacles.append(_round(p, 0.42))
 	for i in SEATS.size():
@@ -395,12 +401,79 @@ func _places() -> void:
 		var along := Vector3(-f.z, 0, f.x)
 		var at: Vector3 = SEATS[i][0]
 		obstacles.append([at - along * 0.62 * SEAT_LONGER, at + along * 0.62 * SEAT_LONGER, 0.34])
-	_build_grid()
+
+
+## The things the character goes up to from whichever side it's nearest
+## (user request: the fish tank only opened from its left - from its right
+## the character walked all the way round first): name -> its footprint
+## (_footprint()). Stood off a side by the character's own front
+## (CharacterArt.front_between) and STAND_GAP more (user report: the black
+## bear stood in the crate and the trough).
+var _sided := {}
+var _laid_out := {}
+const STAND_GAP := 0.14
+
+
+## A thing's footprint on the ground off its meshes: [middle, across (flat,
+## unit), half across, along, half along].
+func _footprint(node: Node3D) -> Array:
+	var inv := node.global_transform.affine_inverse()
+	var box := AABB()
+	var first := true
+	var meshes := node.find_children("*", "MeshInstance3D", true, false)
+	if node is MeshInstance3D:
+		meshes.append(node)
+	for mi in meshes:
+		var b: AABB = (inv * (mi as MeshInstance3D).global_transform) * (mi as MeshInstance3D).get_aabb()
+		box = b if first else box.merge(b)
+		first = false
+	var t := node.global_transform
+	var mid := t * box.get_center()
+	var ax := Vector3(t.basis.x.x, 0, t.basis.x.z)
+	var az := Vector3(t.basis.z.x, 0, t.basis.z.z)
+	return [Vector3(mid.x, 0, mid.z), ax.normalized(), box.size.x * 0.5 * ax.length(),
+		az.normalized(), box.size.z * 0.5 * az.length()]
+
+
+## Where to stand to use `name` coming from `from`: off the side of it the
+## shortest walk away (a side with no room left out), `front` (m) its body
+## comes forward. Just its spot for a thing not done from any side.
+func stand_at(name: String, from: Vector3, front: float) -> Dictionary:
+	if not _sided.has(name):
+		return spots[name]
+	var f := _footprint(_sided[name])
+	var best: Dictionary = spots[name]
+	var best_len := INF
+	for k in 4:
+		var axis: Vector3 = f[1] if k < 2 else f[3]
+		var half: float = f[2] if k < 2 else f[4]
+		var out := axis * (1.0 if k % 2 == 0 else -1.0)
+		var at: Vector3 = f[0] + out * (half + front + STAND_GAP)
+		if not GRID_AREA.has_point(Vector2(at.x, at.z)) or _in_lake(at, 0.3) or blocked(at, body * 0.75):
+			continue
+		var length := 0.0
+		var last := Vector3(from.x, 0, from.z)
+		for q in route(from, at):
+			length += last.distance_to(q)
+			last = q
+		if length < best_len:
+			best_len = length
+			best = {"at": at, "face": at - out * 3.0}
+	return best
 
 
 ## A point of the camp as first laid out, moved out with the rest (SPREAD).
 static func spread(p: Vector3) -> Vector3:
 	return MID + (p - MID) * FLAT
+
+
+## A footprint (_footprint()) as a capsule: along its longer way, as wide
+## as it is across.
+static func _capsule(f: Array) -> Array:
+	var along: Vector3 = f[1] if f[2] > f[4] else f[3]
+	var r: float = minf(f[2], f[4])
+	var reach: float = maxf(f[2], f[4]) - r
+	return [f[0] - along * reach, f[0] + along * reach, r]
 
 
 static func _round(at: Vector3, r: float) -> Array:
@@ -420,7 +493,23 @@ func seat_facing(i: int) -> Vector3:
 const GRID_AREA := Rect2(-11.5, -11.0, 23.0, 17.0)
 const GRID_CELL := 0.2
 const BODY := 0.18
+## The character's own half-width (m) the ways keep clear by - BODY at the
+## least (user report: the black bear brushed through what the cat
+## passed): its measured side (CharacterArt.side_between), up to BODY_MOST.
+const BODY_MOST := 0.34
+var body := BODY
 var _grid: AStarGrid2D
+
+
+## The ways laid again for the character now at the camp.
+func _fit_body() -> void:
+	var id := character.character if character != null else ""
+	body = clampf(CharacterArt.side_between(id, 0.3, 1.4, BODY) * 0.85, BODY, BODY_MOST)
+	_build_grid()
+	# (each one's own spot: the side of it nearest where it was laid out)
+	var front := CharacterArt.front_between(id, 0.2, 1.4, 0.25)
+	for name in _sided:
+		spots[name] = stand_at(name, _laid_out[name], front)
 
 
 func _build_grid() -> void:
@@ -432,7 +521,7 @@ func _build_grid() -> void:
 	for x in _grid.region.size.x:
 		for y in _grid.region.size.y:
 			var p := _cell_point(Vector2i(x, y))
-			if _in_lake(p, 0.3) or blocked(p, BODY):
+			if _in_lake(p, 0.3) or blocked(p, body):
 				_grid.set_point_solid(Vector2i(x, y), true)
 
 
@@ -505,9 +594,9 @@ func _clear(a: Vector3, b: Vector3) -> bool:
 			return false
 		for o in obstacles:
 			var r: float = o[2]
-			var limit := r + BODY * 0.9
+			var limit := r + body * 0.9
 			var by := minf(_to_segment(a, o[0], o[1]), _to_segment(b, o[0], o[1]))
-			if by < r + BODY:
+			if by < r + body:
 				limit = minf(limit, by - 0.02)
 			if _to_segment(p, o[0], o[1]) < limit:
 				return false
@@ -942,7 +1031,7 @@ func _forest() -> void:
 		# character, all along its south side)
 		if p.z > 0.3 and p.z < 13.0 and absf(p.x) < 13.5:
 			continue
-		if p.distance_to(STONE_AT) < 2.0:
+		if p.distance_to(STONE_AT) < 2.0 or _by_camp(p):
 			continue
 		near.append(p)
 	# User request (the walkable camp): the edges thick with trees - left
@@ -956,7 +1045,7 @@ func _forest() -> void:
 		# camp's south side)
 		if p.z > 0.3 and p.z < 13.0 and absf(p.x) < 13.5:
 			continue
-		if _in_lake(p, 1.0) or p.distance_to(STONE_AT) < 2.0:
+		if _in_lake(p, 1.0) or p.distance_to(STONE_AT) < 2.0 or _by_camp(p):
 			continue
 		near.append(p)
 		if GRID_AREA.has_point(Vector2(p.x, p.z)):
@@ -976,8 +1065,15 @@ func _forest() -> void:
 				mine.append(far[i])
 		_trees(models[k], mine, Vector2(0.5, 0.95))
 	# Dead trees along the water.
-	_trees("dead_a", [Vector3(-6.6, 0, -6.9), Vector3(8.4, 0, -6.6), Vector3(-9.5, 0, -8.4)], Vector2(0.45, 0.6))
-	_trees("dead_b", [Vector3(-8.2, 0, -3.6), Vector3(9.6, 0, -2.4)], Vector2(0.45, 0.6))
+	_trees("dead_a", [Vector3(-6.6, 0, -6.9), Vector3(8.4, 0, -6.6), Vector3(-9.5, 0, -8.4)].filter(func(q): return not _by_camp(q)),
+		Vector2(0.45, 0.6))
+	_trees("dead_b", [Vector3(-8.2, 0, -3.6), Vector3(9.6, 0, -2.4)].filter(func(q): return not _by_camp(q)), Vector2(0.45, 0.6))
+
+
+## Whether a tree at `p` would stand in the tent or the stall (spread out
+## to the forest's edge).
+static func _by_camp(p: Vector3) -> bool:
+	return p.distance_to(TENT_AT) < 3.4 * TENT_SCALE or p.distance_to(HUT_AT) < 2.8
 
 
 ## The campfire (the pack's stones and logs, its embers glowing), the
@@ -1134,11 +1230,13 @@ func _crate() -> void:
 	var crate := _put("crate", CRATE_AT, 0.55)
 	crate.scale = Vector3(CRATE_LENGTH, 1.0, 1.0) * CRATE_SCALE
 	_hotspot("warehouse", crate, "倉庫", CRATE_AT + Vector3(0, 0.4, 0), 0.9 * CRATE_SCALE)
+	_sided["crate"] = crate
 	# The backpack by it opens the warehouse too (user request).
 	var pack := _put("backpack", BACKPACK_AT, 0.25)
 	pack.rotation.x = -0.18
 	pack.scale = Vector3.ONE * PACK_SCALE
 	_hotspot("backpack", pack, "背包", BACKPACK_AT + Vector3(0, 0.35, 0), 0.38 * PACK_SCALE, 0.012)
+	_sided["pack"] = pack
 
 
 ## The tent (the equipment page): the one Profile.camp_tent names, and the
@@ -1255,6 +1353,7 @@ void fragment() {
 			trough.add_child(mi)
 		leaf.free()
 	_hotspot("fish_tank", trough, "魚缸", TROUGH_AT + Vector3(0, 0.4, 0), 1.1, 0.012)
+	_sided["trough"] = trough
 
 
 ## The 渡石: the stone the travellers cross by, its runes glowing faintly

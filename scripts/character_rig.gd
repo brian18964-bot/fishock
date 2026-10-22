@@ -261,8 +261,10 @@ func held_offset(slot: String, world: Basis, drop: Vector3) -> Transform3D:
 func equip_rod(tier: int) -> void:
 	var y := ROD_AIM.normalized()
 	var x := y.cross(Vector3.BACK).normalized()
+	# (turned over on its length: the guides - the models' +y, the rod's -z -
+	# under it, the way the rod leans out; user report: they were on top)
 	equip("hand_r", RODS[clampi(tier, 0, RODS.size() - 1)],
-		_held("hand_r", Basis(x, y, x.cross(y)).scaled(Vector3.ONE * ROD_SCALE), Vector3.ZERO, ROD_GRIP))
+		_held("hand_r", Basis(-x, y, -x.cross(y)).scaled(Vector3.ONE * ROD_SCALE), Vector3.ZERO, ROD_GRIP))
 
 
 ## The lamp in the left hand, hanging by its bail from the fingers; picked
