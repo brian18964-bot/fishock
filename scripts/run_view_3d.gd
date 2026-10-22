@@ -453,6 +453,7 @@ func _build() -> void:
 		_scan(n)
 	print_verbose("RunView3D: land %d ms, props %d ms, the rest %d ms" % [t1 - t0, t2 - t1, Time.get_ticks_msec() - t2])
 	player.cast_started.connect(func(at: Vector2, _t): _splash_ring(at))
+	player.ability_triggered.connect(ability_fx)
 	built = true
 	if intro:
 		_intro_t = 0.0
@@ -813,7 +814,7 @@ func _trees_and_rocks() -> void:
 			var rock := _fitted(str(n.get("model")), to3(at, LAND_Y - 0.03), Vector2(d, d), _rng.randf() * TAU, true)
 			if rock != null:
 				_flip_rocks[n] = rock
-		elif path == "glow_mushroom.gd":
+		elif path == "glow_mushroom.gd" and not _mushrooms.has(n):
 			_mushroom(n, at)
 
 
@@ -851,6 +852,7 @@ func _mushroom(n: Node, at: Vector2) -> void:
 		light.light_specular = 0.2
 		light.position = Vector3(0, 0.3, 0)
 		holder.add_child(light)
+	_spores(holder)
 	_mushrooms[n] = [holder, glow, light]
 
 
@@ -869,6 +871,227 @@ func _sync_mushrooms() -> void:
 			(parts[2] as OmniLight3D).light_energy = 0.25 + 0.55 * k
 
 
+## The view's exposure; the owl's sight eased in on top (_update_light).
+const EXPOSURE := 1.05
+var _owl_sight := 1.0
+
+
+# ---------------------------------------------------------------- abilities
+
+## User request: an ability going off is seen - its icon pops up over the
+## head, and each its own show: the dog's "!" and the name of what it
+## found there, the sheep's ×2 over the mushroom, the bear's blow and the
+## croc's haul at the fish, the deer's leaves, the cat's and the owl's
+## sparkle (Abilities' colours).
+func ability_fx(kind: String, at: Vector2, note: String) -> void:
+	var color: Color = Abilities.info(kind).get("color", Color.WHITE)
+	var head := _head_height()
+	if kind == "dog":
+		# (the "!" first, on its own - the badge after it)
+		get_tree().create_timer(0.9).timeout.connect(_pop_icon.bind(kind, head + 0.45))
+	else:
+		_pop_icon(kind, head + 0.45)
+	match kind:
+		"dog":
+			_pop_text("!", pivot, Vector3(0, head + 0.15, 0), Color(1.0, 0.85, 0.2), 140, 1.2)
+			_burst(to3(at, LAND_Y + 0.2), color, 18, 0.6)
+			_name_tag(at, note)
+		"sheep":
+			_pop_text(note, self, to3(at, LAND_Y + 0.7), Color(1.0, 0.9, 0.3), 72, 1.6)
+			_burst(to3(at, LAND_Y + 0.3), color, 22, 0.8)
+		"bear":
+			_burst(to3(at, WATER_Y + 0.2), color, 34, 1.2)
+		"croc":
+			_splash_ring(at)
+			_burst(to3(at, WATER_Y + 0.2), color, 40, 1.6)
+		"deer":
+			_burst(pivot.global_position + Vector3(0, 1.0, 0), color, 30, 1.0)
+		"cat":
+			_burst(pivot.global_position + Vector3(0, 0.2, 0), color, 28, 0.9)
+		"owl":
+			_burst(pivot.global_position + Vector3(0, head - 0.1, 0), color, 20, 0.6)
+
+
+## How high the character's head is (m, over its feet).
+func _head_height() -> float:
+	var sk := rig.skeleton if rig != null else null
+	var b := sk.find_bone("Head") if sk != null else -1
+	if b < 0:
+		return 1.7
+	return (sk.global_transform * sk.get_bone_global_pose(b).origin).y - pivot.global_position.y + 0.25
+
+
+## The ability's icon up over the head: popping in, rising, fading.
+func _pop_icon(kind: String, y: float) -> void:
+	var tex := Abilities.icon(kind)
+	if tex == null:
+		return
+	var spr := Sprite3D.new()
+	spr.texture = tex
+	spr.pixel_size = 0.0042
+	spr.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	spr.no_depth_test = true
+	spr.shaded = false
+	spr.render_priority = 10
+	spr.position = Vector3(0, y, 0)
+	spr.scale = Vector3.ONE * 0.01
+	pivot.add_child(spr)
+	var tw := spr.create_tween()
+	tw.tween_property(spr, "scale", Vector3.ONE * 1.25, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(spr, "scale", Vector3.ONE, 0.12)
+	tw.tween_property(spr, "position:y", y + 0.35, 1.3)
+	tw.parallel().tween_property(spr, "modulate:a", 0.0, 0.5).set_delay(0.8)
+	tw.tween_callback(spr.queue_free)
+
+
+## A word up in the air (the dog's "!", the sheep's ×2), popping in and
+## fading after `life` s.
+func _pop_text(text: String, parent: Node3D, at: Vector3, color: Color, size: int, life: float) -> void:
+	var l := Label3D.new()
+	l.text = text
+	l.font_size = size
+	l.outline_size = 18
+	l.modulate = color
+	l.outline_modulate = Color(0.1, 0.05, 0.0)
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.no_depth_test = true
+	l.fixed_size = false
+	l.pixel_size = 0.004
+	l.position = at
+	l.scale = Vector3.ONE * 0.01
+	parent.add_child(l)
+	var tw := l.create_tween()
+	tw.tween_property(l, "scale", Vector3.ONE * 1.2, 0.15).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(l, "scale", Vector3.ONE, 0.1)
+	tw.tween_interval(maxf(life - 0.6, 0.1))
+	tw.tween_property(l, "modulate:a", 0.0, 0.35)
+	tw.tween_callback(l.queue_free)
+
+
+## What the dog found, named over it, until it's picked up (or a while).
+const NAME_TAG_TIME := 15.0
+
+
+func _name_tag(at: Vector2, text: String) -> void:
+	if text == "":
+		return
+	var l := Label3D.new()
+	l.text = text
+	l.font_size = 40
+	l.outline_size = 12
+	l.modulate = Color(1.0, 0.95, 0.75)
+	l.outline_modulate = Color(0, 0, 0, 0.9)
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.no_depth_test = true
+	l.pixel_size = 0.004
+	l.position = to3(at, LAND_Y + 0.75)
+	add_child(l)
+	var thing: Node2D = null
+	var best := 6.0
+	for n in get_tree().get_nodes_in_group("dropped_items") + get_tree().get_nodes_in_group("glow_mushrooms"):
+		var d := (n as Node2D).global_position.distance_to(at)
+		if d < best:
+			best = d
+			thing = n
+	var t := 0.0
+	var watch := func(dt: float) -> bool:
+		t += dt
+		return t > NAME_TAG_TIME or thing == null or not is_instance_valid(thing) \
+			or not (thing.is_in_group("dropped_items") or thing.is_in_group("glow_mushrooms"))
+	_tags.append([l, watch])
+
+
+var _tags: Array = []
+
+
+func _sync_tags(delta: float) -> void:
+	for i in range(_tags.size() - 1, -1, -1):
+		var l: Label3D = _tags[i][0]
+		if (_tags[i][1] as Callable).call(delta):
+			l.queue_free()
+			_tags.remove_at(i)
+
+
+## A burst of `count` soft sparks at `at` (world), in `color`, flung out
+## `speed` m/s, falling a little, gone within a second.
+func _burst(at: Vector3, color: Color, count: int, speed: float) -> void:
+	var p := CPUParticles3D.new()
+	p.mesh = _glow_dot()
+	p.amount = count
+	p.lifetime = 1.0
+	p.one_shot = true
+	p.explosiveness = 0.9
+	p.local_coords = false
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	p.emission_sphere_radius = 0.15
+	p.direction = Vector3.UP
+	p.spread = 180.0
+	p.initial_velocity_min = speed * 0.4
+	p.initial_velocity_max = speed
+	p.gravity = Vector3(0, -1.2, 0)
+	p.scale_amount_min = 0.8
+	p.scale_amount_max = 1.8
+	var ramp := Gradient.new()
+	ramp.colors = PackedColorArray([Color(color, 1.0), Color(color, 0.0)])
+	p.color_ramp = ramp
+	add_child(p)
+	p.global_position = at
+	p.emitting = true
+	get_tree().create_timer(1.6).timeout.connect(p.queue_free)
+
+
+## A soft blue dot (unlit, added, facing the camera) for sparks and spores.
+var _dot: QuadMesh
+
+
+func _glow_dot() -> QuadMesh:
+	if _dot == null:
+		_dot = QuadMesh.new()
+		_dot.size = Vector2(0.05, 0.05)
+		var dm := StandardMaterial3D.new()
+		dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		dm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		dm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		dm.vertex_color_use_as_albedo = true
+		dm.albedo_texture = UiKit.glow()
+		_dot.material = dm
+	return _dot
+
+
+## User request: a few spores off a glow mushroom on the map (3-5 about it
+## at a time), each a faint blue twinkle - in, drifting up a little, out.
+const SPORES := 4
+
+
+func _spores(holder: Node3D) -> void:
+	var p := CPUParticles3D.new()
+	p.name = "Spores"
+	p.mesh = _glow_dot()
+	p.amount = SPORES
+	p.lifetime = 2.6
+	p.randomness = 0.6
+	p.preprocess = 2.6
+	p.local_coords = true
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	p.emission_sphere_radius = 0.28
+	p.direction = Vector3.UP
+	p.spread = 35.0
+	p.initial_velocity_min = 0.03
+	p.initial_velocity_max = 0.09
+	p.gravity = Vector3.ZERO
+	p.scale_amount_min = 0.35
+	p.scale_amount_max = 0.7
+	# (twinkling: from nothing up to bright and away again over its life)
+	var ramp := Gradient.new()
+	ramp.offsets = PackedFloat32Array([0.0, 0.3, 0.55, 1.0])
+	ramp.colors = PackedColorArray([Color(0.5, 0.8, 1.0, 0.0), Color(0.6, 0.9, 1.0, 1.0), Color(0.5, 0.8, 1.0, 0.4),
+		Color(0.5, 0.8, 1.0, 0.0)])
+	p.color_ramp = ramp
+	p.position = Vector3(0, 0.22, 0)
+	holder.add_child(p)
+
+
 ## The glow mushroom's light on the traveller, and its crumbs and motes
 ## (soft blue dots, unlit, added).
 func _build_glow() -> void:
@@ -883,16 +1106,7 @@ func _build_glow() -> void:
 	_glow_light.position = Vector3(0, 1.0, 0)
 	_glow_light.visible = false
 	pivot.add_child(_glow_light)
-	var dot := QuadMesh.new()
-	dot.size = Vector2(0.05, 0.05)
-	var dm := StandardMaterial3D.new()
-	dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	dm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	dm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	dm.vertex_color_use_as_albedo = true
-	dm.albedo_texture = UiKit.glow()
-	dot.material = dm
+	var dot := _glow_dot()
 	# (the crumbs: rubbed off the hands, falling over the body)
 	_crumbs = CPUParticles3D.new()
 	_crumbs.name = "Crumbs"
@@ -1222,6 +1436,11 @@ static func _script_name(n: Node) -> String:
 func _on_node_added(n: Node) -> void:
 	if REST_2D.has(_script_name(n)):
 		_rest_2d_only.call_deferred(n)
+	if n is GlowMushroom:
+		# (one turned up mid-run - the dog's nose: its model too)
+		(func():
+			if is_instance_valid(n) and n.is_inside_tree() and not _mushrooms.has(n):
+				_mushroom(n, (n as Node2D).global_position)).call_deferred()
 	if n is SplashFx:
 		_splash.call_deferred(n)
 	elif n is Sprite2D or n is AnimatedSprite2D or n is PointLight2D:
@@ -3261,7 +3480,7 @@ func _environment() -> void:
 	_env.ambient_light_color = Color(0.2, 0.26, 0.38)
 	_env.ambient_light_energy = 0.55
 	_env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	_env.tonemap_exposure = 1.05
+	_env.tonemap_exposure = EXPOSURE
 	_env.fog_enabled = true
 	_env.fog_light_color = Color(0.05, 0.07, 0.11)
 	_env.fog_density = 0.018
@@ -3315,6 +3534,10 @@ func _update_light() -> void:
 	_moon.light_color = Color(0.62, 0.72, 0.95).lerp(Color(0.9, 0.88, 0.85), k)
 	_env.fog_light_color = (Color(0.05, 0.07, 0.11).lerp(Color(0.2, 0.22, 0.25), k) * NIGHT_DIM)
 	_env.background_color = _env.fog_light_color * 0.5
+	# (the owl in the dark: the whole view brighter - Abilities 夜視)
+	var sight := Abilities.OWL_DARK_SIGHT if Abilities.has("owl") and player.unlit() else 1.0
+	_owl_sight = move_toward(_owl_sight, sight, get_process_delta_time() * 0.4)
+	_env.tonemap_exposure = EXPOSURE * _owl_sight
 	# The traveller's own light: the lamp's (or flashlight's) reach and
 	# strength, at the hand.
 	var lantern: PointLight2D = player.get_node_or_null("Lantern")
@@ -3757,6 +3980,7 @@ func _process(delta: float) -> void:
 	_sync_runes()
 	_sync_mushrooms()
 	_sync_glow()
+	_sync_tags(delta)
 	# (a stone being turned over: where it's rolled to, tipped over)
 	for n in _flip_rocks:
 		if is_instance_valid(n) and float(n.get("turned")) > 0.0 and not n.has_meta("settled"):

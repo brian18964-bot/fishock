@@ -18,6 +18,7 @@ const TESTS := [
 	"test_proto3d",
 	"test_camp3d",
 	"test_glow_mushroom",
+	"test_character_abilities",
 	"test_run_menu_and_auto_defend",
 	"test_wolf_bites",
 	"test_run_intro_and_eye_guide",
@@ -4697,6 +4698,100 @@ func test_glow_mushroom() -> void:
 	p.glow_timer = 1.0
 	await seconds(1.2)
 	check(p.glow_strength() == 0.0 and StatusCard.effects(p).is_empty(), "30 s on, it's out")
+	Profile.load_data(saved)
+	Profile._save()
+
+
+## User request: each character its own ability (Abilities), told at the
+## fire with its story; each shown on the card and going off with its own
+## show.
+func test_character_abilities() -> void:
+	var saved := Profile.snapshot()
+	for c in Profile.CHARACTERS:
+		var kind := Abilities.kind_of(c[0])
+		check(kind != "" and Abilities.icon(kind) != null and Abilities.story(c[0]) != "",
+			"%s: its ability (%s), its badge and its story" % [c[1], Abilities.info(kind).get("name", "?")])
+	# At the fire: the picked one's ability and story.
+	var page: CharacterPage = load("res://scenes/character_page.tscn").instantiate() if ResourceLoader.exists("res://scenes/character_page.tscn") else CharacterPage.new()
+	get_tree().root.add_child(page)
+	await frames(2)
+	page.pick("croc")
+	await frames(1)
+	check(page._ability_name.text == "水中霸王" and page._story.text == Abilities.story("croc"), "the fire's page tells it")
+	page.queue_free()
+	Abilities.forced = true
+	var fired := []
+	# The cat: quicker at night.
+	Profile.character = "cat"
+	await _fresh_game()
+	var p := player()
+	p.ability_triggered.connect(func(k, _at, _n): fired.append(k))
+	var day := StatusCard.speed_share(p)
+	GameState.is_night = true
+	await frames(2)
+	check(is_equal_approx(StatusCard.speed_share(p), day * Abilities.CAT_NIGHT_SPEED) and fired.has("cat"),
+		"the cat: 15% quicker once night's fallen, and it shows")
+	GameState.is_night = false
+	# The owl: brighter in the dark.
+	Profile.character = "owl"
+	fired.clear()
+	await _fresh_game()
+	p = player()
+	p.ability_triggered.connect(func(k, _at, _n): fired.append(k))
+	var lantern: Lantern = p.get_node("Lantern")
+	check(not p.unlit(), "the lamp lit: not in the dark")
+	lantern.fuel = 0.0
+	await frames(2)
+	check(p.unlit() and fired.has("owl"), "lamp out: the owl's sight comes on")
+	var view := RunView3D.active
+	if view != null:
+		await seconds(1.0)
+		check(view._env.tonemap_exposure > RunView3D.EXPOSURE * 1.05, "the view brighter (%.2f)" % view._env.tonemap_exposure)
+	# The dog: something sniffed out close by, named, to pick up or not.
+	Profile.character = "dog"
+	fired.clear()
+	await _fresh_game()
+	p = player()
+	var notes := []
+	p.ability_triggered.connect(func(k, _at, n): fired.append(k); notes.append(n))
+	var before := get_tree().get_nodes_in_group("dropped_items").size() + get_tree().get_nodes_in_group("glow_mushrooms").size()
+	check(p.sniff() and fired.has("dog") and notes[0] != "", "the dog sniffs something out (%s)" % [notes])
+	await frames(2)
+	check(get_tree().get_nodes_in_group("dropped_items").size() + get_tree().get_nodes_in_group("glow_mushrooms").size() == before + 1,
+		"and it's there on the ground")
+	# The sheep: two mushrooms for one.
+	Profile.character = "sheep"
+	await _fresh_game()
+	p = player()
+	var m: GlowMushroom = get_tree().get_nodes_in_group("glow_mushrooms")[0]
+	p.global_position = m.global_position + Vector2(10, 0)
+	var had := Profile.bag_count("glow_mushroom")
+	p._pick_mushroom(m)
+	check(Profile.bag_count("glow_mushroom") == had + 2, "the sheep picks two")
+	# The bear's strike and the croc's haul.
+	for kind in ["bear", "croc"]:
+		Profile.character = kind
+		await _fresh_game()
+		p = player()
+		fired.clear()
+		p.ability_triggered.connect(func(k, _at, _n): fired.append(k))
+		var zone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
+		await put(zone.shore_point(Vector2.DOWN) + Vector2(0, 60))
+		p.aim_dir = Vector2.UP
+		p.cast_target = p.global_position + Vector2(0, -150)
+		p.cast_water_zone = zone
+		p.tier_data = FishData.get_tier_data("mid").duplicate()
+		p.difficulty_key = "normal"
+		p.fish_habit = ""
+		p.is_heart_catch = false
+		p._hook_fish()
+		if kind == "bear":
+			check(fired.has("bear") and p.fight.progress >= Abilities.BEAR_WEAR - 0.01, "the bear's strike: the fish 15% down at once")
+		else:
+			p.fight.progress = 1.0 - Abilities.CROC_AT + 0.01
+			await frames(3)
+			check(fired.has("croc"), "the croc hauls it straight in")
+	Abilities.forced = false
 	Profile.load_data(saved)
 	Profile._save()
 

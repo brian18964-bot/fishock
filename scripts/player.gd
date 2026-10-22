@@ -15,6 +15,9 @@ signal nibble(fake: bool)
 ## Something happened in the fight (FishFight event: run, side_run, jump,
 ## dive, dive_saved, enrage).
 signal fight_event(kind: String)
+## User request: the character's own ability went off (Abilities): which,
+## where (the thing found, the fish...), and what of (a find's name).
+signal ability_triggered(kind: String, at: Vector2, note: String)
 
 enum State { IDLE, CHARGING, WAITING, BITE, REELING }
 enum FishingMode { BOBBER, LURE }
@@ -927,6 +930,84 @@ func _sync_glow_light() -> void:
 	_glow_light.energy = 0.55 * k
 
 
+# ---------------------------------------------------------------- abilities
+
+## (the dog's walk since it last sniffed, px; the owl's show not too often;
+## what's been seen already this run)
+var _sniff_walk := 0.0
+var _was_night := false
+var _was_unlit := false
+var _owl_shown := -100.0
+var _croc_rolled := false
+
+
+## Whether it has no light of its own: the lamp (or the flashlight) out or
+## spent, and no glow mushroom on (the owl's 夜視).
+func unlit() -> bool:
+	var lantern := get_node_or_null("Lantern") as Lantern
+	var lamp_on := lantern != null and lantern.lit and lantern.power() > 0.0
+	return not lamp_on and glow_strength() <= 0.0
+
+
+## The cat at night: quicker on its feet (夜貓子).
+func night_ratio() -> float:
+	return Abilities.CAT_NIGHT_SPEED if GameState.is_night and Abilities.has("cat") else 1.0
+
+
+## The abilities that turn on with the run's state: shown going off as
+## they do - the cat as night falls, the owl as its light goes out.
+func _watch_abilities(_delta: float) -> void:
+	var kind := Abilities.kind_of()
+	if kind == "cat":
+		if GameState.is_night and not _was_night:
+			ability_triggered.emit("cat", global_position, "")
+			GameState.report("夜貓子：夜裡腳步更輕快了（移動速度 +15%）", "good")
+	elif kind == "owl":
+		var dark := unlit()
+		var now := Time.get_ticks_msec() / 1000.0
+		if dark and not _was_unlit and now - _owl_shown > 20.0:
+			_owl_shown = now
+			ability_triggered.emit("owl", global_position, "")
+			GameState.report("夜視：沒有光，眼睛反而看得更清楚（亮度 +20%）", "good")
+		_was_unlit = dark
+	_was_night = GameState.is_night
+
+
+## The dog's nose (敏感嗅覺): something found close by - a live bait that
+## won't run off, or a glow mushroom - left there to pick up or not.
+func sniff() -> bool:
+	var find: Array = Abilities.DOG_FINDS.pick_random()
+	var at := Vector2(-1, -1)
+	for _try in 10:
+		var p := global_position + Vector2.RIGHT.rotated(randf() * TAU) * randf_range(40.0, 70.0)
+		if _too_deep(p - FEET) or p.x < 20.0 or p.y < 20.0 or p.x > WORLD_WIDTH - 20.0 or p.y > WORLD_HEIGHT - 20.0:
+			continue
+		var clear := true
+		for t in get_tree().get_nodes_in_group("trees"):
+			if p.distance_to(t.global_position) < float(t.get("trunk_radius")) + 10.0:
+				clear = false
+				break
+		if clear:
+			at = p
+			break
+	if at.x < 0.0:
+		return false
+	var id: String = find[0]
+	var label := Items.name_of(id)
+	if id == "glow_mushroom":
+		var m := GlowMushroom.new()
+		m.position = at
+		get_parent().add_child(m)
+	else:
+		var d := DroppedItem.make(id, int(find[1]))
+		d.position = at
+		get_parent().add_child(d)
+		label = d.title()
+	ability_triggered.emit("dog", at, label)
+	GameState.report("敏感嗅覺：附近嗅到了%s！" % label, "good")
+	return true
+
+
 ## The glow mushroom nearest, within reach to pick (or null).
 func reachable_mushroom() -> GlowMushroom:
 	var best: GlowMushroom = null
@@ -959,6 +1040,11 @@ func _pick_mushroom(m: GlowMushroom) -> void:
 		aim_dir = at.normalized()
 	perform("gather", GATHER_TIME)
 	m.pick(GATHER_TIME * GATHER_TAKE)
+	# (the sheep, a good gatherer: now and then two - 採集高手)
+	if Abilities.has("sheep") and Abilities.roll(Abilities.SHEEP_CHANCE) and Profile.bag_put("glow_mushroom", 1) > 0:
+		ability_triggered.emit("sheep", m.global_position, "×2")
+		GameState.report("採集高手：多採到一株發光蘑菇！", "good")
+		return
 	GameState.push_message("採到一株發光蘑菇，放進背包")
 
 
@@ -1563,6 +1649,7 @@ func _physics_process(delta: float) -> void:
 	ward_timer = maxf(ward_timer - delta, 0.0)
 	glow_timer = maxf(glow_timer - delta, 0.0)
 	_sync_glow_light()
+	_watch_abilities(delta)
 	binoculars_cooldown = maxf(binoculars_cooldown - delta, 0.0)
 	if _knock_time > 0.0:
 		# Staggering back, free.
@@ -1716,11 +1803,17 @@ func _update_movement() -> void:
 	# (a swing of the off hand's thing is stood to - SWINGS)
 	if swing_left > 0.0 and not _auto_swing:
 		input_dir = Vector2.ZERO
-	velocity = input_dir * SPEED * carry_ratio * affliction_ratio * drum_ratio * spirit_ratio * vigor_ratio
+	velocity = input_dir * SPEED * carry_ratio * affliction_ratio * drum_ratio * spirit_ratio * vigor_ratio * night_ratio()
 	var before := position
 	move_and_slide()
 	position.x = clamp(position.x, edge, WORLD_WIDTH - edge)
 	position.y = clamp(position.y, edge, WORLD_HEIGHT - edge)
+	if state == State.IDLE and Abilities.has("dog"):
+		_sniff_walk += (position - before).length()
+		if _sniff_walk >= Abilities.DOG_SNIFF_STEP:
+			_sniff_walk = 0.0
+			if Abilities.roll(Abilities.DOG_SNIFF_CHANCE):
+				sniff()
 	# Keep out of deep water, sliding along the shallows' edge. (Only
 	# blocks stepping deeper - never traps someone already out there.)
 	if _too_deep(position) and not _too_deep(before):
@@ -2320,6 +2413,15 @@ func _update_fishing(delta: float) -> void:
 			progress = fight.progress
 			tension = fight.tension
 			fish_run_active_time = fight.run_left
+			# (the croc: the fish all but spent, once a fight it may just haul
+			# it in - 水中霸王)
+			if not _croc_rolled and fight.result == "" and fight.stamina() <= Abilities.CROC_AT and Abilities.has("croc"):
+				_croc_rolled = true
+				if Abilities.roll(Abilities.CROC_CHANCE):
+					fight.progress = 1.0
+					fight.result = "landed"
+					ability_triggered.emit("croc", cast_target, "")
+					GameState.report("水中霸王！一口氣把魚拉上岸", "good")
 			_follow_line(line_dir, delta)
 			# User request: turned round and run off mid-fight, the line
 			# snaps (stepping back at a walk, facing the fish, is fine).
@@ -2517,13 +2619,16 @@ func _roll_catch_outcome() -> void:
 	if flavor == BAIT_FLAVOR_FROG or flavor == BAIT_FLAVOR_LIVE_FROG:
 		rare_chance *= 2.0
 	rare_chance *= float(lure.get("rare", 1.0))
+	# (the deer, the forest's friend - 森林友好)
+	var deer_more := Abilities.DEER_RARE if Abilities.has("deer") else 0.0
+	rare_chance += deer_more
 
 	if caught_in_hotspot:
 		var heart_chance := HOTSPOT_HEART_CHANCE_NIGHT if GameState.is_night else HOTSPOT_HEART_CHANCE_DAY
 		heart_chance *= float(Campaign.rules.heart)
 		if randf() < heart_chance:
 			is_heart_catch = true
-		elif randf() < HOTSPOT_RARE_CHANCE:
+		elif randf() < HOTSPOT_RARE_CHANCE + deer_more:
 			is_rare_catch = true
 	elif randf() < rare_chance:
 		is_rare_catch = true
@@ -2771,6 +2876,14 @@ func _hook_fish(perfect := false) -> void:
 		GameState.push_message("完美揚竿！魚掉了一截體力——先%s頂住，看張力再收線" % hold)
 	else:
 		GameState.push_message("上鉤了！先%s頂住，看張力再收線" % hold)
+	_croc_rolled = false
+	# (the bear's strike: now and then it tears a share of the fish's
+	# strength away at once - 展現力量)
+	if Abilities.has("bear") and Abilities.roll(Abilities.BEAR_CHANCE):
+		fight.wear(Abilities.BEAR_WEAR)
+		progress = fight.progress
+		ability_triggered.emit("bear", cast_target, "")
+		GameState.report("展現力量！這一刺讓魚多掉了 15% 體力", "good")
 	_set_state(State.REELING)
 	hook_success.emit()
 
@@ -2857,6 +2970,9 @@ func _on_fight_event(kind: String) -> void:
 func _succeed_catch() -> void:
 	if caught_in_hotspot:
 		_hotspot.consume()
+	if is_rare_catch and not is_heart_catch and Abilities.has("deer"):
+		ability_triggered.emit("deer", global_position, "")
+		GameState.report("森林友好：森林把稀有的魚送到了你身邊", "good")
 
 	if is_heart_catch:
 		if GameState.has_heart or Inventory.fits_with(self, [{"kind": "heart", "size": Vector2i(1, 1)}]):

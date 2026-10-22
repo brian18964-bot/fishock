@@ -6,7 +6,7 @@ extends CanvasLayer
 ## of Profile.USABLES each - kept between runs) and used the moment
 ## they're tapped (Player.use_item()): drunk, opened, looked through. Each
 ## shows its thing's picture and how many are in the bag (greyed when none
-## are), the binoculars' wait, a potion's time left round its rim.
+## are), the binoculars' wait, a potion's time left round its square edge.
 ## An empty slot tapped, or any slot held, opens a picker of what's in the
 ## bag to set it to (or clear it). Z / X / C on a keyboard.
 ## Touches are taken in _input (any finger - walking with the left stick
@@ -31,6 +31,10 @@ var _touch_slot := -1
 var _held := 0.0
 var _picker: Control
 var _picker_slot := -1
+## (the picker on a layer of its own, over the rest of the controls - user
+## report: the bait's slot came up through it)
+const PICKER_LAYER := 20
+var _picker_layer: CanvasLayer
 
 
 func _ready() -> void:
@@ -155,7 +159,11 @@ func open_picker(i: int) -> void:
 	shade.gui_input.connect(func(e):
 		if e is InputEventMouseButton and e.pressed:
 			close_picker())
-	add_child(shade)
+	_picker_layer = CanvasLayer.new()
+	_picker_layer.name = "PickerLayer"
+	_picker_layer.layer = PICKER_LAYER
+	add_child(_picker_layer)
+	_picker_layer.add_child(shade)
 	_picker = shade
 	var panel := UiKit.tooltip_panel()
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -230,6 +238,9 @@ func close_picker() -> void:
 		_picker.queue_free()
 		_picker = null
 		Backpack.set_sticks_enabled(get_tree(), true)
+	if _picker_layer != null:
+		_picker_layer.queue_free()
+		_picker_layer = null
 	_picker_slot = -1
 
 
@@ -317,4 +328,20 @@ class SlotView extends Control:
 				var left := player.vigor_timer / Player.VIGOR_TIME if id == "potion_vigor" else (player.ward_timer / Player.WARD_TIME
 					if id == "potion_ward" else minf(player.glow_timer / Player.GLOW_TIME, 1.0))
 				if left > 0.0:
-					draw_arc(c, size.x * 0.56, -PI / 2.0, -PI / 2.0 + TAU * left, 40, Color(0.6, 1.0, 0.65, 0.8), 2.5, true)
+					_square_sweep(r.grow(1.5), left, Color(0.6, 1.0, 0.65, 0.9), 3.0)
+
+	## The time left as a line round the slot's square edge (user request:
+	## round the square, not a ring), from the top's middle, clockwise.
+	func _square_sweep(r: Rect2, left: float, color: Color, width: float) -> void:
+		var corners := [Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y), r.position,
+			Vector2(r.get_center().x, r.position.y)]
+		var pts := PackedVector2Array([Vector2(r.get_center().x, r.position.y)])
+		var want := (r.size.x + r.size.y) * 2.0 * clampf(left, 0.0, 1.0)
+		for corner in corners:
+			var seg: float = pts[-1].distance_to(corner)
+			if want <= seg:
+				pts.append(pts[-1].move_toward(corner, want))
+				break
+			want -= seg
+			pts.append(corner)
+		draw_polyline(pts, color, width, true)

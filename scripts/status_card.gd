@@ -48,9 +48,18 @@ const GEAR_LABELS := ["主手", "副手", "餌"]
 ## User request (the glow mushroom): what's been used and is still working
 ## - the glow, the potions - a slot each under the card, its icon, the time
 ## left sweeping round it and counted; the feed's lines under them then.
+## First of them, the character's own ability (Abilities): its badge, lit
+## while it's working (the cat at night, the owl in the dark; the ones
+## that go off by chance always), glowing a moment when it goes off.
 const EFFECT_AT := Vector2(10, 80)
 const EFFECT_SLOT := 34.0
 const EFFECT_GAP := 5.0
+
+## How long the ability's slot glows when it goes off (s), and how long
+## it's glowed so far.
+const ABILITY_FLASH := 2.0
+var _ability_flash := 0.0
+var _hooked: Player
 
 ## The lines showing: [text, tone, age], newest first.
 var feed: Array = []
@@ -111,6 +120,11 @@ static func gear(p: Player) -> Array:
 
 
 func _process(delta: float) -> void:
+	var p := _player()
+	if p != null and p != _hooked:
+		_hooked = p
+		p.ability_triggered.connect(func(_k, _at, _n): _ability_flash = ABILITY_FLASH)
+	_ability_flash = maxf(_ability_flash - delta, 0.0)
 	for line in feed:
 		line[2] += delta
 	feed = feed.filter(func(line): return line[2] < FEED_LIFE + FEED_FADE)
@@ -149,7 +163,7 @@ static func speed_share(p: Player) -> float:
 		share *= Player.OIL_DRUM_SPEED_MULT
 	if p.vigor_timer > 0.0:
 		share *= Player.VIGOR_SPEED
-	return share
+	return share * p.night_ratio()
 
 
 ## What's wrong (or of note), most pressing first.
@@ -184,10 +198,26 @@ static func effects(p: Player) -> Array:
 	return out
 
 
-func _draw_effects(list: Array) -> void:
+## The ability's badge in the first slot (false: the character has none).
+func _draw_ability(p: Player) -> bool:
+	var kind := Abilities.kind_of()
+	var tex := Abilities.icon(kind) if kind != "" else null
+	if tex == null:
+		return false
+	var r := Rect2(EFFECT_AT, Vector2.ONE * EFFECT_SLOT)
+	var on := Abilities.active(kind, p)
+	if _ability_flash > 0.0:
+		var k := _ability_flash / ABILITY_FLASH
+		var color: Color = Abilities.info(kind).get("color", UiKit.GOLD)
+		_view.draw_texture_rect(UiKit.glow(), r.grow(10.0 + 6.0 * sin(k * PI * 3.0)), false, Color(color, 0.8 * k))
+	_view.draw_texture_rect(tex, r, false, Color.WHITE if on else Color(0.55, 0.55, 0.6, 0.75))
+	return true
+
+
+func _draw_effects(list: Array, from := 0) -> void:
 	for i in list.size():
 		var e: Array = list[i]
-		var r := Rect2(EFFECT_AT + Vector2((EFFECT_SLOT + EFFECT_GAP) * i, 0), Vector2.ONE * EFFECT_SLOT)
+		var r := Rect2(EFFECT_AT + Vector2((EFFECT_SLOT + EFFECT_GAP) * (i + from), 0), Vector2.ONE * EFFECT_SLOT)
 		UiKit.draw_slot(_view, r, "", false, Items.square_icon(e[0]))
 		# (the time gone swept dark round from the top)
 		var gone := 1.0 - clampf(float(e[1]) / float(e[2]), 0.0, 1.0)
@@ -230,8 +260,9 @@ func _draw_card() -> void:
 	if SHOW_GEAR:
 		_draw_gear(p)
 	var working := effects(p)
-	_draw_effects(working)
-	_draw_feed(EFFECT_SLOT + 6.0 if not working.is_empty() else 0.0)
+	var ability := _draw_ability(p)
+	_draw_effects(working, 1 if ability else 0)
+	_draw_feed(EFFECT_SLOT + 6.0 if ability or not working.is_empty() else 0.0)
 	var line := x
 	for cond in conditions(p):
 		var w := UiKit.font().get_string_size(cond[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x

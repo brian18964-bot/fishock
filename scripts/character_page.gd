@@ -25,6 +25,12 @@ var _title: Label
 var _choose: Button
 var _cover: Control
 var _cover_text: Label
+## The picked one's ability (its badge, name, what it does) and story.
+const INFO_WIDTH := 272.0
+var _ability_icon: TextureRect
+var _ability_name: Label
+var _ability_desc: Label
+var _story: Label
 
 
 func _ready() -> void:
@@ -99,7 +105,16 @@ func _build() -> void:
 	_cover_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_cover.add_child(_cover_text)
 	stage.add_child(_cover)
-	rcol.add_child(stage)
+	# (user request: each one's ability and story told here - by it, on
+	# the right)
+	var body := HBoxContainer.new()
+	body.name = "Body"
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", 10)
+	stage.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_child(stage)
+	body.add_child(_info_panel())
+	rcol.add_child(body)
 	var foot := HBoxContainer.new()
 	foot.add_theme_constant_override("separation", 12)
 	var hint := UiKit.label("拖曳轉動・點一下打招呼", 14, UiKit.DIM)
@@ -114,6 +129,59 @@ func _build() -> void:
 	rcol.add_child(foot)
 	add_child(right)
 	CharacterPacks.progressed.connect(_on_progress)
+
+
+func _info_panel() -> Control:
+	var col := VBoxContainer.new()
+	col.name = "Info"
+	col.custom_minimum_size = Vector2(INFO_WIDTH, 0)
+	col.add_theme_constant_override("separation", 6)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 8)
+	_ability_icon = TextureRect.new()
+	_ability_icon.name = "AbilityIcon"
+	_ability_icon.custom_minimum_size = Vector2(56, 56)
+	_ability_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_ability_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	head.add_child(_ability_icon)
+	var names := VBoxContainer.new()
+	names.alignment = BoxContainer.ALIGNMENT_CENTER
+	names.add_child(UiKit.label("角色能力", 12, UiKit.DIM))
+	_ability_name = UiKit.label("", 19, UiKit.GOLD_BRIGHT, true)
+	_ability_name.name = "AbilityName"
+	names.add_child(_ability_name)
+	head.add_child(names)
+	col.add_child(head)
+	_ability_desc = UiKit.label("", 14, UiKit.TEXT)
+	_ability_desc.name = "AbilityDesc"
+	_ability_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_ability_desc.custom_minimum_size = Vector2(INFO_WIDTH, 0)
+	col.add_child(_ability_desc)
+	var rule := ColorRect.new()
+	rule.color = Color(UiKit.GOLD, 0.35)
+	rule.custom_minimum_size = Vector2(INFO_WIDTH, 1)
+	col.add_child(rule)
+	col.add_child(UiKit.label("故事", 14, UiKit.GOLD, true))
+	var scroll := DragScroll.new()
+	scroll.name = "StoryScroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_story = UiKit.label("", 14, UiKit.DIM)
+	_story.name = "Story"
+	_story.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_story.custom_minimum_size = Vector2(INFO_WIDTH - 12.0, 0)
+	scroll.add_child(_story)
+	col.add_child(scroll)
+	return col
+
+
+func _show_info(id: String) -> void:
+	var kind := Abilities.kind_of(id)
+	var info := Abilities.info(kind)
+	_ability_icon.texture = Abilities.icon(kind)
+	_ability_name.text = info.get("name", "—")
+	_ability_desc.text = info.get("desc", "")
+	_story.text = Abilities.story(id)
 
 
 ## A portrait's cell: the portrait in its medallion, the name under it.
@@ -158,6 +226,7 @@ func pick(id: String) -> void:
 		(cell.find_child("Name", true, false) as Label).add_theme_color_override("font_color",
 			UiKit.GOLD_BRIGHT if k == Profile.character else UiKit.TEXT)
 	_title.text = Profile.character_name(id)
+	_show_info(id)
 	if CharacterPacks.has(id):
 		_show(id)
 	else:
