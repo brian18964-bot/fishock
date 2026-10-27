@@ -1002,6 +1002,7 @@ func sniff() -> bool:
 		get_parent().add_child(m)
 	else:
 		var d := DroppedItem.make(id, int(find[1]))
+		d.found = d.count
 		d.position = at
 		get_parent().add_child(d)
 		label = d.title()
@@ -1037,6 +1038,7 @@ func _pick_mushroom(m: GlowMushroom) -> void:
 	if Profile.bag_put("glow_mushroom", 1) <= 0:
 		GameState.push_message("背包滿了，放不下發光蘑菇")
 		return
+	Profile.note_found("glow_mushroom", 1)
 	var at := m.global_position - global_position
 	if at.length() > 1.0:
 		aim_dir = at.normalized()
@@ -1044,6 +1046,7 @@ func _pick_mushroom(m: GlowMushroom) -> void:
 	m.pick(GATHER_TIME * GATHER_TAKE)
 	# (the sheep, a good gatherer: now and then two - 採集高手)
 	if Abilities.has("sheep") and Abilities.roll(Abilities.SHEEP_CHANCE) and Profile.bag_put("glow_mushroom", 1) > 0:
+		Profile.note_found("glow_mushroom", 1)
 		ability_triggered.emit("sheep", m.global_position, "×2")
 		GameState.report("採集高手：多採到一株發光蘑菇！", "good")
 		return
@@ -1567,6 +1570,7 @@ func put_item_down(index: int) -> void:
 		if lure_count <= 0 and fishing_mode == FishingMode.LURE:
 			fishing_mode = FishingMode.BOBBER
 	var item := DroppedItem.make(e.id, int(e.count))
+	item.found = Profile.unnote_found(e.id, int(e.count))
 	get_tree().current_scene.add_child(item)
 	item.global_position = global_position + Vector2(randf_range(-12, 12), 12)
 	GameState.push_message("把 %s 放在地上" % item.title())
@@ -1590,6 +1594,10 @@ func _pick_up_item(item: DroppedItem) -> void:
 	if n <= 0:
 		GameState.push_message("背包滿了，放不下")
 		return
+	# (the map's finds, the ones of them picked up, lost again should it die)
+	var found := mini(n, item.found)
+	Profile.note_found(item.item_id, found)
+	item.found -= found
 	perform("pick", PICK_TIME)
 	var key: String = Items.def(item.item_id).get("lure", "")
 	if key != "":
@@ -2217,6 +2225,7 @@ func pocket_live_bait(key: String, count := 1) -> int:
 		if not _room_for_live(key):
 			break
 		n += Profile.bag_put("live_" + key, 1)
+	Profile.note_found("live_" + key, n)
 	if n > 0 and live_bait == "" and fishing_mode == FishingMode.BOBBER and state == State.IDLE:
 		live_bait = key
 	return n

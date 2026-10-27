@@ -13,6 +13,10 @@ const ICON_SIZE := 30.0
 
 var item_id := ""
 var count := 1
+## How many of them were found on the map (the dog's finds, or put down
+## again after) - not brought from home: lost should the run be lost
+## (Profile.note_found).
+var found := 0
 var _t := 0.0
 var _sprite: Sprite2D
 var _label: Label

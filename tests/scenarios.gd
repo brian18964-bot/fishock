@@ -2474,9 +2474,16 @@ func test_warehouse_and_bag() -> void:
 	check(Profile.equip("rod_1") and Profile.rod_tier == 1 and Profile.stored("rod_0") == 1, "put on, the old one stored")
 	check(Profile.to_bag("rod_0", 1, Vector2i(3, 3)) == 1, "a spare rod packed")
 	check(not Profile.bag_fits("battery", Vector2i(5, 3)), "a rod takes three cells")
-	Profile.bag.append({"id": "rod_4", "count": 1, "cell": Vector2i(3, 2), "found": true})
+	Profile.found_this_run.clear()
+	Profile.bag.append({"id": "rod_4", "count": 1, "cell": Vector2i(3, 2)})
+	Profile.note_found("rod_4", 1)
+	var worms := {"id": "live_worm", "count": 3, "cell": Vector2i(-9, -9)}
+	Profile.bag.append(worms)
+	Profile.note_found("live_worm", 1)
 	Profile.lose_found_gear()
 	check(Profile.bag_count("rod_4") == 0 and Profile.bag_count("rod_0") == 1, "dying loses gear found on the map, not what was brought")
+	check(int(worms.count) == 2 and Profile.found_this_run.is_empty(), "as many as were found, the rest of the stack kept")
+	Profile.bag.erase(worms)
 	check(Profile.equip("rod_0") and Profile.rod_tier == 0 and Profile.stored("rod_1") == 1 and Profile.bag_count("rod_0") == 0,
 		"put on from the bag, the other one stored")
 	check(Profile.buy_flashlight() and Profile.equip("flashlight") and Profile.has_flashlight, "the flashlight bought and worn")
@@ -3203,6 +3210,15 @@ func test_camp_life() -> void:
 			seen[life.activity] = true
 		var stray: Array = seen.keys().filter(func(k): return not k in allowed[t])
 		check(stray.is_empty(), "spirit %d picks only what it can (%s)" % [spirit, ", ".join(stray)])
+	# Too short for the drum (its lid at their chin): never leans on it.
+	var was_char := camp.character.character
+	camp.set_character("cat")
+	var leant := false
+	for _i in 200:
+		life._choose()
+		leant = leant or life.activity == "lean"
+	check(not leant, "the cat never leans on the drum (it'd go into it)")
+	camp.set_character(was_char)
 	Profile.spirit = 95.0
 	var busy := {}
 	for _i in 400:
@@ -4673,12 +4689,23 @@ func test_glow_mushroom() -> void:
 	await frames(2)
 	check(Profile.bag_count("glow_mushroom") == had + 1 and is_instance_valid(m) and p.reachable_mushroom() != m,
 		"picked: in the bag (still there till the hands reach it)")
+	check(int(Profile.found_this_run.get("glow_mushroom", 0)) == 1, "noted as found on the map (lost should it die)")
 	await seconds(Player.GATHER_TIME * Player.GATHER_TAKE + 0.2)
 	check(not is_instance_valid(m), "then gone from the map")
 	check(p.move_kind == "gather", "gathered (crouched, picked, up)")
 	if view != null:
 		await frames(2)
 		check(view._mushrooms.size() == shrooms.size() - 1, "and gone in 3D")
+	# Put down and picked up again: still the map's.
+	var gi := Profile.bag.map(func(e): return e.id).find("glow_mushroom")
+	if gi >= 0:
+		var n := Profile.bag_count("glow_mushroom")
+		p.put_item_down(gi)
+		var dropped: DroppedItem = get_tree().get_nodes_in_group("dropped_items").back()
+		check(dropped.found == 1 and not Profile.found_this_run.has("glow_mushroom"), "put down: the find goes with it")
+		p._pick_up_item(dropped)
+		check(Profile.bag_count("glow_mushroom") == n and dropped.found == 0 and int(Profile.found_this_run.get("glow_mushroom", 0)) == 1,
+			"picked up again: found again (%d of %d)" % [Profile.bag_count("glow_mushroom"), n])
 	p.move_left = 0.0
 	check(p.use_item("glow_mushroom") and Profile.bag_count("glow_mushroom") == had, "used from the bag")
 	check(p.move_kind == "crumble" and p.glow_strength() == 0.0, "rubbed to crumbs first - not lit yet")

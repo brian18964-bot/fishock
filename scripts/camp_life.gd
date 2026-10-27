@@ -145,6 +145,7 @@ func sit_now() -> void:
 	_play("Sitting_Idle", 0.0)
 	_plan.clear()
 	_step = {}
+	_fit_seat()
 
 
 ## Another character took over (CampStage.set_character, the fire tapped):
@@ -206,7 +207,10 @@ func _step_clear() -> Array:
 
 
 func _process(delta: float) -> void:
-	if paused or rig == null or rig.anim == null:
+	if rig == null or rig.anim == null:
+		return
+	_fit_seat()
+	if paused:
 		return
 	if _step.is_empty():
 		if _plan.is_empty():
@@ -286,6 +290,27 @@ func _next() -> void:
 		_play(_idle(), 0.3)
 
 
+## On a log (sitting down on it, sat, getting up): its hips put on the log's
+## top, whatever its height (user report: some sank in - SeatFit).
+func _fit_seat() -> void:
+	var fit := rig.seat_fit
+	if fit == null:
+		return
+	var clip := rig.anim.current_animation
+	var on := seated or clip.begins_with("Sitting_") or clip.begins_with("Seat_")
+	if on and not fit.on:
+		var seat: Array = CharacterArt.fit(rig.character).get("seat", [])
+		fit.lift = 0.0
+		if seat.size() > 2:
+			var i := stage.nearest_seat(pivot.position)
+			var under := stage.seat_top(i, stage.spots["seat_%d" % i].at - stage.seat_facing(i) * float(seat[2]))
+			fit.lift = under - float(seat[0]) if under > 0.0 else 0.0
+		# (how much goes on follows the hips down - SeatFit: sat at once,
+		# all of it at once)
+		fit.weight = 1.0
+	fit.on = on
+
+
 ## Standing about: worn out, head down (user request), else at ease.
 func _idle() -> String:
 	return "Sad" if tier() <= 1 and rig.anim.has_animation("Sad") else "Idle"
@@ -355,6 +380,8 @@ func _choose() -> Array:
 		var w: float = WEIGHTS[name][t]
 		if name == activity and not name in ["sit", "fire"]:
 			w *= 0.2
+		if name == "lean" and not CharacterArt.can_lean(rig.character):
+			w = 0.0
 		if w > 0.0:
 			options.append([name, w])
 			total += w

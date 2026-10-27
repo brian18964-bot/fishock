@@ -138,10 +138,17 @@ static func reach(id := "") -> Vector3:
 ## clipping check: the bear's head and belly went into it at the others'
 ## distance).
 const LEAN_BACK := {"bear": 0.1}
+## Too short to lean on the drum (its lid at their chin: Idle_Rail's hands
+## and head went into it - the camp's clipping check); they don't.
+const NO_LEAN := ["cat", "bear2"]
 
 
 static func lean_back(id := "") -> float:
 	return float(LEAN_BACK.get(_id(id), 0.0))
+
+
+static func can_lean(id := "") -> bool:
+	return not _id(id) in NO_LEAN
 
 
 ## Each one's own body (user request: one way of moving for all of them

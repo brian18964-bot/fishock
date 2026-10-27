@@ -983,13 +983,37 @@ func ensure_bait() -> void:
 	profile_changed.emit()
 
 
-## User request: dying in a run loses the fish and any gear found on the
-## map there (flagged "found"); what was brought in stays.
+## User request: dying in a run loses the fish and anything picked up on
+## the map there (note_found: the glow mushrooms, live baits caught or
+## turned up, what the dog sniffed out...) - as many of each as were found,
+## so long as they're still in the bag; what was brought in stays.
 func lose_found_gear() -> void:
-	for i in range(bag.size() - 1, -1, -1):
-		if bag[i].get("found", false):
-			bag.remove_at(i)
+	for id in found_this_run:
+		bag_take(id, int(found_this_run[id]))
+	found_this_run.clear()
 	_changed()
+
+
+## What's been picked up on the map this run: {item id: how many}
+## (GameState.start_run clears it).
+var found_this_run := {}
+
+
+## `count` of `id` picked up on the map (into the bag).
+func note_found(id: String, count: int) -> void:
+	if count > 0:
+		found_this_run[id] = int(found_this_run.get(id, 0)) + count
+
+
+## `count` of `id` put down again out of the bag: as many of them as were
+## found go back to being the map's (how many: carried by the DroppedItem).
+func unnote_found(id: String, count: int) -> int:
+	var n := mini(count, int(found_this_run.get(id, 0)))
+	if n > 0:
+		found_this_run[id] = int(found_this_run[id]) - n
+		if int(found_this_run[id]) <= 0:
+			found_this_run.erase(id)
+	return n
 
 
 ## Takes the bag stack at `index` out whole (put down in a run).

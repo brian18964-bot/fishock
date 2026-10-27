@@ -162,6 +162,7 @@ func light_stage() -> int:
 
 func start_run() -> void:
 	run_started = true
+	Profile.found_this_run.clear()
 	_start_weather()
 
 

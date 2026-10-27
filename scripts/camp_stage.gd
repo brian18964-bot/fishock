@@ -143,6 +143,8 @@ const MOON_DIR := Vector3(0.1, 0.17, -1.0)
 ## sat on facing out. And the woodpile by the tent.
 const SEATS := [[MID + (Vector3(-0.95, 0.0, -0.7) - MID) * FLAT, null], [MID + (Vector3(2.0, 0.0, -1.6) - MID) * FLAT, Vector3(0, 0, 1)]]
 const SEAT_SCALE := Vector3(1.18, 1.18, 1.15)
+## How far round a point its log's top is looked for (m; seat_top()).
+const SEAT_PROBE := 0.06
 const WOODPILE_AT := MID + (Vector3(-2.0, 0.0, -2.6) - MID) * FLAT
 ## The water in the cut drum (its surface's height and size), and the lotus
 ## leaves floating on it, as in the fish tank page's ([x, z, radius], the
@@ -410,6 +412,8 @@ func _places() -> void:
 ## (CharacterArt.front_between) and STAND_GAP more (user report: the black
 ## bear stood in the crate and the trough).
 var _sided := {}
+## The logs to sit on (SEATS).
+var _seat_logs: Array = []
 var _laid_out := {}
 const STAND_GAP := 0.14
 
@@ -478,6 +482,31 @@ static func _capsule(f: Array) -> Array:
 
 static func _round(at: Vector3, r: float) -> Array:
 	return [at, at, r]
+
+
+## The seat (index in SEATS) nearest `at`.
+func nearest_seat(at: Vector3) -> int:
+	var best := 0
+	for i in SEATS.size():
+		if Vector2(at.x - SEATS[i][0].x, at.z - SEATS[i][0].z).length() < Vector2(at.x - SEATS[best][0].x, at.z - SEATS[best][0].z).length():
+			best = i
+	return best
+
+
+## How high seat `i`'s log is at `at` (its top there, m, the stage's own;
+## -1 not over it).
+func seat_top(i: int, at: Vector3) -> float:
+	var log: MeshInstance3D = _seat_logs[i] if i < _seat_logs.size() else null
+	if log == null or log.mesh == null:
+		return -1.0
+	var top := -1.0
+	var xf := log.transform
+	for s in log.mesh.get_surface_count():
+		for v: Vector3 in log.mesh.surface_get_arrays(s)[Mesh.ARRAY_VERTEX]:
+			var w := xf * v
+			if Vector2(w.x - at.x, w.z - at.z).length() < SEAT_PROBE:
+				top = maxf(top, w.y)
+	return top
 
 
 ## The way one sits on seat `i` (flat, unit).
@@ -1216,6 +1245,7 @@ func _seats() -> void:
 		var f := seat_facing(i)
 		var seat := _put("log", SEATS[i][0], atan2(-f.z, f.x))
 		seat.scale = SEAT_SCALE * Vector3(SEAT_LONGER, 1.0, 1.0)
+		_seat_logs.append(seat)
 		# User request: a tap on a log, it goes and sits on it.
 		_hotspot("sit", seat, "坐下", SEATS[i][0] + Vector3(0, 0.4, 0), 0.7, 0.01)
 	# A few logs stacked by the tent.

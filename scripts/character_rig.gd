@@ -48,6 +48,8 @@ const FLASHLIGHT_SCALE := 0.3
 
 var anim: AnimationPlayer
 var skeleton: Skeleton3D
+## Sat on something its own height (SeatFit; the camp's logs - CampLife).
+var seat_fit: SeatFit
 ## Who's wearing it (Profile.character when built; set_character()).
 var character := ""
 var _body: Node3D
@@ -98,6 +100,7 @@ func set_character(id: String) -> void:
 	_body = null
 	anim = null
 	skeleton = null
+	seat_fit = null
 	_grip_mod = null
 	_hang = null
 	attachments = {}
@@ -112,6 +115,13 @@ func _build(id: String) -> void:
 	skeleton = _find(_body, "Skeleton3D") as Skeleton3D
 	if skeleton != null:
 		skeleton.skeleton_updated.connect(_on_skeleton_updated)
+		seat_fit = SeatFit.new()
+		seat_fit.name = "SeatFit"
+		var fit := CharacterArt.fit(id)
+		var seat: Array = fit.get("seat", [])
+		seat_fit.stand = float(fit.get("pelvis", 1.0))
+		seat_fit.seat = float(seat[1]) if seat.size() > 1 else seat_fit.stand
+		skeleton.add_child(seat_fit)
 		_grip_mod = Grip.new()
 		_grip_mod.name = "Grip"
 		_grip_mod.influence = 0.0
