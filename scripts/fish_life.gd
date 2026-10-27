@@ -36,9 +36,10 @@ const TRAITS := {
 	"guide": {"name": "引路魚", "desc": "養在魚缸：每次夜晚成功逃脫，有 10% 機率帶回一個隨機的眼球道具", "weight": 1.0, "kind": "mythic"},
 	"smith": {"name": "鐵匠", "desc": "養在魚缸：餵食腐敗的魚後，可選一件裝備回復 5 點耐久", "weight": 1.0, "kind": "mythic"},
 	"wraith": {"name": "惡靈", "desc": "腐敗後放在包包：猛獸攻擊 -20%，但小鬼偷襲 +10%", "weight": 1.0, "kind": "mythic"},
+	"luckystar": {"name": "幸運星", "desc": "放在包包裡：釣到稀有魚的機率微幅提升（+3%）", "weight": 1.0, "kind": "mythic"},
 	"angel": {"name": "天使", "desc": "活著時放在包包：小鬼偷襲 -60%，猛獸攻擊 -50%", "weight": 1.0, "kind": "mythic"},
 }
-const MYTHIC := ["fortune", "guide", "smith", "wraith", "angel"]
+const MYTHIC := ["fortune", "guide", "smith", "wraith", "angel", "luckystar"]
 ## A catch's chance of one of them, by its rarity.
 const MYTHIC_CHANCE := {"common": 0.012, "rare": 0.025, "epic": 0.05}
 ## Their numbers (user: set as these for now).
@@ -51,6 +52,10 @@ const WRAITH_BEAST := 0.20
 const WRAITH_IMP := 0.10
 const ANGEL_IMP := 0.60
 const ANGEL_BEAST := 0.50
+## 幸運星 in the bag: a rare catch this much more likely (each; at most
+## LUCK_MOST in all).
+const LUCK_RARE := 0.03
+const LUCK_MOST := 0.12
 ## The traits to the fish's good (the rest - to its bad; the mythic ones, gold).
 const GOOD := ["immortal", "tough", "vigorous", "nocturnal", "clean", "imperishable", "plump"]
 ## Traits that don't go together (each group: at most one).
@@ -412,3 +417,8 @@ static func imp_rate(carried: Array) -> float:
 		if has_trait(f, "wraith") and state(f) == "rotten":
 			rate *= 1.0 + WRAITH_IMP
 	return rate
+
+
+## How much likelier a rare catch is with the lucky stars carried (any state).
+static func luck_bonus(carried: Array) -> float:
+	return minf(float(count_trait(carried, "luckystar")) * LUCK_RARE, LUCK_MOST)

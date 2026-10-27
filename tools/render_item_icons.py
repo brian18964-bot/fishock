@@ -283,6 +283,12 @@ def glow_mushroom():
     model_pic("glow_mushroom", (1, 1), (0, 0, 20))
 
 
+def oxy_box():
+    """The oxygenated fish box (the user's LiveBaitBucket_v5; tools/make_oxy_box.py)
+    - a square picture: in the bag it's six cells wide, drawn fitted in them."""
+    model_pic("oxy_box", (1, 1), (0, 0, -25))
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     only = sys.argv[1:]

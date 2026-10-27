@@ -325,6 +325,13 @@ var _centred := 0.0
 ## most of it on the strike so the arms come up with the rod)
 var _arm_follow := 0.4
 var _off_in := 1.0
+## The oxygenated fish box (the off hand's, when it's that): 1 hanging from
+## the hand, 0 set down on the ground beside the traveller (while fishing).
+var _oxy_in := 1.0
+## Its model's size in the game (the user's 0.35 m cooler, a little smaller
+## for the traveller's size) and where its grip is (m up from its base).
+const OXY_BOX_SCALE := 0.85
+const OXY_BOX_GRIP := 0.443
 var _left_free := 0.0
 var _left_ik: TwoBoneIK3D
 ## (the opening's take: the left wrist straight, the hand on along the
@@ -3073,6 +3080,15 @@ func _hang_gear(sk: Skeleton3D, b: Basis) -> void:
 		lamp.global_transform = hip.interpolate_with(inhand, smoothstep(0.0, 1.0, _lamp_in))
 	if _offhand != null:
 		var hand := sk.global_transform * sk.get_bone_global_pose(_hand_bone)
+		if _offhand_id == "oxy_box":
+			# Hung by its handle from the hand; else set down by the feet.
+			var s := OXY_BOX_SCALE
+			var yaw := Basis(Vector3.UP, pivot.global_rotation.y).scaled(Vector3.ONE * s)
+			var hung := Transform3D(yaw, hand.origin - Vector3.UP * OXY_BOX_GRIP * s)
+			var down := Transform3D(Basis(Vector3.UP, pivot.global_rotation.y + 0.5).scaled(Vector3.ONE * s),
+				pivot.global_position + b.x * -0.42 + b.z * 0.12)
+			_offhand.global_transform = down.interpolate_with(hung, smoothstep(0.0, 1.0, _oxy_in))
+			return
 		var len: float = _offhand.get_meta("length", 0.4)
 		# In the hand: out ahead and up from the fist; at the hip: hung down
 		# by the right thigh.
@@ -3162,6 +3178,10 @@ func _gear_state(delta: float) -> void:
 	# thing stays at the hip till it's used (drawn for the swing, put back
 	# after).
 	_off_in = move_toward(_off_in, 1.0 if swinging else 0.0, delta / Player.SWING_DRAW)
+	# (the fish box: carried by its handle when walking about, set down by
+	# the feet while fishing)
+	var carrying := player.state == Player.State.IDLE and not player.carrying_oil_drum and not player.held
+	_oxy_in = move_toward(_oxy_in, 1.0 if carrying else 0.0, delta / 0.45)
 	_sync_offhand()
 
 
@@ -3182,6 +3202,13 @@ func _sync_offhand() -> void:
 	holder.name = "Offhand"
 	add_child(holder)
 	holder.add_child(model)
+	if id == "oxy_box":
+		# (upright as it was made: placed with OXY_BOX_* below)
+		holder.set_meta("length", 0.4)
+		for mi in model.find_children("*", "MeshInstance3D", true, false):
+			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_offhand = holder
+		return
 	var box := _aabb(model)
 	# (its longest side along the holder's y, its middle at the origin,
 	# sized as OFFHAND_LENGTH has it; the heavier end - the head, the

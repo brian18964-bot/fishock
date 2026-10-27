@@ -1,4 +1,4 @@
-"""Stand-in icons for the new fish items, until the user's own art comes
+"""Stand-in icons for the new fish items (oxygen algae, frozen soil), until the user's own art comes
 (user: "這三個道具圖我晚點補給你"). Drawn flat and plain on purpose; replace
 the files (same names) and nothing else changes.
 
@@ -69,8 +69,8 @@ def frozen_soil(w, h):
 
 
 if __name__ == "__main__":
-    save(oxy_box(384, 64), "assets", "sprites", "items", "oxy_box.png")
-    save(oxy_box(256, 256), "assets", "sprites", "icons", "oxy_box.png")
+    # (the fish box has its real model now: tools/make_oxy_box.py and the
+    # render_*_icons.py scripts)
     save(algae(128, 128), "assets", "sprites", "items", "oxy_algae.png")
     save(algae(256, 256), "assets", "sprites", "icons", "oxy_algae.png")
     save(frozen_soil(128, 128), "assets", "sprites", "items", "frozen_soil.png")

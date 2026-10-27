@@ -3029,7 +3029,10 @@ func test_mythic_traits() -> void:
 				seen[t] = true
 		if n > 1:
 			check(false, "one mythic trait at most")
-	check(seen.size() == FishLife.MYTHIC.size(), "all five come up (%d)" % seen.size())
+	check(seen.size() == FishLife.MYTHIC.size(), "all %d come up (%d)" % [FishLife.MYTHIC.size(), seen.size()])
+	var star := {"vit": 0.5, "dead": false, "rotten": false, "life_traits": ["luckystar"]}
+	check(absf(FishLife.luck_bonus([star]) - 0.03) < 0.0001 and absf(FishLife.luck_bonus([star, star.duplicate(), star.duplicate()]) - 0.09) < 0.0001, "幸運星: +3% each")
+	check(FishLife.luck_bonus([star, star, star, star, star, star]) == FishLife.LUCK_MOST, "at most 12%")
 	# The angel (alive) and the wraith (rotten) in the bag.
 	var angel := {"vit": 0.5, "vit_life": 100.0, "dead": false, "rotten": false, "life_traits": ["angel"]}
 	var wraith := {"vit": 0.0, "dead": true, "rotten": true, "life_traits": ["wraith"]}

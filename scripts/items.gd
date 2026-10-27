@@ -133,7 +133,7 @@ static func model_path(id: String) -> String:
 		return "res://assets/models/fishing_rod_lvl%d.glb" % (int(id.substr(4)) + 1)
 	match id:
 		"flashlight", "battery", "roll", "loaf", "cheese", "ammo", "knife", "hatchet", "machete", "glock", \
-				"potion_vigor", "potion_ward", "eyeball", "eye_altar", "eye_ghost", "binoculars", "net", "glow_mushroom":
+				"potion_vigor", "potion_ward", "eyeball", "eye_altar", "eye_ghost", "binoculars", "net", "glow_mushroom", "oxy_box":
 			return MODELS % id
 		"tea":
 			# User request: the tea in the user's cup.

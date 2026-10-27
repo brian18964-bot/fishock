@@ -75,6 +75,8 @@ THINGS = {
     # User request: the glow mushroom, picked under the trees on the map
     # (tools/make_glow_mushroom.py).
     "glow_mushroom": dict(model="items/glow_mushroom.glb", turn=(12, 0, 25), fill=0.9, ground=TACKLE),
+    # The oxygenated fish box (tools/make_oxy_box.py).
+    "oxy_box": dict(model="items/oxy_box.glb", turn=(14, 0, -25), fill=0.95, ground=GEAR),
     # The merchant's tea (Camp v2): had at once, for spirit.
     # User request: the tea served in the user's cup.
     "tea": dict(model="items/cup.glb", turn=(28, 0, -30), fill=0.8, ground=ITEM),

@@ -2683,6 +2683,8 @@ func _roll_catch_outcome() -> void:
 	rare_chance *= float(lure.get("rare", 1.0))
 	# (the deer, the forest's friend - 森林友好)
 	var deer_more := Abilities.DEER_RARE if Abilities.has("deer") else 0.0
+	# (the lucky star carried - 幸運星)
+	deer_more += FishLife.luck_bonus(GameState.carried_fish)
 	rare_chance += deer_more
 
 	if caught_in_hotspot:
