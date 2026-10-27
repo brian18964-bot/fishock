@@ -22,6 +22,8 @@ const TESTS := [
 	"test_fish_life",
 	"test_mythic_traits",
 	"test_tank_moves_and_feeding",
+	"test_oxy_items",
+	"test_oxy_algae",
 	"test_character_abilities",
 	"test_run_menu_and_auto_defend",
 	"test_wolf_bites",
@@ -3187,6 +3189,99 @@ func test_tank_moves_and_feeding() -> void:
 	Profile.load_data(saved)
 
 
+## User request: the oxygenated fish box, the oxygen algae and the frozen soil.
+func test_oxy_items() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 500})
+	# The slow: vitality runs at a quarter for its time, then as it was.
+	var f := {"vit": 1.0, "vit_life": 100.0, "fresh": 1.0, "fresh_life": 100.0, "dead": false, "rotten": false, "life_traits": []}
+	check(FishLife.use_algae(f) == "" and f.vit_slow == FishLife.ALGAE_TIME, "algae on a living fish")
+	FishLife.tick(f, 100.0)
+	# 100 s at a quarter: 25%
+	check(absf(f.vit - 0.75) < 0.001 and f.vit_slow == 80.0, "100 s of the 180 slowed: a quarter gone (%.2f)" % f.vit)
+	FishLife.tick(f, 100.0)
+	# the last 80 s slowed (20%), then 20 s at full (20%)
+	check(absf(f.vit - 0.35) < 0.001 and f.vit_slow == 0.0, "the slow runs out, then the usual pace (%.2f)" % f.vit)
+	var left := FishLife.lifespan_left({"vit": 0.5, "vit_life": 100.0, "dead": false, "rotten": false, "life_traits": [], "vit_slow": 100.0})
+	check(absf(left - 125.0) < 0.01, "its lifespan counts the slow: 100 s at a quarter take a quarter of it, the rest 25 s (%.1f)" % left)
+	var d := {"vit": 0.0, "dead": true, "rotten": false, "fresh": 1.0, "fresh_life": 100.0, "life_traits": []}
+	check(FishLife.use_algae(d) != "", "no algae on a dead fish")
+	check(FishLife.use_frozen(d) == "" and d.fresh_slow == FishLife.FROZEN_TIME, "frozen soil on a dead one")
+	FishLife.tick(d, 200.0)
+	check(absf(d.fresh - 0.5) < 0.001, "200 s slowed: 50 of 100 s's worth (%.2f)" % d.fresh)
+	var alive := {"vit": 0.5, "vit_life": 100.0, "fresh": 1.0, "fresh_life": 100.0, "dead": false, "rotten": false, "life_traits": []}
+	FishLife.use_frozen(alive)
+	FishLife.tick(alive, 10.0)
+	check(alive.fresh_slow == FishLife.FROZEN_TIME, "frozen soil's time waits till it's dead")
+	var rot := {"dead": true, "rotten": true, "vit": 0.0, "fresh": 0.0, "life_traits": []}
+	check(FishLife.use_frozen(rot) != "", "nor on a rotten one")
+	# Items.
+	check(Items.def("oxy_box").size == Vector2i(6, 1) and Items.def("oxy_box").slot == "offhand", "the box: six cells, the off hand")
+	check(Items.def("oxy_algae").has("use") and Items.def("frozen_soil").has("use"), "the two are things to use")
+	check(Profile.max_durability("oxy_box") > 0, "the box wears")
+	# Bought, worn.
+	var gold := Profile.gold
+	check(Profile.buy_oxy_box() and Profile.gold == gold - Profile.OXY_BOX_COST and Profile.stored("oxy_box") == 1, "bought once")
+	check(not Profile.buy_oxy_box(), "not twice")
+	# Unworn it takes six cells of the bag, a row.
+	Profile.bag.clear()
+	check(Profile.bag_fits("oxy_box", Vector2i(0, 0)) and not Profile.bag_fits("oxy_box", Vector2i(3, 0)), "six cells wide: it needs a row's room")
+	check(Profile.equip("oxy_box") and Profile.has_oxy_box(), "worn in the off hand")
+	# In a run: fish in and out, each a use; what's in doesn't run down.
+	GameState.reset_run()
+	GameState.run_started = true
+	var a := FishLife.roll({"name": "鯉魚", "id": "carp", "value": 6.0, "size": "small", "rarity": "common"})
+	a.life_traits = []
+	a.vit = 0.5
+	a.vit_life = 100.0
+	var b := a.duplicate(true)
+	GameState.carried_fish = [a, b]
+	var uses := Profile.durability("oxy_box")
+	check(GameState.oxy_put(0) == "" and GameState.oxy_fish.size() == 1 and GameState.carried_fish.size() == 1, "one in the box")
+	check(Profile.durability("oxy_box") == uses - 1, "a use of the box")
+	GameState._age_fish(10.0)
+	check(absf(GameState.oxy_fish[0].vit - 0.5) < 0.0001 and GameState.carried_fish[0].vit < 0.45, "in the box it doesn't run down, the other does")
+	check(GameState.oxy_take(0) == "" and GameState.oxy_fish.is_empty() and GameState.carried_fish.size() == 2, "taken out")
+	check(Profile.durability("oxy_box") == uses - 2, "and another use")
+	for _i in Profile.OXY_SLOTS:
+		GameState.carried_fish.append(a.duplicate(true))
+	GameState.carried_fish = GameState.carried_fish.slice(0, 8)
+	for _i in Profile.OXY_SLOTS:
+		GameState.oxy_put(0)
+	check(GameState.oxy_fish.size() == Profile.OXY_SLOTS and GameState.oxy_put(0) == "魚箱滿了", "six slots")
+	# Lost with the run unless escaped.
+	var home := GameState.oxy_fish.size()
+	GameState.run_over = false
+	GameState.end_run(false, "lost")
+	check(GameState.oxy_fish.is_empty(), "not escaped: what's in the box is lost too (%d)" % home)
+	# Escaped: they come home.
+	Profile.tank.clear()
+	GameState.reset_run()
+	var c := a.duplicate(true)
+	GameState.oxy_fish = [c]
+	GameState.run_started = true
+	GameState.end_run(true, "ok")
+	check(Profile.tank.size() == 1, "escaped: the boxed fish come home too")
+	# It breaks: what's in it comes out.
+	GameState.reset_run()
+	Profile.wear["oxy_box"] = 1
+	GameState.carried_fish = [a.duplicate(true)]
+	GameState.oxy_fish = [a.duplicate(true)]
+	GameState.oxy_put(0)
+	check(not Profile.has_oxy_box() and GameState.oxy_fish.is_empty() and GameState.carried_fish.size() == 2, "broken: the fish are back out")
+	# The off hand's box isn't swung.
+	Profile.add_stored("oxy_box", 1)
+	Profile.equip("oxy_box")
+	var p := player()
+	if p != null:
+		check(not p.offhand_in_hand(), "the box hangs at the hip: nothing to swing")
+	Profile.equipped["offhand"] = ""
+	# The algae on the map; used on a fish.
+	GameState.carried_fish.clear()
+	GameState.run_started = false
+	Profile.load_data(saved)
+
+
 func test_fish_tank() -> void:
 	var saved := Profile.snapshot()
 	Profile.load_data({"gold": 0})
@@ -5023,6 +5118,57 @@ func test_death_loses_finds() -> void:
 	for e in Profile.bag:
 		after[e.id] = int(after.get(e.id, 0)) + int(e.count)
 	check(after == before, "the bag as it was brought - the finds gone, nothing else (%s / %s)" % [after, before])
+	Profile.load_data(saved)
+
+
+## User request: the oxygen algae in the shallows - picked, used on a fish.
+func test_oxy_algae() -> void:
+	var saved := Profile.snapshot()
+	await _fresh_game()
+	var view: RunView3D = null
+	for _i in 120:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	var algae := get_tree().get_nodes_in_group("oxy_algae")
+	check(algae.size() >= 1, "oxy algae on the map (%d)" % algae.size())
+	var shore := true
+	for a in algae:
+		var near := INF
+		for z in get_tree().get_nodes_in_group("water_zones"):
+			near = minf(near, absf((z as WaterZone).depth((a as Node2D).global_position)))
+		shore = shore and near < 20.0
+	check(shore, "each in the shallows by a shore")
+	if view != null:
+		await frames(2)
+		check(view._plants.size() == algae.size(), "each shown in 3D (%d)" % view._plants.size())
+	var p := player()
+	var a: OxyAlgae = algae[0]
+	p.global_position = a.global_position + Vector2(12, 0)
+	await frames(2)
+	check(p.interaction().get("verb", "") == "採集" and p.interaction().get("name", "") == "魚氧藻", "by one: 採集 魚氧藻 offered")
+	var had := Profile.bag_count("oxy_algae")
+	p._pick_mushroom(p.reachable_mushroom())
+	await frames(2)
+	check(Profile.bag_count("oxy_algae") == had + 1 and int(Profile.found_this_run.get("oxy_algae", 0)) == 1, "picked: in the bag, noted as found")
+	await seconds(Player.GATHER_TIME * Player.GATHER_TAKE + 0.2)
+	check(not is_instance_valid(a), "then gone from the map")
+	# Used on a fish.
+	var f := FishLife.roll({"name": "鯉魚", "id": "carp", "value": 6.0, "size": "small", "rarity": "common"})
+	f.life_traits = []
+	GameState.carried_fish = [f]
+	p.move_left = 0.0
+	check(p.fish_for("oxy_algae") == 0, "a fish that needs it")
+	check(p.use_on_fish("oxy_algae", 0) and f.vit_slow == FishLife.ALGAE_TIME and Profile.bag_count("oxy_algae") == had, "used on it")
+	check(p.fish_for("oxy_algae") == -1, "already helped: none to pick")
+	# The card's picker.
+	var panel := FishPickPanel.new("t", "oxy_algae")
+	get_tree().root.add_child(panel)
+	await frames(2)
+	check(panel.find_child("Fish_0", true, false) != null and (panel.find_child("Fish_0", true, false) as Button).disabled == false, "the picker lists the fish")
+	panel.queue_free()
+	GameState.carried_fish.clear()
 	Profile.load_data(saved)
 
 

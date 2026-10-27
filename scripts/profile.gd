@@ -40,7 +40,7 @@ const ROD_TIERS := [
 ## thing: a swing, a parry, a shot), and at 0 it breaks and is gone: buy a
 ## new one (the wooden rod, free, if no rod's left). Uses each lasts; the
 ## rods' are ROD_TIERS' durability.
-const DURABILITY := {"flashlight": 60, "knife": 60, "hatchet": 50, "machete": 70, "glock": 80, "net": 40}
+const DURABILITY := {"flashlight": 60, "knife": 60, "hatchet": 50, "machete": 70, "glock": 80, "net": 40, "oxy_box": 40}
 
 ## User request (shop linkage): each lure is its own shop item with its own
 ## effect, and fishing with it shows that lure (LureVisual.LURES[sprite]).
@@ -95,6 +95,14 @@ const LIVE_ORDER := ["worm", "cricket", "spider", "shrimp", "minnow", "frog", "r
 ## (equipped.offhand) and held in a run between casts (Player.net_in_hand):
 ## critters are caught from further off and bite less.
 const NET_COST := 70
+## User request: the oxygenated fish box (打氧魚箱) - an off-hand thing, bought
+## once; unworn it takes six cells of the bag (a row); worn it holds OXY_SLOTS
+## fish whose vitality doesn't run down (GameState.oxy_fish) - each one put in
+## or taken out wears it by one. What's in it must be escaped with, like
+## whatever's carried.
+const OXY_BOX_COST := 150
+const OXY_SLOTS := 6
+const OXY_BOX_DESC := "副手裝備：打開後有六格，放進去的魚活性不會下降。放進、拿出各用掉 1 點耐久；沒有逃脫成功，裡面的魚一樣帶不出來。沒裝備時佔背包六格"
 const NET_DESC := "副手裝備：拿在手上時點一下右搖桿揮網撈活餌，抓得更遠，被咬中毒的機率減半"
 ## User request: the flashlight is a shop item (bought once) that runs on
 ## batteries, also bought here and kept in stock until used (see Lantern).
@@ -241,8 +249,16 @@ const USABLES := {
 	# map's trees (GlowMushroom); its cost only ranks it (UiKit's rarity).
 	"glow_mushroom": {"name": "發光蘑菇", "cost": 12, "stack": 5, "keep": false, "sold": false,
 		"desc": "長在樹下、在黑暗裡默默發著藍光的蘑菇。揉碎撒在身上，30 秒內全身散發微弱的藍光，照亮身邊一圈（約 2.4 公尺）"},
+	# User request: found on the map, used on a carried fish (FishLife.use_algae
+	# / use_frozen) - not sold. 魚氧藻 grows in the shallows (OxyAlgae); 冷凍土
+	# is dug (the digging's to come).
+	"oxy_algae": {"name": "魚氧藻", "cost": 15, "stack": 5, "keep": false, "sold": false, "target": "fish",
+		"desc": "長在水邊淺灘的水草。用在背包裡一條活著的魚身上：180 秒內活性下降速度大幅降低（只剩 1/4）"},
+	"frozen_soil": {"name": "冷凍土", "cost": 15, "stack": 5, "keep": false, "sold": false, "target": "fish",
+		"desc": "挖出來的冷凍土，涼得刺手。用在背包裡的一條魚身上：300 秒內新鮮度下降速度大幅降低（只剩 1/4）"},
 }
-const USABLE_ORDER := ["potion_vigor", "potion_ward", "eyeball", "eye_altar", "eye_ghost", "binoculars", "glow_mushroom"]
+const USABLE_ORDER := ["potion_vigor", "potion_ward", "eyeball", "eye_altar", "eye_ghost", "binoculars", "glow_mushroom",
+	"oxy_algae", "frozen_soil"]
 
 ## User request (Camp v2): what's been done, for the achievements that
 ## earn the camp's tents (TENTS) - escapes, gold spent, legends caught.
@@ -660,6 +676,21 @@ func buy_net() -> bool:
 	gold_updated.emit(gold)
 	_changed()
 	return true
+
+
+## The oxygenated fish box, bought once, into the warehouse.
+func buy_oxy_box() -> bool:
+	if owned("oxy_box") > 0 or gold < OXY_BOX_COST:
+		return false
+	_spend(OXY_BOX_COST)
+	_store("oxy_box", 1)
+	gold_updated.emit(gold)
+	_changed()
+	return true
+
+
+func has_oxy_box() -> bool:
+	return equipped.get("offhand", "") == "oxy_box"
 
 
 func has_net() -> bool:

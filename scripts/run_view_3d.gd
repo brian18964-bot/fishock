@@ -166,7 +166,7 @@ const DODGE_BACK := 0.25
 const DODGE_RATE := 1.6
 ## (scripts whose nodes are shown here by models of their own; the rest of
 ## the map's pictures are stood up as they are)
-const MODELLED := ["tree.gd", "bush.gd", "obstacle.gd", "ground_cover.gd", "dock.gd", "water_zone.gd",
+const MODELLED := ["oxy_algae.gd", "tree.gd", "bush.gd", "obstacle.gd", "ground_cover.gd", "dock.gd", "water_zone.gd",
 	"flip_rock.gd", "silhouette_shadow.gd", "player.gd", "map_generator.gd", "light_twin.gd", "day_vision.gd",
 	"ripple.gd", "atmosphere.gd", "weather_fx.gd", "dropped_fish.gd", "glow_mushroom.gd", "dropped_item.gd"]
 
@@ -261,6 +261,8 @@ var _flip_rocks := {}
 ## User request: the glow mushrooms (GlowMushroom) - each its model, its
 ## glow's material and its little light: {node: [Node3D, material, light]}.
 var _mushrooms := {}
+## The oxygen algae's tufts: {node: Node3D}.
+var _plants := {}
 ## The glow mushroom rubbed over the traveller (Player.glow_strength()): its
 ## light, the crumbs falling from the hands, the faint motes off the body.
 var _glow_light: OmniLight3D
@@ -816,6 +818,38 @@ func _trees_and_rocks() -> void:
 				_flip_rocks[n] = rock
 		elif path == "glow_mushroom.gd" and not _mushrooms.has(n):
 			_mushroom(n, at)
+		elif path == "oxy_algae.gd" and not _plants.has(n):
+			_algae(n, at)
+
+
+## The oxygen algae (OxyAlgae) at `at` (2D): a tuft of green blades up out of
+## the shallows, swaying (a stand-in till its own model comes).
+func _algae(n: Node, at: Vector2) -> void:
+	var holder := Node3D.new()
+	holder.name = "OxyAlgae"
+	holder.position = to3(at, WATER_Y + 0.02)
+	holder.rotation.y = _rng.randf() * TAU
+	add_child(holder)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.2, 0.62, 0.38)
+	mat.emission_enabled = true
+	mat.emission = Color(0.15, 0.8, 0.55)
+	mat.emission_energy_multiplier = 0.5
+	mat.roughness = 0.6
+	for k in 7:
+		var blade := MeshInstance3D.new()
+		var cone := CylinderMesh.new()
+		cone.top_radius = 0.0
+		cone.bottom_radius = 0.035
+		cone.height = _rng.randf_range(0.35, 0.6)
+		blade.mesh = cone
+		blade.material_override = mat
+		blade.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var a := TAU * float(k) / 7.0 + _rng.randf() * 0.5
+		blade.position = Vector3(cos(a), 0.0, sin(a)) * _rng.randf_range(0.03, 0.14) + Vector3(0, cone.height * 0.5, 0)
+		blade.rotation = Vector3(_rng.randf_range(-0.35, 0.35), 0.0, _rng.randf_range(-0.35, 0.35))
+		holder.add_child(blade)
+	_plants[n] = holder
 
 
 ## A glow mushroom's model at `at` (2D), glowing, a small blue light over
@@ -858,6 +892,14 @@ func _mushroom(n: Node, at: Vector2) -> void:
 
 ## The mushrooms breathe (GlowMushroom.glow()); picked, they're gone.
 func _sync_mushrooms() -> void:
+	for n in _plants.keys():
+		if not is_instance_valid(n):
+			(_plants[n] as Node).queue_free()
+			_plants.erase(n)
+		else:
+			# (swaying in the current)
+			var t := Time.get_ticks_msec() / 1000.0
+			(_plants[n] as Node3D).rotation.z = sin(t * 1.3 + float((n as Node2D).global_position.x)) * 0.05
 	for n in _mushrooms.keys():
 		var parts: Array = _mushrooms[n]
 		if not is_instance_valid(n):
@@ -988,7 +1030,8 @@ func _name_tag(at: Vector2, text: String) -> void:
 	add_child(l)
 	var thing: Node2D = null
 	var best := 6.0
-	for n in get_tree().get_nodes_in_group("dropped_items") + get_tree().get_nodes_in_group("glow_mushrooms"):
+	for n in get_tree().get_nodes_in_group("dropped_items") + get_tree().get_nodes_in_group("glow_mushrooms") \
+			+ get_tree().get_nodes_in_group("oxy_algae"):
 		var d := (n as Node2D).global_position.distance_to(at)
 		if d < best:
 			best = d
@@ -1006,7 +1049,8 @@ func _sync_tags(delta: float) -> void:
 		tag[2] += delta
 		var thing = tag[1]
 		var gone: bool = thing == null or not is_instance_valid(thing) \
-			or not ((thing as Node).is_in_group("dropped_items") or (thing as Node).is_in_group("glow_mushrooms"))
+			or not ((thing as Node).is_in_group("dropped_items") or (thing as Node).is_in_group("glow_mushrooms")
+				or (thing as Node).is_in_group("oxy_algae"))
 		if tag[2] > NAME_TAG_TIME or gone:
 			(tag[0] as Label3D).queue_free()
 			_tags.remove_at(i)
@@ -1436,7 +1480,7 @@ static func _script_name(n: Node) -> String:
 func _on_node_added(n: Node) -> void:
 	if REST_2D.has(_script_name(n)):
 		_rest_2d_only.call_deferred(n)
-	if n is GlowMushroom:
+	if n is GlowMushroom and not n is OxyAlgae:
 		# (one turned up mid-run - the dog's nose: its model too)
 		(func():
 			if is_instance_valid(n) and n.is_inside_tree() and not _mushrooms.has(n):

@@ -79,14 +79,19 @@ func _refresh() -> void:
 			else:
 				text += "・約 %s 後死亡" % _time(left)
 		"dead":
-			var fr := FishLife.fresh_rate(_fish)
+			var keeps := FishLife.freshness_left(_fish)
 			text = "已死亡・" + text
-			if fr <= 0.0:
+			if keeps == INF:
 				text += "・不會腐敗"
 			else:
-				text += "・約 %s 後腐敗" % _time(float(_fish.fresh) / fr)
+				text += "・約 %s 後腐敗" % _time(keeps)
 		_:
 			text = "腐敗了・沒有價值"
+	# (the map's finds at work on it)
+	if float(_fish.get("vit_slow", 0.0)) > 0.0 and FishLife.state(_fish) == "alive":
+		text += "\n魚氧藻作用中（剩 %d 秒）" % ceili(float(_fish.vit_slow))
+	elif float(_fish.get("fresh_slow", 0.0)) > 0.0 and FishLife.state(_fish) != "rotten":
+		text += "\n冷凍土作用中（剩 %d 秒）" % ceili(float(_fish.fresh_slow))
 	_head.text = text
 	_bar.queue_redraw()
 

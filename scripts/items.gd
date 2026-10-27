@@ -60,6 +60,9 @@ static func def(id: String) -> Dictionary:
 	if id == "net":
 		return {"name": "撈網", "tab": "gear", "size": Vector2i(2, 1), "stack": 1, "slot": "offhand",
 			"icon": ICONS % id, "desc": Profile.NET_DESC}
+	if id == "oxy_box":
+		return {"name": "打氧魚箱", "tab": "gear", "size": Vector2i(6, 1), "stack": 1, "slot": "offhand",
+			"icon": ICONS % id, "desc": Profile.OXY_BOX_DESC, "container": true}
 	if id == "bait":
 		return {"name": "餌料", "tab": "item", "size": Vector2i(1, 1), "stack": 10, "slot": "", "fixed": true,
 			"icon": "res://assets/sprites/lure/worm_55deg_albedo.png",
@@ -156,7 +159,7 @@ static func square_icon(id: String) -> Texture2D:
 	var key := ""
 	if id.begins_with("rod_") or id in ["flashlight", "battery", "lamp", "tea", "roll", "loaf", "cheese", "ammo",
 			"knife", "hatchet", "machete", "glock", "potion_vigor", "potion_ward", "eyeball", "eye_altar", "eye_ghost",
-			"binoculars", "net", "glow_mushroom"]:
+			"binoculars", "net", "glow_mushroom", "oxy_box", "oxy_algae", "frozen_soil"]:
 		key = id
 	elif id == "bait":
 		key = "worm"
@@ -199,8 +202,10 @@ static func _rank(id: String) -> int:
 		return 11 + Profile.WEAPON_ORDER.find(id)
 	if id == "net":
 		return 14
-	if id == "bait":
+	if id == "oxy_box":
 		return 15
+	if id == "bait":
+		return 16
 	if id == "battery":
 		return 20
 	if id == "ammo":

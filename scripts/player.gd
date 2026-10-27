@@ -885,6 +885,13 @@ func use_item(id: String) -> bool:
 			glow_timer = GLOW_TIME + CRUMBLE_TIME * GLOW_FROM
 			perform("crumble", CRUMBLE_TIME)
 			GameState.report("揉碎發光蘑菇撒在身上：全身散發微弱的藍光", "good")
+		"oxy_algae", "frozen_soil":
+			# (from a quick slot: the fish that needs it most)
+			var pick := fish_for(id)
+			if pick < 0:
+				GameState.report("身上沒有用得上的魚", "warn")
+				return false
+			return use_on_fish(id, pick)
 		"binoculars":
 			if binoculars_cooldown > 0.0:
 				GameState.report("望遠鏡的鏡片還起著霧（%d 秒）" % ceili(binoculars_cooldown), "warn")
@@ -1015,7 +1022,7 @@ func sniff() -> bool:
 func reachable_mushroom() -> GlowMushroom:
 	var best: GlowMushroom = null
 	var best_d := GlowMushroom.PICK_RANGE
-	for n in get_tree().get_nodes_in_group("glow_mushrooms"):
+	for n in get_tree().get_nodes_in_group("glow_mushrooms") + get_tree().get_nodes_in_group("oxy_algae"):
 		var d := global_position.distance_to((n as Node2D).global_position)
 		if d < best_d:
 			best = n
@@ -1035,22 +1042,59 @@ const GATHER_TAKE := 0.45
 func _pick_mushroom(m: GlowMushroom) -> void:
 	if m == null:
 		return
-	if Profile.bag_put("glow_mushroom", 1) <= 0:
-		GameState.push_message("背包滿了，放不下發光蘑菇")
+	if Profile.bag_put(m.item_id, 1) <= 0:
+		GameState.push_message("背包滿了，放不下%s" % m.label)
 		return
-	Profile.note_found("glow_mushroom", 1)
+	Profile.note_found(m.item_id, 1)
 	var at := m.global_position - global_position
 	if at.length() > 1.0:
 		aim_dir = at.normalized()
 	perform("gather", GATHER_TIME)
 	m.pick(GATHER_TIME * GATHER_TAKE)
 	# (the sheep, a good gatherer: now and then two - 採集高手)
-	if Abilities.has("sheep") and Abilities.roll(Abilities.SHEEP_CHANCE) and Profile.bag_put("glow_mushroom", 1) > 0:
-		Profile.note_found("glow_mushroom", 1)
+	if Abilities.has("sheep") and Abilities.roll(Abilities.SHEEP_CHANCE) and Profile.bag_put(m.item_id, 1) > 0:
+		Profile.note_found(m.item_id, 1)
 		ability_triggered.emit("sheep", m.global_position, "×2")
-		GameState.report("採集高手：多採到一株發光蘑菇！", "good")
+		GameState.report("採集高手：多採到一株%s！" % m.label, "good")
 		return
-	GameState.push_message("採到一株發光蘑菇，放進背包")
+	GameState.push_message("採到一株%s，放進背包" % m.label)
+
+
+## User request: 魚氧藻 / 冷凍土 used on the carried fish at `index`: it's
+## taken from the bag and works on the fish (FishLife.use_algae/use_frozen).
+func use_on_fish(id: String, index: int) -> bool:
+	if Profile.bag_count(id) < 1 or index < 0 or index >= GameState.carried_fish.size():
+		return false
+	var fish: Dictionary = GameState.carried_fish[index]
+	var why := FishLife.use_algae(fish) if id == "oxy_algae" else FishLife.use_frozen(fish)
+	if why != "":
+		GameState.report(why, "warn")
+		return false
+	Profile.bag_take(id, 1)
+	perform("pick", PICK_TIME)
+	GameState.report("%s用在 %s 身上" % [Items.name_of(id), fish.get("name", "魚")], "good")
+	GameState.fish_changed.emit(fish)
+	return true
+
+
+## Which carried fish `id` (oxy_algae / frozen_soil) helps most now: the one
+## that would die (rot) soonest and isn't already helped; -1 for none.
+func fish_for(id: String) -> int:
+	var best := -1
+	var best_left := INF
+	for i in GameState.carried_fish.size():
+		var f: Dictionary = GameState.carried_fish[i]
+		var ok := FishLife.state(f) == "alive" if id == "oxy_algae" else FishLife.state(f) != "rotten"
+		if not ok:
+			continue
+		var slowed := float(f.get("vit_slow" if id == "oxy_algae" else "fresh_slow", 0.0)) > 0.0
+		var left := FishLife.lifespan_left(f, GameState.is_night) if id == "oxy_algae" else FishLife.freshness_left(f)
+		if left == INF or slowed:
+			continue
+		if left < best_left:
+			best = i
+			best_left = left
+	return best
 
 
 ## The nearest ghost about (a floating one or the big one), or null.
@@ -1105,7 +1149,8 @@ func ghost_confuse(duration: float) -> void:
 ## fishing, the hands not full of the oil drum, not in the big ghost's
 ## grip).
 func offhand_in_hand() -> bool:
-	return Profile.offhand() != "" and state == State.IDLE and not carrying_oil_drum and not held
+	# (the fish box hangs at the hip: nothing to swing)
+	return Profile.offhand() != "" and not Profile.has_oxy_box() and state == State.IDLE and not carrying_oil_drum and not held
 
 
 ## The weapon in hand (Profile.WEAPONS entry; {} with none in the off hand,
@@ -1949,7 +1994,7 @@ func interaction() -> Dictionary:
 		return _offer(willow, "Willow", "對話", false, -34.0)
 	var mushroom := reachable_mushroom()
 	if mushroom != null:
-		return _offer(mushroom, "發光蘑菇", "採集", false, -24.0)
+		return _offer(mushroom, mushroom.label, "採集", false, -24.0)
 	if in_rock_zone and _rock != null and _rock.active:
 		return {"at": _rock.prompt_anchor(), "name": "石頭", "verb": "翻開", "hold": false}
 	var tree := choppable_tree()

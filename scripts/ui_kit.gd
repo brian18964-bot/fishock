@@ -377,6 +377,8 @@ static func item_rarity(id: String) -> String:
 		return RARITY_ORDER[clampi(int(id.substr(4)), 0, RARITY_ORDER.size() - 1)]
 	if id == "flashlight" or id == "net":
 		return "rare"
+	if id == "oxy_box":
+		return "epic"
 	var cost := 0
 	if Profile.WEAPONS.has(id):
 		cost = int(Profile.WEAPONS[id].cost) / 4

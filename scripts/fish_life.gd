@@ -205,6 +205,61 @@ static func fresh_rate(f: Dictionary) -> float:
 	return rate
 
 
+## What the map's finds do (user request): 魚氧藻 - for ALGAE_TIME s of its
+## living time a fish's vitality runs down at SLOW of its pace; 冷凍土 - for
+## FROZEN_TIME s of its dead time the freshness does. (Time on the clock
+## runs only while it matters, so none is wasted on a fish yet to die.)
+const SLOW := 0.25
+const ALGAE_TIME := 180.0
+const FROZEN_TIME := 300.0
+
+
+## Oxygen algae on a fish: "" done, else why not.
+static func use_algae(f: Dictionary) -> String:
+	if state(f) != "alive":
+		return "這條魚已經死了"
+	if has_trait(f, "immortal"):
+		return "這條魚不會死，用不到"
+	f["vit_slow"] = ALGAE_TIME
+	return ""
+
+
+## Frozen soil on a fish: "" done, else why not.
+static func use_frozen(f: Dictionary) -> String:
+	if state(f) == "rotten":
+		return "這條魚已經腐敗了"
+	if has_trait(f, "imperishable") or float(f.get("fresh_life", 300.0)) < 0.0:
+		return "這條魚不會腐敗，用不到"
+	f["fresh_slow"] = FROZEN_TIME
+	return ""
+
+
+## `value` run down at `rate` a second for `dt` s, the first `slow` s of it at
+## SLOW of that: [what's left (0 if it ran out), time left over (-1 if it
+## didn't run out), the slow time left].
+static func _run(value: float, rate: float, slow: float, dt: float) -> Array:
+	var t_slow := minf(slow, dt)
+	var slow_drop := rate * SLOW * t_slow
+	if value <= slow_drop:
+		var used := value / (rate * SLOW)
+		return [0.0, dt - used, slow - used]
+	value -= slow_drop
+	dt -= t_slow
+	slow -= t_slow
+	var need := value / rate
+	if need > dt:
+		return [value - rate * dt, -1.0, slow]
+	return [0.0, dt - need, slow]
+
+
+## How long (s) `value` lasts at `rate`, with `slow` s of it slowed.
+static func _lasts(value: float, rate: float, slow: float) -> float:
+	var slow_drop := rate * SLOW * slow
+	if value <= slow_drop:
+		return value / (rate * SLOW)
+	return slow + (value - slow_drop) / rate
+
+
 ## Time goes by (`dt` s). "died" / "rotted" when this tick did it, else "".
 static func tick(f: Dictionary, dt: float, night := false) -> String:
 	if f.get("rotten", false) or not has_life(f) or dt <= 0.0:
@@ -214,22 +269,27 @@ static func tick(f: Dictionary, dt: float, night := false) -> String:
 	if not f.dead:
 		if has_trait(f, "immortal"):
 			return ""
-		var rate := vit_rate(f, night)
-		var need: float = float(f.vit) / rate
-		if need > left:
-			f.vit = maxf(float(f.vit) - rate * left, 0.0)
+		var run := _run(float(f.vit), vit_rate(f, night), float(f.get("vit_slow", 0.0)), left)
+		f.vit = maxf(float(run[0]), 0.0)
+		f["vit_slow"] = maxf(float(run[2]), 0.0)
+		if float(run[1]) < 0.0:
 			return ""
-		left -= need
+		left = float(run[1])
 		f.vit = 0.0
 		f.dead = true
 		said = "died"
 	var fr := fresh_rate(f)
 	if fr <= 0.0:
 		return said
-	if float(f.get("fresh_life", 300.0)) <= INSTANT or float(f.fresh) / fr <= left:
+	if float(f.get("fresh_life", 300.0)) <= INSTANT:
 		rot(f)
 		return "rotted"
-	f.fresh = float(f.fresh) - fr * left
+	var run := _run(float(f.fresh), fr, float(f.get("fresh_slow", 0.0)), left)
+	f.fresh = maxf(float(run[0]), 0.0)
+	f["fresh_slow"] = maxf(float(run[2]), 0.0)
+	if float(run[1]) >= 0.0:
+		rot(f)
+		return "rotted"
 	return said
 
 
@@ -308,7 +368,17 @@ static func state_text(f: Dictionary) -> String:
 static func lifespan_left(f: Dictionary, night := false) -> float:
 	if state(f) != "alive" or has_trait(f, "immortal"):
 		return INF
-	return float(f.vit) / vit_rate(f, night)
+	return _lasts(float(f.vit), vit_rate(f, night), float(f.get("vit_slow", 0.0)))
+
+
+## How long (s) a dead fish keeps (infinity: never; 0 once rotten).
+static func freshness_left(f: Dictionary) -> float:
+	if state(f) == "rotten":
+		return 0.0
+	var fr := fresh_rate(f)
+	if fr <= 0.0:
+		return INF
+	return _lasts(float(f.get("fresh", 1.0)), fr, float(f.get("fresh_slow", 0.0)))
 
 
 ## How many of the tank's fish (dicts) have `t`.

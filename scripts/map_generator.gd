@@ -164,6 +164,7 @@ func _ready() -> void:
 	_scatter_flip_rocks()
 	# (once the trees are in - they go in deferred)
 	_scatter_mushrooms.call_deferred()
+	_scatter_algae.call_deferred()
 	_scatter_ground_cover()
 	_scatter_critters()
 
@@ -565,6 +566,31 @@ func _scatter_mushrooms() -> void:
 			get_parent().add_child(m)
 			made += 1
 			break
+
+
+## User request: the oxygen algae (OxyAlgae), in the shallows along the
+## shores - a few to a map, off the docks' and walkways' way.
+func _scatter_algae() -> void:
+	var spots := []
+	for z in water_zones:
+		for s in (z as WaterZone).shore_samples(60.0):
+			spots.append([z, s[0], s[1]])
+	spots.shuffle()
+	var share := minf(Campaign.area_share(), 1.0)
+	var want := maxi(1, roundi(randi_range(OxyAlgae.ALGAE_PER_MAP.x, OxyAlgae.ALGAE_PER_MAP.y) * share))
+	var made := 0
+	for sp in spots:
+		if made >= want:
+			break
+		var zone: WaterZone = sp[0]
+		var at: Vector2 = sp[1] - (sp[2] as Vector2) * randf_range(OxyAlgae.FROM_SHORE.x, OxyAlgae.FROM_SHORE.y)
+		if not zone.contains(at) or not _inside_map(at, 40.0) or _near_walkway(at, 20.0):
+			continue
+		var a := OxyAlgae.new()
+		a.name = "OxyAlgae%d" % made
+		a.position = at
+		get_parent().add_child(a)
+		made += 1
 
 
 ## Whether `at` is off every solid thing's base but `tree`'s (a mushroom's

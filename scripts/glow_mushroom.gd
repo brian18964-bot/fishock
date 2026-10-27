@@ -20,6 +20,13 @@ const GLOW := Color(0.42, 0.72, 1.0)
 const BREATH := 3.6
 const ICON_SIZE := 22.0
 
+## What it is when picked (the algae, OxyAlgae, are the same sort of thing):
+## its item, its name, the group it's found in, whether it glows.
+var item_id := "glow_mushroom"
+var label := "發光蘑菇"
+var group_name := "glow_mushrooms"
+var lit := true
+
 static var _glow_tex: Texture2D
 ## Where it is in its breath (each its own).
 var phase := 0.0
@@ -28,14 +35,16 @@ var _light: PointLight2D
 
 
 func _ready() -> void:
-	add_to_group("glow_mushrooms")
+	add_to_group(group_name)
 	phase = randf() * TAU
 	_sprite = Sprite2D.new()
-	_sprite.texture = Items.icon("glow_mushroom")
+	_sprite.texture = Items.icon(item_id)
 	if _sprite.texture != null:
 		_sprite.scale = Vector2.ONE * ICON_SIZE / maxf(_sprite.texture.get_width(), _sprite.texture.get_height())
 	_sprite.offset = Vector2(0, -ICON_SIZE * 0.4 / maxf(_sprite.scale.y, 0.001))
 	add_child(_sprite)
+	if not lit:
+		return
 	_light = PointLight2D.new()
 	if _glow_tex == null:
 		_glow_tex = LightTextureFactory.make_radial_texture(64)
@@ -53,6 +62,8 @@ func glow() -> float:
 
 func _process(delta: float) -> void:
 	phase += delta * TAU / BREATH
+	if _light == null:
+		return
 	_light.energy = 0.3 + 0.35 * glow()
 	_sprite.modulate = Color(1, 1, 1).lerp(Color(1.3, 1.5, 1.8), glow() * 0.5)
 
@@ -60,7 +71,7 @@ func _process(delta: float) -> void:
 ## Picked (Player._pick_mushroom): no longer to be picked at once, gone
 ## from the map `after` s on (when the hands reach it).
 func pick(after := 0.0) -> void:
-	remove_from_group("glow_mushrooms")
+	remove_from_group(group_name)
 	if after <= 0.0 or not is_inside_tree():
 		queue_free()
 		return

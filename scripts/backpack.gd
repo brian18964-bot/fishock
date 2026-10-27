@@ -395,9 +395,18 @@ func _show_selected(player: Player, items: Array, placed: Array) -> void:
 			elif uid == "binoculars" and player.binoculars_cooldown > 0.0:
 				note = "（%d 秒後才能再用）" % ceili(player.binoculars_cooldown)
 			_detail.text += note
-			_actions.add_child(_action("使用", func():
-				player.use_item(uid)
-				_rebuild(), uid == "binoculars" and player.binoculars_cooldown > 0.0))
+			if u.get("target", "") == "fish":
+				# (魚氧藻, 冷凍土: used on one of the fish carried - pick which)
+				_actions.add_child(_action("用在魚身上", func():
+					var panel := FishPickPanel.new("%s用在哪條魚身上？" % u.name, uid)
+					panel.picked.connect(func(index):
+						player.use_on_fish(uid, index)
+						_rebuild())
+					add_child(panel), GameState.carried_fish.is_empty()))
+			else:
+				_actions.add_child(_action("使用", func():
+					player.use_item(uid)
+					_rebuild(), uid == "binoculars" and player.binoculars_cooldown > 0.0))
 		"live":
 			var live: Dictionary = Profile.LIVE_BAITS[item.index]
 			var on: bool = player.live_bait == item.index and player.fishing_mode == Player.FishingMode.BOBBER
@@ -682,6 +691,11 @@ func _show_slot(player: Player, slot: String) -> void:
 	if Profile.max_durability(id) > 0:
 		lines.append("耐久度 %d / %d" % [Profile.durability(id), Profile.max_durability(id)])
 	_detail.text = "\n".join(lines)
+	if id == "oxy_box":
+		_actions.add_child(_action("打開魚箱", func():
+			var panel := OxyPanel.new()
+			panel.closed.connect(_rebuild)
+			add_child(panel)))
 	if slot != "rod":
 		_actions.add_child(_action("卸下放進背包", func():
 			unequip_to_bag(slot)

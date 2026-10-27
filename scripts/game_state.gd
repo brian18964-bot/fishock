@@ -7,7 +7,7 @@ extends Node
 
 signal quota_updated(progress: float, target: float)
 signal inventory_updated(carried: Array)
-## A carried fish died or rotted.
+## A carried fish died or rotted (or went in or out of the fish box).
 signal fish_changed(fish: Dictionary)
 signal day_cleared()
 signal message_posted(text: String)
@@ -78,6 +78,9 @@ const WEATHER_FISH_RUN_WEIGHT := 0.2
 var quota_target: float = 30.0
 var quota_progress: float = 0.0
 var carried_fish: Array = []
+## User request: the fish in the oxygenated fish box (Profile.OXY_SLOTS of
+## them) - their vitality doesn't run down; the run's, like what's carried.
+var oxy_fish: Array = []
 var day_over: bool = false
 
 var day_phase: DayPhase = DayPhase.FISHING
@@ -211,6 +214,49 @@ func _set_weather(kind: int, seconds: float, quiet: bool) -> void:
 	weather_changed.emit(Weather.keys()[weather])
 	if not quiet or kind != Weather.CLEAR:
 		_announce_weather()
+
+
+## User request: a carried fish into the oxygenated fish box (worn in the off
+## hand): "" if done, else why not. A use of the box.
+func oxy_put(index: int) -> String:
+	if not Profile.has_oxy_box():
+		return "沒有裝備打氧魚箱"
+	if index < 0 or index >= carried_fish.size():
+		return "找不到這條魚"
+	if oxy_fish.size() >= Profile.OXY_SLOTS:
+		return "魚箱滿了"
+	var fish: Dictionary = carried_fish[index]
+	if lure_uid == int(fish.get("uid", -2)):
+		lure_uid = -1
+	carried_fish.remove_at(index)
+	oxy_fish.append(fish)
+	inventory_updated.emit(carried_fish)
+	_wear_oxy_box()
+	return ""
+
+
+## A fish out of the box, into what's carried (if it fits the bag).
+func oxy_take(index: int) -> String:
+	if index < 0 or index >= oxy_fish.size():
+		return "找不到這條魚"
+	var fish: Dictionary = oxy_fish[index]
+	var player := get_tree().get_first_node_in_group("player")
+	if not Inventory.fits_with(player, [Inventory.fish_item(fish)]):
+		return "背包放不下"
+	oxy_fish.remove_at(index)
+	carried_fish.append(fish)
+	inventory_updated.emit(carried_fish)
+	_wear_oxy_box()
+	return ""
+
+
+func _wear_oxy_box() -> void:
+	if Profile.wear_out("oxy_box"):
+		# (it broke: what was in it is back among what's carried)
+		carried_fish.append_array(oxy_fish)
+		oxy_fish.clear()
+		inventory_updated.emit(carried_fish)
+		push_message("打氧魚箱壞了，裡面的魚都拿出來了")
 
 
 ## The fish carried: their vitality and freshness run down (FishLife); a
@@ -363,6 +409,7 @@ func reset_run() -> void:
 	last_cause = ""
 	quota_progress = 0.0
 	carried_fish.clear()
+	oxy_fish.clear()
 	lure_uid = -1
 	day_over = false
 	day_phase = DayPhase.FISHING
@@ -421,6 +468,7 @@ func end_run(success: bool, message: String) -> void:
 		# user request: so is gear found on the map - what was brought stays.
 		# (The first chapter's levels are safe: nothing's lost there.)
 		carried_fish.clear()
+		oxy_fish.clear()
 		inventory_updated.emit(carried_fish)
 		if not Campaign.rules.safe:
 			Profile.lose_found_gear()
@@ -454,7 +502,7 @@ func _bring_fish_home() -> String:
 	var dead := 0
 	var rotten := 0
 	var lost := 0
-	for fish in carried_fish:
+	for fish in carried_fish + oxy_fish:
 		match FishLife.state(fish):
 			"alive":
 				if Profile.add_to_tank(fish):
@@ -472,6 +520,7 @@ func _bring_fish_home() -> String:
 				else:
 					lost += 1
 	carried_fish.clear()
+	oxy_fish.clear()
 	inventory_updated.emit(carried_fish)
 	if sold > 0:
 		Profile.add_gold(sold)
