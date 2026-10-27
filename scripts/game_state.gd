@@ -133,7 +133,8 @@ func ghost_interfered() -> void:
 
 func _process(delta: float) -> void:
 	if run_started and not run_over:
-		_ghost_quiet += delta
+		# (the angel's keep the little ghosts off - the wraith's bring them sooner)
+		_ghost_quiet += delta * FishLife.imp_rate(carried_fish)
 		_age_fish(delta)
 	if not run_started or run_over or is_night or day_phase != DayPhase.FISHING:
 		return
@@ -402,6 +403,7 @@ func end_run(success: bool, message: String) -> void:
 		last_cause = "escaped" if success else "lost"
 	if success:
 		final_message += _bring_fish_home()
+		final_message += _guide_gift()
 		# User request (Camp v2): an escape counts toward the tents and
 		# lifts the spirit.
 		Profile.record_escape()
@@ -416,6 +418,20 @@ func end_run(success: bool, message: String) -> void:
 			Profile.lose_found_gear()
 
 	run_ended.emit(success, final_message)
+
+
+## User request: the guide fish in the tank, a night escaped: now and then
+## it brings back an eye (an eye item, at random, to the warehouse).
+func _guide_gift() -> String:
+	if not is_night:
+		return ""
+	var text := ""
+	for _i in FishLife.count_trait(Profile.tank, "guide"):
+		if Abilities.roll(FishLife.GUIDE_CHANCE):
+			var id: String = FishLife.GUIDE_EYES.pick_random()
+			Profile.add_stored(id, 1)
+			text += "\n引路魚帶回了一個%s" % Items.name_of(id)
+	return text
 
 
 ## User request (fish tank): the fish carried out of a run go into the

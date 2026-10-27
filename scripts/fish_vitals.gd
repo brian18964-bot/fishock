@@ -49,7 +49,7 @@ func show_fish(fish: Dictionary, in_tank := false) -> void:
 		return
 	for t in fish.get("life_traits", []):
 		var l := UiKit.label("%s：%s" % [FishLife.TRAITS[t].name, FishLife.TRAITS[t].desc], 13,
-			Color(0.55, 0.85, 0.7) if t in FishLife.GOOD else Color(0.9, 0.55, 0.5))
+			Color(1.0, 0.82, 0.35) if t in FishLife.MYTHIC else (Color(0.55, 0.85, 0.7) if t in FishLife.GOOD else Color(0.9, 0.55, 0.5)))
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		# (a wrapped label sized from nothing is tall till it's laid out)
 		l.custom_minimum_size.x = maxf(custom_minimum_size.x, 200.0)

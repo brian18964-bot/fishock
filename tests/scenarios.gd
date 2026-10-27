@@ -20,6 +20,7 @@ const TESTS := [
 	"test_glow_mushroom",
 	"test_death_loses_finds",
 	"test_fish_life",
+	"test_mythic_traits",
 	"test_character_abilities",
 	"test_run_menu_and_auto_defend",
 	"test_wolf_bites",
@@ -3000,6 +3001,104 @@ func test_fish_life() -> void:
 		check(FishLife.state(d.life) == "dead", "on the ground its life goes on")
 		check(FishLife.state(d.as_fish()) == "dead" and d.as_fish().has("life_traits"), "picked up: as it was")
 		d.queue_free()
+	GameState.carried_fish.clear()
+	GameState.run_started = false
+	Profile.load_data(saved)
+
+
+## User request: the very rare traits (財神 引路魚 鐵匠 惡靈 天使).
+func test_mythic_traits() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 0})
+	# They come up now and then, one at most, never among the common ones' draw.
+	var seen := {}
+	for _i in 4000:
+		var f := FishLife.roll({"id": "bass", "rarity": "epic"})
+		var n := 0
+		for t in f.life_traits:
+			if t in FishLife.MYTHIC:
+				n += 1
+				seen[t] = true
+		if n > 1:
+			check(false, "one mythic trait at most")
+	check(seen.size() == FishLife.MYTHIC.size(), "all five come up (%d)" % seen.size())
+	# The angel (alive) and the wraith (rotten) in the bag.
+	var angel := {"vit": 0.5, "vit_life": 100.0, "dead": false, "rotten": false, "life_traits": ["angel"]}
+	var wraith := {"vit": 0.0, "dead": true, "rotten": true, "life_traits": ["wraith"]}
+	var living_wraith := {"vit": 0.5, "dead": false, "rotten": false, "life_traits": ["wraith"]}
+	check(absf(FishLife.beast_ward([angel]) - 0.5) < 0.001 and absf(FishLife.imp_rate([angel]) - 0.4) < 0.001, "angel: beasts -50%, imps -60%")
+	check(absf(FishLife.beast_ward([wraith]) - 0.2) < 0.001 and absf(FishLife.imp_rate([wraith]) - 1.1) < 0.001, "wraith (rotten): beasts -20%, imps +10%")
+	check(FishLife.beast_ward([living_wraith]) == 0.0 and FishLife.imp_rate([living_wraith]) == 1.0, "a wraith that's not rotten does nothing")
+	check(absf(FishLife.beast_ward([angel, wraith]) - 0.6) < 0.001, "together: beasts -60%")
+	var dead_angel := {"vit": 0.0, "dead": true, "rotten": false, "life_traits": ["angel"]}
+	check(FishLife.beast_ward([dead_angel]) == 0.0, "a dead angel does nothing")
+	# The ghosts' gap runs slower/faster by the carried.
+	GameState.reset_run()
+	GameState.run_started = true
+	GameState.carried_fish = [angel.duplicate(true)]
+	var quiet0: float = GameState._ghost_quiet
+	GameState._process(1.0)
+	var slow: float = GameState._ghost_quiet - quiet0
+	GameState.carried_fish.clear()
+	quiet0 = GameState._ghost_quiet
+	GameState._process(1.0)
+	var plain: float = GameState._ghost_quiet - quiet0
+	check(slow < plain * 0.5, "with the angel the imps are slow to come (%.2f vs %.2f)" % [slow, plain])
+	# A beast's pounce turned aside.
+	Abilities.forced = false
+	var p := player()
+	if p != null:
+		GameState.carried_fish = [angel.duplicate(true)]
+		var hits := 0
+		for _i in 200:
+			p.water_ghost_timer = 0.0
+			# (a pounce that lands knocks a fish loose: the angel back each time)
+			GameState.carried_fish = [angel.duplicate(true)]
+			p.animal_attack("狼")
+			hits += 1 if p.water_ghost_timer > 0.0 else 0
+		check(hits > 60 and hits < 140, "the angel turns about half the pounces aside (%d of 200 landed)" % hits)
+		GameState.carried_fish.clear()
+	# The fortune fish: gold by the hour, to a cap.
+	Profile.tank.clear()
+	Profile.now_override = 1000000.0
+	Profile.fortune_clock = 0.0
+	Profile.settle_fortune()
+	var rich := FishLife.roll({"name": "鯉魚", "id": "carp", "value": 6.0, "size": "small", "rarity": "common"})
+	rich.life_traits = ["fortune"]
+	check(Profile.add_to_tank(rich), "a fortune fish in the tank")
+	Profile.now_override = 1000000.0 + 3600.0 * 2.5
+	check(Profile.settle_fortune() == 50 and Profile.gold == 50, "2.5 hours: 50 gold")
+	Profile.now_override += 3600.0 * 0.5
+	check(Profile.settle_fortune() == 10, "and the half hour kept: 10 more")
+	Profile.now_override += 3600.0 * 100.0
+	check(Profile.settle_fortune() == 240, "capped at 12 hours (240)")
+	var rich2 := rich.duplicate(true)
+	check(Profile.add_to_tank(rich2), "a second one")
+	Profile.now_override += 3600.0
+	check(Profile.settle_fortune() == 40, "two: 40 an hour")
+	# The guide fish: a night escaped, now and then an eye.
+	Profile.tank.clear()
+	var guide := FishLife.roll({"name": "鯉魚", "id": "carp", "value": 6.0, "size": "small", "rarity": "common"})
+	guide.life_traits = ["guide"]
+	Profile.add_to_tank(guide)
+	GameState.is_night = false
+	check(GameState._guide_gift() == "", "by day: nothing")
+	GameState.is_night = true
+	Abilities.forced = true
+	var gift: String = GameState._guide_gift()
+	Abilities.forced = false
+	var eyes := 0
+	for id in FishLife.GUIDE_EYES:
+		eyes += Profile.stored(id)
+	check(gift.contains("引路魚帶回了") and eyes == 1, "a night escaped: an eye in the warehouse (%s)" % gift)
+	GameState.is_night = false
+	# The smith: gear worn down is mended.
+	Profile.wear["knife"] = 20
+	Profile.add_stored("knife", 1)
+	check("knife" in Profile.repairable(), "worn gear can be mended")
+	check(Profile.repair("knife", FishLife.SMITH_REPAIR) == 5 and Profile.durability("knife") == 25, "5 uses back")
+	check(Profile.repair("knife", 1000) == 35 and not Profile.wear.has("knife"), "never past full")
+	Profile.now_override = 0.0
 	GameState.carried_fish.clear()
 	GameState.run_started = false
 	Profile.load_data(saved)

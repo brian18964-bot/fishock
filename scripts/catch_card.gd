@@ -108,7 +108,7 @@ func show_catch(fish: Dictionary, legend: bool) -> void:
 		_measure.visible = true
 		for t in fish.get("life_traits", []):
 			_tags.add_child(_tag(FishLife.TRAITS[t].name,
-				Color(0.3, 0.7, 0.6) if t in FishLife.GOOD else Color(0.8, 0.35, 0.35)))
+				Color(0.85, 0.65, 0.15) if t in FishLife.MYTHIC else (Color(0.3, 0.7, 0.6) if t in FishLife.GOOD else Color(0.8, 0.35, 0.35))))
 	_panel.reset_size()
 	var view := get_viewport().get_visible_rect().size
 	# Right-aligned over the right stick (under the energy panel).

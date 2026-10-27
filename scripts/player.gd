@@ -1331,6 +1331,12 @@ func _fire() -> void:
 ## (it can be picked back up, like a G-dropped one), snaps the line if
 ## you're fishing, and leaves you slowed for a moment.
 func animal_attack(attacker: String) -> void:
+	# User request: the angel (alive) and the wraith (rotten) carried turn
+	# a pounce aside now and then.
+	if randf() < FishLife.beast_ward(GameState.carried_fish):
+		GameState.push_message("%s撲上來，卻被身上的魚的力量擋開了" % attacker)
+		GameState.report("%s被擋開了" % attacker)
+		return
 	# User request (weapons): a blade worn turns the pounce aside - a short
 	# stagger, nothing knocked loose, the line kept.
 	if held_weapon().get("defend", false):

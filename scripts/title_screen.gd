@@ -119,6 +119,11 @@ func _ready() -> void:
 		_come_home(back)
 	if not Profile.tank_news.is_empty():
 		_tank_news()
+	# User request: the fortune fish in the tank have sent gold meanwhile.
+	var sent := Profile.settle_fortune()
+	if sent > 0:
+		var note := MenuStyle.notice(self, "財神送來金幣", ["魚缸裡的財神魚送來了 %d 金幣" % sent])
+		note.name = "FortuneNews"
 
 
 ## User request (fish tank): back from a run with fish, the main screen

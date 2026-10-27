@@ -781,6 +781,8 @@ func consume_loadout_lures() -> Dictionary:
 func add_to_tank(fish: Dictionary) -> bool:
 	if tank.size() >= TANK_SIZE or FishLife.state(fish) != "alive":
 		return false
+	# (what the fortune fish sent so far is paid before a new one comes)
+	settle_fortune()
 	var f := fish.duplicate()
 	var id: String = f.get("id", "")
 	if id == "":
@@ -867,6 +869,7 @@ func clear_tank_news() -> void:
 func sell_from_tank(index: int) -> int:
 	if index < 0 or index >= tank.size():
 		return 0
+	settle_fortune()
 	var f: Dictionary = tank[index]
 	tank.remove_at(index)
 	var price := maxi(1, roundi(float(f.get("value", 0.0))))
@@ -1256,6 +1259,83 @@ func unequip(slot: String) -> bool:
 	return true
 
 
+## A thing given (a reward): into the warehouse.
+func add_stored(id: String, count: int) -> void:
+	_store(id, count)
+	_changed()
+
+
+## User request: the smith in the tank - a piece of gear that wears out,
+## `uses` of its durability back (up to its full). How many it got.
+func repair(id: String, uses: int) -> int:
+	var full := max_durability(id)
+	if full <= 0:
+		return 0
+	var before := durability(id)
+	var after := mini(before + uses, full)
+	if after >= full:
+		wear.erase(id)
+	else:
+		wear[id] = after
+	_changed()
+	return after - before
+
+
+## The gear worn down some (owned, anywhere): its ids.
+func repairable() -> Array:
+	var out := []
+	var seen := {}
+	var ids := []
+	for slot in equipped:
+		ids.append(str(equipped[slot]))
+	ids.append_array(storage.keys())
+	for e in bag:
+		ids.append(str(e.id))
+	for id in ids:
+		if id != "" and not seen.has(id) and max_durability(id) > 0 and durability(id) < max_durability(id):
+			seen[id] = true
+			out.append(id)
+	return out
+
+
+## User request: the fortune fish in the tank (FishLife) send gold by the
+## hour - real time, up to FORTUNE_CAP_HOURS' worth. The clock when it was
+## last settled (unix s; 0: not running).
+var fortune_clock := 0.0
+## (tests: the time now)
+var now_override := 0.0
+
+
+func _now() -> float:
+	return now_override if now_override > 0.0 else Time.get_unix_time_from_system()
+
+
+## What the fortune fish have sent since last settled; settles it and pays.
+## The gold paid.
+func settle_fortune() -> int:
+	var now := _now()
+	var n := FishLife.count_trait(tank, "fortune")
+	if n == 0 or fortune_clock <= 0.0:
+		fortune_clock = now
+		return 0
+	var rate := float(n * FishLife.FORTUNE_GOLD)
+	var hours := (now - fortune_clock) / 3600.0
+	var paid := 0
+	if hours >= FishLife.FORTUNE_CAP_HOURS:
+		paid = int(floor(FishLife.FORTUNE_CAP_HOURS * rate))
+		fortune_clock = now
+	else:
+		paid = int(floor(maxf(hours, 0.0) * rate))
+		# (only the whole gold is taken off the clock: the rest keeps)
+		if paid > 0:
+			fortune_clock += float(paid) / rate * 3600.0
+	if paid > 0:
+		gold += paid
+		gold_updated.emit(gold)
+		_changed()
+	return paid
+
+
 func _store(id: String, count: int) -> void:
 	if count > 0:
 		storage[id] = stored(id) + count
@@ -1289,6 +1369,7 @@ func snapshot() -> Dictionary:
 		"rods_owned": rods_owned,
 		"tank": tank,
 		"fish_box": fish_box,
+		"fortune_clock": fortune_clock,
 		"tank_news": tank_news,
 		"settings": settings,
 		"camp_tent": camp_tent,
@@ -1339,6 +1420,7 @@ func load_data(data: Dictionary) -> void:
 	rods_owned = clampi(data.get("rods_owned", data.get("rod_tier", 0)), 0, ROD_TIERS.size() - 1)
 	tank = data.get("tank", [])
 	fish_box = data.get("fish_box", [])
+	fortune_clock = float(data.get("fortune_clock", 0.0))
 	tank_news = data.get("tank_news", [])
 	settings = {"auto_lure": false}
 	settings.merge(data.get("settings", {}), true)

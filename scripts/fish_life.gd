@@ -30,8 +30,28 @@ const TRAITS := {
 	"imperishable": {"name": "不腐", "desc": "新鮮度歸零也不會腐敗", "weight": 3.0, "kind": "fresh"},
 	"plump": {"name": "肥美", "desc": "價值提高 25%", "weight": 7.0, "kind": "value", "value": 1.25},
 	"scrawny": {"name": "瘦弱", "desc": "價值降低 20%", "weight": 7.0, "kind": "value", "value": 0.8},
+	# User request: the very rare ones (MYTHIC_CHANCE) - each with a use of
+	# its own: in the tank (fortune, guide, smith) or in the bag (wraith, angel).
+	"fortune": {"name": "財神", "desc": "養在魚缸：每小時送來 20 金幣（最多累積 12 小時）", "weight": 1.0, "kind": "mythic"},
+	"guide": {"name": "引路魚", "desc": "養在魚缸：每次夜晚成功逃脫，有 10% 機率帶回一個隨機的眼球道具", "weight": 1.0, "kind": "mythic"},
+	"smith": {"name": "鐵匠", "desc": "養在魚缸：餵食腐敗的魚後，可選一件裝備回復 5 點耐久", "weight": 1.0, "kind": "mythic"},
+	"wraith": {"name": "惡靈", "desc": "腐敗後放在包包：猛獸攻擊 -20%，但小鬼偷襲 +10%", "weight": 1.0, "kind": "mythic"},
+	"angel": {"name": "天使", "desc": "活著時放在包包：小鬼偷襲 -60%，猛獸攻擊 -50%", "weight": 1.0, "kind": "mythic"},
 }
-## The traits to the fish's good (the rest - to its bad).
+const MYTHIC := ["fortune", "guide", "smith", "wraith", "angel"]
+## A catch's chance of one of them, by its rarity.
+const MYTHIC_CHANCE := {"common": 0.012, "rare": 0.025, "epic": 0.05}
+## Their numbers (user: set as these for now).
+const FORTUNE_GOLD := 20
+const FORTUNE_CAP_HOURS := 12.0
+const GUIDE_CHANCE := 0.10
+const GUIDE_EYES := ["eyeball", "eye_altar", "eye_ghost"]
+const SMITH_REPAIR := 5
+const WRAITH_BEAST := 0.20
+const WRAITH_IMP := 0.10
+const ANGEL_IMP := 0.60
+const ANGEL_BEAST := 0.50
+## The traits to the fish's good (the rest - to its bad; the mythic ones, gold).
 const GOOD := ["immortal", "tough", "vigorous", "nocturnal", "clean", "imperishable", "plump"]
 ## Traits that don't go together (each group: at most one).
 const EXCLUSIVE := [["tough", "weary", "immortal"], ["filthy", "clean", "imperishable"], ["dying", "vigorous"],
@@ -110,6 +130,8 @@ static func roll(f: Dictionary) -> Dictionary:
 	f["fresh_life"] = -1.0 if kind.fresh.x < 0.0 else snappedf(randf_range(kind.fresh.x, kind.fresh.y), 0.1)
 	f["dead"] = false
 	f["rotten"] = false
+	if randf() < float(MYTHIC_CHANCE.get(str(f.get("rarity", "common")), MYTHIC_CHANCE.common)):
+		traits.append(MYTHIC.pick_random())
 	f["life_traits"] = traits
 	for t in traits:
 		if TRAITS[t].has("value") and f.has("value"):
@@ -136,7 +158,7 @@ static func roll_traits(rarity: String) -> Array:
 		var pool := []
 		var total := 0.0
 		for t in TRAITS:
-			if t in out or _clashes(t, out):
+			if t in MYTHIC or t in out or _clashes(t, out):
 				continue
 			pool.append(t)
 			total += float(TRAITS[t].weight)
@@ -287,3 +309,36 @@ static func lifespan_left(f: Dictionary, night := false) -> float:
 	if state(f) != "alive" or has_trait(f, "immortal"):
 		return INF
 	return float(f.vit) / vit_rate(f, night)
+
+
+## How many of the tank's fish (dicts) have `t`.
+static func count_trait(fish: Array, t: String) -> int:
+	var n := 0
+	for f in fish:
+		n += 1 if has_trait(f, t) else 0
+	return n
+
+
+## What the carried fish do for the traveller (user request): the angel
+## (while alive) and the wraith (once rotten) in the bag. The chance a
+## beast's pounce is turned aside.
+static func beast_ward(carried: Array) -> float:
+	var open := 1.0
+	for f in carried:
+		if has_trait(f, "angel") and state(f) == "alive":
+			open *= 1.0 - ANGEL_BEAST
+		if has_trait(f, "wraith") and state(f) == "rotten":
+			open *= 1.0 - WRAITH_BEAST
+	return 1.0 - open
+
+
+## How much sooner the little ghosts come to trouble the traveller (1: as
+## usual; the angel's slow them, the wraith's hasten them).
+static func imp_rate(carried: Array) -> float:
+	var rate := 1.0
+	for f in carried:
+		if has_trait(f, "angel") and state(f) == "alive":
+			rate *= 1.0 - ANGEL_IMP
+		if has_trait(f, "wraith") and state(f) == "rotten":
+			rate *= 1.0 + WRAITH_IMP
+	return rate
