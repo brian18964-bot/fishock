@@ -122,6 +122,10 @@ func _build(id: String) -> void:
 		seat_fit.stand = float(fit.get("pelvis", 1.0))
 		seat_fit.seat = float(seat[1]) if seat.size() > 1 else seat_fit.stand
 		skeleton.add_child(seat_fit)
+		var guard := GroundGuard.new()
+		guard.name = "GroundGuard"
+		guard.ground = self
+		skeleton.add_child(guard)
 		_grip_mod = Grip.new()
 		_grip_mod.name = "Grip"
 		_grip_mod.influence = 0.0

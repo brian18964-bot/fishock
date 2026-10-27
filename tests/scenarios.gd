@@ -18,6 +18,7 @@ const TESTS := [
 	"test_proto3d",
 	"test_camp3d",
 	"test_glow_mushroom",
+	"test_death_loses_finds",
 	"test_character_abilities",
 	"test_run_menu_and_auto_defend",
 	"test_wolf_bites",
@@ -4659,6 +4660,36 @@ func test_camp3d() -> void:
 ## User request: the glow mushroom - only under the trees, glowing on the
 ## map; picked (採集) into the bag; rubbed to crumbs and sprinkled on, a
 ## faint blue light all round for 30 s, its slot under the card.
+## User request: dying loses what was picked up on the map that run - the
+## whole way: picked, caught, the run lost to the big ghost; what was
+## brought stays.
+func test_death_loses_finds() -> void:
+	var saved := Profile.snapshot()
+	await _fresh_game()
+	check(not Campaign.rules.safe, "the free run isn't a safe one")
+	var p := player()
+	var before := {}
+	for e in Profile.bag:
+		before[e.id] = int(before.get(e.id, 0)) + int(e.count)
+	await frames(2)
+	var shrooms := get_tree().get_nodes_in_group("glow_mushrooms")
+	if not shrooms.is_empty():
+		p.global_position = (shrooms[0] as Node2D).global_position + Vector2(12, 0)
+		await frames(2)
+		p._pick_mushroom(p.reachable_mushroom())
+	var worms := p.pocket_live_bait("worm", 2)
+	var got := Profile.bag_count("glow_mushroom") - int(before.get("glow_mushroom", 0))
+	check(got == (0 if shrooms.is_empty() else 1) and worms > 0, "a mushroom picked, %d worms caught" % worms)
+	gs.caught()
+	await frames(2)
+	check(gs.run_over, "caught: the run's lost")
+	var after := {}
+	for e in Profile.bag:
+		after[e.id] = int(after.get(e.id, 0)) + int(e.count)
+	check(after == before, "the bag as it was brought - the finds gone, nothing else (%s / %s)" % [after, before])
+	Profile.load_data(saved)
+
+
 func test_glow_mushroom() -> void:
 	var saved := Profile.snapshot()
 	await _fresh_game()

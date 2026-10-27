@@ -52,6 +52,12 @@ signal plan_done(tag: String)
 ## own, CharacterArt.walk_pace().
 const WALK_SPEED := 0.8
 const TURN_RATE := 7.0
+## The fastest it turns (rad/s) - walking, and turning on the spot to face
+## something: eased in at the end, never whipped round (a half turn at
+## once, the first frame's share was a fifth of it - the camp's smoothness
+## check).
+const TURN_MOST := 9.0
+const FACE_MOST := 6.0
 ## How often it does each thing, by how it feels: [spent, worn, tired, busy].
 ## (The fire and the log far the most: user request.)
 const WEIGHTS := {
@@ -340,12 +346,19 @@ func _walk(delta: float) -> void:
 		pivot.position = Vector3(target.x, 0.0, target.z)
 		_path.pop_front()
 		return
-	pivot.rotation.y = lerp_angle(pivot.rotation.y, _yaw_of(to), minf(1.0, delta * TURN_RATE))
+	_turn(_yaw_of(to), delta, TURN_MOST)
 	pivot.position += to.normalized() * speed * delta
 
 
+## Turned toward `yaw`: eased, no faster than `most` (rad/s).
+func _turn(yaw: float, delta: float, most: float) -> void:
+	var gap := angle_difference(pivot.rotation.y, yaw)
+	var step := clampf(gap * minf(1.0, delta * TURN_RATE), -most * delta, most * delta)
+	pivot.rotation.y = wrapf(pivot.rotation.y + step, -PI, PI)
+
+
 func _face(delta: float) -> void:
-	pivot.rotation.y = lerp_angle(pivot.rotation.y, _yaw_to, minf(1.0, delta * TURN_RATE))
+	_turn(_yaw_to, delta, FACE_MOST)
 	if absf(angle_difference(pivot.rotation.y, _yaw_to)) < 0.04:
 		pivot.rotation.y = _yaw_to
 		_step = {}
