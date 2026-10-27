@@ -167,6 +167,14 @@ func light_stage() -> int:
 func start_run() -> void:
 	run_started = true
 	Profile.found_this_run.clear()
+	# User request: the fish packed in the bag at home (taken out of the tank)
+	# go on the run - those that fit; the rest back to the warehouse.
+	for fish in Profile.pack_fish:
+		if Inventory.fits_with(null, [Inventory.fish_item(fish)]):
+			add_carried_fish(fish)
+		else:
+			Profile.stash_fish.append(fish)
+	Profile.pack_fish = []
 	_start_weather()
 
 

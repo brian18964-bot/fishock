@@ -860,6 +860,81 @@ func discard_from_box(index: int) -> void:
 		_changed()
 
 
+## User request: fish can be taken out of the tank (and put back): into the
+## bag (pack_fish: carried on the next run - lost with it if it's lost),
+## or the warehouse (stash_fish). The dead and the rotten, in the fish box,
+## can be moved the same way (a rotten wraith goes in the bag); only a living
+## one goes back in the tank. None of them age at home.
+const STASH_SIZE := 20
+var pack_fish: Array = []
+var stash_fish: Array = []
+
+
+## The fish list `place` names ("tank", "box", "pack", "stash").
+func fish_list(place: String) -> Array:
+	match place:
+		"tank":
+			return tank
+		"box":
+			return fish_box
+		"pack":
+			return pack_fish
+	return stash_fish
+
+
+## Where fish `f` may be put (besides where it is): living - the tank; dead
+## or rotten - the fish box; both - the bag, the warehouse.
+func fish_places(f: Dictionary, from: String) -> Array:
+	var out := ["tank" if FishLife.state(f) == "alive" else "box", "pack", "stash"]
+	out.erase(from)
+	return out
+
+
+## Why fish `f` can't go to `to` ("" it can).
+func fish_refusal(f: Dictionary, to: String) -> String:
+	match to:
+		"tank":
+			if FishLife.state(f) != "alive":
+				return "只有活著的魚能放進魚缸"
+			if tank.size() >= TANK_SIZE:
+				return "魚缸滿了"
+		"box":
+			if FishLife.state(f) == "alive":
+				return "活著的魚不能放進魚箱"
+			if fish_box.size() >= FISH_BOX_SIZE:
+				return "魚箱滿了"
+		"pack":
+			var items := Inventory.items(null)
+			for p in pack_fish:
+				items.append(Inventory.fish_item(p))
+			items.append(Inventory.fish_item(f))
+			if Inventory.pack(items).is_empty():
+				return "背包放不下"
+		"stash":
+			if stash_fish.size() >= STASH_SIZE:
+				return "倉庫放不下了"
+	return ""
+
+
+## Moves a fish from list `from` (index `i`) to `to`. "" if done, else why not.
+func move_fish(from: String, i: int, to: String) -> String:
+	var src := fish_list(from)
+	if i < 0 or i >= src.size() or from == to:
+		return "找不到這條魚"
+	var f: Dictionary = src[i]
+	var why := fish_refusal(f, to)
+	if why != "":
+		return why
+	# (the fortune fish's gold up to now - it may be leaving the tank)
+	settle_fortune()
+	src.remove_at(i)
+	fish_list(to).append(f)
+	if to == "tank":
+		tank_news.clear()
+	_changed()
+	return ""
+
+
 func clear_tank_news() -> void:
 	tank_news.clear()
 	_save()
@@ -1369,6 +1444,8 @@ func snapshot() -> Dictionary:
 		"rods_owned": rods_owned,
 		"tank": tank,
 		"fish_box": fish_box,
+		"pack_fish": pack_fish,
+		"stash_fish": stash_fish,
 		"fortune_clock": fortune_clock,
 		"tank_news": tank_news,
 		"settings": settings,
@@ -1420,6 +1497,8 @@ func load_data(data: Dictionary) -> void:
 	rods_owned = clampi(data.get("rods_owned", data.get("rod_tier", 0)), 0, ROD_TIERS.size() - 1)
 	tank = data.get("tank", [])
 	fish_box = data.get("fish_box", [])
+	pack_fish = data.get("pack_fish", [])
+	stash_fish = data.get("stash_fish", [])
 	fortune_clock = float(data.get("fortune_clock", 0.0))
 	tank_news = data.get("tank_news", [])
 	settings = {"auto_lure": false}

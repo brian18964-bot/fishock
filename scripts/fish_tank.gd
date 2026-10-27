@@ -25,13 +25,23 @@ var _list: VBoxContainer
 var _count: Label
 var _purse: PanelContainer
 var _card: Control
+## Which fish list the right-hand window shows: "tank", "box" (the dead and
+## the rotten), "pack" (in the bag), "stash" (in the warehouse).
+var _tab := "tank"
+var _tabs := {}
+const TAB_NAMES := [["tank", "魚缸"], ["box", "魚箱"], ["pack", "包包"], ["stash", "倉庫"]]
+var _toast: Label
 
 
 func _ready() -> void:
 	_build()
+	# User request: what the fortune fish sent while away.
+	var sent := Profile.settle_fortune()
 	Profile.gold_updated.connect(func(_g): _refresh_gold())
 	_refresh_gold()
 	_rebuild()
+	if sent > 0:
+		_say("財神魚送來了 %d 金幣" % sent)
 
 
 func _build() -> void:
@@ -69,11 +79,25 @@ func _build() -> void:
 	var col: VBoxContainer = made[1]
 	right.position = Vector2(622, 56)
 	right.custom_minimum_size = Vector2(324, 474)
+	var tabs := HBoxContainer.new()
+	tabs.add_theme_constant_override("separation", 4)
+	tabs.alignment = BoxContainer.ALIGNMENT_CENTER
+	for t in TAB_NAMES:
+		var b := UiKit.button(t[1], 14)
+		b.name = "Tab_" + t[0]
+		b.custom_minimum_size = Vector2(68, 34)
+		var key: String = t[0]
+		b.pressed.connect(func():
+			_tab = key
+			_rebuild())
+		tabs.add_child(b)
+		_tabs[key] = b
+	col.add_child(tabs)
 	_count = UiKit.label("", 15, UiKit.DIM)
 	_count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(_count)
 	var scroll := DragScroll.new()
-	scroll.custom_minimum_size = Vector2(288, 376)
+	scroll.custom_minimum_size = Vector2(288, 336)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_list = VBoxContainer.new()
 	_list.name = "List"
@@ -81,6 +105,21 @@ func _build() -> void:
 	scroll.add_child(_list)
 	col.add_child(scroll)
 	add_child(right)
+	_toast = UiKit.label("", 17, UiKit.GOLD_BRIGHT, true, 5)
+	_toast.position = Vector2(120, 16)
+	_toast.custom_minimum_size = Vector2(460, 0)
+	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_toast.modulate.a = 0.0
+	_toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_toast)
+
+
+func _say(text: String) -> void:
+	_toast.text = text
+	_toast.modulate.a = 1.0
+	var tw := create_tween()
+	tw.tween_interval(1.6)
+	tw.tween_property(_toast, "modulate:a", 0.0, 0.4)
 
 
 func _refresh_gold() -> void:
@@ -88,23 +127,31 @@ func _refresh_gold() -> void:
 
 
 func _rebuild() -> void:
-	_count.text = "魚缸裡的魚  %d / %d" % [Profile.tank.size(), Profile.TANK_SIZE]
+	for k in _tabs:
+		UiKit.style_tab(_tabs[k], k == _tab)
+	var fish := Profile.fish_list(_tab)
+	var cap: int = {"tank": Profile.TANK_SIZE, "box": Profile.FISH_BOX_SIZE, "pack": 0, "stash": Profile.STASH_SIZE}[_tab]
+	var what: String = {"tank": "魚缸裡的魚", "box": "魚箱（死魚、腐敗的魚）", "pack": "包包裡的魚（下次出發帶上）", "stash": "倉庫裡的魚"}[_tab]
+	_count.text = "%s  %d%s" % [what, fish.size(), " / %d" % cap if cap > 0 else ""]
 	for c in _list.get_children():
 		c.queue_free()
-	if Profile.tank.is_empty():
-		var l := UiKit.label("還沒有魚。從遊戲裡帶著漁獲成功逃出來，魚就會放進這裡。", 15, UiKit.DIM)
+	if fish.is_empty():
+		var empty := {"tank": "還沒有魚。從遊戲裡帶著漁獲成功逃出來，魚就會放進這裡。",
+			"box": "沒有死掉或腐敗的魚。", "pack": "包包裡沒有魚。點魚缸裡的魚，可以把牠放進包包帶出去。",
+			"stash": "倉庫裡沒有魚。點魚缸裡的魚，可以把牠先收進倉庫。"}
+		var l := UiKit.label(empty[_tab], 15, UiKit.DIM)
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		l.custom_minimum_size.x = 280
 		_list.add_child(l)
-	for i in Profile.tank.size():
-		_list.add_child(_row(i))
+	for i in fish.size():
+		_list.add_child(_row(i, _tab))
 	_tank.stock()
 
 
 ## A fish in the list: its picture in a slot ringed by its rarity, its
 ## name in that colour, its trait and size.
-func _row(i: int) -> Control:
-	var f: Dictionary = Profile.tank[i]
+func _row(i: int, src := "tank") -> Control:
+	var f: Dictionary = Profile.fish_list(src)[i]
 	var rarity := UiKit.fish_rarity(f)
 	var b := Button.new()
 	b.name = "Fish_%d" % i
@@ -120,7 +167,7 @@ func _row(i: int) -> Control:
 	b.add_theme_stylebox_override("normal", box)
 	b.add_theme_stylebox_override("hover", hover)
 	b.add_theme_stylebox_override("pressed", hover)
-	b.pressed.connect(_card_for.bind(i))
+	b.pressed.connect(_card_for.bind(i, src))
 	var row := HBoxContainer.new()
 	row.set_anchors_preset(Control.PRESET_FULL_RECT)
 	row.offset_left = 4
@@ -141,7 +188,10 @@ func _row(i: int) -> Control:
 	top.add_child(UiKit.label(f.get("name", "魚"), 16, UiKit.rarity_color(rarity), true))
 	top.add_child(UiKit.label(FishData.trait_name(f.get("tank_trait", "")), 13, UiKit.USE))
 	words.add_child(top)
-	words.add_child(UiKit.label(FishData.size_text(f), 13, UiKit.DIM))
+	var state := FishLife.state(f)
+	var life := FishLife.traits_text(f)
+	words.add_child(UiKit.label("%s%s%s" % [FishData.size_text(f), "" if state == "alive" else "・" + FishLife.state_text(f),
+		"・" + life if life != "" else ""], 12, UiKit.DIM))
 	row.add_child(words)
 	b.add_child(row)
 	return b
@@ -149,10 +199,11 @@ func _row(i: int) -> Control:
 
 ## A fish's card (its tooltip): picture, name, measurements, trait, price;
 ## sell or trade.
-func _card_for(i: int) -> void:
-	if _card != null or i < 0 or i >= Profile.tank.size():
+func _card_for(i: int, src := "tank") -> void:
+	var list := Profile.fish_list(src)
+	if _card != null or i < 0 or i >= list.size():
 		return
-	var f: Dictionary = Profile.tank[i]
+	var f: Dictionary = list[i]
 	var rarity := UiKit.fish_rarity(f)
 	var shade := ColorRect.new()
 	shade.color = Color(0, 0, 0, 0.5)
@@ -193,28 +244,59 @@ func _card_for(i: int) -> void:
 	var vitals := FishVitals.new()
 	vitals.custom_minimum_size.x = 390
 	col.add_child(vitals)
-	vitals.show_fish(f, true)
+	vitals.show_fish(f, src == "tank")
 	var price := maxi(1, roundi(float(f.get("value", 0.0))))
 	var pr := HBoxContainer.new()
 	pr.add_child(UiKit.label("售價：", 15))
 	pr.add_child(UiKit.gold_label(price, 15))
 	col.add_child(pr)
+	# What can be done with it: put elsewhere (bag, warehouse, tank / box),
+	# fed (the smith), sold (from the tank).
+	var moves := HFlowContainer.new()
+	moves.add_theme_constant_override("h_separation", 8)
+	moves.add_theme_constant_override("v_separation", 6)
+	moves.custom_minimum_size.x = 390
+	var where := {"tank": "放回魚缸", "box": "放進魚箱", "pack": "放進包包", "stash": "放進倉庫"}
+	for to in Profile.fish_places(f, src):
+		var mb := UiKit.button(where[to], 14)
+		mb.name = "Move_" + to
+		mb.custom_minimum_size = Vector2(100, 38)
+		var dest: String = to
+		mb.pressed.connect(func():
+			var why := Profile.move_fish(src, i, dest)
+			_close()
+			if why != "":
+				_say(why)
+			else:
+				_say("%s %s" % [f.get("name", "魚"), where[dest]])
+			_rebuild())
+		moves.add_child(mb)
+	if FishLife.has_trait(f, "smith") and src == "tank":
+		var fb := UiKit.button("餵食", 14, "red")
+		fb.name = "FeedFish"
+		fb.custom_minimum_size = Vector2(100, 38)
+		fb.pressed.connect(func():
+			_close()
+			_feed_dialog(f))
+		moves.add_child(fb)
+	col.add_child(moves)
 	var acts := HBoxContainer.new()
 	acts.add_theme_constant_override("separation", 8)
 	acts.alignment = BoxContainer.ALIGNMENT_END
-	var sell := UiKit.button("販售 +%d" % price, 15, "red")
-	sell.name = "Sell"
-	sell.custom_minimum_size = Vector2(110, 42)
-	sell.pressed.connect(func():
-		Profile.sell_from_tank(i)
-		Sfx.play("coins", -4.0)
-		_close()
-		_rebuild())
-	acts.add_child(sell)
-	var trade := UiKit.button("交換（多人連線後）", 13)
-	trade.disabled = true
-	trade.custom_minimum_size = Vector2(150, 42)
-	acts.add_child(trade)
+	if src == "tank":
+		var sell := UiKit.button("販售 +%d" % price, 15, "red")
+		sell.name = "Sell"
+		sell.custom_minimum_size = Vector2(110, 42)
+		sell.pressed.connect(func():
+			Profile.sell_from_tank(i)
+			Sfx.play("coins", -4.0)
+			_close()
+			_rebuild())
+		acts.add_child(sell)
+		var trade := UiKit.button("交換（多人連線後）", 13)
+		trade.disabled = true
+		trade.custom_minimum_size = Vector2(150, 42)
+		acts.add_child(trade)
 	var close := UiKit.button("關閉", 15)
 	close.custom_minimum_size = Vector2(70, 42)
 	close.pressed.connect(_close)
@@ -226,6 +308,81 @@ func _card_for(i: int) -> void:
 	panel.position = (size - panel.size) / 2.0
 	if _tank.has_method("highlight"):
 		_tank.highlight(i)
+
+
+## User request: feeding one fish. The smith eats a rotten fish (from the
+## fish box) and mends a piece of gear (5 durability, FishLife.SMITH_REPAIR):
+## first the rotten one is picked, then the gear.
+func _feed_dialog(smith: Dictionary) -> void:
+	if _card != null:
+		return
+	var rotten := []
+	for i in Profile.fish_box.size():
+		if FishLife.state(Profile.fish_box[i]) == "rotten":
+			rotten.append(i)
+	var gear := Profile.repairable()
+	var title := "餵食 %s" % smith.get("name", "魚")
+	if rotten.is_empty():
+		_modal(title, ["魚箱裡沒有腐敗的魚可以餵。"], [])
+		return
+	if gear.is_empty():
+		_modal(title, ["身上沒有需要修理的裝備。"], [])
+		return
+	var picks := []
+	for i in rotten:
+		var f: Dictionary = Profile.fish_box[i]
+		var idx: int = i
+		picks.append(["腐敗的%s" % f.get("name", "魚"), func(): _feed_gear(idx)])
+	_modal(title + "：選一條腐敗的魚", ["鐵匠吃下去後，可以選一件裝備回復 %d 點耐久。" % FishLife.SMITH_REPAIR], picks)
+
+
+func _feed_gear(box_index: int) -> void:
+	var picks := []
+	for id in Profile.repairable():
+		var gid: String = id
+		picks.append(["%s（耐久 %d / %d）" % [Items.name_of(gid), Profile.durability(gid), Profile.max_durability(gid)],
+			func():
+				Profile.discard_from_box(box_index)
+				var got := Profile.repair(gid, FishLife.SMITH_REPAIR)
+				_say("鐵匠修好了%s，耐久 +%d" % [Items.name_of(gid), got])
+				_close()
+				_rebuild()])
+	_modal("修理哪一件裝備？", ["耐久回復 %d 點。" % FishLife.SMITH_REPAIR], picks)
+
+
+## A small window over the page: its title, some lines, and a button each
+## for `picks` ([label, callable]); closed by 取消.
+func _modal(title: String, lines: Array, picks: Array) -> void:
+	_close()
+	var shade := ColorRect.new()
+	shade.color = Color(0, 0, 0, 0.5)
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(shade)
+	_card = shade
+	var panel := UiKit.tooltip_panel()
+	panel.name = "Modal"
+	panel.custom_minimum_size = Vector2(380, 0)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 8)
+	col.add_child(UiKit.label(title, 19, UiKit.GOLD_BRIGHT, true))
+	for l in lines:
+		var lb := UiKit.label(l, 15)
+		lb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		lb.custom_minimum_size.x = 350
+		col.add_child(lb)
+	for p in picks:
+		var b := UiKit.button(p[0], 15)
+		b.custom_minimum_size = Vector2(0, 40)
+		b.pressed.connect(p[1])
+		col.add_child(b)
+	var cancel := UiKit.button("取消" if not picks.is_empty() else "關閉", 15)
+	cancel.custom_minimum_size = Vector2(0, 40)
+	cancel.pressed.connect(_close)
+	col.add_child(cancel)
+	panel.add_child(col)
+	shade.add_child(panel)
+	panel.reset_size()
+	panel.position = (size - panel.size) / 2.0
 
 
 func _close() -> void:

@@ -21,6 +21,7 @@ const TESTS := [
 	"test_death_loses_finds",
 	"test_fish_life",
 	"test_mythic_traits",
+	"test_tank_moves_and_feeding",
 	"test_character_abilities",
 	"test_run_menu_and_auto_defend",
 	"test_wolf_bites",
@@ -3101,6 +3102,88 @@ func test_mythic_traits() -> void:
 	Profile.now_override = 0.0
 	GameState.carried_fish.clear()
 	GameState.run_started = false
+	Profile.load_data(saved)
+
+
+## User request: fish out of the tank into the bag or the warehouse, and
+## back; the smith fed a rotten fish mends gear.
+func test_tank_moves_and_feeding() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 0})
+	var carp := FishLife.roll({"name": "鯉魚", "id": "carp", "value": 6.0, "size": "small", "rarity": "common"})
+	carp.life_traits = []
+	Profile.tank = [carp]
+	check(Profile.fish_places(carp, "tank") == ["pack", "stash"], "a living fish in the tank: bag, warehouse")
+	check(Profile.move_fish("tank", 0, "pack") == "" and Profile.tank.is_empty() and Profile.pack_fish.size() == 1, "taken out into the bag")
+	check(Profile.move_fish("pack", 0, "stash") == "" and Profile.stash_fish.size() == 1, "from the bag to the warehouse")
+	check(Profile.move_fish("stash", 0, "tank") == "" and Profile.tank.size() == 1, "and back in the tank")
+	var corpse := FishLife.roll({"name": "鯰魚", "id": "catfish", "value": 8.0, "size": "medium", "rarity": "common"})
+	FishLife.kill(corpse)
+	Profile.fish_box = [corpse]
+	check(Profile.move_fish("box", 0, "tank") != "" and Profile.fish_box.size() == 1, "a dead one can't go in the tank")
+	check(Profile.fish_places(corpse, "box") == ["pack", "stash"], "a dead one: bag or warehouse")
+	check(Profile.move_fish("box", 0, "pack") == "" and Profile.pack_fish.size() == 1, "a dead one in the bag")
+	# Full: the warehouse has a limit.
+	Profile.stash_fish.clear()
+	for _i in Profile.STASH_SIZE:
+		Profile.stash_fish.append(carp.duplicate(true))
+	check(Profile.move_fish("tank", 0, "stash") != "", "the warehouse is full")
+	Profile.stash_fish.clear()
+	# The bag's fish go on the run.
+	Profile.pack_fish = [carp.duplicate(true)]
+	GameState.reset_run()
+	GameState.start_run()
+	check(GameState.carried_fish.size() == 1 and Profile.pack_fish.is_empty(), "packed fish go on the run")
+	GameState.carried_fish.clear()
+	GameState.run_started = false
+	# The page: tabs and moves, and the smith.
+	var page: Control = load("res://scenes/fish_tank.tscn").instantiate()
+	Profile.tank = [carp]
+	Profile.pack_fish = []
+	get_tree().root.add_child(page)
+	await frames(3)
+	check(page.find_child("Tab_tank", true, false) != null and page.find_child("Tab_pack", true, false) != null, "the page has its tabs")
+	page.find_child("Tab_pack", true, false).pressed.emit()
+	await frames(2)
+	check(page.find_child("List", true, false).get_child_count() == 1, "the bag tab: its empty note")
+	page.find_child("Tab_tank", true, false).pressed.emit()
+	await frames(2)
+	page._card_for(0)
+	await frames(2)
+	var mv: Button = page.find_child("Move_pack", true, false)
+	check(mv != null and page.find_child("FeedFish", true, false) == null, "the card offers the bag; no feeding a plain fish")
+	mv.pressed.emit()
+	await frames(2)
+	check(Profile.pack_fish.size() == 1 and Profile.tank.is_empty(), "the button moved it")
+	# The smith.
+	var smith := FishLife.roll({"name": "鯉魚", "id": "carp", "value": 6.0, "size": "small", "rarity": "common"})
+	smith.life_traits = ["smith"]
+	Profile.tank = [smith]
+	var rotten := FishLife.roll({"name": "鯽魚", "id": "crucian", "value": 3.0, "size": "small", "rarity": "common"})
+	FishLife.rot(rotten)
+	Profile.fish_box = [rotten]
+	Profile.wear["knife"] = 10
+	Profile.add_stored("knife", 1)
+	page._rebuild()
+	page._card_for(0)
+	await frames(2)
+	var feed: Button = page.find_child("FeedFish", true, false)
+	check(feed != null, "the smith can be fed")
+	feed.pressed.emit()
+	await frames(2)
+	check(page.find_child("Modal", true, false) != null, "it asks which rotten fish")
+	page._feed_gear(0)
+	await frames(2)
+	var mended: Button = null
+	for b in page.find_child("Modal", true, false).find_children("*", "Button", true, false):
+		if b.text.begins_with("小刀") or b.text.contains("耐久 10"):
+			mended = b
+	check(mended != null, "it asks which gear")
+	if mended != null:
+		mended.pressed.emit()
+	await frames(2)
+	check(Profile.durability("knife") == 15 and Profile.fish_box.is_empty(), "the knife mended 5; the rotten fish eaten")
+	page.queue_free()
 	Profile.load_data(saved)
 
 
