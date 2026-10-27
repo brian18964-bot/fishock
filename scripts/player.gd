@@ -936,7 +936,9 @@ func _sync_glow_light() -> void:
 ## what's been seen already this run)
 var _sniff_walk := 0.0
 var _was_night := false
-var _was_unlit := false
+## (starting dark - the opening, the lamp not yet taken up - isn't the owl's
+## light going out)
+var _was_unlit := true
 var _owl_shown := -100.0
 var _croc_rolled := false
 

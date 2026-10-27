@@ -4740,6 +4740,7 @@ func test_character_abilities() -> void:
 	p.ability_triggered.connect(func(k, _at, _n): fired.append(k))
 	var lantern: Lantern = p.get_node("Lantern")
 	check(not p.unlit(), "the lamp lit: not in the dark")
+	await frames(2)
 	lantern.fuel = 0.0
 	await frames(2)
 	check(p.unlit() and fired.has("owl"), "lamp out: the owl's sight comes on")
@@ -4759,6 +4760,21 @@ func test_character_abilities() -> void:
 	await frames(2)
 	check(get_tree().get_nodes_in_group("dropped_items").size() + get_tree().get_nodes_in_group("glow_mushrooms").size() == before + 1,
 		"and it's there on the ground")
+	view = RunView3D.active
+	if view != null:
+		await frames(2)
+		check(view._tags.size() == 1, "named in 3D")
+		var put_down := DroppedItem.make("potion_ward", 1)
+		put_down.position = p.global_position + Vector2(30, 0)
+		main.add_child(put_down)
+		await frames(2)
+		check(view._items.has(put_down), "a thing put down: its model on the ground")
+		put_down.pick_up()
+		await frames(2)
+		check(not view._items.has(put_down), "and gone once it's picked up")
+		view._tags[0][2] = RunView3D.NAME_TAG_TIME
+		await frames(2)
+		check(view._tags.is_empty(), "the name goes after a while")
 	# The sheep: two mushrooms for one.
 	Profile.character = "sheep"
 	await _fresh_game()

@@ -198,6 +198,24 @@ static func effects(p: Player) -> Array:
 	return out
 
 
+## The portrait in the medallion's round: its middle square (the head and
+## shoulders - the picture's wider than high), filling the round (user
+## report: the whole picture squeezed into a square, the character showed
+## thin and small).
+func _draw_face(c: Vector2, r: float) -> void:
+	var size := _portrait.get_size()
+	var side := minf(size.x, size.y)
+	var u0 := Vector2((size.x - side) * 0.5 / size.x, (size.y - side) * 0.5 / size.y)
+	var u_span := Vector2(side / size.x, side / size.y)
+	var pts := PackedVector2Array()
+	var uvs := PackedVector2Array()
+	for k in 32:
+		var dir := Vector2.RIGHT.rotated(TAU * k / 32.0)
+		pts.append(c + dir * r)
+		uvs.append(u0 + (dir * 0.5 + Vector2(0.5, 0.5)) * u_span)
+	_view.draw_polygon(pts, PackedColorArray([Color.WHITE]), uvs, _portrait)
+
+
 ## The ability's badge in the first slot (false: the character has none).
 func _draw_ability(p: Player) -> bool:
 	var kind := Abilities.kind_of()
@@ -249,9 +267,8 @@ func _draw_card() -> void:
 	# Portrait in the gold medallion.
 	var c := POS + Vector2(PORTRAIT * 0.5, SIZE.y * 0.5)
 	_view.draw_circle(c, PORTRAIT * 0.36, Color(0.06, 0.07, 0.09))
-	var face := PORTRAIT * 0.62
 	if _portrait:
-		_view.draw_texture_rect(_portrait, Rect2(c - Vector2.ONE * face * 0.5, Vector2.ONE * face), false)
+		_draw_face(c, PORTRAIT * 0.36)
 	_view.draw_texture_rect(UiKit.tex("medallion"), Rect2(c - Vector2.ONE * PORTRAIT * 0.5, Vector2.ONE * PORTRAIT), false)
 	# User request (Camp v2): the spirit, under the name.
 	SpiritBar.paint(_view, Rect2(Vector2(x, plate.end.y + 4), Vector2(96, 8)))

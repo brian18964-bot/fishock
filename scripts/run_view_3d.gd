@@ -168,7 +168,7 @@ const DODGE_RATE := 1.6
 ## the map's pictures are stood up as they are)
 const MODELLED := ["tree.gd", "bush.gd", "obstacle.gd", "ground_cover.gd", "dock.gd", "water_zone.gd",
 	"flip_rock.gd", "silhouette_shadow.gd", "player.gd", "map_generator.gd", "light_twin.gd", "day_vision.gd",
-	"ripple.gd", "atmosphere.gd", "weather_fx.gd", "dropped_fish.gd", "glow_mushroom.gd"]
+	"ripple.gd", "atmosphere.gd", "weather_fx.gd", "dropped_fish.gd", "glow_mushroom.gd", "dropped_item.gd"]
 
 ## Asked for by the way the run was set off (the journey's 3D button, the
 ## settings'): the run that's starting is in 3D, and the ones after it (a
@@ -993,22 +993,22 @@ func _name_tag(at: Vector2, text: String) -> void:
 		if d < best:
 			best = d
 			thing = n
-	var t := 0.0
-	var watch := func(dt: float) -> bool:
-		t += dt
-		return t > NAME_TAG_TIME or thing == null or not is_instance_valid(thing) \
-			or not (thing.is_in_group("dropped_items") or thing.is_in_group("glow_mushrooms"))
-	_tags.append([l, watch])
+	_tags.append([l, thing, 0.0])
 
 
+## The name tags up: [Label3D, what it names, how long it's been up].
 var _tags: Array = []
 
 
 func _sync_tags(delta: float) -> void:
 	for i in range(_tags.size() - 1, -1, -1):
-		var l: Label3D = _tags[i][0]
-		if (_tags[i][1] as Callable).call(delta):
-			l.queue_free()
+		var tag: Array = _tags[i]
+		tag[2] += delta
+		var thing = tag[1]
+		var gone: bool = thing == null or not is_instance_valid(thing) \
+			or not ((thing as Node).is_in_group("dropped_items") or (thing as Node).is_in_group("glow_mushrooms"))
+		if tag[2] > NAME_TAG_TIME or gone:
+			(tag[0] as Label3D).queue_free()
 			_tags.remove_at(i)
 
 
@@ -2034,6 +2034,75 @@ func _sync_creatures(delta: float) -> void:
 ## own 3D model, lying on its side, flapping a while, arcing when thrown;
 ## going grey as it spoils).
 var _drops := {}
+
+
+## Things put down (DroppedItem - from the bag, or sniffed out by the dog):
+## each its own model (Items.model_path), lying on the ground this long
+## (m, its longest way; DROP_ROD for a rod), a faint warm glow under it so
+## it's found in the dark - or its picture stood up, if it has no model.
+const DROP_SIZE := 0.32
+const DROP_ROD := 1.1
+var _items := {}
+
+
+func _sync_dropped_items() -> void:
+	for n in _items.keys():
+		if not is_instance_valid(n) or not (n as Node).is_in_group("dropped_items"):
+			(_items[n] as Node3D).queue_free()
+			_items.erase(n)
+	for n in get_tree().get_nodes_in_group("dropped_items"):
+		if not _items.has(n):
+			_items[n] = _dropped_item(n)
+
+
+func _dropped_item(n: Node2D) -> Node3D:
+	var id: String = str(n.get("item_id"))
+	var holder := Node3D.new()
+	holder.name = "Item_" + id
+	add_child(holder)
+	holder.position = to3(n.global_position, LAND_Y)
+	holder.rotation.y = _rng.randf() * TAU
+	var path := Items.model_path(id)
+	var scene: PackedScene = load(path) if path != "" and ResourceLoader.exists(path) else null
+	if scene != null:
+		var model := scene.instantiate() as Node3D
+		holder.add_child(model)
+		var box := AABB()
+		var first := true
+		for mi in model.find_children("*", "MeshInstance3D", true, false):
+			var m := mi as MeshInstance3D
+			m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			var b: AABB = (model.global_transform.affine_inverse() * m.global_transform) * m.get_aabb()
+			box = b if first else box.merge(b)
+			first = false
+		var want := DROP_ROD if id.begins_with("rod_") else DROP_SIZE
+		var k := want / maxf(maxf(box.size.x, maxf(box.size.y, box.size.z)), 0.001)
+		model.scale = Vector3.ONE * k
+		model.position = Vector3(-box.get_center().x, -box.position.y, -box.get_center().z) * k
+	else:
+		var spr := Sprite3D.new()
+		spr.texture = Items.icon(id)
+		spr.pixel_size = DROP_SIZE / 64.0
+		spr.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		spr.shaded = false
+		spr.position.y = DROP_SIZE * 0.5
+		holder.add_child(spr)
+	var glow := MeshInstance3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2.ONE * 0.8
+	q.orientation = PlaneMesh.FACE_Y
+	glow.mesh = q
+	var gm := StandardMaterial3D.new()
+	gm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	gm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	gm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	gm.albedo_texture = UiKit.glow()
+	gm.albedo_color = Color(1.0, 0.8, 0.45, 0.35)
+	glow.material_override = gm
+	glow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	glow.position.y = 0.02
+	holder.add_child(glow)
+	return holder
 
 
 func _sync_dropped_fish(delta: float) -> void:
@@ -3977,6 +4046,7 @@ func _process(delta: float) -> void:
 			continue
 		_sync_light(l, _lights[l])
 	_sync_dropped_fish(delta)
+	_sync_dropped_items()
 	_sync_runes()
 	_sync_mushrooms()
 	_sync_glow()
