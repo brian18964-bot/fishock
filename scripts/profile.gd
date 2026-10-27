@@ -779,7 +779,7 @@ func consume_loadout_lures() -> Dictionary:
 ## Puts a fish brought home in the tank (filling in length, weight and
 ## trait for fish from before those). False if the tank's full.
 func add_to_tank(fish: Dictionary) -> bool:
-	if tank.size() >= TANK_SIZE:
+	if tank.size() >= TANK_SIZE or FishLife.state(fish) != "alive":
 		return false
 	var f := fish.duplicate()
 	var id: String = f.get("id", "")
@@ -795,6 +795,67 @@ func add_to_tank(fish: Dictionary) -> bool:
 	tank_news.append(f.get("name", "魚"))
 	_changed()
 	return true
+
+
+## User request: the fish brought home dead (or rotten) are kept here
+## (a catch dict each) to be sold to the merchant - a rotten one is no use
+## (yet): thrown away. Fresh as they were: they don't age at home.
+const FISH_BOX_SIZE := 40
+var fish_box: Array = []
+
+
+## Puts a dead (or rotten) fish brought home in the box. False if it's full.
+func add_to_fish_box(fish: Dictionary) -> bool:
+	if fish_box.size() >= FISH_BOX_SIZE:
+		return false
+	var f := fish.duplicate()
+	f.erase("tier")
+	fish_box.append(f)
+	_changed()
+	return true
+
+
+## Sells the box's fish at `index` (not a rotten one); the gold made.
+func sell_from_box(index: int) -> int:
+	if index < 0 or index >= fish_box.size() or FishLife.state(fish_box[index]) == "rotten":
+		return 0
+	var price := FishLife.sale_value(fish_box[index])
+	fish_box.remove_at(index)
+	gold += price
+	gold_updated.emit(gold)
+	_changed()
+	return price
+
+
+## How many in the box can be sold (the rotten can't), and what they'd bring.
+func box_sellable() -> int:
+	var n := 0
+	for f in fish_box:
+		if FishLife.state(f) != "rotten":
+			n += 1
+	return n
+
+
+func box_worth() -> int:
+	var total := 0
+	for f in fish_box:
+		total += FishLife.sale_value(f)
+	return total
+
+
+## Sells all that can be; the gold made.
+func sell_box_all() -> int:
+	var total := 0
+	for i in range(fish_box.size() - 1, -1, -1):
+		total += sell_from_box(i)
+	return total
+
+
+## Throws the box's fish at `index` away.
+func discard_from_box(index: int) -> void:
+	if index >= 0 and index < fish_box.size():
+		fish_box.remove_at(index)
+		_changed()
 
 
 func clear_tank_news() -> void:
@@ -1227,6 +1288,7 @@ func snapshot() -> Dictionary:
 		"wear": wear,
 		"rods_owned": rods_owned,
 		"tank": tank,
+		"fish_box": fish_box,
 		"tank_news": tank_news,
 		"settings": settings,
 		"camp_tent": camp_tent,
@@ -1276,6 +1338,7 @@ func load_data(data: Dictionary) -> void:
 		equipped["rod"] = "rod_0"
 	rods_owned = clampi(data.get("rods_owned", data.get("rod_tier", 0)), 0, ROD_TIERS.size() - 1)
 	tank = data.get("tank", [])
+	fish_box = data.get("fish_box", [])
 	tank_news = data.get("tank_news", [])
 	settings = {"auto_lure": false}
 	settings.merge(data.get("settings", {}), true)

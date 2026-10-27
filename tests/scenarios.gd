@@ -19,6 +19,7 @@ const TESTS := [
 	"test_camp3d",
 	"test_glow_mushroom",
 	"test_death_loses_finds",
+	"test_fish_life",
 	"test_character_abilities",
 	"test_run_menu_and_auto_defend",
 	"test_wolf_bites",
@@ -2853,6 +2854,157 @@ func test_hud_top() -> void:
 ## User request (fish tank): fish carried out of a run go in the tank; the
 ## main screen says so; the tank page shows them swimming, lists them, and
 ## sells them.
+## User request: fish have a vitality (活性) and then a freshness (新鮮度),
+## and traits that bend them (FishLife).
+func test_fish_life() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 0})
+	# A catch rolls its life.
+	var f := FishLife.roll({"id": "carp", "name": "鯉魚", "value": 10.0, "rarity": "common"})
+	check(FishLife.has_life(f) and f.vit > 0.0 and f.vit <= 1.0 and not f.dead and not f.rotten and f.fresh == 1.0, "a catch has its life")
+	# Starts and paces differ fish to fish (not all alike).
+	var starts := {}
+	var lives := {}
+	for _i in 60:
+		var g := FishLife.roll({"id": "carp", "rarity": "common"})
+		starts[snappedf(g.vit, 0.05)] = true
+		lives[snappedf(g.vit_life, 50.0)] = true
+	check(starts.size() >= 5 and lives.size() >= 3, "starts and paces differ (%d, %d)" % [starts.size(), lives.size()])
+	# The traits' reach: 垂死 starts low, 生猛 high; none clash.
+	var dying := true
+	var vigorous := true
+	var clash := false
+	for _i in 300:
+		var g := FishLife.roll({"id": "bass", "rarity": "epic"})
+		var t: Array = g.life_traits
+		dying = dying and (not "dying" in t or g.vit < 0.3)
+		vigorous = vigorous and (not "vigorous" in t or g.vit >= 0.9)
+		for group in FishLife.EXCLUSIVE:
+			var n := 0
+			for x in group:
+				n += 1 if x in t else 0
+			clash = clash or n > 1
+		clash = clash or t.size() > 2
+	check(dying and vigorous and not clash, "垂死 starts under 30%, 生猛 over 90%, none clash, at most two")
+	# Time: alive, then dead, then rotten.
+	var a := {"id": "carp", "value": 10.0, "vit": 0.5, "vit_life": 100.0, "fresh": 1.0, "fresh_life": 200.0, "dead": false, "rotten": false,
+		"life_traits": []}
+	check(FishLife.tick(a, 25.0) == "" and absf(a.vit - 0.25) < 0.001 and FishLife.state(a) == "alive", "vitality runs down: 25 s of 50 left")
+	check(FishLife.tick(a, 25.0) == "died" and FishLife.state(a) == "dead" and a.vit == 0.0, "at nothing it's dead")
+	check(FishLife.tick(a, 100.0) == "" and absf(a.fresh - 0.5) < 0.001, "dead: the freshness runs down (half in 100 of 200 s)")
+	check(FishLife.tick(a, 100.0) == "rotted" and FishLife.state(a) == "rotten" and a.value == 0.0, "at nothing it's rotten, worth nothing")
+	# One long tick carries its spare time into the freshness.
+	var b := {"vit": 0.1, "vit_life": 100.0, "fresh": 1.0, "fresh_life": 200.0, "dead": false, "rotten": false, "life_traits": []}
+	FishLife.tick(b, 110.0)
+	check(b.dead and absf(b.fresh - 0.5) < 0.001, "a long tick: died at 10 s, the other 100 s of 200 on its freshness (%.2f)" % b.fresh)
+	# The traits' reach on the pace.
+	var base := {"vit": 1.0, "vit_life": 100.0, "fresh": 1.0, "fresh_life": 100.0, "dead": false, "rotten": false, "life_traits": []}
+	var tough := base.duplicate(true)
+	tough.life_traits = ["tough"]
+	var weary := base.duplicate(true)
+	weary.life_traits = ["weary"]
+	check(FishLife.vit_rate(tough) < FishLife.vit_rate(base) and FishLife.vit_rate(weary) > FishLife.vit_rate(base), "頑強 slower, 厭世 faster")
+	var filthy := base.duplicate(true)
+	filthy.life_traits = ["filthy"]
+	var clean := base.duplicate(true)
+	clean.life_traits = ["clean"]
+	check(FishLife.fresh_rate(filthy) > FishLife.fresh_rate(base) and FishLife.fresh_rate(clean) < FishLife.fresh_rate(base), "骯髒 faster, 潔身 slower")
+	var night := base.duplicate(true)
+	night.life_traits = ["nocturnal"]
+	check(FishLife.vit_rate(night, true) < FishLife.vit_rate(night, false), "夜行: slower at night")
+	# 不死 never dies, 不腐 never rots, a spoiling kind rots as it dies.
+	var imm := base.duplicate(true)
+	imm.life_traits = ["immortal"]
+	FishLife.tick(imm, 100000.0)
+	check(FishLife.state(imm) == "alive" and imm.vit == 1.0, "不死 never dies")
+	var imp := base.duplicate(true)
+	imp.life_traits = ["imperishable"]
+	imp.dead = true
+	imp.vit = 0.0
+	FishLife.tick(imp, 100000.0)
+	check(FishLife.state(imp) == "dead" and imp.fresh == 1.0, "不腐 never rots")
+	var spoil := base.duplicate(true)
+	spoil.fresh_life = 0.5
+	FishLife.tick(spoil, 200.0)
+	check(FishLife.state(spoil) == "rotten", "one that spoils at once is rotten as it dies")
+	var ghost := FishLife.roll({"id": "ghost_fish", "rarity": "epic"})
+	check(ghost.fresh_life < 0.0 and FishLife.fresh_rate(ghost) == 0.0, "the ghost fish never rots")
+	var sardine := FishLife.roll({"id": "sardine", "rarity": "common"})
+	check(sardine.fresh_life <= FishLife.INSTANT, "the sardine spoils as it dies")
+	# Traits together: 垂死 + 頑強 is low and slow; 垂死 + 潔身 dies at once and keeps.
+	var dt := {"vit": 0.2, "vit_life": 100.0, "fresh": 1.0, "fresh_life": 100.0, "dead": false, "rotten": false, "life_traits": ["dying", "tough"]}
+	var dc := {"vit": 0.2, "vit_life": 100.0, "fresh": 1.0, "fresh_life": 100.0, "dead": false, "rotten": false, "life_traits": ["dying", "clean"]}
+	check(FishLife.lifespan_left(dt) > FishLife.lifespan_left(dc) * 2.0, "垂死 + 頑強 outlasts 垂死 + 潔身 on its vitality")
+	check(FishLife.fresh_rate(dc) < FishLife.fresh_rate(dt), "垂死 + 潔身 keeps longer once dead")
+	# What it's worth.
+	var w := {"value": 10.0, "dead": false, "rotten": false, "vit": 0.5, "fresh": 1.0}
+	check(FishLife.sale_value(w) == 10, "alive: its value")
+	w.dead = true
+	w.fresh = 1.0
+	var fresh_price := FishLife.sale_value(w)
+	w.fresh = 0.0
+	check(fresh_price == 9 and FishLife.sale_value(w) == 4, "dead: by how fresh (%d / %d)" % [fresh_price, FishLife.sale_value(w)])
+	w.rotten = true
+	check(FishLife.sale_value(w) == 0, "rotten: nothing")
+	# Carried in a run the bag's fish age (GameState).
+	GameState.carried_fish.clear()
+	var c := {"name": "鯉魚", "id": "carp", "value": 10.0, "size": "small"}
+	GameState.add_carried_fish(c)
+	check(FishLife.has_life(c), "a fish put in the bag has a life")
+	c.vit = 0.01
+	c.life_traits = []
+	c.vit_life = 10.0
+	GameState.run_started = true
+	GameState.run_over = false
+	GameState._age_fish(2.0)
+	check(FishLife.state(c) == "dead", "the bag's fish age with the run")
+	# Brought home: the living to the tank, the dead to the box, the rotten too.
+	var live := FishLife.roll({"name": "鯽魚", "id": "crucian", "value": 4.0, "size": "small", "rarity": "common"})
+	live.life_traits = []
+	var corpse := FishLife.roll({"name": "鯰魚", "id": "catfish", "value": 8.0, "size": "medium", "rarity": "common"})
+	corpse.life_traits = []
+	FishLife.kill(corpse)
+	var rot := FishLife.roll({"name": "鯉魚", "id": "carp", "value": 6.0, "size": "small", "rarity": "common"})
+	FishLife.rot(rot)
+	GameState.carried_fish = [live, corpse, rot]
+	Profile.tank.clear()
+	Profile.fish_box.clear()
+	var text: String = GameState._bring_fish_home()
+	check(Profile.tank.size() == 1 and Profile.tank[0].name == "鯽魚", "alive: in the tank")
+	check(Profile.fish_box.size() == 2 and text.contains("死掉的魚 1 條") and text.contains("腐敗的魚 1 條"), "dead and rotten: in the box (%s)" % text)
+	check(not Profile.add_to_tank(corpse), "a dead one can't go in the tank")
+	# Sold to the merchant: the dead for their worth, the rotten not at all.
+	var gold := Profile.gold
+	var price := FishLife.sale_value(Profile.fish_box[0])
+	check(Profile.box_sellable() == 1 and Profile.box_worth() == price, "one to sell (%d)" % price)
+	check(Profile.sell_from_box(1) == 0 and Profile.fish_box.size() == 2, "the rotten one can't be sold")
+	check(Profile.sell_box_all() == price and Profile.gold == gold + price and Profile.fish_box.size() == 1, "sold: the gold in, the rotten kept")
+	Profile.discard_from_box(0)
+	check(Profile.fish_box.is_empty(), "the rotten one thrown away")
+	# It's kept (saved, loaded).
+	Profile.add_to_fish_box(corpse)
+	var snap := Profile.snapshot()
+	Profile.fish_box.clear()
+	Profile.load_data(snap)
+	check(Profile.fish_box.size() == 1, "the box is saved")
+	# On the ground it goes on.
+	var d: DroppedFish = load("res://scenes/dropped_fish.tscn").instantiate() if ResourceLoader.exists("res://scenes/dropped_fish.tscn") else null
+	if d != null:
+		get_tree().root.add_child(d)
+		var drop := FishLife.roll({"name": "鯉魚", "id": "carp", "value": 10.0, "size": "small", "rarity": "common"})
+		drop.life_traits = []
+		drop.vit = 0.01
+		drop.vit_life = 10.0
+		d.setup(drop)
+		d._process(5.0)
+		check(FishLife.state(d.life) == "dead", "on the ground its life goes on")
+		check(FishLife.state(d.as_fish()) == "dead" and d.as_fish().has("life_traits"), "picked up: as it was")
+		d.queue_free()
+	GameState.carried_fish.clear()
+	GameState.run_started = false
+	Profile.load_data(saved)
+
+
 func test_fish_tank() -> void:
 	var saved := Profile.snapshot()
 	Profile.load_data({"gold": 0})
@@ -2863,7 +3015,9 @@ func test_fish_tank() -> void:
 	]
 	var text: String = GameState._bring_fish_home()
 	check(text.contains("將 鯉魚、沙丁魚 放進魚缸"), "the message: " + text)
-	check(Profile.tank.size() == 2 and GameState.carried_fish.is_empty(), "two in the tank, the rotten one thrown away")
+	check(Profile.tank.size() == 2 and GameState.carried_fish.is_empty(), "two in the tank, the rotten one brought home apart")
+	check(Profile.fish_box.size() == 1 and text.contains("腐敗的魚 1 條帶回來了"), "the rotten one in the fish box, told: " + text)
+	Profile.fish_box.clear()
 	check(Profile.tank[1].has("length") and Profile.tank[1].has("tank_trait"), "an old-style fish gets its measure")
 	var title: Control = load("res://scenes/title_screen.tscn").instantiate()
 	get_tree().root.add_child(title)

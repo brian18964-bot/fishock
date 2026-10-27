@@ -189,6 +189,11 @@ func _card_for(i: int) -> void:
 	tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	tl.custom_minimum_size.x = 390
 	col.add_child(tl)
+	# (its life, kept as it was brought: it doesn't run down in the tank)
+	var vitals := FishVitals.new()
+	vitals.custom_minimum_size.x = 390
+	col.add_child(vitals)
+	vitals.show_fish(f, true)
 	var price := maxi(1, roundi(float(f.get("value", 0.0))))
 	var pr := HBoxContainer.new()
 	pr.add_child(UiKit.label("售價：", 15))

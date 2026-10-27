@@ -2,20 +2,17 @@ class_name DroppedFish
 extends Area2D
 
 ## Design doc request: fish dropped on the ground (via Player's drop-fish
-## key) lose value the longer they sit - anyone can walk up and pick them
-## back up, including the player who dropped them (e.g. after ducking out
-## of a ghost's sight). Past ROT_TIME they flip to permanently "rotten":
-## no longer worth normal quota credit, but sacrificeable for a gamble -
-## see GameState.sacrifice_one()'s rotten branch.
-
-const ROT_TIME := 70.0
-const MIN_VALUE_RATIO := 0.15
+## key) go on as they were - anyone can walk up and pick them back up,
+## including the player who dropped them (e.g. after ducking out of a
+## ghost's sight). Their life goes on (FishLife: vitality, then freshness;
+## a rotten one is no longer worth normal quota credit, but sacrificeable
+## for a gamble - see GameState.sacrifice_one()'s rotten branch).
 
 var fish_name: String = "魚"
 var fish_id := ""
-## The catch's own details (length, weight, trait) kept for picking it up.
-var details := {}
-var base_value: float = 0.0
+## The catch itself (its length, weight, traits, life...) kept for picking
+## it up.
+var life := {}
 ## Its size in the backpack (Inventory).
 var size: String = "small"
 var age: float = 0.0
@@ -41,11 +38,9 @@ func _ready() -> void:
 func setup(fish: Dictionary) -> void:
 	fish_name = fish.get("name", "魚")
 	fish_id = fish.get("id", FishData.id_for(fish_name))
-	base_value = float(fish.get("value", 0))
 	size = Inventory.fish_size(fish)
-	for key in ["length", "weight", "tank_trait"]:
-		if fish.has(key):
-			details[key] = fish[key]
+	life = fish.duplicate()
+	FishLife.ensure(life)
 	var tex := FishData.icon(fish_id, fish_name)
 	if tex != null:
 		visual.texture = tex
@@ -68,22 +63,30 @@ func fly_to(to: Vector2, time := 0.5) -> void:
 
 func _process(delta: float) -> void:
 	age += delta
-	var freshness: float = _freshness()
-	if is_rotten():
-		visual.modulate = ROTTEN_COLOR
-		label.text = "腐敗的%s" % fish_name
-	else:
-		visual.modulate = FRESH_COLOR.lerp(ROTTEN_COLOR, 1.0 - freshness)
-		label.text = "%s（%.0f）" % [fish_name, current_value()]
+	FishLife.tick(life, delta, GameState.is_night)
+	match FishLife.state(life):
+		"rotten":
+			visual.modulate = ROTTEN_COLOR
+			label.text = "腐敗的%s" % fish_name
+		"dead":
+			visual.modulate = FRESH_COLOR.lerp(ROTTEN_COLOR, 1.0 - float(life.fresh))
+			label.text = "%s（已死亡 %.0f）" % [fish_name, current_value()]
+		_:
+			visual.modulate = FRESH_COLOR
+			label.text = "%s（%.0f）" % [fish_name, current_value()]
+
+
+## How lively it is (RunView3D: a living one flaps, a dead one lies still).
+func _freshness() -> float:
+	return 0.3 + 0.7 * float(life.get("vit", 0.0)) if FishLife.state(life) == "alive" else 0.0
 
 
 func is_rotten() -> bool:
-	return age >= ROT_TIME
+	return FishLife.state(life) == "rotten"
 
 
 func current_value() -> float:
-	var value: float = base_value * lerp(MIN_VALUE_RATIO, 1.0, _freshness())
-	return value
+	return FishLife.worth(life)
 
 
 ## Removes this node from the world and hands back a carried_fish-shaped
@@ -98,10 +101,10 @@ func pick_up() -> Dictionary:
 
 ## What it'd be back in the backpack.
 func as_fish() -> Dictionary:
-	var fish := {"name": fish_name, "id": fish_id, "value": current_value(), "tier": "dropped", "rotten": false, "size": size}
-	if is_rotten():
-		fish.merge({"value": 0.0, "tier": "rotten", "rotten": true}, true)
-	fish.merge(details)
+	var fish := life.duplicate()
+	fish.merge({"name": fish_name, "id": fish_id, "size": size}, true)
+	if not is_rotten():
+		fish["tier"] = "dropped"
 	return fish
 
 
@@ -113,11 +116,6 @@ func eaten() -> void:
 		if body.has_method("set_in_dropped_fish"):
 			body.set_in_dropped_fish(false, self)
 	queue_free()
-
-
-func _freshness() -> float:
-	var f: float = clamp(1.0 - age / ROT_TIME, 0.0, 1.0)
-	return f
 
 
 func _on_body_entered(body: Node2D) -> void:

@@ -7,6 +7,8 @@ extends Node
 
 signal quota_updated(progress: float, target: float)
 signal inventory_updated(carried: Array)
+## A carried fish died or rotted.
+signal fish_changed(fish: Dictionary)
 signal day_cleared()
 signal message_posted(text: String)
 ## User request: what's happening on the run - the bait taken, a long wait
@@ -132,6 +134,7 @@ func ghost_interfered() -> void:
 func _process(delta: float) -> void:
 	if run_started and not run_over:
 		_ghost_quiet += delta
+		_age_fish(delta)
 	if not run_started or run_over or is_night or day_phase != DayPhase.FISHING:
 		return
 	if day_duration > 0.0:
@@ -201,7 +204,21 @@ func _set_weather(kind: int, seconds: float, quiet: bool) -> void:
 		_announce_weather()
 
 
+## The fish carried: their vitality and freshness run down (FishLife); a
+## word when one dies or rots.
+func _age_fish(delta: float) -> void:
+	for fish in carried_fish:
+		var said := FishLife.tick(fish, delta, is_night)
+		if said == "died":
+			push_message("%s 死掉了" % fish.get("name", "魚"))
+			fish_changed.emit(fish)
+		elif said == "rotted":
+			push_message("%s 腐敗了" % fish.get("name", "魚"))
+			fish_changed.emit(fish)
+
+
 func add_carried_fish(fish: Dictionary) -> void:
+	FishLife.ensure(fish)
 	if not fish.has("uid"):
 		fish["uid"] = _next_uid
 		_next_uid += 1
@@ -278,7 +295,7 @@ func sacrifice_at(index: int) -> Dictionary:
 		_trigger_rotten_sacrifice()
 		return fish
 
-	var value := float(fish.value)
+	var value := FishLife.worth(fish)
 	quota_progress += value
 	quota_updated.emit(quota_progress, quota_target)
 
@@ -402,20 +419,34 @@ func end_run(success: bool, message: String) -> void:
 
 
 ## User request (fish tank): the fish carried out of a run go into the
-## fish tank at home (Profile.tank), to be looked at, sold or traded there;
-## rotten ones are thrown away, and any the tank has no room for are sold.
-## What to tell the player.
+## fish tank at home (Profile.tank) - the living ones, to be looked at, sold
+## or traded there; any the tank has no room for are sold. User request
+## (vitality): the dead ones can only be sold to the merchant (Profile.fish_box),
+## and the rotten ones are brought home too (no use yet). What to tell the
+## player.
 func _bring_fish_home() -> String:
 	var kept := []
 	var sold := 0
+	var dead := 0
 	var rotten := 0
+	var lost := 0
 	for fish in carried_fish:
-		if fish.get("rotten", false):
-			rotten += 1
-		elif Profile.add_to_tank(fish):
-			kept.append(fish.get("name", "魚"))
-		else:
-			sold += maxi(1, int(fish.get("value", 0)))
+		match FishLife.state(fish):
+			"alive":
+				if Profile.add_to_tank(fish):
+					kept.append(fish.get("name", "魚"))
+				else:
+					sold += FishLife.sale_value(fish)
+			"dead":
+				if Profile.add_to_fish_box(fish):
+					dead += 1
+				else:
+					sold += FishLife.sale_value(fish)
+			_:
+				if Profile.add_to_fish_box(fish):
+					rotten += 1
+				else:
+					lost += 1
 	carried_fish.clear()
 	inventory_updated.emit(carried_fish)
 	if sold > 0:
@@ -424,9 +455,13 @@ func _bring_fish_home() -> String:
 	if not kept.is_empty():
 		text += "\n將 %s 放進魚缸" % "、".join(kept)
 	if sold > 0:
-		text += "\n魚缸滿了，其餘的漁獲賣了 %d 金幣" % sold
+		text += "\n魚缸或魚箱滿了，其餘的漁獲賣了 %d 金幣" % sold
+	if dead > 0:
+		text += "\n死掉的魚 %d 條，帶去賣給商人" % dead
 	if rotten > 0:
-		text += "\n腐敗的魚丟掉了 %d 條" % rotten
+		text += "\n腐敗的魚 %d 條帶回來了（目前沒有用處）" % rotten
+	if lost > 0:
+		text += "\n腐敗的魚丟掉了 %d 條" % lost
 	return text
 
 

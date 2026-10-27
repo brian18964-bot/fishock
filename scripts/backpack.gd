@@ -63,6 +63,7 @@ var _card_pic: TextureRect
 var _card_name: Label
 var _card_sub: Label
 var _detail: Label
+var _vitals: FishVitals
 var _actions: HFlowContainer
 ## The thing whose card is up.
 var _shown := {}
@@ -187,6 +188,10 @@ func _build_card() -> void:
 	_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_detail.custom_minimum_size.x = CARD_WIDTH - 24.0
 	col.add_child(_detail)
+	# (a fish's vitality or freshness, and its traits)
+	_vitals = FishVitals.new()
+	_vitals.custom_minimum_size.x = CARD_WIDTH - 24.0
+	col.add_child(_vitals)
 	_actions = HFlowContainer.new()
 	# (laid out at the card's width from the start - else the card is sized
 	# for its buttons one under another)
@@ -300,6 +305,7 @@ func _show_selected(player: Player, items: Array, placed: Array) -> void:
 	for c in _actions.get_children():
 		_actions.remove_child(c)
 		c.queue_free()
+	_vitals.visible = false
 	if not _selected.is_empty() and _selected.kind == "slot":
 		_show_slot(player, _selected.index)
 		for box in _gear_slots:
@@ -325,10 +331,14 @@ func _show_selected(player: Player, items: Array, placed: Array) -> void:
 	match item.kind:
 		"fish":
 			var fish: Dictionary = GameState.carried_fish[item.index]
-			if fish.get("rotten", false):
-				_detail.text = "%s型・腐敗了：拿去獻祭會賭一把" % item.grade
-			else:
-				_detail.text = "%s型・價值 %.0f" % [item.grade, fish.get("value", 0.0)]
+			match FishLife.state(fish):
+				"rotten":
+					_detail.text = "%s型・腐敗了：拿去獻祭會賭一把" % item.grade
+				"dead":
+					_detail.text = "%s型・已死亡，只能賣給商人・價值 %.0f" % [item.grade, FishLife.worth(fish)]
+				_:
+					_detail.text = "%s型・價值 %.0f" % [item.grade, fish.get("value", 0.0)]
+			_vitals.show_fish(fish)
 			if GameState.lure_index() == item.index:
 				_detail.text += "　・已設為誘惑用的魚"
 				_actions.add_child(_action("取消誘餌", func():
@@ -804,7 +814,16 @@ class GridView extends Control:
 				if tex != null:
 					var fit := minf(inner.size.x / 2.0, inner.size.y) * 0.95
 					var pic := Rect2(inner.get_center() - Vector2(fit, fit / 2.0), Vector2(fit * 2.0, fit))
-					draw_texture_rect(tex, pic, false, Color(0.55, 0.5, 0.35) if item.get("rotten", false) else Color.WHITE)
+					draw_texture_rect(tex, pic, false, Color(0.55, 0.5, 0.35) if item.get("rotten", false) \
+						else (Color(0.75, 0.78, 0.8) if item.get("dead", false) else Color.WHITE))
+				# (how much life or freshness it has left: a thin bar under it)
+				if item.index < GameState.carried_fish.size() and FishLife.has_life(GameState.carried_fish[item.index]):
+					var bar := FishLife.bar(GameState.carried_fish[item.index])
+					var strip := Rect2(Vector2(inner.position.x + 3.0, inner.end.y - 6.0), Vector2(inner.size.x - 6.0, 4.0))
+					draw_rect(strip, Color(0, 0, 0, 0.6))
+					var colr: Color = FishVitals.FRESH_COLOR if bar.kind == "fresh" else (FishVitals.ROT_COLOR if bar.kind == "rotten" \
+						else FishVitals.VIT_COLOR.lerp(FishVitals.VIT_LOW, 1.0 - clampf(float(bar.share) * 2.0, 0.0, 1.0)))
+					draw_rect(Rect2(strip.position, Vector2(strip.size.x * clampf(float(bar.share), 0.0, 1.0), strip.size.y)), colr)
 			elif item.has("item") and square == null:
 				# Packed before the run: its picture (Items.icon), fitted in.
 				var tex := Items.icon(item.item)

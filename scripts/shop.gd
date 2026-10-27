@@ -11,7 +11,7 @@ extends Control
 ## rarity's colour with its price - and the chosen thing's tooltip on the
 ## right with the buying (how many, where to) under it.
 
-const TABS := [["gear", "釣具"], ["bait", "魚餌"], ["item", "道具"], ["upgrade", "升級"]]
+const TABS := [["gear", "釣具"], ["bait", "魚餌"], ["item", "道具"], ["upgrade", "升級"], ["fish", "賣魚"]]
 const UPGRADE_ICONS := {
 	"fuel_capacity": "res://assets/sprites/items/oil_lamp.png",
 	"bait_capacity": "res://assets/sprites/lure/worm_55deg_albedo.png",
@@ -70,7 +70,7 @@ func _build() -> void:
 	for t in TABS:
 		var b := UiKit.button(t[1], 16)
 		b.name = "Tab_" + t[0]
-		b.custom_minimum_size = Vector2(118, 40)
+		b.custom_minimum_size = Vector2(98, 40)
 		var key: String = t[0]
 		b.pressed.connect(func(): _show_tab(key))
 		tabs.add_child(b)
@@ -206,6 +206,8 @@ func _refresh() -> void:
 			for key in Profile.SNACK_ORDER:
 				var sn: Dictionary = Profile.SNACKS[key]
 				_card(key, Items.icon(key), sn.name, "精神 +%d" % int(sn.spirit), int(sn.cost), func(): _snack_card(key))
+		"fish":
+			_fish_cards()
 		"upgrade":
 			for key in Profile.UPGRADE_DEFS:
 				var d: Dictionary = Profile.UPGRADE_DEFS[key]
@@ -246,6 +248,7 @@ func _card(id: String, tex: Texture2D, title: String, sub: String, price: int, o
 	row.add_theme_constant_override("separation", 10)
 	var pic := WareIcon.new()
 	pic.id = id
+	pic.rarity = _rarity(id) if id.begins_with("fish_") else ""
 	pic.texture = tex
 	pic.custom_minimum_size = Vector2(72, 72)
 	pic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -275,6 +278,9 @@ func _card(id: String, tex: Texture2D, title: String, sub: String, price: int, o
 func _rarity(id: String) -> String:
 	if id.begins_with("up_") or id == "lamp":
 		return "common"
+	if id.begins_with("fish_"):
+		var i := int(id.substr(5))
+		return UiKit.fish_rarity(Profile.fish_box[i]) if i < Profile.fish_box.size() else "common"
 	return UiKit.item_rarity(id)
 
 
@@ -328,6 +334,7 @@ func _head(tex: Texture2D, title: String, rarity: String, kind: String, lines: A
 	head.add_theme_constant_override("separation", 12)
 	var pic := WareIcon.new()
 	pic.id = _selected
+	pic.rarity = rarity if _selected.begins_with("fish_") else ""
 	pic.texture = tex
 	pic.custom_minimum_size = Vector2(76, 76)
 	head.add_child(pic)
@@ -436,6 +443,77 @@ func _upgrade_dialog(key: String) -> void:
 		_show_toast("%s 升到 Lv.%d" % [d.label, Profile.get_upgrade_level(key)])
 		_upgrade_dialog(key))
 	_pane.add_child(up)
+
+
+## User request: the fish brought home dead (or rotten) are sold to the
+## merchant - here (Profile.fish_box). A rotten one's worth nothing (no use
+## yet): it can only be thrown away.
+func _fish_cards() -> void:
+	if Profile.fish_box.is_empty():
+		var none := UiKit.label("沒有要賣的魚\n（死掉的魚帶回營地，會放在這裡）", 16, UiKit.DIM)
+		none.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		none.custom_minimum_size = Vector2(500, 0)
+		_grid.add_child(none)
+		if _pane.get_child_count() == 0:
+			_clear_pane()
+		return
+	for i in Profile.fish_box.size():
+		var f: Dictionary = Profile.fish_box[i]
+		var idx := i
+		var sub := "腐敗了" if FishLife.state(f) == "rotten" else "新鮮度 %d%%" % roundi(float(f.get("fresh", 0.0)) * 100.0)
+		_card("fish_%d" % i, FishData.icon(f.get("id", ""), f.get("name", "")), f.get("name", "魚"), sub,
+			FishLife.sale_value(f), func(): _fish_dialog(idx))
+
+
+func _fish_dialog(i: int) -> void:
+	_clear_pane()
+	if i >= Profile.fish_box.size():
+		return
+	var f: Dictionary = Profile.fish_box[i]
+	var rotten := FishLife.state(f) == "rotten"
+	var lines := [[FishData.size_text(f), UiKit.DIM]] if FishData.size_text(f) != "" else []
+	lines.append(["死掉的魚只能賣給商人：越新鮮賣得越好。" if not rotten else "腐敗的魚目前沒有用處，只能丟掉。", UiKit.TEXT])
+	_head(FishData.icon(f.get("id", ""), f.get("name", "")), f.get("name", "魚"), UiKit.fish_rarity(f), "魚", lines)
+	var vitals := FishVitals.new()
+	vitals.kept = true
+	vitals.custom_minimum_size.x = 320
+	_pane.add_child(vitals)
+	vitals.show_fish(f)
+	if not rotten:
+		var price := HBoxContainer.new()
+		price.add_child(UiKit.label("賣價：", 16, UiKit.TEXT))
+		price.add_child(UiKit.gold_label(FishLife.sale_value(f), 16))
+		_pane.add_child(price)
+	_spacer()
+	if rotten:
+		var drop := UiKit.button("丟掉", 18)
+		drop.name = "Discard"
+		drop.custom_minimum_size = Vector2(0, 48)
+		drop.pressed.connect(func():
+			Profile.discard_from_box(i)
+			_show_toast("丟掉了腐敗的%s" % f.get("name", "魚"))
+			_show_tab("fish"))
+		_actions.add_child(drop)
+	else:
+		var sell := UiKit.button("賣出", 18, "red")
+		sell.name = "Sell"
+		sell.custom_minimum_size = Vector2(0, 48)
+		sell.pressed.connect(func():
+			var got := Profile.sell_from_box(i)
+			Sfx.play("coins", -4.0)
+			_show_toast("賣出 %s +%d" % [f.get("name", "魚"), got])
+			_show_tab("fish"))
+		_actions.add_child(sell)
+	if Profile.fish_box.size() > 1 and Profile.box_sellable() > 0:
+		var all := UiKit.button("全部賣出（+%d）" % Profile.box_worth(), 16)
+		all.name = "SellAll"
+		all.custom_minimum_size = Vector2(0, 42)
+		all.pressed.connect(func():
+			var got := Profile.sell_box_all()
+			Sfx.play("coins", -4.0)
+			_show_toast("全部賣出 +%d" % got)
+			_show_tab("fish"))
+		_actions.add_child(all)
 
 
 func _spacer() -> void:
@@ -611,10 +689,13 @@ func _on_back_pressed() -> void:
 class WareIcon extends Control:
 	var id := ""
 	var texture: Texture2D
+	## A fish's (not worked out from its id).
+	var rarity := ""
 
 	func _draw() -> void:
 		var r := Rect2(Vector2.ZERO, size)
-		var rarity := "common" if id.begins_with("up_") or id == "lamp" or id == "" else UiKit.item_rarity(id)
+		var rarity := self.rarity if self.rarity != "" else \
+			("common" if id.begins_with("up_") or id == "lamp" or id == "" else UiKit.item_rarity(id))
 		# Its square icon (the MMO look) where it has one.
 		var square := Items.square_icon(id)
 		UiKit.draw_slot(self, r, rarity, false, square)
