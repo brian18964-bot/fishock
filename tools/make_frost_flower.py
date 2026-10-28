@@ -31,8 +31,9 @@ STEM_TOP = 3.1
 BELL_FROM = 3.72
 ARC_X = 0.12
 TURN = -92.0
-ROOT_COUNT = 6
-ROOT_REACH = 0.5
+# (metres: how many main roots, how far the longest reaches; fewer, uneven, not a star)
+ROOT_COUNT = 7
+ROOT_REACH = 0.40
 
 
 def tube(name, pts, r0, r1, mat, sides=6):
@@ -64,6 +65,66 @@ def tube(name, pts, r0, r1, mat, sides=6):
     bpy.context.scene.collection.objects.link(o)
     o.data.materials.append(mat)
     return o
+
+
+def grow_roots(rng, rmat, scale, foot):
+    """The root system, after the reference tree's (the user's Tree.fbx): roots
+    leave the stem's foot at uneven angles and lengths, each a meandering,
+    tapering thread that comes up out of the foot a little and then lies on the
+    ground, forking as it goes into thinner ones, with a few hair-fine
+    rootlets off them. Built in metres, put into the model's own units."""
+    k = 1.0 / scale
+    out = []
+    n_main = ROOT_COUNT
+    # uneven spacing: the gaps between neighbours differ a lot
+    gaps = rng.uniform(0.5, 1.6, n_main)
+    angs = np.cumsum(gaps / gaps.sum() * 2 * math.pi) + rng.uniform(0, 6.28)
+    count = [0]
+
+    def thread(p0, ang, length, r0, z_lift, depth):
+        steps = max(int(length / 0.03), 5)
+        curve = rng.uniform(-0.5, 0.5) if depth == 0 else rng.uniform(-0.8, 0.8)
+        pts = [Vector((p0[0], p0[1], p0[2]))]
+        x, y = p0[0], p0[1]
+        arch_at = rng.uniform(0.2, 0.8)
+        arch = rng.choice([0.0, 0.0, 0.006, 0.012])
+        for s in range(1, steps + 1):
+            t = s / steps
+            ang += curve * 0.45 + rng.normal(0, 0.22)
+            x += math.cos(ang) * length / steps
+            y += math.sin(ang) * length / steps
+            # up out of the foot, then down to the ground; now and then an arch over a pebble
+            z = r0 * 0.5 + 0.003 + z_lift * (1 - t) ** 2 + arch * math.exp(-((t - arch_at) / 0.12) ** 2)
+            pts.append(Vector((x, y, z)))
+        rt = max(r0 * 0.12, 0.0008)
+        count[0] += 1
+        out.append(tube("root_%d" % count[0], [Vector(v * k) for v in pts], r0 * k, rt * k, rmat, 4 if r0 < 0.004 else 5))
+        if depth >= 2:
+            return
+        # forks off it
+        forks = rng.integers(2, 4) if depth == 0 else rng.integers(0, 3)
+        for _ in range(int(forks)):
+            t = rng.uniform(0.3, 0.75)
+            idx = int(t * steps)
+            side = rng.choice([-1, 1])
+            fa = math.atan2(pts[idx + 1].y - pts[idx].y, pts[idx + 1].x - pts[idx].x) + side * rng.uniform(0.45, 1.0)
+            r_here = r0 + (rt - r0) * t
+            thread(pts[idx], fa, length * rng.uniform(0.3, 0.55) * (1 - t * 0.5), r_here * 0.7, 0.0, depth + 1)
+        # hair rootlets
+        for _ in range(int(rng.integers(1, 3))) if depth == 0 else []:
+            t = rng.uniform(0.2, 0.9)
+            idx = int(t * steps)
+            fa = rng.uniform(0, 6.28)
+            thread(pts[idx], fa, rng.uniform(0.03, 0.07), 0.0016, 0.0, 2)
+
+    for a in angs:
+        length = rng.uniform(0.14, ROOT_REACH)
+        thread((foot.x / k * 0 + 0.0, 0.0, 0.0), float(a), length, rng.uniform(0.0055, 0.008), rng.uniform(0.012, 0.03), 0)
+    # (placed at the stem's own foot)
+    for o in out:
+        for v in o.data.vertices:
+            v.co += foot
+    return out
 
 
 def main():
@@ -133,22 +194,12 @@ def main():
     rmat = bpy.data.materials.new("frost_roots")
     rmat.use_nodes = True
     rb = next(x for x in rmat.node_tree.nodes if x.type == "BSDF_PRINCIPLED")
-    rb.inputs["Base Color"].default_value = (0.55, 0.66, 0.7, 1.0)
+    rb.inputs["Base Color"].default_value = (0.3, 0.42, 0.5, 1.0)
     rb.inputs["Roughness"].default_value = 0.7
-    rng = np.random.default_rng(4)
+    rng = np.random.default_rng(11)
     scale = HEIGHT / float(co[:, 2].max())
-    roots = []
-    for k in range(ROOT_COUNT):
-        a = 2 * math.pi * k / ROOT_COUNT + rng.uniform(-0.25, 0.25)
-        reach = ROOT_REACH / scale * rng.uniform(0.7, 1.0)
-        pts = []
-        for s in range(9):
-            t = s / 8.0
-            wob = math.sin(t * 5 + k) * 0.12 * t
-            ang = a + wob
-            pts.append(Vector((math.cos(ang) * reach * t, math.sin(ang) * reach * t, 0.04 - 0.05 * t + 0.03 * math.sin(t * 9 + k))))
-        # (thin and few, lying close to the ground)
-        roots.append(tube("root_%d" % k, pts, 0.035, 0.008, rmat, 5))
+    foot0 = Vector((float(co[co[:, 2] < 0.3][:, 0].mean()), float(co[co[:, 2] < 0.3][:, 1].mean()), 0.0))
+    roots = grow_roots(rng, rmat, scale, foot0)
 
     # The neck: a short stem piece from the stem's top up into the bell.
     nmat = mat
