@@ -896,14 +896,7 @@ func add_to_fish_box(fish: Dictionary) -> bool:
 
 ## Sells the box's fish at `index` (not a rotten one); the gold made.
 func sell_from_box(index: int) -> int:
-	if index < 0 or index >= fish_box.size() or FishLife.state(fish_box[index]) == "rotten":
-		return 0
-	var price := FishLife.sale_value(fish_box[index])
-	fish_box.remove_at(index)
-	gold += price
-	gold_updated.emit(gold)
-	_changed()
-	return price
+	return sell_fish("box", index)
 
 
 ## How many in the box can be sold (the rotten can't), and what they'd bring.
@@ -1125,18 +1118,40 @@ func clear_tank_news() -> void:
 	_save()
 
 
-## Sells the tank's fish at `index` for its value; the gold made.
+## Sells the tank's fish at `index`; the gold made (what any fish brings,
+## wherever it's sold: FishLife.sale_value).
 func sell_from_tank(index: int) -> int:
 	if index < 0 or index >= tank.size():
 		return 0
 	settle_fortune()
-	var f: Dictionary = tank[index]
-	tank.remove_at(index)
-	var price := maxi(1, roundi(float(f.get("value", 0.0))))
+	return sell_fish("tank", index)
+
+
+## User request: one price for a fish wherever it's sold (the tank page's
+## 販售 and the merchant's 收購): FishLife.sale_value - its full value while it
+## lives, less as it goes stale when dead, nothing rotten. Sells fish `i` of
+## list `place` ("tank", "box", "pack", "stash"); the gold made (0 if it can't
+## be sold: rotten).
+func sell_fish(place: String, i: int) -> int:
+	var list := fish_list(place)
+	if i < 0 or i >= list.size():
+		return 0
+	var price := FishLife.sale_value(list[i])
+	if price <= 0:
+		return 0
+	list.remove_at(i)
 	gold += price
 	gold_updated.emit(gold)
 	_changed()
 	return price
+
+
+## Throws fish `i` of list `place` away.
+func discard_fish(place: String, i: int) -> void:
+	var list := fish_list(place)
+	if i >= 0 and i < list.size():
+		list.remove_at(i)
+		_changed()
 
 
 # --- Selling back (收購) --------------------------------------------------

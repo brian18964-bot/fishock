@@ -89,6 +89,10 @@ func _build() -> void:
 		_tank.bucket_clicked.connect(func():
 			_tab = "bucket"
 			_rebuild())
+	if _tank.has_signal("tank_clicked"):
+		_tank.tank_clicked.connect(func():
+			_tab = "overview"
+			_rebuild())
 	if _tank.has_signal("bucket_picked"):
 		_tank.bucket_picked.connect(func(i): _card_for(i, "box"))
 	add_child(_tank)
@@ -307,7 +311,8 @@ func _card_for(i: int, src := "tank") -> void:
 	vitals.custom_minimum_size.x = CARD_WIDTH - 30.0
 	col.add_child(vitals)
 	vitals.show_fish(f, src == "tank")
-	var price := maxi(1, roundi(float(f.get("value", 0.0))))
+	# (the one price, as at the merchant's: FishLife.sale_value)
+	var price := FishLife.sale_value(f)
 	var pr := HBoxContainer.new()
 	pr.add_child(UiKit.label("售價：", 15))
 	pr.add_child(UiKit.gold_label(price, 15))

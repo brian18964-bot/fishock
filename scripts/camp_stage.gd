@@ -72,6 +72,22 @@ const DRUM_SCALE := 1.2
 const TROUGH_SCALE := 1.95
 ## The lamp on the drum's lid.
 const LAMP_ON_DRUM := Vector3(0.05, 0.92 * DRUM_SCALE, 0.02)
+## The trough's leaves where the page's are (Aquarium.leaf_state), its size.
+func _place_trough_leaves() -> void:
+	var water_size: Vector2 = TROUGH_WATER[1]
+	var half := Aquarium._water_half()
+	var kx := water_size.x * 0.5 / half.x
+	var kz := water_size.y * 0.5 / half.y
+	var st := Aquarium.leaf_state()
+	for i in mini(_trough_leaves.size(), st.size()):
+		var mi: MeshInstance3D = _trough_leaves[i]
+		if not is_instance_valid(mi):
+			continue
+		mi.position = Vector3(st[i][0] * kx, TROUGH_WATER[0] - 0.004, st[i][1] * kz)
+		mi.rotation.y = st[i][2]
+		mi.scale = Vector3.ONE * float(Aquarium.PADS[i][2]) * 2.0 * kx
+
+
 ## The 渡石 (user request: moved from far off by the water to the camp's
 ## left, past the tent - the view swiped left to it - and tapped, it's
 ## 出發夜釣: the journey page, the camera drawn in close to it). Turned a
@@ -150,7 +166,8 @@ const WOODPILE_AT := MID + (Vector3(-2.0, 0.0, -2.6) - MID) * FLAT
 ## leaves floating on it, as in the fish tank page's ([x, z, radius], the
 ## drum's own frame).
 const TROUGH_WATER := [0.33, Vector2(0.84, 0.52)]
-const TROUGH_PADS := [[-0.24, 0.08, 0.12], [0.22, -0.11, 0.09], [0.02, 0.15, 0.065]]
+## (the leaves: Aquarium.PADS' two, at the page's places scaled down to the trough)
+var _trough_leaves: Array = []
 const OUTLINE_COLOR := Color(1.0, 0.78, 0.38)
 
 var camera: Camera3D
@@ -294,6 +311,11 @@ func set_character(id: String) -> void:
 
 func _process(delta: float) -> void:
 	_time += delta
+	if not _trough_leaves.is_empty():
+		# (the page open, the player moves them; else they drift)
+		if not Aquarium.page_open:
+			Aquarium.drift_leaves(delta, _time)
+		_place_trough_leaves()
 	# The home view following a swipe (eased).
 	if _station == "home" and not free_camera and (_cam_tween == null or not _cam_tween.is_running()) and absf(_pan_now - view_pan) > 0.0005:
 		_pan_now = lerpf(_pan_now, view_pan, minf(1.0, delta * 12.0))
@@ -1373,14 +1395,15 @@ void fragment() {
 		var mat := (leaf.material_override as StandardMaterial3D).duplicate() as StandardMaterial3D
 		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 		mat.albedo_color = Color(0.9, 0.95, 0.85)
-		for pad in TROUGH_PADS:
+		# User report: the camp's tank showed three leaves, not the page's two:
+		# the same two, where the page has them (and drifting when it's shut).
+		for k in Aquarium.PADS.size():
 			var mi := leaf.duplicate() as MeshInstance3D
 			mi.name = "Pad"
 			mi.material_override = mat
-			mi.scale = Vector3.ONE * pad[2] * 2.0
-			mi.position = Vector3(pad[0], TROUGH_WATER[0] - 0.004, pad[1])
-			mi.rotation.y = pad[0] * 9.0
 			trough.add_child(mi)
+			_trough_leaves.append(mi)
+		_place_trough_leaves()
 		leaf.free()
 	_hotspot("fish_tank", trough, "魚缸", TROUGH_AT + Vector3(0, 0.4, 0), 1.1, 0.012)
 	_sided["trough"] = trough

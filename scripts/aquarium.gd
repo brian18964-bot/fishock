@@ -20,6 +20,9 @@ signal picked(index: int)
 signal bucket_picked(index: int)
 ## The bucket itself tapped (in the tank's view: go to it).
 signal bucket_clicked
+## The tank tapped in the bucket's view, where its half shows at the side:
+## back to the tank.
+signal tank_clicked
 
 const RENDER_SCALE := 1.5
 ## The drum: the camp's model made LENGTH long along x, lying on its side
@@ -82,8 +85,62 @@ var _time := 0.0
 var _glowing: Swimmer = null
 ## The lily pads: {node, pos (x, z), vel, yaw, spin, r, wake (s till its next ripple)}.
 var _leaves: Array = []
-## Where the player left them (this session's): [[x, z, yaw] ..].
+## Where the leaves are (x, z, yaw each) - the page's and the camp's tank
+## show the same: the player's moves on the page stay in the camp, and left
+## alone (the page shut) they drift about.
 static var _saved_leaves: Array = []
+## The page is open (the camp's trough leaves the leaves to it).
+static var page_open := false
+static var _drift: Array = []
+
+
+## The leaves' places, set from PADS the first time.
+static func leaf_state() -> Array:
+	if _saved_leaves.size() != PADS.size():
+		_saved_leaves = PADS.map(func(p): return [p[0], p[1], float(p[0]) * 7.0])
+		_drift = PADS.map(func(_p): return Vector2.ZERO)
+	return _saved_leaves
+
+
+## Left alone, the leaves wander (user request: the camp's trough): a faint
+## current turning them about, bouncing off the walls and each other.
+static func drift_leaves(delta: float, time: float) -> void:
+	var st := leaf_state()
+	var half := _water_half()
+	if _drift.size() != st.size():
+		_drift = st.map(func(_l): return Vector2.ZERO)
+	for i in st.size():
+		var r: float = PADS[i][2]
+		var v: Vector2 = _drift[i]
+		v += Vector2(sin(time * 0.23 + i * 2.1 + st[i][0] * 3.0), cos(time * 0.19 + i * 1.3 + st[i][1] * 3.0)) * 0.02 * delta
+		v *= exp(-0.5 * delta)
+		if v.length() > 0.05:
+			v = v.normalized() * 0.05
+		var x: float = st[i][0] + v.x * delta
+		var z: float = st[i][1] + v.y * delta
+		var xr: float = half.x - r
+		var zr: float = half.y - r
+		if absf(x) > xr:
+			x = signf(x) * xr
+			v.x = -v.x * 0.6
+		if absf(z) > zr:
+			z = signf(z) * zr
+			v.y = -v.y * 0.6
+		st[i][0] = x
+		st[i][1] = z
+		st[i][2] = float(st[i][2]) + sin(time * 0.3 + i) * 0.05 * delta
+		_drift[i] = v
+	# (not through one another)
+	for a in st.size():
+		for b in range(a + 1, st.size()):
+			var gap := Vector2(st[a][0] - st[b][0], st[a][1] - st[b][1])
+			var need: float = (float(PADS[a][2]) + float(PADS[b][2])) * 0.95
+			if gap.length() < need and gap.length() > 0.0001:
+				var push := gap.normalized() * (need - gap.length()) * 0.5
+				st[a][0] += push.x
+				st[a][1] += push.y
+				st[b][0] -= push.x
+				st[b][1] -= push.y
 ## The leaf held: {leaf, grab (its local point), to (where the finger is), moved, at}.
 var _held := {}
 ## Ripples: [x, z, age, strength].
@@ -97,6 +154,7 @@ var _view_tween: Tween
 
 
 func _ready() -> void:
+	page_open = true
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	clip_contents = true
 	_viewport = SubViewport.new()
@@ -296,6 +354,14 @@ func _tap(at: Vector2) -> void:
 		var b := bucket_pick(at * RENDER_SCALE)
 		if b >= 0:
 			bucket_picked.emit(b)
+			return
+		# (the tank's half at the right: a tap on it goes back)
+		var ray_o := camera.project_ray_origin(at * RENDER_SCALE)
+		var ray_d := camera.project_ray_normal(at * RENDER_SCALE)
+		if absf(ray_d.y) > 0.0001:
+			var hit := ray_o + ray_d * ((0.3 - ray_o.y) / ray_d.y)
+			if hit.x > BUCKET_AT.x + 0.42:
+				tank_clicked.emit()
 		return
 	var i := pick(at * RENDER_SCALE)
 	if i >= 0:
@@ -596,11 +662,9 @@ func _pads() -> void:
 		var mi := leaf.duplicate() as MeshInstance3D
 		mi.name = "Pad"
 		mi.scale = Vector3.ONE * pad[2] * 2.0
-		var at := Vector2(pad[0], pad[1])
-		var yaw: float = pad[0] * 7.0
-		if k < _saved_leaves.size():
-			at = Vector2(_saved_leaves[k][0], _saved_leaves[k][1])
-			yaw = _saved_leaves[k][2]
+		var saved: Array = leaf_state()[k]
+		var at := Vector2(saved[0], saved[1])
+		var yaw: float = saved[2]
 		mi.position = Vector3(at.x, SURFACE - 0.004, at.y)
 		mi.rotation.y = yaw
 		_world.add_child(mi)
@@ -609,7 +673,9 @@ func _pads() -> void:
 
 
 func _exit_tree() -> void:
-	_saved_leaves = _leaves.map(func(l): return [l.pos.x, l.pos.y, l.yaw])
+	page_open = false
+	if not _leaves.is_empty():
+		_saved_leaves = _leaves.map(func(l): return [l.pos.x, l.pos.y, l.yaw])
 
 
 ## Half the water's width and depth the leaves keep in (m): the surface's
@@ -664,13 +730,14 @@ func _float_leaves(delta: float) -> void:
 		l.pos += l.vel * delta
 		l.yaw += l.spin * delta
 		# The drum's wall.
-		var reach: float = l.r * 0.85
+		# (the leaf's whole size to the wall: it was going in)
+		var reach: float = l.r * 1.0 + 0.02
 		var hit := 0.0
 		if absf(l.pos.x) > half.x - reach:
 			l.pos.x = signf(l.pos.x) * (half.x - reach)
 			hit = absf(l.vel.x)
 			l.vel.x *= -0.45
-		var zr: float = half.y - reach * 0.6
+		var zr: float = half.y - reach
 		if absf(l.pos.y) > zr:
 			l.pos.y = signf(l.pos.y) * zr
 			hit = maxf(hit, absf(l.vel.y))
@@ -697,7 +764,7 @@ func _float_leaves(delta: float) -> void:
 
 func _bump(a: Dictionary, b: Dictionary) -> void:
 	var gap: Vector2 = a.pos - b.pos
-	var min_gap: float = (a.r + b.r) * 0.85
+	var min_gap: float = (a.r + b.r) * 0.95
 	var dist := gap.length()
 	if dist >= min_gap or dist < 0.0001:
 		return

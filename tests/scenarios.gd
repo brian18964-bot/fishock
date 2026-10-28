@@ -5120,6 +5120,20 @@ func test_camp3d() -> void:
 	check(not camp.walkable(m.global_position + Vector3(0.2, 0, 0)), "the merchant's a body to walk round")
 	# User request: the fish tank from whichever side it's nearest - from
 	# its right, the right side; and stood clear of it.
+	# User report: the camp's tank had three leaves, the page two; now the same two, where the page has them, and drifting when it's shut.
+	check(stage._trough_leaves.size() == 2, "the camp's tank has the page's two leaves")
+	Aquarium.leaf_state()[0][0] = 0.6
+	Aquarium.leaf_state()[0][1] = -0.2
+	stage._place_trough_leaves()
+	var leaf_node: Node3D = stage._trough_leaves[0]
+	var half_w := Aquarium._water_half()
+	check(absf(leaf_node.position.x - 0.6 * (CampStage.TROUGH_WATER[1].x * 0.5 / half_w.x)) < 0.001, "a leaf moved on the page is moved in the camp's tank")
+	var before_x: float = Aquarium.leaf_state()[1][0]
+	for _i in 120:
+		Aquarium.drift_leaves(0.5, float(_i) * 0.5)
+	var after: Array = Aquarium.leaf_state()[1]
+	check(absf(float(after[0])) <= half_w.x and absf(float(after[1])) <= half_w.y and (absf(float(after[0]) - before_x) > 0.001), "left alone they drift, inside the tank (x %.2f -> %.2f)" % [before_x, float(after[0])])
+	Aquarium._saved_leaves = []
 	var trough: Node3D = stage.hotspots.fish_tank.parts[0][0]
 	for side in [1.0, -1.0]:
 		var spot: Dictionary = stage.stand_at("trough", trough.global_position + Vector3(2.0 * side, 0, 0), 0.3)
@@ -5918,6 +5932,15 @@ func test_tank_bucket() -> void:
 	await frames(2)
 	check(page._tab == "bucket", "a tap on the bucket goes to the bucket's tab")
 	await seconds(1.0)
+	# User request: in the bucket's view the tank shows half at the right - a tap on it goes back.
+	page.find_child("Tab_bucket", true, false).pressed.emit()
+	await seconds(1.0)
+	var rim := Vector3(Aquarium.BUCKET_AT.x + 1.0, 0.3, 0.0)
+	tank._tap(tank.camera.unproject_position(rim) / Aquarium.RENDER_SCALE)
+	await frames(2)
+	check(page._tab == "overview", "a tap on the tank's half in the bucket view goes back to the overview")
+	page.find_child("Tab_bucket", true, false).pressed.emit()
+	await seconds(1.0)
 	# One taken out leaves the bucket; one put in drops in.
 	Profile.move_fish("box", 0, "stash")
 	page._rebuild()
@@ -5994,7 +6017,20 @@ func test_tank_leaves() -> void:
 	var half := Aquarium._water_half()
 	leaf.vel = Vector2(9, 3)
 	await seconds(1.5)
-	check(absf(leaf.pos.x) <= half.x and absf(leaf.pos.y) <= half.y, "the wall holds it (%s)" % str(leaf.pos))
+	check(absf(leaf.pos.x) <= half.x - leaf.r and absf(leaf.pos.y) <= half.y - leaf.r, "the wall holds it, the whole leaf inside (%s)" % str(leaf.pos))
+	# Pulled hard against the wall by the finger.
+	var wall_down := InputEventMouseButton.new()
+	wall_down.button_index = MOUSE_BUTTON_LEFT
+	wall_down.pressed = true
+	wall_down.position = scr.call(leaf.pos)
+	tank._gui_input(wall_down)
+	tank._held.to = Vector2(3.0, 3.0)
+	await seconds(1.0)
+	check(absf(leaf.pos.x) <= half.x - leaf.r and absf(leaf.pos.y) <= half.y - leaf.r, "pulled past the wall by a finger: still not through it (%s)" % str(leaf.pos))
+	var wall_up := InputEventMouseButton.new()
+	wall_up.button_index = MOUSE_BUTTON_LEFT
+	wall_up.pressed = false
+	tank._gui_input(wall_up)
 	# Two against each other: pushed apart.
 	var other: Dictionary = tank._leaves[1]
 	other.pos = leaf.pos + Vector2(0.03, 0.0)
@@ -6124,7 +6160,19 @@ func test_shop_buyback() -> void:
 	page.find_child("Tab_sell", true, false).pressed.emit()
 	await frames(2)
 	check(page._pane.get_child_count() == 0 and not page._detail_pane.visible and page._sell_pane.visible, "收購: no other tab's description, the bag on the right")
-	check(page.find_child("Card_sell_shovel", true, false) != null and page.find_child("Card_fish_0", true, false) != null, "the warehouse's things and the bucket's fish are listed")
+	# User report: nothing listed on the vendor's own window (the bucket's fish were put there by themselves); the right pane picks where from.
+	check(page.find_child("Card_fish_box_0", true, false) == null and page.find_child("DropHere", true, false) != null, "the vendor's window lists nothing of its own")
+	page.find_child("SellTab_stash", true, false).pressed.emit()
+	await frames(2)
+	check(page.find_child("Card_sell_shovel", true, false) != null, "the 倉庫 tab lists the warehouse's things")
+	page.find_child("SellTab_box", true, false).pressed.emit()
+	await frames(2)
+	check(page.find_child("Card_fish_box_0", true, false) != null and page.find_child("Card_sell_shovel", true, false) == null, "the 魚桶 tab, the bucket's fish")
+	page.find_child("SellTab_tank", true, false).pressed.emit()
+	await frames(2)
+	check(page.find_child("Card_fish_box_0", true, false) == null, "the 魚缸 tab, the tank's")
+	page.find_child("SellTab_pack", true, false).pressed.emit()
+	await frames(2)
 	page.find_child("Tab_upgrade", true, false).pressed.emit()
 	await frames(2)
 	check(page._detail_pane.visible and not page._sell_pane.visible and page._pane.get_child_count() > 0, "back on another tab: its own description")
@@ -6140,11 +6188,22 @@ func test_shop_buyback() -> void:
 	await frames(2)
 	check(Profile.gold == gold + 12 and Profile.bag_count("battery") == 1, "two sold from the bag (gold %d)" % Profile.gold)
 	# A fish in the bucket.
-	page.find_child("Card_fish_0", true, false).pressed.emit()
+	page.find_child("SellTab_box", true, false).pressed.emit()
+	await frames(2)
+	var worth := FishLife.sale_value(dead)
+	page.find_child("Card_fish_box_0", true, false).pressed.emit()
 	await frames(2)
 	(page.find_child("SaleGo", true, false) as Button).pressed.emit()
 	await frames(2)
-	check(Profile.fish_box.is_empty() and Profile.gold > gold + 12, "the bucket's fish sold")
+	check(Profile.fish_box.is_empty() and Profile.gold == gold + 12 + worth, "the bucket's fish sold at its worth (%d)" % worth)
+	# One price: the tank page's 販售 and the merchant's are the same.
+	var alive := FishLife.roll({"name": "鯉魚", "id": "carp", "value": 6.0, "size": "small", "rarity": "common"})
+	alive.life_traits = ["plump"]
+	alive["value"] = 8.0
+	Profile.tank = [alive]
+	var same := FishLife.sale_value(alive)
+	var before := Profile.gold
+	check(Profile.sell_from_tank(0) == same and Profile.gold == before + same, "sold from the tank: the same price (%d)" % same)
 	page.queue_free()
 	Profile.load_data(saved)
 
