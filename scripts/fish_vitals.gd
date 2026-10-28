@@ -13,7 +13,8 @@ const FRESH_COLOR := Color(0.4, 0.7, 0.95)
 const ROT_COLOR := Color(0.5, 0.42, 0.25)
 ## How often it looks again (s).
 const REFRESH := 0.25
-## In the tank the vitality's kept (it doesn't run down there).
+## At home (tank, bag, warehouse) it's kept as it is (nothing runs down - but
+## in the bucket).
 var kept := false
 
 var _fish := {}
@@ -75,13 +76,15 @@ func _refresh() -> void:
 			if FishLife.has_trait(_fish, "immortal"):
 				text += "・不會死亡"
 			elif kept:
-				text += "・魚缸裡活性不再下降"
+				text += "・放在家裡活性不會下降"
 			else:
 				text += "・約 %s 後死亡" % _time(left)
 		"dead":
 			var keeps := FishLife.freshness_left(_fish)
 			text = "已死亡・" + text
-			if keeps == INF:
+			if kept:
+				text += "・放在家裡不會腐敗"
+			elif keeps == INF:
 				text += "・不會腐敗"
 			else:
 				text += "・約 %s 後腐敗" % _time(keeps)

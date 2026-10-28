@@ -853,8 +853,17 @@ func add_to_tank(fish: Dictionary) -> bool:
 ## User request: the fish brought home dead (or rotten) are kept here
 ## (a catch dict each) to be sold to the merchant - a rotten one is no use
 ## (yet): thrown away. Fresh as they were: they don't age at home.
-const FISH_BOX_SIZE := 40
+## User request (魚桶): it is a bucket now - how many fit, and what's in it
+## ages: a living fish put in dies and rots as the time goes (age_bucket).
+const FISH_BOX_SIZE := 24
 var fish_box: Array = []
+
+
+## The bucket's fish age while the game runs at home (not on a run: the
+## carried fish age there). Not while the game's off.
+func age_bucket(delta: float) -> void:
+	for f in fish_box:
+		FishLife.tick(f, delta, GameState.is_night)
 
 
 ## Puts a dead (or rotten) fish brought home in the box. False if it's full.
@@ -936,7 +945,9 @@ func fish_list(place: String) -> Array:
 ## Where fish `f` may be put (besides where it is): living - the tank; dead
 ## or rotten - the fish box; both - the bag, the warehouse.
 func fish_places(f: Dictionary, from: String) -> Array:
-	var out := ["tank" if FishLife.state(f) == "alive" else "box", "pack", "stash"]
+	var out := ["pack", "stash", "box"]
+	if FishLife.state(f) == "alive":
+		out.push_front("tank")
 	out.erase(from)
 	return out
 
@@ -950,15 +961,15 @@ func fish_refusal(f: Dictionary, to: String) -> String:
 			if tank.size() >= TANK_SIZE:
 				return "魚缸滿了"
 		"box":
-			if FishLife.state(f) == "alive":
-				return "活著的魚不能放進魚箱"
 			if fish_box.size() >= FISH_BOX_SIZE:
-				return "魚箱滿了"
+				return "魚桶滿了"
 		"pack":
 			var items := Inventory.items(null)
 			for p in pack_fish:
 				items.append(Inventory.fish_item(p))
-			items.append(Inventory.fish_item(f))
+			var mine := Inventory.fish_item(f)
+			mine.erase("cell")
+			items.append(mine)
 			if Inventory.pack(items).is_empty():
 				return "背包放不下"
 		"stash":
@@ -968,7 +979,7 @@ func fish_refusal(f: Dictionary, to: String) -> String:
 
 
 ## Moves a fish from list `from` (index `i`) to `to`. "" if done, else why not.
-func move_fish(from: String, i: int, to: String) -> String:
+func move_fish(from: String, i: int, to: String, at := Vector2i(-1, -1)) -> String:
 	var src := fish_list(from)
 	if i < 0 or i >= src.size() or from == to:
 		return "找不到這條魚"
@@ -976,6 +987,19 @@ func move_fish(from: String, i: int, to: String) -> String:
 	var why := fish_refusal(f, to)
 	if why != "":
 		return why
+	# User request: put in the bag or the warehouse, it goes where the player
+	# set it (a cell of the bag's grid, a slot of the warehouse's), if it's
+	# somewhere it fits; else the first place there is.
+	f.erase("cell")
+	f.erase("slot")
+	if to == "pack" and at.x >= 0:
+		if not pack_fits(f, at):
+			return "放不下這裡"
+		f["cell"] = [at.x, at.y]
+	elif to == "stash" and at.x >= 0:
+		if not stash_free(at.x):
+			return "這格有魚了"
+		f["slot"] = at.x
 	# (the fortune fish's gold up to now - it may be leaving the tank)
 	settle_fortune()
 	src.remove_at(i)
@@ -984,6 +1008,89 @@ func move_fish(from: String, i: int, to: String) -> String:
 		tank_news.clear()
 	_changed()
 	return ""
+
+
+## The bag's cells taken by what's packed (the bag's things and the fish in
+## it, the fish `except` left out): {cell: true}.
+func pack_used(except: Dictionary = {}) -> Dictionary:
+	var used := {}
+	var items := Inventory.items(null)
+	for p in pack_fish:
+		if p != except:
+			items.append(Inventory.fish_item(p))
+	var placed := Inventory.pack(items)
+	for k in placed.size():
+		var r: Rect2i = placed[k]
+		for dx in r.size.x:
+			for dy in r.size.y:
+				used[r.position + Vector2i(dx, dy)] = true
+	return used
+
+
+## Would fish `f` fit in the bag with its corner at `at`?
+func pack_fits(f: Dictionary, at: Vector2i) -> bool:
+	return Inventory._free(pack_used(f), at, Inventory.fish_item(f).size, Inventory.ROWS) \
+		and at.y + Inventory.fish_item(f).size.y <= bag_rows()
+
+
+## Where the bag's fish are (same order as pack_fish): their rectangles.
+func pack_places() -> Array:
+	var items := Inventory.items(null)
+	var base := items.size()
+	for p in pack_fish:
+		items.append(Inventory.fish_item(p))
+	var placed := Inventory.pack(items)
+	return placed.slice(base) if not placed.is_empty() else []
+
+
+## The first free corner for fish `f` in the bag, or (-1, -1).
+func pack_first_fit(f: Dictionary) -> Vector2i:
+	var used := pack_used(f)
+	var size: Vector2i = Inventory.fish_item(f).size
+	for x in Inventory.COLS - size.x + 1:
+		for y in bag_rows() - size.y + 1:
+			if Inventory._free(used, Vector2i(x, y), size, Inventory.ROWS):
+				return Vector2i(x, y)
+	return Vector2i(-1, -1)
+
+
+## Is warehouse slot `n` free (not taken by a fish already there)?
+func stash_free(n: int, except: Dictionary = {}) -> bool:
+	if n < 0 or n >= STASH_SIZE:
+		return false
+	for f in stash_fish:
+		if f != except and stash_slot(f) == n:
+			return false
+	return true
+
+
+## The slot fish `f` is in (set, else the first free by its place in the
+## list - the old saves').
+func stash_slot(f: Dictionary) -> int:
+	if f.has("slot"):
+		return int(f.slot)
+	var taken := {}
+	for g in stash_fish:
+		if g.has("slot"):
+			taken[int(g.slot)] = true
+	var n := 0
+	for g in stash_fish:
+		if g == f:
+			break
+		if not g.has("slot"):
+			while taken.has(n):
+				n += 1
+			taken[n] = true
+	while taken.has(n) and not f.has("slot"):
+		n += 1
+	return n
+
+
+func stash_first_free() -> int:
+	for n in STASH_SIZE:
+		if stash_free(n):
+			return n
+	return -1
 
 
 func clear_tank_news() -> void:

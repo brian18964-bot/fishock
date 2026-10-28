@@ -46,6 +46,10 @@ static func items(player: Node) -> Array:
 			"size": SIZES[size], "index": i, "rotten": fish.get("rotten", false),
 			"dead": fish.get("dead", false), "grade": SIZE_NAMES[size],
 			"id": fish.get("id", "")})
+		# (set down where the player put it at home: kept there if it fits)
+		var c = fish.get("cell")
+		if c is Array and c.size() == 2:
+			out[-1]["cell"] = Vector2i(int(c[0]), int(c[1]))
 	if GameState.has_heart:
 		out.append({"kind": "heart", "label": "心臟", "count": 0, "size": Vector2i(1, 1), "index": -1})
 	# The bait: its bundles in the bait cells packed before the run (user
@@ -140,7 +144,11 @@ static func fits_with(player: Node, extra: Array) -> bool:
 
 
 static func fish_item(fish: Dictionary) -> Dictionary:
-	return {"kind": "fish", "size": SIZES[fish_size(fish)]}
+	var out := {"kind": "fish", "size": SIZES[fish_size(fish)]}
+	var c = fish.get("cell")
+	if c is Array and c.size() == 2:
+		out["cell"] = Vector2i(int(c[0]), int(c[1]))
+	return out
 
 
 ## Room for `amount` more bait?

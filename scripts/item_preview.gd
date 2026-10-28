@@ -18,6 +18,8 @@ var _spin := 0.0
 var _drag := false
 var _id := ""
 var _fish: MeshInstance3D
+## The fish dict it shows (dead, rotten: how it looks), if given.
+var _fish_life := {}
 var _sway := 0.0
 ## User request: how some things are first turned to the camera - the
 ## small live fish side-on (its model lies on its side, the back to the
@@ -54,7 +56,7 @@ func _ready() -> void:
 	resized.connect(_fit_viewport)
 	_fit_viewport()
 	if _id.begins_with("fish:"):
-		show_fish(_id.substr(5))
+		show_fish(_id.substr(5), _fish_life)
 	elif _id != "":
 		show_item(_id)
 
@@ -127,14 +129,18 @@ func show_item(id: String) -> bool:
 
 ## Shows species `id` as its 3D fish (FishModel), swimming where it is;
 ## false when it has no model.
-func show_fish(id: String) -> bool:
+func show_fish(id: String, fish := {}) -> bool:
 	_id = "fish:" + id
+	_fish_life = fish
 	if _holder == null:
 		return FishModel.has_model(id)
 	_clear()
 	_fish = FishModel.make(id)
 	if _fish == null:
 		return false
+	if not fish.is_empty():
+		# (dead: white eyes; rotten: gone purple or green)
+		FishModel.dress(_fish, fish)
 	_holder.add_child(_fish)
 	_fit(_fish, false)
 	# Side-on first, then it turns.

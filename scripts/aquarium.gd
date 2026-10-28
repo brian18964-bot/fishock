@@ -16,6 +16,8 @@ extends Control
 ## Drawn at 1.5x in a SubViewport shown through a TextureRect.
 
 signal picked(index: int)
+## A fish in the bucket tapped: its place in Profile.fish_box.
+signal bucket_picked(index: int)
 
 const RENDER_SCALE := 1.5
 ## The drum: the camp's model made LENGTH long along x, lying on its side
@@ -40,6 +42,28 @@ const ROCKS := [
 ## Lotus leaves on the surface (user request: the leaves only, no weed
 ## below): [x, z, radius].
 const PADS := [[-0.55, 0.28, 0.19], [-0.3, 0.4, 0.12], [0.76, -0.3, 0.17]]
+## The bucket (魚桶, the user's bucket model - tools/make_bucket.py) stands
+## left of the drum, half in the frame; its fish are bodies the physics pile
+## up in it. The inside: its wall's radius at a height h (model metres) is
+## BUCKET_R0 + BUCKET_LEAN * h, its floor BUCKET_FLOOR up (model metres).
+const BUCKET_FILE := "res://assets/models/items/fish_bucket.glb"
+const BUCKET_AT := Vector3(-1.62, 0.0, 0.05)
+const BUCKET_SCALE := 2.4
+const BUCKET_R0 := 0.082
+const BUCKET_LEAN := 0.12
+const BUCKET_FLOOR := 0.02
+const BUCKET_WALLS := 18
+## The two views: the tank with the bucket half in at the left, and the bucket.
+## [camera position, what it looks at, fov]
+const VIEWS := {
+	"tank": [Vector3(-0.25, 3.5, 1.1), Vector3(-0.25, 0.4, 0.02), 38.0],
+	"bucket": [Vector3(-1.62, 2.0, 0.75), Vector3(-1.62, 0.22, 0.05), 34.0],
+}
+## The leaves' water: how fast they slow (per s), the most they go (m/s).
+const LEAF_DRAG := 1.5
+const LEAF_MAX := 1.6
+## Ripples going at once (the surface's shader holds this many).
+const DROPS := 24
 const SPEEDS := {"lazy": 0.05, "active": 0.19, "school": 0.16, "fierce": 0.175, "bottom": 0.09, "shy": 0.1,
 	"jumper": 0.17, "glutton": 0.14}
 
@@ -52,7 +76,20 @@ var _food: Array = []  # [MeshInstance3D, resting time]
 var _splashes: Array = []  # [MeshInstance3D, age]
 var _time := 0.0
 var _glowing: Swimmer = null
-var _floating: Array = []  # the lily pads
+## The lily pads: {node, pos (x, z), vel, yaw, spin, r, wake (s till its next ripple)}.
+var _leaves: Array = []
+## Where the player left them (this session's): [[x, z, yaw] ..].
+static var _saved_leaves: Array = []
+## The leaf held: {leaf, grab (its local point), to (where the finger is), moved, at}.
+var _held := {}
+## Ripples: [x, z, age, strength].
+var _drops: Array = []
+var _water_mat: ShaderMaterial
+var _bucket_fish: Array = []
+var _spawn_queue: Array = []
+var _spawn_wait := 0.0
+var _view := "tank"
+var _view_tween: Tween
 
 
 func _ready() -> void:
@@ -78,14 +115,14 @@ func _ready() -> void:
 	_rocks()
 	_surface()
 	_pads()
+	_bucket()
 	_fish_root = Node3D.new()
 	_world.add_child(_fish_root)
 	camera = Camera3D.new()
-	camera.fov = 34.0
 	camera.near = 0.05
 	camera.far = 20.0
-	camera.transform = Transform3D(Basis.IDENTITY, Vector3(0, 3.35, 1.05)).looking_at(Vector3(0, 0.4, 0.02), Vector3.UP)
 	_world.add_child(camera)
+	_set_view_now("tank")
 	resized.connect(_fit)
 	_fit()
 
@@ -110,6 +147,7 @@ func stock() -> void:
 			continue
 		_fish_root.add_child(s)
 		_swimmers.append(s)
+	stock_bucket()
 
 
 func fish() -> Array:
@@ -163,8 +201,8 @@ static func sand_y(x: float, z: float) -> float:
 
 ## Where a shy fish hides: in the shade under a leaf.
 func leaf_spot() -> Vector3:
-	var p: Array = PADS[randi() % PADS.size()]
-	return Vector3(p[0] + randf_range(-0.08, 0.08), 0.0, p[1] + randf_range(-0.06, 0.06))
+	var l: Dictionary = _leaves[randi() % _leaves.size()] if not _leaves.is_empty() else {"pos": Vector2.ZERO}
+	return Vector3(l.pos.x + randf_range(-0.08, 0.08), 0.0, l.pos.y + randf_range(-0.06, 0.06))
 
 
 func splash(at: Vector3) -> void:
@@ -177,6 +215,7 @@ func splash(at: Vector3) -> void:
 	ring.scale = Vector3.ONE * 0.2
 	_world.add_child(ring)
 	_splashes.append([ring, 0.0])
+	ripple(Vector2(at.x, at.z), 1.0)
 
 
 ## Lights the fish `index` up (its card is open); -1 for none.
@@ -192,10 +231,12 @@ func highlight(index: int) -> void:
 
 func _process(delta: float) -> void:
 	_time += delta
-	for i in _floating.size():
-		var pad: Node3D = _floating[i]
-		pad.position.y = SURFACE - 0.004 + sin(_time * 0.9 + i * 2.0) * 0.003
-		pad.rotation.y += sin(_time * 0.3 + i) * 0.02 * delta
+	_float_leaves(delta)
+	_age_drops(delta)
+	_spawn_wait -= delta
+	if not _spawn_queue.is_empty() and _spawn_wait <= 0.0:
+		_spawn_wait = 0.07
+		_drop_in(_spawn_queue.pop_front())
 	for p in _food:
 		var pellet: MeshInstance3D = p[0]
 		var floor_y := sand_y(pellet.position.x, pellet.position.z) + 0.008
@@ -221,11 +262,40 @@ func _process(delta: float) -> void:
 
 
 func _gui_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		var i := pick(event.position * RENDER_SCALE)
-		if i >= 0:
-			picked.emit(i)
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			# A leaf under the finger is taken (and let go of, it drifts on); a
+			# tap that doesn't move it goes on to the fish under it.
+			var at := _surface_point(event.position)
+			var leaf := _leaf_at(at)
+			if not leaf.is_empty() and _view == "tank":
+				var local := Vector2(at - leaf.pos).rotated(leaf.yaw)
+				_held = {"leaf": leaf, "grab": local, "to": at, "moved": 0.0, "at": event.position}
+				accept_event()
+				return
+			_tap(event.position)
+		elif not _held.is_empty():
+			var tap: bool = float(_held.moved) < 8.0
+			var where: Vector2 = _held.at
+			_held = {}
+			if tap:
+				_tap(where)
 			accept_event()
+	elif event is InputEventMouseMotion and not _held.is_empty():
+		_held.to = _surface_point(event.position)
+		_held.moved += event.relative.length()
+		accept_event()
+
+
+func _tap(at: Vector2) -> void:
+	if _view == "bucket":
+		var b := bucket_pick(at * RENDER_SCALE)
+		if b >= 0:
+			bucket_picked.emit(b)
+		return
+	var i := pick(at * RENDER_SCALE)
+	if i >= 0:
+		picked.emit(i)
 
 
 ## The fish under `at` (viewport pixels), nearest the glass first; -1 if
@@ -439,6 +509,9 @@ func _surface() -> void:
 shader_type spatial;
 render_mode blend_mix, cull_disabled, depth_draw_never;
 uniform vec3 tint : source_color = vec3(0.04, 0.11, 0.09);
+// Ripples (x, z, age, strength): a ring of crests going out at c m/s, each
+// a little behind the last, fading as it widens and as it ages.
+uniform vec4 drops[24];
 varying vec3 wpos;
 void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
@@ -446,14 +519,29 @@ void fragment() {
 	float t = TIME;
 	vec2 g = vec2(cos(p.x * 9.0 + t * 1.3) + 0.6 * cos(p.x * 4.0 - p.y * 7.0 + t * 0.9),
 		sin(p.y * 11.0 - t * 1.1) + 0.6 * sin(p.x * 6.0 + p.y * 5.0 + t * 0.7)) * 0.06;
+	float lit = 0.0;
+	for (int i = 0; i < 24; i++) {
+		vec4 d = drops[i];
+		if (d.w <= 0.0) { continue; }
+		vec2 v = p - d.xy;
+		float dist = length(v) + 0.0001;
+		float front = d.z * 0.33;
+		float x = dist - front;
+		float width = 0.055 + d.z * 0.05;
+		float env = exp(-x * x / (2.0 * width * width));
+		float life = d.w * exp(-d.z * 1.5) / (1.0 + dist * 4.0);
+		float wave = cos(x * 58.0) * env * life;
+		g += v / dist * wave * 0.32;
+		lit += abs(wave);
+	}
 	NORMAL = normalize((VIEW_MATRIX * vec4(g.x, 1.0, g.y, 0.0)).xyz);
 	float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
 	ALBEDO = tint;
-	ALPHA = 0.42 + 0.4 * fres;
+	ALPHA = clamp(0.42 + 0.4 * fres + lit * 0.45, 0.0, 0.95);
 	ROUGHNESS = 0.08;
 	SPECULAR = 0.7;
-	// The night sky's sheen at the far side.
-	EMISSION = vec3(0.05, 0.08, 0.12) * fres;
+	// The night sky's sheen at the far side, the crests catching it.
+	EMISSION = vec3(0.05, 0.08, 0.12) * fres + vec3(0.45, 0.62, 0.7) * lit * 1.1;
 }
 """
 	var water := MeshInstance3D.new()
@@ -466,13 +554,21 @@ void fragment() {
 	water.mesh = pm
 	var mat := ShaderMaterial.new()
 	mat.shader = sh
+	_water_mat = mat
+	var none := PackedVector4Array()
+	none.resize(DROPS)
+	mat.set_shader_parameter("drops", none)
 	water.material_override = mat
 	water.position.y = SURFACE
 	_world.add_child(water)
 
 
-## Lotus leaves afloat (ASSET2's leaf), bobbing a little (a fish under one
-## is half hidden).
+## Lotus leaves afloat (ASSET2's leaf): they float on the water as a leaf
+## does - pushed about by a finger (a drag takes one by the spot touched, so a
+## pull off its middle turns it too), going on a while after it's let go,
+## slowing in the water, bumping the others and the drum's wall, every move
+## and knock sending ripples out over the surface. A fish under one is half
+## hidden. Where they were left is kept for the next time the page opens.
 func _pads() -> void:
 	var leaf := CampModel.make("lotus_leaf")
 	if leaf == null:
@@ -483,15 +579,286 @@ func _pads() -> void:
 	mat.albedo_color = Color(0.5, 0.55, 0.5)
 	mat.roughness = 0.55
 	leaf.material_override = mat
-	for pad in PADS:
+	for k in PADS.size():
+		var pad: Array = PADS[k]
 		var mi := leaf.duplicate() as MeshInstance3D
 		mi.name = "Pad"
 		mi.scale = Vector3.ONE * pad[2] * 2.0
-		mi.position = Vector3(pad[0], SURFACE - 0.004, pad[1])
-		mi.rotation.y = pad[0] * 7.0
+		var at := Vector2(pad[0], pad[1])
+		var yaw: float = pad[0] * 7.0
+		if k < _saved_leaves.size():
+			at = Vector2(_saved_leaves[k][0], _saved_leaves[k][1])
+			yaw = _saved_leaves[k][2]
+		mi.position = Vector3(at.x, SURFACE - 0.004, at.y)
+		mi.rotation.y = yaw
 		_world.add_child(mi)
-		_floating.append(mi)
+		_leaves.append({"node": mi, "pos": at, "vel": Vector2.ZERO, "yaw": yaw, "spin": 0.0, "r": pad[2], "wake": 0.0, "bob": k * 2.0})
 	leaf.free()
+
+
+func _exit_tree() -> void:
+	_saved_leaves = _leaves.map(func(l): return [l.pos.x, l.pos.y, l.yaw])
+
+
+## Half the water's width and depth the leaves keep in (m): the surface's
+## own size.
+static func _water_half() -> Vector2:
+	return Vector2((LENGTH - 0.05) * 0.5, sqrt(RADIUS * RADIUS - pow(SURFACE - AXIS_Y, 2.0)))
+
+
+## The point on the water's plane under a click (viewport pixels `p`, the
+## control's), as (x, z).
+func _surface_point(p: Vector2) -> Vector2:
+	var vp := p * RENDER_SCALE
+	var o := camera.project_ray_origin(vp)
+	var d := camera.project_ray_normal(vp)
+	if absf(d.y) < 0.0001:
+		return Vector2.ZERO
+	var hit := o + d * ((SURFACE - o.y) / d.y)
+	return Vector2(hit.x, hit.z)
+
+
+## The leaf at water point `at` (the topmost one), or {}.
+func _leaf_at(at: Vector2) -> Dictionary:
+	for k in range(_leaves.size() - 1, -1, -1):
+		if _leaves[k].pos.distance_to(at) < _leaves[k].r * 0.95:
+			return _leaves[k]
+	return {}
+
+
+## One step of the leaves' floating.
+func _float_leaves(delta: float) -> void:
+	var half := _water_half()
+	for l in _leaves:
+		var force := Vector2.ZERO
+		var torque := 0.0
+		var held: bool = not _held.is_empty() and _held.leaf == l
+		if held:
+			# (a spring to the finger, by the spot it took: the pull turns it)
+			var grab: Vector2 = Vector2(_held.grab).rotated(-l.yaw)
+			var at: Vector2 = l.pos + grab
+			var to: Vector2 = _held.to
+			force = (to - at) * 70.0 - l.vel * 15.0
+			torque = grab.y * force.x - grab.x * force.y
+		else:
+			# (a faint current: they never lie quite still)
+			force = Vector2(sin(_time * 0.37 + l.bob), cos(_time * 0.29 + l.bob * 1.7)) * 0.012
+		l.vel += force * delta
+		l.vel *= exp(-(0.35 if held else LEAF_DRAG) * delta)
+		if l.vel.length() > LEAF_MAX:
+			l.vel = l.vel.normalized() * LEAF_MAX
+		l.spin += torque / (l.r * l.r * 9.0) * delta
+		l.spin *= exp(-2.4 * delta)
+		l.pos += l.vel * delta
+		l.yaw += l.spin * delta
+		# The drum's wall.
+		var reach: float = l.r * 0.85
+		var hit := 0.0
+		if absf(l.pos.x) > half.x - reach:
+			l.pos.x = signf(l.pos.x) * (half.x - reach)
+			hit = absf(l.vel.x)
+			l.vel.x *= -0.45
+		var zr: float = half.y - reach * 0.6
+		if absf(l.pos.y) > zr:
+			l.pos.y = signf(l.pos.y) * zr
+			hit = maxf(hit, absf(l.vel.y))
+			l.vel.y *= -0.45
+		if hit > 0.05:
+			ripple(l.pos, clampf(hit * 1.2, 0.2, 1.0))
+	# Leaf against leaf.
+	for a in _leaves.size():
+		for b in range(a + 1, _leaves.size()):
+			_bump(_leaves[a], _leaves[b])
+	for l in _leaves:
+		var speed: float = l.vel.length()
+		# A wake behind a moving one.
+		l.wake -= delta
+		if speed > 0.04 and l.wake <= 0.0:
+			l.wake = clampf(0.34 - speed * 0.2, 0.14, 0.34)
+			ripple(l.pos - l.vel.normalized() * l.r * 0.4, clampf(speed * 1.1, 0.15, 0.9))
+		var node: Node3D = l.node
+		node.position = Vector3(l.pos.x, SURFACE - 0.004 + sin(_time * 0.9 + l.bob) * 0.003, l.pos.y)
+		# (it heels a little the way it goes)
+		node.basis = Basis.from_euler(Vector3(l.vel.y * 0.1, l.yaw, -l.vel.x * 0.1))
+
+
+func _bump(a: Dictionary, b: Dictionary) -> void:
+	var gap: Vector2 = a.pos - b.pos
+	var min_gap: float = (a.r + b.r) * 0.85
+	var dist := gap.length()
+	if dist >= min_gap or dist < 0.0001:
+		return
+	var n := gap / dist
+	var ma: float = a.r * a.r
+	var mb: float = b.r * b.r
+	var push := min_gap - dist
+	a.pos += n * push * mb / (ma + mb)
+	b.pos -= n * push * ma / (ma + mb)
+	var rel: float = (a.vel - b.vel).dot(n)
+	if rel < 0.0:
+		var j := -(1.0 + 0.5) * rel / (1.0 / ma + 1.0 / mb)
+		a.vel += n * j / ma
+		b.vel -= n * j / mb
+		a.spin += rel * 0.8
+		b.spin -= rel * 0.8
+		ripple((a.pos + b.pos) * 0.5, clampf(-rel * 1.4, 0.2, 1.0))
+
+
+## A ripple starting at water point `at` (x, z), `strength` 0..1.
+func ripple(at: Vector2, strength: float) -> void:
+	_drops.append([at.x, at.y, 0.0, strength])
+	if _drops.size() > DROPS:
+		_drops.pop_front()
+
+
+func _age_drops(delta: float) -> void:
+	for d in _drops:
+		d[2] += delta
+	_drops = _drops.filter(func(d): return d[2] < 1.8)
+	if _water_mat == null:
+		return
+	var out := PackedVector4Array()
+	out.resize(DROPS)
+	for i in _drops.size():
+		var d: Array = _drops[i]
+		out[i] = Vector4(d[0], d[1], d[2], d[3])
+	_water_mat.set_shader_parameter("drops", out)
+
+
+# ---------------------------------------------------------------- the bucket
+
+## The bucket (a metal pail with its bail) stood left of the drum, with a
+## floor and a ring of leaning walls for the fish to pile in.
+func _bucket() -> void:
+	var body := StaticBody3D.new()
+	body.name = "Bucket"
+	body.position = BUCKET_AT
+	var scene: PackedScene = load(BUCKET_FILE) if ResourceLoader.exists(BUCKET_FILE) else null
+	if scene != null:
+		var model := scene.instantiate() as Node3D
+		model.scale = Vector3.ONE * BUCKET_SCALE
+		model.rotation.y = 0.5
+		body.add_child(model)
+	var k := BUCKET_SCALE
+	var floor_shape := CollisionShape3D.new()
+	var fb := BoxShape3D.new()
+	fb.size = Vector3(1.6, 0.4, 1.6)
+	floor_shape.shape = fb
+	floor_shape.position = Vector3(0, BUCKET_FLOOR * k - 0.2, 0)
+	body.add_child(floor_shape)
+	var tilt := atan(BUCKET_LEAN)
+	var h_mid := 0.13
+	var r_mid := (BUCKET_R0 + BUCKET_LEAN * h_mid) * k
+	var thick := 0.12
+	for i in BUCKET_WALLS:
+		var a := TAU * i / BUCKET_WALLS
+		var wall := CollisionShape3D.new()
+		var wb := BoxShape3D.new()
+		wb.size = Vector3(thick, 0.34 * k, TAU * r_mid / BUCKET_WALLS * 1.25)
+		wall.shape = wb
+		var out := r_mid + thick * 0.5
+		wall.transform = Transform3D(Basis(Vector3.UP, -a) * Basis(Vector3.BACK, -tilt),
+			Vector3(cos(a) * out, h_mid * k, sin(a) * out))
+		body.add_child(wall)
+	_world.add_child(body)
+
+
+## Which view the camera has ("tank": the drum with the bucket half in at the
+## left; "bucket": the bucket close). Eased over a moment.
+func set_view(view: String) -> void:
+	if view == _view or not VIEWS.has(view):
+		return
+	_view = view
+	_held = {}
+	if _view_tween != null:
+		_view_tween.kill()
+	var from_pos := camera.position
+	var from_q := camera.basis.get_rotation_quaternion()
+	var from_fov := camera.fov
+	var to: Array = VIEWS[view]
+	var to_t := Transform3D(Basis.IDENTITY, to[0]).looking_at(to[1], Vector3.UP)
+	_view_tween = create_tween()
+	_view_tween.tween_method(func(k: float):
+		camera.position = from_pos.lerp(to[0], k)
+		camera.basis = Basis(from_q.slerp(to_t.basis.get_rotation_quaternion(), k))
+		camera.fov = lerpf(from_fov, to[2], k), 0.0, 1.0, 0.7).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+
+
+func view() -> String:
+	return _view
+
+
+func _set_view_now(view: String) -> void:
+	_view = view
+	var to: Array = VIEWS[view]
+	camera.transform = Transform3D(Basis.IDENTITY, to[0]).looking_at(to[1], Vector3.UP)
+	camera.fov = to[2]
+
+
+func bucket_fish() -> Array:
+	return _bucket_fish
+
+
+## The fish in Profile.fish_box as bodies in the bucket: ones gone are taken
+## out, new ones tumble in from above.
+func stock_bucket() -> void:
+	for b in _bucket_fish.duplicate():
+		if _index_of(Profile.fish_box, b.fish) < 0:
+			b.queue_free()
+			_bucket_fish.erase(b)
+	for f in Profile.fish_box:
+		var there := false
+		for b in _bucket_fish:
+			there = there or is_same(b.fish, f)
+		for q in _spawn_queue:
+			there = there or is_same(q, f)
+		if not there:
+			_spawn_queue.append(f)
+
+
+static func _index_of(list: Array, f: Dictionary) -> int:
+	for i in list.size():
+		if is_same(list[i], f):
+			return i
+	return -1
+
+
+## A fish let fall into the bucket, from above, turning as it comes.
+func _drop_in(f: Dictionary) -> void:
+	var b := BucketFish.new()
+	if not b.setup(f):
+		b.free()
+		return
+	var k := BUCKET_SCALE
+	b.position = BUCKET_AT + Vector3(randf_range(-0.1, 0.1), 0.95 * k * 0.5 + _bucket_fish.size() * 0.015, randf_range(-0.1, 0.1))
+	b.rotation = Vector3(randf() * TAU, randf() * TAU, randf() * TAU)
+	b.angular_velocity = Vector3(randf_range(-3, 3), randf_range(-3, 3), randf_range(-3, 3))
+	_world.add_child(b)
+	_bucket_fish.append(b)
+
+
+## The bucket's fish under `at` (viewport pixels): its place in
+## Profile.fish_box, or -1.
+func bucket_pick(at: Vector2) -> int:
+	var best := -1
+	var best_d := INF
+	for b in _bucket_fish:
+		var p: Vector3 = b.global_position
+		if camera.is_position_behind(p):
+			continue
+		var c := camera.unproject_position(p)
+		var reach := (camera.unproject_position(p + camera.global_transform.basis.x * b.length * 0.5) - c).length()
+		var d := camera.global_position.distance_to(p)
+		if c.distance_to(at) < maxf(reach, 16.0) and d < best_d:
+			best = _index_of(Profile.fish_box, b.fish)
+			best_d = d
+	return best
+
+
+## Lights the bucket's fish `index` (its place in Profile.fish_box); -1 for none.
+func highlight_bucket(index: int) -> void:
+	for b in _bucket_fish:
+		FishModel.glow(b.model, 0.6 if index >= 0 and is_same(b.fish, Profile.fish_box[index]) else 0.0)
 
 
 static var _ring_shader: Shader
@@ -683,3 +1050,78 @@ class Swimmer extends Node3D:
 		position.y += bob
 		basis = Basis.from_euler(Vector3(0, _yaw, _pitch))
 		FishModel.swim(model, delta, vel.length() / maxf(speed, 0.01) * 0.6 + 0.15)
+
+
+## One fish in the bucket: a body the physics lets fall and pile - lying where
+## it lands once it's dead (white-eyed, gone green or purple as it rots), a
+## living one flopping now and then (weaker the less it has left).
+class BucketFish extends RigidBody3D:
+	var fish := {}
+	var model: MeshInstance3D
+	var length := 0.3
+	var _flop := 0.0
+	var _look := 0.0
+	var _state := ""
+
+	func setup(f: Dictionary) -> bool:
+		var id: String = f.get("id", "")
+		model = FishModel.make(id)
+		if model == null:
+			return false
+		fish = f
+		name = "BucketFish"
+		var cm := float(f.get("length", 30.0))
+		# (no longer than a pail's width)
+		length = minf(lerpf(0.16, 0.58, clampf(log(maxf(cm, 1.0) / 5.0) / log(60.0), 0.0, 1.0)), 0.36)
+		var unit := length / 1.15
+		model.scale = Vector3.ONE * unit
+		model.position.x = 0.06 * unit
+		var shape := CollisionShape3D.new()
+		var flat: bool = FishData.FISH.get(id, {}).get("body", "") == "flat"
+		if flat:
+			model.rotation.x = -PI / 2.0
+			var box := BoxShape3D.new()
+			box.size = Vector3(length * 0.95, length * 0.07, length * 0.45)
+			shape.shape = box
+		else:
+			var cap := CapsuleShape3D.new()
+			cap.radius = maxf(length * 0.11, 0.012)
+			cap.height = length * 0.9
+			shape.shape = cap
+			shape.rotation.z = PI / 2.0
+		add_child(shape)
+		add_child(model)
+		mass = 0.3 + length * 2.0
+		var mat := PhysicsMaterial.new()
+		mat.friction = 0.9
+		mat.bounce = 0.05
+		physics_material_override = mat
+		linear_damp = 0.25
+		angular_damp = 1.4
+		continuous_cd = true
+		_flop = randf_range(0.2, 0.9)
+		_dress()
+		return true
+
+	func _dress() -> void:
+		_state = FishLife.state(fish)
+		FishModel.dress(model, fish)
+
+	func _physics_process(delta: float) -> void:
+		_look -= delta
+		if _look <= 0.0:
+			_look = 0.4
+			if FishLife.state(fish) != _state:
+				_dress()
+		if _state != "alive":
+			return
+		_flop -= delta
+		if _flop > 0.0:
+			return
+		# A flop: up and over, weaker as its life runs out.
+		var vit := clampf(float(FishLife.bar(fish).share), 0.15, 1.0)
+		_flop = randf_range(0.5, 1.4) / vit
+		apply_central_impulse(Vector3(randf_range(-0.4, 0.4), randf_range(0.9, 1.5), randf_range(-0.4, 0.4)) * mass * 0.5 * vit)
+		apply_torque_impulse(Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * mass * 0.02 * vit)
+		FishModel.swim(model, 0.3, 1.5)
+

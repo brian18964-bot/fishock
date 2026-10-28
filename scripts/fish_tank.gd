@@ -12,6 +12,12 @@ extends Control
 ## one (TankView) stays for when the 3D camp is turned off. User request
 ## (Camp v2): the 3D one is the camp's half-cut drum of water, seen from
 ## above.
+## User request: two tabs - 總覽 (the tank's fish, the bag's and the
+## warehouse's all in one list, the bucket half in the frame at the tank's
+## left) and 魚桶 (the bucket: the fish in it, dead ones lying piled, a live
+## one put in dying in its time, then rotting). A fish's card is at the left,
+## and putting it in the bag or the warehouse brings up their grid beside it
+## (FishPlacer) to set it where it goes.
 
 const TANK := Rect2(24, 66, 580, 454)
 ## The water inside the glass (tank-local).
@@ -19,17 +25,24 @@ const WATER := Rect2(10, 26, 570, 380)
 const SAND_H := 44.0
 const WATER_TOP := Color(0.1, 0.3, 0.38)
 const WATER_BOTTOM := Color(0.03, 0.1, 0.16)
+## Where the card and the grid beside it go (the page is 960 wide).
+const CARD_AT := Vector2(14, 0)
+const CARD_WIDTH := 420.0
+const PLACER_X := 448.0
 
 var _tank  # Aquarium, or TankView when the 3D camp is off
 var _list: VBoxContainer
 var _count: Label
 var _purse: PanelContainer
 var _card: Control
-## Which fish list the right-hand window shows: "tank", "box" (the dead and
-## the rotten), "pack" (in the bag), "stash" (in the warehouse).
-var _tab := "tank"
+var _placer: FishPlacer
+## Which the right-hand window shows: "overview" (the tank's, the bag's and
+## the warehouse's fish) or "bucket".
+var _tab := "overview"
 var _tabs := {}
-const TAB_NAMES := [["tank", "魚缸"], ["box", "魚箱"], ["pack", "包包"], ["stash", "倉庫"]]
+const TAB_NAMES := [["overview", "總覽"], ["bucket", "魚桶"]]
+## The lists the overview shows: [list, heading, capacity (0: none)].
+const SECTIONS := [["tank", "魚缸", Profile.TANK_SIZE], ["pack", "包包（下次出發帶上）", 0], ["stash", "倉庫", Profile.STASH_SIZE]]
 var _toast: Label
 
 
@@ -71,7 +84,9 @@ func _build() -> void:
 	_tank.name = "Tank"
 	_tank.position = TANK.position
 	_tank.size = TANK.size
-	_tank.picked.connect(_card_for)
+	_tank.picked.connect(func(i): _card_for(i, "tank"))
+	if _tank.has_signal("bucket_picked"):
+		_tank.bucket_picked.connect(func(i): _card_for(i, "box"))
 	add_child(_tank)
 
 	var made := UiKit.window("魚缸")
@@ -80,12 +95,12 @@ func _build() -> void:
 	right.position = Vector2(622, 56)
 	right.custom_minimum_size = Vector2(324, 474)
 	var tabs := HBoxContainer.new()
-	tabs.add_theme_constant_override("separation", 4)
+	tabs.add_theme_constant_override("separation", 6)
 	tabs.alignment = BoxContainer.ALIGNMENT_CENTER
 	for t in TAB_NAMES:
-		var b := UiKit.button(t[1], 14)
+		var b := UiKit.button(t[1], 15)
 		b.name = "Tab_" + t[0]
-		b.custom_minimum_size = Vector2(68, 34)
+		b.custom_minimum_size = Vector2(110, 36)
 		var key: String = t[0]
 		b.pressed.connect(func():
 			_tab = key
@@ -95,6 +110,8 @@ func _build() -> void:
 	col.add_child(tabs)
 	_count = UiKit.label("", 15, UiKit.DIM)
 	_count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_count.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_count.custom_minimum_size.x = 288
 	col.add_child(_count)
 	var scroll := DragScroll.new()
 	scroll.custom_minimum_size = Vector2(288, 336)
@@ -129,22 +146,34 @@ func _refresh_gold() -> void:
 func _rebuild() -> void:
 	for k in _tabs:
 		UiKit.style_tab(_tabs[k], k == _tab)
-	var fish := Profile.fish_list(_tab)
-	var cap: int = {"tank": Profile.TANK_SIZE, "box": Profile.FISH_BOX_SIZE, "pack": 0, "stash": Profile.STASH_SIZE}[_tab]
-	var what: String = {"tank": "魚缸裡的魚", "box": "魚箱（死魚、腐敗的魚）", "pack": "包包裡的魚（下次出發帶上）", "stash": "倉庫裡的魚"}[_tab]
-	_count.text = "%s  %d%s" % [what, fish.size(), " / %d" % cap if cap > 0 else ""]
 	for c in _list.get_children():
 		c.queue_free()
-	if fish.is_empty():
-		var empty := {"tank": "還沒有魚。從遊戲裡帶著漁獲成功逃出來，魚就會放進這裡。",
-			"box": "沒有死掉或腐敗的魚。", "pack": "包包裡沒有魚。點魚缸裡的魚，可以把牠放進包包帶出去。",
-			"stash": "倉庫裡沒有魚。點魚缸裡的魚，可以把牠先收進倉庫。"}
-		var l := UiKit.label(empty[_tab], 15, UiKit.DIM)
-		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		l.custom_minimum_size.x = 280
-		_list.add_child(l)
-	for i in fish.size():
-		_list.add_child(_row(i, _tab))
+	if _tab == "bucket":
+		_count.text = "魚桶  %d / %d　活魚放進去會慢慢死去，死了又會慢慢腐敗" % [Profile.fish_box.size(), Profile.FISH_BOX_SIZE]
+		if Profile.fish_box.is_empty():
+			var l := UiKit.label("魚桶是空的。點魚缸裡的魚，可以把牠放進魚桶；帶回來的死魚也在這裡。", 15, UiKit.DIM)
+			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			l.custom_minimum_size.x = 280
+			_list.add_child(l)
+		for i in Profile.fish_box.size():
+			_list.add_child(_row(i, "box"))
+	else:
+		_count.text = "魚缸 %d / %d　包包 %d　倉庫 %d / %d" % [Profile.tank.size(), Profile.TANK_SIZE, Profile.pack_fish.size(),
+			Profile.stash_fish.size(), Profile.STASH_SIZE]
+		for sec in SECTIONS:
+			var fish := Profile.fish_list(sec[0])
+			_list.add_child(UiKit.label("%s　%d%s" % [sec[1], fish.size(), " / %d" % sec[2] if sec[2] > 0 else ""], 15, UiKit.GOLD_BRIGHT, true))
+			if fish.is_empty():
+				var empty := {"tank": "還沒有魚。從遊戲裡帶著漁獲成功逃出來，魚就會放進這裡。",
+					"pack": "包包裡沒有魚。點魚，可以放進包包帶出去。", "stash": "倉庫裡沒有魚。"}
+				var l := UiKit.label(empty[sec[0]], 13, UiKit.DIM)
+				l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+				l.custom_minimum_size.x = 280
+				_list.add_child(l)
+			for i in fish.size():
+				_list.add_child(_row(i, sec[0]))
+	if _tank.has_method("set_view"):
+		_tank.set_view("bucket" if _tab == "bucket" else "tank")
 	_tank.stock()
 
 
@@ -154,7 +183,7 @@ func _row(i: int, src := "tank") -> Control:
 	var f: Dictionary = Profile.fish_list(src)[i]
 	var rarity := UiKit.fish_rarity(f)
 	var b := Button.new()
-	b.name = "Fish_%d" % i
+	b.name = "Fish_%s_%d" % [src, i]
 	b.focus_mode = Control.FOCUS_NONE
 	b.custom_minimum_size = Vector2(284, 58)
 	var box := StyleBoxFlat.new()
@@ -198,7 +227,7 @@ func _row(i: int, src := "tank") -> Control:
 
 
 ## A fish's card (its tooltip): picture, name, measurements, trait, price;
-## sell or trade.
+## sell or trade. At the left of the page, the grid it's put in beside it.
 func _card_for(i: int, src := "tank") -> void:
 	var list := Profile.fish_list(src)
 	if _card != null or i < 0 or i >= list.size():
@@ -214,7 +243,8 @@ func _card_for(i: int, src := "tank") -> void:
 	add_child(shade)
 	_card = shade
 	var panel := UiKit.tooltip_panel()
-	panel.custom_minimum_size = Vector2(420, 0)
+	panel.name = "Card"
+	panel.custom_minimum_size = Vector2(CARD_WIDTH, 0)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 5)
 	# The fish in 3D, turning (user request), or its picture.
@@ -223,7 +253,7 @@ func _card_for(i: int, src := "tank") -> void:
 		turn.name = "Preview"
 		turn.custom_minimum_size = Vector2(0, 150)
 		col.add_child(turn)
-		turn.show_fish(f.get("id", ""))
+		turn.show_fish(f.get("id", ""), f)
 	else:
 		var pic := TextureRect.new()
 		pic.texture = FishData.icon(f.get("id", ""), f.get("name", ""))
@@ -232,37 +262,41 @@ func _card_for(i: int, src := "tank") -> void:
 		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		col.add_child(pic)
 	col.add_child(UiKit.label(f.get("name", "魚"), 22, UiKit.rarity_color(rarity), true))
-	col.add_child(UiKit.label(UiKit.rarity_name(rarity) + " 魚", 14, UiKit.rarity_color(rarity)))
-	col.add_child(UiKit.divider(360))
+	col.add_child(UiKit.label(UiKit.rarity_name(rarity) + " 魚　" + {"tank": "在魚缸", "pack": "在包包", "stash": "在倉庫", "box": "在魚桶"}[src], 14, UiKit.rarity_color(rarity)))
+	col.add_child(UiKit.divider(CARD_WIDTH - 40.0))
 	col.add_child(UiKit.label("長度・重量：" + FishData.size_text(f), 15))
 	var t: String = f.get("tank_trait", "")
 	var tl := UiKit.label("特性：%s－%s" % [FishData.trait_name(t), FishData.TANK_TRAITS.get(t, ["", ""])[1]], 15, UiKit.USE)
 	tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	tl.custom_minimum_size.x = 390
+	tl.custom_minimum_size.x = CARD_WIDTH - 30.0
 	col.add_child(tl)
-	# (its life, kept as it was brought: it doesn't run down in the tank)
+	# (its life, kept as it was brought: it doesn't run down at home - but in the bucket)
 	var vitals := FishVitals.new()
-	vitals.custom_minimum_size.x = 390
+	vitals.custom_minimum_size.x = CARD_WIDTH - 30.0
 	col.add_child(vitals)
-	vitals.show_fish(f, src == "tank")
+	vitals.show_fish(f, src != "box")
 	var price := maxi(1, roundi(float(f.get("value", 0.0))))
 	var pr := HBoxContainer.new()
 	pr.add_child(UiKit.label("售價：", 15))
 	pr.add_child(UiKit.gold_label(price, 15))
 	col.add_child(pr)
-	# What can be done with it: put elsewhere (bag, warehouse, tank / box),
+	# What can be done with it: put elsewhere (bag, warehouse, tank, bucket),
 	# fed (the smith), sold (from the tank).
 	var moves := HFlowContainer.new()
 	moves.add_theme_constant_override("h_separation", 8)
 	moves.add_theme_constant_override("v_separation", 6)
-	moves.custom_minimum_size.x = 390
-	var where := {"tank": "放回魚缸", "box": "放進魚箱", "pack": "放進包包", "stash": "放進倉庫"}
+	moves.custom_minimum_size.x = CARD_WIDTH - 30.0
+	var where := {"tank": "放回魚缸", "box": "放進魚桶", "pack": "放進包包", "stash": "放進倉庫"}
 	for to in Profile.fish_places(f, src):
 		var mb := UiKit.button(where[to], 14)
 		mb.name = "Move_" + to
 		mb.custom_minimum_size = Vector2(100, 38)
 		var dest: String = to
 		mb.pressed.connect(func():
+			if dest == "pack" or dest == "stash":
+				# (the grid beside the card: set it where it goes)
+				_open_placer(dest, src, i)
+				return
 			var why := Profile.move_fish(src, i, dest)
 			_close()
 			if why != "":
@@ -305,13 +339,39 @@ func _card_for(i: int, src := "tank") -> void:
 	panel.add_child(col)
 	shade.add_child(panel)
 	panel.reset_size()
-	panel.position = (size - panel.size) / 2.0
+	panel.position = Vector2(CARD_AT.x, maxf((size.y - panel.size.y) / 2.0, 8.0))
 	if _tank.has_method("highlight"):
-		_tank.highlight(i)
+		if src == "box" and _tank.has_method("highlight_bucket"):
+			_tank.highlight_bucket(i)
+		elif src == "tank":
+			_tank.highlight(i)
+
+
+## The bag's grid (or the warehouse's slots) beside the card, to put the fish
+## where it goes: set down, the page is refreshed.
+func _open_placer(to: String, src: String, i: int) -> void:
+	if _placer != null:
+		_placer.queue_free()
+		_placer = null
+	var f: Dictionary = Profile.fish_list(src)[i]
+	var why := Profile.fish_refusal(f, to)
+	if why != "":
+		_close()
+		_say(why)
+		return
+	_placer = FishPlacer.new(to, src, i)
+	_card.add_child(_placer)
+	_placer.position = Vector2(PLACER_X, 70)
+	_placer.done.connect(func(placed: bool):
+		var name: String = f.get("name", "魚")
+		_close()
+		if placed:
+			_say("%s 放進%s了" % [name, "包包" if to == "pack" else "倉庫"])
+		_rebuild())
 
 
 ## User request: feeding one fish. The smith eats a rotten fish (from the
-## fish box) and mends a piece of gear (5 durability, FishLife.SMITH_REPAIR):
+## bucket) and mends a piece of gear (5 durability, FishLife.SMITH_REPAIR):
 ## first the rotten one is picked, then the gear.
 func _feed_dialog(smith: Dictionary) -> void:
 	if _card != null:
@@ -323,7 +383,7 @@ func _feed_dialog(smith: Dictionary) -> void:
 	var gear := Profile.repairable()
 	var title := "餵食 %s" % smith.get("name", "魚")
 	if rotten.is_empty():
-		_modal(title, ["魚箱裡沒有腐敗的魚可以餵。"], [])
+		_modal(title, ["魚桶裡沒有腐敗的魚可以餵。"], [])
 		return
 	if gear.is_empty():
 		_modal(title, ["身上沒有需要修理的裝備。"], [])
@@ -389,8 +449,11 @@ func _close() -> void:
 	if _card != null:
 		_card.queue_free()
 		_card = null
+	_placer = null
 	if _tank.has_method("highlight"):
 		_tank.highlight(-1)
+	if _tank.has_method("highlight_bucket"):
+		_tank.highlight_bucket(-1)
 
 
 ## A fish's picture in a slot ringed by its rarity.

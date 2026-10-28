@@ -25,11 +25,86 @@ static func mesh(id: String) -> Mesh:
 		if has_model(id):
 			var inst: Node = (load(MESHES % id) as PackedScene).instantiate()
 			for mi in inst.find_children("*", "MeshInstance3D", true, false):
-				m = (mi as MeshInstance3D).mesh
+				m = _marked_eyes((mi as MeshInstance3D).mesh)
 				break
 			inst.free()
 		_meshes[id] = m
 	return _meshes[id]
+
+
+## `src` with its eyes marked (vertex colour red 1, the rest 0) for the dead's
+## white ones. The model is one mesh, its parts' vertices split along the
+## skin's seams, so they're welded by place first; the eyes are the two
+## compact roundish clusters, one each side of the midline, near the head.
+static func _marked_eyes(src: Mesh) -> Mesh:
+	var arr := src.surface_get_arrays(0)
+	var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var ix: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+	var parent := PackedInt32Array()
+	parent.resize(v.size())
+	var weld := {}
+	for i in v.size():
+		parent[i] = i
+		var key := Vector3i((v[i] * 2000.0).round())
+		if weld.has(key):
+			parent[i] = weld[key]
+		else:
+			weld[key] = i
+	for t in range(0, ix.size(), 3):
+		var r0 := _root(parent, ix[t])
+		for j in [1, 2]:
+			parent[_root(parent, ix[t + j])] = r0
+	var comps := {}
+	for i in v.size():
+		var r := _root(parent, i)
+		if not comps.has(r):
+			comps[r] = []
+		comps[r].append(i)
+	var colors := PackedColorArray()
+	colors.resize(v.size())
+	colors.fill(Color(0, 0, 0, 1))
+	for r in comps:
+		var list: Array = comps[r]
+		if list.size() < 60:
+			continue
+		var lo := Vector3(1e9, 1e9, 1e9)
+		var hi := Vector3(-1e9, -1e9, -1e9)
+		for i in list:
+			lo = lo.min(v[i])
+			hi = hi.max(v[i])
+		var d := hi - lo
+		var big := maxf(d.x, maxf(d.y, d.z))
+		var small := minf(d.x, minf(d.y, d.z))
+		var c := (lo + hi) * 0.5
+		if big < 0.08 and small > 0.012 and big / small < 1.4 and absf(c.z) > 0.01 and c.x > 0.15:
+			for i in list:
+				colors[i] = Color(1, 0, 0, 1)
+	arr[Mesh.ARRAY_COLOR] = colors
+	var out := ArrayMesh.new()
+	out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	return out
+
+
+static func _root(parent: PackedInt32Array, a: int) -> int:
+	while parent[a] != a:
+		parent[a] = parent[parent[a]]
+		a = parent[a]
+	return a
+
+
+## Dresses `fish` (the model from make()) as the fish dict `f` is: dead - white
+## eyes, dulled; rotten - the body gone purple or green (which, by the fish's
+## own luck: its uid), the more the further gone. Nothing for a living one.
+static func dress(fish: MeshInstance3D, f: Dictionary) -> void:
+	var mat := fish.material_override as ShaderMaterial
+	if mat == null:
+		return
+	var state := FishLife.state(f)
+	mat.set_shader_parameter("dead", 0.0 if state == "alive" else 1.0)
+	var rot := 1.0 if state == "rotten" else 0.0
+	mat.set_shader_parameter("rot", rot)
+	var green: bool = (int(f.get("uid", int(float(f.get("value", 0.0)) * 1000.0))) + str(f.get("name", "")).hash()) % 2 == 0
+	mat.set_shader_parameter("rot_color", Color(0.4, 0.5, 0.16) if green else Color(0.38, 0.2, 0.45))
 
 
 ## A new fish of species `id` (null if it has no model). Swim it with

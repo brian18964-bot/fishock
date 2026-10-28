@@ -78,6 +78,10 @@ const TESTS := [
 	"test_hud_top",
 	"test_bag_drag_out",
 	"test_fish_tank",
+	"test_tank_bucket",
+	"test_tank_leaves",
+	"test_placing_fish",
+	"test_dead_fish_look",
 	"test_camp_spirit_and_tents",
 	"test_camp_life",
 	"test_ears_and_tails",
@@ -1282,6 +1286,10 @@ func test_quick_slots() -> void:
 	check(quick.slots[2]._shake > 0.0 and Profile.quick_slots[2] == "eyeball", "none left: it shakes, still set")
 	# Held: the picker, to clear it.
 	await _touch(quick.CENTERS[1], true, 2)
+	await seconds(0.1)
+	check(quick.slots[1].hold == 0.0 and not quick.picker_open(), "a plain tap's time: no ring")
+	await seconds(QuickSlots.RING_AFTER + 0.05)
+	check(quick.slots[1].hold > 0.0, "held on, the ring starts")
 	await seconds(QuickSlots.HOLD + 0.1)
 	check(quick.picker_open(), "held, the picker opens")
 	await _touch(quick.CENTERS[1], false, 2)
@@ -3124,7 +3132,7 @@ func test_tank_moves_and_feeding() -> void:
 	var carp := FishLife.roll({"name": "鯉魚", "id": "carp", "value": 6.0, "size": "small", "rarity": "common"})
 	carp.life_traits = []
 	Profile.tank = [carp]
-	check(Profile.fish_places(carp, "tank") == ["pack", "stash"], "a living fish in the tank: bag, warehouse")
+	check(Profile.fish_places(carp, "tank") == ["pack", "stash", "box"], "a living fish in the tank: bag, warehouse, the bucket")
 	check(Profile.move_fish("tank", 0, "pack") == "" and Profile.tank.is_empty() and Profile.pack_fish.size() == 1, "taken out into the bag")
 	check(Profile.move_fish("pack", 0, "stash") == "" and Profile.stash_fish.size() == 1, "from the bag to the warehouse")
 	check(Profile.move_fish("stash", 0, "tank") == "" and Profile.tank.size() == 1, "and back in the tank")
@@ -3153,19 +3161,31 @@ func test_tank_moves_and_feeding() -> void:
 	Profile.pack_fish = []
 	get_tree().root.add_child(page)
 	await frames(3)
-	check(page.find_child("Tab_tank", true, false) != null and page.find_child("Tab_pack", true, false) != null, "the page has its tabs")
-	page.find_child("Tab_pack", true, false).pressed.emit()
+	check(page.find_child("Tab_overview", true, false) != null and page.find_child("Tab_bucket", true, false) != null, "the page has its two tabs")
+	check(page.find_child("Tab_pack", true, false) == null and page.find_child("Tab_stash", true, false) == null, "no bag or warehouse tab: they're in the overview")
+	page.find_child("Tab_bucket", true, false).pressed.emit()
 	await frames(2)
-	check(page.find_child("List", true, false).get_child_count() == 1, "the bag tab: its empty note")
-	page.find_child("Tab_tank", true, false).pressed.emit()
+	check(page.find_child("List", true, false).get_child_count() == 1, "the bucket tab: its empty note")
+	page.find_child("Tab_overview", true, false).pressed.emit()
 	await frames(2)
 	page._card_for(0)
 	await frames(2)
 	var mv: Button = page.find_child("Move_pack", true, false)
 	check(mv != null and page.find_child("FeedFish", true, false) == null, "the card offers the bag; no feeding a plain fish")
+	# User request: the card is at the left, and the bag's grid comes up beside it.
+	var card: Control = page.find_child("Card", true, false)
+	check(card.position.x < 40.0 and card.position.x + card.size.x < 470.0, "the card sits at the left (x %d..%d)" % [card.position.x, card.position.x + card.size.x])
 	mv.pressed.emit()
 	await frames(2)
+	var placer: FishPlacer = page.find_child("FishPlacer", true, false)
+	check(placer != null and placer.position.x >= card.position.x + card.size.x - 1.0, "putting it in the bag brings up the bag's grid beside the card")
+	check(Profile.pack_fish.is_empty() and not placer.find_child("PlaceGo", true, false).disabled, "nothing moved yet; it fits where it's first set")
+	placer.put_at(Vector2i(5, 2))
+	check(placer.at == Vector2i(5, 2), "set where the player wants it")
+	placer.find_child("PlaceGo", true, false).pressed.emit()
+	await frames(2)
 	check(Profile.pack_fish.size() == 1 and Profile.tank.is_empty(), "the button moved it")
+	check(Profile.pack_places()[0].position == Vector2i(5, 2) and Profile.pack_fish[0].cell == [5, 2], "and it's where it was put (cell 5, 2)")
 	# The smith.
 	var smith := FishLife.roll({"name": "鯉魚", "id": "carp", "value": 6.0, "size": "small", "rarity": "common"})
 	smith.life_traits = ["smith"]
@@ -3325,7 +3345,7 @@ func test_fish_tank() -> void:
 	if tank is Aquarium:
 		var s: Node3D = tank.fish()[0]
 		check(tank.pick(tank.camera.unproject_position(s.global_position)) >= 0, "a tap on a fish in the 3D tank picks it")
-	check(page.find_child("Fish_0", true, false) != null and page.find_child("Fish_1", true, false) != null, "the list")
+	check(page.find_child("Fish_tank_0", true, false) != null and page.find_child("Fish_tank_1", true, false) != null, "the list (the overview)")
 	check(page.find_child("FishLog", true, false) != null, "the fish log is reached from the tank")
 	tank.feed()
 	check(tank.food().size() > 0, "food goes in")
@@ -5053,6 +5073,14 @@ func test_camp3d() -> void:
 		check(camp._page != null and camp._page.scene_file_path.ends_with(page + ".tscn"), "%s: walked over, opened (%.1f s)" % [page, t])
 		camp.close_page()
 		await frames(3)
+	# User report: bent over the tank a long while before the page - it opens
+	# as soon as the stoop is down.
+	if stage.life.act_on("fish_tank", 0, Callable()):
+		var crouch := stage.life._plan.filter(func(st): return st.get("clip", "") == "Crouch_Idle" and st.has("fn"))
+		check(crouch.size() == 1 and float(crouch[0].time) * float(crouch[0].at) <= 0.5, "the tank's page opens at the stoop (%s s in)" % [float(crouch[0].time) * float(crouch[0].at) if not crouch.is_empty() else -1.0])
+		stage.life._plan.clear()
+		stage.life._step = {}
+		stage.life.busy = ""
 	# Sat on a log, the stick gets it up first, then walks.
 	camp._ask("sit")
 	var w := 0.0
@@ -5800,3 +5828,228 @@ func test_run_intro_and_eye_guide() -> void:
 	bg.set_physics_process(true)
 	_restore_profile(kept)
 	await frames(1)
+
+
+## User request (魚桶): a bucket at the tank's side. A live fish put in dies
+## as its time runs, then rots; the fish are bodies in it, the camera goes to
+## it with its tab.
+func test_tank_bucket() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 0})
+	GameState.run_started = false
+	var f := FishLife.roll({"name": "鯉魚", "id": "carp", "value": 6.0, "size": "small", "rarity": "common", "length": 30.0, "weight": 1.0})
+	f.life_traits = []
+	f["tank_trait"] = "active"
+	Profile.tank = [f]
+	check(Profile.move_fish("tank", 0, "box") == "" and Profile.fish_box.size() == 1 and Profile.tank.is_empty(), "a live fish put in the bucket")
+	check(FishLife.state(f) == "alive", "alive at first")
+	Profile.age_bucket(FishLife.lifespan_left(f) + 1.0)
+	check(FishLife.state(f) == "dead", "its vitality runs down in the bucket: dead")
+	Profile.age_bucket(FishLife.freshness_left(f) + 1.0)
+	check(FishLife.state(f) == "rotten", "then it rots")
+	# The game ages it at home (on a run the carried ones age, not it).
+	var g := FishLife.roll({"name": "鯉魚", "id": "carp", "value": 6.0, "size": "small", "rarity": "common"})
+	g.life_traits = []
+	Profile.fish_box = [g]
+	var tank_fish := FishLife.roll({"name": "鯉魚", "id": "carp", "value": 6.0, "size": "small", "rarity": "common"})
+	Profile.tank = [tank_fish]
+	var vit_before := float(g.vit)
+	var tank_before := float(tank_fish.vit)
+	GameState._process(5.0)
+	check(float(g.vit) < vit_before and float(tank_fish.vit) == tank_before, "the game ages the bucket's fish at home - the tank's keep (%.3f -> %.3f)" % [vit_before, float(g.vit)])
+	# The page: the bucket tab and its 3D bucket.
+	var d := FishLife.roll({"name": "紅鮭", "id": "sockeye", "value": 6.0, "size": "medium", "rarity": "common", "length": 60.0, "weight": 3.0})
+	FishLife.kill(d)
+	var r := FishLife.roll({"name": "梭魚", "id": "pike", "value": 6.0, "size": "medium", "rarity": "common", "length": 50.0, "weight": 2.0})
+	FishLife.kill(r)
+	FishLife.rot(r)
+	var a := FishLife.roll({"name": "神仙魚", "id": "angelfish", "value": 6.0, "size": "small", "rarity": "common", "length": 20.0, "weight": 0.2})
+	a.life_traits = []
+	Profile.fish_box = [d, r, a]
+	var page: Control = load("res://scenes/fish_tank.tscn").instantiate()
+	get_tree().root.add_child(page)
+	await seconds(0.5)
+	var tank = page.find_child("Tank", true, false)
+	check(tank is Aquarium and tank.view() == "tank", "the page opens on the overview")
+	page.find_child("Tab_bucket", true, false).pressed.emit()
+	await seconds(3.5)
+	check(tank.view() == "bucket" and tank.camera.global_position.distance_to(Aquarium.VIEWS.bucket[0]) < 0.05, "the bucket's tab takes the view to it")
+	check(tank.bucket_fish().size() == 3, "the bucket's fish are bodies in it (%d)" % tank.bucket_fish().size())
+	var inside := true
+	var where := []
+	for b in tank.bucket_fish():
+		var off := Vector2(b.global_position.x - Aquarium.BUCKET_AT.x, b.global_position.z - Aquarium.BUCKET_AT.z).length()
+		where.append([snappedf(off, 0.01), snappedf(b.global_position.y, 0.01)])
+		inside = inside and off < 0.42 and b.global_position.y > Aquarium.BUCKET_FLOOR and b.global_position.y < 1.0
+	check(inside, "and lie in it, not through its wall or floor %s" % [where])
+	var one: Node3D = tank.bucket_fish()[0]
+	var idx: int = tank.bucket_pick(tank.camera.unproject_position(one.global_position))
+	check(idx >= 0 and idx < Profile.fish_box.size(), "a tap on one picks one (%d)" % idx)
+	# One taken out leaves the bucket; one put in drops in.
+	Profile.move_fish("box", 0, "stash")
+	page._rebuild()
+	await seconds(0.5)
+	check(tank.bucket_fish().size() == 2, "taken out, it's gone from the bucket")
+	Profile.tank = [tank_fish]
+	Profile.move_fish("tank", 0, "box")
+	page._rebuild()
+	await seconds(1.5)
+	check(tank.bucket_fish().size() == 3, "one put in drops in")
+	page.find_child("Tab_overview", true, false).pressed.emit()
+	await seconds(1.0)
+	check(tank.view() == "tank", "back to the overview: the tank's view")
+	page.queue_free()
+	await frames(1)
+	Profile.load_data(saved)
+
+
+## User request: the lotus leaves float - dragged by a finger, gone on a while
+## after it's let go, slowing, bumping each other and the wall, and sending
+## ripples out over the water.
+func test_tank_leaves() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 0})
+	Aquarium._saved_leaves = []
+	var page: Control = load("res://scenes/fish_tank.tscn").instantiate()
+	get_tree().root.add_child(page)
+	await seconds(1.0)
+	var tank: Aquarium = page.find_child("Tank", true, false)
+	check(tank._leaves.size() == Aquarium.PADS.size(), "the leaves are there")
+	var leaf: Dictionary = tank._leaves[0]
+	var scr := func(p: Vector2) -> Vector2: return tank.camera.unproject_position(Vector3(p.x, Aquarium.SURFACE, p.y)) / Aquarium.RENDER_SCALE
+	var start: Vector2 = leaf.pos
+	# A tap that doesn't move it leaves it be.
+	var down := InputEventMouseButton.new()
+	down.button_index = MOUSE_BUTTON_LEFT
+	down.pressed = true
+	down.position = scr.call(start)
+	tank._gui_input(down)
+	check(not tank._held.is_empty() and tank._held.leaf == leaf, "a leaf under the finger is taken")
+	var up := InputEventMouseButton.new()
+	up.button_index = MOUSE_BUTTON_LEFT
+	up.pressed = false
+	up.position = down.position
+	tank._gui_input(up)
+	await frames(3)
+	check(tank._held.is_empty() and leaf.pos.distance_to(start) < 0.05, "a tap lets go of it where it was")
+	# Dragged along.
+	down.position = scr.call(leaf.pos)
+	tank._gui_input(down)
+	var cur: Vector2 = down.position
+	var most := 0
+	for _k in 14:
+		var mv := InputEventMouseMotion.new()
+		cur += Vector2(7, 0)
+		mv.position = cur
+		mv.relative = Vector2(7, 0)
+		tank._gui_input(mv)
+		await frames(2)
+		most = maxi(most, tank._drops.size())
+	var moved: float = leaf.pos.distance_to(start)
+	check(moved > 0.2, "dragged along with the finger (%.2f m)" % moved)
+	check(most > 0, "its moving sends ripples over the water (%d at once)" % most)
+	tank._gui_input(up)
+	await frames(1)
+	var speed: float = leaf.vel.length()
+	check(speed > 0.03, "let go, it goes on a while (%.2f m/s)" % speed)
+	await seconds(2.5)
+	check(leaf.vel.length() < speed * 0.4, "slowing in the water (%.3f)" % leaf.vel.length())
+	# Thrown at the wall: kept in.
+	var half := Aquarium._water_half()
+	leaf.vel = Vector2(9, 3)
+	await seconds(1.5)
+	check(absf(leaf.pos.x) <= half.x and absf(leaf.pos.y) <= half.y, "the wall holds it (%s)" % str(leaf.pos))
+	# Two against each other: pushed apart.
+	var other: Dictionary = tank._leaves[1]
+	other.pos = leaf.pos + Vector2(0.03, 0.0)
+	await frames(3)
+	check(leaf.pos.distance_to(other.pos) >= (leaf.r + other.r) * 0.85 - 0.02, "leaves bump, not lie through each other")
+	# Where they were left is kept.
+	var left: Vector2 = leaf.pos
+	page.queue_free()
+	await frames(2)
+	check(Aquarium._saved_leaves.size() == Aquarium.PADS.size() and Vector2(Aquarium._saved_leaves[0][0], Aquarium._saved_leaves[0][1]).distance_to(left) < 0.2, "left where they were for the next time")
+	Aquarium._saved_leaves = []
+	Profile.load_data(saved)
+
+
+## User request: a fish put in the bag or the warehouse is set where the
+## player says - a cell of the bag's grid, a slot of the warehouse's.
+func test_placing_fish() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 0})
+	var small := FishLife.roll({"name": "沙丁魚", "id": "sardine", "value": 2.0, "size": "small", "rarity": "common"})
+	var large := FishLife.roll({"name": "鯉魚", "id": "carp", "value": 6.0, "size": "large", "rarity": "common"})
+	small.life_traits = []
+	large.life_traits = []
+	Profile.tank = [small, large]
+	check(Profile.pack_fits(small, Vector2i(7, 3)) and not Profile.pack_fits(large, Vector2i(7, 3)), "a small one fits the corner cell, a large (2x2) one doesn't")
+	check(Profile.move_fish("tank", 1, "pack", Vector2i(7, 3)) != "" and Profile.pack_fish.is_empty(), "a refused place moves nothing")
+	check(Profile.move_fish("tank", 0, "pack", Vector2i(7, 3)) == "" and Profile.pack_fish[0].cell == [7, 3], "set in the corner cell")
+	check(Profile.move_fish("tank", 0, "pack", Vector2i(7, 3)) != "", "that cell's taken now")
+	check(Profile.move_fish("tank", 0, "pack", Vector2i(0, 0)) == "", "the large one at the other corner")
+	var at := Profile.pack_places()
+	check(at.size() == 2 and at[0].position == Vector2i(7, 3) and at[1] == Rect2i(0, 0, 2, 2), "the bag has them where they were put %s" % [at])
+	# On a run they stay there.
+	GameState.reset_run()
+	GameState.start_run()
+	var placed := Inventory.pack(Inventory.items(null))
+	check(GameState.carried_fish.size() == 2 and placed.has(Rect2i(7, 3, 1, 1)) and placed.has(Rect2i(0, 0, 2, 2)), "on the run they sit as put")
+	GameState.carried_fish.clear()
+	GameState.run_started = false
+	# The warehouse's slots.
+	Profile.tank = [small.duplicate(true), large.duplicate(true)]
+	check(Profile.move_fish("tank", 0, "stash", Vector2i(4, 0)) == "" and Profile.stash_slot(Profile.stash_fish[0]) == 4, "set in slot 4")
+	check(Profile.move_fish("tank", 0, "stash", Vector2i(4, 0)) != "", "slot 4's taken")
+	check(Profile.move_fish("tank", 0, "stash") == "" and Profile.stash_slot(Profile.stash_fish[1]) != 4, "no place named: the first free")
+	# The grid shown (FishPlacer): a cell tapped sets it, the button sets it down.
+	Profile.pack_fish.clear()
+	Profile.tank = [small.duplicate(true)]
+	var placer := FishPlacer.new("pack", "tank", 0)
+	get_tree().root.add_child(placer)
+	await frames(2)
+	check(placer.at == Vector2i.ZERO, "first set at the first free cell")
+	placer.put_at(Vector2i(3, 1))
+	check(placer.at == Vector2i(3, 1) and not (placer.find_child("PlaceGo", true, false) as Button).disabled, "moved to a free cell")
+	var done := [null]
+	placer.done.connect(func(ok): done[0] = ok)
+	(placer.find_child("PlaceGo", true, false) as Button).pressed.emit()
+	check(done[0] == true and Profile.pack_fish.size() == 1 and Profile.pack_fish[0].cell == [3, 1], "放入 sets it down there")
+	placer.queue_free()
+	Profile.load_data(saved)
+
+
+## User request: a dead fish's eyes all white, a rotten one's body gone
+## purple or green.
+func test_dead_fish_look() -> void:
+	var arr := FishModel.mesh("carp").surface_get_arrays(0)
+	var colors: PackedColorArray = arr[Mesh.ARRAY_COLOR]
+	var eyes := 0
+	for c in colors:
+		if c.r > 0.5:
+			eyes += 1
+	check(eyes >= 100 and eyes < colors.size() * 0.7, "the eyes are marked in the mesh (%d of %d vertices)" % [eyes, colors.size()])
+	var alive := FishLife.roll({"name": "鯉魚", "id": "carp", "value": 6.0, "size": "small", "rarity": "common"})
+	var dead := alive.duplicate(true)
+	FishLife.kill(dead)
+	var rot := alive.duplicate(true)
+	FishLife.kill(rot)
+	FishLife.rot(rot)
+	var m := FishModel.make("carp")
+	FishModel.dress(m, alive)
+	var mat := m.material_override as ShaderMaterial
+	check(float(mat.get_shader_parameter("dead")) == 0.0 and float(mat.get_shader_parameter("rot")) == 0.0, "a living one as it is")
+	FishModel.dress(m, dead)
+	check(float(mat.get_shader_parameter("dead")) == 1.0 and float(mat.get_shader_parameter("rot")) == 0.0, "a dead one: white-eyed, dulled")
+	FishModel.dress(m, rot)
+	check(float(mat.get_shader_parameter("rot")) == 1.0, "a rotten one: gone off in colour")
+	m.free()
+	var seen := {}
+	for uid in 10:
+		var f := rot.duplicate(true)
+		f["uid"] = uid
+		var mm := FishModel.make("carp")
+		FishModel.dress(mm, f)
+		seen[(mm.material_override as ShaderMaterial).get_shader_parameter("rot_color")] = true
+		mm.free()
+	check(seen.size() == 2, "some go green, some purple")

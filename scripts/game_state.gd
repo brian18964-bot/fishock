@@ -144,6 +144,9 @@ func _process(delta: float) -> void:
 		# (the angel's keep the little ghosts off - the wraith's bring them sooner)
 		_ghost_quiet += delta * FishLife.imp_rate(carried_fish)
 		_age_fish(delta)
+	elif not run_started:
+		# (the bucket at home)
+		Profile.age_bucket(delta)
 	if not run_started or run_over or is_night or day_phase != DayPhase.FISHING:
 		return
 	if day_duration > 0.0:
@@ -533,7 +536,7 @@ func _bring_fish_home() -> String:
 	if not kept.is_empty():
 		text += "\n將 %s 放進魚缸" % "、".join(kept)
 	if sold > 0:
-		text += "\n魚缸或魚箱滿了，其餘的漁獲賣了 %d 金幣" % sold
+		text += "\n魚缸或魚桶滿了，其餘的漁獲賣了 %d 金幣" % sold
 	if dead > 0:
 		text += "\n死掉的魚 %d 條，帶去賣給商人" % dead
 	if rotten > 0:

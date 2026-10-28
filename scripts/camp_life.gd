@@ -617,7 +617,9 @@ func act_on(kind: String, part := 0, done := Callable()) -> bool:
 				{"do": "play", "clip": "Interact", "at": 0.3, "fn": opens}]
 			activity = "tent"
 		"fish_tank", "fish_log":
-			plan = _get_up() + _go("trough") + [{"do": "loop", "clip": "Crouch_Idle", "time": 1.8, "at": 0.55, "fn": opens},
+			# (user report: a long wait, bent over, for the page - it opens
+			# as soon as the stoop is down, 0.4 s in)
+			plan = _get_up() + _go("trough") + [{"do": "loop", "clip": "Crouch_Idle", "time": 1.0, "at": 0.4, "fn": opens},
 				{"do": "loop", "clip": "Crouch_Idle", "time": 1.5}]
 			activity = "trough"
 		"warehouse":

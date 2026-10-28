@@ -21,6 +21,9 @@ const CENTERS := [TouchControls.AIM_CENTER + Vector2(-102, -150), TouchControls.
 	TouchControls.AIM_CENTER + Vector2(33, -150)]
 const SIDE := 56.0
 const HOLD := 0.45
+## The hold's ring shows only after this long (user report: a plain tap flashed
+## it): a tap is over before it, the ring then fills over the rest of HOLD.
+const RING_AFTER := 0.2
 const KEYS := [KEY_Z, KEY_X, KEY_C]
 const RIM := Color(0.95, 0.82, 0.5, 0.55)
 
@@ -57,7 +60,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if _touch_slot >= 0:
 		_held += delta
-		slots[_touch_slot].hold = clampf(_held / HOLD, 0.0, 1.0)
+		slots[_touch_slot].hold = clampf((_held - RING_AFTER) / (HOLD - RING_AFTER), 0.0, 1.0)
 		if _held >= HOLD:
 			# Held: the picker, not a use.
 			var i := _touch_slot
