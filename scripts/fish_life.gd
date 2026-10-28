@@ -15,33 +15,63 @@ extends RefCounted
 ## ticks the bag; a fish put down ticks on the ground); at home they keep (the
 ## tank's alive, the box's cold).
 
-## The traits: name, what it does, how often they come up (weight), and the
-## sort of thing it is: "vit" (the vitality's pace), "fresh" (the
-## freshness'), "start", "value".
+## User request: the traits are AFFIXES (詞綴): each has a TIER, 1..5 - white,
+## green, blue, purple, gold - and its numbers grow with the tier (the `vals`,
+## one per tier; 財富's `ranges`). A fish rolls up to MAX_AFFIXES of them,
+## more and better the rarer the fish (SLOT_ODDS, TIER_ODDS - odds, not a
+## promise: a rare fish needn't have a high one, and a bad one is as good for
+## the collection). The mythic ones (gold only) come only on epic fish and up
+## (MYTHIC_CHANCE) and take one of the slots. A fish keeps `life_traits` (the
+## ids), `trait_tiers` (id -> tier) and, for 財富, `wealth_gold` (rolled in the
+## tier's range). One saved without tiers is read as tier 3 (LEGACY_TIER).
+##
+## name, how often it comes up (weight), what it bends ("kind"), `bad`, `fixed`
+## (a tier it always has; `rare_up`: only on rare fish and up), `vals` per tier.
 const TRAITS := {
-	"immortal": {"name": "不死", "desc": "活性歸零也不會死亡", "weight": 2.0, "kind": "vit"},
-	"tough": {"name": "頑強", "desc": "活性下降速度慢", "weight": 10.0, "kind": "vit", "vit": 0.4},
-	"weary": {"name": "厭世", "desc": "活性下降速度快", "weight": 10.0, "kind": "vit", "vit": 2.5},
-	"dying": {"name": "垂死", "desc": "釣起來活性就偏低（低於 30%）", "weight": 8.0, "kind": "start"},
-	"vigorous": {"name": "生猛", "desc": "釣起來活性特別高（90% 以上）", "weight": 8.0, "kind": "start"},
-	"nocturnal": {"name": "夜行", "desc": "夜晚活性下降速度減半", "weight": 6.0, "kind": "vit"},
-	"filthy": {"name": "骯髒", "desc": "新鮮度下降速度快", "weight": 9.0, "kind": "fresh", "fresh": 2.5},
-	"clean": {"name": "潔身", "desc": "新鮮度下降速度慢", "weight": 9.0, "kind": "fresh", "fresh": 0.4},
-	"imperishable": {"name": "不腐", "desc": "新鮮度歸零也不會腐敗", "weight": 3.0, "kind": "fresh"},
-	"plump": {"name": "肥美", "desc": "價值提高 25%", "weight": 7.0, "kind": "value", "value": 1.25},
-	"scrawny": {"name": "瘦弱", "desc": "價值降低 20%", "weight": 7.0, "kind": "value", "value": 0.8},
-	# User request: the very rare ones (MYTHIC_CHANCE) - each with a use of
-	# its own: in the tank (fortune, guide, smith) or in the bag (wraith, angel).
-	"fortune": {"name": "財神", "desc": "養在魚缸：每小時送來 20 金幣（最多累積 12 小時）", "weight": 1.0, "kind": "mythic"},
-	"guide": {"name": "引路魚", "desc": "養在魚缸：每次夜晚成功逃脫，有 10% 機率帶回一個隨機的眼球道具", "weight": 1.0, "kind": "mythic"},
-	"smith": {"name": "鐵匠", "desc": "養在魚缸：餵食腐敗的魚後，可選一件裝備回復 5 點耐久", "weight": 1.0, "kind": "mythic"},
-	"wraith": {"name": "惡靈", "desc": "腐敗後放在包包：猛獸攻擊 -20%，但小鬼偷襲 +10%", "weight": 1.0, "kind": "mythic"},
-	"luckystar": {"name": "幸運星", "desc": "放在包包裡：釣到稀有魚的機率微幅提升（+3%）", "weight": 1.0, "kind": "mythic"},
-	"angel": {"name": "天使", "desc": "活著時放在包包：小鬼偷襲 -60%，猛獸攻擊 -50%", "weight": 1.0, "kind": "mythic"},
+	# -- life (the vitality's pace and start)
+	"tough": {"name": "頑強", "weight": 10.0, "kind": "vit", "vals": [0.8, 0.6, 0.4, 0.3, 0.2]},
+	"weary": {"name": "厭世", "weight": 10.0, "kind": "vit", "bad": true, "vals": [1.4, 1.8, 2.5, 3.2, 4.0]},
+	"dying": {"name": "垂死", "weight": 8.0, "kind": "start", "bad": true, "vals": [0.5, 0.4, 0.29, 0.2, 0.1]},
+	"vigorous": {"name": "生猛", "weight": 8.0, "kind": "start", "vals": [0.8, 0.85, 0.9, 0.95, 1.0]},
+	"nocturnal": {"name": "夜行", "weight": 6.0, "kind": "vit", "vals": [0.8, 0.65, 0.5, 0.35, 0.2]},
+	"immortal": {"name": "不死", "weight": 2.0, "kind": "vit", "fixed": 4, "rare_up": true},
+	# -- freshness
+	"filthy": {"name": "骯髒", "weight": 9.0, "kind": "fresh", "bad": true, "vals": [1.4, 1.8, 2.5, 3.2, 4.0]},
+	"clean": {"name": "潔身", "weight": 9.0, "kind": "fresh", "vals": [0.8, 0.6, 0.4, 0.3, 0.2]},
+	"imperishable": {"name": "不腐", "weight": 3.0, "kind": "fresh", "fixed": 4, "rare_up": true},
+	# -- worth
+	"plump": {"name": "肥美", "weight": 7.0, "kind": "value", "vals": [0.10, 0.18, 0.25, 0.40, 0.60]},
+	"scrawny": {"name": "瘦弱", "weight": 7.0, "kind": "value", "bad": true, "vals": [0.08, 0.14, 0.20, 0.30, 0.40]},
+	"wealth": {"name": "財富", "weight": 6.0, "kind": "gold", "ranges": [[20, 40], [40, 80], [80, 120], [120, 160], [160, 200]]},
+	"faith": {"name": "信仰", "weight": 5.0, "kind": "offer", "vals": [0.10, 0.20, 0.30, 0.45, 0.60]},
+	"hold": {"name": "保值", "weight": 5.0, "kind": "hold", "vals": [0.5, 0.6, 0.7, 0.8, 0.9]},
+	# -- carried in the bag
+	"glow": {"name": "微光", "weight": 4.0, "kind": "bag", "vals": [0.2, 0.3, 0.45, 0.6, 0.8]},
+	"savory": {"name": "鮮美", "weight": 4.0, "kind": "bag", "bad": true, "vals": [0.10, 0.20, 0.30, 0.45, 0.60]},
+	"smelly": {"name": "腥臭", "weight": 4.0, "kind": "bag", "bad": true, "vals": [0.10, 0.20, 0.30, 0.45, 0.60]},
+	# User request: the very rare ones (MYTHIC_CHANCE, epic fish and up, gold) -
+	# each with a use of its own: in the tank (fortune, guide, smith) or in the
+	# bag (wraith, angel, luckystar).
+	"fortune": {"name": "財神", "weight": 1.0, "kind": "mythic", "fixed": 5},
+	"guide": {"name": "引路魚", "weight": 1.0, "kind": "mythic", "fixed": 5},
+	"smith": {"name": "鐵匠", "weight": 1.0, "kind": "mythic", "fixed": 5},
+	"wraith": {"name": "惡靈", "weight": 1.0, "kind": "mythic", "fixed": 5},
+	"luckystar": {"name": "幸運星", "weight": 1.0, "kind": "mythic", "fixed": 5},
+	"angel": {"name": "天使", "weight": 1.0, "kind": "mythic", "fixed": 5},
 }
 const MYTHIC := ["fortune", "guide", "smith", "wraith", "angel", "luckystar"]
-## A catch's chance of one of them, by its rarity.
-const MYTHIC_CHANCE := {"common": 0.012, "rare": 0.025, "epic": 0.05}
+## The tiers' names and colours.
+const TIER_NAMES := ["普通", "精良", "稀有", "史詩", "傳說"]
+const TIER_COLORS := [Color(0.88, 0.88, 0.88), Color(0.45, 0.85, 0.45), Color(0.4, 0.66, 1.0), Color(0.75, 0.5, 0.95), Color(1.0, 0.78, 0.3)]
+## How many affixes at most.
+const MAX_AFFIXES := 3
+## How many a catch rolls (0, 1, 2, 3), by its rarity: weights.
+const SLOT_ODDS := {"common": [45.0, 38.0, 14.0, 3.0], "rare": [25.0, 40.0, 25.0, 10.0], "epic": [10.0, 35.0, 35.0, 20.0]}
+## Which tier each rolls (1..5), by the fish's rarity: weights. (More rarities
+## - the mythic fish to come - go on the end.)
+const TIER_ODDS := {"common": [70.0, 25.0, 5.0, 0.0, 0.0], "rare": [35.0, 40.0, 20.0, 5.0, 0.0], "epic": [10.0, 30.0, 35.0, 20.0, 5.0]}
+## The mythic ones only come on these (the chance each has of one of them).
+const MYTHIC_CHANCE := {"epic": 0.05}
 ## Their numbers (user: set as these for now).
 const FORTUNE_GOLD := 20
 const FORTUNE_CAP_HOURS := 12.0
@@ -56,19 +86,11 @@ const ANGEL_BEAST := 0.50
 ## LUCK_MOST in all).
 const LUCK_RARE := 0.03
 const LUCK_MOST := 0.12
-## The traits to the fish's good (the rest - to its bad; the mythic ones, gold).
-const GOOD := ["immortal", "tough", "vigorous", "nocturnal", "clean", "imperishable", "plump"]
 ## Traits that don't go together (each group: at most one).
 const EXCLUSIVE := [["tough", "weary", "immortal"], ["filthy", "clean", "imperishable"], ["dying", "vigorous"],
 	["plump", "scrawny"]]
-## How many traits a fish rolls, by its rarity: weights for 0, 1, 2.
-const TRAIT_COUNT := {"common": [50.0, 38.0, 12.0], "rare": [35.0, 45.0, 20.0], "epic": [20.0, 50.0, 30.0]}
-
-## The vitality the dying start under, and the vigorous over.
-const DYING_START := Vector2(0.05, 0.29)
-const VIGOROUS_START := Vector2(0.9, 1.0)
-## Night's slowing for the nocturnal.
-const NIGHT_VIT := 0.5
+## The tier a fish saved without tiers is read as.
+const LEGACY_TIER := 3
 ## A fish whose freshness lasts no longer than this (s) rots as it dies.
 const INSTANT := 1.0
 
@@ -119,28 +141,35 @@ static func has_life(f: Dictionary) -> bool:
 
 
 ## Rolls a catch's life into `f` (its id, rarity set): vitality and paces
-## by its kind, then its traits. Its value is bent by its traits' (肥美...).
+## by its kind, then its affixes (tiers and all). Its value is bent by the
+## worth ones' (肥美, 瘦弱).
 static func roll(f: Dictionary) -> Dictionary:
 	var id: String = f.get("id", "")
 	var kind: Dictionary = KINDS[kind_for(id)]
-	var traits := roll_traits(str(f.get("rarity", "common")))
+	var rolled := roll_traits(str(f.get("rarity", "common")))
+	var traits: Array = rolled.ids
+	var tiers: Dictionary = rolled.tiers
 	var start := randf_range(kind.start.x, kind.start.y)
 	if "dying" in traits:
-		start = randf_range(DYING_START.x, DYING_START.y)
+		start = randf_range(0.05, float(TRAITS.dying.vals[int(tiers.dying) - 1]))
 	elif "vigorous" in traits:
-		start = randf_range(VIGOROUS_START.x, VIGOROUS_START.y)
+		start = randf_range(float(TRAITS.vigorous.vals[int(tiers.vigorous) - 1]), 1.0)
 	f["vit"] = snappedf(start, 0.001)
 	f["vit_life"] = snappedf(randf_range(kind.life.x, kind.life.y), 0.1)
 	f["fresh"] = 1.0
 	f["fresh_life"] = -1.0 if kind.fresh.x < 0.0 else snappedf(randf_range(kind.fresh.x, kind.fresh.y), 0.1)
 	f["dead"] = false
 	f["rotten"] = false
-	if randf() < float(MYTHIC_CHANCE.get(str(f.get("rarity", "common")), MYTHIC_CHANCE.common)):
-		traits.append(MYTHIC.pick_random())
 	f["life_traits"] = traits
-	for t in traits:
-		if TRAITS[t].has("value") and f.has("value"):
-			f["value"] = float(f.value) * float(TRAITS[t].value)
+	f["trait_tiers"] = tiers
+	if "wealth" in traits:
+		var span: Array = TRAITS.wealth.ranges[int(tiers.wealth) - 1]
+		f["wealth_gold"] = randi_range(int(span[0]), int(span[1]))
+	if f.has("value"):
+		if "plump" in traits:
+			f["value"] = float(f.value) * (1.0 + float(TRAITS.plump.vals[int(tiers.plump) - 1]))
+		if "scrawny" in traits:
+			f["value"] = float(f.value) * (1.0 - float(TRAITS.scrawny.vals[int(tiers.scrawny) - 1]))
 	return f
 
 
@@ -153,17 +182,23 @@ static func ensure(f: Dictionary) -> void:
 			kill(f)
 
 
-## 0-2 traits for a fish of `rarity`, none that clash.
-static func roll_traits(rarity: String) -> Array:
-	var counts: Array = TRAIT_COUNT.get(rarity, TRAIT_COUNT.common)
-	var pick: float = randf() * (float(counts[0]) + float(counts[1]) + float(counts[2]))
-	var n := 0 if pick < float(counts[0]) else (1 if pick < float(counts[0]) + float(counts[1]) else 2)
-	var out: Array = []
-	for _i in n:
+## The affixes of a catch of `rarity`: {ids: [...], tiers: {id: tier}} - up to
+## MAX_AFFIXES, none that clash; a mythic one (epic fish and up only, by
+## chance) takes a place among them.
+static func roll_traits(rarity: String) -> Dictionary:
+	var slots: Array = _odds(SLOT_ODDS, rarity)
+	var n := _pick(slots)
+	var ids: Array = []
+	if MYTHIC_CHANCE.has(rarity) and randf() < float(MYTHIC_CHANCE[rarity]):
+		ids.append(MYTHIC.pick_random())
+		n = maxi(n, 1)
+	var tries := 0
+	while ids.size() < mini(n, MAX_AFFIXES) and tries < 40:
+		tries += 1
 		var pool := []
 		var total := 0.0
 		for t in TRAITS:
-			if t in MYTHIC or t in out or _clashes(t, out):
+			if t in MYTHIC or t in ids or _clashes(t, ids) or (TRAITS[t].has("rare_up") and rarity in ["common", ""]):
 				continue
 			pool.append(t)
 			total += float(TRAITS[t].weight)
@@ -171,9 +206,31 @@ static func roll_traits(rarity: String) -> Array:
 		for t in pool:
 			at -= float(TRAITS[t].weight)
 			if at <= 0.0:
-				out.append(t)
+				ids.append(t)
 				break
-	return out
+	var tiers := {}
+	var odds: Array = _odds(TIER_ODDS, rarity)
+	for t in ids:
+		tiers[t] = int(TRAITS[t].fixed) if TRAITS[t].has("fixed") else _pick(odds) + 1
+	return {"ids": ids, "tiers": tiers}
+
+
+## The weights for `rarity` (the rarer ones to come borrow the epic's).
+static func _odds(table: Dictionary, rarity: String) -> Array:
+	return table.get(rarity, table.epic if rarity != "" and rarity != "common" else table.common)
+
+
+## An index picked by weights.
+static func _pick(weights: Array) -> int:
+	var total := 0.0
+	for w in weights:
+		total += float(w)
+	var at := randf() * total
+	for i in weights.size():
+		at -= float(weights[i])
+		if at <= 0.0:
+			return i
+	return weights.size() - 1
 
 
 static func _clashes(t: String, have: Array) -> bool:
@@ -189,13 +246,37 @@ static func has_trait(f: Dictionary, t: String) -> bool:
 	return t in f.get("life_traits", [])
 
 
+## The tier (1..5) of affix `t` on fish `f` (a fish saved without tiers: 3).
+static func tier_of(f: Dictionary, t: String) -> int:
+	if TRAITS.get(t, {}).has("fixed"):
+		return int(TRAITS[t].fixed)
+	return clampi(int(f.get("trait_tiers", {}).get(t, LEGACY_TIER)), 1, 5)
+
+
+## The number of affix `t` on `f`, by its tier (0 if it hasn't it).
+static func val_of(f: Dictionary, t: String) -> float:
+	if not has_trait(f, t) or not TRAITS[t].has("vals"):
+		return 0.0
+	return float(TRAITS[t].vals[tier_of(f, t) - 1])
+
+
+static func is_bad(t: String) -> bool:
+	return bool(TRAITS.get(t, {}).get("bad", false))
+
+
+## The colour of the tier of `t` on `f`.
+static func trait_color(f: Dictionary, t: String) -> Color:
+	return TIER_COLORS[tier_of(f, t) - 1]
+
+
 ## Vitality lost per second (the traits bending it; `night` for the nocturnal).
 static func vit_rate(f: Dictionary, night := false) -> float:
 	var rate := 1.0 / maxf(float(f.get("vit_life", 200.0)), 1.0)
 	for t in f.get("life_traits", []):
-		rate *= float(TRAITS[t].get("vit", 1.0))
-		if t == "nocturnal" and night:
-			rate *= NIGHT_VIT
+		if t == "tough" or t == "weary":
+			rate *= val_of(f, t)
+		elif t == "nocturnal" and night:
+			rate *= val_of(f, t)
 	return rate
 
 
@@ -206,7 +287,8 @@ static func fresh_rate(f: Dictionary) -> float:
 		return 0.0
 	var rate := 1.0 / maxf(life, 0.001)
 	for t in f.get("life_traits", []):
-		rate *= float(TRAITS[t].get("fresh", 1.0))
+		if t == "filthy" or t == "clean":
+			rate *= val_of(f, t)
 	return rate
 
 
@@ -322,20 +404,36 @@ static func state(f: Dictionary) -> String:
 	return "dead" if f.get("dead", false) else "alive"
 
 
-## What it's worth (a living one in full; a dead one by how fresh; a rotten
-## one nothing): the sacrifice's credit and the price.
+## What it's worth (a living one in full; a dead one by how fresh - the stalest
+## DEAD_WORTH.x of its value, raised by 保值 - the freshest .9; a rotten one
+## nothing): what it counts for at the sale and, before 信仰, the altar.
 static func worth(f: Dictionary) -> float:
 	match state(f):
 		"rotten":
 			return 0.0
 		"dead":
-			return float(f.get("value", 0.0)) * lerpf(DEAD_WORTH.x, DEAD_WORTH.y, float(f.get("fresh", 0.0)))
+			var low := maxf(DEAD_WORTH.x, val_of(f, "hold"))
+			return float(f.get("value", 0.0)) * lerpf(low, maxf(DEAD_WORTH.y, low), float(f.get("fresh", 0.0)))
 	return float(f.get("value", 0.0))
 
 
-## What it sells for (gold; at least 1 unless rotten).
+## What it counts for at the altar: its worth, and 信仰's share more.
+static func offer_value(f: Dictionary) -> float:
+	return worth(f) * (1.0 + val_of(f, "faith"))
+
+
+## 財富: the extra gold it brings when sold (a dead one's by its freshness).
+static func wealth_bonus(f: Dictionary) -> int:
+	if not has_trait(f, "wealth") or state(f) == "rotten":
+		return 0
+	var share := 1.0 if state(f) == "alive" else float(f.get("fresh", 0.0))
+	return roundi(float(f.get("wealth_gold", 0)) * share)
+
+
+## What it sells for (gold; at least 1 unless rotten) - the same wherever it's
+## sold: the tank page's 販售, the merchant's 收購.
 static func sale_value(f: Dictionary) -> int:
-	return 0 if state(f) == "rotten" else maxi(1, roundi(worth(f)))
+	return 0 if state(f) == "rotten" else maxi(1, roundi(worth(f))) + wealth_bonus(f)
 
 
 ## The bar to show: its share (0..1) and what it is.
@@ -356,11 +454,60 @@ static func traits_text(f: Dictionary) -> String:
 	return "・".join(names)
 
 
-## One line each: a trait's name - what it does.
+## What an affix does, with its numbers (`f`'s tier of it).
+static func trait_desc(f: Dictionary, t: String) -> String:
+	var v := val_of(f, t)
+	match t:
+		"tough", "weary":
+			return "活性下降速度變成 %d%%" % roundi(v * 100.0)
+		"dying":
+			return "釣起來活性低於 %d%%" % roundi(v * 100.0)
+		"vigorous":
+			return "釣起來活性 %d%% 以上" % roundi(v * 100.0)
+		"nocturnal":
+			return "夜晚活性下降速度再變成 %d%%" % roundi(v * 100.0)
+		"immortal":
+			return "活性歸零也不會死亡"
+		"filthy", "clean":
+			return "新鮮度下降速度變成 %d%%" % roundi(v * 100.0)
+		"imperishable":
+			return "新鮮度歸零也不會腐敗"
+		"plump":
+			return "價值 +%d%%" % roundi(v * 100.0)
+		"scrawny":
+			return "價值 -%d%%" % roundi(v * 100.0)
+		"wealth":
+			return "賣出時額外 +%d 金幣（死魚按新鮮度折算）" % int(f.get("wealth_gold", 0))
+		"faith":
+			return "獻祭額度 +%d%%" % roundi(v * 100.0)
+		"hold":
+			return "死後價值最低保有原價的 %d%%（一般是 %d%%）" % [roundi(v * 100.0), roundi(DEAD_WORTH.x * 100.0)]
+		"glow":
+			return "活著放在包包裡：身邊散發微光（亮度 %d%%）" % roundi(v * 100.0)
+		"savory":
+			return "放在包包裡：野獸更容易盯上你（發現距離 +%d%%）" % roundi(v * 100.0)
+		"smelly":
+			return "放在包包裡：小鬼更常來搗亂（頻率 +%d%%）" % roundi(v * 100.0)
+		"fortune":
+			return "養在魚缸：每小時送來 20 金幣（最多累積 12 小時）"
+		"guide":
+			return "養在魚缸：每次夜晚成功逃脫，有 10% 機率帶回一個隨機的眼球道具"
+		"smith":
+			return "養在魚缸：餵食腐敗的魚後，可選一件裝備回復 5 點耐久"
+		"wraith":
+			return "腐敗後放在包包：猛獸攻擊 -20%，但小鬼偷襲 +10%"
+		"luckystar":
+			return "放在包包裡：釣到稀有魚的機率微幅提升（+3%）"
+		"angel":
+			return "活著時放在包包：小鬼偷襲 -60%，猛獸攻擊 -50%"
+	return ""
+
+
+## One line each: an affix's name (and tier) - what it does.
 static func trait_lines(f: Dictionary) -> Array:
 	var out := []
 	for t in f.get("life_traits", []):
-		out.append("%s：%s" % [TRAITS[t].name, TRAITS[t].desc])
+		out.append("%s：%s" % [TRAITS[t].name, trait_desc(f, t)])
 	return out
 
 
@@ -408,7 +555,7 @@ static func beast_ward(carried: Array) -> float:
 
 
 ## How much sooner the little ghosts come to trouble the traveller (1: as
-## usual; the angel's slow them, the wraith's hasten them).
+## usual; the angel's slow them, the wraith's and 腥臭's hasten them).
 static func imp_rate(carried: Array) -> float:
 	var rate := 1.0
 	for f in carried:
@@ -416,7 +563,25 @@ static func imp_rate(carried: Array) -> float:
 			rate *= 1.0 - ANGEL_IMP
 		if has_trait(f, "wraith") and state(f) == "rotten":
 			rate *= 1.0 + WRAITH_IMP
+		rate *= 1.0 + val_of(f, "smelly")
 	return rate
+
+
+## How much farther the beasts notice the traveller (1: as usual): 鮮美 carried.
+static func beast_attention(carried: Array) -> float:
+	var more := 1.0
+	for f in carried:
+		more += val_of(f, "savory")
+	return more
+
+
+## The faint light of 微光 carried alive (0..): the brightest of them.
+static func glow_level(carried: Array) -> float:
+	var best := 0.0
+	for f in carried:
+		if state(f) == "alive":
+			best = maxf(best, val_of(f, "glow"))
+	return best
 
 
 ## How much likelier a rare catch is with the lucky stars carried (any state).

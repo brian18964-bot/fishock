@@ -358,7 +358,8 @@ func sacrifice_at(index: int) -> Dictionary:
 		_trigger_rotten_sacrifice()
 		return fish
 
-	var value := FishLife.worth(fish)
+	# (its worth - a dead one's by its freshness - and 信仰's share more)
+	var value := FishLife.offer_value(fish)
 	quota_progress += value
 	quota_updated.emit(quota_progress, quota_target)
 

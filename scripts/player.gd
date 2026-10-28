@@ -916,6 +916,12 @@ func use_item(id: String) -> bool:
 ## How strong the glow mushroom's light is now (0..1): nothing until the
 ## crumbs fall, then on; easing out over its last GLOW_FADE s.
 func glow_strength() -> float:
+	# (and 微光 on a fish carried alive: a faint light of its own)
+	return maxf(mushroom_strength(), FishLife.glow_level(GameState.carried_fish))
+
+
+## The glow mushroom's own (its crumbs and motes follow this).
+func mushroom_strength() -> float:
 	if glow_timer <= 0.0:
 		return 0.0
 	var since := GLOW_TIME + CRUMBLE_TIME * GLOW_FROM - glow_timer

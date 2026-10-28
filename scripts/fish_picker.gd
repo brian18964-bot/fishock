@@ -141,7 +141,7 @@ func refresh() -> void:
 		var total := 0.0
 		var rotten := 0
 		for i in picked:
-			total += FishLife.worth(GameState.carried_fish[i])
+			total += FishLife.offer_value(GameState.carried_fish[i])
 			if GameState.carried_fish[i].get("rotten", false):
 				rotten += 1
 		_summary.text = "已選 %d 條・額度 +%.0f（%d / %d）%s" % [picked.size(), total,
@@ -240,7 +240,7 @@ class FishCard extends Control:
 			HORIZONTAL_ALIGNMENT_LEFT, size.x - 16.0, true)
 		var size_name: String = Inventory.SIZE_NAMES.get(Inventory.fish_size(fish), "")
 		# (what it counts for: its full value alive; dead, less as its freshness goes)
-		var line := "%s型・價值 %.0f" % [size_name, FishLife.worth(fish)]
+		var line := "%s型・價值 %.0f" % [size_name, FishLife.offer_value(fish)]
 		UiKit.draw_text(self, Vector2(8, size.y - 26), line, 13, UiKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, size.x - 16.0)
 		if rotten:
 			UiKit.draw_text(self, Vector2(8, size.y - 9), "腐敗・獻祭會賭一把", 12, FishPicker.ROTTEN, HORIZONTAL_ALIGNMENT_LEFT, size.x - 16.0)

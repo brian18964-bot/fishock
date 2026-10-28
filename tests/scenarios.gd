@@ -85,6 +85,7 @@ const TESTS := [
 	"test_shop_buyback",
 	"test_rotating_things",
 	"test_fish_at_home_shown",
+	"test_affixes",
 	"test_camp_spirit_and_tents",
 	"test_camp_life",
 	"test_ears_and_tails",
@@ -2898,15 +2899,15 @@ func test_fish_life() -> void:
 	for _i in 300:
 		var g := FishLife.roll({"id": "bass", "rarity": "epic"})
 		var t: Array = g.life_traits
-		dying = dying and (not "dying" in t or g.vit < 0.3)
-		vigorous = vigorous and (not "vigorous" in t or g.vit >= 0.9)
+		dying = dying and (not "dying" in t or g.vit <= float(FishLife.TRAITS.dying.vals[int(g.trait_tiers.dying) - 1]) + 0.001)
+		vigorous = vigorous and (not "vigorous" in t or g.vit >= float(FishLife.TRAITS.vigorous.vals[int(g.trait_tiers.vigorous) - 1]) - 0.001)
 		for group in FishLife.EXCLUSIVE:
 			var n := 0
 			for x in group:
 				n += 1 if x in t else 0
 			clash = clash or n > 1
-		clash = clash or t.filter(func(x): return not x in FishLife.MYTHIC).size() > 2
-	check(dying and vigorous and not clash, "垂死 starts under 30%, 生猛 over 90%, none clash, at most two")
+		clash = clash or t.size() > FishLife.MAX_AFFIXES
+	check(dying and vigorous and not clash, "垂死 starts under its tier's bound, 生猛 over it, none clash, at most three")
 	# Time: alive, then dead, then rotten.
 	var a := {"id": "carp", "value": 10.0, "vit": 0.5, "vit_life": 100.0, "fresh": 1.0, "fresh_life": 200.0, "dead": false, "rotten": false,
 		"life_traits": []}
@@ -6308,5 +6309,97 @@ func test_fish_at_home_shown() -> void:
 	check(page.move({"from": "stash_fish", "id": "", "index": 0}, {"to": "bag", "cell": Vector2i(0, 0)}) and Profile.pack_fish.size() == 1, "and back into the bag")
 	page.queue_free()
 	await frames(1)
+	Profile.load_data(saved)
+
+
+## User request: traits are affixes with five tiers (white .. gold): more and
+## better on rarer fish (odds, not a promise), at most three, the mythic ones
+## only on epic fish and up; 財富, 信仰, 保值, 微光, 鮮美, 腥臭 work.
+func test_affixes() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 0})
+	# Tiers by rarity: the odds, and what can't come.
+	var top := {"common": 0, "rare": 0, "epic": 0}
+	var most := {"common": 0, "rare": 0, "epic": 0}
+	var mythic_on := {"common": 0, "rare": 0, "epic": 0}
+	var gold_ok := true
+	var any_gold := false
+	for rarity in top:
+		for _i in 1500:
+			var f := FishLife.roll({"id": "carp", "rarity": rarity, "value": 10.0})
+			most[rarity] = maxi(most[rarity], f.life_traits.size())
+			for t in f.life_traits:
+				top[rarity] = maxi(top[rarity], FishLife.tier_of(f, t))
+				if t in FishLife.MYTHIC:
+					mythic_on[rarity] += 1
+					gold_ok = gold_ok and FishLife.tier_of(f, t) == 5
+			if f.has("wealth_gold"):
+				any_gold = true
+				var span: Array = FishLife.TRAITS.wealth.ranges[FishLife.tier_of(f, "wealth") - 1]
+				gold_ok = gold_ok and f.wealth_gold >= span[0] and f.wealth_gold <= span[1]
+	check(top.common <= 3 and top.rare <= 4 and top.epic == 5, "common fish reach tier 3, rare 4, epic 5 (%s)" % [top])
+	check(most.common <= 3 and most.rare <= 3 and most.epic == 3, "at most three affixes (%s)" % [most])
+	check(mythic_on.common == 0 and mythic_on.rare == 0 and mythic_on.epic > 0, "mythic ones only on epic fish (%s)" % [mythic_on])
+	check(gold_ok and any_gold, "mythic ones are gold; 財富 rolled in its tier's range")
+	# Effects.
+	var base := {"id": "carp", "value": 10.0, "vit": 1.0, "vit_life": 100.0, "fresh": 1.0, "fresh_life": 100.0, "dead": false, "rotten": false,
+		"life_traits": [], "trait_tiers": {}}
+	var rich := base.duplicate(true)
+	rich.life_traits = ["wealth"]
+	rich.trait_tiers = {"wealth": 4}
+	rich["wealth_gold"] = 140
+	check(FishLife.sale_value(rich) == 10 + 140 and FishLife.sale_value(base) == 10, "財富: its gold on top of the price")
+	var corpse := rich.duplicate(true)
+	FishLife.kill(corpse)
+	corpse.fresh = 0.5
+	check(FishLife.wealth_bonus(corpse) == 70, "a dead one's by its freshness")
+	FishLife.rot(corpse)
+	check(FishLife.sale_value(corpse) == 0, "a rotten one brings nothing")
+	var holds := base.duplicate(true)
+	holds.life_traits = ["hold"]
+	holds.trait_tiers = {"hold": 5}
+	var plain := base.duplicate(true)
+	FishLife.kill(holds)
+	FishLife.kill(plain)
+	holds.fresh = 0.0
+	plain.fresh = 0.0
+	check(absf(FishLife.worth(plain) - 4.0) < 0.001 and absf(FishLife.worth(holds) - 9.0) < 0.001, "保值: stale, 90% instead of 40%")
+	var faithful := base.duplicate(true)
+	faithful.life_traits = ["faith"]
+	faithful.trait_tiers = {"faith": 5}
+	check(absf(FishLife.offer_value(faithful) - 16.0) < 0.001 and FishLife.sale_value(faithful) == 10, "信仰: +60% at the altar, not at the shop")
+	var fat := FishLife.roll({"id": "carp", "rarity": "common", "value": 10.0})
+	check(fat.has("trait_tiers"), "a roll keeps its tiers")
+	# The bag: 微光 (alive), 鮮美, 腥臭.
+	var lamp := base.duplicate(true)
+	lamp.life_traits = ["glow"]
+	lamp.trait_tiers = {"glow": 3}
+	check(absf(FishLife.glow_level([lamp]) - 0.45) < 0.001, "微光 tier 3: 45%")
+	var gone := lamp.duplicate(true)
+	FishLife.kill(gone)
+	check(FishLife.glow_level([gone]) == 0.0, "a dead one gives none")
+	var smell := base.duplicate(true)
+	smell.life_traits = ["savory", "smelly"]
+	smell.trait_tiers = {"savory": 2, "smelly": 5}
+	check(absf(FishLife.beast_attention([smell]) - 1.2) < 0.001 and absf(FishLife.imp_rate([smell]) - 1.6) < 0.001, "鮮美 +20% beasts' notice; 腥臭 +60% imps")
+	GameState.reset_run()
+	GameState.carried_fish = [lamp]
+	var p := player()
+	if p != null:
+		check(p.glow_strength() > 0.4 and p.mushroom_strength() == 0.0, "the player glows from the fish")
+	GameState.carried_fish.clear()
+	# Shown: the colour by the tier, a bad one marked.
+	var vit := FishVitals.new()
+	get_tree().root.add_child(vit)
+	var bad := base.duplicate(true)
+	bad.life_traits = ["weary"]
+	bad.trait_tiers = {"weary": 5}
+	vit.show_fish(bad)
+	var label := vit.find_children("*", "Label", true, false).filter(func(l): return (l as Label).text.contains("厭世"))
+	check(not label.is_empty() and (label[0] as Label).text.begins_with("▼") and (label[0] as Label).text.contains("傳說"), "a bad affix: marked, its tier named")
+	vit.queue_free()
+	# An old fish (no tiers) reads as tier 3.
+	var old := {"vit": 1.0, "life_traits": ["tough"]}
+	check(FishLife.tier_of(old, "tough") == 3 and absf(FishLife.val_of(old, "tough") - 0.4) < 0.001, "no tiers saved: tier 3")
 	Profile.load_data(saved)
 

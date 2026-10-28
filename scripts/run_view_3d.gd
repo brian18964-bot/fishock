@@ -1370,7 +1370,7 @@ func _sync_glow() -> void:
 	_glow_light.light_energy = 2.0 * k * (0.92 + 0.08 * sin(Time.get_ticks_msec() * 0.006))
 	var t := 1.0 - player.move_left / maxf(player.move_time, 0.01) if player.move_left > 0.0 else -1.0
 	_crumbs.emitting = player.move_kind == "crumble" and t > 0.35 and t < 0.85
-	_motes.emitting = k > 0.3
+	_motes.emitting = player.mushroom_strength() > 0.3
 
 
 ## A model of the trial's (`name`) at `at`, as wide and deep as `base` (m;
