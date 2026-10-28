@@ -585,12 +585,19 @@ func _scatter_oxy_trees() -> void:
 			break
 		var zone: WaterZone = sp[0]
 		var at: Vector2 = sp[1] - (sp[2] as Vector2) * randf_range(OxyTree.FROM_SHORE.x, OxyTree.FROM_SHORE.y)
-		if not zone.contains(at) or not _inside_map(at, 40.0) or _near_walkway(at, 20.0):
+		# (the shallows only: in, but not far in - the shore's curve can run it deeper than the step)
+		if not zone.contains(at) or zone.depth(at) > OxyTree.FROM_SHORE.y + 4.0 or not _inside_map(at, 40.0) or _near_walkway(at, 20.0):
 			continue
 		var a := OxyTree.new()
 		a.name = "OxyTree%d" % made
 		a.position = at
 		get_parent().add_child(a)
+		# (never alone: shore grass grows about it - and a reed or two)
+		for _k in randi_range(OxyTree.GRASS.x, OxyTree.GRASS.y):
+			var off := Vector2.RIGHT.rotated(randf() * TAU) * randf_range(OxyTree.GRASS_NEAR.x, OxyTree.GRASS_NEAR.y)
+			_add_ground_cover(at + off, "grass")
+		for _k in randi_range(0, 2):
+			_add_ground_cover(at + Vector2.RIGHT.rotated(randf() * TAU) * randf_range(OxyTree.GRASS_NEAR.x, OxyTree.GRASS_NEAR.y), "reeds")
 		made += 1
 
 

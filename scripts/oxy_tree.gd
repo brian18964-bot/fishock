@@ -11,6 +11,10 @@ extends GlowMushroom
 const TREES_PER_MAP := Vector2i(3, 5)
 ## How far in from the shore's edge it grows (px).
 const FROM_SHORE := Vector2(6.0, 14.0)
+## The shore grass that grows about each one (how many tufts, and how far off,
+## px): it is never found alone.
+const GRASS := Vector2i(3, 5)
+const GRASS_NEAR := Vector2(7.0, 18.0)
 
 
 func _init() -> void:

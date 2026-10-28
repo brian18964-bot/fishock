@@ -837,7 +837,8 @@ func _trees_and_rocks() -> void:
 ## `at` (2D), in the shallows, its caps giving off little bubbles that float
 ## up into the air.
 const OXY_TREE_MODEL := "res://assets/models/items/oxy_tree.glb"
-const OXY_TREE_SCALE := 0.85
+## (40% smaller than first made: 0.85 x 0.6)
+const OXY_TREE_SCALE := 0.51
 
 
 func _oxy_tree(n: Node, at: Vector2) -> void:
@@ -858,11 +859,11 @@ func _oxy_tree(n: Node, at: Vector2) -> void:
 	_plants[n] = holder
 
 
-## The frost flower (FrostFlower - the user's clematis, its bud turned up): the
-## flower with its roots over the ground, round it the cold ground - an icy
-## patch with cracks and a glitter, ice shards standing at its edge, a little
-## cold mist rising off it and a cold blue light (the frost thinning as it's
-## dug out).
+## The frost flower (FrostFlower - the user's clematis, its bud turned up),
+## small, its few thin roots over the ground. No glow: a faint cold breath
+## comes off the bud and sinks slowly down round the flower, so the ground
+## about it lies in a cold haze that thins toward its edge (a soft pale patch,
+## a few frost crystals in it; thinner as the patch is dug out).
 const FROST_MODEL := "res://assets/models/items/frost_flower.glb"
 const FROST_SHADER := """
 shader_type spatial;
@@ -876,23 +877,20 @@ float noise(vec2 p) {
 }
 void fragment() {
 	vec2 p = UV * 2.0 - 1.0;
-	float r = length(p) / mix(0.55, 1.0, level);
-	float edge = smoothstep(1.0, 0.6, r + (noise(p * 7.0) - 0.5) * 0.3);
-	float n = noise(p * 9.0);
-	float ridge = smoothstep(0.84, 0.97, 1.0 - abs(n * 2.0 - 1.0));
-	float frost = noise(p * 20.0 + vec2(t * 0.05, 0.0));
-	vec3 col = mix(vec3(0.5, 0.74, 0.93), vec3(0.93, 0.98, 1.0), frost);
-	col += vec3(0.35, 0.75, 1.0) * ridge;
-	float glint = step(0.987, hash(floor(p * 46.0) + floor(t * 1.5)));
-	col += vec3(glint) * 0.7;
-	ALBEDO = col * 0.82;
-	// (a little clearer in the middle, where the flower stands)
-	ALPHA = edge * (0.5 + 0.3 * ridge + 0.2 * frost) * mix(0.55, 1.0, smoothstep(0.0, 0.4, r));
+	float r = length(p) / mix(0.6, 1.0, level);
+	// densest at the flower, thinning outward to nothing at the edge
+	float haze = pow(clamp(1.0 - r, 0.0, 1.0), 1.7);
+	float drift = noise(p * 3.5 + vec2(t * 0.03, -t * 0.02));
+	float frost = noise(p * 14.0);
+	vec3 col = mix(vec3(0.66, 0.8, 0.9), vec3(0.88, 0.95, 1.0), frost * 0.6 + drift * 0.4);
+	ALBEDO = col;
+	ALPHA = haze * (0.2 + 0.16 * drift + 0.1 * smoothstep(0.55, 0.9, frost));
 }
 """
-const FROST_RADIUS := 1.25
-## (the model's 0.7 m made bigger to read from the camera)
-const FROST_FLOWER_SCALE := 1.5
+## The cold ground's size (m, its radius) and the flower's (the model's own
+## 0.7 m, 40% smaller than first shown: 0.9 x 0.7).
+const FROST_RADIUS := 0.75
+const FROST_FLOWER_SCALE := 0.9
 
 
 func _frost_flower(n: Node, at: Vector2) -> void:
@@ -901,7 +899,7 @@ func _frost_flower(n: Node, at: Vector2) -> void:
 	holder.position = to3(at, LAND_Y)
 	holder.rotation.y = _rng.randf() * TAU
 	add_child(holder)
-	# The cold ground.
+	# The cold haze on the ground.
 	var disc := MeshInstance3D.new()
 	var quad := QuadMesh.new()
 	quad.size = Vector2.ONE * FROST_RADIUS * 2.0
@@ -923,78 +921,49 @@ func _frost_flower(n: Node, at: Vector2) -> void:
 		holder.add_child(model)
 		for mi in model.find_children("*", "MeshInstance3D", true, false):
 			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	# Ice shards at the edge.
-	var shard_mat := StandardMaterial3D.new()
-	shard_mat.albedo_color = Color(0.78, 0.93, 1.0, 0.8)
-	shard_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	shard_mat.emission_enabled = true
-	shard_mat.emission = Color(0.45, 0.8, 1.0)
-	shard_mat.emission_energy_multiplier = 0.8
-	shard_mat.roughness = 0.15
-	var shards := []
-	for k in 10:
-		var shard := MeshInstance3D.new()
-		var cone := CylinderMesh.new()
-		cone.top_radius = 0.0
-		cone.bottom_radius = _rng.randf_range(0.02, 0.045)
-		cone.height = _rng.randf_range(0.1, 0.3)
-		cone.radial_segments = 4
-		shard.mesh = cone
-		shard.material_override = shard_mat
-		shard.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		var a := TAU * float(k) / 10.0 + _rng.randf() * 0.5
-		var r := _rng.randf_range(0.35, 1.0)
-		shard.position = Vector3(cos(a) * r, cone.height * 0.5, sin(a) * r)
-		shard.rotation = Vector3(_rng.randf_range(-0.3, 0.3), 0.0, _rng.randf_range(-0.3, 0.3))
-		holder.add_child(shard)
-		shards.append([shard, r])
-	# Cold mist, rising slowly off the ground.
+	# The cold breath: a few faint wisps off the bud, sinking slowly and
+	# spreading out over the ground, gone before they land.
 	var mist := CPUParticles3D.new()
-	mist.position = Vector3(0, 0.05, 0)
-	mist.amount = 9 if not _low else 4
-	mist.lifetime = 4.5
-	mist.preprocess = 4.5
-	mist.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-	mist.emission_box_extents = Vector3(0.9, 0.01, 0.9)
-	mist.direction = Vector3.UP
-	mist.spread = 12.0
-	mist.initial_velocity_min = 0.04
-	mist.initial_velocity_max = 0.1
-	mist.gravity = Vector3.ZERO
-	mist.scale_amount_min = 0.5
-	mist.scale_amount_max = 1.1
+	mist.position = Vector3(0, 0.6, 0)
+	mist.amount = 7 if not _low else 4
+	mist.lifetime = 5.5
+	mist.preprocess = 5.5
+	mist.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	mist.emission_sphere_radius = 0.05
+	mist.direction = Vector3.DOWN
+	mist.spread = 80.0
+	mist.initial_velocity_min = 0.05
+	mist.initial_velocity_max = 0.13
+	mist.gravity = Vector3(0.0, -0.025, 0.0)
+	mist.damping_min = 0.02
+	mist.damping_max = 0.08
+	mist.scale_amount_min = 0.7
+	mist.scale_amount_max = 1.2
+	var grow := Curve.new()
+	grow.add_point(Vector2(0.0, 0.25))
+	grow.add_point(Vector2(1.0, 1.0))
+	mist.scale_amount_curve = grow
 	var puff := QuadMesh.new()
-	puff.size = Vector2(0.5, 0.5)
+	puff.size = Vector2(0.32, 0.32)
 	var pm := StandardMaterial3D.new()
 	pm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	pm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	pm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	pm.vertex_color_use_as_albedo = true
-	pm.albedo_color = Color(0.75, 0.9, 1.0, 0.22)
+	pm.albedo_color = Color(0.82, 0.92, 1.0, 0.16)
 	pm.albedo_texture = LightTextureFactory.make_radial_texture(64)
 	puff.material = pm
 	mist.mesh = puff
 	var ramp := Gradient.new()
-	ramp.set_color(0, Color(0.8, 0.93, 1.0, 0.0))
-	ramp.add_point(0.3, Color(0.8, 0.93, 1.0, 0.25))
-	ramp.set_color(1, Color(0.8, 0.93, 1.0, 0.0))
+	ramp.set_color(0, Color(0.85, 0.94, 1.0, 0.0))
+	ramp.add_point(0.25, Color(0.85, 0.94, 1.0, 0.7))
+	ramp.set_color(1, Color(0.85, 0.94, 1.0, 0.0))
 	mist.color_ramp = ramp
 	holder.add_child(mist)
-	var light: OmniLight3D = null
-	if not _low:
-		light = OmniLight3D.new()
-		light.light_color = Color(0.55, 0.8, 1.0)
-		light.omni_range = 2.8
-		light.omni_attenuation = 1.3
-		light.light_energy = 0.8
-		light.shadow_enabled = false
-		light.position = Vector3(0, 0.5, 0)
-		holder.add_child(light)
-	_frosts[n] = [holder, mat, light, shards]
+	_frosts[n] = [holder, mat]
 
 
-## The frost's glitter moves, and thins as the patch is dug out; a flower gone
-## has its looks gone.
+## The haze thins as the patch is dug out; a flower gone has its looks gone.
 func _sync_frost() -> void:
 	var t := Time.get_ticks_msec() / 1000.0
 	for n in _frosts.keys():
@@ -1003,52 +972,50 @@ func _sync_frost() -> void:
 			(parts[0] as Node).queue_free()
 			_frosts.erase(n)
 			continue
-		var level: float = n.frost()
 		var mat := parts[1] as ShaderMaterial
-		mat.set_shader_parameter("level", level)
+		mat.set_shader_parameter("level", n.frost())
 		mat.set_shader_parameter("t", t)
-		if parts[2] != null:
-			(parts[2] as OmniLight3D).light_energy = 0.15 + 0.65 * level
-		for s in parts[3]:
-			(s[0] as Node3D).visible = float(s[1]) <= 0.45 + 0.6 * level
 
 
-## Tiny air bubbles drifting up out of the oxygen tree's caps and off into the
-## air, fading as they go.
+## Three to five air bubbles at a time rising at random out of the oxygen
+## tree's caps - each up to a height and there gone (popped).
 func _bubbles() -> CPUParticles3D:
 	var p := CPUParticles3D.new()
 	p.name = "Bubbles"
-	p.position = Vector3(0.0, 0.72, 0.0)
-	p.amount = 16 if not _low else 8
-	p.lifetime = 3.6
-	p.preprocess = 3.6
+	p.position = Vector3(0.0, 0.7, 0.0)
+	p.amount = 4
+	p.lifetime = 2.6
+	p.lifetime_randomness = 0.55
+	p.preprocess = 2.6
+	p.explosiveness = 0.0
+	p.randomness = 1.0
 	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	p.emission_sphere_radius = 0.26
+	p.emission_sphere_radius = 0.24
 	p.direction = Vector3.UP
-	p.spread = 55.0
-	p.initial_velocity_min = 0.08
-	p.initial_velocity_max = 0.22
-	p.gravity = Vector3(0.0, 0.07, 0.0)
-	p.damping_min = 0.05
-	p.damping_max = 0.15
-	p.scale_amount_min = 0.5
+	p.spread = 20.0
+	p.initial_velocity_min = 0.16
+	p.initial_velocity_max = 0.3
+	p.gravity = Vector3.ZERO
+	p.scale_amount_min = 0.6
 	p.scale_amount_max = 1.5
 	var mesh := SphereMesh.new()
-	mesh.radius = 0.02
-	mesh.height = 0.04
-	mesh.radial_segments = 6
-	mesh.rings = 3
+	# (in the tree's own scale, 0.51: about 2.5 cm in the world)
+	mesh.radius = 0.05
+	mesh.height = 0.1
+	mesh.radial_segments = 8
+	mesh.rings = 4
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_color = Color(0.8, 1.0, 1.0, 0.7)
+	mat.albedo_color = Color(0.85, 0.97, 1.0, 0.85)
 	mat.vertex_color_use_as_albedo = true
 	mesh.material = mat
 	p.mesh = mesh
+	# (there at once, gone at the end of its rise)
 	var ramp := Gradient.new()
-	ramp.set_color(0, Color(1, 1, 1, 0.0))
-	ramp.add_point(0.15, Color(0.85, 1.0, 1.0, 0.85))
-	ramp.set_color(1, Color(0.8, 1.0, 1.0, 0.0))
+	ramp.set_color(0, Color(1, 1, 1, 0.8))
+	ramp.add_point(0.85, Color(1, 1, 1, 0.8))
+	ramp.set_color(1, Color(1, 1, 1, 0.0))
 	p.color_ramp = ramp
 	return p
 
@@ -1539,6 +1506,12 @@ func _sync_runes() -> void:
 func _cover() -> void:
 	var ferns := []
 	var mesh := _model_mesh("fern", true)
+	# (the shore's grass tufts and reeds - about each oxygen tree, and at the
+	# waterline where a theme grows them)
+	var tufts := []
+	var reeds := []
+	var tuft_mesh := _model_mesh("grass_wispy")
+	var reed_mesh := _model_mesh("tall_grass")
 	for n in main.get_children():
 		if _script_name(n) != "ground_cover.gd":
 			continue
@@ -1558,6 +1531,14 @@ func _cover() -> void:
 					log.rotation.y = _rng.randf() * TAU
 					log.scale = Vector3.ONE * 0.6
 					add_child(log)
+			"grass", "reeds":
+				var grown: Array = tuft_mesh if str(n.get("kind")) == "grass" else reed_mesh
+				if grown.is_empty():
+					continue
+				var tall: float = _rng.randf_range(0.34, 0.5) if str(n.get("kind")) == "grass" else _rng.randf_range(0.6, 0.85)
+				var k: float = tall / maxf(grown[1], 0.01)
+				(tufts if str(n.get("kind")) == "grass" else reeds).append(Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(k, k, k)),
+					to3(p, maxf(_height_at(_depth(p, _zones())), WATER_Y))))
 			"plant", "shrub":
 				if mesh.is_empty():
 					continue
@@ -1566,6 +1547,10 @@ func _cover() -> void:
 					to3(p, maxf(_height_at(_depth(p, _zones())), WATER_Y))))
 	if not mesh.is_empty():
 		_scatter(mesh[0], ferns, false, COVER_REACH)
+	if not tuft_mesh.is_empty():
+		_scatter(tuft_mesh[0], tufts, false, COVER_REACH)
+	if not reed_mesh.is_empty():
+		_scatter(reed_mesh[0], reeds, false, COVER_REACH)
 
 
 ## Many of one mesh, in square chunks of the map (CHUNK m) - each its own

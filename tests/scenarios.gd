@@ -5149,7 +5149,23 @@ func test_oxy_tree() -> void:
 		for z in get_tree().get_nodes_in_group("water_zones"):
 			near = minf(near, absf((z as WaterZone).depth((a as Node2D).global_position)))
 		shore = shore and near < 20.0
-	check(shore, "each in the shallows by a shore")
+	var depths := []
+	for t in algae:
+		var best := 1e9
+		for z in get_tree().get_nodes_in_group("water_zones"):
+			best = minf(best, absf((z as WaterZone).depth((t as Node2D).global_position)))
+		depths.append(snappedf(best, 0.1))
+	check(shore, "each in the shallows by a shore %s" % [depths])
+	await frames(3)
+	var company := true
+	for a in algae:
+		var grass := 0
+		for n in get_tree().root.find_children("*", "Sprite2D", true, false):
+			if n.get_script() != null and str(n.get_script().resource_path).ends_with("ground_cover.gd") \
+					and (n as Node2D).global_position.distance_to((a as Node2D).global_position) < 32.0 and n.kind in ["grass", "reeds", "plant"]:
+				grass += 1
+		company = company and grass >= OxyTree.GRASS.x
+	check(company, "never alone: shore grass about each")
 	if view != null:
 		await frames(2)
 		check(view._plants.size() == algae.size(), "each shown in 3D (%d)" % view._plants.size())

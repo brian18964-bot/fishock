@@ -7,8 +7,9 @@ extends Node2D
 ## mist). The soil of that patch is dug up, with the shovel, as 冷凍土
 ## (Profile.USABLES "frozen_soil": Player.dig).
 
-## How far from the flower the cold ground reaches (px) - the patch to dig.
-const DIG_RADIUS := 32.0
+## How far from the flower the cold ground reaches (px) - the patch to dig
+## (the whole flower and its patch 40% smaller than first made).
+const DIG_RADIUS := 19.0
 ## How many digs the patch gives before it's dug out.
 const DIGS := 3
 ## How many to a map (the campaign's smaller ones fewer), and how far off a

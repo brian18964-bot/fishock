@@ -31,8 +31,8 @@ STEM_TOP = 3.1
 BELL_FROM = 3.72
 ARC_X = 0.12
 TURN = -92.0
-ROOT_COUNT = 9
-ROOT_REACH = 0.75
+ROOT_COUNT = 6
+ROOT_REACH = 0.5
 
 
 def tube(name, pts, r0, r1, mat, sides=6):
@@ -124,9 +124,8 @@ def main():
     vc = nt.nodes.new("ShaderNodeVertexColor")
     vc.layer_name = "Col"
     nt.links.new(vc.outputs[0], b.inputs["Base Color"])
-    nt.links.new(vc.outputs[0], b.inputs["Emission Color"])
-    b.inputs["Emission Strength"].default_value = 0.18
-    b.inputs["Roughness"].default_value = 0.45
+    # (no glow: a cold flower, not a lamp)
+    b.inputs["Roughness"].default_value = 0.55
     flower.data.materials.clear()
     flower.data.materials.append(mat)
 
@@ -134,10 +133,8 @@ def main():
     rmat = bpy.data.materials.new("frost_roots")
     rmat.use_nodes = True
     rb = next(x for x in rmat.node_tree.nodes if x.type == "BSDF_PRINCIPLED")
-    rb.inputs["Base Color"].default_value = (0.62, 0.82, 0.95, 1.0)
-    rb.inputs["Emission Color"].default_value = (0.35, 0.75, 1.0, 1.0)
-    rb.inputs["Emission Strength"].default_value = 0.9
-    rb.inputs["Roughness"].default_value = 0.3
+    rb.inputs["Base Color"].default_value = (0.55, 0.66, 0.7, 1.0)
+    rb.inputs["Roughness"].default_value = 0.7
     rng = np.random.default_rng(4)
     scale = HEIGHT / float(co[:, 2].max())
     roots = []
@@ -150,16 +147,8 @@ def main():
             wob = math.sin(t * 5 + k) * 0.12 * t
             ang = a + wob
             pts.append(Vector((math.cos(ang) * reach * t, math.sin(ang) * reach * t, 0.04 - 0.05 * t + 0.03 * math.sin(t * 9 + k))))
-        roots.append(tube("root_%d" % k, pts, 0.07, 0.012, rmat))
-        # a short side root
-        if k % 2 == 0:
-            mid = pts[4]
-            side = []
-            for s in range(5):
-                t = s / 4.0
-                ang = a + 0.9 * (1 if k % 4 == 0 else -1)
-                side.append(mid + Vector((math.cos(ang), math.sin(ang), 0)) * reach * 0.3 * t + Vector((0, 0, 0.0)))
-            roots.append(tube("side_%d" % k, side, 0.035, 0.008, rmat, 5))
+        # (thin and few, lying close to the ground)
+        roots.append(tube("root_%d" % k, pts, 0.035, 0.008, rmat, 5))
 
     # The neck: a short stem piece from the stem's top up into the bell.
     nmat = mat

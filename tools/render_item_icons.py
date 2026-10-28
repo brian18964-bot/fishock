@@ -288,6 +288,11 @@ def shovel():
     model_pic("shovel", (3, 1), (80, 0, -6))
 
 
+def frozen_soil():
+    """The bag of frozen soil (tools/make_soil_bag.py)."""
+    model_pic("frozen_soil", (1, 1), (0, 0, 25))
+
+
 def oxy_tree():
     """The oxygen tree (tools/make_oxy_tree.py): its picture, upright."""
     model_pic("oxy_tree", (1, 1), (0, 0, 20))

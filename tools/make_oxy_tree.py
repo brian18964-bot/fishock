@@ -91,10 +91,11 @@ def blob(name, at, radii, mat, seg=14, rings=8):
 
 def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    trunk_m = material("oxy_trunk", (0.08, 0.46, 0.48), (0.1, 0.6, 0.6), 0.25, 0.5)
-    band_m = material("oxy_band", (0.62, 0.92, 0.88), (0.5, 0.95, 0.9), 0.35, 0.4)
-    cap_m = material("oxy_cap", (0.72, 1.0, 0.96), (0.45, 1.0, 0.92), 0.7, 0.2, alpha=0.62)
-    sac_m = material("oxy_sac", (0.9, 1.0, 1.0), (0.8, 1.0, 1.0), 1.4, 0.1, alpha=0.85)
+    # (no glow anywhere: it's a plant, not a lamp)
+    trunk_m = material("oxy_trunk", (0.1, 0.4, 0.4), rough=0.6)
+    band_m = material("oxy_band", (0.6, 0.82, 0.78), rough=0.5)
+    cap_m = material("oxy_cap", (0.7, 0.9, 0.86), rough=0.3, alpha=0.7)
+    sac_m = material("oxy_sac", (0.88, 0.97, 0.97), rough=0.2, alpha=0.85)
     parts = []
     # The trunk: swollen low, narrowing to a neck that leans.
     pts = [Vector(p) for p in [(0, 0, 0.0), (0, 0, 0.07), (0.01, 0, 0.17), (0.02, 0, 0.29), (0.02, 0.01, 0.4), (0.0, 0.02, 0.5),
