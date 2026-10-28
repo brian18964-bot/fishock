@@ -6,7 +6,8 @@ extends Control
 ## where they want it: the fish shows where it'd go - in green where it
 ## fits, red where it doesn't - and is dragged (or the cell tapped) to move
 ## it; the fish already in the bag can be moved about too. 放入 sets it down
-## (Profile.move_fish), 取消 leaves it.
+## (Profile.move_fish), 取消 leaves it. 旋轉 turns it (lying <-> standing) - and
+## so does a tap on one already in the bag.
 
 signal done(placed: bool)
 
@@ -30,6 +31,9 @@ var _go: Button
 var _note: Label
 ## The drag: {fish (which one), grab (cells off its corner), at (its corner now), new (bool)}.
 var _drag := {}
+## How the fish was turned when the grid came up (cancel puts it back).
+var _was_rot := false
+var _turn: Button
 
 
 func _init(place: String, from: String, i: int) -> void:
@@ -37,6 +41,7 @@ func _init(place: String, from: String, i: int) -> void:
 	src = from
 	index = i
 	fish = Profile.fish_list(from)[i]
+	_was_rot = bool(fish.get("rot", false))
 	name = "FishPlacer"
 	var panel := UiKit.tooltip_panel()
 	var col := VBoxContainer.new()
@@ -56,6 +61,13 @@ func _init(place: String, from: String, i: int) -> void:
 	var buttons := HBoxContainer.new()
 	buttons.add_theme_constant_override("separation", 8)
 	buttons.alignment = BoxContainer.ALIGNMENT_END
+	_turn = UiKit.button("旋轉", 16)
+	_turn.name = "PlaceTurn"
+	_turn.custom_minimum_size = Vector2(90, 42)
+	_turn.pressed.connect(turn)
+	var base: Vector2i = Inventory.SIZES.get(Inventory.fish_size(fish), Vector2i.ONE)
+	_turn.visible = where == "pack" and base.x != base.y
+	buttons.add_child(_turn)
 	_go = UiKit.button("放入", 16, "red")
 	_go.name = "PlaceGo"
 	_go.custom_minimum_size = Vector2(110, 42)
@@ -64,7 +76,9 @@ func _init(place: String, from: String, i: int) -> void:
 	var cancel := UiKit.button("取消", 16)
 	cancel.name = "PlaceCancel"
 	cancel.custom_minimum_size = Vector2(90, 42)
-	cancel.pressed.connect(func(): done.emit(false))
+	cancel.pressed.connect(func():
+		fish["rot"] = _was_rot
+		done.emit(false))
 	buttons.add_child(cancel)
 	col.add_child(buttons)
 	panel.add_child(col)
@@ -123,6 +137,16 @@ func _place() -> void:
 	done.emit(true)
 
 
+## Turns the fish being put in (a standing one lies, a lying one stands), kept
+## on the grid.
+func turn() -> void:
+	if where != "pack" or Inventory.SIZES.get(Inventory.fish_size(fish), Vector2i.ONE).x == Inventory.SIZES.get(Inventory.fish_size(fish), Vector2i.ONE).y:
+		return
+	fish["rot"] = not bool(fish.get("rot", false))
+	at = _clamp(at)
+	_check()
+
+
 ## Moves the fish being put in to the cell `corner` (clamped to the grid).
 func put_at(corner: Vector2i) -> void:
 	at = _clamp(corner)
@@ -179,7 +203,10 @@ class Grid extends Control:
 			elif not _drag.is_empty():
 				var d := _drag
 				_drag = {}
-				if not d.new and placer.fits(d.fish, d.at) and d.at != _from(d.fish):
+				if not d.new and d.at == _from(d.fish):
+					# (a tap on a fish already there: it turns)
+					_turn_existing(d.fish)
+				elif not d.new and placer.fits(d.fish, d.at):
 					_move_existing(d.fish, d.at)
 				elif d.new:
 					placer.put_at(d.at)
@@ -204,6 +231,18 @@ class Grid extends Control:
 			if is_same(o.fish, f):
 				return (o.rect as Rect2i).position
 		return Vector2i(-1, -1)
+
+	## A fish already in the bag turned where it lies, if it still fits.
+	func _turn_existing(f: Dictionary) -> void:
+		if placer.where != "pack":
+			return
+		var before := bool(f.get("rot", false))
+		f["rot"] = not before
+		if Inventory.SIZES.get(Inventory.fish_size(f), Vector2i.ONE).x == Inventory.SIZES.get(Inventory.fish_size(f), Vector2i.ONE).y \
+				or not placer.fits(f, _from(f)):
+			f["rot"] = before
+			return
+		Profile.profile_changed.emit()
 
 	## A fish already in set down at `corner`.
 	func _move_existing(f: Dictionary, corner: Vector2i) -> void:
@@ -261,9 +300,6 @@ class Grid extends Control:
 	func _draw_fish(f: Dictionary, r: Rect2, fresh: bool) -> void:
 		UiKit.draw_slot(self, r, UiKit.fish_rarity(f), fresh)
 		var tex := FishData.icon(f.get("id", ""), f.get("name", ""))
-		if tex != null:
-			var room := r.grow(-4.0)
-			var k := minf(room.size.x / tex.get_width(), room.size.y / tex.get_height())
-			var sz := Vector2(tex.get_size()) * k
-			var tint := Color(0.55, 0.5, 0.35) if FishLife.state(f) == "rotten" else (Color(0.75, 0.75, 0.8) if FishLife.state(f) == "dead" else Color.WHITE)
-			draw_texture_rect(tex, Rect2(room.get_center() - sz / 2.0, sz), false, tint)
+		var tint := Color(0.55, 0.5, 0.35) if FishLife.state(f) == "rotten" else (Color(0.75, 0.75, 0.8) if FishLife.state(f) == "dead" else Color.WHITE)
+		# (filling the cells it takes)
+		UiKit.draw_fish_fit(self, r.grow(-3.0), tex, tint)

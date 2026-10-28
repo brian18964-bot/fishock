@@ -31,6 +31,11 @@ static func size_for_catch(tier: String, epic: bool) -> String:
 	return BIGGER[size] if epic else size
 
 
+## `size` laid the other way when `rot`.
+static func rotated(size: Vector2i, rot: bool) -> Vector2i:
+	return Vector2i(size.y, size.x) if rot else size
+
+
 static func fish_size(fish: Dictionary) -> String:
 	return fish.get("size", SIZE_BY_TIER.get(fish.get("tier", ""), "small"))
 
@@ -43,7 +48,7 @@ static func items(player: Node) -> Array:
 		var fish: Dictionary = GameState.carried_fish[i]
 		var size := fish_size(fish)
 		out.append({"kind": "fish", "label": fish.get("name", "魚"), "count": 0,
-			"size": SIZES[size], "index": i, "rotten": fish.get("rotten", false),
+			"size": rotated(SIZES[size], bool(fish.get("rot", false))), "rot": bool(fish.get("rot", false)), "index": i, "rotten": fish.get("rotten", false),
 			"dead": fish.get("dead", false), "grade": SIZE_NAMES[size],
 			"id": fish.get("id", "")})
 		# (set down where the player put it at home: kept there if it fits)
@@ -76,7 +81,8 @@ static func items(player: Node) -> Array:
 			continue
 		var kind := "lure" if def.has("lure") else ("battery" if e.id == "battery" else ("live" if def.has("live") else ("use" if def.has("use") else "gear")))
 		out.append({"kind": kind, "label": def.name, "count": int(e.count) if def.stack > 1 else 0,
-			"size": def.size, "index": def.get("lure", def.get("live", i)), "cell": e.cell, "item": e.id, "bag": i})
+			"size": rotated(def.size, bool(e.get("rot", false))), "rot": bool(e.get("rot", false)),
+			"index": def.get("lure", def.get("live", i)), "cell": e.cell, "item": e.id, "bag": i})
 	return out
 
 
@@ -144,7 +150,7 @@ static func fits_with(player: Node, extra: Array) -> bool:
 
 
 static func fish_item(fish: Dictionary) -> Dictionary:
-	var out := {"kind": "fish", "size": SIZES[fish_size(fish)]}
+	var out := {"kind": "fish", "size": rotated(SIZES[fish_size(fish)], bool(fish.get("rot", false)))}
 	var c = fish.get("cell")
 	if c is Array and c.size() == 2:
 		out["cell"] = Vector2i(int(c[0]), int(c[1]))

@@ -64,7 +64,7 @@ static func def(id: String) -> Dictionary:
 		return {"name": "鏟子", "tab": "gear", "size": Vector2i(3, 1), "stack": 1, "slot": "offhand",
 			"icon": ICONS % id, "desc": Profile.SHOVEL_DESC}
 	if id == "oxy_box":
-		return {"name": "打氧魚箱", "tab": "gear", "size": Vector2i(6, 1), "stack": 1, "slot": "offhand",
+		return {"name": "打氧魚箱", "tab": "gear", "size": Vector2i(2, 3), "stack": 1, "slot": "offhand",
 			"icon": ICONS % id, "desc": Profile.OXY_BOX_DESC, "container": true}
 	if id == "bait":
 		return {"name": "餌料", "tab": "item", "size": Vector2i(1, 1), "stack": 10, "slot": "", "fixed": true,
@@ -111,6 +111,13 @@ static func name_of(id: String) -> String:
 
 static func size_of(id: String) -> Vector2i:
 	return def(id).get("size", Vector2i(1, 1))
+
+
+## The size laid the other way when `rot` (user request: anything over more
+## than a cell can be turned - lying or standing).
+static func size_rot(id: String, rot: bool) -> Vector2i:
+	var s := size_of(id)
+	return Vector2i(s.y, s.x) if rot else s
 
 
 static func stack_of(id: String) -> int:

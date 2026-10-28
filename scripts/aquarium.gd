@@ -18,6 +18,8 @@ extends Control
 signal picked(index: int)
 ## A fish in the bucket tapped: its place in Profile.fish_box.
 signal bucket_picked(index: int)
+## The bucket itself tapped (in the tank's view: go to it).
+signal bucket_clicked
 
 const RENDER_SCALE := 1.5
 ## The drum: the camp's model made LENGTH long along x, lying on its side
@@ -41,7 +43,8 @@ const ROCKS := [
 ]
 ## Lotus leaves on the surface (user request: the leaves only, no weed
 ## below): [x, z, radius].
-const PADS := [[-0.55, 0.28, 0.19], [-0.3, 0.4, 0.12], [0.76, -0.3, 0.17]]
+## (user report: far too big - 60% smaller, and two of them)
+const PADS := [[-0.5, 0.26, 0.076], [0.55, -0.22, 0.068]]
 ## The bucket (魚桶, the user's bucket model - tools/make_bucket.py) stands
 ## left of the drum, half in the frame; its fish are bodies the physics pile
 ## up in it. The inside: its wall's radius at a height h (model metres) is
@@ -296,6 +299,14 @@ func _tap(at: Vector2) -> void:
 	var i := pick(at * RENDER_SCALE)
 	if i >= 0:
 		picked.emit(i)
+		return
+	# The bucket at the left (half in the frame): a tap on it goes to it.
+	var mid := BUCKET_AT + Vector3(0, 0.28 * BUCKET_SCALE * 0.5, 0)
+	if not camera.is_position_behind(mid):
+		var c := camera.unproject_position(mid)
+		var reach := (camera.unproject_position(mid + Vector3(0.135 * BUCKET_SCALE, 0, 0)) - c).length() * 1.1
+		if c.distance_to(at * RENDER_SCALE) < reach:
+			bucket_clicked.emit()
 
 
 ## The fish under `at` (viewport pixels), nearest the glass first; -1 if

@@ -10,8 +10,11 @@ extends Control
 ## - its sections as tabs, the wares two to a row, each name in its
 ## rarity's colour with its price - and the chosen thing's tooltip on the
 ## right with the buying (how many, where to) under it.
+## User request: 收購 - the merchant buys back everything but the rods and the
+## base bait, fish included, at half the new price times the uses left; the
+## bag is on the right to drag from onto the vendor's window.
 
-const TABS := [["gear", "釣具"], ["bait", "魚餌"], ["item", "道具"], ["upgrade", "升級"], ["fish", "賣魚"]]
+const TABS := [["gear", "釣具"], ["bait", "魚餌"], ["item", "道具"], ["upgrade", "升級"], ["sell", "收購"]]
 const UPGRADE_ICONS := {
 	"fuel_capacity": "res://assets/sprites/items/oil_lamp.png",
 	"bait_capacity": "res://assets/sprites/lure/worm_55deg_albedo.png",
@@ -44,6 +47,14 @@ var _pane: VBoxContainer
 ## out of reach.
 var _actions: VBoxContainer
 var _selected := ""
+## The 收購 tab: the right pane showing the bag, the drag board and the zone
+## to drop on, the hint, the sale's window.
+var _detail_pane: PanelContainer
+var _sell_pane: PanelContainer
+var _board: SellBoard
+var _zone: SellZone
+var _sell_hint: Label
+var _sale: Control
 var _toast: Label
 var _toast_tween: Tween
 
@@ -76,6 +87,11 @@ func _build() -> void:
 		tabs.add_child(b)
 		_tabs[key] = b
 	col.add_child(tabs)
+	_sell_hint = UiKit.label("把背包裡的東西拖到這個視窗賣掉（或點一下）；下面是倉庫和魚桶裡的，點一下賣。", 13, UiKit.DIM)
+	_sell_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_sell_hint.custom_minimum_size.x = 530
+	_sell_hint.visible = false
+	col.add_child(_sell_hint)
 	var scroll := DragScroll.new()
 	scroll.name = "WareScroll"
 	scroll.custom_minimum_size = Vector2(530, 364)
@@ -110,6 +126,8 @@ func _build() -> void:
 	_actions.add_theme_constant_override("separation", 6)
 	inner.add_child(_actions)
 	add_child(detail)
+	_detail_pane = detail
+	_build_sell_pane(vendor)
 
 	_toast = UiKit.label("", 17, UiKit.GOLD_BRIGHT, true, 5)
 	_toast.position = Vector2(180, 16)
@@ -125,7 +143,16 @@ func _show_tab(key: String) -> void:
 	for k in _tabs:
 		UiKit.style_tab(_tabs[k], k == key)
 	_selected = ""
+	# (user report: the last tab's description lingered - the pane is emptied
+	# on every change, and 收購 has the bag in its place)
+	_clear_pane()
+	_close_sale()
+	_detail_pane.visible = key != "sell"
+	_sell_pane.visible = key == "sell"
+	_sell_hint.visible = key == "sell"
 	_refresh()
+	if key == "sell":
+		return
 	# The first thing on the tab, shown.
 	var first := _grid.get_child(0) if _grid.get_child_count() > 0 else null
 	if first != null:
@@ -216,8 +243,8 @@ func _refresh() -> void:
 			for key in Profile.SNACK_ORDER:
 				var sn: Dictionary = Profile.SNACKS[key]
 				_card(key, Items.icon(key), sn.name, "精神 +%d" % int(sn.spirit), int(sn.cost), func(): _snack_card(key))
-		"fish":
-			_fish_cards()
+		"sell":
+			_sell_cards()
 		"upgrade":
 			for key in Profile.UPGRADE_DEFS:
 				var d: Dictionary = Profile.UPGRADE_DEFS[key]
@@ -455,75 +482,253 @@ func _upgrade_dialog(key: String) -> void:
 	_pane.add_child(up)
 
 
-## User request: the fish brought home dead (or rotten) are sold to the
-## merchant - here (Profile.fish_box). A rotten one's worth nothing (no use
-## yet): it can only be thrown away.
-func _fish_cards() -> void:
-	if Profile.fish_box.is_empty():
-		var none := UiKit.label("沒有要賣的魚\n（死掉的魚帶回營地，會放在這裡）", 16, UiKit.DIM)
+## 收購: what the merchant buys, here - the warehouse's things and the
+## bucket's fish (the bag's are on the right) - each a card with what it'd
+## bring; a tap opens the sale.
+func _sell_cards() -> void:
+	var any := false
+	for id in Profile.storage_ids(""):
+		if not Profile.buyback_ok(id):
+			continue
+		any = true
+		var sid: String = id
+		var most := Profile.max_durability(sid)
+		var sub := "倉庫 ×%d" % Profile.stored(sid)
+		if most > 0:
+			sub += "　耐久 %d/%d" % [Profile.durability(sid), most]
+		_card("sell_" + sid, Items.icon(sid), Items.name_of(sid), sub, Profile.buyback_price(sid), func(): _sell_modal({"from": "storage", "id": sid}))
+	for i in Profile.fish_box.size():
+		any = true
+		var f: Dictionary = Profile.fish_box[i]
+		var idx := i
+		var sub := "腐敗了" if FishLife.state(f) == "rotten" else ("%s %d%%" % [FishLife.bar(f).label, roundi(float(FishLife.bar(f).share) * 100.0)])
+		_card("fish_%d" % i, FishData.icon(f.get("id", ""), f.get("name", "")), f.get("name", "魚"), "魚桶・" + sub,
+			FishLife.sale_value(f), func(): _sell_modal({"from": "fish", "index": idx}))
+	if not any:
+		var none := UiKit.label("倉庫和魚桶裡沒有東西可以賣。\n背包裡的，從右邊拖過來。", 16, UiKit.DIM)
 		none.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		none.custom_minimum_size = Vector2(500, 0)
 		_grid.add_child(none)
-		if _pane.get_child_count() == 0:
-			_clear_pane()
+
+
+## The right pane of 收購: the bag, to drag from.
+func _build_sell_pane(vendor: Control) -> void:
+	_sell_pane = UiKit.tooltip_panel()
+	_sell_pane.name = "BagPane"
+	_sell_pane.position = Vector2(590, 56)
+	_sell_pane.custom_minimum_size = Vector2(356, 474)
+	_sell_pane.size = _sell_pane.custom_minimum_size
+	_sell_pane.visible = false
+	var inner := VBoxContainer.new()
+	inner.add_theme_constant_override("separation", 8)
+	inner.add_child(UiKit.label("背包", 20, UiKit.GOLD_BRIGHT, true))
+	var grid := ItemBoard.BagGrid.new(40.0)
+	grid.name = "SellBag"
+	var holder := Control.new()
+	holder.custom_minimum_size = grid.custom_minimum_size
+	holder.add_child(grid)
+	inner.add_child(holder)
+	var note := UiKit.label("拖著東西放到左邊的視窗，就是要賣給商人。\n價錢是新品的一半，用過的再照剩下的耐久打折；點一下可以看價錢。", 13, UiKit.DIM)
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.custom_minimum_size.x = 320
+	inner.add_child(note)
+	_sell_pane.add_child(inner)
+	add_child(_sell_pane)
+	_board = SellBoard.new()
+	_board.name = "SellBoard"
+	_board.shop = self
+	_board.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_board.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_board)
+	_board.track(grid)
+	_zone = SellZone.new()
+	_zone.name = "SellZone"
+	_zone.position = vendor.position
+	_zone.size = vendor.custom_minimum_size
+	add_child(_zone)
+	_board.track(_zone)
+
+
+func _close_sale() -> void:
+	if _sale != null:
+		_sale.queue_free()
+		_sale = null
+
+
+## The sale's window: what's sold (`source`: {from: storage / bag / fish, id,
+## index}), what it brings, how many; 賣出 / 取消.
+func _sell_modal(source: Dictionary) -> void:
+	_close_sale()
+	var shade := ColorRect.new()
+	shade.name = "SaleShade"
+	shade.color = Color(0, 0, 0, 0.5)
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.gui_input.connect(func(e):
+		if e is InputEventMouseButton and e.pressed:
+			_close_sale())
+	add_child(shade)
+	_sale = shade
+	var panel := UiKit.tooltip_panel()
+	panel.name = "Sale"
+	panel.custom_minimum_size = Vector2(400, 0)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	var buttons := HBoxContainer.new()
+	buttons.add_theme_constant_override("separation", 8)
+	buttons.alignment = BoxContainer.ALIGNMENT_END
+	var cancel := UiKit.button("取消", 15)
+	cancel.name = "SaleCancel"
+	cancel.custom_minimum_size = Vector2(80, 44)
+	cancel.pressed.connect(_close_sale)
+	if source.from == "fish":
+		_fish_sale(source, col, buttons)
+	else:
+		_item_sale(source, col, buttons)
+	buttons.add_child(cancel)
+	col.add_child(buttons)
+	panel.add_child(col)
+	shade.add_child(panel)
+	panel.reset_size()
+	panel.position = (size - panel.size) / 2.0
+
+
+func _item_sale(source: Dictionary, col: VBoxContainer, buttons: HBoxContainer) -> void:
+	var id: String = source.id
+	var def := Items.def(id)
+	var rarity := UiKit.item_rarity(id)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 12)
+	head.add_child(ItemBoard.icon_box(id, 64.0))
+	var words := VBoxContainer.new()
+	words.add_theme_constant_override("separation", 0)
+	words.add_child(UiKit.label(def.get("name", id), 21, UiKit.rarity_color(rarity), true))
+	words.add_child(UiKit.label("%s %s" % [UiKit.rarity_name(rarity), Items.TABS.get(def.get("tab", ""), "")], 14, UiKit.rarity_color(rarity)))
+	head.add_child(words)
+	col.add_child(head)
+	for line in ItemBoard.desc_lines(id):
+		var l := UiKit.label(line[0], 14, line[1])
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.custom_minimum_size.x = 370
+		col.add_child(l)
+	if not Profile.buyback_ok(id):
+		var why := "釣竿不能賣。" if id.begins_with("rod_") else "商人不收這個。"
+		col.add_child(UiKit.label(why, 16, Color(1.0, 0.6, 0.45)))
 		return
-	for i in Profile.fish_box.size():
-		var f: Dictionary = Profile.fish_box[i]
-		var idx := i
-		var sub := "腐敗了" if FishLife.state(f) == "rotten" else "新鮮度 %d%%" % roundi(float(f.get("fresh", 0.0)) * 100.0)
-		_card("fish_%d" % i, FishData.icon(f.get("id", ""), f.get("name", "")), f.get("name", "魚"), sub,
-			FishLife.sale_value(f), func(): _fish_dialog(idx))
+	var have: int = Profile.stored(id) if source.from == "storage" else int(Profile.bag[source.index].count)
+	var unit := Profile.buyback_price(id)
+	var most := Profile.max_durability(id)
+	var how := "新品 %d 的一半" % Profile.shop_cost(id)
+	if most > 0:
+		how += "，耐久 %d/%d 再打折" % [Profile.durability(id), most]
+	col.add_child(UiKit.label("一個 %d 金幣（%s）" % [unit, how], 14, UiKit.DIM))
+	var amount := [have]
+	var total := HBoxContainer.new()
+	total.add_child(UiKit.label("共：", 16))
+	var sum := UiKit.gold_label(unit * have, 16)
+	total.add_child(sum)
+	if have > 1:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		row.add_child(UiKit.label("數量", 15, UiKit.DIM))
+		var less := UiKit.button("－", 18)
+		var more := UiKit.button("＋", 18)
+		var slider := HSlider.new()
+		slider.name = "SaleAmount"
+		slider.min_value = 1
+		slider.max_value = have
+		slider.step = 1
+		slider.value = have
+		slider.custom_minimum_size = Vector2(150, 30)
+		slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		var shown := UiKit.label(str(have), 18, UiKit.GOLD_BRIGHT)
+		shown.custom_minimum_size.x = 36
+		slider.value_changed.connect(func(v):
+			amount[0] = int(v)
+			shown.text = str(int(v))
+			total.remove_child(sum)
+			sum.queue_free()
+			sum = UiKit.gold_label(unit * int(v), 16)
+			total.add_child(sum))
+		less.pressed.connect(func(): slider.value -= 1)
+		more.pressed.connect(func(): slider.value += 1)
+		for c in [less, slider, more, shown]:
+			row.add_child(c)
+		col.add_child(row)
+	col.add_child(total)
+	var sell := UiKit.button("賣出", 16, "red")
+	sell.name = "SaleGo"
+	sell.custom_minimum_size = Vector2(110, 44)
+	sell.pressed.connect(func():
+		var got := Profile.sell_item(source.from, id, amount[0], int(source.get("index", -1)))
+		_close_sale()
+		if got > 0:
+			Sfx.play("coins", -4.0)
+			_show_toast("賣出 %s +%d" % [def.get("name", id), got]))
+	buttons.add_child(sell)
 
 
-func _fish_dialog(i: int) -> void:
-	_clear_pane()
+func _fish_sale(source: Dictionary, col: VBoxContainer, buttons: HBoxContainer) -> void:
+	var i: int = source.index
 	if i >= Profile.fish_box.size():
 		return
 	var f: Dictionary = Profile.fish_box[i]
 	var rotten := FishLife.state(f) == "rotten"
-	var lines := [[FishData.size_text(f), UiKit.DIM]] if FishData.size_text(f) != "" else []
-	lines.append(["死掉的魚只能賣給商人：越新鮮賣得越好。" if not rotten else "腐敗的魚目前沒有用處，只能丟掉。", UiKit.TEXT])
-	_head(FishData.icon(f.get("id", ""), f.get("name", "")), f.get("name", "魚"), UiKit.fish_rarity(f), "魚", lines)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 12)
+	var pic := WareIcon.new()
+	pic.rarity = UiKit.fish_rarity(f)
+	pic.texture = FishData.icon(f.get("id", ""), f.get("name", ""))
+	pic.custom_minimum_size = Vector2(76, 76)
+	head.add_child(pic)
+	var words := VBoxContainer.new()
+	words.add_theme_constant_override("separation", 0)
+	words.add_child(UiKit.label(f.get("name", "魚"), 21, UiKit.rarity_color(pic.rarity), true))
+	words.add_child(UiKit.label("魚・魚桶裡", 14, UiKit.DIM))
+	if FishData.size_text(f) != "":
+		words.add_child(UiKit.label(FishData.size_text(f), 14, UiKit.DIM))
+	head.add_child(words)
+	col.add_child(head)
 	var vitals := FishVitals.new()
-	vitals.kept = true
-	vitals.custom_minimum_size.x = 320
-	_pane.add_child(vitals)
+	vitals.custom_minimum_size.x = 370
+	col.add_child(vitals)
 	vitals.show_fish(f)
-	if not rotten:
-		var price := HBoxContainer.new()
-		price.add_child(UiKit.label("賣價：", 16, UiKit.TEXT))
-		price.add_child(UiKit.gold_label(FishLife.sale_value(f), 16))
-		_pane.add_child(price)
-	_spacer()
+	col.add_child(UiKit.label("魚越新鮮賣得越好；腐敗的魚沒有用處，只能丟掉。" if not rotten else "腐敗的魚沒有用處，只能丟掉。", 14, UiKit.TEXT))
 	if rotten:
-		var drop := UiKit.button("丟掉", 18)
+		var drop := UiKit.button("丟掉", 16)
 		drop.name = "Discard"
-		drop.custom_minimum_size = Vector2(0, 48)
+		drop.custom_minimum_size = Vector2(100, 44)
 		drop.pressed.connect(func():
 			Profile.discard_from_box(i)
+			_close_sale()
 			_show_toast("丟掉了腐敗的%s" % f.get("name", "魚"))
-			_show_tab("fish"))
-		_actions.add_child(drop)
-	else:
-		var sell := UiKit.button("賣出", 18, "red")
-		sell.name = "Sell"
-		sell.custom_minimum_size = Vector2(0, 48)
-		sell.pressed.connect(func():
-			var got := Profile.sell_from_box(i)
-			Sfx.play("coins", -4.0)
-			_show_toast("賣出 %s +%d" % [f.get("name", "魚"), got])
-			_show_tab("fish"))
-		_actions.add_child(sell)
-	if Profile.fish_box.size() > 1 and Profile.box_sellable() > 0:
-		var all := UiKit.button("全部賣出（+%d）" % Profile.box_worth(), 16)
+			_refresh())
+		buttons.add_child(drop)
+		return
+	var price := HBoxContainer.new()
+	price.add_child(UiKit.label("賣價：", 16, UiKit.TEXT))
+	price.add_child(UiKit.gold_label(FishLife.sale_value(f), 16))
+	col.add_child(price)
+	var sell := UiKit.button("賣出", 16, "red")
+	sell.name = "SaleGo"
+	sell.custom_minimum_size = Vector2(110, 44)
+	sell.pressed.connect(func():
+		var got := Profile.sell_from_box(i)
+		Sfx.play("coins", -4.0)
+		_close_sale()
+		_show_toast("賣出 %s +%d" % [f.get("name", "魚"), got])
+		_refresh())
+	buttons.add_child(sell)
+	if Profile.fish_box.size() > 1 and Profile.box_sellable() > 1:
+		var all := UiKit.button("全部賣出 +%d" % Profile.box_worth(), 15)
 		all.name = "SellAll"
-		all.custom_minimum_size = Vector2(0, 42)
+		all.custom_minimum_size = Vector2(150, 44)
 		all.pressed.connect(func():
 			var got := Profile.sell_box_all()
 			Sfx.play("coins", -4.0)
+			_close_sale()
 			_show_toast("全部賣出 +%d" % got)
-			_show_tab("fish"))
-		_actions.add_child(all)
+			_refresh())
+		buttons.add_child(all)
 
 
 func _spacer() -> void:
@@ -727,3 +932,43 @@ class WareIcon extends Control:
 			var k := minf(room.size.x / texture.get_width(), room.size.y / texture.get_height())
 			var sz := Vector2(texture.get_size()) * k
 			draw_texture_rect(texture, Rect2(room.get_center() - sz / 2.0, sz), false)
+
+
+## The drag board of 收購: a tap on a thing in the bag opens its sale; let go
+## on the vendor's window and it's offered.
+class SellBoard extends ItemBoard:
+	var shop
+
+	func card(source: Dictionary) -> void:
+		shop._sell_modal(source)
+
+	func move(source: Dictionary, target: Dictionary, count := -1) -> bool:
+		if target.get("to", "") == "sell":
+			if source.get("from", "") != "bag":
+				return false
+			shop._sell_modal(source)
+			return true
+		return super.move(source, target, count)
+
+
+## The vendor's window as a place to drop on (a green frame when a thing's
+## held over it).
+class SellZone extends Control:
+	var _lit := false
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func target_at(_global: Vector2) -> Dictionary:
+		return {"to": "sell"}
+
+	func hover(source: Dictionary, at: Vector2) -> void:
+		var lit: bool = not source.is_empty() and source.get("from", "") == "bag" and get_global_rect().has_point(at)
+		if lit != _lit:
+			_lit = lit
+			queue_redraw()
+
+	func _draw() -> void:
+		if _lit:
+			draw_rect(Rect2(Vector2.ZERO, size), Color(0.4, 1.0, 0.5, 0.1))
+			draw_rect(Rect2(Vector2.ZERO, size), Color(0.4, 1.0, 0.5, 0.7), false, 3.0)

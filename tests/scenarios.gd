@@ -82,6 +82,8 @@ const TESTS := [
 	"test_tank_leaves",
 	"test_placing_fish",
 	"test_dead_fish_look",
+	"test_shop_buyback",
+	"test_rotating_things",
 	"test_camp_spirit_and_tents",
 	"test_camp_life",
 	"test_ears_and_tails",
@@ -3245,16 +3247,24 @@ func test_oxy_items() -> void:
 	var rot := {"dead": true, "rotten": true, "vit": 0.0, "fresh": 0.0, "life_traits": []}
 	check(FishLife.use_frozen(rot) != "", "nor on a rotten one")
 	# Items.
-	check(Items.def("oxy_box").size == Vector2i(6, 1) and Items.def("oxy_box").slot == "offhand", "the box: six cells, the off hand")
+	check(Items.def("oxy_box").size == Vector2i(2, 3) and Items.def("oxy_box").slot == "offhand", "the box: six cells (2 x 3), the off hand")
 	check(Items.def("oxy_tree").has("use") and Items.def("frozen_soil").has("use"), "the two are things to use")
 	check(Profile.max_durability("oxy_box") > 0, "the box wears")
 	# Bought, worn.
 	var gold := Profile.gold
 	check(Profile.buy_oxy_box() and Profile.gold == gold - Profile.OXY_BOX_COST and Profile.stored("oxy_box") == 1, "bought once")
 	check(not Profile.buy_oxy_box(), "not twice")
-	# Unworn it takes six cells of the bag, a row.
+	# Unworn it takes six cells of the bag, 2 across and 3 down - or turned, 3 across and 2 down.
 	Profile.bag.clear()
-	check(Profile.bag_fits("oxy_box", Vector2i(0, 0)) and not Profile.bag_fits("oxy_box", Vector2i(3, 0)), "six cells wide: it needs a row's room")
+	check(Profile.bag_fits("oxy_box", Vector2i(0, 0)) and not Profile.bag_fits("oxy_box", Vector2i(7, 0)) and not Profile.bag_fits("oxy_box", Vector2i(0, 2)), "2 x 3: it needs that room")
+	check(Profile.bag_fits("oxy_box", Vector2i(0, 2), -1, true) and not Profile.bag_fits("oxy_box", Vector2i(6, 0), -1, true), "turned, 3 x 2")
+	Profile.bag = [{"id": "oxy_box", "count": 1, "cell": Vector2i(0, 0)}]
+	check(Profile.bag_size_of(0) == Vector2i(2, 3) and Profile.bag_rotate(0) and Profile.bag_size_of(0) == Vector2i(3, 2) and Profile.bag[0].rot, "turned in the bag")
+	var bag_items := Inventory.items(null)
+	var box_at := bag_items.size() - 1
+	check(bag_items[box_at].size == Vector2i(3, 2) and Inventory.pack(bag_items)[box_at].size == Vector2i(3, 2), "the run's bag packs it turned")
+	check(Profile.bag_at(Vector2i(2, 1)) == 0 and Profile.bag_at(Vector2i(0, 2)) < 0, "and covers the cells it's turned over")
+	Profile.bag.clear()
 	check(Profile.equip("oxy_box") and Profile.has_oxy_box(), "worn in the off hand")
 	# In a run: fish in and out, each a use; what's in doesn't run down.
 	GameState.reset_run()
@@ -5857,6 +5867,20 @@ func test_tank_bucket() -> void:
 	var tank_before := float(tank_fish.vit)
 	GameState._process(5.0)
 	check(float(g.vit) < vit_before and float(tank_fish.vit) == tank_before, "the game ages the bucket's fish at home - the tank's keep (%.3f -> %.3f)" % [vit_before, float(g.vit)])
+	# User request: the bag's and the warehouse's run down at home too.
+	var in_bag := FishLife.roll({"name": "鯉魚", "id": "carp", "value": 6.0, "size": "small", "rarity": "common"})
+	var in_stash := in_bag.duplicate(true)
+	in_bag.life_traits = []
+	in_stash.life_traits = []
+	Profile.pack_fish = [in_bag]
+	Profile.stash_fish = [in_stash]
+	var bag_before := float(in_bag.vit)
+	GameState._process(5.0)
+	check(float(in_bag.vit) < bag_before and float(in_stash.vit) < bag_before and float(tank_fish.vit) == tank_before, "the bag's and the warehouse's run down at home too; the tank's don't")
+	Profile.age_home(FishLife.lifespan_left(in_bag) + 1.0)
+	check(FishLife.state(in_bag) == "dead", "and die in their time")
+	Profile.pack_fish = []
+	Profile.stash_fish = []
 	# The page: the bucket tab and its 3D bucket.
 	var d := FishLife.roll({"name": "紅鮭", "id": "sockeye", "value": 6.0, "size": "medium", "rarity": "common", "length": 60.0, "weight": 3.0})
 	FishLife.kill(d)
@@ -5885,6 +5909,14 @@ func test_tank_bucket() -> void:
 	var one: Node3D = tank.bucket_fish()[0]
 	var idx: int = tank.bucket_pick(tank.camera.unproject_position(one.global_position))
 	check(idx >= 0 and idx < Profile.fish_box.size(), "a tap on one picks one (%d)" % idx)
+	# A tap on the bucket in the tank's view goes to it.
+	page.find_child("Tab_overview", true, false).pressed.emit()
+	await seconds(1.0)
+	var mid := Aquarium.BUCKET_AT + Vector3(0, 0.3, 0)
+	tank._tap(tank.camera.unproject_position(mid) / Aquarium.RENDER_SCALE)
+	await frames(2)
+	check(page._tab == "bucket", "a tap on the bucket goes to the bucket's tab")
+	await seconds(1.0)
 	# One taken out leaves the bucket; one put in drops in.
 	Profile.move_fish("box", 0, "stash")
 	page._rebuild()
@@ -5914,7 +5946,7 @@ func test_tank_leaves() -> void:
 	get_tree().root.add_child(page)
 	await seconds(1.0)
 	var tank: Aquarium = page.find_child("Tank", true, false)
-	check(tank._leaves.size() == Aquarium.PADS.size(), "the leaves are there")
+	check(tank._leaves.size() == 2 and tank._leaves[0].r < 0.1, "two small leaves (radius %.2f)" % tank._leaves[0].r)
 	var leaf: Dictionary = tank._leaves[0]
 	var scr := func(p: Vector2) -> Vector2: return tank.camera.unproject_position(Vector3(p.x, Aquarium.SURFACE, p.y)) / Aquarium.RENDER_SCALE
 	var start: Vector2 = leaf.pos
@@ -6053,3 +6085,111 @@ func test_dead_fish_look() -> void:
 		seen[(mm.material_override as ShaderMaterial).get_shader_parameter("rot_color")] = true
 		mm.free()
 	check(seen.size() == 2, "some go green, some purple")
+
+
+## User request (收購): the merchant buys back everything but the rods and the
+## base bait, at half the new price times the uses left; the bag is on the
+## right to drag from; no other tab's description lingers.
+func test_shop_buyback() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 0})
+	check(Profile.buyback_price("battery") == 6, "a battery: half of 12")
+	Profile.wear["shovel"] = 15
+	check(Profile.buyback_price("shovel") == 17, "a shovel with a third of its uses left: a third of 50 (%d)" % Profile.buyback_price("shovel"))
+	Profile.wear.erase("shovel")
+	check(Profile.buyback_price("shovel") == 50, "a new one: 50")
+	check(Profile.buyback_price("oxy_tree") == 6 and Profile.buyback_price("rod_1") == 0 and Profile.buyback_price("bait") == 0, "a found thing at 0.4 of its cost; no rods, no base bait")
+	Profile.add_stored("battery", 3)
+	Profile.bag = [{"id": "ammo", "count": 5, "cell": Vector2i(0, 0)}]
+	check(Profile.sell_item("storage", "battery", 2) == 12 and Profile.stored("battery") == 1 and Profile.gold == 12, "two batteries from the warehouse")
+	check(Profile.sell_item("bag", "ammo", 5, 0) == 15 and Profile.bag.is_empty() and Profile.gold == 27, "the bag's ammo, the stack gone")
+	check(Profile.sell_item("storage", "rod_1", 1) == 0, "a rod isn't bought")
+	# The page.
+	Profile.add_stored("shovel", 1)
+	Profile.bag = [{"id": "battery", "count": 3, "cell": Vector2i(0, 0)}]
+	var dead := FishLife.roll({"name": "鯉魚", "id": "carp", "value": 6.0, "size": "small", "rarity": "common"})
+	FishLife.kill(dead)
+	Profile.fish_box = [dead]
+	var page: Control = load("res://scenes/shop.tscn").instantiate()
+	get_tree().root.add_child(page)
+	await frames(3)
+	check(page.find_child("Tab_sell", true, false) != null and page.find_child("Tab_fish", true, false) == null, "the tab is 收購")
+	page.find_child("Tab_item", true, false).pressed.emit()
+	await frames(2)
+	check(page._pane.get_child_count() > 0, "an item tab shows its first thing")
+	page.find_child("Tab_sell", true, false).pressed.emit()
+	await frames(2)
+	check(page._pane.get_child_count() == 0 and not page._detail_pane.visible and page._sell_pane.visible, "收購: no other tab's description, the bag on the right")
+	check(page.find_child("Card_sell_shovel", true, false) != null and page.find_child("Card_fish_0", true, false) != null, "the warehouse's things and the bucket's fish are listed")
+	page.find_child("Tab_upgrade", true, false).pressed.emit()
+	await frames(2)
+	check(page._detail_pane.visible and not page._sell_pane.visible and page._pane.get_child_count() > 0, "back on another tab: its own description")
+	page.find_child("Tab_sell", true, false).pressed.emit()
+	await frames(2)
+	# Dragged onto the vendor's window: the sale opens; sold.
+	var gold := Profile.gold
+	page._board.move({"from": "bag", "id": "battery", "index": 0}, {"to": "sell"})
+	await frames(2)
+	check(page.find_child("Sale", true, false) != null, "a thing dropped on the window opens its sale")
+	(page.find_child("SaleAmount", true, false) as HSlider).value = 2
+	(page.find_child("SaleGo", true, false) as Button).pressed.emit()
+	await frames(2)
+	check(Profile.gold == gold + 12 and Profile.bag_count("battery") == 1, "two sold from the bag (gold %d)" % Profile.gold)
+	# A fish in the bucket.
+	page.find_child("Card_fish_0", true, false).pressed.emit()
+	await frames(2)
+	(page.find_child("SaleGo", true, false) as Button).pressed.emit()
+	await frames(2)
+	check(Profile.fish_box.is_empty() and Profile.gold > gold + 12, "the bucket's fish sold")
+	page.queue_free()
+	Profile.load_data(saved)
+
+
+## User request: anything over more than a cell can be turned (lying <->
+## standing) - fish too - and a fish's picture fills the cells it takes.
+func test_rotating_things() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 0})
+	var medium := FishLife.roll({"name": "鯉魚", "id": "carp", "value": 6.0, "size": "medium", "rarity": "common"})
+	medium.life_traits = []
+	check(Inventory.fish_item(medium).size == Vector2i(1, 2), "a medium fish: 1 x 2")
+	medium["rot"] = true
+	check(Inventory.fish_item(medium).size == Vector2i(2, 1), "turned: 2 x 1")
+	medium["rot"] = false
+	Profile.tank = [medium]
+	check(Profile.pack_fits(medium, Vector2i(7, 0)) and not Profile.pack_fits(medium, Vector2i(7, 3)), "standing it fits the last column, not the last row's end")
+	var placer := FishPlacer.new("pack", "tank", 0)
+	get_tree().root.add_child(placer)
+	await frames(2)
+	placer.put_at(Vector2i(7, 0))
+	placer.turn()
+	check(medium.rot and placer.at == Vector2i(6, 0) and not (placer.find_child("PlaceGo", true, false) as Button).disabled, "turned at the edge, it's kept on the grid")
+	(placer.find_child("PlaceGo", true, false) as Button).pressed.emit()
+	check(Profile.pack_places()[0] == Rect2i(6, 0, 2, 1) and Profile.pack_fish[0].rot, "set down lying")
+	# Cancel puts it back as it was.
+	var again := FishLife.roll({"name": "鯉魚", "id": "carp", "value": 6.0, "size": "medium", "rarity": "common"})
+	Profile.tank = [again]
+	var p2 := FishPlacer.new("pack", "tank", 0)
+	get_tree().root.add_child(p2)
+	await frames(2)
+	p2.turn()
+	check(again.rot, "turned")
+	(p2.find_child("PlaceCancel", true, false) as Button).pressed.emit()
+	check(not bool(again.rot), "cancel: as it was")
+	placer.queue_free()
+	p2.queue_free()
+	# A small one has nothing to turn.
+	var small := FishLife.roll({"name": "沙丁魚", "id": "sardine", "value": 2.0, "size": "small", "rarity": "common"})
+	Profile.tank = [small]
+	var p3 := FishPlacer.new("pack", "tank", 0)
+	get_tree().root.add_child(p3)
+	await frames(2)
+	check(not (p3.find_child("PlaceTurn", true, false) as Button).visible, "a one-cell fish has no turn button")
+	p3.queue_free()
+	# Things in the bag: turned, kept in the bag's bounds.
+	Profile.bag = [{"id": "shovel", "count": 1, "cell": Vector2i(5, 0)}]
+	check(Profile.bag_size_of(0) == Vector2i(3, 1) and Profile.bag_rotate(0) and Profile.bag_size_of(0) == Vector2i(1, 3), "a shovel stood up")
+	Profile.bag = [{"id": "shovel", "count": 1, "cell": Vector2i(5, 0)}, {"id": "net", "count": 1, "cell": Vector2i(7, 0)}]
+	check(Profile.bag_rotate(0) == false or Profile.bag_fits("shovel", Profile.bag[0].cell, 0, true), "turning never leaves it over another thing")
+	check(not Profile.bag_rotate(-1), "nothing to turn")
+	Profile.load_data(saved)

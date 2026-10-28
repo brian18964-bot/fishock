@@ -55,6 +55,10 @@ func cancel_press() -> void:
 func _input(event: InputEvent) -> void:
 	if _press.is_empty():
 		return
+	# R while holding a bag thing: turns it (lying <-> standing).
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_R and _press.get("from", "") == "bag":
+		Profile.bag_rotate(int(_press.index))
+		return
 	if event is InputEventMouseMotion:
 		var at: Vector2 = event.position
 		if not _dragging and at.distance_to(_press.at) > DRAG_START:
@@ -131,6 +135,8 @@ func move(source: Dictionary, target: Dictionary, count := -1) -> bool:
 			return Profile.bag_move(source.index, target.cell)
 		["bag", "storage"]:
 			return Profile.to_storage(source.index, count) > 0
+		["bag", "rotate"]:
+			return Profile.bag_rotate(source.index)
 		["bag", "discard"]:
 			return Profile.bag_discard(source.index, count) > 0
 		["slot", "storage"]:
@@ -318,6 +324,9 @@ func actions(source: Dictionary) -> Array:
 		"storage":
 			out.append(["放進背包", {"to": "bag"}, true])
 		"bag":
+			var sz := Items.size_of(source.id)
+			if sz.x != sz.y:
+				out.append(["旋轉", {"to": "rotate"}])
 			if not Items.def(source.id).get("fixed", false):
 				out.append(["放回倉庫", {"to": "storage"}, true])
 				if can_discard:
@@ -352,7 +361,10 @@ static func draw_item(ci: CanvasItem, r: Rect2, id: String, count: int, _font: F
 		if named:
 			room.size.y -= 12.0
 		var long := float(tex.get_width()) / tex.get_height()
-		if long > 2.2 and room.size.x / room.size.y < 1.6:
+		if room.size.y > room.size.x * 1.25 and long > 1.25:
+			# (standing: its picture turned up)
+			UiKit.draw_long_pic(ci, room, tex)
+		elif long > 2.2 and room.size.x / room.size.y < 1.6:
 			# A long thing in a square box: laid corner to corner.
 			var diag := room.size.length() * 0.95
 			var sz := Vector2(diag, diag / long)
@@ -395,9 +407,15 @@ class BagGrid extends Control:
 		var c := cell_at(global)
 		if not _hover.is_empty():
 			# Dragged by its middle: its top-left cell.
-			var sz := Items.size_of(_hover.id)
+			var sz := _hover_size()
 			c = cell_at(global - Vector2(sz - Vector2i.ONE) * cell / 2.0)
 		return {"to": "bag", "cell": c}
+
+	## The cells what's dragged takes (as it's turned in the bag).
+	func _hover_size() -> Vector2i:
+		if _hover.get("from", "") == "bag" and int(_hover.get("index", -1)) >= 0 and int(_hover.index) < Profile.bag.size():
+			return Profile.bag_size_of(int(_hover.index))
+		return Items.size_of(_hover.id)
 
 	func hover(source: Dictionary, at: Vector2) -> void:
 		_hover = source
@@ -421,15 +439,16 @@ class BagGrid extends Control:
 		UiKit.draw_shut_rows(self, cell)
 		for i in Profile.bag.size():
 			var e: Dictionary = Profile.bag[i]
-			var r := Rect2(Vector2(e.cell) * cell, Vector2(Items.size_of(e.id)) * cell).grow(-3.0)
+			var r := Rect2(Vector2(e.cell) * cell, Vector2(Profile.bag_size_of(i)) * cell).grow(-3.0)
 			var dragged: bool = _hover.get("from", "") == "bag" and _hover.get("index", -1) == i
 			ItemBoard.draw_item(self, r, e.id, int(e.count), font)
 			if dragged:
 				draw_rect(r, Color(0, 0, 0, 0.5))
 		# Where a dragged thing would land: green if it fits, red if not.
 		if _inside:
-			var sz := Items.size_of(_hover.id)
-			var ok := Profile.bag_fits(_hover.id, _hover_cell, _hover.get("index", -1) if _hover.from == "bag" else -1)
+			var sz := _hover_size()
+			var turned: bool = _hover.from == "bag" and int(_hover.get("index", -1)) >= 0 and bool(Profile.bag[int(_hover.index)].get("rot", false))
+			var ok := Profile.bag_fits(_hover.id, _hover_cell, _hover.get("index", -1) if _hover.from == "bag" else -1, turned)
 			var at := Profile.bag_at(_hover_cell)
 			if not ok and at >= 0 and Profile.bag[at].id == _hover.id:
 				ok = true

@@ -145,8 +145,8 @@ func _process(delta: float) -> void:
 		_ghost_quiet += delta * FishLife.imp_rate(carried_fish)
 		_age_fish(delta)
 	elif not run_started:
-		# (the bucket at home)
-		Profile.age_bucket(delta)
+		# (the bucket, the bag and the warehouse at home)
+		Profile.age_home(delta)
 	if not run_started or run_over or is_night or day_phase != DayPhase.FISHING:
 		return
 	if day_duration > 0.0:

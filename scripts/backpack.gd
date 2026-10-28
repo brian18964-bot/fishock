@@ -348,6 +348,8 @@ func _show_selected(player: Player, items: Array, placed: Array) -> void:
 				_actions.add_child(_action("設為誘餌", func():
 					GameState.set_lure(item.index)
 					_rebuild()))
+			if item.size.x != item.size.y:
+				_actions.add_child(_action("旋轉", func(): _rotate(item)))
 			_actions.add_child(_action("放在地上", func():
 				player.put_fish_down(item.index)
 				_selected = {}
@@ -419,6 +421,9 @@ func _show_selected(player: Player, items: Array, placed: Array) -> void:
 				_actions.add_child(_action("裝上", func():
 					player.choose_live_bait(item.index)
 					_rebuild(), busy))
+	# User request: what takes more than a cell can be turned.
+	if item.has("bag") and item.size.x != item.size.y:
+		_actions.add_child(_action("旋轉", func(): _rotate(item)))
 	# User request (multiplayer to come): put things down for a teammate.
 	if item.has("bag"):
 		_actions.add_child(_action("放在地上", func():
@@ -618,7 +623,7 @@ func equip_from_bag(index: int) -> bool:
 		return false
 	var before := [Profile.bag.duplicate(true), Profile.equipped.duplicate()]
 	var id: String = Profile.bag[index].id if index >= 0 and index < Profile.bag.size() else ""
-	if not Profile.equip_from_bag(index) or Inventory.pack(Inventory.items(player)).is_empty():
+	if not Profile.equip_from_bag(index) or Inventory.pack(Inventory.items(_player())).is_empty():
 		_undo(before)
 		GameState.push_message("背包放不下換下來的裝備")
 		return false
@@ -638,7 +643,7 @@ func unequip_to_bag(slot: String, cell := Vector2i(-1, -1)) -> bool:
 		return false
 	var before := [Profile.bag.duplicate(true), Profile.equipped.duplicate()]
 	var id: String = Profile.equipped.get(slot, "")
-	if not Profile.unequip_to_bag(slot, cell) or Inventory.pack(Inventory.items(player)).is_empty():
+	if not Profile.unequip_to_bag(slot, cell) or Inventory.pack(Inventory.items(_player())).is_empty():
 		_undo(before)
 		GameState.push_message("背包滿了，放不下")
 		return false
@@ -700,6 +705,22 @@ func _show_slot(player: Player, slot: String) -> void:
 		_actions.add_child(_action("卸下放進背包", func():
 			unequip_to_bag(slot)
 			_rebuild(), player.state != Player.State.IDLE))
+
+
+## User request: a thing over more than a cell turned (lying <-> standing) in
+## the bag - if the bag still packs.
+func _rotate(item: Dictionary) -> void:
+	if item.kind == "fish":
+		var f: Dictionary = GameState.carried_fish[item.index]
+		f["rot"] = not bool(f.get("rot", false))
+		if Inventory.pack(Inventory.items(_player())).is_empty():
+			f["rot"] = not bool(f["rot"])
+			GameState.push_message("轉過來放不下")
+	elif item.has("bag"):
+		if not Profile.bag_rotate(int(item.bag)) or Inventory.pack(Inventory.items(_player())).is_empty():
+			Profile.bag_rotate(int(item.bag))
+			GameState.push_message("轉過來放不下")
+	_rebuild()
 
 
 func select(kind: String, index) -> void:
@@ -823,12 +844,10 @@ class GridView extends Control:
 			if square == null:
 				draw_texture_rect(UiKit.glow(), inner, false, Color(col.lightened(0.3), 0.4))
 			if item.kind == "fish":
-				# Its picture, fitted in (2:1).
+				# Its picture, filling the cells it takes (turned up in a standing one).
 				var tex := FishData.icon(item.get("id", ""), item.label)
 				if tex != null:
-					var fit := minf(inner.size.x / 2.0, inner.size.y) * 0.95
-					var pic := Rect2(inner.get_center() - Vector2(fit, fit / 2.0), Vector2(fit * 2.0, fit))
-					draw_texture_rect(tex, pic, false, Color(0.55, 0.5, 0.35) if item.get("rotten", false) \
+					UiKit.draw_fish_fit(self, inner.grow(-2.0), tex, Color(0.55, 0.5, 0.35) if item.get("rotten", false) \
 						else (Color(0.75, 0.78, 0.8) if item.get("dead", false) else Color.WHITE))
 				# (how much life or freshness it has left: a thin bar under it)
 				if item.index < GameState.carried_fish.size() and FishLife.has_life(GameState.carried_fish[item.index]):
@@ -842,9 +861,7 @@ class GridView extends Control:
 				# Packed before the run: its picture (Items.icon), fitted in.
 				var tex := Items.icon(item.item)
 				if tex != null:
-					var k := minf(inner.size.x / tex.get_width(), inner.size.y / tex.get_height())
-					var sz := Vector2(tex.get_size()) * k
-					draw_texture_rect(tex, Rect2(inner.get_center() - sz / 2.0, sz), false)
+					UiKit.draw_long_pic(self, inner, tex)
 			if item.kind == "fish":
 				if GameState.lure_index() == item.index:
 					# The 誘惑 fish: a badge at the top right.

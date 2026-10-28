@@ -87,8 +87,11 @@ class Card extends Button:
 		var rarity := UiKit.fish_rarity(fish)
 		UiKit.draw_slot(self, r, rarity, is_hovered() and not disabled)
 		var dim := Color(1, 1, 1, 0.45) if disabled else Color.WHITE
+		# (a short card leaves out its last line)
+		var compact := size.y < 112.0
+		var low := 24.0 if compact else 38.0
 		var tex := FishData.icon(fish.get("id", ""), fish.get("name", ""))
-		var pic := Rect2(Vector2(14, 26), Vector2(size.x - 28.0, minf((size.x - 28.0) * 0.5, size.y - 76.0)))
+		var pic := Rect2(Vector2(14, 26), Vector2(size.x - 28.0, minf((size.x - 28.0) * 0.5, size.y - 26.0 - low - 14.0)))
 		if tex != null:
 			var k := minf(pic.size.x / tex.get_width(), pic.size.y / tex.get_height())
 			var sz := Vector2(tex.get_size()) * k
@@ -97,10 +100,11 @@ class Card extends Button:
 		UiKit.draw_text(self, Vector2(8, 20), fish.get("name", "魚"), 15, UiKit.rarity_color(rarity) * dim,
 			HORIZONTAL_ALIGNMENT_LEFT, size.x - 16.0, true)
 		var bar := FishLife.bar(fish)
-		UiKit.draw_text(self, Vector2(8, size.y - 38), "%s %d%%" % [bar.label, roundi(float(bar.share) * 100.0)], 13,
+		UiKit.draw_text(self, Vector2(8, size.y - low), "%s %d%%" % [bar.label, roundi(float(bar.share) * 100.0)], 13,
 			UiKit.TEXT * dim, HORIZONTAL_ALIGNMENT_LEFT, size.x - 16.0)
-		var track := Rect2(8, size.y - 32, size.x - 16.0, 6)
+		var track := Rect2(8, size.y - low + 6.0, size.x - 16.0, 6)
 		draw_rect(track, Color(0.08, 0.07, 0.06, 0.9))
 		var col := Color(0.35, 0.8, 0.5) if bar.kind == "vit" else (Color(0.4, 0.7, 0.95) if bar.kind == "fresh" else Color(0.5, 0.42, 0.25))
 		draw_rect(Rect2(track.position, Vector2(track.size.x * clampf(float(bar.share), 0.0, 1.0), track.size.y)), col * dim)
-		UiKit.draw_text(self, Vector2(8, size.y - 10), note, 12, note_color * dim, HORIZONTAL_ALIGNMENT_LEFT, size.x - 16.0)
+		if not compact:
+			UiKit.draw_text(self, Vector2(8, size.y - 10), note, 12, note_color * dim, HORIZONTAL_ALIGNMENT_LEFT, size.x - 16.0)

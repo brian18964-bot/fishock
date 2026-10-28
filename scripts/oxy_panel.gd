@@ -9,7 +9,8 @@ extends Control
 
 signal closed
 
-const SLOT := Vector2(108, 118)
+## (the box's six slots stand two across, three down, as it does in the bag)
+const SLOT := Vector2(150, 104)
 var _head: Label
 var _grid: GridContainer
 var _list: GridContainer
@@ -25,33 +26,38 @@ func _init() -> void:
 	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(shade)
 	var panel := UiKit.tooltip_panel()
-	panel.custom_minimum_size = Vector2(700, 0)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 8)
 	_head = UiKit.label("", 19, UiKit.GOLD_BRIGHT, true)
 	col.add_child(_head)
-	var sub := UiKit.label("放進魚箱的魚活性不會下降。點魚箱裡的魚拿出來，點下面的魚放進去（各用掉 1 點耐久）。", 13, UiKit.DIM)
+	var sub := UiKit.label("放進魚箱的魚活性不會下降。點魚箱裡的魚拿出來，點右邊的魚放進去（各用掉 1 點耐久）。", 13, UiKit.DIM)
 	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	sub.custom_minimum_size.x = 670
+	sub.custom_minimum_size.x = 780
 	col.add_child(sub)
+	var body := HBoxContainer.new()
+	body.add_theme_constant_override("separation", 18)
+	# The box's six slots, two across and three down (as it lies in the bag).
 	_grid = GridContainer.new()
 	_grid.name = "Slots"
-	_grid.columns = 6
+	_grid.columns = 2
 	_grid.add_theme_constant_override("h_separation", 6)
 	_grid.add_theme_constant_override("v_separation", 6)
-	col.add_child(_grid)
-	col.add_child(UiKit.divider(670))
-	col.add_child(UiKit.label("身上帶著的魚", 15, UiKit.TEXT))
+	body.add_child(_grid)
+	var right := VBoxContainer.new()
+	right.add_theme_constant_override("separation", 6)
+	right.add_child(UiKit.label("身上帶著的魚", 15, UiKit.TEXT))
 	var scroll := DragScroll.new()
-	scroll.custom_minimum_size = Vector2(670, 130)
+	scroll.custom_minimum_size = Vector2(3 * SLOT.x + 12.0 + 12.0, 3 * SLOT.y + 12.0)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_list = GridContainer.new()
 	_list.name = "Carried"
-	_list.columns = 6
+	_list.columns = 3
 	_list.add_theme_constant_override("h_separation", 6)
 	_list.add_theme_constant_override("v_separation", 6)
 	scroll.add_child(_list)
-	col.add_child(scroll)
+	right.add_child(scroll)
+	body.add_child(right)
+	col.add_child(body)
 	_note = UiKit.label("", 14, Color(1.0, 0.7, 0.5))
 	col.add_child(_note)
 	var close := UiKit.button("關閉", 16)

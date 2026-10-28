@@ -852,15 +852,23 @@ func add_to_tank(fish: Dictionary) -> bool:
 
 ## User request: the fish brought home dead (or rotten) are kept here
 ## (a catch dict each) to be sold to the merchant - a rotten one is no use
-## (yet): thrown away. Fresh as they were: they don't age at home.
-## User request (魚桶): it is a bucket now - how many fit, and what's in it
-## ages: a living fish put in dies and rots as the time goes (age_bucket).
+## (yet): thrown away. (They age at home now: age_home.)
+## User request (魚桶): it is a bucket now - how many fit.
 const FISH_BOX_SIZE := 24
 var fish_box: Array = []
 
 
-## The bucket's fish age while the game runs at home (not on a run: the
-## carried fish age there). Not while the game's off.
+## User request: at home, the fish in the bucket, the bag and the warehouse
+## run down (a live one's vitality, then a dead one's freshness) as the game
+## runs; only the tank keeps them as they are. Not on a run (the carried fish
+## age there).
+func age_home(delta: float) -> void:
+	for list in [fish_box, pack_fish, stash_fish]:
+		for f in list:
+			FishLife.tick(f, delta, GameState.is_night)
+
+
+## (the bucket alone, as before: the test's)
 func age_bucket(delta: float) -> void:
 	for f in fish_box:
 		FishLife.tick(f, delta, GameState.is_night)
@@ -1112,6 +1120,91 @@ func sell_from_tank(index: int) -> int:
 	return price
 
 
+# --- Selling back (收購) --------------------------------------------------
+
+## User request: the merchant buys what's brought back - everything but the
+## rods and the base bait - at this share of what it sells it for new, and
+## the less a worn thing has left of its uses, the less it's worth.
+const BUYBACK := 0.5
+## What the merchant takes for a thing found on the map (not sold new): its
+## own cost (the table's) - a few coins' worth.
+const BUYBACK_FOUND := 0.4
+
+
+## What the shop sells `id` for new (0: it doesn't).
+func shop_cost(id: String) -> int:
+	if id.begins_with("rod_"):
+		return int(ROD_TIERS[clampi(int(id.substr(4)), 0, ROD_TIERS.size() - 1)].cost)
+	match id:
+		"flashlight": return FLASHLIGHT_COST
+		"battery": return BATTERY_COST
+		"ammo": return AMMO_COST
+		"net": return NET_COST
+		"shovel": return SHOVEL_COST
+		"oxy_box": return OXY_BOX_COST
+	if WEAPONS.has(id):
+		return int(WEAPONS[id].cost)
+	if id.begins_with("live_") and LIVE_BAITS.has(id.substr(5)):
+		return int(LIVE_BAITS[id.substr(5)].cost)
+	if id.begins_with("lure_") and LURES.has(id.substr(5)):
+		return int(LURES[id.substr(5)].cost)
+	if USABLES.has(id):
+		return int(USABLES[id].cost)
+	if SNACKS.has(id):
+		return int(SNACKS[id].cost)
+	return 0
+
+
+## Can the merchant buy `id` back at all?
+func buyback_ok(id: String) -> bool:
+	if id.begins_with("rod_") or id == "lamp" or Items.def(id).is_empty() or bool(Items.def(id).get("fixed", false)):
+		return false
+	return shop_cost(id) > 0
+
+
+## What the merchant pays for one `id` now: the share of its new price,
+## times how much of its uses are left (0: it won't buy).
+func buyback_price(id: String) -> int:
+	if not buyback_ok(id):
+		return 0
+	var rate := BUYBACK if not (USABLES.has(id) and not bool(USABLES[id].get("sold", true))) else BUYBACK_FOUND
+	var worn := 1.0
+	var most := max_durability(id)
+	if most > 0:
+		worn = clampf(float(durability(id)) / most, 0.0, 1.0)
+	return maxi(1, roundi(shop_cost(id) * rate * worn))
+
+
+## Sells `count` of `id` from the warehouse ("storage") or the bag stack at
+## `index` ("bag") to the merchant; the gold made (0: not bought).
+func sell_item(from: String, id: String, count := 1, index := -1) -> int:
+	var price := buyback_price(id)
+	if price <= 0 or count <= 0:
+		return 0
+	var n := 0
+	if from == "storage":
+		n = mini(count, stored(id))
+		if n <= 0:
+			return 0
+		storage[id] = stored(id) - n
+		if stored(id) <= 0:
+			storage.erase(id)
+	elif from == "bag" and index >= 0 and index < bag.size() and bag[index].id == id:
+		n = mini(count, int(bag[index].count))
+		bag[index].count -= n
+		if int(bag[index].count) <= 0:
+			bag.remove_at(index)
+	if n <= 0:
+		return 0
+	# (the last of a worn thing sold: its wear goes with it)
+	if owned(id) <= 0:
+		wear.erase(id)
+	gold += price * n
+	gold_updated.emit(gold)
+	_changed()
+	return price * n
+
+
 # --- Warehouse, bag and equipment ---------------------------------------
 
 func stored(id: String) -> int:
@@ -1145,22 +1238,27 @@ func storage_ids(tab := "") -> Array:
 
 
 ## Does `id` fit in the bag with its top-left at `cell` (not counting the
-## stack at index `ignore`)?
-func bag_fits(id: String, cell: Vector2i, ignore := -1) -> bool:
-	var rect := Rect2i(cell, Items.size_of(id))
+## stack at index `ignore`), laid the other way if `rot`?
+func bag_fits(id: String, cell: Vector2i, ignore := -1, rot := false) -> bool:
+	var rect := Rect2i(cell, Items.size_rot(id, rot))
 	if cell.x < 0 or cell.y < 0 or rect.end.x > Inventory.COLS or rect.end.y > bag_rows():
 		return false
 	for i in bag.size():
-		if i != ignore and Rect2i(bag[i].cell, Items.size_of(bag[i].id)).intersects(rect):
+		if i != ignore and Rect2i(bag[i].cell, bag_size_of(i)).intersects(rect):
 			return false
 	return true
 
 
+## The cells the bag stack at `i` takes (turned if it is).
+func bag_size_of(i: int) -> Vector2i:
+	return Items.size_rot(bag[i].id, bool(bag[i].get("rot", false)))
+
+
 ## The first place `id` fits (down each column in turn), or (-1, -1).
-func bag_free_cell(id: String, ignore := -1) -> Vector2i:
+func bag_free_cell(id: String, ignore := -1, rot := false) -> Vector2i:
 	for x in Inventory.COLS:
 		for y in bag_rows():
-			if bag_fits(id, Vector2i(x, y), ignore):
+			if bag_fits(id, Vector2i(x, y), ignore, rot):
 				return Vector2i(x, y)
 	return Vector2i(-1, -1)
 
@@ -1168,9 +1266,31 @@ func bag_free_cell(id: String, ignore := -1) -> Vector2i:
 ## The bag stack covering `cell`, or -1.
 func bag_at(cell: Vector2i) -> int:
 	for i in bag.size():
-		if Rect2i(bag[i].cell, Items.size_of(bag[i].id)).has_point(cell):
+		if Rect2i(bag[i].cell, bag_size_of(i)).has_point(cell):
 			return i
 	return -1
+
+
+## User request: turns the bag stack at `index` (lying <-> standing), where
+## it is if it fits so, else at the first place it does. False if it's not
+## more than a cell (or there's no room turned).
+func bag_rotate(index: int) -> bool:
+	if index < 0 or index >= bag.size():
+		return false
+	var e: Dictionary = bag[index]
+	var size := Items.size_of(e.id)
+	if size.x == size.y:
+		return false
+	var turned := not bool(e.get("rot", false))
+	var at: Vector2i = e.cell
+	if not bag_fits(e.id, at, index, turned):
+		at = bag_free_cell(e.id, index, turned)
+		if at.x < 0:
+			return false
+	e["rot"] = turned
+	e.cell = at
+	_changed()
+	return true
 
 
 ## Moves up to `count` of `id` from the warehouse into the bag - onto the
@@ -1377,7 +1497,7 @@ func bag_move(index: int, cell: Vector2i) -> bool:
 			bag.remove_at(index)
 		_changed()
 		return true
-	if not bag_fits(e.id, cell, index):
+	if not bag_fits(e.id, cell, index, bool(e.get("rot", false))):
 		return false
 	e.cell = cell
 	_changed()

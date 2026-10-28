@@ -85,6 +85,10 @@ func _build() -> void:
 	_tank.position = TANK.position
 	_tank.size = TANK.size
 	_tank.picked.connect(func(i): _card_for(i, "tank"))
+	if _tank.has_signal("bucket_clicked"):
+		_tank.bucket_clicked.connect(func():
+			_tab = "bucket"
+			_rebuild())
 	if _tank.has_signal("bucket_picked"):
 		_tank.bucket_picked.connect(func(i): _card_for(i, "box"))
 	add_child(_tank)
@@ -148,6 +152,7 @@ func _rebuild() -> void:
 		UiKit.style_tab(_tabs[k], k == _tab)
 	for c in _list.get_children():
 		c.queue_free()
+	_row_info.clear()
 	if _tab == "bucket":
 		_count.text = "魚桶  %d / %d　活魚放進去會慢慢死去，死了又會慢慢腐敗" % [Profile.fish_box.size(), Profile.FISH_BOX_SIZE]
 		if Profile.fish_box.is_empty():
@@ -217,13 +222,38 @@ func _row(i: int, src := "tank") -> Control:
 	top.add_child(UiKit.label(f.get("name", "魚"), 16, UiKit.rarity_color(rarity), true))
 	top.add_child(UiKit.label(FishData.trait_name(f.get("tank_trait", "")), 13, UiKit.USE))
 	words.add_child(top)
-	var state := FishLife.state(f)
-	var life := FishLife.traits_text(f)
-	words.add_child(UiKit.label("%s%s%s" % [FishData.size_text(f), "" if state == "alive" else "・" + FishLife.state_text(f),
-		"・" + life if life != "" else ""], 12, UiKit.DIM))
+	var info := UiKit.label(_row_text(f), 12, UiKit.DIM)
+	words.add_child(info)
+	if src != "tank":
+		# (these run down at home: the line keeps up)
+		_row_info.append([info, src, i])
 	row.add_child(words)
 	b.add_child(row)
 	return b
+
+
+## A list row's second line: size, how it is (its bar), traits.
+func _row_text(f: Dictionary) -> String:
+	var state := FishLife.state(f)
+	var life := FishLife.traits_text(f)
+	var bar := FishLife.bar(f)
+	var how := "腐敗了" if state == "rotten" else "%s %d%%" % [bar.label, roundi(float(bar.share) * 100.0)]
+	return "%s・%s%s" % [FishData.size_text(f), how, "・" + life if life != "" else ""]
+
+
+var _row_info: Array = []
+var _row_t := 0.0
+
+
+func _process(delta: float) -> void:
+	_row_t += delta
+	if _row_t < 0.5:
+		return
+	_row_t = 0.0
+	for r in _row_info:
+		var list := Profile.fish_list(r[1])
+		if is_instance_valid(r[0]) and r[2] < list.size():
+			(r[0] as Label).text = _row_text(list[r[2]])
 
 
 ## A fish's card (its tooltip): picture, name, measurements, trait, price;
@@ -270,11 +300,11 @@ func _card_for(i: int, src := "tank") -> void:
 	tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	tl.custom_minimum_size.x = CARD_WIDTH - 30.0
 	col.add_child(tl)
-	# (its life, kept as it was brought: it doesn't run down at home - but in the bucket)
+	# (its life: kept as it is in the tank only - in the bag, the warehouse and the bucket it runs down)
 	var vitals := FishVitals.new()
 	vitals.custom_minimum_size.x = CARD_WIDTH - 30.0
 	col.add_child(vitals)
-	vitals.show_fish(f, src != "box")
+	vitals.show_fish(f, src == "tank")
 	var price := maxi(1, roundi(float(f.get("value", 0.0))))
 	var pr := HBoxContainer.new()
 	pr.add_child(UiKit.label("售價：", 15))

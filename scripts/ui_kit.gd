@@ -355,6 +355,48 @@ static func tooltip_panel() -> PanelContainer:
 
 
 ## A soft round glow (white; tint it), for behind a thing's picture.
+## A fish's picture filling `room` (user request: a fish over more than a cell
+## fills them): laid along the long way of the room - turned up when the room
+## stands - its length the room's, its thickness stretched to fill it (at
+## most about 1.7x, so it stays a fish).
+static func draw_fish_fit(ci: CanvasItem, room: Rect2, tex: Texture2D, tint := Color.WHITE) -> void:
+	if tex == null:
+		return
+	var aspect := float(tex.get_width()) / maxf(tex.get_height(), 1.0)
+	var standing := room.size.y > room.size.x * 1.15
+	var length := (room.size.y if standing else room.size.x) * 0.97
+	var across := room.size.x if standing else room.size.y
+	var thick := minf(across * 0.94, length / aspect * 2.0)
+	# (a room shorter than the fish is long: it keeps its shape)
+	if thick * aspect > length:
+		thick = length / aspect
+	var sz := Vector2(length, thick)
+	if standing:
+		ci.draw_set_transform(room.get_center(), -PI / 2.0)
+	else:
+		ci.draw_set_transform(room.get_center())
+	ci.draw_texture_rect(tex, Rect2(-sz / 2.0, sz), false, tint)
+	ci.draw_set_transform(Vector2.ZERO)
+
+
+## A thing's picture (a tool, a rod...) fitted into `room` - a long one laid
+## along the room's long way, turned up in a standing room.
+static func draw_long_pic(ci: CanvasItem, room: Rect2, tex: Texture2D, tint := Color.WHITE) -> void:
+	if tex == null:
+		return
+	var aspect := float(tex.get_width()) / maxf(tex.get_height(), 1.0)
+	var standing := room.size.y > room.size.x * 1.25 and aspect > 1.25
+	var box := Vector2(room.size.y, room.size.x) if standing else room.size
+	var k := minf(box.x / tex.get_width(), box.y / tex.get_height())
+	var sz := Vector2(tex.get_size()) * k
+	if standing:
+		ci.draw_set_transform(room.get_center(), -PI / 2.0)
+	else:
+		ci.draw_set_transform(room.get_center())
+	ci.draw_texture_rect(tex, Rect2(-sz / 2.0, sz), false, tint)
+	ci.draw_set_transform(Vector2.ZERO)
+
+
 static func glow() -> Texture2D:
 	if not _tex.has("_glow"):
 		_tex["_glow"] = LightTextureFactory.make_radial_texture(64, 0.6)
