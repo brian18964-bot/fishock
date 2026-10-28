@@ -626,8 +626,10 @@ func act_on(kind: String, part := 0, done := Callable()) -> bool:
 			plan = _get_up() + _go("crate") + [{"do": "play", "clip": "Chest_Open", "at": 0.6, "fn": opens}]
 			activity = "crate"
 		"backpack":
-			plan = _get_up() + _go("pack") + [{"do": "loop", "clip": "Crouch_Idle", "time": 0.6},
-				{"do": "play", "clip": "PickUp_Table", "at": 0.7, "fn": opens}, {"do": "loop", "clip": "Crouch_Idle", "time": 0.8}]
+			# (user report: only the stoop - it stood up and waved, then stooped
+			# again once the window shut: the page opens as the stoop is down,
+			# and what's left of the plan is the same crouch)
+			plan = _get_up() + _go("pack") + [{"do": "loop", "clip": "Crouch_Idle", "time": 1.0, "at": 0.4, "fn": opens}]
 			activity = "crate"
 		"journey":
 			plan = _get_up() + _go("stone") + [{"do": "play", "clip": "Interact", "at": 0.4, "fn": opens}]

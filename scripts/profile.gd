@@ -865,7 +865,16 @@ var fish_box: Array = []
 func age_home(delta: float) -> void:
 	for list in [fish_box, pack_fish, stash_fish]:
 		for f in list:
+			FishLife.ensure(f)
 			FishLife.tick(f, delta, GameState.is_night)
+
+
+## Fish from before the life system (or from old saves) get theirs rolled -
+## else they'd never run down. Every list.
+func ensure_fish_life() -> void:
+	for list in [tank, fish_box, pack_fish, stash_fish]:
+		for f in list:
+			FishLife.ensure(f)
 
 
 ## (the bucket alone, as before: the test's)
@@ -998,6 +1007,7 @@ func move_fish(from: String, i: int, to: String, at := Vector2i(-1, -1)) -> Stri
 	# User request: put in the bag or the warehouse, it goes where the player
 	# set it (a cell of the bag's grid, a slot of the warehouse's), if it's
 	# somewhere it fits; else the first place there is.
+	FishLife.ensure(f)
 	f.erase("cell")
 	f.erase("slot")
 	if to == "pack" and at.x >= 0:
@@ -1016,6 +1026,15 @@ func move_fish(from: String, i: int, to: String, at := Vector2i(-1, -1)) -> Stri
 		tank_news.clear()
 	_changed()
 	return ""
+
+
+## A fish already in the bag set down at `cell` (if it fits there).
+func relocate_pack_fish(i: int, cell: Vector2i) -> bool:
+	if i < 0 or i >= pack_fish.size() or not pack_fits(pack_fish[i], cell):
+		return false
+	pack_fish[i]["cell"] = [cell.x, cell.y]
+	_changed()
+	return true
 
 
 ## The bag's cells taken by what's packed (the bag's things and the fish in
@@ -1786,6 +1805,7 @@ func load_data(data: Dictionary) -> void:
 	fish_box = data.get("fish_box", [])
 	pack_fish = data.get("pack_fish", [])
 	stash_fish = data.get("stash_fish", [])
+	ensure_fish_life()
 	fortune_clock = float(data.get("fortune_clock", 0.0))
 	tank_news = data.get("tank_news", [])
 	settings = {"auto_lure": false}

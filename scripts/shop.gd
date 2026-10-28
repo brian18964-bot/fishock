@@ -35,6 +35,8 @@ const LAMP_ICON := "res://assets/sprites/items/oil_lamp.png"
 ## User request: the wares bigger to tap - and the list scrolled under a
 ## finger from anywhere on it (DragScroll).
 const CARD := Vector2(262, 84)
+## 收購: the bag's cells (big: it's what's dragged from).
+const SELL_CELL := 57.0
 
 var _tab := "gear"
 var _tabs := {}
@@ -54,6 +56,8 @@ var _sell_pane: PanelContainer
 var _board: SellBoard
 var _zone: SellZone
 var _sell_hint: Label
+var _vendor: PanelContainer
+var _ware_scroll: DragScroll
 var _sale: Control
 var _toast: Label
 var _toast_tween: Tween
@@ -72,6 +76,7 @@ func _build() -> void:
 	var vendor: PanelContainer = made[0]
 	var col: VBoxContainer = made[1]
 	vendor.name = "VendorWindow"
+	_vendor = vendor
 	vendor.position = Vector2(14, 56)
 	vendor.custom_minimum_size = Vector2(566, 474)
 	vendor.size = vendor.custom_minimum_size
@@ -81,19 +86,20 @@ func _build() -> void:
 	for t in TABS:
 		var b := UiKit.button(t[1], 16)
 		b.name = "Tab_" + t[0]
-		b.custom_minimum_size = Vector2(98, 40)
+		b.custom_minimum_size = Vector2(74, 40)
 		var key: String = t[0]
 		b.pressed.connect(func(): _show_tab(key))
 		tabs.add_child(b)
 		_tabs[key] = b
 	col.add_child(tabs)
-	_sell_hint = UiKit.label("把背包裡的東西拖到這個視窗賣掉（或點一下）；下面是倉庫和魚桶裡的，點一下賣。", 13, UiKit.DIM)
+	_sell_hint = UiKit.label("把背包裡的東西拖過來賣；下面是倉庫和魚桶的，點一下賣。", 13, UiKit.DIM)
 	_sell_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_sell_hint.custom_minimum_size.x = 530
+	_sell_hint.custom_minimum_size.x = 394
 	_sell_hint.visible = false
 	col.add_child(_sell_hint)
 	var scroll := DragScroll.new()
 	scroll.name = "WareScroll"
+	_ware_scroll = scroll
 	scroll.custom_minimum_size = Vector2(530, 364)
 	_grid = GridContainer.new()
 	_grid.name = "Cards"
@@ -150,6 +156,7 @@ func _show_tab(key: String) -> void:
 	_detail_pane.visible = key != "sell"
 	_sell_pane.visible = key == "sell"
 	_sell_hint.visible = key == "sell"
+	_sell_layout(key == "sell")
 	_refresh()
 	if key == "sell":
 		return
@@ -507,31 +514,40 @@ func _sell_cards() -> void:
 	if not any:
 		var none := UiKit.label("倉庫和魚桶裡沒有東西可以賣。\n背包裡的，從右邊拖過來。", 16, UiKit.DIM)
 		none.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		none.custom_minimum_size = Vector2(500, 0)
+		none.custom_minimum_size = Vector2(360, 0)
 		_grid.add_child(none)
+
+
+## 收購 gives the bag the room: the vendor's window narrower (the wares one
+## to a row), the bag's pane wider with big cells.
+func _sell_layout(on: bool) -> void:
+	var wide := 394.0 if on else 530.0
+	_vendor.custom_minimum_size.x = wide + 36.0
+	# (the window shrinks to what it holds once the contents have reflowed)
+	_vendor.set_deferred("size", Vector2(wide + 36.0, 474.0))
+	_ware_scroll.custom_minimum_size = Vector2(wide, 326.0 if on else 364.0)
+	_grid.columns = 1 if on else 2
+	_sell_hint.custom_minimum_size.x = wide
+	_zone.size = Vector2(wide + 36.0, 474.0)
 
 
 ## The right pane of 收購: the bag, to drag from.
 func _build_sell_pane(vendor: Control) -> void:
 	_sell_pane = UiKit.tooltip_panel()
 	_sell_pane.name = "BagPane"
-	_sell_pane.position = Vector2(590, 56)
-	_sell_pane.custom_minimum_size = Vector2(356, 474)
+	_sell_pane.position = Vector2(14.0 + 430.0 + 8.0, 56)
+	_sell_pane.custom_minimum_size = Vector2(946.0 - _sell_pane.position.x, 474)
 	_sell_pane.size = _sell_pane.custom_minimum_size
 	_sell_pane.visible = false
 	var inner := VBoxContainer.new()
 	inner.add_theme_constant_override("separation", 8)
 	inner.add_child(UiKit.label("背包", 20, UiKit.GOLD_BRIGHT, true))
-	var grid := ItemBoard.BagGrid.new(40.0)
+	var grid := ItemBoard.BagGrid.new(SELL_CELL)
 	grid.name = "SellBag"
 	var holder := Control.new()
 	holder.custom_minimum_size = grid.custom_minimum_size
 	holder.add_child(grid)
 	inner.add_child(holder)
-	var note := UiKit.label("拖著東西放到左邊的視窗，就是要賣給商人。\n價錢是新品的一半，用過的再照剩下的耐久打折；點一下可以看價錢。", 13, UiKit.DIM)
-	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	note.custom_minimum_size.x = 320
-	inner.add_child(note)
 	_sell_pane.add_child(inner)
 	add_child(_sell_pane)
 	_board = SellBoard.new()
@@ -940,7 +956,11 @@ class SellBoard extends ItemBoard:
 	var shop
 
 	func card(source: Dictionary) -> void:
-		shop._sell_modal(source)
+		if source.get("from", "") == "bag":
+			shop._sell_modal(source)
+		else:
+			# (a fish set in the bag at home: its card)
+			super.card(source)
 
 	func move(source: Dictionary, target: Dictionary, count := -1) -> bool:
 		if target.get("to", "") == "sell":

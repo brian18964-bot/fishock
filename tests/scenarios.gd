@@ -84,6 +84,7 @@ const TESTS := [
 	"test_dead_fish_look",
 	"test_shop_buyback",
 	"test_rotating_things",
+	"test_fish_at_home_shown",
 	"test_camp_spirit_and_tents",
 	"test_camp_life",
 	"test_ears_and_tails",
@@ -5946,7 +5947,10 @@ func test_tank_leaves() -> void:
 	get_tree().root.add_child(page)
 	await seconds(1.0)
 	var tank: Aquarium = page.find_child("Tank", true, false)
-	check(tank._leaves.size() == 2 and tank._leaves[0].r < 0.1, "two small leaves (radius %.2f)" % tank._leaves[0].r)
+	check(tank._leaves.size() == 2 and tank._leaves[0].r <= 0.2, "two leaves (radius %.2f)" % tank._leaves[0].r)
+	# User report: they didn't shrink - the leaf model is 1 m across, so its node's scale is 2r (the floating kept resetting it).
+	await frames(3)
+	check(absf((tank._leaves[0].node as Node3D).global_basis.get_scale().x - tank._leaves[0].r * 2.0) < 0.01 and absf((tank._leaves[1].node as Node3D).global_basis.get_scale().x - tank._leaves[1].r * 2.0) < 0.01, "the leaves are drawn at their size (scale %.2f)" % (tank._leaves[0].node as Node3D).global_basis.get_scale().x)
 	var leaf: Dictionary = tank._leaves[0]
 	var scr := func(p: Vector2) -> Vector2: return tank.camera.unproject_position(Vector3(p.x, Aquarium.SURFACE, p.y)) / Aquarium.RENDER_SCALE
 	var start: Vector2 = leaf.pos
@@ -6193,3 +6197,57 @@ func test_rotating_things() -> void:
 	check(Profile.bag_rotate(0) == false or Profile.bag_fits("shovel", Profile.bag[0].cell, 0, true), "turning never leaves it over another thing")
 	check(not Profile.bag_rotate(-1), "nothing to turn")
 	Profile.load_data(saved)
+
+
+## User report: fish put in the bag or the bucket showed no bar and never ran
+## down (they'd no life from before the life system), and the bag showed no
+## fish. Now they get their life, and the bag's and the warehouse's pages show
+## the fish, with their card.
+func test_fish_at_home_shown() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 0})
+	GameState.run_started = false
+	# An old fish: no life fields.
+	var old := {"name": "鯉魚", "id": "carp", "value": 6.0, "size": "small", "rarity": "common", "length": 30.0, "weight": 1.0, "tank_trait": "active"}
+	Profile.tank = [old]
+	check(not FishLife.has_life(old), "an old fish has no life")
+	check(Profile.move_fish("tank", 0, "box") == "" and FishLife.has_life(Profile.fish_box[0]), "put in the bucket it gets its life")
+	var vit := float(Profile.fish_box[0].vit)
+	Profile.age_home(3.0)
+	check(float(Profile.fish_box[0].vit) < vit, "and runs down")
+	var old2 := {"name": "鯉魚", "id": "carp", "value": 6.0, "size": "medium", "rarity": "common", "length": 30.0, "weight": 1.0}
+	Profile.pack_fish = [old2]
+	Profile.ensure_fish_life()
+	check(FishLife.has_life(old2), "a saved fish is given its life when the profile is loaded or the page opens")
+	# The bag shows it; tapped, its card (with the bar); the warehouse's fish tab lists the stashed.
+	var stash := FishLife.roll({"name": "鯉魚", "id": "carp", "value": 6.0, "size": "small", "rarity": "common", "length": 30.0, "weight": 1.0})
+	stash.life_traits = []
+	Profile.stash_fish = [stash]
+	var page: Control = load("res://scenes/warehouse.tscn").instantiate()
+	get_tree().root.add_child(page)
+	await frames(3)
+	var bag: ItemBoard.BagGrid = page.find_child("Bag", true, false)
+	var at: Rect2i = Profile.pack_places()[0]
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	click.global_position = bag.global_position + (Vector2(at.position) + Vector2(0.5, 0.5)) * bag.cell
+	bag._gui_input(click)
+	check(page._press.get("from", "") == "pack_fish", "a press on the fish in the bag grid takes it")
+	page.card(page._press)
+	await frames(2)
+	check(page.find_child("FishCard", true, false) != null and page.find_child("FishCard", true, false).find_children("*", "FishVitals", true, false).size() == 1, "its card shows how it is")
+	page._close_card()
+	# Dragged along the bag.
+	check(page.move({"from": "pack_fish", "id": "", "index": 0}, {"to": "bag", "cell": Vector2i(5, 2)}) and Profile.pack_places()[0].position == Vector2i(5, 2), "dragged to another cell")
+	# The warehouse's fish tab.
+	page.find_child("Tab_fish", true, false).pressed.emit()
+	await frames(2)
+	check(page._storage.ids().size() == 1, "the warehouse's fish tab lists the stashed fish")
+	# From the bag to the warehouse and back.
+	check(page.move({"from": "pack_fish", "id": "", "index": 0}, {"to": "stash"}) and Profile.pack_fish.is_empty() and Profile.stash_fish.size() == 2, "dragged to the warehouse")
+	check(page.move({"from": "stash_fish", "id": "", "index": 0}, {"to": "bag", "cell": Vector2i(0, 0)}) and Profile.pack_fish.size() == 1, "and back into the bag")
+	page.queue_free()
+	await frames(1)
+	Profile.load_data(saved)
+

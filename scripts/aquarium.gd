@@ -43,8 +43,9 @@ const ROCKS := [
 ]
 ## Lotus leaves on the surface (user request: the leaves only, no weed
 ## below): [x, z, radius].
-## (user report: far too big - 60% smaller, and two of them)
-const PADS := [[-0.5, 0.26, 0.076], [0.55, -0.22, 0.068]]
+## [x, z, radius (the leaf model is 1 m across: scale 2r)] - user report: far too
+## big (0.5 m), 60% smaller (0.2 m), and two of them.
+const PADS := [[-0.5, 0.26, 0.2], [0.55, -0.22, 0.17]]
 ## The bucket (魚桶, the user's bucket model - tools/make_bucket.py) stands
 ## left of the drum, half in the frame; its fish are bodies the physics pile
 ## up in it. The inside: its wall's radius at a height h (model metres) is
@@ -690,7 +691,8 @@ func _float_leaves(delta: float) -> void:
 		var node: Node3D = l.node
 		node.position = Vector3(l.pos.x, SURFACE - 0.004 + sin(_time * 0.9 + l.bob) * 0.003, l.pos.y)
 		# (it heels a little the way it goes)
-		node.basis = Basis.from_euler(Vector3(l.vel.y * 0.1, l.yaw, -l.vel.x * 0.1))
+		# (its size kept: the leaf model is 1 m across)
+		node.basis = Basis.from_euler(Vector3(l.vel.y * 0.1, l.yaw, -l.vel.x * 0.1)).scaled(Vector3.ONE * float(l.r) * 2.0)
 
 
 func _bump(a: Dictionary, b: Dictionary) -> void:

@@ -85,6 +85,9 @@ func _start_drag() -> void:
 	_ghost = TextureRect.new()
 	var square := Items.square_icon(_press.id)
 	_ghost.texture = square if square != null else Items.icon(_press.id)
+	if _press.get("from", "") in ["pack_fish", "stash_fish"]:
+		var fish := ItemBoard.fish_of(_press)
+		_ghost.texture = FishData.icon(fish.get("id", ""), fish.get("name", ""))
 	_ghost.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_ghost.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_ghost.size = Vector2.ONE * 64.0
@@ -135,6 +138,12 @@ func move(source: Dictionary, target: Dictionary, count := -1) -> bool:
 			return Profile.bag_move(source.index, target.cell)
 		["bag", "storage"]:
 			return Profile.to_storage(source.index, count) > 0
+		["pack_fish", "bag"]:
+			return Profile.relocate_pack_fish(source.index, target.cell)
+		["stash_fish", "bag"]:
+			return Profile.move_fish("stash", source.index, "pack", target.cell) == ""
+		["pack_fish", "stash"], ["pack_fish", "storage"]:
+			return Profile.move_fish("pack", source.index, "stash") == ""
 		["bag", "rotate"]:
 			return Profile.bag_rotate(source.index)
 		["bag", "discard"]:
@@ -152,6 +161,9 @@ func move(source: Dictionary, target: Dictionary, count := -1) -> bool:
 ## its rarity's colour, what it is and does, how many (a stepper, for
 ## stacks) and what can be done with it here.
 func card(source: Dictionary) -> void:
+	if source.get("from", "") in ["pack_fish", "stash_fish"]:
+		fish_card(source)
+		return
 	var id: String = source.id
 	var def := Items.def(id)
 	if def.is_empty():
@@ -248,6 +260,93 @@ func card(source: Dictionary) -> void:
 			_close_card())
 		acts.add_child(b)
 	var cancel := UiKit.button("取消", 15)
+	cancel.custom_minimum_size = Vector2(80, 42)
+	cancel.pressed.connect(_close_card)
+	acts.add_child(cancel)
+	col.add_child(acts)
+	panel.add_child(col)
+	shade.add_child(panel)
+	panel.reset_size()
+	panel.position = (size - panel.size) / 2.0
+
+
+## The fish a source ("pack_fish" / "stash_fish" and an index) names.
+static func fish_of(source: Dictionary) -> Dictionary:
+	var list := Profile.pack_fish if source.get("from", "") == "pack_fish" else Profile.stash_fish
+	return list[source.index] if int(source.index) < list.size() else {}
+
+
+## User request: a fish at home in the bag or the warehouse - its card: how it
+## is (its bar runs down here), and what can be done: turn it, put it back in
+## the tank, the other place, the bucket.
+func fish_card(source: Dictionary) -> void:
+	var f := fish_of(source)
+	if f.is_empty():
+		return
+	var src := "pack" if source.from == "pack_fish" else "stash"
+	var i: int = source.index
+	FishLife.ensure(f)
+	var shade := ColorRect.new()
+	shade.color = Color(0, 0, 0, 0.5)
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.gui_input.connect(func(e):
+		if e is InputEventMouseButton and e.pressed:
+			_close_card())
+	add_child(shade)
+	_card = shade
+	var panel := UiKit.tooltip_panel()
+	panel.name = "FishCard"
+	panel.custom_minimum_size = Vector2(400, 0)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	var rarity := UiKit.fish_rarity(f)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 12)
+	var pic := TextureRect.new()
+	pic.texture = FishData.icon(f.get("id", ""), f.get("name", ""))
+	pic.custom_minimum_size = Vector2(110, 60)
+	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	head.add_child(pic)
+	var words := VBoxContainer.new()
+	words.add_theme_constant_override("separation", 0)
+	words.add_child(UiKit.label(f.get("name", "魚"), 21, UiKit.rarity_color(rarity), true))
+	words.add_child(UiKit.label("%s 魚・%s" % [UiKit.rarity_name(rarity), "在包包" if src == "pack" else "在倉庫"], 14, UiKit.rarity_color(rarity)))
+	words.add_child(UiKit.label(FishData.size_text(f), 14, UiKit.DIM))
+	head.add_child(words)
+	col.add_child(head)
+	var vitals := FishVitals.new()
+	vitals.custom_minimum_size.x = 370
+	col.add_child(vitals)
+	vitals.show_fish(f, false)
+	var acts := HFlowContainer.new()
+	acts.add_theme_constant_override("h_separation", 8)
+	acts.add_theme_constant_override("v_separation", 6)
+	acts.custom_minimum_size.x = 370
+	var base: Vector2i = Inventory.SIZES.get(Inventory.fish_size(f), Vector2i.ONE)
+	if src == "pack" and base.x != base.y:
+		var turn := UiKit.button("旋轉", 15)
+		turn.name = "FishTurn"
+		turn.custom_minimum_size = Vector2(90, 42)
+		turn.pressed.connect(func():
+			var before := bool(f.get("rot", false))
+			f["rot"] = not before
+			if not Profile.pack_fits(f, Profile.pack_places()[i].position if i < Profile.pack_places().size() else Vector2i.ZERO):
+				f["rot"] = before
+			Profile.profile_changed.emit()
+			_close_card())
+		acts.add_child(turn)
+	var where := {"tank": "放回魚缸", "box": "放進魚桶", "pack": "放進包包", "stash": "放進倉庫"}
+	for to in Profile.fish_places(f, src):
+		var b := UiKit.button(where[to], 15)
+		b.name = "FishTo_" + to
+		b.custom_minimum_size = Vector2(110, 42)
+		var dest: String = to
+		b.pressed.connect(func():
+			Profile.move_fish(src, i, dest)
+			_close_card())
+		acts.add_child(b)
+	var cancel := UiKit.button("關閉", 15)
 	cancel.custom_minimum_size = Vector2(80, 42)
 	cancel.pressed.connect(_close_card)
 	acts.add_child(cancel)
@@ -384,6 +483,20 @@ static func draw_item(ci: CanvasItem, r: Rect2, id: String, count: int, _font: F
 	draw_wear(ci, r, id)
 
 
+## A fish in a slot: its picture filling it, ringed by its rarity, a thin bar
+## under it for how much life or freshness it has left.
+static func draw_fish_slot(ci: CanvasItem, r: Rect2, f: Dictionary) -> void:
+	UiKit.draw_slot(ci, r, UiKit.fish_rarity(f))
+	var tint := Color(0.55, 0.5, 0.35) if FishLife.state(f) == "rotten" else (Color(0.75, 0.78, 0.8) if FishLife.state(f) == "dead" else Color.WHITE)
+	UiKit.draw_fish_fit(ci, r.grow(-4.0), FishData.icon(f.get("id", ""), f.get("name", "")), tint)
+	var bar := FishLife.bar(f)
+	var strip := Rect2(Vector2(r.position.x + 4.0, r.end.y - 8.0), Vector2(r.size.x - 8.0, 4.0))
+	ci.draw_rect(strip, Color(0, 0, 0, 0.65))
+	var col: Color = FishVitals.FRESH_COLOR if bar.kind == "fresh" else (FishVitals.ROT_COLOR if bar.kind == "rotten" \
+		else FishVitals.VIT_COLOR.lerp(FishVitals.VIT_LOW, 1.0 - clampf(float(bar.share) * 2.0, 0.0, 1.0)))
+	ci.draw_rect(Rect2(strip.position, Vector2(strip.size.x * clampf(float(bar.share), 0.0, 1.0), strip.size.y)), col)
+
+
 ## The bag: Inventory's grid with what's packed where it's packed.
 class BagGrid extends Control:
 	var board: ItemBoard
@@ -413,6 +526,8 @@ class BagGrid extends Control:
 
 	## The cells what's dragged takes (as it's turned in the bag).
 	func _hover_size() -> Vector2i:
+		if _hover.get("from", "") in ["pack_fish", "stash_fish"]:
+			return Inventory.fish_item(ItemBoard.fish_of(_hover)).size
 		if _hover.get("from", "") == "bag" and int(_hover.get("index", -1)) >= 0 and int(_hover.index) < Profile.bag.size():
 			return Profile.bag_size_of(int(_hover.index))
 		return Items.size_of(_hover.id)
@@ -426,6 +541,13 @@ class BagGrid extends Control:
 
 	func _gui_input(event: InputEvent) -> void:
 		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			# A fish set in the bag at home first.
+			var places := Profile.pack_places()
+			for k in places.size():
+				if (places[k] as Rect2i).has_point(cell_at(event.global_position)):
+					board.pressed({"from": "pack_fish", "id": "", "index": k}, event.global_position)
+					accept_event()
+					return
 			var i := Profile.bag_at(cell_at(event.global_position))
 			if i >= 0:
 				board.pressed({"from": "bag", "id": Profile.bag[i].id, "index": i}, event.global_position)
@@ -444,14 +566,27 @@ class BagGrid extends Control:
 			ItemBoard.draw_item(self, r, e.id, int(e.count), font)
 			if dragged:
 				draw_rect(r, Color(0, 0, 0, 0.5))
+		# The fish set in the bag at home (their pictures filling their cells, how
+		# they are in a bar under).
+		var places := Profile.pack_places()
+		for k in places.size():
+			var f: Dictionary = Profile.pack_fish[k]
+			var fr := Rect2(Vector2((places[k] as Rect2i).position) * cell, Vector2((places[k] as Rect2i).size) * cell).grow(-3.0)
+			ItemBoard.draw_fish_slot(self, fr, f)
+			if _hover.get("from", "") == "pack_fish" and _hover.get("index", -1) == k:
+				draw_rect(fr, Color(0, 0, 0, 0.5))
 		# Where a dragged thing would land: green if it fits, red if not.
 		if _inside:
 			var sz := _hover_size()
 			var turned: bool = _hover.from == "bag" and int(_hover.get("index", -1)) >= 0 and bool(Profile.bag[int(_hover.index)].get("rot", false))
-			var ok := Profile.bag_fits(_hover.id, _hover_cell, _hover.get("index", -1) if _hover.from == "bag" else -1, turned)
-			var at := Profile.bag_at(_hover_cell)
-			if not ok and at >= 0 and Profile.bag[at].id == _hover.id:
-				ok = true
+			var ok := false
+			if _hover.from in ["pack_fish", "stash_fish"]:
+				ok = Profile.pack_fits(ItemBoard.fish_of(_hover), _hover_cell)
+			else:
+				ok = Profile.bag_fits(_hover.id, _hover_cell, _hover.get("index", -1) if _hover.from == "bag" else -1, turned)
+				var at := Profile.bag_at(_hover_cell)
+				if not ok and at >= 0 and Profile.bag[at].id == _hover.id:
+					ok = true
 			var r := Rect2(Vector2(_hover_cell) * cell, Vector2(sz) * cell).grow(-2.0)
 			draw_rect(r, Color(0.4, 1.0, 0.5, 0.25) if ok else Color(1.0, 0.35, 0.3, 0.25))
 			draw_rect(r, Color(0.4, 1.0, 0.5, 0.8) if ok else Color(1.0, 0.35, 0.3, 0.8), false, 2.0)
@@ -482,6 +617,9 @@ class StorageGrid extends Control:
 		refit()
 
 	func ids() -> Array:
+		if tab == "fish":
+			# (the fish put in the warehouse: one box each, by its slot)
+			return range(Profile.stash_fish.size())
 		return Profile.storage_ids(tab)
 
 	func refit() -> void:
@@ -493,10 +631,14 @@ class StorageGrid extends Control:
 		return Rect2(Vector2(i % columns, i / columns) * cell, Vector2.ONE * cell).grow(-3.0)
 
 	func target_at(_global: Vector2) -> Dictionary:
-		return {"to": "storage"}
+		return {"to": "stash" if tab == "fish" else "storage"}
 
 	func hover(source: Dictionary, at: Vector2) -> void:
 		var lit: bool = not source.is_empty() and source.from != "storage" and get_global_rect().has_point(at)
+		if tab == "fish":
+			lit = lit and source.from == "pack_fish"
+		elif source.from in ["pack_fish", "stash_fish"]:
+			lit = false
 		if lit != _lit:
 			_lit = lit
 			queue_redraw()
@@ -506,7 +648,10 @@ class StorageGrid extends Control:
 			var list := ids()
 			for i in list.size():
 				if box(i).has_point(event.position):
-					board.pressed({"from": "storage", "id": list[i]}, event.global_position)
+					if tab == "fish":
+						board.pressed({"from": "stash_fish", "id": "", "index": i}, event.global_position)
+					else:
+						board.pressed({"from": "storage", "id": list[i]}, event.global_position)
 					accept_event()
 					return
 
@@ -523,9 +668,12 @@ class StorageGrid extends Control:
 				break
 			UiKit.draw_slot(self, r)
 		for i in list.size():
-			ItemBoard.draw_item(self, box(i), list[i], Profile.stored(list[i]), font, false, true)
+			if tab == "fish":
+				ItemBoard.draw_fish_slot(self, box(i), Profile.stash_fish[i])
+			else:
+				ItemBoard.draw_item(self, box(i), list[i], Profile.stored(list[i]), font, false, true)
 		if list.is_empty():
-			UiKit.draw_text(self, Vector2(0, cell * 0.6), "這裡還沒有東西", 15, UiKit.DIM, HORIZONTAL_ALIGNMENT_CENTER, size.x)
+			UiKit.draw_text(self, Vector2(0, cell * 0.6), "這裡還沒有東西" if tab != "fish" else "還沒有放魚進來", 15, UiKit.DIM, HORIZONTAL_ALIGNMENT_CENTER, size.x)
 
 
 ## An equipment slot: what's worn there, or its name greyed.

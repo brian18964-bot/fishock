@@ -148,6 +148,8 @@ func _refresh_gold() -> void:
 
 
 func _rebuild() -> void:
+	# (a fish from before the life system gets its life: else its bar never runs)
+	Profile.ensure_fish_life()
 	for k in _tabs:
 		UiKit.style_tab(_tabs[k], k == _tab)
 	for c in _list.get_children():

@@ -51,10 +51,17 @@ func _build() -> void:
 	for key in Items.TAB_ORDER:
 		var b := UiKit.button(Items.TABS[key], 14)
 		b.name = "Tab_" + key
-		b.custom_minimum_size = Vector2(68, 40)
+		b.custom_minimum_size = Vector2(58, 40)
 		b.pressed.connect(func(): _show_tab(key))
 		tabs.add_child(b)
 		_tabs[key] = b
+	# User request: the fish put in the warehouse (from the tank page) are here.
+	var fb := UiKit.button("魚", 14)
+	fb.name = "Tab_fish"
+	fb.custom_minimum_size = Vector2(52, 40)
+	fb.pressed.connect(func(): _show_tab("fish"))
+	tabs.add_child(fb)
+	_tabs["fish"] = fb
 	lcol.add_child(tabs)
 	var scroll := DragScroll.new()
 	scroll.name = "StorageScroll"
@@ -118,9 +125,15 @@ func _refresh() -> void:
 	for e in Profile.bag:
 		var sz := Items.size_of(e.id)
 		cells += sz.x * sz.y
+	for f in Profile.pack_fish:
+		var fs: Vector2i = Inventory.fish_item(f).size
+		cells += fs.x * fs.y
 	_used.text = "%d / %d 格" % [cells, Inventory.COLS * Profile.bag_rows()]
 	# Each tab's count on its button.
 	for k in _tabs:
+		if k == "fish":
+			(_tabs[k] as Button).text = "魚" + (" %d" % Profile.stash_fish.size() if not Profile.stash_fish.is_empty() else "")
+			continue
 		var n := 0
 		for id in Profile.storage_ids(k):
 			n += Profile.stored(id)
