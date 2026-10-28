@@ -250,6 +250,9 @@ func picker_open() -> bool:
 
 ## One slot: its thing's picture and count, or a faint +.
 class SlotView extends Control:
+	## The frame's border and corner radius (the countdown follows them).
+	const FRAME_BORDER := 2.0
+	const FRAME_RADIUS := 9.0
 	var index := 0
 	var pressed := false
 	var hold := 0.0
@@ -275,8 +278,8 @@ class SlotView extends Control:
 		var box := StyleBoxFlat.new()
 		box.bg_color = Color(0, 0, 0, 0.5 if pressed else 0.34)
 		box.border_color = Color(1.0, 0.45, 0.35, 0.8) if _shake > 0.0 else RIM
-		box.set_border_width_all(2)
-		box.set_corner_radius_all(9)
+		box.set_border_width_all(int(FRAME_BORDER))
+		box.set_corner_radius_all(int(FRAME_RADIUS))
 		draw_style_box(box, r)
 		var font := UiKit.font(true)
 		draw_string_outline(font, r.position + Vector2(5, 13), str(index + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, 3, Color(0, 0, 0, 0.8))
@@ -328,20 +331,40 @@ class SlotView extends Control:
 				var left := player.vigor_timer / Player.VIGOR_TIME if id == "potion_vigor" else (player.ward_timer / Player.WARD_TIME
 					if id == "potion_ward" else minf(player.glow_timer / Player.GLOW_TIME, 1.0))
 				if left > 0.0:
-					_square_sweep(r.grow(1.5), left, Color(0.6, 1.0, 0.65, 0.9), 3.0)
+					_square_sweep(r, left, Color(0.6, 1.0, 0.65, 0.95), 3.0)
 
-	## The time left as a line round the slot's square edge (user request:
-	## round the square, not a ring), from the top's middle, clockwise.
+	## The time left as a line along the slot's own frame - its rounded square
+	## (user report: the line was a plain square standing off the corners,
+	## not the slot's frame) - from the top's middle, clockwise. `r` is the
+	## frame's rect; the line runs along the middle of its border.
 	func _square_sweep(r: Rect2, left: float, color: Color, width: float) -> void:
-		var corners := [Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y), r.position,
-			Vector2(r.get_center().x, r.position.y)]
-		var pts := PackedVector2Array([Vector2(r.get_center().x, r.position.y)])
-		var want := (r.size.x + r.size.y) * 2.0 * clampf(left, 0.0, 1.0)
-		for corner in corners:
-			var seg: float = pts[-1].distance_to(corner)
+		var edge := r.grow(-FRAME_BORDER * 0.5)
+		var rad := FRAME_RADIUS - FRAME_BORDER * 0.5
+		var mid := edge.get_center().x
+		# (the whole way round as points: the straights' ends and each corner's arc)
+		var path := PackedVector2Array([Vector2(mid, edge.position.y)])
+		var corners := [
+			[Vector2(edge.end.x - rad, edge.position.y + rad), -PI / 2.0],
+			[Vector2(edge.end.x - rad, edge.end.y - rad), 0.0],
+			[Vector2(edge.position.x + rad, edge.end.y - rad), PI / 2.0],
+			[Vector2(edge.position.x + rad, edge.position.y + rad), PI],
+		]
+		for c in corners:
+			for k in 7:
+				var a: float = float(c[1]) + (PI / 2.0) * float(k) / 6.0
+				path.append((c[0] as Vector2) + Vector2(cos(a), sin(a)) * rad)
+		path.append(Vector2(mid, edge.position.y))
+		var total := 0.0
+		for k in range(1, path.size()):
+			total += path[k - 1].distance_to(path[k])
+		var want := total * clampf(left, 0.0, 1.0)
+		var pts := PackedVector2Array([path[0]])
+		for k in range(1, path.size()):
+			var seg: float = path[k - 1].distance_to(path[k])
 			if want <= seg:
-				pts.append(pts[-1].move_toward(corner, want))
+				pts.append(path[k - 1].move_toward(path[k], want))
 				break
 			want -= seg
-			pts.append(corner)
-		draw_polyline(pts, color, width, true)
+			pts.append(path[k])
+		if pts.size() > 1:
+			draw_polyline(pts, color, width, true)

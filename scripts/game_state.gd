@@ -129,9 +129,14 @@ func ghost_may_interfere() -> bool:
 		and _ghost_quiet >= GHOST_INTERFERENCE_GAP
 
 
+## A ghost has made its trouble (the traveller's doings are broken off).
+signal interfered
+
+
 func ghost_interfered() -> void:
 	ghost_interferences += 1
 	_ghost_quiet = 0.0
+	interfered.emit()
 
 
 func _process(delta: float) -> void:

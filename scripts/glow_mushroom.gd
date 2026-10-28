@@ -20,7 +20,7 @@ const GLOW := Color(0.42, 0.72, 1.0)
 const BREATH := 3.6
 const ICON_SIZE := 22.0
 
-## What it is when picked (the algae, OxyAlgae, are the same sort of thing):
+## What it is when picked (the algae, OxyTree, are the same sort of thing):
 ## its item, its name, the group it's found in, whether it glows.
 var item_id := "glow_mushroom"
 var label := "發光蘑菇"

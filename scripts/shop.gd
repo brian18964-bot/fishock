@@ -168,6 +168,11 @@ func _refresh() -> void:
 					_card(wid, Items.icon(wid), w.name, "已擁有", 0, func(): buy_dialog(wid, 0, "已經擁有了（到裝備頁或倉庫換上）"))
 				else:
 					_card(wid, Items.icon(wid), w.name, "", int(w.cost), func(): buy_dialog(wid, int(w.cost)))
+			# User request: the shovel (the off hand).
+			if Profile.owned("shovel") > 0:
+				_card("shovel", Items.icon("shovel"), "鏟子", "已擁有", 0, func(): buy_dialog("shovel", 0, "已經擁有了（到裝備頁或倉庫換上）"))
+			else:
+				_card("shovel", Items.icon("shovel"), "鏟子", "", Profile.SHOVEL_COST, func(): buy_dialog("shovel", Profile.SHOVEL_COST))
 			# User request: the oxygenated fish box (the off hand).
 			if Profile.owned("oxy_box") > 0:
 				_card("oxy_box", Items.icon("oxy_box"), "打氧魚箱", "已擁有", 0, func(): buy_dialog("oxy_box", 0, "已經擁有了（到裝備頁或倉庫換上）"))
@@ -643,6 +648,8 @@ func buy(id: String, n: int, where: String) -> int:
 			ok = Profile.buy_net()
 		elif id == "oxy_box":
 			ok = Profile.buy_oxy_box()
+		elif id == "shovel":
+			ok = Profile.buy_shovel()
 		elif id == "ammo":
 			ok = Profile.buy_ammo()
 		elif Profile.USABLES.has(id):

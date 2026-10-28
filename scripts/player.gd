@@ -445,6 +445,7 @@ var _key_prev_held: Dictionary = {}
 
 func _ready() -> void:
 	add_to_group("player")
+	GameState.interfered.connect(func(): cancel_channel("被鬼干擾"))
 	# (user request: on the ground at the feet, under the character)
 	guide = GuideArrow.new()
 	guide.name = "Guide"
@@ -787,6 +788,7 @@ func _maybe_trigger_water_ghost() -> void:
 
 
 func _apply_water_ghost_attack(cause := "") -> void:
+	cancel_channel("水鬼偷襲")
 	if ward_timer > 0.0:
 		# (the ghost-ward potion: it doesn't dare)
 		GameState.report("水鬼探出頭，又被藥水的氣味逼回水裡")
@@ -832,6 +834,8 @@ func perform(kind: String, seconds: float, note := "") -> void:
 func use_item(id: String) -> bool:
 	if Profile.bag_count(id) < 1:
 		return false
+	# (using a thing breaks off a gathering)
+	cancel_channel("改去用東西")
 	match id:
 		"potion_vigor":
 			Profile.bag_take(id, 1)
@@ -885,7 +889,7 @@ func use_item(id: String) -> bool:
 			glow_timer = GLOW_TIME + CRUMBLE_TIME * GLOW_FROM
 			perform("crumble", CRUMBLE_TIME)
 			GameState.report("揉碎發光蘑菇撒在身上：全身散發微弱的藍光", "good")
-		"oxy_algae", "frozen_soil":
+		"oxy_tree", "frozen_soil":
 			# (from a quick slot: the fish that needs it most)
 			var pick := fish_for(id)
 			if pick < 0:
@@ -1022,7 +1026,7 @@ func sniff() -> bool:
 func reachable_mushroom() -> GlowMushroom:
 	var best: GlowMushroom = null
 	var best_d := GlowMushroom.PICK_RANGE
-	for n in get_tree().get_nodes_in_group("glow_mushrooms") + get_tree().get_nodes_in_group("oxy_algae"):
+	for n in get_tree().get_nodes_in_group("glow_mushrooms") + get_tree().get_nodes_in_group("oxy_tree"):
 		var d := global_position.distance_to((n as Node2D).global_position)
 		if d < best_d:
 			best = n
@@ -1038,19 +1042,29 @@ const GATHER_TIME := 3.0
 const GATHER_TAKE := 0.45
 
 
-## Picks `m` (gathered: GATHER_TIME), into the bag - if there's room.
+## Starts gathering `m` (GATHER_TIME, a progress ring over the head - see
+## start_channel): the plant is picked, into the bag, only once it's done.
 func _pick_mushroom(m: GlowMushroom) -> void:
-	if m == null:
+	if m == null or channeling():
+		return
+	if not Profile.bag_has_room(m.item_id):
+		GameState.push_message("背包滿了，放不下%s" % m.label)
+		return
+	var at := m.global_position - global_position
+	if at.length() > 1.0:
+		aim_dir = at.normalized()
+	start_channel("gather", "採集%s" % m.label, GATHER_TIME, "gather", func(): _finish_gather(m))
+
+
+## The gathering done: the plant into the bag (and gone from the map).
+func _finish_gather(m: GlowMushroom) -> void:
+	if not is_instance_valid(m) or not m.is_in_group(m.group_name):
 		return
 	if Profile.bag_put(m.item_id, 1) <= 0:
 		GameState.push_message("背包滿了，放不下%s" % m.label)
 		return
 	Profile.note_found(m.item_id, 1)
-	var at := m.global_position - global_position
-	if at.length() > 1.0:
-		aim_dir = at.normalized()
-	perform("gather", GATHER_TIME)
-	m.pick(GATHER_TIME * GATHER_TAKE)
+	m.pick(0.0)
 	# (the sheep, a good gatherer: now and then two - 採集高手)
 	if Abilities.has("sheep") and Abilities.roll(Abilities.SHEEP_CHANCE) and Profile.bag_put(m.item_id, 1) > 0:
 		Profile.note_found(m.item_id, 1)
@@ -1060,13 +1074,83 @@ func _pick_mushroom(m: GlowMushroom) -> void:
 	GameState.push_message("採到一株%s，放進背包" % m.label)
 
 
-## User request: 魚氧藻 / 冷凍土 used on the carried fish at `index`: it's
-## taken from the bag and works on the fish (FishLife.use_algae/use_frozen).
+# ---------------------------------------------------------------- channels
+
+## User request: gathering and digging take their time - a progress ring over
+## the head - and are broken off (nothing gained) if the traveller moves,
+## starts fishing, is pounced on by a beast, or a ghost makes its trouble.
+var channel_kind := ""
+var channel_label := ""
+var channel_left := 0.0
+var channel_total := 0.0
+var _channel_done := Callable()
+## How fast (px/s) counts as moving off.
+const CHANNEL_MOVE := 8.0
+signal channel_broken(label: String, why: String)
+
+
+func channeling() -> bool:
+	return channel_total > 0.0
+
+
+## 0..1 how far the channel has got.
+func channel_progress() -> float:
+	return 1.0 - channel_left / channel_total if channel_total > 0.0 else 0.0
+
+
+## Begins a channel: `anim` is the move played (perform) over `seconds`,
+## `on_done` called when it's seen through.
+func start_channel(kind: String, label: String, seconds: float, anim: String, on_done: Callable) -> void:
+	channel_kind = kind
+	channel_label = label
+	channel_total = seconds
+	channel_left = seconds
+	_channel_done = on_done
+	perform(anim, seconds)
+
+
+## Broken off: nothing gained.
+func cancel_channel(why := "") -> void:
+	if not channeling():
+		return
+	var label := channel_label
+	channel_kind = ""
+	channel_label = ""
+	channel_total = 0.0
+	channel_left = 0.0
+	_channel_done = Callable()
+	move_left = 0.0
+	if why != "":
+		GameState.push_message("%s被打斷了（%s）" % [label, why])
+	channel_broken.emit(label, why)
+
+
+func _tick_channel(delta: float) -> void:
+	if not channeling():
+		return
+	if velocity.length() > CHANNEL_MOVE or state != State.IDLE or held or carrying_oil_drum:
+		cancel_channel("移動了")
+		return
+	channel_left -= delta
+	if channel_left <= 0.0:
+		var done := _channel_done
+		channel_kind = ""
+		channel_label = ""
+		channel_total = 0.0
+		channel_left = 0.0
+		_channel_done = Callable()
+		move_left = 0.0
+		if done.is_valid():
+			done.call()
+
+
+## User request: 魚氧樹 / 冷凍土 used on the carried fish at `index`: it's
+## taken from the bag and works on the fish (FishLife.use_oxy_tree/use_frozen).
 func use_on_fish(id: String, index: int) -> bool:
 	if Profile.bag_count(id) < 1 or index < 0 or index >= GameState.carried_fish.size():
 		return false
 	var fish: Dictionary = GameState.carried_fish[index]
-	var why := FishLife.use_algae(fish) if id == "oxy_algae" else FishLife.use_frozen(fish)
+	var why := FishLife.use_oxy_tree(fish) if id == "oxy_tree" else FishLife.use_frozen(fish)
 	if why != "":
 		GameState.report(why, "warn")
 		return false
@@ -1077,24 +1161,66 @@ func use_on_fish(id: String, index: int) -> bool:
 	return true
 
 
-## Which carried fish `id` (oxy_algae / frozen_soil) helps most now: the one
+## Which carried fish `id` (oxy_tree / frozen_soil) helps most now: the one
 ## that would die (rot) soonest and isn't already helped; -1 for none.
 func fish_for(id: String) -> int:
 	var best := -1
 	var best_left := INF
 	for i in GameState.carried_fish.size():
 		var f: Dictionary = GameState.carried_fish[i]
-		var ok := FishLife.state(f) == "alive" if id == "oxy_algae" else FishLife.state(f) != "rotten"
+		var ok := FishLife.state(f) == "alive" if id == "oxy_tree" else FishLife.state(f) != "rotten"
 		if not ok:
 			continue
-		var slowed := float(f.get("vit_slow" if id == "oxy_algae" else "fresh_slow", 0.0)) > 0.0
-		var left := FishLife.lifespan_left(f, GameState.is_night) if id == "oxy_algae" else FishLife.freshness_left(f)
+		var slowed := float(f.get("vit_slow" if id == "oxy_tree" else "fresh_slow", 0.0)) > 0.0
+		var left := FishLife.lifespan_left(f, GameState.is_night) if id == "oxy_tree" else FishLife.freshness_left(f)
 		if left == INF or slowed:
 			continue
 		if left < best_left:
 			best = i
 			best_left = left
 	return best
+
+
+## User request: digging the frost flower's cold soil with the shovel (the
+## off hand's: Profile.has_shovel()). The flower whose cold ground the
+## traveller stands on, or null.
+func frost_flower_here() -> FrostFlower:
+	for n in get_tree().get_nodes_in_group("frost_flowers"):
+		if (n as FrostFlower).reaches(global_position):
+			return n
+	return null
+
+
+## How long a dig takes (a progress ring).
+const DIG_TIME := 4.5
+
+
+## Digs the cold soil of `f`: the shovel's wear one, a lump of 冷凍土 into the
+## bag, the patch a little thinner - once the digging's seen through.
+func dig(f: FrostFlower) -> void:
+	if f == null or channeling() or not Profile.has_shovel():
+		return
+	if not Profile.bag_has_room("frozen_soil"):
+		GameState.push_message("背包滿了，放不下冷凍土")
+		return
+	var at := f.global_position - global_position
+	if at.length() > 1.0:
+		aim_dir = at.normalized()
+	start_channel("dig", "挖掘冷凍土", DIG_TIME, "dig", func(): _finish_dig(f))
+
+
+func _finish_dig(f: FrostFlower) -> void:
+	if not is_instance_valid(f) or f.digs <= 0 or not Profile.has_shovel():
+		return
+	if Profile.bag_put("frozen_soil", 1) <= 0:
+		GameState.push_message("背包滿了，放不下冷凍土")
+		return
+	Profile.note_found("frozen_soil", 1)
+	f.dug()
+	Profile.wear_out("shovel")
+	Campaign.stat("dig")
+	GameState.push_message("挖到了冷凍土，放進背包")
+	GameState.report("從冷凍花的根部挖出了冷凍土", "good")
 
 
 ## The nearest ghost about (a floating one or the big one), or null.
@@ -1141,6 +1267,7 @@ func nearest_water() -> Dictionary:
 ## User request: a floating ghost passing through the player leaves them
 ## dizzy - the same muddled steering and slow feet as a water-ghost hit.
 func ghost_confuse(duration: float) -> void:
+	cancel_channel("被鬼纏上")
 	water_ghost_timer = maxf(water_ghost_timer, duration)
 	affliction_text = "被鬼纏過，頭昏眼花"
 
@@ -1173,6 +1300,8 @@ func swing_move() -> String:
 		return ""
 	if id == "net":
 		return "scoop"
+	if id == "shovel":
+		return ""
 	var w: Dictionary = Profile.weapon
 	if w.get("gun", false):
 		return "shoot"
@@ -1376,6 +1505,7 @@ func _fire() -> void:
 ## (it can be picked back up, like a G-dropped one), snaps the line if
 ## you're fishing, and leaves you slowed for a moment.
 func animal_attack(attacker: String) -> void:
+	cancel_channel("被%s攻擊" % attacker)
 	# User request: the angel (alive) and the wraith (rotten) carried turn
 	# a pounce aside now and then.
 	if randf() < FishLife.beast_ward(GameState.carried_fish):
@@ -1729,6 +1859,7 @@ func _physics_process(delta: float) -> void:
 		return
 	_update_aim()
 	_update_movement()
+	_tick_channel(delta)
 	_update_noise()
 	_update_fishing(delta)
 	_handle_mode_toggle()
@@ -1964,7 +2095,7 @@ func _is_action_pressed() -> bool:
 ## by a button at the thing itself whenever it can be done (ActionPrompt,
 ## from interaction() below), held or tapped like before; E on a keyboard.
 func interaction() -> Dictionary:
-	if held or state != State.IDLE or GameState.run_over:
+	if held or state != State.IDLE or GameState.run_over or channeling():
 		return {}
 	if in_altar_zone and not GameState.carried_fish.is_empty():
 		return _offer(get_parent().get_node("Altar"), "祭壇", "獻祭", false, -34.0)
@@ -1995,6 +2126,10 @@ func interaction() -> Dictionary:
 	var mushroom := reachable_mushroom()
 	if mushroom != null:
 		return _offer(mushroom, mushroom.label, "採集", false, -24.0)
+	var frost_bloom := frost_flower_here()
+	if frost_bloom != null:
+		# (the cold soil: dug with the shovel in the off hand)
+		return _offer(frost_bloom, "冷凍花", "挖掘" if Profile.has_shovel() else "需要鏟子", false, -34.0)
 	if in_rock_zone and _rock != null and _rock.active:
 		return {"at": _rock.prompt_anchor(), "name": "石頭", "verb": "翻開", "hold": false}
 	var tree := choppable_tree()
@@ -2080,6 +2215,12 @@ func _handle_interaction(delta: float) -> void:
 		"採集":
 			if use_pressed:
 				_pick_mushroom(reachable_mushroom())
+		"挖掘":
+			if use_pressed:
+				dig(frost_flower_here())
+		"需要鏟子":
+			if use_pressed:
+				GameState.push_message("要把鏟子裝備在副手，才挖得動冷凍花下的土（商城有賣）")
 		"砍樹":
 			if use_pressed:
 				swing("chop")

@@ -164,7 +164,8 @@ func _ready() -> void:
 	_scatter_flip_rocks()
 	# (once the trees are in - they go in deferred)
 	_scatter_mushrooms.call_deferred()
-	_scatter_algae.call_deferred()
+	_scatter_oxy_trees.call_deferred()
+	_scatter_frost_flowers.call_deferred()
 	_scatter_ground_cover()
 	_scatter_critters()
 
@@ -568,29 +569,56 @@ func _scatter_mushrooms() -> void:
 			break
 
 
-## User request: the oxygen algae (OxyAlgae), in the shallows along the
+## User request: the oxygen algae (OxyTree), in the shallows along the
 ## shores - a few to a map, off the docks' and walkways' way.
-func _scatter_algae() -> void:
+func _scatter_oxy_trees() -> void:
 	var spots := []
 	for z in water_zones:
 		for s in (z as WaterZone).shore_samples(60.0):
 			spots.append([z, s[0], s[1]])
 	spots.shuffle()
 	var share := minf(Campaign.area_share(), 1.0)
-	var want := maxi(1, roundi(randi_range(OxyAlgae.ALGAE_PER_MAP.x, OxyAlgae.ALGAE_PER_MAP.y) * share))
+	var want := maxi(1, roundi(randi_range(OxyTree.TREES_PER_MAP.x, OxyTree.TREES_PER_MAP.y) * share))
 	var made := 0
 	for sp in spots:
 		if made >= want:
 			break
 		var zone: WaterZone = sp[0]
-		var at: Vector2 = sp[1] - (sp[2] as Vector2) * randf_range(OxyAlgae.FROM_SHORE.x, OxyAlgae.FROM_SHORE.y)
+		var at: Vector2 = sp[1] - (sp[2] as Vector2) * randf_range(OxyTree.FROM_SHORE.x, OxyTree.FROM_SHORE.y)
 		if not zone.contains(at) or not _inside_map(at, 40.0) or _near_walkway(at, 20.0):
 			continue
-		var a := OxyAlgae.new()
-		a.name = "OxyAlgae%d" % made
+		var a := OxyTree.new()
+		a.name = "OxyTree%d" % made
 		a.position = at
 		get_parent().add_child(a)
 		made += 1
+
+
+## User request: the frost flowers, only by the stones - each a little off one
+## of the small stones (the ones that turn over), on dry ground clear of the
+## walkways and of every other thing's base.
+func _scatter_frost_flowers() -> void:
+	var rocks := get_tree().get_nodes_in_group("solids").filter(func(n): return n is FlipRock and _inside_map(n.global_position, 40.0))
+	rocks.shuffle()
+	var share := minf(Campaign.area_share(), 1.0)
+	var want := maxi(1, roundi(randi_range(FrostFlower.PER_MAP.x, FrostFlower.PER_MAP.y) * share))
+	var made := 0
+	for r in rocks:
+		if made >= want:
+			break
+		var rock := r as FlipRock
+		for _try in 8:
+			var a := randf() * TAU
+			var at := rock.global_position + Vector2(cos(a), sin(a)) * (rock.radius + randf_range(FrostFlower.FROM_ROCK.x, FrostFlower.FROM_ROCK.y))
+			if water_zones.any(func(z): return z.contains(at) or z.distance_to_edge(at) < 30.0) or _near_walkway(at, 24.0) \
+					or not _clear_of_bases(at, rock):
+				continue
+			var flower := FrostFlower.new()
+			flower.name = "FrostFlower%d" % made
+			flower.position = at
+			get_parent().add_child(flower)
+			made += 1
+			break
 
 
 ## Whether `at` is off every solid thing's base but `tree`'s (a mushroom's

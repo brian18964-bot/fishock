@@ -13,11 +13,64 @@ import os
 import sys
 
 import bpy
+import numpy as np
 from mathutils import Vector
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 OUT = os.path.join(ROOT, "assets", "models", "items", "oxy_box.glb")
 MAX_TEX = 1024
+# The game's own colours (user: not the model's red and cream): the lid's red
+# turned to a sea teal, the cream body to a deep harbour navy - the wear,
+# scratches and shading of the painted texture kept (hue turned, tones kept).
+LID_HUE = 0.08
+BODY_HUE = 0.55
+
+
+def _rgb_to_hsv(rgb):
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    mx, mn = rgb.max(-1), rgb.min(-1)
+    d = mx - mn
+    h = np.zeros_like(mx)
+    m = d > 1e-6
+    rr = m & (mx == r)
+    gg = m & (mx == g) & ~rr
+    bb = m & ~rr & ~gg
+    h[rr] = ((g - b)[rr] / d[rr]) % 6.0
+    h[gg] = (b - r)[gg] / d[gg] + 2.0
+    h[bb] = (r - g)[bb] / d[bb] + 4.0
+    h = h / 6.0
+    s = np.where(mx > 1e-6, d / np.maximum(mx, 1e-6), 0.0)
+    return np.stack([h, s, mx], -1)
+
+
+def _hsv_to_rgb(hsv):
+    h, s, v = hsv[..., 0] % 1.0, hsv[..., 1], hsv[..., 2]
+    i = np.floor(h * 6.0).astype(int) % 6
+    f = h * 6.0 - np.floor(h * 6.0)
+    p, q, t = v * (1 - s), v * (1 - f * s), v * (1 - (1 - f) * s)
+    out = np.zeros(h.shape + (3,))
+    for k, (a, b, c) in enumerate(((v, t, p), (q, v, p), (p, v, t), (p, q, v), (t, p, v), (v, p, q))):
+        m = i == k
+        out[m] = np.stack([a[m], b[m], c[m]], -1)
+    return out
+
+
+def recolour(img):
+    """The body texture's red parts teal, its cream parts navy."""
+    w, h = img.size
+    px = np.array(img.pixels[:], dtype=np.float32).reshape(h, w, 4)
+    hsv = _rgb_to_hsv(px[..., :3])
+    hue, sat, val = hsv[..., 0], hsv[..., 1], hsv[..., 2]
+    red = ((hue < 0.045) | (hue > 0.93)) & (sat > 0.45)
+    cream = (hue >= 0.045) & (hue < 0.2) & ~red
+    out = hsv.copy()
+    out[red, 0] = LID_HUE
+    out[red, 1] = np.clip(sat[red] * 0.95, 0, 1)
+    out[cream, 0] = BODY_HUE
+    out[cream, 1] = np.clip(sat[cream] * 1.0 + 0.2, 0, 1)
+    out[cream, 2] = val[cream] * 0.36
+    px[..., :3] = _hsv_to_rgb(out)
+    img.pixels[:] = px.reshape(-1)
 
 
 def main():
@@ -45,6 +98,8 @@ def main():
     for img in bpy.data.images:
         if img.size[0] > MAX_TEX:
             img.scale(MAX_TEX, MAX_TEX)
+        if "Color" in img.name and img.size[0] >= 512:
+            recolour(img)
     bpy.ops.export_scene.gltf(filepath=OUT, export_format="GLB", use_selection=False, export_image_format="JPEG",
                               export_jpeg_quality=85, export_apply=True)
     print("wrote", OUT, os.path.getsize(OUT) // 1024, "KB;", sum(len(o.data.polygons) for o in meshes), "faces")

@@ -2,16 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dhxvi6b8ra7px"
-path="res://.godot/imported/oxy_algae.png-dee6d8bbfda9f3c7bc18ac4a3ba64d30.ctex"
+uid="uid://bxldiplhi5ttr"
+path="res://.godot/imported/shovel_ShovelAlbedo.jpg-c8775a954a72f14597e34f5f86633d18.ctex"
 metadata={
 "vram_texture": false
+}
+generator_parameters={
+"md5": "e2d1d1598d5dda11cb49ff59b3ac9e97"
 }
 
 [deps]
 
-source_file="res://assets/sprites/items/oxy_algae.png"
-dest_files=["res://.godot/imported/oxy_algae.png-dee6d8bbfda9f3c7bc18ac4a3ba64d30.ctex"]
+source_file="res://assets/models/items/shovel_ShovelAlbedo.jpg"
+dest_files=["res://.godot/imported/shovel_ShovelAlbedo.jpg-c8775a954a72f14597e34f5f86633d18.ctex"]
 
 [params]
 
@@ -23,7 +26,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

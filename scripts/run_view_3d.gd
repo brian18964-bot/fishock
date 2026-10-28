@@ -151,7 +151,7 @@ const MOVE_CLIPS := {"drink": "Drink", "look": "Look_Far", "eye": "Use_Eye", "pi
 ## no bending down for it)
 const ACT_CLIPS := {"chop": "TreeChopping", "slash": "Sword_Regular_A", "scoop": "Sword_Regular_A", "shoot": "Pistol_Shoot"}
 ## The off hand's things, how long (m).
-const OFFHAND_LENGTH := {"knife": 0.3, "hatchet": 0.48, "machete": 0.6, "glock": 0.2, "net": 0.7}
+const OFFHAND_LENGTH := {"knife": 0.3, "hatchet": 0.48, "machete": 0.6, "glock": 0.2, "net": 0.7, "shovel": 0.85}
 ## (user request: the net's hoop smaller still - its breadth to its length)
 const OFFHAND_GIRTH := {"net": 0.75}
 ## The camera's room round the traveller and the float when it frames
@@ -166,7 +166,7 @@ const DODGE_BACK := 0.25
 const DODGE_RATE := 1.6
 ## (scripts whose nodes are shown here by models of their own; the rest of
 ## the map's pictures are stood up as they are)
-const MODELLED := ["oxy_algae.gd", "tree.gd", "bush.gd", "obstacle.gd", "ground_cover.gd", "dock.gd", "water_zone.gd",
+const MODELLED := ["frost_flower.gd", "oxy_tree.gd", "tree.gd", "bush.gd", "obstacle.gd", "ground_cover.gd", "dock.gd", "water_zone.gd",
 	"flip_rock.gd", "silhouette_shadow.gd", "player.gd", "map_generator.gd", "light_twin.gd", "day_vision.gd",
 	"ripple.gd", "atmosphere.gd", "weather_fx.gd", "dropped_fish.gd", "glow_mushroom.gd", "dropped_item.gd"]
 
@@ -263,6 +263,8 @@ var _flip_rocks := {}
 var _mushrooms := {}
 ## The oxygen algae's tufts: {node: Node3D}.
 var _plants := {}
+## The frost flowers' looks: {node: [holder, ground material, light, shards]}.
+var _frosts := {}
 ## The glow mushroom rubbed over the traveller (Player.glow_strength()): its
 ## light, the crumbs falling from the hands, the faint motes off the body.
 var _glow_light: OmniLight3D
@@ -825,38 +827,230 @@ func _trees_and_rocks() -> void:
 				_flip_rocks[n] = rock
 		elif path == "glow_mushroom.gd" and not _mushrooms.has(n):
 			_mushroom(n, at)
-		elif path == "oxy_algae.gd" and not _plants.has(n):
-			_algae(n, at)
+		elif path == "oxy_tree.gd" and not _plants.has(n):
+			_oxy_tree(n, at)
+		elif path == "frost_flower.gd" and not _frosts.has(n):
+			_frost_flower(n, at)
 
 
-## The oxygen algae (OxyAlgae) at `at` (2D): a tuft of green blades up out of
-## the shallows, swaying (a stand-in till its own model comes).
-func _algae(n: Node, at: Vector2) -> void:
+## The oxygen tree (OxyTree, our own model after the user's mushroom tree) at
+## `at` (2D), in the shallows, its caps giving off little bubbles that float
+## up into the air.
+const OXY_TREE_MODEL := "res://assets/models/items/oxy_tree.glb"
+const OXY_TREE_SCALE := 0.85
+
+
+func _oxy_tree(n: Node, at: Vector2) -> void:
+	var scene: PackedScene = load(OXY_TREE_MODEL) if ResourceLoader.exists(OXY_TREE_MODEL) else null
+	if scene == null:
+		return
 	var holder := Node3D.new()
-	holder.name = "OxyAlgae"
-	holder.position = to3(at, WATER_Y + 0.02)
+	holder.name = "OxyTree"
+	holder.position = to3(at, WATER_Y + 0.03)
+	holder.rotation.y = _rng.randf() * TAU
+	holder.scale = Vector3.ONE * OXY_TREE_SCALE
+	add_child(holder)
+	var model := scene.instantiate() as Node3D
+	holder.add_child(model)
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	holder.add_child(_bubbles())
+	_plants[n] = holder
+
+
+## The frost flower (FrostFlower - the user's clematis, its bud turned up): the
+## flower with its roots over the ground, round it the cold ground - an icy
+## patch with cracks and a glitter, ice shards standing at its edge, a little
+## cold mist rising off it and a cold blue light (the frost thinning as it's
+## dug out).
+const FROST_MODEL := "res://assets/models/items/frost_flower.glb"
+const FROST_SHADER := """
+shader_type spatial;
+render_mode unshaded, blend_mix, depth_draw_never, cull_disabled;
+uniform float level = 1.0;
+uniform float t = 0.0;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) {
+	vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+void fragment() {
+	vec2 p = UV * 2.0 - 1.0;
+	float r = length(p) / mix(0.55, 1.0, level);
+	float edge = smoothstep(1.0, 0.6, r + (noise(p * 7.0) - 0.5) * 0.3);
+	float n = noise(p * 9.0);
+	float ridge = smoothstep(0.84, 0.97, 1.0 - abs(n * 2.0 - 1.0));
+	float frost = noise(p * 20.0 + vec2(t * 0.05, 0.0));
+	vec3 col = mix(vec3(0.5, 0.74, 0.93), vec3(0.93, 0.98, 1.0), frost);
+	col += vec3(0.35, 0.75, 1.0) * ridge;
+	float glint = step(0.987, hash(floor(p * 46.0) + floor(t * 1.5)));
+	col += vec3(glint) * 0.7;
+	ALBEDO = col * 0.82;
+	// (a little clearer in the middle, where the flower stands)
+	ALPHA = edge * (0.5 + 0.3 * ridge + 0.2 * frost) * mix(0.55, 1.0, smoothstep(0.0, 0.4, r));
+}
+"""
+const FROST_RADIUS := 1.25
+## (the model's 0.7 m made bigger to read from the camera)
+const FROST_FLOWER_SCALE := 1.5
+
+
+func _frost_flower(n: Node, at: Vector2) -> void:
+	var holder := Node3D.new()
+	holder.name = "FrostFlower"
+	holder.position = to3(at, LAND_Y)
 	holder.rotation.y = _rng.randf() * TAU
 	add_child(holder)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.2, 0.62, 0.38)
-	mat.emission_enabled = true
-	mat.emission = Color(0.15, 0.8, 0.55)
-	mat.emission_energy_multiplier = 0.5
-	mat.roughness = 0.6
-	for k in 7:
-		var blade := MeshInstance3D.new()
+	# The cold ground.
+	var disc := MeshInstance3D.new()
+	var quad := QuadMesh.new()
+	quad.size = Vector2.ONE * FROST_RADIUS * 2.0
+	quad.orientation = PlaneMesh.FACE_Y
+	disc.mesh = quad
+	disc.position = Vector3(0, 0.012, 0)
+	var sh := Shader.new()
+	sh.code = FROST_SHADER
+	var mat := ShaderMaterial.new()
+	mat.shader = sh
+	disc.material_override = mat
+	disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	holder.add_child(disc)
+	# The flower and its roots.
+	var scene: PackedScene = load(FROST_MODEL) if ResourceLoader.exists(FROST_MODEL) else null
+	if scene != null:
+		var model := scene.instantiate() as Node3D
+		model.scale = Vector3.ONE * FROST_FLOWER_SCALE
+		holder.add_child(model)
+		for mi in model.find_children("*", "MeshInstance3D", true, false):
+			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# Ice shards at the edge.
+	var shard_mat := StandardMaterial3D.new()
+	shard_mat.albedo_color = Color(0.78, 0.93, 1.0, 0.8)
+	shard_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	shard_mat.emission_enabled = true
+	shard_mat.emission = Color(0.45, 0.8, 1.0)
+	shard_mat.emission_energy_multiplier = 0.8
+	shard_mat.roughness = 0.15
+	var shards := []
+	for k in 10:
+		var shard := MeshInstance3D.new()
 		var cone := CylinderMesh.new()
 		cone.top_radius = 0.0
-		cone.bottom_radius = 0.035
-		cone.height = _rng.randf_range(0.35, 0.6)
-		blade.mesh = cone
-		blade.material_override = mat
-		blade.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		var a := TAU * float(k) / 7.0 + _rng.randf() * 0.5
-		blade.position = Vector3(cos(a), 0.0, sin(a)) * _rng.randf_range(0.03, 0.14) + Vector3(0, cone.height * 0.5, 0)
-		blade.rotation = Vector3(_rng.randf_range(-0.35, 0.35), 0.0, _rng.randf_range(-0.35, 0.35))
-		holder.add_child(blade)
-	_plants[n] = holder
+		cone.bottom_radius = _rng.randf_range(0.02, 0.045)
+		cone.height = _rng.randf_range(0.1, 0.3)
+		cone.radial_segments = 4
+		shard.mesh = cone
+		shard.material_override = shard_mat
+		shard.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var a := TAU * float(k) / 10.0 + _rng.randf() * 0.5
+		var r := _rng.randf_range(0.35, 1.0)
+		shard.position = Vector3(cos(a) * r, cone.height * 0.5, sin(a) * r)
+		shard.rotation = Vector3(_rng.randf_range(-0.3, 0.3), 0.0, _rng.randf_range(-0.3, 0.3))
+		holder.add_child(shard)
+		shards.append([shard, r])
+	# Cold mist, rising slowly off the ground.
+	var mist := CPUParticles3D.new()
+	mist.position = Vector3(0, 0.05, 0)
+	mist.amount = 9 if not _low else 4
+	mist.lifetime = 4.5
+	mist.preprocess = 4.5
+	mist.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	mist.emission_box_extents = Vector3(0.9, 0.01, 0.9)
+	mist.direction = Vector3.UP
+	mist.spread = 12.0
+	mist.initial_velocity_min = 0.04
+	mist.initial_velocity_max = 0.1
+	mist.gravity = Vector3.ZERO
+	mist.scale_amount_min = 0.5
+	mist.scale_amount_max = 1.1
+	var puff := QuadMesh.new()
+	puff.size = Vector2(0.5, 0.5)
+	var pm := StandardMaterial3D.new()
+	pm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	pm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	pm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	pm.vertex_color_use_as_albedo = true
+	pm.albedo_color = Color(0.75, 0.9, 1.0, 0.22)
+	pm.albedo_texture = LightTextureFactory.make_radial_texture(64)
+	puff.material = pm
+	mist.mesh = puff
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(0.8, 0.93, 1.0, 0.0))
+	ramp.add_point(0.3, Color(0.8, 0.93, 1.0, 0.25))
+	ramp.set_color(1, Color(0.8, 0.93, 1.0, 0.0))
+	mist.color_ramp = ramp
+	holder.add_child(mist)
+	var light: OmniLight3D = null
+	if not _low:
+		light = OmniLight3D.new()
+		light.light_color = Color(0.55, 0.8, 1.0)
+		light.omni_range = 2.8
+		light.omni_attenuation = 1.3
+		light.light_energy = 0.8
+		light.shadow_enabled = false
+		light.position = Vector3(0, 0.5, 0)
+		holder.add_child(light)
+	_frosts[n] = [holder, mat, light, shards]
+
+
+## The frost's glitter moves, and thins as the patch is dug out; a flower gone
+## has its looks gone.
+func _sync_frost() -> void:
+	var t := Time.get_ticks_msec() / 1000.0
+	for n in _frosts.keys():
+		var parts: Array = _frosts[n]
+		if not is_instance_valid(n):
+			(parts[0] as Node).queue_free()
+			_frosts.erase(n)
+			continue
+		var level: float = n.frost()
+		var mat := parts[1] as ShaderMaterial
+		mat.set_shader_parameter("level", level)
+		mat.set_shader_parameter("t", t)
+		if parts[2] != null:
+			(parts[2] as OmniLight3D).light_energy = 0.15 + 0.65 * level
+		for s in parts[3]:
+			(s[0] as Node3D).visible = float(s[1]) <= 0.45 + 0.6 * level
+
+
+## Tiny air bubbles drifting up out of the oxygen tree's caps and off into the
+## air, fading as they go.
+func _bubbles() -> CPUParticles3D:
+	var p := CPUParticles3D.new()
+	p.name = "Bubbles"
+	p.position = Vector3(0.0, 0.72, 0.0)
+	p.amount = 16 if not _low else 8
+	p.lifetime = 3.6
+	p.preprocess = 3.6
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	p.emission_sphere_radius = 0.26
+	p.direction = Vector3.UP
+	p.spread = 55.0
+	p.initial_velocity_min = 0.08
+	p.initial_velocity_max = 0.22
+	p.gravity = Vector3(0.0, 0.07, 0.0)
+	p.damping_min = 0.05
+	p.damping_max = 0.15
+	p.scale_amount_min = 0.5
+	p.scale_amount_max = 1.5
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.02
+	mesh.height = 0.04
+	mesh.radial_segments = 6
+	mesh.rings = 3
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = Color(0.8, 1.0, 1.0, 0.7)
+	mat.vertex_color_use_as_albedo = true
+	mesh.material = mat
+	p.mesh = mesh
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(1, 1, 1, 0.0))
+	ramp.add_point(0.15, Color(0.85, 1.0, 1.0, 0.85))
+	ramp.set_color(1, Color(0.8, 1.0, 1.0, 0.0))
+	p.color_ramp = ramp
+	return p
 
 
 ## A glow mushroom's model at `at` (2D), glowing, a small blue light over
@@ -1038,7 +1232,7 @@ func _name_tag(at: Vector2, text: String) -> void:
 	var thing: Node2D = null
 	var best := 6.0
 	for n in get_tree().get_nodes_in_group("dropped_items") + get_tree().get_nodes_in_group("glow_mushrooms") \
-			+ get_tree().get_nodes_in_group("oxy_algae"):
+			+ get_tree().get_nodes_in_group("oxy_tree"):
 		var d := (n as Node2D).global_position.distance_to(at)
 		if d < best:
 			best = d
@@ -1057,7 +1251,7 @@ func _sync_tags(delta: float) -> void:
 		var thing = tag[1]
 		var gone: bool = thing == null or not is_instance_valid(thing) \
 			or not ((thing as Node).is_in_group("dropped_items") or (thing as Node).is_in_group("glow_mushrooms")
-				or (thing as Node).is_in_group("oxy_algae"))
+				or (thing as Node).is_in_group("oxy_tree"))
 		if tag[2] > NAME_TAG_TIME or gone:
 			(tag[0] as Label3D).queue_free()
 			_tags.remove_at(i)
@@ -1487,7 +1681,7 @@ static func _script_name(n: Node) -> String:
 func _on_node_added(n: Node) -> void:
 	if REST_2D.has(_script_name(n)):
 		_rest_2d_only.call_deferred(n)
-	if n is GlowMushroom and not n is OxyAlgae:
+	if n is GlowMushroom and not n is OxyTree:
 		# (one turned up mid-run - the dog's nose: its model too)
 		(func():
 			if is_instance_valid(n) and n.is_inside_tree() and not _mushrooms.has(n):
@@ -2496,6 +2690,9 @@ func _pick_clip() -> Array:
 	if player.swing_kind == "shoo" and player.swing_left > 0.0:
 		# (a beast waved off - user request: no weapon needed)
 		return ["Wave_Big", 1.0, minf(1.0 - player.swing_left / maxf(player.swing_total, 0.01), 0.999)]
+	if player.move_left > 0.0 and player.move_kind == "dig" and player.velocity.length() < 8.0:
+		# (digging: the user's Mixamo Digging, looped over the dig's time)
+		return ["Digging", 1.0, -1.0]
 	if player.move_left > 0.0 and player.move_kind == "gather" and player.velocity.length() < 8.0:
 		# (a glow mushroom picked: crouched, gathered, up - the clip played
 		# through over the gathering's time)
@@ -3097,6 +3294,9 @@ func _hang_gear(sk: Skeleton3D, b: Basis) -> void:
 			# (swung: along the forearm)
 			var fore := hand.origin - sk.global_transform * sk.get_bone_global_pose(sk.find_bone("lowerarm_r")).origin
 			up = fore.normalized() if fore.length() > 0.01 else up
+		if _offhand_id == "shovel" and player.channel_kind == "dig":
+			# (digging: the blade to the ground ahead, the hand near the top)
+			up = (b.z * 0.3 + Vector3.DOWN).normalized()
 		var in_hand := _along(up, hand.origin + up * len * 0.35, b)
 		var at_hip := _along((Vector3.DOWN * 0.95 + b.z * 0.2).normalized(), pelvis - b.x * HIP_SIDE + Vector3.DOWN * 0.1, b)
 		_offhand.global_transform = at_hip.interpolate_with(in_hand, smoothstep(0.0, 1.0, _off_in))
@@ -3156,7 +3356,7 @@ func _gear_state(delta: float) -> void:
 		and player.state == Player.State.IDLE) and not player.carrying_oil_drum
 	_stow = move_toward(_stow, 0.0 if rod_out else 1.0, delta / STOW_TIME)
 	var both := rod_out or _visual.move in TWO_HANDED or (_visual.acting >= 0 and player.swing_kind in ["chop", "scoop"]) \
-		or (player.move_left > 0.0 and player.move_kind in ["crumble", "gather"])
+		or (player.move_left > 0.0 and player.move_kind in ["crumble", "gather", "dig"])
 	# (the left hand off the rod: the struggle in the ghost's grip)
 	_left_free = move_toward(_left_free, 1.0 if _visual.struggling else 0.0, delta / STOW_TIME)
 	# (user request: out - put out, or out of oil or charge - it's hung at
@@ -3177,7 +3377,8 @@ func _gear_state(delta: float) -> void:
 	# User request: walking about, only the lamp in hand; the off hand's
 	# thing stays at the hip till it's used (drawn for the swing, put back
 	# after).
-	_off_in = move_toward(_off_in, 1.0 if swinging else 0.0, delta / Player.SWING_DRAW)
+	var digging := player.move_left > 0.0 and player.move_kind == "dig"
+	_off_in = move_toward(_off_in, 1.0 if (swinging or digging) else 0.0, delta / Player.SWING_DRAW)
 	# (the fish box: carried by its handle when walking about, set down by
 	# the feet while fishing)
 	var carrying := player.state == Player.State.IDLE and not player.carrying_oil_drum and not player.held
@@ -4120,6 +4321,7 @@ func _process(delta: float) -> void:
 	_sync_dropped_items()
 	_sync_runes()
 	_sync_mushrooms()
+	_sync_frost()
 	_sync_glow()
 	_sync_tags(delta)
 	# (a stone being turned over: where it's rolled to, tipped over)

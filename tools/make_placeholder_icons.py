@@ -71,8 +71,7 @@ def frozen_soil(w, h):
 if __name__ == "__main__":
     # (the fish box has its real model now: tools/make_oxy_box.py and the
     # render_*_icons.py scripts)
-    save(algae(128, 128), "assets", "sprites", "items", "oxy_algae.png")
-    save(algae(256, 256), "assets", "sprites", "icons", "oxy_algae.png")
+    # (the oxygen tree has its own model: tools/make_oxy_tree.py)
     save(frozen_soil(128, 128), "assets", "sprites", "items", "frozen_soil.png")
     save(frozen_soil(256, 256), "assets", "sprites", "icons", "frozen_soil.png")
     print("placeholders written")

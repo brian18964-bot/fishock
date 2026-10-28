@@ -23,7 +23,8 @@ const TESTS := [
 	"test_mythic_traits",
 	"test_tank_moves_and_feeding",
 	"test_oxy_items",
-	"test_oxy_algae",
+	"test_oxy_tree",
+	"test_channels_and_digging",
 	"test_character_abilities",
 	"test_run_menu_and_auto_defend",
 	"test_wolf_bites",
@@ -1140,7 +1141,7 @@ func test_usable_items() -> void:
 	# (the glow mushroom isn't sold - only picked on the map)
 	check(not Profile.buy_usable("glow_mushroom"), "the glow mushroom isn't for sale")
 	Profile._store("glow_mushroom", 1)
-	Profile._store("oxy_algae", 1)
+	Profile._store("oxy_tree", 1)
 	Profile._store("frozen_soil", 1)
 	check(not Profile.buy_usable("binoculars"), "the binoculars only once")
 	check(Profile.buy_usable("potion_ward") and Profile.buy_usable("eyeball"), "the rest by the many")
@@ -3203,7 +3204,7 @@ func test_oxy_items() -> void:
 	Profile.load_data({"gold": 500})
 	# The slow: vitality runs at a quarter for its time, then as it was.
 	var f := {"vit": 1.0, "vit_life": 100.0, "fresh": 1.0, "fresh_life": 100.0, "dead": false, "rotten": false, "life_traits": []}
-	check(FishLife.use_algae(f) == "" and f.vit_slow == FishLife.ALGAE_TIME, "algae on a living fish")
+	check(FishLife.use_oxy_tree(f) == "" and f.vit_slow == FishLife.OXY_TREE_TIME, "algae on a living fish")
 	FishLife.tick(f, 100.0)
 	# 100 s at a quarter: 25%
 	check(absf(f.vit - 0.75) < 0.001 and f.vit_slow == 80.0, "100 s of the 180 slowed: a quarter gone (%.2f)" % f.vit)
@@ -3213,7 +3214,7 @@ func test_oxy_items() -> void:
 	var left := FishLife.lifespan_left({"vit": 0.5, "vit_life": 100.0, "dead": false, "rotten": false, "life_traits": [], "vit_slow": 100.0})
 	check(absf(left - 125.0) < 0.01, "its lifespan counts the slow: 100 s at a quarter take a quarter of it, the rest 25 s (%.1f)" % left)
 	var d := {"vit": 0.0, "dead": true, "rotten": false, "fresh": 1.0, "fresh_life": 100.0, "life_traits": []}
-	check(FishLife.use_algae(d) != "", "no algae on a dead fish")
+	check(FishLife.use_oxy_tree(d) != "", "no algae on a dead fish")
 	check(FishLife.use_frozen(d) == "" and d.fresh_slow == FishLife.FROZEN_TIME, "frozen soil on a dead one")
 	FishLife.tick(d, 200.0)
 	check(absf(d.fresh - 0.5) < 0.001, "200 s slowed: 50 of 100 s's worth (%.2f)" % d.fresh)
@@ -3225,7 +3226,7 @@ func test_oxy_items() -> void:
 	check(FishLife.use_frozen(rot) != "", "nor on a rotten one")
 	# Items.
 	check(Items.def("oxy_box").size == Vector2i(6, 1) and Items.def("oxy_box").slot == "offhand", "the box: six cells, the off hand")
-	check(Items.def("oxy_algae").has("use") and Items.def("frozen_soil").has("use"), "the two are things to use")
+	check(Items.def("oxy_tree").has("use") and Items.def("frozen_soil").has("use"), "the two are things to use")
 	check(Profile.max_durability("oxy_box") > 0, "the box wears")
 	# Bought, worn.
 	var gold := Profile.gold
@@ -5116,6 +5117,7 @@ func test_death_loses_finds() -> void:
 		p.global_position = (shrooms[0] as Node2D).global_position + Vector2(12, 0)
 		await frames(2)
 		p._pick_mushroom(p.reachable_mushroom())
+		await seconds(Player.GATHER_TIME + 0.3)
 	var worms := p.pocket_live_bait("worm", 2)
 	var got := Profile.bag_count("glow_mushroom") - int(before.get("glow_mushroom", 0))
 	check(got == (0 if shrooms.is_empty() else 1) and worms > 0, "a mushroom picked, %d worms caught" % worms)
@@ -5130,7 +5132,7 @@ func test_death_loses_finds() -> void:
 
 
 ## User request: the oxygen algae in the shallows - picked, used on a fish.
-func test_oxy_algae() -> void:
+func test_oxy_tree() -> void:
 	var saved := Profile.snapshot()
 	await _fresh_game()
 	var view: RunView3D = null
@@ -5139,7 +5141,7 @@ func test_oxy_algae() -> void:
 		if view != null and view.built:
 			break
 		await frames(1)
-	var algae := get_tree().get_nodes_in_group("oxy_algae")
+	var algae := get_tree().get_nodes_in_group("oxy_tree")
 	check(algae.size() >= 1, "oxy algae on the map (%d)" % algae.size())
 	var shore := true
 	for a in algae:
@@ -5152,31 +5154,117 @@ func test_oxy_algae() -> void:
 		await frames(2)
 		check(view._plants.size() == algae.size(), "each shown in 3D (%d)" % view._plants.size())
 	var p := player()
-	var a: OxyAlgae = algae[0]
+	var a: OxyTree = algae[0]
 	p.global_position = a.global_position + Vector2(12, 0)
 	await frames(2)
-	check(p.interaction().get("verb", "") == "採集" and p.interaction().get("name", "") == "魚氧藻", "by one: 採集 魚氧藻 offered")
-	var had := Profile.bag_count("oxy_algae")
+	check(p.interaction().get("verb", "") == "採集" and p.interaction().get("name", "") == "魚氧樹", "by one: 採集 魚氧樹 offered")
+	var had := Profile.bag_count("oxy_tree")
 	p._pick_mushroom(p.reachable_mushroom())
 	await frames(2)
-	check(Profile.bag_count("oxy_algae") == had + 1 and int(Profile.found_this_run.get("oxy_algae", 0)) == 1, "picked: in the bag, noted as found")
-	await seconds(Player.GATHER_TIME * Player.GATHER_TAKE + 0.2)
+	check(p.channeling() and Profile.bag_count("oxy_tree") == had, "gathering: the ring runs, nothing in the bag yet")
+	await seconds(Player.GATHER_TIME + 0.3)
+	check(Profile.bag_count("oxy_tree") == had + 1 and int(Profile.found_this_run.get("oxy_tree", 0)) == 1, "done: in the bag, noted as found")
 	check(not is_instance_valid(a), "then gone from the map")
 	# Used on a fish.
 	var f := FishLife.roll({"name": "鯉魚", "id": "carp", "value": 6.0, "size": "small", "rarity": "common"})
 	f.life_traits = []
 	GameState.carried_fish = [f]
 	p.move_left = 0.0
-	check(p.fish_for("oxy_algae") == 0, "a fish that needs it")
-	check(p.use_on_fish("oxy_algae", 0) and f.vit_slow == FishLife.ALGAE_TIME and Profile.bag_count("oxy_algae") == had, "used on it")
-	check(p.fish_for("oxy_algae") == -1, "already helped: none to pick")
+	check(p.fish_for("oxy_tree") == 0, "a fish that needs it")
+	check(p.use_on_fish("oxy_tree", 0) and f.vit_slow == FishLife.OXY_TREE_TIME and Profile.bag_count("oxy_tree") == had, "used on it")
+	check(p.fish_for("oxy_tree") == -1, "already helped: none to pick")
 	# The card's picker.
-	var panel := FishPickPanel.new("t", "oxy_algae")
+	var panel := FishPickPanel.new("t", "oxy_tree")
 	get_tree().root.add_child(panel)
 	await frames(2)
 	check(panel.find_child("Fish_0", true, false) != null and (panel.find_child("Fish_0", true, false) as Button).disabled == false, "the picker lists the fish")
 	panel.queue_free()
 	GameState.carried_fish.clear()
+	Profile.load_data(saved)
+
+
+## User request: gathering and digging take their time (a progress ring) and
+## are broken off by moving, a beast's pounce or a ghost's trouble; the shovel
+## and the frost flower's cold soil.
+func test_channels_and_digging() -> void:
+	var saved := Profile.snapshot()
+	await _fresh_game()
+	var p := player()
+	p.move_left = 0.0
+	var done := [0]
+	var broke := []
+	p.channel_broken.connect(func(label, why): broke.append(why))
+	# Moving breaks it off.
+	p.start_channel("gather", "t", 3.0, "gather", func(): done[0] += 1)
+	check(p.channeling() and p.channel_progress() == 0.0, "a channel begins")
+	p.velocity = Vector2(60, 0)
+	p._tick_channel(0.1)
+	check(not p.channeling() and done[0] == 0 and broke == ["移動了"], "moving off breaks it")
+	# A beast's pounce.
+	p.velocity = Vector2.ZERO
+	p.start_channel("gather", "t", 3.0, "gather", func(): done[0] += 1)
+	p.animal_attack("狼")
+	check(not p.channeling() and done[0] == 0, "a beast's pounce breaks it")
+	# A ghost's trouble.
+	p.start_channel("gather", "t", 3.0, "gather", func(): done[0] += 1)
+	GameState.ghost_interfered()
+	check(not p.channeling() and done[0] == 0, "a ghost's trouble breaks it")
+	# Seen through.
+	p.start_channel("gather", "t", 0.5, "gather", func(): done[0] += 1)
+	p._tick_channel(0.3)
+	check(p.channeling() and absf(p.channel_progress() - 0.6) < 0.001, "60% there")
+	p._tick_channel(0.3)
+	check(not p.channeling() and done[0] == 1, "done: its work done once")
+	# The frost flowers: by the stones.
+	await seconds(0.5)
+	var flowers := get_tree().get_nodes_in_group("frost_flowers")
+	check(flowers.size() >= 1, "frost flowers on the map (%d)" % flowers.size())
+	var by_rock := true
+	for fl in flowers:
+		var near := INF
+		for n in get_tree().get_nodes_in_group("solids"):
+			if n is FlipRock:
+				near = minf(near, (n as Node2D).global_position.distance_to((fl as Node2D).global_position) - float(n.radius))
+		by_rock = by_rock and near < 40.0
+	check(by_rock, "each by a stone")
+	# The shovel: bought, worn, durable.
+	Profile.load_data({"gold": 500})
+	check(Items.def("shovel").slot == "offhand" and Profile.max_durability("shovel") > 0, "the shovel: off hand, wears")
+	check(Profile.buy_shovel() and not Profile.buy_shovel(), "bought once")
+	# The frost flower and its cold patch.
+	var f := FrostFlower.new()
+	f.position = p.global_position + Vector2(5, 0)
+	p.get_parent().add_child(f)
+	# (the lantern full: the camp's drum offers nothing over it)
+	var lantern: Lantern = p.get_node("Lantern")
+	lantern.fuel = lantern.max_fuel
+	await frames(2)
+	check(p.frost_flower_here() == f, "on the cold ground")
+	check(p.interaction().get("verb", "") == "需要鏟子", "without the shovel: it says so")
+	check(Profile.equip("shovel") and p.interaction().get("verb", "") == "挖掘", "with the shovel: 挖掘")
+	check(p.swing_move() == "", "the shovel isn't swung")
+	var wear := Profile.durability("shovel")
+	p.dig(f)
+	check(p.channeling() and p.channel_kind == "dig" and p.move_kind == "dig", "digging: the ring runs")
+	check(Profile.bag_count("frozen_soil") == 0, "nothing yet")
+	p._tick_channel(Player.DIG_TIME + 0.1)
+	check(Profile.bag_count("frozen_soil") == 1 and f.digs == FrostFlower.DIGS - 1, "dug: a lump of cold soil, the patch thinner")
+	check(Profile.durability("shovel") == wear - 1, "the shovel wore by one")
+	check(int(Profile.found_this_run.get("frozen_soil", 0)) == 1, "noted as found")
+	for _i in FrostFlower.DIGS:
+		f.dug()
+	check(f.digs == 0 and p.frost_flower_here() == null and not f.reaches(p.global_position), "dug out: nothing left to dig")
+	# Interrupted, nothing gained and the shovel not worn.
+	f.digs = 2
+	wear = Profile.durability("shovel")
+	var soil := Profile.bag_count("frozen_soil")
+	p.dig(f)
+	p.velocity = Vector2(50, 0)
+	p._tick_channel(0.1)
+	check(Profile.bag_count("frozen_soil") == soil and Profile.durability("shovel") == wear and f.digs == 2, "broken off: nothing dug, the shovel spared")
+	p.velocity = Vector2.ZERO
+	f.queue_free()
+	Profile.equipped["offhand"] = ""
 	Profile.load_data(saved)
 
 
@@ -5208,12 +5296,14 @@ func test_glow_mushroom() -> void:
 	var had := Profile.bag_count("glow_mushroom")
 	p._pick_mushroom(p.reachable_mushroom())
 	await frames(2)
-	check(Profile.bag_count("glow_mushroom") == had + 1 and is_instance_valid(m) and p.reachable_mushroom() != m,
-		"picked: in the bag (still there till the hands reach it)")
+	check(p.channeling() and p.move_kind == "gather" and Profile.bag_count("glow_mushroom") == had and is_instance_valid(m),
+		"gathering: crouched, the ring running, still there and nothing in the bag")
+	await seconds(Player.GATHER_TIME * 0.5)
+	check(absf(p.channel_progress() - 0.5) < 0.12, "half way (%.2f)" % p.channel_progress())
+	await seconds(Player.GATHER_TIME * 0.5 + 0.3)
+	check(Profile.bag_count("glow_mushroom") == had + 1 and not p.channeling(), "done: in the bag")
 	check(int(Profile.found_this_run.get("glow_mushroom", 0)) == 1, "noted as found on the map (lost should it die)")
-	await seconds(Player.GATHER_TIME * Player.GATHER_TAKE + 0.2)
 	check(not is_instance_valid(m), "then gone from the map")
-	check(p.move_kind == "gather", "gathered (crouched, picked, up)")
 	if view != null:
 		await frames(2)
 		check(view._mushrooms.size() == shrooms.size() - 1, "and gone in 3D")
@@ -5331,6 +5421,7 @@ func test_character_abilities() -> void:
 	p.global_position = m.global_position + Vector2(10, 0)
 	var had := Profile.bag_count("glow_mushroom")
 	p._pick_mushroom(m)
+	await seconds(Player.GATHER_TIME + 0.3)
 	check(Profile.bag_count("glow_mushroom") == had + 2, "the sheep picks two")
 	# The bear's strike and the croc's haul.
 	for kind in ["bear", "croc"]:

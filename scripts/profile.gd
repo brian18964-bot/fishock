@@ -40,7 +40,7 @@ const ROD_TIERS := [
 ## thing: a swing, a parry, a shot), and at 0 it breaks and is gone: buy a
 ## new one (the wooden rod, free, if no rod's left). Uses each lasts; the
 ## rods' are ROD_TIERS' durability.
-const DURABILITY := {"flashlight": 60, "knife": 60, "hatchet": 50, "machete": 70, "glock": 80, "net": 40, "oxy_box": 40}
+const DURABILITY := {"flashlight": 60, "knife": 60, "hatchet": 50, "machete": 70, "glock": 80, "net": 40, "oxy_box": 40, "shovel": 45}
 
 ## User request (shop linkage): each lure is its own shop item with its own
 ## effect, and fishing with it shows that lure (LureVisual.LURES[sprite]).
@@ -100,6 +100,11 @@ const NET_COST := 70
 ## fish whose vitality doesn't run down (GameState.oxy_fish) - each one put in
 ## or taken out wears it by one. What's in it must be escaped with, like
 ## whatever's carried.
+## User request: the shovel (the user's model) - an off-hand thing, bought once;
+## held in a run, it digs (Player.dig: the frost flower's soil -> 冷凍土); each
+## dig wears it by one.
+const SHOVEL_COST := 100
+const SHOVEL_DESC := "副手裝備：拿在手上時，在冷凍花的冰冷根部按「挖掘」，可以挖出冷凍土。每次挖掘用掉 1 點耐久"
 const OXY_BOX_COST := 150
 const OXY_SLOTS := 6
 const OXY_BOX_DESC := "副手裝備：打開後有六格，放進去的魚活性不會下降。放進、拿出各用掉 1 點耐久；沒有逃脫成功，裡面的魚一樣帶不出來。沒裝備時佔背包六格"
@@ -249,16 +254,16 @@ const USABLES := {
 	# map's trees (GlowMushroom); its cost only ranks it (UiKit's rarity).
 	"glow_mushroom": {"name": "發光蘑菇", "cost": 12, "stack": 5, "keep": false, "sold": false,
 		"desc": "長在樹下、在黑暗裡默默發著藍光的蘑菇。揉碎撒在身上，30 秒內全身散發微弱的藍光，照亮身邊一圈（約 2.4 公尺）"},
-	# User request: found on the map, used on a carried fish (FishLife.use_algae
-	# / use_frozen) - not sold. 魚氧藻 grows in the shallows (OxyAlgae); 冷凍土
-	# is dug (the digging's to come).
-	"oxy_algae": {"name": "魚氧藻", "cost": 15, "stack": 5, "keep": false, "sold": false, "target": "fish",
-		"desc": "長在水邊淺灘的水草。用在背包裡一條活著的魚身上：180 秒內活性下降速度大幅降低（只剩 1/4）"},
+	# User request: found on the map, used on a carried fish (FishLife.use_oxy_tree
+	# / use_frozen) - not sold. 魚氧樹 grows only at the water's edge (OxyTree);
+	# 冷凍土 is dug from the frost flower's cold patch (FrostFlower, with the shovel).
+	"oxy_tree": {"name": "魚氧樹", "cost": 15, "stack": 5, "keep": false, "sold": false, "target": "fish",
+		"desc": "只長在水邊、冒著氧氣微氣泡的小樹。整顆揉碎，塗在背包裡一條魚的魚鰓上：魚離開水面也能撐久一點，180 秒內活性下降速度只剩 1/4"},
 	"frozen_soil": {"name": "冷凍土", "cost": 15, "stack": 5, "keep": false, "sold": false, "target": "fish",
-		"desc": "挖出來的冷凍土，涼得刺手。用在背包裡的一條魚身上：300 秒內新鮮度下降速度大幅降低（只剩 1/4）"},
+		"desc": "冷凍花根部蔓延處挖出來的土，涼得刺手。用在背包裡的一條魚身上：300 秒內新鮮度下降速度大幅降低（只剩 1/4）"},
 }
 const USABLE_ORDER := ["potion_vigor", "potion_ward", "eyeball", "eye_altar", "eye_ghost", "binoculars", "glow_mushroom",
-	"oxy_algae", "frozen_soil"]
+	"oxy_tree", "frozen_soil"]
 
 ## User request (Camp v2): what's been done, for the achievements that
 ## earn the camp's tents (TENTS) - escapes, gold spent, legends caught.
@@ -689,6 +694,21 @@ func buy_oxy_box() -> bool:
 	return true
 
 
+## The shovel, bought once, into the warehouse.
+func buy_shovel() -> bool:
+	if owned("shovel") > 0 or gold < SHOVEL_COST:
+		return false
+	_spend(SHOVEL_COST)
+	_store("shovel", 1)
+	gold_updated.emit(gold)
+	_changed()
+	return true
+
+
+func has_shovel() -> bool:
+	return equipped.get("offhand", "") == "shovel"
+
+
 func has_oxy_box() -> bool:
 	return equipped.get("offhand", "") == "oxy_box"
 
@@ -1091,6 +1111,15 @@ func to_bag(id: String, count: int, cell := Vector2i(-1, -1)) -> int:
 
 ## Puts `count` of `id` straight in the bag (picked up in a run): topping
 ## up stacks, then new ones where they fit. How many went in.
+## Is there room in the bag for one more of `id` (a stack with space, or a cell)?
+func bag_has_room(id: String) -> bool:
+	var stack := Items.stack_of(id)
+	for e in bag:
+		if e.id == id and int(e.count) < stack:
+			return true
+	return bag_free_cell(id).x >= 0
+
+
 func bag_put(id: String, count: int) -> int:
 	var left := count
 	var stack := Items.stack_of(id)

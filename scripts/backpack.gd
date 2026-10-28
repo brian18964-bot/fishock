@@ -396,7 +396,7 @@ func _show_selected(player: Player, items: Array, placed: Array) -> void:
 				note = "（%d 秒後才能再用）" % ceili(player.binoculars_cooldown)
 			_detail.text += note
 			if u.get("target", "") == "fish":
-				# (魚氧藻, 冷凍土: used on one of the fish carried - pick which)
+				# (魚氧樹, 冷凍土: used on one of the fish carried - pick which)
 				_actions.add_child(_action("用在魚身上", func():
 					var panel := FishPickPanel.new("%s用在哪條魚身上？" % u.name, uid)
 					panel.picked.connect(func(index):

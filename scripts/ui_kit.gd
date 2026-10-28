@@ -379,6 +379,8 @@ static func item_rarity(id: String) -> String:
 		return "rare"
 	if id == "oxy_box":
 		return "epic"
+	if id == "shovel":
+		return "rare"
 	var cost := 0
 	if Profile.WEAPONS.has(id):
 		cost = int(Profile.WEAPONS[id].cost) / 4

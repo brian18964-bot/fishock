@@ -92,6 +92,10 @@ func _send(down: bool) -> void:
 ## Dressed as an MMO's action button that lights up when it can be used
 ## (user request): red lacquer in a gold rim, a gold glow pulsing round it.
 func _draw_prompt() -> void:
+	var traveller := get_tree().get_first_node_in_group("player")
+	if traveller != null and traveller.has_method("channeling") and traveller.channeling():
+		_draw_channel(traveller)
+		return
 	if _offer.is_empty():
 		return
 	var at: Vector2 = RunView3D.screen_point(get_viewport(), _offer.at as Vector2)
@@ -117,6 +121,25 @@ func _draw_prompt() -> void:
 	if title != "":
 		UiKit.draw_text(_view, Vector2(at.x - 150, _rect.position.y - GAP - 4), title, FONT_NAME, UiKit.TEXT,
 			HORIZONTAL_ALIGNMENT_CENTER, 300)
+
+
+## User request: gathering and digging run a progress ring over the head
+## (Player.channeling()): the time done sweeps round it, clockwise from the top.
+const RING_R := 24.0
+
+
+func _draw_channel(traveller: Node) -> void:
+	var at: Vector2 = RunView3D.screen_point(get_viewport(), (traveller as Node2D).global_position + Vector2(0, -52))
+	at.y = maxf(at.y, TOP_MARGIN + RING_R + 24.0)
+	var share: float = traveller.channel_progress()
+	_view.draw_circle(at, RING_R + 5.0, Color(0.05, 0.04, 0.03, 0.62))
+	_view.draw_arc(at, RING_R, 0.0, TAU, 40, Color(0.35, 0.3, 0.22, 0.8), 5.0, true)
+	if share > 0.0:
+		_view.draw_arc(at, RING_R, -PI / 2.0, -PI / 2.0 + TAU * share, 48, Color(1.0, 0.82, 0.4, 0.95), 5.0, true)
+	UiKit.draw_text(_view, Vector2(at.x - 80, at.y + 6), "%d%%" % roundi(share * 100.0), 14, UiKit.GOLD_BRIGHT,
+		HORIZONTAL_ALIGNMENT_CENTER, 160, true)
+	UiKit.draw_text(_view, Vector2(at.x - 120, at.y - RING_R - 12), traveller.channel_label, FONT_NAME, UiKit.TEXT,
+		HORIZONTAL_ALIGNMENT_CENTER, 240)
 
 
 func _progress() -> float:

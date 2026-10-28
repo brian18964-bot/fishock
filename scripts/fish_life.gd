@@ -210,22 +210,22 @@ static func fresh_rate(f: Dictionary) -> float:
 	return rate
 
 
-## What the map's finds do (user request): 魚氧藻 - for ALGAE_TIME s of its
+## What the map's finds do (user request): 魚氧樹 - for OXY_TREE_TIME s of its
 ## living time a fish's vitality runs down at SLOW of its pace; 冷凍土 - for
 ## FROZEN_TIME s of its dead time the freshness does. (Time on the clock
 ## runs only while it matters, so none is wasted on a fish yet to die.)
 const SLOW := 0.25
-const ALGAE_TIME := 180.0
+const OXY_TREE_TIME := 180.0
 const FROZEN_TIME := 300.0
 
 
 ## Oxygen algae on a fish: "" done, else why not.
-static func use_algae(f: Dictionary) -> String:
+static func use_oxy_tree(f: Dictionary) -> String:
 	if state(f) != "alive":
 		return "這條魚已經死了"
 	if has_trait(f, "immortal"):
 		return "這條魚不會死，用不到"
-	f["vit_slow"] = ALGAE_TIME
+	f["vit_slow"] = OXY_TREE_TIME
 	return ""
 
 

@@ -283,6 +283,21 @@ def glow_mushroom():
     model_pic("glow_mushroom", (1, 1), (0, 0, 20))
 
 
+def shovel():
+    """The shovel (the user's Shovel.zip; tools/make_shovel.py), three cells long."""
+    model_pic("shovel", (3, 1), (80, 0, -6))
+
+
+def oxy_tree():
+    """The oxygen tree (tools/make_oxy_tree.py): its picture, upright."""
+    model_pic("oxy_tree", (1, 1), (0, 0, 20))
+
+
+def frost_flower():
+    """The frost flower (tools/make_frost_flower.py): its picture for the soil dug."""
+    model_pic("frost_flower", (1, 1), (0, 0, 20))
+
+
 def oxy_box():
     """The oxygenated fish box (the user's LiveBaitBucket_v5; tools/make_oxy_box.py)
     - a square picture: in the bag it's six cells wide, drawn fitted in them."""

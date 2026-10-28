@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://g4tgwdvxe6gw"
-path="res://.godot/imported/oxy_algae.png-52a1ad8615dc3f9b048cfd247a4a835b.ctex"
+uid="uid://bryevo0it88m8"
+path="res://.godot/imported/oxy_tree.png-d81f98fb401f65260b6a46b7f09935ed.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/sprites/icons/oxy_algae.png"
-dest_files=["res://.godot/imported/oxy_algae.png-52a1ad8615dc3f9b048cfd247a4a835b.ctex"]
+source_file="res://assets/sprites/items/oxy_tree.png"
+dest_files=["res://.godot/imported/oxy_tree.png-d81f98fb401f65260b6a46b7f09935ed.ctex"]
 
 [params]
 

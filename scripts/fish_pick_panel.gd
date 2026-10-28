@@ -1,7 +1,7 @@
 class_name FishPickPanel
 extends Control
 
-## A small window over the backpack: pick one of the fish carried (for 魚氧藻
+## A small window over the backpack: pick one of the fish carried (for 魚氧樹
 ## or 冷凍土 - Player.use_on_fish). Each fish shows how it is; one the thing
 ## can't help is greyed, with why.
 
@@ -41,7 +41,7 @@ func _ready() -> void:
 	for i in GameState.carried_fish.size():
 		var f: Dictionary = GameState.carried_fish[i]
 		var probe := f.duplicate()
-		var why := FishLife.use_algae(probe) if _item == "oxy_algae" else FishLife.use_frozen(probe)
+		var why := FishLife.use_oxy_tree(probe) if _item == "oxy_tree" else FishLife.use_frozen(probe)
 		var bar := FishLife.bar(f)
 		var b := UiKit.button("%s　%s %d%%%s" % [f.get("name", "魚"), bar.label, roundi(float(bar.share) * 100.0),
 			"　（%s）" % why if why != "" else ""], 14)
