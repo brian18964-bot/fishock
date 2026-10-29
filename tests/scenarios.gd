@@ -89,6 +89,7 @@ const TESTS := [
 	"test_stats_gate_weak",
 	"test_talents",
 	"test_rods_and_stats_page",
+	"test_fish_alerts",
 	"test_camp_spirit_and_tents",
 	"test_camp_life",
 	"test_ears_and_tails",
@@ -6625,3 +6626,62 @@ func test_rods_and_stats_page() -> void:
 	check(page.find_child("StatNote", true, false) != null, "tapping a stat tells what it touches")
 	page.queue_free()
 	Profile.load_data(saved)
+
+
+func _alert_fish(name: String, vit: float) -> Dictionary:
+	var f := {"id": "carp", "name": name, "value": 5.0, "size": "small", "rarity": "common", "tier": "near", "length": 40.0, "weight": 1.0}
+	FishLife.roll(f)
+	f["life_traits"] = []
+	f["vit"] = vit
+	f["vit_life"] = 10000.0
+	return f
+
+
+func test_fish_alerts() -> void:
+	Profile.load_data({"gold": 0})
+	await _fresh_game()
+	var alerts: FishAlerts = null
+	for c in main.get_children():
+		if c is FishAlerts:
+			alerts = c
+	check(alerts != null, "the run has the fish alerts")
+	if alerts == null:
+		return
+	var fine := _alert_fish("健康的魚", 0.9)
+	var tired := _alert_fish("累了的魚", 0.25)
+	var gone := _alert_fish("死掉的魚", 0.5)
+	FishLife.kill(gone)
+	GameState.add_carried_fish(fine)
+	GameState.add_carried_fish(tired)
+	GameState.add_carried_fish(gone)
+	await seconds(0.6)
+	check(alerts._cards.size() == 2, "a card for the tired one and the dead one, not the fine one (%d)" % alerts._cards.size())
+	check(FishAlerts.wants(tired) and not FishAlerts.wants(fine), "pinned at 30% and under")
+	# (the bar runs down, and the dead one's freshness)
+	var before := float(tired.vit)
+	GameState.carried_fish[GameState.carried_fish.find(tired)]["vit"] = 0.1
+	await seconds(0.4)
+	check(alerts._cards.size() == 2, "still there as it runs down")
+	# Tapping one opens the bag with that fish picked.
+	var uid := int(tired.uid)
+	alerts._open_fish(uid)
+	await frames(3)
+	var bag: Backpack
+	for c in main.get_children():
+		if c is Backpack:
+			bag = c
+	check(bag != null and bag.is_open() and bag._selected.get("kind", "") == "fish", "tapped: the bag's card for that fish")
+	bag.toggle()
+	# Closing one: it doesn't come back.
+	alerts._dismiss(uid)
+	await seconds(0.6)
+	check(not alerts._cards.has(uid) and alerts._cards.size() == 1, "a closed card stays closed")
+	# The eye hides them all, and shows them again.
+	alerts._toggle_hidden()
+	check(alerts._cards.values().all(func(c): return not c.visible), "the eye hides the cards")
+	alerts._toggle_hidden()
+	check(alerts._cards.values().all(func(c): return c.visible), "and shows them again")
+	# A fish taken away: its card goes.
+	GameState.carried_fish.clear()
+	await seconds(0.6)
+	check(alerts._cards.is_empty(), "no fish, no cards")

@@ -238,6 +238,8 @@ func _ready() -> void:
 	var card := CatchCard.new()
 	add_child(card)
 	player.catch_success.connect(func(fish): card.show_catch(fish, player.is_epic_catch))
+	# User request: a fish run down to 30% pins a small card down the left.
+	add_child(FishAlerts.new())
 	# Covers opening this scene directly (e.g. F6 in the editor) without
 	# going through the title screen's Start button.
 	GameState.start_run()
