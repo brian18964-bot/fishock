@@ -1928,7 +1928,7 @@ func snapshot() -> Dictionary:
 		"settings": settings,
 		"camp_tent": camp_tent,
 		"character": character,
-		"talents": talents,
+		"talents": talents.duplicate(),
 		"quick_slots": quick_slots,
 		"spirit": spirit,
 		"camp_since": camp_since,
@@ -1987,7 +1987,7 @@ func load_data(data: Dictionary) -> void:
 	settings.merge(data.get("settings", {}), true)
 	camp_tent = int(data.get("camp_tent", 8))
 	character = str(data.get("character", "cat"))
-	talents = data.get("talents", {})
+	talents = data.get("talents", {}).duplicate()
 	quick_slots = ["", "", ""]
 	var saved_slots: Array = data.get("quick_slots", [])
 	for i in mini(saved_slots.size(), QUICK_SLOTS):
