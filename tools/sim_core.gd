@@ -39,6 +39,8 @@ const GEAR_VALUES := [0, 8, 16, 25, 35]
 const GEAR_COSTS := [0, 400, 900, 1800, 3500]
 const GEAR_STAT := ["resil", "react", "might", "endure"]
 
+## (the deer's own ability and each one's starting stats count; the talents and the
+## other abilities aren't played)
 const WATERS := ["forest", "deadwood", "rocky", "tropical", "prehistoric", "swamp", "snow", "autumn", "ruins", "desert", "sea"]
 
 
@@ -51,11 +53,15 @@ func run(args: Array) -> void:
 		elif a.begins_with("out="):
 			out = a.substr(4)
 	var result := {"assume": ASSUME, "gear_values": GEAR_VALUES, "gear_costs": GEAR_COSTS, "scenarios": {}}
-	for scen in ["A", "B", "C"]:
-		var runs := []
-		for s in seeds:
-			runs.append(_player_life(scen, 1000 + s))
-		result.scenarios[scen] = runs
+	# every character, in the game as it is (A) and with the planned gear (B)
+	for scen in ["A", "B"]:
+		var by_char := {}
+		for c in Profile.CHARACTERS:
+			var runs := []
+			for s in seeds:
+				runs.append(_player_life(scen, 1000 + s, c[0]))
+			by_char[c[0]] = runs
+		result.scenarios[scen] = by_char
 	var f := FileAccess.open(out, FileAccess.WRITE)
 	f.store_string(JSON.stringify(result))
 	f.close()
@@ -64,9 +70,9 @@ func run(args: Array) -> void:
 
 # --- one character's life ----------------------------------------------------
 
-func _player_life(scen: String, seed_n: int) -> Dictionary:
+func _player_life(scen: String, seed_n: int, who: String) -> Dictionary:
 	seed(seed_n)
-	var st := {"gold": 0, "rod": 0, "gear": [0, 0, 0, 0], "tank": [], "wins": 0, "feeds": 0, "droppers": 0, "weak_pending": []}
+	var st := {"who": who, "gold": 0, "rod": 0, "gear": [0, 0, 0, 0], "tank": [], "wins": 0, "feeds": 0, "droppers": 0, "weak_pending": []}
 	var log := []
 	var mile := {}
 	var epic_ready_streak := 0
@@ -105,7 +111,7 @@ func _player_life(scen: String, seed_n: int) -> Dictionary:
 func _stat_totals(st: Dictionary, carried: Array, scen: String) -> Dictionary:
 	var out := {}
 	for stat in Stats.IDS:
-		out[stat] = Stats.rod_stat(stat, st.rod)
+		out[stat] = Stats.rod_stat(stat, st.rod) + int(Profile.START_STATS.get(st.who, {}).get(stat, 0))
 		if scen != "A":
 			out[stat] += GEAR_VALUES[int(st.gear[GEAR_STAT.find(stat)])]
 		for f in carried:
@@ -209,17 +215,21 @@ func _run(st: Dictionary, scen: String, run: int) -> Dictionary:
 			no_bite *= Player.HOTSPOT_NO_BITE_MULT
 		if randf() < no_bite:
 			continue
+		var luck := float(Profile.START_STATS.get(st.who, {}).get("luck", 0))
 		var rare_chance := Player.FAR_RARE_CHANCE if tier == "far" else Player.NORMAL_RARE_CHANCE
+		# (the deer's own ability, and 幸運)
+		var more := luck * Stats.LUCK_RARE + (Abilities.DEER_RARE if Abilities.species(st.who) == "deer" else 0.0)
+		rare_chance += more
 		if rare_zone:
 			rare_chance += Player.RARE_ZONE_RARE_CHANCE_BONUS
 		if frog:
 			rare_chance *= 2.0
 		var is_rare := false
 		if in_hot:
-			is_rare = randf() < Player.HOTSPOT_RARE_CHANCE
+			is_rare = randf() < Player.HOTSPOT_RARE_CHANCE + more
 		else:
 			is_rare = randf() < rare_chance
-		var epic_chance := Player.EPIC_CHANCE_OF_RARE * (2.0 if frog else 1.0)
+		var epic_chance := Player.EPIC_CHANCE_OF_RARE * (2.0 if frog else 1.0) * (1.0 + luck * Stats.LUCK_EPIC)
 		var is_epic := is_rare and randf() < epic_chance
 		var rarity_key := "epic" if is_epic else ("rare" if is_rare else "common")
 		var species := FishData.pick_species(tier, "rare" if rare_zone else "common", rarity_key)
