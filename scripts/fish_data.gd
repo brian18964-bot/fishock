@@ -515,31 +515,32 @@ static func value_for_length(id: String, base: float, length: float) -> float:
 ## how big it is, between the band of its kind. Short by up to
 ## Stats.CHALLENGE it can still be tried (harder); past that it's over (Player).
 ## [lowest, highest] the single stat asks.
-const GATE_BANDS := {"giant": [20, 40], "giant_rare": [35, 55], "epic": [40, 60], "legend": [55, 85]}
+static var GATE_BANDS := {"giant": [20, 40], "giant_rare": [35, 55], "epic": [40, 60], "legend": [55, 85]}
 const GIANT_FROM := 0.85
 
 ## Each species' main stat, by its nature: 反應 the quick, skittish and
 ## shoaling; 力量 the heavy and bottom-dwelling; 韌性 the toothed that cut a line;
 ## 耐力 the long runners and leapers.
 const GATE_MAIN := {
-	"react": ["brown_trout", "brook_trout", "grayling", "ayu", "golden_trout", "char", "minnow",
-		"crucian", "smelt", "sardine", "saury",
-		"pupfish", "devils_pupfish", "angelfish",
-		"cavefish", "loach"],
-	"might": ["carp", "grass_carp", "tilapia", "catfish", "black_catfish", "wels", "sturgeon", "paddlefish", "lungfish",
-		"channel_cat", "walking_catfish", "pleco", "flounder", "cod", "burbot", "golden_koi", "giant_goldfish",
-		"coelacanth", "grouper", "arapaima", "napoleon", "sunfish", "bichir", "sea_bream"],
-	"resil": ["horse_mackerel", "bluegill", "sculpin", "goby", "crayfish", "puffer", "garra", "betta", "bass", "snakehead", "bowfin", "ghost_fish", "piranha", "oscar", "pike", "taimen", "alligator_gar",
-		"cutlassfish", "conger", "scorpionfish", "two_headed_carp", "hammerhead", "trevally", "arowana"],
-	"endure": ["herring", "mackerel", "rainbow_trout", "perch", "climbing_perch", "whitefish", "croaker", "bonytail", "desert_sucker", "eel", "swamp_eel", "sea_bass", "yellowtail", "mahi", "sockeye", "arctic_char", "silver_carp",
-		"mullet", "sailfish", "swordfish", "bluefin"],
+	"react": ["brown_trout", "brook_trout", "grayling", "ayu", "golden_trout", "char", "minnow", "crucian",
+		"smelt", "sardine", "saury", "pupfish", "devils_pupfish", "angelfish", "cavefish", "loach",
+		"tilapia", "mahi", "mullet", "croaker", "rainbow_trout", "sea_bream", "silver_carp"],
+	"might": ["carp", "wels", "paddlefish", "lungfish", "golden_koi", "giant_goldfish", "coelacanth", "arapaima",
+		"napoleon", "sunfish", "bichir", "catfish", "cod", "bonytail"],
+	"resil": ["horse_mackerel", "bluegill", "sculpin", "goby", "crayfish", "puffer", "garra", "betta", "bass",
+		"snakehead", "bowfin", "ghost_fish", "piranha", "oscar", "pike", "taimen", "alligator_gar",
+		"cutlassfish", "conger", "scorpionfish", "two_headed_carp", "hammerhead", "trevally", "arowana",
+		"flounder", "channel_cat", "pleco", "walking_catfish", "arctic_char"],
+	"endure": ["herring", "mackerel", "perch", "climbing_perch", "whitefish", "desert_sucker", "eel", "swamp_eel",
+		"sea_bass", "yellowtail", "sockeye", "sailfish", "swordfish", "bluefin", "grass_carp", "sturgeon",
+		"burbot", "black_catfish", "grouper"],
 }
 ## The second (and third) stats the epic and legend fish ask besides their main.
 const GATE_EXTRA := {
 	"golden_trout": ["resil"], "ghost_fish": ["react"], "wels": ["endure"], "arapaima": ["resil"],
 	"coelacanth": ["endure"], "alligator_gar": ["might"], "taimen": ["endure"], "golden_koi": ["react"],
-	"two_headed_carp": ["might"], "devils_pupfish": ["endure"], "trevally": ["react"], "napoleon": ["resil"],
-	"sunfish": ["endure"], "sailfish": ["react"], "hammerhead": ["might"],
+	"two_headed_carp": ["might"], "devils_pupfish": ["endure"], "trevally": ["react"], "napoleon": ["endure"],
+	"sunfish": ["react"], "sailfish": ["react"], "hammerhead": ["endure"],
 	"swordfish": ["resil", "react"], "bluefin": ["might", "react"],
 }
 

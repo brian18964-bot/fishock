@@ -29,7 +29,9 @@ const ASSUME := {
 	"far_share": [0.2, 0.25, 0.3, 0.4, 0.5],  # share of far casts by rod tier (the farther rods reach)
 	"live_bait_gold": 100,     # from this much gold the hotspot casts use a live frog (x2 rare, x2 epic)
 	"level_runs": 25,          # the first runs clear the campaign's levels in order (first-clear gold)
-	"max_runs": 300,
+	"max_runs": 600,
+	"run_minutes": 9.25,        # a run and the camp round it (shop, tank, fish): real minutes
+	"talent_every": 3,         # runs between looking again at which talent to take
 }
 
 ## Hypothetical gear (not in the game yet): four pieces - line (resil), float
@@ -47,7 +49,19 @@ const WATERS := ["forest", "deadwood", "rocky", "tropical", "prehistoric", "swam
 func run(args: Array) -> void:
 	var seeds := 60
 	var out := "/tmp/sim_progress.json"
+	var only_scen := ""
+	var only_char := ""
 	for a in args:
+		if a.begins_with("scen="):
+			only_scen = a.substr(5)
+		elif a.begins_with("char="):
+			only_char = a.substr(5)
+		elif a.begins_with("legend="):
+			var lh := a.substr(7).split(",")
+			FishData.GATE_BANDS["legend"] = [int(lh[0]), int(lh[1])]
+		elif a.begins_with("epic="):
+			var eh := a.substr(5).split(",")
+			FishData.GATE_BANDS["epic"] = [int(eh[0]), int(eh[1])]
 		if a.begins_with("seeds="):
 			seeds = int(a.substr(6))
 		elif a.begins_with("out="):
@@ -55,8 +69,12 @@ func run(args: Array) -> void:
 	var result := {"assume": ASSUME, "gear_values": GEAR_VALUES, "gear_costs": GEAR_COSTS, "scenarios": {}}
 	# every character, in the game as it is (A) and with the planned gear (B)
 	for scen in ["A", "B"]:
+		if only_scen != "" and scen != only_scen:
+			continue
 		var by_char := {}
 		for c in Profile.CHARACTERS:
+			if only_char != "" and not c[0] in only_char.split(","):
+				continue
 			var runs := []
 			for s in seeds:
 				runs.append(_player_life(scen, 1000 + s, c[0]))
@@ -72,7 +90,7 @@ func run(args: Array) -> void:
 
 func _player_life(scen: String, seed_n: int, who: String) -> Dictionary:
 	seed(seed_n)
-	var st := {"who": who, "gold": 0, "rod": 0, "gear": [0, 0, 0, 0], "tank": [], "wins": 0, "feeds": 0, "droppers": 0, "weak_pending": []}
+	var st := {"talent": "", "who": who, "gold": 0, "rod": 0, "gear": [0, 0, 0, 0], "tank": [], "wins": 0, "feeds": 0, "droppers": 0, "weak_pending": []}
 	var log := []
 	var mile := {}
 	var epic_ready_streak := 0
@@ -111,7 +129,7 @@ func _player_life(scen: String, seed_n: int, who: String) -> Dictionary:
 func _stat_totals(st: Dictionary, carried: Array, scen: String) -> Dictionary:
 	var out := {}
 	for stat in Stats.IDS:
-		out[stat] = Stats.rod_stat(stat, st.rod) + int(Profile.START_STATS.get(st.who, {}).get(stat, 0))
+		out[stat] = Stats.rod_stat(stat, st.rod) + int(Profile.START_STATS.get(st.who, {}).get(stat, 0)) + _talent_n(st, stat)
 		if scen != "A":
 			out[stat] += GEAR_VALUES[int(st.gear[GEAR_STAT.find(stat)])]
 		for f in carried:
@@ -185,7 +203,7 @@ func _run(st: Dictionary, scen: String, run: int) -> Dictionary:
 			tank.erase(f)
 	var spend := 0
 	var income := 0
-	var rec := {"run": run, "water": water, "casts": 0, "land": 0, "fails": {}, "giant_enc": 0, "giant_land": 0,
+	var rec := {"need_stats": {}, "need_by_kind": {}, "run": run, "water": water, "casts": 0, "land": 0, "fails": {}, "giant_enc": 0, "giant_land": 0,
 		"rare_land": 0, "epic_enc": 0, "epic_try": 0, "epic_land": 0, "leg_enc": 0, "leg_try": 0, "leg_land": 0}
 	var cycle_total := 0.0
 	var caught := []
@@ -215,10 +233,10 @@ func _run(st: Dictionary, scen: String, run: int) -> Dictionary:
 			no_bite *= Player.HOTSPOT_NO_BITE_MULT
 		if randf() < no_bite:
 			continue
-		var luck := float(Profile.START_STATS.get(st.who, {}).get("luck", 0))
+		var luck := float(Profile.START_STATS.get(st.who, {}).get("luck", 0) + _talent_n(st, "luck"))
 		var rare_chance := Player.FAR_RARE_CHANCE if tier == "far" else Player.NORMAL_RARE_CHANCE
 		# (the deer's own ability, and 幸運)
-		var more := luck * Stats.LUCK_RARE + (Abilities.DEER_RARE if Abilities.species(st.who) == "deer" else 0.0)
+		var more := luck * Stats.LUCK_RARE + (Abilities.DEER_RARE if Abilities.species(st.who) == "deer" and st.talent == "" else 0.0)
 		rare_chance += more
 		if rare_zone:
 			rare_chance += Player.RARE_ZONE_RARE_CHANCE_BONUS
@@ -246,6 +264,9 @@ func _run(st: Dictionary, scen: String, run: int) -> Dictionary:
 			else:
 				kind = "giant"
 			rec["%s_enc" % kind] += 1
+			for ns in need:
+				rec.need_stats[ns] = int(rec.need_stats.get(ns, 0)) + 1
+				rec.need_by_kind[kind + ":" + ns] = int(rec.need_by_kind.get(kind + ":" + ns, 0)) + 1
 		var totals := _stat_totals(st, carried, scen)
 		var g := _gate(totals, need)
 		if g.fail != "":
@@ -340,12 +361,15 @@ func _run(st: Dictionary, scen: String, run: int) -> Dictionary:
 			spend += int(ASSUME.dropper_gold)
 			st.droppers += 1
 			FishLife.use_dropper(f)
+	if run % int(ASSUME.talent_every) == 1:
+		_pick_talent(st, tank.slice(0, carry), scen)
 	var totals2 := _stat_totals(st, tank.slice(0, carry), scen)
 	var after := _ready_shares(totals2)
 	rec["ready_epic"] = after.epic
 	rec["ready_leg"] = after.leg
 	rec["gold"] = st.gold
 	rec["rod"] = st.rod
+	rec["talent"] = st.talent
 	rec["gear"] = st.gear.duplicate()
 	rec["income"] = income
 	rec["spend"] = spend
@@ -374,3 +398,47 @@ func _below_middle(f: Dictionary) -> bool:
 			if float(FishLife.val_of(f, stat)) < (float(r[0]) + float(r[1])) / 2.0:
 				return true
 	return false
+
+
+## What a talent adds to `stat` (the one taken now).
+func _talent_n(st: Dictionary, stat: String) -> int:
+	return int(Abilities.TALENTS[st.talent].stats.get(stat, 0)) if st.talent != "" else 0
+
+
+## How near the totals are to the gates of the three hard kinds (0..1, soft: a
+## gate half met counts half) - what the talent is picked by.
+func _closeness(totals: Dictionary, luck: float) -> float:
+	var sum := 0.0
+	var n := 0
+	for kind in [["epic", FishData.SEA_RARE], ["legend", FishData.SEA_LEGEND + ["wels", "arapaima", "taimen", "alligator_gar", "coelacanth"]]]:
+		for id in kind[1]:
+			var span: Array = FishData.LENGTH_CM[id]
+			var need := FishData.gate_for(id, kind[0], lerpf(float(span[0]), float(span[1]), 0.6))
+			var worst := 1.0
+			for s in need:
+				worst = minf(worst, clampf(float(totals[s]) / float(need[s]) / (1.0 - Stats.CHALLENGE), 0.0, 1.0))
+			sum += worst
+			n += 1
+	# (a giant's single stat, the commonest need: the weakest of the four counts a little)
+	var low := 1.0
+	for s in Stats.IDS:
+		low = minf(low, clampf(float(totals[s]) / 40.0, 0.0, 1.0))
+	return sum / n + 0.15 * low + luck * 0.002
+
+
+## The talent worth taking now: the one whose totals are closest to the gates
+## (or none, the character's own ability, when nothing beats it).
+func _pick_talent(st: Dictionary, carried: Array, scen: String) -> void:
+	var best := ""
+	var best_score := -1.0
+	for t in [""] + Abilities.TALENT_ORDER:
+		st.talent = t
+		var totals := _stat_totals(st, carried, scen)
+		var luck := float(Profile.START_STATS.get(st.who, {}).get("luck", 0) + _talent_n(st, "luck"))
+		var score := _closeness(totals, luck)
+		if t == "":
+			score += 0.0005
+		if score > best_score:
+			best_score = score
+			best = t
+	st.talent = best

@@ -79,16 +79,17 @@ static func total(stat: String, fish: Array = GameState.carried_fish) -> int:
 	return clampi(n, 0, CAP)
 
 
-## The first stat (in the fight's order) that `need` ({stat: number}) is out
-## of reach of - short by more than CHALLENGE: {stat, gap (the share of the need
+## The stat that `need` ({stat: number}) is furthest out of reach of - short by more than CHALLENGE: {stat, gap (the share of the need
 ## it's short)}; {} if every one is met or within the challenge range.
 static func shortfall(need: Dictionary) -> Dictionary:
+	var worst := {}
 	for s in ORDER:
 		if need.has(s):
 			var gap := float(int(need[s]) - total(s)) / float(need[s])
-			if gap > CHALLENGE:
-				return {"stat": s, "gap": gap}
-	return {}
+			# (the one furthest out of reach - what the hint names; a tie by the fight's order)
+			if gap > CHALLENGE and (worst.is_empty() or gap > float(worst.gap) + 0.0001):
+				worst = {"stat": s, "gap": gap}
+	return worst
 
 
 ## The most any stat is short but within the challenge range (0: all met).
