@@ -28,13 +28,13 @@ def medallion(c1, c0, glyph):
 
 GLYPHS = {}
 
-# 神經反射: a brain with a bolt through it
+# 神經反射: a brain and one bolt
 GLYPHS["reflex"] = ("#5a2a30", "#14070a", '''
-<g fill="#e07a6a" stroke="#5a1a14" stroke-width="2.5" stroke-linejoin="round">
-<path d="M64 30 C54 20 36 24 34 38 C22 40 20 56 28 62 C22 72 30 86 42 84 C46 94 62 96 64 88 C66 96 82 94 86 84 C98 86 106 72 100 62 C108 56 106 40 94 38 C92 24 74 20 64 30 Z"/></g>
-<g fill="none" stroke="#f5b0a0" stroke-width="2.5" stroke-linecap="round" stroke-opacity="0.85"><path d="M64 32 V86"/><path d="M46 44 q8 4 6 14"/><path d="M82 44 q-8 4 -6 14"/><path d="M40 66 q8 -2 12 6"/><path d="M88 66 q-8 -2 -12 6"/></g>
-<path d="M76 10 L50 62 H66 L56 118 L92 52 H74 Z" fill="#ffd45a" stroke="#7a4a08" stroke-width="3" stroke-linejoin="round"/>
-<path d="M74 22 L58 54" stroke="#fff3b0" stroke-width="3" stroke-linecap="round" fill="none"/>''')
+<path d="M64 34 C56 22 34 24 32 42 C20 44 18 62 28 68 C22 80 32 94 46 90 C50 100 62 100 64 92 C66 100 78 100 82 90 C96 94 106 80 100 68 C110 62 108 44 96 42 C94 24 72 22 64 34 Z" fill="#e8806e" stroke="#5a1a14" stroke-width="3" stroke-linejoin="round"/>
+<path d="M64 36 V92" fill="none" stroke="#b5503e" stroke-width="3" stroke-linecap="round"/>
+<path d="M44 52 q10 4 8 14 M84 52 q-10 4 -8 14" fill="none" stroke="#b5503e" stroke-width="3" stroke-linecap="round"/>
+<path d="M78 12 L50 64 H68 L56 116 L94 54 H74 Z" fill="#ffd45a" stroke="#7a4a08" stroke-width="3" stroke-linejoin="round"/>
+<path d="M75 26 L60 54" stroke="#fff3b0" stroke-width="3" stroke-linecap="round" fill="none"/>''')
 
 # 重量訓練: a dumbbell
 GLYPHS["weights"] = ("#2a3c5a", "#070c18", '''
@@ -43,25 +43,25 @@ GLYPHS["weights"] = ("#2a3c5a", "#070c18", '''
 <rect x="30" y="30" width="16" height="68" rx="5"/><rect x="82" y="30" width="16" height="68" rx="5"/></g>
 <g fill="#c8d8f0" fill-opacity="0.75"><rect x="34" y="34" width="5" height="60" rx="2"/><rect x="86" y="34" width="5" height="60" rx="2"/><rect x="18" y="42" width="5" height="44" rx="2"/><rect x="98" y="42" width="5" height="44" rx="2"/></g>''')
 
-# 技巧洩力: a rod, its line loosely looped (the strain let out)
+# 技巧卸力: the rod drawn out, the line left slack
 GLYPHS["leak"] = ("#1e4a56", "#04141a", '''
-<path d="M20 108 C34 72 62 40 96 24" fill="none" stroke="#f0e6c8" stroke-width="5" stroke-linecap="round"/>
-<path d="M20 108 C34 72 62 40 96 24" fill="none" stroke="#b8a070" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="2 9"/>
-<path d="M96 24 C112 36 108 60 96 70 C86 78 78 96 86 108" fill="none" stroke="#7fcf8a" stroke-width="3.5" stroke-linecap="round"/>
-<g fill="#c8864a" stroke="#4a2a0c" stroke-width="2"><rect x="14" y="96" width="14" height="20" rx="5" transform="rotate(25 21 106)"/></g>
-<circle cx="40" cy="76" r="7" fill="#d9d9e8" stroke="#3a3a50" stroke-width="2.5"/><circle cx="40" cy="76" r="2.5" fill="#3a3a50"/>
-<g fill="none" stroke="#9fe6c8" stroke-width="2.5" stroke-linecap="round" stroke-opacity="0.8"><path d="M100 84 q10 2 14 -4"/><path d="M96 94 q12 4 18 -4"/></g>''')
+<path d="M18 110 C34 80 62 46 100 30" fill="none" stroke="#f0e6c8" stroke-width="5" stroke-linecap="round"/>
+<g fill="#c8864a" stroke="#4a2a0c" stroke-width="2"><rect x="10" y="98" width="14" height="20" rx="5" transform="rotate(25 17 108)"/></g>
+<circle cx="38" cy="82" r="7" fill="#d9d9e8" stroke="#3a3a50" stroke-width="2.5"/><circle cx="38" cy="82" r="2.5" fill="#3a3a50"/>
+<path d="M100 30 C106 56 96 82 82 92 C70 100 56 108 50 100" fill="none" stroke="#9fe6c8" stroke-width="2.5" stroke-linecap="round"/>
+<path d="M50 100 q-6 6 0 12" fill="none" stroke="#9fe6c8" stroke-width="2.5" stroke-linecap="round"/>
+<circle cx="84" cy="94" r="5" fill="#e04a3a" stroke="#fff" stroke-width="1.5"/>''')
 
-# 咬緊牙關: a rod and the clock - holding on a long time
+# 咬緊牙關: the rod bowed full, and the clock
 GLYPHS["grit"] = ("#5a3a1c", "#150c04", '''
-<path d="M16 108 C30 72 60 38 100 22" fill="none" stroke="#f0e6c8" stroke-width="5" stroke-linecap="round"/>
-<path d="M100 22 C114 24 120 36 116 46" fill="none" stroke="#f0e6c8" stroke-width="2" stroke-linecap="round"/>
-<g fill="#c8864a" stroke="#4a2a0c" stroke-width="2"><rect x="10" y="96" width="14" height="20" rx="5" transform="rotate(25 17 106)"/></g>
-<circle cx="36" cy="78" r="7" fill="#d9d9e8" stroke="#3a3a50" stroke-width="2.5"/><circle cx="36" cy="78" r="2.5" fill="#3a3a50"/>
-<circle cx="88" cy="86" r="26" fill="#2a1a0a" stroke="#e8b84a" stroke-width="6"/>
-<circle cx="88" cy="86" r="20" fill="#f6ecd0"/>
-<g stroke="#5a3a1c" stroke-width="2" stroke-linecap="round"><path d="M88 70 v4"/><path d="M88 98 v4"/><path d="M72 86 h4"/><path d="M100 86 h4"/></g>
-<path d="M88 86 V74 M88 86 L97 92" fill="none" stroke="#3a2008" stroke-width="3.5" stroke-linecap="round"/><circle cx="88" cy="86" r="2.5" fill="#3a2008"/>''')
+<path d="M108 60 L56 106" fill="none" stroke="#b8d8f0" stroke-width="2"/>
+<path d="M24 106 C26 56 58 28 92 34 C104 36 110 48 108 60" fill="none" stroke="#f0e6c8" stroke-width="6" stroke-linecap="round"/>
+<g fill="#c8864a" stroke="#4a2a0c" stroke-width="2"><rect x="16" y="98" width="14" height="22" rx="5" transform="rotate(-8 23 109)"/></g>
+<circle cx="40" cy="62" r="6" fill="#d9d9e8" stroke="#3a3a50" stroke-width="2.5"/>
+<circle cx="88" cy="88" r="22" fill="#2a1a0a" stroke="#e8b84a" stroke-width="5"/>
+<circle cx="88" cy="88" r="17" fill="#f6ecd0"/>
+<g stroke="#5a3a1c" stroke-width="2" stroke-linecap="round"><path d="M88 74 v3"/><path d="M88 99 v3"/><path d="M74 88 h3"/><path d="M99 88 h3"/></g>
+<path d="M88 88 V77 M88 88 L96 93" fill="none" stroke="#3a2008" stroke-width="3" stroke-linecap="round"/><circle cx="88" cy="88" r="2.2" fill="#3a2008"/>''')
 
 # LUCKY!: a four-leaf clover
 GLYPHS["lucky"] = ("#1d4a2c", "#04120a", '''
@@ -85,22 +85,22 @@ GLYPHS["tough"] = ("#3a2a4a", "#0a0610", '''
 <path d="M38 76 C50 92 78 92 90 76" fill="none" stroke="#fff" stroke-width="2"/>
 <g stroke="#06040a" stroke-width="2"><path d="M46 80 v6"/><path d="M54 83 v7"/><path d="M64 84 v8"/><path d="M74 83 v7"/><path d="M82 80 v6"/></g>''')
 
-# 有經驗: a worn book with a fish on its cover
+# 有經驗: a book printed with a fish silhouette
 GLYPHS["veteran"] = ("#2a3a50", "#070c14", '''
-<path d="M22 42 L72 30 L106 44 L106 98 L72 88 L22 98 Z" fill="#d8c8a0" stroke="#4a3a1c" stroke-width="2.5" stroke-linejoin="round"/>
-<path d="M22 42 L72 30 L72 88 L22 98 Z" fill="#587398" stroke="#1a2a44" stroke-width="3" stroke-linejoin="round"/>
-<path d="M72 30 L106 44 L106 98 L72 88 Z" fill="#6a85aa" stroke="#1a2a44" stroke-width="3" stroke-linejoin="round" fill-opacity="0"/>
-<path d="M22 98 L72 88 L106 98" fill="none" stroke="#8a7a52" stroke-width="2"/>
-<g fill="#f0e6d0" stroke="#2a3a50" stroke-width="1.5"><path d="M34 66 C42 52 58 50 66 60 C58 70 42 78 34 66 Z"/><path d="M66 60 L74 52 L74 70 Z"/></g>
-<circle cx="45" cy="62" r="2" fill="#2a3a50"/>
-<g fill="none" stroke="#b9a878" stroke-width="2"><path d="M80 52 L98 58"/><path d="M80 62 L98 68"/><path d="M80 72 L98 78"/></g>''')
+<path d="M30 20 H92 C98 20 102 24 102 30 V100 C102 106 98 110 92 110 H30 Z" fill="#e6dcc0" stroke="#4a3a1c" stroke-width="2.5"/>
+<path d="M24 20 C24 20 24 20 30 20 V110 H26 C22 110 20 106 20 102 V28 C20 23 22 20 26 20 Z" fill="#8a7a52"/>
+<path d="M34 20 H92 C98 20 102 24 102 30 V96 C102 102 98 106 92 106 H34 Z" fill="#4f6d96" stroke="#1a2a44" stroke-width="3"/>
+<path d="M34 20 V106" stroke="#1a2a44" stroke-width="3"/>
+<g fill="#f0e8d0"><path d="M46 62 C56 44 80 42 90 58 C80 74 56 82 46 62 Z"/><path d="M46 62 L36 50 L38 74 Z" transform="translate(6 0)"/><path d="M84 60 L98 50 L98 70 Z" transform="translate(-4 0)"/></g>
+<circle cx="76" cy="55" r="2.6" fill="#4f6d96"/>
+<g fill="none" stroke="#f0e8d0" stroke-opacity="0.6" stroke-width="2.5" stroke-linecap="round"><path d="M44 30 H92"/><path d="M44 96 H92"/></g>''')
 
 # 好心情: a heart and a note
 GLYPHS["mood"] = ("#5a2a30", "#14070a", '''
-<path d="M44 106 C16 86 14 56 34 48 C46 44 56 52 58 62 C60 52 70 44 82 48 C100 56 96 86 70 104 Z" transform="translate(-6 0)" fill="#d8453a" stroke="#5a0e0a" stroke-width="3" stroke-linejoin="round"/>
-<path d="M30 56 C34 50 42 50 46 56" fill="none" stroke="#f5a090" stroke-width="3" stroke-linecap="round"/>
-<g fill="#f6ecd0" stroke="#5a4a30" stroke-width="2.5" stroke-linejoin="round"><ellipse cx="86" cy="90" rx="11" ry="8" transform="rotate(-20 86 90)"/>
-<path d="M95 88 V30 C104 34 114 40 112 54 C108 46 102 44 99 44 V88 Z"/></g>''')
+<path d="M46 108 C14 86 12 52 34 44 C48 40 58 50 60 62 C62 50 72 40 86 44 C108 52 104 86 74 106 Z" transform="translate(-4 2)" fill="#d8453a" stroke="#5a0e0a" stroke-width="3" stroke-linejoin="round"/>
+<path d="M26 54 C30 46 40 46 44 54" fill="none" stroke="#f5a090" stroke-width="3.5" stroke-linecap="round"/>
+<g fill="#f6ecd0" stroke="#5a4a30" stroke-width="2.5" stroke-linejoin="round"><ellipse cx="88" cy="92" rx="12" ry="9" transform="rotate(-20 88 92)"/>
+<path d="M98 90 V28 C108 32 118 40 116 56 C112 48 106 46 102 46 V90 Z"/></g>''')
 
 if __name__ == "__main__":
     out = sys.argv[1]

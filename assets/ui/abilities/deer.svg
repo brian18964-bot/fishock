@@ -2,19 +2,15 @@
 <defs>
 <radialGradient id="bg" cx="50%" cy="40%" r="62%"><stop offset="0" stop-color="#1e4a26"/><stop offset="1" stop-color="#061408"/></radialGradient>
 <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6dc8a"/><stop offset="0.5" stop-color="#b8862e"/><stop offset="1" stop-color="#6e4a14"/></linearGradient>
-<radialGradient id="glow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#ffffff" stop-opacity="0.55"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+<clipPath id="cut"><circle cx="64" cy="64" r="54"/></clipPath>
 </defs>
 <circle cx="64" cy="64" r="60" fill="url(#rim)"/>
 <circle cx="64" cy="64" r="54" fill="url(#bg)"/>
 <circle cx="64" cy="64" r="54" fill="none" stroke="#000" stroke-opacity="0.45" stroke-width="2"/>
-<g fill="none" stroke="#e8d6b0" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
-<path d="M54 88 C46 70 40 54 42 34"/><path d="M45 58 L30 46"/><path d="M43 44 L32 30"/><path d="M48 70 L36 66"/>
-<path d="M74 88 C82 70 88 54 86 34"/><path d="M83 58 L98 46"/><path d="M85 44 L96 30"/><path d="M80 70 L92 66"/>
-</g>
-<circle cx="64" cy="84" r="18" fill="url(#glow)"/>
-<path d="M48 84 C54 74 68 72 78 80 L86 74 L84 84 L86 94 L78 88 C68 96 54 94 48 84 Z" fill="#8fd6ff"/>
-<circle cx="56" cy="82" r="2" fill="#0a2030"/>
-<g fill="#ffe680"><path d="M64 60 l2 5 l5 1 l-5 2 l-2 5 l-2 -5 l-5 -2 l5 -1z"/></g>
-<path d="M22 96 C30 88 40 92 36 100 C30 104 24 102 22 96Z" fill="#5fc25a"/>
-<path d="M106 96 C98 88 88 92 92 100 C98 104 104 102 106 96Z" fill="#5fc25a"/>
+<g clip-path="url(#cut)">
+<g fill="none" stroke="#f0e6c8" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+<path d="M52 100 C46 80 40 64 30 50 M40 66 C30 66 22 60 18 50 M44 74 C36 78 28 78 22 74 M34 54 C34 42 30 32 24 24"/>
+<path d="M76 100 C82 80 88 64 98 50 M88 66 C98 66 106 60 110 50 M84 74 C92 78 100 78 106 74 M94 54 C94 42 98 32 104 24"/></g>
+<path d="M64 112 C46 100 46 70 64 50 C82 70 82 100 64 112 Z" fill="#6fcf7e" stroke="#0e3a1a" stroke-width="3" stroke-linejoin="round"/>
+<path d="M64 108 V62" stroke="#0e3a1a" stroke-width="2.5" stroke-linecap="round"/><path d="M64 92 L54 84 M64 80 L74 72 M64 70 L56 64" fill="none" stroke="#0e3a1a" stroke-width="2" stroke-linecap="round"/></g>
 </svg>

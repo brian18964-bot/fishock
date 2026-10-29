@@ -8,12 +8,12 @@
 <circle cx="64" cy="64" r="54" fill="url(#bg)"/>
 <circle cx="64" cy="64" r="54" fill="none" stroke="#000" stroke-opacity="0.45" stroke-width="2"/>
 <g clip-path="url(#cut)">
-<path d="M16 108 C30 72 60 38 100 22" fill="none" stroke="#f0e6c8" stroke-width="5" stroke-linecap="round"/>
-<path d="M100 22 C114 24 120 36 116 46" fill="none" stroke="#f0e6c8" stroke-width="2" stroke-linecap="round"/>
-<g fill="#c8864a" stroke="#4a2a0c" stroke-width="2"><rect x="10" y="96" width="14" height="20" rx="5" transform="rotate(25 17 106)"/></g>
-<circle cx="36" cy="78" r="7" fill="#d9d9e8" stroke="#3a3a50" stroke-width="2.5"/><circle cx="36" cy="78" r="2.5" fill="#3a3a50"/>
-<circle cx="88" cy="86" r="26" fill="#2a1a0a" stroke="#e8b84a" stroke-width="6"/>
-<circle cx="88" cy="86" r="20" fill="#f6ecd0"/>
-<g stroke="#5a3a1c" stroke-width="2" stroke-linecap="round"><path d="M88 70 v4"/><path d="M88 98 v4"/><path d="M72 86 h4"/><path d="M100 86 h4"/></g>
-<path d="M88 86 V74 M88 86 L97 92" fill="none" stroke="#3a2008" stroke-width="3.5" stroke-linecap="round"/><circle cx="88" cy="86" r="2.5" fill="#3a2008"/></g>
+<path d="M108 60 L56 106" fill="none" stroke="#b8d8f0" stroke-width="2"/>
+<path d="M24 106 C26 56 58 28 92 34 C104 36 110 48 108 60" fill="none" stroke="#f0e6c8" stroke-width="6" stroke-linecap="round"/>
+<g fill="#c8864a" stroke="#4a2a0c" stroke-width="2"><rect x="16" y="98" width="14" height="22" rx="5" transform="rotate(-8 23 109)"/></g>
+<circle cx="40" cy="62" r="6" fill="#d9d9e8" stroke="#3a3a50" stroke-width="2.5"/>
+<circle cx="88" cy="88" r="22" fill="#2a1a0a" stroke="#e8b84a" stroke-width="5"/>
+<circle cx="88" cy="88" r="17" fill="#f6ecd0"/>
+<g stroke="#5a3a1c" stroke-width="2" stroke-linecap="round"><path d="M88 74 v3"/><path d="M88 99 v3"/><path d="M74 88 h3"/><path d="M99 88 h3"/></g>
+<path d="M88 88 V77 M88 88 L96 93" fill="none" stroke="#3a2008" stroke-width="3" stroke-linecap="round"/><circle cx="88" cy="88" r="2.2" fill="#3a2008"/></g>
 </svg>

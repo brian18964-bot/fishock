@@ -8,11 +8,11 @@
 <circle cx="64" cy="64" r="54" fill="url(#bg)"/>
 <circle cx="64" cy="64" r="54" fill="none" stroke="#000" stroke-opacity="0.45" stroke-width="2"/>
 <g clip-path="url(#cut)">
-<path d="M22 42 L72 30 L106 44 L106 98 L72 88 L22 98 Z" fill="#d8c8a0" stroke="#4a3a1c" stroke-width="2.5" stroke-linejoin="round"/>
-<path d="M22 42 L72 30 L72 88 L22 98 Z" fill="#587398" stroke="#1a2a44" stroke-width="3" stroke-linejoin="round"/>
-<path d="M72 30 L106 44 L106 98 L72 88 Z" fill="#6a85aa" stroke="#1a2a44" stroke-width="3" stroke-linejoin="round" fill-opacity="0"/>
-<path d="M22 98 L72 88 L106 98" fill="none" stroke="#8a7a52" stroke-width="2"/>
-<g fill="#f0e6d0" stroke="#2a3a50" stroke-width="1.5"><path d="M34 66 C42 52 58 50 66 60 C58 70 42 78 34 66 Z"/><path d="M66 60 L74 52 L74 70 Z"/></g>
-<circle cx="45" cy="62" r="2" fill="#2a3a50"/>
-<g fill="none" stroke="#b9a878" stroke-width="2"><path d="M80 52 L98 58"/><path d="M80 62 L98 68"/><path d="M80 72 L98 78"/></g></g>
+<path d="M30 20 H92 C98 20 102 24 102 30 V100 C102 106 98 110 92 110 H30 Z" fill="#e6dcc0" stroke="#4a3a1c" stroke-width="2.5"/>
+<path d="M24 20 C24 20 24 20 30 20 V110 H26 C22 110 20 106 20 102 V28 C20 23 22 20 26 20 Z" fill="#8a7a52"/>
+<path d="M34 20 H92 C98 20 102 24 102 30 V96 C102 102 98 106 92 106 H34 Z" fill="#4f6d96" stroke="#1a2a44" stroke-width="3"/>
+<path d="M34 20 V106" stroke="#1a2a44" stroke-width="3"/>
+<g fill="#f0e8d0"><path d="M46 62 C56 44 80 42 90 58 C80 74 56 82 46 62 Z"/><path d="M46 62 L36 50 L38 74 Z" transform="translate(6 0)"/><path d="M84 60 L98 50 L98 70 Z" transform="translate(-4 0)"/></g>
+<circle cx="76" cy="55" r="2.6" fill="#4f6d96"/>
+<g fill="none" stroke="#f0e8d0" stroke-opacity="0.6" stroke-width="2.5" stroke-linecap="round"><path d="M44 30 H92"/><path d="M44 96 H92"/></g></g>
 </svg>

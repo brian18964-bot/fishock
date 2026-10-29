@@ -63,7 +63,7 @@ const TALENT_ORDER := ["reflex", "weights", "leak", "grit", "lucky", "tough", "v
 const TALENTS := {
 	"reflex": {"name": "神經反射", "stats": {"react": 10}},
 	"weights": {"name": "重量訓練", "stats": {"might": 10}},
-	"leak": {"name": "技巧洩力", "stats": {"resil": 10}},
+	"leak": {"name": "技巧卸力", "stats": {"resil": 10}},
 	"grit": {"name": "咬緊牙關", "stats": {"endure": 10}},
 	"lucky": {"name": "LUCKY!", "stats": {"luck": 10}},
 	"tough": {"name": "狠角色", "stats": {"might": 5, "endure": 5}},
