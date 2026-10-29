@@ -57,10 +57,10 @@ func run(args: Array) -> void:
 		elif a.begins_with("char="):
 			only_char = a.substr(5)
 		elif a.begins_with("legend="):
-			var lh := a.substr(7).split(",")
+			var lh: PackedStringArray = a.substr(7).split(",")
 			FishData.GATE_BANDS["legend"] = [int(lh[0]), int(lh[1])]
 		elif a.begins_with("epic="):
-			var eh := a.substr(5).split(",")
+			var eh: PackedStringArray = a.substr(5).split(",")
 			FishData.GATE_BANDS["epic"] = [int(eh[0]), int(eh[1])]
 		if a.begins_with("seeds="):
 			seeds = int(a.substr(6))
