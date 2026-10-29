@@ -1,11 +1,13 @@
-"""the vitality feed (活力飼料) (活力飼料: the user's Tokkuri_Complete bottle with its
-Spiral Motif textures), glazed our own way: the teal turned to a deep moss
-green, the brown swirls to gold. Textures cut to 1024 JPEG (the base colour
-recoloured here, the roughness and metal packed into one map), the bottle
-upright with its base on the ground at the origin, 0.3 m tall.
+"""The vitality feed's jar (活力飼料: the user's Tokkuri_Complete bottle mesh),
+glazed with a pattern of our own: a plum-wine glaze with rows of gold-edged
+fish scales that thin out toward the neck, a gold band at the shoulder, the rope
+left a plain hemp. The pattern is made here from noise and cells in the
+bottle's own space (not the user's motif textures) and baked into the
+bottle's UVs at 1024; only its roughness, metal and (plain) normal detail come from
+the user's maps. Upright, base on the ground at the origin, 0.3 m tall.
 
   bpyenv/bin/python tools/make_vigor_feed.py -- DIR   (DIR holds Tokkuri_Complete.fbx and
-                                                      Unpacked/Spiral Motif/*.png; repo root)
+                                                      Unpacked/Blank Ceramic/*.png; repo root)
 
 Writes assets/models/items/vigor_feed.glb. The user's files stay out of the repo.
 """
@@ -87,9 +89,84 @@ def recolour(rgba):
     return res
 
 
+def bake_glaze(ob):
+    """Our own glaze. The bottle's position at each texel of its UV image is
+    baked out (x, y, z packed into a float image), and the pattern is drawn
+    from that in numpy: rows of overlapping fish scales, plum-wine with a
+    gold edge, a gold band at the shoulder, a hemp-coloured waist and rope."""
+    mat = bpy.data.materials.new("glaze_bake")
+    mat.use_nodes = True
+    nt = mat.node_tree
+    nt.nodes.clear()
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    em = nt.nodes.new("ShaderNodeEmission")
+    nt.links.new(em.outputs[0], out.inputs[0])
+    tc = nt.nodes.new("ShaderNodeTexCoord")
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+    nt.links.new(tc.outputs["Object"], sep.inputs[0])
+    comb = nt.nodes.new("ShaderNodeCombineXYZ")
+    for i, mul, add in ((0, 2.5, 0.5), (1, 2.5, 0.5), (2, 1.0 / HEIGHT, 0.0)):
+        m = nt.nodes.new("ShaderNodeMath")
+        m.operation = "MULTIPLY_ADD"
+        m.inputs[1].default_value = mul
+        m.inputs[2].default_value = add
+        nt.links.new(sep.outputs[i], m.inputs[0])
+        nt.links.new(m.outputs[0], comb.inputs[i])
+    nt.links.new(comb.outputs[0], em.inputs[0])
+    ob.data.materials.clear()
+    ob.data.materials.append(mat)
+    img = bpy.data.images.new("pos", SIZE, SIZE, float_buffer=True)
+    img.colorspace_settings.name = "Non-Color"
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = img
+    nt.nodes.active = tex
+    sc = bpy.context.scene
+    sc.render.engine = "CYCLES"
+    sc.cycles.samples = 1
+    sc.cycles.bake_type = "EMIT"
+    bpy.ops.object.bake(type="EMIT", margin=6)
+    pos = np.array(img.pixels[:], dtype=np.float32).reshape(SIZE, SIZE, 4)
+    x = (pos[..., 0] - 0.5) / 2.5
+    y = (pos[..., 1] - 0.5) / 2.5
+    z = pos[..., 2] * HEIGHT
+    ang = np.arctan2(y, x)
+    # scales: 26 round, rows 5 mm high; every other row half a scale along
+    cols = 26.0
+    rowh = 0.0075
+    r = np.floor(z / rowh)
+    u = ang / (2 * np.pi) * cols + 0.5 * (r % 2)
+    fx = (u % 1.0) - 0.5
+    fy = (z / rowh) % 1.0
+    # each scale is an arch: the distance from its centre (0, 1) up in the row below
+    d = np.sqrt(fx * fx + (fy - 1.0) ** 2 * 0.5)
+    inside = d
+    edge = np.clip((0.62 - inside) / 0.07, 0, 1)
+    gold = np.clip(1.0 - np.abs(inside - 0.55) / 0.045, 0, 1)
+    shade = np.clip(inside / 0.6, 0, 1)
+    plum_dark = np.array([0.20, 0.03, 0.10])
+    plum_lite = np.array([0.46, 0.09, 0.22])
+    col = plum_dark + (plum_lite - plum_dark) * (1.0 - shade[..., None]) * 0.9
+    gold_c = np.array([0.93, 0.70, 0.22])
+    col = col * (1 - gold[..., None]) + gold_c * gold[..., None]
+    # the shoulder band and the foot ring
+    for lo, hi in ((0.2, 0.206), (0.012, 0.018)):
+        m = ((z > lo) & (z < hi))[..., None]
+        col = np.where(m, gold_c, col)
+    # the waist (under the rope) and the rope: hemp
+    waist = ((z > 0.156) & (z < 0.186))[..., None]
+    hemp = np.array([0.62, 0.48, 0.28]) * (0.85 + 0.15 * np.sin(z * 900.0 + ang * 12.0))[..., None]
+    col = np.where(waist, hemp, col)
+    # the knob on the lid
+    knob = (z > 0.285)[..., None]
+    col = np.where(knob, gold_c * 0.9, col)
+    res = np.ones((SIZE, SIZE, 4), dtype=np.float32)
+    res[..., :3] = col
+    return made(res, "vigor_jar_base", False)
+
+
 def main():
     src = sys.argv[sys.argv.index("--") + 1]
-    tex = os.path.join(src, "Unpacked", "Spiral Motif")
+    tex = os.path.join(src, "Unpacked", "Blank Ceramic")
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.fbx(filepath=os.path.join(src, "Tokkuri_Complete.fbx"))
     ob = [o for o in bpy.data.objects if o.type == "MESH"][0]
@@ -112,15 +189,15 @@ def main():
         v.co = (v.co - mid) * k
     bpy.ops.object.shade_smooth()
 
-    base = made(recolour(px(small(os.path.join(tex, "Tokkuri_Diffuse_SpiralMotif_2048.png"), "d", False))), "vigor_jar_base", False)
-    rough = px(small(os.path.join(tex, "Tokkuri_Roughness_SpiralMotif_2048.png"), "r", True))
-    metal = px(small(os.path.join(tex, "Tokkuri_Metallic_SpiralMotif_2048.png"), "m", True))
+    base = bake_glaze(ob)
+    rough = px(small(os.path.join(tex, "Tokkuri_Roughness_BlankCeramic_2048.png"), "r", True))
+    metal = px(small(os.path.join(tex, "Tokkuri_Metallic_BlankCeramic_2048.png"), "m", True))
     mr = np.ones_like(rough)
     mr[..., 0] = 1.0
     mr[..., 1] = rough[..., 0]
     mr[..., 2] = metal[..., 0]
     mr_img = made(mr, "vigor_jar_mr", True)
-    normal = made(px(small(os.path.join(tex, "Tokkuri_Normal_SpiralMotif_2048.png"), "n", True)), "vigor_jar_normal", True)
+    normal = made(px(small(os.path.join(tex, "Tokkuri_Normal_BlankCeramic_2048.png"), "n", True)), "vigor_jar_normal", True)
 
     mat = bpy.data.materials.new("vigor_jar")
     mat.use_nodes = True
