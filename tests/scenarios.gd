@@ -6628,7 +6628,7 @@ func test_rods_and_stats_page() -> void:
 	await frames(3)
 	for st in ["react", "might", "resil", "endure", "luck"]:
 		check(page.find_child("Stat_" + st, true, false) != null, "stat row " + st)
-	check(page.find_child("Stat_luck", true, false).value == 10, "幸運 +10 from the talent shown")
+	check(page.find_child("Stat_luck", true, false).value == 10 + int(Profile.START_STATS.cat.luck), "幸運: the talent's 10 and the cat's own start shown as one sum")
 	page._show_stat("luck")
 	await frames(2)
 	check(page.find_child("StatNote", true, false) != null, "tapping a stat tells what it touches")
