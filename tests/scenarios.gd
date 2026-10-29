@@ -6500,10 +6500,11 @@ func test_stats_gate_weak() -> void:
 	var in_range := true
 	for _i in 60:
 		var lines := []
-		check(FishLife.use_dropper(lucky, lines) == "" and lines.size() == 2, "dropper redraws both")
+		check(FishLife.use_dropper(lucky, lines, "might") == "" and lines.size() == 1, "dropper redraws the one named")
 		seen[int(lucky.trait_vals.might)] = true
-		in_range = in_range and lucky.trait_vals.might >= 15 and lucky.trait_vals.might <= 22 and lucky.trait_vals.react >= 1 and lucky.trait_vals.react <= 4
-	check(in_range and seen.size() > 2, "redrawn within the tier ranges, and it varies")
+		in_range = in_range and lucky.trait_vals.might >= 15 and lucky.trait_vals.might <= 22
+	check(in_range and seen.size() > 2 and lucky.trait_vals.react == 2 and lucky.life_traits.size() == 2, "within the tier range, varying; the other affix and the list untouched")
+	check(FishLife.use_dropper(lucky, [], "endure") != "", "can't redraw an affix it doesn't have")
 	check(FishLife.use_dropper({"vit": 1.0}) != "", "no stat affix: refused")
 	# In a run: the needle on a carried dead fish, from the bag.
 	GameState.reset_run()

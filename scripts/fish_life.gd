@@ -374,22 +374,37 @@ static func use_revive(f: Dictionary) -> String:
 	return ""
 
 
-## Affix dropper on a fish: every stat affix it has drawn again within its
-## tier's range. "" done, else why not; `out` gets the lines ("力量 +15 → +18").
-static func use_dropper(f: Dictionary, out: Array = []) -> String:
-	var any := false
-	for t in STAT_IDS:
-		if has_trait(f, t):
-			any = true
-			var before := int(val_of(f, t))
-			var after := reroll_stat(f, t)
-			out.append("%s +%d → +%d" % [TRAITS[t].name, before, after])
-	return "" if any else "這條魚沒有屬性詞綴"
+## The stat affixes (ids) a fish has.
+static func stat_affixes(f: Dictionary) -> Array:
+	return STAT_IDS.filter(func(t): return has_trait(f, t))
+
+
+## Affix dropper on a fish: the number of ONE stat affix it has drawn again
+## within its tier's range - `stat` (else, with none named, the one with the
+## most room to rise). The affixes themselves stay. "" done, else why not;
+## `out` gets the line ("力量 +15 → +18").
+static func use_dropper(f: Dictionary, out: Array = [], stat := "") -> String:
+	var have := stat_affixes(f)
+	if have.is_empty():
+		return "這條魚沒有屬性詞綴"
+	if stat == "":
+		stat = have[0]
+		for t in have:
+			var top: int = FishLife.STAT_RANGES[tier_of(f, t) - 1][1]
+			var best: int = FishLife.STAT_RANGES[tier_of(f, stat) - 1][1]
+			if top - val_of(f, t) > best - val_of(f, stat):
+				stat = t
+	elif not stat in have:
+		return "這條魚沒有這個詞綴"
+	var before := int(val_of(f, stat))
+	var after := reroll_stat(f, stat)
+	out.append("%s +%d → +%d（%s）" % [TRAITS[stat].name, before, after, "這一階 %d～%d" % [STAT_RANGES[tier_of(f, stat) - 1][0], STAT_RANGES[tier_of(f, stat) - 1][1]]])
+	return ""
 
 
 ## A fish item (Profile.USABLES with "target": "fish") on `f`: "" it worked
 ## (f changed), else why not.
-static func apply_item(id: String, f: Dictionary, out: Array = []) -> String:
+static func apply_item(id: String, f: Dictionary, out: Array = [], stat := "") -> String:
 	match id:
 		"oxy_tree":
 			return use_oxy_tree(f)
@@ -398,7 +413,7 @@ static func apply_item(id: String, f: Dictionary, out: Array = []) -> String:
 		"revive_needle":
 			return use_revive(f)
 		"affix_dropper":
-			return use_dropper(f, out)
+			return use_dropper(f, out, stat)
 	return use_frozen(f)
 
 
