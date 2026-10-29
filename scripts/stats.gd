@@ -19,11 +19,12 @@ const ORDER := ["react", "might", "resil", "endure"]
 const CAP := 200
 
 
-## What each rod gives, by its tier ([react, might, resil, endure] - the same
-## total as 10 a stat +10 a tier, but leaning): the wooden one balanced, the glass
+## What each rod gives, by its tier ([react, might, resil, endure] - 6 a stat
+## the wooden one, 24 in all more a tier, leaning: most of what's needed beyond
+## comes from the fish carried and, later, gear): the wooden one balanced, the glass
 ## quick, the carbon tough and enduring, the sea rod strong and enduring, the
 ## gold one best at all and strongest in might and resilience.
-const ROD_STATS := [[10, 10, 10, 10], [32, 14, 14, 20], [20, 20, 44, 36], [20, 56, 32, 52], [40, 60, 52, 48]]
+const ROD_STATS := [[6, 6, 6, 6], [20, 8, 8, 12], [12, 12, 26, 22], [12, 34, 20, 32], [24, 36, 31, 29]]
 
 
 static func rod_stat(stat: String, tier: int) -> int:

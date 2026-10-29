@@ -30,10 +30,10 @@ const UPGRADE_DEFS := {
 ##   window: strike-time multiplier; jump: tension from holding a leap
 const ROD_TIERS := [
 	{"name": "木竿", "cost": 0, "strength": 1.0, "window": 1.0, "jump": 1.0, "durability": 50},
-	{"name": "玻纖竿", "cost": 50, "strength": 1.15, "window": 1.0, "jump": 1.0, "durability": 70},
-	{"name": "碳纖竿", "cost": 100, "strength": 1.3, "window": 1.1, "jump": 1.0, "durability": 90},
-	{"name": "海釣竿", "cost": 180, "strength": 1.45, "window": 1.15, "jump": 0.75, "durability": 120},
-	{"name": "黃金竿", "cost": 300, "strength": 1.6, "window": 1.2, "jump": 0.6, "durability": 160},
+	{"name": "玻纖竿", "cost": 150, "strength": 1.15, "window": 1.0, "jump": 1.0, "durability": 70},
+	{"name": "碳纖竿", "cost": 400, "strength": 1.3, "window": 1.1, "jump": 1.0, "durability": 90},
+	{"name": "海釣竿", "cost": 900, "strength": 1.45, "window": 1.15, "jump": 0.75, "durability": 120},
+	{"name": "黃金竿", "cost": 1800, "strength": 1.6, "window": 1.2, "jump": 0.6, "durability": 160},
 ]
 ## User request: everything worn wears out - every use takes one off its
 ## durability (a rod: a cast; the flashlight: a flash; the off hand's

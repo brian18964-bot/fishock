@@ -52,10 +52,10 @@ const TRAITS := {
 	# -- the four STATS (屬性) carried in the bag, alive and not weak: each a number
 	# rolled in its tier's range (STAT_RANGES) and kept on the fish (`trait_vals`);
 	# the sum of all the sources is Stats.total.
-	"might": {"name": "力量", "weight": 5.0, "kind": "stat"},
-	"resil": {"name": "韌性", "weight": 5.0, "kind": "stat"},
-	"react": {"name": "反應", "weight": 5.0, "kind": "stat"},
-	"endure": {"name": "耐力", "weight": 5.0, "kind": "stat"},
+	"might": {"name": "力量", "weight": 12.0, "kind": "stat"},
+	"resil": {"name": "韌性", "weight": 12.0, "kind": "stat"},
+	"react": {"name": "反應", "weight": 12.0, "kind": "stat"},
+	"endure": {"name": "耐力", "weight": 12.0, "kind": "stat"},
 	# User request: the very rare ones (MYTHIC_CHANCE, epic fish and up, gold) -
 	# each with a use of its own: in the tank (fortune, guide, smith) or in the
 	# bag (wraith, angel, luckystar).
