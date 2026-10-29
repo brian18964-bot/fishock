@@ -76,7 +76,7 @@ THINGS = {
     # (tools/make_glow_mushroom.py).
     "glow_mushroom": dict(model="items/glow_mushroom.glb", turn=(12, 0, 25), fill=0.9, ground=TACKLE),
     "frozen_soil": dict(model="items/frozen_soil.glb", turn=(0, 0, 25), fill=0.95, ground=TACKLE),
-    "vigor_feed": dict(model="items/vigor_feed.glb", turn=(15, 0, 25), fill=0.95, ground=TACKLE),
+    "vigor_feed": dict(model="items/vigor_feed.glb", turn=(0, 0, 25), fill=0.95, ground=TACKLE),
     "revive_needle": dict(model="items/revive_needle.glb", turn=(0, 0, 35), fill=0.95, ground=ABILITY),
     "affix_dropper": dict(model="items/affix_dropper.glb", turn=(0, 0, 20), fill=0.95, ground=ITEM),
     "oxy_tree": dict(model="items/oxy_tree.glb", turn=(0, 0, 20), fill=0.95, ground=TACKLE),

@@ -1,69 +1,149 @@
-"""The vitality feed (活力飼料's picture, made here - no model came with it): a
-small cloth sack tied at the neck with cord, a few green-gold pellets spilled
-at its foot. Base on the ground at the origin, 0.3 m tall.
+"""the vitality feed (活力飼料) (活力飼料: the user's Tokkuri_Complete bottle with its
+Spiral Motif textures), glazed our own way: the teal turned to a deep moss
+green, the brown swirls to gold. Textures cut to 1024 JPEG (the base colour
+recoloured here, the roughness and metal packed into one map), the bottle
+upright with its base on the ground at the origin, 0.3 m tall.
 
-  bpyenv/bin/python tools/make_vigor_feed.py     (repo root)
+  bpyenv/bin/python tools/make_vigor_feed.py -- DIR   (DIR holds Tokkuri_Complete.fbx and
+                                                      Unpacked/Spiral Motif/*.png; repo root)
 
-Writes assets/models/items/vigor_feed.glb.
+Writes assets/models/items/vigor_feed.glb. The user's files stay out of the repo.
 """
-import math
+import colorsys
 import os
+import sys
 
 import bpy
+import numpy as np
 from mathutils import Vector
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 OUT = os.path.join(ROOT, "assets", "models", "items", "vigor_feed.glb")
+SIZE = 1024
+HEIGHT = 0.3
 
 
-def mat(name, rgb, rough=0.7):
-    m = bpy.data.materials.new(name)
-    m.use_nodes = True
-    b = next(n for n in m.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
-    b.inputs["Base Color"].default_value = (*rgb, 1.0)
-    b.inputs["Roughness"].default_value = rough
-    return m
+def small(path, name, non_color):
+    img = bpy.data.images.load(path)
+    img.scale(SIZE, SIZE)
+    return img
 
 
-def add(kind, name, material, **kw):
-    getattr(bpy.ops.mesh, kind)(**kw)
-    o = bpy.context.active_object
-    o.name = name
-    o.data.materials.append(material)
-    bpy.ops.object.shade_smooth()
-    return o
+def px(img):
+    w, h = img.size
+    return np.array(img.pixels[:], dtype=np.float32).reshape(h, w, 4)
+
+
+def made(arr, name, non_color):
+    h, w = arr.shape[:2]
+    img = bpy.data.images.new(name, w, h)
+    img.pixels = arr.reshape(-1).tolist()
+    path = "/tmp/%s.jpg" % name
+    img.filepath_raw = path
+    img.file_format = "JPEG"
+    img.save()
+    out = bpy.data.images.load(path)
+    out.name = name
+    out.pack()
+    if non_color:
+        out.colorspace_settings.name = "Non-Color"
+    return out
+
+
+def recolour(rgba):
+    """Teal glaze -> moss green; brown swirls -> gold; the dark bits stay."""
+    rgb = rgba[..., :3]
+    mx = rgb.max(axis=-1)
+    mn = rgb.min(axis=-1)
+    d = mx - mn + 1e-6
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    h = np.where(mx == r, ((g - b) / d) % 6, np.where(mx == g, (b - r) / d + 2, (r - g) / d + 4)) / 6.0
+    s = d / (mx + 1e-6)
+    v = mx
+    teal = (h > 0.35) & (h < 0.6) & (s > 0.12)
+    brown = (h < 0.14) & (s > 0.12)
+    h2 = h.copy()
+    s2 = s.copy()
+    v2 = v.copy()
+    h2[teal] = 0.28 + (h[teal] - 0.46) * 0.5
+    s2[teal] = np.clip(s[teal] * 1.05 + 0.08, 0, 1)
+    v2[teal] = v[teal] * 0.72
+    h2[brown] = 0.115
+    s2[brown] = np.clip(s[brown] * 1.2 + 0.12, 0, 0.8)
+    v2[brown] = np.clip(v[brown] * 1.25 + 0.08, 0, 1)
+    out = np.empty_like(rgb)
+    # hsv -> rgb
+    i = np.floor(h2 * 6).astype(int) % 6
+    f = h2 * 6 - np.floor(h2 * 6)
+    p = v2 * (1 - s2)
+    q = v2 * (1 - f * s2)
+    t = v2 * (1 - (1 - f) * s2)
+    choices = [(v2, t, p), (q, v2, p), (p, v2, t), (p, q, v2), (t, p, v2), (v2, p, q)]
+    for k, (cr, cg, cb) in enumerate(choices):
+        m = i == k
+        out[m, 0], out[m, 1], out[m, 2] = cr[m], cg[m], cb[m]
+    res = rgba.copy()
+    res[..., :3] = out
+    return res
 
 
 def main():
+    src = sys.argv[sys.argv.index("--") + 1]
+    tex = os.path.join(src, "Unpacked", "Spiral Motif")
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    cloth = mat("feed_cloth", (0.55, 0.4, 0.22), 0.9)
-    cord = mat("feed_cord", (0.25, 0.14, 0.07), 0.8)
-    pellet = mat("feed_pellet", (0.42, 0.62, 0.16), 0.5)
-    # the sack: a fat egg, its top gathered in
-    body = add("primitive_uv_sphere_add", "body", cloth, radius=0.5, location=(0, 0, 0.5), segments=32, ring_count=16)
-    body.scale = (1.0, 0.85, 0.95)
-    for v in body.data.vertices:
-        if v.co.z > 0.2:
-            k = 1.0 - 0.75 * ((v.co.z - 0.2) / 0.3) ** 1.5
-            v.co.x *= max(k, 0.18)
-            v.co.y *= max(k, 0.18)
-    # the gathered mouth and the tie
-    add("primitive_cone_add", "frill", cloth, radius1=0.16, radius2=0.28, depth=0.3, location=(0, 0, 1.0), vertices=24)
-    add("primitive_torus_add", "tie", cord, major_radius=0.17, minor_radius=0.035, location=(0, 0, 0.88), major_segments=24, minor_segments=8)
-    # pellets at its foot
-    for i, (x, y) in enumerate([(0.55, -0.4), (0.7, -0.15), (0.45, -0.62), (0.78, -0.45), (0.6, -0.8)]):
-        add("primitive_uv_sphere_add", "pellet%d" % i, pellet, radius=0.08, location=(x, y, 0.08), segments=12, ring_count=8)
-    bpy.ops.object.select_all(action="SELECT")
+    bpy.ops.import_scene.fbx(filepath=os.path.join(src, "Tokkuri_Complete.fbx"))
+    ob = [o for o in bpy.data.objects if o.type == "MESH"][0]
+    bpy.ops.object.select_all(action="DESELECT")
+    ob.select_set(True)
+    bpy.context.view_layer.objects.active = ob
+    bpy.ops.object.parent_clear(type="CLEAR_KEEP_TRANSFORM")
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-    bpy.ops.object.join()
-    ob = bpy.context.view_layer.objects.active
-    top = max(v.co.z for v in ob.data.vertices)
-    k = 0.3 / top
-    cx = sum(v.co.x for v in ob.data.vertices) / len(ob.data.vertices)
-    cy = sum(v.co.y for v in ob.data.vertices) / len(ob.data.vertices)
+    co = np.array([v.co[:] for v in ob.data.vertices])
+    ax = int(np.argmax(np.ptp(co, axis=0)))
+    if ax != 2:
+        for v in ob.data.vertices:
+            c = list(v.co)
+            c[2], c[ax] = c[ax], c[2]
+            v.co = Vector(c)
+        co = np.array([v.co[:] for v in ob.data.vertices])
+    k = HEIGHT / np.ptp(co[:, 2])
+    mid = Vector(((co[:, 0].max() + co[:, 0].min()) / 2, (co[:, 1].max() + co[:, 1].min()) / 2, co[:, 2].min()))
     for v in ob.data.vertices:
-        v.co = Vector(((v.co.x - cx) * k, (v.co.y - cy) * k, v.co.z * k))
-    bpy.ops.export_scene.gltf(filepath=OUT, export_format="GLB", use_selection=False, export_apply=True)
+        v.co = (v.co - mid) * k
+    bpy.ops.object.shade_smooth()
+
+    base = made(recolour(px(small(os.path.join(tex, "Tokkuri_Diffuse_SpiralMotif_2048.png"), "d", False))), "vigor_jar_base", False)
+    rough = px(small(os.path.join(tex, "Tokkuri_Roughness_SpiralMotif_2048.png"), "r", True))
+    metal = px(small(os.path.join(tex, "Tokkuri_Metallic_SpiralMotif_2048.png"), "m", True))
+    mr = np.ones_like(rough)
+    mr[..., 0] = 1.0
+    mr[..., 1] = rough[..., 0]
+    mr[..., 2] = metal[..., 0]
+    mr_img = made(mr, "vigor_jar_mr", True)
+    normal = made(px(small(os.path.join(tex, "Tokkuri_Normal_SpiralMotif_2048.png"), "n", True)), "vigor_jar_normal", True)
+
+    mat = bpy.data.materials.new("vigor_jar")
+    mat.use_nodes = True
+    nt = mat.node_tree
+    b = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    t = nt.nodes.new("ShaderNodeTexImage")
+    t.image = base
+    nt.links.new(t.outputs[0], b.inputs["Base Color"])
+    tm = nt.nodes.new("ShaderNodeTexImage")
+    tm.image = mr_img
+    sep = nt.nodes.new("ShaderNodeSeparateColor")
+    nt.links.new(tm.outputs[0], sep.inputs[0])
+    nt.links.new(sep.outputs[1], b.inputs["Roughness"])
+    nt.links.new(sep.outputs[2], b.inputs["Metallic"])
+    tn = nt.nodes.new("ShaderNodeTexImage")
+    tn.image = normal
+    nm = nt.nodes.new("ShaderNodeNormalMap")
+    nt.links.new(tn.outputs[0], nm.inputs["Color"])
+    nt.links.new(nm.outputs[0], b.inputs["Normal"])
+    ob.data.materials.clear()
+    ob.data.materials.append(mat)
+    bpy.ops.export_scene.gltf(filepath=OUT, export_format="GLB", use_selection=False, export_image_format="JPEG",
+                              export_jpeg_quality=85, export_apply=True)
     print("wrote", OUT, os.path.getsize(OUT) // 1024, "KB")
     os._exit(0)
 
