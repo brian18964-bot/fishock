@@ -35,7 +35,7 @@ const ASSUME := {
 ## Hypothetical gear (not in the game yet): four pieces - line (resil), float
 ## (react), hook (might), keeper rope (endure) - each of five tiers; what a piece
 ## of each tier gives, and what buying that tier costs. Scenarios "B" and "C".
-const GEAR_VALUES := [0, 6, 12, 18, 25]
+const GEAR_VALUES := [0, 8, 16, 25, 35]
 const GEAR_COSTS := [0, 400, 900, 1800, 3500]
 const GEAR_STAT := ["resil", "react", "might", "endure"]
 

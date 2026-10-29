@@ -11,7 +11,7 @@ def pct(vals,p):
     if not v: return None
     return v[min(len(v)-1,int(len(v)*p))]
 MS=[("rod1","買到玻纖竿"),("rod2","買到碳纖竿"),("rod3","買到海釣竿"),("rod4","買到黃金竿"),("giant_land","第一次釣上巨物（門檻魚）"),("rare_land","第一次釣上稀有魚種"),
-    ("epic_try","第一次挑戰史詩（2項門檻，海洋稀有魚）"),("epic_land","第一次釣上史詩"),("leg_try","第一次挑戰傳說（3項門檻 80–120）"),("leg_land","第一次釣上傳說"),
+    ("epic_try","第一次挑戰史詩（2項門檻，海洋稀有魚）"),("epic_land","第一次釣上史詩"),("leg_try","第一次挑戰傳說（3項門檻）"),("leg_land","第一次釣上傳說"),
     ("steady_epic","可穩定釣史詩（門檻達成率≥80%連5趟）"),("steady_leg","可穩定釣傳說（同上）")]
 SC={"A":"A 現況（釣竿＋詞綴魚，攜帶4條）","B":"B 假設加入裝備（魚線/浮標/魚鉤/防失繩 各5階）","C":"C = B + 包包可帶8條詞綴魚"}
 def mile_table():
@@ -95,7 +95,7 @@ td,th{border:1px solid #3a3f4a;padding:6px 10px;vertical-align:top}th{background
 <h1>進程驗證：從新手到史詩</h1>
 <p>用遊戲真實規則（出魚機率、魚種池、長度、門檻、詞綴、活性倒數、售價、釣竿價格、關卡獎勵）跑 <b>100 個角色 × 3 種情境</b> 的蒙地卡羅模擬，每個角色最多玩 300 趟。<br>
 模擬器：<code>tools/sim_progress.gd</code>（可重跑、可改參數）。</p>
-<div class=note><b>情境</b>：%(A)s<br>%(B)s<br>%(C)s<br><small>B、C 的裝備數值是「假設」：每件 0/6/12/18/25，升階價格 60/110/180/280。這是為了找出裝備需要多大，不是現有內容。</small></div>
+<div class=note><b>情境</b>：%(A)s<br>%(B)s<br>%(C)s<br><small>B、C 的裝備數值是「假設」：每件 0/8/16/25/35，升階價格 400/900/1800/3500。這是為了找出裝備需要多大，不是現有內容。</small></div>
 <h2>1. 里程碑（第幾趟達成）</h2><table><tr><th>里程碑</th><th>A 現況</th><th>B 加裝備</th><th>C 加裝備＋帶8條</th></tr>%(mile)s</table>
 <h2>2. 金幣與門檻達成率的曲線（中位數）</h2><table>%(curve)s</table>
 <h2>3. 攜帶的四項數值（含釣竿、裝備、詞綴魚）</h2><table>%(stat)s</table>
