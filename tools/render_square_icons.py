@@ -76,6 +76,8 @@ THINGS = {
     # (tools/make_glow_mushroom.py).
     "glow_mushroom": dict(model="items/glow_mushroom.glb", turn=(12, 0, 25), fill=0.9, ground=TACKLE),
     "frozen_soil": dict(model="items/frozen_soil.glb", turn=(0, 0, 25), fill=0.95, ground=TACKLE),
+    "revive_needle": dict(model="items/revive_needle.glb", turn=(0, 0, 35), fill=0.95, ground=ABILITY),
+    "affix_dropper": dict(model="items/affix_dropper.glb", turn=(0, 0, 20), fill=0.95, ground=ITEM),
     "oxy_tree": dict(model="items/oxy_tree.glb", turn=(0, 0, 20), fill=0.95, ground=TACKLE),
     "shovel": dict(model="items/shovel.glb", turn=(70, 40, 0), fill=1.05, ground=GEAR),
     # The oxygenated fish box (tools/make_oxy_box.py).

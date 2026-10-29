@@ -350,19 +350,24 @@ func _card_for(i: int, src := "tank") -> void:
 			_close()
 			_feed_dialog(f))
 		moves.add_child(fb)
-	var feeds := Profile.bag_count("vigor_feed") + Profile.stored("vigor_feed")
-	if feeds > 0 and FishLife.state(f) == "alive":
-		var vb := UiKit.button("餵活力飼料 x%d" % feeds, 14, "red")
-		vb.name = "VigorFeed"
+	# (the feed, the needle and the dropper: what's owned, on what they'd work on)
+	for item_id in ["vigor_feed", "revive_needle", "affix_dropper"]:
+		var owned := Profile.bag_count(item_id) + Profile.stored(item_id)
+		if owned <= 0 or FishLife.apply_item(item_id, f.duplicate(true)) != "":
+			continue
+		var vb := UiKit.button("%s x%d" % [Profile.USABLES[item_id].name, owned], 14, "red")
+		vb.name = "Use_" + item_id
 		vb.custom_minimum_size = Vector2(150, 38)
+		var use_id: String = item_id
 		vb.pressed.connect(func():
-			var why := FishLife.use_vigor_feed(f)
-			if why == "" and Profile.take_one("vigor_feed"):
+			var lines := []
+			var why := FishLife.apply_item(use_id, f, lines)
+			if why == "" and Profile.take_one(use_id):
 				_close()
-				_say("%s 吃了活力飼料，恢復精神" % f.get("name", "魚"))
+				_say("%s：%s%s" % [Profile.USABLES[use_id].name, f.get("name", "魚"), "　" + "、".join(lines) if not lines.is_empty() else ""])
 				_rebuild()
 			else:
-				_say(why if why != "" else "沒有飼料了"))
+				_say(why if why != "" else "沒有了"))
 		moves.add_child(vb)
 	col.add_child(moves)
 	var acts := HBoxContainer.new()

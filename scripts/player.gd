@@ -889,7 +889,7 @@ func use_item(id: String) -> bool:
 			glow_timer = GLOW_TIME + CRUMBLE_TIME * GLOW_FROM
 			perform("crumble", CRUMBLE_TIME)
 			GameState.report("揉碎發光蘑菇撒在身上：全身散發微弱的藍光", "good")
-		"oxy_tree", "frozen_soil", "vigor_feed":
+		"oxy_tree", "frozen_soil", "vigor_feed", "revive_needle", "affix_dropper":
 			# (from a quick slot: the fish that needs it most)
 			var pick := fish_for(id)
 			if pick < 0:
@@ -1156,20 +1156,14 @@ func use_on_fish(id: String, index: int) -> bool:
 	if Profile.bag_count(id) < 1 or index < 0 or index >= GameState.carried_fish.size():
 		return false
 	var fish: Dictionary = GameState.carried_fish[index]
-	var why := ""
-	match id:
-		"oxy_tree":
-			why = FishLife.use_oxy_tree(fish)
-		"vigor_feed":
-			why = FishLife.use_vigor_feed(fish)
-		_:
-			why = FishLife.use_frozen(fish)
+	var lines := []
+	var why := FishLife.apply_item(id, fish, lines)
 	if why != "":
 		GameState.report(why, "warn")
 		return false
 	Profile.bag_take(id, 1)
 	perform("pick", PICK_TIME)
-	GameState.report("%s用在 %s 身上" % [Items.name_of(id), fish.get("name", "魚")], "good")
+	GameState.report("%s用在 %s 身上%s" % [Items.name_of(id), fish.get("name", "魚"), "（%s）" % "、".join(lines) if not lines.is_empty() else ""], "good")
 	GameState.fish_changed.emit(fish)
 	return true
 
@@ -1181,6 +1175,11 @@ func fish_for(id: String) -> int:
 	var best_left := INF
 	for i in GameState.carried_fish.size():
 		var f: Dictionary = GameState.carried_fish[i]
+		if id == "revive_needle" or id == "affix_dropper":
+			# (the first that can have it)
+			if FishLife.apply_item(id, f.duplicate(true)) == "":
+				return i
+			continue
 		if id == "vigor_feed":
 			# (the weakest living one that isn't an immortal)
 			if FishLife.state(f) == "alive" and not FishLife.has_trait(f, "immortal") and (f.get("weak", false) or float(f.get("vit", 1.0)) < 0.99):

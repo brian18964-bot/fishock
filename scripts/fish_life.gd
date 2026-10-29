@@ -356,6 +356,52 @@ static func use_vigor_feed(f: Dictionary) -> String:
 	return ""
 
 
+## Revive needle on a dead (not rotten) fish: it lives again, weak. "" done.
+static func use_revive(f: Dictionary) -> String:
+	match state(f):
+		"alive":
+			return "這條魚還活著"
+		"rotten":
+			return "腐敗了，救不回來"
+	f["dead"] = false
+	f["rotten"] = false
+	f["fresh"] = 1.0
+	f["vit"] = 1.0
+	make_weak(f)
+	if not f.get("weak", false):
+		# (an immortal one: just up again)
+		f["vit"] = 1.0
+	return ""
+
+
+## Affix dropper on a fish: every stat affix it has drawn again within its
+## tier's range. "" done, else why not; `out` gets the lines ("力量 +15 → +18").
+static func use_dropper(f: Dictionary, out: Array = []) -> String:
+	var any := false
+	for t in STAT_IDS:
+		if has_trait(f, t):
+			any = true
+			var before := int(val_of(f, t))
+			var after := reroll_stat(f, t)
+			out.append("%s +%d → +%d" % [TRAITS[t].name, before, after])
+	return "" if any else "這條魚沒有屬性詞綴"
+
+
+## A fish item (Profile.USABLES with "target": "fish") on `f`: "" it worked
+## (f changed), else why not.
+static func apply_item(id: String, f: Dictionary, out: Array = []) -> String:
+	match id:
+		"oxy_tree":
+			return use_oxy_tree(f)
+		"vigor_feed":
+			return use_vigor_feed(f)
+		"revive_needle":
+			return use_revive(f)
+		"affix_dropper":
+			return use_dropper(f, out)
+	return use_frozen(f)
+
+
 ## `value` run down at `rate` a second for `dt` s, the first `slow` s of it at
 ## SLOW of that: [what's left (0 if it ran out), time left over (-1 if it
 ## didn't run out), the slow time left].

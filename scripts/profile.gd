@@ -265,9 +265,15 @@ const USABLES := {
 	# (and un-weakens it); fed in a run (from the bag) or at home (fish card).
 	"vigor_feed": {"name": "活力飼料", "cost": 40, "stack": 5, "keep": false, "target": "fish",
 		"desc": "餵給一條活魚：活性恢復一半，虛弱的魚也會恢復過來（不再倒數虛弱）"},
+	# User request: the syringe - a dead fish lives again, but weak.
+	"revive_needle": {"name": "復活針", "cost": 150, "stack": 3, "keep": false, "target": "fish",
+		"desc": "打在一條剛死的魚（還沒腐敗）身上：牠會復活，但立刻陷入虛弱（活性 5%，快放進魚缸或餵飼料）"},
+	# User request: the dropper bottle - the stat affixes drawn again.
+	"affix_dropper": {"name": "洗點滴瓶", "cost": 80, "stack": 5, "keep": false, "target": "fish",
+		"desc": "滴在一條魚身上：牠的屬性詞綴（力量／韌性／反應／耐力）在各自那一階的範圍內重新抽一次數值"},
 }
 const USABLE_ORDER := ["potion_vigor", "potion_ward", "eyeball", "eye_altar", "eye_ghost", "binoculars", "glow_mushroom",
-	"oxy_tree", "frozen_soil", "vigor_feed"]
+	"oxy_tree", "frozen_soil", "vigor_feed", "revive_needle", "affix_dropper"]
 
 ## User request (Camp v2): what's been done, for the achievements that
 ## earn the camp's tents (TENTS) - escapes, gold spent, legends caught.

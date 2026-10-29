@@ -6487,6 +6487,35 @@ func test_stats_gate_weak() -> void:
 	GameState.start_run()
 	GameState.end_run(true, "ok")
 	check(Profile.tank.size() == 1 and not Profile.tank[0].get("weak", false) and not Profile.tank[0].has("brought"), "an escape: into the tank as they were")
+	# The needle: a dead fish lives again, weak; a rotten one can't.
+	var corpse := {"id": "carp", "name": "死魚", "vit": 0.0, "vit_life": 100.0, "fresh": 0.8, "fresh_life": 100.0, "dead": true, "rotten": false}
+	check(FishLife.use_revive(corpse) == "" and FishLife.state(corpse) == "alive" and corpse.weak, "revive needle: alive again, weak")
+	check(FishLife.use_revive(corpse) != "", "an alive fish can't be revived")
+	var gone := {"id": "carp", "vit": 0.0, "vit_life": 100.0, "fresh": 0.0, "fresh_life": 100.0, "dead": true, "rotten": true}
+	check(FishLife.use_revive(gone) != "", "a rotten one can't")
+	# The dropper: stat affixes drawn again within the tier's range.
+	var lucky := {"id": "carp", "vit": 1.0, "vit_life": 100.0, "fresh": 1.0, "fresh_life": 100.0, "dead": false, "rotten": false,
+		"life_traits": ["might", "react"], "trait_tiers": {"might": 4, "react": 1}, "trait_vals": {"might": 15, "react": 2}}
+	var seen := {}
+	var in_range := true
+	for _i in 60:
+		var lines := []
+		check(FishLife.use_dropper(lucky, lines) == "" and lines.size() == 2, "dropper redraws both")
+		seen[int(lucky.trait_vals.might)] = true
+		in_range = in_range and lucky.trait_vals.might >= 15 and lucky.trait_vals.might <= 22 and lucky.trait_vals.react >= 1 and lucky.trait_vals.react <= 4
+	check(in_range and seen.size() > 2, "redrawn within the tier ranges, and it varies")
+	check(FishLife.use_dropper({"vit": 1.0}) != "", "no stat affix: refused")
+	# In a run: the needle on a carried dead fish, from the bag.
+	GameState.reset_run()
+	var corpse2 := corpse.duplicate(true)
+	corpse2["weak"] = false
+	corpse2["dead"] = true
+	GameState.carried_fish = [corpse2]
+	Profile.bag = [{"id": "revive_needle", "count": 1}]
+	var p := player()
+	if p != null:
+		check(p.fish_for("revive_needle") == 0 and p.use_on_fish("revive_needle", 0) and FishLife.state(corpse2) == "alive" and Profile.bag_count("revive_needle") == 0, "needle used from the bag on a dead fish")
+	GameState.carried_fish.clear()
 	# The shop sells the feed.
 	Profile.gold = 100
 	check(Profile.buy_usable("vigor_feed") and Profile.stored("vigor_feed") == 1, "活力飼料 is sold")
