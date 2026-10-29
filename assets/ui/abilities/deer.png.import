@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dj7joky1sa0hu"
-path="res://.godot/imported/cat.svg-298857362921be5914dbc5743c9f5063.ctex"
+uid="uid://cma20bgv428r3"
+path="res://.godot/imported/deer.png-378972e9870609bf316ec4b468dc269a.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/abilities/cat.svg"
-dest_files=["res://.godot/imported/cat.svg-298857362921be5914dbc5743c9f5063.ctex"]
+source_file="res://assets/ui/abilities/deer.png"
+dest_files=["res://.godot/imported/deer.png-378972e9870609bf316ec4b468dc269a.ctex"]
 
 [params]
 
@@ -38,6 +38,3 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
-svg/scale=1.0
-editor/scale_with_editor_scale=false
-editor/convert_colors_with_editor_theme=false

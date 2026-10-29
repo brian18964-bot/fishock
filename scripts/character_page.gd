@@ -32,6 +32,8 @@ var _ability_name: Label
 var _ability_desc: Label
 var _talent_box: HFlowContainer
 var _talent_desc: Label
+var _talent_name: Label
+var _talent_panel: PanelContainer
 var _story: Label
 
 
@@ -153,25 +155,39 @@ func _info_panel() -> Control:
 	_ability_name.name = "AbilityName"
 	names.add_child(_ability_name)
 	head.add_child(names)
+	head.visible = false   # (the first choice below is the own ability, told in the frame)
 	col.add_child(head)
 	_ability_desc = UiKit.label("", 14, UiKit.TEXT)
 	_ability_desc.name = "AbilityDesc"
 	_ability_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_ability_desc.custom_minimum_size = Vector2(INFO_WIDTH, 0)
+	_ability_desc.visible = false   # (told in the frame under the choices)
 	col.add_child(_ability_desc)
 	# User request (talents): or take one of these instead - one or the other.
-	col.add_child(UiKit.label("或改選一個天賦（只能二擇一）", 13, UiKit.DIM))
+	col.add_child(UiKit.label("天賦（只能擇一）", 14, UiKit.GOLD, true))
 	_talent_box = HFlowContainer.new()
 	_talent_box.name = "Talents"
 	_talent_box.add_theme_constant_override("h_separation", 6)
 	_talent_box.add_theme_constant_override("v_separation", 6)
 	_talent_box.custom_minimum_size = Vector2(INFO_WIDTH, 0)
 	col.add_child(_talent_box)
-	_talent_desc = UiKit.label("", 13, UiKit.USE)
+	# (what's in use, set off in its own frame: its name and its effect, big)
+	_talent_panel = UiKit.tooltip_panel()
+	_talent_panel.name = "TalentPanel"
+	_talent_panel.custom_minimum_size = Vector2(INFO_WIDTH, 0)
+	var pc := VBoxContainer.new()
+	pc.add_theme_constant_override("separation", 2)
+	_talent_panel.add_child(pc)
+	pc.add_child(UiKit.label("使用中", 12, UiKit.DIM))
+	_talent_name = UiKit.label("", 20, UiKit.GOLD_BRIGHT, true)
+	_talent_name.name = "TalentName"
+	pc.add_child(_talent_name)
+	_talent_desc = UiKit.label("", 16, UiKit.USE)
 	_talent_desc.name = "TalentDesc"
 	_talent_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_talent_desc.custom_minimum_size = Vector2(INFO_WIDTH, 0)
-	col.add_child(_talent_desc)
+	_talent_desc.custom_minimum_size = Vector2(INFO_WIDTH - 24.0, 0)
+	pc.add_child(_talent_desc)
+	col.add_child(_talent_panel)
 	var rule := ColorRect.new()
 	rule.color = Color(UiKit.GOLD, 0.35)
 	rule.custom_minimum_size = Vector2(INFO_WIDTH, 1)
@@ -207,26 +223,53 @@ func _fill_talents(id: String) -> void:
 		_talent_box.remove_child(c)
 		c.queue_free()
 	var taken := Profile.talent_of(id)
-	var options := [["", Abilities.info(Abilities.kind_of(id)).get("name", "角色能力")]]
+	var own := Abilities.info(Abilities.kind_of(id))
+	var options := [["", own.get("name", "角色能力")]]
 	for t in Abilities.TALENT_ORDER:
 		options.append([t, Abilities.TALENTS[t].name])
 	for o in options:
-		var b := UiKit.button("", 13)
-		b.name = "Talent_" + (o[0] if o[0] != "" else "own")
-		b.custom_minimum_size = Vector2(46, 46)
-		b.tooltip_text = o[1]
-		b.icon = Abilities.talent_icon(o[0]) if o[0] != "" else Abilities.icon(Abilities.kind_of(id))
-		b.expand_icon = true
-		b.add_theme_constant_override("icon_max_width", 36)
-		b.focus_mode = Control.FOCUS_NONE
-		UiKit.style_tab(b, o[0] == taken)
+		var chip := TalentChip.new()
+		chip.name = "Talent_" + (o[0] if o[0] != "" else "own")
+		chip.tooltip_text = o[1]
+		chip.texture_normal = Abilities.talent_icon(o[0]) if o[0] != "" else Abilities.icon(Abilities.kind_of(id))
+		chip.on = o[0] == taken
 		var pick_id: String = o[0]
-		b.pressed.connect(func():
+		chip.pressed.connect(func():
 			Profile.set_talent(id, pick_id)
 			_fill_talents(id))
-		_talent_box.add_child(b)
-	_talent_desc.text = ("使用中：%s（%s）" % [Abilities.TALENTS[taken].name, Abilities.talent_text(taken)]) if taken != "" \
-		else "使用中：%s（角色自己的能力）" % Abilities.info(Abilities.kind_of(id)).get("name", "")
+		_talent_box.add_child(chip)
+	if taken != "":
+		_talent_name.text = Abilities.TALENTS[taken].name
+		_talent_desc.text = Abilities.talent_text(taken)
+	else:
+		_talent_name.text = own.get("name", "")
+		_talent_desc.text = own.get("desc", "")
+
+
+## A choice of the talents: its round badge, a gold ring round the one in use,
+## the others dimmed a little.
+class TalentChip extends TextureButton:
+	var on := false
+
+	func _init() -> void:
+		custom_minimum_size = Vector2(46, 46)
+		ignore_texture_size = true
+		stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+		focus_mode = Control.FOCUS_NONE
+		mouse_entered.connect(queue_redraw)
+		mouse_exited.connect(queue_redraw)
+
+	func _draw() -> void:
+		var c := size / 2.0
+		var r := minf(size.x, size.y) / 2.0
+		if on:
+			draw_circle(c, r + 1.0, Color(1.0, 0.85, 0.4, 0.22))
+			draw_arc(c, r - 0.5, 0.0, TAU, 48, Color(1.0, 0.88, 0.45), 3.0, true)
+		elif is_hovered():
+			draw_arc(c, r - 0.5, 0.0, TAU, 48, Color(1.0, 0.88, 0.45, 0.6), 2.0, true)
+
+	func _ready() -> void:
+		modulate = Color.WHITE if on else Color(0.72, 0.72, 0.76)
 
 
 ## A portrait's cell: the portrait in its medallion, the name under it.

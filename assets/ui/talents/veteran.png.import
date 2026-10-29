@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b2rd314x63t1x"
-path="res://.godot/imported/grit.svg-81c5ef1e20da15065fb613db6d24a396.ctex"
+uid="uid://ypbc0ibv0le"
+path="res://.godot/imported/veteran.png-b045724629c505852da1cf6027603813.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/talents/grit.svg"
-dest_files=["res://.godot/imported/grit.svg-81c5ef1e20da15065fb613db6d24a396.ctex"]
+source_file="res://assets/ui/talents/veteran.png"
+dest_files=["res://.godot/imported/veteran.png-b045724629c505852da1cf6027603813.ctex"]
 
 [params]
 
@@ -38,6 +38,3 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
-svg/scale=1.0
-editor/scale_with_editor_scale=false
-editor/convert_colors_with_editor_theme=false

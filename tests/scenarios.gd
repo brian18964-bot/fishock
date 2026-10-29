@@ -6582,7 +6582,7 @@ func test_talents() -> void:
 	page.pick("deer")
 	await frames(3)
 	check(page.find_child("Talent_own", true, false) != null and page.find_child("Talent_lucky", true, false) != null, "the page offers the own ability and the talents")
-	(page.find_child("Talent_grit", true, false) as Button).pressed.emit()
+	(page.find_child("Talent_grit", true, false) as BaseButton).pressed.emit()
 	await frames(2)
 	check(Profile.talent_of("deer") == "grit", "taking a talent on the page")
 	page.queue_free()

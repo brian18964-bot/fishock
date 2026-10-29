@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://757bypujhluu"
-path="res://.godot/imported/leak.svg-99b193bcf3805465dd9fcbb46367b39d.ctex"
+uid="uid://dldimuo0d5jow"
+path="res://.godot/imported/sheep.png-a69ea348d6960b39494b56b6a5680da8.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/talents/leak.svg"
-dest_files=["res://.godot/imported/leak.svg-99b193bcf3805465dd9fcbb46367b39d.ctex"]
+source_file="res://assets/ui/abilities/sheep.png"
+dest_files=["res://.godot/imported/sheep.png-a69ea348d6960b39494b56b6a5680da8.ctex"]
 
 [params]
 
@@ -38,6 +38,3 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
-svg/scale=1.0
-editor/scale_with_editor_scale=false
-editor/convert_colors_with_editor_theme=false

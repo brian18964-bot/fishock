@@ -38,7 +38,7 @@ const SHEEP_CHANCE := 0.10
 const CROC_AT := 0.10
 const CROC_CHANCE := 0.05
 
-const ICONS := "res://assets/ui/abilities/%s.svg"
+const ICONS := "res://assets/ui/abilities/%s.png"
 ## Each kind's: its name, what it does, the colour its show goes off in.
 const KINDS := {
 	"cat": {"name": "夜貓子", "desc": "夜晚降臨（龍鬼出沒）後，移動速度提高 15%。", "color": Color(0.78, 0.62, 1.0)},
@@ -72,7 +72,7 @@ const TALENTS := {
 }
 
 
-const TALENT_ICONS := "res://assets/ui/talents/%s.svg"
+const TALENT_ICONS := "res://assets/ui/talents/%s.png"
 static var _talent_icons := {}
 
 

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dago18dlelxxs"
-path="res://.godot/imported/deer.svg-46dd124a4b7d6a370bfd26102ce2c2ed.ctex"
+uid="uid://uvvt66w4mla2"
+path="res://.godot/imported/owl.png-91d2ac2857f5b09616a9a6ff509d4b83.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/abilities/deer.svg"
-dest_files=["res://.godot/imported/deer.svg-46dd124a4b7d6a370bfd26102ce2c2ed.ctex"]
+source_file="res://assets/ui/abilities/owl.png"
+dest_files=["res://.godot/imported/owl.png-91d2ac2857f5b09616a9a6ff509d4b83.ctex"]
 
 [params]
 
@@ -38,6 +38,3 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
-svg/scale=1.0
-editor/scale_with_editor_scale=false
-editor/convert_colors_with_editor_theme=false

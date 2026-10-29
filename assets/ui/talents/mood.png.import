@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://csflaxmp07d4h"
-path="res://.godot/imported/owl.svg-258697231652ae4d5bc91d143e30cffc.ctex"
+uid="uid://dn2qwuk6j3muy"
+path="res://.godot/imported/mood.png-54ab467768de1ef706a42cf21b75250d.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/abilities/owl.svg"
-dest_files=["res://.godot/imported/owl.svg-258697231652ae4d5bc91d143e30cffc.ctex"]
+source_file="res://assets/ui/talents/mood.png"
+dest_files=["res://.godot/imported/mood.png-54ab467768de1ef706a42cf21b75250d.ctex"]
 
 [params]
 
@@ -38,6 +38,3 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
-svg/scale=1.0
-editor/scale_with_editor_scale=false
-editor/convert_colors_with_editor_theme=false

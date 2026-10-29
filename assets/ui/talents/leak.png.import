@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://ciqdl57pa4rb1"
-path="res://.godot/imported/croc.svg-1843d3c9642ee2657b274df52e09fc8b.ctex"
+uid="uid://d2mi8ugi5380h"
+path="res://.godot/imported/leak.png-db350308661fa20b4b382ee96583b677.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/abilities/croc.svg"
-dest_files=["res://.godot/imported/croc.svg-1843d3c9642ee2657b274df52e09fc8b.ctex"]
+source_file="res://assets/ui/talents/leak.png"
+dest_files=["res://.godot/imported/leak.png-db350308661fa20b4b382ee96583b677.ctex"]
 
 [params]
 
@@ -38,6 +38,3 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
-svg/scale=1.0
-editor/scale_with_editor_scale=false
-editor/convert_colors_with_editor_theme=false

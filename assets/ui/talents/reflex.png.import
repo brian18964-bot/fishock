@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://pn46vxhf5jm8"
-path="res://.godot/imported/reflex.svg-150fcbf1281b24c4d98d7758c4a73c71.ctex"
+uid="uid://nmivj2pu4lp1"
+path="res://.godot/imported/reflex.png-d57a3d736ba7a5e68e81f73cdfbe136f.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/talents/reflex.svg"
-dest_files=["res://.godot/imported/reflex.svg-150fcbf1281b24c4d98d7758c4a73c71.ctex"]
+source_file="res://assets/ui/talents/reflex.png"
+dest_files=["res://.godot/imported/reflex.png-d57a3d736ba7a5e68e81f73cdfbe136f.ctex"]
 
 [params]
 
@@ -38,6 +38,3 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
-svg/scale=1.0
-editor/scale_with_editor_scale=false
-editor/convert_colors_with_editor_theme=false

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://gpw686k75lr5"
-path="res://.godot/imported/weights.svg-b04fe5c36085f8e5db9b9b826341b5d4.ctex"
+uid="uid://cajf3gqtdhyic"
+path="res://.godot/imported/bear.png-2806604f42eb0c448532f88973edbfdc.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/talents/weights.svg"
-dest_files=["res://.godot/imported/weights.svg-b04fe5c36085f8e5db9b9b826341b5d4.ctex"]
+source_file="res://assets/ui/abilities/bear.png"
+dest_files=["res://.godot/imported/bear.png-2806604f42eb0c448532f88973edbfdc.ctex"]
 
 [params]
 
@@ -38,6 +38,3 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
-svg/scale=1.0
-editor/scale_with_editor_scale=false
-editor/convert_colors_with_editor_theme=false

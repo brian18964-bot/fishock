@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bnpaewlt65jgp"
-path="res://.godot/imported/dog.svg-fc3a4888300cc381975b86aee95f57ab.ctex"
+uid="uid://bk7hyeambkplu"
+path="res://.godot/imported/grit.png-fe64b56ea60d2ad2a142496bd8ef363d.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/abilities/dog.svg"
-dest_files=["res://.godot/imported/dog.svg-fc3a4888300cc381975b86aee95f57ab.ctex"]
+source_file="res://assets/ui/talents/grit.png"
+dest_files=["res://.godot/imported/grit.png-fe64b56ea60d2ad2a142496bd8ef363d.ctex"]
 
 [params]
 
@@ -38,6 +38,3 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
-svg/scale=1.0
-editor/scale_with_editor_scale=false
-editor/convert_colors_with_editor_theme=false

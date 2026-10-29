@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dvbbwkjp1ocwl"
-path="res://.godot/imported/sheep.svg-0de7d8e18904945cc8aa0b0396146585.ctex"
+uid="uid://552wkcll8qq2"
+path="res://.godot/imported/weights.png-7f6a90c2aeaa3fe3d93f3449451c1855.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/abilities/sheep.svg"
-dest_files=["res://.godot/imported/sheep.svg-0de7d8e18904945cc8aa0b0396146585.ctex"]
+source_file="res://assets/ui/talents/weights.png"
+dest_files=["res://.godot/imported/weights.png-7f6a90c2aeaa3fe3d93f3449451c1855.ctex"]
 
 [params]
 
@@ -38,6 +38,3 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
-svg/scale=1.0
-editor/scale_with_editor_scale=false
-editor/convert_colors_with_editor_theme=false

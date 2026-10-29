@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://coxfvto5pctc"
-path="res://.godot/imported/lucky.svg-c61fc49e834d3284b5fcffb943ab7a34.ctex"
+uid="uid://dh26piyvkr4ls"
+path="res://.godot/imported/dog.png-bb300ed30cfa0aa06db86163a86c368f.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/talents/lucky.svg"
-dest_files=["res://.godot/imported/lucky.svg-c61fc49e834d3284b5fcffb943ab7a34.ctex"]
+source_file="res://assets/ui/abilities/dog.png"
+dest_files=["res://.godot/imported/dog.png-bb300ed30cfa0aa06db86163a86c368f.ctex"]
 
 [params]
 
@@ -38,6 +38,3 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
-svg/scale=1.0
-editor/scale_with_editor_scale=false
-editor/convert_colors_with_editor_theme=false
