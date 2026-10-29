@@ -6424,7 +6424,7 @@ func test_stats_gate_weak() -> void:
 	check(ok, "the stat affix number is within its tier's range (1~4 5~8 9~14 15~22 23~32)")
 	# Sums: the rod, plus a live strong fish; weak or dead ones give nothing.
 	var base_might := Stats.total("might")
-	check(base_might == Stats.rod_stat("might", Profile.rod_tier), "the rod alone: %d" % base_might)
+	check(base_might == Stats.rod_stat("might", Profile.rod_tier) + int(Profile.START_STATS.get(Profile.character, {}).get("might", 0)), "the rod and the starting stats: %d" % base_might)
 	var big := {"id": "carp", "name": "力魚", "vit": 1.0, "vit_life": 100.0, "fresh": 1.0, "fresh_life": 100.0, "dead": false, "rotten": false,
 		"life_traits": ["might"], "trait_tiers": {"might": 4}, "trait_vals": {"might": 20}}
 	GameState.carried_fish = [big]
@@ -6544,6 +6544,14 @@ func test_talents() -> void:
 	var base := {}
 	for st in ["react", "might", "resil", "endure", "luck"]:
 		base[st] = Stats.total(st)
+	var sums_ok := true
+	for c in Profile.CHARACTERS:
+		var sum := 0
+		for v in Profile.START_STATS.get(c[0], {}).values():
+			sum += int(v)
+		sums_ok = sums_ok and sum == 10
+	check(sums_ok, "every character starts with 10 points in all")
+	check(int(Stats.sources("react").filter(func(x): return x[0] == "起始素質").map(func(x): return x[1]).front()) == 3, "the deer's starting 反應 is told as a source")
 	check(Abilities.has("deer") and Abilities.active_kind() == "deer", "its own ability at first")
 	var expect := {"reflex": {"react": 10}, "weights": {"might": 10}, "leak": {"resil": 10}, "grit": {"endure": 10}, "lucky": {"luck": 10},
 		"tough": {"might": 5, "endure": 5}, "veteran": {"react": 5, "resil": 5}, "mood": {"react": 2, "might": 2, "resil": 2, "endure": 2, "luck": 2}}

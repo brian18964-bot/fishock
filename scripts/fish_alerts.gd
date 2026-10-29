@@ -10,9 +10,9 @@ extends CanvasLayer
 ## eye hides them all (and shows them again).
 
 const ALERT_AT := 0.30
-const AT := Vector2(8, 172)
-const CARD := Vector2(214, 56)
-const GAP := 6.0
+const AT := Vector2(8, 126)
+const CARD := Vector2(182, 48)
+const GAP := 5.0
 const MAX_SHOWN := 4
 const REFRESH := 0.25
 
@@ -35,7 +35,7 @@ func _ready() -> void:
 	add_child(_root)
 	_eye = Eye.new()
 	_eye.position = AT
-	_eye.size = Vector2(34, 30)
+	_eye.size = Vector2(30, 26)
 	_eye.visible = false
 	_eye.pressed.connect(_toggle_hidden)
 	_root.add_child(_eye)
@@ -90,7 +90,7 @@ func _layout() -> void:
 	for uid in _cards:
 		var card: AlertCard = _cards[uid]
 		card.visible = not _hidden and i < MAX_SHOWN
-		card.position = AT + Vector2(0, 36.0 + i * (CARD.y + GAP))
+		card.position = AT + Vector2(0, 31.0 + i * (CARD.y + GAP))
 		i += 1
 
 
@@ -170,7 +170,7 @@ class AlertCard extends Control:
 		queue_redraw()
 
 	func _close_rect() -> Rect2:
-		return Rect2(size.x - 26.0, 3.0, 22.0, 22.0)
+		return Rect2(size.x - 22.0, 3.0, 19.0, 19.0)
 
 	func _gui_input(event: InputEvent) -> void:
 		var pos := Vector2(-1, -1)
@@ -220,22 +220,21 @@ class AlertCard extends Control:
 		draw_style_box(UiKit.frame_box(true), Rect2(Vector2.ZERO, size))
 		var st := FishLife.state(fish)
 		var tex := FishData.icon(fish.get("id", ""), fish.get("name", ""))
-		var slot := Rect2(Vector2(6, 8), Vector2(40, 40))
+		var slot := Rect2(Vector2(5, 7), Vector2(34, 34))
 		UiKit.draw_slot(self, slot, UiKit.fish_rarity(fish), false, tex)
 		var name_col := Color.WHITE if st == "alive" else Color(0.75, 0.75, 0.8)
-		UiKit.draw_text(self, Vector2(54, 20), str(fish.get("name", "魚")), 15, name_col, HORIZONTAL_ALIGNMENT_LEFT, size.x - 84.0, true)
+		UiKit.draw_text(self, Vector2(46, 18), str(fish.get("name", "魚")), 13, name_col, HORIZONTAL_ALIGNMENT_LEFT, size.x - 72.0, true)
 		var bar := FishLife.bar(fish)
 		var label := "%s %d%%" % [bar.label, roundi(float(bar.share) * 100.0)]
 		var col: Color = FishVitals.FRESH_COLOR if bar.kind == "fresh" else (FishVitals.ROT_COLOR if bar.kind == "rotten" \
 			else FishVitals.VIT_COLOR.lerp(FishVitals.VIT_LOW, 1.0 - clampf(float(bar.share) * 3.0, 0.0, 1.0)))
 		if st == "rotten":
 			label = "腐敗了"
-		UiKit.draw_text(self, Vector2(54, 49), label, 12, UiKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, 70.0)
-		UiKit.draw_bar(self, Rect2(126, 36, size.x - 136.0, 12), float(bar.share), col)
-		# (the weak ones: marked)
+		UiKit.draw_text(self, Vector2(46, 42), label, 10, UiKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, 60.0)
+		UiKit.draw_bar(self, Rect2(106, 31, size.x - 116.0, 10), float(bar.share), col)
 		if fish.get("weak", false):
-			UiKit.draw_text(self, Vector2(54, 33), "虛弱", 11, Color(1.0, 0.55, 0.45), HORIZONTAL_ALIGNMENT_LEFT, 40.0)
+			UiKit.draw_text(self, Vector2(46, 30), "虛弱", 9, Color(1.0, 0.55, 0.45), HORIZONTAL_ALIGNMENT_LEFT, 40.0)
 		var x := _close_rect()
 		draw_rect(x, Color(0, 0, 0, 0.35))
-		draw_line(x.position + Vector2(6, 6), x.end - Vector2(6, 6), Color(1, 0.9, 0.8, 0.9), 2.0, true)
-		draw_line(Vector2(x.end.x - 6, x.position.y + 6), Vector2(x.position.x + 6, x.end.y - 6), Color(1, 0.9, 0.8, 0.9), 2.0, true)
+		draw_line(x.position + Vector2(5, 5), x.end - Vector2(5, 5), Color(1, 0.9, 0.8, 0.9), 2.0, true)
+		draw_line(Vector2(x.end.x - 5, x.position.y + 5), Vector2(x.position.x + 5, x.end.y - 5), Color(1, 0.9, 0.8, 0.9), 2.0, true)

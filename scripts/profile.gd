@@ -503,6 +503,25 @@ func tent_unlocked(tent: int) -> bool:
 	return false
 
 
+## User request: each character's starting stats (the five: 反應 react, 力量 might,
+## 韌性 resil, 耐力 endure, 幸運 luck) - 10 points each, spread by the animal's
+## nature. No levelling (everything after comes from the rod, talent, fish, gear).
+const START_STATS := {
+	"cat": {"react": 4, "luck": 3, "endure": 2, "resil": 1},
+	"owl": {"endure": 4, "react": 3, "resil": 2, "luck": 1},
+	"owl2": {"react": 4, "endure": 2, "luck": 2, "resil": 1, "might": 1},
+	"dog": {"react": 4, "resil": 3, "luck": 2, "endure": 1},
+	"dog3": {"endure": 4, "react": 2, "resil": 2, "might": 1, "luck": 1},
+	"bear": {"might": 5, "resil": 3, "endure": 2},
+	"bear2": {"might": 4, "endure": 3, "resil": 2, "react": 1},
+	"deer": {"react": 3, "endure": 3, "luck": 3, "resil": 1},
+	"deer2": {"luck": 4, "react": 3, "endure": 2, "resil": 1},
+	"sheep": {"endure": 3, "resil": 3, "luck": 2, "might": 1, "react": 1},
+	"sheep2": {"resil": 4, "endure": 3, "might": 2, "luck": 1},
+	"croc": {"might": 4, "resil": 4, "endure": 2},
+}
+
+
 ## User request (talents): the talent each character took in place of its own
 ## ability (Abilities.TALENTS ids; none: its own ability).
 var talents: Dictionary = {}

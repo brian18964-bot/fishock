@@ -104,17 +104,17 @@ func _build() -> void:
 		add_child(box)
 		track(box)
 	# User request: the character's five stats, each tapped for what it touches.
-	var head := UiKit.label("素質", 14, UiKit.GOLD, true)
-	head.position = Vector2(452, 176)
-	head.custom_minimum_size = Vector2(110, 0)
+	var head := UiKit.label("素質", 12, UiKit.GOLD, true)
+	head.position = Vector2(462, 180)
+	head.custom_minimum_size = Vector2(88, 0)
 	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(head)
 	for i in STAT_ORDER.size():
 		var row := StatRow.new()
 		row.stat = STAT_ORDER[i]
 		row.name = "Stat_" + STAT_ORDER[i]
-		row.position = Vector2(452, 200 + 45 * i)
-		row.size = Vector2(110, 40)
+		row.position = Vector2(462, 200 + 36 * i)
+		row.size = Vector2(88, 32)
 		row.pressed.connect(_show_stat)
 		add_child(row)
 		_stat_rows.append(row)
@@ -259,11 +259,11 @@ func _show_stat(stat: String) -> void:
 	var lines := []
 	var parts := []
 	for src in Stats.sources(stat, _packed()):
-		parts.append("%s %+d" % [src[0], src[1]])
-	lines.append("現在 %d　（%s）" % [Stats.total(stat, _packed()), "、".join(parts) if not parts.is_empty() else "沒有加成"])
+		parts.append("%s %d" % [src[0], src[1]])
+	lines.append("總和 %d　＝　%s" % [Stats.total(stat, _packed()), "　＋　".join(parts) if not parts.is_empty() else "0"])
 	lines.append(Stats.INFO[stat])
 	if stat != Stats.LUCK:
-		lines.append("加成來自：釣竿、天賦、裝備，和出發時帶在包包裡的活魚詞綴（虛弱或死掉的不算）。")
+		lines.append("起始素質是這個角色天生的（總和 10 點，依動物特質分配），其他來自釣竿、天賦、裝備，和出發時帶在包包裡的活魚詞綴（虛弱或死掉的不算）。")
 	var note := MenuStyle.notice(self, Stats.NAMES[stat], lines)
 	note.name = "StatNote"
 
@@ -356,8 +356,6 @@ class TentCard extends Control:
 class StatRow extends Control:
 	signal pressed(stat: String)
 
-	const COLORS := {"react": Color(0.95, 0.55, 0.45), "might": Color(0.55, 0.68, 0.9), "resil": Color(0.5, 0.82, 0.65),
-		"endure": Color(0.95, 0.78, 0.4), "luck": Color(0.6, 0.9, 0.55)}
 	var stat := ""
 	var value := 0
 
@@ -375,6 +373,5 @@ class StatRow extends Control:
 	func _draw() -> void:
 		var hot := get_global_rect().has_point(get_global_mouse_position())
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.25, 0.2, 0.08, 0.7) if hot else Color(0, 0, 0, 0.4))
-		draw_rect(Rect2(Vector2.ZERO, Vector2(4, size.y)), COLORS[stat])
-		UiKit.draw_text(self, Vector2(12, 26), Stats.NAMES[stat], 17, UiKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, 60.0, true)
-		UiKit.draw_text(self, Vector2(60, 26), str(value), 19, COLORS[stat], HORIZONTAL_ALIGNMENT_RIGHT, size.x - 68.0, true)
+		UiKit.draw_text(self, Vector2(8, 22), Stats.NAMES[stat], 14, UiKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, 50.0)
+		UiKit.draw_text(self, Vector2(50, 22), str(value), 15, UiKit.GOLD_BRIGHT, HORIZONTAL_ALIGNMENT_RIGHT, size.x - 58.0)

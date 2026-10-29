@@ -46,6 +46,9 @@ const CHALLENGE := 0.12
 ## that has it, the gear worn, what's been drunk or an event's.
 static func sources(stat: String, fish: Array = GameState.carried_fish) -> Array:
 	var out := []
+	var start := int(Profile.START_STATS.get(Profile.character, {}).get(stat, 0))
+	if start != 0:
+		out.append(["起始素質", start])
 	if stat in IDS:
 		out.append(["釣竿", rod_stat(stat, Profile.rod_tier)])
 		for f in fish:
