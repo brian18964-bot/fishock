@@ -402,10 +402,6 @@ func _show_selected(player: Player, items: Array, placed: Array) -> void:
 				_actions.add_child(_action("用在魚身上", func():
 					var panel := FishPickPanel.new("%s用在哪條魚身上？" % u.name, uid)
 					panel.picked.connect(func(index):
-						var affixes := FishLife.stat_affixes(GameState.carried_fish[index])
-						if uid == "affix_dropper" and affixes.size() > 1:
-							_pick_affix(index, affixes)
-							return
 						player.use_on_fish(uid, index)
 						_rebuild())
 					add_child(panel), GameState.carried_fish.is_empty()))
@@ -963,19 +959,3 @@ static func set_sticks_enabled(tree: SceneTree, enabled: bool) -> void:
 				stick._reset()  # let go of any touch it holds, or it'd stay pushed
 			stick.process_mode = Node.PROCESS_MODE_INHERIT if enabled else Node.PROCESS_MODE_DISABLED
 
-
-## User request (the dropper): which of a fish's stat affixes to redraw.
-func _pick_affix(index: int, affixes: Array) -> void:
-	var f: Dictionary = GameState.carried_fish[index]
-	var note := MenuStyle.notice(self, "洗哪一個詞綴？", ["只重抽選中詞綴的數值（在那一階的範圍內），詞綴本身不變。"])
-	note.name = "PickAffix"
-	for t in affixes:
-		var b := UiKit.button("%s +%d（這一階 %d～%d）" % [FishLife.TRAITS[t].name, int(FishLife.val_of(f, t)), FishLife.STAT_RANGES[FishLife.tier_of(f, t) - 1][0], FishLife.STAT_RANGES[FishLife.tier_of(f, t) - 1][1]], 15)
-		b.name = "Affix_" + t
-		b.custom_minimum_size = Vector2(0, 40)
-		var stat: String = t
-		b.pressed.connect(func():
-			note.queue_free()
-			_player().use_on_fish("affix_dropper", index, stat)
-			_rebuild())
-		note.get_child(0).get_child(0).add_child(b)

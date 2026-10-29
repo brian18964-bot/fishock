@@ -6497,14 +6497,15 @@ func test_stats_gate_weak() -> void:
 	var lucky := {"id": "carp", "vit": 1.0, "vit_life": 100.0, "fresh": 1.0, "fresh_life": 100.0, "dead": false, "rotten": false,
 		"life_traits": ["might", "react"], "trait_tiers": {"might": 4, "react": 1}, "trait_vals": {"might": 15, "react": 2}}
 	var seen := {}
+	var seen2 := {}
 	var in_range := true
-	for _i in 60:
+	for _i in 80:
 		var lines := []
-		check(FishLife.use_dropper(lucky, lines, "might") == "" and lines.size() == 1, "dropper redraws the one named")
+		check(FishLife.use_dropper(lucky, lines) == "" and lines.size() == 2, "dropper redraws every stat affix")
 		seen[int(lucky.trait_vals.might)] = true
-		in_range = in_range and lucky.trait_vals.might >= 15 and lucky.trait_vals.might <= 22
-	check(in_range and seen.size() > 2 and lucky.trait_vals.react == 2 and lucky.life_traits.size() == 2, "within the tier range, varying; the other affix and the list untouched")
-	check(FishLife.use_dropper(lucky, [], "endure") != "", "can't redraw an affix it doesn't have")
+		seen2[int(lucky.trait_vals.react)] = true
+		in_range = in_range and lucky.trait_vals.might >= 15 and lucky.trait_vals.might <= 22 and lucky.trait_vals.react >= 1 and lucky.trait_vals.react <= 4
+	check(in_range and seen.size() > 2 and seen2.size() > 1 and lucky.life_traits.size() == 2, "each within its own tier's range, varying; the affixes stay")
 	check(FishLife.use_dropper({"vit": 1.0}) != "", "no stat affix: refused")
 	# In a run: the needle on a carried dead fish, from the bag.
 	GameState.reset_run()

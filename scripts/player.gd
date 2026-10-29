@@ -1152,12 +1152,12 @@ func _tick_channel(delta: float) -> void:
 
 ## User request: 魚氧樹 / 冷凍土 used on the carried fish at `index`: it's
 ## taken from the bag and works on the fish (FishLife.use_oxy_tree/use_frozen).
-func use_on_fish(id: String, index: int, stat := "") -> bool:
+func use_on_fish(id: String, index: int) -> bool:
 	if Profile.bag_count(id) < 1 or index < 0 or index >= GameState.carried_fish.size():
 		return false
 	var fish: Dictionary = GameState.carried_fish[index]
 	var lines := []
-	var why := FishLife.apply_item(id, fish, lines, stat)
+	var why := FishLife.apply_item(id, fish, lines)
 	if why != "":
 		GameState.report(why, "warn")
 		return false

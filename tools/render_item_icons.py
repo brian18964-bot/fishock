@@ -309,6 +309,21 @@ def oxy_box():
     model_pic("oxy_box", (1, 1), (0, 0, -25))
 
 
+def vigor_feed():
+    """The vitality feed (tools/make_vigor_feed.py)."""
+    model_pic("vigor_feed", (1, 1), (15, 0, 25))
+
+
+def revive_needle():
+    """The revive needle (tools/make_revive_items.py)."""
+    model_pic("revive_needle", (1, 1), (0, 0, 35))
+
+
+def affix_dropper():
+    """The affix dropper bottle (tools/make_revive_items.py)."""
+    model_pic("affix_dropper", (1, 1), (0, 0, 20))
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     only = sys.argv[1:]

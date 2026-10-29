@@ -360,20 +360,6 @@ func _card_for(i: int, src := "tank") -> void:
 		vb.custom_minimum_size = Vector2(150, 38)
 		var use_id: String = item_id
 		vb.pressed.connect(func():
-			var affixes := FishLife.stat_affixes(f)
-			if use_id == "affix_dropper" and affixes.size() > 1:
-				var picks := []
-				for t in affixes:
-					var stat: String = t
-					picks.append(["%s +%d（這一階 %d～%d）" % [FishLife.TRAITS[t].name, int(FishLife.val_of(f, t)), FishLife.STAT_RANGES[FishLife.tier_of(f, t) - 1][0], FishLife.STAT_RANGES[FishLife.tier_of(f, t) - 1][1]],
-						func():
-							var out := []
-							if FishLife.apply_item("affix_dropper", f, out, stat) == "" and Profile.take_one("affix_dropper"):
-								_close()
-								_say("洗點滴瓶：%s　%s" % [f.get("name", "魚"), "、".join(out)])
-								_rebuild()])
-				_modal("洗哪一個詞綴？", ["只重抽選中詞綴的數值，詞綴本身不變。"], picks)
-				return
 			var lines := []
 			var why := FishLife.apply_item(use_id, f, lines)
 			if why == "" and Profile.take_one(use_id):

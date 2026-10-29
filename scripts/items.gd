@@ -143,7 +143,7 @@ static func model_path(id: String) -> String:
 		return "res://assets/models/fishing_rod_lvl%d.glb" % (int(id.substr(4)) + 1)
 	match id:
 		"flashlight", "battery", "roll", "loaf", "cheese", "ammo", "knife", "hatchet", "machete", "glock", \
-				"potion_vigor", "potion_ward", "eyeball", "eye_altar", "eye_ghost", "binoculars", "net", "glow_mushroom", "oxy_box", "shovel", "frozen_soil", "oxy_tree", "revive_needle", "affix_dropper":
+				"potion_vigor", "potion_ward", "eyeball", "eye_altar", "eye_ghost", "binoculars", "net", "glow_mushroom", "oxy_box", "shovel", "frozen_soil", "oxy_tree", "revive_needle", "affix_dropper", "vigor_feed":
 			return MODELS % id
 		"tea":
 			# User request: the tea in the user's cup.
@@ -169,7 +169,7 @@ static func square_icon(id: String) -> Texture2D:
 	var key := ""
 	if id.begins_with("rod_") or id in ["flashlight", "battery", "lamp", "tea", "roll", "loaf", "cheese", "ammo",
 			"knife", "hatchet", "machete", "glock", "potion_vigor", "potion_ward", "eyeball", "eye_altar", "eye_ghost",
-			"binoculars", "net", "glow_mushroom", "oxy_box", "oxy_tree", "frozen_soil", "shovel", "revive_needle", "affix_dropper"]:
+			"binoculars", "net", "glow_mushroom", "oxy_box", "oxy_tree", "frozen_soil", "shovel", "revive_needle", "affix_dropper", "vigor_feed"]:
 		key = id
 	elif id == "bait":
 		key = "worm"
