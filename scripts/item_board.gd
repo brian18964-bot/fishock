@@ -363,8 +363,9 @@ static func desc_lines(id: String) -> Array:
 	var def := Items.def(id)
 	var out := []
 	if id.begins_with("rod_"):
-		for part in Items.rod_effects(Profile.ROD_TIERS[int(id.substr(4))]).split("、"):
-			out.append([part, UiKit.TEXT])
+		var rt := int(id.substr(4))
+		for part in Items.rod_effects(Profile.ROD_TIERS[rt], rt).split("、"):
+			out.append([part, UiKit.GOLD_BRIGHT if part.begins_with("反應") else UiKit.TEXT])
 		out.append(["裝備：換上後，下一輪釣魚就用這支", UiKit.USE])
 	elif def.get("desc", "") != "":
 		out.append(["使用：" + def.desc, UiKit.USE])

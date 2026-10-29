@@ -53,7 +53,7 @@ static func def(id: String) -> Dictionary:
 			return {}
 		var r: Dictionary = Profile.ROD_TIERS[tier]
 		return {"name": r.name, "tab": "gear", "size": Vector2i(3, 1), "stack": 1, "slot": "rod",
-			"icon": ICONS % id, "desc": rod_effects(r), "tier": tier}
+			"icon": ICONS % id, "desc": rod_effects(r, tier), "tier": tier}
 	if id == "flashlight":
 		return {"name": "手電筒", "tab": "gear", "size": Vector2i(2, 1), "stack": 1, "slot": "light",
 			"icon": ICONS % id, "desc": "遠距離窄光束，用電池；裝備後才能在遊戲裡切換使用"}
@@ -187,8 +187,15 @@ static func texture(path: String) -> Texture2D:
 	return _icons[path]
 
 
-static func rod_effects(rod: Dictionary) -> String:
-	var parts := ["張力上限 x%.2f" % rod.strength]
+static func rod_effects(rod: Dictionary, tier := -1) -> String:
+	var parts := []
+	# (user request: the stats it gives, told before it's bought)
+	if tier >= 0:
+		var st := []
+		for stat in ["react", "might", "resil", "endure"]:
+			st.append("%s +%d" % [Stats.NAMES[stat], Stats.rod_stat(stat, tier)])
+		parts.append("　".join(st))
+	parts.append("張力上限 x%.2f" % rod.strength)
 	if rod.window > 1.0:
 		parts.append("揚竿時間 +%d%%" % roundi((rod.window - 1.0) * 100.0))
 	if rod.jump < 1.0:

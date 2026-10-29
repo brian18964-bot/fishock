@@ -88,6 +88,7 @@ const TESTS := [
 	"test_affixes",
 	"test_stats_gate_weak",
 	"test_talents",
+	"test_rods_and_stats_page",
 	"test_camp_spirit_and_tents",
 	"test_camp_life",
 	"test_ears_and_tails",
@@ -6585,5 +6586,42 @@ func test_talents() -> void:
 	(page.find_child("Talent_grit", true, false) as BaseButton).pressed.emit()
 	await frames(2)
 	check(Profile.talent_of("deer") == "grit", "taking a talent on the page")
+	page.queue_free()
+	Profile.load_data(saved)
+
+
+func test_rods_and_stats_page() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 5000})
+	# Any rod, any time: no need for the one before.
+	check(Profile.buy_rod(4) and Profile.owned("rod_4") > 0 and Profile.gold == 5000 - int(Profile.ROD_TIERS[4].cost), "the best rod bought straight away")
+	check(not Profile.buy_rod(4), "not twice")
+	check(Profile.buy_rod(2) and Profile.owned("rod_2") > 0, "and a middle one after")
+	# The stats a rod gives are told before it's bought.
+	var lines := ItemBoard.desc_lines("rod_3")
+	var told := lines.any(func(l): return str(l[0]).contains("反應 +") and str(l[0]).contains("力量 +") and str(l[0]).contains("韌性 +") and str(l[0]).contains("耐力 +"))
+	check(told, "the rod's four stats are listed")
+	check(Items.def("rod_1").desc.contains("反應 +%d" % Stats.rod_stat("react", 1)), "with the numbers the rod gives")
+	# The shop offers every rod to buy (no 'buy the one before')
+	var shop: Control = load("res://scenes/shop.tscn").instantiate()
+	get_tree().root.add_child(shop)
+	await frames(3)
+	shop._show_tab("gear")
+	await frames(3)
+	var cards: Array = shop._grid.get_children()
+	check(not cards.is_empty(), "the shop's gear tab")
+	shop.queue_free()
+	# The equipment page: five stat rows, each with its card.
+	Profile.load_data({"gold": 0, "character": "cat"})
+	Profile.set_talent("cat", "lucky")
+	var page: Control = load("res://scenes/equipment.tscn").instantiate()
+	get_tree().root.add_child(page)
+	await frames(3)
+	for st in ["react", "might", "resil", "endure", "luck"]:
+		check(page.find_child("Stat_" + st, true, false) != null, "stat row " + st)
+	check(page.find_child("Stat_luck", true, false).value == 10, "幸運 +10 from the talent shown")
+	page._show_stat("luck")
+	await frames(2)
+	check(page.find_child("StatNote", true, false) != null, "tapping a stat tells what it touches")
 	page.queue_free()
 	Profile.load_data(saved)

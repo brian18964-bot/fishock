@@ -176,17 +176,12 @@ func _refresh() -> void:
 			for t in Profile.ROD_TIERS.size():
 				var r: Dictionary = Profile.ROD_TIERS[t]
 				var id: String = "rod_%d" % t
-				if t <= Profile.rods_owned and Profile.owned(id) > 0:
+				if Profile.owned(id) > 0:
 					_card(id, Items.icon(id), r.name, "使用中" if t == Profile.rod_tier else "已擁有", 0,
 						func(): buy_dialog(id, 0, "已經擁有了（到裝備頁或倉庫換上）"))
-				elif t <= Profile.rods_owned:
-					# (user request: worn out and broken - bought again)
-					_card(id, Items.icon(id), r.name, "已損壞・重買", int(r.cost), func(): buy_dialog(id, int(r.cost)))
-				elif t == Profile.rods_owned + 1:
-					_card(id, Items.icon(id), r.name, "", int(r.cost), func(): buy_dialog(id, int(r.cost)))
 				else:
-					_card(id, Items.icon(id), r.name, "先買前一支", int(r.cost),
-						func(): buy_dialog(id, int(r.cost), "要先買前一支釣竿（%s）" % Profile.ROD_TIERS[t - 1].name))
+					# (user request: any rod, any time - no need to buy the one before)
+					_card(id, Items.icon(id), r.name, "", int(r.cost), func(): buy_dialog(id, int(r.cost)))
 			_card("lamp", load(LAMP_ICON), "煤燈", "隨身・免費", 0, func(): _lamp_card())
 			if Profile.owned("flashlight") > 0:
 				_card("flashlight", Items.icon("flashlight"), "手電筒", "已擁有", 0,
@@ -964,7 +959,7 @@ func buy(id: String, n: int, where: String) -> int:
 			ok = Profile.buy_usable(id)
 		elif id.begins_with("rod_"):
 			var tier := int(id.substr(4))
-			ok = Profile.buy_rod(tier if tier <= Profile.rods_owned else -1)
+			ok = Profile.buy_rod(tier)
 		if not ok:
 			break
 		bought += 1

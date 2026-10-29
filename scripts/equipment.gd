@@ -19,24 +19,26 @@ extends ItemBoard
 ## character's window narrower, and on the right one window with two tabs,
 ## the warehouse's gear (big boxes, scrolled) or the bag.
 
-const CHAR_WIDTH := 360.0
+const CHAR_WIDTH := 560.0
 const STORAGE_CELL := 100.0
-const BAG_CELL := 64.0
+const BAG_CELL := 40.0
+const STAT_ORDER := ["react", "might", "resil", "endure", "luck"]
 
 const SLOT_LAYOUT := [
 	["hat", "帽子", Rect2(32, 106, 66, 66), true],
 	["top", "上衣", Rect2(32, 182, 66, 66), true],
 	["pack", "背包", Rect2(32, 258, 66, 66), true],
-	["rod", "主手・釣竿", Rect2(32, 442, 158, 70), false],
-	["light", "燈具", Rect2(196, 442, 160, 70), false],
+	["rod", "主手・釣竿", Rect2(32, 442, 200, 70), false],
+	["light", "燈具", Rect2(244, 442, 200, 70), false],
 	# User request: the off hand - a weapon (Profile.WEAPONS) or the
 	# landing net, one of them.
-	["offhand", "副手", Rect2(290, 106, 66, 66), false],
+	["offhand", "副手", Rect2(474, 106, 66, 66), false],
 ]
 
 var _viewer: CharacterViewer
 var _purse: PanelContainer
 var _stats: Label
+var _stat_rows: Array = []
 var _storage: ItemBoard.StorageGrid
 var _bag: ItemBoard.BagGrid
 var _tab := "gear"
@@ -86,14 +88,14 @@ func _build() -> void:
 	var glow := TextureRect.new()
 	glow.texture = UiKit.glow()
 	glow.modulate = Color(1.0, 0.62, 0.3, 0.22)
-	glow.position = Vector2(34, 100)
-	glow.size = Vector2(320, 320)
+	glow.position = Vector2(110, 90)
+	glow.size = Vector2(340, 340)
 	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(glow)
 	_viewer = CharacterViewer.new()
-	_viewer.position = Vector2(44, 96)
-	_viewer.size = Vector2(300, 318)
-	_viewer.zoom = 0.9
+	_viewer.position = Vector2(110, 90)
+	_viewer.size = Vector2(340, 340)
+	_viewer.zoom = 0.95
 	add_child(_viewer)
 	for s in SLOT_LAYOUT:
 		var box := ItemBoard.SlotBox.new(s[0], s[1], s[3])
@@ -101,6 +103,21 @@ func _build() -> void:
 		box.size = s[2].size
 		add_child(box)
 		track(box)
+	# User request: the character's five stats, each tapped for what it touches.
+	var head := UiKit.label("素質", 14, UiKit.GOLD, true)
+	head.position = Vector2(452, 176)
+	head.custom_minimum_size = Vector2(110, 0)
+	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	add_child(head)
+	for i in STAT_ORDER.size():
+		var row := StatRow.new()
+		row.stat = STAT_ORDER[i]
+		row.name = "Stat_" + STAT_ORDER[i]
+		row.position = Vector2(452, 200 + 45 * i)
+		row.size = Vector2(110, 40)
+		row.pressed.connect(_show_stat)
+		add_child(row)
+		_stat_rows.append(row)
 	_stats = UiKit.label("", 14, UiKit.TEXT)
 	_stats.position = Vector2(32, 412)
 	_stats.custom_minimum_size = Vector2(CHAR_WIDTH - 36.0, 0)
@@ -130,10 +147,10 @@ func _build() -> void:
 	_storage_scroll = DragScroll.new()
 	_storage_scroll.name = "StorageScroll"
 	_storage_scroll.sideways_free = true
-	_storage_scroll.custom_minimum_size = Vector2(STORAGE_CELL * 5.0 + 4.0, 0)
+	_storage_scroll.custom_minimum_size = Vector2(STORAGE_CELL * 3.0 + 4.0, 0)
 	_storage_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_storage_scroll.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_storage = ItemBoard.StorageGrid.new(5, STORAGE_CELL, 3)
+	_storage = ItemBoard.StorageGrid.new(3, STORAGE_CELL, 3)
 	_storage.name = "Storage"
 	_storage.tab = "gear"
 	_storage_scroll.add_child(_storage)
@@ -163,11 +180,18 @@ func _build() -> void:
 	var camp_col: VBoxContainer = made4[1]
 	_tent_grid = GridContainer.new()
 	_tent_grid.name = "Tents"
-	_tent_grid.columns = 3
+	_tent_grid.columns = 2
 	_tent_grid.add_theme_constant_override("h_separation", 6)
 	_tent_grid.add_theme_constant_override("v_separation", 6)
 	_tent_grid.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	camp_col.add_child(_tent_grid)
+	var tent_scroll := DragScroll.new()
+	tent_scroll.name = "TentScroll"
+	tent_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	tent_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	tent_scroll.custom_minimum_size = Vector2(300, 0)
+	tent_scroll.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	tent_scroll.add_child(_tent_grid)
+	camp_col.add_child(tent_scroll)
 	_tent_note = UiKit.label("達成成就解鎖新帳篷（只改變營地外觀）；點一下已解鎖的就會搭起來", 13, UiKit.DIM)
 	_tent_note.name = "TentNote"
 	_tent_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -225,8 +249,30 @@ func _on_tent(i: int) -> void:
 		_tent_note.text = "%s 還沒解鎖：%s（目前 %s）" % [t[1], t[2], TentCard.amount(t, p[0])]
 
 
+## The fish packed in the bag at home that would count on a run (alive, not weak).
+func _packed() -> Array:
+	return Profile.pack_fish.filter(func(f): return FishLife.stats_count(f))
+
+
+## A stat's card: its number and where it comes from, and what it touches.
+func _show_stat(stat: String) -> void:
+	var lines := []
+	var parts := []
+	for src in Stats.sources(stat, _packed()):
+		parts.append("%s %+d" % [src[0], src[1]])
+	lines.append("現在 %d　（%s）" % [Stats.total(stat, _packed()), "、".join(parts) if not parts.is_empty() else "沒有加成"])
+	lines.append(Stats.INFO[stat])
+	if stat != Stats.LUCK:
+		lines.append("加成來自：釣竿、天賦、裝備，和出發時帶在包包裡的活魚詞綴（虛弱或死掉的不算）。")
+	var note := MenuStyle.notice(self, Stats.NAMES[stat], lines)
+	note.name = "StatNote"
+
+
 func _refresh() -> void:
 	UiKit.set_purse(_purse, Profile.gold)
+	for row in _stat_rows:
+		row.value = Stats.total(row.stat, _packed())
+		row.queue_redraw()
 	_stats.text = Items.rod_effects(Profile.rod()).replace("、", "　・　")
 	if _tent_grid != null:
 		for c in _tent_grid.get_children():
@@ -304,3 +350,31 @@ class TentCard extends Control:
 			HORIZONTAL_ALIGNMENT_CENTER, size.x)
 		if not open:
 			UiKit.draw_bar(self, Rect2(14, 104, size.x - 28, 11), p[0] / maxf(p[1], 1.0), Color(0.85, 0.62, 0.25))
+
+
+## One stat on the page: its name and number, tapped for its card.
+class StatRow extends Control:
+	signal pressed(stat: String)
+
+	const COLORS := {"react": Color(0.95, 0.55, 0.45), "might": Color(0.55, 0.68, 0.9), "resil": Color(0.5, 0.82, 0.65),
+		"endure": Color(0.95, 0.78, 0.4), "luck": Color(0.6, 0.9, 0.55)}
+	var stat := ""
+	var value := 0
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_STOP
+		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		mouse_entered.connect(queue_redraw)
+		mouse_exited.connect(queue_redraw)
+
+	func _gui_input(event: InputEvent) -> void:
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
+			pressed.emit(stat)
+			accept_event()
+
+	func _draw() -> void:
+		var hot := get_global_rect().has_point(get_global_mouse_position())
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.25, 0.2, 0.08, 0.7) if hot else Color(0, 0, 0, 0.4))
+		draw_rect(Rect2(Vector2.ZERO, Vector2(4, size.y)), COLORS[stat])
+		UiKit.draw_text(self, Vector2(12, 26), Stats.NAMES[stat], 17, UiKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, 60.0, true)
+		UiKit.draw_text(self, Vector2(60, 26), str(value), 19, COLORS[stat], HORIZONTAL_ALIGNMENT_RIGHT, size.x - 68.0, true)

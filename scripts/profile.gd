@@ -756,23 +756,17 @@ func next_rod() -> Dictionary:
 	return ROD_TIERS[rods_owned + 1] if rods_owned + 1 < ROD_TIERS.size() else {}
 
 
-## Buys the next rod (into the warehouse; the shop asks where it goes) -
-## or, `tier` given, one bought before that broke.
+## Buys a rod (into the warehouse; the shop asks where it goes) - any tier at
+## any time (user request: save up and buy the best straight away); none given:
+## the next one up. False if it's already owned (or the gold's short).
 func buy_rod(tier := -1) -> bool:
-	if tier >= 0 and tier <= rods_owned:
-		if owned("rod_%d" % tier) > 0 or gold < int(ROD_TIERS[tier].cost):
-			return false
-		_spend(int(ROD_TIERS[tier].cost))
-		_store("rod_%d" % tier, 1)
-		gold_updated.emit(gold)
-		_changed()
-		return true
-	var next := next_rod()
-	if next.is_empty() or gold < int(next.cost):
+	if tier < 0:
+		tier = rods_owned + 1
+	if tier >= ROD_TIERS.size() or owned("rod_%d" % tier) > 0 or gold < int(ROD_TIERS[tier].cost):
 		return false
-	_spend(int(next.cost))
-	rods_owned += 1
-	_store("rod_%d" % rods_owned, 1)
+	_spend(int(ROD_TIERS[tier].cost))
+	rods_owned = maxi(rods_owned, tier)
+	_store("rod_%d" % tier, 1)
 	gold_updated.emit(gold)
 	_changed()
 	return true

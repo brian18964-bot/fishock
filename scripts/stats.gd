@@ -44,11 +44,11 @@ const CHALLENGE := 0.12
 
 ## [[where from, number], ...] for `stat`: the rod, each fish carried alive
 ## that has it, the gear worn, what's been drunk or an event's.
-static func sources(stat: String) -> Array:
+static func sources(stat: String, fish: Array = GameState.carried_fish) -> Array:
 	var out := []
 	if stat in IDS:
 		out.append(["釣竿", rod_stat(stat, Profile.rod_tier)])
-		for f in GameState.carried_fish:
+		for f in fish:
 			if FishLife.stats_count(f) and FishLife.has_trait(f, stat):
 				out.append([str(f.get("name", "魚")), int(FishLife.val_of(f, stat))])
 	var talent := Abilities.talent_stat(stat)
@@ -69,9 +69,9 @@ static func sources(stat: String) -> Array:
 	return out
 
 
-static func total(stat: String) -> int:
+static func total(stat: String, fish: Array = GameState.carried_fish) -> int:
 	var n := 0
-	for s in sources(stat):
+	for s in sources(stat, fish):
 		n += int(s[1])
 	return clampi(n, 0, CAP)
 
@@ -102,3 +102,13 @@ static func all() -> Dictionary:
 	for s in IDS:
 		out[s] = total(s)
 	return out
+
+
+## What each stat touches in the game, for the equipment page's cards.
+const INFO := {
+	"react": "趕上盜餌快、咬了就跑的魚：鱒類、香魚、沙丁魚等機敏的魚和成群游的小魚。不夠的時候，連揚竿的機會都來不及。",
+	"might": "拉住力氣大的魚：鯰類、鱘、鱈、石斑等重型的魚，還有各種長得特別大的魚。不夠的時候，魚一衝就把竿子拉走了。",
+	"resil": "魚線承受得住帶牙的魚：鱸、烏鱧、梭魚、食人魚、海鰻、鎚頭鯊。不夠的時候，一咬餌線就被扯斷。",
+	"endure": "長時間搏鬥的體力：鰻、鬼頭刀、紅鮭、旗魚、鮪等會一直拉扯的魚。不夠的時候，手臂先酸掉。",
+	"luck": "稀有魚出現的機率（每點 +0.5%）、稀有魚再升級成傳說魚的機率（每點 +1%）。不影響能不能釣起來。",
+}
