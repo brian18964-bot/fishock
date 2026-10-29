@@ -19,15 +19,26 @@ const ORDER := ["react", "might", "resil", "endure"]
 const CAP := 200
 
 
-## What the rod gives each stat: the wooden one's 10, 10 more a tier.
-static func rod_base(tier: int) -> int:
-	return 10 + 10 * maxi(tier, 0)
+## What each rod gives, by its tier ([react, might, resil, endure] - the same
+## total as 10 a stat +10 a tier, but leaning): the wooden one balanced, the glass
+## quick, the carbon tough and enduring, the sea rod strong and enduring, the
+## gold one best at all and strongest in might and resilience.
+const ROD_STATS := [[10, 10, 10, 10], [32, 14, 14, 20], [20, 20, 44, 36], [20, 56, 32, 52], [40, 60, 52, 48]]
+
+
+static func rod_stat(stat: String, tier: int) -> int:
+	return ROD_STATS[clampi(tier, 0, ROD_STATS.size() - 1)][ORDER.find(stat)]
+
+
+## How far short of a gate (the share of the need) still lets you try the
+## fish: 12 %, the fight harder by the gap (Player).
+const CHALLENGE := 0.12
 
 
 ## [[where from, number], ...] for `stat`: the rod, each fish carried alive
 ## that has it, the gear worn, what's been drunk or an event's.
 static func sources(stat: String) -> Array:
-	var out := [["釣竿", rod_base(Profile.rod_tier)]]
+	var out := [["釣竿", rod_stat(stat, Profile.rod_tier)]]
 	for f in GameState.carried_fish:
 		if FishLife.stats_count(f) and FishLife.has_trait(f, stat):
 			out.append([str(f.get("name", "魚")), int(FishLife.val_of(f, stat))])
@@ -53,15 +64,25 @@ static func total(stat: String) -> int:
 	return clampi(n, 0, CAP)
 
 
-## The first stat (in the fight's order) that `need` ({stat: number}) isn't
-## met by: {stat, gap (the share of the need it's short)}; {} if all are met.
+## The first stat (in the fight's order) that `need` ({stat: number}) is out
+## of reach of - short by more than CHALLENGE: {stat, gap (the share of the need
+## it's short)}; {} if every one is met or within the challenge range.
 static func shortfall(need: Dictionary) -> Dictionary:
 	for s in ORDER:
 		if need.has(s):
-			var have := total(s)
-			if have < int(need[s]):
-				return {"stat": s, "gap": float(int(need[s]) - have) / float(need[s])}
+			var gap := float(int(need[s]) - total(s)) / float(need[s])
+			if gap > CHALLENGE:
+				return {"stat": s, "gap": gap}
 	return {}
+
+
+## The most any stat is short but within the challenge range (0: all met).
+static func soft_gap(need: Dictionary) -> float:
+	var worst := 0.0
+	for s in ORDER:
+		if need.has(s):
+			worst = maxf(worst, float(int(need[s]) - total(s)) / float(need[s]))
+	return clampf(worst, 0.0, CHALLENGE)
 
 
 static func all() -> Dictionary:

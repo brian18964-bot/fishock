@@ -6421,7 +6421,7 @@ func test_stats_gate_weak() -> void:
 	check(ok, "the stat affix number is within its tier's range (1~4 5~8 9~14 15~22 23~32)")
 	# Sums: the rod, plus a live strong fish; weak or dead ones give nothing.
 	var base_might := Stats.total("might")
-	check(base_might == Stats.rod_base(Profile.rod_tier), "the rod alone: %d" % base_might)
+	check(base_might == Stats.rod_stat("might", Profile.rod_tier), "the rod alone: %d" % base_might)
 	var big := {"id": "carp", "name": "力魚", "vit": 1.0, "vit_life": 100.0, "fresh": 1.0, "fresh_life": 100.0, "dead": false, "rotten": false,
 		"life_traits": ["might"], "trait_tiers": {"might": 4}, "trait_vals": {"might": 20}}
 	GameState.carried_fish = [big]
@@ -6440,6 +6440,14 @@ func test_stats_gate_weak() -> void:
 	var giant := FishData.gate_for("carp", "common", float(FishData.LENGTH_CM["carp"][1]))
 	check(giant.size() == 1, "a giant asks one")
 	check(FishData.gate_for("carp", "common", float(FishData.LENGTH_CM["carp"][0])).is_empty(), "a small common fish asks none")
+	# (the rod's stats lean; a challenge range of 12% lets a near miss be tried)
+	check(Stats.rod_stat("react", 1) > Stats.rod_stat("might", 1) and Stats.rod_stat("might", 4) > Stats.rod_stat("react", 4), "rods lean: glass quick, gold strong")
+	var have_m := Stats.total("might")
+	var near := have_m + 1
+	check(Stats.shortfall({"might": near}).is_empty() and Stats.soft_gap({"might": near}) > 0.0, "within the challenge range: may be tried, a gap noted")
+	check(not Stats.shortfall({"might": int(have_m / 0.8)}).is_empty(), "past it: out of reach")
+	check(FishData.gate_for("wels", "legend", 250.0).size() == 3 or FishData.gate_for("swordfish", "legend", 350.0).size() == 3, "a legend asks three")
+	check(FishData.gate_stats("wels").slice(0, 2) == ["might", "endure"] and FishData.gate_stats("pike")[0] == "resil" and FishData.gate_stats("ayu")[0] == "react", "stats by nature")
 	var short := Stats.shortfall({"might": 500})
 	check(short.get("stat", "") == "might" and short.gap > 0.0, "short stat found")
 	check(Stats.shortfall({"might": 1}).is_empty(), "met: nothing short")

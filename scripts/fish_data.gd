@@ -510,11 +510,38 @@ static func value_for_length(id: String, base: float, length: float) -> float:
 
 ## User request (the gate): a fish too big or too rare for the stats carried
 ## can't be landed. A giant (a common or rare fish in the top of its length
-## range) asks one stat, an epic one two, a legend three - which ones fixed by
-## the species, so a kind always asks the same; the number by how big it is.
-## Failing the first of them the fight meets (Stats.ORDER) ends it (Player).
-const GATE_BASE := {"giant": 30, "epic": 50, "legend": 70}
+## range) asks one stat, an epic one two, a legend three - each species' own
+## (by its nature: GATE_STATS), so a kind always asks the same; the number by
+## how big it is, between the band of its kind. Short by up to
+## Stats.CHALLENGE it can still be tried (harder); past that it's over (Player).
+## [lowest, highest] the single stat asks.
+const GATE_BANDS := {"giant": [25, 40], "giant_rare": [35, 55], "epic": [50, 80], "legend": [80, 120]}
 const GIANT_FROM := 0.85
+
+## Each species' main stat, by its nature: 反應 the quick, skittish and
+## shoaling; 力量 the heavy and bottom-dwelling; 韌性 the toothed that cut a line;
+## 耐力 the long runners and leapers.
+const GATE_MAIN := {
+	"react": ["rainbow_trout", "brown_trout", "brook_trout", "grayling", "ayu", "golden_trout", "char", "minnow",
+		"bluegill", "crucian", "smelt", "sardine", "saury", "herring", "horse_mackerel", "mackerel", "croaker",
+		"whitefish", "pupfish", "garra", "devils_pupfish", "desert_sucker", "bonytail", "angelfish", "betta",
+		"cavefish", "puffer", "perch", "climbing_perch", "sculpin", "goby", "loach", "crayfish"],
+	"might": ["carp", "grass_carp", "tilapia", "catfish", "black_catfish", "wels", "sturgeon", "paddlefish", "lungfish",
+		"channel_cat", "walking_catfish", "pleco", "flounder", "cod", "burbot", "golden_koi", "giant_goldfish",
+		"coelacanth", "grouper", "arapaima", "napoleon", "sunfish", "bichir", "sea_bream"],
+	"resil": ["bass", "snakehead", "bowfin", "ghost_fish", "piranha", "oscar", "pike", "taimen", "alligator_gar",
+		"cutlassfish", "conger", "scorpionfish", "two_headed_carp", "hammerhead", "trevally", "arowana"],
+	"endure": ["eel", "swamp_eel", "sea_bass", "yellowtail", "mahi", "sockeye", "arctic_char", "silver_carp",
+		"mullet", "sailfish", "swordfish", "bluefin"],
+}
+## The second (and third) stats the epic and legend fish ask besides their main.
+const GATE_EXTRA := {
+	"golden_trout": ["resil"], "ghost_fish": ["react"], "wels": ["endure"], "arapaima": ["resil"],
+	"coelacanth": ["endure"], "alligator_gar": ["might"], "taimen": ["endure"], "golden_koi": ["react"],
+	"two_headed_carp": ["might"], "devils_pupfish": ["endure"], "trevally": ["react"], "napoleon": ["resil"],
+	"sunfish": ["endure"], "sailfish": ["react"], "hammerhead": ["might"],
+	"swordfish": ["resil", "react"], "bluefin": ["might", "react"],
+}
 
 
 ## Where `length` falls in the species' range (0 the shortest .. 1 the
@@ -524,29 +551,48 @@ static func length_q(id: String, length: float) -> float:
 	return (length - float(span[0])) / maxf(float(span[1]) - float(span[0]), 1.0)
 
 
+static func gate_stats(id: String) -> Array:
+	var out := []
+	for stat in GATE_MAIN:
+		if id in GATE_MAIN[stat]:
+			out.append(stat)
+	if out.is_empty():
+		# (a kind not listed: by its name)
+		out.append(Stats.IDS[(id.hash() % 9973) % Stats.IDS.size()])
+	out.append_array(GATE_EXTRA.get(id, []))
+	# (a fish made a legend or epic without its own extras: others, by its name)
+	var rest := Stats.IDS.filter(func(t): return not t in out)
+	rest.sort_custom(func(a, b): return (id + a).hash() % 9973 < (id + b).hash() % 9973)
+	out.append_array(rest)
+	return out
+
+
 ## {stat: number needed} for a catch of `id` (rarity as UiKit.fish_rarity says:
 ## common, rare, epic, legend) and `length`; {} for a fish with no gate.
 static func gate_for(id: String, rarity: String, length: float) -> Dictionary:
 	var q := length_q(id, length)
 	var level := ""
+	var t := 0.0
 	match rarity:
 		"legend":
 			level = "legend"
+			t = clampf(q / 1.12, 0.0, 1.0)
 		"epic":
 			level = "epic"
+			t = clampf(q / 1.12, 0.0, 1.0)
 		_:
 			if q >= GIANT_FROM:
-				level = "giant"
+				level = "giant_rare" if rarity == "rare" else "giant"
+				t = clampf((q - GIANT_FROM) / (1.12 - GIANT_FROM), 0.0, 1.0)
 	if level == "":
 		return {}
-	var count: int = {"giant": 1, "epic": 2, "legend": 3}[level]
-	# (the species' own order of the four)
-	var order := Stats.IDS.duplicate()
-	order.sort_custom(func(a, b): return (id + a).hash() % 9973 < (id + b).hash() % 9973)
-	var need := roundi(float(GATE_BASE[level]) * lerpf(0.85, 1.15, clampf(q, 0.0, 1.12) / 1.12))
+	var band: Array = GATE_BANDS[level]
+	var need := roundi(lerpf(float(band[0]), float(band[1]), t))
+	var count: int = {"giant": 1, "giant_rare": 1, "epic": 2, "legend": 3}[level]
+	var stats := gate_stats(id)
 	var out := {}
-	for i in count:
-		out[order[i]] = need
+	for i in mini(count, stats.size()):
+		out[stats[i]] = need
 	return out
 
 

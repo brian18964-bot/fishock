@@ -2629,7 +2629,7 @@ func _update_fishing(delta: float) -> void:
 			var moving := velocity.length() > 1.0
 			var reel_mult := MOVE_REEL_PENALTY if moving and fight.run_side == Vector2.ZERO else 1.0
 			var line_dir := (cast_target - global_position).normalized()
-			fight.strain = VIGOR_STRAIN if vigor_timer > 0.0 else 1.0
+			fight.strain = (VIGOR_STRAIN if vigor_timer > 0.0 else 1.0) * (1.0 + _gate_soft * 4.0)
 			fight.hold = _is_action_pressed()
 			for ev in fight.update(delta, crank, _counter_dir(), line_dir, reel_mult):
 				_on_fight_event(ev)
@@ -3088,6 +3088,8 @@ var _snap_at := -1.0
 var _plan := {}
 var _gate_stat := ""
 var _gate_gap := 0.0
+## Short of the gate but within the challenge range: how far (the fight's harder).
+var _gate_soft := 0.0
 var _gate_left := -1.0
 const GATE_AT := {"might": 1.2, "resil": 0.7, "endure": 10.0}
 
@@ -3097,14 +3099,17 @@ const GATE_AT := {"might": 1.2, "resil": 0.7, "endure": 10.0}
 func _gate_check() -> bool:
 	_gate_stat = ""
 	_gate_left = -1.0
+	_gate_soft = 0.0
 	_plan = {}
 	if fish_id == "" or is_heart_catch:
 		return false
 	var size_key := Inventory.size_for_catch(current_tier, is_epic_catch)
 	_plan = FishData.measure(fish_id, size_key)
 	var rarity := UiKit.fish_rarity({"id": fish_id, "rarity": "epic" if is_epic_catch else ("rare" if is_rare_catch else "common")})
-	var short := Stats.shortfall(FishData.gate_for(fish_id, rarity, float(_plan.length)))
+	var need := FishData.gate_for(fish_id, rarity, float(_plan.length))
+	var short := Stats.shortfall(need)
 	if short.is_empty():
+		_gate_soft = Stats.soft_gap(need)
 		return false
 	_gate_stat = short.stat
 	_gate_gap = float(short.gap)
@@ -3140,6 +3145,8 @@ func _hook_fish(perfect := false) -> void:
 	tension = fight.tension
 	fish_run_active_time = 0.0
 	var hold := "按住右搖桿" if DisplayServer.is_touchscreen_available() else "按住空白鍵"
+	if _gate_soft > 0.0:
+		GameState.push_message("這條魚有點超出你的能耐……勉強撐住，張力會升得更快")
 	if perfect:
 		GameState.push_message("完美揚竿！魚掉了一截體力——先%s頂住，看張力再收線" % hold)
 	else:
@@ -3167,7 +3174,7 @@ const HEFT_EPIC := 0.15
 
 
 func fish_heft() -> float:
-	var h: float = HEFT_DIFFICULTY.get(difficulty_key, 0.0)
+	var h: float = HEFT_DIFFICULTY.get(difficulty_key, 0.0) + _gate_soft * 1.5
 	h += float(HEFT_SIZE.get(Inventory.size_for_catch(current_tier, is_epic_catch), 0.0))
 	h += float(HEFT_TRAIT.get(fish_trait, 0.0))
 	if is_epic_catch:
