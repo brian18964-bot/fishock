@@ -80,7 +80,7 @@ const MAX_AFFIXES := 3
 const SLOT_ODDS := {"common": [45.0, 38.0, 14.0, 3.0], "rare": [25.0, 40.0, 25.0, 10.0], "epic": [10.0, 35.0, 35.0, 20.0]}
 ## Which tier each rolls (1..5), by the fish's rarity: weights. (More rarities
 ## - the mythic fish to come - go on the end.)
-const TIER_ODDS := {"common": [70.0, 25.0, 5.0, 0.0, 0.0], "rare": [35.0, 40.0, 20.0, 5.0, 0.0], "epic": [10.0, 30.0, 35.0, 20.0, 5.0]}
+const TIER_ODDS := {"common": [60.0, 28.0, 10.0, 2.0, 0.0], "rare": [25.0, 35.0, 28.0, 10.0, 2.0], "epic": [8.0, 22.0, 32.0, 26.0, 12.0]}
 ## The mythic ones only come on these (the chance each has of one of them).
 const MYTHIC_CHANCE := {"epic": 0.05}
 ## Their numbers (user: set as these for now).

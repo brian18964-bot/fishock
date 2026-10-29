@@ -6338,7 +6338,7 @@ func test_affixes() -> void:
 				any_gold = true
 				var span: Array = FishLife.TRAITS.wealth.ranges[FishLife.tier_of(f, "wealth") - 1]
 				gold_ok = gold_ok and f.wealth_gold >= span[0] and f.wealth_gold <= span[1]
-	check(top.common <= 3 and top.rare <= 4 and top.epic == 5, "common fish reach tier 3, rare 4, epic 5 (%s)" % [top])
+	check(top.common == 4 and top.rare == 5 and top.epic == 5, "common fish reach tier 4, rare and epic 5 (%s)" % [top])
 	check(most.common <= 3 and most.rare <= 3 and most.epic == 3, "at most three affixes (%s)" % [most])
 	check(mythic_on.common == 0 and mythic_on.rare == 0 and mythic_on.epic > 0, "mythic ones only on epic fish (%s)" % [mythic_on])
 	check(gold_ok and any_gold, "mythic ones are gold; 財富 rolled in its tier's range")
