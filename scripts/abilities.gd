@@ -55,6 +55,40 @@ const KINDS := {
 		"color": Color(0.45, 0.85, 1.0)},
 }
 
+## User request (talents): besides its own ability a character can take one of
+## these instead - one or the other, chosen on the character page (Profile.
+## talent_of; "" the character's own ability). `stats`: what each adds to the
+## four stats (Stats) and 幸運.
+const TALENT_ORDER := ["reflex", "weights", "leak", "grit", "lucky", "tough", "veteran", "mood"]
+const TALENTS := {
+	"reflex": {"name": "神經反射", "stats": {"react": 10}},
+	"weights": {"name": "重量訓練", "stats": {"might": 10}},
+	"leak": {"name": "技巧洩力", "stats": {"resil": 10}},
+	"grit": {"name": "咬緊牙關", "stats": {"endure": 10}},
+	"lucky": {"name": "LUCKY!", "stats": {"luck": 10}},
+	"tough": {"name": "狠角色", "stats": {"might": 5, "endure": 5}},
+	"veteran": {"name": "有經驗", "stats": {"react": 5, "resil": 5}},
+	"mood": {"name": "好心情", "stats": {"react": 2, "might": 2, "resil": 2, "endure": 2, "luck": 2}},
+}
+
+
+## "反應 +10" / "力量 +5、耐力 +5" for a talent.
+static func talent_text(id: String) -> String:
+	var parts := []
+	var stats: Dictionary = TALENTS[id].stats
+	for s in ["react", "might", "resil", "endure", "luck"]:
+		if stats.has(s):
+			parts.append("%s +%d" % [Stats.NAMES[s], stats[s]])
+	return "、".join(parts)
+
+
+## What the talent taken now adds to `stat` (0: none, or the character's own
+## ability is the one in use).
+static func talent_stat(stat: String) -> int:
+	var id := Profile.talent_of()
+	return int(TALENTS[id].stats.get(stat, 0)) if TALENTS.has(id) else 0
+
+
 ## Each one's story (user request), by character.
 const STORIES := {
 	"cat": "沒有人知道黑貓從哪裡來。牠總在月亮最圓的晚上出現在營火邊，舔著爪子，好像早就認識這裡的每一個人。\n大家說，牠走過的渡石從來不會熄滅；越是黑的夜，牠的腳步越輕。",
@@ -97,7 +131,12 @@ static func kind_of(id := "") -> String:
 
 ## Whether the one travelling now has `kind`'s ability.
 static func has(kind: String) -> bool:
-	return kind_of() == kind
+	return kind_of() == kind and Profile.talent_of() == ""
+
+
+## The ability in use now: the character's own (a talent taken instead: "").
+static func active_kind() -> String:
+	return kind_of() if Profile.talent_of() == "" else ""
 
 
 static func info(kind: String) -> Dictionary:

@@ -87,6 +87,7 @@ const TESTS := [
 	"test_fish_at_home_shown",
 	"test_affixes",
 	"test_stats_gate_weak",
+	"test_talents",
 	"test_camp_spirit_and_tents",
 	"test_camp_life",
 	"test_ears_and_tails",
@@ -5421,7 +5422,7 @@ func test_character_abilities() -> void:
 		check(kind != "" and Abilities.icon(kind) != null and Abilities.story(c[0]) != "",
 			"%s: its ability (%s), its badge and its story" % [c[1], Abilities.info(kind).get("name", "?")])
 	# At the fire: the picked one's ability and story.
-	var page: CharacterPage = load("res://scenes/character_page.tscn").instantiate() if ResourceLoader.exists("res://scenes/character_page.tscn") else CharacterPage.new()
+	var page: CharacterPage = load("res://scenes/character.tscn").instantiate() if ResourceLoader.exists("res://scenes/character_page.tscn") else CharacterPage.new()
 	get_tree().root.add_child(page)
 	await frames(2)
 	page.pick("croc")
@@ -6531,4 +6532,58 @@ func test_stats_gate_weak() -> void:
 	# The shop sells the feed.
 	Profile.gold = 100
 	check(Profile.buy_usable("vigor_feed") and Profile.stored("vigor_feed") == 1, "活力飼料 is sold")
+	Profile.load_data(saved)
+
+
+func test_talents() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 0, "character": "deer"})
+	GameState.reset_run()
+	var base := {}
+	for st in ["react", "might", "resil", "endure", "luck"]:
+		base[st] = Stats.total(st)
+	check(Abilities.has("deer") and Abilities.active_kind() == "deer", "its own ability at first")
+	var expect := {"reflex": {"react": 10}, "weights": {"might": 10}, "leak": {"resil": 10}, "grit": {"endure": 10}, "lucky": {"luck": 10},
+		"tough": {"might": 5, "endure": 5}, "veteran": {"react": 5, "resil": 5}, "mood": {"react": 2, "might": 2, "resil": 2, "endure": 2, "luck": 2}}
+	var all_ok := true
+	for t in expect:
+		Profile.set_talent("deer", t)
+		for st in ["react", "might", "resil", "endure", "luck"]:
+			all_ok = all_ok and Stats.total(st) == int(base[st]) + int(expect[t].get(st, 0))
+	check(all_ok, "each talent adds what it says")
+	Profile.set_talent("deer", "lucky")
+	check(not Abilities.has("deer") and Abilities.active_kind() == "", "a talent taken: the own ability is off")
+	check(Profile.talent_of("cat") == "", "the others are untouched")
+	var snap := Profile.snapshot()
+	Profile.load_data(snap)
+	check(Profile.talent_of("deer") == "lucky", "kept in the save")
+	Profile.set_talent("deer", "")
+	check(Abilities.has("deer"), "back to its own ability")
+	# 幸運 makes rare fish likelier: count the rare ones over many casts
+	Profile.character = "cat"
+	var p := player()
+	if p != null:
+		var rare := {"none": 0, "lucky": 0}
+		for key in rare:
+			Profile.set_talent("cat", "lucky" if key == "lucky" else "")
+			for _i in 4000:
+				p.cast_water_zone = null
+				p.current_tier = "near"
+				p.tier_data = FishData.get_tier_data("near")
+				p._roll_catch_outcome()
+				if p.is_rare_catch:
+					rare[key] += 1
+		check(rare.lucky > rare.none * 1.6, "幸運 +10 makes rare fish clearly likelier (%s)" % [rare])
+	# the page: the choices are there and taking one is kept
+	var page: CharacterPage = CharacterPage.new()
+	get_tree().root.add_child(page)
+	await frames(3)
+	Profile.character = "deer"
+	page.pick("deer")
+	await frames(3)
+	check(page.find_child("Talent_own", true, false) != null and page.find_child("Talent_lucky", true, false) != null, "the page offers the own ability and the talents")
+	(page.find_child("Talent_grit", true, false) as Button).pressed.emit()
+	await frames(2)
+	check(Profile.talent_of("deer") == "grit", "taking a talent on the page")
+	page.queue_free()
 	Profile.load_data(saved)

@@ -976,7 +976,7 @@ func night_ratio() -> float:
 ## The abilities that turn on with the run's state: shown going off as
 ## they do - the cat as night falls, the owl as its light goes out.
 func _watch_abilities(_delta: float) -> void:
-	var kind := Abilities.kind_of()
+	var kind := Abilities.active_kind()
 	if kind == "cat":
 		if GameState.is_night and not _was_night:
 			ability_triggered.emit("cat", global_position, "")
@@ -2852,6 +2852,9 @@ func _roll_catch_outcome() -> void:
 	var deer_more := Abilities.DEER_RARE if Abilities.has("deer") else 0.0
 	# (the lucky star carried - 幸運星)
 	deer_more += FishLife.luck_bonus(GameState.carried_fish)
+	# (幸運: each point more rare fish, and rare ones upgraded the likelier)
+	var luck := float(Stats.total(Stats.LUCK))
+	deer_more += luck * Stats.LUCK_RARE
 	rare_chance += deer_more
 
 	if caught_in_hotspot:
@@ -2870,6 +2873,7 @@ func _roll_catch_outcome() -> void:
 	if flavor in BIG_BAIT_FLAVORS:
 		epic_chance *= 2.0
 	epic_chance *= float(lure.get("epic", 1.0))
+	epic_chance *= 1.0 + luck * Stats.LUCK_EPIC
 	if is_rare_catch and randf() < epic_chance:
 		is_epic_catch = true
 

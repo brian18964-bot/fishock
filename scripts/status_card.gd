@@ -218,7 +218,7 @@ func _draw_face(c: Vector2, r: float) -> void:
 
 ## The ability's badge in the first slot (false: the character has none).
 func _draw_ability(p: Player) -> bool:
-	var kind := Abilities.kind_of()
+	var kind := Abilities.active_kind()
 	var tex := Abilities.icon(kind) if kind != "" else null
 	if tex == null:
 		return false

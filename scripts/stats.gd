@@ -11,7 +11,13 @@ extends RefCounted
 ## measured against it at the strike.
 
 const IDS := ["might", "resil", "react", "endure"]
-const NAMES := {"might": "力量", "resil": "韌性", "react": "反應", "endure": "耐力"}
+const NAMES := {"might": "力量", "resil": "韌性", "react": "反應", "endure": "耐力", "luck": "幸運"}
+## 幸運 (luck) isn't in a gate: each point makes rare fish likelier by LUCK_RARE
+## (an absolute share of the casts) and the rare ones' upgrade to epic by LUCK_EPIC
+## (a share of it). From the talents (Abilities.TALENTS), later gear and events.
+const LUCK := "luck"
+const LUCK_RARE := 0.005
+const LUCK_EPIC := 0.01
 ## What the fight meets them in, in order: the strike's time, the first rush,
 ## the line's strain, the long fight (the first of those short is what fails).
 const ORDER := ["react", "might", "resil", "endure"]
@@ -39,10 +45,15 @@ const CHALLENGE := 0.12
 ## [[where from, number], ...] for `stat`: the rod, each fish carried alive
 ## that has it, the gear worn, what's been drunk or an event's.
 static func sources(stat: String) -> Array:
-	var out := [["釣竿", rod_stat(stat, Profile.rod_tier)]]
-	for f in GameState.carried_fish:
-		if FishLife.stats_count(f) and FishLife.has_trait(f, stat):
-			out.append([str(f.get("name", "魚")), int(FishLife.val_of(f, stat))])
+	var out := []
+	if stat in IDS:
+		out.append(["釣竿", rod_stat(stat, Profile.rod_tier)])
+		for f in GameState.carried_fish:
+			if FishLife.stats_count(f) and FishLife.has_trait(f, stat):
+				out.append([str(f.get("name", "魚")), int(FishLife.val_of(f, stat))])
+	var talent := Abilities.talent_stat(stat)
+	if talent != 0:
+		out.append(["天賦：" + str(Abilities.TALENTS[Profile.talent_of()].name), talent])
 	for slot in Profile.equipped:
 		var id: String = Profile.equipped[slot]
 		if id != "":

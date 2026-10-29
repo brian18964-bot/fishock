@@ -503,6 +503,24 @@ func tent_unlocked(tent: int) -> bool:
 	return false
 
 
+## User request (talents): the talent each character took in place of its own
+## ability (Abilities.TALENTS ids; none: its own ability).
+var talents: Dictionary = {}
+
+
+func talent_of(id: String = character) -> String:
+	var t: String = talents.get(id, "")
+	return t if Abilities.TALENTS.has(t) else ""
+
+
+func set_talent(id: String, talent: String) -> void:
+	if talent == "" or not Abilities.TALENTS.has(talent):
+		talents.erase(id)
+	else:
+		talents[id] = talent
+	_changed()
+
+
 ## The character's name (CHARACTERS).
 func character_name(id: String = character) -> String:
 	for c in CHARACTERS:
@@ -1897,6 +1915,7 @@ func snapshot() -> Dictionary:
 		"settings": settings,
 		"camp_tent": camp_tent,
 		"character": character,
+		"talents": talents,
 		"quick_slots": quick_slots,
 		"spirit": spirit,
 		"camp_since": camp_since,
@@ -1955,6 +1974,7 @@ func load_data(data: Dictionary) -> void:
 	settings.merge(data.get("settings", {}), true)
 	camp_tent = int(data.get("camp_tent", 8))
 	character = str(data.get("character", "cat"))
+	talents = data.get("talents", {})
 	quick_slots = ["", "", ""]
 	var saved_slots: Array = data.get("quick_slots", [])
 	for i in mini(saved_slots.size(), QUICK_SLOTS):

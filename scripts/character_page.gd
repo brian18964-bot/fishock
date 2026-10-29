@@ -30,6 +30,8 @@ const INFO_WIDTH := 272.0
 var _ability_icon: TextureRect
 var _ability_name: Label
 var _ability_desc: Label
+var _talent_box: HFlowContainer
+var _talent_desc: Label
 var _story: Label
 
 
@@ -157,6 +159,19 @@ func _info_panel() -> Control:
 	_ability_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_ability_desc.custom_minimum_size = Vector2(INFO_WIDTH, 0)
 	col.add_child(_ability_desc)
+	# User request (talents): or take one of these instead - one or the other.
+	col.add_child(UiKit.label("或改選一個天賦（只能二擇一）", 13, UiKit.DIM))
+	_talent_box = HFlowContainer.new()
+	_talent_box.name = "Talents"
+	_talent_box.add_theme_constant_override("h_separation", 6)
+	_talent_box.add_theme_constant_override("v_separation", 6)
+	_talent_box.custom_minimum_size = Vector2(INFO_WIDTH, 0)
+	col.add_child(_talent_box)
+	_talent_desc = UiKit.label("", 13, UiKit.USE)
+	_talent_desc.name = "TalentDesc"
+	_talent_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_talent_desc.custom_minimum_size = Vector2(INFO_WIDTH, 0)
+	col.add_child(_talent_desc)
 	var rule := ColorRect.new()
 	rule.color = Color(UiKit.GOLD, 0.35)
 	rule.custom_minimum_size = Vector2(INFO_WIDTH, 1)
@@ -182,6 +197,32 @@ func _show_info(id: String) -> void:
 	_ability_name.text = info.get("name", "—")
 	_ability_desc.text = info.get("desc", "")
 	_story.text = Abilities.story(id)
+	_fill_talents(id)
+
+
+## The talent choices for `id`: its own ability, or one of the talents - the
+## one taken lit (Profile.talent_of).
+func _fill_talents(id: String) -> void:
+	for c in _talent_box.get_children():
+		_talent_box.remove_child(c)
+		c.queue_free()
+	var taken := Profile.talent_of(id)
+	var options := [["", Abilities.info(Abilities.kind_of(id)).get("name", "角色能力")]]
+	for t in Abilities.TALENT_ORDER:
+		options.append([t, Abilities.TALENTS[t].name])
+	for o in options:
+		var b := UiKit.button(o[1], 13)
+		b.name = "Talent_" + (o[0] if o[0] != "" else "own")
+		b.custom_minimum_size = Vector2(0, 32)
+		b.focus_mode = Control.FOCUS_NONE
+		UiKit.style_tab(b, o[0] == taken)
+		var pick_id: String = o[0]
+		b.pressed.connect(func():
+			Profile.set_talent(id, pick_id)
+			_fill_talents(id))
+		_talent_box.add_child(b)
+	_talent_desc.text = ("使用中：%s（%s）" % [Abilities.TALENTS[taken].name, Abilities.talent_text(taken)]) if taken != "" \
+		else "使用中：角色自己的能力"
 
 
 ## A portrait's cell: the portrait in its medallion, the name under it.
