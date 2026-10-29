@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+<defs>
+<radialGradient id="bg" cx="50%" cy="40%" r="62%"><stop offset="0" stop-color="#2a3a50"/><stop offset="1" stop-color="#070c14"/></radialGradient>
+<linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6dc8a"/><stop offset="0.5" stop-color="#b8862e"/><stop offset="1" stop-color="#6e4a14"/></linearGradient>
+<clipPath id="cut"><circle cx="64" cy="64" r="54"/></clipPath>
+</defs>
+<circle cx="64" cy="64" r="60" fill="url(#rim)"/>
+<circle cx="64" cy="64" r="54" fill="url(#bg)"/>
+<circle cx="64" cy="64" r="54" fill="none" stroke="#000" stroke-opacity="0.45" stroke-width="2"/>
+<g clip-path="url(#cut)">
+<path d="M22 42 L72 30 L106 44 L106 98 L72 88 L22 98 Z" fill="#d8c8a0" stroke="#4a3a1c" stroke-width="2.5" stroke-linejoin="round"/>
+<path d="M22 42 L72 30 L72 88 L22 98 Z" fill="#587398" stroke="#1a2a44" stroke-width="3" stroke-linejoin="round"/>
+<path d="M72 30 L106 44 L106 98 L72 88 Z" fill="#6a85aa" stroke="#1a2a44" stroke-width="3" stroke-linejoin="round" fill-opacity="0"/>
+<path d="M22 98 L72 88 L106 98" fill="none" stroke="#8a7a52" stroke-width="2"/>
+<g fill="#f0e6d0" stroke="#2a3a50" stroke-width="1.5"><path d="M34 66 C42 52 58 50 66 60 C58 70 42 78 34 66 Z"/><path d="M66 60 L74 52 L74 70 Z"/></g>
+<circle cx="45" cy="62" r="2" fill="#2a3a50"/>
+<g fill="none" stroke="#b9a878" stroke-width="2"><path d="M80 52 L98 58"/><path d="M80 62 L98 68"/><path d="M80 72 L98 78"/></g></g>
+</svg>

@@ -220,6 +220,12 @@ func _draw_face(c: Vector2, r: float) -> void:
 func _draw_ability(p: Player) -> bool:
 	var kind := Abilities.active_kind()
 	var tex := Abilities.icon(kind) if kind != "" else null
+	if kind == "" and Profile.talent_of() != "":
+		# (a talent taken in place of its own ability: its badge, always lit)
+		var tt := Abilities.talent_icon(Profile.talent_of())
+		if tt != null:
+			_view.draw_texture_rect(tt, Rect2(EFFECT_AT, Vector2.ONE * EFFECT_SLOT), false)
+			return true
 	if tex == null:
 		return false
 	var r := Rect2(EFFECT_AT, Vector2.ONE * EFFECT_SLOT)

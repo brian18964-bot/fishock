@@ -211,9 +211,13 @@ func _fill_talents(id: String) -> void:
 	for t in Abilities.TALENT_ORDER:
 		options.append([t, Abilities.TALENTS[t].name])
 	for o in options:
-		var b := UiKit.button(o[1], 13)
+		var b := UiKit.button("", 13)
 		b.name = "Talent_" + (o[0] if o[0] != "" else "own")
-		b.custom_minimum_size = Vector2(0, 32)
+		b.custom_minimum_size = Vector2(46, 46)
+		b.tooltip_text = o[1]
+		b.icon = Abilities.talent_icon(o[0]) if o[0] != "" else Abilities.icon(Abilities.kind_of(id))
+		b.expand_icon = true
+		b.add_theme_constant_override("icon_max_width", 36)
 		b.focus_mode = Control.FOCUS_NONE
 		UiKit.style_tab(b, o[0] == taken)
 		var pick_id: String = o[0]
@@ -222,7 +226,7 @@ func _fill_talents(id: String) -> void:
 			_fill_talents(id))
 		_talent_box.add_child(b)
 	_talent_desc.text = ("使用中：%s（%s）" % [Abilities.TALENTS[taken].name, Abilities.talent_text(taken)]) if taken != "" \
-		else "使用中：角色自己的能力"
+		else "使用中：%s（角色自己的能力）" % Abilities.info(Abilities.kind_of(id)).get("name", "")
 
 
 ## A portrait's cell: the portrait in its medallion, the name under it.

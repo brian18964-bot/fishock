@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+<defs>
+<radialGradient id="bg" cx="50%" cy="40%" r="62%"><stop offset="0" stop-color="#5a2a30"/><stop offset="1" stop-color="#14070a"/></radialGradient>
+<linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6dc8a"/><stop offset="0.5" stop-color="#b8862e"/><stop offset="1" stop-color="#6e4a14"/></linearGradient>
+<clipPath id="cut"><circle cx="64" cy="64" r="54"/></clipPath>
+</defs>
+<circle cx="64" cy="64" r="60" fill="url(#rim)"/>
+<circle cx="64" cy="64" r="54" fill="url(#bg)"/>
+<circle cx="64" cy="64" r="54" fill="none" stroke="#000" stroke-opacity="0.45" stroke-width="2"/>
+<g clip-path="url(#cut)">
+<g fill="#e07a6a" stroke="#5a1a14" stroke-width="2.5" stroke-linejoin="round">
+<path d="M64 30 C54 20 36 24 34 38 C22 40 20 56 28 62 C22 72 30 86 42 84 C46 94 62 96 64 88 C66 96 82 94 86 84 C98 86 106 72 100 62 C108 56 106 40 94 38 C92 24 74 20 64 30 Z"/></g>
+<g fill="none" stroke="#f5b0a0" stroke-width="2.5" stroke-linecap="round" stroke-opacity="0.85"><path d="M64 32 V86"/><path d="M46 44 q8 4 6 14"/><path d="M82 44 q-8 4 -6 14"/><path d="M40 66 q8 -2 12 6"/><path d="M88 66 q-8 -2 -12 6"/></g>
+<path d="M76 10 L50 62 H66 L56 118 L92 52 H74 Z" fill="#ffd45a" stroke="#7a4a08" stroke-width="3" stroke-linejoin="round"/>
+<path d="M74 22 L58 54" stroke="#fff3b0" stroke-width="3" stroke-linecap="round" fill="none"/></g>
+</svg>

@@ -72,6 +72,17 @@ const TALENTS := {
 }
 
 
+const TALENT_ICONS := "res://assets/ui/talents/%s.svg"
+static var _talent_icons := {}
+
+
+static func talent_icon(id: String) -> Texture2D:
+	if not _talent_icons.has(id):
+		var path := TALENT_ICONS % id
+		_talent_icons[id] = load(path) if ResourceLoader.exists(path) else null
+	return _talent_icons[id]
+
+
 ## "反應 +10" / "力量 +5、耐力 +5" for a talent.
 static func talent_text(id: String) -> String:
 	var parts := []
