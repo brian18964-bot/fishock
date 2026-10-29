@@ -261,9 +261,13 @@ const USABLES := {
 		"desc": "只長在水邊、冒著氧氣微氣泡的小樹。整顆揉碎，塗在背包裡一條魚的魚鰓上：魚離開水面也能撐久一點，180 秒內活性下降速度只剩 1/4"},
 	"frozen_soil": {"name": "冷凍土", "cost": 15, "stack": 5, "keep": false, "sold": false, "target": "fish",
 		"desc": "冷凍花根部蔓延處挖出來的土，涼得刺手。用在背包裡的一條魚身上：300 秒內新鮮度下降速度大幅降低（只剩 1/4）"},
+	# User request (weak fish): bought at the shop - gives a fish's vitality back
+	# (and un-weakens it); fed in a run (from the bag) or at home (fish card).
+	"vigor_feed": {"name": "活力飼料", "cost": 40, "stack": 5, "keep": false, "target": "fish",
+		"desc": "餵給一條活魚：活性恢復一半，虛弱的魚也會恢復過來（不再倒數虛弱）"},
 }
 const USABLE_ORDER := ["potion_vigor", "potion_ward", "eyeball", "eye_altar", "eye_ghost", "binoculars", "glow_mushroom",
-	"oxy_tree", "frozen_soil"]
+	"oxy_tree", "frozen_soil", "vigor_feed"]
 
 ## User request (Camp v2): what's been done, for the achievements that
 ## earn the camp's tents (TENTS) - escapes, gold spent, legends caught.
@@ -537,9 +541,108 @@ var fish_log: Dictionary = {}
 
 func _ready() -> void:
 	_load()
+	recover_unfinished_run()
+
+
+## User request (weak fish): the fish brought on a run are copied here for its
+## length - a run that never ended (the player left) puts them in the tank on
+## the next start; the run's finds and catches are gone with it.
+var run_brought: Array = []
+
+## Names of the fish that came back weak from a lost night (the camp warns).
+var weak_news: Array = []
+
+## The camp's warning is open: weak fish don't run down meanwhile.
+var aging_paused := false
+
+
+func note_run_brought(list: Array) -> void:
+	run_brought = []
+	for f in list:
+		run_brought.append(f.duplicate(true))
+	_changed()
+
+
+func clear_run_brought() -> void:
+	if not run_brought.is_empty():
+		run_brought = []
+		_changed()
+
+
+## Left in the middle of a run: what was brought goes into the tank (full - the
+## warehouse; dead - the bucket), sound as it was packed.
+func recover_unfinished_run() -> void:
+	if run_brought.is_empty():
+		return
+	var list := run_brought
+	run_brought = []
+	for f in list:
+		f.erase("brought")
+		f.erase("cell")
+		f.erase("rot")
+		if FishLife.state(f) == "alive" and add_to_tank(f):
+			continue
+		if FishLife.state(f) != "alive" and add_to_fish_box(f):
+			continue
+		if stash_fish.size() < STASH_SIZE:
+			stash_fish.append(f)
+	_changed()
+
+
+## A weak fish (or any) back in the bag - the first free corner, else the warehouse.
+func put_in_pack(f: Dictionary) -> void:
+	f.erase("cell")
+	f.erase("rot")
+	var at := pack_first_fit(f)
+	if at.x >= 0:
+		f["cell"] = [at.x, at.y]
+		pack_fish.append(f)
+	elif stash_fish.size() < STASH_SIZE:
+		stash_fish.append(f)
+	_changed()
+
+
+func weak_count() -> int:
+	var n := 0
+	for list in [pack_fish, stash_fish, fish_box]:
+		for f in list:
+			if f.get("weak", false):
+				n += 1
+	return n
+
+
+## All the weak fish into the tank (as many as fit). How many went.
+func weak_to_tank() -> int:
+	var moved := 0
+	for name in ["pack_fish", "stash_fish"]:
+		var list: Array = get(name)
+		for f in list.duplicate():
+			if f.get("weak", false) and tank.size() < TANK_SIZE:
+				list.erase(f)
+				f.erase("cell")
+				f.erase("rot")
+				if add_to_tank(f):
+					moved += 1
+				else:
+					list.append(f)
+	tank_news.clear()
+	_changed()
+	return moved
+
+
+## User request (the gate): kinds seen but never landed - a shadow in the fish
+## log (species ids). A kind already in the log isn't noted.
+var shadows: Array = []
+
+
+func note_shadow(id: String, species_name: String) -> void:
+	if id != "" and not id in shadows and not fish_log.has(species_name):
+		shadows.append(id)
+		_changed()
 
 
 func record_catch(fish_name: String, value: float, length := 0.0, tank_trait := "", legend := false) -> void:
+	shadows.erase(FishData.id_for(fish_name))
 	if legend:
 		stats["legends"] = int(stats.get("legends", 0)) + 1
 	var entry: Dictionary = fish_log.get(fish_name, {"count": 0, "best_value": 0.0})
@@ -863,6 +966,8 @@ var fish_box: Array = []
 ## runs; only the tank keeps them as they are. Not on a run (the carried fish
 ## age there).
 func age_home(delta: float) -> void:
+	if aging_paused:
+		return
 	for list in [fish_box, pack_fish, stash_fish]:
 		for f in list:
 			FishLife.ensure(f)
@@ -1552,6 +1657,17 @@ func bag_split(index: int, count: int, cell: Vector2i) -> bool:
 
 
 ## Takes up to `count` of `id` out of the bag (used up in a run).
+## One of `id` for use at home: from the bag, else the warehouse. False if none.
+func take_one(id: String) -> bool:
+	if bag_take(id, 1) > 0:
+		return true
+	if stored(id) > 0:
+		storage[id] = stored(id) - 1
+		_changed()
+		return true
+	return false
+
+
 func bag_take(id: String, count: int) -> int:
 	var taken := 0
 	for i in range(bag.size() - 1, -1, -1):
@@ -1769,6 +1885,9 @@ func snapshot() -> Dictionary:
 		"stash_fish": stash_fish,
 		"fortune_clock": fortune_clock,
 		"tank_news": tank_news,
+		"shadows": shadows,
+		"run_brought": run_brought,
+		"weak_news": weak_news,
 		"settings": settings,
 		"camp_tent": camp_tent,
 		"character": character,
@@ -1799,6 +1918,9 @@ func load_data(data: Dictionary) -> void:
 	gold = data.get("gold", 0)
 	upgrade_levels = data.get("upgrade_levels", upgrade_levels)
 	fish_log = data.get("fish_log", {})
+	shadows = data.get("shadows", [])
+	run_brought = data.get("run_brought", [])
+	weak_news = data.get("weak_news", [])
 	storage = data.get("storage", {})
 	bag = data.get("bag", [])
 	equipped = data.get("equipped", {"rod": "rod_0", "light": ""})

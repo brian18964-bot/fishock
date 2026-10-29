@@ -94,6 +94,9 @@ func _cell(id: String) -> Control:
 	b.custom_minimum_size = CELL
 	b.fish_id = id
 	b.have = have
+	# (user request: a kind never seen is an empty slot; one that took the line
+	# and was too strong to land shows its shadow)
+	b.shadow = id in Profile.shadows
 	b.count = int(entry.get("count", 0))
 	for st in ["normal", "hover", "pressed"]:
 		b.add_theme_stylebox_override(st, StyleBoxEmpty.new())
@@ -107,13 +110,14 @@ func _cell(id: String) -> Control:
 class LogCell extends Button:
 	var fish_id := ""
 	var have := false
+	var shadow := false
 	var count := 0
 
 	func _draw() -> void:
 		var r := Rect2(Vector2(10, 2), Vector2(size.x - 20, size.x - 20))
 		var rarity := UiKit.fish_rarity({"id": fish_id})
 		UiKit.draw_slot(self, r, rarity if have else "")
-		var tex := FishData.icon(fish_id)
+		var tex := FishData.icon(fish_id) if (have or shadow) else null
 		if tex != null:
 			var room := r.grow(-5.0)
 			var k := minf(room.size.x / tex.get_width(), room.size.y / tex.get_height())

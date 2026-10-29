@@ -889,7 +889,7 @@ func use_item(id: String) -> bool:
 			glow_timer = GLOW_TIME + CRUMBLE_TIME * GLOW_FROM
 			perform("crumble", CRUMBLE_TIME)
 			GameState.report("揉碎發光蘑菇撒在身上：全身散發微弱的藍光", "good")
-		"oxy_tree", "frozen_soil":
+		"oxy_tree", "frozen_soil", "vigor_feed":
 			# (from a quick slot: the fish that needs it most)
 			var pick := fish_for(id)
 			if pick < 0:
@@ -1156,7 +1156,14 @@ func use_on_fish(id: String, index: int) -> bool:
 	if Profile.bag_count(id) < 1 or index < 0 or index >= GameState.carried_fish.size():
 		return false
 	var fish: Dictionary = GameState.carried_fish[index]
-	var why := FishLife.use_oxy_tree(fish) if id == "oxy_tree" else FishLife.use_frozen(fish)
+	var why := ""
+	match id:
+		"oxy_tree":
+			why = FishLife.use_oxy_tree(fish)
+		"vigor_feed":
+			why = FishLife.use_vigor_feed(fish)
+		_:
+			why = FishLife.use_frozen(fish)
 	if why != "":
 		GameState.report(why, "warn")
 		return false
@@ -1174,6 +1181,14 @@ func fish_for(id: String) -> int:
 	var best_left := INF
 	for i in GameState.carried_fish.size():
 		var f: Dictionary = GameState.carried_fish[i]
+		if id == "vigor_feed":
+			# (the weakest living one that isn't an immortal)
+			if FishLife.state(f) == "alive" and not FishLife.has_trait(f, "immortal") and (f.get("weak", false) or float(f.get("vit", 1.0)) < 0.99):
+				var v := float(f.get("vit", 1.0)) - (1.0 if f.get("weak", false) else 0.0)
+				if v < best_left:
+					best = i
+					best_left = v
+			continue
 		var ok := FishLife.state(f) == "alive" if id == "oxy_tree" else FishLife.state(f) != "rotten"
 		if not ok:
 			continue
@@ -2642,6 +2657,12 @@ func _update_fishing(delta: float) -> void:
 					return
 			else:
 				_turned_for = maxf(_turned_for - delta, 0.0)
+			if _gate_left >= 0.0:
+				_gate_left -= delta
+				if _gate_left <= 0.0 and fight.result == "":
+					_gate_left = -1.0
+					_fail_catch("gate")
+					return
 			if _snap_at >= 0.0 and progress >= _snap_at and fight.result == "":
 				_snap_at = -1.0
 				GameState.push_message("精神恍惚，手一抖——線斷了")
@@ -3062,7 +3083,44 @@ const SPENT_SNAP_CHANCE := 0.15
 var _snap_at := -1.0
 
 
+## User request (the gate): the fish's measure rolled at the strike (kept for
+## the catch), and, short of the stats it asks, which stat fails it and when
+## in the fight (seconds in; -1: none).
+var _plan := {}
+var _gate_stat := ""
+var _gate_gap := 0.0
+var _gate_left := -1.0
+const GATE_AT := {"might": 1.2, "resil": 0.7, "endure": 10.0}
+
+
+## True if the fish on the line is too much for the stats carried and it's
+## over at once (反應); else a later failure is set for the fight.
+func _gate_check() -> bool:
+	_gate_stat = ""
+	_gate_left = -1.0
+	_plan = {}
+	if fish_id == "" or is_heart_catch:
+		return false
+	var size_key := Inventory.size_for_catch(current_tier, is_epic_catch)
+	_plan = FishData.measure(fish_id, size_key)
+	var rarity := UiKit.fish_rarity({"id": fish_id, "rarity": "epic" if is_epic_catch else ("rare" if is_rare_catch else "common")})
+	var short := Stats.shortfall(FishData.gate_for(fish_id, rarity, float(_plan.length)))
+	if short.is_empty():
+		return false
+	_gate_stat = short.stat
+	_gate_gap = float(short.gap)
+	# (a kind never landed: seen, a shadow in the fish log)
+	Profile.note_shadow(fish_id, tier_data.label)
+	if _gate_stat == "react":
+		_fail_catch("gate")
+		return true
+	_gate_left = float(GATE_AT[_gate_stat])
+	return false
+
+
 func _hook_fish(perfect := false) -> void:
+	if _gate_check():
+		return
 	fight = FishFight.new(difficulty_key, fish_habit, tier_data, reel_power_mult, Profile.rod())
 	_snap_at = randf_range(0.3, 0.8) if Profile.spirit_penalty() >= 3 and randf() < SPENT_SNAP_CHANCE else -1.0
 	_turned_for = 0.0
@@ -3195,7 +3253,7 @@ func _succeed_catch() -> void:
 	else:
 		var fish := {"name": tier_data.label, "id": fish_id, "value": tier_data.value, "tier": current_tier,
 			"size": Inventory.size_for_catch(current_tier, is_epic_catch)}
-		fish.merge(FishData.measure(fish_id, fish.size))
+		fish.merge(_plan if not _plan.is_empty() else FishData.measure(fish_id, fish.size))
 		fish.value = FishData.value_for_length(fish_id, float(fish.value), fish.length)
 		fish["tank_trait"] = FishData.roll_tank_trait(fish_id)
 		fish["rarity"] = "epic" if is_epic_catch else ("rare" if is_rare_catch else "common")
@@ -3228,8 +3286,24 @@ const FAIL_REPORTS := {
 	"bait_nibbled": "餌被小魚偷吃了", "no_bite": "等了很久，沒魚咬餌", "missed_bite": "沒及時揚竿，魚跑了", "bad_strike": "揚竿方向不對，魚跑了",
 	"spooked": "太早揚竿，魚嚇跑了", "line_break": "線斷了，魚跑了", "shook_off": "魚甩掉了鉤",
 	"cover": "魚鑽進石縫，線磨斷了", "walked_off": "離岸太遠，魚脫鉤了", "line_cut": "小鬼剪斷了釣線",
-	"lure_knocked": "小鬼弄掉了假餌", "bait_stolen": "小鬼偷走了餌",
+	"lure_knocked": "小鬼弄掉了假餌", "bait_stolen": "小鬼偷走了餌", "gate": "這條魚太強了",
 }
+
+
+## User request: what a fish too much for the stats says - by which stat fell
+## short (not the number) and how far: a few words, so the player knows what
+## to look for (the affixes and gear say the same words).
+const GATE_LINES := {
+	"react": ["這條魚盜餌太快，差一點就來得及了", "這條魚盜餌也太快，根本來不及反應，餌就沒了"],
+	"might": ["差一點就拉住了，這條魚的力氣真大", "根本拉不住這條魚！力量也太大了"],
+	"resil": ["線繃得緊緊的，隨即就斷了", "一咬餌就被扯斷……看來魚線太不耐扯了"],
+	"endure": ["手快撐不住了，魚趁機掙脫了", "手臂酸得抬不起來，魚輕易就掙脫了"],
+}
+
+
+func _gate_text() -> String:
+	var lines: Array = GATE_LINES.get(_gate_stat, ["這條魚太強了"])
+	return str(lines[0] if _gate_gap < 0.3 else lines[1])
 
 
 func _fail_catch(reason: String) -> void:
@@ -3258,6 +3332,8 @@ func _fail_catch(reason: String) -> void:
 			_:
 				msg = "線斷了，魚跑了"
 		_snap_note = ""
+	elif reason == "gate":
+		msg = _gate_text()
 	elif reason == "line_cut":
 		msg = "線被鬼剪斷了！"
 	elif reason == "lure_knocked":
@@ -3298,6 +3374,8 @@ func _cancel_cast(reason: String) -> void:
 
 
 func _reset_line(next_state: State) -> void:
+	_gate_left = -1.0
+	_plan = {}
 	line_cleared.emit()
 	_set_state(next_state)
 

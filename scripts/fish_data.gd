@@ -508,6 +508,48 @@ static func value_for_length(id: String, base: float, length: float) -> float:
 	return snappedf(base * (0.8 + 0.45 * clampf(q, 0.0, 1.2)), 0.1)
 
 
+## User request (the gate): a fish too big or too rare for the stats carried
+## can't be landed. A giant (a common or rare fish in the top of its length
+## range) asks one stat, an epic one two, a legend three - which ones fixed by
+## the species, so a kind always asks the same; the number by how big it is.
+## Failing the first of them the fight meets (Stats.ORDER) ends it (Player).
+const GATE_BASE := {"giant": 30, "epic": 50, "legend": 70}
+const GIANT_FROM := 0.85
+
+
+## Where `length` falls in the species' range (0 the shortest .. 1 the
+## longest, past it a record).
+static func length_q(id: String, length: float) -> float:
+	var span: Array = LENGTH_CM.get(id, [20, 50])
+	return (length - float(span[0])) / maxf(float(span[1]) - float(span[0]), 1.0)
+
+
+## {stat: number needed} for a catch of `id` (rarity as UiKit.fish_rarity says:
+## common, rare, epic, legend) and `length`; {} for a fish with no gate.
+static func gate_for(id: String, rarity: String, length: float) -> Dictionary:
+	var q := length_q(id, length)
+	var level := ""
+	match rarity:
+		"legend":
+			level = "legend"
+		"epic":
+			level = "epic"
+		_:
+			if q >= GIANT_FROM:
+				level = "giant"
+	if level == "":
+		return {}
+	var count: int = {"giant": 1, "epic": 2, "legend": 3}[level]
+	# (the species' own order of the four)
+	var order := Stats.IDS.duplicate()
+	order.sort_custom(func(a, b): return (id + a).hash() % 9973 < (id + b).hash() % 9973)
+	var need := roundi(float(GATE_BASE[level]) * lerpf(0.85, 1.15, clampf(q, 0.0, 1.12) / 1.12))
+	var out := {}
+	for i in count:
+		out[order[i]] = need
+	return out
+
+
 static func species_trait(id: String) -> String:
 	for key in TRAIT_OF:
 		if id in TRAIT_OF[key]:

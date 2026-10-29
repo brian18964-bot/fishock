@@ -117,7 +117,9 @@ func _ready() -> void:
 	GameState.last_return = ""
 	if _stage != null and back != "":
 		_come_home(back)
-	if not Profile.tank_news.is_empty():
+	if not Profile.weak_news.is_empty():
+		_weak_alert()
+	elif not Profile.tank_news.is_empty():
 		_tank_news()
 	# User request: the fortune fish in the tank have sent gold meanwhile.
 	var sent := Profile.settle_fortune()
@@ -143,6 +145,28 @@ func _tank_news() -> void:
 	go.pressed.connect(func():
 		note.queue_free()
 		open_page("fish_tank"))
+	note.get_child(0).get_child(0).add_child(go)
+
+
+## User request (weak fish): back from a lost night, the brought fish are weak
+## - say so, and offer the tank. The countdown waits while this is open.
+func _weak_alert() -> void:
+	var names: Array = Profile.weak_news.duplicate()
+	Profile.weak_news = []
+	Profile.aging_paused = true
+	var shown := names.slice(0, 8)
+	var line := "%s 虛弱了！活性只剩一點，再不處理就會死亡" % "、".join(shown)
+	if names.size() > shown.size():
+		line += "（還有 %d 條）" % (names.size() - shown.size())
+	var note := MenuStyle.notice(self, "魚虛弱了", [line, "快放進魚缸（缸裡不會再倒數），或餵活力飼料"])
+	note.name = "WeakAlert"
+	note.tree_exited.connect(func(): Profile.aging_paused = false)
+	var go := UiKit.button("全部放進魚缸", 16, "red")
+	go.custom_minimum_size = Vector2(180, 42)
+	go.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	go.pressed.connect(func():
+		Profile.weak_to_tank()
+		note.queue_free())
 	note.get_child(0).get_child(0).add_child(go)
 
 

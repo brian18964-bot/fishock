@@ -45,7 +45,14 @@ func _ready() -> void:
 		grid.add_child(UiKit.label("身上沒有魚。", 15, UiKit.DIM))
 	for i in GameState.carried_fish.size():
 		var f: Dictionary = GameState.carried_fish[i]
-		var why := FishLife.use_oxy_tree(f.duplicate()) if _item == "oxy_tree" else FishLife.use_frozen(f.duplicate())
+		var why := ""
+		match _item:
+			"oxy_tree":
+				why = FishLife.use_oxy_tree(f.duplicate())
+			"vigor_feed":
+				why = FishLife.use_vigor_feed(f.duplicate())
+			_:
+				why = FishLife.use_frozen(f.duplicate())
 		var card := Card.new()
 		card.name = "Fish_%d" % i
 		card.fish = f

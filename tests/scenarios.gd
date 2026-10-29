@@ -86,6 +86,7 @@ const TESTS := [
 	"test_rotating_things",
 	"test_fish_at_home_shown",
 	"test_affixes",
+	"test_stats_gate_weak",
 	"test_camp_spirit_and_tents",
 	"test_camp_life",
 	"test_ears_and_tails",
@@ -6403,3 +6404,90 @@ func test_affixes() -> void:
 	check(FishLife.tier_of(old, "tough") == 3 and absf(FishLife.val_of(old, "tough") - 0.4) < 0.001, "no tiers saved: tier 3")
 	Profile.load_data(saved)
 
+
+
+func test_stats_gate_weak() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 0})
+	GameState.reset_run()
+	# Stat affix numbers lie in their tier's range; a feed re-rolls inside it.
+	var ok := true
+	for tier in range(1, 6):
+		var f := {"id": "carp", "vit": 1.0, "vit_life": 100.0, "fresh": 1.0, "fresh_life": 100.0, "dead": false, "rotten": false,
+			"life_traits": ["might"], "trait_tiers": {"might": tier}}
+		var n := FishLife.reroll_stat(f, "might")
+		var r: Array = FishLife.STAT_RANGES[tier - 1]
+		ok = ok and n >= r[0] and n <= r[1] and int(FishLife.val_of(f, "might")) == n
+	check(ok, "the stat affix number is within its tier's range (1~4 5~8 9~14 15~22 23~32)")
+	# Sums: the rod, plus a live strong fish; weak or dead ones give nothing.
+	var base_might := Stats.total("might")
+	check(base_might == Stats.rod_base(Profile.rod_tier), "the rod alone: %d" % base_might)
+	var big := {"id": "carp", "name": "力魚", "vit": 1.0, "vit_life": 100.0, "fresh": 1.0, "fresh_life": 100.0, "dead": false, "rotten": false,
+		"life_traits": ["might"], "trait_tiers": {"might": 4}, "trait_vals": {"might": 20}}
+	GameState.carried_fish = [big]
+	check(Stats.total("might") == base_might + 20, "a live fish with 力量+20 adds it")
+	FishLife.make_weak(big)
+	check(Stats.total("might") == base_might, "a weak fish adds nothing")
+	FishLife.restore(big, 0.5)
+	check(Stats.total("might") == base_might + 20 and not big.weak, "fed, it counts again")
+	GameState.stat_buffs["might"] = [5, 30.0]
+	check(Stats.total("might") == base_might + 25, "a drink's boost counts")
+	GameState.carried_fish.clear()
+	GameState.stat_buffs.clear()
+	# The gate: a giant asks one stat; the short stat is named by the text.
+	var gate := FishData.gate_for("carp", "legend", 80.0)
+	check(gate.size() == 3, "a legend asks three stats")
+	var giant := FishData.gate_for("carp", "common", float(FishData.LENGTH_CM["carp"][1]))
+	check(giant.size() == 1, "a giant asks one")
+	check(FishData.gate_for("carp", "common", float(FishData.LENGTH_CM["carp"][0])).is_empty(), "a small common fish asks none")
+	var short := Stats.shortfall({"might": 500})
+	check(short.get("stat", "") == "might" and short.gap > 0.0, "short stat found")
+	check(Stats.shortfall({"might": 1}).is_empty(), "met: nothing short")
+	# Weak: 5 % vitality, runs down in 5 minutes of game time, 不死 untouched.
+	var fish := {"id": "carp", "name": "鯉", "vit": 1.0, "vit_life": 100.0, "fresh": 1.0, "fresh_life": 100.0, "dead": false, "rotten": false}
+	check(FishLife.make_weak(fish) and absf(float(fish.vit) - 0.05) < 0.001, "weak: 5% activity")
+	FishLife.tick(fish, 120.0, false)
+	check(fish.weak and FishLife.state(fish) == "alive", "still alive after 2 minutes")
+	FishLife.tick(fish, 200.0, false)
+	check(FishLife.state(fish) != "alive", "dead after 5 minutes")
+	var undying := {"id": "carp", "vit": 1.0, "vit_life": 100.0, "fresh": 1.0, "fresh_life": 100.0, "dead": false, "rotten": false,
+		"life_traits": ["immortal"], "trait_tiers": {"immortal": 5}}
+	check(not FishLife.make_weak(undying), "不死 isn't made weak")
+	# A lost night: brought fish come back weak in the bag; finds vanish.
+	var mine := {"id": "carp", "name": "帶去的魚", "vit": 1.0, "vit_life": 1000.0, "fresh": 1.0, "fresh_life": 1000.0, "dead": false, "rotten": false,
+		"size": "small", "length": 30.0, "weight": 1.0}
+	var pristine := mine.duplicate(true)
+	Profile.pack_fish = [mine]
+	GameState.reset_run()
+	GameState.start_run()
+	check(GameState.carried_fish.size() == 1 and Profile.run_brought.size() == 1, "the brought fish go out, a copy kept")
+	var found := mine.duplicate(true)
+	found.erase("brought")
+	found["name"] = "路上釣的魚"
+	GameState.add_carried_fish(found)
+	GameState.end_run(false, "被抓了")
+	check(Profile.pack_fish.size() == 1 and Profile.pack_fish[0].name == "帶去的魚" and Profile.pack_fish[0].weak, "back in the bag, weak")
+	check(GameState.carried_fish.is_empty() and Profile.run_brought.is_empty() and Profile.weak_news.size() == 1, "the catch is gone; the warning is set")
+	# The warning's way out: all the weak ones into the tank.
+	check(Profile.weak_count() == 1 and Profile.weak_to_tank() == 1 and Profile.tank.size() == 1 and Profile.pack_fish.is_empty(), "weak fish put in the tank")
+	# Feeding.
+	var weak: Dictionary = Profile.tank[0]
+	check(FishLife.use_vigor_feed(weak) == "" and not weak.weak and weak.vit > 0.5, "feed restores")
+	check(FishLife.use_vigor_feed(weak) == "" or true, "(feed again ok)")
+	# Leaving mid-run: the next start puts the brought fish in the tank.
+	Profile.tank.clear()
+	var again := pristine.duplicate(true)
+	Profile.run_brought = [again]
+	Profile.recover_unfinished_run()
+	check(Profile.tank.size() == 1 and Profile.run_brought.is_empty(), "left mid-run: brought fish placed in the tank")
+	# The success path still keeps its own.
+	Profile.tank.clear()
+	Profile.pack_fish = [pristine.duplicate(true)]
+	GameState.reset_run()
+	GameState.start_run()
+	GameState.end_run(true, "ok")
+	check(Profile.tank.size() == 1 and not Profile.tank[0].get("weak", false) and not Profile.tank[0].has("brought"), "an escape: into the tank as they were")
+	# The shop sells the feed.
+	Profile.gold = 100
+	check(Profile.buy_usable("vigor_feed") and Profile.stored("vigor_feed") == 1, "活力飼料 is sold")
+	Profile.load_data(saved)

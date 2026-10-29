@@ -350,6 +350,20 @@ func _card_for(i: int, src := "tank") -> void:
 			_close()
 			_feed_dialog(f))
 		moves.add_child(fb)
+	var feeds := Profile.bag_count("vigor_feed") + Profile.stored("vigor_feed")
+	if feeds > 0 and FishLife.state(f) == "alive":
+		var vb := UiKit.button("餵活力飼料 x%d" % feeds, 14, "red")
+		vb.name = "VigorFeed"
+		vb.custom_minimum_size = Vector2(150, 38)
+		vb.pressed.connect(func():
+			var why := FishLife.use_vigor_feed(f)
+			if why == "" and Profile.take_one("vigor_feed"):
+				_close()
+				_say("%s 吃了活力飼料，恢復精神" % f.get("name", "魚"))
+				_rebuild()
+			else:
+				_say(why if why != "" else "沒有飼料了"))
+		moves.add_child(vb)
 	col.add_child(moves)
 	var acts := HBoxContainer.new()
 	acts.add_theme_constant_override("separation", 8)

@@ -81,6 +81,10 @@ var carried_fish: Array = []
 ## User request: the fish in the oxygenated fish box (Profile.OXY_SLOTS of
 ## them) - their vitality doesn't run down; the run's, like what's carried.
 var oxy_fish: Array = []
+## User request: stats from items drunk (stat -> [number, seconds left]) and an
+## event's (stat -> number): Stats.total adds them.
+var stat_buffs: Dictionary = {}
+var stat_event: Dictionary = {}
 var day_over: bool = false
 
 var day_phase: DayPhase = DayPhase.FISHING
@@ -140,6 +144,8 @@ func ghost_interfered() -> void:
 
 
 func _process(delta: float) -> void:
+	for s in stat_buffs:
+		stat_buffs[s][1] = maxf(float(stat_buffs[s][1]) - delta, 0.0)
 	if run_started and not run_over:
 		# (the angel's keep the little ghosts off - the wraith's bring them sooner)
 		_ghost_quiet += delta * FishLife.imp_rate(carried_fish)
@@ -186,6 +192,10 @@ func start_run() -> void:
 		else:
 			Profile.stash_fish.append(fish)
 	Profile.pack_fish = []
+	# (kept apart: a lost night, or leaving, gives these back)
+	for fish in carried_fish:
+		fish["brought"] = true
+	Profile.note_run_brought(carried_fish)
 	_start_weather()
 
 
@@ -416,6 +426,8 @@ func escape() -> void:
 
 func reset_run() -> void:
 	last_cause = ""
+	stat_buffs.clear()
+	stat_event.clear()
 	quota_progress = 0.0
 	carried_fish.clear()
 	oxy_fish.clear()
@@ -458,6 +470,7 @@ func end_run(success: bool, message: String) -> void:
 	if run_over:
 		return
 	run_over = true
+	Profile.clear_run_brought()
 	day_phase = DayPhase.DONE
 	day_phase_changed.emit("DONE")
 
@@ -476,6 +489,7 @@ func end_run(success: bool, message: String) -> void:
 		# Design doc §8: on failure, carried fish are lost outright, never sold;
 		# user request: so is gear found on the map - what was brought stays.
 		# (The first chapter's levels are safe: nothing's lost there.)
+		final_message += _return_brought_weak()
 		carried_fish.clear()
 		oxy_fish.clear()
 		inventory_updated.emit(carried_fish)
@@ -499,6 +513,27 @@ func _guide_gift() -> String:
 	return text
 
 
+## User request (weak fish): a lost night - the fish brought from the camp
+## come back, weak (to the bag); what was found or caught is gone.
+func _return_brought_weak() -> String:
+	var back := 0
+	for fish in carried_fish + oxy_fish:
+		if not fish.get("brought", false):
+			continue
+		fish.erase("brought")
+		if FishLife.state(fish) == "alive":
+			FishLife.make_weak(fish)
+			Profile.put_in_pack(fish)
+			if fish.get("weak", false):
+				Profile.weak_news.append(fish.get("name", "魚"))
+			back += 1
+		elif Profile.add_to_fish_box(fish):
+			back += 1
+	if back == 0:
+		return ""
+	return "\n帶出去的魚撿回了 %d 條" % back
+
+
 ## User request (fish tank): the fish carried out of a run go into the
 ## fish tank at home (Profile.tank) - the living ones, to be looked at, sold
 ## or traded there; any the tank has no room for are sold. User request
@@ -512,6 +547,7 @@ func _bring_fish_home() -> String:
 	var rotten := 0
 	var lost := 0
 	for fish in carried_fish + oxy_fish:
+		fish.erase("brought")
 		match FishLife.state(fish):
 			"alive":
 				if Profile.add_to_tank(fish):

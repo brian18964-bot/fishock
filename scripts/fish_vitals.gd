@@ -74,7 +74,9 @@ func _refresh() -> void:
 	match FishLife.state(_fish):
 		"alive":
 			var left := FishLife.lifespan_left(_fish, GameState.is_night)
-			if FishLife.has_trait(_fish, "immortal"):
+			if _fish.get("weak", false):
+				text += "・虛弱！在魚缸裡不會再倒數，餵活力飼料才恢復" if kept else "・虛弱！約 %s 後死亡（快放進魚缸）" % _time(left)
+			elif FishLife.has_trait(_fish, "immortal"):
 				text += "・不會死亡"
 			elif kept:
 				text += "・放在家裡活性不會下降"

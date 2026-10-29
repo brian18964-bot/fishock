@@ -49,6 +49,13 @@ const TRAITS := {
 	"glow": {"name": "微光", "weight": 4.0, "kind": "bag", "vals": [0.2, 0.3, 0.45, 0.6, 0.8]},
 	"savory": {"name": "鮮美", "weight": 4.0, "kind": "bag", "bad": true, "vals": [0.10, 0.20, 0.30, 0.45, 0.60]},
 	"smelly": {"name": "腥臭", "weight": 4.0, "kind": "bag", "bad": true, "vals": [0.10, 0.20, 0.30, 0.45, 0.60]},
+	# -- the four STATS (屬性) carried in the bag, alive and not weak: each a number
+	# rolled in its tier's range (STAT_RANGES) and kept on the fish (`trait_vals`);
+	# the sum of all the sources is Stats.total.
+	"might": {"name": "力量", "weight": 5.0, "kind": "stat"},
+	"resil": {"name": "韌性", "weight": 5.0, "kind": "stat"},
+	"react": {"name": "反應", "weight": 5.0, "kind": "stat"},
+	"endure": {"name": "耐力", "weight": 5.0, "kind": "stat"},
 	# User request: the very rare ones (MYTHIC_CHANCE, epic fish and up, gold) -
 	# each with a use of its own: in the tank (fortune, guide, smith) or in the
 	# bag (wraith, angel, luckystar).
@@ -60,6 +67,10 @@ const TRAITS := {
 	"angel": {"name": "天使", "weight": 1.0, "kind": "mythic", "fixed": 5},
 }
 const MYTHIC := ["fortune", "guide", "smith", "wraith", "angel", "luckystar"]
+## A stat affix's number, by tier: rolled anywhere in the range (and a feed
+## may move a fish's range - reroll_stat).
+const STAT_RANGES := [[1, 4], [5, 8], [9, 14], [15, 22], [23, 32]]
+const STAT_IDS := ["might", "resil", "react", "endure"]
 ## The tiers' names and colours.
 const TIER_NAMES := ["普通", "精良", "稀有", "史詩", "傳說"]
 const TIER_COLORS := [Color(0.88, 0.88, 0.88), Color(0.45, 0.85, 0.45), Color(0.4, 0.66, 1.0), Color(0.75, 0.5, 0.95), Color(1.0, 0.78, 0.3)]
@@ -165,6 +176,12 @@ static func roll(f: Dictionary) -> Dictionary:
 	if "wealth" in traits:
 		var span: Array = TRAITS.wealth.ranges[int(tiers.wealth) - 1]
 		f["wealth_gold"] = randi_range(int(span[0]), int(span[1]))
+	var stat_vals := {}
+	for t in traits:
+		if STAT_IDS.has(t):
+			var r: Array = STAT_RANGES[int(tiers[t]) - 1]
+			stat_vals[t] = randi_range(int(r[0]), int(r[1]))
+	f["trait_vals"] = stat_vals
 	if f.has("value"):
 		if "plump" in traits:
 			f["value"] = float(f.value) * (1.0 + float(TRAITS.plump.vals[int(tiers.plump) - 1]))
@@ -255,6 +272,9 @@ static func tier_of(f: Dictionary, t: String) -> int:
 
 ## The number of affix `t` on `f`, by its tier (0 if it hasn't it).
 static func val_of(f: Dictionary, t: String) -> float:
+	if has_trait(f, t) and STAT_IDS.has(t):
+		var r: Array = STAT_RANGES[tier_of(f, t) - 1]
+		return float(f.get("trait_vals", {}).get(t, (int(r[0]) + int(r[1])) / 2))
 	if not has_trait(f, t) or not TRAITS[t].has("vals"):
 		return 0.0
 	return float(TRAITS[t].vals[tier_of(f, t) - 1])
@@ -321,6 +341,21 @@ static func use_frozen(f: Dictionary) -> String:
 	return ""
 
 
+const FEED_VIGOR := 0.5
+
+
+## Vitality feed on a fish: "" done, else why not.
+static func use_vigor_feed(f: Dictionary) -> String:
+	if state(f) != "alive":
+		return "這條魚已經死了，餵不回來"
+	if has_trait(f, "immortal"):
+		return "這條魚不會死，用不到"
+	if not f.get("weak", false) and float(f.get("vit", 1.0)) >= 0.99:
+		return "這條魚活力十足"
+	restore(f, FEED_VIGOR)
+	return ""
+
+
 ## `value` run down at `rate` a second for `dt` s, the first `slow` s of it at
 ## SLOW of that: [what's left (0 if it ran out), time left over (-1 if it
 ## didn't run out), the slow time left].
@@ -353,7 +388,19 @@ static func tick(f: Dictionary, dt: float, night := false) -> String:
 		return ""
 	var said := ""
 	var left := dt
-	if not f.dead:
+	if f.get("weak", false) and not f.dead:
+		# Weak (a night lost): its vitality held low, a grace running - at
+		# nothing it dies, the rest of the time on its freshness.
+		f["weak_left"] = float(f.get("weak_left", WEAK_TIME)) - dt
+		if float(f.weak_left) > 0.0:
+			return ""
+		left = -float(f.weak_left)
+		f["weak"] = false
+		f["weak_left"] = 0.0
+		f.vit = 0.0
+		f.dead = true
+		said = "died"
+	elif not f.dead:
 		if has_trait(f, "immortal"):
 			return ""
 		var run := _run(float(f.vit), vit_rate(f, night), float(f.get("vit_slow", 0.0)), left)
@@ -380,8 +427,34 @@ static func tick(f: Dictionary, dt: float, night := false) -> String:
 	return said
 
 
+## User request: a night lost leaves the fish brought in weak, not dead: its
+## vitality held at WEAK_VIT and WEAK_TIME s to get it back (to the tank, or fed:
+## restore) before it dies. 不死 ones are untouched. True if it went weak.
+const WEAK_VIT := 0.05
+const WEAK_TIME := 300.0
+
+
+static func make_weak(f: Dictionary) -> bool:
+	if state(f) != "alive" or has_trait(f, "immortal"):
+		return false
+	f["vit"] = WEAK_VIT
+	f["weak"] = true
+	f["weak_left"] = WEAK_TIME
+	return true
+
+
+## A feed: `amount` (0..1) of vitality back, and no longer weak.
+static func restore(f: Dictionary, amount: float) -> void:
+	if state(f) != "alive":
+		return
+	f["weak"] = false
+	f["weak_left"] = 0.0
+	f["vit"] = minf(float(f.get("vit", 0.0)) + amount, 1.0)
+
+
 ## Dead on the spot (vitality gone) - a fish put down in a hurry, a test's.
 static func kill(f: Dictionary) -> void:
+	f["weak"] = false
 	f["vit"] = 0.0
 	f["dead"] = true
 	if fresh_rate(f) > 0.0 and float(f.get("fresh_life", 300.0)) <= INSTANT:
@@ -488,6 +561,9 @@ static func trait_desc(f: Dictionary, t: String) -> String:
 			return "放在包包裡：野獸更容易盯上你（發現距離 +%d%%）" % roundi(v * 100.0)
 		"smelly":
 			return "放在包包裡：小鬼更常來搗亂（頻率 +%d%%）" % roundi(v * 100.0)
+		"might", "resil", "react", "endure":
+			var r: Array = STAT_RANGES[tier_of(f, t) - 1]
+			return "放在包包裡（活著、不虛弱）：%s +%d（這一階 %d～%d）" % [TRAITS[t].name, int(v), int(r[0]), int(r[1])]
 		"fortune":
 			return "養在魚缸：每小時送來 20 金幣（最多累積 12 小時）"
 		"guide":
@@ -520,6 +596,8 @@ static func state_text(f: Dictionary) -> String:
 static func lifespan_left(f: Dictionary, night := false) -> float:
 	if state(f) != "alive" or has_trait(f, "immortal"):
 		return INF
+	if f.get("weak", false):
+		return float(f.get("weak_left", WEAK_TIME))
 	return _lasts(float(f.vit), vit_rate(f, night), float(f.get("vit_slow", 0.0)))
 
 
@@ -587,3 +665,26 @@ static func glow_level(carried: Array) -> float:
 ## How much likelier a rare catch is with the lucky stars carried (any state).
 static func luck_bonus(carried: Array) -> float:
 	return minf(float(count_trait(carried, "luckystar")) * LUCK_RARE, LUCK_MOST)
+
+
+## User request: a feed rolls a stat affix's number again, within its tier's
+## range moved by `lo` and `hi` (0, 0: the range as it is; a feed that lifts
+## the floor passes lo > 0...). The tier stays; the number is kept inside the
+## 1..99 a stat can be. The new number.
+static func reroll_stat(f: Dictionary, t: String, lo := 0, hi := 0) -> int:
+	if not has_trait(f, t) or not STAT_IDS.has(t):
+		return 0
+	var r: Array = STAT_RANGES[tier_of(f, t) - 1]
+	var a := clampi(int(r[0]) + lo, 1, 99)
+	var b := clampi(int(r[1]) + hi, a, 99)
+	var n := randi_range(a, b)
+	if not f.has("trait_vals"):
+		f["trait_vals"] = {}
+	f.trait_vals[t] = n
+	return n
+
+
+## Whether its stat affixes count now: alive, not weak (and carried: the
+## caller's business).
+static func stats_count(f: Dictionary) -> bool:
+	return state(f) == "alive" and not bool(f.get("weak", false))
