@@ -82,10 +82,10 @@ def main():
     syringe, bottle = sys.argv[sys.argv.index("--") + 1:][:2]
     meshes = load(syringe)
     steel = mat("needle_steel", (0.72, 0.74, 0.78), 0.25, 0.9)
-    glass = mat("needle_glass", (0.3, 0.95, 0.5), 0.1, 0.0, 0.75, emit=(0.15, 0.8, 0.3))
+    glass = mat("needle_glass", (0.08, 0.55, 0.22), 0.1, 0.0, 0.9)
     serum = mat("needle_serum", (0.35, 1.0, 0.55), 0.2, 0.0, 1.0, emit=(0.2, 0.9, 0.4))
     rubber = mat("needle_rubber", (0.55, 0.1, 0.12), 0.7)
-    plastic = mat("needle_plastic", (0.9, 0.9, 0.92), 0.5)
+    plastic = mat("needle_plastic", (0.55, 0.57, 0.6), 0.5)
     # (by size: the long barrel is the biggest; see the preview)
     for o in meshes:
         d = o.dimensions
@@ -95,11 +95,11 @@ def main():
     finish(meshes, "revive_needle")
 
     meshes = load(bottle)
-    amber = mat("dropper_glass", (0.95, 0.62, 0.18), 0.12, 0.0, 0.55)
+    amber = mat("dropper_glass", (0.6, 0.3, 0.06), 0.12, 0.0, 0.7)
     cap = mat("dropper_cap", (0.12, 0.1, 0.1), 0.5)
     teat = mat("dropper_teat", (0.6, 0.12, 0.5), 0.6)
-    paper = mat("dropper_label", (0.93, 0.9, 0.8), 0.9)
-    liquid = mat("dropper_liquid", (0.45, 0.8, 1.0), 0.15, 0.0, 1.0, emit=(0.2, 0.5, 0.9))
+    paper = mat("dropper_label", (0.62, 0.58, 0.46), 0.9)
+    liquid = mat("dropper_liquid", (0.2, 0.5, 0.8), 0.15, 0.0, 1.0)
     pick = {"Karet": teat, "Label": paper, "Pipet": liquid, "Pipet_atas": teat, "Sweep_1": amber, "Tutup": cap}
     for o in meshes:
         paint(o, pick.get(o.name, amber))
