@@ -515,7 +515,7 @@ static func value_for_length(id: String, base: float, length: float) -> float:
 ## how big it is, between the band of its kind. Short by up to
 ## Stats.CHALLENGE it can still be tried (harder); past that it's over (Player).
 ## [lowest, highest] the single stat asks.
-static var GATE_BANDS := {"giant": [20, 40], "giant_rare": [35, 55], "epic": [40, 60], "legend": [55, 85]}
+static var GATE_BANDS := {"giant": [20, 40], "giant_rare": [35, 55], "epic": [40, 60], "legend": [65, 100]}
 const GIANT_FROM := 0.85
 
 ## Each species' main stat, by its nature: 反應 the quick, skittish and
