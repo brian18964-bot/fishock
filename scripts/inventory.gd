@@ -14,8 +14,8 @@ extends RefCounted
 ## fits is just whether the packing still succeeds with it added. User
 ## request (Camp v2): low spirit shuts the bottom rows (Profile.bag_rows()).
 
-const COLS := 8
-const ROWS := 4
+const COLS := 7
+const ROWS := 5
 const BAIT_PER_CELL := 10
 const BATTERIES_PER_CELL := 3
 const SIZES := {"small": Vector2i(1, 1), "medium": Vector2i(1, 2), "large": Vector2i(2, 2), "huge": Vector2i(2, 3)}

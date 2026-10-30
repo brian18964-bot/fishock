@@ -2494,7 +2494,7 @@ func test_warehouse_and_bag() -> void:
 	check(bi >= 0 and Profile.bag[bi].id == "battery" and int(Profile.bag[bi].count) == 3,
 		"three to a cell, the first stack where it was dropped")
 	check(not Profile.bag_move(bi, Profile.bag[0].cell), "not onto something else")
-	check(Profile.bag_move(bi, Vector2i(7, 3)) and Profile.bag[Profile.bag_at(Vector2i(7, 3))].id == "battery", "moved to a free cell")
+	check(Profile.bag_move(bi, Vector2i(6, 4)) and Profile.bag[Profile.bag_at(Vector2i(6, 4))].id == "battery", "moved to a free cell")
 	# User request (Camp v2): the backpack's own page can throw things away.
 	var li := Profile.bag.map(func(e): return e.id).find("lure_minnow")
 	check(Profile.bag_discard(li, 1) == 1 and Profile.bag_count("lure_minnow") == 11, "a lure thrown away")
@@ -3264,7 +3264,7 @@ func test_oxy_items() -> void:
 	check(not Profile.buy_oxy_box(), "not twice")
 	# Unworn it takes six cells of the bag, 2 across and 3 down - or turned, 3 across and 2 down.
 	Profile.bag.clear()
-	check(Profile.bag_fits("oxy_box", Vector2i(0, 0)) and not Profile.bag_fits("oxy_box", Vector2i(7, 0)) and not Profile.bag_fits("oxy_box", Vector2i(0, 2)), "2 x 3: it needs that room")
+	check(Profile.bag_fits("oxy_box", Vector2i(0, 0)) and not Profile.bag_fits("oxy_box", Vector2i(6, 0)) and not Profile.bag_fits("oxy_box", Vector2i(0, 3)), "2 x 3: it needs that room")
 	check(Profile.bag_fits("oxy_box", Vector2i(0, 2), -1, true) and not Profile.bag_fits("oxy_box", Vector2i(6, 0), -1, true), "turned, 3 x 2")
 	Profile.bag = [{"id": "oxy_box", "count": 1, "cell": Vector2i(0, 0)}]
 	check(Profile.bag_size_of(0) == Vector2i(2, 3) and Profile.bag_rotate(0) and Profile.bag_size_of(0) == Vector2i(3, 2) and Profile.bag[0].rot, "turned in the bag")
@@ -6062,18 +6062,18 @@ func test_placing_fish() -> void:
 	small.life_traits = []
 	large.life_traits = []
 	Profile.tank = [small, large]
-	check(Profile.pack_fits(small, Vector2i(7, 3)) and not Profile.pack_fits(large, Vector2i(7, 3)), "a small one fits the corner cell, a large (2x2) one doesn't")
+	check(Profile.pack_fits(small, Vector2i(6, 4)) and not Profile.pack_fits(large, Vector2i(6, 4)), "a small one fits the corner cell, a large (2x2) one doesn't")
 	check(Profile.move_fish("tank", 1, "pack", Vector2i(7, 3)) != "" and Profile.pack_fish.is_empty(), "a refused place moves nothing")
-	check(Profile.move_fish("tank", 0, "pack", Vector2i(7, 3)) == "" and Profile.pack_fish[0].cell == [7, 3], "set in the corner cell")
+	check(Profile.move_fish("tank", 0, "pack", Vector2i(6, 4)) == "" and Profile.pack_fish[0].cell == [6, 4], "set in the corner cell")
 	check(Profile.move_fish("tank", 0, "pack", Vector2i(7, 3)) != "", "that cell's taken now")
 	check(Profile.move_fish("tank", 0, "pack", Vector2i(0, 0)) == "", "the large one at the other corner")
 	var at := Profile.pack_places()
-	check(at.size() == 2 and at[0].position == Vector2i(7, 3) and at[1] == Rect2i(0, 0, 2, 2), "the bag has them where they were put %s" % [at])
+	check(at.size() == 2 and at[0].position == Vector2i(6, 4) and at[1] == Rect2i(0, 0, 2, 2), "the bag has them where they were put %s" % [at])
 	# On a run they stay there.
 	GameState.reset_run()
 	GameState.start_run()
 	var placed := Inventory.pack(Inventory.items(null))
-	check(GameState.carried_fish.size() == 2 and placed.has(Rect2i(7, 3, 1, 1)) and placed.has(Rect2i(0, 0, 2, 2)), "on the run they sit as put")
+	check(GameState.carried_fish.size() == 2 and placed.has(Rect2i(6, 4, 1, 1)) and placed.has(Rect2i(0, 0, 2, 2)), "on the run they sit as put")
 	GameState.carried_fish.clear()
 	GameState.run_started = false
 	# The warehouse's slots.
@@ -6227,15 +6227,15 @@ func test_rotating_things() -> void:
 	check(Inventory.fish_item(medium).size == Vector2i(2, 1), "turned: 2 x 1")
 	medium["rot"] = false
 	Profile.tank = [medium]
-	check(Profile.pack_fits(medium, Vector2i(7, 0)) and not Profile.pack_fits(medium, Vector2i(7, 3)), "standing it fits the last column, not the last row's end")
+	check(Profile.pack_fits(medium, Vector2i(6, 0)) and not Profile.pack_fits(medium, Vector2i(6, 4)), "standing it fits the last column, not the last row's end")
 	var placer := FishPlacer.new("pack", "tank", 0)
 	get_tree().root.add_child(placer)
 	await frames(2)
-	placer.put_at(Vector2i(7, 0))
+	placer.put_at(Vector2i(6, 0))
 	placer.turn()
-	check(medium.rot and placer.at == Vector2i(6, 0) and not (placer.find_child("PlaceGo", true, false) as Button).disabled, "turned at the edge, it's kept on the grid")
+	check(medium.rot and placer.at == Vector2i(5, 0) and not (placer.find_child("PlaceGo", true, false) as Button).disabled, "turned at the edge, it's kept on the grid")
 	(placer.find_child("PlaceGo", true, false) as Button).pressed.emit()
-	check(Profile.pack_places()[0] == Rect2i(6, 0, 2, 1) and Profile.pack_fish[0].rot, "set down lying")
+	check(Profile.pack_places()[0] == Rect2i(5, 0, 2, 1) and Profile.pack_fish[0].rot, "set down lying")
 	# Cancel puts it back as it was.
 	var again := FishLife.roll({"name": "鯉魚", "id": "carp", "value": 6.0, "size": "medium", "rarity": "common"})
 	Profile.tank = [again]

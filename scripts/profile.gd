@@ -1442,6 +1442,40 @@ func bag_free_cell(id: String, ignore := -1, rot := false) -> Vector2i:
 	return Vector2i(-1, -1)
 
 
+## User request: the bag is 7 x 5 now (it was 8 x 4): what a save had out of
+## its bounds is put again in the first free place (what doesn't fit goes to the
+## warehouse).
+func relayout_bag() -> void:
+	var out := []
+	for i in range(bag.size() - 1, -1, -1):
+		var e: Dictionary = bag[i]
+		var cell = e.get("cell", Vector2i(-1, -1))
+		var c := Vector2i(cell) if cell is Vector2i else Vector2i(-1, -1)
+		var rect := Rect2i(c, Items.size_rot(e.id, bool(e.get("rot", false))))
+		if c.x < 0 or c.y < 0 or rect.end.x > Inventory.COLS or rect.end.y > Inventory.ROWS:
+			out.append(e)
+			bag.remove_at(i)
+	for e in out:
+		var free := bag_free_cell(e.id, -1, bool(e.get("rot", false)))
+		if free.x >= 0:
+			e["cell"] = free
+			bag.append(e)
+		else:
+			_store(e.id, int(e.get("count", 1)))
+	for f in pack_fish.duplicate():
+		var fc = f.get("cell", null)
+		var size: Vector2i = Inventory.fish_item(f).size
+		if fc == null or int(fc[0]) + size.x > Inventory.COLS or int(fc[1]) + size.y > Inventory.ROWS:
+			pack_fish.erase(f)
+			f.erase("cell")
+			var at := pack_first_fit(f)
+			if at.x >= 0:
+				f["cell"] = [at.x, at.y]
+				pack_fish.append(f)
+			else:
+				stash_fish.append(f)
+
+
 ## The bag stack covering `cell`, or -1.
 func bag_at(cell: Vector2i) -> int:
 	for i in bag.size():
@@ -2022,4 +2056,5 @@ func load_data(data: Dictionary) -> void:
 		_store("battery", cells)
 		to_bag("battery", cells)
 	_sync_rod()
+	relayout_bag()
 	ensure_bait()
