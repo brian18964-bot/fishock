@@ -93,6 +93,7 @@ const TESTS := [
 	"test_damage_numbers",
 	"test_fish_clasp",
 	"test_fight_field",
+	"test_move_area",
 	"test_fish_card_layout",
 	"test_fish_alerts",
 	"test_salting",
@@ -2357,11 +2358,11 @@ func test_lure_strike_direction() -> void:
 	await frames(2)
 	check(main.get_node("FightPanel")._drawn, "the way shown")
 	# Flicked true: on, worn a tenth.
-	player().touch_aim = player().strike_dir.rotated(deg_to_rad(10.0))
-	stick._touch_index = 7
-	await frames(2)
-	stick._reset()
-	player().touch_aim = Vector2.ZERO
+	# (the left hand's: a drag in the move area)
+	check(FightPanel.pad_active, "the move area's up for the strike")
+	FightPanel.pad_vec = player().strike_dir.rotated(deg_to_rad(10.0))
+	await frames(14)
+	FightPanel.pad_vec = Vector2.ZERO
 	check(player().state == Player.State.REELING and player().fight.stamina() <= 0.9 + 0.001,
 		"struck true: on, %.0f%% stamina" % (player().fight.stamina() * 100.0))
 	player()._set_state(Player.State.IDLE)
@@ -2376,8 +2377,8 @@ func test_lure_strike_direction() -> void:
 				check(player().fight.stamina() > 0.95, "off the way: nothing off it")
 			player()._set_state(Player.State.IDLE)
 		check(absf(on / 300.0 - case[1]) < 0.09, "%d deg off: on %.0f%% (%.0f%%)" % [case[0], on / 3.0, case[1] * 100.0])
-	# User request: struck without letting go - cranking the lure in, the
-	# bite comes, the thumb goes on round to the way and stops there.
+	# User request: the right stick is the reel - turned round while the bite comes, it
+	# doesn't strike; the strike is the move area's drag, taken to the way and held.
 	player()._set_state(Player.State.WAITING)
 	stick._touch_index = 7
 	stick.is_pressed = true
@@ -2387,11 +2388,18 @@ func test_lure_strike_direction() -> void:
 	for i in 8:
 		stick.output = Vector2.RIGHT.rotated(i * 0.3) * 0.9
 		await frames(1)
-	check(player().state == Player.State.BITE, "cranking on doesn't strike")
 	stick.output = player().strike_dir * 0.9
+	await frames(14)
+	check(player().state == Player.State.BITE, "the stick turning doesn't strike (the area's the strike)")
+	for i in 6:
+		FightPanel.pad_vec = Vector2.RIGHT.rotated(i * 0.3)
+		await frames(1)
+	check(player().state == Player.State.BITE, "a drag swung round doesn't strike")
+	FightPanel.pad_vec = player().strike_dir
 	await frames(14)
 	check(player().state == Player.State.REELING and player().strike_off >= 0.0 and player().strike_off < 5.0,
 		"taken on to the way and held there: struck that way (%.0f deg)" % player().strike_off)
+	FightPanel.pad_vec = Vector2.ZERO
 	stick.is_pressed = false
 	stick.output = Vector2.ZERO
 	stick._reset()
@@ -7193,7 +7201,10 @@ func test_damage_numbers() -> void:
 	check(panel._pops.size() == 2 and panel._pops.any(func(q): return q.text == "-12,345" and q.label == "完美暴擊！") and panel._pops.any(func(q): return q.kind == "ring"), "a crit is a number (with its commas) and a ring")
 	panel._add_pop({"type": "hurt", "src": "躍出", "n": 25})
 	check(panel._edge > 0.0 and panel._edge_color == FightPanel.RAGE, "a hard hit taken flashes the screen's edge red")
-	check(panel._pops.back().label == "躍出" and panel._pops.back().pos.x > FightPanel.CENTER_X + FightPanel.SIZE.x * 0.5, "a hurt shows beside the tension bar, with its name")
+	check(panel._pops.back().text == "+25", "the tension taken is a + (it's the rise that breaks the line)")
+	panel._add_pop({"type": "hurt", "src": "割線", "n": 18})
+	check(panel._pops.back().text == "-18", "the line's life frayed away is a -")
+	check(panel._pops[-2].label == "躍出" and panel._pops[-2].pos.x > FightPanel.CENTER_X + FightPanel.SIZE.x * 0.5, "a hurt shows beside the tension bar, with its name")
 	panel.queue_free()
 	await frames(1)
 
@@ -7394,3 +7405,80 @@ func test_fight_field() -> void:
 	check(panel.get_child_count() > 0, "the panel's up")
 	panel.queue_free()
 	await frames(1)
+
+
+## User request (the move area): the fish's moves play under the panel, nothing shows
+## when it makes none, and the left hand's drag there is the way asked (flick, pull, a
+## lure's strike) - the right stick keeps the reel.
+func test_move_area() -> void:
+	Profile.load_data({"gold": 0})
+	await _fresh_game()
+	var panel: FightPanel = null
+	for c in main.get_children():
+		if c is FightPanel:
+			panel = c
+	check(panel != null and panel._area != null and not panel._area.visible, "no move, no area")
+	if panel == null:
+		return
+	var tier: Dictionary = FishData.TIERS.values()[0]
+	var p := player()
+	p.fight = FishFight.new("advanced", "", tier, 1.0)
+	var f: FishFight = p.fight
+	f._jump_cooldown = 99.0
+	f._run_timer = 99.0
+	p._set_state(Player.State.REELING)
+	var want := {"dash": "run", "leap": "jump", "rock_dive": "dive", "weed": "snag", "rally": "rally", "side_dash": "side_run"}
+	f.opening_left = 0.0
+	panel._update_area(p, 0.05)
+	check(panel.move_key(f) == "" and not panel._area.visible, "a fish making no move: nothing shows")
+	f.jump_left = 0.5
+	check(panel.move_key(f) == "leap", "a leap is the leap's")
+	f.jump_left = 0.0
+	f.dive_active = true
+	check(panel.move_key(f) == "rock_dive", "a dash for the rocks")
+	f.dive_active = false
+	f.run_left = 1.0
+	f.run_side = Vector2.ZERO
+	check(panel.move_key(f) == "dash", "a run is a dash")
+	f.enraged = true
+	check(panel.move_key(f) == "rage", "a berserk run is berserk")
+	f.enraged = false
+	f.rally_left = 3.0
+	f.run_left = 0.0
+	check(panel.move_key(f) == "rally", "the rally")
+	f.rally_left = 0.0
+	f._in_snag = true
+	check(panel.move_key(f) == "weed", "into the weed")
+	f._in_snag = false
+	f.run_left = 2.0
+	f.run_side = Vector2.RIGHT
+	f.swipe_left = 1.0
+	panel._update_area(p, 0.05)
+	check(panel.move_key(f) == "side_dash" and panel._area.visible and FightPanel.pad_active, "a sideways dash: the area is up")
+	# The drag in it is the way (to the left, against a dash to the right).
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	press.position = Vector2(150, 80)
+	panel._area_input(press)
+	var drag := InputEventMouseMotion.new()
+	drag.position = Vector2(80, 80)
+	panel._area_input(drag)
+	check(FightPanel.pad_vec.x < -0.9 and p._counter_dir().x < -0.9, "dragged left: the way for the flick")
+	p.touch_aim = Vector2.RIGHT
+	check(p._counter_dir().x < -0.9, "(the right stick isn't the way while the area's up)")
+	p.touch_aim = Vector2.ZERO
+	var rel := InputEventMouseButton.new()
+	rel.button_index = MOUSE_BUTTON_LEFT
+	rel.pressed = false
+	rel.position = Vector2(80, 80)
+	panel._area_input(rel)
+	check(FightPanel.pad_vec == Vector2.ZERO, "let go: no way")
+	# Over: the area goes, and the right stick is the way again.
+	f.run_left = 0.0
+	f.run_side = Vector2.ZERO
+	f.swipe_left = 0.0
+	panel._update_area(p, 0.05)
+	check(not panel._area.visible and not FightPanel.pad_active, "no move: the area's gone")
+	p.fight = null
+	p._set_state(Player.State.IDLE)

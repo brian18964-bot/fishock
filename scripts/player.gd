@@ -2965,10 +2965,30 @@ func _start_bite() -> void:
 ## there (or let go of after it moved); on a keyboard, Space or a way key
 ## (W/A/S/D) pressed - the way the keys point.
 func _lure_strike_input(just_pressed: bool, just_released: bool, delta: float) -> void:
-	if touch_aim != Vector2.ZERO:
+	# (the move area: a drag there, held to a way or let go of after it moved)
+	if FightPanel.pad_active:
+		var q := FightPanel.pad_vec
+		if q.length() > 0.05:
+			if q.distance_to(_strike_from) > LURE_MOVED:
+				_strike_moved = true
+			var spin := 0.0
+			if q.length() > 0.3 and _strike_last.length() > 0.3 and delta > 0.0:
+				spin = absf(angle_difference(_strike_last.angle(), q.angle())) / delta
+			if _strike_moved and q.length() > LURE_FLICK and spin < LURE_STILL:
+				_strike_still += delta
+			else:
+				_strike_still = 0.0
+			_strike_last = q
+			if _strike_still >= LURE_DWELL:
+				_strike_lure(q.normalized())
+			return
+		if _strike_moved and _strike_last.length() > 0.3:
+			_strike_lure(_strike_last.normalized())
+			return
+	if touch_aim != Vector2.ZERO and not FightPanel.pad_active:
 		_strike_lure(touch_aim.normalized())
 		return
-	if _aim_joystick.is_pressed:
+	if _aim_joystick.is_pressed and not FightPanel.pad_active:
 		var p: Vector2 = _aim_joystick.output
 		if p.distance_to(_strike_from) > LURE_MOVED:
 			_strike_moved = true
@@ -2983,7 +3003,7 @@ func _lure_strike_input(just_pressed: bool, just_released: bool, delta: float) -
 		if _strike_still >= LURE_DWELL:
 			_strike_lure(p.normalized())
 		return
-	if just_released and _cast_stick_touched() == false and _strike_last.length() > 0.3:
+	if just_released and not FightPanel.pad_active and _cast_stick_touched() == false and _strike_last.length() > 0.3:
 		# (let go of the stick: the way it last pointed, if it had moved)
 		_strike_lure(_strike_last.normalized() if _strike_moved else Vector2.ZERO)
 		return
@@ -3222,6 +3242,13 @@ func swim_out_rate() -> float:
 ## Which way the rod is being pulled, for answering a sideways run: the
 ## right stick, else the way you walk.
 func _counter_dir() -> Vector2:
+	# (the move area is the left hand's: drag in it - the right stick keeps the reel)
+	if FightPanel.pad_active:
+		if FightPanel.pad_vec != Vector2.ZERO:
+			return FightPanel.pad_vec
+		if velocity.length() > 1.0:
+			return velocity.normalized()
+		return Vector2.ZERO
 	if touch_aim != Vector2.ZERO:
 		return touch_aim
 	if _aim_joystick.is_pressed:

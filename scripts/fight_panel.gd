@@ -19,6 +19,14 @@ extends CanvasLayer
 ## the reel) - red past FishFight.DANGER, where the line may snap - and,
 ## with the fish getting away and the reel still, a turning arrow round the
 ## right stick: turn it to reel.
+## User request (the move area): under the panel, when the fish makes a move - a dash,
+## a sideways dash, a leap, a dash for the rocks, berserk, a rally, into the weed - its
+## animation plays (a clip, assets/fight_moves/<key>.ogv, else drawn here), and nothing
+## shows when it makes none. It's also the left hand's: when a way is asked - flick
+## against a sideways dash, pull against it, the strike of a lure's bite - drag in it
+## that way (`pad_vec`), as the right stick (kept for turning the reel) used to be
+## turned. A keyboard and a mouse work as before, and the mouse can drag here too.
+##
 ## User request (damage numbers, FishFight's `hits`): the fish's stamina is a health
 ## bar with its number and every hit on it jumps up over the float as a number, as
 ## in an RPG - the reel's small and white (gold in the sweet spot), a flicked dash a
@@ -33,10 +41,10 @@ extends CanvasLayer
 
 const CENTER_X := 480.0
 const TOP := 60.0
-const SIZE := Vector2(320, 190)
+const SIZE := Vector2(320, 116)
 const BAR_W := 200.0
 const BAR_H := 14.0
-const CUE_Y := 268.0
+const CUE_Y := 372.0
 const CUE_RADIUS := 24.0
 const INK := Color(1.0, 0.96, 0.88)
 const DIM := Color(1.0, 0.96, 0.88, 0.6)
@@ -56,6 +64,26 @@ const LINE := Color(0.55, 0.8, 1.0)
 ## turning arrow's size round it.
 const CRANK_HINT_RADIUS := 64.0
 
+## The drag in the move area: its way and strength (0..1), and whether the area is up
+## (Player takes the way from here, not the right stick, while it is).
+static var pad_vec := Vector2.ZERO
+static var pad_active := false
+
+const MOVE_SIZE := Vector2(288, 162)
+const MOVE_DIR := "res://assets/fight_moves/%s.ogv"
+## Move -> its name in the area.
+const MOVE_NAMES := {"dash": "衝刺", "side_dash": "橫衝", "leap": "躍出水面", "rock_dive": "鑽石縫", "rage": "狂暴",
+	"rally": "反撲", "weed": "鑽水草", "bite": "咬鉤"}
+const DRAG_FULL := 46.0
+
+var _area: Control
+var _cue: Control
+var _videos := {}
+var _move := ""
+var _move_t := 0.0
+var _drag_id := -2
+var _drag_from := Vector2.ZERO
+var _drag_at := Vector2.ZERO
 var _view: Node2D
 var _font: Font
 var _pulse := 0.0
@@ -78,6 +106,7 @@ func _ready() -> void:
 	var custom_path: String = ProjectSettings.get_setting("gui/theme/custom_font", "")
 	if custom_path != "":
 		_font = load(custom_path)
+	_build_area()
 	_view = Node2D.new()
 	_view.draw.connect(_draw_panel)
 	add_child(_view)
@@ -89,9 +118,146 @@ func _process(delta: float) -> void:
 	var busy := player != null and (player.state == Player.State.REELING \
 		or player.state == Player.State.BITE or player.light_lure > 0.0)
 	_take_hits(player, delta)
+	_update_area(player, delta)
 	if busy or _drawn or not _pops.is_empty() or _edge > 0.0:
 		_view.queue_redraw()
 	_drawn = busy
+
+
+func _exit_tree() -> void:
+	pad_vec = Vector2.ZERO
+	pad_active = false
+
+
+## Which move the fish is making ("" none), for the area.
+func move_key(fight: FishFight) -> String:
+	match fight.mood():
+		"run":
+			return "rage" if fight.enraged else "dash"
+		"side_run":
+			return "side_dash"
+		"jump":
+			return "leap"
+		"dive":
+			return "rock_dive"
+		"snag":
+			return "weed"
+		"rally":
+			return "rally"
+	return ""
+
+
+func _build_area() -> void:
+	_area = Control.new()
+	_area.name = "MoveArea"
+	_area.position = Vector2(CENTER_X - MOVE_SIZE.x * 0.5, TOP + SIZE.y + 10.0)
+	_area.size = MOVE_SIZE
+	_area.visible = false
+	_area.mouse_filter = Control.MOUSE_FILTER_STOP
+	_area.draw.connect(_draw_area)
+	_area.gui_input.connect(_area_input)
+	add_child(_area)
+	for key in MOVE_NAMES:
+		var path: String = MOVE_DIR % key
+		if not ResourceLoader.exists(path):
+			continue
+		var v := VideoStreamPlayer.new()
+		v.name = "Clip_" + key
+		v.stream = load(path)
+		v.expand = true
+		v.size = MOVE_SIZE
+		v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		v.visible = false
+		# (looped while the move goes on)
+		v.finished.connect(func(): if v.visible: v.play())
+		_area.add_child(v)
+		_videos[key] = v
+	_cue = Control.new()
+	_cue.name = "Cue"
+	_cue.size = MOVE_SIZE
+	_cue.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_cue.draw.connect(_draw_cue)
+	_area.add_child(_cue)
+
+
+## What the area shows now: a move of the fish's, or a lure's bite (the way to strike).
+func _update_area(player: Player, delta: float) -> void:
+	var key := ""
+	var fight := _fight()
+	if fight != null:
+		key = move_key(fight)
+	elif player != null and player.state == Player.State.BITE and player.fishing_mode == Player.FishingMode.LURE:
+		key = "bite"
+	if key != _move:
+		_move = key
+		_move_t = 0.0
+		for k in _videos:
+			var v: VideoStreamPlayer = _videos[k]
+			v.visible = k == key
+			if k == key:
+				v.play()
+			else:
+				v.stop()
+	_move_t += delta
+	var show := _move != ""
+	_area.visible = show
+	pad_active = show
+	if not show:
+		pad_vec = Vector2.ZERO
+		_drag_id = -2
+		return
+	# (a sideways dash to the left plays mirrored: the clips run left to right)
+	if _move == "side_dash" and fight != null and _videos.has(_move):
+		var v: VideoStreamPlayer = _videos[_move]
+		var flip := fight.run_side.x < 0.0
+		v.pivot_offset = MOVE_SIZE * 0.5
+		v.scale = Vector2(-1.0 if flip else 1.0, 1.0)
+	_area.queue_redraw()
+	_cue.queue_redraw()
+
+
+## A drag in the area is the way (see pad_vec): a mouse button or a finger.
+func _area_input(event: InputEvent) -> void:
+	var id := -2
+	var pos := Vector2.ZERO
+	var down := false
+	var up := false
+	var move := false
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		id = -1
+		pos = event.position
+		down = event.pressed
+		up = not event.pressed
+	elif event is InputEventMouseMotion:
+		id = -1
+		pos = event.position
+		move = true
+	elif event is InputEventScreenTouch:
+		id = event.index
+		pos = event.position - _area.global_position
+		down = event.pressed
+		up = not event.pressed
+	elif event is InputEventScreenDrag:
+		id = event.index
+		pos = event.position - _area.global_position
+		move = true
+	else:
+		return
+	if down and _drag_id == -2:
+		_drag_id = id
+		_drag_from = pos
+		_drag_at = pos
+		pad_vec = Vector2.ZERO
+	elif id != _drag_id:
+		return
+	elif move and _drag_id != -2:
+		_drag_at = pos
+		pad_vec = ((pos - _drag_from) / DRAG_FULL).limit_length(1.0)
+	elif up:
+		_drag_id = -2
+		pad_vec = Vector2.ZERO
+	_area.accept_event()
+	_cue.queue_redraw()
 
 
 ## The queued hits of the fight (taken whether or not they're shown), turned into
@@ -163,7 +329,8 @@ func _add_pop(hit: Dictionary) -> void:
 			pop.color = Color(0.7, 0.7, 0.72)
 			pop.vel = Vector2(0, -30)
 		"hurt":
-			pop.text = "-" + _fmt(hit.n)
+			# (the tension taken climbs - a +; the line's own life, frayed, falls - a -)
+			pop.text = ("-" if hit.src == "割線" else "+") + _fmt(hit.n)
 			pop.label = hit.src
 			pop.pos = _hurt_at() + Vector2(randf_range(0.0, 14.0), randf_range(-6.0, 6.0) + _hurt_stack())
 			pop.vel = Vector2(24.0, -34.0)
@@ -370,14 +537,11 @@ func _draw_panel() -> void:
 	var band := Rect2(bar_x + 3.0 + (BAR_W - 6.0) * zone.x, at.y - BAR_H + 1.0, (BAR_W - 6.0) * (zone.y - zone.x), BAR_H)
 	_view.draw_rect(band, Color(SWEET, 0.9 if sweet else 0.55), false, 1.5)
 	if _hurt_flash > 0.0:
-		_view.draw_rect(Rect2(bar_x, at.y - BAR_H + 1.0, BAR_W, BAR_H), Color(RAGE, _hurt_flash * 2.0))
+		_view.draw_rect(Rect2(bar_x, at.y - BAR_H + 1.0, BAR_W, BAR_H), Color(RAGE, _hurt_flash * 0.45))
 	_draw_distance(fight, Vector2(x, rect.position.y + 98), bar_x)
-	_draw_sideview(fight, Rect2(rect.position.x + 14.0, rect.position.y + 108.0, SIZE.x - 28.0, 74.0))
 	_draw_crank_hint(fight, player)
 
-	if fight.swipe_left > 0.0:
-		_draw_swipe_cue(fight)
-	elif fight.perfect and fight.age < CALLOUT_TIME:
+	if fight.perfect and fight.age < CALLOUT_TIME:
 		var a := clampf((CALLOUT_TIME - fight.age) / 0.4, 0.0, 1.0)
 		UiKit.draw_text(_view, Vector2(CENTER_X - 100, CUE_Y + 6), "完美揚竿！", 24, Color(PERFECT, a), HORIZONTAL_ALIGNMENT_CENTER, 200, true)
 	_draw_pops()
@@ -401,70 +565,126 @@ func _draw_distance(fight: FishFight, at: Vector2, bar_x: float) -> void:
 		INK if not danger else Color(1, 0.9, 0.85), HORIZONTAL_ALIGNMENT_CENTER, BAR_W, true)
 
 
-## User request (the field, FishFight): the water from the side - the surface along the
-## top (the range: near, the best, far), the bottom shelving away from the bank on the
-## left, the snag (weed and rock, and how frayed the line is), the end of the line
-## in the red, and the fish where it is on the line from the rod.
-const DEPTH_VIEW := 8.0
-const NEAR_COLOR := Color(1.0, 0.62, 0.3)
-const FAR_COLOR := Color(0.5, 0.65, 0.95)
+## The move's picture when it has no clip: the water cut away, drawn.
+func _draw_area() -> void:
+	var r := Rect2(Vector2.ZERO, MOVE_SIZE)
+	_area.draw_rect(r, Color(0.03, 0.06, 0.09, 0.9))
+	var surface := 38.0
+	var floor_y := 132.0
+	_area.draw_rect(Rect2(0, surface, r.size.x, floor_y - surface), Color(0.07, 0.15, 0.22, 0.9))
+	_area.draw_rect(Rect2(0, floor_y, r.size.x, r.size.y - floor_y), Color(0.16, 0.12, 0.08, 0.95))
+	var wave: Array = []
+	for i in 29:
+		wave.append(Vector2(i * 10.0, surface + sin(_move_t * 3.0 + i * 0.7) * 1.6))
+	_area.draw_polyline(PackedVector2Array(wave), Color(0.6, 0.8, 0.95, 0.6), 1.5)
+	if not _videos.has(_move):
+		_draw_move_art(_move, _move_t, surface, floor_y)
+	_area.draw_rect(r, Color(RIM, 0.45), false, 1.5)
 
 
-func _draw_sideview(fight: FishFight, r: Rect2) -> void:
-	_view.draw_rect(r, Color(0.04, 0.07, 0.1, 0.8))
-	_view.draw_rect(r, Color(RIM, 0.35), false, 1.0)
-	var surface := r.position.y + 12.0
-	var ppm := (r.end.y - surface - 3.0) / DEPTH_VIEW
-	var span := maxf(fight.line_max, 1.0)
-	var xs := func(d: float) -> float: return r.position.x + 4.0 + (r.size.x - 8.0) * clampf(d / span, 0.0, 1.0)
-	# The water, and the bottom shelving away.
-	_view.draw_rect(Rect2(r.position.x + 1.0, surface, r.size.x - 2.0, r.end.y - surface - 1.0), Color(0.1, 0.2, 0.3, 0.55))
-	var ground := PackedVector2Array()
-	var steps := 24
-	for i in steps + 1:
-		var d := span * i / steps
-		ground.append(Vector2(xs.call(d), minf(surface + fight.bottom_depth(d) * ppm, r.end.y - 1.0)))
-	var poly := ground.duplicate()
-	poly.append(Vector2(r.end.x - 1.0, r.end.y - 1.0))
-	poly.append(Vector2(r.position.x + 1.0, r.end.y - 1.0))
-	_view.draw_colored_polygon(poly, Color(0.2, 0.15, 0.1, 0.95))
-	_view.draw_polyline(ground, Color(0.5, 0.4, 0.28), 1.5)
-	# The end of the line: the danger.
-	var dx: float = xs.call(span * FishFight.DANGER)
-	_view.draw_rect(Rect2(dx, surface, r.end.x - 1.0 - dx, r.end.y - surface - 1.0), Color(RAGE, 0.16))
-	# The surface, by range: near, the best, far.
-	var edges := [0.0, FishFight.NEAR_END, FishFight.MID_END, 1.0]
-	var tints := [NEAR_COLOR, SWEET, FAR_COLOR]
-	for i in 3:
-		var x0: float = xs.call(span * edges[i])
-		var x1: float = xs.call(span * edges[i + 1])
-		_view.draw_rect(Rect2(x0, surface - 3.0, x1 - x0, 3.0), Color(tints[i], 0.85 if i == ["near", "mid", "far"].find(fight.range_zone()) else 0.35))
-	# The snag.
-	if fight.snag_on:
-		var x0: float = xs.call(fight.snag_from)
-		var x1: float = xs.call(fight.snag_to)
-		var top := surface + FishFight.SNAG_TOP * ppm
-		var low := surface + fight.bottom_depth((fight.snag_from + fight.snag_to) * 0.5) * ppm
-		_view.draw_rect(Rect2(x0, top, x1 - x0, maxf(low - top, 2.0)), Color(0.3, 0.55, 0.25, 0.28 + fight.fray * 0.0))
-		for k in 5:
-			var wx := lerpf(x0 + 2.0, x1 - 2.0, k / 4.0)
-			_view.draw_line(Vector2(wx, low), Vector2(wx + sin(_pulse * 2.0 + k) * 2.0, top + 2.0), Color(0.35, 0.7, 0.3, 0.9), 1.5)
-		if fight.fray > 0.0:
-			_view.draw_rect(Rect2(x0, top, x1 - x0, maxf(low - top, 2.0)), Color(RAGE, 0.15 + 0.35 * fight.fray))
-			UiKit.draw_text(_view, Vector2(x0 - 14.0, top - 3.0), "割線 %d%%" % roundi(fight.fray * 100.0), 11, RAGE, HORIZONTAL_ALIGNMENT_CENTER, x1 - x0 + 28.0, true)
-	# The line, and the fish on it.
-	var tip := Vector2(r.position.x + 4.0, surface - 5.0)
-	var at := Vector2(xs.call(fight.distance), surface + fight.depth * ppm)
-	_view.draw_line(tip, at, Color(LINE, 0.8), 1.2)
-	var fish_col := RAGE if fight.mood() in ["snag", "jump", "dive"] else INK
-	_view.draw_colored_polygon(PackedVector2Array([at + Vector2(5, 0), at + Vector2(-1, -3), at + Vector2(-6, -3.5),
-		at + Vector2(-6, 3.5), at + Vector2(-1, 3)]), fish_col)
-	_view.draw_circle(tip, 2.5, INK)
-	# What the range is.
-	var zone := fight.range_zone()
-	var words: String = {"near": "近岸・線緊", "mid": "最佳距離", "far": "遠處・線鬆"}[zone]
-	var col: Color = {"near": NEAR_COLOR, "mid": SWEET, "far": FAR_COLOR}[zone]
-	UiKit.draw_text(_view, Vector2(r.end.x - 120.0, r.position.y + 11.0), words, 11, col, HORIZONTAL_ALIGNMENT_RIGHT, 114.0, true)
+func _fish_shape(at: Vector2, k: float, col: Color, face := 1.0) -> void:
+	var f := face
+	_area.draw_colored_polygon(PackedVector2Array([at + Vector2(14, 0) * k * f, at + Vector2(4, -6) * k * f, at + Vector2(-8, -5) * k * f,
+		at + Vector2(-16, -10) * k * f, at + Vector2(-14, 0) * k * f, at + Vector2(-16, 10) * k * f, at + Vector2(-8, 5) * k * f, at + Vector2(4, 6) * k * f]), col)
+	_area.draw_circle(at + Vector2(8, -1.5) * k * f, 1.4 * k, Color(0, 0, 0, 0.8))
+
+
+## A stand-in for each move's clip (the real ones: assets/fight_moves/<key>.ogv).
+func _draw_move_art(key: String, t: float, surface: float, floor_y: float) -> void:
+	var w := MOVE_SIZE.x
+	var ph := fposmod(t * 0.9, 1.0)
+	var fish_col := Color(0.85, 0.88, 0.9)
+	match key:
+		"dash", "side_dash":
+			var y := 92.0 if key == "dash" else 108.0
+			var x := lerpf(-20.0, w + 20.0, ph)
+			for i in 5:
+				_area.draw_line(Vector2(x - 24.0 - i * 14.0, y - 8 + i * 4), Vector2(x - 40.0 - i * 14.0, y - 8 + i * 4), Color(0.7, 0.85, 1.0, 0.5 - i * 0.08), 2.0)
+			_fish_shape(Vector2(x, y), 1.5, fish_col)
+		"leap":
+			var x2 := lerpf(60.0, w - 60.0, ph)
+			var y2 := surface + 8.0 - sin(PI * ph) * 70.0
+			_fish_shape(Vector2(x2, y2), 1.5, fish_col)
+			for ring in 2:
+				var rr := fposmod(t * 1.2 + ring * 0.5, 1.0)
+				_area.draw_arc(Vector2(60.0 if ph < 0.5 else w - 60.0, surface), 6.0 + rr * 26.0, PI, TAU, 20, Color(0.8, 0.92, 1.0, 1.0 - rr), 1.5)
+		"rock_dive":
+			for i in 5:
+				var rx := 120.0 + i * 36.0
+				_area.draw_colored_polygon(PackedVector2Array([Vector2(rx - 16, floor_y), Vector2(rx, floor_y - 22 - (i % 2) * 8), Vector2(rx + 16, floor_y)]), Color(0.32, 0.3, 0.3))
+			var fx := lerpf(40.0, 150.0, ph)
+			_fish_shape(Vector2(fx, lerpf(60.0, 118.0, ph)), 1.4, fish_col)
+		"rage":
+			var shake := Vector2(sin(t * 40.0), cos(t * 33.0)) * 2.5
+			var c := Vector2(w * 0.5, 88.0) + shake
+			for i in 12:
+				var a := TAU * i / 12.0 + t * 2.0
+				var len := 34.0 + sin(t * 14.0 + i) * 8.0
+				_area.draw_line(c + Vector2.from_angle(a) * 30.0, c + Vector2.from_angle(a) * len, Color(RAGE, 0.8), 2.5)
+			_fish_shape(c, 1.9 + sin(t * 12.0) * 0.1, Color(1.0, 0.45, 0.4))
+		"rally":
+			var c2 := Vector2(w * 0.5, 90.0)
+			for i in 3:
+				var rr2 := fposmod(t * 0.8 + i / 3.0, 1.0)
+				_area.draw_arc(c2, 14.0 + rr2 * 60.0, 0.0, TAU, 32, Color(PERFECT, (1.0 - rr2) * 0.8), 2.0)
+			for i in 8:
+				var sx := c2.x - 50.0 + i * 14.0
+				var sy := c2.y + 30.0 - fposmod(t * 40.0 + i * 17.0, 70.0)
+				_area.draw_circle(Vector2(sx, sy), 1.8, Color(PERFECT, 0.8))
+			_fish_shape(c2, 1.7 + sin(t * 8.0) * 0.08, Color(1.0, 0.92, 0.6))
+		"weed":
+			for i in 9:
+				var wx := 90.0 + i * 14.0
+				var pts: Array = []
+				for k in 7:
+					pts.append(Vector2(wx + sin(t * 2.0 + k * 0.6 + i) * (3.0 + k * 1.6), floor_y - k * 11.0))
+				_area.draw_polyline(PackedVector2Array(pts), Color(0.3, 0.65, 0.3, 0.9), 2.5)
+			_fish_shape(Vector2(w * 0.5 + sin(t * 3.0) * 14.0, 100.0), 1.4, Color(1.0, 0.6, 0.5))
+		"bite":
+			for ring in 3:
+				var rr3 := fposmod(t * 0.9 + ring / 3.0, 1.0)
+				_area.draw_arc(Vector2(w * 0.5, surface), 6.0 + rr3 * 40.0, PI, TAU, 24, Color(0.8, 0.92, 1.0, 1.0 - rr3), 1.5)
+
+
+## The way asked of the left hand - drawn over the move: an arrow and, while there's a
+## time to do it in, a ring running out; the finger's drag.
+func _draw_cue() -> void:
+	var fight := _fight()
+	var dir := Vector2.ZERO
+	var left := -1.0
+	var words := ""
+	if fight != null and fight.run_side != Vector2.ZERO and fight.mood() == "side_run":
+		dir = -fight.run_side.normalized()
+		if fight.swipe_left > 0.0:
+			left = fight.swipe_left / maxf(fight.swipe_window(), 0.01)
+			words = "往%s甩！" % FishFight.describe(dir)
+		else:
+			words = "往%s拉住" % FishFight.describe(dir)
+	elif fight == null:
+		var player := _player()
+		if player != null and player.state == Player.State.BITE and player.fishing_mode == Player.FishingMode.LURE:
+			dir = player.strike_dir.normalized()
+			var total: float = float(player.tier_data.get("bite_window", 1.0)) * Player.LURE_STRIKE_TIME
+			left = clampf(player.bite_timer / maxf(total, 0.01), 0.0, 1.0)
+			words = "往%s揚竿！" % FishFight.describe(dir)
+	if dir != Vector2.ZERO:
+		var c := MOVE_SIZE * 0.5
+		_cue.draw_circle(c, 30.0, Color(FILL, 0.55))
+		if left >= 0.0:
+			_cue.draw_arc(c, 30.0, -PI * 0.5, -PI * 0.5 + TAU * left, 32, TENSION, 3.5)
+		var tip := c + dir * 24.0
+		var tail := c - dir * 20.0
+		var side := dir.orthogonal() * 10.0
+		_cue.draw_line(tail, tip - dir * 8.0, INK, 5.0)
+		_cue.draw_colored_polygon(PackedVector2Array([tip + dir * 4.0, tip - dir * 14.0 + side, tip - dir * 14.0 - side]), INK)
+		UiKit.draw_text(_cue, Vector2(0, MOVE_SIZE.y - 10.0), words, 16, TENSION, HORIZONTAL_ALIGNMENT_CENTER, MOVE_SIZE.x, true)
+	else:
+		UiKit.draw_text(_cue, Vector2(8, 18), MOVE_NAMES.get(_move, ""), 14, Color(INK, 0.85), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
+	# The finger: where it went from and to.
+	if _drag_id != -2 and pad_vec != Vector2.ZERO:
+		_cue.draw_line(_drag_from, _drag_at, Color(SWEET, 0.7), 3.0)
+		_cue.draw_circle(_drag_from, 6.0, Color(SWEET, 0.4))
+		_cue.draw_circle(_drag_at, 9.0, Color(SWEET, 0.8))
 
 
 ## The fish taking line while the reel's still: a turning arrow round the
@@ -508,40 +728,12 @@ func _row(at: Vector2, bar_x: float, text: String, value: float, color: Color, i
 	UiKit.draw_bar(_view, Rect2(bar_x, at.y - BAR_H + 1.0, BAR_W, BAR_H), value, color)
 
 
-## Which way to flick, and how long is left to do it.
-func _draw_swipe_cue(fight: FishFight) -> void:
-	_draw_way_cue(-fight.run_side.normalized(), fight.swipe_left / FishFight.SWIPE_WINDOW, "往%s甩！")
-
-
 ## User request: a lure's bite - which way to strike (Player.strike_dir),
 ## as the fight's runs show which way to flick: the cue in the middle, an
 ## arrow out from the right stick, the float marked.
 func _draw_lure_strike(player: Player) -> void:
-	var total: float = float(player.tier_data.get("bite_window", 1.0)) * Player.LURE_STRIKE_TIME
-	var dir := player.strike_dir.normalized()
-	_draw_way_cue(dir, clampf(player.bite_timer / maxf(total, 0.01), 0.0, 1.0), "往%s揚竿！")
+	# (the way to strike is shown in the move area; here the float marked)
 	_view.draw_arc(_float_pos(), RING_TO, 0.0, TAU, 32, Color(PERFECT, 0.9), 2.0)
-	if DisplayServer.is_touchscreen_available():
-		var c := TouchControls.AIM_CENTER
-		var a := 0.6 + 0.3 * sin(_pulse * 10.0)
-		var tip := c + dir * CRANK_HINT_RADIUS
-		var side := dir.orthogonal() * 12.0
-		_view.draw_line(c, tip - dir * 10.0, Color(PERFECT, a), 6.0)
-		_view.draw_colored_polygon(PackedVector2Array([tip + dir * 6.0, tip - dir * 14.0 + side, tip - dir * 14.0 - side]), Color(PERFECT, a))
-
-
-## A way to flick (dir), the time left (0..1), the words (with the way's
-## name for %s).
-func _draw_way_cue(dir: Vector2, left: float, words: String) -> void:
-	var c := Vector2(CENTER_X, CUE_Y)
-	_view.draw_circle(c, CUE_RADIUS, FILL)
-	_view.draw_arc(c, CUE_RADIUS, -PI * 0.5, -PI * 0.5 + TAU * left, 32, TENSION, 3.0)
-	var tip := c + dir * 15.0
-	var tail := c - dir * 13.0
-	var side := dir.orthogonal() * 8.0
-	_view.draw_line(tail, tip - dir * 6.0, INK, 4.0)
-	_view.draw_colored_polygon(PackedVector2Array([tip, tip - dir * 11.0 + side, tip - dir * 11.0 - side]), INK)
-	_view.draw_string(_font, c + Vector2(-50, CUE_RADIUS + 16), words % FishFight.describe(dir), HORIZONTAL_ALIGNMENT_CENTER, 100, 13, INK)
 
 
 ## The bite: a ring closes in on the float - strike as it meets the float
