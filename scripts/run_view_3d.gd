@@ -2932,22 +2932,205 @@ var _lean := Vector2.ZERO
 
 
 ## User request (the fight's move area): where a camera stands to look as the angler does -
-## beside the right shoulder at chest height, out along the line and down a little
-## to the water: the forearms, the rod bowing, the water and the line in view (FightPanel's
-## small picture). `shake` is how hard it trembles (the fish's pull).
+## from the chest, a little forward of it (only a bit of the hands in the picture's foot),
+## looking out along the line and down to the water: the rod, the line, the float and the fish
+## under the water. `shake` is how hard it trembles (the fish's pull).
 func fight_cam_pose(shake := 0.0) -> Transform3D:
 	var base := pivot.global_position
 	var fwd := -pivot.global_basis.z
+	var far := 6.0
 	if _float.visible:
 		fwd = _float.global_position - base
+		far = Vector2(fwd.x, fwd.z).length()
 	fwd.y = 0.0
 	fwd = fwd.normalized() if fwd.length() > 0.01 else Vector3.FORWARD
 	var right := fwd.cross(Vector3.UP).normalized()
-	var at := base + Vector3(0.0, 1.2, 0.0) - fwd * 0.25 + right * 0.4
-	var look := base + Vector3(0.0, 0.75, 0.0) + fwd * 3.2
+	var at := base + Vector3(0.0, 1.32, 0.0) + fwd * 0.85 + right * 0.2
+	# (aimed at the float, a little above it, so the line runs up from the rod's tip to it and
+	# the fish round it fills the picture's middle; a far one is looked at from further down)
+	var look := base + fwd * clampf(far, 3.0, 14.0) + Vector3(0.0, WATER_Y + 0.15, 0.0)
+	if _float.visible:
+		# (a little to the left of it: it's the picture's right side, the arrow has the left)
+		look = _float.global_position + Vector3(0.0, 0.1, 0.0) - fwd * 0.3 - right * 0.2 * clampf(far, 3.0, 14.0)
 	if shake > 0.0:
 		at += Vector3(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * 0.025 * shake
 	return Transform3D(Basis.IDENTITY, at).looking_at(look, Vector3.UP)
+
+
+## User request (the fight's small picture): the fish on the line, seen through the water -
+## its own model, tinted and see-through (shaders/fish_ghost.gdshader), round the float:
+## cruising a ring while it's quiet, out the way it pulls with a move on (a dash's way, the
+## dive down and in), up out of the water in a leap. On its own render layer, so only the
+## small picture's camera sees it.
+const FISH_GHOST := preload("res://shaders/fish_ghost.gdshader")
+const FISH_LAYER := 2
+var _fish3d: MeshInstance3D
+var _fish_id := ""
+var _fish_at := Vector3.ZERO
+var _fish_yaw := 0.0
+var _fish_ring := 0.0
+var _fish_jump := 0.0
+var _fish_off := Vector2.ZERO
+var _fish_beat := 0.0
+
+
+## Frames still to show the fish and the line in front of the small camera, unseen by the
+## fight, so their shaders are built before they're wanted (FightPanel's prewarm).
+var _fish_warm := 0
+
+
+func warm_fight(frames: int) -> void:
+	_fish_warm = frames
+
+
+## The species' under-water fish (made once; the one on the line swapped for the next species).
+func _ensure_fish(id: String) -> bool:
+	if _fish3d != null and _fish_id == id:
+		return true
+	if _fish3d != null:
+		_fish3d.queue_free()
+		_fish3d = null
+	_fish_id = id
+	# (built here, not by FishModel.make: that rolls the game's dice, and a picture mustn't)
+	var species := id if FishModel.has_model(id) else "carp"
+	var mesh := FishModel.mesh(species)
+	if mesh == null:
+		return false
+	_fish3d = MeshInstance3D.new()
+	_fish3d.name = "Fish_" + species
+	_fish3d.mesh = mesh
+	_fish3d.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var mat := ShaderMaterial.new()
+	mat.shader = FISH_GHOST
+	mat.render_priority = 10
+	var skin_path: String = FishModel.SKINS % species
+	mat.set_shader_parameter("skin", load(skin_path) if ResourceLoader.exists(skin_path) else null)
+	_fish3d.material_override = mat
+	_fish3d.layers = FISH_LAYER
+	_fish3d.visible = false
+	add_child(_fish3d)
+	_fish_at = _float.global_position
+	return true
+
+
+func _update_fight_fish(delta: float) -> void:
+	var fight: FishFight = player.fight if player.state == Player.State.REELING else null
+	if fight == null or not _float.visible:
+		_fish_jump = 0.0
+		if _fish_warm > 0 and _ensure_fish("carp"):
+			# (shown in front of the small camera for a few frames, unseen otherwise)
+			_fish_warm -= 1
+			var pose := fight_cam_pose()
+			_fish3d.global_position = pose.origin - pose.basis.z * 3.0
+			_fish3d.global_basis = pose.basis
+			_fish3d.visible = true
+			_update_fight_line(pose.origin - pose.basis.z * 3.0 + pose.basis.x * 0.5)
+			return
+		if _fish3d != null:
+			_fish3d.visible = false
+		if _line_fight != null:
+			(_line_fight.mesh as ImmediateMesh).clear_surfaces()
+		return
+	if not _ensure_fish(player.fish_id):
+		return
+	var mat := _fish3d.material_override as ShaderMaterial
+	# (its length: a small one's a forearm, a big one a metre and more)
+	var size := clampf(0.9 + sqrt(maxf(fight.max_hp, 0.0) / 1000.0) * 0.6, 1.0, 2.2)
+	# Where it is round the float, and how it's heading.
+	var way := Vector2.ZERO
+	var off := Vector2.ZERO
+	var pace := 0.6
+	var down := clampf(fight.depth, 0.0, 7.0) * 0.1
+	var lift := 0.0
+	var see := lerpf(0.95, 0.45, clampf(fight.depth / 5.0, 0.0, 1.0))
+	_fish_ring += delta * 0.7
+	var ring := Vector2(cos(_fish_ring), sin(_fish_ring))
+	off = ring * 0.4
+	way = Vector2(-ring.y, ring.x)
+	if fight.jump_left > 0.0:
+		_fish_jump += delta
+		var ph := clampf(_fish_jump / FishFight.JUMP_TIME, 0.0, 1.0)
+		lift = sin(ph * PI) * 0.9 + 0.1
+		down = 0.0
+		way = fight.line_way()
+		off = way * 0.2
+		see = 1.0
+		pace = 1.4
+	else:
+		_fish_jump = 0.0
+		if fight.pull_dir != Vector2.ZERO:
+			var pull := fight.pull_dir
+			way = pull
+			off = pull * 1.1 * fight.ramp
+			pace = 1.2
+			if fight.dive_active:
+				down += 0.4 * fight.dive
+				pace = 1.0
+		elif fight.mood() in ["tired", "spent"]:
+			pace = 0.25
+			off = ring * 0.25
+	_fish_off = _fish_off.lerp(off, minf(delta * 5.0, 1.0))
+	var base := _float.global_position
+	var want := Vector3(base.x + _fish_off.x, WATER_Y - 0.08 - down + lift, base.z + _fish_off.y)
+	_fish_at = _fish_at.lerp(want, minf(delta * 8.0, 1.0))
+	_fish3d.global_position = _fish_at
+	var yaw_to := atan2(-way.y, way.x)
+	_fish_yaw = lerp_angle(_fish_yaw, yaw_to, minf(delta * 6.0, 1.0))
+	var pitch := 0.0
+	if fight.jump_left > 0.0:
+		pitch = cos(clampf(_fish_jump / FishFight.JUMP_TIME, 0.0, 1.0) * PI) * 0.7
+	elif fight.dive_active:
+		pitch = -0.6 * fight.dive
+	_fish3d.global_basis = Basis.from_euler(Vector3(0.0, _fish_yaw, pitch)).scaled(Vector3.ONE * size)
+	mat.set_shader_parameter("see", see)
+	_fish_beat = fmod(_fish_beat + delta * lerpf(4.0, 13.0, clampf(pace, 0.0, 1.5) / 1.5), TAU * 64.0)
+	mat.set_shader_parameter("beat", _fish_beat)
+	mat.set_shader_parameter("sway", lerpf(0.035, 0.085, minf(pace, 1.0)))
+	_fish3d.visible = true
+	_update_fight_line()
+
+
+## The line again, thicker, for the small picture only (the hair-line's too thin to see in it):
+## from the rod's tip to the float, seen from where the small camera stands.
+const FIGHT_LINE_WIDTH := 0.004
+var _line_fight: MeshInstance3D
+
+
+func _update_fight_line(float_at := Vector3.INF) -> void:
+	if _line_fight == null:
+		_line_fight = MeshInstance3D.new()
+		_line_fight.mesh = ImmediateMesh.new()
+		var lm := StandardMaterial3D.new()
+		lm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		lm.albedo_color = Color(0.9, 0.93, 0.96)
+		lm.cull_mode = BaseMaterial3D.CULL_DISABLED
+		_line_fight.material_override = lm
+		_line_fight.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_line_fight.layers = FISH_LAYER
+		add_child(_line_fight)
+	var im := _line_fight.mesh as ImmediateMesh
+	im.clear_surfaces()
+	var from := _rod_tip()
+	var to := (_float.global_position if float_at == Vector3.INF else float_at) + Vector3(0, 0.06, 0)
+	var eye := fight_cam_pose().origin
+	var points: Array[Vector3] = []
+	for i in 13:
+		var t := i / 12.0
+		var p := from.lerp(to, t)
+		p.y -= 0.08 * 4.0 * t * (1.0 - t) * minf(from.distance_to(to) / 6.0, 1.5)
+		if i < 12:
+			p.y = maxf(p.y, WATER_Y + LINE_CLEAR)
+		points.append(p)
+	im.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in 12:
+		var a := points[i]
+		var b := points[i + 1]
+		var along := (b - a).normalized()
+		var wa := (along.cross(a - eye)).normalized() * a.distance_to(eye) * FIGHT_LINE_WIDTH * 0.5
+		var wb := (along.cross(b - eye)).normalized() * b.distance_to(eye) * FIGHT_LINE_WIDTH * 0.5
+		for v in [a - wa, a + wa, b + wb, a - wa, b + wb, b - wb]:
+			im.surface_add_vertex(v)
+	im.surface_end()
 
 
 ## The rod stabbed (a flick answered): a kick of bend that fades.
@@ -3876,6 +4059,8 @@ func _environment() -> void:
 	camera = Camera3D.new()
 	camera.fov = CAMERA_FOV
 	camera.far = 140.0
+	# (the under-water fish is the small picture's)
+	camera.cull_mask &= ~FISH_LAYER
 	add_child(camera)
 	camera.current = true
 
@@ -4380,6 +4565,7 @@ func _process(delta: float) -> void:
 			_drum.global_position = pivot.global_position + b.z * 0.42 + Vector3(0, 0.55, 0)
 			_drum.global_rotation = Vector3(0, pivot.global_rotation.y, 0)
 	_update_line()
+	_update_fight_fish(delta)
 	_update_guide()
 	_sync_true_eye()
 	_update_light()

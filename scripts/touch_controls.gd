@@ -37,6 +37,8 @@ const BRIGHTNESS_SLIDER := false
 ## request, round 3: further into the bottom-right corner for the thumb -
 ## everything round it placed from it.)
 const AIM_CENTER := Vector2(842, 430)
+## The left stick's centre (MoveJoystick: the 300x300 control's, at the bottom-left).
+const MOVE_CENTER := Vector2(150, 382)
 
 ## User request (round 3 layout): round the right stick - drawn as a reel
 ## on a faint rod (BaitSlot) - from the bottom up: the light button left of

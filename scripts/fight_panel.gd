@@ -80,6 +80,9 @@ const DRAG_FULL := 80.0
 const ARROW_LEN := 78.0
 const ROD_LEN := 78.0
 
+## The drag's push, and the left stick's (Player.rod_vec); pad_vec is the larger.
+var _drag_vec := Vector2.ZERO
+var _stick_vec := Vector2.ZERO
 var _area: Control
 var _tex: TextureRect
 var _over: Control
@@ -89,6 +92,12 @@ var _cam: Camera3D
 ## so the first move doesn't stall the game; a stab just made (s left).
 var _warm_frames := 0
 var _warmed := false
+## The run's world is built and the picture's been drawn once already, unseen (see _prewarm).
+var _prewarmed := false
+var _sv_tick := 0
+## How long the picture stays up after the way asked is done (s), and what's left.
+const LINGER := 0.45
+var _linger := 0.0
 var _stab_t := 0.0
 var _move := ""
 var _move_t := 0.0
@@ -146,6 +155,8 @@ func _process(delta: float) -> void:
 
 func _exit_tree() -> void:
 	pad_vec = Vector2.ZERO
+	_drag_vec = Vector2.ZERO
+	_stick_vec = Vector2.ZERO
 	pad_active = false
 
 
@@ -203,7 +214,7 @@ func _ensure_view() -> void:
 	_sv.size = Vector2i(MOVE_SIZE * 1.25)
 	_sv.world_3d = get_viewport().world_3d
 	_sv.render_target_update_mode = SubViewport.UPDATE_DISABLED
-	_sv.positional_shadow_atlas_size = 0
+	_sv.positional_shadow_atlas_size = 256
 	_sv.msaa_3d = Viewport.MSAA_DISABLED
 	_sv.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
 	_sv.use_taa = false
@@ -211,26 +222,46 @@ func _ensure_view() -> void:
 	_sv.audio_listener_enable_3d = false
 	add_child(_sv)
 	_cam = Camera3D.new()
-	_cam.fov = 70.0
+	_cam.fov = 55.0
 	_cam.near = 0.05
-	_cam.far = 40.0
+	_cam.far = 30.0
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0.02, 0.03, 0.05)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.32, 0.36, 0.45)
-	env.ambient_light_energy = 0.9
+	env.ambient_light_color = Color(0.5, 0.56, 0.68)
+	env.ambient_light_energy = 1.7
 	_cam.environment = env
 	_sv.add_child(_cam)
 	_tex.texture = _sv.get_texture()
+
+
+## The first time the run's world stands: the picture's made and drawn a few times, with the
+## under-water fish and the line in it (RunView3D.warm_fight), so no shader or buffer is built
+## in the middle of a fight - that was the hitch.
+func _prewarm() -> void:
+	if _prewarmed or DisplayServer.get_name() == "headless":
+		return
+	var rv := RunView3D.active
+	if rv == null or not is_instance_valid(rv) or not rv.built:
+		return
+	_prewarmed = true
+	_ensure_view()
+	_warm_frames = 8
+	rv.warm_fight(8)
 
 
 ## What the area shows now: a move of the fish's, or a lure's bite (the way to strike).
 func _update_area(player: Player, delta: float) -> void:
 	var key := ""
 	var fight := _fight()
+	_prewarm()
 	if fight != null:
 		key = move_key(fight)
+		# (the picture is up while a way's asked - and a leap, the hauling after a dive - not through
+		# the rest of a move: it's drawn only when it's needed)
+		if key != "" and key != "leap" and not fight.prompt_active() and fight.haul_left <= 0.0:
+			key = ""
 		pad_frame = fight.line_way()
 		if not _warmed:
 			# (the fight's just begun: build the picture and draw it a few times now)
@@ -246,6 +277,12 @@ func _update_area(player: Player, delta: float) -> void:
 			if _sv == null:
 				_ensure_view()
 				_warm_frames = 3
+	# (a moment more once it's over, to see the stab)
+	if key != "":
+		_linger = LINGER
+	elif _linger > 0.0 and _move != "":
+		_linger -= delta
+		key = _move
 	if key != _move:
 		_move = key
 		_move_t = 0.0
@@ -256,12 +293,20 @@ func _update_area(player: Player, delta: float) -> void:
 	pad_active = show
 	var drawing := show or _warm_frames > 0
 	if _sv != null:
-		_sv.render_target_update_mode = SubViewport.UPDATE_ALWAYS if drawing else SubViewport.UPDATE_DISABLED
+		# (the 3D picture's a second render of the world: every other frame is plenty)
+		_sv_tick += 1
+		var now := drawing and (_warm_frames > 0 or _sv_tick % 2 == 0)
+		_sv.render_target_update_mode = SubViewport.UPDATE_ONCE if now else SubViewport.UPDATE_DISABLED
 		if _warm_frames > 0:
 			_warm_frames -= 1
 	if not show:
 		pad_vec = Vector2.ZERO
+		_drag_vec = Vector2.ZERO
 		_drag_id = -2
+	var stick: Vector2 = player.rod_vec if (show and player != null) else Vector2.ZERO
+	if stick != _stick_vec or stick != Vector2.ZERO:
+		_stick_vec = stick
+		_merge_pad()
 	var rv := RunView3D.active
 	if _cam != null and drawing and rv != null and is_instance_valid(rv) and rv.built:
 		# (the picture trembles with the pull that's not answered)
@@ -271,6 +316,10 @@ func _update_area(player: Player, delta: float) -> void:
 		_cam.global_transform = rv.fight_cam_pose(shake)
 	if show:
 		_over.queue_redraw()
+
+
+func _merge_pad() -> void:
+	pad_vec = _drag_vec if _drag_vec.length() >= _stick_vec.length() else _stick_vec
 
 
 ## A drag in the area is the way (see pad_vec): a mouse button or a finger.
@@ -304,15 +353,16 @@ func _area_input(event: InputEvent) -> void:
 		_drag_id = id
 		_drag_from = pos
 		_drag_at = pos
-		pad_vec = Vector2.ZERO
+		_drag_vec = Vector2.ZERO
 	elif id != _drag_id:
 		return
 	elif move and _drag_id != -2:
 		_drag_at = pos
-		pad_vec = ((pos - _drag_from) / DRAG_FULL).limit_length(1.0)
+		_drag_vec = ((pos - _drag_from) / DRAG_FULL).limit_length(1.0)
 	elif up:
 		_drag_id = -2
-		pad_vec = Vector2.ZERO
+		_drag_vec = Vector2.ZERO
+	_merge_pad()
 	_area.accept_event()
 	_over.queue_redraw()
 
@@ -633,7 +683,9 @@ func _draw_over() -> void:
 	var left := -1.0
 	match _move:
 		"leap":
-			_draw_leap()
+			if _sv == null:
+				# (no 3D picture to show it jumping: its silhouette, drawn)
+				_draw_leap()
 			words = "放手！"
 		"bite":
 			var player := _player()
@@ -643,17 +695,18 @@ func _draw_over() -> void:
 				left = clampf(player.bite_timer / maxf(total, 0.01), 0.0, 1.0)
 				words = "往%s揚竿！" % FishFight.describe(answer)
 		_:
-			if fight != null and fight.pull_dir != Vector2.ZERO:
-				answer = -to_frame(fight.pull_dir)
-				words = "往%s拉住" % FishFight.describe(answer)
-				if _move == "side_dash" and fight.swipe_left > 0.0:
-					left = fight.swipe_left / maxf(fight.swipe_window(), 0.01)
-					words = "往%s甩！" % FishFight.describe(answer)
+			if fight != null and fight.prompt_active():
+				answer = to_frame(fight.prompt_dir())
+				left = fight.prompt_left()
+				words = "往%s甩！" % FishFight.describe(answer) if _move == "side_dash" else "往%s拉竿！" % FishFight.describe(answer)
+			elif fight != null and fight.haul_left > 0.0:
+				words = "拉回來了！狠狠捲線"
 	var r := Rect2(Vector2.ZERO, MOVE_SIZE)
 	# (a darker foot for the words)
 	_over.draw_rect(Rect2(0, MOVE_SIZE.y - 28.0, MOVE_SIZE.x, 28.0), Color(0, 0, 0, 0.5))
 	if answer != Vector2.ZERO:
-		var c := Vector2(MOVE_SIZE.x * 0.5, MOVE_SIZE.y * 0.44)
+		# (left of the middle: the float and the fish are looked at a little right of it)
+		var c := Vector2(MOVE_SIZE.x * 0.3, MOVE_SIZE.y * 0.44)
 		if left >= 0.0:
 			_over.draw_arc(c, ARROW_LEN * 0.56, -PI * 0.5, -PI * 0.5 + TAU * left, 36, TENSION, 3.5)
 		# The arrow: faint where it's still to be slid, solid as far as it has been.

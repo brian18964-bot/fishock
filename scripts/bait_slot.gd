@@ -24,7 +24,12 @@ const INK := Color(0.92, 0.88, 0.8)
 const PICK := 54.0
 
 var _deco: RodDeco
+## User request (rod mode): the left stick gets the same faint rod (no reel) behind it while
+## a way is asked of the rod, mirrored to the bottom-left.
+var _left: LeftRodDeco
 var _slot: SlotView
+## (a screenshot's: show the left rod without a touch screen)
+var _left_forced := false
 var _picker: Control
 var _touch := -1
 
@@ -35,6 +40,11 @@ func _ready() -> void:
 	_deco.name = "RodDeco"
 	_deco.visible = DisplayServer.is_touchscreen_available()
 	add_child(_deco)
+	_left = LeftRodDeco.new()
+	_left.name = "LeftRodDeco"
+	_left.modulate.a = 0.0
+	_left.visible = false
+	add_child(_left)
 	_slot = SlotView.new()
 	_slot.name = "BaitButton"
 	_slot.size = Vector2(SIDE, SIDE)
@@ -47,10 +57,16 @@ func _ready() -> void:
 		visible = false)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	_slot.queue_redraw()
 	if _deco.visible:
 		_deco.queue_redraw()
+	var p := get_tree().get_first_node_in_group("player") as Player
+	var want := 1.0 if (p != null and p.rod_mode and visible) else 0.0
+	_left.modulate.a = move_toward(_left.modulate.a, want, delta * 5.0)
+	_left.visible = _left.modulate.a > 0.01 and (_deco.visible or _left_forced)
+	if _left.visible:
+		_left.queue_redraw()
 
 
 ## What's on the hook now: [icon id, how many left, name].
@@ -241,6 +257,50 @@ class SlotView extends Control:
 		draw_arc(top + Vector2(0, -1), 4.5, PI, TAU, 12, BaitSlot.INK, 2.0, true)
 		draw_line(top + Vector2(0, -6), top + Vector2(0, -10), BaitSlot.INK, 2.0, true)
 		draw_arc(top + Vector2(0, -13.5), 3.5, 0.0, TAU, 14, BaitSlot.INK, 2.0, true)
+
+
+## The same rod, mirrored, behind the left stick: no reel, no bait - it bends a little
+## with the stick.
+class LeftRodDeco extends Node2D:
+	func _draw() -> void:
+		var c := TouchControls.MOVE_CENTER
+		var u := Vector2(-BaitSlot.ROD_DIR.x, BaitSlot.ROD_DIR.y).normalized()
+		var side := u.orthogonal()
+		var p := get_tree().get_first_node_in_group("player") as Player
+		var bend := 0.0
+		if p != null and p.rod_vec != Vector2.ZERO:
+			bend = clampf(p.rod_vec.x, -1.0, 1.0)
+		var ink := Color(BaitSlot.INK, 0.3)
+		var far := 700.0
+		# the blank, bowing toward the way the stick's pushed
+		var pts_l := PackedVector2Array()
+		var pts_r := PackedVector2Array()
+		var tip_at := c
+		for i in 21:
+			var t := lerpf(-BaitSlot.ROD_BUTT, far, i / 20.0)
+			var along := maxf(t, 0.0) / far
+			var at := c + u * t + side * (bend * 90.0 * along * along)
+			var half := lerpf(5.0, 1.5, clampf((t + BaitSlot.ROD_BUTT) / (far + BaitSlot.ROD_BUTT), 0.0, 1.0))
+			pts_l.append(at + side * half)
+			pts_r.append(at - side * half)
+			tip_at = at
+		pts_r.reverse()
+		pts_l.append_array(pts_r)
+		draw_colored_polygon(pts_l, ink)
+		# the cork grip
+		draw_colored_polygon(PackedVector2Array([c - u * (BaitSlot.ROD_BUTT - 6.0) + side * 7.5, c - u * 56.0 + side * 6.5,
+			c - u * 56.0 - side * 6.5, c - u * (BaitSlot.ROD_BUTT - 6.0) - side * 7.5]), Color(0.86, 0.74, 0.55, 0.3))
+		# the guides
+		for t: float in [82.0, 175.0, 262.0]:
+			var along: float = t / far
+			draw_arc(c + u * t + side * (bend * 90.0 * along * along), 5.0 - t / 90.0, 0.0, TAU, 12, Color(BaitSlot.INK, 0.4), 1.5, true)
+		# the line along it
+		var line := PackedVector2Array()
+		for i in 21:
+			var t := lerpf(6.0, far, i / 20.0)
+			var along := t / far
+			line.append(c + u * t + side * (bend * 90.0 * along * along))
+		draw_polyline(line, Color(1, 1, 1, 0.24), 1.0, true)
 
 
 ## The faint rod, its reel on the right stick and the line to the bait.

@@ -1846,7 +1846,70 @@ func _try_buy_upgrade(upgrade_key: String) -> void:
 		GameState.push_message("升不了級（金幣不夠或已滿級）")
 
 
+## User request (rod mode): while a way is asked - a fish's move, a lure's bite - you
+## stand still and the left stick (or WASD) is the rod: push it the way shown (FightPanel's
+## arrow; up is along the line). Hold it ROD_RELEASE s the wrong way and it's let go for that
+## move - you want to run, and the stick walks you again.
+const ROD_RELEASE := 0.6
+## "The wrong way": further than 45 deg from the way asked.
+const ROD_WRONG_DOT := 0.7071
+## Rod mode is on (the character stands still), and the stick's push while it is (its own
+## frame: up is along the line; ZERO otherwise).
+var rod_mode := false
+var rod_vec := Vector2.ZERO
+var _rod_serial := -1
+var _rod_wrong := 0.0
+var _rod_released := false
+
+
+## The left stick's push, or the keys' (full), whichever is held.
+func _rod_input() -> Vector2:
+	var v := _move_joystick.output
+	if v.length() >= 0.05:
+		return v.limit_length(1.0)
+	v = Vector2.ZERO
+	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
+		v.x -= 1.0
+	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
+		v.x += 1.0
+	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
+		v.y -= 1.0
+	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
+		v.y += 1.0
+	return v.normalized()
+
+
+func _update_rod(delta: float) -> void:
+	var asked := Vector2.ZERO
+	var serial := -1
+	if state == State.REELING and fight != null and fight.prompt_active():
+		asked = FightPanel.to_frame(fight.prompt_dir())
+		serial = fight.move_serial
+	elif state == State.BITE and fishing_mode == FishingMode.LURE and strike_dir != Vector2.ZERO:
+		asked = FightPanel.to_frame(strike_dir.normalized())
+		serial = -2
+	if serial != _rod_serial:
+		_rod_serial = serial
+		_rod_wrong = 0.0
+		_rod_released = false
+	if asked == Vector2.ZERO:
+		rod_mode = false
+		rod_vec = Vector2.ZERO
+		return
+	var stick := _rod_input()
+	if not _rod_released:
+		if stick.length() >= 0.5 and stick.normalized().dot(asked.normalized()) < ROD_WRONG_DOT:
+			_rod_wrong += delta
+			if _rod_wrong >= ROD_RELEASE:
+				_rod_released = true
+		else:
+			_rod_wrong = 0.0
+	rod_mode = not _rod_released
+	rod_vec = stick if rod_mode else Vector2.ZERO
+
+
 func _physics_process(delta: float) -> void:
+	_update_rod(delta)
 	water_ghost_timer = max(water_ghost_timer - delta, 0.0)
 	poison_timer = maxf(poison_timer - delta, 0.0)
 	move_left = maxf(move_left - delta, 0.0)
@@ -2012,8 +2075,8 @@ func _update_movement() -> void:
 	# Low spirit: heavier on their feet (Profile.SPIRIT_SPEED).
 	var spirit_ratio: float = Profile.SPIRIT_SPEED[Profile.spirit_penalty()]
 	var vigor_ratio: float = VIGOR_SPEED if vigor_timer > 0.0 else 1.0
-	# (a swing of the off hand's thing is stood to - SWINGS)
-	if swing_left > 0.0 and not _auto_swing:
+	# (a swing of the off hand's thing is stood to - SWINGS; so is a way asked of the rod)
+	if (swing_left > 0.0 and not _auto_swing) or rod_mode:
 		input_dir = Vector2.ZERO
 	velocity = input_dir * SPEED * carry_ratio * affliction_ratio * drum_ratio * spirit_ratio * vigor_ratio * night_ratio()
 	var before := position

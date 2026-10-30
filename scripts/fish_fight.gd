@@ -465,6 +465,9 @@ var answer_k := 0.0
 ## since it began, the snag's stage (0 none, 1 the first way asked, 2 fraying) and the
 ## haul's time left (a dive broken).
 var cur_move := ""
+## Counts the windows opened (a new move, or the weed's second way): who asks can tell one
+## from the next.
+var move_serial := 0
 var answer_left := 0.0
 var move_done := false
 var _ans_armed := false
@@ -599,6 +602,7 @@ func _refresh_pull(delta: float) -> void:
 			move = "rally"
 	if move != cur_move:
 		cur_move = move
+		move_serial += 1
 		move_done = false
 		_ans_armed = false
 		answer_left = swipe_window()
@@ -960,6 +964,7 @@ func _answer_lost(events: Array) -> void:
 			_snag_dir = _line_dir.rotated(PI + randf_range(-DIVE_ARC, DIVE_ARC))
 			answer_left = swipe_window()
 			_ans_armed = false
+			move_serial += 1
 
 
 ## The damage numbers of this frame (see above): the stamina lost that the reel

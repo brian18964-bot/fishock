@@ -127,6 +127,9 @@ func _open_fish(uid: int) -> void:
 class Eye extends Control:
 	signal pressed
 	var slashed := false
+	## (a click comes as a mouse button and its emulated touch, or the other way about - both
+	## in the one frame - and counted twice it did nothing at all: the user's "can't hide it")
+	var _last_frame := -10
 
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_STOP
@@ -134,8 +137,12 @@ class Eye extends Control:
 	func _gui_input(event: InputEvent) -> void:
 		if (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed) \
 				or (event is InputEventScreenTouch and not event.pressed):
-			pressed.emit()
 			accept_event()
+			var frame := Engine.get_process_frames()
+			if frame - _last_frame <= 2:
+				return
+			_last_frame = frame
+			pressed.emit()
 
 	func _draw() -> void:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0, 0, 0, 0.5))

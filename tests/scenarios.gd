@@ -94,6 +94,8 @@ const TESTS := [
 	"test_fish_clasp",
 	"test_fight_field",
 	"test_move_area",
+	"test_rod_mode",
+	"test_bag_arrange",
 	"test_pull_and_answer",
 	"test_move_plan",
 	"test_slide_amounts",
@@ -6714,7 +6716,23 @@ func test_fish_alerts() -> void:
 	alerts._dismiss(uid)
 	await seconds(0.6)
 	check(not alerts._cards.has(uid) and alerts._cards.size() == 1, "a closed card stays closed")
-	# The eye hides them all, and shows them again.
+	# The eye hides them all, and shows them again - by a real click (the mouse's emulated touch
+	# comes too: it mustn't toggle it twice).
+	var clicks := func() -> void:
+		# (as the engine sends one click: the mouse button and its emulated touch, together)
+		var b := InputEventMouseButton.new()
+		b.button_index = MOUSE_BUTTON_LEFT
+		b.pressed = false
+		var t := InputEventScreenTouch.new()
+		t.pressed = false
+		alerts._eye._gui_input(b)
+		alerts._eye._gui_input(t)
+		await frames(1)
+	await clicks.call()
+	check(alerts._hidden and alerts._cards.values().all(func(c): return not c.visible), "clicked: the eye hides the cards")
+	await seconds(0.3)
+	await clicks.call()
+	check(not alerts._hidden and alerts._cards.values().all(func(c): return c.visible), "clicked again: shows them again")
 	alerts._toggle_hidden()
 	check(alerts._cards.values().all(func(c): return not c.visible), "the eye hides the cards")
 	alerts._toggle_hidden()
@@ -6723,6 +6741,100 @@ func test_fish_alerts() -> void:
 	GameState.carried_fish.clear()
 	await seconds(0.6)
 	check(alerts._cards.is_empty(), "no fish, no cards")
+
+
+## User request (arranging the bag): a thing dragged to another place in the grid goes there
+## if it fits - a fish, a packed thing - and nothing else moves; not where it doesn't fit.
+func test_bag_arrange() -> void:
+	Profile.load_data({"gold": 0})
+	await _fresh_game()
+	var bag: Backpack
+	for c in main.get_children():
+		if c is Backpack:
+			bag = c
+	check(bag != null, "the run has the bag")
+	if bag == null:
+		return
+	GameState.carried_fish.clear()
+	for n in ["甲", "乙", "丙"]:
+		var f := _alert_fish(n, 0.9)
+		f["size"] = "medium"
+		GameState.add_carried_fish(f)
+	bag.toggle()
+	await frames(3)
+	bag._rebuild()
+	var grid := bag._grid
+	var spots_before := []
+	for r in grid.placed:
+		spots_before.append((r as Rect2i).position)
+	var fish_items: Array = grid.items.filter(func(it): return it.kind == "fish")
+	check(fish_items.size() == 3, "three fish in the grid")
+	# One fish to a free spot.
+	var lone: Dictionary = fish_items[0]
+	var target := Vector2i(Inventory.COLS - 1, 0)
+	check(bag.can_place(lone, target) or bag.can_place(lone, Vector2i(Inventory.COLS - 2, 0)), "a free spot is placeable")
+	if not bag.can_place(lone, target):
+		target = Vector2i(Inventory.COLS - 2, 0)
+	check(bag.move_in_grid(lone, target), "moved to a free spot")
+	var i := bag._grid_index(lone)
+	check(i >= 0 and (grid.placed[i] as Rect2i).position == target, "and it's there now (%s)" % [grid.placed[i]])
+	for j in grid.items.size():
+		if j != i and grid.items[j].kind == "fish":
+			var was: Vector2i = spots_before[j]
+			check((grid.placed[j] as Rect2i).position == was, "the others didn't move (%s -> %s)" % [was, grid.placed[j]])
+	# Onto another fish: not allowed, and nothing changes.
+	var other: Dictionary = fish_items[1]
+	var j := bag._grid_index(other)
+	var where: Vector2i = (grid.placed[j] as Rect2i).position
+	var k := bag._grid_index(lone)
+	check(not bag.can_place(lone, where), "onto another fish: no")
+	check(not bag.move_in_grid(lone, where) and (grid.placed[k] as Rect2i).position == target, "and it stays put")
+	# Off the edge: no.
+	check(not bag.can_place(lone, Vector2i(Inventory.COLS, 0)) and not bag.can_place(lone, Vector2i(-1, 0)) and not bag.can_place(lone, Vector2i(0, Profile.bag_rows())), "off the grid: no")
+	# By a real drag in the grid: grab it, slide, let go over a free spot.
+	var tile: Dictionary = fish_items[2]
+	var ti := bag._grid_index(tile)
+	var tile_at: Vector2i = (grid.placed[ti] as Rect2i).position
+	var free_spot := Vector2i(3, 3)
+	var pressed_at := (Vector2(tile_at) + Vector2(0.5, 0.5)) * Backpack.CELL
+	var down := InputEventMouseButton.new()
+	down.button_index = MOUSE_BUTTON_LEFT
+	down.pressed = true
+	down.position = pressed_at
+	grid._gui_input(down)
+	var slide := InputEventMouseMotion.new()
+	slide.position = pressed_at + Vector2(30, 30)
+	grid._gui_input(slide)
+	var land := Vector2(free_spot) * Backpack.CELL + Vector2(0.5, 0.5) * Backpack.CELL
+	slide = InputEventMouseMotion.new()
+	slide.position = land
+	grid._gui_input(slide)
+	check(grid.preview.size != Vector2i.ZERO and grid.preview.position == free_spot, "the drag shows where it'd go (%s)" % [grid.preview])
+	var up := InputEventMouseButton.new()
+	up.button_index = MOUSE_BUTTON_LEFT
+	up.pressed = false
+	up.position = land
+	grid._gui_input(up)
+	ti = bag._grid_index(tile)
+	check((grid.placed[ti] as Rect2i).position == free_spot, "let go: it's there (%s)" % [grid.placed[ti]])
+	check(grid.preview.size == Vector2i.ZERO, "and the preview's gone")
+	# Packed things: a stack moved, and stacked onto its own kind.
+	bag.toggle()
+	Profile.bag.clear()
+	GameState.carried_fish.clear()
+	Profile.bag.append({"id": "salt", "count": 2, "cell": Vector2i(0, 0)})
+	Profile.bag.append({"id": "salt", "count": 3, "cell": Vector2i(3, 2)})
+	bag.toggle()
+	await frames(3)
+	bag._rebuild()
+	var salts: Array = bag._grid.items.filter(func(it): return it.get("item", "") == "salt")
+	check(salts.size() == 2, "two stacks of salt in the grid")
+	var first: Dictionary = salts[0]
+	check(bag.move_in_grid(first, Vector2i(5, 1)) and Profile.bag[first.bag].cell == Vector2i(5, 1), "a packed stack set down elsewhere")
+	var second: Dictionary = salts[1]
+	check(not bag.can_place(first, Profile.bag[second.bag].cell), "not onto another stack's cell (that stacks it instead)")
+	check(bag._stack_onto(first, Profile.bag[second.bag].cell) and Profile.bag.size() == 1 and int(Profile.bag[0].count) == 5, "dropped on a stack of the same: they join (%s)" % [Profile.bag])
+	bag.toggle()
 
 
 func test_salting() -> void:
@@ -7457,6 +7569,7 @@ func test_move_area() -> void:
 	f.run_left = 2.0
 	f.run_side = Vector2.RIGHT
 	f.swipe_left = 1.0
+	f.cur_move = "side"
 	panel._update_area(p, 0.05)
 	check(panel.move_key(f) == "side_dash" and panel._area.visible and FightPanel.pad_active, "a sideways dash: the area is up")
 	# The drag in it is the way (to the left, against a dash to the right).
@@ -7482,10 +7595,91 @@ func test_move_area() -> void:
 	f.run_left = 0.0
 	f.run_side = Vector2.ZERO
 	f.swipe_left = 0.0
+	f.cur_move = ""
+	panel._update_area(p, 0.05)
+	panel._update_area(p, FightPanel.LINGER + 0.1)
 	panel._update_area(p, 0.05)
 	check(not panel._area.visible and not FightPanel.pad_active, "no move: the area's gone")
 	p.fight = null
 	p._set_state(Player.State.IDLE)
+
+
+## User request (rod mode): while a way is asked, the character stands still and the left
+## stick is the rod - pushed the way the arrow shows (up: along the line) it answers; held the
+## wrong way for ROD_RELEASE s it's let go (the stick walks again); no way asked, it walks.
+func test_rod_mode() -> void:
+	Profile.load_data({"gold": 0})
+	await _fresh_game()
+	var zone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
+	await put(zone.shore_point(Vector2.DOWN) + Vector2(0, 60))
+	var p := player()
+	var stick: TouchJoystick = p._move_joystick
+	p.aim_dir = Vector2.UP
+	p.cast_target = p.global_position + Vector2(0, -150)
+	p.cast_water_zone = zone
+	p.tier_data = FishData.get_tier_data("mid").duplicate()
+	p.difficulty_key = "advanced"
+	p.fish_id = "carp"
+	p.fish_habit = ""
+	p.is_heart_catch = false
+	p.is_epic_catch = false
+	p.is_rare_catch = false
+	p._hook_fish()
+	var f: FishFight = p.fight
+	f.max_hp = 1000.0
+	f.hold = true
+	f._jump_cooldown = 999.0
+	f._run_timer = 999.0
+	f.opening_left = 0.0
+	f.lively = false
+	f.swim_out = 0.0
+	f.tension_rise = 0.0
+	f.moves_left = 0
+	await frames(3)
+	check(not p.rod_mode, "no way asked: no rod mode")
+	stick.output = Vector2.RIGHT
+	stick.is_pressed = true
+	await frames(3)
+	check(p.velocity.length() > 10.0, "no way asked: the stick walks")
+	# A dash: asked.
+	f._run_dir = Vector2.UP
+	f.run_left = 6.0
+	f.run_side = Vector2.ZERO
+	await frames(3)
+	check(f.prompt_active() and p.rod_mode and p.velocity.length() < 1.0, "a way asked: rod mode, standing still")
+	var asked := FightPanel.to_frame(f.prompt_dir())
+	check(asked != Vector2.ZERO and is_equal_approx(asked.length(), 1.0), "the way is in the line's frame")
+	# The wrong way (a right angle), held under ROD_RELEASE: still rod mode.
+	stick.output = asked.orthogonal()
+	await seconds(0.4)
+	check(p.rod_mode and p.velocity.length() < 1.0 and not f.move_done, "a short wrong push: still standing, not an answer")
+	await seconds(0.5)
+	check(not p.rod_mode and p.velocity.length() > 10.0, "held the wrong way: rod mode is let go, the stick walks")
+	check(FightPanel.pad_vec == Vector2.ZERO, "(and the rod has no push)")
+	# The next move is a fresh start.
+	stick.output = Vector2.ZERO
+	stick.is_pressed = false
+	f.run_left = 0.0
+	await frames(3)
+	f._run_dir = Vector2.UP
+	f.run_left = 6.0
+	await frames(3)
+	check(f.prompt_active() and p.rod_mode, "the next way asked: rod mode again")
+	# The way pushed fully: answered.
+	stick.output = asked * 0.4
+	stick.is_pressed = true
+	await frames(3)
+	check(p.rod_mode and not f.move_done, "a half push isn't an answer")
+	var hp0 := f.progress
+	stick.output = asked
+	await frames(4)
+	check(f.run_left == 0.0 and f.progress > hp0 + 0.01, "pushed the whole way along the arrow: the dash is broken, a crit (%.3f -> %.3f)" % [hp0, f.progress])
+	# Over: it walks again.
+	await frames(3)
+	check(not p.rod_mode, "answered: the rod is let go")
+	stick.output = Vector2.ZERO
+	stick.is_pressed = false
+	p._reset_line(Player.State.IDLE)
 
 
 ## User request (the pull and the way back): each move pulls a way on the clock face from

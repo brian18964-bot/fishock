@@ -516,7 +516,16 @@ func can_drop(item: Dictionary) -> bool:
 	return _mode_kind == "normal" and (item.kind == "fish" or item.has("bag") or item.kind == "slot")
 
 
-func drag_start(item: Dictionary) -> void:
+## User request (arranging the bag): a thing dragged to another place in the grid goes there,
+## if it - the whole of it - fits; where it's let go is the cell its grabbed part's over.
+## `_grab` is which of its cells was grabbed (from its top left).
+var _drag_item := {}
+var _grab := Vector2i.ZERO
+
+
+func drag_start(item: Dictionary, grab := Vector2i.ZERO) -> void:
+	_drag_item = item
+	_grab = grab
 	# User request: dragged, a thing shows as its simple square icon.
 	_ghost = TextureRect.new()
 	var id: String = item.get("item", "")
@@ -538,12 +547,93 @@ func drag_move(at: Vector2) -> void:
 		_ghost.position = at - _ghost.size / 2.0
 		# Out of the bag: reddish, "put down here".
 		_ghost.modulate = Color(1, 0.75, 0.6, 0.9) if not _panel.get_global_rect().has_point(at) else Color(1, 1, 1, 0.8)
+	# Over the grid: where it would go, green if it fits, red if not.
+	if _grid != null and not _drag_item.is_empty() and _drag_item.kind != "slot" and _grid.get_global_rect().has_point(at):
+		var i := _grid_index(_drag_item)
+		if i >= 0:
+			var rect := Rect2i(_grid.cell_at(at) - _grab, (_grid.placed[i] as Rect2i).size)
+			_grid.preview = rect
+			_grid.preview_ok = can_place(_drag_item, rect.position)
+			_grid.queue_redraw()
+			return
+	if _grid != null and _grid.preview.size != Vector2i.ZERO:
+		_grid.preview = Rect2i()
+		_grid.queue_redraw()
+
+
+## Where in the grid's `items` this thing is (-1: not there).
+func _grid_index(item: Dictionary) -> int:
+	for i in _grid.items.size():
+		var it: Dictionary = _grid.items[i]
+		if it.kind == item.kind and it.index == item.index and it.get("bag", -1) == item.get("bag", -1):
+			return i
+	return -1
+
+
+## Would `item` fit with its top left at `cell`, everything else as it is? Whatever isn't
+## placed by hand packs around it, so that has to keep working too.
+func can_place(item: Dictionary, cell: Vector2i) -> bool:
+	var i := _grid_index(item)
+	var player := _player()
+	if i < 0 or player == null:
+		return false
+	var rect := Rect2i(cell, (_grid.placed[i] as Rect2i).size)
+	if rect.position.x < 0 or rect.position.y < 0 or rect.end.x > Inventory.COLS or rect.end.y > Profile.bag_rows():
+		return false
+	for j in _grid.placed.size():
+		if j != i and (_grid.placed[j] as Rect2i).intersects(rect):
+			return false
+	var list := Inventory.items(player)
+	if i >= list.size():
+		return false
+	list[i]["cell"] = cell
+	return not Inventory.pack(list).is_empty()
+
+
+## Puts `item` down with its top left at `cell` (can_place); everything else keeps its place -
+## a fish carried loose is pinned where it sits now, so nothing else shuffles. False if it
+## doesn't fit.
+func move_in_grid(item: Dictionary, cell: Vector2i) -> bool:
+	if not can_place(item, cell):
+		return false
+	var i := _grid_index(item)
+	for j in _grid.items.size():
+		var other: Dictionary = _grid.items[j]
+		if j != i and other.kind == "fish" and other.index < GameState.carried_fish.size() \
+				and not GameState.carried_fish[other.index].has("cell"):
+			var at: Vector2i = (_grid.placed[j] as Rect2i).position
+			GameState.carried_fish[other.index]["cell"] = [at.x, at.y]
+	if item.kind == "fish":
+		GameState.carried_fish[item.index]["cell"] = [cell.x, cell.y]
+	elif item.has("bag"):
+		if not Profile.bag_move(item.bag, cell):
+			return false
+	else:
+		return false
+	_rebuild()
+	return true
+
+
+## A packed stack dropped on another of the same thing: it joins it (as much as it takes).
+func _stack_onto(item: Dictionary, at: Vector2i) -> bool:
+	for j in _grid.items.size():
+		var other: Dictionary = _grid.items[j]
+		if other.has("bag") and other.bag != item.bag and other.item == item.item and (_grid.placed[j] as Rect2i).has_point(at):
+			if Profile.bag_move(item.bag, Profile.bag[other.bag].cell):
+				_selected = {}
+				_rebuild()
+				return true
+	return false
 
 
 func drag_end(item: Dictionary, at: Vector2) -> void:
 	if _ghost != null:
 		_ghost.queue_free()
 		_ghost = null
+	_drag_item = {}
+	if _grid != null:
+		_grid.preview = Rect2i()
+		_grid.queue_redraw()
 	# Onto a gear slot: put it on; a slot's thing onto the grid: off.
 	for box in _gear_slots:
 		if box.get_global_rect().has_point(at):
@@ -555,6 +645,11 @@ func drag_end(item: Dictionary, at: Vector2) -> void:
 		if _grid.get_global_rect().has_point(at):
 			unequip_to_bag(item.index, _grid.cell_at(at))
 		_rebuild()
+		return
+	if _grid.get_global_rect().has_point(at):
+		# (arranged: set down in the grid, if it fits there - or stacked onto the same thing)
+		if not (item.has("bag") and _stack_onto(item, _grid.cell_at(at))):
+			move_in_grid(item, _grid.cell_at(at) - _grab)
 		return
 	if _panel.get_global_rect().has_point(at):
 		return
@@ -810,6 +905,9 @@ class GridView extends Control:
 	var _press := -1
 	var _press_at := Vector2.ZERO
 	var _dragging := false
+	## Where the thing being dragged would go (cells), and whether it fits there.
+	var preview := Rect2i()
+	var preview_ok := false
 
 	## The grid cell under `at` (global).
 	func cell_at(at: Vector2) -> Vector2i:
@@ -843,7 +941,8 @@ class GridView extends Control:
 			# User request: drag a thing out of the bag to put it down.
 			if not _dragging and event.position.distance_to(_press_at) > 10.0 and owner_bag.can_drop(items[_press]):
 				_dragging = true
-				owner_bag.drag_start(items[_press])
+				var grab := Vector2i(_press_at / Backpack.CELL) - (placed[_press] as Rect2i).position
+				owner_bag.drag_start(items[_press], grab)
 			if _dragging:
 				owner_bag.drag_move(get_global_transform() * event.position)
 			accept_event()
@@ -853,6 +952,11 @@ class GridView extends Control:
 			for y in Inventory.ROWS:
 				UiKit.draw_slot(self, Rect2(Vector2(x, y) * Backpack.CELL, Vector2.ONE * Backpack.CELL).grow(-1.5))
 		UiKit.draw_shut_rows(self, Backpack.CELL)
+		if preview.size != Vector2i.ZERO:
+			var pr := Rect2(Vector2(preview.position) * Backpack.CELL, Vector2(preview.size) * Backpack.CELL).grow(-1.0)
+			var shown := pr.intersection(Rect2(Vector2.ZERO, Vector2(Inventory.COLS, Inventory.ROWS) * Backpack.CELL))
+			draw_rect(shown, Color(0.4, 0.9, 0.5, 0.28) if preview_ok else Color(0.95, 0.3, 0.25, 0.28))
+			draw_rect(shown, Color(0.5, 1.0, 0.6, 0.8) if preview_ok else Color(1.0, 0.4, 0.35, 0.8), false, 2.0)
 		for i in placed.size():
 			var item: Dictionary = items[i]
 			var cells: Rect2i = placed[i]
