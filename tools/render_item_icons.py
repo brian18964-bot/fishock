@@ -314,6 +314,11 @@ def vigor_feed():
     model_pic("vigor_feed", (1, 1), (15, 0, 25))
 
 
+def salt():
+    """The salt (tools/make_salt.py)."""
+    model_pic("salt", (1, 1), (35, 0, 20))
+
+
 def revive_needle():
     """The revive needle (tools/make_revive_items.py)."""
     model_pic("revive_needle", (1, 1), (0, 0, 35))

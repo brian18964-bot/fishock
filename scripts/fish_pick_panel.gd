@@ -43,9 +43,13 @@ func _ready() -> void:
 	col.add_child(scroll)
 	if GameState.carried_fish.is_empty():
 		grid.add_child(UiKit.label("身上沒有魚。", 15, UiKit.DIM))
+	elif _item == "salt" and GameState.carried_fish.all(func(g): return FishLife.can_salt(g) != ""):
+		grid.add_child(UiKit.label("身上沒有可以醃的魚（要死掉、還沒腐敗）。", 15, UiKit.DIM))
 	for i in GameState.carried_fish.size():
 		var f: Dictionary = GameState.carried_fish[i]
-		var why := FishLife.apply_item(_item, f.duplicate(true))
+		var why := FishLife.can_use(_item, f)
+		if _item == "salt" and why != "":
+			continue   # (only the dead that aren't rotten are shown)
 		var card := Card.new()
 		card.name = "Fish_%d" % i
 		card.fish = f

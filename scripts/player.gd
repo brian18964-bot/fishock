@@ -889,7 +889,7 @@ func use_item(id: String) -> bool:
 			glow_timer = GLOW_TIME + CRUMBLE_TIME * GLOW_FROM
 			perform("crumble", CRUMBLE_TIME)
 			GameState.report("揉碎發光蘑菇撒在身上：全身散發微弱的藍光", "good")
-		"oxy_tree", "frozen_soil", "vigor_feed", "revive_needle", "affix_dropper":
+		"oxy_tree", "frozen_soil", "vigor_feed", "revive_needle", "affix_dropper", "salt":
 			# (from a quick slot: the fish that needs it most)
 			var pick := fish_for(id)
 			if pick < 0:
@@ -1175,9 +1175,9 @@ func fish_for(id: String) -> int:
 	var best_left := INF
 	for i in GameState.carried_fish.size():
 		var f: Dictionary = GameState.carried_fish[i]
-		if id == "revive_needle" or id == "affix_dropper":
+		if id == "revive_needle" or id == "affix_dropper" or id == "salt":
 			# (the first that can have it)
-			if FishLife.apply_item(id, f.duplicate(true)) == "":
+			if FishLife.can_use(id, f) == "":
 				return i
 			continue
 		if id == "vigor_feed":

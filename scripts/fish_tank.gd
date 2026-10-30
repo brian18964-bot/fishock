@@ -351,9 +351,9 @@ func _card_for(i: int, src := "tank") -> void:
 			_feed_dialog(f))
 		moves.add_child(fb)
 	# (the feed, the needle and the dropper: what's owned, on what they'd work on)
-	for item_id in ["vigor_feed", "revive_needle", "affix_dropper"]:
+	for item_id in ["vigor_feed", "revive_needle", "affix_dropper", "salt"]:
 		var owned := Profile.bag_count(item_id) + Profile.stored(item_id)
-		if owned <= 0 or FishLife.apply_item(item_id, f.duplicate(true)) != "":
+		if owned <= 0 or FishLife.can_use(item_id, f) != "":
 			continue
 		var vb := UiKit.button("%s x%d" % [Profile.USABLES[item_id].name, owned], 14, "red")
 		vb.name = "Use_" + item_id

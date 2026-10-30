@@ -303,7 +303,7 @@ static func vit_rate(f: Dictionary, night := false) -> float:
 ## Freshness lost per second once dead (0 never; rots at once past INSTANT).
 static func fresh_rate(f: Dictionary) -> float:
 	var life := float(f.get("fresh_life", 300.0))
-	if life < 0.0 or has_trait(f, "imperishable"):
+	if life < 0.0 or has_trait(f, "imperishable") or is_salted(f):
 		return 0.0
 	var rate := 1.0 / maxf(life, 0.001)
 	for t in f.get("life_traits", []):
@@ -394,6 +394,66 @@ static func use_dropper(f: Dictionary, out: Array = [], _stat := "") -> String:
 	return ""
 
 
+## User request (醃製): salt on a fish that's dead but not rotten - SALT_CHANCE it
+## takes: the fish gains salt affixes (`salt`: [{stat, val}], the same stat may come
+## again), from the five stats (the four and 幸運), SALT_VALUE each, as many as its
+## rarity allows (SALT_COUNT, at random between). A salted fish no longer loses
+## freshness, and it counts toward the stats carried even dead.
+const SALT_CHANCE := 0.05
+const SALT_VALUE := [2, 6]
+const SALT_COUNT := {"common": [1, 1], "rare": [1, 2], "epic": [1, 3], "legend": [1, 4]}
+const SALT_STATS := ["might", "resil", "react", "endure", "luck"]
+
+
+static func is_salted(f: Dictionary) -> bool:
+	return not f.get("salt", []).is_empty()
+
+
+## "力量 +4、反應 +3" for a salted fish ("" none).
+static func salt_text(f: Dictionary) -> String:
+	var parts := []
+	for e in f.get("salt", []):
+		parts.append("%s +%d" % [Stats.NAMES[e.stat], int(e.val)])
+	return "、".join(parts)
+
+
+## "" if `f` can be salted, else why not.
+static func can_salt(f: Dictionary) -> String:
+	match state(f):
+		"alive":
+			return "活著的魚不能醃，要等牠死了"
+		"rotten":
+			return "已經腐敗了，醃不了"
+	if is_salted(f):
+		return "這條魚已經醃過了"
+	return ""
+
+
+## Salt on `f`: "" it was used (it took or not - `out` says), else why not.
+static func use_salt(f: Dictionary, out: Array = []) -> String:
+	var why := can_salt(f)
+	if why != "":
+		return why
+	if not Abilities.roll(SALT_CHANCE):
+		out.append("沒有醃成功，鹽用掉了")
+		return ""
+	var span: Array = SALT_COUNT.get(UiKit.fish_rarity(f), [1, 1])
+	var list := []
+	for _i in randi_range(int(span[0]), int(span[1])):
+		list.append({"stat": SALT_STATS.pick_random(), "val": randi_range(SALT_VALUE[0], SALT_VALUE[1])})
+	f["salt"] = list
+	out.append("醃製成功！%s" % salt_text(f))
+	return ""
+
+
+## Whether item `id` could be used on `f` now ("" yes, else why not) - without
+## using it.
+static func can_use(id: String, f: Dictionary) -> String:
+	if id == "salt":
+		return can_salt(f)
+	return apply_item(id, f.duplicate(true))
+
+
 ## A fish item (Profile.USABLES with "target": "fish") on `f`: "" it worked
 ## (f changed), else why not.
 static func apply_item(id: String, f: Dictionary, out: Array = [], stat := "") -> String:
@@ -406,6 +466,8 @@ static func apply_item(id: String, f: Dictionary, out: Array = [], stat := "") -
 			return use_revive(f)
 		"affix_dropper":
 			return use_dropper(f, out, stat)
+		"salt":
+			return use_salt(f, out)
 	return use_frozen(f)
 
 

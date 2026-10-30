@@ -271,9 +271,12 @@ const USABLES := {
 	# User request: the dropper bottle - the stat affixes drawn again.
 	"affix_dropper": {"name": "洗點滴瓶", "cost": 80, "stack": 5, "keep": false, "target": "fish",
 		"desc": "滴在一條魚身上：牠的屬性詞綴（力量／韌性／反應／耐力）在各自那一階的範圍內重新抽一次數值"},
+	# User request (醃製): salt for a fish that's dead and not yet rotten.
+	"salt": {"name": "鹽巴", "cost": 12, "stack": 10, "keep": false, "target": "fish",
+		"desc": "撒在一條死掉、還沒腐敗的魚身上：有 5% 機率醃製成功，魚會多出 1～4 條素質詞綴（越稀有越可能多，數值 2～6，種類可以重複），而且不會再變不新鮮。沒成功鹽就用掉了"},
 }
 const USABLE_ORDER := ["potion_vigor", "potion_ward", "eyeball", "eye_altar", "eye_ghost", "binoculars", "glow_mushroom",
-	"oxy_tree", "frozen_soil", "vigor_feed", "revive_needle", "affix_dropper"]
+	"oxy_tree", "frozen_soil", "vigor_feed", "revive_needle", "affix_dropper", "salt"]
 
 ## User request (Camp v2): what's been done, for the achievements that
 ## earn the camp's tents (TENTS) - escapes, gold spent, legends caught.

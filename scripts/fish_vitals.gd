@@ -56,6 +56,11 @@ func show_fish(fish: Dictionary, in_tank := false) -> void:
 		# (a wrapped label sized from nothing is tall till it's laid out)
 		l.custom_minimum_size.x = maxf(custom_minimum_size.x, 200.0)
 		_traits.add_child(l)
+	if FishLife.is_salted(fish):
+		var sl := UiKit.label("醃製：%s（不會再變不新鮮）" % FishLife.salt_text(fish), 13, Color(1.0, 0.88, 0.5))
+		sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		sl.custom_minimum_size.x = maxf(custom_minimum_size.x, 200.0)
+		_traits.add_child(sl)
 	_refresh()
 
 

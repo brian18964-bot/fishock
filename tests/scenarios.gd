@@ -90,6 +90,7 @@ const TESTS := [
 	"test_talents",
 	"test_rods_and_stats_page",
 	"test_fish_alerts",
+	"test_salting",
 	"test_camp_spirit_and_tents",
 	"test_camp_life",
 	"test_ears_and_tails",
@@ -6693,3 +6694,86 @@ func test_fish_alerts() -> void:
 	GameState.carried_fish.clear()
 	await seconds(0.6)
 	check(alerts._cards.is_empty(), "no fish, no cards")
+
+
+func test_salting() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 100})
+	var base := {"id": "carp", "name": "鯉魚", "value": 10.0, "size": "small", "rarity": "common", "tier": "near", "length": 40.0, "weight": 1.0}
+	var live := base.duplicate(true)
+	FishLife.roll(live)
+	live["life_traits"] = []
+	check(FishLife.can_salt(live) != "" and FishLife.use_salt(live) != "", "a live fish can't be salted")
+	var dead := live.duplicate(true)
+	FishLife.kill(dead)
+	dead["fresh_life"] = 300.0
+	dead["fresh"] = 1.0
+	check(FishLife.can_salt(dead) == "", "a dead one that isn't rotten can")
+	var rotten := dead.duplicate(true)
+	FishLife.rot(rotten)
+	check(FishLife.can_salt(rotten) != "", "a rotten one can't")
+	# The chance: about 5% a go.
+	var took := 0
+	var tries := 4000
+	for _i in tries:
+		var f := dead.duplicate(true)
+		FishLife.use_salt(f)
+		if FishLife.is_salted(f):
+			took += 1
+	check(took > tries * 0.03 and took < tries * 0.075, "about 5%% take (%d of %d)" % [took, tries])
+	# What a take gives, by rarity: counts and values within their spans; repeats happen.
+	Abilities.forced = true
+	var repeats := false
+	var spans := {"common": [1, 1], "rare": [1, 2], "epic": [1, 3], "legend": [1, 4]}
+	var fine := true
+	var most := {}
+	for kind in spans:
+		most[kind] = 0
+		for _i in 300:
+			var f := dead.duplicate(true)
+			match kind:
+				"rare":
+					f["id"] = "brown_trout"
+					f["rarity"] = "rare"
+				"epic":
+					f["id"] = "sunfish"
+				"legend":
+					f["id"] = "swordfish"
+			FishLife.use_salt(f)
+			var n: int = f.salt.size()
+			most[kind] = maxi(most[kind], n)
+			fine = fine and n >= spans[kind][0] and n <= spans[kind][1]
+			var seen := {}
+			for e in f.salt:
+				fine = fine and e.val >= 2 and e.val <= 6 and e.stat in FishLife.SALT_STATS
+				if seen.has(e.stat):
+					repeats = true
+				seen[e.stat] = true
+	Abilities.forced = false
+	check(fine, "counts by rarity and values 2~6")
+	check(most.common == 1 and most.rare == 2 and most.epic == 3 and most.legend == 4, "the rarer, the more it may take (%s)" % [most])
+	check(repeats, "the same stat can come again")
+	# A salted fish: no more freshness lost, and it counts as stats, dead.
+	var s := dead.duplicate(true)
+	s["salt"] = [{"stat": "might", "val": 5}, {"stat": "luck", "val": 3}]
+	FishLife.tick(s, 100000.0)
+	check(FishLife.state(s) == "dead" and float(s.fresh) == 1.0, "a salted fish doesn't spoil")
+	check(FishLife.can_salt(s) != "", "and isn't salted twice")
+	GameState.reset_run()
+	var carried_might := Stats.total("might")
+	var carried_luck := Stats.total("luck")
+	GameState.carried_fish = [s]
+	check(Stats.total("might") == carried_might + 5 and Stats.total("luck") == carried_luck + 3, "its affixes count for the stats it's carried with")
+	GameState.carried_fish.clear()
+	# The shop sells it; the pick list shows only the salt-able fish.
+	check(Profile.USABLES.has("salt") and Profile.buy_usable("salt") and Profile.stored("salt") == 1, "the shop sells the salt")
+	var panel := FishPickPanel.new("鹽", "salt")
+	GameState.carried_fish = [live, dead]
+	var p2 := FishPickPanel.new("鹽", "salt")
+	get_tree().root.add_child(p2)
+	await frames(2)
+	check(p2.find_children("Fish_*", "", true, false).size() == 1, "only the dead, not-rotten fish are listed")
+	p2.queue_free()
+	panel.free()
+	GameState.carried_fish.clear()
+	Profile.load_data(saved)

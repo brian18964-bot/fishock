@@ -54,6 +54,12 @@ static func sources(stat: String, fish: Array = GameState.carried_fish) -> Array
 		for f in fish:
 			if FishLife.stats_count(f) and FishLife.has_trait(f, stat):
 				out.append([str(f.get("name", "魚")), int(FishLife.val_of(f, stat))])
+	# (salted fish: their affixes count - alive, or dead and kept from spoiling)
+	for f in fish:
+		if FishLife.is_salted(f) and FishLife.state(f) != "rotten" and (FishLife.state(f) == "dead" or FishLife.stats_count(f)):
+			for e in f.salt:
+				if e.stat == stat:
+					out.append([str(f.get("name", "魚")) + "（醃製）", int(e.val)])
 	var talent := Abilities.talent_stat(stat)
 	if talent != 0:
 		out.append(["天賦：" + str(Abilities.TALENTS[Profile.talent_of()].name), talent])
