@@ -2967,7 +2967,7 @@ func _start_bite() -> void:
 func _lure_strike_input(just_pressed: bool, just_released: bool, delta: float) -> void:
 	# (the move area: a drag there, held to a way or let go of after it moved)
 	if FightPanel.pad_active:
-		var q := FightPanel.pad_vec
+		var q := FightPanel.pad_world()
 		if q.length() > 0.05:
 			if q.distance_to(_strike_from) > LURE_MOVED:
 				_strike_moved = true
@@ -3245,7 +3245,7 @@ func _counter_dir() -> Vector2:
 	# (the move area is the left hand's: drag in it - the right stick keeps the reel)
 	if FightPanel.pad_active:
 		if FightPanel.pad_vec != Vector2.ZERO:
-			return FightPanel.pad_vec
+			return FightPanel.pad_world()
 		if velocity.length() > 1.0:
 			return velocity.normalized()
 		return Vector2.ZERO

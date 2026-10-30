@@ -85,6 +85,15 @@ extends RefCounted
 ## move answered in time with no tension taken is a parry. All of it is queued in
 ## `hits` (FightPanel shows them: drain_hits()); see _account().
 ##
+## User request (the pull and the way back): a move has a way it pulls (`pull_dir`, on the
+## clock face from the angler, 12 straight out over the water): a dash 10-2, a sideways
+## dash 8-10 or 2-4, a dash for the rocks or into the weed 5-7, berserk any way (a new
+## one each second), a rally any way (it tightens the line till it's answered). The left
+## hand answers by dragging the other way (`counter` within ANSWER_DOT of it: 45 deg):
+## the fish is held - a dash takes little line and the reel keeps going, the dive is
+## hauled back, the weed frays slower, the berserk and the rally build less tension.
+## Not answered, it's as it was.
+##
 ## User request (the field - distance and depth, `field`): where the fish is on the
 ## water is used against the angler. The water shelves away from the bank, so how
 ## deep it can go depends on how far out it is (bottom_depth(): near the bank it
@@ -153,6 +162,19 @@ const FATIGUE_PER_ENDURE := 0.2
 const FATIGUE_SPAN := 30.0
 const REEL_TIRED := 0.3
 const TENSION_TIRED := 0.5
+## The pull and the answer (see above).
+const RUN_ARC := 1.05
+const SIDE_ARC := 0.52
+const DIVE_ARC := 0.52
+const RAGE_ARC := 1.75
+const RAGE_REROLL := Vector2(0.8, 1.2)
+const RALLY_ARC := 2.5
+const RALLY_REROLL := 1.5
+const RALLY_JERK := 0.1
+const RALLY_TIGHT := 0.35
+const RALLY_TIGHT_TO := 0.85
+const ANSWER_DOT := 0.7
+const HELD_RUN_OUT := 1.0
 ## The field (see above).
 const BOTTOM_NEAR := 1.2
 const BOTTOM_OVER := 1.0
@@ -187,7 +209,7 @@ const PARRY_AFTER := 0.5
 ## What a fish's moves are called when they hurt (mood()), and the ones a parry
 ## can answer.
 const HURT_SRC := {"run": "衝刺", "side_run": "橫衝", "jump": "躍出", "dive": "鑽石縫", "surge": "猛拉", "rally": "反撲"}
-const PARRY_SRC := ["run", "side_run", "jump", "dive"]
+const PARRY_SRC := ["run", "side_run", "jump", "dive", "rally"]
 const WARN_OF := {"snag_in": "水草區", "run": "衝刺", "side_run": "橫衝", "jump": "躍出", "dive": "鑽石縫", "enrage": "狂暴", "rally": "反撲"}
 var stat_might := 0.0
 var stat_react := 0.0
@@ -402,6 +424,16 @@ var perfect := false
 ## Seconds since the fish was hooked.
 var age := 0.0
 
+## Which way the move on pulls (a unit vector from the angler's line, ZERO none) and
+## whether the counter asked for answers it now.
+var pull_dir := Vector2.ZERO
+var answering := false
+var _run_dir := Vector2.ZERO
+var _dive_dir := Vector2.ZERO
+var _snag_dir := Vector2.ZERO
+var _rally_dir := Vector2.ZERO
+var _rage_t := 0.0
+var _rally_t := 0.0
 ## The field (see above): on, where the snag is (if there is one), the line's fray.
 var field := false
 var snag_on := false
@@ -444,6 +476,45 @@ func _init(difficulty: String, fish_habit: String, tier: Dictionary, reel_power:
 
 func label() -> String:
 	return diff.label
+
+
+## The line's way (angler to fish): what the clock face is turned to.
+func line_way() -> Vector2:
+	return _line_dir
+
+
+## A way `arc` either side of the line's way turned by `turn` (rad, clockwise).
+func _way(turn: float, arc: float) -> Vector2:
+	return _line_dir.rotated(turn + randf_range(-arc, arc))
+
+
+## Which way the move on pulls, this frame (see above).
+func _refresh_pull(delta: float) -> void:
+	var d := Vector2.ZERO
+	if opening_left > 0.0 or spent or jump_left > 0.0:
+		d = Vector2.ZERO
+	elif _in_snag:
+		d = _snag_dir
+	elif dive_active:
+		d = _dive_dir
+	elif run_left > 0.0:
+		if run_side != Vector2.ZERO:
+			d = run_side.normalized()
+		else:
+			if enraged:
+				_rage_t -= delta
+				if _rage_t <= 0.0:
+					_run_dir = _way(0.0, RAGE_ARC)
+					_rage_t = randf_range(RAGE_REROLL.x, RAGE_REROLL.y)
+			d = _run_dir
+	elif rally_left > 0.0:
+		_rally_t -= delta
+		if _rally_t <= 0.0:
+			_rally_dir = _way(0.0, RALLY_ARC)
+			_rally_t = RALLY_REROLL
+			tension = minf(tension + RALLY_JERK, 0.97)
+		d = _rally_dir
+	pull_dir = d
 
 
 ## A fish's health for the damage numbers: its rarity ("common" .. "legend") and
@@ -534,6 +605,8 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 	var held := crank >= HELD_AT
 	var p_before := progress
 	var t_before := tension
+	_refresh_pull(delta)
+	answering = pull_dir != Vector2.ZERO and counter.length() > 0.3 and counter.normalized().dot(-pull_dir) > ANSWER_DOT
 	_explicit = 0.0
 	_sweet_frame = false
 	if home < 0.0:
@@ -615,12 +688,14 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 			tension -= tension_fall * delta
 	elif dive_active:
 		out_mult = 0.0
+		# (answered - pulled the other way - it's held: hauled back, less strain)
+		var soften := 0.4 if answering else 1.0
 		if held:
-			dive -= DIVE_HAUL * k * delta
+			dive -= DIVE_HAUL * k * delta * (1.5 if answering else 1.0)
 			progress += reel_speed * 0.3 * k * delta
-			tension += tension_rise * strain * pull * DIVE_TENSION * k * delta
+			tension += tension_rise * strain * pull * DIVE_TENSION * k * soften * delta
 		else:
-			dive += DIVE_SPEED * delta
+			dive += DIVE_SPEED * (0.35 if answering else 1.0) * delta
 			tension -= tension_fall * delta
 		if dive <= 0.0:
 			dive_active = false
@@ -635,7 +710,16 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 			# Out it goes: the drag slips, the crank brings nothing in.
 			out_mult = RUN_OUT_MULT
 			reel_in = 0.0
-			if held:
+			if answering:
+				# Pulled the other way: held - little line taken, and the reel goes on.
+				out_mult = HELD_RUN_OUT
+				reel_in = k * reel_mult * 0.5
+				if held:
+					progress += reel_speed * 0.4 * k * delta
+					tension += tension_rise * strain * 0.6 * pull * k * delta
+				else:
+					tension -= tension_fall * 0.5 * delta
+			elif held:
 				progress -= RUN_PROGRESS_PENALTY * delta
 				tension += tension_rise * strain * RUN_TENSION_MULT * pull * maxf(k, 1.0) * delta
 			else:
@@ -673,10 +757,19 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 			snap_why = "leap"
 			result = "line_break"
 
+	# (a rally pulls the line tight till it's answered)
+	if rally_left > 0.0 and not spent and opening_left <= 0.0:
+		if answering:
+			tension -= tension_fall * 0.5 * delta
+		elif tension < RALLY_TIGHT_TO:
+			# (held tight by the fish itself, up to where the next thing breaks it)
+			tension = minf(tension + (tension_fall + RALLY_TIGHT * strain) * delta, RALLY_TIGHT_TO)
 	if diff.phases > 1 and not enraged and progress >= ENRAGE_AT:
 		enraged = true
 		run_left = ENRAGE_RUN_TIME
 		run_side = Vector2.ZERO
+		_run_dir = _way(0.0, RAGE_ARC)
+		_rage_t = randf_range(RAGE_REROLL.x, RAGE_REROLL.y)
 		swipe_left = 0.0
 		jump_left = 0.0
 		events.append("enrage")
@@ -853,6 +946,8 @@ func _vigor(delta: float, events: Array) -> void:
 		rallied = true
 		if randf() < float(diff.get("rally", 0.0)):
 			rally_left = RALLY_TIME
+			_rally_dir = _way(0.0, RALLY_ARC)
+			_rally_t = RALLY_REROLL
 			progress = maxf(progress - RALLY_STAMINA, 0.0)
 			_burst_gap = 0.0
 			events.append("rally")
@@ -948,6 +1043,7 @@ func _schedule(delta: float, line_dir: Vector2) -> Array:
 		if _dive_timer <= 0.0:
 			dive_active = true
 			dive = 0.05
+			_dive_dir = _line_dir.rotated(PI + randf_range(-DIVE_ARC, DIVE_ARC))
 			events.append("dive")
 			return events
 	var jump_chance: float = diff.jump * (JUMPER_JUMP_MULT if habit == "jumper" else 1.0)
@@ -966,7 +1062,7 @@ func _schedule(delta: float, line_dir: Vector2) -> Array:
 		run_left = diff.run_time
 		if randf() < diff.side and line_dir != Vector2.ZERO:
 			_run_sign = 1.0 if randf() < 0.5 else -1.0
-			run_side = line_dir.orthogonal() * _run_sign
+			run_side = line_dir.rotated(_run_sign * (PI * 0.5 + randf_range(-SIDE_ARC, SIDE_ARC)))
 			# Long enough to answer with a flick.
 			run_left = maxf(run_left, swipe_window())
 			swipe_left = swipe_window()
@@ -974,6 +1070,7 @@ func _schedule(delta: float, line_dir: Vector2) -> Array:
 			events.append("side_run")
 		else:
 			run_side = Vector2.ZERO
+			_run_dir = _way(0.0, RUN_ARC)
 			events.append("run")
 	return events
 
@@ -1103,12 +1200,16 @@ func _snag(delta: float, events: Array) -> void:
 		return
 	var now := in_snag() and not spent
 	if now and not _in_snag:
+		_snag_dir = _line_dir.rotated(PI + randf_range(-DIVE_ARC, DIVE_ARC))
 		events.append("snag_in")
 	elif _in_snag and not now:
 		events.append("snag_out")
 	_in_snag = now
 	if now:
-		fray = minf(fray + FRAY_RATE * delta, 1.0)
+		# (pulled the other way, it's held: the line frays slower and it's lifted)
+		fray = minf(fray + FRAY_RATE * (0.35 if answering else 1.0) * delta, 1.0)
+		if answering:
+			depth = move_toward(depth, 0.5, 0.8 * delta)
 		_snag_hurt += delta
 		if _snag_hurt >= SNAG_HURT_EVERY:
 			_snag_hurt = 0.0
