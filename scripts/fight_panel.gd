@@ -33,10 +33,10 @@ extends CanvasLayer
 
 const CENTER_X := 480.0
 const TOP := 60.0
-const SIZE := Vector2(320, 116)
+const SIZE := Vector2(320, 190)
 const BAR_W := 200.0
 const BAR_H := 14.0
-const CUE_Y := 194.0
+const CUE_Y := 268.0
 const CUE_RADIUS := 24.0
 const INK := Color(1.0, 0.96, 0.88)
 const DIM := Color(1.0, 0.96, 0.88, 0.6)
@@ -293,6 +293,8 @@ func _float_pos() -> Vector2:
 ## What the fish is doing, in words, and in what color.
 static func mood_text(fight: FishFight) -> Array:
 	match fight.mood():
+		"snag":
+			return ["鑽進水草！往回拉", RAGE]
 		"jump":
 			return ["跳出水面！放手", RAGE]
 		"dive":
@@ -370,6 +372,7 @@ func _draw_panel() -> void:
 	if _hurt_flash > 0.0:
 		_view.draw_rect(Rect2(bar_x, at.y - BAR_H + 1.0, BAR_W, BAR_H), Color(RAGE, _hurt_flash * 2.0))
 	_draw_distance(fight, Vector2(x, rect.position.y + 98), bar_x)
+	_draw_sideview(fight, Rect2(rect.position.x + 14.0, rect.position.y + 108.0, SIZE.x - 28.0, 74.0))
 	_draw_crank_hint(fight, player)
 
 	if fight.swipe_left > 0.0:
@@ -396,6 +399,72 @@ func _draw_distance(fight: FishFight, at: Vector2, bar_x: float) -> void:
 	_view.draw_line(Vector2(mark, bar.position.y - 1.0), Vector2(mark, bar.end.y + 1.0), Color(RAGE, 0.85), 1.5)
 	UiKit.draw_text(_view, Vector2(bar.position.x, at.y), "%.1f / %.0f 公尺・深 %.1f" % [fight.line_out(), fight.line_max, fight.depth], 11,
 		INK if not danger else Color(1, 0.9, 0.85), HORIZONTAL_ALIGNMENT_CENTER, BAR_W, true)
+
+
+## User request (the field, FishFight): the water from the side - the surface along the
+## top (the range: near, the best, far), the bottom shelving away from the bank on the
+## left, the snag (weed and rock, and how frayed the line is), the end of the line
+## in the red, and the fish where it is on the line from the rod.
+const DEPTH_VIEW := 8.0
+const NEAR_COLOR := Color(1.0, 0.62, 0.3)
+const FAR_COLOR := Color(0.5, 0.65, 0.95)
+
+
+func _draw_sideview(fight: FishFight, r: Rect2) -> void:
+	_view.draw_rect(r, Color(0.04, 0.07, 0.1, 0.8))
+	_view.draw_rect(r, Color(RIM, 0.35), false, 1.0)
+	var surface := r.position.y + 12.0
+	var ppm := (r.end.y - surface - 3.0) / DEPTH_VIEW
+	var span := maxf(fight.line_max, 1.0)
+	var xs := func(d: float) -> float: return r.position.x + 4.0 + (r.size.x - 8.0) * clampf(d / span, 0.0, 1.0)
+	# The water, and the bottom shelving away.
+	_view.draw_rect(Rect2(r.position.x + 1.0, surface, r.size.x - 2.0, r.end.y - surface - 1.0), Color(0.1, 0.2, 0.3, 0.55))
+	var ground := PackedVector2Array()
+	var steps := 24
+	for i in steps + 1:
+		var d := span * i / steps
+		ground.append(Vector2(xs.call(d), minf(surface + fight.bottom_depth(d) * ppm, r.end.y - 1.0)))
+	var poly := ground.duplicate()
+	poly.append(Vector2(r.end.x - 1.0, r.end.y - 1.0))
+	poly.append(Vector2(r.position.x + 1.0, r.end.y - 1.0))
+	_view.draw_colored_polygon(poly, Color(0.2, 0.15, 0.1, 0.95))
+	_view.draw_polyline(ground, Color(0.5, 0.4, 0.28), 1.5)
+	# The end of the line: the danger.
+	var dx: float = xs.call(span * FishFight.DANGER)
+	_view.draw_rect(Rect2(dx, surface, r.end.x - 1.0 - dx, r.end.y - surface - 1.0), Color(RAGE, 0.16))
+	# The surface, by range: near, the best, far.
+	var edges := [0.0, FishFight.NEAR_END, FishFight.MID_END, 1.0]
+	var tints := [NEAR_COLOR, SWEET, FAR_COLOR]
+	for i in 3:
+		var x0: float = xs.call(span * edges[i])
+		var x1: float = xs.call(span * edges[i + 1])
+		_view.draw_rect(Rect2(x0, surface - 3.0, x1 - x0, 3.0), Color(tints[i], 0.85 if i == ["near", "mid", "far"].find(fight.range_zone()) else 0.35))
+	# The snag.
+	if fight.snag_on:
+		var x0: float = xs.call(fight.snag_from)
+		var x1: float = xs.call(fight.snag_to)
+		var top := surface + FishFight.SNAG_TOP * ppm
+		var low := surface + fight.bottom_depth((fight.snag_from + fight.snag_to) * 0.5) * ppm
+		_view.draw_rect(Rect2(x0, top, x1 - x0, maxf(low - top, 2.0)), Color(0.3, 0.55, 0.25, 0.28 + fight.fray * 0.0))
+		for k in 5:
+			var wx := lerpf(x0 + 2.0, x1 - 2.0, k / 4.0)
+			_view.draw_line(Vector2(wx, low), Vector2(wx + sin(_pulse * 2.0 + k) * 2.0, top + 2.0), Color(0.35, 0.7, 0.3, 0.9), 1.5)
+		if fight.fray > 0.0:
+			_view.draw_rect(Rect2(x0, top, x1 - x0, maxf(low - top, 2.0)), Color(RAGE, 0.15 + 0.35 * fight.fray))
+			UiKit.draw_text(_view, Vector2(x0 - 14.0, top - 3.0), "割線 %d%%" % roundi(fight.fray * 100.0), 11, RAGE, HORIZONTAL_ALIGNMENT_CENTER, x1 - x0 + 28.0, true)
+	# The line, and the fish on it.
+	var tip := Vector2(r.position.x + 4.0, surface - 5.0)
+	var at := Vector2(xs.call(fight.distance), surface + fight.depth * ppm)
+	_view.draw_line(tip, at, Color(LINE, 0.8), 1.2)
+	var fish_col := RAGE if fight.mood() in ["snag", "jump", "dive"] else INK
+	_view.draw_colored_polygon(PackedVector2Array([at + Vector2(5, 0), at + Vector2(-1, -3), at + Vector2(-6, -3.5),
+		at + Vector2(-6, 3.5), at + Vector2(-1, 3)]), fish_col)
+	_view.draw_circle(tip, 2.5, INK)
+	# What the range is.
+	var zone := fight.range_zone()
+	var words: String = {"near": "近岸・線緊", "mid": "最佳距離", "far": "遠處・線鬆"}[zone]
+	var col: Color = {"near": NEAR_COLOR, "mid": SWEET, "far": FAR_COLOR}[zone]
+	UiKit.draw_text(_view, Vector2(r.end.x - 120.0, r.position.y + 11.0), words, 11, col, HORIZONTAL_ALIGNMENT_RIGHT, 114.0, true)
 
 
 ## The fish taking line while the reel's still: a turning arrow round the

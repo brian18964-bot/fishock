@@ -85,6 +85,18 @@ extends RefCounted
 ## move answered in time with no tension taken is a parry. All of it is queued in
 ## `hits` (FightPanel shows them: drain_hits()); see _account().
 ##
+## User request (the field - distance and depth, `field`): where the fish is on the
+## water is used against the angler. The water shelves away from the bank, so how
+## deep it can go depends on how far out it is (bottom_depth(): near the bank it
+## can only skim, far out it can sound). The range changes the fight (range_zone()):
+## close in the line has no give - the tension builds faster but the reel brings
+## line in faster; far out the line gives - tension builds
+## slower but the reel is slow; the middle is where the tension's sweet spot is
+## widest. Some water has a snag - weed and rock at a stretch of the bottom
+## (snag_from..snag_to m out, deeper than SNAG_TOP): a fish that gets into it frays
+## the line (`fray`, 0..1, snaps it at 1; it mends outside) - a fish that hides in
+## cover heads for it. Pull it out: reel it back (it comes up as it's reeled).
+##
 ## User request (fish came in to the bank still fresh): a hooked fish keeps
 ## to its water - within `roam` m of where it took the bait (`home`, the
 ## line out at the strike), the harder, bigger and rarer the wider (ROAM,
@@ -141,6 +153,24 @@ const FATIGUE_PER_ENDURE := 0.2
 const FATIGUE_SPAN := 30.0
 const REEL_TIRED := 0.3
 const TENSION_TIRED := 0.5
+## The field (see above).
+const BOTTOM_NEAR := 1.2
+const BOTTOM_OVER := 1.0
+const BOTTOM_REACH := 0.6
+const NEAR_END := 0.25
+const MID_END := 0.6
+const NEAR_TENSION := 1.3
+const FAR_TENSION := 0.85
+const NEAR_REEL := 1.15
+const FAR_REEL := 0.8
+const MID_SWEET := 1.15
+const SNAG_CHANCE := 0.5
+const SNAG_WIDTH := 5.0
+const SNAG_TOP := 1.6
+const FRAY_RATE := 0.3
+const FRAY_MEND := 0.4
+const SNAG_HEAD := 0.6
+const SNAG_HURT_EVERY := 0.8
 ## The damage numbers' scale: the fish's health, by rarity and size.
 const HP_BASE := {"common": 300.0, "rare": 900.0, "epic": 3000.0, "legend": 9000.0}
 const HP_SIZE := {"small": 0.7, "medium": 1.0, "large": 1.5, "huge": 2.2}
@@ -158,7 +188,7 @@ const PARRY_AFTER := 0.5
 ## can answer.
 const HURT_SRC := {"run": "衝刺", "side_run": "橫衝", "jump": "躍出", "dive": "鑽石縫", "surge": "猛拉", "rally": "反撲"}
 const PARRY_SRC := ["run", "side_run", "jump", "dive"]
-const WARN_OF := {"run": "衝刺", "side_run": "橫衝", "jump": "躍出", "dive": "鑽石縫", "enrage": "狂暴", "rally": "反撲"}
+const WARN_OF := {"snag_in": "水草區", "run": "衝刺", "side_run": "橫衝", "jump": "躍出", "dive": "鑽石縫", "enrage": "狂暴", "rally": "反撲"}
 var stat_might := 0.0
 var stat_react := 0.0
 var stat_resil := 0.0
@@ -184,12 +214,12 @@ func resil_mult() -> float:
 
 ## How fast the line comes in, against the plain reel.
 func reel_boost() -> float:
-	return (1.0 + stat_might * (1.0 - fatigue()) / 200.0) * (1.0 - REEL_TIRED * fatigue())
+	return (1.0 + stat_might * (1.0 - fatigue()) / 200.0) * (1.0 - REEL_TIRED * fatigue()) * range_reel()
 
 
 ## What the tension builds x (Player folds it into `strain` each frame).
 func stat_strain() -> float:
-	return (1.0 + TENSION_TIRED * fatigue()) / resil_mult()
+	return (1.0 + TENSION_TIRED * fatigue()) / resil_mult() * range_tension()
 
 
 func swipe_damage() -> float:
@@ -372,6 +402,14 @@ var perfect := false
 ## Seconds since the fish was hooked.
 var age := 0.0
 
+## The field (see above): on, where the snag is (if there is one), the line's fray.
+var field := false
+var snag_on := false
+var snag_from := 0.0
+var snag_to := 0.0
+var fray := 0.0
+var _in_snag := false
+var _snag_hurt := 0.0
 ## The damage numbers (see above): the fish's health, and what's queued to show.
 var max_hp := 1000.0
 var hits: Array = []
@@ -485,7 +523,7 @@ func open_tension() -> float:
 ## line_dir: from the angler toward the fish. reel_mult: extra reel-speed
 ## factor (walking while reeling). Returns the events this frame started:
 ## "run", "side_run", "jump", "dive", "enrage", "dive_saved", "swipe_hit",
-## "swipe_miss", "spent", "recover", "opened".
+## "swipe_miss", "spent", "recover", "opened", "snag_in", "snag_out".
 func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, reel_mult: float = 1.0) -> Array:
 	var events := []
 	if result != "":
@@ -501,6 +539,7 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 	if home < 0.0:
 		home = distance
 		roam = lerpf(ROAM.x, ROAM.y, heft)
+		_place_snag()
 	# How hard it's cranked, against holding the button the old way.
 	var k := crank / CRANK_NORMAL
 	var pull: float = diff.pull * (ENRAGE_PULL if enraged else 1.0)
@@ -649,6 +688,7 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 	_depth(delta, k if held else 0.0, radial)
 	side_off += lateral * delta
 	_line(delta, out_mult, reel_in if held else 0.0, pull, radial)
+	_snag(delta, events)
 	if result == "":
 		if tension >= 1.0:
 			result = "shook_off" if jump_left > 0.0 else "line_break"
@@ -802,6 +842,8 @@ func _depth(delta: float, k: float, radial: float) -> void:
 		depth = move_toward(depth, 0.5, DEPTH_UP * k * delta)
 	else:
 		depth = move_toward(depth, deepest * DEPTH_REST, 0.3 * delta)
+	if field:
+		depth = minf(depth, bottom_depth())
 
 
 ## How lively it is now (see above) - and its rally, when it comes.
@@ -868,6 +910,10 @@ func _start_burst() -> void:
 		heading = randf_range(0.9, 1.9) * side
 	else:
 		heading = (PI - randf_range(0.0, 0.6)) * side
+	# (a fish that hides in cover heads for the snag, one that's raging too)
+	if field and snag_on and not spent and randf() < (SNAG_HEAD if habit == "cover" else (SNAG_HEAD * 0.4 if enraged else 0.0)):
+		var centre := (snag_from + snag_to) * 0.5
+		heading = randf_range(-0.3, 0.3) if distance < centre else PI - randf_range(0.0, 0.3)
 	burst_speed = lerpf(BURST_SPEED.x, BURST_SPEED.y, heft) * vigor * randf_range(0.7, 1.15)
 	burst_left = randf_range(BURST_TIME.x, BURST_TIME.y) * lerpf(0.8, 1.2, heft)
 	_burst_gap = randf_range(BURST_GAP.x, BURST_GAP.y) / maxf(vigor, 0.35)
@@ -905,6 +951,9 @@ func _schedule(delta: float, line_dir: Vector2) -> Array:
 			events.append("dive")
 			return events
 	var jump_chance: float = diff.jump * (JUMPER_JUMP_MULT if habit == "jumper" else 1.0)
+	if field:
+		# (it leaps from the shallows, not from the deep)
+		jump_chance *= 1.5 if depth < 1.5 else (0.6 if depth > 3.5 else 1.0)
 	if _jump_cooldown <= 0.0 and randf() < jump_chance * delta:
 		jump_left = JUMP_TIME
 		_jump_cooldown = JUMP_COOLDOWN
@@ -964,6 +1013,8 @@ func mood() -> String:
 		return "surge" if surging() else "opening"
 	if spent:
 		return "spent"
+	if _in_snag:
+		return "snag"
 	if jump_left > 0.0:
 		return "jump"
 	if dive_active:
@@ -988,7 +1039,86 @@ func mood() -> String:
 ## The tension gauge's sweet spot, low to high.
 func sweet_range() -> Vector2:
 	var half: float = diff.get("sweet", 0.3) * 0.5 * (1.0 + stat_resil * (1.0 - fatigue()) / 300.0)
+	if field and range_zone() == "mid":
+		half *= MID_SWEET
 	return Vector2(SWEET_CENTER - half, SWEET_CENTER + half)
+
+
+## How far out it is: "near" (the line has no give), "mid" (the best), "far" (the
+## line gives, the reel is slow). "mid" when the field's off.
+func range_zone() -> String:
+	if not field:
+		return "mid"
+	var share := line_share()
+	if share < NEAR_END:
+		return "near"
+	return "mid" if share < MID_END else "far"
+
+
+func range_tension() -> float:
+	match range_zone():
+		"near":
+			return NEAR_TENSION
+		"far":
+			return FAR_TENSION
+	return 1.0
+
+
+func range_reel() -> float:
+	match range_zone():
+		"near":
+			return NEAR_REEL
+		"far":
+			return FAR_REEL
+	return 1.0
+
+
+## How deep the water is where the fish is: it shelves away from the bank, down to a
+## little past the deepest this fish goes.
+func bottom_depth(at := -1.0) -> float:
+	var d := distance if at < 0.0 else at
+	return lerpf(BOTTOM_NEAR, depth_max() + BOTTOM_OVER, clampf((d - MIN_DISTANCE) / (line_max * BOTTOM_REACH), 0.0, 1.0))
+
+
+## Is it down in the snag?
+func in_snag() -> bool:
+	return snag_on and distance >= snag_from and distance <= snag_to and depth > SNAG_TOP
+
+
+## Where the snag is, picked at the strike: beyond or short of where it took the bait.
+func _place_snag() -> void:
+	snag_on = field and (habit == "cover" or randf() < SNAG_CHANCE)
+	if not snag_on:
+		return
+	var centre := clampf(home + randf_range(3.0, 8.0) * (1.0 if randf() < 0.7 else -1.0), 6.0, line_max * 0.62)
+	if absf(centre - home) < SNAG_WIDTH:
+		centre = clampf(home + SNAG_WIDTH * 1.4, 6.0, line_max * 0.62)
+	snag_from = centre - SNAG_WIDTH * 0.5
+	snag_to = centre + SNAG_WIDTH * 0.5
+
+
+## In the snag the line frays; out of it, it mends. Frayed through, it snaps.
+func _snag(delta: float, events: Array) -> void:
+	if not snag_on or result != "":
+		return
+	var now := in_snag() and not spent
+	if now and not _in_snag:
+		events.append("snag_in")
+	elif _in_snag and not now:
+		events.append("snag_out")
+	_in_snag = now
+	if now:
+		fray = minf(fray + FRAY_RATE * delta, 1.0)
+		_snag_hurt += delta
+		if _snag_hurt >= SNAG_HURT_EVERY:
+			_snag_hurt = 0.0
+			_push({"type": "hurt", "src": "割線", "n": roundi(FRAY_RATE * SNAG_HURT_EVERY * TENSION_HP)})
+		if fray >= 1.0:
+			snap_why = "snag"
+			result = "line_break"
+	else:
+		fray = maxf(fray - FRAY_MEND * delta, 0.0)
+		_snag_hurt = 0.0
 
 
 func in_sweet() -> bool:

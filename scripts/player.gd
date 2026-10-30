@@ -3155,6 +3155,8 @@ func _hook_fish(perfect := false) -> void:
 	# out to the longest cast the best rod_distance makes)
 	fight.distance = clampf(global_position.distance_to(cast_target) / PX_PER_M, FishFight.MIN_DISTANCE, fight.line_max * 0.72)
 	fight.swim_out = swim_out_rate()
+	# (the water's shelving, the line's give and its snags count)
+	fight.field = true
 	crank = 0.0
 	_crank_had = false
 	_snap_note = ""
@@ -3245,6 +3247,10 @@ func _on_fight_event(kind: String) -> void:
 			GameState.report("魚跳起來了，停手！", "info")
 		"dive":
 			GameState.push_message("魚往岸邊石縫鑽！快轉右搖桿收線把牠拉回來！")
+		"snag_in":
+			GameState.push_message("魚鑽進水草堆了！線在被割，快轉右搖桿把牠拉出來！")
+		"snag_out":
+			GameState.push_message("把魚從水草堆拉出來了")
 		"dive_saved":
 			GameState.push_message("把魚從石縫邊拉回來了")
 		"enrage":
@@ -3350,6 +3356,8 @@ func _fail_catch(reason: String) -> void:
 				msg = "魚在遠處跳出水面，線一下就斷了"
 			"rush":
 				msg = "刺魚後馬上收線，正好撞上魚猛拉，線斷了（先按住頂住，看張力再收）"
+			"snag":
+				msg = "魚鑽在水草堆裡，線被割斷了（魚往水草區游時，要趕快把牠拉出來）"
 			"turned":
 				msg = "博魚時轉身跑開，線一下就被扯斷了（要退後就慢慢走，面向魚）"
 			_:

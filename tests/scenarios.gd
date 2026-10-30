@@ -92,6 +92,7 @@ const TESTS := [
 	"test_camp_pages_nav",
 	"test_damage_numbers",
 	"test_fish_clasp",
+	"test_fight_field",
 	"test_fish_card_layout",
 	"test_fish_alerts",
 	"test_salting",
@@ -6798,10 +6799,11 @@ func test_salting() -> void:
 
 ## A fight played by a plain bot (reel while the tension's under `ease`, else let go;
 ## flick against every sideways dash a moment late): how it ends.
-func _bot_fight(diff: String, stats: Dictionary, seed_n: int, ease := 0.55, flick_after := 0.3) -> Dictionary:
+func _bot_fight(diff: String, stats: Dictionary, seed_n: int, ease := 0.55, flick_after := 0.3, field := false, habit := "") -> Dictionary:
 	seed(seed_n)
 	var tier: Dictionary = FishData.TIERS["mid"]
-	var f := FishFight.new(diff, "", tier, 1.0)
+	var f := FishFight.new(diff, habit, tier, 1.0)
+	f.field = field
 	f.stat_might = float(stats.get("might", 0))
 	f.stat_react = float(stats.get("react", 0))
 	f.stat_resil = float(stats.get("resil", 0))
@@ -6822,6 +6824,11 @@ func _bot_fight(diff: String, stats: Dictionary, seed_n: int, ease := 0.55, flic
 		else:
 			flick = 0.0
 		var reel := 1.0 if (f.tension < ease and f.run_side == Vector2.ZERO and not f.mood() == "jump") else 0.0
+		if field:
+			f.strain = f.stat_strain()
+			# (pulled out of the weed at once: reeling till the line's nearly tight)
+			if f.mood() == "snag" and f.tension < 0.85:
+				reel = 1.0
 		if f.update(dt, reel, counter, Vector2.UP).has("swipe_hit"):
 			hits += 1
 		t += dt
@@ -7255,3 +7262,135 @@ func test_fish_clasp() -> void:
 	Profile.load_data(snap)
 	check(Profile.clasp_fish.size() == 1 and Profile.equipped.get("clasp1", "") == "fish_clasp", "kept in the save")
 	Profile.load_data(saved)
+
+
+## User request (the field): distance and depth used against the angler - the range
+## changes the fight (near: the line has no give; far: it gives, the reel is slow),
+## the water shelves away so depth goes with distance, and a snag of weed and rock
+## frays the line of a fish that gets down into it.
+func test_fight_field() -> void:
+	var tier: Dictionary = FishData.TIERS["mid"] if FishData.TIERS.has("mid") else FishData.TIERS.values()[0]
+	var f := FishFight.new("normal", "", tier, 1.0)
+	f.line_max = 40.0
+	check(f.range_zone() == "mid" and f.stat_strain() == 1.0, "off, the field changes nothing")
+	f.field = true
+	var strains := {}
+	var reels := {}
+	for d in [3.0, 15.0, 32.0]:
+		f.distance = d
+		f.depth = 1.0
+		strains[f.range_zone()] = f.stat_strain()
+		reels[f.range_zone()] = f.reel_boost()
+	check(strains.has("near") and strains.has("mid") and strains.has("far"), "close in, the middle, far out")
+	check(strains.near > strains.mid and strains.mid > strains.far, "tension builds faster close in, slower far out")
+	check(reels.near > reels.mid and reels.mid > reels.far, "and the reel brings line in faster close in")
+	f.distance = 15.0
+	var mid := f.sweet_range()
+	f.field = false
+	var plain := f.sweet_range()
+	f.field = true
+	check(mid.y - mid.x > plain.y - plain.x, "the sweet spot is widest in the middle")
+	# The water shelves away: near the bank it can only skim.
+	check(f.bottom_depth(3.0) < f.bottom_depth(15.0) and f.bottom_depth(15.0) < f.bottom_depth(30.0), "the bottom shelves away from the bank")
+	var d := FishFight.new("normal", "", tier, 1.0)
+	d.field = true
+	d.line_max = 40.0
+	d.distance = 3.0
+	d.depth = 6.0
+	d._run_timer = 99.0
+	d._jump_cooldown = 99.0
+	d.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
+	check(d.depth <= d.bottom_depth() + 0.001, "a fish near the bank can't be deeper than the water (%.1f m)" % d.depth)
+	# The snag: down in it, the line frays; out of it, it mends; frayed through, it snaps.
+	var g := FishFight.new("normal", "", tier, 1.0)
+	g.field = true
+	g.line_max = 40.0
+	g._run_timer = 99.0
+	g._jump_cooldown = 99.0
+	g.update(0.01, 0.0, Vector2.ZERO, Vector2.UP)
+	g.snag_on = true
+	g.snag_from = 10.0
+	g.snag_to = 15.0
+	g.distance = 12.0
+	g.depth = 3.0
+	g.home = 12.0
+	g.lively = false
+	var events := []
+	for i in 40:
+		g.depth = 3.0
+		g.distance = 12.0
+		events.append_array(g.update(0.05, 0.0, Vector2.ZERO, Vector2.UP))
+	check(events.has("snag_in") and g.fray > 0.3 and g.mood() == "snag", "down in the snag the line frays (%.2f)" % g.fray)
+	check(g.drain_hits().any(func(h): return h.type == "hurt" and h.src == "割線"), "and says so")
+	g.distance = 25.0
+	for i in 20:
+		g.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
+	check(g.fray < 0.35, "out of it the line mends (%.2f)" % g.fray)
+	var snapped := false
+	for i in 200:
+		g.distance = 12.0
+		g.depth = 3.0
+		g.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
+		if g.result == "line_break":
+			snapped = true
+			break
+	check(snapped and g.snap_why == "snag", "frayed through, it snaps")
+	# Up above the snag's depth it's no harm.
+	var h := FishFight.new("normal", "", tier, 1.0)
+	h.field = true
+	h.line_max = 40.0
+	h._run_timer = 99.0
+	h._jump_cooldown = 99.0
+	h.snag_on = true
+	h.snag_from = 10.0
+	h.snag_to = 15.0
+	h.home = 12.0
+	h.lively = false
+	for i in 60:
+		h.distance = 12.0
+		h.depth = 0.8
+		h.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
+	check(h.fray == 0.0 and h.result == "", "skimming over it is safe")
+	# A fish that hides in cover heads for the snag (more than another does).
+	var rate := {}
+	for hab in ["cover", ""]:
+		var c := FishFight.new("normal", hab, tier, 1.0)
+		c.field = true
+		c.line_max = 40.0
+		c.snag_on = true
+		c.snag_from = 20.0
+		c.snag_to = 25.0
+		c.home = 8.0
+		c.distance = 8.0
+		c.vigor = 1.0
+		var out := 0
+		for i in 300:
+			c._start_burst()
+			if absf(c.heading) < 0.35:
+				out += 1
+		rate[hab] = out
+	check(rate["cover"] > rate[""] + 40, "a fish in cover heads out for the snag (%d vs %d of 300)" % [rate["cover"], rate[""]])
+	# Played out by a bot: the field makes the fights different, not impossible.
+	var table := {}
+	for habit in ["", "cover"]:
+		for on in [false, true]:
+			var landed := 0
+			var snags := 0
+			for i in 50:
+				var r := _bot_fight("advanced", {"might": 40, "resil": 40, "react": 40, "endure": 40}, 700 + i, 0.55, 0.3, on, habit)
+				if r.result == "landed":
+					landed += 1
+				elif r.why == "snag":
+					snags += 1
+			table["%s %s" % [habit if habit != "" else "plain", "field" if on else "flat"]] = [landed, snags]
+	print("BOT FIGHTS (advanced, stats 40, 50 each): landed / cut by the snag")
+	for k in table:
+		print("  %-14s %2d / %2d" % [k, table[k][0], table[k][1]])
+	check(table["plain field"][0] >= table["plain flat"][0] * 0.5 and table["cover field"][0] >= table["cover flat"][0] * 0.4, "the field changes the fights, it doesn't make them impossible (%s)" % [table])
+	# The panel draws it.
+	var panel := FightPanel.new()
+	add_child(panel)
+	await frames(2)
+	check(panel.get_child_count() > 0, "the panel's up")
+	panel.queue_free()
+	await frames(1)
