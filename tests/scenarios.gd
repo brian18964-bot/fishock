@@ -95,6 +95,7 @@ const TESTS := [
 	"test_fight_field",
 	"test_move_area",
 	"test_pull_and_answer",
+	"test_move_plan",
 	"test_fish_card_layout",
 	"test_fish_alerts",
 	"test_salting",
@@ -1687,11 +1688,11 @@ func test_fight_swipe() -> void:
 	check(events.has("swipe_hit"), "flicking against the dash hits")
 	check(absf(fight.progress - before - FishFight.SWIPE_DAMAGE * FishFight.PERFECT_SWIPE_MULT) < 0.01, "a quick flick is a perfect one: the fish loses stamina (%.2f)" % (fight.progress - before))
 	check(fight.run_left == 0.0 and fight.swipe_left == 0.0, "the dash is broken")
-	fight.run_left = 1.0
+	fight.run_left = FishFight.SWIPE_WINDOW + 0.5
 	fight.run_side = Vector2.LEFT
 	fight.swipe_left = FishFight.SWIPE_WINDOW
 	var missed := false
-	for i in 25:
+	for i in 50:
 		if fight.update(0.05, false, Vector2.LEFT, Vector2.UP).has("swipe_miss"):
 			missed = true
 	check(missed, "flicking the wrong way runs out the time")
@@ -6916,20 +6917,20 @@ func test_fight_stats() -> void:
 				elif r2.result == "line_break" or r2.result == "line_out":
 					broke2 += 1
 			print("  %-20s %2d / %2d / %.1f s" % [name, landed2, broke2, time2 / maxf(landed2, 1)])
-	# 反應: a slow hand (flicks 1.1 s after the dash starts) only lands with a longer window.
+	# 反應: a slow hand (flicks 2.3 s after the dash starts) only lands with a longer window.
 	var slow := {}
 	for name in ["none", "react"]:
 		var hits := 0
 		var time3 := 0.0
 		var n3 := 0
 		for i in 60:
-			var r4 := _bot_fight("master", profiles[name], 900 + i, 0.55, 1.1)
+			var r4 := _bot_fight("master", profiles[name], 900 + i, 0.55, 2.3)
 			hits += int(r4.hits)
 			if r4.result == "landed":
 				time3 += r4.time
 				n3 += 1
 		slow[name] = [hits, time3 / maxf(n3, 1)]
-	print("SLOW HANDS (master, flick after 1.1 s): flicks that hit / avg seconds ", slow)
+	print("SLOW HANDS (master, flick after 2.3 s): flicks that hit / avg seconds ", slow)
 	check(slow["react"][0] > slow["none"][0], "反應 lets a slow hand land the flick (%s)" % [slow])
 	var whys := {}
 	profiles["resil 150"] = {"resil": 150}
@@ -7548,25 +7549,26 @@ func test_pull_and_answer() -> void:
 	# Answering: a dash held, not lost to the line.
 	var res := {}
 	for ans in [false, true]:
-		var f := FishFight.new("advanced", "", tier, 1.0)
-		f.line_max = 40.0
-		f.distance = 12.0
-		f._jump_cooldown = 99.0
-		f._run_timer = 99.0
-		f.opening_left = 0.0
-		f.lively = false
-		f._run_dir = Vector2.UP
-		f.run_left = 2.0
-		f.run_side = Vector2.ZERO
-		f.tension = 0.3
-		var before := f.distance
-		var counter := Vector2.DOWN if ans else Vector2.ZERO
-		for i in 20:
-			f.update(0.05, 0.7, counter, Vector2.UP)
-		res[ans] = [f.tension, f.distance - before, f.progress]
-		check(f.answering == ans, "answering is read from the drag (%s)" % ans)
-	check(res[true][0] < res[false][0] and res[true][1] < res[false][1] and res[true][2] > res[false][2],
-		"a dash answered takes less line, less tension, and the reel goes on (%s vs %s)" % [res[true], res[false]])
+		for reel in [0.0, 0.7]:
+			var f := FishFight.new("advanced", "", tier, 1.0)
+			f.line_max = 40.0
+			f.distance = 12.0
+			f._jump_cooldown = 99.0
+			f._run_timer = 99.0
+			f.opening_left = 0.0
+			f.lively = false
+			f._run_dir = Vector2.UP
+			f.run_left = 6.0
+			f.run_side = Vector2.ZERO
+			f.tension = 0.4
+			var before := f.distance
+			var counter := Vector2.DOWN if ans else Vector2.ZERO
+			for i in 40:
+				f.update(0.05, reel, counter, Vector2.UP)
+			res["%s %s" % [ans, reel]] = [f.tension, f.distance - before, f.progress]
+			check(f.answering == ans, "answering is read from the drag (%s)" % ans)
+	check(res["true 0.0"][0] < res["false 0.0"][0], "a dash answered builds less tension (%s vs %s)" % [res["true 0.0"][0], res["false 0.0"][0]])
+	check(res["true 0.7"][1] < res["false 0.7"][1] and res["true 0.7"][2] > res["false 0.7"][2], "and takes less line, the reel goes on (%s vs %s)" % [res["true 0.7"], res["false 0.7"]])
 	# 45 deg is the edge: a drag off the way back doesn't count.
 	var e := FishFight.new("advanced", "", tier, 1.0)
 	e._run_dir = Vector2.UP
@@ -7639,3 +7641,90 @@ func test_pull_and_answer() -> void:
 			y.update(0.05, 0.0, Vector2.DOWN if ans else Vector2.ZERO, Vector2.UP)
 		tight[ans] = y.tension
 	check(tight[false] > tight[true] + 0.1, "a rally tightens the line unless it's answered (%.2f vs %.2f)" % [tight[false], tight[true]])
+
+
+## User request (the moves a fight has): a plain small fish makes none; the harder, the
+## bigger, the wilder the more - and not at once: the first not before its time, then
+## spaced; spent, it only swims. Each move gives time to answer.
+func test_move_plan() -> void:
+	var tier: Dictionary = FishData.TIERS["mid"]
+	var counts := {}
+	var firsts := {}
+	var cases := {
+		"novice small calm": ["novice", "small", "calm"],
+		"novice large normal": ["novice", "large", "normal"],
+		"normal medium normal": ["normal", "medium", "normal"],
+		"advanced large wild": ["advanced", "large", "wild"],
+		"master huge wild": ["master", "huge", "wild"],
+	}
+	for name in cases:
+		var c: Array = cases[name]
+		var total := 0
+		var first := INF
+		var n := 40
+		for i in n:
+			seed(5000 + i)
+			var f := FishFight.new(c[0], "", tier, 1.0)
+			f.plan(c[1], c[2])
+			f.opening_left = 0.0
+			f.lively = false
+			f.max_hp = 1000.0
+			f.line_max = 40.0
+			f.distance = 12.0
+			f.tension = 0.4
+			var moves := 0
+			var t := 0.0
+			# (a bot that answers, so the fight goes on: 45 s)
+			while t < 45.0 and f.result == "":
+				f.progress = minf(f.progress, 0.45)   # (a long fight: no berserk, no end)
+				f.tension = minf(f.tension, 0.6)
+				var counter := -f.pull_dir if f.pull_dir != Vector2.ZERO else Vector2.ZERO
+				for ev in f.update(0.05, 0.0 if f.run_side != Vector2.ZERO or f.jump_left > 0.0 else 0.4, counter, Vector2.UP):
+					if ev in ["run", "side_run", "jump", "dive"]:
+						moves += 1
+						first = minf(first, t)
+				t += 0.05
+			total += moves
+		counts[name] = total / float(n)
+		firsts[name] = first
+	print("MOVES PER 45 s: ", counts, " first at ", firsts)
+	check(counts["novice small calm"] == 0.0, "a plain small fish makes no moves (%.2f)" % counts["novice small calm"])
+	check(counts["novice large normal"] < 1.5 and counts["novice large normal"] > 0.2, "a big easy one a few (%.2f)" % counts["novice large normal"])
+	check(counts["normal medium normal"] > 0.8 and counts["normal medium normal"] < 2.5, "an ordinary one 1-2 (%.2f)" % counts["normal medium normal"])
+	check(counts["advanced large wild"] > counts["normal medium normal"] and counts["master huge wild"] > counts["advanced large wild"], "more as it gets harder, bigger, wilder")
+	check(counts["master huge wild"] <= 8.0, "never a flurry (%.2f in 45 s)" % counts["master huge wild"])
+	check(firsts["normal medium normal"] >= 6.0 and firsts["master huge wild"] >= 4.0, "the first isn't at once (%s)" % [firsts])
+	# The jumper leaps, the cover fish dives, by its own kind.
+	var kinds := {"jumper": {}, "cover": {}}
+	for hab in kinds:
+		for i in 60:
+			seed(6000 + i)
+			var f := FishFight.new("master", hab, tier, 1.0)
+			f.plan("huge", "wild")
+			f._move_timer = 0.0
+			f.moves_left = 1
+			f._jump_cooldown = 0.0
+			f.opening_left = 0.0
+			f.lively = false
+			for ev in f.update(0.05, 0.0, Vector2.ZERO, Vector2.UP):
+				kinds[hab][ev] = int(kinds[hab].get(ev, 0)) + 1
+	check(int(kinds.jumper.get("jump", 0)) > int(kinds.cover.get("jump", 0)), "a jumper leaps most (%s vs %s)" % [kinds.jumper, kinds.cover])
+	check(int(kinds.cover.get("dive", 0)) > 10 and int(kinds.jumper.get("dive", 0)) == 0, "only a cover fish dashes for the rocks (%s)" % [kinds.cover])
+	# Time to answer: a move lasts, its cost ramps in.
+	var g := FishFight.new("master", "", tier, 1.0)
+	g.plan("huge", "wild")
+	g._move_timer = 0.0
+	g.moves_left = 3
+	g.opening_left = 0.0
+	g.lively = false
+	g._jump_cooldown = 99.0
+	for i in 4:
+		g.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
+		if g.run_left > 0.0:
+			break
+	check(g.run_left >= FishFight.RUN_MIN_TIME - 0.2 and FishFight.SWIPE_WINDOW >= 2.0, "a run lasts at least %.1f s (%.1f)" % [FishFight.RUN_MIN_TIME, g.run_left])
+	g.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
+	check(g.ramp < 0.2, "its cost starts at nothing (%.2f)" % g.ramp)
+	for i in 30:
+		g.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
+	check(g.ramp > 0.9, "and builds over the first moments (%.2f)" % g.ramp)

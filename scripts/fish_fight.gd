@@ -119,10 +119,10 @@ const ROAM := Vector2(2.5, 8.0)
 const HOLD_REEL := 0.15
 const HOLD_TENSION := 1.6
 const HOME_BACK := 0.9
-const RUN_TENSION_MULT := 1.8
+const RUN_TENSION_MULT := 0.9
 ## Giving line to a run: the drag holds tension nearly level.
 const RUN_SLACK_TENSION := 0.15
-const RUN_PROGRESS_PENALTY := 0.2
+const RUN_PROGRESS_PENALTY := 0.14
 const SIDE_COUNTER_THRESHOLD := 0.35
 const JUMP_TIME := 0.7
 const JUMP_HELD_TENSION := 2.4
@@ -139,10 +139,10 @@ const ENRAGE_PULL := 1.15
 const ENRAGE_REEL_TENSION := 1.7
 const ENRAGE_INTERVAL := 0.8
 const DIVE_INTERVAL := Vector2(4.0, 7.0)
-const DIVE_SPEED := 0.45
+const DIVE_SPEED := 0.3
 const DIVE_HAUL := 0.6
 const DIVE_TENSION := 1.5
-const SWIPE_WINDOW := 1.0
+const SWIPE_WINDOW := 2.0
 const SWIPE_DAMAGE := 0.12
 ## User request (stats): what the four stats do in a fight (Player sets them at the
 ## strike: Stats.total).
@@ -162,18 +162,32 @@ const FATIGUE_PER_ENDURE := 0.2
 const FATIGUE_SPAN := 30.0
 const REEL_TIRED := 0.3
 const TENSION_TIRED := 0.5
+## User request (the moves a fight has - plan()): a fish makes only as many moves
+## as its kind earns, not on a timer - base by difficulty x size x temper (a
+## stochastic rounding), the first not before MOVE_FIRST s, then MOVE_GAP s apart;
+## when they're used up it only swims (and berserk, a rally keep their own rules).
+const MOVE_BASE := {"novice": 0.0, "normal": 1.5, "advanced": 3.0, "master": 5.0}
+const MOVE_NOVICE_SIZE := {"small": 0.0, "medium": 0.3, "large": 0.8, "huge": 1.5}
+const MOVE_SIZE_MULT := {"small": 0.6, "medium": 1.0, "large": 1.3, "huge": 1.7}
+const MOVE_TRAIT_MULT := {"calm": 0.6, "normal": 1.0, "wild": 1.35}
+const MOVE_FIRST := {"novice": 10.0, "normal": 8.0, "advanced": 6.0, "master": 5.0}
+const MOVE_GAP := {"novice": Vector2(12.0, 18.0), "normal": Vector2(9.0, 14.0), "advanced": Vector2(7.0, 11.0), "master": Vector2(5.0, 8.0)}
 ## The pull and the answer (see above).
 const RUN_ARC := 1.05
 const SIDE_ARC := 0.52
 const DIVE_ARC := 0.52
 const RAGE_ARC := 1.75
-const RAGE_REROLL := Vector2(0.8, 1.2)
+const RAGE_REROLL := Vector2(1.6, 2.2)
 const RALLY_ARC := 2.5
-const RALLY_REROLL := 1.5
+const RALLY_REROLL := 2.5
 const RALLY_JERK := 0.1
 const RALLY_TIGHT := 0.35
 const RALLY_TIGHT_TO := 0.85
 const ANSWER_DOT := 0.7
+## User feedback (not enough time to read the way and answer): every move lasts at least
+## this long (s), and what it costs ramps in over WINDUP s from its start.
+const RUN_MIN_TIME := 2.2
+const WINDUP := 1.2
 const HELD_RUN_OUT := 1.0
 ## The field (see above).
 const BOTTOM_NEAR := 1.2
@@ -428,6 +442,14 @@ var age := 0.0
 ## whether the counter asked for answers it now.
 var pull_dir := Vector2.ZERO
 var answering := false
+## How long the move on has gone (s), and how far its cost has ramped in (0..1).
+var _move_age := 0.0
+var ramp := 1.0
+## The moves a fight has (see plan()): -1 not planned (the old timers), else how many
+## are left, and the time till the next.
+var planned := false
+var moves_left := -1
+var _move_timer := 0.0
 var _run_dir := Vector2.ZERO
 var _dive_dir := Vector2.ZERO
 var _snag_dir := Vector2.ZERO
@@ -478,6 +500,19 @@ func label() -> String:
 	return diff.label
 
 
+## The fight's moves, planned for a fish of this size ("small" .. "huge") and temper
+## ("calm", "normal", "wild"): how many it makes, when the first comes.
+func plan(size_key: String, trait_key: String) -> void:
+	planned = true
+	var n := 0.0
+	if difficulty_key == "novice":
+		n = float(MOVE_NOVICE_SIZE.get(size_key, 0.0)) * float(MOVE_TRAIT_MULT.get(trait_key, 1.0))
+	else:
+		n = float(MOVE_BASE.get(difficulty_key, 1.5)) * float(MOVE_SIZE_MULT.get(size_key, 1.0)) * float(MOVE_TRAIT_MULT.get(trait_key, 1.0))
+	moves_left = int(floor(n + randf()))
+	_move_timer = float(MOVE_FIRST.get(difficulty_key, 8.0)) * randf_range(0.85, 1.2)
+
+
 ## The line's way (angler to fish): what the clock face is turned to.
 func line_way() -> Vector2:
 	return _line_dir
@@ -514,6 +549,12 @@ func _refresh_pull(delta: float) -> void:
 			_rally_t = RALLY_REROLL
 			tension = minf(tension + RALLY_JERK, 0.97)
 		d = _rally_dir
+	# (a move's cost builds up over its first moments: time to read the way)
+	if d == Vector2.ZERO or pull_dir == Vector2.ZERO or d.dot(pull_dir) < 0.7:
+		_move_age = 0.0
+	else:
+		_move_age += delta
+	ramp = clampf(_move_age / WINDUP, 0.0, 1.0) if d != Vector2.ZERO else 1.0
 	pull_dir = d
 
 
@@ -693,7 +734,7 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 		if held:
 			dive -= DIVE_HAUL * k * delta * (1.5 if answering else 1.0)
 			progress += reel_speed * 0.3 * k * delta
-			tension += tension_rise * strain * pull * DIVE_TENSION * k * soften * delta
+			tension += tension_rise * strain * pull * DIVE_TENSION * k * soften * ramp * delta
 		else:
 			dive += DIVE_SPEED * (0.35 if answering else 1.0) * delta
 			tension -= tension_fall * delta
@@ -720,10 +761,10 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 				else:
 					tension -= tension_fall * 0.5 * delta
 			elif held:
-				progress -= RUN_PROGRESS_PENALTY * delta
-				tension += tension_rise * strain * RUN_TENSION_MULT * pull * maxf(k, 1.0) * delta
+				progress -= RUN_PROGRESS_PENALTY * ramp * delta
+				tension += tension_rise * strain * RUN_TENSION_MULT * pull * maxf(k, 1.0) * ramp * delta
 			else:
-				tension += tension_rise * strain * RUN_SLACK_TENSION * pull * delta
+				tension += tension_rise * strain * RUN_SLACK_TENSION * pull * ramp * delta
 		elif swipe_left > 0.0 and _swipe_check(delta, counter, events):
 			pass
 		elif counter.length() > 0.3 and counter.normalized().dot(-run_side) > SIDE_COUNTER_THRESHOLD:
@@ -739,8 +780,8 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 			lateral = _run_sign * SIDE_RUN_SPEED * maxf(vigor, 0.4)
 			out_mult = SIDE_OUT_MULT
 			reel_in *= 0.5
-			progress -= RUN_PROGRESS_PENALTY * delta
-			tension += tension_rise * strain * RUN_TENSION_MULT * pull * (maxf(k, 1.0) if held else 0.45) * delta
+			progress -= RUN_PROGRESS_PENALTY * ramp * delta
+			tension += tension_rise * strain * RUN_TENSION_MULT * pull * (maxf(k, 1.0) if held else 0.45) * ramp * delta
 		if run_left <= 0.0:
 			swipe_left = 0.0
 	else:
@@ -763,7 +804,7 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 			tension -= tension_fall * 0.5 * delta
 		elif tension < RALLY_TIGHT_TO:
 			# (held tight by the fish itself, up to where the next thing breaks it)
-			tension = minf(tension + (tension_fall + RALLY_TIGHT * strain) * delta, RALLY_TIGHT_TO)
+			tension = minf(tension + (tension_fall + RALLY_TIGHT * strain) * ramp * delta, RALLY_TIGHT_TO)
 	if diff.phases > 1 and not enraged and progress >= ENRAGE_AT:
 		enraged = true
 		run_left = ENRAGE_RUN_TIME
@@ -1038,6 +1079,8 @@ func swim_side_dir() -> Vector2:
 ## Between events: count down to the next run / leap / dash for cover.
 func _schedule(delta: float, line_dir: Vector2) -> Array:
 	var events := []
+	if planned:
+		return _schedule_planned(delta, line_dir)
 	if habit == "cover":
 		_dive_timer -= delta
 		if _dive_timer <= 0.0:
@@ -1059,7 +1102,7 @@ func _schedule(delta: float, line_dir: Vector2) -> Array:
 	if _run_timer <= 0.0:
 		var interval: Vector2 = diff.run_interval * (ENRAGE_INTERVAL if enraged else 1.0)
 		_run_timer = randf_range(interval.x, interval.y)
-		run_left = diff.run_time
+		run_left = maxf(float(diff.run_time), RUN_MIN_TIME)
 		if randf() < diff.side and line_dir != Vector2.ZERO:
 			_run_sign = 1.0 if randf() < 0.5 else -1.0
 			run_side = line_dir.rotated(_run_sign * (PI * 0.5 + randf_range(-SIDE_ARC, SIDE_ARC)))
@@ -1071,6 +1114,59 @@ func _schedule(delta: float, line_dir: Vector2) -> Array:
 		else:
 			run_side = Vector2.ZERO
 			_run_dir = _way(0.0, RUN_ARC)
+			events.append("run")
+	return events
+
+
+## A planned fight's moves (see plan()): one timer, a budget, and what it is picked by
+## weight - a dash, a sideways dash (the harder kinds), a leap (a jumper's), a dash
+## for cover (the cover fish's).
+func _schedule_planned(delta: float, line_dir: Vector2) -> Array:
+	var events := []
+	_move_timer -= delta
+	if moves_left <= 0 or _move_timer > 0.0:
+		return events
+	var weights := {"dash": 1.0}
+	if line_dir != Vector2.ZERO:
+		weights["side"] = float(diff.side) * 1.5
+	if _jump_cooldown <= 0.0:
+		weights["leap"] = (0.2 + float(diff.jump) * 3.0) * (JUMPER_JUMP_MULT if habit == "jumper" else 1.0)
+	if habit == "cover":
+		weights["dive"] = 1.4
+	var total := 0.0
+	for k in weights:
+		total += weights[k]
+	var roll := randf() * total
+	var pick := "dash"
+	for k in weights:
+		roll -= weights[k]
+		if roll <= 0.0:
+			pick = k
+			break
+	moves_left -= 1
+	var gap: Vector2 = MOVE_GAP.get(difficulty_key, Vector2(8.0, 12.0))
+	_move_timer = randf_range(gap.x, gap.y) * (ENRAGE_INTERVAL if enraged else 1.0)
+	match pick:
+		"leap":
+			jump_left = JUMP_TIME
+			_jump_cooldown = JUMP_COOLDOWN
+			events.append("jump")
+		"dive":
+			dive_active = true
+			dive = 0.05
+			_dive_dir = _line_dir.rotated(PI + randf_range(-DIVE_ARC, DIVE_ARC))
+			events.append("dive")
+		"side":
+			_run_sign = 1.0 if randf() < 0.5 else -1.0
+			run_side = line_dir.rotated(_run_sign * (PI * 0.5 + randf_range(-SIDE_ARC, SIDE_ARC)))
+			run_left = maxf(RUN_MIN_TIME, swipe_window())
+			swipe_left = swipe_window()
+			_swipe_armed = false
+			events.append("side_run")
+		_:
+			run_side = Vector2.ZERO
+			_run_dir = _way(0.0, RUN_ARC)
+			run_left = maxf(float(diff.run_time), RUN_MIN_TIME)
 			events.append("run")
 	return events
 

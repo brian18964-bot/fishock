@@ -2897,7 +2897,7 @@ const BEND_RUN := 0.4
 const BEND_YANK := 0.45
 const BEND_BITE := 0.35
 const BEND_LURE := 0.1
-const BEND_MAX := 1.3
+const BEND_MAX := 1.6
 const BEND_EASE := 10.0
 const BEND_GATHER := 2.0
 const BEND_DOWN := 0.35
@@ -2928,6 +2928,25 @@ void fragment() {
 var bend := 0.0
 var _bend_time := 0.0
 var _lean := Vector2.ZERO
+
+
+## User request (the fight's move area): where a camera stands to look as the angler does -
+## a little behind the shoulder, eye high, looking out along the line over the water
+## (almost level) - and the way it's looking, for FightPanel's small picture. `shake` is
+## how hard the picture trembles (the fish's pull).
+func fight_cam_pose(shake := 0.0) -> Transform3D:
+	var base := pivot.global_position
+	var fwd := -pivot.global_basis.z
+	if _float.visible:
+		fwd = _float.global_position - base
+	fwd.y = 0.0
+	fwd = fwd.normalized() if fwd.length() > 0.01 else Vector3.FORWARD
+	var right := fwd.cross(Vector3.UP).normalized()
+	var at := base + Vector3(0.0, 1.55, 0.0) - fwd * 1.5 + right * 0.5
+	var look := base + Vector3(0.0, 1.05, 0.0) + fwd * 7.0
+	if shake > 0.0:
+		at += Vector3(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * 0.03 * shake
+	return Transform3D(Basis.IDENTITY, at).looking_at(look, Vector3.UP)
 
 
 ## The rod's meshes on the bending shader, its colours kept.
@@ -2968,6 +2987,16 @@ func _bend_rod(delta: float) -> void:
 				want += BEND_RUN * (0.6 + 0.4 * sin(_bend_time * 7.0))
 			# (the fish shaking its head on the line)
 			want += sin(_bend_time * 23.0) * 0.03 * (1.0 + clampf(player.tension, 0.0, 1.0))
+			# User feedback (the full bow wasn't convincing): while a move pulls the rod bows
+			# to nearly its limit and the fish tugs at it, unanswered - held, it eases.
+			var fight: FishFight = player.fight
+			if fight != null and fight.pull_dir != Vector2.ZERO:
+				var bow := 0.5 if fight.mood() == "rally" else 0.85
+				want = maxf(want, BEND_MAX * bow * fight.ramp)
+				if not fight.answering:
+					want += (sin(_bend_time * 17.0) * 0.5 + sin(_bend_time * 31.0) * 0.3) * 0.12 * fight.ramp
+				else:
+					want *= 0.8
 		Player.State.WAITING:
 			if player.fishing_mode == Player.FishingMode.LURE and player._is_action_pressed():
 				want = BEND_LURE

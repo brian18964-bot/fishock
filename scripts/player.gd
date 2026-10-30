@@ -3175,8 +3175,10 @@ func _hook_fish(perfect := false) -> void:
 	# out to the longest cast the best rod_distance makes)
 	fight.distance = clampf(global_position.distance_to(cast_target) / PX_PER_M, FishFight.MIN_DISTANCE, fight.line_max * 0.72)
 	fight.swim_out = swim_out_rate()
-	# (the water's shelving, the line's give and its snags count)
+	# (the water's shelving, the line's give and its snags count; and the fish's moves
+	# are planned by its kind: how many, how soon)
 	fight.field = true
+	fight.plan(Inventory.size_for_catch(current_tier, is_epic_catch), fish_trait)
 	crank = 0.0
 	_crank_had = false
 	_snap_note = ""
