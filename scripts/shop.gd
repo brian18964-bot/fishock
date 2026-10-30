@@ -207,6 +207,11 @@ func _refresh() -> void:
 				_card("oxy_box", Items.icon("oxy_box"), "打氧魚箱", "已擁有", 0, func(): buy_dialog("oxy_box", 0, "已經擁有了（到裝備頁或倉庫換上）"))
 			else:
 				_card("oxy_box", Items.icon("oxy_box"), "打氧魚箱", "", Profile.OXY_BOX_COST, func(): buy_dialog("oxy_box", Profile.OXY_BOX_COST))
+			# User request: the live-fish clasp (hung with fish at the character page).
+			if Profile.owned("fish_clasp") > 0:
+				_card("fish_clasp", Items.icon("fish_clasp"), "活魚扣", "已擁有", 0, func(): buy_dialog("fish_clasp", 0, "已經擁有了（到角色頁的扣魚欄裝備）"))
+			else:
+				_card("fish_clasp", Items.icon("fish_clasp"), "活魚扣", "", Profile.CLASP_COST, func(): buy_dialog("fish_clasp", Profile.CLASP_COST))
 			# Round 8 (user request): the landing net, for catching live bait.
 			if Profile.owned("net") > 0:
 				_card("net", Items.icon("net"), "撈網", "已擁有", 0, func(): buy_dialog("net", 0, "已經擁有了（到裝備頁或倉庫換上）"))
@@ -779,7 +784,7 @@ func _fish_sale(source: Dictionary, col: VBoxContainer, buttons: HBoxContainer) 
 	var words := VBoxContainer.new()
 	words.add_theme_constant_override("separation", 0)
 	words.add_child(UiKit.label(f.get("name", "魚"), 21, UiKit.rarity_color(pic.rarity), true))
-	words.add_child(UiKit.label("魚・" + {"tank": "在魚缸", "box": "在魚桶", "pack": "在包包", "stash": "在倉庫"}[place], 14, UiKit.DIM))
+	words.add_child(UiKit.label("魚・" + {"tank": "在魚缸", "box": "在魚桶", "pack": "在包包", "stash": "在倉庫", "clasp": "掛在活魚扣上"}[place], 14, UiKit.DIM))
 	if FishData.size_text(f) != "":
 		words.add_child(UiKit.label(FishData.size_text(f), 14, UiKit.DIM))
 	head.add_child(words)
@@ -951,6 +956,8 @@ func buy(id: String, n: int, where: String) -> int:
 			ok = Profile.buy_net()
 		elif id == "oxy_box":
 			ok = Profile.buy_oxy_box()
+		elif id == "fish_clasp":
+			ok = Profile.buy_fish_clasp()
 		elif id == "shovel":
 			ok = Profile.buy_shovel()
 		elif id == "ammo":

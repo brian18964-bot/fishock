@@ -51,6 +51,7 @@ var _panel: PanelContainer
 var _backdrop: ColorRect
 var _used: Label
 var _light_row: HBoxContainer
+var _clasp_label: Label
 var _gear_col: VBoxContainer
 var _gear_slots: Array = []
 var _mode: Label
@@ -121,6 +122,10 @@ func _ready() -> void:
 	_light_row = HBoxContainer.new()
 	_light_row.add_theme_constant_override("separation", 6)
 	list.add_child(_light_row)
+	# User request (活魚扣): the fish on the clasps - they take no room in the grid.
+	_clasp_label = _label("", 13, UiKit.GOLD)
+	_clasp_label.name = "ClaspFish"
+	list.add_child(_clasp_label)
 	_mode = _label("", 14, UiKit.GOLD)
 	list.add_child(_mode)
 
@@ -295,6 +300,10 @@ func _rebuild(periodic := false) -> void:
 			false, lantern.switch_tool.bind(Lantern.Tool.FLASHLIGHT)))
 	else:
 		_light_row.add_child(_choice("手電筒（未裝備）", false, true, Callable()))
+
+	var hung := GameState.carried_fish.filter(func(f): return f.get("clasped", false))
+	_clasp_label.visible = not hung.is_empty()
+	_clasp_label.text = "活魚扣：" + "、".join(hung.map(func(f): return "%s %d%%" % [f.get("name", "魚"), roundi(float(FishLife.bar(f).share) * 100.0)]))
 
 	for box in _gear_slots:
 		box.selected = not _selected.is_empty() and _selected.kind == "slot" and _selected.index == box.slot

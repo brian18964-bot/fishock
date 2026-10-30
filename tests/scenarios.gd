@@ -91,6 +91,7 @@ const TESTS := [
 	"test_rods_and_stats_page",
 	"test_camp_pages_nav",
 	"test_damage_numbers",
+	"test_fish_clasp",
 	"test_fish_card_layout",
 	"test_fish_alerts",
 	"test_salting",
@@ -3522,7 +3523,7 @@ func test_main_menu() -> void:
 	var equip: Control = load("res://scenes/equipment.tscn").instantiate()
 	get_tree().root.add_child(equip)
 	await frames(3)
-	for key in ["rod", "light", "hat", "top", "pack"]:
+	for key in ["rod", "light", "clasp1", "clasp2", "clasp3"]:
 		check(equip.find_child("Slot_" + key, true, false) != null, "equipment slot " + key)
 	check(equip.find_child("Storage", true, false) != null and equip.find_child("Bag", true, false) != null,
 		"the equipment page shows the warehouse's gear and the bag")
@@ -7184,6 +7185,73 @@ func test_damage_numbers() -> void:
 	panel._add_pop({"type": "dmg", "style": "perfect", "n": 12345})
 	check(panel._pops.size() == 2 and panel._pops.any(func(q): return q.text == "-12,345" and q.label == "完美暴擊！") and panel._pops.any(func(q): return q.kind == "ring"), "a crit is a number (with its commas) and a ring")
 	panel._add_pop({"type": "hurt", "src": "躍出", "n": 25})
+	check(panel._edge > 0.0 and panel._edge_color == FightPanel.RAGE, "a hard hit taken flashes the screen's edge red")
 	check(panel._pops.back().label == "躍出" and panel._pops.back().pos.x > FightPanel.CENTER_X + FightPanel.SIZE.x * 0.5, "a hurt shows beside the tension bar, with its name")
 	panel.queue_free()
 	await frames(1)
+
+
+## User request (活魚扣): sold at the shop, worn in one of the three slots that were
+## locked; its hook takes a fish from the bag or the warehouse - no bag room, but it
+## runs down, goes on the run and comes home on its hook.
+func test_fish_clasp() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 1000})
+	var def := Items.def("fish_clasp")
+	check(def.slot == "clasp" and def.hooks == 1 and def.size == Vector2i(1, 1), "the clasp: one hook, a cell")
+	check(Items.fits_slot("clasp", "clasp2") and not Items.fits_slot("clasp", "rod"), "it fits any of the three clasp slots")
+	check(Profile.buy_fish_clasp() and Profile.owned("fish_clasp") == 1 and Profile.gold == 1000 - Profile.CLASP_COST, "bought for gold")
+	check(not Profile.buy_fish_clasp(), "(one is enough)")
+	var fish := {"id": "carp", "name": "鯉魚", "value": 10.0, "size": "large", "rarity": "common", "tier": "near", "length": 60.0, "weight": 3.0}
+	FishLife.roll(fish)
+	FishLife.ensure(fish)
+	Profile.pack_fish = [fish.duplicate(true), fish.duplicate(true)]
+	Profile.pack_fish = [fish.duplicate(true), fish.duplicate(true)]
+	check(Profile.hang_fish("pack", 0) != "", "with no clasp worn there's nowhere to hang")
+	check(Profile.equip("fish_clasp") and Profile.equipped.get("clasp1", "") == "fish_clasp", "worn: the first clasp slot")
+	check(Profile.clasp_hooks().size() == 1 and Profile.clasp_free_hook() == "clasp1:0", "one free hook")
+	check(Profile.hang_fish("pack", 0) == "" and Profile.clasp_fish.size() == 1 and Profile.pack_fish.size() == 1, "a fish from the bag is hung")
+	check(Profile.clasp_free_hook() == "" and Profile.hang_fish("pack", 0) != "", "one hook, one fish")
+	check(not Profile.unequip("clasp1"), "the clasp stays on while it has a fish")
+	# It takes no bag room (a large fish) but still runs down.
+	var before := float(Profile.clasp_fish[0].vit)
+	Profile.age_home(30.0)
+	check(float(Profile.clasp_fish[0].vit) < before or Profile.clasp_fish[0].has("immortal"), "a hung fish's vitality still runs down")
+	# Stats: its affixes count at home.
+	var eq: Control = load("res://scenes/equipment.tscn").instantiate()
+	get_tree().root.add_child(eq)
+	await frames(3)
+	check(eq.find_child("Slot_clasp1", true, false) != null and eq.find_child("Slot_clasp3", true, false) != null, "the three slots are open")
+	check(not (eq.find_child("Slot_clasp1", true, false) as Control).get("locked"), "(not locked)")
+	eq.card({"from": "slot", "id": "fish_clasp", "slot": "clasp1"})
+	await frames(2)
+	var panel: Node = eq.find_child("ClaspPanel", true, false)
+	check(panel != null and panel.find_child("Hung_clasp1_0", true, false) != null, "tapping the clasp shows its hooks, the fish hung")
+	panel.find_child("Hung_clasp1_0", true, false).pressed.emit()
+	await frames(2)
+	check(Profile.clasp_fish.is_empty() and Profile.pack_fish.size() == 2, "tapping a hung fish takes it off, to the bag")
+	check(panel.find_child("Free_clasp1_0", true, false) != null, "and the hook is a ＋")
+	panel.find_child("Free_clasp1_0", true, false).pressed.emit()
+	await frames(3)
+	var pick: Node = panel.find_child("FishPickPanel", true, false)
+	check(pick != null and pick.find_child("Fish_0", true, false) != null, "the ＋ asks which fish of the bag and the warehouse")
+	pick.find_child("Fish_0", true, false).pressed.emit()
+	await frames(2)
+	check(Profile.clasp_fish.size() == 1 and Profile.clasp_fish[0].hook == "clasp1:0", "the fish picked is hung")
+	panel.queue_free()
+	eq.queue_free()
+	await frames(1)
+	# On the run: the hung fish go too, with no bag room; home again on the hook.
+	Profile.stash_fish.clear()
+	GameState.reset_run()
+	GameState.start_run()
+	var hung := GameState.carried_fish.filter(func(f): return f.get("clasped", false))
+	check(hung.size() == 1 and Profile.clasp_fish.is_empty(), "the clasp's fish go on the run")
+	check(Inventory.items(null).filter(func(it): return it.kind == "fish").size() == GameState.carried_fish.size() - 1, "and take no bag room")
+	GameState._bring_fish_home()
+	check(Profile.clasp_fish.size() == 1 and not Profile.clasp_fish[0].has("clasped") and GameState.carried_fish.is_empty(), "home they hang on their hook again")
+	# Saved and loaded.
+	var snap := Profile.snapshot()
+	Profile.load_data(snap)
+	check(Profile.clasp_fish.size() == 1 and Profile.equipped.get("clasp1", "") == "fish_clasp", "kept in the save")
+	Profile.load_data(saved)

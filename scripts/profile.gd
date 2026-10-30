@@ -106,6 +106,13 @@ const NET_COST := 70
 const SHOVEL_COST := 100
 const SHOVEL_DESC := "副手裝備：拿在手上時，在冷凍花的冰冷根部按「挖掘」，可以挖出冷凍土。每次挖掘用掉 1 點耐久"
 const OXY_BOX_COST := 150
+## User request: the live-fish clasp (活魚扣) - worn in one of the three slots that were
+## locked, a fish from the bag or the warehouse hung on it (one hook, one fish): it
+## doesn't take bag room, but its vitality and freshness still run down, and it goes
+## on the run.
+const CLASP_COST := 220
+const CLASP_SLOTS := ["clasp1", "clasp2", "clasp3"]
+const CLASP_DESC := "裝備在角色的扣魚欄：點裝備上去的活魚扣，會出現帶「＋」的空格，把背包或倉庫裡的魚掛上去（一個空格一條魚，不管魚本身多大）。掛著的魚不佔背包格子，活性和新鮮度照樣倒數、也會一起出發；適合把帶醃製詞綴或不死的魚扣在身上管理。要卸下活魚扣，得先把魚取下來"
 const OXY_SLOTS := 6
 const OXY_BOX_DESC := "副手裝備：打開後有六格，放進去的魚活性不會下降。放進、拿出各用掉 1 點耐久；沒有逃脫成功，裡面的魚一樣帶不出來。沒裝備時佔背包六格"
 const NET_DESC := "副手裝備：拿在手上時點一下右搖桿揮網撈活餌，抓得更遠，被咬中毒的機率減半"
@@ -648,9 +655,82 @@ func put_in_pack(f: Dictionary) -> void:
 	_changed()
 
 
+## The fish hung on the clasps worn (see CLASP_COST): each has `hook` (a hook's id).
+var clasp_fish: Array = []
+
+
+## The hooks there are: [{id ("clasp1:0"), slot}] over the clasps worn.
+func clasp_hooks() -> Array:
+	var out := []
+	for slot in CLASP_SLOTS:
+		var id: String = equipped.get(slot, "")
+		for n in int(Items.def(id).get("hooks", 0)) if id != "" else 0:
+			out.append({"id": "%s:%d" % [slot, n], "slot": slot})
+	return out
+
+
+## The first hook with nothing on it ("" if none).
+func clasp_free_hook() -> String:
+	var taken := clasp_fish.map(func(f): return f.get("hook", ""))
+	for h in clasp_hooks():
+		if h.id not in taken:
+			return h.id
+	return ""
+
+
+## The fish on the hook `id`, as an index into clasp_fish (-1: none).
+func hooked_at(hook: String) -> int:
+	for i in clasp_fish.size():
+		if clasp_fish[i].get("hook", "") == hook:
+			return i
+	return -1
+
+
+## Does a clasp worn in `slot` have fish on it?
+func clasp_busy(slot: String) -> bool:
+	return clasp_fish.any(func(f): return str(f.get("hook", "")).begins_with(slot + ":"))
+
+
+## Hangs a fish from the bag or the warehouse (`from`: "pack"/"stash", index `i`) on
+## the hook `hook` ("" the first free). "" if done, else why not.
+func hang_fish(from: String, i: int, hook := "") -> String:
+	if hook != "" and hooked_at(hook) >= 0:
+		return "這個扣環上有魚了"
+	var why := move_fish(from, i, "clasp")
+	if why != "" or hook == "":
+		return why
+	var f: Dictionary = clasp_fish.back()
+	f["hook"] = hook
+	_changed()
+	return ""
+
+
+## After a run (or a load): a fish that was hung comes back to its hook - its hook gone,
+## to the bag or the warehouse instead.
+func return_clasped(f: Dictionary) -> void:
+	f.erase("clasped")
+	var hook: String = f.get("hook", "")
+	if hook != "" and hooked_at(hook) < 0 and clasp_hooks().any(func(h): return h.id == hook):
+		clasp_fish.append(f)
+	else:
+		f.erase("hook")
+		put_in_pack(f)
+	_changed()
+
+
+## Fish whose hook is gone (a clasp taken off) go to the bag or the warehouse.
+func _sync_clasp() -> void:
+	var ids := clasp_hooks().map(func(h): return h.id)
+	for f in clasp_fish.duplicate():
+		if f.get("hook", "") not in ids:
+			clasp_fish.erase(f)
+			f.erase("hook")
+			put_in_pack(f)
+
+
 func weak_count() -> int:
 	var n := 0
-	for list in [pack_fish, stash_fish, fish_box]:
+	for list in [pack_fish, stash_fish, fish_box, clasp_fish]:
 		for f in list:
 			if f.get("weak", false):
 				n += 1
@@ -839,6 +919,18 @@ func buy_net() -> bool:
 
 
 ## The oxygenated fish box, bought once, into the warehouse.
+func buy_fish_clasp() -> bool:
+	if owned("fish_clasp") > 0 or gold < CLASP_COST:
+		return false
+	if not storage_room("fish_clasp"):
+		return false
+	_spend(CLASP_COST)
+	_store("fish_clasp", 1)
+	gold_updated.emit(gold)
+	_changed()
+	return true
+
+
 func buy_oxy_box() -> bool:
 	if owned("oxy_box") > 0 or gold < OXY_BOX_COST:
 		return false
@@ -1030,7 +1122,7 @@ var fish_box: Array = []
 func age_home(delta: float) -> void:
 	if aging_paused:
 		return
-	for list in [fish_box, pack_fish, stash_fish]:
+	for list in [fish_box, pack_fish, stash_fish, clasp_fish]:
 		for f in list:
 			FishLife.ensure(f)
 			FishLife.tick(f, delta, GameState.is_night)
@@ -1039,7 +1131,7 @@ func age_home(delta: float) -> void:
 ## Fish from before the life system (or from old saves) get theirs rolled -
 ## else they'd never run down. Every list.
 func ensure_fish_life() -> void:
-	for list in [tank, fish_box, pack_fish, stash_fish]:
+	for list in [tank, fish_box, pack_fish, stash_fish, clasp_fish]:
 		for f in list:
 			FishLife.ensure(f)
 
@@ -1116,6 +1208,8 @@ func fish_list(place: String) -> Array:
 			return fish_box
 		"pack":
 			return pack_fish
+		"clasp":
+			return clasp_fish
 	return stash_fish
 
 
@@ -1125,6 +1219,9 @@ func fish_places(f: Dictionary, from: String) -> Array:
 	var out := ["pack", "stash", "box"]
 	if FishLife.state(f) == "alive":
 		out.push_front("tank")
+	# (the clasp: with a free hook, from the bag or the warehouse)
+	if clasp_free_hook() != "" and from in ["pack", "stash"]:
+		out.append("clasp")
 	out.erase(from)
 	return out
 
@@ -1152,6 +1249,9 @@ func fish_refusal(f: Dictionary, to: String) -> String:
 		"stash":
 			if stash_fish.size() >= STASH_SIZE:
 				return "倉庫放不下了"
+		"clasp":
+			if clasp_free_hook() == "":
+				return "沒有空的扣環（先裝備活魚扣）"
 	return ""
 
 
@@ -1170,6 +1270,10 @@ func move_fish(from: String, i: int, to: String, at := Vector2i(-1, -1)) -> Stri
 	FishLife.ensure(f)
 	f.erase("cell")
 	f.erase("slot")
+	f.erase("hook")
+	if to == "clasp":
+		f.erase("rot")
+		f["hook"] = clasp_free_hook()
 	if to == "pack" and at.x >= 0:
 		if not pack_fits(f, at):
 			return "放不下這裡"
@@ -1343,6 +1447,7 @@ func shop_cost(id: String) -> int:
 		"net": return NET_COST
 		"shovel": return SHOVEL_COST
 		"oxy_box": return OXY_BOX_COST
+		"fish_clasp": return CLASP_COST
 	if WEAPONS.has(id):
 		return int(WEAPONS[id].cost)
 	if id.begins_with("live_") and LIVE_BAITS.has(id.substr(5)):
@@ -1859,7 +1964,7 @@ func bag_split(index: int, count: int, cell: Vector2i) -> bool:
 ## warehouse and the bucket (src: move_fish's "pack" / "tank" / "stash" / "box").
 func home_fish() -> Array:
 	var out := []
-	for pair in [["pack", pack_fish, "背包"], ["tank", tank, "魚缸"], ["stash", stash_fish, "倉庫"], ["box", fish_box, "魚桶"]]:
+	for pair in [["pack", pack_fish, "背包"], ["clasp", clasp_fish, "活魚扣"], ["tank", tank, "魚缸"], ["stash", stash_fish, "倉庫"], ["box", fish_box, "魚桶"]]:
 		for i in (pair[1] as Array).size():
 			out.append({"fish": pair[1][i], "src": pair[0], "index": i, "where": pair[2]})
 	return out
@@ -1909,9 +2014,12 @@ func bag_take(id: String, count: int) -> int:
 ## Puts on `id` - from the bag stack at `bag_index` if given, else from
 ## the warehouse (or the bag if none are there); what was worn in its slot
 ## goes to the warehouse.
-func equip(id: String, bag_index := -1) -> bool:
-	var slot: String = Items.def(id).get("slot", "")
+func equip(id: String, bag_index := -1, want := "") -> bool:
+	var slot := _slot_for(id, want)
 	if slot == "" or equipped.get(slot, "") == id:
+		return false
+	# (a clasp with fish hung on it stays put)
+	if slot.begins_with("clasp") and clasp_busy(slot):
 		return false
 	if bag_index >= 0:
 		if bag_index >= bag.size() or bag[bag_index].id != id:
@@ -1938,6 +2046,20 @@ func equip(id: String, bag_index := -1) -> bool:
 	return true
 
 
+## The slot `id` goes in: its own, or - a clasp - the one asked for, else the first
+## empty of the three, else the first.
+func _slot_for(id: String, want := "") -> String:
+	var slot: String = Items.def(id).get("slot", "")
+	if slot != "clasp":
+		return slot
+	if want in CLASP_SLOTS:
+		return want
+	for k in CLASP_SLOTS:
+		if equipped.get(k, "") == "":
+			return k
+	return CLASP_SLOTS[0]
+
+
 ## User request (the bag in a run): puts on the thing in the bag stack at
 ## `index` - what was worn in its slot goes into the bag in its place
 ## (where it fits, else anywhere) - false if it can't: nothing to wear, or
@@ -1946,8 +2068,8 @@ func equip_from_bag(index: int) -> bool:
 	if index < 0 or index >= bag.size():
 		return false
 	var id: String = bag[index].id
-	var slot: String = Items.def(id).get("slot", "")
-	if slot == "":
+	var slot := _slot_for(id)
+	if slot == "" or (slot.begins_with("clasp") and clasp_busy(slot)):
 		return false
 	var cell: Vector2i = bag[index].cell
 	var old: String = equipped.get(slot, "")
@@ -1969,7 +2091,7 @@ func equip_from_bag(index: int) -> bool:
 ## rod (there's always one on).
 func unequip_to_bag(slot: String, cell := Vector2i(-1, -1)) -> bool:
 	var id: String = equipped.get(slot, "")
-	if id == "" or slot == "rod":
+	if id == "" or slot == "rod" or clasp_busy(slot):
 		return false
 	var at := cell if cell.x >= 0 and bag_fits(id, cell) else bag_free_cell(id)
 	if at.x < 0:
@@ -1984,7 +2106,7 @@ func unequip_to_bag(slot: String, cell := Vector2i(-1, -1)) -> bool:
 ## always one on.
 func unequip(slot: String) -> bool:
 	var id: String = equipped.get(slot, "")
-	if id == "" or slot == "rod":
+	if id == "" or slot == "rod" or clasp_busy(slot):
 		return false
 	equipped[slot] = ""
 	_store(id, 1)
@@ -2103,6 +2225,7 @@ func snapshot() -> Dictionary:
 		"tank": tank,
 		"fish_box": fish_box,
 		"pack_fish": pack_fish,
+		"clasp_fish": clasp_fish,
 		"stash_fish": stash_fish,
 		"fortune_clock": fortune_clock,
 		"tank_news": tank_news,
@@ -2163,6 +2286,7 @@ func load_data(data: Dictionary) -> void:
 	tank = data.get("tank", [])
 	fish_box = data.get("fish_box", [])
 	pack_fish = data.get("pack_fish", [])
+	clasp_fish = data.get("clasp_fish", [])
 	stash_fish = data.get("stash_fish", [])
 	ensure_fish_life()
 	fortune_clock = float(data.get("fortune_clock", 0.0))
@@ -2204,4 +2328,5 @@ func load_data(data: Dictionary) -> void:
 		to_bag("battery", cells)
 	_sync_rod()
 	relayout_bag()
+	_sync_clasp()
 	ensure_bait()

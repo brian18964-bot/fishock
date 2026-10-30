@@ -167,9 +167,9 @@ func move(source: Dictionary, target: Dictionary, count := -1) -> bool:
 				n = mini(n, Items.stack_of(id))
 			return Profile.to_bag(id, n, target.get("cell", Vector2i(-1, -1))) > 0
 		["storage", "slot"], ["bag", "slot"]:
-			if Items.def(id).get("slot", "") != target.slot:
+			if not Items.fits_slot(Items.def(id).get("slot", ""), target.slot):
 				return false
-			return Profile.equip(id, source.get("index", -1) if source.from == "bag" else -1)
+			return Profile.equip(id, source.get("index", -1) if source.from == "bag" else -1, target.slot)
 		["bag", "bag"]:
 			if count > 0 and count < int(Profile.bag[source.index].count):
 				return Profile.bag_split(source.index, count, target.cell)
@@ -375,7 +375,7 @@ func fish_card(source: Dictionary) -> void:
 			Profile.profile_changed.emit()
 			_close_card())
 		acts.add_child(turn)
-	var where := {"tank": "放回魚缸", "box": "放進魚桶", "pack": "放進包包", "stash": "放進倉庫"}
+	var where := {"tank": "放回魚缸", "box": "放進魚桶", "pack": "放進包包", "stash": "放進倉庫", "clasp": "掛到活魚扣"}
 	for to in Profile.fish_places(f, src):
 		var b := UiKit.button(where[to], 15)
 		b.name = "FishTo_" + to
@@ -744,7 +744,7 @@ class SlotBox extends Control:
 		return {} if locked else {"to": "slot", "slot": slot}
 
 	func hover(source: Dictionary, at: Vector2) -> void:
-		var lit: bool = not locked and not source.is_empty() and Items.def(source.id).get("slot", "") == slot \
+		var lit: bool = not locked and not source.is_empty() and Items.fits_slot(Items.def(source.id).get("slot", ""), slot) \
 			and get_global_rect().has_point(at)
 		if lit != _lit:
 			_lit = lit
@@ -778,10 +778,17 @@ class SlotBox extends Control:
 				draw_texture_rect(lamp, Rect2(room.get_center() - sz / 2.0, sz), false, Color(1, 1, 1, 0.8))
 		else:
 			ItemBoard.draw_item(self, sq, id, 1, null, _lit)
+			var hooks := int(Items.def(id).get("hooks", 0))
+			if hooks > 0:
+				# (a clasp: how many of its hooks have a fish)
+				var hung := Profile.clasp_fish.filter(func(f): return str(f.get("hook", "")).begins_with(slot + ":")).size()
+				UiKit.draw_text(self, Vector2(0, side - 5.0), "%d/%d" % [hung, hooks], 13, UiKit.GOLD_BRIGHT, HORIZONTAL_ALIGNMENT_RIGHT, side - 5.0, true)
 		if size.x - side < 50.0:
 			return
 		UiKit.draw_text(self, Vector2(text_x, side * 0.5 - 4.0), title, 13, UiKit.DIM)
 		var line := "即將推出" if locked else ("（空）" if id == "" else Items.name_of(id))
+		if id == "" and slot.begins_with("clasp"):
+			line = "（裝備活魚扣）"
 		if slot == "light" and id == "" and not locked:
 			line = "隨身煤燈"
 		var col := UiKit.DIM if locked or id == "" else UiKit.rarity_color(UiKit.item_rarity(id))

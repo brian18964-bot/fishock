@@ -192,6 +192,11 @@ func start_run() -> void:
 		else:
 			Profile.stash_fish.append(fish)
 	Profile.pack_fish = []
+	# User request (活魚扣): the fish hung on the clasps go too - they take no bag room.
+	for fish in Profile.clasp_fish:
+		fish["clasped"] = true
+		add_carried_fish(fish)
+	Profile.clasp_fish = []
 	# (kept apart: a lost night, or leaving, gives these back)
 	for fish in carried_fish:
 		fish["brought"] = true
@@ -521,6 +526,13 @@ func _return_brought_weak() -> String:
 		if not fish.get("brought", false):
 			continue
 		fish.erase("brought")
+		if fish.get("clasped", false):
+			# (back on its hook, weak if it was alive)
+			if FishLife.state(fish) == "alive":
+				FishLife.make_weak(fish)
+			Profile.return_clasped(fish)
+			back += 1
+			continue
 		if FishLife.state(fish) == "alive":
 			FishLife.make_weak(fish)
 			Profile.put_in_pack(fish)
@@ -548,6 +560,10 @@ func _bring_fish_home() -> String:
 	var lost := 0
 	for fish in carried_fish + oxy_fish:
 		fish.erase("brought")
+		if fish.get("clasped", false):
+			# (the clasp's fish go home on their hook, alive or not)
+			Profile.return_clasped(fish)
+			continue
 		match FishLife.state(fish):
 			"alive":
 				if Profile.add_to_tank(fish):

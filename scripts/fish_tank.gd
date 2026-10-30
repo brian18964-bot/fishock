@@ -294,7 +294,7 @@ func _card_for(i: int, src := "tank") -> void:
 		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		col.add_child(pic)
 	col.add_child(FishVitals.name_row(f, 22))
-	col.add_child(UiKit.label({"tank": "在魚缸", "pack": "在包包", "stash": "在倉庫", "box": "在魚桶"}[src], 14, UiKit.DIM))
+	col.add_child(UiKit.label({"tank": "在魚缸", "pack": "在包包", "stash": "在倉庫", "box": "在魚桶", "clasp": "掛在活魚扣上"}[src], 14, UiKit.DIM))
 	col.add_child(UiKit.divider(CARD_WIDTH - 40.0))
 	# (the card's body: size and worth, its life, the bar, the affixes, the price - FishVitals)
 	var vitals := FishVitals.new()
@@ -309,7 +309,7 @@ func _card_for(i: int, src := "tank") -> void:
 	moves.add_theme_constant_override("h_separation", 8)
 	moves.add_theme_constant_override("v_separation", 6)
 	moves.custom_minimum_size.x = CARD_WIDTH - 30.0
-	var where := {"tank": "放回魚缸", "box": "放進魚桶", "pack": "放進包包", "stash": "放進倉庫"}
+	var where := {"tank": "放回魚缸", "box": "放進魚桶", "pack": "放進包包", "stash": "放進倉庫", "clasp": "掛到活魚扣"}
 	for to in Profile.fish_places(f, src):
 		var mb := UiKit.button(where[to], 14)
 		mb.name = "Move_" + to

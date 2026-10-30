@@ -48,12 +48,12 @@ func _ready() -> void:
 	scroll.add_child(grid)
 	col.add_child(scroll)
 	if _fish.is_empty():
-		grid.add_child(UiKit.label("身上沒有魚。", 15, UiKit.DIM))
+		grid.add_child(UiKit.label("背包和倉庫裡沒有魚。" if _item == "clasp" else "身上沒有魚。", 15, UiKit.DIM))
 	elif _item == "salt" and _fish.all(func(g): return FishLife.can_salt(g) != ""):
 		grid.add_child(UiKit.label("身上沒有可以醃的魚（要死掉、還沒腐敗）。", 15, UiKit.DIM))
 	for i in _fish.size():
 		var f: Dictionary = _fish[i]
-		var why := FishLife.can_use(_item, f)
+		var why := "" if _item == "clasp" else FishLife.can_use(_item, f)
 		if _item == "salt" and why != "":
 			continue   # (only the dead that aren't rotten are shown)
 		var card := Card.new()

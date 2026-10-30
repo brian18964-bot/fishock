@@ -83,6 +83,8 @@ THINGS = {
     "oxy_tree": dict(model="items/oxy_tree.glb", turn=(0, 0, 20), fill=0.95, ground=TACKLE),
     "shovel": dict(model="items/shovel.glb", turn=(70, 40, 0), fill=1.05, ground=GEAR),
     # The oxygenated fish box (tools/make_oxy_box.py).
+    # The live-fish clasp (tools/make_fish_clasp.py).
+    "fish_clasp": dict(model="items/fish_clasp.glb", turn=(55, 0, 20), fill=1.0, ground=GEAR),
     "oxy_box": dict(model="items/oxy_box.glb", turn=(14, 0, -25), fill=0.95, ground=GEAR),
     # The merchant's tea (Camp v2): had at once, for spirit.
     # User request: the tea served in the user's cup.

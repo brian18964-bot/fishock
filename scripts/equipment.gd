@@ -25,9 +25,10 @@ const CELL := 58.0
 const STAT_ORDER := ["react", "might", "resil", "endure", "luck"]
 
 const SLOT_LAYOUT := [
-	["hat", "帽子", Rect2(32, 106, 66, 66), true],
-	["top", "上衣", Rect2(32, 182, 66, 66), true],
-	["pack", "背包", Rect2(32, 258, 66, 66), true],
+	# User request (活魚扣): the three that were locked are open - the live-fish clasps go here.
+	["clasp1", "扣魚", Rect2(32, 106, 66, 66), false],
+	["clasp2", "扣魚", Rect2(32, 182, 66, 66), false],
+	["clasp3", "扣魚", Rect2(32, 258, 66, 66), false],
 	["rod", "主手・釣竿", Rect2(28, 442, 164, 66), false],
 	["light", "燈具", Rect2(272, 442, 164, 66), false],
 	# User request: the off hand - a weapon (Profile.WEAPONS) or the
@@ -219,7 +220,7 @@ func _on_tent(i: int) -> void:
 
 ## The fish packed in the bag at home that would count on a run (alive, not weak).
 func _packed() -> Array:
-	return Profile.pack_fish.filter(func(f): return FishLife.stats_count(f))
+	return (Profile.pack_fish + Profile.clasp_fish).filter(func(f): return FishLife.stats_count(f))
 
 
 ## A stat's card: its number and where it comes from, and what it touches.
@@ -260,6 +261,16 @@ func _refresh() -> void:
 	if _tent_grid != null:
 		for c in _tent_grid.get_children():
 			c.queue_redraw()
+
+
+## A tap on a clasp worn opens its hooks (ClaspPanel); anything else its card.
+func card(source: Dictionary) -> void:
+	if source.get("from", "") == "slot" and int(Items.def(source.id).get("hooks", 0)) > 0:
+		var panel := ClaspPanel.new(source.slot)
+		panel.z_index = 20
+		add_child(panel)
+		return
+	super.card(source)
 
 
 func actions(source: Dictionary) -> Array:

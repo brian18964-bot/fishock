@@ -46,6 +46,9 @@ static func items(player: Node) -> Array:
 	var out := []
 	for i in GameState.carried_fish.size():
 		var fish: Dictionary = GameState.carried_fish[i]
+		# (the clasp's fish take no room)
+		if fish.get("clasped", false):
+			continue
 		var size := fish_size(fish)
 		out.append({"kind": "fish", "label": fish.get("name", "魚"), "count": 0,
 			"size": rotated(SIZES[size], bool(fish.get("rot", false))), "rot": bool(fish.get("rot", false)), "index": i, "rotten": fish.get("rotten", false),

@@ -63,6 +63,9 @@ static func def(id: String) -> Dictionary:
 	if id == "shovel":
 		return {"name": "鏟子", "tab": "gear", "size": Vector2i(3, 1), "stack": 1, "slot": "offhand",
 			"icon": ICONS % id, "desc": Profile.SHOVEL_DESC}
+	if id == "fish_clasp":
+		return {"name": "活魚扣", "tab": "gear", "size": Vector2i(1, 1), "stack": 1, "slot": "clasp", "hooks": 1,
+			"icon": ICONS % id, "desc": Profile.CLASP_DESC}
 	if id == "oxy_box":
 		return {"name": "打氧魚箱", "tab": "gear", "size": Vector2i(2, 3), "stack": 1, "slot": "offhand",
 			"icon": ICONS % id, "desc": Profile.OXY_BOX_DESC, "container": true}
@@ -109,6 +112,12 @@ static func name_of(id: String) -> String:
 	return def(id).get("name", id)
 
 
+## Does a thing for `item_slot` (its def's) go in the slot `slot`? (the clasps
+## fit any of the three clasp slots)
+static func fits_slot(item_slot: String, slot: String) -> bool:
+	return item_slot == slot or (item_slot == "clasp" and slot.begins_with("clasp"))
+
+
 static func size_of(id: String) -> Vector2i:
 	return def(id).get("size", Vector2i(1, 1))
 
@@ -143,7 +152,7 @@ static func model_path(id: String) -> String:
 		return "res://assets/models/fishing_rod_lvl%d.glb" % (int(id.substr(4)) + 1)
 	match id:
 		"flashlight", "battery", "roll", "loaf", "cheese", "ammo", "knife", "hatchet", "machete", "glock", \
-				"potion_vigor", "potion_ward", "eyeball", "eye_altar", "eye_ghost", "binoculars", "net", "glow_mushroom", "oxy_box", "shovel", "frozen_soil", "oxy_tree", "revive_needle", "affix_dropper", "vigor_feed", "salt":
+				"potion_vigor", "potion_ward", "eyeball", "eye_altar", "eye_ghost", "binoculars", "net", "glow_mushroom", "oxy_box", "fish_clasp", "shovel", "frozen_soil", "oxy_tree", "revive_needle", "affix_dropper", "vigor_feed", "salt":
 			return MODELS % id
 		"tea":
 			# User request: the tea in the user's cup.
@@ -169,7 +178,7 @@ static func square_icon(id: String) -> Texture2D:
 	var key := ""
 	if id.begins_with("rod_") or id in ["flashlight", "battery", "lamp", "tea", "roll", "loaf", "cheese", "ammo",
 			"knife", "hatchet", "machete", "glock", "potion_vigor", "potion_ward", "eyeball", "eye_altar", "eye_ghost",
-			"binoculars", "net", "glow_mushroom", "oxy_box", "oxy_tree", "frozen_soil", "shovel", "revive_needle", "affix_dropper", "vigor_feed", "salt"]:
+			"binoculars", "net", "glow_mushroom", "oxy_box", "fish_clasp", "oxy_tree", "frozen_soil", "shovel", "revive_needle", "affix_dropper", "vigor_feed", "salt"]:
 		key = id
 	elif id == "bait":
 		key = "worm"
@@ -221,7 +230,7 @@ static func _rank(id: String) -> int:
 		return 14
 	if id == "shovel":
 		return 15
-	if id == "oxy_box":
+	if id == "oxy_box" or id == "fish_clasp":
 		return 16
 	if id == "bait":
 		return 17

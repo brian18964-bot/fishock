@@ -65,6 +65,11 @@ var _drawn := false
 var _pops: Array = []
 ## The tension bar flashes red when a move hurts (s left).
 var _hurt_flash := 0.0
+## A flash round the screen's edge, and its colour: red for a hard hit taken, gold for
+## a crit landed (user request: the numbers felt in the hand too - a buzz on a
+## touchscreen).
+var _edge := 0.0
+var _edge_color := RAGE
 
 
 func _ready() -> void:
@@ -84,7 +89,7 @@ func _process(delta: float) -> void:
 	var busy := player != null and (player.state == Player.State.REELING \
 		or player.state == Player.State.BITE or player.light_lure > 0.0)
 	_take_hits(player, delta)
-	if busy or _drawn or not _pops.is_empty():
+	if busy or _drawn or not _pops.is_empty() or _edge > 0.0:
 		_view.queue_redraw()
 	_drawn = busy
 
@@ -93,6 +98,7 @@ func _process(delta: float) -> void:
 ## numbers; the numbers in the air moving on.
 func _take_hits(player: Player, delta: float) -> void:
 	_hurt_flash = maxf(_hurt_flash - delta, 0.0)
+	_edge = maxf(_edge - delta * 1.8, 0.0)
 	if player != null and player.fight != null:
 		var show: bool = Profile.settings.get("damage_numbers", true)
 		for hit in player.fight.drain_hits():
@@ -181,6 +187,7 @@ func _add_pop(hit: Dictionary) -> void:
 			pop.color = RAGE
 			pop.life = 0.8
 			pop.pop = 0.5
+	_feel(hit)
 	_pops.append(pop)
 	if _pops.size() > 30:
 		_pops.pop_front()
@@ -193,6 +200,40 @@ func _hurt_stack() -> float:
 		if q.kind == "text" and q.pos.x > CENTER_X + SIZE.x * 0.5 and q.age < 0.5:
 			n += 1
 	return 26.0 * n
+
+
+## What a hit feels like: an edge flash and, on a touchscreen, a buzz - a crit landed
+## (gold) or a hard one taken (red).
+func _feel(hit: Dictionary) -> void:
+	var buzz := 0
+	if hit.type == "dmg" and hit.style in ["swipe", "perfect", "strike", "wear"]:
+		_edge = 0.45 if hit.style != "swipe" else 0.3
+		_edge_color = PERFECT
+		buzz = 70 if hit.style == "swipe" else 110
+	elif hit.type == "hurt" and int(hit.n) >= 20:
+		_edge = clampf(float(hit.n) / 60.0, 0.25, 0.6)
+		_edge_color = RAGE
+		buzz = clampi(int(hit.n) * 2, 40, 130)
+	if buzz > 0 and DisplayServer.is_touchscreen_available():
+		Input.vibrate_handheld(buzz)
+
+
+func _draw_edge() -> void:
+	if _edge <= 0.0:
+		return
+	var vp := get_viewport().get_visible_rect().size
+	var w := 26.0
+	var c := Color(_edge_color, _edge)
+	var clear := Color(_edge_color, 0.0)
+	# (four bands fading inward)
+	for i in 6:
+		var a := _edge * (1.0 - i / 6.0) * 0.8
+		var col := Color(_edge_color, a)
+		var t := w / 6.0
+		_view.draw_rect(Rect2(0, i * t, vp.x, t), col)
+		_view.draw_rect(Rect2(0, vp.y - (i + 1) * t, vp.x, t), col)
+		_view.draw_rect(Rect2(i * t, 0, t, vp.y), col)
+		_view.draw_rect(Rect2(vp.x - (i + 1) * t, 0, t, vp.y), col)
 
 
 func _add_ring(at: Vector2, color: Color) -> void:
@@ -212,6 +253,7 @@ static func _fmt(n: int) -> String:
 
 
 func _draw_pops() -> void:
+	_draw_edge()
 	for pop in _pops:
 		var t: float = pop.age / pop.life
 		var fade := clampf((1.0 - t) / 0.4, 0.0, 1.0)

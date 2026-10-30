@@ -447,6 +447,8 @@ static func item_rarity(id: String) -> String:
 		return "rare"
 	if id == "oxy_box":
 		return "epic"
+	if id == "fish_clasp":
+		return "rare"
 	if id == "shovel":
 		return "rare"
 	var cost := 0

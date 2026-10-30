@@ -314,6 +314,11 @@ def vigor_feed():
     model_pic("vigor_feed", (1, 1), (15, 0, 25))
 
 
+def fish_clasp():
+    """The live-fish clasp (tools/make_fish_clasp.py)."""
+    model_pic("fish_clasp", (1, 1), (55, 0, 20))
+
+
 def salt():
     """The salt (tools/make_salt.py)."""
     model_pic("salt", (1, 1), (35, 0, 20))
