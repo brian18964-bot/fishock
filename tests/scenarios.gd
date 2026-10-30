@@ -91,6 +91,7 @@ const TESTS := [
 	"test_rods_and_stats_page",
 	"test_fish_alerts",
 	"test_salting",
+	"test_fight_stats",
 	"test_camp_spirit_and_tents",
 	"test_camp_life",
 	"test_ears_and_tails",
@@ -6777,3 +6778,133 @@ func test_salting() -> void:
 	panel.free()
 	GameState.carried_fish.clear()
 	Profile.load_data(saved)
+
+
+## A fight played by a plain bot (reel while the tension's under `ease`, else let go;
+## flick against every sideways dash a moment late): how it ends.
+func _bot_fight(diff: String, stats: Dictionary, seed_n: int, ease := 0.55, flick_after := 0.3) -> Dictionary:
+	seed(seed_n)
+	var tier: Dictionary = FishData.TIERS["mid"]
+	var f := FishFight.new(diff, "", tier, 1.0)
+	f.stat_might = float(stats.get("might", 0))
+	f.stat_react = float(stats.get("react", 0))
+	f.stat_resil = float(stats.get("resil", 0))
+	f.stat_endure = float(stats.get("endure", 0))
+	f.line_max = 40.0
+	f.distance = 12.0
+	f.open(0.3)
+	var t := 0.0
+	var dt := 0.05
+	var flick := 0.0
+	var hits := 0
+	while f.result == "" and t < 240.0:
+		var counter := Vector2.ZERO
+		if f.swipe_left > 0.0:
+			flick += dt
+			if flick > flick_after:
+				counter = -f.run_side
+		else:
+			flick = 0.0
+		var reel := 1.0 if (f.tension < ease and f.run_side == Vector2.ZERO and not f.mood() == "jump") else 0.0
+		if f.update(dt, reel, counter, Vector2.UP).has("swipe_hit"):
+			hits += 1
+		t += dt
+	return {"result": f.result, "time": t, "why": f.snap_why, "hits": hits}
+
+
+func test_fight_stats() -> void:
+	var tier: Dictionary = FishData.TIERS["mid"]
+	var base := FishFight.new("advanced", "", tier, 1.0)
+	var strong := FishFight.new("advanced", "", tier, 1.0)
+	strong.stat_might = 100.0
+	strong.stat_react = 150.0
+	strong.stat_resil = 150.0
+	strong.stat_endure = 100.0
+	check(is_equal_approx(strong.might_mult(), 2.0) and is_equal_approx(strong.react_mult(), 2.0) and is_equal_approx(strong.resil_mult(), 2.0), "the multipliers at 100/150/150")
+	base.perfect_hook()
+	strong.perfect_hook()
+	check(absf(base.progress - FishFight.PERFECT_HOOK_STAMINA) < 0.001 and absf(strong.progress - FishFight.PERFECT_HOOK_STAMINA * 2.0) < 0.001, "力量: a perfect strike takes more of the fish")
+	check(is_equal_approx(strong.swipe_damage(), FishFight.SWIPE_DAMAGE * 2.0) and is_equal_approx(base.swipe_damage(), FishFight.SWIPE_DAMAGE), "力量: a flicked dash takes more")
+	check(is_equal_approx(strong.swipe_window(), FishFight.SWIPE_WINDOW * 2.0), "反應: a longer time to flick")
+	check(strong.reel_boost() > base.reel_boost() and is_equal_approx(strong.reel_boost(), 1.5), "力量: the reel brings more line")
+	check(strong.sweet_range().y - strong.sweet_range().x > base.sweet_range().y - base.sweet_range().x, "韌性: a wider sweet spot")
+	check(is_equal_approx(strong.stat_strain(), 0.5) and is_equal_approx(base.stat_strain(), 1.0), "韌性: the tension builds half as fast")
+	# 耐力: how long the arms last; then the others' help fades and the reel and tension get worse.
+	check(base.fatigue() == 0.0 and strong.fatigue() == 0.0, "fresh at the start")
+	base.age = FishFight.FATIGUE_BASE + FishFight.FATIGUE_SPAN
+	strong.age = FishFight.FATIGUE_BASE + FishFight.FATIGUE_SPAN
+	check(is_equal_approx(base.fatigue(), 1.0) and strong.fatigue() < 1.0, "耐力: 0 is spent by 45 s, 100 lasts longer")
+	strong.age = FishFight.FATIGUE_BASE + 100.0 * FishFight.FATIGUE_PER_ENDURE + FishFight.FATIGUE_SPAN
+	check(is_equal_approx(strong.fatigue(), 1.0) and is_equal_approx(strong.might_mult(), 1.0) and is_equal_approx(strong.stat_strain(), 1.5), "spent: the help is gone, the tension builds 1.5x")
+	check(is_equal_approx(strong.reel_boost(), 1.0 - FishFight.REEL_TIRED), "spent: the reel is slower")
+	# The player: a stat is carried into the fight and the strike window grows.
+	GameState.reset_run()
+	Profile.load_data({"gold": 0, "character": "cat"})
+	await _fresh_game()
+	var p := player()
+	var w0: float = p.react_window()
+	GameState.stat_event["react"] = 75
+	check(is_equal_approx(p.react_window(), w0 + 75.0 / 150.0), "反應 widens the strike window (player)")
+	GameState.stat_event.clear()
+	# Played out by a bot: the stats help (many fights).
+	var profiles := {"none": {}, "might": {"might": 60}, "resil": {"resil": 60}, "react": {"react": 60},
+		"all 60": {"might": 60, "resil": 60, "react": 60, "endure": 60}, "all 60 but no 耐力": {"might": 60, "resil": 60, "react": 60, "endure": 0}}
+	var table := {}
+	for name in profiles:
+		var landed := 0
+		var broke := 0
+		var time := 0.0
+		var n := 60
+		for i in n:
+			var r := _bot_fight("advanced", profiles[name], 100 + i)
+			if r.result == "landed":
+				landed += 1
+				time += r.time
+			elif r.result == "line_break" or r.result == "line_out":
+				broke += 1
+		table[name] = [landed, broke, time / maxf(landed, 1)]
+	print("BOT FIGHTS (advanced, 60 each): landed / broke / avg seconds")
+	for name in table:
+		print("  %-20s %2d / %2d / %.1f s" % [name, table[name][0], table[name][1], table[name][2]])
+	# The harder cases: a master fish, and a bot that reels hard (eases off only at 0.8 tension).
+	for hard in [["master", 0.55], ["master", 0.8], ["advanced", 0.8]]:
+		print("BOT FIGHTS (%s, eases off at %.2f tension, 60 each): landed / broke / avg seconds" % hard)
+		for name in profiles:
+			var landed2 := 0
+			var broke2 := 0
+			var time2 := 0.0
+			for i in 60:
+				var r2 := _bot_fight(hard[0], profiles[name], 300 + i, hard[1])
+				if r2.result == "landed":
+					landed2 += 1
+					time2 += r2.time
+				elif r2.result == "line_break" or r2.result == "line_out":
+					broke2 += 1
+			print("  %-20s %2d / %2d / %.1f s" % [name, landed2, broke2, time2 / maxf(landed2, 1)])
+	# 反應: a slow hand (flicks 1.1 s after the dash starts) only lands with a longer window.
+	var slow := {}
+	for name in ["none", "react"]:
+		var hits := 0
+		var time3 := 0.0
+		var n3 := 0
+		for i in 60:
+			var r4 := _bot_fight("master", profiles[name], 900 + i, 0.55, 1.1)
+			hits += int(r4.hits)
+			if r4.result == "landed":
+				time3 += r4.time
+				n3 += 1
+		slow[name] = [hits, time3 / maxf(n3, 1)]
+	print("SLOW HANDS (master, flick after 1.1 s): flicks that hit / avg seconds ", slow)
+	check(slow["react"][0] > slow["none"][0], "反應 lets a slow hand land the flick (%s)" % [slow])
+	var whys := {}
+	profiles["resil 150"] = {"resil": 150}
+	for name in ["none", "resil", "resil 150"]:
+		var counts := {}
+		for i in 120:
+			var r3 := _bot_fight("master", profiles[name], 700 + i)
+			if r3.result != "landed":
+				counts[str(r3.result) + ":" + str(r3.why)] = int(counts.get(str(r3.result) + ":" + str(r3.why), 0)) + 1
+		whys[name] = counts
+	print("WHY BREAKS (master, 120 fights): ", whys)
+	check(table["all 60"][2] <= table["none"][2] and table["all 60"][0] >= table["none"][0], "with the stats the bot lands more, no slower (%s vs %s)" % [table["all 60"], table["none"]])
+	check(table["might"][2] <= table["none"][2], "力量 shortens the fight")

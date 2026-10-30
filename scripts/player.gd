@@ -2629,7 +2629,7 @@ func _update_fishing(delta: float) -> void:
 			var moving := velocity.length() > 1.0
 			var reel_mult := MOVE_REEL_PENALTY if moving and fight.run_side == Vector2.ZERO else 1.0
 			var line_dir := (cast_target - global_position).normalized()
-			fight.strain = (VIGOR_STRAIN if vigor_timer > 0.0 else 1.0) * (1.0 + _gate_soft * 4.0)
+			fight.strain = (VIGOR_STRAIN if vigor_timer > 0.0 else 1.0) * (1.0 + _gate_soft * 4.0) * fight.stat_strain()
 			fight.hold = _is_action_pressed()
 			for ev in fight.update(delta, crank, _counter_dir(), line_dir, reel_mult):
 				_on_fight_event(ev)
@@ -2905,7 +2905,7 @@ func _roll_catch_outcome() -> void:
 	# close in and shorter far out (the cast tier's own window, 0.7 = mid).
 	var diff: Dictionary = FishData.DIFFICULTY[difficulty_key]
 	# A better rod (Profile.ROD_TIERS) gives a little longer.
-	tier_data.bite_window = clampf(diff.window * tier_data.bite_window / 0.7 * float(Profile.rod().window), 0.3, 1.5)
+	tier_data.bite_window = clampf(diff.window * tier_data.bite_window / 0.7 * float(Profile.rod().window) * react_window(), 0.3, 1.5)
 	nibbles_left = maxi(randi_range(diff.nibbles.x, diff.nibbles.y) - int(lure.get("nibbles", 0)), 0)
 	fake_chance = diff.fake * float(lure.get("fake", 1.0))
 	if flavor == BAIT_FLAVOR_SPIDER:
@@ -3036,7 +3036,12 @@ func _strike_lure(dir: Vector2) -> void:
 ## How long the perfect strike lasts on this bite.
 func perfect_hook_window() -> float:
 	var window: float = tier_data.get("bite_window", 1.0)
-	return minf(clampf(window * PERFECT_HOOK_SHARE, PERFECT_HOOK_TIME.x, PERFECT_HOOK_TIME.y), window * 0.7)
+	return minf(clampf(window * PERFECT_HOOK_SHARE, PERFECT_HOOK_TIME.x, PERFECT_HOOK_TIME.y) * react_window(), window * 0.7)
+
+
+## 反應: the time to strike (and the perfect strike's) x (1 + react/150).
+func react_window() -> float:
+	return 1.0 + float(Stats.total("react")) / 150.0
 
 
 ## Time left for a perfect strike (0 once it's passed, or not biting).
@@ -3130,6 +3135,11 @@ func _hook_fish(perfect := false) -> void:
 	if _gate_check():
 		return
 	fight = FishFight.new(difficulty_key, fish_habit, tier_data, reel_power_mult, Profile.rod())
+	# (the stats carried count in the fight: see FishFight)
+	fight.stat_might = float(Stats.total("might"))
+	fight.stat_react = float(Stats.total("react"))
+	fight.stat_resil = float(Stats.total("resil"))
+	fight.stat_endure = float(Stats.total("endure"))
 	_snap_at = randf_range(0.3, 0.8) if Profile.spirit_penalty() >= 3 and randf() < SPENT_SNAP_CHANCE else -1.0
 	_turned_for = 0.0
 	fight.open(fish_heft())

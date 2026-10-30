@@ -114,6 +114,63 @@ const DIVE_HAUL := 0.6
 const DIVE_TENSION := 1.5
 const SWIPE_WINDOW := 1.0
 const SWIPE_DAMAGE := 0.12
+## User request (stats): what the four stats do in a fight (Player sets them at the
+## strike: Stats.total).
+##   力量 might: the stamina a perfect strike and a flicked dash take x (1 + might/100),
+##     the reel brings line in x (1 + might/200)
+##   反應 react: the time to flick against a dash x (1 + react/150) (and, before the
+##     fight, the time to strike and the perfect strike's - Player)
+##   韌性 resil: the line's tension builds /(1 + resil/150); the tension sweet spot
+##     (1 + resil/300) wider; the danger far out starts resil/1000 later and a leap
+##     out there snaps it only 1/(1 + resil/150) of the time
+##   耐力 endure: how long the arms last - FATIGUE_BASE + endure/5 s into the fight,
+##     over FATIGUE_SPAN s the other three's help fades away (their numbers count
+##     x (1 - fatigue)), the reel slows by REEL_TIRED and the tension builds
+##     (1 + TENSION_TIRED x fatigue) as fast
+const FATIGUE_BASE := 15.0
+const FATIGUE_PER_ENDURE := 0.2
+const FATIGUE_SPAN := 30.0
+const REEL_TIRED := 0.3
+const TENSION_TIRED := 0.5
+var stat_might := 0.0
+var stat_react := 0.0
+var stat_resil := 0.0
+var stat_endure := 0.0
+
+
+## How worn the angler's arms are (0 fresh .. 1 spent) at this point of the fight.
+func fatigue() -> float:
+	return clampf((age - (FATIGUE_BASE + stat_endure * FATIGUE_PER_ENDURE)) / FATIGUE_SPAN, 0.0, 1.0)
+
+
+func might_mult() -> float:
+	return 1.0 + stat_might * (1.0 - fatigue()) / 100.0
+
+
+func react_mult() -> float:
+	return 1.0 + stat_react * (1.0 - fatigue()) / 150.0
+
+
+func resil_mult() -> float:
+	return 1.0 + stat_resil * (1.0 - fatigue()) / 150.0
+
+
+## How fast the line comes in, against the plain reel.
+func reel_boost() -> float:
+	return (1.0 + stat_might * (1.0 - fatigue()) / 200.0) * (1.0 - REEL_TIRED * fatigue())
+
+
+## What the tension builds x (Player folds it into `strain` each frame).
+func stat_strain() -> float:
+	return (1.0 + TENSION_TIRED * fatigue()) / resil_mult()
+
+
+func swipe_damage() -> float:
+	return SWIPE_DAMAGE * might_mult()
+
+
+func swipe_window() -> float:
+	return SWIPE_WINDOW * react_mult()
 const SWIPE_THRESHOLD := 0.6
 ## Below this stamina the fish reads as tired.
 const TIRED_AT := 0.25
@@ -490,13 +547,13 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 	else:
 		radial = _swim(delta, held)
 		if held:
-			progress += reel_speed * reel_mult * k * (SWEET_REEL_MULT if in_sweet() else 1.0) * delta
+			progress += reel_speed * reel_mult * k * (SWEET_REEL_MULT if in_sweet() else 1.0) * reel_boost() * delta
 			tension += tension_rise * strain * pull * k * (ENRAGE_REEL_TENSION if enraged else 1.0) * delta
 		else:
 			tension -= tension_fall * delta
 		events.append_array(_schedule(delta, line_dir))
-		if events.has("jump") and danger() > 0.0:
-			# A leap that far out: the line can't take it.
+		if events.has("jump") and danger() > 0.0 and randf() < 1.0 / resil_mult():
+			# A leap that far out: the line can't take it (a tougher line - 韌性 - sometimes can).
 			snap_why = "leap"
 			result = "line_break"
 
@@ -574,7 +631,9 @@ func near_limit() -> float:
 
 ## How far into the danger the line is (0 not yet .. 1 all out).
 func danger() -> float:
-	return clampf((line_share() - DANGER) / (1.0 - DANGER), 0.0, 1.0)
+	# (韌性: the danger starts further out - 100 more moves it a tenth)
+	var from := minf(DANGER + stat_resil * (1.0 - fatigue()) / 1000.0, 0.95)
+	return clampf((line_share() - from) / (1.0 - from), 0.0, 1.0)
 
 
 ## The line out as a share of all there is.
@@ -725,8 +784,8 @@ func _schedule(delta: float, line_dir: Vector2) -> Array:
 			_run_sign = 1.0 if randf() < 0.5 else -1.0
 			run_side = line_dir.orthogonal() * _run_sign
 			# Long enough to answer with a flick.
-			run_left = maxf(run_left, SWIPE_WINDOW)
-			swipe_left = SWIPE_WINDOW
+			run_left = maxf(run_left, swipe_window())
+			swipe_left = swipe_window()
 			_swipe_armed = false
 			events.append("side_run")
 		else:
@@ -742,7 +801,7 @@ func _swipe_check(delta: float, counter: Vector2, events: Array) -> bool:
 	if not against:
 		_swipe_armed = true
 	elif _swipe_armed:
-		progress += SWIPE_DAMAGE
+		progress += swipe_damage()
 		tension = maxf(tension - 0.1, 0.0)
 		run_left = 0.0
 		swipe_left = 0.0
@@ -788,7 +847,7 @@ func mood() -> String:
 
 ## The tension gauge's sweet spot, low to high.
 func sweet_range() -> Vector2:
-	var half: float = diff.get("sweet", 0.3) * 0.5
+	var half: float = diff.get("sweet", 0.3) * 0.5 * (1.0 + stat_resil * (1.0 - fatigue()) / 300.0)
 	return Vector2(SWEET_CENTER - half, SWEET_CENTER + half)
 
 
@@ -807,7 +866,7 @@ func wear(share: float) -> void:
 
 func perfect_hook() -> void:
 	perfect = true
-	progress = minf(progress + PERFECT_HOOK_STAMINA, 0.9)
+	progress = minf(progress + PERFECT_HOOK_STAMINA * might_mult(), 0.9)
 	tension = PERFECT_HOOK_TENSION
 
 

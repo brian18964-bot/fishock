@@ -367,6 +367,8 @@ static func use_revive(f: Dictionary) -> String:
 	f["rotten"] = false
 	f["fresh"] = 1.0
 	f["vit"] = 1.0
+	# (a live fish carries no salt affixes: the pickling is lost with the death)
+	f.erase("salt")
 	make_weak(f)
 	if not f.get("weak", false):
 		# (an immortal one: just up again)
