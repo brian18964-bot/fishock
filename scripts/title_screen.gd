@@ -11,7 +11,7 @@ extends Control
 ## are the menu. Each has a faint gold rim; pressed (or hovered) it lights
 ## up with its name, and a tap opens its page over the camp while the
 ## camera glides to it:
-##   the crate and the backpack by it 倉庫 (warehouse), the tent 裝備
+##   the crate and the backpack by it 倉庫 (warehouse), the tent 角色
 ##   (equipment), the cut drum 魚缸 (fish tank), the merchant's
 ##   stall or his boat 商人 (shop)
 ##   the character: it lives there on its own (CampLife - by its
@@ -31,7 +31,8 @@ extends Control
 const RENDER_SCALE := 1.5
 const ENTRIES := [
 	["warehouse", "倉庫", "res://assets/sprites/icons/battery.png"],
-	["equipment", "裝備", ""],
+	["equipment", "角色", ""],
+	["bag_page", "背包", ""],
 	["fish_tank", "魚缸", ""],
 	["shop", "商城", "res://assets/sprites/icons/lamp.png"],
 ]
@@ -282,6 +283,13 @@ func _build() -> void:
 	play.position = Vector2(355, 466)
 	play.pressed.connect(_on_play)
 	_home.add_child(play)
+	# User request: the bag button, bottom right (what's carried, and used from here).
+	var bag := UiKit.button("背包", 18)
+	bag.name = "BagButton"
+	bag.custom_minimum_size = Vector2(110, 48)
+	bag.position = Vector2(836, 482)
+	bag.pressed.connect(func(): open_page("bag_page"))
+	_home.add_child(bag)
 	var multi := UiKit.button("多人連線", 16)
 	multi.name = "Multiplayer"
 	multi.custom_minimum_size = Vector2(140, 42)
@@ -442,7 +450,7 @@ func _near_name(delta: float) -> void:
 ## User request: a tap on a camp thing, the character goes to it and does
 ## what it's for (CampLife.act_on); then its page opens. Tapped again
 ## meanwhile (or anything else that opens a page), it opens at once.
-const PAGE_OF := {"backpack": "warehouse", "sit": ""}
+const PAGE_OF := {"backpack": "bag_page", "sit": ""}
 
 
 func _ask(spot: String) -> void:
@@ -829,6 +837,9 @@ class EntryIcon extends Control:
 			"equipment":
 				var id := "rod_%d" % Profile.rod_tier
 				ItemBoard.draw_item(self, r, id, 1, null)
+				return
+			"bag_page":
+				ItemBoard.draw_item(self, r, "salt", 1, null)
 				return
 			"fish_tank":
 				var fish: Dictionary = Profile.tank[0] if not Profile.tank.is_empty() else {"id": "carp", "name": "鯉魚"}

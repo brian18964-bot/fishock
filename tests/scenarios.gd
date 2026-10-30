@@ -89,6 +89,7 @@ const TESTS := [
 	"test_stats_gate_weak",
 	"test_talents",
 	"test_rods_and_stats_page",
+	"test_camp_pages_nav",
 	"test_fish_alerts",
 	"test_salting",
 	"test_fight_stats",
@@ -2590,8 +2591,7 @@ func test_warehouse_and_bag() -> void:
 	var page: Control = load("res://scenes/warehouse.tscn").instantiate()
 	get_tree().root.add_child(page)
 	await frames(3)
-	check(page.find_child("Tab_tackle", true, false) != null and page.find_child("Tab_other", true, false) != null, "tabs")
-	page._show_tab("gear")
+	check(page.find_child("Tab_tackle", true, false) == null and page.find_child("Tab_other", true, false) == null, "no categories in the warehouse")
 	var bag = page._bag
 	var drop_at: Vector2 = bag.global_position + Vector2(3.5, 2.5) * bag.cell
 	page.pressed({"from": "storage", "id": "rod_1"}, page._storage.global_position + Vector2(10, 10))
@@ -2699,11 +2699,10 @@ func test_lists_scroll_under_a_finger() -> void:
 	var page: Control = load("res://scenes/warehouse.tscn").instantiate()
 	get_tree().root.add_child(page)
 	await frames(3)
-	page._show_tab("tackle")
 	await frames(2)
 	var wscroll: DragScroll = page.find_child("StorageScroll", true, false)
 	var storage = page._storage
-	check(storage.cell >= 90.0 and page._bag.cell >= 68.0, "the warehouse's boxes and the bag's cells are bigger")
+	check(storage.cell >= 78.0 and page._bag.cell >= 60.0, "the warehouse's boxes and the bag's cells are bigger")
 	check(wscroll.get_v_scroll_bar().max_value > wscroll.size.y, "a full tab runs past the window")
 	var first: String = storage.ids()[0]
 	var box_at: Vector2 = storage.global_position + storage.box(0).get_center()
@@ -6307,9 +6306,9 @@ func test_fish_at_home_shown() -> void:
 	# Dragged along the bag.
 	check(page.move({"from": "pack_fish", "id": "", "index": 0}, {"to": "bag", "cell": Vector2i(5, 2)}) and Profile.pack_places()[0].position == Vector2i(5, 2), "dragged to another cell")
 	# The warehouse's fish tab.
-	page.find_child("Tab_fish", true, false).pressed.emit()
 	await frames(2)
-	check(page._storage.ids().size() == 1, "the warehouse's fish tab lists the stashed fish")
+	var listed: Array = page._storage.ids().filter(func(x): return x is int)
+	check(listed.size() == 1, "the warehouse's one list shows the stashed fish too")
 	# From the bag to the warehouse and back.
 	check(page.move({"from": "pack_fish", "id": "", "index": 0}, {"to": "stash"}) and Profile.pack_fish.is_empty() and Profile.stash_fish.size() == 2, "dragged to the warehouse")
 	check(page.move({"from": "stash_fish", "id": "", "index": 0}, {"to": "bag", "cell": Vector2i(0, 0)}) and Profile.pack_fish.size() == 1, "and back into the bag")
@@ -6908,3 +6907,76 @@ func test_fight_stats() -> void:
 	print("WHY BREAKS (master, 120 fights): ", whys)
 	check(table["all 60"][2] <= table["none"][2] and table["all 60"][0] >= table["none"][0], "with the stats the bot lands more, no slower (%s vs %s)" % [table["all 60"], table["none"]])
 	check(table["might"][2] <= table["none"][2], "力量 shortens the fight")
+
+
+## User request: every camp page has 商城 倉庫 角色 背包 魚缸 出發 along its top;
+## the warehouse is one list; the character page's gear sits beside the main
+## hand; the camp's bag page uses the fish items on the fish at camp.
+func test_camp_pages_nav() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 500})
+	for scene in ["shop", "warehouse", "equipment", "bag_page", "fish_tank", "fish_log", "journey"]:
+		var pg: Control = load("res://scenes/%s.tscn" % scene).instantiate()
+		get_tree().root.add_child(pg)
+		await frames(2)
+		var row: Node = pg.find_child("PageNav", true, false)
+		check(row != null and row.get_child_count() == 6, "%s has the six-page row" % scene)
+		for key in ["shop", "warehouse", "character", "backpack", "tank", "depart"]:
+			check(pg.find_child("Nav_" + key, true, false) != null, "%s: %s button" % [scene, key])
+		pg.queue_free()
+		await frames(1)
+	check(Inventory.COLS == 7 and Inventory.ROWS == 5, "the bag is 7 x 5")
+	# The character page: no top 商城/營地 buttons; the off hand beside the main hand, the light right of it.
+	var eq: Control = load("res://scenes/equipment.tscn").instantiate()
+	get_tree().root.add_child(eq)
+	await frames(3)
+	check(eq.find_child("Go_shop", true, false) == null and eq.find_child("Go_camp", true, false) == null, "no 商城/營地 buttons on the character page")
+	check(eq.find_child("CampTab_camp", true, false) != null and eq.find_child("Tab_choose", true, false) != null, "the camp styles and the characters are its sub-pages")
+	var rod: Control = eq.find_child("Slot_rod", true, false)
+	var off: Control = eq.find_child("Slot_offhand", true, false)
+	var lamp: Control = eq.find_child("Slot_light", true, false)
+	check(off.position.x >= rod.position.x + rod.size.x and absf(off.position.y - rod.position.y) < 10.0, "the off hand is beside the main hand")
+	check(lamp.position.x >= off.position.x + off.size.x, "the light is right of the off hand")
+	check(eq._storage.tab == "equip", "the source list shows what can be worn")
+	Profile._store("salt", 2)
+	Profile._store("rod_1", 1)
+	check("salt" not in eq._storage.ids() and "rod_1" in eq._storage.ids(), "(wearables only)")
+	eq.queue_free()
+	await frames(1)
+	# The warehouse: no categories, stashed fish in the same list.
+	Profile.stash_fish.append({"id": "carp", "name": "鯉魚", "value": 10.0, "size": "small", "rarity": "common", "tier": "near", "length": 40.0, "weight": 1.0})
+	var wh: Control = load("res://scenes/warehouse.tscn").instantiate()
+	get_tree().root.add_child(wh)
+	await frames(3)
+	var all: Array = wh._storage.ids()
+	check("salt" in all and "rod_1" in all and all.any(func(x): return x is int), "one list: things then fish")
+	check(wh.find_child("Tab_gear", true, false) == null, "no tabs")
+	wh.queue_free()
+	await frames(1)
+	# The bag page: salt has 使用; used on a dead fish at camp, it is spent.
+	Profile.stash_fish.clear()
+	var dead := {"id": "carp", "name": "鯉魚", "value": 10.0, "size": "small", "rarity": "common", "tier": "near", "length": 40.0, "weight": 1.0}
+	FishLife.roll(dead)
+	FishLife.kill(dead)
+	dead["fresh_life"] = 300.0
+	dead["fresh"] = 1.0
+	Profile.tank.append(dead)
+	Profile.to_bag("salt", 2)
+	var bp: Control = load("res://scenes/bag_page.tscn").instantiate()
+	get_tree().root.add_child(bp)
+	await frames(3)
+	var at := Profile.bag_at(Profile.bag.filter(func(e): return e.id == "salt")[0].cell)
+	check(bp.actions({"from": "bag", "id": "salt", "index": at}).any(func(a): return a[0] == "使用"), "salt has a 使用 button on the bag page")
+	check(not bp.actions({"from": "bag", "id": "potion_vigor", "index": 0}).any(func(a): return a[0] == "使用"), "a potion doesn't (used in a run)")
+	var before := Profile.bag_count("salt")
+	bp.move({"from": "bag", "id": "salt", "index": at}, {"to": "use"})
+	await frames(3)
+	var pick: Node = bp.find_child("FishPickPanel", true, false)
+	check(pick != null and pick.find_child("Fish_0", true, false) != null, "使用 asks which fish at camp")
+	pick.find_child("Fish_0", true, false).pressed.emit()
+	await frames(2)
+	check(Profile.bag_count("salt") == before - 1, "the salt is spent")
+	check(bp.find_child("Toast", true, false) != null, "and says what happened")
+	bp.queue_free()
+	await frames(1)
+	Profile.load_data(saved)

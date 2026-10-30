@@ -272,7 +272,7 @@ static func divider(width := 200.0) -> TextureRect:
 ## A menu page's back and top bar: dark stone (or, over the 3D camp - the
 ## page's "over_camp" meta - a see-through shade), a back button top left
 ## and the purse top right. Returns the purse (set_purse updates it).
-static func page_chrome(page: Control, back: Callable, back_name := "Back") -> PanelContainer:
+static func page_chrome(page: Control, back: Callable, back_name := "Back", nav := "") -> PanelContainer:
 	backdrop(page)
 	var b := button("‹ 返回", 16)
 	b.name = back_name
@@ -280,11 +280,37 @@ static func page_chrome(page: Control, back: Callable, back_name := "Back") -> P
 	b.custom_minimum_size = Vector2(104, 40)
 	b.pressed.connect(back)
 	page.add_child(b)
+	if nav != "":
+		page_nav(page, nav)
 	var p := purse()
 	p.position = Vector2(820, 12)
 	p.custom_minimum_size = Vector2(126, 36)
 	page.add_child(p)
 	return p
+
+
+## User request: every page has the main ones along its top - 商城, 倉庫, 角色, 背包,
+## 魚缸, 出發 - to go from one to another without closing and reopening: [key,
+## its name, the scene it opens].
+const NAV := [["shop", "商城", "shop"], ["warehouse", "倉庫", "warehouse"], ["character", "角色", "equipment"],
+	["backpack", "背包", "bag_page"], ["tank", "魚缸", "fish_tank"], ["depart", "出發", "journey"]]
+
+
+## The top row for `page`, `current` lit (its own: a tap goes to its first page).
+static func page_nav(page: Control, current: String) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.name = "PageNav"
+	row.position = Vector2(124, 9)
+	row.add_theme_constant_override("separation", 4)
+	for n in NAV:
+		var b := button(n[1], 15, "red" if n[0] == current else "gray")
+		b.name = "Nav_" + n[0]
+		b.custom_minimum_size = Vector2(96, 38)
+		var scene: String = n[2]
+		b.pressed.connect(func(): page_go(page, scene))
+		row.add_child(b)
+	page.add_child(row)
+	return row
 
 
 ## A page's back: dark stone with darkened corners - or, over the 3D camp

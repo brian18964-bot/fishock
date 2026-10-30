@@ -25,7 +25,7 @@ func _ready() -> void:
 
 
 func _build() -> void:
-	UiKit.page_chrome(self, _on_back_pressed, "BackButton")
+	UiKit.page_chrome(self, _on_back_pressed, "BackButton", "tank")
 	var made := UiKit.window("魚類圖鑑")
 	var book: PanelContainer = made[0]
 	var col: VBoxContainer = made[1]

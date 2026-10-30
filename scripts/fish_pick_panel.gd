@@ -13,11 +13,17 @@ const COLS := 4
 
 var _title := ""
 var _item := ""
+## The fish listed: the carried ones, or (the camp's bag page) any set given.
+var _fish: Array = []
+## (the camp: where each of them is - a line at the card's foot)
+var _places: Array = []
 
 
-func _init(title: String, item_id: String) -> void:
+func _init(title: String, item_id: String, fish = null, places: Array = []) -> void:
 	_title = title
 	_item = item_id
+	_fish = fish if fish != null else GameState.carried_fish
+	_places = places
 	name = "FishPickPanel"
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 
@@ -30,7 +36,7 @@ func _ready() -> void:
 	var made := UiKit.window(_title)
 	var panel: PanelContainer = made[0]
 	var col: VBoxContainer = made[1]
-	var rows := clampi(ceili(float(GameState.carried_fish.size()) / COLS), 1, 2)
+	var rows := clampi(ceili(float(_fish.size()) / COLS), 1, 2)
 	var scroll := DragScroll.new()
 	scroll.custom_minimum_size = Vector2(CARD.x * COLS + 10.0 * (COLS - 1) + 12.0, CARD.y * rows + 10.0 * (rows - 1) + 8.0)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -41,19 +47,19 @@ func _ready() -> void:
 	grid.add_theme_constant_override("v_separation", 10)
 	scroll.add_child(grid)
 	col.add_child(scroll)
-	if GameState.carried_fish.is_empty():
+	if _fish.is_empty():
 		grid.add_child(UiKit.label("身上沒有魚。", 15, UiKit.DIM))
-	elif _item == "salt" and GameState.carried_fish.all(func(g): return FishLife.can_salt(g) != ""):
+	elif _item == "salt" and _fish.all(func(g): return FishLife.can_salt(g) != ""):
 		grid.add_child(UiKit.label("身上沒有可以醃的魚（要死掉、還沒腐敗）。", 15, UiKit.DIM))
-	for i in GameState.carried_fish.size():
-		var f: Dictionary = GameState.carried_fish[i]
+	for i in _fish.size():
+		var f: Dictionary = _fish[i]
 		var why := FishLife.can_use(_item, f)
 		if _item == "salt" and why != "":
 			continue   # (only the dead that aren't rotten are shown)
 		var card := Card.new()
 		card.name = "Fish_%d" % i
 		card.fish = f
-		card.note = why if why != "" else "可以用"
+		card.note = ("%s・" % _places[i] if i < _places.size() else "") + (why if why != "" else "可以用")
 		card.note_color = Color(0.9, 0.55, 0.4) if why != "" else UiKit.USE
 		card.custom_minimum_size = CARD
 		card.disabled = why != ""

@@ -29,10 +29,10 @@ const SLOT_LAYOUT := [
 	["top", "上衣", Rect2(32, 182, 66, 66), true],
 	["pack", "背包", Rect2(32, 258, 66, 66), true],
 	["rod", "主手・釣竿", Rect2(32, 442, 200, 70), false],
-	["light", "燈具", Rect2(244, 442, 200, 70), false],
+	["light", "燈具", Rect2(322, 442, 200, 70), false],
 	# User request: the off hand - a weapon (Profile.WEAPONS) or the
 	# landing net, one of them.
-	["offhand", "副手", Rect2(474, 106, 66, 66), false],
+	["offhand", "副手", Rect2(244, 442, 66, 66), false],
 ]
 
 var _viewer: CharacterViewer
@@ -61,23 +61,7 @@ func _ready() -> void:
 
 
 func _build() -> void:
-	_purse = UiKit.page_chrome(self, _on_back)
-	var shop := UiKit.button("商城", 15, "red")
-	shop.name = "ToShop"
-	shop.position = Vector2(708, 12)
-	shop.custom_minimum_size = Vector2(100, 38)
-	shop.pressed.connect(func(): UiKit.page_go(self, "shop"))
-	add_child(shop)
-	for t in [["gear", "裝備", 486], ["camp", "營地", 592]]:
-		var tb := UiKit.button(t[1], 15)
-		tb.name = "Tab_" + t[0]
-		tb.position = Vector2(t[2], 12)
-		tb.custom_minimum_size = Vector2(100, 38)
-		var key: String = t[0]
-		tb.pressed.connect(func(): _show_tab(key))
-		add_child(tb)
-		_tabs[key] = tb
-
+	_purse = UiKit.page_chrome(self, _on_back, "Back", "character")
 	# Left: the character, framed, with a warm glow behind it.
 	var made := UiKit.window("釣客")
 	var sheet: PanelContainer = made[0]
@@ -132,10 +116,11 @@ func _build() -> void:
 	gear.position = Vector2(right_x, 56)
 	gear.custom_minimum_size = Vector2(946.0 - right_x, 474)
 	var gcol: VBoxContainer = made2[1]
+	gcol.add_child(_sub_row("Tab_"))
 	var side_tabs := HBoxContainer.new()
 	side_tabs.alignment = BoxContainer.ALIGNMENT_CENTER
 	side_tabs.add_theme_constant_override("separation", 8)
-	for t in [["storage", "倉庫・裝備"], ["bag", "背包"]]:
+	for t in [["storage", "倉庫・可裝備"], ["bag", "背包"]]:
 		var tb := UiKit.button(t[1], 15)
 		tb.name = "Side_" + t[0]
 		tb.custom_minimum_size = Vector2(150, 40)
@@ -152,7 +137,7 @@ func _build() -> void:
 	_storage_scroll.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_storage = ItemBoard.StorageGrid.new(3, STORAGE_CELL, 3)
 	_storage.name = "Storage"
-	_storage.tab = "gear"
+	_storage.tab = "equip"
 	_storage_scroll.add_child(_storage)
 	gcol.add_child(_storage_scroll)
 	_bag = ItemBoard.BagGrid.new(BAG_CELL)
@@ -178,6 +163,7 @@ func _build() -> void:
 	_camp_window.position = Vector2(right_x, 56)
 	_camp_window.custom_minimum_size = Vector2(946.0 - right_x, 474)
 	var camp_col: VBoxContainer = made4[1]
+	camp_col.add_child(_sub_row("CampTab_"))
 	_tent_grid = GridContainer.new()
 	_tent_grid.name = "Tents"
 	_tent_grid.columns = 2
@@ -202,6 +188,27 @@ func _build() -> void:
 	_show_tab("gear")
 
 
+## User request: the page's sub-pages along the top of its right window - the gear
+## to put on, the camp's tent styles, another character to take (its own page).
+## (`prefix`: the buttons' names, a row to each window.)
+func _sub_row(prefix: String) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 6)
+	for t in [["gear", "裝備"], ["camp", "營地樣式"], ["choose", "選擇角色"]]:
+		var tb := UiKit.button(t[1], 15)
+		tb.name = prefix + t[0]
+		tb.custom_minimum_size = Vector2(104, 36)
+		var key: String = t[0]
+		if key == "choose":
+			tb.pressed.connect(func(): UiKit.page_go(self, "character"))
+		else:
+			tb.pressed.connect(func(): _show_tab(key))
+			_tabs[prefix + key] = tb
+		row.add_child(tb)
+	return row
+
+
 ## The right window's tab: the warehouse's gear or the bag.
 func _show_side(key: String) -> void:
 	_side = key
@@ -214,7 +221,7 @@ func _show_side(key: String) -> void:
 func _show_tab(key: String) -> void:
 	_tab = key
 	for k in _tabs:
-		UiKit.style_tab(_tabs[k], k == key)
+		UiKit.style_tab(_tabs[k], k.ends_with(key))
 	for w in _gear_windows:
 		w.visible = key == "gear"
 	_camp_window.visible = key == "camp"

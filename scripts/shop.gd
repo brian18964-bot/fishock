@@ -71,7 +71,7 @@ func _ready() -> void:
 
 
 func _build() -> void:
-	_purse = UiKit.page_chrome(self, _on_back_pressed, "BackButton")
+	_purse = UiKit.page_chrome(self, _on_back_pressed, "BackButton", "shop")
 	var made := UiKit.window("漁具商人")
 	var vendor: PanelContainer = made[0]
 	var col: VBoxContainer = made[1]

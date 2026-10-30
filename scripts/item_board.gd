@@ -23,6 +23,10 @@ const TAB_COLORS := {
 
 ## The bag page (user request): things in the bag can be thrown away.
 var can_discard := false
+## The camp's bag page: what is used on a fish gets a 使用 button (asked of
+## the page by `use_requested`).
+var can_use := false
+signal use_requested(id: String)
 var _views: Array = []
 ## The press: {from: "storage"/"bag"/"slot", id, index (bag), slot, at}.
 var _press := {}
@@ -111,7 +115,7 @@ func _end_drag() -> void:
 func drop(source: Dictionary, at: Vector2) -> bool:
 	for v in _views:
 		if v.is_visible_in_tree() and v.get_global_rect().has_point(at):
-			var target: Dictionary = v.target_at(at)
+			var target: Dictionary = v.target_for(source) if v.has_method("target_for") else v.target_at(at)
 			return move(source, target)
 	return false
 
@@ -144,6 +148,9 @@ func move(source: Dictionary, target: Dictionary, count := -1) -> bool:
 			return Profile.move_fish("stash", source.index, "pack", target.cell) == ""
 		["pack_fish", "stash"], ["pack_fish", "storage"]:
 			return Profile.move_fish("pack", source.index, "stash") == ""
+		["bag", "use"], ["storage", "use"]:
+			use_requested.emit(id)
+			return true
 		["bag", "rotate"]:
 			return Profile.bag_rotate(source.index)
 		["bag", "discard"]:
@@ -420,6 +427,8 @@ class ItemIcon extends Control:
 func actions(source: Dictionary) -> Array:
 	var out := []
 	var slot: String = Items.def(source.id).get("slot", "")
+	if can_use and Profile.USABLES.get(source.id, {}).get("target", "") == "fish":
+		out.append(["使用", {"to": "use"}, true])
 	match source.from:
 		"storage":
 			out.append(["放進背包", {"to": "bag"}, true])
@@ -617,10 +626,17 @@ class StorageGrid extends Control:
 			queue_redraw())
 		refit()
 
+	## What the tab lists: thing ids, or (an int) a stashed fish's index.
+	## "all" is every thing then every fish; "equip" the wearable things.
 	func ids() -> Array:
-		if tab == "fish":
-			# (the fish put in the warehouse: one box each, by its slot)
-			return range(Profile.stash_fish.size())
+		match tab:
+			"fish":
+				# (the fish put in the warehouse: one box each, by its slot)
+				return range(Profile.stash_fish.size())
+			"all":
+				return Profile.storage_ids("") + range(Profile.stash_fish.size())
+			"equip":
+				return Profile.storage_ids("").filter(func(id): return Items.def(id).get("slot", "") != "")
 		return Profile.storage_ids(tab)
 
 	func refit() -> void:
@@ -634,11 +650,20 @@ class StorageGrid extends Control:
 	func target_at(_global: Vector2) -> Dictionary:
 		return {"to": "stash" if tab == "fish" else "storage"}
 
+	## (the whole-warehouse list takes a fish to the stash, a thing to the crate)
+	func target_for(source: Dictionary) -> Dictionary:
+		return {"to": "stash" if tab == "fish" or source.get("from", "") == "pack_fish" else "storage"}
+
 	func hover(source: Dictionary, at: Vector2) -> void:
-		var lit: bool = not source.is_empty() and source.from != "storage" and get_global_rect().has_point(at)
+		if source.is_empty():
+			if _lit:
+				_lit = false
+				queue_redraw()
+			return
+		var lit: bool = source.from != "storage" and get_global_rect().has_point(at)
 		if tab == "fish":
 			lit = lit and source.from == "pack_fish"
-		elif source.from in ["pack_fish", "stash_fish"]:
+		elif tab != "all" and source.from in ["pack_fish", "stash_fish"]:
 			lit = false
 		if lit != _lit:
 			_lit = lit
@@ -649,8 +674,8 @@ class StorageGrid extends Control:
 			var list := ids()
 			for i in list.size():
 				if box(i).has_point(event.position):
-					if tab == "fish":
-						board.pressed({"from": "stash_fish", "id": "", "index": i}, event.global_position)
+					if list[i] is int:
+						board.pressed({"from": "stash_fish", "id": "", "index": list[i]}, event.global_position)
 					else:
 						board.pressed({"from": "storage", "id": list[i]}, event.global_position)
 					accept_event()
@@ -669,8 +694,8 @@ class StorageGrid extends Control:
 				break
 			UiKit.draw_slot(self, r)
 		for i in list.size():
-			if tab == "fish":
-				ItemBoard.draw_fish_slot(self, box(i), Profile.stash_fish[i])
+			if list[i] is int:
+				ItemBoard.draw_fish_slot(self, box(i), Profile.stash_fish[list[i]])
 			else:
 				ItemBoard.draw_item(self, box(i), list[i], Profile.stored(list[i]), font, false, true)
 		if list.is_empty():

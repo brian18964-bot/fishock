@@ -4,8 +4,7 @@ extends ItemBoard
 ## warehouse and the character's bag side by side, to sort the bag and
 ## pick what's taken into the next run. Drag a thing from one to the other
 ## (or about the bag to rearrange it), or tap it for a card that moves as
-## many as you choose. The warehouse has tabs - 裝備, 物品, 釣具, 其他;
-## the bag doesn't.
+## many as you choose. The warehouse is one list, without tabs.
 ## Dressed as an MMO bank (user request): two iron-and-gold windows, the
 ## warehouse's tabs along its top, sunken slots ringed by rarity.
 
@@ -16,13 +15,14 @@ extends ItemBoard
 ## (DragScroll; a thing dragged sideways goes to the bag), the bag wider.
 
 ## The warehouse's boxes (3 across) and the bag's cells.
-const STORAGE_CELL := 96.0
-const BAG_CELL := 70.0
-const STORAGE_WIDTH := 326.0
+const STORAGE_CELL := 80.0
+const COLS := 4
+const BAG_CELL := 62.0
+## User request: no categories - the warehouse a single list (things, then fish).
+const STORAGE_WIDTH := 80.0 * 4 + 44.0
 
 var _storage: ItemBoard.StorageGrid
 var _bag: ItemBoard.BagGrid
-var _tabs := {}
 var _purse: PanelContainer
 var _used: Label
 
@@ -35,7 +35,7 @@ func _ready() -> void:
 
 
 func _build() -> void:
-	_purse = UiKit.page_chrome(self, _on_back)
+	_purse = UiKit.page_chrome(self, _on_back, "Back", "warehouse")
 	can_discard = true
 
 	# Left: the warehouse, by tab.
@@ -45,32 +45,15 @@ func _build() -> void:
 	left.name = "WarehouseWindow"
 	left.position = Vector2(14, 56)
 	left.custom_minimum_size = Vector2(STORAGE_WIDTH, 474)
-	var tabs := HBoxContainer.new()
-	tabs.add_theme_constant_override("separation", 5)
-	tabs.alignment = BoxContainer.ALIGNMENT_CENTER
-	for key in Items.TAB_ORDER:
-		var b := UiKit.button(Items.TABS[key], 14)
-		b.name = "Tab_" + key
-		b.custom_minimum_size = Vector2(58, 40)
-		b.pressed.connect(func(): _show_tab(key))
-		tabs.add_child(b)
-		_tabs[key] = b
-	# User request: the fish put in the warehouse (from the tank page) are here.
-	var fb := UiKit.button("魚", 14)
-	fb.name = "Tab_fish"
-	fb.custom_minimum_size = Vector2(52, 40)
-	fb.pressed.connect(func(): _show_tab("fish"))
-	tabs.add_child(fb)
-	_tabs["fish"] = fb
-	lcol.add_child(tabs)
 	var scroll := DragScroll.new()
 	scroll.name = "StorageScroll"
 	scroll.sideways_free = true
-	scroll.custom_minimum_size = Vector2(STORAGE_CELL * 3.0 + 4.0, 0)
+	scroll.custom_minimum_size = Vector2(STORAGE_CELL * COLS + 4.0, 0)
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_storage = ItemBoard.StorageGrid.new(3, STORAGE_CELL, 3)
+	_storage = ItemBoard.StorageGrid.new(COLS, STORAGE_CELL, 4)
 	_storage.name = "Storage"
+	_storage.tab = "all"
 	scroll.add_child(_storage)
 	lcol.add_child(scroll)
 	var note := UiKit.label("上下滑動看更多・左右拖到背包", 13, UiKit.DIM)
@@ -80,9 +63,7 @@ func _build() -> void:
 	track(_storage)
 
 	# Right: the bag.
-	_build_bag(Vector2(STORAGE_WIDTH + 24.0, 56), "背包・帶進下一輪", ["拖曳物品可以在倉庫和背包之間搬，或在背包裡換位置；點一下看說明、選數量",
-		"背包裡的東西會帶進遊戲；釣到的魚、餌料會放進空格"])
-	_show_tab("gear")
+	_build_bag(Vector2(STORAGE_WIDTH + 24.0, 56), "背包・帶進下一輪", ["拖曳物品在倉庫和背包之間搬、或在背包裡換位置；點一下看說明、選數量"])
 
 
 func _build_bag(at: Vector2, title: String, lines: Array) -> void:
@@ -109,16 +90,6 @@ func _build_bag(at: Vector2, title: String, lines: Array) -> void:
 	track(_bag)
 
 
-func _show_tab(key: String) -> void:
-	if _storage == null:
-		return
-	_storage.tab = key
-	(_storage.get_parent() as ScrollContainer).scroll_vertical = 0
-	for k in _tabs:
-		UiKit.style_tab(_tabs[k], k == key)
-	_storage.queue_redraw()
-
-
 func _refresh() -> void:
 	UiKit.set_purse(_purse, Profile.gold)
 	var cells := 0
@@ -129,15 +100,6 @@ func _refresh() -> void:
 		var fs: Vector2i = Inventory.fish_item(f).size
 		cells += fs.x * fs.y
 	_used.text = "%d / %d 格" % [cells, Inventory.COLS * Profile.bag_rows()]
-	# Each tab's count on its button.
-	for k in _tabs:
-		if k == "fish":
-			(_tabs[k] as Button).text = "魚" + (" %d" % Profile.stash_fish.size() if not Profile.stash_fish.is_empty() else "")
-			continue
-		var n := 0
-		for id in Profile.storage_ids(k):
-			n += Profile.stored(id)
-		(_tabs[k] as Button).text = Items.TABS[k] + (" %d" % n if n > 0 else "")
 
 
 func _on_back() -> void:

@@ -1732,6 +1732,30 @@ func bag_split(index: int, count: int, cell: Vector2i) -> bool:
 
 ## Takes up to `count` of `id` out of the bag (used up in a run).
 ## One of `id` for use at home: from the bag, else the warehouse. False if none.
+## Every fish at camp: [{fish, src, index, where}] - the bag, the tank, the
+## warehouse and the bucket (src: move_fish's "pack" / "tank" / "stash" / "box").
+func home_fish() -> Array:
+	var out := []
+	for pair in [["pack", pack_fish, "背包"], ["tank", tank, "魚缸"], ["stash", stash_fish, "倉庫"], ["box", fish_box, "魚桶"]]:
+		for i in (pair[1] as Array).size():
+			out.append({"fish": pair[1][i], "src": pair[0], "index": i, "where": pair[2]})
+	return out
+
+
+## User request (the camp's bag page): a fish item (USABLES "target": "fish")
+## used on one of the fish at camp. "" and `lines` (what it did) if it worked,
+## else why not.
+func use_on_home_fish(id: String, f: Dictionary, lines: Array) -> String:
+	if bag_count(id) + stored(id) <= 0:
+		return "沒有了"
+	var why := FishLife.apply_item(id, f, lines)
+	if why != "":
+		return why
+	take_one(id)
+	_changed()
+	return ""
+
+
 func take_one(id: String) -> bool:
 	if bag_take(id, 1) > 0:
 		return true

@@ -45,7 +45,7 @@ func _ready() -> void:
 
 
 func _build() -> void:
-	_purse = UiKit.page_chrome(self, _on_back)
+	_purse = UiKit.page_chrome(self, _on_back, "Back", "character")
 
 	# Left: everyone's portrait, scrolled up and down.
 	var made := UiKit.window("選擇角色")

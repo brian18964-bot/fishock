@@ -58,21 +58,7 @@ func _ready() -> void:
 
 
 func _build() -> void:
-	_purse = UiKit.page_chrome(self, func(): UiKit.page_back(self))
-	# User request: the fish log is here now (not on the main screen).
-	var book := UiKit.button("圖鑑", 15)
-	book.name = "FishLog"
-	book.position = Vector2(592, 12)
-	book.custom_minimum_size = Vector2(100, 38)
-	book.pressed.connect(func(): UiKit.page_go(self, "fish_log"))
-	add_child(book)
-	var feed := UiKit.button("餵食", 15, "red")
-	feed.name = "Feed"
-	feed.position = Vector2(700, 12)
-	feed.custom_minimum_size = Vector2(100, 38)
-	feed.pressed.connect(func(): _tank.feed())
-	add_child(feed)
-
+	_purse = UiKit.page_chrome(self, func(): UiKit.page_back(self), "Back", "tank")
 	# The tank in its own frame.
 	var frame := PanelContainer.new()
 	frame.add_theme_stylebox_override("panel", UiKit.frame_box(true))
@@ -103,18 +89,29 @@ func _build() -> void:
 	right.position = Vector2(622, 56)
 	right.custom_minimum_size = Vector2(324, 474)
 	var tabs := HBoxContainer.new()
-	tabs.add_theme_constant_override("separation", 6)
+	tabs.add_theme_constant_override("separation", 4)
 	tabs.alignment = BoxContainer.ALIGNMENT_CENTER
 	for t in TAB_NAMES:
 		var b := UiKit.button(t[1], 15)
 		b.name = "Tab_" + t[0]
-		b.custom_minimum_size = Vector2(110, 36)
+		b.custom_minimum_size = Vector2(68, 36)
 		var key: String = t[0]
 		b.pressed.connect(func():
 			_tab = key
 			_rebuild())
 		tabs.add_child(b)
 		_tabs[key] = b
+	# User request: the fish log and the feeding are the tank's own sub-pages, in its tabs.
+	var book := UiKit.button("圖鑑", 15)
+	book.name = "FishLog"
+	book.custom_minimum_size = Vector2(68, 36)
+	book.pressed.connect(func(): UiKit.page_go(self, "fish_log"))
+	tabs.add_child(book)
+	var feed := UiKit.button("餵食", 15, "red")
+	feed.name = "Feed"
+	feed.custom_minimum_size = Vector2(68, 36)
+	feed.pressed.connect(func(): _tank.feed())
+	tabs.add_child(feed)
 	col.add_child(tabs)
 	_count = UiKit.label("", 15, UiKit.DIM)
 	_count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -131,7 +128,7 @@ func _build() -> void:
 	col.add_child(scroll)
 	add_child(right)
 	_toast = UiKit.label("", 17, UiKit.GOLD_BRIGHT, true, 5)
-	_toast.position = Vector2(120, 16)
+	_toast.position = Vector2(14, 52)
 	_toast.custom_minimum_size = Vector2(460, 0)
 	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_toast.modulate.a = 0.0
