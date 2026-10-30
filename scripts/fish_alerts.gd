@@ -7,10 +7,13 @@ extends CanvasLayer
 ## the other side): its picture, name, and its vitality bar - dead, its freshness
 ## bar running down. Tap a card for the fish's full card (the backpack's, with
 ## that fish picked); close one with its ✕ or by flicking it off to the left; the
-## eye hides them all (and shows them again).
+## eye, below the cards, hides them all (and shows them again). The backpack
+## (layer 6) opens over them.
 
 const ALERT_AT := 0.30
-const AT := Vector2(8, 126)
+## (user request: under the feed's lines on the left - it said nothing was
+## readable behind them - and the eye below the cards, not above)
+const AT := Vector2(8, 196)
 const CARD := Vector2(182, 48)
 const GAP := 5.0
 const MAX_SHOWN := 4
@@ -25,7 +28,7 @@ var _t := 0.0
 
 
 func _init() -> void:
-	layer = 6
+	layer = 5
 
 
 func _ready() -> void:
@@ -34,7 +37,7 @@ func _ready() -> void:
 	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_root)
 	_eye = Eye.new()
-	_eye.position = AT
+	_eye.position = AT + Vector2(0, 0)
 	_eye.size = Vector2(30, 26)
 	_eye.visible = false
 	_eye.pressed.connect(_toggle_hidden)
@@ -90,8 +93,9 @@ func _layout() -> void:
 	for uid in _cards:
 		var card: AlertCard = _cards[uid]
 		card.visible = not _hidden and i < MAX_SHOWN
-		card.position = AT + Vector2(0, 31.0 + i * (CARD.y + GAP))
+		card.position = AT + Vector2(0, i * (CARD.y + GAP))
 		i += 1
+	_eye.position = AT + Vector2(0, 0.0 if _hidden else minf(i, MAX_SHOWN) * (CARD.y + GAP))
 
 
 func _toggle_hidden() -> void:

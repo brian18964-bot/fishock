@@ -64,6 +64,7 @@ var _card_name: Label
 var _card_sub: Label
 var _detail: Label
 var _vitals: FishVitals
+var _card_trait: Label
 var _actions: HFlowContainer
 ## The thing whose card is up.
 var _shown := {}
@@ -175,8 +176,15 @@ func _build_card() -> void:
 	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	words.add_theme_constant_override("separation", 0)
 	_card_name = UiKit.label("", 19, UiKit.GOLD_BRIGHT, true)
-	_card_name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	words.add_child(_card_name)
+	# (user request: a fish's 個性 just beside its name)
+	var name_row := HBoxContainer.new()
+	name_row.add_theme_constant_override("separation", 8)
+	name_row.add_child(_card_name)
+	_card_trait = UiKit.label("", 13, UiKit.USE)
+	_card_trait.name = "Personality"
+	_card_trait.size_flags_vertical = Control.SIZE_SHRINK_END
+	name_row.add_child(_card_trait)
+	words.add_child(name_row)
 	_card_sub = UiKit.label("", 13, UiKit.DIM)
 	words.add_child(_card_sub)
 	head.add_child(words)
@@ -331,14 +339,13 @@ func _show_selected(player: Player, items: Array, placed: Array) -> void:
 	match item.kind:
 		"fish":
 			var fish: Dictionary = GameState.carried_fish[item.index]
-			match FishLife.state(fish):
-				"rotten":
-					_detail.text = "%s型・腐敗了：拿去獻祭會賭一把" % item.grade
-				"dead":
-					_detail.text = "%s型・已死亡，只能賣給商人・價值 %.0f" % [item.grade, FishLife.worth(fish)]
-				_:
-					_detail.text = "%s型・價值 %.0f" % [item.grade, fish.get("value", 0.0)]
-			_vitals.show_fish(fish)
+			# (the card's body is FishVitals: 稀有度, 大小＋價值, 活性, the bar, the affixes)
+			_detail.text = ""
+			if FishLife.state(fish) == "rotten":
+				_detail.text = "腐敗了：拿去獻祭會賭一把"
+			elif FishLife.state(fish) == "dead":
+				_detail.text = "已死亡，只能賣給商人"
+			_vitals.show_fish(fish, false, "field")
 			if GameState.lure_index() == item.index:
 				_detail.text += "　・已設為誘惑用的魚"
 				_actions.add_child(_action("取消誘餌", func():
@@ -432,6 +439,7 @@ func _show_selected(player: Player, items: Array, placed: Array) -> void:
 			_rebuild(), busy))
 	if busy and item.kind in ["bait", "lure", "live"]:
 		_detail.text += "（收線後才能換）"
+	_detail.visible = _detail.text != ""
 	# (user report: a thing low in the bag had its card run off the bottom,
 	# its buttons out of reach - placed once it's filled, and again once
 	# it's laid out)
@@ -459,6 +467,12 @@ func _card_head(item: Dictionary) -> void:
 	var kinds := {"fish": "魚", "heart": "心臟", "bait": "餌料", "lure": "路亞", "battery": "電池", "gear": "裝備",
 		"use": "道具", "live": "活餌"}
 	_card_sub.text = "%s　%s" % [UiKit.rarity_name(rarity), kinds.get(item.kind, "")]
+	_card_trait.text = ""
+	if item.kind == "fish":
+		# (the fish's rarity is the body's line; its 個性 is by its name)
+		_card_sub.text = ""
+		_card_trait.text = FishData.trait_name(str(GameState.carried_fish[item.index].get("tank_trait", "")))
+	_card_sub.visible = _card_sub.text != ""
 
 
 ## The card beside `at` (a thing's rect on screen): to its right if it

@@ -266,7 +266,6 @@ func _card_for(i: int, src := "tank") -> void:
 	if _card != null or i < 0 or i >= list.size():
 		return
 	var f: Dictionary = list[i]
-	var rarity := UiKit.fish_rarity(f)
 	var shade := ColorRect.new()
 	shade.color = Color(0, 0, 0, 0.5)
 	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -294,26 +293,16 @@ func _card_for(i: int, src := "tank") -> void:
 		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		col.add_child(pic)
-	col.add_child(UiKit.label(f.get("name", "魚"), 22, UiKit.rarity_color(rarity), true))
-	col.add_child(UiKit.label(UiKit.rarity_name(rarity) + " 魚　" + {"tank": "在魚缸", "pack": "在包包", "stash": "在倉庫", "box": "在魚桶"}[src], 14, UiKit.rarity_color(rarity)))
+	col.add_child(FishVitals.name_row(f, 22))
+	col.add_child(UiKit.label({"tank": "在魚缸", "pack": "在包包", "stash": "在倉庫", "box": "在魚桶"}[src], 14, UiKit.DIM))
 	col.add_child(UiKit.divider(CARD_WIDTH - 40.0))
-	col.add_child(UiKit.label("長度・重量：" + FishData.size_text(f), 15))
-	var t: String = f.get("tank_trait", "")
-	var tl := UiKit.label("特性：%s－%s" % [FishData.trait_name(t), FishData.TANK_TRAITS.get(t, ["", ""])[1]], 15, UiKit.USE)
-	tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	tl.custom_minimum_size.x = CARD_WIDTH - 30.0
-	col.add_child(tl)
-	# (its life: kept as it is in the tank only - in the bag, the warehouse and the bucket it runs down)
+	# (the card's body: size and worth, its life, the bar, the affixes, the price - FishVitals)
 	var vitals := FishVitals.new()
 	vitals.custom_minimum_size.x = CARD_WIDTH - 30.0
 	col.add_child(vitals)
-	vitals.show_fish(f, src == "tank")
-	# (the one price, as at the merchant's: FishLife.sale_value)
+	vitals.show_fish(f, src == "tank", "tank" if src == "tank" else "camp")
+	vitals.hide_rarity()
 	var price := FishLife.sale_value(f)
-	var pr := HBoxContainer.new()
-	pr.add_child(UiKit.label("售價：", 15))
-	pr.add_child(UiKit.gold_label(price, 15))
-	col.add_child(pr)
 	# What can be done with it: put elsewhere (bag, warehouse, tank, bucket),
 	# fed (the smith), sold (from the tank).
 	var moves := HFlowContainer.new()

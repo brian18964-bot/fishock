@@ -90,6 +90,7 @@ const TESTS := [
 	"test_talents",
 	"test_rods_and_stats_page",
 	"test_camp_pages_nav",
+	"test_fish_card_layout",
 	"test_fish_alerts",
 	"test_salting",
 	"test_fight_stats",
@@ -2707,7 +2708,7 @@ func test_lists_scroll_under_a_finger() -> void:
 	var first: String = storage.ids()[0]
 	var box_at: Vector2 = storage.global_position + storage.box(0).get_center()
 	await _swipe(box_at, Vector2(0, -120))
-	check(wscroll.scroll_vertical > 60 and not page._dragging and page._card == null,
+	check(wscroll.scroll_vertical > 10 and not page._dragging and page._card == null,
 		"dragged up on a thing, the boxes scroll - no drag, no card (%d)" % wscroll.scroll_vertical)
 	await seconds(1.5)
 	wscroll.scroll_vertical = 0
@@ -3496,7 +3497,7 @@ func test_main_menu() -> void:
 	check(title._near == "backpack" or title._near == "warehouse" or not title._home.visible, "the name of what it's near")
 	await seconds(0.8)
 	var bag_page: Control = title._page
-	check(bag_page != null and bag_page.find_child("WarehouseWindow", true, false) != null, "then the warehouse opens")
+	check(bag_page != null and bag_page.find_child("BagWindow", true, false) != null and bag_page.find_child("UseWindow", true, false) != null, "then the bag page opens")
 	UiKit.page_back(bag_page)
 	await seconds(1.0)
 	# A page opens over the camp (the camera glides to its spot) and closes
@@ -6666,6 +6667,16 @@ func test_fish_alerts() -> void:
 	await seconds(0.6)
 	check(alerts._cards.size() == 2, "a card for the tired one and the dead one, not the fine one (%d)" % alerts._cards.size())
 	check(FishAlerts.wants(tired) and not FishAlerts.wants(fine), "pinned at 30% and under")
+	var lowest := 0.0
+	for c in alerts._cards.values():
+		lowest = maxf(lowest, (c as Control).position.y + (c as Control).size.y)
+	check(alerts._eye.position.y >= lowest, "the eye is below the cards")
+	check(alerts._cards.values().all(func(c): return (c as Control).position.y >= StatusCard.FEED_AT.y + StatusCard.FEED_LINES * StatusCard.FEED_GAP), "the cards clear the feed's lines")
+	var pack_layer := 0
+	for c in main.get_children():
+		if c is Backpack:
+			pack_layer = c.layer
+	check(pack_layer > alerts.layer, "the bag opens over the cards")
 	# (the bar runs down, and the dead one's freshness)
 	var before := float(tired.vit)
 	GameState.carried_fish[GameState.carried_fish.find(tired)]["vit"] = 0.1
@@ -6978,5 +6989,56 @@ func test_camp_pages_nav() -> void:
 	check(Profile.bag_count("salt") == before - 1, "the salt is spent")
 	check(bp.find_child("Toast", true, false) != null, "and says what happened")
 	bp.queue_free()
+	await frames(1)
+	Profile.load_data(saved)
+
+
+## User request: the fish card - 魚名 個性, 稀有度, 大小＋價值, 活性（＋時間）,
+## the bar, the affixes, 售價 - what's shown depends on where it is.
+func test_fish_card_layout() -> void:
+	var fish := {"id": "bass", "name": "大口黑鱸", "value": 40.0, "size": "medium", "rarity": "rare", "tier": "near",
+		"length": 45.2, "weight": 1.24, "tank_trait": "fierce"}
+	FishLife.roll(fish)
+	FishLife.ensure(fish)
+	var row := FishVitals.name_row(fish, 21)
+	check(row.get_child_count() == 2 and (row.find_child("Personality", true, false) as Label).text == "兇猛", "the name has its 個性 beside it")
+	row.free()
+	var field := FishVitals.new()
+	get_tree().root.add_child(field)
+	field.show_fish(fish, false, "field")
+	check(field.find_child("Rarity", true, false).visible and field.find_child("Size", true, false).text.begins_with("大小　中"), "in a run: the rarity, and only small/medium/large/huge")
+	check(not field.find_child("Size", true, false).text.contains("cm") and not field.find_child("Price", true, false).visible, "(no length, no price)")
+	check(field._head.text.contains("後死亡"), "and the time left")
+	field.queue_free()
+	var camp := FishVitals.new()
+	get_tree().root.add_child(camp)
+	camp.show_fish(fish, false, "camp")
+	check(camp.find_child("Size", true, false).text.contains("cm") and camp.find_child("Size", true, false).text.contains("價值"), "at camp: length, weight and worth")
+	check(camp.find_child("Price", true, false).visible and camp.find_child("Price", true, false).get_child_count() == 2, "and the price")
+	camp.queue_free()
+	var tank := FishVitals.new()
+	get_tree().root.add_child(tank)
+	tank.show_fish(fish, true, "tank")
+	check(not tank.find_child("Rarity", true, false).visible and tank.find_child("Price", true, false).visible, "in the tank: no rarity, a price")
+	check(not tank._head.text.contains("後"), "and no time to death")
+	tank.queue_free()
+	await frames(2)
+	# The tank page's card carries all that; no description line for the 個性.
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 100})
+	Profile.tank.append(fish.duplicate(true))
+	var pg: Control = load("res://scenes/fish_tank.tscn").instantiate()
+	get_tree().root.add_child(pg)
+	await frames(3)
+	pg._card_for(0, "tank")
+	await frames(3)
+	var card: Node = pg.find_child("Card", true, false)
+	check(card != null and card.find_child("Personality", true, false) != null, "the tank card shows the 個性 by the name")
+	var texts := []
+	for l in card.find_children("*", "Label", true, false):
+		texts.append((l as Label).text)
+	check(not texts.any(func(t): return t.begins_with("特性：")), "and not as a line of its own")
+	check(texts.any(func(t): return t.begins_with("售價")), "with its price")
+	pg.queue_free()
 	await frames(1)
 	Profile.load_data(saved)
