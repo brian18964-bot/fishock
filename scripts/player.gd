@@ -3267,7 +3267,13 @@ func _on_fight_event(kind: String) -> void:
 		"snag_out":
 			GameState.push_message("把魚從水草堆拉出來了")
 		"dive_saved":
-			GameState.push_message("把魚從石縫邊拉回來了")
+			GameState.push_message("把魚從石縫邊拉回來了！現在敢收線，就狠狠扣牠的血（張力會很高）")
+		"dive_miss":
+			GameState.push_message("魚鑽進石縫，線被扯得死緊！")
+		"snag_fray":
+			GameState.push_message("線被水草割到了！再往反方向用力拉，把魚拉出來")
+		"answered":
+			pass
 		"enrage":
 			GameState.push_message("魚暴走了！先放線撐住！")
 		"rally":

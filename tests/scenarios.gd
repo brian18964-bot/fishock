@@ -6828,16 +6828,14 @@ func _bot_fight(diff: String, stats: Dictionary, seed_n: int, ease := 0.55, flic
 	var hits := 0
 	while f.result == "" and t < 240.0:
 		var counter := Vector2.ZERO
-		if f.swipe_left > 0.0:
+		if f.prompt_active():
+			# (a way asked: pushed the whole way, flick_after s after it's asked)
 			flick += dt
 			if flick > flick_after:
-				counter = -f.run_side
+				counter = f.prompt_dir()
 		else:
 			flick = 0.0
-			# (answering the pull of a dash, a dive, a rally: the other way, at once)
-			if f.pull_dir != Vector2.ZERO:
-				counter = -f.pull_dir
-		var reel := 1.0 if (f.tension < ease and f.run_side == Vector2.ZERO and not f.mood() == "jump") else 0.0
+		var reel := 1.0 if (f.tension < ease and f.cur_move == "" and not f.mood() == "jump") else 0.0
 		if field:
 			f.strain = f.stat_strain()
 			# (pulled out of the weed at once: reeling till the line's nearly tight)
@@ -7318,7 +7316,7 @@ func test_fight_field() -> void:
 	d._jump_cooldown = 99.0
 	d.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
 	check(d.depth <= d.bottom_depth() + 0.001, "a fish near the bank can't be deeper than the water (%.1f m)" % d.depth)
-	# The snag: down in it, the line frays; out of it, it mends; frayed through, it snaps.
+	# The snag: the first way asked, then - missed - the line frays; out of it, it mends; frayed through, it snaps.
 	var g := FishFight.new("normal", "", tier, 1.0)
 	g.field = true
 	g.line_max = 40.0
@@ -7333,18 +7331,18 @@ func test_fight_field() -> void:
 	g.home = 12.0
 	g.lively = false
 	var events := []
-	for i in 40:
+	for i in 80:
 		g.depth = 3.0
 		g.distance = 12.0
 		events.append_array(g.update(0.05, 0.0, Vector2.ZERO, Vector2.UP))
-	check(events.has("snag_in") and g.fray > 0.3 and g.mood() == "snag", "down in the snag the line frays (%.2f)" % g.fray)
+	check(events.has("snag_in") and g.fray > 0.2 and g.mood() == "snag", "down in the snag (and the way missed) the line frays (%.2f)" % g.fray)
 	check(g.drain_hits().any(func(h): return h.type == "hurt" and h.src == "割線"), "and says so")
 	g.distance = 25.0
-	for i in 20:
+	for i in 40:
 		g.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
 	check(g.fray < 0.35, "out of it the line mends (%.2f)" % g.fray)
 	var snapped := false
-	for i in 200:
+	for i in 400:
 		g.distance = 12.0
 		g.depth = 3.0
 		g.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
@@ -7547,73 +7545,142 @@ func test_pull_and_answer() -> void:
 	var in_dive: bool = kinds.dive.all(func(h): return h >= 5.0 and h <= 7.0)
 	check(in_dash and in_side and in_dive, "dash 10-2, sideways 8-10 / 2-4, the dive 5-7 (%d / %d / %d seen)" % [kinds.dash.size(), kinds.side.size(), kinds.dive.size()])
 	check(kinds.side.any(func(h): return h < 6.0) and kinds.side.any(func(h): return h > 6.0), "both ways sideways")
-	# Answering: a dash held, not lost to the line.
-	var res := {}
-	for ans in [false, true]:
-		for reel in [0.0, 0.7]:
-			var f := FishFight.new("advanced", "", tier, 1.0)
-			f.line_max = 40.0
-			f.distance = 12.0
-			f._jump_cooldown = 99.0
-			f._run_timer = 99.0
-			f.opening_left = 0.0
-			f.lively = false
-			f._run_dir = Vector2.UP
-			f.run_left = 6.0
-			f.run_side = Vector2.ZERO
-			f.tension = 0.4
-			var before := f.distance
-			var counter := Vector2.DOWN if ans else Vector2.ZERO
-			for i in 40:
-				f.update(0.05, reel, counter, Vector2.UP)
-			res["%s %s" % [ans, reel]] = [f.tension, f.distance - before, f.progress]
-			check(f.answering == ans, "answering is read from the drag (%s)" % ans)
-	check(res["true 0.0"][0] < res["false 0.0"][0], "a dash answered builds less tension (%s vs %s)" % [res["true 0.0"][0], res["false 0.0"][0]])
-	check(res["true 0.7"][1] < res["false 0.7"][1] and res["true 0.7"][2] > res["false 0.7"][2], "and takes less line, the reel goes on (%s vs %s)" % [res["true 0.7"], res["false 0.7"]])
-	# 45 deg is the edge: a drag off the way back doesn't count.
+	# A dash: reeled into, the tension climbs MOVE_REEL_MULT times as fast; let alone, safe.
+	var rise := {}
+	for reel in [0.0, 0.7]:
+		var f := FishFight.new("advanced", "", tier, 1.0)
+		f.line_max = 40.0
+		f.distance = 12.0
+		f._jump_cooldown = 99.0
+		f._run_timer = 99.0
+		f.opening_left = 0.0
+		f.lively = false
+		f._run_dir = Vector2.UP
+		f.run_left = 6.0
+		f.run_side = Vector2.ZERO
+		f.tension = 0.3
+		for i in 24:
+			f.update(0.05, reel, Vector2.ZERO, Vector2.UP)
+		rise[reel] = f.tension
+	check(rise[0.7] > rise[0.0] + 0.15, "a dash reeled into builds the tension fast (%.2f vs %.2f)" % [rise[0.7], rise[0.0]])
+	# Pushed the whole way against it (fresh): broken - a crit - and the run's over; 45 deg is the edge.
 	var e := FishFight.new("advanced", "", tier, 1.0)
+	e.max_hp = 1000.0
+	e._jump_cooldown = 99.0
+	e._run_timer = 99.0
+	e.opening_left = 0.0
+	e.lively = false
 	e._run_dir = Vector2.UP
-	e.run_left = 2.0
+	e.run_left = 4.0
+	e.run_side = Vector2.ZERO
+	e.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
+	check(e.cur_move == "dash" and e.prompt_active() and e.prompt_dir().dot(Vector2.DOWN) > 0.99, "a dash asks the way back")
 	e.update(0.05, 0.0, Vector2.DOWN.rotated(deg_to_rad(60.0)), Vector2.UP)
-	check(not e.answering, "60 deg off the way back isn't an answer")
-	e.update(0.05, 0.0, Vector2.DOWN.rotated(deg_to_rad(30.0)), Vector2.UP)
-	check(e.answering, "30 deg off is")
-	# The dive hauled back; the weed frays slower.
-	var hauled := {}
-	for ans in [false, true]:
+	check(e.cur_move == "dash" and not e.move_done, "60 deg off the way back isn't an answer")
+	e.update(0.05, 0.0, Vector2.DOWN.rotated(deg_to_rad(30.0)) * 0.5, Vector2.UP)
+	check(not e.move_done, "half the way isn't either")
+	var ev := e.update(0.05, 0.0, Vector2.DOWN.rotated(deg_to_rad(30.0)), Vector2.UP)
+	check(e.move_done and ev.has("swipe_hit") and e.run_left == 0.0, "30 deg off, the whole way, breaks the dash")
+	check(e.drain_hits().any(func(h): return h.type == "dmg" and h.style in ["swipe", "perfect"]), "a dash broken is a crit")
+	# Not answered: a jerk of tension at the window's end.
+	var m := FishFight.new("advanced", "", tier, 1.0)
+	m._jump_cooldown = 99.0
+	m._run_timer = 99.0
+	m.opening_left = 0.0
+	m.lively = false
+	m._run_dir = Vector2.UP
+	m.run_left = 6.0
+	m.tension = 0.2
+	var before := 0.0
+	for i in 60:
+		if m.answer_left > 0.0 and m.answer_left < 0.06:
+			before = m.tension
+		m.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
+	check(m.move_done and m.tension >= before + FishFight.MISS_JERK - 0.05, "not answered, the tension jerks up %.2f (%.2f -> %.2f)" % [FishFight.MISS_JERK, before, m.tension])
+	# The dive: a miss is +0.30 and over; broken, the fish can be hauled - bold reeling takes much more, at a high tension.
+	var dm := FishFight.new("normal", "cover", tier, 1.0)
+	dm._jump_cooldown = 99.0
+	dm._run_timer = 99.0
+	dm.opening_left = 0.0
+	dm.lively = false
+	dm.dive_active = true
+	dm._dive_dir = Vector2.DOWN
+	dm.tension = 0.2
+	var missed := false
+	var jerked := 0.0
+	for i in 60:
+		var was := dm.tension
+		var got := dm.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
+		if got.has("dive_miss"):
+			missed = true
+			jerked = dm.tension - was
+			break
+	check(missed and not dm.dive_active and jerked >= FishFight.DIVE_MISS_JERK - 0.05, "a dive missed: the line jerks tight (+%.2f) and it's over (%.2f)" % [FishFight.DIVE_MISS_JERK, jerked])
+	var hauls := {}
+	for won in [false, true]:
 		var d := FishFight.new("normal", "cover", tier, 1.0)
 		d._jump_cooldown = 99.0
 		d._run_timer = 99.0
 		d.opening_left = 0.0
 		d.lively = false
+		d.max_hp = 1000.0
 		d.dive_active = true
-		d.dive = 0.3
 		d._dive_dir = Vector2.DOWN
-		for i in 20:
-			d.update(0.05, 0.0, Vector2.UP if ans else Vector2.ZERO, Vector2.UP)
-		hauled[ans] = d.dive
-	check(hauled[true] < hauled[false], "a dive answered goes down slower (%.2f vs %.2f)" % [hauled[true], hauled[false]])
-	var frayed := {}
-	for ans in [false, true]:
-		var g := FishFight.new("normal", "", tier, 1.0)
-		g.field = true
-		g.line_max = 40.0
-		g._run_timer = 99.0
-		g._jump_cooldown = 99.0
-		g.update(0.01, 0.0, Vector2.ZERO, Vector2.UP)
-		g.snag_on = true
-		g.snag_from = 10.0
-		g.snag_to = 15.0
-		g.home = 12.0
-		g.lively = false
-		for i in 20:
-			g.depth = 3.0
-			g.distance = 12.0
-			g._snag_dir = Vector2.DOWN
-			g.update(0.05, 0.0, Vector2.UP if ans else Vector2.ZERO, Vector2.UP)
-		frayed[ans] = g.fray
-	check(frayed[true] < frayed[false] * 0.6, "answered, the weed frays slower (%.2f vs %.2f)" % [frayed[true], frayed[false]])
-	# Berserk keeps its one way; a rally pulls the line tight till answered.
+		d.tension = 0.3
+		d.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
+		if won:
+			d.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
+			d.update(0.05, 0.0, Vector2.UP, Vector2.UP)
+		var p0 := d.progress
+		var t0 := d.tension
+		var tmax := 0.0
+		for i in 40:
+			d.update(0.05, 0.7, Vector2.ZERO, Vector2.UP)
+			tmax = maxf(tmax, d.tension)
+		hauls[won] = [d.progress - p0, tmax, d.haul_left]
+	check(hauls[true][0] > hauls[false][0] * 1.5 and hauls[true][1] >= hauls[false][1] - 0.01, "a dive broken: bold reeling takes much more off (%s vs %s)" % [hauls[true], hauls[false]])
+	# The weed: the first way asked doesn't fray; missed, it does and a fresh way is asked; broken then, a crit.
+	var g := FishFight.new("normal", "", tier, 1.0)
+	g.field = true
+	g.line_max = 40.0
+	g.max_hp = 1000.0
+	g._run_timer = 99.0
+	g._jump_cooldown = 99.0
+	g.update(0.01, 0.0, Vector2.ZERO, Vector2.UP)
+	g.snag_on = true
+	g.snag_from = 10.0
+	g.snag_to = 15.0
+	g.home = 12.0
+	g.lively = false
+	var gev := []
+	for i in 30:
+		g.depth = 3.0
+		g.distance = 12.0
+		gev.append_array(g.update(0.05, 0.0, Vector2.ZERO, Vector2.UP))
+	check(gev.has("snag_in") and g.snag_stage == 1 and g.fray == 0.0 and g.prompt_active(), "into the weed: a way asked, no fraying yet")
+	for i in 40:
+		g.depth = 3.0
+		g.distance = 12.0
+		gev.append_array(g.update(0.05, 0.0, Vector2.ZERO, Vector2.UP))
+	check(gev.has("snag_fray") and g.snag_stage == 2 and g.fray > 0.0, "missed, the line frays (%.2f)" % g.fray)
+	check(g.prompt_active() or g.answer_left > 0.0, "and a fresh way is asked")
+	var first_dir := g.prompt_dir()
+	for i in 60:
+		g.depth = 3.0
+		g.distance = 12.0
+		g.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
+		if g.prompt_active() and g.prompt_dir().dot(first_dir) < 0.99:
+			break
+	g.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
+	g.depth = 3.0
+	g.distance = 12.0
+	var won_ev := []
+	for i in 3:
+		g.update(0.05, 0.0, g.prompt_dir() * 0.3, Vector2.UP)
+	var before_p := g.progress
+	won_ev = g.update(0.05, 0.0, g.prompt_dir(), Vector2.UP)
+	check(g.snag_stage == 0 and won_ev.has("swipe_hit") and g.progress > before_p, "the second way pushed: out of the weed, bravely - a crit")
+	# Berserk keeps its one way; a rally pulls and is answered or jerks.
 	var r := FishFight.new("master", "", tier, 1.0)
 	r._jump_cooldown = 99.0
 	r._run_timer = 99.0
@@ -7637,10 +7704,14 @@ func test_pull_and_answer() -> void:
 		y.rally_left = 5.0
 		y._rally_dir = Vector2.UP
 		y.tension = 0.3
-		for i in 30:
-			y.update(0.05, 0.0, Vector2.DOWN if ans else Vector2.ZERO, Vector2.UP)
-		tight[ans] = y.tension
-	check(tight[false] > tight[true] + 0.1, "a rally tightens the line unless it's answered (%.2f vs %.2f)" % [tight[false], tight[true]])
+		y.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
+		y.update(0.05, 0.0, Vector2.DOWN * 0.3, Vector2.UP)
+		var peak := 0.0
+		for i in 60:
+			y.update(0.05, 0.0, Vector2.DOWN if ans and i < 10 else Vector2.ZERO, Vector2.UP)
+			peak = maxf(peak, y.tension)
+		tight[ans] = peak
+	check(tight[false] > tight[true] + 0.05 and tight[true] < 0.4, "a rally answered is over, missed it jerks the line (%.2f vs %.2f)" % [tight[false], tight[true]])
 
 
 ## User request (the moves a fight has): a plain small fish makes none; the harder, the
@@ -7749,20 +7820,6 @@ func test_slide_amounts() -> void:
 			if f.update(0.05, 0.0, Vector2.LEFT * length, Vector2.UP).has("swipe_hit"):
 				hit = true
 		check(hit == (length >= 1.0), "a flick slid %.0f%% of the way %s" % [length * 100.0, "hits" if hit else "doesn't"])
-	var hauled := {}
-	for length in [0.0, 0.4, 1.0]:
-		var d := FishFight.new("normal", "cover", tier, 1.0)
-		d._jump_cooldown = 99.0
-		d._run_timer = 99.0
-		d.opening_left = 0.0
-		d.lively = false
-		d.dive_active = true
-		d.dive = 0.3
-		d._dive_dir = Vector2.DOWN
-		for i in 30:
-			d.update(0.05, 0.0, Vector2.UP * length, Vector2.UP)
-		hauled[length] = d.dive
-	check(hauled[1.0] < hauled[0.4] and hauled[0.4] < hauled[0.0], "the more it's slid, the more the dive is held (%s)" % [hauled])
 	# One rage, one way; one rally, one way.
 	var r := FishFight.new("master", "", tier, 1.0)
 	r._jump_cooldown = 99.0

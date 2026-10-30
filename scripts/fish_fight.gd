@@ -141,7 +141,7 @@ const ENRAGE_INTERVAL := 0.8
 const DIVE_INTERVAL := Vector2(4.0, 7.0)
 const DIVE_SPEED := 0.3
 const DIVE_HAUL := 0.6
-const DIVE_TENSION := 1.5
+const DIVE_TENSION := 2.2
 const SWIPE_WINDOW := 2.0
 const SWIPE_DAMAGE := 0.12
 ## User request (stats): what the four stats do in a fight (Player sets them at the
@@ -172,6 +172,22 @@ const MOVE_SIZE_MULT := {"small": 0.6, "medium": 1.0, "large": 1.3, "huge": 1.7}
 const MOVE_TRAIT_MULT := {"calm": 0.6, "normal": 1.0, "wild": 1.35}
 const MOVE_FIRST := {"novice": 10.0, "normal": 8.0, "advanced": 6.0, "master": 5.0}
 const MOVE_GAP := {"novice": Vector2(12.0, 18.0), "normal": Vector2(9.0, 14.0), "advanced": Vector2(7.0, 11.0), "master": Vector2(5.0, 8.0)}
+## User request (every move answered by one short push): a dash, a dash for the rocks, the
+## weed, a rally, berserk - like a sideways dash - give a window (ANSWER_WINDOW s) to push the
+## rod the other way the whole way (`counter` as long as SWIPE_FULL, fresh, pointing against
+## the pull): the move is broken. While a move is on, reeling raises the tension
+## MOVE_REEL_MULT times as fast. Rewards: a dash broken is a crit, like the flick; a dive
+## broken lets you haul (HAUL_TIME s: bold reeling takes much more off, at a high tension);
+## the weed broken the first time just frees the fish, but missed it starts to fray the
+## line, and a fresh way is asked - broken then, a crit. Not answered: a jerk of tension
+## (MISS_JERK; the dive DIVE_MISS_JERK) and the move goes on to its end (the weed: the
+## fray, and another way asked every window).
+const ANSWER_WINDOW := 2.0
+const MOVE_REEL_MULT := 2.2
+const MISS_JERK := 0.20
+const DIVE_MISS_JERK := 0.30
+const HAUL_TIME := 2.5
+const HAUL_PROGRESS := 3.0
 ## The pull and the answer (see above).
 const RUN_ARC := 1.05
 const SIDE_ARC := 0.52
@@ -222,7 +238,7 @@ const PARRY_AFTER := 0.5
 ## can answer.
 const HURT_SRC := {"run": "衝刺", "side_run": "橫衝", "jump": "躍出", "dive": "鑽石縫", "surge": "猛拉", "rally": "反撲"}
 const PARRY_SRC := ["run", "side_run", "jump", "dive", "rally"]
-const WARN_OF := {"snag_in": "水草區", "run": "衝刺", "side_run": "橫衝", "jump": "躍出", "dive": "鑽石縫", "enrage": "狂暴", "rally": "反撲"}
+const WARN_OF := {"snag_in": "水草區", "dive_miss": "鑽石縫", "snag_fray": "割線", "run": "衝刺", "side_run": "橫衝", "jump": "躍出", "dive": "鑽石縫", "enrage": "狂暴", "rally": "反撲"}
 var stat_might := 0.0
 var stat_react := 0.0
 var stat_resil := 0.0
@@ -444,6 +460,16 @@ var pull_dir := Vector2.ZERO
 var answering := false
 ## How far the answer's been slid (0..1, the counter's length, while it's the right way).
 var answer_k := 0.0
+## The move on ("dash", "rage", "side", "dive", "snag", "rally"; "" none), the time left to
+## answer it, whether it's over (answered or let go), whether a fresh push has been seen
+## since it began, the snag's stage (0 none, 1 the first way asked, 2 fraying) and the
+## haul's time left (a dive broken).
+var cur_move := ""
+var answer_left := 0.0
+var move_done := false
+var _ans_armed := false
+var snag_stage := 0
+var haul_left := 0.0
 ## How long the move on has gone (s), and how far its cost has ramped in (0..1).
 var _move_age := 0.0
 var ramp := 1.0
@@ -518,6 +544,25 @@ func line_way() -> Vector2:
 	return _line_dir
 
 
+## Is a way being asked now (the move on has a window still to answer in)?
+func prompt_active() -> bool:
+	if cur_move == "side":
+		return swipe_left > 0.0 and run_side != Vector2.ZERO
+	return cur_move != "" and not move_done and answer_left > 0.0 and pull_dir != Vector2.ZERO
+
+
+## The way to push the rod (the other way from the pull), ZERO if none is asked.
+func prompt_dir() -> Vector2:
+	return -pull_dir if prompt_active() else Vector2.ZERO
+
+
+## How much of the window is left (0..1).
+func prompt_left() -> float:
+	if cur_move == "side":
+		return clampf(swipe_left / maxf(swipe_window(), 0.01), 0.0, 1.0)
+	return clampf(answer_left / maxf(swipe_window(), 0.01), 0.0, 1.0)
+
+
 ## A way `arc` either side of the line's way turned by `turn` (rad, clockwise).
 func _way(turn: float, arc: float) -> Vector2:
 	return _line_dir.rotated(turn + randf_range(-arc, arc))
@@ -539,6 +584,27 @@ func _refresh_pull(delta: float) -> void:
 			d = _run_dir
 	elif rally_left > 0.0:
 		d = _rally_dir
+	# Which move it is, and a new one's window.
+	var move := ""
+	if d != Vector2.ZERO:
+		if _in_snag:
+			move = "snag"
+		elif dive_active:
+			move = "dive"
+		elif run_left > 0.0 and run_side != Vector2.ZERO:
+			move = "side"
+		elif run_left > 0.0:
+			move = "rage" if enraged else "dash"
+		else:
+			move = "rally"
+	if move != cur_move:
+		cur_move = move
+		move_done = false
+		_ans_armed = false
+		answer_left = swipe_window()
+		_snag_hurt = 0.0
+		if move == "snag":
+			snag_stage = 1
 	# (a move's cost builds up over its first moments: time to read the way)
 	if d == Vector2.ZERO or pull_dir == Vector2.ZERO or d.dot(pull_dir) < 0.7:
 		_move_age = 0.0
@@ -638,8 +704,10 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 	var t_before := tension
 	_refresh_pull(delta)
 	answering = pull_dir != Vector2.ZERO and counter.length() > 0.3 and counter.normalized().dot(-pull_dir) > ANSWER_DOT
-	# (the slide's length is how much of the answer there is)
+	# (how far it's pushed the right way: the arrow's fill)
 	answer_k = clampf(counter.length(), 0.0, 1.0) if answering else 0.0
+	haul_left = maxf(haul_left - delta, 0.0)
+	_resolve_prompt(delta, counter, events)
 	_explicit = 0.0
 	_sweet_frame = false
 	if home < 0.0:
@@ -721,67 +789,45 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 			tension -= tension_fall * delta
 	elif dive_active:
 		out_mult = 0.0
-		# (answered - pulled the other way - it's held: hauled back, less strain)
-		var soften := lerpf(1.0, 0.4, answer_k)
+		# (reeling while it dives: the line takes the whole strain)
 		if held:
-			dive -= DIVE_HAUL * k * delta * (1.0 + 0.5 * answer_k)
-			progress += reel_speed * 0.3 * k * delta
-			tension += tension_rise * strain * pull * DIVE_TENSION * k * soften * ramp * delta
+			progress += reel_speed * 0.1 * k * delta
+			tension += tension_rise * strain * pull * DIVE_TENSION * k * ramp * delta
 		else:
-			dive += DIVE_SPEED * lerpf(1.0, 0.35, answer_k) * delta
 			tension -= tension_fall * delta
-		if dive <= 0.0:
-			dive_active = false
-			dive = 0.0
-			_dive_timer = randf_range(DIVE_INTERVAL.x, DIVE_INTERVAL.y)
-			events.append("dive_saved")
-		elif dive >= 1.0:
-			result = "cover"
+		dive = minf(dive + DIVE_SPEED * delta, 1.0)
 	elif run_left > 0.0:
 		run_left -= delta
 		if run_side == Vector2.ZERO:
-			# Out it goes: the drag slips, the crank brings nothing in.
+			# Out it goes: the drag slips, the crank brings nothing in - and reeled into it, the
+			# line takes MOVE_REEL_MULT times the strain.
 			out_mult = RUN_OUT_MULT
 			reel_in = 0.0
-			if answering:
-				# Pulled the other way: held - little line taken, and the reel goes on.
-				out_mult = lerpf(RUN_OUT_MULT, HELD_RUN_OUT, answer_k)
-				reel_in = k * reel_mult * 0.5 * answer_k
-				if held:
-					progress += reel_speed * 0.4 * k * answer_k * delta
-					tension += tension_rise * strain * lerpf(RUN_TENSION_MULT, 0.6, answer_k) * pull * k * delta
-				else:
-					tension -= tension_fall * 0.5 * answer_k * delta
-			elif held:
+			if held:
 				progress -= RUN_PROGRESS_PENALTY * ramp * delta
-				tension += tension_rise * strain * RUN_TENSION_MULT * pull * maxf(k, 1.0) * ramp * delta
+				tension += tension_rise * strain * MOVE_REEL_MULT * pull * k * ramp * delta
 			else:
 				tension += tension_rise * strain * RUN_SLACK_TENSION * pull * ramp * delta
 		elif swipe_left > 0.0 and _swipe_check(delta, counter, events):
 			pass
-		elif counter.length() > 0.3 and counter.normalized().dot(-run_side) > SIDE_COUNTER_THRESHOLD:
-			# Rod pulled against the run: it's held, and you can keep reeling.
-			lateral = _run_sign * SIDE_RUN_SPEED * maxf(vigor, 0.4) * RUN_HELD_SIDE
-			reel_in *= 0.5
-			if held:
-				progress += reel_speed * 0.5 * k * delta
-				tension += tension_rise * strain * 0.6 * pull * k * delta
-			else:
-				tension -= tension_fall * 0.5 * delta
 		else:
 			lateral = _run_sign * SIDE_RUN_SPEED * maxf(vigor, 0.4)
 			out_mult = SIDE_OUT_MULT
 			reel_in *= 0.5
 			progress -= RUN_PROGRESS_PENALTY * ramp * delta
-			tension += tension_rise * strain * RUN_TENSION_MULT * pull * (maxf(k, 1.0) if held else 0.45) * ramp * delta
+			tension += tension_rise * strain * MOVE_REEL_MULT * pull * (k if held else 0.2) * ramp * delta
 		if run_left <= 0.0:
 			swipe_left = 0.0
 	else:
 		radial = _swim(delta, held)
 		if held:
-			_sweet_frame = in_sweet()
-			progress += reel_speed * reel_mult * k * (SWEET_REEL_MULT if in_sweet() else 1.0) * reel_boost() * delta
-			tension += tension_rise * strain * pull * k * (ENRAGE_REEL_TENSION if enraged else 1.0) * delta
+			var hauling := haul_left > 0.0
+			_sweet_frame = in_sweet() or hauling
+			progress += reel_speed * reel_mult * k * (SWEET_REEL_MULT if in_sweet() else 1.0) * (HAUL_PROGRESS if hauling else 1.0) * reel_boost() * delta
+			tension += tension_rise * strain * pull * k * (ENRAGE_REEL_TENSION if enraged else 1.0) * (MOVE_REEL_MULT if hauling else 1.0) * delta
+			# (the weed, a rally: reeled into, the strain is the move's)
+			if _in_snag or (cur_move == "rally" and not move_done):
+				tension += tension_rise * strain * pull * k * (MOVE_REEL_MULT - 1.0) * ramp * delta
 		else:
 			tension -= tension_fall * delta
 		events.append_array(_schedule(delta, line_dir))
@@ -790,13 +836,6 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 			snap_why = "leap"
 			result = "line_break"
 
-	# (a rally pulls the line tight till it's answered)
-	if rally_left > 0.0 and not spent and opening_left <= 0.0:
-		if answering:
-			tension -= tension_fall * 0.5 * answer_k * delta
-		elif tension < RALLY_TIGHT_TO:
-			# (held tight by the fish itself, up to where the next thing breaks it)
-			tension = minf(tension + (tension_fall + RALLY_TIGHT * strain) * ramp * delta, RALLY_TIGHT_TO)
 	if diff.phases > 1 and not enraged and progress >= ENRAGE_AT:
 		enraged = true
 		run_left = ENRAGE_RUN_TIME
@@ -831,9 +870,96 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 			dive_active = false
 			dive = 0.0
 			burst_left = 0.0
+			cur_move = ""
+			move_done = true
 			events.append("spent")
 	_account(delta, p_before, t_before, events)
 	return events
+
+
+## The window of the move on (see above): a push the whole way against the pull, fresh -
+## the move's broken; the window out, it's let go.
+func _resolve_prompt(delta: float, counter: Vector2, events: Array) -> void:
+	if cur_move == "" or cur_move == "side" or move_done or pull_dir == Vector2.ZERO:
+		return
+	answer_left -= delta
+	var against := counter.length() >= SWIPE_FULL and counter.normalized().dot(-pull_dir) > SWIPE_THRESHOLD
+	if not against:
+		_ans_armed = true
+	elif _ans_armed:
+		_answer_won(events)
+		return
+	if answer_left <= 0.0:
+		_answer_lost(events)
+
+
+## A crit, as the flick's: the stamina it takes (quick, more) shown as a hit.
+func _crit(events: Array) -> void:
+	var window := swipe_window()
+	var quick := (window - answer_left) <= window * PERFECT_SWIPE_SHARE
+	var dmg := minf(swipe_damage() * (PERFECT_SWIPE_MULT if quick else 1.0), 1.0 - progress)
+	progress += dmg
+	_explicit += dmg
+	_push({"type": "dmg", "style": "perfect" if quick else "swipe", "n": roundi(dmg * max_hp)})
+	tension = maxf(tension - 0.1, 0.0)
+	events.append("swipe_hit")
+
+
+func _answer_won(events: Array) -> void:
+	var kind := cur_move
+	move_done = true
+	match kind:
+		"dash":
+			_crit(events)
+			run_left = 0.0
+		"rage":
+			run_left = 0.0
+			tension = maxf(tension - 0.1, 0.0)
+		"dive":
+			dive_active = false
+			dive = 0.0
+			_dive_timer = randf_range(DIVE_INTERVAL.x, DIVE_INTERVAL.y)
+			haul_left = HAUL_TIME
+			tension = maxf(tension - 0.1, 0.0)
+			events.append("dive_saved")
+		"snag":
+			# (out of the weed; the second time, bravely hauled out: a crit)
+			depth = minf(depth, SNAG_TOP * 0.6)
+			if snag_stage >= 2:
+				_crit(events)
+				fray = maxf(fray - 0.3, 0.0)
+			snag_stage = 0
+		"rally":
+			rally_left = 0.0
+			_rally_dir = Vector2.ZERO
+			tension = maxf(tension - 0.1, 0.0)
+	events.append("answered")
+
+
+func _answer_lost(events: Array) -> void:
+	match cur_move:
+		"dash", "rage":
+			move_done = true
+			tension = minf(tension + MISS_JERK, 0.97)
+		"rally":
+			move_done = true
+			tension = minf(tension + MISS_JERK, 0.97)
+			_rally_dir = Vector2.ZERO
+		"dive":
+			move_done = true
+			tension = minf(tension + DIVE_MISS_JERK, 0.97)
+			dive_active = false
+			dive = 0.0
+			_dive_timer = randf_range(DIVE_INTERVAL.x, DIVE_INTERVAL.y)
+			events.append("dive_miss")
+		"snag":
+			# (the line starts to fray, and a fresh way is asked)
+			if snag_stage < 2:
+				events.append("snag_fray")
+			snag_stage = 2
+			_snag_dir = _line_dir.rotated(PI + randf_range(-DIVE_ARC, DIVE_ARC))
+			answer_left = swipe_window()
+			_ans_armed = false
 
 
 ## The damage numbers of this frame (see above): the stamina lost that the reel
@@ -1093,7 +1219,7 @@ func _schedule(delta: float, line_dir: Vector2) -> Array:
 	if _run_timer <= 0.0:
 		var interval: Vector2 = diff.run_interval * (ENRAGE_INTERVAL if enraged else 1.0)
 		_run_timer = randf_range(interval.x, interval.y)
-		run_left = maxf(float(diff.run_time), RUN_MIN_TIME)
+		run_left = maxf(maxf(float(diff.run_time), RUN_MIN_TIME), swipe_window() + 0.2)
 		if randf() < diff.side and line_dir != Vector2.ZERO:
 			_run_sign = 1.0 if randf() < 0.5 else -1.0
 			run_side = line_dir.rotated(_run_sign * (PI * 0.5 + randf_range(-SIDE_ARC, SIDE_ARC)))
@@ -1157,7 +1283,7 @@ func _schedule_planned(delta: float, line_dir: Vector2) -> Array:
 		_:
 			run_side = Vector2.ZERO
 			_run_dir = _way(0.0, RAGE_ARC if enraged else RUN_ARC)
-			run_left = maxf(float(diff.run_time), RUN_MIN_TIME)
+			run_left = maxf(maxf(float(diff.run_time), RUN_MIN_TIME), swipe_window() + 0.2)
 			events.append("run")
 	return events
 
@@ -1293,12 +1419,11 @@ func _snag(delta: float, events: Array) -> void:
 		events.append("snag_out")
 	_in_snag = now
 	if now:
-		# (pulled the other way, it's held: the line frays slower and it's lifted)
-		fray = minf(fray + FRAY_RATE * lerpf(1.0, 0.35, answer_k) * delta, 1.0)
-		if answering:
-			depth = move_toward(depth, 0.5, 0.8 * delta)
+		# (the first way asked it doesn't fray; missed, it does, and a fresh way is asked)
+		if snag_stage >= 2:
+			fray = minf(fray + FRAY_RATE * delta, 1.0)
 		_snag_hurt += delta
-		if _snag_hurt >= SNAG_HURT_EVERY:
+		if snag_stage >= 2 and _snag_hurt >= SNAG_HURT_EVERY:
 			_snag_hurt = 0.0
 			_push({"type": "hurt", "src": "割線", "n": roundi(FRAY_RATE * SNAG_HURT_EVERY * TENSION_HP)})
 		if fray >= 1.0:
@@ -1307,6 +1432,7 @@ func _snag(delta: float, events: Array) -> void:
 	else:
 		fray = maxf(fray - FRAY_MEND * delta, 0.0)
 		_snag_hurt = 0.0
+		snag_stage = 0
 
 
 func in_sweet() -> bool:
