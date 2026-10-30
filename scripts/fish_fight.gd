@@ -90,8 +90,8 @@ extends RefCounted
 ## dash 8-10 or 2-4, a dash for the rocks or into the weed 5-7, berserk any way (a new
 ## one each second), a rally any way (it tightens the line till it's answered). The left
 ## hand answers by dragging the other way (`counter` within ANSWER_DOT of it: 45 deg):
-## the fish is held - a dash takes little line and the reel keeps going, the dive is
-## hauled back, the weed frays slower, the berserk and the rally build less tension.
+## (how far it's slid - `answer_k` - is how much of it there is) the fish is held - a dash
+## takes little line and the reel keeps going, the dive is hauled back, the weed frays slower, the berserk and the rally build less tension.
 ## Not answered, it's as it was.
 ##
 ## User request (the field - distance and depth, `field`): where the fish is on the
@@ -132,7 +132,7 @@ const JUMP_FAR_FROM := 0.35
 const JUMP_COOLDOWN := 2.5
 const JUMPER_JUMP_MULT := 1.8
 const ENRAGE_AT := 0.5
-const ENRAGE_RUN_TIME := 1.4
+const ENRAGE_RUN_TIME := 3.0
 const ENRAGE_PULL := 1.15
 ## User request: berserk, the line tightens fast while you reel - ease off
 ## (let go) and it drops again. On top of ENRAGE_PULL.
@@ -177,9 +177,7 @@ const RUN_ARC := 1.05
 const SIDE_ARC := 0.52
 const DIVE_ARC := 0.52
 const RAGE_ARC := 1.75
-const RAGE_REROLL := Vector2(1.6, 2.2)
 const RALLY_ARC := 2.5
-const RALLY_REROLL := 2.5
 const RALLY_JERK := 0.1
 const RALLY_TIGHT := 0.35
 const RALLY_TIGHT_TO := 0.85
@@ -265,6 +263,8 @@ func swipe_damage() -> float:
 func swipe_window() -> float:
 	return SWIPE_WINDOW * react_mult()
 const SWIPE_THRESHOLD := 0.6
+## A flick counts when the slide's gone (nearly) the whole way (the counter's length, 1 = all).
+const SWIPE_FULL := 0.9
 ## Below this stamina the fish reads as tired.
 const TIRED_AT := 0.25
 const SWEET_CENTER := 0.5
@@ -442,6 +442,8 @@ var age := 0.0
 ## whether the counter asked for answers it now.
 var pull_dir := Vector2.ZERO
 var answering := false
+## How far the answer's been slid (0..1, the counter's length, while it's the right way).
+var answer_k := 0.0
 ## How long the move on has gone (s), and how far its cost has ramped in (0..1).
 var _move_age := 0.0
 var ramp := 1.0
@@ -454,8 +456,6 @@ var _run_dir := Vector2.ZERO
 var _dive_dir := Vector2.ZERO
 var _snag_dir := Vector2.ZERO
 var _rally_dir := Vector2.ZERO
-var _rage_t := 0.0
-var _rally_t := 0.0
 ## The field (see above): on, where the snag is (if there is one), the line's fray.
 var field := false
 var snag_on := false
@@ -536,18 +536,8 @@ func _refresh_pull(delta: float) -> void:
 		if run_side != Vector2.ZERO:
 			d = run_side.normalized()
 		else:
-			if enraged:
-				_rage_t -= delta
-				if _rage_t <= 0.0:
-					_run_dir = _way(0.0, RAGE_ARC)
-					_rage_t = randf_range(RAGE_REROLL.x, RAGE_REROLL.y)
 			d = _run_dir
 	elif rally_left > 0.0:
-		_rally_t -= delta
-		if _rally_t <= 0.0:
-			_rally_dir = _way(0.0, RALLY_ARC)
-			_rally_t = RALLY_REROLL
-			tension = minf(tension + RALLY_JERK, 0.97)
 		d = _rally_dir
 	# (a move's cost builds up over its first moments: time to read the way)
 	if d == Vector2.ZERO or pull_dir == Vector2.ZERO or d.dot(pull_dir) < 0.7:
@@ -648,6 +638,8 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 	var t_before := tension
 	_refresh_pull(delta)
 	answering = pull_dir != Vector2.ZERO and counter.length() > 0.3 and counter.normalized().dot(-pull_dir) > ANSWER_DOT
+	# (the slide's length is how much of the answer there is)
+	answer_k = clampf(counter.length(), 0.0, 1.0) if answering else 0.0
 	_explicit = 0.0
 	_sweet_frame = false
 	if home < 0.0:
@@ -730,13 +722,13 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 	elif dive_active:
 		out_mult = 0.0
 		# (answered - pulled the other way - it's held: hauled back, less strain)
-		var soften := 0.4 if answering else 1.0
+		var soften := lerpf(1.0, 0.4, answer_k)
 		if held:
-			dive -= DIVE_HAUL * k * delta * (1.5 if answering else 1.0)
+			dive -= DIVE_HAUL * k * delta * (1.0 + 0.5 * answer_k)
 			progress += reel_speed * 0.3 * k * delta
 			tension += tension_rise * strain * pull * DIVE_TENSION * k * soften * ramp * delta
 		else:
-			dive += DIVE_SPEED * (0.35 if answering else 1.0) * delta
+			dive += DIVE_SPEED * lerpf(1.0, 0.35, answer_k) * delta
 			tension -= tension_fall * delta
 		if dive <= 0.0:
 			dive_active = false
@@ -753,13 +745,13 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 			reel_in = 0.0
 			if answering:
 				# Pulled the other way: held - little line taken, and the reel goes on.
-				out_mult = HELD_RUN_OUT
-				reel_in = k * reel_mult * 0.5
+				out_mult = lerpf(RUN_OUT_MULT, HELD_RUN_OUT, answer_k)
+				reel_in = k * reel_mult * 0.5 * answer_k
 				if held:
-					progress += reel_speed * 0.4 * k * delta
-					tension += tension_rise * strain * 0.6 * pull * k * delta
+					progress += reel_speed * 0.4 * k * answer_k * delta
+					tension += tension_rise * strain * lerpf(RUN_TENSION_MULT, 0.6, answer_k) * pull * k * delta
 				else:
-					tension -= tension_fall * 0.5 * delta
+					tension -= tension_fall * 0.5 * answer_k * delta
 			elif held:
 				progress -= RUN_PROGRESS_PENALTY * ramp * delta
 				tension += tension_rise * strain * RUN_TENSION_MULT * pull * maxf(k, 1.0) * ramp * delta
@@ -801,7 +793,7 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 	# (a rally pulls the line tight till it's answered)
 	if rally_left > 0.0 and not spent and opening_left <= 0.0:
 		if answering:
-			tension -= tension_fall * 0.5 * delta
+			tension -= tension_fall * 0.5 * answer_k * delta
 		elif tension < RALLY_TIGHT_TO:
 			# (held tight by the fish itself, up to where the next thing breaks it)
 			tension = minf(tension + (tension_fall + RALLY_TIGHT * strain) * ramp * delta, RALLY_TIGHT_TO)
@@ -810,7 +802,6 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 		run_left = ENRAGE_RUN_TIME
 		run_side = Vector2.ZERO
 		_run_dir = _way(0.0, RAGE_ARC)
-		_rage_t = randf_range(RAGE_REROLL.x, RAGE_REROLL.y)
 		swipe_left = 0.0
 		jump_left = 0.0
 		events.append("enrage")
@@ -988,7 +979,7 @@ func _vigor(delta: float, events: Array) -> void:
 		if randf() < float(diff.get("rally", 0.0)):
 			rally_left = RALLY_TIME
 			_rally_dir = _way(0.0, RALLY_ARC)
-			_rally_t = RALLY_REROLL
+			tension = minf(tension + RALLY_JERK, 0.97)
 			progress = maxf(progress - RALLY_STAMINA, 0.0)
 			_burst_gap = 0.0
 			events.append("rally")
@@ -1113,7 +1104,7 @@ func _schedule(delta: float, line_dir: Vector2) -> Array:
 			events.append("side_run")
 		else:
 			run_side = Vector2.ZERO
-			_run_dir = _way(0.0, RUN_ARC)
+			_run_dir = _way(0.0, RAGE_ARC if enraged else RUN_ARC)
 			events.append("run")
 	return events
 
@@ -1165,7 +1156,7 @@ func _schedule_planned(delta: float, line_dir: Vector2) -> Array:
 			events.append("side_run")
 		_:
 			run_side = Vector2.ZERO
-			_run_dir = _way(0.0, RUN_ARC)
+			_run_dir = _way(0.0, RAGE_ARC if enraged else RUN_ARC)
 			run_left = maxf(float(diff.run_time), RUN_MIN_TIME)
 			events.append("run")
 	return events
@@ -1174,7 +1165,7 @@ func _schedule_planned(delta: float, line_dir: Vector2) -> Array:
 ## During a sideways dash: has the stick been flicked against it? True if
 ## this frame ended the dash (a hit).
 func _swipe_check(delta: float, counter: Vector2, events: Array) -> bool:
-	var against := counter.length() > 0.3 and counter.normalized().dot(-run_side) > SWIPE_THRESHOLD
+	var against := counter.length() >= SWIPE_FULL and counter.normalized().dot(-run_side) > SWIPE_THRESHOLD
 	if not against:
 		_swipe_armed = true
 	elif _swipe_armed:
@@ -1303,7 +1294,7 @@ func _snag(delta: float, events: Array) -> void:
 	_in_snag = now
 	if now:
 		# (pulled the other way, it's held: the line frays slower and it's lifted)
-		fray = minf(fray + FRAY_RATE * (0.35 if answering else 1.0) * delta, 1.0)
+		fray = minf(fray + FRAY_RATE * lerpf(1.0, 0.35, answer_k) * delta, 1.0)
 		if answering:
 			depth = move_toward(depth, 0.5, 0.8 * delta)
 		_snag_hurt += delta

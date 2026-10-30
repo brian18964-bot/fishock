@@ -75,7 +75,9 @@ static var pad_active := false
 static var pad_frame := Vector2.UP
 
 const MOVE_SIZE := Vector2(240, 132)
-const DRAG_FULL := 46.0
+## How far a slide goes (px in the area) to be the whole way: the arrow's length.
+const DRAG_FULL := 80.0
+const ARROW_LEN := 78.0
 const ROD_LEN := 78.0
 
 var _area: Control
@@ -83,6 +85,11 @@ var _tex: TextureRect
 var _over: Control
 var _sv: SubViewport
 var _cam: Camera3D
+## Frames still to draw to warm the 3D picture up (shaders, buffers) as the fight starts,
+## so the first move doesn't stall the game; a stab just made (s left).
+var _warm_frames := 0
+var _warmed := false
+var _stab_t := 0.0
 var _move := ""
 var _move_t := 0.0
 var _drag_id := -2
@@ -186,17 +193,34 @@ func _build_area() -> void:
 	_area.add_child(_over)
 
 
-## The 3D picture: a SubViewport on the game's own world (not in a headless run).
+## The 3D picture: a SubViewport on the game's own world (not in a headless run), made
+## cheap - small, no shadow atlas, no AA, a plain environment (no glow, no occlusion), a
+## short far plane.
 func _ensure_view() -> void:
 	if _sv != null or DisplayServer.get_name() == "headless":
 		return
 	_sv = SubViewport.new()
-	_sv.size = Vector2i(MOVE_SIZE * 1.5)
+	_sv.size = Vector2i(MOVE_SIZE * 1.25)
 	_sv.world_3d = get_viewport().world_3d
 	_sv.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	_sv.positional_shadow_atlas_size = 0
+	_sv.msaa_3d = Viewport.MSAA_DISABLED
+	_sv.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
+	_sv.use_taa = false
+	_sv.gui_disable_input = true
+	_sv.audio_listener_enable_3d = false
 	add_child(_sv)
 	_cam = Camera3D.new()
-	_cam.fov = 58.0
+	_cam.fov = 70.0
+	_cam.near = 0.05
+	_cam.far = 40.0
+	var env := Environment.new()
+	env.background_mode = Environment.BG_COLOR
+	env.background_color = Color(0.02, 0.03, 0.05)
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.32, 0.36, 0.45)
+	env.ambient_light_energy = 0.9
+	_cam.environment = env
 	_sv.add_child(_cam)
 	_tex.texture = _sv.get_texture()
 
@@ -208,32 +232,45 @@ func _update_area(player: Player, delta: float) -> void:
 	if fight != null:
 		key = move_key(fight)
 		pad_frame = fight.line_way()
-	elif player != null and player.state == Player.State.BITE and player.fishing_mode == Player.FishingMode.LURE:
-		key = "bite"
-		var line := (player.cast_target - player.global_position).normalized()
-		pad_frame = line if line != Vector2.ZERO else Vector2.UP
+		if not _warmed:
+			# (the fight's just begun: build the picture and draw it a few times now)
+			_warmed = true
+			_ensure_view()
+			_warm_frames = 4
+	else:
+		_warmed = false
+		if player != null and player.state == Player.State.BITE and player.fishing_mode == Player.FishingMode.LURE:
+			key = "bite"
+			var line := (player.cast_target - player.global_position).normalized()
+			pad_frame = line if line != Vector2.ZERO else Vector2.UP
+			if _sv == null:
+				_ensure_view()
+				_warm_frames = 3
 	if key != _move:
 		_move = key
 		_move_t = 0.0
 	_move_t += delta
+	_stab_t = maxf(_stab_t - delta, 0.0)
 	var show := _move != ""
 	_area.visible = show
 	pad_active = show
+	var drawing := show or _warm_frames > 0
 	if _sv != null:
-		_sv.render_target_update_mode = SubViewport.UPDATE_ALWAYS if show else SubViewport.UPDATE_DISABLED
+		_sv.render_target_update_mode = SubViewport.UPDATE_ALWAYS if drawing else SubViewport.UPDATE_DISABLED
+		if _warm_frames > 0:
+			_warm_frames -= 1
 	if not show:
 		pad_vec = Vector2.ZERO
 		_drag_id = -2
-		return
-	_ensure_view()
 	var rv := RunView3D.active
-	if _cam != null and rv != null and is_instance_valid(rv) and rv.built:
+	if _cam != null and drawing and rv != null and is_instance_valid(rv) and rv.built:
 		# (the picture trembles with the pull that's not answered)
 		var shake := 0.0
 		if fight != null and fight.pull_dir != Vector2.ZERO and not fight.answering:
 			shake = (0.4 + fight.tension) * fight.ramp
 		_cam.global_transform = rv.fight_cam_pose(shake)
-	_over.queue_redraw()
+	if show:
+		_over.queue_redraw()
 
 
 ## A drag in the area is the way (see pad_vec): a mouse button or a finger.
@@ -392,6 +429,8 @@ func _hurt_stack() -> float:
 ## What a hit feels like: an edge flash and, on a touchscreen, a buzz - a crit landed
 ## (gold) or a hard one taken (red).
 func _feel(hit: Dictionary) -> void:
+	if hit.type == "dmg" and hit.style in ["swipe", "perfect"]:
+		_stab_t = 0.6
 	var buzz := 0
 	if hit.type == "dmg" and hit.style in ["swipe", "perfect", "strike", "wear"]:
 		_edge = 0.45 if hit.style != "swipe" else 0.3
@@ -614,23 +653,44 @@ func _draw_over() -> void:
 	# (a darker foot for the words)
 	_over.draw_rect(Rect2(0, MOVE_SIZE.y - 28.0, MOVE_SIZE.x, 28.0), Color(0, 0, 0, 0.5))
 	if answer != Vector2.ZERO:
-		var c := Vector2(MOVE_SIZE.x * 0.5, MOVE_SIZE.y * 0.46)
-		_over.draw_circle(c, 38.0, Color(0, 0, 0, 0.42))
+		var c := Vector2(MOVE_SIZE.x * 0.5, MOVE_SIZE.y * 0.44)
 		if left >= 0.0:
-			_over.draw_arc(c, 38.0, -PI * 0.5, -PI * 0.5 + TAU * left, 36, TENSION, 4.0)
-		var tip := c + answer * 30.0
-		var tail := c - answer * 26.0
-		var side := answer.orthogonal() * 14.0
-		_over.draw_line(tail, tip - answer * 12.0, Color(SWEET, 0.95), 8.0)
-		_over.draw_colored_polygon(PackedVector2Array([tip + answer * 6.0, tip - answer * 18.0 + side, tip - answer * 18.0 - side]), Color(SWEET, 0.95))
+			_over.draw_arc(c, ARROW_LEN * 0.56, -PI * 0.5, -PI * 0.5 + TAU * left, 36, TENSION, 3.5)
+		# The arrow: faint where it's still to be slid, solid as far as it has been.
+		var fill := 0.0
+		if pad_vec.length() > 0.02 and pad_vec.normalized().dot(answer) > FishFight.ANSWER_DOT:
+			fill = clampf(pad_vec.length(), 0.0, 1.0)
+		if _stab_t > 0.0:
+			fill = 1.0
+		_draw_arrow(c, answer, 0.28, 1.0, Color(SWEET, 1.0))
+		if fill > 0.0:
+			_draw_arrow(c, answer, 0.95, fill, Color(SWEET, 1.0))
+	if _stab_t > 0.0:
+		UiKit.draw_text(_over, Vector2(0, 30.0), "刺！", 26, Color(1.0, 0.93, 0.55, clampf(_stab_t / 0.3, 0.0, 1.0)), HORIZONTAL_ALIGNMENT_CENTER, MOVE_SIZE.x, true)
 	if words != "":
 		UiKit.draw_text(_over, Vector2(0, MOVE_SIZE.y - 8.0), words, 16, TENSION, HORIZONTAL_ALIGNMENT_CENTER, MOVE_SIZE.x, true)
-	# The finger: where it went from and to.
-	if _drag_id != -2 and pad_vec != Vector2.ZERO:
-		_over.draw_line(_drag_from, _drag_at, Color(1, 1, 1, 0.7), 3.0)
-		_over.draw_circle(_drag_from, 6.0, Color(1, 1, 1, 0.35))
-		_over.draw_circle(_drag_at, 9.0, Color(1, 1, 1, 0.8))
 	_over.draw_rect(r, Color(RIM, 0.5), false, 1.5)
+
+
+## An arrow of ARROW_LEN centred on `c` along `dir`, drawn up to `share` of its length from
+## the tail, at `alpha`.
+func _draw_arrow(c: Vector2, dir: Vector2, alpha: float, share: float, col: Color) -> void:
+	var tail := c - dir * ARROW_LEN * 0.5
+	var side := dir.orthogonal()
+	var shaft := ARROW_LEN * 0.62
+	var head := ARROW_LEN - shaft
+	var upto := ARROW_LEN * share
+	var colr := Color(col, alpha)
+	var s_end := minf(upto, shaft)
+	if s_end > 0.0:
+		var a := tail + side * 6.0
+		var b := tail - side * 6.0
+		_over.draw_colored_polygon(PackedVector2Array([a, a + dir * s_end, b + dir * s_end, b]), colr)
+	if upto > shaft:
+		var t := (upto - shaft) / head
+		var half := lerpf(16.0, 0.0, t)
+		var base := tail + dir * shaft
+		_over.draw_colored_polygon(PackedVector2Array([base + side * 16.0, base + dir * (upto - shaft) + side * half, base + dir * (upto - shaft) - side * half, base - side * 16.0]), colr)
 
 
 ## A leap: the fish's own silhouette up out of the water, in a splash.

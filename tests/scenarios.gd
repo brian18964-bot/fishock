@@ -96,6 +96,7 @@ const TESTS := [
 	"test_move_area",
 	"test_pull_and_answer",
 	"test_move_plan",
+	"test_slide_amounts",
 	"test_fish_card_layout",
 	"test_fish_alerts",
 	"test_salting",
@@ -2394,9 +2395,9 @@ func test_lure_strike_direction() -> void:
 	await frames(14)
 	check(player().state == Player.State.BITE, "the stick turning doesn't strike (the area's the strike)")
 	for i in 6:
-		FightPanel.pad_vec = Vector2.RIGHT.rotated(i * 0.3)
+		FightPanel.pad_vec = Vector2.RIGHT.rotated(i * 0.3) * 0.5
 		await frames(1)
-	check(player().state == Player.State.BITE, "a drag swung round doesn't strike")
+	check(player().state == Player.State.BITE, "a half slide doesn't strike")
 	FightPanel.pad_vec = FightPanel.to_frame(player().strike_dir)
 	await frames(14)
 	check(player().state == Player.State.REELING and player().strike_off >= 0.0 and player().strike_off < 5.0,
@@ -7467,7 +7468,7 @@ func test_move_area() -> void:
 	press.position = Vector2(150, 80)
 	panel._area_input(press)
 	var drag := InputEventMouseMotion.new()
-	drag.position = Vector2(80, 80)
+	drag.position = Vector2(60, 80)
 	panel._area_input(drag)
 	check(FightPanel.pad_vec.x < -0.9 and p._counter_dir().x < -0.9, "dragged left: the way for the flick")
 	p.touch_aim = Vector2.RIGHT
@@ -7612,7 +7613,7 @@ func test_pull_and_answer() -> void:
 			g.update(0.05, 0.0, Vector2.UP if ans else Vector2.ZERO, Vector2.UP)
 		frayed[ans] = g.fray
 	check(frayed[true] < frayed[false] * 0.6, "answered, the weed frays slower (%.2f vs %.2f)" % [frayed[true], frayed[false]])
-	# Berserk changes its way about every second; a rally pulls the line tight till answered.
+	# Berserk keeps its one way; a rally pulls the line tight till answered.
 	var r := FishFight.new("master", "", tier, 1.0)
 	r._jump_cooldown = 99.0
 	r._run_timer = 99.0
@@ -7625,7 +7626,7 @@ func test_pull_and_answer() -> void:
 	for i in 100:
 		r.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
 		ways[snappedf(r.pull_dir.angle(), 0.05)] = true
-	check(ways.size() >= 3, "berserk pulls a new way every second or so (%d ways in 5 s)" % ways.size())
+	check(ways.size() == 1, "berserk pulls one way through the whole fit (%d ways in 5 s)" % ways.size())
 	var tight := {}
 	for ans in [false, true]:
 		var y := FishFight.new("master", "", tier, 1.0)
@@ -7635,7 +7636,6 @@ func test_pull_and_answer() -> void:
 		y.lively = false
 		y.rally_left = 5.0
 		y._rally_dir = Vector2.UP
-		y._rally_t = 9.0
 		y.tension = 0.3
 		for i in 30:
 			y.update(0.05, 0.0, Vector2.DOWN if ans else Vector2.ZERO, Vector2.UP)
@@ -7728,3 +7728,47 @@ func test_move_plan() -> void:
 	for i in 30:
 		g.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
 	check(g.ramp > 0.9, "and builds over the first moments (%.2f)" % g.ramp)
+
+
+## User request (slide in the move area): a flick counts only slid the whole way; the
+## held answers are as strong as the slide is long.
+func test_slide_amounts() -> void:
+	var tier: Dictionary = FishData.TIERS.values()[0]
+	for length in [0.5, 1.0]:
+		var f := FishFight.new("advanced", "", tier, 1.0)
+		f._jump_cooldown = 99.0
+		f._run_timer = 99.0
+		f.opening_left = 0.0
+		f.lively = false
+		f.run_left = 3.0
+		f.run_side = Vector2.RIGHT
+		f.swipe_left = 2.0
+		f._swipe_armed = true
+		var hit := false
+		for i in 10:
+			if f.update(0.05, 0.0, Vector2.LEFT * length, Vector2.UP).has("swipe_hit"):
+				hit = true
+		check(hit == (length >= 1.0), "a flick slid %.0f%% of the way %s" % [length * 100.0, "hits" if hit else "doesn't"])
+	var hauled := {}
+	for length in [0.0, 0.4, 1.0]:
+		var d := FishFight.new("normal", "cover", tier, 1.0)
+		d._jump_cooldown = 99.0
+		d._run_timer = 99.0
+		d.opening_left = 0.0
+		d.lively = false
+		d.dive_active = true
+		d.dive = 0.3
+		d._dive_dir = Vector2.DOWN
+		for i in 30:
+			d.update(0.05, 0.0, Vector2.UP * length, Vector2.UP)
+		hauled[length] = d.dive
+	check(hauled[1.0] < hauled[0.4] and hauled[0.4] < hauled[0.0], "the more it's slid, the more the dive is held (%s)" % [hauled])
+	# One rage, one way; one rally, one way.
+	var r := FishFight.new("master", "", tier, 1.0)
+	r._jump_cooldown = 99.0
+	r._run_timer = 99.0
+	r.opening_left = 0.0
+	r.lively = false
+	r.progress = 0.55
+	r.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
+	check(r.enraged and r.run_left >= 2.5, "the berserk run lasts (%.1f s)" % r.run_left)

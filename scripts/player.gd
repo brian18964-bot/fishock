@@ -2965,25 +2965,11 @@ func _start_bite() -> void:
 ## there (or let go of after it moved); on a keyboard, Space or a way key
 ## (W/A/S/D) pressed - the way the keys point.
 func _lure_strike_input(just_pressed: bool, just_released: bool, delta: float) -> void:
-	# (the move area: a drag there, held to a way or let go of after it moved)
+	# (the move area: slid the whole way along the arrow's - a way slid that far strikes)
 	if FightPanel.pad_active:
 		var q := FightPanel.pad_world()
-		if q.length() > 0.05:
-			if q.distance_to(_strike_from) > LURE_MOVED:
-				_strike_moved = true
-			var spin := 0.0
-			if q.length() > 0.3 and _strike_last.length() > 0.3 and delta > 0.0:
-				spin = absf(angle_difference(_strike_last.angle(), q.angle())) / delta
-			if _strike_moved and q.length() > LURE_FLICK and spin < LURE_STILL:
-				_strike_still += delta
-			else:
-				_strike_still = 0.0
-			_strike_last = q
-			if _strike_still >= LURE_DWELL:
-				_strike_lure(q.normalized())
-			return
-		if _strike_moved and _strike_last.length() > 0.3:
-			_strike_lure(_strike_last.normalized())
+		if q.length() >= FishFight.SWIPE_FULL:
+			_strike_lure(q.normalized())
 			return
 	if touch_aim != Vector2.ZERO and not FightPanel.pad_active:
 		_strike_lure(touch_aim.normalized())

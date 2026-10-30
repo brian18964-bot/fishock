@@ -465,6 +465,7 @@ func _build() -> void:
 	print_verbose("RunView3D: land %d ms, props %d ms, the rest %d ms" % [t1 - t0, t2 - t1, Time.get_ticks_msec() - t2])
 	player.cast_started.connect(func(at: Vector2, _t): _splash_ring(at))
 	player.ability_triggered.connect(ability_fx)
+	player.fight_event.connect(func(kind: String): if kind == "swipe_hit": _kick = 1.0)
 	built = true
 	if intro:
 		_intro_t = 0.0
@@ -2931,9 +2932,9 @@ var _lean := Vector2.ZERO
 
 
 ## User request (the fight's move area): where a camera stands to look as the angler does -
-## a little behind the shoulder, eye high, looking out along the line over the water
-## (almost level) - and the way it's looking, for FightPanel's small picture. `shake` is
-## how hard the picture trembles (the fish's pull).
+## beside the right shoulder at chest height, out along the line and down a little
+## to the water: the forearms, the rod bowing, the water and the line in view (FightPanel's
+## small picture). `shake` is how hard it trembles (the fish's pull).
 func fight_cam_pose(shake := 0.0) -> Transform3D:
 	var base := pivot.global_position
 	var fwd := -pivot.global_basis.z
@@ -2942,11 +2943,15 @@ func fight_cam_pose(shake := 0.0) -> Transform3D:
 	fwd.y = 0.0
 	fwd = fwd.normalized() if fwd.length() > 0.01 else Vector3.FORWARD
 	var right := fwd.cross(Vector3.UP).normalized()
-	var at := base + Vector3(0.0, 1.55, 0.0) - fwd * 1.5 + right * 0.5
-	var look := base + Vector3(0.0, 1.05, 0.0) + fwd * 7.0
+	var at := base + Vector3(0.0, 1.2, 0.0) - fwd * 0.25 + right * 0.4
+	var look := base + Vector3(0.0, 0.75, 0.0) + fwd * 3.2
 	if shake > 0.0:
-		at += Vector3(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * 0.03 * shake
+		at += Vector3(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * 0.025 * shake
 	return Transform3D(Basis.IDENTITY, at).looking_at(look, Vector3.UP)
+
+
+## The rod stabbed (a flick answered): a kick of bend that fades.
+var _kick := 0.0
 
 
 ## The rod's meshes on the bending shader, its colours kept.
@@ -3000,6 +3005,8 @@ func _bend_rod(delta: float) -> void:
 		Player.State.WAITING:
 			if player.fishing_mode == Player.FishingMode.LURE and player._is_action_pressed():
 				want = BEND_LURE
+	_kick = maxf(_kick - delta * 3.0, 0.0)
+	want += _kick * 0.6
 	want = clampf(want, 0.0, BEND_MAX) * _rod_on * (1.0 - _stow)
 	bend = lerpf(bend, want, 1.0 - exp(-BEND_EASE * delta))
 	# The body with it: leant toward the line as it pulls, swaying through a
@@ -3027,6 +3034,10 @@ func _apply_bend(rod: Node3D) -> void:
 	var tip := rod.global_transform * Vector3(0, ROD_TIP, 0)
 	var pull := (_float.global_position - tip) if _float.visible else Vector3.DOWN
 	pull = pull.normalized() + Vector3.DOWN * BEND_DOWN
+	# User request: the slide in the move area turns the rod - it follows the finger.
+	if FightPanel.pad_active and FightPanel.pad_vec.length() > 0.05:
+		var w := FightPanel.pad_world()
+		pull += Vector3(w.x, 0.0, w.y) * 1.6
 	pull -= axis * pull.dot(axis)
 	if pull.length() < 0.001:
 		pull = -rod.global_basis.z
