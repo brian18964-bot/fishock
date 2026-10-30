@@ -186,7 +186,7 @@ var lure_stock: Dictionary:
 
 ## User request: the game's settings. auto_lure: after a 誘惑 throw, pick
 ## the cheapest fish carried as the next lure (off: pick again yourself).
-var settings: Dictionary = {"auto_lure": false}
+var settings: Dictionary = {"auto_lure": false, "damage_numbers": true}
 ## User request (the camp): the tent pitched at the camp (CampStage's
 ## tent_<n> model; 8, the bare lean-to, to start - better ones are earned).
 var camp_tent: int = 8
@@ -2167,7 +2167,7 @@ func load_data(data: Dictionary) -> void:
 	ensure_fish_life()
 	fortune_clock = float(data.get("fortune_clock", 0.0))
 	tank_news = data.get("tank_news", [])
-	settings = {"auto_lure": false}
+	settings = {"auto_lure": false, "damage_numbers": true}
 	settings.merge(data.get("settings", {}), true)
 	camp_tent = int(data.get("camp_tent", 8))
 	character = str(data.get("character", "cat"))

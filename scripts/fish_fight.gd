@@ -76,6 +76,15 @@ extends RefCounted
 ##   it's reeled and as it tires, and to the top on a leap. The danger and
 ##   the line running out go by the line out too.
 
+## User request (damage numbers): the fish's stamina is a monster's health (`max_hp`,
+## by its rarity and size - hp_for) and what takes it down is a number: the reel's
+## (every TICK_EVERY s, gold in the sweet spot), a flicked dash's (a crit, and a
+## perfect one if it was quick), the strike's. The tension is the damage the angler
+## takes (TENSION_HP of it is all the line holds): what the fish does to it - a run,
+## a leap, a dash for cover, a surge - is added up and shown with its name, a
+## move answered in time with no tension taken is a parry. All of it is queued in
+## `hits` (FightPanel shows them: drain_hits()); see _account().
+##
 ## User request (fish came in to the bank still fresh): a hooked fish keeps
 ## to its water - within `roam` m of where it took the bait (`home`, the
 ## line out at the strike), the harder, bigger and rarer the wider (ROAM,
@@ -132,6 +141,24 @@ const FATIGUE_PER_ENDURE := 0.2
 const FATIGUE_SPAN := 30.0
 const REEL_TIRED := 0.3
 const TENSION_TIRED := 0.5
+## The damage numbers' scale: the fish's health, by rarity and size.
+const HP_BASE := {"common": 300.0, "rare": 900.0, "epic": 3000.0, "legend": 9000.0}
+const HP_SIZE := {"small": 0.7, "medium": 1.0, "large": 1.5, "huge": 2.2}
+## A flick within this share of the window is a perfect one (and hits this much harder).
+const PERFECT_SWIPE_SHARE := 0.4
+const PERFECT_SWIPE_MULT := 1.5
+const TICK_EVERY := 0.45
+const TENSION_HP := 100.0
+## The least tension taken (in TENSION_HP) that's shown; how often a long move shows
+## its total; how long a move must go on with nothing taken to count as parried.
+const HURT_MIN := 4.0
+const HURT_EVERY := 0.7
+const PARRY_AFTER := 0.5
+## What a fish's moves are called when they hurt (mood()), and the ones a parry
+## can answer.
+const HURT_SRC := {"run": "衝刺", "side_run": "橫衝", "jump": "躍出", "dive": "鑽石縫", "surge": "猛拉", "rally": "反撲"}
+const PARRY_SRC := ["run", "side_run", "jump", "dive"]
+const WARN_OF := {"run": "衝刺", "side_run": "橫衝", "jump": "躍出", "dive": "鑽石縫", "enrage": "狂暴", "rally": "反撲"}
 var stat_might := 0.0
 var stat_react := 0.0
 var stat_resil := 0.0
@@ -345,6 +372,19 @@ var perfect := false
 ## Seconds since the fish was hooked.
 var age := 0.0
 
+## The damage numbers (see above): the fish's health, and what's queued to show.
+var max_hp := 1000.0
+var hits: Array = []
+var _acc_dmg := 0.0
+var _acc_sweet := 0.0
+var _tick_t := 0.0
+var _explicit := 0.0
+var _sweet_frame := false
+var _hurt_src := ""
+var _hurt_acc := 0.0
+var _hurt_t := 0.0
+var _hurt_since := 0.0
+
 var _run_timer := 0.0
 var _jump_cooldown := 0.0
 var _dive_timer := 0.0
@@ -368,6 +408,36 @@ func label() -> String:
 	return diff.label
 
 
+## A fish's health for the damage numbers: its rarity ("common" .. "legend") and
+## size ("small" .. "huge").
+static func hp_for(rarity_key: String, size_key: String) -> float:
+	return roundf(float(HP_BASE.get(rarity_key, 300.0)) * float(HP_SIZE.get(size_key, 1.0)) / 10.0) * 10.0
+
+
+## What's left of its health.
+func hp() -> float:
+	return stamina() * max_hp
+
+
+func _push(hit: Dictionary) -> void:
+	hits.append(hit)
+	if hits.size() > 40:
+		hits.pop_front()
+
+
+## The queued numbers, taken (FightPanel).
+func drain_hits() -> Array:
+	var out := hits
+	hits = []
+	return out
+
+
+## What's added up so far shown now (the end of a fight, or a pause).
+func flush_hits() -> void:
+	_flush_dmg()
+	_flush_hurt(false)
+
+
 ## The strike's first moments (see above) for a fish this hard to land
 ## (0 easy .. 1 the hardest).
 func open(fish_heft: float) -> void:
@@ -386,6 +456,8 @@ func open(fish_heft: float) -> void:
 		var start := clampf(lerpf(OPEN_STEADY.x, OPEN_STEADY.y, heft) + randf_range(-0.05, 0.05), 0.05, 0.8)
 		open_curve = Vector3(start, start, 0.0)
 	tension = open_curve.x
+	if tension * TENSION_HP >= 10.0:
+		_push({"type": "hurt", "src": "咬鉤", "n": roundi(tension * TENSION_HP)})
 
 
 ## Does it surge (start low, then pull hard)?
@@ -422,6 +494,10 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 		reel = CRANK_NORMAL if reel else 0.0
 	crank = clampf(float(reel), 0.0, 1.0)
 	var held := crank >= HELD_AT
+	var p_before := progress
+	var t_before := tension
+	_explicit = 0.0
+	_sweet_frame = false
 	if home < 0.0:
 		home = distance
 		roam = lerpf(ROAM.x, ROAM.y, heft)
@@ -547,6 +623,7 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 	else:
 		radial = _swim(delta, held)
 		if held:
+			_sweet_frame = in_sweet()
 			progress += reel_speed * reel_mult * k * (SWEET_REEL_MULT if in_sweet() else 1.0) * reel_boost() * delta
 			tension += tension_rise * strain * pull * k * (ENRAGE_REEL_TENSION if enraged else 1.0) * delta
 		else:
@@ -590,7 +667,62 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 			dive = 0.0
 			burst_left = 0.0
 			events.append("spent")
+	_account(delta, p_before, t_before, events)
 	return events
+
+
+## The damage numbers of this frame (see above): the stamina lost that the reel
+## took (the flicks and the strike are queued as they happen - `_explicit`), and
+## the tension the fish's own moves put on.
+func _account(delta: float, p_before: float, t_before: float, events: Array) -> void:
+	for ev in events:
+		if WARN_OF.has(ev):
+			_push({"type": "warn", "src": WARN_OF[ev]})
+	var gained := progress - p_before - _explicit
+	if gained > 0.0:
+		_acc_dmg += gained
+		if _sweet_frame:
+			_acc_sweet += gained
+	_tick_t += delta
+	if _tick_t >= TICK_EVERY:
+		_flush_dmg()
+	var src := mood()
+	if not HURT_SRC.has(src):
+		src = ""
+	if src != _hurt_src:
+		_flush_hurt(true)
+		_hurt_src = src
+		_hurt_t = 0.0
+		_hurt_since = 0.0
+	if src != "":
+		_hurt_t += delta
+		_hurt_since += delta
+		_hurt_acc += maxf(tension - t_before, 0.0)
+		if _hurt_since >= HURT_EVERY:
+			_hurt_since = 0.0
+			_flush_hurt(false)
+	if result != "":
+		flush_hits()
+
+
+func _flush_dmg() -> void:
+	_tick_t = 0.0
+	var n := _acc_dmg * max_hp
+	if n >= 0.5:
+		_push({"type": "dmg", "style": "sweet" if _acc_sweet > _acc_dmg * 0.5 else "tick", "n": roundi(n)})
+	_acc_dmg = 0.0
+	_acc_sweet = 0.0
+
+
+## The tension a move put on, shown: `ended` - the move's over, so with none taken
+## it was parried.
+func _flush_hurt(ended: bool) -> void:
+	var n := _hurt_acc * TENSION_HP
+	if n >= HURT_MIN:
+		_push({"type": "hurt", "src": HURT_SRC.get(_hurt_src, ""), "n": roundi(n)})
+	elif ended and PARRY_SRC.has(_hurt_src) and _hurt_t >= PARRY_AFTER and _hurt_acc * TENSION_HP < HURT_MIN:
+		_push({"type": "parry"})
+	_hurt_acc = 0.0
 
 
 ## The line out: the fish takes it (tired, less), the crank brings it in;
@@ -743,7 +875,10 @@ func _start_burst() -> void:
 	if opening_left > 0.0:
 		_jerk = maxf(_jerk, jerk)
 	elif tension < 0.97:
+		var before := tension
 		tension = minf(tension + jerk, 0.97)
+		if (tension - before) * TENSION_HP >= HURT_MIN:
+			_push({"type": "hurt", "src": "拉扯", "n": roundi((tension - before) * TENSION_HP)})
 
 
 ## The bank's in the way: the fish turns back (Player).
@@ -801,7 +936,11 @@ func _swipe_check(delta: float, counter: Vector2, events: Array) -> bool:
 	if not against:
 		_swipe_armed = true
 	elif _swipe_armed:
-		progress += swipe_damage()
+		var quick := (swipe_window() - swipe_left) <= swipe_window() * PERFECT_SWIPE_SHARE
+		var dmg := minf(swipe_damage() * (PERFECT_SWIPE_MULT if quick else 1.0), 1.0 - progress)
+		progress += dmg
+		_explicit += dmg
+		_push({"type": "dmg", "style": "perfect" if quick else "swipe", "n": roundi(dmg * max_hp)})
 		tension = maxf(tension - 0.1, 0.0)
 		run_left = 0.0
 		swipe_left = 0.0
@@ -810,6 +949,7 @@ func _swipe_check(delta: float, counter: Vector2, events: Array) -> bool:
 	swipe_left -= delta
 	if swipe_left <= 0.0:
 		swipe_left = 0.0
+		_push({"type": "miss"})
 		events.append("swipe_miss")
 	return false
 
@@ -861,12 +1001,17 @@ func in_sweet() -> bool:
 ## Worn down from the start by this share of its stamina (a lure struck
 ## true - Player.LURE_TRUE_WORN).
 func wear(share: float) -> void:
+	var before := progress
 	progress = minf(progress + share, 0.9)
+	if progress > before:
+		_push({"type": "dmg", "style": "wear", "n": roundi((progress - before) * max_hp)})
 
 
 func perfect_hook() -> void:
 	perfect = true
+	var before := progress
 	progress = minf(progress + PERFECT_HOOK_STAMINA * might_mult(), 0.9)
+	_push({"type": "dmg", "style": "strike", "n": roundi((progress - before) * max_hp)})
 	tension = PERFECT_HOOK_TENSION
 
 

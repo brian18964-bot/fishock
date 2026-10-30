@@ -766,6 +766,16 @@ func _on_settings() -> void:
 	auto.toggled.connect(func(on): Profile.set_setting("auto_lure", on))
 	col.add_child(auto)
 	col.move_child(auto, col.get_child_count() - 2)
+	# User request (damage numbers): the numbers that jump up in a fight, on or off.
+	var dmg := CheckButton.new()
+	dmg.name = "DamageNumbers"
+	dmg.text = "搏魚時顯示傷害數字"
+	dmg.button_pressed = Profile.settings.get("damage_numbers", true)
+	dmg.add_theme_font_size_override("font_size", 15)
+	dmg.focus_mode = Control.FOCUS_NONE
+	dmg.toggled.connect(func(on): Profile.set_setting("damage_numbers", on))
+	col.add_child(dmg)
+	col.move_child(dmg, col.get_child_count() - 2)
 	var camp := CheckButton.new()
 	camp.name = "Camp3D"
 	camp.text = "主畫面的 3D 營地（關掉比較省電）"

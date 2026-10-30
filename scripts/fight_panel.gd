@@ -19,6 +19,14 @@ extends CanvasLayer
 ## the reel) - red past FishFight.DANGER, where the line may snap - and,
 ## with the fish getting away and the reel still, a turning arrow round the
 ## right stick: turn it to reel.
+## User request (damage numbers, FishFight's `hits`): the fish's stamina is a health
+## bar with its number and every hit on it jumps up over the float as a number, as
+## in an RPG - the reel's small and white (gold in the sweet spot), a flicked dash a
+## crit, a quick one a perfect crit, the strike's perfect; what the fish does to the
+## line shows beside the tension bar in red with its name (a leap, a run, a dash for
+## cover), a move answered in time a green parry, and a ring and a "!" warn of the
+## moves. (Settings: damage_numbers.)
+##
 ## User request: it doesn't say how rare or hard the fish is - that's read
 ## from the line once struck (FishFight.open: hold the stick and watch the
 ## tension; a ring round the stick says to hold while the line's slack).
@@ -53,6 +61,10 @@ var _font: Font
 var _pulse := 0.0
 ## Something was drawn last frame (so it gets cleared once it's gone).
 var _drawn := false
+## The numbers in the air: {text, label, pos, vel, age, life, size, color, kind}.
+var _pops: Array = []
+## The tension bar flashes red when a move hurts (s left).
+var _hurt_flash := 0.0
 
 
 func _ready() -> void:
@@ -71,9 +83,150 @@ func _process(delta: float) -> void:
 	var player := _player()
 	var busy := player != null and (player.state == Player.State.REELING \
 		or player.state == Player.State.BITE or player.light_lure > 0.0)
-	if busy or _drawn:
+	_take_hits(player, delta)
+	if busy or _drawn or not _pops.is_empty():
 		_view.queue_redraw()
 	_drawn = busy
+
+
+## The queued hits of the fight (taken whether or not they're shown), turned into
+## numbers; the numbers in the air moving on.
+func _take_hits(player: Player, delta: float) -> void:
+	_hurt_flash = maxf(_hurt_flash - delta, 0.0)
+	if player != null and player.fight != null:
+		var show: bool = Profile.settings.get("damage_numbers", true)
+		for hit in player.fight.drain_hits():
+			if show:
+				_add_pop(hit)
+	for pop in _pops:
+		pop.age += delta
+		pop.pos += pop.vel * delta
+		pop.vel *= maxf(1.0 - 2.2 * delta, 0.0)
+	_pops = _pops.filter(func(pop): return pop.age < pop.life)
+
+
+## The panel's tension bar, for where the hurts show (right of it).
+func _hurt_at() -> Vector2:
+	return Vector2(CENTER_X + SIZE.x * 0.5 + 10.0, TOP + 74.0 - 8.0)
+
+
+func _add_pop(hit: Dictionary) -> void:
+	var at := _float_pos() + Vector2(randf_range(-22.0, 22.0), randf_range(-24.0, -8.0))
+	var pop := {"text": "", "label": "", "pos": at, "vel": Vector2(randf_range(-16.0, 16.0), -70.0), "age": 0.0,
+		"life": 1.0, "size": 18, "color": INK, "kind": "text", "pop": 0.0}
+	match hit.type:
+		"dmg":
+			pop.text = "-" + _fmt(hit.n)
+			match hit.style:
+				"tick":
+					pop.size = 17
+				"sweet":
+					pop.size = 22
+					pop.color = PERFECT
+					pop.life = 1.1
+				"swipe":
+					pop.size = 36
+					pop.color = Color(1.0, 0.55, 0.2)
+					pop.label = "暴擊！"
+					pop.life = 1.4
+					pop.pop = 0.7
+					_add_ring(at, Color(1.0, 0.55, 0.2))
+				"perfect":
+					pop.size = 44
+					pop.color = Color(1.0, 0.93, 0.55)
+					pop.label = "完美暴擊！"
+					pop.life = 1.6
+					pop.pop = 0.9
+					_add_ring(at, PERFECT)
+				"strike":
+					pop.size = 42
+					pop.color = Color(1.0, 0.93, 0.55)
+					pop.label = "完美揚竿！"
+					pop.life = 1.6
+					pop.pop = 0.9
+					_add_ring(at, PERFECT)
+				"wear":
+					pop.size = 32
+					pop.color = Color(0.82, 0.58, 1.0)
+					pop.label = "展現力量！"
+					pop.life = 1.4
+					pop.pop = 0.6
+		"miss":
+			pop.text = "MISS"
+			pop.size = 20
+			pop.color = Color(0.7, 0.7, 0.72)
+			pop.vel = Vector2(0, -30)
+		"hurt":
+			pop.text = "-" + _fmt(hit.n)
+			pop.label = hit.src
+			pop.pos = _hurt_at() + Vector2(randf_range(0.0, 14.0), randf_range(-6.0, 6.0) + _hurt_stack())
+			pop.vel = Vector2(24.0, -34.0)
+			pop.size = 20 + mini(int(hit.n) / 3, 16)
+			pop.color = RAGE
+			pop.life = 1.2
+			pop.pop = 0.5
+			_hurt_flash = 0.25
+		"parry":
+			pop.text = "卸力！"
+			pop.pos = _hurt_at() + Vector2(0, -4 + _hurt_stack())
+			pop.vel = Vector2(24.0, -30.0)
+			pop.size = 22
+			pop.color = SWEET
+			pop.life = 1.2
+		"warn":
+			pop.text = "%s！" % hit.src
+			pop.pos = _float_pos() + Vector2(0, -38)
+			pop.vel = Vector2(0, -20)
+			pop.size = 24
+			pop.color = RAGE
+			pop.life = 0.8
+			pop.pop = 0.5
+	_pops.append(pop)
+	if _pops.size() > 30:
+		_pops.pop_front()
+
+
+## Hurts shown close together go one under another, not on top.
+func _hurt_stack() -> float:
+	var n := 0
+	for q in _pops:
+		if q.kind == "text" and q.pos.x > CENTER_X + SIZE.x * 0.5 and q.age < 0.5:
+			n += 1
+	return 26.0 * n
+
+
+func _add_ring(at: Vector2, color: Color) -> void:
+	_pops.append({"text": "", "label": "", "pos": at, "vel": Vector2.ZERO, "age": 0.0, "life": 0.45, "size": 0,
+		"color": color, "kind": "ring", "pop": 0.0})
+
+
+## 12345 -> "12,345".
+static func _fmt(n: int) -> String:
+	var s := str(absi(n))
+	var out := ""
+	for i in s.length():
+		if i > 0 and (s.length() - i) % 3 == 0:
+			out += ","
+		out += s[i]
+	return out
+
+
+func _draw_pops() -> void:
+	for pop in _pops:
+		var t: float = pop.age / pop.life
+		var fade := clampf((1.0 - t) / 0.4, 0.0, 1.0)
+		if pop.kind == "ring":
+			_view.draw_arc(pop.pos, lerpf(10.0, 64.0, t), 0.0, TAU, 40, Color(pop.color, (1.0 - t) * 0.8), 3.0)
+			continue
+		# (a hit lands big and settles)
+		var grow := 1.0 + float(pop.pop) * maxf(1.0 - pop.age / 0.18, 0.0)
+		var size := int(float(pop.size) * grow)
+		var col: Color = pop.color
+		col.a = fade
+		UiKit.draw_text(_view, pop.pos + Vector2(-130, 0), pop.text, size, col, HORIZONTAL_ALIGNMENT_CENTER, 260, true)
+		if pop.label != "":
+			UiKit.draw_text(_view, pop.pos + Vector2(-130, -float(size) * 0.9), pop.label, maxi(int(size * 0.45), 13), Color(col, fade),
+				HORIZONTAL_ALIGNMENT_CENTER, 260, true)
 
 
 func _player() -> Player:
@@ -141,6 +294,7 @@ func _draw_panel() -> void:
 		_draw_lure_glow(player.light_lure)
 	var fight := _fight()
 	if fight == null:
+		_draw_pops()
 		return
 	var rect := Rect2(Vector2(CENTER_X - SIZE.x * 0.5, TOP), SIZE)
 	UiKit.frame_box(true).draw(_view.get_canvas_item(), rect)
@@ -156,7 +310,14 @@ func _draw_panel() -> void:
 		HORIZONTAL_ALIGNMENT_RIGHT, 170.0, true)
 
 	var bar_x := rect.end.x - 18.0 - BAR_W
-	_row(Vector2(x, rect.position.y + 50), bar_x, "體力", fight.stamina(), STAMINA)
+	var hp_at := Vector2(x, rect.position.y + 50)
+	_row(hp_at, bar_x, "體力", fight.stamina(), STAMINA)
+	# (its health as a number, the berserk's half marked)
+	UiKit.draw_text(_view, Vector2(bar_x, hp_at.y - 2.0), "%s / %s" % [_fmt(roundi(fight.hp())), _fmt(roundi(fight.max_hp))], 11,
+		INK, HORIZONTAL_ALIGNMENT_CENTER, BAR_W, true)
+	if fight.diff.phases > 1:
+		var half := bar_x + 3.0 + (BAR_W - 6.0) * (1.0 - FishFight.ENRAGE_AT)
+		_view.draw_line(Vector2(half, hp_at.y - BAR_H), Vector2(half, hp_at.y + 2.0), Color(RAGE, 0.9), 1.5)
 	var sweet := fight.in_sweet()
 	var tension_color := RAGE if fight.tension > TENSION_HIGH else (SWEET if sweet else TENSION)
 	var at := Vector2(x, rect.position.y + 74)
@@ -164,6 +325,8 @@ func _draw_panel() -> void:
 	var zone := fight.sweet_range()
 	var band := Rect2(bar_x + 3.0 + (BAR_W - 6.0) * zone.x, at.y - BAR_H + 1.0, (BAR_W - 6.0) * (zone.y - zone.x), BAR_H)
 	_view.draw_rect(band, Color(SWEET, 0.9 if sweet else 0.55), false, 1.5)
+	if _hurt_flash > 0.0:
+		_view.draw_rect(Rect2(bar_x, at.y - BAR_H + 1.0, BAR_W, BAR_H), Color(RAGE, _hurt_flash * 2.0))
 	_draw_distance(fight, Vector2(x, rect.position.y + 98), bar_x)
 	_draw_crank_hint(fight, player)
 
@@ -172,6 +335,7 @@ func _draw_panel() -> void:
 	elif fight.perfect and fight.age < CALLOUT_TIME:
 		var a := clampf((CALLOUT_TIME - fight.age) / 0.4, 0.0, 1.0)
 		UiKit.draw_text(_view, Vector2(CENTER_X - 100, CUE_Y + 6), "完美揚竿！", 24, Color(PERFECT, a), HORIZONTAL_ALIGNMENT_CENTER, 200, true)
+	_draw_pops()
 
 
 ## The line out (user request: 線長 - as long as the cast at the strike,

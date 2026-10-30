@@ -3135,6 +3135,9 @@ func _hook_fish(perfect := false) -> void:
 	if _gate_check():
 		return
 	fight = FishFight.new(difficulty_key, fish_habit, tier_data, reel_power_mult, Profile.rod())
+	# (the damage numbers' scale: its health, by rarity and size)
+	fight.max_hp = FishFight.hp_for(UiKit.fish_rarity({"id": fish_id, "rarity": "epic" if is_epic_catch else ("rare" if is_rare_catch else "common")}),
+		Inventory.size_for_catch(current_tier, is_epic_catch))
 	# (the stats carried count in the fight: see FishFight)
 	fight.stat_might = float(Stats.total("might"))
 	fight.stat_react = float(Stats.total("react"))

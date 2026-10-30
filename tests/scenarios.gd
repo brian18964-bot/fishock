@@ -90,6 +90,7 @@ const TESTS := [
 	"test_talents",
 	"test_rods_and_stats_page",
 	"test_camp_pages_nav",
+	"test_damage_numbers",
 	"test_fish_card_layout",
 	"test_fish_alerts",
 	"test_salting",
@@ -1680,7 +1681,7 @@ func test_fight_swipe() -> void:
 	events = fight.update(0.05, false, Vector2.ZERO, Vector2.UP)
 	events = fight.update(0.05, false, Vector2.LEFT, Vector2.UP)
 	check(events.has("swipe_hit"), "flicking against the dash hits")
-	check(absf(fight.progress - before - FishFight.SWIPE_DAMAGE) < 0.01, "the fish loses stamina (%.2f)" % (fight.progress - before))
+	check(absf(fight.progress - before - FishFight.SWIPE_DAMAGE * FishFight.PERFECT_SWIPE_MULT) < 0.01, "a quick flick is a perfect one: the fish loses stamina (%.2f)" % (fight.progress - before))
 	check(fight.run_left == 0.0 and fight.swipe_left == 0.0, "the dash is broken")
 	fight.run_left = 1.0
 	fight.run_side = Vector2.LEFT
@@ -1785,6 +1786,10 @@ func test_fight_line_out() -> void:
 		p.charge_time = ratio * Player.MAX_CHARGE_TIME
 		p._launch_cast()
 		var cast_m: float = p.global_position.distance_to(p.cast_target) / Player.PX_PER_M
+		# (a plain fish: a gated one - a rarer kind than the stats carried - isn't hooked at all)
+		p.fish_id = "carp"
+		p.is_rare_catch = false
+		p.is_epic_catch = false
 		p._hook_fish()
 		check(absf(p.fight.line_out() - cast_m) < 2.5, "the line out starts as long as the cast (%.1f m, cast %.1f m)" % [p.fight.line_out(), cast_m])
 		lines.append([cast_m, p.fight.line_out()])
@@ -7066,3 +7071,119 @@ func test_fish_card_layout() -> void:
 	pg.queue_free()
 	await frames(1)
 	Profile.load_data(saved)
+
+
+## User request (damage numbers): the fish's health in numbers, what takes it down
+## shown as hits (the reel's, a flick's crit and a quick one's perfect, the strike's),
+## and the tension its moves put on shown with their names.
+func test_damage_numbers() -> void:
+	var tier: Dictionary = FishData.TIERS["mid"] if FishData.TIERS.has("mid") else FishData.TIERS.values()[0]
+	check(FishFight.hp_for("legend", "huge") > FishFight.hp_for("epic", "large") and FishFight.hp_for("epic", "medium") > FishFight.hp_for("rare", "medium") \
+		and FishFight.hp_for("rare", "medium") > FishFight.hp_for("common", "small"), "health runs with rarity and size")
+	# The reel: what's shown adds up to what the fish lost.
+	var fight := FishFight.new("normal", "", tier, 1.0)
+	fight.max_hp = 3000.0
+	fight._jump_cooldown = 99.0
+	fight._run_timer = 99.0
+	fight.tension = 0.5
+	var shown := 0.0
+	var sweet_seen := false
+	for i in 200:
+		fight.tension = clampf(fight.tension, 0.3, 0.6)
+		fight.update(0.05, true, Vector2.ZERO, Vector2.UP)
+		for h in fight.drain_hits():
+			if h.type == "dmg":
+				shown += float(h.n)
+				sweet_seen = sweet_seen or h.style == "sweet"
+	fight.flush_hits()
+	for h in fight.drain_hits():
+		if h.type == "dmg":
+			shown += float(h.n)
+	var lost := fight.progress * fight.max_hp
+	check(lost > 50.0 and absf(shown - lost) < lost * 0.05 + 10.0, "the numbers add up to the health lost (%d shown, %d lost)" % [shown, lost])
+	check(sweet_seen, "reeling in the sweet spot is shown as such")
+	check(absf(fight.hp() - (1.0 - fight.progress) * 3000.0) < 0.01, "hp() is what's left")
+	# 力量 shows in the numbers: the same reeling takes more off.
+	var totals := {}
+	for might in [0.0, 80.0]:
+		var f := FishFight.new("normal", "", tier, 1.0)
+		f.max_hp = 3000.0
+		f.stat_might = might
+		f._jump_cooldown = 99.0
+		f._run_timer = 99.0
+		f.tension = 0.5
+		var sum := 0.0
+		f.max_hp = 30000.0
+		for i in 40:
+			f.tension = clampf(f.tension, 0.3, 0.6)
+			f.update(0.05, true, Vector2.ZERO, Vector2.UP)
+		f.flush_hits()
+		for h in f.drain_hits():
+			if h.type == "dmg":
+				sum += float(h.n)
+		totals[might] = sum
+	check(totals[80.0] > totals[0.0] * 1.2, "力量 makes the numbers bigger (%d vs %d)" % [totals[80.0], totals[0.0]])
+	# A flick: a crit; a quick one a perfect crit, and harder.
+	var results := {}
+	for wait in [0.1, 0.8]:
+		var f := FishFight.new("advanced", "", tier, 1.0)
+		f.max_hp = 1000.0
+		f._jump_cooldown = 99.0
+		f._run_timer = 99.0
+		f.run_left = 2.0
+		f.run_side = Vector2.RIGHT
+		f.swipe_left = FishFight.SWIPE_WINDOW
+		f._swipe_armed = false
+		f.update(0.01, false, Vector2.ZERO, Vector2.UP)
+		f.update(wait, false, Vector2.ZERO, Vector2.UP)
+		var ev := f.update(0.01, false, Vector2.LEFT, Vector2.UP)
+		var got := f.drain_hits().filter(func(h): return h.type == "dmg")
+		results[wait] = got[0] if ev.has("swipe_hit") and not got.is_empty() else {}
+	check(results[0.1].get("style", "") == "perfect" and results[0.8].get("style", "") == "swipe", "a flick is a crit, a quick one a perfect crit")
+	check(int(results[0.1].get("n", 0)) > int(results[0.8].get("n", 0)), "the perfect one is bigger")
+	# A missed flick is shown.
+	var m := FishFight.new("advanced", "", tier, 1.0)
+	m._jump_cooldown = 99.0
+	m._run_timer = 99.0
+	m.run_left = 2.0
+	m.run_side = Vector2.RIGHT
+	m.swipe_left = 0.1
+	m.update(0.2, false, Vector2.ZERO, Vector2.UP)
+	check(m.drain_hits().any(func(h): return h.type == "miss"), "a missed flick says MISS")
+	# The tension a leap puts on, answered badly (reeling into it): shown with its name.
+	var j := FishFight.new("normal", "", tier, 1.0)
+	j.max_hp = 1000.0
+	j._run_timer = 99.0
+	j.opening_left = 0.0
+	j.jump_left = 0.7
+	j.tension = 0.2
+	for i in 14:
+		j.update(0.05, 1.0, Vector2.ZERO, Vector2.UP)
+	j.flush_hits()
+	var hurts := j.drain_hits().filter(func(h): return h.type == "hurt")
+	check(not hurts.is_empty() and hurts[0].src == "躍出" and int(hurts[0].n) >= 4, "a leap met by reeling hurts: shown with its name (%s)" % [hurts])
+	# Parried: let go through a leap and take nothing.
+	var p := FishFight.new("normal", "", tier, 1.0)
+	p._run_timer = 99.0
+	p.jump_left = 0.7
+	p.tension = 0.3
+	for i in 20:
+		p.update(0.05, false, Vector2.ZERO, Vector2.UP)
+	var seen := p.drain_hits()
+	check(seen.any(func(h): return h.type == "parry"), "letting go through a leap is a parry")
+	check(not seen.any(func(h): return h.type == "hurt"), "and takes nothing")
+	# The warning, and the strike's perfect.
+	var w := FishFight.new("normal", "", tier, 1.0)
+	w.max_hp = 1000.0
+	w.perfect_hook()
+	check(w.drain_hits().any(func(h): return h.type == "dmg" and h.style == "strike" and int(h.n) > 0), "a perfect strike shows its damage")
+	# The panel turns them into numbers, and the setting turns them off.
+	var panel := FightPanel.new()
+	add_child(panel)
+	await frames(2)
+	panel._add_pop({"type": "dmg", "style": "perfect", "n": 12345})
+	check(panel._pops.size() == 2 and panel._pops.any(func(q): return q.text == "-12,345" and q.label == "完美暴擊！") and panel._pops.any(func(q): return q.kind == "ring"), "a crit is a number (with its commas) and a ring")
+	panel._add_pop({"type": "hurt", "src": "躍出", "n": 25})
+	check(panel._pops.back().label == "躍出" and panel._pops.back().pos.x > FightPanel.CENTER_X + FightPanel.SIZE.x * 0.5, "a hurt shows beside the tension bar, with its name")
+	panel.queue_free()
+	await frames(1)
