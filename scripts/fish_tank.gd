@@ -283,13 +283,13 @@ func _card_for(i: int, src := "tank") -> void:
 	if FishModel.has_model(f.get("id", "")):
 		var turn := ItemPreview.new()
 		turn.name = "Preview"
-		turn.custom_minimum_size = Vector2(0, 150)
+		turn.custom_minimum_size = Vector2(0, 110)
 		col.add_child(turn)
 		turn.show_fish(f.get("id", ""), f)
 	else:
 		var pic := TextureRect.new()
 		pic.texture = FishData.icon(f.get("id", ""), f.get("name", ""))
-		pic.custom_minimum_size = Vector2(0, 110)
+		pic.custom_minimum_size = Vector2(0, 90)
 		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		col.add_child(pic)
