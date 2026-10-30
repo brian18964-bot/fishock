@@ -264,8 +264,8 @@ func quick(page: String) -> void:
 	open_page(page)
 
 
-func open_page(page: String) -> void:
-	super.open_page(page)
+func open_page(page: String, tab := "") -> void:
+	super.open_page(page, tab)
 	if _quick_on and _stage != null:
 		_stage.life.hold(false)
 		_live(true)

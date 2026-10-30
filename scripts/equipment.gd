@@ -19,20 +19,20 @@ extends ItemBoard
 ## character's window narrower, and on the right one window with two tabs,
 ## the warehouse's gear (big boxes, scrolled) or the bag.
 
-const CHAR_WIDTH := 560.0
-const STORAGE_CELL := 100.0
-const BAG_CELL := 40.0
+const CHAR_WIDTH := 450.0
+## (the right window: the bag and the warehouse, their cells the page's)
+const CELL := 58.0
 const STAT_ORDER := ["react", "might", "resil", "endure", "luck"]
 
 const SLOT_LAYOUT := [
 	["hat", "帽子", Rect2(32, 106, 66, 66), true],
 	["top", "上衣", Rect2(32, 182, 66, 66), true],
 	["pack", "背包", Rect2(32, 258, 66, 66), true],
-	["rod", "主手・釣竿", Rect2(32, 442, 200, 70), false],
-	["light", "燈具", Rect2(322, 442, 200, 70), false],
+	["rod", "主手・釣竿", Rect2(28, 442, 164, 66), false],
+	["light", "燈具", Rect2(272, 442, 164, 66), false],
 	# User request: the off hand - a weapon (Profile.WEAPONS) or the
 	# landing net, one of them.
-	["offhand", "副手", Rect2(244, 442, 66, 66), false],
+	["offhand", "副手", Rect2(200, 442, 66, 66), false],
 ]
 
 var _viewer: CharacterViewer
@@ -41,15 +41,12 @@ var _stats: Label
 var _stat_rows: Array = []
 var _storage: ItemBoard.StorageGrid
 var _bag: ItemBoard.BagGrid
-var _tab := "gear"
+var _tab := "bag"
 var _tabs := {}
-var _gear_windows: Array = []
-var _camp_window: PanelContainer
 var _tent_grid: GridContainer
-var _tent_note: Label
-## The right window's two tabs: "storage" or "bag".
-var _side := "storage"
-var _side_tabs := {}
+var _tent_scroll: DragScroll
+var _hint: Label
+var _used: Label
 var _storage_scroll: DragScroll
 
 
@@ -72,13 +69,13 @@ func _build() -> void:
 	var glow := TextureRect.new()
 	glow.texture = UiKit.glow()
 	glow.modulate = Color(1.0, 0.62, 0.3, 0.22)
-	glow.position = Vector2(110, 90)
-	glow.size = Vector2(340, 340)
+	glow.position = Vector2(100, 100)
+	glow.size = Vector2(260, 320)
 	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(glow)
 	_viewer = CharacterViewer.new()
-	_viewer.position = Vector2(110, 90)
-	_viewer.size = Vector2(340, 340)
+	_viewer.position = Vector2(100, 100)
+	_viewer.size = Vector2(260, 320)
 	_viewer.zoom = 0.95
 	add_child(_viewer)
 	for s in SLOT_LAYOUT:
@@ -89,7 +86,7 @@ func _build() -> void:
 		track(box)
 	# User request: the character's five stats, each tapped for what it touches.
 	var head := UiKit.label("素質", 12, UiKit.GOLD, true)
-	head.position = Vector2(462, 180)
+	head.position = Vector2(362, 110)
 	head.custom_minimum_size = Vector2(88, 0)
 	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(head)
@@ -97,7 +94,7 @@ func _build() -> void:
 		var row := StatRow.new()
 		row.stat = STAT_ORDER[i]
 		row.name = "Stat_" + STAT_ORDER[i]
-		row.position = Vector2(462, 200 + 36 * i)
+		row.position = Vector2(362, 130 + 36 * i)
 		row.size = Vector2(88, 32)
 		row.pressed.connect(_show_stat)
 		add_child(row)
@@ -108,125 +105,89 @@ func _build() -> void:
 	_stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(_stats)
 
-	# Right: the warehouse's 裝備 tab or the bag, by the window's tabs.
+	# Right: one window - the bag, the warehouse or the camp's tents, by its tabs
+	# (user request: to see what could be put on, and the camp's looks).
 	var right_x := CHAR_WIDTH + 24.0
-	var made2 := UiKit.window("裝備來源")
+	var made2 := UiKit.window("")
 	var gear: PanelContainer = made2[0]
 	gear.name = "SourceWindow"
 	gear.position = Vector2(right_x, 56)
 	gear.custom_minimum_size = Vector2(946.0 - right_x, 474)
 	var gcol: VBoxContainer = made2[1]
-	gcol.add_child(_sub_row("Tab_"))
-	var side_tabs := HBoxContainer.new()
-	side_tabs.alignment = BoxContainer.ALIGNMENT_CENTER
-	side_tabs.add_theme_constant_override("separation", 8)
-	for t in [["storage", "倉庫・可裝備"], ["bag", "背包"]]:
-		var tb := UiKit.button(t[1], 15)
-		tb.name = "Side_" + t[0]
-		tb.custom_minimum_size = Vector2(150, 40)
+	(gcol.get_node("Title") as Control).visible = false
+	var tab_row := HBoxContainer.new()
+	tab_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	tab_row.add_theme_constant_override("separation", 6)
+	for t in [["bag", "背包"], ["storage", "倉庫"], ["camp", "營地"]]:
+		var tb := UiKit.button(t[1], 16)
+		tb.name = "Tab_" + t[0]
+		tb.custom_minimum_size = Vector2(110, 38)
 		var key: String = t[0]
-		tb.pressed.connect(func(): _show_side(key))
-		side_tabs.add_child(tb)
-		_side_tabs[key] = tb
-	gcol.add_child(side_tabs)
+		tb.pressed.connect(func(): _show_tab(key))
+		tab_row.add_child(tb)
+		_tabs[key] = tb
+	gcol.add_child(tab_row)
+	_used = UiKit.label("", 13, UiKit.DIM)
+	_used.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	gcol.add_child(_used)
+	_bag = ItemBoard.BagGrid.new(CELL)
+	_bag.name = "Bag"
+	_bag.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	gcol.add_child(_bag)
 	_storage_scroll = DragScroll.new()
 	_storage_scroll.name = "StorageScroll"
 	_storage_scroll.sideways_free = true
-	_storage_scroll.custom_minimum_size = Vector2(STORAGE_CELL * 3.0 + 4.0, 0)
+	_storage_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_storage_scroll.custom_minimum_size = Vector2(CELL * Profile.STORAGE_COLS + 4.0, 0)
 	_storage_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_storage_scroll.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_storage = ItemBoard.StorageGrid.new(3, STORAGE_CELL, 3)
+	_storage = ItemBoard.StorageGrid.new(Profile.STORAGE_COLS, CELL, Profile.STORAGE_ROWS)
 	_storage.name = "Storage"
-	_storage.tab = "equip"
 	_storage_scroll.add_child(_storage)
 	gcol.add_child(_storage_scroll)
-	_bag = ItemBoard.BagGrid.new(BAG_CELL)
-	_bag.name = "Bag"
-	_bag.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_bag.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	gcol.add_child(_bag)
-	var hint := UiKit.label("把釣竿（主手）、手電筒、武器或撈網（副手）拖到左邊的欄位就能換上；點一下看說明", 13, UiKit.DIM)
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	hint.custom_minimum_size.x = 900.0 - right_x - 36.0
-	gcol.add_child(hint)
-	add_child(gear)
-	track(_storage)
-	track(_bag)
-	_gear_windows = [gear]
-	_show_side("storage")
-
-	# The 營地 tab: the tents.
-	var made4 := UiKit.window("營地・帳篷")
-	_camp_window = made4[0]
-	_camp_window.name = "CampWindow"
-	_camp_window.position = Vector2(right_x, 56)
-	_camp_window.custom_minimum_size = Vector2(946.0 - right_x, 474)
-	var camp_col: VBoxContainer = made4[1]
-	camp_col.add_child(_sub_row("CampTab_"))
+	# The camp's tents.
 	_tent_grid = GridContainer.new()
 	_tent_grid.name = "Tents"
-	_tent_grid.columns = 2
+	_tent_grid.columns = 3
 	_tent_grid.add_theme_constant_override("h_separation", 6)
 	_tent_grid.add_theme_constant_override("v_separation", 6)
 	_tent_grid.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	var tent_scroll := DragScroll.new()
-	tent_scroll.name = "TentScroll"
-	tent_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	tent_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	tent_scroll.custom_minimum_size = Vector2(300, 0)
-	tent_scroll.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	tent_scroll.add_child(_tent_grid)
-	camp_col.add_child(tent_scroll)
-	_tent_note = UiKit.label("達成成就解鎖新帳篷（只改變營地外觀）；點一下已解鎖的就會搭起來", 13, UiKit.DIM)
-	_tent_note.name = "TentNote"
-	_tent_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_tent_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_tent_note.custom_minimum_size = Vector2(900.0 - right_x - 36.0, 0)
-	camp_col.add_child(_tent_note)
-	add_child(_camp_window)
-	_show_tab("gear")
+	_tent_scroll = DragScroll.new()
+	_tent_scroll.name = "TentScroll"
+	_tent_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_tent_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_tent_scroll.custom_minimum_size = Vector2(TentCard.SIZE.x * 3.0 + 16.0, 0)
+	_tent_scroll.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_tent_scroll.add_child(_tent_grid)
+	gcol.add_child(_tent_scroll)
+	_hint = UiKit.label("", 13, UiKit.DIM)
+	_hint.name = "TentNote"
+	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_hint.custom_minimum_size = Vector2(946.0 - right_x - 36.0, 0)
+	gcol.add_child(_hint)
+	add_child(gear)
+	track(_storage)
+	track(_bag)
+	enable_use()
+	_show_tab(str(get_meta("tab", "bag")))
 
 
-## User request: the page's sub-pages along the top of its right window - the gear
-## to put on, the camp's tent styles, another character to take (its own page).
-## (`prefix`: the buttons' names, a row to each window.)
-func _sub_row(prefix: String) -> HBoxContainer:
-	var row := HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", 6)
-	for t in [["gear", "裝備"], ["camp", "營地樣式"], ["choose", "選擇角色"]]:
-		var tb := UiKit.button(t[1], 15)
-		tb.name = prefix + t[0]
-		tb.custom_minimum_size = Vector2(104, 36)
-		var key: String = t[0]
-		if key == "choose":
-			tb.pressed.connect(func(): UiKit.page_go(self, "character"))
-		else:
-			tb.pressed.connect(func(): _show_tab(key))
-			_tabs[prefix + key] = tb
-		row.add_child(tb)
-	return row
-
-
-## The right window's tab: the warehouse's gear or the bag.
-func _show_side(key: String) -> void:
-	_side = key
-	for k in _side_tabs:
-		UiKit.style_tab(_side_tabs[k], k == key)
-	_storage_scroll.visible = key == "storage"
-	_bag.visible = key == "bag"
-
-
+## The right window's tab: the bag, the warehouse, or the camp's tent styles.
 func _show_tab(key: String) -> void:
 	_tab = key
 	for k in _tabs:
-		UiKit.style_tab(_tabs[k], k.ends_with(key))
-	for w in _gear_windows:
-		w.visible = key == "gear"
-	_camp_window.visible = key == "camp"
+		UiKit.style_tab(_tabs[k], k == key)
+	_bag.visible = key == "bag"
+	_used.visible = key != "camp"
+	_storage_scroll.visible = key == "storage"
+	_tent_scroll.visible = key == "camp"
+	_hint.text = {"bag": "拖到左邊的欄位就能換上；點一下看說明，鹽巴等道具在這裡使用",
+		"storage": "把釣竿（主手）、手電筒、武器或撈網（副手）拖到左邊的欄位；點一下看說明",
+		"camp": "達成成就解鎖新帳篷（只改變營地外觀）；點一下已解鎖的就會搭起來"}[key]
 	if key == "camp":
 		_fill_tents()
+	_refresh()
 
 
 ## The tents, in the order they're earned: the one pitched lit, the ones
@@ -247,13 +208,13 @@ func _fill_tents() -> void:
 func _on_tent(i: int) -> void:
 	var t: Array = Profile.TENTS[i]
 	if Profile.camp_tent == t[0]:
-		_tent_note.text = "%s 已經搭在營地了" % t[1]
+		_hint.text = "%s 已經搭在營地了" % t[1]
 	elif Profile.pitch_tent(t[0]):
 		Sfx.play("ui_open", -6.0)
-		_tent_note.text = "搭起了 %s" % t[1]
+		_hint.text = "搭起了 %s" % t[1]
 	else:
 		var p := Profile.tent_progress(i)
-		_tent_note.text = "%s 還沒解鎖：%s（目前 %s）" % [t[1], t[2], TentCard.amount(t, p[0])]
+		_hint.text = "%s 還沒解鎖：%s（目前 %s）" % [t[1], t[2], TentCard.amount(t, p[0])]
 
 
 ## The fish packed in the bag at home that would count on a run (alive, not weak).
@@ -281,6 +242,21 @@ func _refresh() -> void:
 		row.value = Stats.total(row.stat, _packed())
 		row.queue_redraw()
 	_stats.text = Items.rod_effects(Profile.rod()).replace("、", "　・　")
+	if _tab == "storage":
+		var held := 0
+		for st in Profile.storage_stacks():
+			var sz := Items.size_of(st.id)
+			held += sz.x * sz.y
+		_used.text = "倉庫 %d / %d 格" % [held, Profile.STORAGE_COLS * Profile.STORAGE_ROWS]
+	else:
+		var cells := 0
+		for e in Profile.bag:
+			var sz := Items.size_of(e.id)
+			cells += sz.x * sz.y
+		for f in Profile.pack_fish:
+			var fs: Vector2i = Inventory.fish_item(f).size
+			cells += fs.x * fs.y
+		_used.text = "背包 %d / %d 格" % [cells, Inventory.COLS * Profile.bag_rows()]
 	if _tent_grid != null:
 		for c in _tent_grid.get_children():
 			c.queue_redraw()
@@ -289,6 +265,8 @@ func _refresh() -> void:
 func actions(source: Dictionary) -> Array:
 	var slot: String = Items.def(source.id).get("slot", "")
 	var out := []
+	if can_use and Profile.USABLES.get(source.id, {}).get("target", "") == "fish":
+		out.append(["使用", {"to": "use"}, true])
 	match source.from:
 		"storage":
 			if slot != "":

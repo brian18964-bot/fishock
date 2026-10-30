@@ -743,6 +743,8 @@ func buy_lure(id: String) -> bool:
 	var cost: int = LURES[id].cost
 	if gold < cost:
 		return false
+	if not storage_room("lure_" + id):
+		return false
 	_spend(cost)
 	_store("lure_" + id, 1)
 	gold_updated.emit(gold)
@@ -754,6 +756,8 @@ func buy_lure(id: String) -> bool:
 func buy_live_bait(key: String) -> bool:
 	var cost: int = LIVE_BAITS[key].cost
 	if gold < cost:
+		return false
+	if not storage_room("live_" + key):
 		return false
 	_spend(cost)
 	_store("live_" + key, 1)
@@ -786,6 +790,8 @@ func buy_rod(tier := -1) -> bool:
 		tier = rods_owned + 1
 	if tier >= ROD_TIERS.size() or owned("rod_%d" % tier) > 0 or gold < int(ROD_TIERS[tier].cost):
 		return false
+	if not storage_room("rod_%d" % tier):
+		return false
 	_spend(int(ROD_TIERS[tier].cost))
 	rods_owned = maxi(rods_owned, tier)
 	_store("rod_%d" % tier, 1)
@@ -796,6 +802,8 @@ func buy_rod(tier := -1) -> bool:
 
 func buy_flashlight() -> bool:
 	if owned("flashlight") > 0 or gold < FLASHLIGHT_COST:
+		return false
+	if not storage_room("flashlight"):
 		return false
 	_spend(FLASHLIGHT_COST)
 	_store("flashlight", 1)
@@ -808,6 +816,8 @@ func buy_flashlight() -> bool:
 func buy_weapon(id: String) -> bool:
 	if not WEAPONS.has(id) or owned(id) > 0 or gold < int(WEAPONS[id].cost):
 		return false
+	if not storage_room(id):
+		return false
 	_spend(int(WEAPONS[id].cost))
 	_store(id, 1)
 	gold_updated.emit(gold)
@@ -818,6 +828,8 @@ func buy_weapon(id: String) -> bool:
 ## The landing net, bought once, into the warehouse.
 func buy_net() -> bool:
 	if owned("net") > 0 or gold < NET_COST:
+		return false
+	if not storage_room("net"):
 		return false
 	_spend(NET_COST)
 	_store("net", 1)
@@ -830,6 +842,8 @@ func buy_net() -> bool:
 func buy_oxy_box() -> bool:
 	if owned("oxy_box") > 0 or gold < OXY_BOX_COST:
 		return false
+	if not storage_room("oxy_box"):
+		return false
 	_spend(OXY_BOX_COST)
 	_store("oxy_box", 1)
 	gold_updated.emit(gold)
@@ -840,6 +854,8 @@ func buy_oxy_box() -> bool:
 ## The shovel, bought once, into the warehouse.
 func buy_shovel() -> bool:
 	if owned("shovel") > 0 or gold < SHOVEL_COST:
+		return false
+	if not storage_room("shovel"):
 		return false
 	_spend(SHOVEL_COST)
 	_store("shovel", 1)
@@ -925,6 +941,8 @@ func _next_rod() -> void:
 func buy_ammo() -> bool:
 	if gold < AMMO_COST:
 		return false
+	if not storage_room("ammo"):
+		return false
 	_spend(AMMO_COST)
 	_store("ammo", 1)
 	gold_updated.emit(gold)
@@ -940,6 +958,8 @@ func buy_usable(id: String) -> bool:
 	var d: Dictionary = USABLES[id]
 	if not d.get("sold", true) or gold < int(d.cost) or (d.keep and owned(id) > 0):
 		return false
+	if not storage_room(id):
+		return false
 	_spend(int(d.cost))
 	_store(id, 1)
 	gold_updated.emit(gold)
@@ -949,6 +969,8 @@ func buy_usable(id: String) -> bool:
 
 func buy_battery() -> bool:
 	if gold < BATTERY_COST:
+		return false
+	if not storage_room("battery"):
 		return false
 	_spend(BATTERY_COST)
 	_store("battery", 1)
@@ -1408,6 +1430,102 @@ func owned(id: String) -> int:
 
 
 ## Warehouse ids on a tab (Items.TABS), in order.
+## User request: the warehouse has cells like the bag (about 2.4 times its 35):
+## everything takes the room it does in the bag - a rod 3 x 1, a weapon its
+## length - and a stack (`Items.stack_of`) a cell's worth. The stacks are laid
+## out by `pack_cells` (the big ones first); overflow from a run or a reward
+## just makes the list longer, but what's put in by hand must fit.
+const STORAGE_COLS := 7
+const STORAGE_ROWS := 12
+
+
+## The warehouse's stacks, [{id, count}], the biggest first (then in the usual order).
+func storage_stacks(extra := {}) -> Array:
+	var counts := storage.duplicate()
+	for id in extra:
+		counts[id] = int(counts.get(id, 0)) + int(extra[id])
+	var ids := []
+	for id in counts:
+		if int(counts[id]) > 0:
+			ids.append(id)
+	ids = Items.sort_ids(ids)
+	var order := {}
+	for i in ids.size():
+		var sz := Items.size_of(ids[i])
+		order[ids[i]] = -sz.x * sz.y * 1000 + i
+	ids.sort_custom(func(a, b): return order[a] < order[b])
+	var out := []
+	for id in ids:
+		var left: int = int(counts[id])
+		var per := maxi(Items.stack_of(id), 1)
+		while left > 0:
+			out.append({"id": id, "count": mini(left, per)})
+			left -= per
+	return out
+
+
+## First-fit packing of `sizes` (Vector2i) into `cols` columns, from the top
+## left, into `taken` (a Dictionary of used cells, shared so more can follow):
+## [each one's top-left cell, ...] and the rows used.
+static func pack_cells(sizes: Array, cols: int, taken := {}) -> Array:
+	var cells := []
+	for sz: Vector2i in sizes:
+		var placed := false
+		var y := 0
+		while not placed:
+			for x in range(0, cols - sz.x + 1):
+				var free := true
+				for dx in sz.x:
+					for dy in sz.y:
+						if taken.has(Vector2i(x + dx, y + dy)):
+							free = false
+				if free:
+					for dx in sz.x:
+						for dy in sz.y:
+							taken[Vector2i(x + dx, y + dy)] = true
+					cells.append(Vector2i(x, y))
+					placed = true
+					break
+			y += 1
+	return cells
+
+
+## The warehouse laid out: [{id, count, cell, size}] for the things, then
+## [{fish: index, cell, size}] for the fish put in it.
+func storage_layout() -> Array:
+	var stacks := storage_stacks()
+	var entries := []
+	var sizes := []
+	for st in stacks:
+		sizes.append(Items.size_of(st.id))
+		entries.append(st)
+	for i in stash_fish.size():
+		sizes.append(Inventory.fish_item(stash_fish[i]).size)
+		entries.append({"fish": i})
+	var taken := {}
+	var cells := pack_cells(sizes, STORAGE_COLS, taken)
+	for i in entries.size():
+		entries[i]["cell"] = cells[i]
+		entries[i]["size"] = sizes[i]
+	return entries
+
+
+## Rows the things (not the fish) take, with `extra` ({id: count}) more.
+func storage_rows(extra := {}) -> int:
+	var sizes := storage_stacks(extra).map(func(st): return Items.size_of(st.id))
+	var taken := {}
+	pack_cells(sizes, STORAGE_COLS, taken)
+	var rows := 0
+	for c: Vector2i in taken:
+		rows = maxi(rows, c.y + 1)
+	return rows
+
+
+## Is there room to put `count` more of `id` in the warehouse?
+func storage_room(id: String, count := 1) -> bool:
+	return storage_rows({id: count}) <= STORAGE_ROWS
+
+
 func storage_ids(tab := "") -> Array:
 	var ids := []
 	for id in storage:
@@ -1685,6 +1803,11 @@ func to_storage(index: int, count := -1) -> int:
 		return 0
 	var e: Dictionary = bag[index]
 	var n: int = int(e.count) if count < 0 else mini(count, int(e.count))
+	# (only as many as the warehouse has room for)
+	while n > 0 and not storage_room(e.id, n):
+		n -= 1
+	if n <= 0:
+		return 0
 	e.count -= n
 	if int(e.count) <= 0:
 		bag.remove_at(index)

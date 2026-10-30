@@ -2703,7 +2703,7 @@ func test_lists_scroll_under_a_finger() -> void:
 	await frames(2)
 	var wscroll: DragScroll = page.find_child("StorageScroll", true, false)
 	var storage = page._storage
-	check(storage.cell >= 78.0 and page._bag.cell >= 60.0, "the warehouse's boxes and the bag's cells are bigger")
+	check(storage.cell >= 54.0 and storage.columns == Profile.STORAGE_COLS and page._bag.cell >= 54.0, "the warehouse has the bag's kind of cells")
 	check(wscroll.get_v_scroll_bar().max_value > wscroll.size.y, "a full tab runs past the window")
 	var first: String = storage.ids()[0]
 	var box_at: Vector2 = storage.global_position + storage.box(0).get_center()
@@ -3497,7 +3497,7 @@ func test_main_menu() -> void:
 	check(title._near == "backpack" or title._near == "warehouse" or not title._home.visible, "the name of what it's near")
 	await seconds(0.8)
 	var bag_page: Control = title._page
-	check(bag_page != null and bag_page.find_child("BagWindow", true, false) != null and bag_page.find_child("UseWindow", true, false) != null, "then the bag page opens")
+	check(bag_page != null and bag_page.find_child("SourceWindow", true, false) != null and bag_page._tab == "bag", "then the character page opens, on its bag")
 	UiKit.page_back(bag_page)
 	await seconds(1.0)
 	# A page opens over the camp (the camera glides to its spot) and closes
@@ -3597,7 +3597,7 @@ func test_camp_spirit_and_tents() -> void:
 	var page: Control = title._page
 	page._show_tab("camp")
 	await frames(1)
-	check(page.find_child("CampWindow", true, false).visible and not page.find_child("Storage", true, false).is_visible_in_tree(),
+	check(page._tent_scroll.is_visible_in_tree() and not page.find_child("Storage", true, false).is_visible_in_tree(),
 		"the 營地 tab shows the tents instead of the warehouse")
 	var cards := page.find_children("Tent_*", "", true, false)
 	check(cards.size() == Profile.TENTS.size(), "every tent on the tab (%d)" % cards.size())
@@ -3608,7 +3608,7 @@ func test_camp_spirit_and_tents() -> void:
 		"the camp's tent changes with it")
 	check(camp.hotspots.has("equipment"), "and it still opens the equipment")
 	page._on_tent(Profile.TENTS.map(func(t): return t[0]).find(4))
-	check(Profile.camp_tent == 2 and "還沒解鎖" in page._tent_note.text, "a locked one says what it needs")
+	check(Profile.camp_tent == 2 and "還沒解鎖" in page._hint.text, "a locked one says what it needs")
 	title.queue_free()
 	await frames(1)
 	Profile.load_data(saved)
@@ -6926,13 +6926,13 @@ func test_fight_stats() -> void:
 func test_camp_pages_nav() -> void:
 	var saved := Profile.snapshot()
 	Profile.load_data({"gold": 500})
-	for scene in ["shop", "warehouse", "equipment", "bag_page", "fish_tank", "fish_log", "journey"]:
+	for scene in ["shop", "warehouse", "equipment", "fish_tank", "fish_log", "journey"]:
 		var pg: Control = load("res://scenes/%s.tscn" % scene).instantiate()
 		get_tree().root.add_child(pg)
 		await frames(2)
 		var row: Node = pg.find_child("PageNav", true, false)
-		check(row != null and row.get_child_count() == 6, "%s has the six-page row" % scene)
-		for key in ["shop", "warehouse", "character", "backpack", "tank", "depart"]:
+		check(row != null and row.get_child_count() == 5, "%s has the five-page row" % scene)
+		for key in ["shop", "warehouse", "character", "tank", "depart"]:
 			check(pg.find_child("Nav_" + key, true, false) != null, "%s: %s button" % [scene, key])
 		pg.queue_free()
 		await frames(1)
@@ -6942,16 +6942,24 @@ func test_camp_pages_nav() -> void:
 	get_tree().root.add_child(eq)
 	await frames(3)
 	check(eq.find_child("Go_shop", true, false) == null and eq.find_child("Go_camp", true, false) == null, "no 商城/營地 buttons on the character page")
-	check(eq.find_child("CampTab_camp", true, false) != null and eq.find_child("Tab_choose", true, false) != null, "the camp styles and the characters are its sub-pages")
+	check(eq.find_child("Tab_bag", true, false) != null and eq.find_child("Tab_storage", true, false) != null and eq.find_child("Tab_camp", true, false) != null, "the right window switches 背包 / 倉庫 / 營地")
+	check(eq.find_child("Tab_choose", true, false) == null and not (eq.find_child("SourceWindow", true, false).find_child("Title", true, false) as Control).visible, "no 選擇角色, no 裝備來源 title")
+	check(eq.find_child("Nav_backpack", true, false) == null, "(the bag is no page of its own)")
 	var rod: Control = eq.find_child("Slot_rod", true, false)
 	var off: Control = eq.find_child("Slot_offhand", true, false)
 	var lamp: Control = eq.find_child("Slot_light", true, false)
 	check(off.position.x >= rod.position.x + rod.size.x and absf(off.position.y - rod.position.y) < 10.0, "the off hand is beside the main hand")
 	check(lamp.position.x >= off.position.x + off.size.x, "the light is right of the off hand")
-	check(eq._storage.tab == "equip", "the source list shows what can be worn")
 	Profile._store("salt", 2)
 	Profile._store("rod_1", 1)
-	check("salt" not in eq._storage.ids() and "rod_1" in eq._storage.ids(), "(wearables only)")
+	Profile.profile_changed.emit()
+	eq._show_tab("storage")
+	await frames(2)
+	check("salt" in eq._storage.ids() and "rod_1" in eq._storage.ids() and eq._storage_scroll.visible and not eq._bag.visible, "the warehouse tab lists the warehouse")
+	eq._show_tab("camp")
+	check(eq._tent_scroll.visible and not eq._storage_scroll.visible, "the camp tab the tents")
+	eq._show_tab("bag")
+	check(eq._bag.visible, "and back to the bag")
 	eq.queue_free()
 	await frames(1)
 	# The warehouse: no categories, stashed fish in the same list.
@@ -6962,9 +6970,25 @@ func test_camp_pages_nav() -> void:
 	var all: Array = wh._storage.ids()
 	check("salt" in all and "rod_1" in all and all.any(func(x): return x is int), "one list: things then fish")
 	check(wh.find_child("Tab_gear", true, false) == null, "no tabs")
+	# Cells: a rod takes 3 x 1, laid out first; the warehouse is 12 rows of 7 - 2.4 times the bag.
+	var lay: Array = Profile.storage_layout()
+	var rod_e: Dictionary = lay.filter(func(e): return e.get("id", "") == "rod_1")[0]
+	check(rod_e.size == Vector2i(3, 1) and Profile.STORAGE_COLS * Profile.STORAGE_ROWS >= 2 * Inventory.COLS * Inventory.ROWS, "a rod takes 3 x 1 and the warehouse has 2+ times the bag's cells")
+	var spans := lay.filter(func(e): return e.has("id")).map(func(e): return Rect2i(e.cell, e.size))
+	var overlap := false
+	for i in spans.size():
+		for j in range(i + 1, spans.size()):
+			if spans[i].intersects(spans[j]):
+				overlap = true
+	check(not overlap, "nothing overlaps")
+	# Full: what's put in by hand must fit; a bought thing is refused.
+	var filled := Profile.storage.duplicate()
+	Profile.storage["oxy_box"] = 20
+	check(Profile.storage_rows() > Profile.STORAGE_ROWS and not Profile.storage_room("oxy_box", 1), "(a full warehouse takes no more)")
+	Profile.storage = filled
 	wh.queue_free()
 	await frames(1)
-	# The bag page: salt has 使用; used on a dead fish at camp, it is spent.
+	# The character page's bag: salt has 使用; used on a dead fish at camp, it is spent.
 	Profile.stash_fish.clear()
 	var dead := {"id": "carp", "name": "鯉魚", "value": 10.0, "size": "small", "rarity": "common", "tier": "near", "length": 40.0, "weight": 1.0}
 	FishLife.roll(dead)
@@ -6973,11 +6997,11 @@ func test_camp_pages_nav() -> void:
 	dead["fresh"] = 1.0
 	Profile.tank.append(dead)
 	Profile.to_bag("salt", 2)
-	var bp: Control = load("res://scenes/bag_page.tscn").instantiate()
+	var bp: Control = load("res://scenes/equipment.tscn").instantiate()
 	get_tree().root.add_child(bp)
 	await frames(3)
 	var at := Profile.bag_at(Profile.bag.filter(func(e): return e.id == "salt")[0].cell)
-	check(bp.actions({"from": "bag", "id": "salt", "index": at}).any(func(a): return a[0] == "使用"), "salt has a 使用 button on the bag page")
+	check(bp.actions({"from": "bag", "id": "salt", "index": at}).any(func(a): return a[0] == "使用"), "salt has a 使用 button on the character page")
 	check(not bp.actions({"from": "bag", "id": "potion_vigor", "index": 0}).any(func(a): return a[0] == "使用"), "a potion doesn't (used in a run)")
 	var before := Profile.bag_count("salt")
 	bp.move({"from": "bag", "id": "salt", "index": at}, {"to": "use"})

@@ -42,7 +42,7 @@ var _tab := "overview"
 var _tabs := {}
 const TAB_NAMES := [["overview", "總覽"], ["bucket", "魚桶"]]
 ## The lists the overview shows: [list, heading, capacity (0: none)].
-const SECTIONS := [["tank", "魚缸", Profile.TANK_SIZE], ["pack", "包包（下次出發帶上）", 0], ["stash", "倉庫", Profile.STASH_SIZE]]
+const SECTIONS := [["tank", "魚缸", Profile.TANK_SIZE]]
 var _toast: Label
 
 
@@ -166,8 +166,7 @@ func _rebuild() -> void:
 		for i in Profile.fish_box.size():
 			_list.add_child(_row(i, "box"))
 	else:
-		_count.text = "魚缸 %d / %d　包包 %d　倉庫 %d / %d" % [Profile.tank.size(), Profile.TANK_SIZE, Profile.pack_fish.size(),
-			Profile.stash_fish.size(), Profile.STASH_SIZE]
+		_count.text = ""
 		for sec in SECTIONS:
 			var fish := Profile.fish_list(sec[0])
 			_list.add_child(UiKit.label("%s　%d%s" % [sec[1], fish.size(), " / %d" % sec[2] if sec[2] > 0 else ""], 15, UiKit.GOLD_BRIGHT, true))
@@ -180,6 +179,7 @@ func _rebuild() -> void:
 				_list.add_child(l)
 			for i in fish.size():
 				_list.add_child(_row(i, sec[0]))
+	_count.visible = _count.text != ""
 	if _tank.has_method("set_view"):
 		_tank.set_view("bucket" if _tab == "bucket" else "tank")
 	_tank.stock()

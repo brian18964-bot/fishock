@@ -293,7 +293,7 @@ static func page_chrome(page: Control, back: Callable, back_name := "Back", nav 
 ## 魚缸, 出發 - to go from one to another without closing and reopening: [key,
 ## its name, the scene it opens].
 const NAV := [["shop", "商城", "shop"], ["warehouse", "倉庫", "warehouse"], ["character", "角色", "equipment"],
-	["backpack", "背包", "bag_page"], ["tank", "魚缸", "fish_tank"], ["depart", "出發", "journey"]]
+	["tank", "魚缸", "fish_tank"], ["depart", "出發", "journey"]]
 
 
 ## The top row for `page`, `current` lit (its own: a tap goes to its first page).

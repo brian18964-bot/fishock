@@ -29,7 +29,6 @@ const FLAT := Vector3(SPREAD, 1.0, SPREAD)
 const STATIONS := {
 	"home": [MID + (Vector3(0.3, 2.3, 6.9) - MID) * FLAT, MID + (Vector3(-0.15, 0.75, -2.2) - MID) * FLAT, 42.0],
 	"warehouse": [MID + (Vector3(-1.6, 1.5, 2.9) - MID) * FLAT, MID + (Vector3(-3.05, 0.45, 0.35) - MID) * FLAT, 38.0],
-	"bag_page": [MID + (Vector3(-1.6, 1.5, 2.9) - MID) * FLAT, MID + (Vector3(-3.05, 0.45, 0.35) - MID) * FLAT, 38.0],
 	"equipment": [MID + (Vector3(-1.4, 1.7, 1.6) - MID) * FLAT, MID + (Vector3(-3.4, 0.9, -2.6) - MID) * FLAT, 40.0],
 	"shop": [MID + (Vector3(3.3, 1.7, -1.3) - MID) * FLAT, MID + (Vector3(5.9, 1.1, -5.7) - MID) * FLAT, 40.0],
 	"fish_tank": [MID + (Vector3(2.25, 2.1, 1.6) - MID) * FLAT, MID + (Vector3(3.3, 0.25, 0.3) - MID) * FLAT, 40.0],

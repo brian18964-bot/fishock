@@ -964,6 +964,8 @@ func buy(id: String, n: int, where: String) -> int:
 			break
 		bought += 1
 	if bought == 0:
+		if not Profile.storage_room(id):
+			_show_toast("倉庫滿了，先整理一下再買")
 		return 0
 	Sfx.play("coins", -4.0)
 	var note := ""

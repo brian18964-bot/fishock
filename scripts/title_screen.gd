@@ -32,7 +32,7 @@ const RENDER_SCALE := 1.5
 const ENTRIES := [
 	["warehouse", "倉庫", "res://assets/sprites/icons/battery.png"],
 	["equipment", "角色", ""],
-	["bag_page", "背包", ""],
+	["bag", "背包", ""],
 	["fish_tank", "魚缸", ""],
 	["shop", "商城", "res://assets/sprites/icons/lamp.png"],
 ]
@@ -56,6 +56,7 @@ var _near := ""
 ## The page a tap asked for, opened when the character's done its bit
 ## there (CampLife.act_on) - or at once, tapped again.
 var _asked_page := ""
+var _asked_tab := ""
 ## The card's name line (釣客・<the character>).
 var _who: Label
 ## The new character's name shows over the fire this long (s).
@@ -283,13 +284,15 @@ func _build() -> void:
 	play.position = Vector2(355, 466)
 	play.pressed.connect(_on_play)
 	_home.add_child(play)
-	# User request: the bag button, bottom right (what's carried, and used from here).
-	var bag := UiKit.button("背包", 18)
-	bag.name = "BagButton"
-	bag.custom_minimum_size = Vector2(110, 48)
-	bag.position = Vector2(836, 482)
-	bag.pressed.connect(func(): open_page("bag_page"))
-	_home.add_child(bag)
+	# User request: the bag button, bottom right (the character page on its bag) -
+	# with no 3D camp the list has it.
+	if _stage != null:
+		var bag := UiKit.button("背包", 18)
+		bag.name = "BagButton"
+		bag.custom_minimum_size = Vector2(110, 48)
+		bag.position = Vector2(836, 482)
+		bag.pressed.connect(func(): open_page("equipment", "bag"))
+		_home.add_child(bag)
 	var multi := UiKit.button("多人連線", 16)
 	multi.name = "Multiplayer"
 	multi.custom_minimum_size = Vector2(140, 42)
@@ -338,7 +341,7 @@ func _entry(page: String, title: String, icon_path: String) -> Button:
 	b.add_theme_stylebox_override("normal", box)
 	b.add_theme_stylebox_override("hover", hover)
 	b.add_theme_stylebox_override("pressed", hover)
-	b.pressed.connect(open_page.bind(page))
+	b.pressed.connect(func(): open_page("equipment", "bag") if page == "bag" else open_page(page))
 	var row := HBoxContainer.new()
 	row.set_anchors_preset(Control.PRESET_FULL_RECT)
 	row.offset_left = 8
@@ -373,6 +376,7 @@ func _refresh() -> void:
 	_set_sub("warehouse", "倉庫裡 %d 件" % things)
 	var light := "手電筒" if Profile.has_flashlight else "煤燈"
 	_set_sub("equipment", "%s・%s" % [Profile.rod().name, light])
+	_set_sub("bag", "裝備、道具、使用")
 	_set_sub("fish_tank", "%d / %d 條魚" % [Profile.tank.size(), Profile.TANK_SIZE])
 	_set_sub("shop", "釣具、魚餌、升級")
 
@@ -450,13 +454,15 @@ func _near_name(delta: float) -> void:
 ## User request: a tap on a camp thing, the character goes to it and does
 ## what it's for (CampLife.act_on); then its page opens. Tapped again
 ## meanwhile (or anything else that opens a page), it opens at once.
-const PAGE_OF := {"backpack": "bag_page", "sit": ""}
+const PAGE_OF := {"backpack": "equipment", "sit": ""}
 
 
 func _ask(spot: String) -> void:
 	_near_used = spot
 	_near_reached = false
 	var page: String = PAGE_OF.get(spot, spot)
+	# (the backpack opens the character page on its bag)
+	_asked_tab = "bag" if spot == "backpack" else ""
 	if _asked_page != "" and _asked_page == page:
 		_open_asked()
 		return
@@ -470,7 +476,7 @@ func _open_asked() -> void:
 	var page := _asked_page
 	_asked_page = ""
 	if page != "" and _page == null and _home.visible:
-		open_page(page)
+		open_page(page, _asked_tab)
 
 
 ## The camp's thing at `at` (screen), "" if none.
@@ -563,7 +569,7 @@ func choose_character(id: String) -> void:
 ## Opens a menu page over the camp: the list goes, the camera glides to the
 ## page's spot, the page fades in; the camp holds still under it (one
 ## frame drawn - cheaper on a phone) till it closes.
-func open_page(page: String) -> void:
+func open_page(page: String, tab := "") -> void:
 	_asked_page = ""
 	if _page != null:
 		_page.queue_free()
@@ -574,13 +580,15 @@ func open_page(page: String) -> void:
 	var p: Control = load("res://scenes/%s.tscn" % page).instantiate()
 	p.set_meta("over_camp", _stage != null)
 	p.set_meta("camp", self)
+	if tab != "":
+		p.set_meta("tab", tab)
 	p.modulate.a = 0.0
 	_page = p
 	add_child(p)
 	if _stage != null:
 		_stage.life.hold(true)
 		_live(true)
-		_stage.go_to(page, true, func(): _live(false))
+		_stage.go_to("warehouse" if tab == "bag" else page, true, func(): _live(false))
 	var t := p.create_tween()
 	t.tween_interval(0.35 if _stage != null else 0.0)
 	t.tween_property(p, "modulate:a", 1.0, 0.25)
@@ -838,7 +846,7 @@ class EntryIcon extends Control:
 				var id := "rod_%d" % Profile.rod_tier
 				ItemBoard.draw_item(self, r, id, 1, null)
 				return
-			"bag_page":
+			"bag":
 				ItemBoard.draw_item(self, r, "salt", 1, null)
 				return
 			"fish_tank":

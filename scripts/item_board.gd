@@ -27,6 +27,40 @@ var can_discard := false
 ## the page by `use_requested`).
 var can_use := false
 signal use_requested(id: String)
+
+
+## Turns the 使用 flow on: the 使用 button on what's used on a fish, asking
+## which of the fish at camp, and a line of what it did.
+func enable_use() -> void:
+	can_use = true
+	use_requested.connect(_on_use)
+
+
+func _on_use(id: String) -> void:
+	var homes := Profile.home_fish()
+	var panel := FishPickPanel.new(Items.name_of(id), id, homes.map(func(h): return h.fish), homes.map(func(h): return h.where))
+	panel.z_index = 20
+	add_child(panel)
+	panel.picked.connect(func(i: int):
+		var lines := []
+		var why := Profile.use_on_home_fish(id, homes[i].fish, lines)
+		_say(why if why != "" else "%s：%s%s" % [Items.name_of(id), homes[i].fish.get("name", "魚"), "　" + "、".join(lines) if not lines.is_empty() else ""]))
+
+
+## A line over the page that fades (what a use did).
+func _say(text: String) -> void:
+	var l := UiKit.label(text, 18, UiKit.GOLD_BRIGHT, true, 5)
+	l.name = "Toast"
+	l.position = Vector2(14, 52)
+	l.custom_minimum_size = Vector2(900, 0)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	l.z_index = 30
+	add_child(l)
+	var t := l.create_tween()
+	t.tween_interval(2.2)
+	t.tween_property(l, "modulate:a", 0.0, 0.5)
+	t.tween_callback(l.queue_free)
 var _views: Array = []
 ## The press: {from: "storage"/"bag"/"slot", id, index (bag), slot, at}.
 var _press := {}
@@ -605,16 +639,13 @@ class BagGrid extends Control:
 ## on the tab (at least `min_rows`), scrolled when that's more than shows.
 class StorageGrid extends Control:
 	var board: ItemBoard
-	var tab := "gear":
-		set(value):
-			tab = value
-			refit()
-	var columns := 6
-	var cell := 70.0
-	var min_rows := 1
+	var columns := Profile.STORAGE_COLS
+	var cell := 56.0
+	var min_rows := Profile.STORAGE_ROWS
 	var _lit := false
+	var _entries: Array = []
 
-	func _init(cols := 6, cell_size := 70.0, rows := 1) -> void:
+	func _init(cols := Profile.STORAGE_COLS, cell_size := 56.0, rows := Profile.STORAGE_ROWS) -> void:
 		columns = cols
 		cell = cell_size
 		min_rows = rows
@@ -624,33 +655,29 @@ class StorageGrid extends Control:
 			queue_redraw())
 		refit()
 
-	## What the tab lists: thing ids, or (an int) a stashed fish's index.
-	## "all" is every thing then every fish; "equip" the wearable things.
+	## What's laid out: a thing's id, or (an int) a stashed fish's index.
 	func ids() -> Array:
-		match tab:
-			"fish":
-				# (the fish put in the warehouse: one box each, by its slot)
-				return range(Profile.stash_fish.size())
-			"all":
-				return Profile.storage_ids("") + range(Profile.stash_fish.size())
-			"equip":
-				return Profile.storage_ids("").filter(func(id): return Items.def(id).get("slot", "") != "")
-		return Profile.storage_ids(tab)
+		return _entries.map(func(e): return e.fish if e.has("fish") else e.id)
 
 	func refit() -> void:
-		var rows := maxi(min_rows, ceili(ids().size() / float(columns)))
+		_entries = Profile.storage_layout()
+		var rows := min_rows
+		for e in _entries:
+			rows = maxi(rows, e.cell.y + e.size.y)
 		custom_minimum_size = Vector2(columns, rows) * cell
 		queue_redraw()
 
+	## Where the i-th laid-out thing is.
 	func box(i: int) -> Rect2:
-		return Rect2(Vector2(i % columns, i / columns) * cell, Vector2.ONE * cell).grow(-3.0)
+		var e: Dictionary = _entries[i]
+		return Rect2(Vector2(e.cell) * cell, Vector2(e.size) * cell).grow(-3.0)
 
 	func target_at(_global: Vector2) -> Dictionary:
-		return {"to": "stash" if tab == "fish" else "storage"}
+		return {"to": "storage"}
 
 	## (the whole-warehouse list takes a fish to the stash, a thing to the crate)
 	func target_for(source: Dictionary) -> Dictionary:
-		return {"to": "stash" if tab == "fish" or source.get("from", "") == "pack_fish" else "storage"}
+		return {"to": "stash" if source.get("from", "") == "pack_fish" else "storage"}
 
 	func hover(source: Dictionary, at: Vector2) -> void:
 		if source.is_empty():
@@ -659,23 +686,19 @@ class StorageGrid extends Control:
 				queue_redraw()
 			return
 		var lit: bool = source.from != "storage" and get_global_rect().has_point(at)
-		if tab == "fish":
-			lit = lit and source.from == "pack_fish"
-		elif tab != "all" and source.from in ["pack_fish", "stash_fish"]:
-			lit = false
 		if lit != _lit:
 			_lit = lit
 			queue_redraw()
 
 	func _gui_input(event: InputEvent) -> void:
 		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-			var list := ids()
-			for i in list.size():
+			for i in _entries.size():
 				if box(i).has_point(event.position):
-					if list[i] is int:
-						board.pressed({"from": "stash_fish", "id": "", "index": list[i]}, event.global_position)
+					var e: Dictionary = _entries[i]
+					if e.has("fish"):
+						board.pressed({"from": "stash_fish", "id": "", "index": e.fish}, event.global_position)
 					else:
-						board.pressed({"from": "storage", "id": list[i]}, event.global_position)
+						board.pressed({"from": "storage", "id": e.id}, event.global_position)
 					accept_event()
 					return
 
@@ -684,20 +707,17 @@ class StorageGrid extends Control:
 		if _lit:
 			draw_rect(Rect2(Vector2.ZERO, size), Color(0.4, 1.0, 0.5, 0.08))
 			draw_rect(Rect2(Vector2.ZERO, size), Color(0.4, 1.0, 0.5, 0.6), false, 2.0)
-		var list := ids()
-		var rows := maxi(ceili(size.y / cell), ceili(list.size() / float(columns)))
-		for i in columns * rows:
-			var r := box(i)
-			if r.end.y > size.y + 1.0:
-				break
-			UiKit.draw_slot(self, r)
-		for i in list.size():
-			if list[i] is int:
-				ItemBoard.draw_fish_slot(self, box(i), Profile.stash_fish[list[i]])
+		for x in columns:
+			for y in ceili(size.y / cell):
+				UiKit.draw_slot(self, Rect2(Vector2(x, y) * cell, Vector2.ONE * cell).grow(-1.5))
+		for i in _entries.size():
+			var e: Dictionary = _entries[i]
+			if e.has("fish"):
+				ItemBoard.draw_fish_slot(self, box(i), Profile.stash_fish[e.fish])
 			else:
-				ItemBoard.draw_item(self, box(i), list[i], Profile.stored(list[i]), font, false, true)
-		if list.is_empty():
-			UiKit.draw_text(self, Vector2(0, cell * 0.6), "這裡還沒有東西" if tab != "fish" else "還沒有放魚進來", 15, UiKit.DIM, HORIZONTAL_ALIGNMENT_CENTER, size.x)
+				ItemBoard.draw_item(self, box(i), e.id, int(e.count), font)
+		if _entries.is_empty():
+			UiKit.draw_text(self, Vector2(0, cell * 0.6), "這裡還沒有東西", 15, UiKit.DIM, HORIZONTAL_ALIGNMENT_CENTER, size.x)
 
 
 ## An equipment slot: what's worn there, or its name greyed.

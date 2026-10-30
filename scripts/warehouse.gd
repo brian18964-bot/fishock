@@ -14,17 +14,17 @@ extends ItemBoard
 ## tap) - the warehouse three big boxes across, scrolled up and down
 ## (DragScroll; a thing dragged sideways goes to the bag), the bag wider.
 
-## The warehouse's boxes (3 across) and the bag's cells.
-const STORAGE_CELL := 80.0
-const COLS := 4
-const BAG_CELL := 62.0
-## User request: no categories - the warehouse a single list (things, then fish).
-const STORAGE_WIDTH := 80.0 * 4 + 44.0
+## User request: the warehouse has cells like the bag - 2.4 times its - and
+## everything takes the room it does in the bag (a rod 3 x 1): its window
+## wide as the bag's beside it, scrolled when what's in it runs past.
+const CELL := 58.0
+const WINDOW_WIDTH := 446.0
 
 var _storage: ItemBoard.StorageGrid
 var _bag: ItemBoard.BagGrid
 var _purse: PanelContainer
 var _used: Label
+var _stored: Label
 
 
 func _ready() -> void:
@@ -38,54 +38,49 @@ func _build() -> void:
 	_purse = UiKit.page_chrome(self, _on_back, "Back", "warehouse")
 	can_discard = true
 
-	# Left: the warehouse, by tab.
+	# Left: the warehouse.
 	var made := UiKit.window("倉庫")
 	var left: PanelContainer = made[0]
 	var lcol: VBoxContainer = made[1]
 	left.name = "WarehouseWindow"
 	left.position = Vector2(14, 56)
-	left.custom_minimum_size = Vector2(STORAGE_WIDTH, 474)
+	left.custom_minimum_size = Vector2(WINDOW_WIDTH, 474)
+	_stored = UiKit.label("", 14, UiKit.DIM)
+	_stored.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	lcol.add_child(_stored)
 	var scroll := DragScroll.new()
 	scroll.name = "StorageScroll"
 	scroll.sideways_free = true
-	scroll.custom_minimum_size = Vector2(STORAGE_CELL * COLS + 4.0, 0)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.custom_minimum_size = Vector2(CELL * Profile.STORAGE_COLS + 4.0, 0)
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_storage = ItemBoard.StorageGrid.new(COLS, STORAGE_CELL, 4)
+	_storage = ItemBoard.StorageGrid.new(Profile.STORAGE_COLS, CELL, Profile.STORAGE_ROWS)
 	_storage.name = "Storage"
-	_storage.tab = "all"
 	scroll.add_child(_storage)
 	lcol.add_child(scroll)
-	var note := UiKit.label("上下滑動看更多・左右拖到背包", 13, UiKit.DIM)
-	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lcol.add_child(note)
 	add_child(left)
 	track(_storage)
 
 	# Right: the bag.
-	_build_bag(Vector2(STORAGE_WIDTH + 24.0, 56), "背包・帶進下一輪", ["拖曳物品在倉庫和背包之間搬、或在背包裡換位置；點一下看說明、選數量"])
-
-
-func _build_bag(at: Vector2, title: String, lines: Array) -> void:
-	var made2 := UiKit.window(title)
+	var made2 := UiKit.window("背包")
 	var right: PanelContainer = made2[0]
 	var rcol: VBoxContainer = made2[1]
 	right.name = "BagWindow"
-	right.position = at
-	right.custom_minimum_size = Vector2(946.0 - at.x, 474)
+	right.position = Vector2(14.0 + WINDOW_WIDTH + 8.0, 56)
+	right.custom_minimum_size = Vector2(WINDOW_WIDTH, 474)
 	_used = UiKit.label("", 14, UiKit.DIM)
 	_used.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	rcol.add_child(_used)
-	_bag = ItemBoard.BagGrid.new(BAG_CELL)
+	_bag = ItemBoard.BagGrid.new(CELL)
 	_bag.name = "Bag"
 	_bag.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	rcol.add_child(_bag)
-	rcol.add_child(UiKit.divider(400))
-	for line in lines:
-		var l := UiKit.label(line, 14, UiKit.DIM)
-		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		l.custom_minimum_size.x = 540
-		rcol.add_child(l)
+	rcol.add_child(UiKit.divider(380))
+	var l := UiKit.label("拖曳物品在倉庫和背包之間搬、或在背包裡換位置；點一下看說明、選數量。上下滑動看倉庫更多", 14, UiKit.DIM)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size.x = WINDOW_WIDTH - 40.0
+	rcol.add_child(l)
 	add_child(right)
 	track(_bag)
 
@@ -100,6 +95,11 @@ func _refresh() -> void:
 		var fs: Vector2i = Inventory.fish_item(f).size
 		cells += fs.x * fs.y
 	_used.text = "%d / %d 格" % [cells, Inventory.COLS * Profile.bag_rows()]
+	var held := 0
+	for st in Profile.storage_stacks():
+		var sz := Items.size_of(st.id)
+		held += sz.x * sz.y
+	_stored.text = "%d / %d 格" % [held, Profile.STORAGE_COLS * Profile.STORAGE_ROWS]
 
 
 func _on_back() -> void:

@@ -44,6 +44,13 @@ func _build() -> void:
 	scroll.add_child(_rows)
 	col.add_child(scroll)
 	add_child(book)
+	# User request: the book is a window over the tank - a close button, back to the tank.
+	var close := UiKit.button("關閉", 15)
+	close.name = "CloseLog"
+	close.custom_minimum_size = Vector2(80, 36)
+	close.position = Vector2(850, 64)
+	close.pressed.connect(_on_back_pressed)
+	add_child(close)
 
 
 func _rebuild_rows() -> void:
