@@ -394,6 +394,8 @@ func _show_selected(player: Player, items: Array, placed: Array) -> void:
 				_actions.add_child(_action("裝備", func():
 					equip_from_bag(item.bag)
 					_rebuild(), busy))
+			if gid == "oxy_box":
+				_actions.add_child(_action("使用", _open_oxy))
 		"use":
 			# User request (round 7): the potions, the eyeball, the
 			# binoculars - used from here (Player.use_item()).
@@ -626,6 +628,27 @@ func _stack_onto(item: Dictionary, at: Vector2i) -> bool:
 	return false
 
 
+## The fish box's grid (OxyPanel), from 使用.
+func _open_oxy() -> void:
+	var panel := OxyPanel.new()
+	panel.closed.connect(_rebuild)
+	add_child(panel)
+
+
+## Is the box's icon under `at` - worn in its slot, or lying in the grid?
+func _over_oxy_box(at: Vector2) -> bool:
+	for box in _gear_slots:
+		if box.slot == "offhand" and Profile.has_oxy_box() and box.get_global_rect().has_point(at):
+			return true
+	if _grid.get_global_rect().has_point(at):
+		var cell := _grid.cell_at(at)
+		for j in _grid.items.size():
+			var it: Dictionary = _grid.items[j]
+			if it.get("item", "") == "oxy_box" and (_grid.placed[j] as Rect2i).has_point(cell):
+				return true
+	return false
+
+
 func drag_end(item: Dictionary, at: Vector2) -> void:
 	if _ghost != null:
 		_ghost.queue_free()
@@ -634,6 +657,14 @@ func drag_end(item: Dictionary, at: Vector2) -> void:
 	if _grid != null:
 		_grid.preview = Rect2i()
 		_grid.queue_redraw()
+	# A fish onto the fish box's icon: laid in the box by itself, or a warning that it's full.
+	if item.kind == "fish" and _over_oxy_box(at):
+		var why := GameState.oxy_put(item.index)
+		if why != "":
+			GameState.push_message("魚箱放不下這條魚" if why == "魚箱放不下" else why)
+		_selected = {}
+		_rebuild()
+		return
 	# Onto a gear slot: put it on; a slot's thing onto the grid: off.
 	for box in _gear_slots:
 		if box.get_global_rect().has_point(at):
@@ -815,10 +846,7 @@ func _show_slot(player: Player, slot: String) -> void:
 		lines.append("耐久度 %d / %d" % [Profile.durability(id), Profile.max_durability(id)])
 	_detail.text = "\n".join(lines)
 	if id == "oxy_box":
-		_actions.add_child(_action("打開魚箱", func():
-			var panel := OxyPanel.new()
-			panel.closed.connect(_rebuild)
-			add_child(panel)))
+		_actions.add_child(_action("使用", _open_oxy))
 	if slot != "rod":
 		_actions.add_child(_action("卸下放進背包", func():
 			unequip_to_bag(slot)

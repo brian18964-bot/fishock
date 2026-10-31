@@ -793,9 +793,8 @@ func _apply_water_ghost_attack(cause := "") -> void:
 		# (the ghost-ward potion: it doesn't dare)
 		GameState.report("水鬼探出頭，又被藥水的氣味逼回水裡")
 		return
-	water_ghost_timer = WATER_GHOST_DEBUFF_DURATION
 	perform("scared", 1.2)
-	affliction_text = "水鬼異常狀態中"
+	afflict(WATER_GHOST_DEBUFF_DURATION, "水鬼纏上了，方向亂掉", "被水鬼嚇到，動彈不得")
 	cast_jittered = true
 	if fishing_mode == FishingMode.BOBBER:
 		bait_count = max(bait_count - 1, 0)
@@ -808,11 +807,37 @@ func _apply_water_ghost_attack(cause := "") -> void:
 	if not stolen.is_empty():
 		move_note = "stolen"
 		Campaign.stat("stolen")
-	var msg := "水鬼從水裡冒出來偷襲！身上狀態異常中"
+	var msg := "水鬼從水裡冒出來偷襲！%s" % ("嚇得動彈不得" if fear_timer > 0.0 else "頭昏眼花，方向全亂了")
 	if not stolen.is_empty():
-		msg = "水鬼冒出來偷襲，還搶走了一條 %s！身上狀態異常中" % stolen.get("name", "魚")
+		msg = "水鬼冒出來偷襲，還搶走了一條 %s！%s" % [stolen.get("name", "魚"), "嚇得動彈不得" if fear_timer > 0.0 else "頭昏眼花，方向全亂了"]
 	GameState.push_message(cause + msg)
 	GameState.report("水鬼偷襲！" if stolen.is_empty() else "水鬼偷襲，搶走了%s" % stolen.get("name", "魚"))
+
+
+## User request: after a ghost's or a beast's blow, one of two at random - fear (stands
+## where it is in the scared pose, the stick does nothing: FEAR_TIME s) or confusion (the stick
+## still walks, but the way it goes is picked at random, a new one every CONFUSE_REDIRECT s,
+## and slowly: `duration`). Both at once: fear first, the confusion carries on after it.
+const FEAR_TIME := Vector2(1.5, 2.0)
+const CONFUSE_REDIRECT := Vector2(0.4, 0.8)
+var fear_timer := 0.0
+var fear_text := ""
+var _confuse_angle := 0.0
+var _confuse_redirect := 0.0
+## The parry's stagger (s): the steering wobbles a little, the feet are slow.
+var stagger_timer := 0.0
+
+
+func afflict(duration: float, confuse_text: String, fear_msg: String, force := "") -> void:
+	var kind := force if force != "" else ("fear" if randf() < 0.5 else "confuse")
+	if kind == "fear":
+		fear_timer = maxf(fear_timer, randf_range(FEAR_TIME.x, FEAR_TIME.y))
+		fear_text = fear_msg
+		perform("scared", fear_timer)
+	else:
+		water_ghost_timer = maxf(water_ghost_timer, duration)
+		affliction_text = confuse_text
+		_confuse_redirect = 0.0
 
 
 ## What the move playing is for (the 3D run plays each its own: a fail's
@@ -1288,8 +1313,7 @@ func nearest_water() -> Dictionary:
 ## dizzy - the same muddled steering and slow feet as a water-ghost hit.
 func ghost_confuse(duration: float) -> void:
 	cancel_channel("被鬼纏上")
-	water_ghost_timer = maxf(water_ghost_timer, duration)
-	affliction_text = "被鬼纏過，頭昏眼花"
+	afflict(duration, "被鬼纏過，方向亂掉", "被鬼嚇到，動彈不得")
 
 
 ## The off hand's thing is in hand: worn, and the rod on the back (not
@@ -1539,15 +1563,13 @@ func animal_attack(attacker: String) -> void:
 		# (the parry seen as a slash - its blow already struck)
 		if swing("slash"):
 			_swing_landed = true
-		water_ghost_timer = maxf(water_ghost_timer, PARRY_DEBUFF_DURATION)
-		affliction_text = "擋下了%s的撲擊" % attacker
+		stagger_timer = maxf(stagger_timer, PARRY_DEBUFF_DURATION)
 		Sfx.play_at("swipe_hit", global_position, -4.0)
 		Campaign.stat("parry")
 		GameState.push_message("%s撲上來，你揮出%s擋開了牠！" % [attacker, held_weapon().name])
 		GameState.report("揮刀擋開了%s" % attacker)
 		return
-	water_ghost_timer = maxf(water_ghost_timer, ANIMAL_ATTACK_DEBUFF_DURATION)
-	affliction_text = "被%s攻擊，行動變慢" % attacker
+	afflict(ANIMAL_ATTACK_DEBUFF_DURATION, "被%s攻擊，方向亂掉" % attacker, "被%s嚇到，動彈不得" % attacker)
 	Campaign.stat("animal_hit")
 	if state != State.IDLE:
 		_cancel_cast("animal_attack")
@@ -1911,6 +1933,9 @@ func _update_rod(delta: float) -> void:
 func _physics_process(delta: float) -> void:
 	_update_rod(delta)
 	water_ghost_timer = max(water_ghost_timer - delta, 0.0)
+	fear_timer = maxf(fear_timer - delta, 0.0)
+	stagger_timer = maxf(stagger_timer - delta, 0.0)
+	_confuse_redirect -= delta
 	poison_timer = maxf(poison_timer - delta, 0.0)
 	move_left = maxf(move_left - delta, 0.0)
 	if _escape_left >= 0.0:
@@ -2063,11 +2088,19 @@ func _update_movement() -> void:
 
 	# Design doc request: a water ghost hit scrambles steering for a bit -
 	# the input direction wobbles randomly instead of going where aimed.
-	if water_ghost_timer > 0.0 and input_dir.length() > 0.05:
+	if fear_timer > 0.0:
+		input_dir = Vector2.ZERO
+	elif water_ghost_timer > 0.0 and input_dir.length() > 0.05:
+		# (confused: the stick says walk, the way's picked at random, a new one now and again)
+		if _confuse_redirect <= 0.0:
+			_confuse_angle = randf() * TAU
+			_confuse_redirect = randf_range(CONFUSE_REDIRECT.x, CONFUSE_REDIRECT.y)
+		input_dir = Vector2.from_angle(_confuse_angle) * input_dir.length()
+	elif stagger_timer > 0.0 and input_dir.length() > 0.05:
 		input_dir = input_dir.rotated(randf_range(-1.2, 1.2))
 
 	var carry_ratio: float = carry_speed_ratio(GameState.carried_fish.size())
-	var affliction_ratio: float = WATER_GHOST_SPEED_MULT if water_ghost_timer > 0.0 else 1.0
+	var affliction_ratio: float = WATER_GHOST_SPEED_MULT if (water_ghost_timer > 0.0 or stagger_timer > 0.0) else 1.0
 	if poison_timer > 0.0:
 		affliction_ratio *= POISON_SPEED_MULT
 	var drum_ratio: float = OIL_DRUM_SPEED_MULT if carrying_oil_drum else 1.0

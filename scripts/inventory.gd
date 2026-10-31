@@ -93,6 +93,12 @@ static func items(player: Node) -> Array:
 ## Things packed before the run keep their cells ("cell"); the rest are
 ## packed around them, biggest first.
 static func pack(list: Array) -> Array:
+	return pack_in(list, COLS, Profile.bag_rows(), ROWS)
+
+
+## `pack` in a grid of `cols` x `rows` (the fish box's is 2 x 3); `keep_rows` the rows a cell
+## already set may sit in even if shut.
+static func pack_in(list: Array, cols: int, rows: int, keep_rows := -1) -> Array:
 	var used := {}
 	var placed := []
 	placed.resize(list.size())
@@ -101,7 +107,7 @@ static func pack(list: Array) -> Array:
 		var cell = list[i].get("cell")
 		# What was packed before the run keeps its cell, even in a row low
 		# spirit has shut since.
-		if cell is Vector2i and _free(used, cell, list[i].size, ROWS):
+		if cell is Vector2i and _free(used, cell, list[i].size, keep_rows if keep_rows >= 0 else rows, cols):
 			_take(used, cell, list[i].size)
 			placed[i] = Rect2i(cell, list[i].size)
 		else:
@@ -113,7 +119,7 @@ static func pack(list: Array) -> Array:
 		return sa.x * sa.y > sb.x * sb.y if sa.x * sa.y != sb.x * sb.y else a < b)
 	for i in order:
 		var size: Vector2i = list[i].size
-		var spot := _first_fit(used, size)
+		var spot := _first_fit(used, size, cols, rows)
 		if spot.x < 0:
 			return []
 		_take(used, spot, size)
@@ -122,17 +128,18 @@ static func pack(list: Array) -> Array:
 
 
 ## The rows low spirit shuts take nothing new.
-static func _first_fit(used: Dictionary, size: Vector2i) -> Vector2i:
-	var rows := Profile.bag_rows()
-	for x in COLS - size.x + 1:
+static func _first_fit(used: Dictionary, size: Vector2i, cols := COLS, rows := -1) -> Vector2i:
+	if rows < 0:
+		rows = Profile.bag_rows()
+	for x in cols - size.x + 1:
 		for y in rows - size.y + 1:
-			if _free(used, Vector2i(x, y), size, rows):
+			if _free(used, Vector2i(x, y), size, rows, cols):
 				return Vector2i(x, y)
 	return Vector2i(-1, -1)
 
 
-static func _free(used: Dictionary, at: Vector2i, size: Vector2i, rows: int) -> bool:
-	if at.x < 0 or at.y < 0 or at.x + size.x > COLS or at.y + size.y > rows:
+static func _free(used: Dictionary, at: Vector2i, size: Vector2i, rows: int, cols := COLS) -> bool:
+	if at.x < 0 or at.y < 0 or at.x + size.x > cols or at.y + size.y > rows:
 		return false
 	for dx in size.x:
 		for dy in size.y:

@@ -96,6 +96,7 @@ const TESTS := [
 	"test_move_area",
 	"test_rod_mode",
 	"test_bag_arrange",
+	"test_fear_and_confusion",
 	"test_pull_and_answer",
 	"test_move_plan",
 	"test_slide_amounts",
@@ -3102,10 +3103,11 @@ func test_mythic_traits() -> void:
 		var hits := 0
 		for _i in 200:
 			p.water_ghost_timer = 0.0
+			p.fear_timer = 0.0
 			# (a pounce that lands knocks a fish loose: the angel back each time)
 			GameState.carried_fish = [angel.duplicate(true)]
 			p.animal_attack("狼")
-			hits += 1 if p.water_ghost_timer > 0.0 else 0
+			hits += 1 if (p.water_ghost_timer > 0.0 or p.fear_timer > 0.0) else 0
 		check(hits > 60 and hits < 140, "the angel turns about half the pounces aside (%d of 200 landed)" % hits)
 		GameState.carried_fish.clear()
 	# The fortune fish: gold by the hour, to a cap.
@@ -3315,7 +3317,70 @@ func test_oxy_items() -> void:
 	GameState.carried_fish = GameState.carried_fish.slice(0, 8)
 	for _i in Profile.OXY_SLOTS:
 		GameState.oxy_put(0)
-	check(GameState.oxy_fish.size() == Profile.OXY_SLOTS and GameState.oxy_put(0) == "魚箱滿了", "six slots")
+	check(GameState.oxy_fish.size() == Profile.OXY_SLOTS and GameState.oxy_put(0) == "魚箱放不下", "six small fish fill the six cells")
+	# By size: three medium fish (two cells each) fit, a fourth doesn't; a large one (four) takes most of it.
+	for size_case in [["medium", 3], ["large", 1], ["huge", 1]]:
+		GameState.oxy_fish.clear()
+		GameState.carried_fish.clear()
+		for _i in 5:
+			var m := a.duplicate(true)
+			m["size"] = size_case[0]
+			GameState.carried_fish.append(m)
+		var put := 0
+		while not GameState.carried_fish.is_empty() and GameState.oxy_put(0) == "":
+			put += 1
+		check(put == size_case[1], "%s fish: %d fit the box (%d)" % [size_case[0], size_case[1], put])
+	# A fish put at a chosen place, one onto an occupied place refused, and one moved inside.
+	GameState.oxy_fish.clear()
+	GameState.carried_fish.clear()
+	for _i in 3:
+		var m := a.duplicate(true)
+		m["size"] = "medium"
+		GameState.carried_fish.append(m)
+	check(GameState.oxy_put(0, Vector2i(1, 0)) == "" and GameState.oxy_placed()[0].position == Vector2i(1, 0), "put where asked")
+	check(GameState.oxy_put(0, Vector2i(1, 1)) != "", "onto it: no")
+	check(GameState.oxy_put(0, Vector2i(0, 0)) == "", "beside it: yes")
+	check(GameState.oxy_move(0, Vector2i(1, 1)) == "" and GameState.oxy_placed()[0].position == Vector2i(1, 1), "moved inside the box")
+	check(GameState.oxy_move(0, Vector2i(0, 1)) != "", "not onto the other")
+	# Laid in by itself: a lone third one turned to lie if it must.
+	GameState.oxy_fish.clear()
+	GameState.carried_fish.clear()
+	for _i in 3:
+		var m := a.duplicate(true)
+		m["size"] = "medium"
+		GameState.carried_fish.append(m)
+	var all_in := true
+	for _i in 3:
+		all_in = all_in and GameState.oxy_put(0) == ""
+	check(all_in and GameState.oxy_fish.size() == 3, "three medium fish laid in by the system, turning them to fit")
+	GameState.oxy_fish.clear()
+	GameState.carried_fish.clear()
+	for _i in 3:
+		GameState.carried_fish.append(a.duplicate(true))
+	for _i in 3:
+		GameState.carried_fish.append(a.duplicate(true))
+	for _i in 6:
+		GameState.oxy_put(0)
+	# The panel: carried ones listed, the box's in its grid; a drag from the list to a cell.
+	GameState.oxy_fish.clear()
+	GameState.carried_fish.clear()
+	var pm := a.duplicate(true)
+	pm["size"] = "medium"
+	GameState.carried_fish.append(pm)
+	var panel := OxyPanel.new()
+	add_child(panel)
+	await frames(2)
+	check(panel._carried.fish.size() == 1 and panel._box.fish.is_empty(), "the panel lists the carried fish")
+	var spot := panel._box.get_global_rect().position + Vector2(1.5, 0.5) * OxyPanel.CELL
+	panel.drag_end("carried", 0, spot, Vector2i.ZERO)
+	check(GameState.oxy_fish.size() == 1 and GameState.oxy_placed()[0].position == Vector2i(1, 0) and panel._box.fish.size() == 1, "dragged to a cell of its own choosing")
+	panel.tap("box", 0)
+	check(GameState.oxy_fish.is_empty() and panel._carried.fish.size() == 1, "tapped in the box: taken out")
+	panel.queue_free()
+	for _i in 6:
+		GameState.carried_fish.append(a.duplicate(true))
+	for _i in 6:
+		GameState.oxy_put(0)
 	# Lost with the run unless escaped.
 	var home := GameState.oxy_fish.size()
 	GameState.run_over = false
@@ -4240,7 +4305,7 @@ func test_water_ghost() -> void:
 	await frames(2)
 	var ghosts := main.get_tree().get_nodes_in_group("water_ghosts")
 	check(ghosts.size() == 1, "the water ghost shows up")
-	check(player().water_ghost_timer > 0.0, "the player is afflicted")
+	check(player().water_ghost_timer > 0.0 or player().fear_timer > 0.0, "the player is afflicted (afraid or confused)")
 	await seconds(12.0)
 	check(main.get_tree().get_nodes_in_group("water_ghosts").is_empty(), "and goes back under")
 
@@ -4879,7 +4944,7 @@ func test_chop_and_weapons() -> void:
 	p.water_ghost_timer = 0.0
 	p.animal_attack("狼")
 	check(gs.carried_fish.size() == carried, "the knife keeps the fish")
-	check(p.water_ghost_timer <= Player.PARRY_DEBUFF_DURATION, "only a short stagger")
+	check(p.water_ghost_timer == 0.0 and p.fear_timer == 0.0 and p.stagger_timer <= Player.PARRY_DEBUFF_DURATION, "only a short stagger")
 	Profile.equipped["offhand"] = ""
 	p.water_ghost_timer = 0.0
 	p.animal_attack("狼")
@@ -5651,7 +5716,7 @@ func test_wolf_bites() -> void:
 	var bit := false
 	for _i in 60 * 4:
 		await frames(1)
-		if p.water_ghost_timer > 0.0:
+		if p.water_ghost_timer > 0.0 or p.fear_timer > 0.0:
 			bit = true
 			break
 	check(bit, "caught up, the wolf bites (%s)" % p.affliction_text)
@@ -6702,16 +6767,28 @@ func test_fish_alerts() -> void:
 	GameState.carried_fish[GameState.carried_fish.find(tired)]["vit"] = 0.1
 	await seconds(0.4)
 	check(alerts._cards.size() == 2, "still there as it runs down")
-	# Tapping one opens the bag with that fish picked.
+	# Tapping one shows the fish's full card right beside it (not the bag); again, it goes.
 	var uid := int(tired.uid)
 	alerts._open_fish(uid)
-	await frames(3)
-	var bag: Backpack
+	await frames(4)
+	var card: Control = alerts._cards[uid]
+	check(alerts._detail != null and alerts._detail.position.x >= card.position.x + FishAlerts.CARD.x, "tapped: its full card beside it")
+	var bag_open := false
 	for c in main.get_children():
-		if c is Backpack:
-			bag = c
-	check(bag != null and bag.is_open() and bag._selected.get("kind", "") == "fish", "tapped: the bag's card for that fish")
-	bag.toggle()
+		if c is Backpack and c.is_open():
+			bag_open = true
+	check(not bag_open, "and the bag stays shut")
+	alerts._open_fish(uid)
+	await frames(4)
+	check(alerts._detail == null, "tapped again: it goes")
+	# A fish gone rotten: its card goes.
+	var spoiled := _alert_fish("爛掉的魚", 0.5)
+	FishLife.kill(spoiled)
+	FishLife.rot(spoiled)
+	GameState.add_carried_fish(spoiled)
+	await seconds(0.6)
+	check(alerts._cards.size() == 2 and not alerts._cards.has(int(spoiled.uid)), "a rotten one has no card")
+	GameState.carried_fish.erase(spoiled)
 	# Closing one: it doesn't come back.
 	alerts._dismiss(uid)
 	await seconds(0.6)
@@ -6834,7 +6911,71 @@ func test_bag_arrange() -> void:
 	var second: Dictionary = salts[1]
 	check(not bag.can_place(first, Profile.bag[second.bag].cell), "not onto another stack's cell (that stacks it instead)")
 	check(bag._stack_onto(first, Profile.bag[second.bag].cell) and Profile.bag.size() == 1 and int(Profile.bag[0].count) == 5, "dropped on a stack of the same: they join (%s)" % [Profile.bag])
+	# A fish dragged onto the fish box's icon is laid in the box; none left room: a warning.
+	Profile.bag.clear()
+	Profile.bag.append({"id": "oxy_box", "count": 1, "cell": Vector2i(4, 1)})
+	GameState.carried_fish.clear()
+	GameState.add_carried_fish(_alert_fish("丁", 0.9))
+	bag._rebuild()
+	var icon_at: Vector2 = bag._grid.get_global_transform() * ((Vector2(4, 1) + Vector2(0.5, 0.5)) * Backpack.CELL)
+	check(bag._over_oxy_box(icon_at), "the box's icon is found in the grid")
+	var dragged: Dictionary = bag._grid.items.filter(func(it): return it.kind == "fish")[0]
+	bag.drag_end(dragged, icon_at)
+	check(GameState.oxy_fish.size() == 1 and GameState.carried_fish.is_empty(), "dropped on the icon: in the box")
+	GameState.oxy_fish.clear()
+	for _i in 7:
+		GameState.add_carried_fish(_alert_fish("戊", 0.9))
+	bag._rebuild()
+	var made := 0
+	for _i in 7:
+		bag._rebuild()
+		var it: Dictionary = bag._grid.items.filter(func(x): return x.kind == "fish")[0]
+		bag.drag_end(it, icon_at)
+		made = GameState.oxy_fish.size()
+	check(made == 6 and GameState.carried_fish.size() == 1, "six cells' worth go in, the seventh is left (%d in)" % made)
+	GameState.oxy_fish.clear()
 	bag.toggle()
+
+
+## User request: a ghost's or a beast's blow leaves fear (stands still) or confusion (walks, the
+## way picked at random) - one at random; both at once, fear first, confusion after it.
+func test_fear_and_confusion() -> void:
+	Profile.load_data({"gold": 0})
+	await _fresh_game()
+	var p := player()
+	var stick: TouchJoystick = p._move_joystick
+	var fears := 0
+	for _i in 100:
+		p.fear_timer = 0.0
+		p.water_ghost_timer = 0.0
+		p.afflict(3.0, "亂", "怕")
+		fears += 1 if p.fear_timer > 0.0 else 0
+		check((p.fear_timer > 0.0) != (p.water_ghost_timer > 0.0) or _i > 0, "one or the other")
+	check(fears > 25 and fears < 75, "about half and half (%d afraid of 100)" % fears)
+	# Afraid: the stick does nothing, 1.5 to 2 s.
+	p.fear_timer = 0.0
+	p.water_ghost_timer = 0.0
+	p.afflict(3.0, "亂", "怕", "fear")
+	check(p.fear_timer >= Player.FEAR_TIME.x and p.fear_timer <= Player.FEAR_TIME.y, "fear lasts %.2f s" % p.fear_timer)
+	stick.output = Vector2.RIGHT
+	stick.is_pressed = true
+	await frames(5)
+	check(p.velocity.length() < 1.0, "afraid: the stick does nothing")
+	check(StatusCard.conditions(p).any(func(c): return str(c[0]).begins_with("害怕")), "the status card says afraid")
+	# Confused as well: after the fear it carries on, the way picked at random.
+	p.afflict(12.0, "亂", "怕", "confuse")
+	await seconds(2.2)
+	check(p.fear_timer == 0.0 and p.water_ghost_timer > 0.0, "fear over, confusion still on")
+	check(StatusCard.conditions(p).any(func(c): return str(c[0]).begins_with("混亂")), "the status card says confused")
+	var dirs := {}
+	for _i in 60:
+		await frames(5)
+		if p.velocity.length() > 1.0:
+			dirs[snappedf(p.velocity.angle(), 0.3)] = true
+	check(p.velocity.length() > 1.0 or dirs.size() > 0, "confused: it still walks")
+	check(dirs.size() >= 2, "in changing directions, not the stick's (%d ways)" % dirs.size())
+	stick.output = Vector2.ZERO
+	stick.is_pressed = false
 
 
 func test_salting() -> void:

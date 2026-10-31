@@ -330,6 +330,8 @@ var _off_in := 1.0
 ## The oxygenated fish box (the off hand's, when it's that): 1 hanging from
 ## the hand, 0 set down on the ground beside the traveller (while fishing).
 var _oxy_in := 1.0
+const OXY_REST := 2.0
+var _oxy_still := OXY_REST
 ## Its model's size in the game (the user's 0.35 m cooler, a little smaller
 ## for the traveller's size) and where its grip is (m up from its base).
 const OXY_BOX_SCALE := 0.85
@@ -3488,8 +3490,9 @@ func _hang_gear(sk: Skeleton3D, b: Basis) -> void:
 		if _offhand_id == "oxy_box":
 			# Hung by its handle from the hand; else set down by the feet.
 			var s := OXY_BOX_SCALE
-			var yaw := Basis(Vector3.UP, pivot.global_rotation.y).scaled(Vector3.ONE * s)
-			var hung := Transform3D(yaw, hand.origin - Vector3.UP * OXY_BOX_GRIP * s)
+			# (carried with its long side to the body, the short side ahead)
+			var carried_yaw := Basis(Vector3.UP, pivot.global_rotation.y + PI * 0.5).scaled(Vector3.ONE * s)
+			var hung := Transform3D(carried_yaw, hand.origin - Vector3.UP * OXY_BOX_GRIP * s)
 			var down := Transform3D(Basis(Vector3.UP, pivot.global_rotation.y + 0.5).scaled(Vector3.ONE * s),
 				pivot.global_position + b.x * -0.42 + b.z * 0.12)
 			_offhand.global_transform = down.interpolate_with(hung, smoothstep(0.0, 1.0, _oxy_in))
@@ -3589,7 +3592,17 @@ func _gear_state(delta: float) -> void:
 	_off_in = move_toward(_off_in, 1.0 if (swinging or digging) else 0.0, delta / Player.SWING_DRAW)
 	# (the fish box: carried by its handle when walking about, set down by
 	# the feet while fishing)
-	var carrying := player.state == Player.State.IDLE and not player.carrying_oil_drum and not player.held
+	# User request: stood still OXY_REST s it's set down on the ground (and through the
+	# opening, and while fishing, as if stood still already); the first push of the stick
+	# picks it up again.
+	if player.state != Player.State.IDLE or _intro_t >= 0.0 or player.held:
+		_oxy_still = OXY_REST
+	elif player.velocity.length() > 5.0:
+		_oxy_still = 0.0
+	else:
+		_oxy_still += delta
+	var carrying := player.state == Player.State.IDLE and not player.carrying_oil_drum and not player.held \
+		and _oxy_still < OXY_REST
 	_oxy_in = move_toward(_oxy_in, 1.0 if carrying else 0.0, delta / 0.45)
 	_sync_offhand()
 

@@ -25,6 +25,10 @@ var _cards: Dictionary = {}     # uid -> AlertCard
 var _dismissed: Dictionary = {}  # uid -> true: closed by the player, not shown again
 var _hidden := false
 var _t := 0.0
+## The fish whose full card is up beside its own (and the card), and the frame it was asked for.
+var _detail: Control
+var _detail_uid := -1
+var _open_frame := -10
 
 
 func _init() -> void:
@@ -59,6 +63,9 @@ static func wants(fish: Dictionary) -> bool:
 	match FishLife.state(fish):
 		"alive":
 			return not FishLife.has_trait(fish, "immortal") and float(fish.get("vit", 1.0)) <= ALERT_AT
+		"rotten":
+			# (gone bad: its card goes - nothing left to watch)
+			return false
 	return true
 
 
@@ -96,6 +103,13 @@ func _layout() -> void:
 		card.position = AT + Vector2(0, i * (CARD.y + GAP))
 		i += 1
 	_eye.position = AT + Vector2(0, 0.0 if _hidden else minf(i, MAX_SHOWN) * (CARD.y + GAP))
+	if _detail != null:
+		if _hidden or not _cards.has(_detail_uid) or not (_cards[_detail_uid] as Control).visible:
+			_detail.queue_free()
+			_detail = null
+			_detail_uid = -1
+		else:
+			_place_detail()
 
 
 func _toggle_hidden() -> void:
@@ -111,16 +125,49 @@ func _dismiss(uid: int) -> void:
 	_layout()
 
 
-## The fish's full card: the backpack opened with it picked.
+## The fish's full card, right beside its card (tapped again, or another one tapped: it goes).
+## (a click can come twice in a frame or two - the mouse's and its touch - so it's counted once)
 func _open_fish(uid: int) -> void:
-	for c in get_parent().get_children():
-		if c is Backpack:
-			if not c.is_open():
-				c.toggle()
-			for i in GameState.carried_fish.size():
-				if int(GameState.carried_fish[i].get("uid", -2)) == uid:
-					c.select("fish", i)
+	var frame := Engine.get_process_frames()
+	if frame - _open_frame <= 2:
+		return
+	_open_frame = frame
+	if _detail != null:
+		_detail.queue_free()
+		_detail = null
+		if _detail_uid == uid:
+			_detail_uid = -1
 			return
+	if not _cards.has(uid):
+		return
+	var fish: Dictionary = {}
+	for f in GameState.carried_fish:
+		if int(f.get("uid", -2)) == uid:
+			fish = f
+	if fish.is_empty():
+		return
+	_detail_uid = uid
+	var made := UiKit.tooltip_panel()
+	_detail = made
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	col.add_child(FishVitals.name_row(fish, 17))
+	var vitals := FishVitals.new()
+	vitals.custom_minimum_size.x = 210.0
+	vitals.show_fish(fish, false, "field")
+	col.add_child(vitals)
+	_detail.add_child(col)
+	_detail.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(_detail)
+	_place_detail()
+
+
+func _place_detail() -> void:
+	if _detail == null or not _cards.has(_detail_uid):
+		return
+	var card: Control = _cards[_detail_uid]
+	_detail.reset_size()
+	_detail.position = Vector2(card.position.x + CARD.x + 8.0, clampf(card.position.y, 8.0, 530.0 - _detail.size.y))
 
 
 ## The eye: tap to hide every card (slashed), tap again to show them.

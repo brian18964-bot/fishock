@@ -96,7 +96,7 @@ var _warmed := false
 var _prewarmed := false
 var _sv_tick := 0
 ## How long the picture stays up after the way asked is done (s), and what's left.
-const LINGER := 0.45
+const LINGER := 2.0
 var _linger := 0.0
 var _stab_t := 0.0
 var _move := ""

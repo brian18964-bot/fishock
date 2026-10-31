@@ -168,6 +168,8 @@ func _process(delta: float) -> void:
 
 	heart_label.text = "❤ 已持有心臟" if GameState.has_heart else ""
 	affliction_label.text = "⚠ " + _player.affliction_text if _player.water_ghost_timer > 0.0 else ""
+	if _player.fear_timer > 0.0:
+		affliction_label.text = "⚠ " + _player.fear_text
 	if _player.poison_timer > 0.0:
 		affliction_label.text = "⚠ 中毒了，腳步沉重"
 

@@ -114,6 +114,9 @@ const CLASP_COST := 220
 const CLASP_SLOTS := ["clasp1", "clasp2", "clasp3"]
 const CLASP_DESC := "裝備在角色的扣魚欄：點裝備上去的活魚扣，會出現帶「＋」的空格，把背包或倉庫裡的魚掛上去（一個空格一條魚，不管魚本身多大）。掛著的魚不佔背包格子，活性和新鮮度照樣倒數、也會一起出發；適合把帶醃製詞綴或不死的魚扣在身上管理。要卸下活魚扣，得先把魚取下來"
 const OXY_SLOTS := 6
+## The box's grid: two across, three down - a fish takes the cells its size does.
+const OXY_COLS := 2
+const OXY_ROWS := 3
 const OXY_BOX_DESC := "副手裝備：打開後有六格，放進去的魚活性不會下降。放進、拿出各用掉 1 點耐久；沒有逃脫成功，裡面的魚一樣帶不出來。沒裝備時佔背包六格"
 const NET_DESC := "副手裝備：拿在手上時點一下右搖桿揮網撈活餌，抓得更遠，被咬中毒的機率減半"
 ## User request: the flashlight is a shop item (bought once) that runs on
@@ -962,6 +965,11 @@ func has_shovel() -> bool:
 
 func has_oxy_box() -> bool:
 	return equipped.get("offhand", "") == "oxy_box"
+
+
+## Is there a box to use - worn, or in the bag?
+func can_use_oxy_box() -> bool:
+	return has_oxy_box() or bag_count("oxy_box") > 0
 
 
 func has_net() -> bool:

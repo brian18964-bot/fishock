@@ -171,8 +171,10 @@ static func conditions(p: Player) -> Array:
 	var out := []
 	if p.held:
 		out.append(["被大鬼抓住了", WARN])
+	if p.fear_timer > 0.0:
+		out.append(["害怕中：%s（%d 秒）" % [p.fear_text, ceili(p.fear_timer)], WARN])
 	if p.water_ghost_timer > 0.0:
-		out.append([p.affliction_text, WARN])
+		out.append(["混亂中：%s（%d 秒）" % [p.affliction_text, ceili(p.water_ghost_timer)], WARN])
 	if p.poison_timer > 0.0:
 		out.append(["中毒了，腳步沉重（%d 秒）" % ceili(p.poison_timer), WARN])
 	if p.carrying_oil_drum:
