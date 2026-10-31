@@ -97,6 +97,11 @@ func _input(event: InputEvent) -> void:
 		_out_armed = false
 
 
+func _exit_tree() -> void:
+	if _ghost != null and is_instance_valid(_ghost):
+		_ghost.queue_free()
+
+
 func _process(_delta: float) -> void:
 	if _grid != null:
 		_grid.queue_redraw()

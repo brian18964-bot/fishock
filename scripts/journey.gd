@@ -304,6 +304,10 @@ func _depart_level(id: String) -> void:
 
 # ---------------------------------------------------------------- 自由夜釣
 
+## The free run's map style ("" the lakeside forest, "snow_pine" the snowy one).
+var _free_theme := ""
+
+
 func _build_free() -> void:
 	var box := VBoxContainer.new()
 	box.name = "FreeRun"
@@ -350,7 +354,21 @@ func _build_free() -> void:
 			int(Profile.campaign.get("best_curses", 0))], 15, UiKit.GOLD_BRIGHT))
 	else:
 		box.add_child(UiKit.label("通過第五章後，可以加上「詛咒」挑戰更高難度。", 14, UiKit.DIM))
-	var go := UiKit.button("出發：3D 湖畔森林", 20, "red")
+	# The map's look: the lakeside forest, or the same forest under snow.
+	var looks := HBoxContainer.new()
+	looks.add_theme_constant_override("separation", 8)
+	looks.add_child(UiKit.label("地圖風格", 15, UiKit.GOLD))
+	for pair in [["", "湖畔森林"], ["snow_pine", "雪地森林"]]:
+		var b := UiKit.button(pair[1], 15, "red" if _free_theme == pair[0] else "gray")
+		b.name = "Look_" + (pair[0] if pair[0] != "" else "forest")
+		b.custom_minimum_size = Vector2(120, 36)
+		var key: String = pair[0]
+		b.pressed.connect(func():
+			_free_theme = key
+			_show_tab("free"))
+		looks.add_child(b)
+	box.add_child(looks)
+	var go := UiKit.button("出發：3D %s" % ("雪地森林" if _free_theme == "snow_pine" else "湖畔森林"), 20, "red")
 	go.name = "GoFree"
 	go.custom_minimum_size = Vector2(240, 52)
 	go.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
@@ -364,9 +382,9 @@ func _build_free() -> void:
 func _depart_free() -> void:
 	var camp: Object = get_meta("camp", null)
 	if camp != null and is_instance_valid(camp) and camp.has_method("depart_free"):
-		camp.call("depart_free", _picked_curses)
+		camp.call("depart_free", _picked_curses, _free_theme)
 		return
-	Campaign.begin_free(_picked_curses)
+	Campaign.begin_free(_picked_curses, _free_theme)
 	GameState.start_run()
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
 

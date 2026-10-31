@@ -407,8 +407,23 @@ static func attach(to: Node2D) -> RunView3D:
 	return view
 
 
+## The snowy map (MapGenerator's "snow_pine"): the pines and rocks whitened, the ground white, ice
+## round the water's edge, snow falling, the night a little paler and colder.
+var _snow := false
+const SNOW_WHITE := Color(0.9, 0.94, 1.0)
+
+
+## `mat` whitened by `k` (0 as it is, 1 all snow).
+func _snowed(mat: StandardMaterial3D, k: float) -> StandardMaterial3D:
+	var m := mat.duplicate() as StandardMaterial3D
+	m.albedo_color = m.albedo_color.lerp(SNOW_WHITE, k)
+	m.roughness = 0.85
+	return m
+
+
 func _ready() -> void:
 	active = self
+	_snow = MapGenerator.current_theme.begins_with("snow")
 	_rng.seed = 11
 	player = main.get_node("Player")
 	player.edge = EDGE
@@ -461,6 +476,8 @@ func _build() -> void:
 	_build_glow()
 	_line_and_float()
 	_fireflies()
+	if _snow:
+		_snowfall()
 	_rest_2d_only(main)
 	for n in main.get_children():
 		_scan(n)
@@ -538,7 +555,7 @@ func _ground() -> void:
 	noise.seed = 3
 	noise.frequency = 0.08
 	var share: float = 0.35
-	var floor_spec = MapGenerator.THEMES[THEME].get("floor", [])
+	var floor_spec = MapGenerator.THEMES[MapGenerator.current_theme].get("floor", [])
 	if floor_spec is Array and floor_spec.size() > 2:
 		share = float(floor_spec[2])
 	var st := SurfaceTool.new()
@@ -582,6 +599,7 @@ func _ground() -> void:
 	for pair in [["grass", "grass"], ["forest", "forest_floor"], ["path", "dirt"], ["stone", "lp_stone"], ["mud", "mud"]]:
 		mat.set_shader_parameter(pair[0] + "_tex", load("res://assets/sprites/ground/%s_albedo.png" % pair[1]))
 		mat.set_shader_parameter(pair[0] + "_nrm", load("res://assets/sprites/ground/%s_normal.png" % pair[1]))
+	mat.set_shader_parameter("snow", 1.0 if _snow else 0.0)
 	mi.material_override = mat
 	add_child(mi)
 
@@ -612,6 +630,7 @@ func _water() -> void:
 		mat.shader = sh
 		mat.set_shader_parameter("wave_tex", t)
 		mat.set_shader_parameter("moon_dir", MOON_DIR)
+		mat.set_shader_parameter("ice", 1.0 if _snow else 0.0)
 		mat.set_shader_parameter("depth_tex", _depth_texture(zone, box))
 		mat.set_shader_parameter("box", Vector4(box.position.x / PX, box.position.y / PX, box.size.x / PX, box.size.y / PX))
 		if zone.is_rare():
@@ -658,6 +677,7 @@ uniform vec3 deep : source_color = vec3(0.012, 0.03, 0.05);
 uniform vec3 shallow : source_color = vec3(0.07, 0.13, 0.16);
 uniform vec3 edge_tint : source_color = vec3(0.62, 0.78, 0.85);
 uniform vec3 moon_dir = vec3(0.25, 0.22, -1.0);
+uniform float ice = 0.0;
 varying vec3 wpos;
 void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
@@ -688,6 +708,12 @@ void fragment() {
 	SPECULAR = 0.75;
 	METALLIC = 0.15;
 	ALPHA = clamp(0.55 + d * 0.06, 0.0, 0.97);
+	// ice: a frozen fringe round the shore, its edge broken by the waves' pattern
+	float fringe = (1.0 - smoothstep(14.0, 38.0 + nm.x * 24.0, d)) * ice;
+	ALBEDO = mix(ALBEDO, vec3(0.74, 0.86, 0.94), fringe * 0.9);
+	ALPHA = mix(ALPHA, 0.98, fringe);
+	ROUGHNESS = mix(ROUGHNESS, 0.12, fringe);
+	EMISSION += vec3(0.08, 0.1, 0.14) * fringe;
 }
 """
 
@@ -1617,7 +1643,11 @@ func _faded(mesh: Mesh) -> Mesh:
 	for s in m.get_surface_count():
 		var src := m.surface_get_material(s)
 		if src is StandardMaterial3D:
-			var mat := (src as StandardMaterial3D).duplicate() as StandardMaterial3D
+			# (snow lies on the boughs far more than on the trunks)
+			var base := src as StandardMaterial3D
+			if _snow:
+				base = _snowed(base, 0.72 if base.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED else 0.22)
+			var mat := base.duplicate() as StandardMaterial3D
 			mat.distance_fade_mode = BaseMaterial3D.DISTANCE_FADE_PIXEL_DITHER
 			mat.distance_fade_min_distance = FADE_NEAR
 			mat.distance_fade_max_distance = FADE_FAR
@@ -1637,6 +1667,13 @@ func _model_mesh(name: String, wide := false) -> Array:
 	var found: Array = []
 	for mi in inst.find_children("*", "MeshInstance3D", true, false):
 		var m: Mesh = (mi as MeshInstance3D).mesh
+		if _snow:
+			# (rocks, ferns and grass under snow)
+			m = m.duplicate()
+			for s in m.get_surface_count():
+				var src := m.surface_get_material(s)
+				if src is StandardMaterial3D:
+					m.surface_set_material(s, _snowed(src as StandardMaterial3D, 0.6))
 		var box := m.get_aabb()
 		found = [m, maxf(box.size.x, box.size.z) if wide else box.size.y]
 		break
@@ -4038,6 +4075,42 @@ func _fireflies() -> void:
 	p.top_level = true
 
 
+## Snow falling round the traveller: flakes over a box that follows them (the snowy map).
+var _snow_fx: CPUParticles3D
+
+
+func _snowfall() -> void:
+	var p := CPUParticles3D.new()
+	p.name = "Snowfall"
+	p.amount = 320
+	p.lifetime = 6.0
+	p.preprocess = 6.0
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	p.emission_box_extents = Vector3(13.0, 0.5, 13.0)
+	p.direction = Vector3(0.25, -1.0, 0.1)
+	p.spread = 18.0
+	p.gravity = Vector3(0.2, -0.9, 0.05)
+	p.initial_velocity_min = 0.5
+	p.initial_velocity_max = 1.1
+	p.scale_amount_min = 0.7
+	p.scale_amount_max = 1.5
+	var q := SphereMesh.new()
+	q.radius = 0.02
+	q.height = 0.04
+	q.radial_segments = 5
+	q.rings = 3
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = Color(0.92, 0.96, 1.0)
+	m.disable_fog = true
+	q.material = m
+	p.mesh = q
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	p.top_level = true
+	add_child(p)
+	_snow_fx = p
+
+
 # ---------------------------------------------------------------- the night
 
 func _environment() -> void:
@@ -4103,6 +4176,12 @@ func _update_light() -> void:
 	_moon.light_energy = lerpf(0.12, 0.34, k) * MOON_DIM * NIGHT_DIM
 	_moon.light_color = Color(0.62, 0.72, 0.95).lerp(Color(0.9, 0.88, 0.85), k)
 	_env.fog_light_color = (Color(0.05, 0.07, 0.11).lerp(Color(0.2, 0.22, 0.25), k) * NIGHT_DIM)
+	if _snow:
+		# (snow gives the night back its light: a paler, colder dark, a thicker haze)
+		_env.ambient_light_energy *= 1.45
+		_env.ambient_light_color = _env.ambient_light_color.lerp(Color(0.55, 0.65, 0.85), 0.5)
+		_env.fog_light_color = _env.fog_light_color.lerp(Color(0.16, 0.2, 0.28), 0.6)
+		_env.fog_density = 0.024
 	_env.background_color = _env.fog_light_color * 0.5
 	# (the owl in the dark: the whole view brighter - Abilities 夜視)
 	var sight := Abilities.OWL_DARK_SIGHT if Abilities.has("owl") and player.unlit() else 1.0
@@ -4521,6 +4600,8 @@ func _sync_tool(lantern: Node) -> void:
 # ---------------------------------------------------------------- each frame
 
 func _process(delta: float) -> void:
+	if _snow_fx != null and pivot != null:
+		_snow_fx.global_position = pivot.global_position + Vector3(0.0, 6.5, 0.0)
 	if not built:
 		return
 	_time += delta
@@ -4685,6 +4766,7 @@ uniform sampler2D stone_tex : source_color, filter_linear_mipmap, repeat_enable;
 uniform sampler2D stone_nrm : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform sampler2D mud_tex : source_color, filter_linear_mipmap, repeat_enable;
 uniform sampler2D mud_nrm : hint_normal, filter_linear_mipmap, repeat_enable;
+uniform float snow = 0.0;
 varying vec4 paint;
 void vertex() { paint = COLOR; }
 void fragment() {
@@ -4697,10 +4779,16 @@ void fragment() {
 	n = mix(n, texture(path_nrm, uv * 1.2).rgb, paint.r);
 	c = mix(c, texture(stone_tex, uv * 0.8).rgb * 0.6, paint.g);
 	n = mix(n, texture(stone_nrm, uv * 0.8).rgb, paint.g);
-	ALBEDO = c * 0.85;
+	// snow: the earth's detail kept faintly under it; the shore's mud and the stone paths icy
+	float shade = dot(c, vec3(0.3, 0.5, 0.2));
+	vec3 white = vec3(0.86, 0.9, 0.97) * (0.82 + 0.35 * shade);
+	vec3 icy = vec3(0.55, 0.66, 0.76) * (0.8 + 0.4 * shade);
+	vec3 sn = mix(white, icy, clamp(paint.b * 0.8 + paint.g * 0.5, 0.0, 1.0));
+	c = mix(c, sn, snow * 0.92);
+	ALBEDO = c * mix(0.85, 1.1, snow);
 	NORMAL_MAP = n;
-	NORMAL_MAP_DEPTH = 1.2;
-	ROUGHNESS = 0.92;
+	NORMAL_MAP_DEPTH = mix(1.2, 0.5, snow);
+	ROUGHNESS = mix(0.92, 0.8, snow);
 }
 """
 

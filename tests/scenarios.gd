@@ -99,6 +99,10 @@ const TESTS := [
 	"test_fear_and_confusion",
 	"test_oxy_at_camp",
 	"test_bag_moves_at_camp",
+	"test_snow_theme",
+	"test_world_integrity",
+	"test_trunks_hold",
+	"test_soak_fishing",
 	"test_pull_and_answer",
 	"test_move_plan",
 	"test_slide_amounts",
@@ -2511,6 +2515,12 @@ func test_warehouse_and_bag() -> void:
 		Profile.buy_lure("minnow")
 	check(Profile.stored("lure_minnow") == 12 and Profile.bag_count("lure_minnow") == 0, "bought lures wait in the warehouse")
 	check(Profile.bag_count("bait") == Profile.base_bait(), "the base bait takes its cells in the bag")
+	# No free bait with the bag: the tutorial's levels hand out their own, so the first rod can be cast.
+	camp().begin_level("1-1")
+	check(int(camp().rules.bait) == 20, "level 1-1 starts with a bait box (%d)" % int(camp().rules.bait))
+	camp().begin_level("1-3")
+	check(int(camp().rules.bait) == 2, "level 1-3 keeps its own count")
+	camp().clear()
 	check(Profile.to_storage(Profile.bag_at(Profile.bag[0].cell)) == 0, "and can't be put in the warehouse")
 	check(Profile.to_bag("lure_minnow", 12) == 12 and Profile.bag.filter(func(e): return e.id == "lure_minnow").size() == 2,
 		"ten to a cell: two stacks")
@@ -7091,6 +7101,314 @@ func test_bag_moves_at_camp() -> void:
 	check(placer.box_drop(at) and Profile.oxy_stock.size() == 1 and Profile.tank.is_empty(), "let go in a cell: in the box, out of the tank")
 	placer.queue_free()
 	Profile.load_data(saved)
+
+
+## User request: a second look for the map - the snowy pine forest: picked for the free run, its
+## own fish waters, the 3D world white, ice at the water's edge, snow falling.
+func test_snow_theme() -> void:
+	seed(7)
+	camp().clear()
+	gs.reset_run()
+	gs.last_return = ""
+	camp().begin_free([], "snow_pine")
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	await frames(3)
+	main = get_tree().current_scene
+	gs.start_run()
+	var view: RunView3D = null
+	for _i in 200:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	check(main.get_node("MapGenerator").theme_name == "snow_pine" and MapGenerator.current_theme == "snow_pine", "the free run's snowy pick is the map's style")
+	check(FishData.waters == "snow", "its fish are the snow waters'")
+	check(view != null and view.built and view._snow and view._snow_fx != null, "the 3D world is the snowy one, snow falling")
+	if view == null or not view.built:
+		camp().clear()
+		return
+	var iced := 0
+	for c in view.get_children():
+		if c.name.begins_with("Water") and c is MeshInstance3D and float((c.material_override as ShaderMaterial).get_shader_parameter("ice")) > 0.5:
+			iced += 1
+	check(iced > 0 and iced == main.get_tree().get_nodes_in_group("water_zones").size(), "ice at the edge of every pond")
+	var ground: MeshInstance3D = null
+	for c in view.get_children():
+		if c is MeshInstance3D and c.material_override is ShaderMaterial and (c.material_override as ShaderMaterial).get_shader_parameter("snow") != null:
+			ground = c
+	check(ground != null and float((ground.material_override as ShaderMaterial).get_shader_parameter("snow")) > 0.5, "the ground is under snow")
+	await seconds(1.0)
+	check(is_instance_valid(player()) and player().global_position.is_finite(), "and the run goes on")
+	camp().clear()
+
+
+## System check: for each look of the map, a few seeds - nothing solid overlaps anything else or
+## stands in the water, the start's clear, and a walker sent about the map is never inside
+## anything nor stuck on open ground (so nothing's walked through, and nothing traps).
+func test_world_integrity() -> void:
+	var problems := []
+	for look in ["", "snow_pine"]:
+		for seed_n in [3, 11]:
+			seed(seed_n)
+			camp().clear()
+			gs.reset_run()
+			gs.last_return = ""
+			camp().begin_free([], look)
+			get_tree().change_scene_to_file("res://scenes/main.tscn")
+			await frames(3)
+			main = get_tree().current_scene
+			gs.start_run()
+			var view: RunView3D = null
+			for _i in 200:
+				view = RunView3D.active
+				if view != null and view.built:
+					break
+				await frames(1)
+			await frames(5)
+			var tag := "%s/%d" % [look if look != "" else "forest", seed_n]
+			var solids := []
+			for t in get_tree().get_nodes_in_group("trees"):
+				if t is MapTree:
+					solids.append([t.global_position, float(t.trunk_radius), "tree"])
+			for o in get_tree().get_nodes_in_group("solids"):
+				if "radii" in o and o.radii is Vector2:
+					solids.append([o.global_position, (o.radii.x + o.radii.y) * 0.5, "rock"])
+			var zones := get_tree().get_nodes_in_group("water_zones")
+			for i in solids.size():
+				for j in range(i + 1, solids.size()):
+					var gap: float = (solids[i][0] as Vector2).distance_to(solids[j][0]) - float(solids[i][1]) - float(solids[j][1])
+					if gap < -2.0:
+						problems.append("%s: %s and %s overlap by %.0f px at %s" % [tag, solids[i][2], solids[j][2], -gap, solids[i][0]])
+				for z in zones:
+					if (z as WaterZone).depth(solids[i][0]) > -float(solids[i][1]) * 0.5:
+						problems.append("%s: a %s stands in the water at %s" % [tag, solids[i][2], solids[i][0]])
+			var p := player()
+			var start_hit := false
+			for so in solids:
+				if p.global_position.distance_to(so[0]) < float(so[1]) + 14.0:
+					start_hit = true
+			if start_hit:
+				problems.append("%s: the start is inside something" % tag)
+			# A walker about the map for a while.
+			for _i in 400:
+				if view == null or view._intro_t < 0.0:
+					break
+				await frames(5)
+			var stick: TouchJoystick = p._move_joystick
+			var shape: Shape2D = (p.get_node("CollisionShape2D") as CollisionShape2D).shape
+			var rng := RandomNumberGenerator.new()
+			rng.seed = seed_n
+			var target := p.global_position
+			var last := p.global_position
+			var still := 0
+			var clock := 0.0
+			var inside := 0
+			var stuck := 0
+			var span := 0.0
+			while span < 22.0 and is_instance_valid(p):
+				await frames(3)
+				span += 3.0 / 60.0
+				clock += 3.0 / 60.0
+				var to := target - p.global_position
+				if to.length() < 40.0:
+					target = Vector2(rng.randf_range(150.0, Player.WORLD_WIDTH - 150.0), rng.randf_range(150.0, Player.WORLD_HEIGHT - 150.0))
+					to = target - p.global_position
+				stick.output = to.normalized()
+				if still >= 2:
+					# (blocked head on: a few steps round it)
+					stick.output = to.normalized().rotated(1.1 if int(span) % 2 == 0 else -1.1)
+				stick.is_pressed = true
+				var q := PhysicsShapeQueryParameters2D.new()
+				# (a hair smaller than the body's own: touching isn't being inside)
+				var probe := CircleShape2D.new()
+				probe.radius = maxf(float(shape.get("radius")) - 5.0, 1.0)
+				q.shape = probe
+				q.transform = (p.get_node("CollisionShape2D") as Node2D).global_transform
+				q.collision_mask = p.collision_mask
+				q.exclude = [p.get_rid()]
+				var hits := p.get_world_2d().direct_space_state.intersect_shape(q, 2)
+				if not hits.is_empty():
+					inside += 1
+					if inside == 1:
+						var who = hits[0].collider
+						var owner_node: Node = who.get_parent() if who != null else null
+						var shapes := []
+						if who != null:
+							for c in who.get_children():
+								if c is CollisionShape2D:
+									shapes.append("%s r=%s at %s" % [c.shape.get_class(), c.shape.get("radius"), (c as CollisionShape2D).global_position])
+						problems.append("%s: inside %s of %s at %s (collider at %s, %s, player shape %s r=%s)" % [tag, who.name if who != null else "?",
+							owner_node.name if owner_node != null else "-", p.global_position, who.global_position if who != null else "-", shapes, shape.get_class(), shape.get("radius")])
+				if clock >= 1.0:
+					clock = 0.0
+					if p.global_position.distance_to(last) < 8.0:
+						still += 1
+					else:
+						still = 0
+					last = p.global_position
+					if still >= 5:
+						var near_water := false
+						for z in zones:
+							if (z as WaterZone).depth(p.global_position) > -45.0:
+								near_water = true
+						if not near_water:
+							stuck += 1
+							var near := []
+							for n in main.get_children():
+								if n is Node2D and (n as Node2D).global_position.distance_to(p.global_position) < 90.0 and n != p:
+									near.append("%s(%s)" % [n.name, n.get_script().resource_path.get_file() if n.get_script() != null else "-"])
+							problems.append("%s: stuck on open ground at %s heading for %s, near %s" % [tag, p.global_position, target, near])
+						still = 0
+						target = Vector2(rng.randf_range(150.0, Player.WORLD_WIDTH - 150.0), rng.randf_range(150.0, Player.WORLD_HEIGHT - 150.0))
+			stick.output = Vector2.ZERO
+			stick.is_pressed = false
+			if inside > 3:
+				problems.append("%s: the walker was inside a solid for %d checks" % [tag, inside])
+			check(true, "%s: walked about (%d inside, %d stuck)" % [tag, inside, stuck])
+	for line in problems:
+		print("PROBLEM ", line)
+	check(problems.is_empty(), "the world holds together: %s" % [problems.slice(0, 6)])
+	camp().clear()
+
+
+## A walker pushing straight at a trunk (any angle, running) is held at its edge, not let in.
+func test_trunks_hold() -> void:
+	seed(3)
+	camp().clear()
+	gs.reset_run()
+	camp().begin_free([], "snow_pine")
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	await frames(3)
+	main = get_tree().current_scene
+	gs.start_run()
+	await seconds(1.0)
+	var p := player()
+	var stick: TouchJoystick = p._move_joystick
+	# (trees well in from the map's edge, where the walker's start is its own)
+	var trees := get_tree().get_nodes_in_group("trees").filter(func(t): return t is MapTree \
+		and t.global_position.x > 200.0 and t.global_position.x < Player.WORLD_WIDTH - 200.0 \
+		and t.global_position.y > 200.0 and t.global_position.y < Player.WORLD_HEIGHT - 200.0).slice(0, 6)
+	var worst := 0.0
+	var where := ""
+	for t in trees:
+		for ang in [0.0, 1.3, 2.9, 4.4]:
+			var dir := Vector2.from_angle(ang)
+			p.global_position = t.global_position - dir * (float(t.trunk_radius) + 60.0)
+			p.velocity = Vector2.ZERO
+			stick.output = dir
+			stick.is_pressed = true
+			await frames(1)
+			var deepest := 0.0
+			for _i in 90:
+				await frames(1)
+				var trunk_at: Vector2 = t.global_position
+				for c in t.get_node("TrunkBody").get_children():
+					if c is CollisionShape2D:
+						trunk_at = (c as CollisionShape2D).global_position
+				var body := p.get_node("CollisionShape2D") as CollisionShape2D
+				var reach: float = float(body.shape.get("radius")) * body.global_scale.x
+				var pen: float = float(t.trunk_radius) + reach - body.global_position.distance_to(trunk_at)
+				if pen > deepest:
+					deepest = pen
+			if deepest > worst:
+				worst = deepest
+				where = "tree at %s from angle %.1f" % [t.global_position, ang]
+	stick.output = Vector2.ZERO
+	stick.is_pressed = false
+	check(worst < 2.0, "pushed at a trunk the walker stays out of it (worst %.1f px, %s)" % [worst, where])
+	camp().clear()
+
+
+## System check: a player (a bot with the sticks and the reel) fights several fish through to
+## the end, in each look of the map. Every fight ends - landed, or the line gone - and leaves
+## nothing behind: not reeling, not held still by the rod, the float gone, no fight left.
+func test_soak_fishing() -> void:
+	var problems := []
+	for look in ["", "snow_pine"]:
+		seed(5)
+		camp().clear()
+		gs.reset_run()
+		gs.last_return = ""
+		camp().begin_free([], look)
+		get_tree().change_scene_to_file("res://scenes/main.tscn")
+		await frames(3)
+		main = get_tree().current_scene
+		gs.start_run()
+		for _i in 200:
+			if RunView3D.active != null and RunView3D.active.built:
+				break
+			await frames(1)
+		await frames(5)
+		var p := player()
+		var stick: TouchJoystick = p._move_joystick
+		var tag: String = look if look != "" else "forest"
+		var landed := 0
+		var broke := 0
+		for round_n in 4:
+			var zone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
+			await put(zone.shore_point(Vector2.DOWN) + Vector2(0, 60))
+			p.aim_dir = Vector2.UP
+			p.cast_target = p.global_position + Vector2(0, -150)
+			p.cast_water_zone = zone
+			p.tier_data = FishData.get_tier_data("mid").duplicate()
+			p.difficulty_key = ["novice", "advanced", "advanced", "master"][round_n]
+			p.fish_id = "carp"
+			p.fish_habit = ""
+			p.is_heart_catch = false
+			p.is_epic_catch = false
+			p.is_rare_catch = false
+			p.bait_count = 20
+			var carried_before: int = gs.carried_fish.size()
+			p._hook_fish()
+			if p.fight == null:
+				problems.append("%s round %d: no fight started" % [tag, round_n])
+				continue
+			p.fight.plan("medium", "normal")
+			var t := 0.0
+			var rng := RandomNumberGenerator.new()
+			rng.seed = round_n
+			while p.state == Player.State.REELING and t < 120.0 and p.fight != null:
+				await frames(3)
+				t += 3.0 / 60.0
+				var f: FishFight = p.fight
+				if f == null:
+					break
+				# the sticks: the way asked when one is (a moment slow), else still
+				if f.prompt_active() and f.answer_left < f.swipe_window() - 0.35:
+					stick.output = FightPanel.to_frame(f.prompt_dir())
+					stick.is_pressed = true
+				else:
+					stick.output = Vector2.ZERO
+					stick.is_pressed = false
+				# the reel: when nothing's asked of the rod and the line's easy
+				var reel := f.opening_left <= 0.0 and f.cur_move == "" and f.tension < 0.7 and f.mood() != "jump"
+				# (the first pull: held, not cranked)
+				key(KEY_SPACE, reel or f.opening_left > 0.0)
+				key(KEY_SHIFT, reel)
+			key(KEY_SPACE, false)
+			key(KEY_SHIFT, false)
+			stick.output = Vector2.ZERO
+			stick.is_pressed = false
+			await seconds(1.2)
+			if t >= 120.0:
+				problems.append("%s round %d: the fight never ended (%s)" % [tag, round_n, p.fight.mood() if p.fight != null else "-"])
+			if gs.carried_fish.size() > carried_before:
+				landed += 1
+			else:
+				broke += 1
+			if p.state != Player.State.IDLE and p.state != Player.State.REELING:
+				pass
+			if p.rod_mode or p.rod_vec != Vector2.ZERO:
+				problems.append("%s round %d: the rod still holds the stick after the fight" % [tag, round_n])
+			if RunView3D.active != null and RunView3D.active._float.visible and p.state == Player.State.IDLE:
+				problems.append("%s round %d: the float is still out" % [tag, round_n])
+			p._reset_line(Player.State.IDLE)
+			await frames(3)
+		check(true, "%s: fought four fish (%d landed, %d got away)" % [tag, landed, broke])
+	for line in problems:
+		print("PROBLEM ", line)
+	check(problems.is_empty(), "fights end cleanly: %s" % [problems.slice(0, 5)])
+	camp().clear()
 
 
 func test_salting() -> void:

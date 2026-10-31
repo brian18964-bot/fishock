@@ -84,6 +84,8 @@ const BUSH_SCENE := preload("res://scenes/bush.tscn")
 ## rocks, bushes and plants it scatters and which kinds. User request: not
 ## crowded - few small things.
 const THEME := "forest_pine"
+## The style this run's map has (set as the map is made; RunView3D dresses it by it).
+static var current_theme := "forest_pine"
 const THEMES := {
 	"forest_pine": {
 		"look": "detailed",
@@ -95,6 +97,18 @@ const THEMES := {
 		# (user report: too many wolves - one following about without biting
 		# was the husky, a wolf to look at in the dark: gone; wolves fewer)
 		"animals": {"deer": 2.0, "stag": 1.5, "fox": 1.5, "wolf": 0.5},
+	},
+	# User request: another look - the snowy pine forest: the same pines under snow, a frozen
+	# fringe round the water, snow falling; fewer plants, the wolves a bit more about.
+	"snow_pine": {
+		"look": "detailed",
+		"floor": ["grass", "forest_floor", 0.45],
+		"trees": 24, "rocks": 4, "bushes": 3, "ground": 0,
+		"tree_families": {"pine": 1.0},
+		"rock_pool": [0, 1, 2],
+		"ground_kinds": {"plant": 0.5},
+		"animals": {"deer": 1.5, "stag": 1.0, "fox": 2.0, "wolf": 0.8},
+		"shore_extras": {"reeds": 0.08, "lilypad": 0.0, "driftwood": 0.12},
 	},}
 ## User feedback: the water's edge is grass, small shrubs, pebbles and
 ## boardwalks (no big trees or boulders there), with bugs and frogs about.
@@ -132,7 +146,10 @@ var water_zones: Array = []
 
 
 func _ready() -> void:
-	theme_name = THEME
+	# (the level's, or the free run's pick; the lakeside pine forest else)
+	var pick := str(Campaign.rules.get("theme", ""))
+	theme_name = pick if THEMES.has(pick) else THEME
+	current_theme = theme_name
 	theme = THEMES[theme_name].duplicate(true)
 	_fit_theme()
 	# User request (the campaign): maps of three sizes - the floor, the

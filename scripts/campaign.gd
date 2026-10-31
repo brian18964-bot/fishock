@@ -544,15 +544,20 @@ func begin_level(id: String) -> void:
 	level_id = id
 	curses = []
 	rules = rules_for(id)
+	# (no bait comes free with the bag any more: a level without its own count hands out a
+	# full bait box, so the first rod of the tutorial can be cast)
+	if int(rules.bait) < 0:
+		rules.bait = 20
 	_apply_world()
 	GameState.reset_run()
 
 
 ## Plays the free run next, with these curses (CURSES keys).
-func begin_free(chosen: Array = []) -> void:
+func begin_free(chosen: Array = [], theme := "") -> void:
 	level_id = ""
 	curses = chosen.duplicate()
 	rules = DEFAULT_RULES.duplicate(true)
+	rules.theme = theme
 	for c in curses:
 		match c:
 			"fog":

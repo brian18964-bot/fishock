@@ -629,9 +629,9 @@ func depart_level(id: String) -> void:
 	_on_solo()
 
 
-func depart_free(curses: Array = []) -> void:
+func depart_free(curses: Array = [], theme := "") -> void:
 	close_page()
-	Campaign.begin_free(curses)
+	Campaign.begin_free(curses, theme)
 	_on_solo()
 
 
