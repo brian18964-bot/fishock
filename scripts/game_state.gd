@@ -197,10 +197,16 @@ func start_run() -> void:
 		fish["clasped"] = true
 		add_carried_fish(fish)
 	Profile.clasp_fish = []
+	# The fish box's (put in at camp): taken along if the box is - worn or in the bag.
+	if Profile.has_oxy_box() or Profile.bag_count("oxy_box") > 0:
+		for fish in Profile.oxy_stock:
+			fish["brought"] = true
+			oxy_fish.append(fish)
+		Profile.oxy_stock = []
 	# (kept apart: a lost night, or leaving, gives these back)
 	for fish in carried_fish:
 		fish["brought"] = true
-	Profile.note_run_brought(carried_fish)
+	Profile.note_run_brought(carried_fish + oxy_fish)
 	_start_weather()
 
 
@@ -333,23 +339,23 @@ func oxy_put(index: int, cell := Vector2i(-1, -1)) -> String:
 
 
 ## A fish already in the box set down elsewhere in it (no wear): "" if done.
-func oxy_move(index: int, cell: Vector2i, turn := false) -> String:
-	if index < 0 or index >= oxy_fish.size():
+func oxy_move(index: int, cell: Vector2i, turn := false, list := oxy_fish) -> String:
+	if index < 0 or index >= list.size():
 		return "找不到這條魚"
-	var fish: Dictionary = oxy_fish[index]
+	var fish: Dictionary = list[index]
 	var was = fish.get("cell")
 	var was_rot = fish.get("rot")
 	# (the others lie where they do now)
-	var placed := oxy_placed()
-	for j in oxy_fish.size():
-		if not oxy_fish[j].has("cell") and not placed.is_empty():
+	var placed := oxy_placed(list)
+	for j in list.size():
+		if not list[j].has("cell") and not placed.is_empty():
 			var r := placed[j] as Rect2i
-			oxy_fish[j]["cell"] = [r.position.x, r.position.y]
+			list[j]["cell"] = [r.position.x, r.position.y]
 	if turn:
 		fish["rot"] = not bool(fish.get("rot", false))
 	fish["cell"] = [cell.x, cell.y]
-	var at := oxy_placed()
-	if not _oxy_holds(oxy_fish, at):
+	var at := oxy_placed(list)
+	if not _oxy_holds(list, at):
 		if was == null:
 			fish.erase("cell")
 		else:
@@ -360,6 +366,24 @@ func oxy_move(index: int, cell: Vector2i, turn := false) -> String:
 			fish["rot"] = was_rot
 		return "放不進那個位置"
 	return ""
+
+
+## A fish in the box turned (lying <-> standing) where it is, if it still fits there.
+func oxy_rotate(index: int, list := oxy_fish) -> String:
+	if index < 0 or index >= list.size():
+		return "找不到這條魚"
+	var at := oxy_placed(list)
+	if at.is_empty():
+		return "轉不過來"
+	var r := at[index] as Rect2i
+	if oxy_move(index, r.position, true, list) == "":
+		return ""
+	# (not turned where it lies: turned at the first place it fits)
+	for x in Profile.OXY_COLS:
+		for y in Profile.OXY_ROWS:
+			if oxy_move(index, Vector2i(x, y), true, list) == "":
+				return ""
+	return "轉過來放不下"
 
 
 ## A fish out of the box, into what's carried (if it fits the bag).

@@ -3035,6 +3035,12 @@ func _update_fight_fish(delta: float) -> void:
 		return
 	if not _ensure_fish(player.fish_id):
 		return
+	# (only a leap shows the fish: out of the water; the other moves show in the rod and the line)
+	if fight.jump_left <= 0.0:
+		_fish3d.visible = false
+		_fish_jump = 0.0
+		_update_fight_line()
+		return
 	var mat := _fish3d.material_override as ShaderMaterial
 	# (its length: a small one's a forearm, a big one a metre and more)
 	var size := clampf(0.9 + sqrt(maxf(fight.max_hp, 0.0) / 1000.0) * 0.6, 1.0, 2.2)

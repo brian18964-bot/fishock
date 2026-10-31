@@ -61,6 +61,53 @@ func _say(text: String) -> void:
 	t.tween_interval(2.2)
 	t.tween_property(l, "modulate:a", 0.0, 0.5)
 	t.tween_callback(l.queue_free)
+## The fish box's or the clasp's cells open beside its icon (FishFlyout): from 使用, a tap on a
+## clasp worn, or a fish dragged onto the icon.
+var _flyout: FishFlyout
+
+
+func open_flyout(store, anchor: Rect2) -> void:
+	close_flyout()
+	_flyout = FishFlyout.new(store, anchor)
+	_flyout.said.connect(_say)
+	add_child(_flyout)
+
+
+func close_flyout() -> void:
+	if _flyout != null and is_instance_valid(_flyout):
+		_flyout.queue_free()
+	_flyout = null
+
+
+func _flyout_up() -> bool:
+	return _flyout != null and is_instance_valid(_flyout)
+
+
+## A box or clasp icon under `at` (global) among the views: {store, rect}, or {}.
+func _box_under(at: Vector2) -> Dictionary:
+	for v in _views:
+		if v.is_visible_in_tree() and v.has_method("box_at") and v.get_global_rect().has_point(at):
+			var hit: Dictionary = v.box_at(at)
+			if not hit.is_empty():
+				return hit
+	return {}
+
+
+## Turns the fish held (bag or warehouse): lying <-> standing; back if the bag can't pack it so.
+func _turn_held_fish() -> void:
+	var f := ItemBoard.fish_of(_press)
+	if f.is_empty() or Inventory.SIZES[Inventory.fish_size(f)].x == Inventory.SIZES[Inventory.fish_size(f)].y:
+		return
+	f["rot"] = not bool(f.get("rot", false))
+	if _press.from == "pack_fish":
+		var items := Inventory.items(null)
+		for p in Profile.pack_fish:
+			items.append(Inventory.fish_item(p))
+		if Inventory.pack(items).is_empty():
+			f["rot"] = not bool(f["rot"])
+	Profile.profile_changed.emit()
+
+
 var _views: Array = []
 ## The press: {from: "storage"/"bag"/"slot", id, index (bag), slot, at}.
 var _press := {}
@@ -97,6 +144,9 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_R and _press.get("from", "") == "bag":
 		Profile.bag_rotate(int(_press.index))
 		return
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_R and _press.get("from", "") in ["pack_fish", "stash_fish"]:
+		_turn_held_fish()
+		return
 	if event is InputEventMouseMotion:
 		var at: Vector2 = event.position
 		if not _dragging and at.distance_to(_press.at) > DRAG_START:
@@ -106,6 +156,15 @@ func _input(event: InputEvent) -> void:
 			for v in _views:
 				if v.has_method("hover"):
 					v.hover(_press, at)
+			if _press.get("from", "") in ["pack_fish", "stash_fish"]:
+				# a fish over the fish box's (or a clasp's) icon opens its cells; over them it shows where it'd go
+				var held := ItemBoard.fish_of(_press)
+				if not _flyout_up():
+					var hit := _box_under(at)
+					if not hit.is_empty() and not held.is_empty():
+						open_flyout(hit.store, hit.rect)
+				if _flyout_up() and not held.is_empty():
+					_flyout.hover_fish(held, at, _flyout.centered_grab(held))
 	elif event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		var source := _press
 		_press = {}
@@ -147,6 +206,13 @@ func _end_drag() -> void:
 
 ## Let go at `at`: onto whichever view is there.
 func drop(source: Dictionary, at: Vector2) -> bool:
+	if _flyout_up():
+		_flyout.clear_hover()
+		if source.get("from", "") in ["pack_fish", "stash_fish"] and _flyout.contains(at):
+			var held := ItemBoard.fish_of(source)
+			var list := Profile.pack_fish if source.from == "pack_fish" else Profile.stash_fish
+			_flyout.drop_fish(list, int(source.index), at, _flyout.centered_grab(held))
+			return true
 	for v in _views:
 		if v.is_visible_in_tree() and v.get_global_rect().has_point(at):
 			var target: Dictionary = v.target_for(source) if v.has_method("target_for") else v.target_at(at)
@@ -160,6 +226,10 @@ func move(source: Dictionary, target: Dictionary, count := -1) -> bool:
 	if target.is_empty():
 		return false
 	var id: String = source.id
+	if target.to == "flyout":
+		var spot: Vector2 = source.get("at", Vector2(480, 270))
+		open_flyout(OxyStore.new(true), Rect2(spot - Vector2(36, 36), Vector2(72, 72)))
+		return true
 	match [source.from, target.to]:
 		["storage", "bag"]:
 			var n := Profile.stored(id) if count < 0 else count
@@ -461,6 +531,8 @@ func actions(source: Dictionary) -> Array:
 	var slot: String = Items.def(source.id).get("slot", "")
 	if can_use and Profile.USABLES.get(source.id, {}).get("target", "") == "fish":
 		out.append(["使用", {"to": "use"}, true])
+	if source.id == "oxy_box":
+		out.append(["使用", {"to": "flyout"}, true])
 	match source.from:
 		"storage":
 			out.append(["放進背包", {"to": "bag"}, true])
@@ -574,6 +646,14 @@ class BagGrid extends Control:
 			return Profile.bag_size_of(int(_hover.index))
 		return Items.size_of(_hover.id)
 
+	## The fish box lying in the bag under `at`: its cells' store and its rect.
+	func box_at(global: Vector2) -> Dictionary:
+		var i := Profile.bag_at(cell_at(global))
+		if i >= 0 and Profile.bag[i].id == "oxy_box":
+			var r := Rect2(Vector2(Profile.bag[i].cell) * cell, Vector2(Profile.bag_size_of(i)) * cell)
+			return {"store": OxyStore.new(true), "rect": get_global_transform() * r}
+		return {}
+
 	func hover(source: Dictionary, at: Vector2) -> void:
 		_hover = source
 		_inside = not source.is_empty() and get_global_rect().has_point(at)
@@ -675,6 +755,14 @@ class StorageGrid extends Control:
 	func target_at(_global: Vector2) -> Dictionary:
 		return {"to": "storage"}
 
+	## The fish box in the warehouse under `at`.
+	func box_at(global: Vector2) -> Dictionary:
+		var local: Vector2 = get_global_transform().affine_inverse() * global
+		for i in _entries.size():
+			if _entries[i].has("id") and _entries[i].id == "oxy_box" and box(i).has_point(local):
+				return {"store": OxyStore.new(true), "rect": get_global_transform() * box(i)}
+		return {}
+
 	## (the whole-warehouse list takes a fish to the stash, a thing to the crate)
 	func target_for(source: Dictionary) -> Dictionary:
 		return {"to": "stash" if source.get("from", "") == "pack_fish" else "storage"}
@@ -742,6 +830,15 @@ class SlotBox extends Control:
 
 	func target_at(_global: Vector2) -> Dictionary:
 		return {} if locked else {"to": "slot", "slot": slot}
+
+	## The fish box (offhand) or a clasp worn here, under `at`.
+	func box_at(_global: Vector2) -> Dictionary:
+		var id := worn()
+		if id == "oxy_box":
+			return {"store": OxyStore.new(true), "rect": get_global_rect()}
+		if id != "" and int(Items.def(id).get("hooks", 0)) > 0:
+			return {"store": ClaspStore.new(slot), "rect": get_global_rect()}
+		return {}
 
 	func hover(source: Dictionary, at: Vector2) -> void:
 		var lit: bool = not locked and not source.is_empty() and Items.fits_slot(Items.def(source.id).get("slot", ""), slot) \

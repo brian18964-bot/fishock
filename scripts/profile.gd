@@ -969,7 +969,7 @@ func has_oxy_box() -> bool:
 
 ## Is there a box to use - worn, or in the bag?
 func can_use_oxy_box() -> bool:
-	return has_oxy_box() or bag_count("oxy_box") > 0
+	return has_oxy_box() or bag_count("oxy_box") > 0 or stored("oxy_box") > 0
 
 
 func has_net() -> bool:
@@ -1205,6 +1205,8 @@ func discard_from_box(index: int) -> void:
 const STASH_SIZE := 20
 var pack_fish: Array = []
 var stash_fish: Array = []
+## The fish put in the fish box at camp (taken on the next run with it; OxyStore).
+var oxy_stock: Array = []
 
 
 ## The fish list `place` names ("tank", "box", "pack", "stash").
@@ -2234,6 +2236,7 @@ func snapshot() -> Dictionary:
 		"fish_box": fish_box,
 		"pack_fish": pack_fish,
 		"clasp_fish": clasp_fish,
+		"oxy_stock": oxy_stock,
 		"stash_fish": stash_fish,
 		"fortune_clock": fortune_clock,
 		"tank_news": tank_news,
@@ -2295,6 +2298,7 @@ func load_data(data: Dictionary) -> void:
 	fish_box = data.get("fish_box", [])
 	pack_fish = data.get("pack_fish", [])
 	clasp_fish = data.get("clasp_fish", [])
+	oxy_stock = data.get("oxy_stock", [])
 	stash_fish = data.get("stash_fish", [])
 	ensure_fish_life()
 	fortune_clock = float(data.get("fortune_clock", 0.0))

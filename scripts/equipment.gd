@@ -266,9 +266,8 @@ func _refresh() -> void:
 ## A tap on a clasp worn opens its hooks (ClaspPanel); anything else its card.
 func card(source: Dictionary) -> void:
 	if source.get("from", "") == "slot" and int(Items.def(source.id).get("hooks", 0)) > 0:
-		var panel := ClaspPanel.new(source.slot)
-		panel.z_index = 20
-		add_child(panel)
+		var spot: Vector2 = source.get("at", Vector2(480, 270))
+		open_flyout(ClaspStore.new(source.slot), Rect2(spot - Vector2(36, 36), Vector2(72, 72)))
 		return
 	super.card(source)
 
@@ -278,6 +277,8 @@ func actions(source: Dictionary) -> Array:
 	var out := []
 	if can_use and Profile.USABLES.get(source.id, {}).get("target", "") == "fish":
 		out.append(["使用", {"to": "use"}, true])
+	if source.id == "oxy_box":
+		out.append(["使用", {"to": "flyout"}, true])
 	match source.from:
 		"storage":
 			if slot != "":

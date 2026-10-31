@@ -97,6 +97,7 @@ const TESTS := [
 	"test_rod_mode",
 	"test_bag_arrange",
 	"test_fear_and_confusion",
+	"test_oxy_at_camp",
 	"test_pull_and_answer",
 	"test_move_plan",
 	"test_slide_amounts",
@@ -3367,16 +3368,18 @@ func test_oxy_items() -> void:
 	var pm := a.duplicate(true)
 	pm["size"] = "medium"
 	GameState.carried_fish.append(pm)
-	var panel := OxyPanel.new()
-	add_child(panel)
+	var flyout := FishFlyout.new(OxyStore.new(false), Rect2(100, 100, 60, 60))
+	add_child(flyout)
 	await frames(2)
-	check(panel._carried.fish.size() == 1 and panel._box.fish.is_empty(), "the panel lists the carried fish")
-	var spot := panel._box.get_global_rect().position + Vector2(1.5, 0.5) * OxyPanel.CELL
-	panel.drag_end("carried", 0, spot, Vector2i.ZERO)
-	check(GameState.oxy_fish.size() == 1 and GameState.oxy_placed()[0].position == Vector2i(1, 0) and panel._box.fish.size() == 1, "dragged to a cell of its own choosing")
-	panel.tap("box", 0)
-	check(GameState.oxy_fish.is_empty() and panel._carried.fish.size() == 1, "tapped in the box: taken out")
-	panel.queue_free()
+	check(flyout._grid.fish.is_empty() and flyout.global_position.x >= 160.0, "the box's cells open beside its icon, empty")
+	var spot := flyout._grid.get_global_rect().position + Vector2(1.5, 0.5) * FishFlyout.CELL
+	check(flyout.drop_fish(GameState.carried_fish, 0, spot, Vector2i.ZERO), "a fish let go over the cells")
+	check(GameState.oxy_fish.size() == 1 and GameState.oxy_placed()[0].position == Vector2i(1, 0) and flyout._grid.fish.size() == 1, "goes in the cell it's over")
+	flyout.tap(0)
+	check(GameState.oxy_fish[0].get("rot", false) == true or GameState.oxy_placed()[0].size == Vector2i(2, 1), "a tap turns it")
+	flyout.drag_end(0, Vector2(900, 500), Vector2i.ZERO)
+	check(GameState.oxy_fish.is_empty() and GameState.carried_fish.size() == 1, "dragged out of the cells: taken out")
+	flyout.queue_free()
 	for _i in 6:
 		GameState.carried_fish.append(a.duplicate(true))
 	for _i in 6:
@@ -6918,21 +6921,34 @@ func test_bag_arrange() -> void:
 	GameState.add_carried_fish(_alert_fish("丁", 0.9))
 	bag._rebuild()
 	var icon_at: Vector2 = bag._grid.get_global_transform() * ((Vector2(4, 1) + Vector2(0.5, 0.5)) * Backpack.CELL)
-	check(bag._over_oxy_box(icon_at), "the box's icon is found in the grid")
+	check(bag._oxy_icon_at(icon_at).size != Vector2.ZERO, "the box's icon is found in the grid")
 	var dragged: Dictionary = bag._grid.items.filter(func(it): return it.kind == "fish")[0]
-	bag.drag_end(dragged, icon_at)
-	check(GameState.oxy_fish.size() == 1 and GameState.carried_fish.is_empty(), "dropped on the icon: in the box")
+	# Dragged over the icon: the cells open (no auto-laying); let go in a cell: it goes there.
+	bag._drag_item = dragged
+	bag._grab = Vector2i.ZERO
+	bag.drag_move(icon_at)
+	check(bag._flyout_open(), "a fish dragged onto the icon opens the box's cells")
+	await frames(2)
+	var cell_spot: Vector2 = bag._flyout._grid.get_global_rect().position + Vector2(1.5, 0.5) * FishFlyout.CELL
+	bag.drag_end(dragged, cell_spot)
+	check(GameState.oxy_fish.size() == 1 and GameState.oxy_placed()[0].position == Vector2i(1, 0) and GameState.carried_fish.is_empty(), "let go over a cell: it's there, where it was let go")
+	bag._close_flyout()
 	GameState.oxy_fish.clear()
 	for _i in 7:
 		GameState.add_carried_fish(_alert_fish("戊", 0.9))
-	bag._rebuild()
 	var made := 0
-	for _i in 7:
+	bag._rebuild()
+	bag._open_oxy(bag._oxy_icon_at(icon_at))
+	await frames(2)
+	for n in 7:
 		bag._rebuild()
 		var it: Dictionary = bag._grid.items.filter(func(x): return x.kind == "fish")[0]
-		bag.drag_end(it, icon_at)
+		var drop_to: Vector2 = bag._flyout._grid.get_global_rect().position + (Vector2(n % 2, n / 2) + Vector2(0.5, 0.5)) * FishFlyout.CELL
+		bag._grab = Vector2i.ZERO
+		bag.drag_end(it, drop_to)
 		made = GameState.oxy_fish.size()
-	check(made == 6 and GameState.carried_fish.size() == 1, "six cells' worth go in, the seventh is left (%d in)" % made)
+	check(made == 6 and GameState.carried_fish.size() == 1, "six small fish fill the six cells, the seventh is left (%d in)" % made)
+	bag._close_flyout()
 	GameState.oxy_fish.clear()
 	bag.toggle()
 
@@ -6976,6 +6992,40 @@ func test_fear_and_confusion() -> void:
 	check(dirs.size() >= 2, "in changing directions, not the stick's (%d ways)" % dirs.size())
 	stick.output = Vector2.ZERO
 	stick.is_pressed = false
+
+
+## User request: at camp the fish box works as in a run - 使用 (or a fish dragged onto it) opens its
+## cells, the bag's and the warehouse's fish are put in by hand, and what's in it goes on the run.
+func test_oxy_at_camp() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 500})
+	check(Profile.buy_oxy_box(), "the box bought (in the warehouse)")
+	check(Profile.can_use_oxy_box(), "usable from the warehouse")
+	var f1 := _alert_fish("甲", 0.9)
+	f1["size"] = "medium"
+	var f2 := _alert_fish("乙", 0.9)
+	var f3 := _alert_fish("丙", 0.9)
+	Profile.pack_fish = [f1]
+	Profile.stash_fish = [f2, f3]
+	var store := OxyStore.new(true)
+	check(store.put(Profile.pack_fish, 0, Vector2i(0, 0)) == "" and Profile.oxy_stock.size() == 1 and Profile.pack_fish.is_empty(), "a bag fish put at a cell")
+	check(store.put(Profile.stash_fish, 0, Vector2i(0, 1)) != "", "onto it: no")
+	check(store.put(Profile.stash_fish, 0, Vector2i(1, 0)) == "" and Profile.oxy_stock.size() == 2 and Profile.stash_fish.size() == 1, "a warehouse fish beside it")
+	check(store.rotate(0) == "" and Profile.oxy_stock[0].get("rot", false) == true, "a fish turned (lying)")
+	var worn := Profile.durability("oxy_box")
+	check(worn < Profile.max_durability("oxy_box"), "each in is a use (%d)" % worn)
+	var snap := Profile.snapshot()
+	Profile.load_data(snap)
+	check(Profile.oxy_stock.size() == 2, "kept in the save")
+	# On the run: with the box in the bag they go along, not run down.
+	Profile.to_bag("oxy_box", 1)
+	GameState.reset_run()
+	GameState.start_run()
+	check(GameState.oxy_fish.size() == 2 and Profile.oxy_stock.is_empty(), "the boxed fish go on the run with the box")
+	# Taken out at camp: to the bag.
+	Profile.load_data(snap)
+	check(store.take(0) == "" and Profile.oxy_stock.size() == 1 and (Profile.pack_fish.size() + Profile.stash_fish.size()) >= 2, "taken out: to the bag (else the warehouse)")
+	Profile.load_data(saved)
 
 
 func test_salting() -> void:
@@ -7498,22 +7548,29 @@ func test_fish_clasp() -> void:
 	await frames(3)
 	check(eq.find_child("Slot_clasp1", true, false) != null and eq.find_child("Slot_clasp3", true, false) != null, "the three slots are open")
 	check(not (eq.find_child("Slot_clasp1", true, false) as Control).get("locked"), "(not locked)")
-	eq.card({"from": "slot", "id": "fish_clasp", "slot": "clasp1"})
+	eq.card({"from": "slot", "id": "fish_clasp", "slot": "clasp1", "at": Vector2(200, 150)})
 	await frames(2)
-	var panel: Node = eq.find_child("ClaspPanel", true, false)
-	check(panel != null and panel.find_child("Hung_clasp1_0", true, false) != null, "tapping the clasp shows its hooks, the fish hung")
-	panel.find_child("Hung_clasp1_0", true, false).pressed.emit()
+	var panel: FishFlyout = eq.find_child("FishFlyout", true, false)
+	check(panel != null and panel.store is ClaspStore and panel._grid.fish.size() == 1, "tapping the clasp opens its hooks beside it, the fish hung")
+	check(panel.global_position.x >= 200.0 - 36.0, "(beside the icon)")
+	panel.tap(0)
+	panel.drag_end(0, Vector2(900, 500), Vector2i.ZERO)
 	await frames(2)
-	check(Profile.clasp_fish.is_empty() and Profile.pack_fish.size() == 2, "tapping a hung fish takes it off, to the bag")
-	check(panel.find_child("Free_clasp1_0", true, false) != null, "and the hook is a ＋")
-	panel.find_child("Free_clasp1_0", true, false).pressed.emit()
-	await frames(3)
-	var pick: Node = panel.find_child("FishPickPanel", true, false)
-	check(pick != null and pick.find_child("Fish_0", true, false) != null, "the ＋ asks which fish of the bag and the warehouse")
-	pick.find_child("Fish_0", true, false).pressed.emit()
+	check(Profile.clasp_fish.is_empty() and Profile.pack_fish.size() == 2, "a hung fish dragged out is taken off, to the bag")
+	# A fish from the bag dragged onto the clasp's hook (the board opens the cells itself).
+	var hung_at := panel._grid.get_global_rect().position + Vector2(10, 10)
+	eq.close_flyout()
 	await frames(2)
-	check(Profile.clasp_fish.size() == 1 and Profile.clasp_fish[0].hook == "clasp1:0", "the fish picked is hung")
-	panel.queue_free()
+	var hit: Dictionary = eq._box_under((eq.find_child("Slot_clasp1", true, false) as Control).get_global_rect().get_center())
+	check(not hit.is_empty() and hit.store is ClaspStore, "the clasp's icon is found under a dragged fish")
+	eq.open_flyout(hit.store, hit.rect)
+	await frames(2)
+	panel = eq.find_child("FishFlyout", true, false)
+	var at := panel._grid.get_global_rect().position + Vector2(10, 10)
+	check(panel.drop_fish(Profile.pack_fish, 0, at), "dropped on the hook")
+	check(Profile.clasp_fish.size() == 1 and Profile.clasp_fish[0].hook == "clasp1:0", "the fish dragged there is hung")
+	check(panel.store.fits(Profile.pack_fish[0], Vector2i(0, 0)) == false, "the hook's taken")
+	eq.close_flyout()
 	eq.queue_free()
 	await frames(1)
 	# On the run: the hung fish go too, with no bag room; home again on the hook.

@@ -227,6 +227,7 @@ func toggle() -> void:
 		set_sticks_enabled(get_tree(), true)
 		return
 	_panel.visible = not _panel.visible
+	_close_flyout()
 	_backdrop.visible = _panel.visible
 	set_sticks_enabled(get_tree(), not _panel.visible)
 	_selected = {}
@@ -395,7 +396,7 @@ func _show_selected(player: Player, items: Array, placed: Array) -> void:
 					equip_from_bag(item.bag)
 					_rebuild(), busy))
 			if gid == "oxy_box":
-				_actions.add_child(_action("使用", _open_oxy))
+				_actions.add_child(_action("使用", func(): _open_oxy(at)))
 		"use":
 			# User request (round 7): the potions, the eyeball, the
 			# binoculars - used from here (Player.use_item()).
@@ -549,6 +550,15 @@ func drag_move(at: Vector2) -> void:
 		_ghost.position = at - _ghost.size / 2.0
 		# Out of the bag: reddish, "put down here".
 		_ghost.modulate = Color(1, 0.75, 0.6, 0.9) if not _panel.get_global_rect().has_point(at) else Color(1, 1, 1, 0.8)
+	# A fish over the fish box's icon: its cells open; over them it shows where it'd go.
+	if not _drag_item.is_empty() and _drag_item.kind == "fish" and _drag_item.index < GameState.carried_fish.size():
+		var held: Dictionary = GameState.carried_fish[_drag_item.index]
+		if not _flyout_open() and _oxy_icon_at(at).size != Vector2.ZERO and Profile.can_use_oxy_box():
+			_open_oxy(_oxy_icon_at(at))
+		if _flyout_open():
+			_flyout.hover_fish(held, at, _grab)
+			if _flyout.contains(at):
+				return
 	# Over the grid: where it would go, green if it fits, red if not.
 	if _grid != null and not _drag_item.is_empty() and _drag_item.kind != "slot" and _grid.get_global_rect().has_point(at):
 		var i := _grid_index(_drag_item)
@@ -628,25 +638,51 @@ func _stack_onto(item: Dictionary, at: Vector2i) -> bool:
 	return false
 
 
-## The fish box's grid (OxyPanel), from 使用.
-func _open_oxy() -> void:
-	var panel := OxyPanel.new()
-	panel.closed.connect(_rebuild)
-	add_child(panel)
+## The fish box's cells (FishFlyout) beside its icon `anchor` - from 使用, or a fish dragged
+## onto the icon. One at a time.
+var _flyout: FishFlyout
 
 
-## Is the box's icon under `at` - worn in its slot, or lying in the grid?
-func _over_oxy_box(at: Vector2) -> bool:
+func _open_oxy(anchor: Rect2) -> void:
+	if _flyout != null and is_instance_valid(_flyout):
+		_flyout.queue_free()
+	_flyout = FishFlyout.new(OxyStore.new(false), anchor)
+	_flyout.closed.connect(_rebuild)
+	add_child(_flyout)
+
+
+func _close_flyout() -> void:
+	if _flyout != null and is_instance_valid(_flyout):
+		_flyout.queue_free()
+	_flyout = null
+
+
+## The fish box's icon under `at` - worn in its slot, or lying in the grid: its rect (global),
+## or an empty one.
+func _oxy_icon_at(at: Vector2) -> Rect2:
 	for box in _gear_slots:
 		if box.slot == "offhand" and Profile.has_oxy_box() and box.get_global_rect().has_point(at):
-			return true
+			return box.get_global_rect()
 	if _grid.get_global_rect().has_point(at):
 		var cell := _grid.cell_at(at)
 		for j in _grid.items.size():
 			var it: Dictionary = _grid.items[j]
 			if it.get("item", "") == "oxy_box" and (_grid.placed[j] as Rect2i).has_point(cell):
-				return true
-	return false
+				var r: Rect2i = _grid.placed[j]
+				return _grid.get_global_transform() * Rect2(Vector2(r.position) * CELL, Vector2(r.size) * CELL)
+	return Rect2()
+
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	# R while a fish is held: turns it (lying <-> standing)
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_R \
+			and not _drag_item.is_empty() and _drag_item.kind == "fish":
+		_rotate(_drag_item)
+		_rebuild()
+
+
+func _flyout_open() -> bool:
+	return _flyout != null and is_instance_valid(_flyout)
 
 
 func drag_end(item: Dictionary, at: Vector2) -> void:
@@ -657,14 +693,14 @@ func drag_end(item: Dictionary, at: Vector2) -> void:
 	if _grid != null:
 		_grid.preview = Rect2i()
 		_grid.queue_redraw()
-	# A fish onto the fish box's icon: laid in the box by itself, or a warning that it's full.
-	if item.kind == "fish" and _over_oxy_box(at):
-		var why := GameState.oxy_put(item.index)
-		if why != "":
-			GameState.push_message("魚箱放不下這條魚" if why == "魚箱放不下" else why)
+	# A fish let go over the fish box's open cells: put in the cell it's over.
+	if item.kind == "fish" and _flyout_open() and _flyout.contains(at):
+		_flyout.drop_fish(GameState.carried_fish, item.index, at, _grab)
 		_selected = {}
 		_rebuild()
 		return
+	if _flyout_open():
+		_flyout.clear_hover()
 	# Onto a gear slot: put it on; a slot's thing onto the grid: off.
 	for box in _gear_slots:
 		if box.get_global_rect().has_point(at):
@@ -846,7 +882,10 @@ func _show_slot(player: Player, slot: String) -> void:
 		lines.append("耐久度 %d / %d" % [Profile.durability(id), Profile.max_durability(id)])
 	_detail.text = "\n".join(lines)
 	if id == "oxy_box":
-		_actions.add_child(_action("使用", _open_oxy))
+		_actions.add_child(_action("使用", func():
+			for box in _gear_slots:
+				if box.slot == slot:
+					_open_oxy(box.get_global_rect())))
 	if slot != "rod":
 		_actions.add_child(_action("卸下放進背包", func():
 			unequip_to_bag(slot)
