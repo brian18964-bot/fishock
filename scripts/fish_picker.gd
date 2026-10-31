@@ -35,6 +35,9 @@ func _ready() -> void:
 	shade.color = Color(0, 0, 0, 0.5)
 	shade.size = Vector2(960, 540)
 	shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	shade.gui_input.connect(func(e):
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			close())
 	add_child(shade)
 	var made := UiKit.window("獻祭")
 	_window = made[0]

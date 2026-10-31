@@ -766,6 +766,10 @@ func _ask_drop(item: Dictionary) -> void:
 	shade.name = "DropConfirm"
 	shade.color = Color(0, 0, 0, 0.45)
 	shade.size = Vector2(960, 540)
+	shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	shade.gui_input.connect(func(e):
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			_close_confirm())
 	add_child(shade)
 	_confirm = shade
 	var made := UiKit.window("丟在地上")

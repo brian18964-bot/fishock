@@ -459,6 +459,9 @@ func _modal(title: String, lines: Array, picks: Array) -> void:
 	var shade := ColorRect.new()
 	shade.color = Color(0, 0, 0, 0.5)
 	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.gui_input.connect(func(e):
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			_close())
 	add_child(shade)
 	_card = shade
 	var panel := UiKit.tooltip_panel()

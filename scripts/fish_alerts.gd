@@ -48,6 +48,20 @@ func _ready() -> void:
 	_root.add_child(_eye)
 
 
+func _input(event: InputEvent) -> void:
+	# a press outside the open card (and the cards, which toggle it themselves) puts it away
+	if _detail != null and event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		var at: Vector2 = event.position
+		if _detail.get_global_rect().has_point(at):
+			return
+		for c in _cards.values():
+			if (c as Control).visible and (c as Control).get_global_rect().has_point(at):
+				return
+		_detail.queue_free()
+		_detail = null
+		_detail_uid = -1
+
+
 func _process(delta: float) -> void:
 	_t += delta
 	if _t < REFRESH:

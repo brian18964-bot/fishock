@@ -44,6 +44,11 @@ static func notice(parent: Node, title: String, lines: Array) -> Control:
 	var shade := ColorRect.new()
 	shade.color = Color(0, 0, 0, 0.6)
 	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	# (a press outside the window closes it, like 知道了)
+	shade.gui_input.connect(func(e):
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			shade.queue_free())
 	parent.add_child(shade)
 	var made := UiKit.window(title)
 	var p: PanelContainer = made[0]

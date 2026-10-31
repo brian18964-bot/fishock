@@ -189,6 +189,8 @@ func _fresh_game(rng_seed := 7) -> void:
 	main = get_tree().current_scene
 	gs.start_run()
 	await frames(2)
+	# (no bait comes free any more; the tests that cast do it with bait in hand)
+	player().bait_count = 20
 
 
 func player() -> Player:
@@ -3308,11 +3310,11 @@ func test_oxy_items() -> void:
 	GameState.carried_fish = [a, b]
 	var uses := Profile.durability("oxy_box")
 	check(GameState.oxy_put(0) == "" and GameState.oxy_fish.size() == 1 and GameState.carried_fish.size() == 1, "one in the box")
-	check(Profile.durability("oxy_box") == uses - 1, "a use of the box")
+	check(Profile.durability("oxy_box") == uses, "going in costs nothing")
 	GameState._age_fish(10.0)
 	check(absf(GameState.oxy_fish[0].vit - 0.5) < 0.0001 and GameState.carried_fish[0].vit < 0.45, "in the box it doesn't run down, the other does")
 	check(GameState.oxy_take(0) == "" and GameState.oxy_fish.is_empty() and GameState.carried_fish.size() == 2, "taken out")
-	check(Profile.durability("oxy_box") == uses - 2, "and another use")
+	check(Profile.durability("oxy_box") == uses - 1, "in and out is the one use")
 	for _i in Profile.OXY_SLOTS:
 		GameState.carried_fish.append(a.duplicate(true))
 	GameState.carried_fish = GameState.carried_fish.slice(0, 8)
@@ -3379,7 +3381,27 @@ func test_oxy_items() -> void:
 	check(GameState.oxy_fish[0].get("rot", false) == true or GameState.oxy_placed()[0].size == Vector2i(2, 1), "a tap turns it")
 	flyout.drag_end(0, Vector2(900, 500), Vector2i.ZERO)
 	check(GameState.oxy_fish.is_empty() and GameState.carried_fish.size() == 1, "dragged out of the cells: taken out")
-	flyout.queue_free()
+	# A tap outside the window closes it; a drag from outside doesn't.
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	press.position = Vector2(700, 480)
+	var lift := InputEventMouseButton.new()
+	lift.button_index = MOUSE_BUTTON_LEFT
+	lift.pressed = false
+	lift.position = Vector2(700, 480)
+	var slid := InputEventMouseMotion.new()
+	slid.position = Vector2(760, 480)
+	flyout._input(press)
+	flyout._input(slid)
+	lift.position = Vector2(760, 480)
+	flyout._input(lift)
+	check(not flyout.is_queued_for_deletion(), "a drag from outside leaves it open")
+	press.position = Vector2(700, 480)
+	lift.position = Vector2(700, 480)
+	flyout._input(press)
+	flyout._input(lift)
+	check(flyout.is_queued_for_deletion(), "a tap outside closes it")
 	for _i in 6:
 		GameState.carried_fish.append(a.duplicate(true))
 	for _i in 6:
@@ -3402,7 +3424,7 @@ func test_oxy_items() -> void:
 	Profile.wear["oxy_box"] = 1
 	GameState.carried_fish = [a.duplicate(true)]
 	GameState.oxy_fish = [a.duplicate(true)]
-	GameState.oxy_put(0)
+	GameState.oxy_take(0)
 	check(not Profile.has_oxy_box() and GameState.oxy_fish.is_empty() and GameState.carried_fish.size() == 2, "broken: the fish are back out")
 	# The off hand's box isn't swung.
 	Profile.add_stored("oxy_box", 1)
@@ -7013,7 +7035,7 @@ func test_oxy_at_camp() -> void:
 	check(store.put(Profile.stash_fish, 0, Vector2i(1, 0)) == "" and Profile.oxy_stock.size() == 2 and Profile.stash_fish.size() == 1, "a warehouse fish beside it")
 	check(store.rotate(0) == "" and Profile.oxy_stock[0].get("rot", false) == true, "a fish turned (lying)")
 	var worn := Profile.durability("oxy_box")
-	check(worn < Profile.max_durability("oxy_box"), "each in is a use (%d)" % worn)
+	check(worn == Profile.max_durability("oxy_box"), "going in costs nothing (%d)" % worn)
 	var snap := Profile.snapshot()
 	Profile.load_data(snap)
 	check(Profile.oxy_stock.size() == 2, "kept in the save")
@@ -7259,8 +7281,8 @@ func test_camp_pages_nav() -> void:
 		get_tree().root.add_child(pg)
 		await frames(2)
 		var row: Node = pg.find_child("PageNav", true, false)
-		check(row != null and row.get_child_count() == 5, "%s has the five-page row" % scene)
-		for key in ["shop", "warehouse", "character", "tank", "depart"]:
+		check(row != null and row.get_child_count() == 4, "%s has the four-page row (no 出發)" % scene)
+		for key in ["shop", "warehouse", "character", "tank"]:
 			check(pg.find_child("Nav_" + key, true, false) != null, "%s: %s button" % [scene, key])
 		pg.queue_free()
 		await frames(1)

@@ -3,7 +3,8 @@ extends RefCounted
 
 ## The fish box's contents, whether in a run (GameState.oxy_fish, put in from what's carried)
 ## or at camp (Profile.oxy_stock, put in from the bag or the warehouse): one set of moves
-## for FishFlyout - put at a cell, move, turn, take out. Each put or take is a use of the box.
+## for FishFlyout - put at a cell, move, turn, take out. A fish in and out again is one use of
+## the box (the wear's on the way out).
 
 var home := false
 
@@ -81,7 +82,7 @@ func put(from: Array, index: int, cell: Vector2i) -> String:
 	fish.erase("slot")
 	fish.erase("hook")
 	Profile.oxy_stock.append(fish)
-	_wear()
+	Profile.profile_changed.emit()
 	return ""
 
 

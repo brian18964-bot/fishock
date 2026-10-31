@@ -334,7 +334,7 @@ func oxy_put(index: int, cell := Vector2i(-1, -1)) -> String:
 	carried_fish.remove_at(index)
 	oxy_fish.append(fish)
 	inventory_updated.emit(carried_fish)
-	_wear_oxy_box()
+	# (no wear going in: a fish in and out is the one use - see oxy_take)
 	return ""
 
 

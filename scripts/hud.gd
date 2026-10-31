@@ -328,6 +328,8 @@ func open_run_menu() -> void:
 	var col := ok.get_parent()
 	ok.text = "繼續夜釣"
 	ok.pressed.connect(func(): get_tree().paused = false)
+	# (closed by a press outside it: the run carries on)
+	shade.tree_exiting.connect(func(): get_tree().paused = false)
 	var home := UiKit.button("回到營地", 16, "red")
 	home.name = "LeaveRun"
 	home.custom_minimum_size = Vector2(140, 42)

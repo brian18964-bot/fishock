@@ -32,6 +32,10 @@ func _ready() -> void:
 	var shade := ColorRect.new()
 	shade.color = Color(0, 0, 0, 0.55)
 	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	shade.gui_input.connect(func(e):
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			queue_free())
 	add_child(shade)
 	var made := UiKit.window(_title)
 	var panel: PanelContainer = made[0]

@@ -20,6 +20,8 @@ var _grid: Tiles
 var _title: Label
 var _hint: Label
 var _ghost: Control
+var _out_armed := false
+var _out_at := Vector2.ZERO
 
 
 func _init(the_store, near: Rect2) -> void:
@@ -78,6 +80,21 @@ func _ready() -> void:
 
 func _draw() -> void:
 	draw_style_box(UiKit.frame_box(true), Rect2(Vector2.ZERO, size))
+
+
+func _input(event: InputEvent) -> void:
+	# a tap outside the window closes it (a drag from outside - a fish on its way in - doesn't)
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			_out_armed = not contains(event.position)
+			_out_at = event.position
+		elif _out_armed and not contains(event.position) and event.position.distance_to(_out_at) < 10.0:
+			_out_armed = false
+			close()
+		else:
+			_out_armed = false
+	elif event is InputEventMouseMotion and _out_armed and event.position.distance_to(_out_at) >= 10.0:
+		_out_armed = false
 
 
 func _process(_delta: float) -> void:

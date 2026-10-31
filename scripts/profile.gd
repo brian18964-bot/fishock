@@ -64,7 +64,7 @@ const LURE_ORDER := ["minnow", "redhead", "zebra", "clown", "bluegold", "rainbow
 ## flavor (Player: 蚯蚓 bites sooner, 蟲子 fewer empty casts, 青蛙 rare
 ## fish likelier, big bait legends likelier).
 const LIVE_BAITS := {
-	"worm": {"name": "蚯蚓", "cost": 3, "flavor": "蚯蚓", "desc": "活餌：魚咬得比較快（等待時間 -30%）"},
+	"worm": {"name": "蚯蚓", "cost": 1, "flavor": "蚯蚓", "desc": "活餌：魚咬得比較快（等待時間 -30%）"},
 	# (User request, round 7: the user's grasshopper in the old cricket's
 	# place - the id kept, for the saves.)
 	"cricket": {"name": "蚱蜢", "cost": 4, "flavor": "蟲子", "desc": "活餌：空竿的機率減半"},
@@ -117,7 +117,7 @@ const OXY_SLOTS := 6
 ## The box's grid: two across, three down - a fish takes the cells its size does.
 const OXY_COLS := 2
 const OXY_ROWS := 3
-const OXY_BOX_DESC := "副手裝備：打開後有六格，放進去的魚活性不會下降。放進、拿出各用掉 1 點耐久；沒有逃脫成功，裡面的魚一樣帶不出來。沒裝備時佔背包六格"
+const OXY_BOX_DESC := "副手裝備：打開後有六格，放進去的魚活性不會下降。一條魚放進再拿出，用掉 1 點耐久；沒有逃脫成功，裡面的魚一樣帶不出來。沒裝備時佔背包六格"
 const NET_DESC := "副手裝備：拿在手上時點一下右搖桿揮網撈活餌，抓得更遠，被咬中毒的機率減半"
 ## User request: the flashlight is a shop item (bought once) that runs on
 ## batteries, also bought here and kept in stock until used (see Lantern).

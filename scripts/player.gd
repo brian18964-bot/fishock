@@ -46,7 +46,7 @@ static var WORLD_WIDTH := 2400.0
 ## edge is a wall of tall pines (RunView3D.EDGE).
 var edge := 16.0
 static var WORLD_HEIGHT := 1350.0
-const START_BAIT := 20
+const START_BAIT := 0
 const START_LURES := 5
 
 ## Design doc request: carrying more fish weighs the player down; each
