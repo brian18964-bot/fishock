@@ -633,9 +633,13 @@ class BagGrid extends Control:
 	func target_at(global: Vector2) -> Dictionary:
 		var c := cell_at(global)
 		if not _hover.is_empty():
-			# Dragged by its middle: its top-left cell.
-			var sz := _hover_size()
-			c = cell_at(global - Vector2(sz - Vector2i.ONE) * cell / 2.0)
+			if _hover.has("grab"):
+				# Dragged by the cell it was taken by: its top-left is that far off the pointer's.
+				c = c - Vector2i(_hover.grab)
+			else:
+				# (from another view: by its middle)
+				var sz := _hover_size()
+				c = cell_at(global - Vector2(sz - Vector2i.ONE) * cell / 2.0)
 		return {"to": "bag", "cell": c}
 
 	## The cells what's dragged takes (as it's turned in the bag).
@@ -667,12 +671,13 @@ class BagGrid extends Control:
 			var places := Profile.pack_places()
 			for k in places.size():
 				if (places[k] as Rect2i).has_point(cell_at(event.global_position)):
-					board.pressed({"from": "pack_fish", "id": "", "index": k}, event.global_position)
+					board.pressed({"from": "pack_fish", "id": "", "index": k, "grab": cell_at(event.global_position) - (places[k] as Rect2i).position}, event.global_position)
 					accept_event()
 					return
 			var i := Profile.bag_at(cell_at(event.global_position))
 			if i >= 0:
-				board.pressed({"from": "bag", "id": Profile.bag[i].id, "index": i}, event.global_position)
+				board.pressed({"from": "bag", "id": Profile.bag[i].id, "index": i,
+					"grab": cell_at(event.global_position) - Vector2i(Profile.bag[i].cell)}, event.global_position)
 				accept_event()
 
 	func _draw() -> void:

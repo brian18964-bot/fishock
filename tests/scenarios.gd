@@ -98,6 +98,7 @@ const TESTS := [
 	"test_bag_arrange",
 	"test_fear_and_confusion",
 	"test_oxy_at_camp",
+	"test_bag_moves_at_camp",
 	"test_pull_and_answer",
 	"test_move_plan",
 	"test_slide_amounts",
@@ -7047,6 +7048,48 @@ func test_oxy_at_camp() -> void:
 	# Taken out at camp: to the bag.
 	Profile.load_data(snap)
 	check(store.take(0) == "" and Profile.oxy_stock.size() == 1 and (Profile.pack_fish.size() + Profile.stash_fish.size()) >= 2, "taken out: to the bag (else the warehouse)")
+	Profile.load_data(saved)
+
+
+## User request: moving the fish box (2 x 3) about the camp's bag lands where it's put - by the
+## cell it was taken by - and not onto the fish lying in the bag; a fish from the tank dragged over
+## the box in the placer opens its cells and can be let go in one.
+func test_bag_moves_at_camp() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 0})
+	Profile.bag = [{"id": "oxy_box", "count": 1, "cell": Vector2i(1, 1)}]
+	var f := _alert_fish("甲", 0.9)
+	f["size"] = "medium"
+	f["cell"] = [0, 1]
+	Profile.pack_fish = [f]
+	check(not Profile.bag_fits("oxy_box", Vector2i(0, 0), 0), "not onto the fish lying in the bag")
+	check(Profile.bag_fits("oxy_box", Vector2i(3, 0), 0), "a free place is fine")
+	var grid := ItemBoard.BagGrid.new(54.0)
+	var board := ItemBoard.new()
+	grid.board = board
+	var host := Control.new()
+	add_child(host)
+	host.add_child(grid)
+	await frames(2)
+	# Taken by its lower cell (grab (0, 2)): let go with the pointer over (4, 3) -> top left (4, 1).
+	grid.hover({"from": "bag", "id": "oxy_box", "index": 0, "grab": Vector2i(0, 2)}, grid.global_position + Vector2(4.5, 3.5) * 54.0)
+	var tgt: Dictionary = grid.target_at(grid.global_position + Vector2(4.5, 3.5) * 54.0)
+	check(tgt.cell == Vector2i(4, 1), "put by the cell it was taken by (%s)" % [tgt.cell])
+	check(Profile.bag_move(0, tgt.cell) and Profile.bag[0].cell == Vector2i(4, 1), "and it goes there")
+	host.queue_free()
+	board.queue_free()
+	# The placer: a tank fish over the box opens its cells.
+	Profile.bag = [{"id": "oxy_box", "count": 1, "cell": Vector2i(1, 1)}]
+	Profile.pack_fish = []
+	Profile.tank = [_alert_fish("乙", 0.9)]
+	var placer := FishPlacer.new("pack", "tank", 0)
+	add_child(placer)
+	await frames(2)
+	placer.box_hover(Vector2i(1, 2), placer._grid.global_position + Vector2(1.5, 2.5) * FishPlacer.CELL)
+	check(placer._flyout != null and is_instance_valid(placer._flyout), "a fish over the box in the placer opens its cells")
+	var at := placer._flyout._grid.get_global_rect().position + Vector2(10, 10)
+	check(placer.box_drop(at) and Profile.oxy_stock.size() == 1 and Profile.tank.is_empty(), "let go in a cell: in the box, out of the tank")
+	placer.queue_free()
 	Profile.load_data(saved)
 
 

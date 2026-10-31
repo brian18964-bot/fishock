@@ -1658,6 +1658,10 @@ func bag_fits(id: String, cell: Vector2i, ignore := -1, rot := false) -> bool:
 	for i in bag.size():
 		if i != ignore and Rect2i(bag[i].cell, bag_size_of(i)).intersects(rect):
 			return false
+	# (and the fish set in the bag, where they lie)
+	for r in pack_places():
+		if (r as Rect2i).intersects(rect):
+			return false
 	return true
 
 

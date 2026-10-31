@@ -92,6 +92,36 @@ func _init(place: String, from: String, i: int) -> void:
 	_check()
 
 
+## The fish box lying in the bag: a fish dragged over it opens its cells (FishFlyout) and can be
+## let go in one of them - to the box, not the bag.
+var _flyout: FishFlyout
+
+
+func box_hover(local_cell: Vector2i, global_at: Vector2) -> void:
+	if where != "pack":
+		return
+	if _flyout == null or not is_instance_valid(_flyout):
+		var i := Profile.bag_at(local_cell)
+		if i < 0 or Profile.bag[i].id != "oxy_box" or not Profile.can_use_oxy_box():
+			return
+		var r := Rect2(Vector2(Profile.bag[i].cell) * CELL, Vector2(Profile.bag_size_of(i)) * CELL)
+		_flyout = FishFlyout.new(OxyStore.new(true), _grid.get_global_transform() * r)
+		add_child(_flyout)
+	_flyout.hover_fish(fish, global_at, _flyout.centered_grab(fish))
+
+
+## The fish let go at `global_at`: into the box's cells if that's where it is. True if it went in
+## (it's gone from where it was: the page is done), or the cells were what it was let go on.
+func box_drop(global_at: Vector2) -> bool:
+	if _flyout == null or not is_instance_valid(_flyout) or not _flyout.contains(global_at):
+		return false
+	var list := Profile.fish_list(src)
+	_flyout.drop_fish(list, list.find(fish), global_at, _flyout.centered_grab(fish))
+	if Profile.fish_list(src).find(fish) < 0:
+		done.emit(true)
+	return true
+
+
 func _grid_size() -> Vector2:
 	if where == "pack":
 		return Vector2(Inventory.COLS, Inventory.ROWS) * CELL
@@ -209,11 +239,14 @@ class Grid extends Control:
 				elif not d.new and placer.fits(d.fish, d.at):
 					_move_existing(d.fish, d.at)
 				elif d.new:
-					placer.put_at(d.at)
+					if not placer.box_drop(get_global_transform() * event.position):
+						placer.put_at(d.at)
 				queue_redraw()
 			accept_event()
 		elif event is InputEventMouseMotion:
 			_hover = cell_at(event.position)
+			if not _drag.is_empty() and _drag.new:
+				placer.box_hover(_hover, get_global_transform() * event.position)
 			if not _drag.is_empty():
 				var corner: Vector2i = _hover - Vector2i(_drag.grab)
 				_drag.at = placer._clamp(corner)
