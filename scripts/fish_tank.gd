@@ -359,7 +359,16 @@ func _card_for(i: int, src := "tank") -> void:
 	var acts := HBoxContainer.new()
 	acts.add_theme_constant_override("separation", 8)
 	acts.alignment = BoxContainer.ALIGNMENT_END
-	if src == "tank":
+	# (user request: a lock, so it isn't sold or thrown away by a slip - Locks)
+	var lock := UiKit.button("解鎖" if Locks.fish(f) else "上鎖", 15)
+	lock.name = "Lock"
+	lock.custom_minimum_size = Vector2(80, 42)
+	lock.pressed.connect(func():
+		Locks.set_fish(f, not Locks.fish(f))
+		_close()
+		_rebuild())
+	acts.add_child(lock)
+	if src == "tank" and not Locks.fish(f):
 		var sell := UiKit.button("販售 +%d" % price, 15, "red")
 		sell.name = "Sell"
 		sell.custom_minimum_size = Vector2(110, 42)
@@ -420,7 +429,7 @@ func _feed_dialog(smith: Dictionary) -> void:
 		return
 	var rotten := []
 	for i in Profile.fish_box.size():
-		if FishLife.state(Profile.fish_box[i]) == "rotten":
+		if FishLife.state(Profile.fish_box[i]) == "rotten" and not Locks.fish(Profile.fish_box[i]):
 			rotten.append(i)
 	var gear := Profile.repairable()
 	var title := "餵食 %s" % smith.get("name", "魚")
@@ -515,6 +524,8 @@ class FishIcon extends Control:
 		var k := minf(room.size.x / tex.get_width(), room.size.y / tex.get_height())
 		var sz := Vector2(tex.get_size()) * k
 		draw_texture_rect(tex, Rect2(room.get_center() - sz / 2.0, sz), false)
+		if Locks.fish(fish):
+			Locks.draw(self, r)
 
 
 ## The tank: glass, water, sand, weed and bubbles, and the fish in it.

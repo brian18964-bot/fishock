@@ -122,6 +122,7 @@ const TESTS := [
 	"test_backpack_grid",
 	"test_bag_card_closes",
 	"test_altar_this_run_only",
+	"test_locks",
 	"test_water_ghost",
 	"test_willow_talk",
 	"test_altar_corrosion",
@@ -505,7 +506,7 @@ func test_sacrifice_and_altar_stages() -> void:
 	var altar: Node2D = main.get_node("Altar")
 	var willow: Node2D = main.get_node("Willow")
 	for i in 10:
-		gs.add_carried_fish({"name": "魚", "value": 4.0, "tier": "near"})
+		gs.add_carried_fish({"name": "魚", "value": 4.0, "tier": "near", "run_id": gs.run_id})
 	await put(altar.global_position + Vector2(0, 10))
 	check(player().interaction().get("verb", "") == "獻祭", "offering offered at the altar")
 	var before: float = gs.quota_progress
@@ -4333,6 +4334,59 @@ func test_floating_ghost_budget() -> void:
 		check(times[i] - times[i - 1] >= 19.9, "20 s apart (%.1f)" % (times[i] - times[i - 1]))
 
 
+## User request: a fish or a thing can be locked (a padlock on it): not offered, sold, thrown away,
+## put down or thrown as a lure while it is - moved about, yes; a dead fish too. The lock keeps
+## through a save, and goes with a stack between the bag and the warehouse.
+func test_locks() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 100})
+	var p := player()
+	var prize := fish("珍藏", "near")
+	gs.add_carried_fish(prize)
+	Locks.set_fish(prize, true)
+	var i: int = gs.carried_fish.find(prize)
+	check(gs.sacrifice_at(i).is_empty() and gs.carried_fish.has(prize), "locked: not offered")
+	check(gs.drop_carried_at(i).is_empty() and gs.carried_fish.has(prize), "not put down or thrown")
+	gs.set_lure(i)
+	check(gs.lure_index() != i, "not made the lure")
+	p.put_fish_down(i)
+	check(gs.carried_fish.has(prize), "(put down from the bag: no)")
+	Locks.set_fish(prize, false)
+	check(not gs.sacrifice_at(gs.carried_fish.find(prize)).is_empty(), "unlocked: offered")
+	# At camp: the tank, the bucket - not sold, not thrown away; a dead one lockable too.
+	var kept := _alert_fish("收藏", 0.9)
+	Profile.tank = [kept]
+	Locks.set_fish(kept, true)
+	check(Profile.sell_fish("tank", 0) == 0 and Profile.tank.size() == 1, "a locked one isn't sold")
+	Profile.discard_fish("tank", 0)
+	check(Profile.tank.size() == 1, "nor thrown away")
+	var dead := _alert_fish("標本", 0.9)
+	FishLife.kill(dead)
+	Profile.fish_box = [dead]
+	Locks.set_fish(dead, true)
+	check(Profile.sell_box_all() == 0 and Profile.fish_box.size() == 1, "a dead one, locked, stays too")
+	check(Profile.move_fish("tank", 0, "stash") == "" and Profile.stash_fish.has(kept) and Locks.fish(kept), "moved about, still locked")
+	# Things: a bag stack, the warehouse's kind.
+	Profile.bag = []
+	Profile.storage = {"salt": 3}
+	Profile.storage_locks = {}
+	check(Profile.to_bag("salt", 3) == 3, "(salt in the bag)")
+	var si: int = Profile.bag.map(func(e): return e.id).find("salt")
+	Locks.set_bag(si, true)
+	check(Profile.sell_item("bag", "salt", 1, si) == 0 and Profile.bag_count("salt") == 3, "a locked stack isn't sold")
+	check(Profile.bag_discard(si) == 0 and Profile.bag_count("salt") == 3, "nor thrown away")
+	p.put_item_down(si)
+	check(Profile.bag_count("salt") == 3, "nor put down")
+	check(Profile.to_storage(si) == 3 and Locks.stored("salt"), "to the warehouse: its lock goes along")
+	check(Profile.sell_item("storage", "salt", 1) == 0 and Profile.stored("salt") == 3, "the warehouse's locked kind isn't sold")
+	check(Profile.to_bag("salt", 3) == 3 and Locks.bag(Profile.bag.map(func(e): return e.id).find("salt")), "back to the bag: locked")
+	# Kept through a save.
+	var snap := Profile.snapshot()
+	Profile.load_data(snap)
+	check(Locks.fish(Profile.stash_fish[0]) and Locks.bag(Profile.bag.map(func(e): return e.id).find("salt")), "the locks keep through a save")
+	Profile.load_data(saved)
+
+
 ## User request: a fish counts at the altar only in the run it was caught in - one brought from
 ## camp (the bag, the fish box, a clasp) shows its worth as 0 there, "not this run's"; it still
 ## sells as before.
@@ -6641,6 +6695,7 @@ func test_affixes() -> void:
 	var faithful := base.duplicate(true)
 	faithful.life_traits = ["faith"]
 	faithful.trait_tiers = {"faith": 5}
+	faithful["run_id"] = GameState.run_id
 	check(absf(FishLife.offer_value(faithful) - 16.0) < 0.001 and FishLife.sale_value(faithful) == 10, "信仰: +60% at the altar, not at the shop")
 	var fat := FishLife.roll({"id": "carp", "rarity": "common", "value": 10.0})
 	check(fat.has("trait_tiers"), "a roll keeps its tiers")

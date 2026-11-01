@@ -1767,6 +1767,8 @@ func throw_lure() -> void:
 		var best := -1
 		for j in GameState.carried_fish.size():
 			var f: Dictionary = GameState.carried_fish[j]
+			if Locks.fish(f):
+				continue
 			if best < 0 or float(f.get("value", 0.0)) < float(GameState.carried_fish[best].get("value", 0.0)):
 				best = j
 		GameState.set_lure(best)
@@ -1783,6 +1785,9 @@ func put_fish_down(index: int) -> void:
 ## User request (for multiplayer): puts the bag stack at `index` (Profile.bag)
 ## down on the ground, to be picked up again (DroppedItem).
 func put_item_down(index: int) -> void:
+	if Locks.bag(index):
+		GameState.report(Locks.SAID)
+		return
 	var e := Profile.bag_remove(index)
 	if e.is_empty():
 		return

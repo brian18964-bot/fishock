@@ -326,6 +326,10 @@ func lure_index() -> int:
 
 
 func set_lure(index: int) -> void:
+	# (a locked fish isn't thrown: Locks)
+	if index >= 0 and index < carried_fish.size() and Locks.fish(carried_fish[index]):
+		report(Locks.SAID)
+		return
 	lure_uid = int(carried_fish[index].get("uid", -1)) if index >= 0 and index < carried_fish.size() else -1
 
 
@@ -333,6 +337,10 @@ func drop_carried_at(index: int) -> Dictionary:
 	if index < 0 or index >= carried_fish.size():
 		return {}
 	var fish: Dictionary = carried_fish[index]
+	# (user request: a locked one isn't put down, thrown or tossed - Locks)
+	if Locks.fish(fish):
+		report(Locks.SAID)
+		return {}
 	carried_fish.remove_at(index)
 	inventory_updated.emit(carried_fish)
 	return fish
@@ -370,6 +378,10 @@ func sacrifice_at(index: int) -> Dictionary:
 	if index < 0 or index >= carried_fish.size():
 		return {}
 	var fish: Dictionary = carried_fish[index]
+	# (user request: a locked one is never offered - Locks)
+	if Locks.fish(fish):
+		report(Locks.SAID)
+		return {}
 	carried_fish.remove_at(index)
 	inventory_updated.emit(carried_fish)
 

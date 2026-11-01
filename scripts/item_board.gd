@@ -255,6 +255,12 @@ func move(source: Dictionary, target: Dictionary, count := -1) -> bool:
 		["bag", "use"], ["storage", "use"]:
 			use_requested.emit(id)
 			return true
+		["bag", "lock"]:
+			Locks.set_bag(source.index, not Locks.bag(source.index))
+			return true
+		["storage", "lock"]:
+			Locks.set_stored(id, not Locks.stored(id))
+			return true
 		["bag", "rotate"]:
 			return Profile.bag_rotate(source.index)
 		["bag", "discard"]:
@@ -460,6 +466,13 @@ func fish_card(source: Dictionary) -> void:
 			Profile.move_fish(src, i, dest)
 			_close_card())
 		acts.add_child(b)
+	var lock := UiKit.button("解鎖" if Locks.fish(f) else "上鎖", 15)
+	lock.name = "FishLock"
+	lock.custom_minimum_size = Vector2(80, 42)
+	lock.pressed.connect(func():
+		Locks.set_fish(f, not Locks.fish(f))
+		_close_card())
+	acts.add_child(lock)
 	var cancel := UiKit.button("關閉", 15)
 	cancel.custom_minimum_size = Vector2(80, 42)
 	cancel.pressed.connect(_close_card)
@@ -549,6 +562,11 @@ func actions(source: Dictionary) -> Array:
 				out.append(["放回倉庫", {"to": "storage"}, true])
 				if can_discard:
 					out.append(["丟棄", {"to": "discard"}])
+	# (user request: a lock, so it isn't sold or thrown away by a slip - Locks)
+	if source.from == "bag" and not Items.def(source.id).get("fixed", false):
+		out.append(["解鎖" if Locks.bag(int(source.index)) else "上鎖", {"to": "lock"}])
+	elif source.from == "storage":
+		out.append(["解鎖" if Locks.stored(source.id) else "上鎖", {"to": "lock"}])
 	if slot != "" and source.from != "slot":
 		out.append(["裝備", {"to": "slot", "slot": slot}])
 	return out
@@ -605,6 +623,12 @@ static func draw_item(ci: CanvasItem, r: Rect2, id: String, count: int, _font: F
 ## A fish in a slot: its picture filling it, ringed by its rarity, a thin bar
 ## under it for how much life or freshness it has left.
 static func draw_fish_slot(ci: CanvasItem, r: Rect2, f: Dictionary) -> void:
+	_draw_fish_slot(ci, r, f)
+	if Locks.fish(f):
+		Locks.draw(ci, r)
+
+
+static func _draw_fish_slot(ci: CanvasItem, r: Rect2, f: Dictionary) -> void:
 	UiKit.draw_slot(ci, r, UiKit.fish_rarity(f))
 	var tint := Color(0.55, 0.5, 0.35) if FishLife.state(f) == "rotten" else (Color(0.75, 0.78, 0.8) if FishLife.state(f) == "dead" else Color.WHITE)
 	UiKit.draw_fish_fit(ci, r.grow(-4.0), FishData.icon(f.get("id", ""), f.get("name", "")), tint)
@@ -696,6 +720,8 @@ class BagGrid extends Control:
 			var r := Rect2(Vector2(e.cell) * cell, Vector2(Profile.bag_size_of(i)) * cell).grow(-3.0)
 			var dragged: bool = _hover.get("from", "") == "bag" and _hover.get("index", -1) == i
 			ItemBoard.draw_item(self, r, e.id, int(e.count), font)
+			if Locks.bag(i):
+				Locks.draw(self, r)
 			if dragged:
 				draw_rect(r, Color(0, 0, 0, 0.5))
 		# The fish set in the bag at home (their pictures filling their cells, how
@@ -814,6 +840,8 @@ class StorageGrid extends Control:
 				ItemBoard.draw_fish_slot(self, box(i), Profile.stash_fish[e.fish])
 			else:
 				ItemBoard.draw_item(self, box(i), e.id, int(e.count), font)
+				if Locks.stored(e.id):
+					Locks.draw(self, box(i))
 		if _entries.is_empty():
 			UiKit.draw_text(self, Vector2(0, cell * 0.6), "這裡還沒有東西", 15, UiKit.DIM, HORIZONTAL_ALIGNMENT_CENTER, size.x)
 

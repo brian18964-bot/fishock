@@ -386,10 +386,16 @@ func _show_selected(player: Player, items: Array, placed: Array) -> void:
 					_rebuild()))
 			if item.size.x != item.size.y:
 				_actions.add_child(_action("旋轉", func(): _rotate(item)))
-			_actions.add_child(_action("放在地上", func():
-				player.put_fish_down(item.index)
-				_selected = {}
+			var locked := Locks.fish(fish)
+			_actions.add_child(_action("解鎖" if locked else "上鎖", func():
+				Locks.set_fish(fish, not locked)
+				_shown = {}
 				_rebuild()))
+			if not locked:
+				_actions.add_child(_action("放在地上", func():
+					player.put_fish_down(item.index)
+					_selected = {}
+					_rebuild()))
 		"heart":
 			_detail.text = "心臟：被大鬼抓住時，按「用心臟掙脫」（或 H）震開牠的手"
 		"bait":
@@ -464,10 +470,16 @@ func _show_selected(player: Player, items: Array, placed: Array) -> void:
 		_actions.add_child(_action("旋轉", func(): _rotate(item)))
 	# User request (multiplayer to come): put things down for a teammate.
 	if item.has("bag"):
-		_actions.add_child(_action("放在地上", func():
-			player.put_item_down(item.bag)
-			_selected = {}
-			_rebuild(), busy))
+		var bag_locked := Locks.bag(int(item.bag))
+		_actions.add_child(_action("解鎖" if bag_locked else "上鎖", func():
+			Locks.set_bag(int(item.bag), not bag_locked)
+			_shown = {}
+			_rebuild()))
+		if not bag_locked:
+			_actions.add_child(_action("放在地上", func():
+				player.put_item_down(item.bag)
+				_selected = {}
+				_rebuild(), busy))
 	if busy and item.kind in ["bait", "lure", "live"]:
 		_detail.text += "（收線後才能換）"
 	_detail.visible = _detail.text != ""
@@ -1096,6 +1108,10 @@ class GridView extends Control:
 				UiKit.draw_text(self, r.position + Vector2(0, r.size.y - 5), str(item.count), 15, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 5.0)
 			if item.has("item"):
 				ItemBoard.draw_wear(self, r, item.item)
+			# (locked: a padlock in the corner - Locks)
+			if (item.kind == "fish" and item.index < GameState.carried_fish.size() and Locks.fish(GameState.carried_fish[item.index])) \
+					or (item.has("bag") and Locks.bag(int(item.bag))):
+				Locks.draw(self, r if not (item.kind == "fish" and GameState.lure_index() == item.index) else r.grow_individual(0, -18, -20, 0))
 
 	## A thing's rarity: a fish's own, a packed thing's by its id.
 	static func rarity_of(item: Dictionary) -> String:

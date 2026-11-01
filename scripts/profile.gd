@@ -1194,6 +1194,9 @@ func sell_box_all() -> int:
 
 ## Throws the box's fish at `index` away.
 func discard_from_box(index: int) -> void:
+	if index >= 0 and index < fish_box.size() and Locks.fish(fish_box[index]):
+		GameState.report(Locks.SAID)
+		return
 	if index >= 0 and index < fish_box.size():
 		fish_box.remove_at(index)
 		_changed()
@@ -1419,6 +1422,9 @@ func sell_fish(place: String, i: int) -> int:
 	var list := fish_list(place)
 	if i < 0 or i >= list.size():
 		return 0
+	if Locks.fish(list[i]):
+		GameState.report(Locks.SAID)
+		return 0
 	var price := FishLife.sale_value(list[i])
 	if price <= 0:
 		return 0
@@ -1432,6 +1438,9 @@ func sell_fish(place: String, i: int) -> int:
 ## Throws fish `i` of list `place` away.
 func discard_fish(place: String, i: int) -> void:
 	var list := fish_list(place)
+	if i >= 0 and i < list.size() and Locks.fish(list[i]):
+		GameState.report(Locks.SAID)
+		return
 	if i >= 0 and i < list.size():
 		list.remove_at(i)
 		_changed()
@@ -1498,6 +1507,9 @@ func buyback_price(id: String) -> int:
 func sell_item(from: String, id: String, count := 1, index := -1) -> int:
 	var price := buyback_price(id)
 	if price <= 0 or count <= 0:
+		return 0
+	if (from == "storage" and Locks.stored(id)) or (from == "bag" and Locks.bag(index)):
+		GameState.report(Locks.SAID)
 		return 0
 	var n := 0
 	if from == "storage":
@@ -1748,6 +1760,13 @@ func bag_rotate(index: int) -> bool:
 ## Moves up to `count` of `id` from the warehouse into the bag - onto the
 ## stack at `cell` or a new one there if given, the rest topping up stacks
 ## already packed, then into new ones wherever they fit. How many went in.
+## A new bag stack taken out of the warehouse: locked if the warehouse's were (Locks).
+func _locked_as_stored(e: Dictionary) -> Dictionary:
+	if bool(storage_locks.get(e.id, false)):
+		e["locked"] = true
+	return e
+
+
 func to_bag(id: String, count: int, cell := Vector2i(-1, -1)) -> int:
 	var left := mini(count, stored(id))
 	var moved := 0
@@ -1761,7 +1780,7 @@ func to_bag(id: String, count: int, cell := Vector2i(-1, -1)) -> int:
 			moved += n
 		elif at < 0 and bag_fits(id, cell):
 			var n := mini(left, stack)
-			bag.append({"id": id, "count": n, "cell": cell})
+			bag.append(_locked_as_stored({"id": id, "count": n, "cell": cell}))
 			left -= n
 			moved += n
 	for e in bag:
@@ -1777,13 +1796,15 @@ func to_bag(id: String, count: int, cell := Vector2i(-1, -1)) -> int:
 		if free.x < 0:
 			break
 		var n := mini(left, stack)
-		bag.append({"id": id, "count": n, "cell": free})
+		bag.append(_locked_as_stored({"id": id, "count": n, "cell": free}))
 		left -= n
 		moved += n
 	if moved > 0:
 		storage[id] = stored(id) - moved
 		if stored(id) <= 0:
 			storage.erase(id)
+			# (all of it out to the bag, locked there: the warehouse keeps no lock for it)
+			storage_locks.erase(id)
 		_changed()
 	return moved
 
@@ -1909,6 +1930,9 @@ func bag_remove(index: int) -> Dictionary:
 func bag_discard(index: int, count := -1) -> int:
 	if index < 0 or index >= bag.size() or Items.def(bag[index].id).get("fixed", false):
 		return 0
+	if Locks.bag(index):
+		GameState.report(Locks.SAID)
+		return 0
 	var e: Dictionary = bag[index]
 	var n: int = int(e.count) if count < 0 else mini(count, int(e.count))
 	e.count -= n
@@ -1932,6 +1956,9 @@ func to_storage(index: int, count := -1) -> int:
 	e.count -= n
 	if int(e.count) <= 0:
 		bag.remove_at(index)
+	# (its lock goes with it)
+	if bool(e.get("locked", false)):
+		storage_locks[e.id] = true
 	_store(e.id, n)
 	_changed()
 	return n
@@ -2234,6 +2261,7 @@ func snapshot() -> Dictionary:
 		"upgrade_levels": upgrade_levels,
 		"fish_log": fish_log,
 		"storage": storage,
+		"storage_locks": storage_locks,
 		"bag": bag,
 		"equipped": equipped,
 		"wear": wear,
@@ -2284,6 +2312,7 @@ func load_data(data: Dictionary) -> void:
 	run_brought = data.get("run_brought", [])
 	weak_news = data.get("weak_news", [])
 	storage = data.get("storage", {})
+	storage_locks = data.get("storage_locks", {})
 	bag = data.get("bag", [])
 	equipped = data.get("equipped", {"rod": "rod_0", "light": ""})
 	wear = data.get("wear", {})

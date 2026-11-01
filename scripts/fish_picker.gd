@@ -107,6 +107,10 @@ func is_picked(index: int) -> bool:
 func toggle(index: int) -> void:
 	if index < 0 or index >= GameState.carried_fish.size():
 		return
+	# (a locked fish can't be offered or thrown: Locks)
+	if Locks.fish(GameState.carried_fish[index]):
+		GameState.report(Locks.SAID)
+		return
 	if kind == "pick_lure":
 		chosen = -1 if chosen == index else index
 	else:
@@ -245,7 +249,10 @@ class FishCard extends Control:
 		# (what it counts for: its full value alive; dead, less as its freshness goes)
 		var line := "%s型・價值 %.0f" % [size_name, FishLife.offer_value(fish)]
 		UiKit.draw_text(self, Vector2(8, size.y - 26), line, 13, UiKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, size.x - 16.0)
-		if not rotten and not FishLife.caught_this_run(fish):
+		if Locks.fish(fish):
+			Locks.draw(self, r)
+			UiKit.draw_text(self, Vector2(8, size.y - 9), "已上鎖", 12, UiKit.GOLD, HORIZONTAL_ALIGNMENT_LEFT, size.x - 16.0)
+		elif not rotten and not FishLife.caught_this_run(fish):
 			# (user request: brought from camp - shown, but worth nothing at the altar)
 			UiKit.draw_text(self, Vector2(8, size.y - 9), "非本場漁獲・獻祭無價值", 12, UiKit.DIM, HORIZONTAL_ALIGNMENT_LEFT, size.x - 16.0)
 		elif rotten:
