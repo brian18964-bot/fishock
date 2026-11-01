@@ -21,11 +21,14 @@ const SLAB := 0.14
 ## Room round the sole in the cell (foot lengths).
 const MARGIN := 0.06
 const OUT := "res://assets/sprites/footprints/"
+## The animals' simpler prints, drawn (rows after the characters'): a cloven hoof (deer, stag), a
+## paw (fox, wolf), a clawed three-toed foot (the big ghost). Both columns alike.
+const ANIMALS := ["@hoof", "@paw", "@claw"]
 
 
 func _initialize() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
-	var atlas := Image.create(CELL * 2, CELL * IDS.size(), false, Image.FORMAT_L8)
+	var atlas := Image.create(CELL * 2, CELL * (IDS.size() + ANIMALS.size()), false, Image.FORMAT_L8)
 	atlas.fill(Color.BLACK)
 	var meta := {}
 	for row in IDS.size():
@@ -47,6 +50,13 @@ func _initialize() -> void:
 		meta[id] = entry
 		print("%s: %s" % [id, entry])
 		root.free()
+	for k in ANIMALS.size():
+		var row := IDS.size() + k
+		var img := _animal(ANIMALS[k])
+		for col in 2:
+			atlas.blit_rect(img, Rect2i(0, 0, CELL, CELL), Vector2i(col * CELL, row * CELL))
+		meta[ANIMALS[k]] = {"row": row}
+	meta["rows"] = IDS.size() + ANIMALS.size()
 	atlas.save_png(ProjectSettings.globalize_path(OUT + "soles.png"))
 	var f := FileAccess.open(OUT + "soles.json", FileAccess.WRITE)
 	f.store_string(JSON.stringify(meta, "\t"))
@@ -166,6 +176,52 @@ func _bake_side(root: Node, side: String) -> Dictionary:
 	_soften(img)
 	return {"image": img, "box": [lo.x, hi.x, lo.y, hi.y],
 		"foot_h": (ankle.y - lowest) / length, "leaf_h": (toe.y - lowest) / length}
+
+
+## An animal's print, drawn: the toe at the top of the cell.
+func _animal(kind: String) -> Image:
+	var img := Image.create(CELL, CELL, false, Image.FORMAT_L8)
+	img.fill(Color.BLACK)
+	for y in CELL:
+		for x in CELL:
+			var p := Vector2((x + 0.5) / CELL - 0.5, (y + 0.5) / CELL - 0.5)
+			var v := 0.0
+			match kind:
+				"@hoof":
+					# two halves, pointed in front, close at the tips
+					for sx in [-1.0, 1.0]:
+						var q := Vector2(p.x - sx * (0.08 + 0.06 * (p.y + 0.4)), p.y)
+						var t := (q.y + 0.38) / 0.76
+						if t >= 0.0 and t <= 1.0:
+							var w := 0.13 * pow(sin(t * PI), 0.55) * (0.5 + 0.5 * t)
+							v = maxf(v, 1.0 - smoothstep(0.75, 1.0, absf(q.x) / maxf(w, 0.001)))
+				"@paw":
+					v = maxf(v, _blob(p, Vector2(0.0, 0.14), Vector2(0.2, 0.17)))
+					for toe in [Vector2(-0.2, -0.08), Vector2(-0.075, -0.2), Vector2(0.075, -0.2), Vector2(0.2, -0.08)]:
+						v = maxf(v, _blob(p, toe, Vector2(0.075, 0.095)))
+						v = maxf(v, _blob(p, toe * 1.0 + Vector2(toe.x * 0.25, -0.13), Vector2(0.025, 0.04)) * 0.8)
+				"@claw":
+					v = maxf(v, _blob(p, Vector2(0.0, 0.2), Vector2(0.14, 0.15)))
+					for a in [-0.45, 0.0, 0.45]:
+						var tip := Vector2(sin(a), -cos(a)) * 0.44 + Vector2(0.0, 0.12)
+						v = maxf(v, _line(p, Vector2(0.0, 0.12), tip, 0.06))
+					v = maxf(v, _line(p, Vector2(0.0, 0.25), Vector2(0.0, 0.44), 0.045))
+			if v > 0.0:
+				img.set_pixel(x, y, Color(v, v, v))
+	_soften(img)
+	return img
+
+
+func _blob(p: Vector2, c: Vector2, r: Vector2) -> float:
+	return 1.0 - smoothstep(0.75, 1.0, ((p - c) / r).length())
+
+
+func _line(p: Vector2, a: Vector2, b: Vector2, w: float) -> float:
+	var ab := b - a
+	var h := clampf((p - a).dot(ab) / ab.length_squared(), 0.0, 1.0)
+	# (tapering to the claw's point)
+	var width := w * (1.0 - 0.6 * h)
+	return 1.0 - smoothstep(0.7, 1.0, (p - a - ab * h).length() / width)
 
 
 ## A triangle filled into `img` at value `v` (kept where something deeper's already drawn).

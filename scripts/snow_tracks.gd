@@ -35,7 +35,24 @@ const WALK_SPEED := 2.0
 const RUN_SPEED := 4.0
 const SOLES_JSON := "res://assets/sprites/footprints/soles.json"
 const SOLES_PNG := "res://assets/sprites/footprints/soles.png"
-const ROWS := 12
+## The atlas's rows: the twelve characters', then the animals' (soles.json "rows").
+const ROWS := 15
+## User request: each one walking keeps only its last PER_WALKER prints - a new one and the oldest
+## fades out (over RETIRE s); the slow fade with time stays too.
+const PER_WALKER := 8
+const RETIRE := 0.6
+## The animals that leave prints, by their 3D kind (RunView3D): the baked row ("@hoof"...), the
+## print's size (m), the foot bones (the quadrupeds' feet are FF / FFB; the big ghost has the
+## characters' skeleton). A floating ghost and the altar's keeper leave none.
+const ANIMALS := {
+	"deer": {"row": "@hoof", "size": 0.2, "bones": ["FF.L", "FF.R", "FFB.L", "FFB.R"]},
+	"stag": {"row": "@hoof", "size": 0.24, "bones": ["FF.L", "FF.R", "FFB.L", "FFB.R"]},
+	"fox": {"row": "@paw", "size": 0.13, "bones": ["FF.L", "FF.R", "FFB.L", "FFB.R"]},
+	"wolf": {"row": "@paw", "size": 0.19, "bones": ["FF.L", "FF.R", "FFB.L", "FFB.R"]},
+	"dragon": {"row": "@claw", "size": 0.55, "bones": ["ball_l", "ball_r"]},
+}
+## An animal's foot swinging less than this (m) isn't stepping.
+const SWING_M := 0.02
 
 static var _soles: Dictionary = {}
 
@@ -61,6 +78,12 @@ var _last_h := {"_l": 0.0, "_r": 0.0}
 var steps := {"_l": 0, "_r": 0}
 ## Prints made (all time), for tests.
 var made := 0
+## Whose each print is (a walker's key: "player" or an animal's instance id), and each walker's
+## prints, oldest first (PER_WALKER).
+var _owner_of := []
+var _owned := {}
+## The animals' feet: key -> {bone name -> {h: heights, down, landing, last}}.
+var _animal_feet := {}
 
 
 func _ready() -> void:
@@ -83,6 +106,7 @@ func _ready() -> void:
 	_cell.resize(MAX)
 	spot.resize(MAX)
 	toe.resize(MAX)
+	_owner_of.resize(MAX)
 	for i in MAX:
 		_age[i] = -1.0
 		_mm.set_instance_transform(i, Transform3D(Basis(), Vector3(0, -50.0, 0)))
@@ -187,8 +211,113 @@ func _print_foot(sole: Dictionary, side: String, at: Vector3, fwd: Vector2, leng
 	toe[i] = fwd
 	_mm.set_instance_transform(i, Transform3D(basis, centre))
 	_mm.set_instance_custom_data(i, Color(1.0, _cell[i].x, _cell[i].y, deep))
+	_claim(i, "player")
 	made += 1
 	steps[side] += 1
+
+
+## Print `i` is `key`'s now: the walker's oldest past PER_WALKER fades out.
+func _claim(i: int, key) -> void:
+	var was = _owner_of[i]
+	if was != null and _owned.has(was):
+		(_owned[was] as Array).erase(i)
+	_owner_of[i] = key
+	if not _owned.has(key):
+		_owned[key] = []
+	var mine: Array = _owned[key]
+	mine.append(i)
+	while mine.size() > PER_WALKER:
+		var old: int = mine.pop_front()
+		_owner_of[old] = null
+		if _age[old] >= 0.0:
+			_age[old] = maxf(_age[old], HOLD + FADE - RETIRE)
+			_tick = 1.0
+
+
+## How many prints `key` has showing.
+func count_of(key) -> int:
+	var n := 0
+	for i in _owned.get(key, []):
+		if left_of(_age[i]) > 0.0:
+			n += 1
+	return n
+
+
+## An animal (or the big ghost) walking: `key` its id, `kind` its ANIMALS entry, `skel` its
+## skeleton, `yaw` the way it faces; `ground` and `open` as for feel(). A print where a foot
+## comes down - each foot's lowest, judged by its own swing - pointing the way it faces.
+func feel_animal(key: int, kind: String, skel: Skeleton3D, yaw: float, ground: Callable, open: Callable) -> void:
+	var spec: Dictionary = ANIMALS.get(kind, {})
+	var row: Dictionary = soles().get(spec.get("row", ""), {})
+	if skel == null or spec.is_empty() or row.is_empty():
+		return
+	if not _animal_feet.has(key):
+		_animal_feet[key] = {}
+	var feet: Dictionary = _animal_feet[key]
+	var g := skel.global_transform
+	var fwd := Vector2(sin(yaw), cos(yaw))
+	var k := 0
+	for name in spec.bones:
+		var b := skel.find_bone(name)
+		k += 1
+		if b < 0:
+			continue
+		var at: Vector3 = g * skel.get_bone_global_pose(b).origin
+		var floor_y: float = ground.call(at)
+		var h := at.y - floor_y
+		if not feet.has(name):
+			feet[name] = {"h": PackedFloat32Array(), "at": 0, "down": true, "landing": false, "last": h}
+		var f: Dictionary = feet[name]
+		var hist: PackedFloat32Array = f.h
+		if hist.size() < HISTORY:
+			hist.append(h)
+		else:
+			hist[int(f.at) % HISTORY] = h
+		f.h = hist
+		f.at = int(f.at) + 1
+		var lo := h
+		var hi := h
+		for v in hist:
+			lo = minf(lo, v)
+			hi = maxf(hi, v)
+		var swing := hi - lo
+		var was: float = f.last
+		f.last = h
+		if swing < SWING_M:
+			f.down = true
+			continue
+		if f.down:
+			if h > lo + UP * swing:
+				f.down = false
+				f.landing = false
+			elif f.landing and h >= was:
+				f.landing = false
+				if open.call(at):
+					_print_animal(key, Vector3(at.x, floor_y + LIFT_Y, at.z), fwd, float(spec.size), int(row.row), k % 2)
+		elif h < lo + DOWN * swing:
+			f.down = true
+			f.landing = true
+
+
+func _print_animal(key: int, at: Vector3, fwd: Vector2, size: float, row: int, col: int) -> void:
+	var fwd3 := Vector3(fwd.x, 0.0, fwd.y)
+	var right3 := Vector3(-fwd.y, 0.0, fwd.x)
+	var basis := Basis(right3, Vector3.UP, -fwd3).scaled_local(Vector3(size, 1.0, size))
+	var i := _next
+	_next = (_next + 1) % MAX
+	_age[i] = 0.0
+	_deep[i] = 0.6
+	_cell[i] = Vector2(float(col), float(row))
+	spot[i] = at
+	toe[i] = fwd
+	_mm.set_instance_transform(i, Transform3D(basis, at))
+	_mm.set_instance_custom_data(i, Color(1.0, _cell[i].x, _cell[i].y, _deep[i]))
+	_claim(i, key)
+
+
+## An animal gone (caught, faded away, freed): its feet forgotten (its prints stay to fade).
+func forget(key: int) -> void:
+	_animal_feet.erase(key)
 
 
 ## How much of a print `age` s old is left (1 whole .. 0 gone).
@@ -222,4 +351,8 @@ func _process(delta: float) -> void:
 		if k <= 0.0:
 			_age[i] = -1.0
 			_mm.set_instance_transform(i, Transform3D(Basis(), Vector3(0, -50.0, 0)))
+			var who = _owner_of[i]
+			if who != null and _owned.has(who):
+				(_owned[who] as Array).erase(i)
+			_owner_of[i] = null
 		_mm.set_instance_custom_data(i, Color(k, _cell[i].x, _cell[i].y, _deep[i]))

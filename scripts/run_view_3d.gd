@@ -553,6 +553,17 @@ func _height_at(depth: float) -> float:
 	return WATER_Y + (LAND_Y - WATER_Y) * smoothstep(0.0, 26.0, -depth)
 
 
+## (for SnowTracks) the ground's height under a 3D point; whether it's open snow there - not a
+## deck, the altar's stone or the water's edge.
+func _ground_at(at: Vector3) -> float:
+	return ground_y(to2(at))
+
+
+func _open_snow(at: Vector3) -> bool:
+	var gy := ground_y(to2(at))
+	return gy < LAND_Y + 0.01 and gy > WATER_Y + 0.07
+
+
 ## The ground's height under `p` (2D): a deck's, else the land's.
 func ground_y(p: Vector2) -> float:
 	# (the altar stone - stepped up onto: [centre, radius px, top m])
@@ -2278,6 +2289,12 @@ func _sync_creatures(delta: float) -> void:
 			var f: float = (n as Critter).fade
 			holder.scale = Vector3.ONE * (1.0 - 0.9 * f)
 			holder.position.y -= 0.25 * f
+		if _tracks != null and SnowTracks.ANIMALS.has(kind):
+			# (user request: the animals and the big ghost leave prints in the snow too)
+			if not c.has("skel"):
+				var sks: Array = (c.model as Node).find_children("*", "Skeleton3D", true, false) if c.model != null else []
+				c["skel"] = sks[0] if not sks.is_empty() else null
+			_tracks.feel_animal(n.get_instance_id(), kind, c.skel, float(c.get("yaw", 0.0)), _ground_at, _open_snow)
 		c.pace = lerpf(float(c.get("pace", 0.0)), vel.length() / PX, 1.0 - exp(-delta * 7.0))
 		var speed: float = c.pace
 		if kind == "ghost":
@@ -4711,11 +4728,7 @@ func _process(delta: float) -> void:
 	if _tracks != null and rig != null:
 		# (each foot of the model as it comes down; open ground only - not a deck, the altar's
 		# stone or the water's edge)
-		_tracks.feel(rig.skeleton, func(at: Vector3) -> float: return ground_y(to2(at)),
-			func(at: Vector3) -> bool:
-				var gy := ground_y(to2(at))
-				return gy < LAND_Y + 0.01 and gy > WATER_Y + 0.07,
-			player.velocity.length() / PX)
+		_tracks.feel(rig.skeleton, _ground_at, _open_snow, player.velocity.length() / PX)
 	_animate()
 	_aim_rod(delta)
 	if _drum != null:

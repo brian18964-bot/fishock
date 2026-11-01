@@ -7432,17 +7432,23 @@ func test_snow_theme() -> void:
 	var walked := p.velocity.normalized()
 	check(made >= 4 and abs(int(tracks.steps["_l"]) - int(tracks.steps["_r"])) <= 1,
 		"a walk: a print a step, the feet in turn (%s)" % tracks.steps)
+	var mine: Array = tracks._owned.get("player", [])
 	var along := 0
-	for k in mini(made, 6):
-		var i := (tracks._next - 1 - k + SnowTracks.MAX) % SnowTracks.MAX
+	for k in mini(mine.size(), 6):
+		var i: int = mine[mine.size() - 1 - k]
 		if tracks.toe[i].dot(walked) > 0.5:
 			along += 1
-	check(along >= mini(made, 6) - 1, "each pointing the way walked (%d of %d)" % [along, mini(made, 6)])
+	check(along >= mini(mine.size(), 6) - 1, "each pointing the way walked (%d of %d)" % [along, mini(mine.size(), 6)])
 	# (and where the foot came down: a print each side of the way walked, a stride apart)
-	var a := tracks.spot[(tracks._next - 1 + SnowTracks.MAX) % SnowTracks.MAX]
-	var b := tracks.spot[(tracks._next - 2 + SnowTracks.MAX) % SnowTracks.MAX]
+	var a := tracks.spot[mine[mine.size() - 1]]
+	var b := tracks.spot[mine[mine.size() - 2]]
 	var gap := Vector2(a.x - b.x, a.z - b.z).length()
 	check(gap > 0.2 and gap < 1.6, "a step apart (%.2f m)" % gap)
+	# (user request: only the last 8 of each one's prints - a long walk keeps just those)
+	await seconds(4.0)
+	await frames(20)
+	check(tracks.made > SnowTracks.PER_WALKER and tracks.count_of("player") <= SnowTracks.PER_WALKER,
+		"a long walk: only the last %d stay (%d made)" % [SnowTracks.PER_WALKER, tracks.made])
 	p._move_joystick.output = Vector2.ZERO
 	await seconds(1.5)
 	var still := tracks.made
@@ -7451,6 +7457,23 @@ func test_snow_theme() -> void:
 	check(tracks.count() > 0, "they stay whole a while")
 	tracks._process(SnowTracks.HOLD + SnowTracks.FADE)
 	check(tracks.count() == 0, "then the snow is as it was")
+	# The animals too: a deer or a wolf walking leaves its prints (hooves, paws) - a floating ghost none.
+	var beast: Critter = null
+	for n in view._creatures:
+		if view._creatures[n].kind in ["deer", "stag", "wolf", "fox"] and n is Critter:
+			beast = n
+			break
+	check(beast != null, "(an animal about)")
+	if beast != null:
+		var key := beast.get_instance_id()
+		for i in 240:
+			beast._mode = Critter.Mode.WANDER
+			beast._target = beast.global_position + Vector2(200, 30)
+			await frames(1)
+		check(tracks.count_of(key) > 0 and tracks.count_of(key) <= SnowTracks.PER_WALKER,
+			"a %s walking leaves prints (%d)" % [view._creatures[beast].kind, tracks.count_of(key)])
+	check(not SnowTracks.ANIMALS.has("ghost") and not SnowTracks.ANIMALS.has("willow") and SnowTracks.ANIMALS.has("dragon"),
+		"the big ghost has its prints; a floating ghost and the altar's keeper none")
 	check(is_instance_valid(player()) and player().global_position.is_finite(), "and the run goes on")
 	camp().clear()
 
