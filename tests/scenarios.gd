@@ -222,6 +222,9 @@ func _fresh_game(rng_seed := 7) -> void:
 	# off hand - a tap of the right stick casts - unless a test puts it on)
 	Profile.wear.clear()
 	Profile.unequip("offhand")
+	# (the default traveller: a save left by something else - another character picked - mustn't
+	# change what the tests measure)
+	Profile.character = "cat"
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
 	await frames(3)
 	main = get_tree().current_scene
