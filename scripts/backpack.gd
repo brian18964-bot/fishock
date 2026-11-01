@@ -97,6 +97,12 @@ func _ready() -> void:
 	_panel.size = PANEL_SIZE
 	_panel.position = (Vector2(960, 540) - PANEL_SIZE) * 0.5
 	_panel.visible = false
+	# (user request: a tap anywhere in the bag off the card - its frame, the rows of words - closes
+	# the card; what's tapped in the grid or a slot does what it does)
+	_panel.gui_input.connect(func(event: InputEvent):
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed \
+				and _card.visible:
+			deselect())
 	add_child(_panel)
 	var list := VBoxContainer.new()
 	list.add_theme_constant_override("separation", 8)
@@ -255,8 +261,21 @@ func mode() -> String:
 
 ## Nothing tapped: the card goes.
 func deselect() -> void:
+	if _card.visible:
+		_closed_at = Time.get_ticks_msec()
 	_selected = {}
 	_rebuild()
+
+
+## User report (a phone): the card wouldn't close - a browser on a phone sends a tap twice (the
+## touch, then a click a moment later at the same spot), and the second landed on what lay under
+## the card's ✕ and opened its card again. A tap that soon after a card closed doesn't open one.
+const REOPEN_GUARD_MS := 450
+var _closed_at := -100000
+
+
+func just_closed() -> bool:
+	return Time.get_ticks_msec() - _closed_at < REOPEN_GUARD_MS
 
 
 func _process(delta: float) -> void:
@@ -1001,7 +1020,7 @@ class GridView extends Control:
 				if _press >= 0 and _press < items.size():
 					if _dragging:
 						owner_bag.drag_end(items[_press], get_global_transform() * event.position)
-					else:
+					elif not owner_bag.just_closed():
 						owner_bag.select(items[_press].kind, items[_press].index)
 				else:
 					owner_bag.deselect()
@@ -1115,7 +1134,8 @@ class EquipSlot extends Control:
 				if _dragging:
 					owner_bag.drag_end({"kind": "slot", "index": slot, "item": id}, get_global_transform() * event.position)
 				else:
-					owner_bag.select("slot", slot)
+					if not owner_bag.just_closed():
+						owner_bag.select("slot", slot)
 				_dragging = false
 			accept_event()
 		elif event is InputEventMouseMotion and _pressed and id != "" and slot != "rod":

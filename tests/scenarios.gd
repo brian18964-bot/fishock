@@ -120,6 +120,7 @@ const TESTS := [
 	"test_status_card_opens_bag",
 	"test_floating_ghost_budget",
 	"test_backpack_grid",
+	"test_bag_card_closes",
 	"test_water_ghost",
 	"test_willow_talk",
 	"test_altar_corrosion",
@@ -4328,6 +4329,70 @@ func test_floating_ghost_budget() -> void:
 	check(times.size() >= 2, "it does come now and then (%d)" % times.size())
 	for i in range(1, times.size()):
 		check(times[i] - times[i - 1] >= 19.9, "20 s apart (%.1f)" % (times[i] - times[i - 1]))
+
+
+## A tap (or click) at `at` (the 960x540 canvas), as the screen sends it.
+func _tap_at(at: Vector2, touch := false) -> void:
+	for down in [true, false]:
+		var e: InputEvent
+		if touch:
+			var t := InputEventScreenTouch.new()
+			t.index = 0
+			t.position = get_tree().root.get_final_transform() * at
+			t.pressed = down
+			e = t
+		else:
+			var m := InputEventMouseButton.new()
+			m.button_index = MOUSE_BUTTON_LEFT
+			m.position = get_tree().root.get_final_transform() * at
+			m.pressed = down
+			e = m
+		Input.parse_input_event(e)
+		await frames(1)
+
+
+## User report (a phone, in a run): a fish's card in the bag wouldn't close - not by its ✕, not by
+## a tap off it. A phone's browser sends a tap twice (the touch, a click just after at the same
+## spot): the second fell on what lay under the ✕ and opened its card again. Now: the ✕ closes it
+## for good, and a tap anywhere in the bag off the card closes it too.
+func test_bag_card_closes() -> void:
+	main.get_node("Loading").visible = false
+	Profile.bag = []
+	var f := fish("中", "near")
+	f["cell"] = [0, 0]
+	gs.add_carried_fish(f)
+	var bag: Backpack = null
+	for c in main.get_children():
+		if c is Backpack:
+			bag = c
+	bag.toggle()
+	await frames(3)
+	bag.select("fish", 0)
+	await frames(6)
+	var head: Node = bag._card.get_child(0).get_child(0)
+	var x: Control = head.get_child(head.get_child_count() - 1)
+	var spot := x.get_global_rect().get_center()
+	var under: Vector2i = bag._grid.cell_at(spot)
+	check(under.x >= 0 and under.y >= 0 and under.x < Inventory.COLS and under.y < Inventory.ROWS, "(the ✕ lies over the bag's grid: %s)" % under)
+	Profile.bag = [{"id": "eyeball", "count": 1, "cell": under}]
+	bag._rebuild()
+	await frames(6)
+	spot = x.get_global_rect().get_center()
+	check(bag._grid.cell_at(spot) == under, "(still over it)")
+	await _tap_at(spot, true)
+	# (the browser's own click after the touch, at the same spot)
+	await _tap_at(spot, false)
+	await frames(2)
+	check(not bag._card.visible and bag._selected.is_empty(), "the ✕ closes the card, and the tap's echo doesn't open another")
+	await seconds(0.6)
+	bag.select("fish", 0)
+	await frames(3)
+	check(bag._card.visible, "(the card again)")
+	await _tap_at(Vector2(bag._panel.position.x + 30.0, bag._panel.get_rect().end.y - 12.0), true)
+	await frames(2)
+	check(not bag._card.visible, "a tap in the bag off the card closes it")
+	check(bag.is_open(), "and the bag stays open")
+	bag.toggle()
 
 
 func test_backpack_grid() -> void:
