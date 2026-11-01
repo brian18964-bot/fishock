@@ -863,6 +863,9 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 			if opening_left > 0.0 and _open_extra > 0.05:
 				# Cranked into the fish's first pull.
 				snap_why = "rush"
+			elif snap_why == "":
+				# (the line pulled past what it takes - said so, not left blank)
+				snap_why = "tension"
 		elif spent and distance <= LAND_DISTANCE:
 			result = "landed"
 		elif progress >= 1.0 and not spent:

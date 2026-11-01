@@ -4971,11 +4971,17 @@ func test_run_3d() -> void:
 	check(view._clip == "Fish_Reel", "reeling it in: the reel's sway (%s)" % view._clip)
 	key(KEY_SHIFT, false)
 	key(KEY_SPACE, false)
-	await frames(30)
+	# (the fish kept from pulling the line to breaking meanwhile - whether this one would is down to
+	# its luck; these are the traveller's clips for a fish still on)
+	for _i in 30:
+		player().fight.tension = minf(player().fight.tension, 0.5)
+		await frames(1)
 	check(view._clip == "Fish_Hold", "neither: held still (%s)" % view._clip)
 	# (user request: stepping back only when walked back, away from the line)
 	key(KEY_S, true)
-	await frames(10)
+	for _i in 10:
+		player().fight.tension = minf(player().fight.tension, 0.5)
+		await frames(1)
 	check(view._clip == "Fish_Back", "walked back from the line: stepping back (%s)" % view._clip)
 	var faced := Vector2(sin(view._yaw), cos(view._yaw)).dot((player().cast_target - player().global_position).normalized())
 	check(faced > 0.5 and player().state == Player.State.REELING, "stepping back facing the fish, still on")
