@@ -123,6 +123,7 @@ const TESTS := [
 	"test_bag_card_closes",
 	"test_altar_this_run_only",
 	"test_locks",
+	"test_critters_leave_edge_trees",
 	"test_water_ghost",
 	"test_willow_talk",
 	"test_altar_corrosion",
@@ -4332,6 +4333,33 @@ func test_floating_ghost_budget() -> void:
 	check(times.size() >= 2, "it does come now and then (%d)" % times.size())
 	for i in range(1, times.size()):
 		check(times[i] - times[i - 1] >= 19.9, "20 s apart (%.1f)" % (times[i] - times[i - 1]))
+
+
+## User request: a live bait or an animal that runs into the trees along the map's edge (where the
+## traveller can't go, nor reach it) fades out there and turns up again elsewhere.
+func test_critters_leave_edge_trees() -> void:
+	var crits := get_tree().get_nodes_in_group("critters")
+	check(not crits.is_empty(), "(critters about)")
+	if crits.is_empty():
+		return
+	var c: Critter = crits[0]
+	var band: float = player().edge
+	check(band > 16.0, "(the traveller's kept off the edge: %.0f px)" % band)
+	c.global_position = Vector2(band * 0.4, Player.WORLD_HEIGHT * 0.5)
+	c._mode = Critter.Mode.IDLE
+	await seconds(0.5)
+	check(c.active and c.fade > 0.2 and c.fade < 1.0, "in the edge's trees: fading (%.2f)" % c.fade)
+	await seconds(0.8)
+	check(not c.active and not c.visible, "faded out: gone")
+	await seconds(Critter.EDGE_BACK + 0.5)
+	var p := c.global_position
+	var from_edge := minf(minf(p.x, p.y), minf(Player.WORLD_WIDTH - p.x, Player.WORLD_HEIGHT - p.y))
+	check(c.active and from_edge > band, "back elsewhere, out of the trees (%.0f px in)" % from_edge)
+	# One out in the open stays.
+	var d: Critter = crits[crits.size() - 1]
+	d.global_position = Vector2(Player.WORLD_WIDTH * 0.5, Player.WORLD_HEIGHT * 0.5)
+	await seconds(1.5)
+	check(d.fade == 0.0, "in the open: no fading")
 
 
 ## User request: a fish or a thing can be locked (a padlock on it): not offered, sold, thrown away,

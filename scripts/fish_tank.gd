@@ -356,18 +356,18 @@ func _card_for(i: int, src := "tank") -> void:
 				_say(why if why != "" else "沒有了"))
 		moves.add_child(vb)
 	col.add_child(moves)
-	var acts := HBoxContainer.new()
-	acts.add_theme_constant_override("separation", 8)
-	acts.alignment = BoxContainer.ALIGNMENT_END
 	# (user request: a lock, so it isn't sold or thrown away by a slip - Locks)
-	var lock := UiKit.button("解鎖" if Locks.fish(f) else "上鎖", 15)
+	var lock := UiKit.button("解鎖" if Locks.fish(f) else "上鎖", 14)
 	lock.name = "Lock"
-	lock.custom_minimum_size = Vector2(80, 42)
+	lock.custom_minimum_size = Vector2(80, 38)
 	lock.pressed.connect(func():
 		Locks.set_fish(f, not Locks.fish(f))
 		_close()
 		_rebuild())
-	acts.add_child(lock)
+	moves.add_child(lock)
+	var acts := HBoxContainer.new()
+	acts.add_theme_constant_override("separation", 8)
+	acts.alignment = BoxContainer.ALIGNMENT_END
 	if src == "tank" and not Locks.fish(f):
 		var sell := UiKit.button("販售 +%d" % price, 15, "red")
 		sell.name = "Sell"

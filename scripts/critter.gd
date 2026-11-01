@@ -135,6 +135,12 @@ const HUNT_COOLDOWN := 12.0
 
 var species: String = ""
 var active: bool = true
+## User request: one that wanders into the trees along the map's edge (where the traveller can't
+## go - Player.edge in from it) fades out over EDGE_FADE s and turns up again elsewhere, rather
+## than being stuck there out of reach. 0..1 (RunView3D shrinks its model by it).
+const EDGE_FADE := 1.0
+const EDGE_BACK := 6.0
+var fade := 0.0
 ## Spawned by a turned rock or a chopped tree (spawn_black_spider): gone
 ## for good once caught, rather than coming back elsewhere.
 var one_shot := false
@@ -223,6 +229,13 @@ func _physics_process(delta: float) -> void:
 		_animate(delta)
 		return
 
+	if _in_edge_trees():
+		fade = minf(fade + delta / EDGE_FADE, 1.0)
+		if fade >= 1.0:
+			_vanish()
+			return
+	else:
+		fade = maxf(fade - delta * 2.0, 0.0)
 	_update_mode(delta)
 	var speed := _speed()
 	var to_target := _target - global_position
@@ -431,6 +444,43 @@ func _enter_idle() -> void:
 
 ## Wandering: a random point nearby. Fleeing: straight away from the player,
 ## nudged sideways when that way is water so it doesn't pin itself.
+## How far in from the map's edge its trees go: where the traveller is kept out of (Player.edge;
+## the 3D view's band of pines), never less than the clamp's 16 px.
+func _edge_band() -> float:
+	var e := 16.0
+	if _player != null and _player.get("edge") != null:
+		e = float(_player.get("edge"))
+	return e
+
+
+## In the edge's trees - and not after the traveller (a wolf chasing stays on it).
+func _in_edge_trees() -> bool:
+	if _mode == Mode.CHASE or _mode == Mode.FOLLOW:
+		return false
+	var band := _edge_band()
+	if band <= 16.5:
+		return false
+	var p := global_position
+	return minf(minf(p.x, p.y), minf(Player.WORLD_WIDTH - p.x, Player.WORLD_HEIGHT - p.y)) < band - 6.0
+
+
+## Faded out in the edge's trees: gone, back elsewhere in a while (one met under a rock: gone).
+func _vanish() -> void:
+	active = false
+	visible = false
+	fade = 0.0
+	catch_area.set_deferred("monitoring", false)
+	_respawn_timer = EDGE_BACK
+	if one_shot:
+		queue_free()
+
+
+## A place to go: kept out of the edge's trees.
+func _keep_off_edge(p: Vector2) -> Vector2:
+	var m := _edge_band() + 10.0
+	return Vector2(clampf(p.x, m, Player.WORLD_WIDTH - m), clampf(p.y, m, Player.WORLD_HEIGHT - m))
+
+
 func _pick_target(fleeing: bool) -> void:
 	if fleeing and _player != null:
 		var away := (global_position - _player.global_position).normalized()
@@ -444,7 +494,7 @@ func _pick_target(fleeing: bool) -> void:
 		_target = global_position + away * 60.0
 		return
 	for _try in range(8):
-		var candidate := global_position + Vector2.RIGHT.rotated(randf() * TAU) * randf_range(30.0, WANDER_RADIUS)
+		var candidate := _keep_off_edge(global_position + Vector2.RIGHT.rotated(randf() * TAU) * randf_range(30.0, WANDER_RADIUS))
 		if not _in_water(candidate):
 			_target = candidate
 			return
@@ -534,9 +584,10 @@ func _respawn() -> void:
 		return
 	var pos := global_position
 	for _try in range(20):
+		var m := maxf(MARGIN, _edge_band() + 20.0)
 		pos = Vector2(
-			randf_range(MARGIN, Player.WORLD_WIDTH - MARGIN),
-			randf_range(MARGIN, Player.WORLD_HEIGHT - MARGIN)
+			randf_range(m, Player.WORLD_WIDTH - m),
+			randf_range(m, Player.WORLD_HEIGHT - m)
 		)
 		if not _in_water(pos) and (_player == null or pos.distance_to(_player.global_position) > 300.0):
 			break

@@ -2273,6 +2273,11 @@ func _sync_creatures(delta: float) -> void:
 				var held := them + away * DRAGON_ROOM
 				c.shown = Vector3(held.x, (c.shown as Vector3).y, held.y)
 		holder.position = c.shown
+		if n is Critter:
+			# (fading into the edge's trees: shrinking away into the ground - Critter.fade)
+			var f: float = (n as Critter).fade
+			holder.scale = Vector3.ONE * (1.0 - 0.9 * f)
+			holder.position.y -= 0.25 * f
 		c.pace = lerpf(float(c.get("pace", 0.0)), vel.length() / PX, 1.0 - exp(-delta * 7.0))
 		var speed: float = c.pace
 		if kind == "ghost":
