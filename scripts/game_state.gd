@@ -245,172 +245,41 @@ func _set_weather(kind: int, seconds: float, quiet: bool) -> void:
 		_announce_weather()
 
 
-## The box's fish as grid items (Inventory.pack_in), the way they lie now.
+## The fish box's rules live in FishHoldings; these are its run-side doors (and what the tests
+## and older callers use).
 func oxy_items(list := oxy_fish) -> Array:
-	var out := []
-	for f in list:
-		var item := {"size": Inventory.rotated(Inventory.SIZES[Inventory.fish_size(f)], bool(f.get("rot", false)))}
-		var c = f.get("cell")
-		if c is Array and c.size() == 2:
-			item["cell"] = Vector2i(int(c[0]), int(c[1]))
-		out.append(item)
-	return out
+	return FishHoldings.box_items(list)
 
 
-## Where each of the box's fish lies (same order), [] if they don't all fit.
 func oxy_placed(list := oxy_fish) -> Array:
-	return Inventory.pack_in(oxy_items(list), Profile.OXY_COLS, Profile.OXY_ROWS)
+	return FishHoldings.box_placed(list)
 
 
-## Lays `list` (fish dicts) out in the box as well as it can: as they lie, else with the ones
-## not placed by hand re-laid, else turned the other way about too. The fish are set (cell, rot)
-## to it; false (and nothing touched) if no way fits.
 func _oxy_arrange(list: Array) -> bool:
-	var turnable: Array = []
-	for i in list.size():
-		var size: Vector2i = Inventory.SIZES[Inventory.fish_size(list[i])]
-		if size.x != size.y:
-			turnable.append(i)
-	# [re-lay all, turn mask]: first as they lie, then every way of turning them
-	var variants := [[false, -1]]
-	for mask in 1 << turnable.size():
-		variants.append([true, mask])
-	for v in variants:
-		var tries := []
-		for f in list:
-			tries.append(f.duplicate())
-		if v[1] >= 0:
-			for k in turnable.size():
-				tries[turnable[k]]["rot"] = (int(v[1]) >> k) & 1 == 1
-		if v[0]:
-			for t in tries:
-				t.erase("cell")
-		var placed := oxy_placed(tries)
-		if placed.is_empty() and not list.is_empty():
-			continue
-		for i in list.size():
-			var r := placed[i] as Rect2i
-			list[i]["cell"] = [r.position.x, r.position.y]
-			list[i]["rot"] = bool(tries[i].get("rot", false))
-		return true
-	return false
+	return FishHoldings.box_arrange(list)
 
 
-## Did every fish in `list` that was set at a cell land on it (`placed`: oxy_placed)?
 func _oxy_holds(list: Array, placed: Array) -> bool:
-	if placed.is_empty() and not list.is_empty():
-		return false
-	for i in list.size():
-		var c = list[i].get("cell")
-		if c is Array and (placed[i] as Rect2i).position != Vector2i(int(c[0]), int(c[1])):
-			return false
-	return true
+	return FishHoldings.box_holds(list, placed)
 
 
-## User request: a carried fish into the oxygenated fish box (in the bag or worn): "" if done,
-## else why not. A use of the box. `cell` (-1: anywhere): where its top left goes; else it's
-## laid out with the others by the system.
+## A carried fish into the box (in the bag or worn): "" if done, else why not. `cell` (-1: laid in
+## by the system).
 func oxy_put(index: int, cell := Vector2i(-1, -1)) -> String:
-	if not Profile.can_use_oxy_box():
-		return "沒有打氧魚箱"
-	if index < 0 or index >= carried_fish.size():
-		return "找不到這條魚"
-	var fish: Dictionary = carried_fish[index]
-	fish.erase("cell")
-	var list := oxy_fish.duplicate()
-	if cell.x >= 0:
-		fish["cell"] = [cell.x, cell.y]
-		list.append(fish)
-		var at := oxy_placed(list)
-		if not _oxy_holds(list, at):
-			fish.erase("cell")
-			return "放不進那個位置"
-	else:
-		list.append(fish)
-	if cell.x < 0 and not _oxy_arrange(list):
-		return "魚箱放不下"
-	if lure_uid == int(fish.get("uid", -2)):
-		lure_uid = -1
-	carried_fish.remove_at(index)
-	oxy_fish.append(fish)
-	inventory_updated.emit(carried_fish)
-	# (no wear going in: a fish in and out is the one use - see oxy_take)
-	return ""
+	return FishHoldings.in_run().put_in_box(carried_fish, index, cell)
 
 
-## A fish already in the box set down elsewhere in it (no wear): "" if done.
 func oxy_move(index: int, cell: Vector2i, turn := false, list := oxy_fish) -> String:
-	if index < 0 or index >= list.size():
-		return "找不到這條魚"
-	var fish: Dictionary = list[index]
-	var was = fish.get("cell")
-	var was_rot = fish.get("rot")
-	# (the others lie where they do now)
-	var placed := oxy_placed(list)
-	for j in list.size():
-		if not list[j].has("cell") and not placed.is_empty():
-			var r := placed[j] as Rect2i
-			list[j]["cell"] = [r.position.x, r.position.y]
-	if turn:
-		fish["rot"] = not bool(fish.get("rot", false))
-	fish["cell"] = [cell.x, cell.y]
-	var at := oxy_placed(list)
-	if not _oxy_holds(list, at):
-		if was == null:
-			fish.erase("cell")
-		else:
-			fish["cell"] = was
-		if was_rot == null:
-			fish.erase("rot")
-		else:
-			fish["rot"] = was_rot
-		return "放不進那個位置"
-	return ""
+	return FishHoldings.box_move(list, index, cell, turn)
 
 
-## A fish in the box turned (lying <-> standing) where it is, if it still fits there.
 func oxy_rotate(index: int, list := oxy_fish) -> String:
-	if index < 0 or index >= list.size():
-		return "找不到這條魚"
-	var at := oxy_placed(list)
-	if at.is_empty():
-		return "轉不過來"
-	var r := at[index] as Rect2i
-	if oxy_move(index, r.position, true, list) == "":
-		return ""
-	# (not turned where it lies: turned at the first place it fits)
-	for x in Profile.OXY_COLS:
-		for y in Profile.OXY_ROWS:
-			if oxy_move(index, Vector2i(x, y), true, list) == "":
-				return ""
-	return "轉過來放不下"
+	return FishHoldings.box_rotate(list, index)
 
 
 ## A fish out of the box, into what's carried (if it fits the bag).
 func oxy_take(index: int) -> String:
-	if index < 0 or index >= oxy_fish.size():
-		return "找不到這條魚"
-	var fish: Dictionary = oxy_fish[index]
-	var player := get_tree().get_first_node_in_group("player")
-	var back := fish.duplicate()
-	back.erase("cell")
-	if not Inventory.fits_with(player, [Inventory.fish_item(back)]):
-		return "背包放不下"
-	fish.erase("cell")
-	oxy_fish.remove_at(index)
-	carried_fish.append(fish)
-	inventory_updated.emit(carried_fish)
-	_wear_oxy_box()
-	return ""
-
-
-func _wear_oxy_box() -> void:
-	if Profile.wear_out("oxy_box"):
-		# (it broke: what was in it is back among what's carried)
-		carried_fish.append_array(oxy_fish)
-		oxy_fish.clear()
-		inventory_updated.emit(carried_fish)
-		push_message("打氧魚箱壞了，裡面的魚都拿出來了")
+	return FishHoldings.in_run().take_from_box(index)
 
 
 ## The fish carried: their vitality and freshness run down (FishLife); a

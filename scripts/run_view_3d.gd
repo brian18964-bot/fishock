@@ -413,12 +413,36 @@ var _snow := false
 const SNOW_WHITE := Color(0.9, 0.94, 1.0)
 
 
-## `mat` whitened by `k` (0 as it is, 1 all snow).
-func _snowed(mat: StandardMaterial3D, k: float) -> StandardMaterial3D:
-	var m := mat.duplicate() as StandardMaterial3D
-	m.albedo_color = m.albedo_color.lerp(SNOW_WHITE, k)
-	m.roughness = 0.85
+const SNOW_SHADER := preload("res://shaders/snow_cover.gdshader")
+var _snow_shader_2s: Shader
+
+
+## `src` as a ShaderMaterial under snow (shaders/snow_cover.gdshader): the boughs get snow on their
+## tops and a dusting all over, bark and rocks on their tops only. `fade` keeps the plain
+## materials' fading close to the camera (the trees').
+func _snowed(src: StandardMaterial3D, boughs: bool, fade := false) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	if boughs or src.cull_mode == BaseMaterial3D.CULL_DISABLED:
+		if _snow_shader_2s == null:
+			_snow_shader_2s = Shader.new()
+			_snow_shader_2s.code = SNOW_SHADER.code.replace("render_mode specular_schlick_ggx;", "render_mode specular_schlick_ggx, cull_disabled;")
+		m.shader = _snow_shader_2s
+	else:
+		m.shader = SNOW_SHADER
+	m.set_shader_parameter("albedo_tex", src.albedo_texture)
+	m.set_shader_parameter("tint", src.albedo_color)
+	m.set_shader_parameter("scissor", src.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR)
+	m.set_shader_parameter("scissor_cut", src.alpha_scissor_threshold)
+	m.set_shader_parameter("cover", 0.95 if boughs else 0.85)
+	m.set_shader_parameter("dust", 0.3 if boughs else 0.0)
+	if fade:
+		m.set_shader_parameter("fade_min", FADE_NEAR)
+		m.set_shader_parameter("fade_max", FADE_FAR)
+		_fade_shaders.append(m)
 	return m
+
+
+var _fade_shaders: Array[ShaderMaterial] = []
 
 
 func _ready() -> void:
@@ -466,6 +490,7 @@ func _build() -> void:
 	_ground()
 	_water()
 	_docks()
+	_ice_holes()
 	var t1 := Time.get_ticks_msec()
 	_trees_and_rocks()
 	_start_camp()
@@ -1646,7 +1671,9 @@ func _faded(mesh: Mesh) -> Mesh:
 			# (snow lies on the boughs far more than on the trunks)
 			var base := src as StandardMaterial3D
 			if _snow:
-				base = _snowed(base, 0.72 if base.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED else 0.22)
+				# (snow on the boughs' tops and over them, on the trunks' tops)
+				m.surface_set_material(s, _snowed(base, base.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED, true))
+				continue
 			var mat := base.duplicate() as StandardMaterial3D
 			mat.distance_fade_mode = BaseMaterial3D.DISTANCE_FADE_PIXEL_DITHER
 			mat.distance_fade_min_distance = FADE_NEAR
@@ -1673,7 +1700,7 @@ func _model_mesh(name: String, wide := false) -> Array:
 			for s in m.get_surface_count():
 				var src := m.surface_get_material(s)
 				if src is StandardMaterial3D:
-					m.surface_set_material(s, _snowed(src as StandardMaterial3D, 0.6))
+					m.surface_set_material(s, _snowed(src as StandardMaterial3D, false))
 		var box := m.get_aabb()
 		found = [m, maxf(box.size.x, box.size.z) if wide else box.size.y]
 		break
@@ -1916,6 +1943,8 @@ func _add_creature(n: Node) -> void:
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if small or _low \
 			else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	_weather(model, kind)
+	if _snow and WINTER_COAT.has(kind):
+		_winter_coat(model, float(WINTER_COAT[kind]))
 	var anim: AnimationPlayer = null
 	var aps := model.find_children("*", "AnimationPlayer", true, false)
 	if not aps.is_empty():
@@ -1928,6 +1957,90 @@ func _add_creature(n: Node) -> void:
 		"last": at, "size": float(spec[0]), "lift": float(spec[2]), "time": _rng.randf() * 10.0}
 	if kind == "dragon":
 		_dragon_gear(_creatures[n], model)
+
+
+## The holes in the ice (IceHole): a dark round hole in a raised pale rim, on the iced edge, and
+## a little breath rising from it.
+func _ice_holes() -> void:
+	for h in get_tree().get_nodes_in_group("ice_holes"):
+		var at: Vector2 = (h as Node2D).global_position
+		var holder := Node3D.new()
+		holder.name = "IceHole3D_%s" % h.name
+		holder.position = to3(at, WATER_Y + 0.012)
+		add_child(holder)
+		var rim := MeshInstance3D.new()
+		var rm := CylinderMesh.new()
+		rm.top_radius = 0.62
+		rm.bottom_radius = 0.7
+		rm.height = 0.05
+		rm.radial_segments = 20
+		rim.mesh = rm
+		var rmat := StandardMaterial3D.new()
+		rmat.albedo_color = Color(0.82, 0.9, 0.97)
+		rmat.roughness = 0.35
+		rim.material_override = rmat
+		rim.position.y = 0.02
+		rim.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		holder.add_child(rim)
+		var hole := MeshInstance3D.new()
+		var hm := CylinderMesh.new()
+		hm.top_radius = 0.4
+		hm.bottom_radius = 0.4
+		hm.height = 0.02
+		hm.radial_segments = 20
+		hole.mesh = hm
+		var hmat := StandardMaterial3D.new()
+		hmat.albedo_color = Color(0.01, 0.025, 0.045)
+		hmat.roughness = 0.08
+		hmat.metallic = 0.2
+		hole.material_override = hmat
+		hole.position.y = 0.05
+		hole.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		holder.add_child(hole)
+		var mist := CPUParticles3D.new()
+		mist.amount = 8
+		mist.lifetime = 2.6
+		mist.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+		mist.emission_sphere_radius = 0.25
+		mist.direction = Vector3.UP
+		mist.spread = 15.0
+		mist.gravity = Vector3(0.05, 0.12, 0.0)
+		mist.initial_velocity_min = 0.1
+		mist.initial_velocity_max = 0.25
+		var mm := SphereMesh.new()
+		mm.radius = 0.12
+		mm.height = 0.24
+		mm.radial_segments = 6
+		mm.rings = 3
+		var mmat := StandardMaterial3D.new()
+		mmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mmat.albedo_color = Color(0.85, 0.92, 1.0, 0.12)
+		mm.material = mmat
+		mist.mesh = mm
+		mist.position.y = 0.1
+		mist.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		holder.add_child(mist)
+
+
+## The snowy map's animals in their winter coats: how white each goes (the fox an arctic fox,
+## the wolf a white one, the deer only paler).
+const WINTER_COAT := {"fox": 0.88, "wolf": 0.8, "husky": 0.6, "deer": 0.4, "stag": 0.4}
+
+
+func _winter_coat(model: Node3D, share: float) -> void:
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		if m.mesh == null:
+			continue
+		for s in m.mesh.get_surface_count():
+			var src := m.get_active_material(s)
+			if src is StandardMaterial3D:
+				var mat := _snowed(src as StandardMaterial3D, false)
+				mat.set_shader_parameter("cover", 0.0)
+				mat.set_shader_parameter("whiten", share)
+				mat.set_shader_parameter("snow_color", Color(0.9, 0.92, 0.96))
+				m.set_surface_override_material(s, mat)
 
 
 ## The dragon's lantern on its hand, its tail and wings swaying
@@ -4082,7 +4195,7 @@ var _snow_fx: CPUParticles3D
 func _snowfall() -> void:
 	var p := CPUParticles3D.new()
 	p.name = "Snowfall"
-	p.amount = 320
+	p.amount = 420
 	p.lifetime = 6.0
 	p.preprocess = 6.0
 	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
@@ -4092,12 +4205,12 @@ func _snowfall() -> void:
 	p.gravity = Vector3(0.2, -0.9, 0.05)
 	p.initial_velocity_min = 0.5
 	p.initial_velocity_max = 1.1
-	p.scale_amount_min = 0.7
-	p.scale_amount_max = 1.5
+	p.scale_amount_min = 0.6
+	p.scale_amount_max = 1.3
 	var q := SphereMesh.new()
-	q.radius = 0.02
-	q.height = 0.04
-	q.radial_segments = 5
+	q.radius = 0.008
+	q.height = 0.016
+	q.radial_segments = 4
 	q.rings = 3
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -4749,6 +4862,9 @@ func _update_camera(delta: float) -> void:
 	for m in _fade_mats:
 		m.distance_fade_min_distance = FADE_NEAR * k
 		m.distance_fade_max_distance = FADE_FAR * k
+	for m in _fade_shaders:
+		m.set_shader_parameter("fade_min", FADE_NEAR * k)
+		m.set_shader_parameter("fade_max", FADE_FAR * k)
 
 
 ## The ground: grass in the open, forest floor under the trees, dirt

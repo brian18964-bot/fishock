@@ -128,11 +128,29 @@ const TESTS := [
 	"test_chop_and_weapons",
 ]
 
+## Catches a script error (an out of range read, a null call...) that would otherwise only be a
+## line in the log while the test body quietly stops half way and still reads PASS.
+class ErrorCatcher extends Logger:
+	var errors: Array[String] = []
+	var _mutex := Mutex.new()
+
+	func _log_error(function: String, file: String, line: int, code: String, rationale: String,
+			_editor_notify: bool, error_type: int, _script_backtraces: Array[ScriptBacktrace]) -> void:
+		if error_type != Logger.ERROR_TYPE_SCRIPT:
+			return
+		_mutex.lock()
+		errors.append("%s (%s:%d)" % [rationale if rationale != "" else code, file.get_file(), line])
+		_mutex.unlock()
+
+
 var main: Node
 var gs: Node
 var failures: Array[String] = []
 var checks := 0
 var _current := ""
+var _catcher := ErrorCatcher.new()
+## The long system checks (tests/NOTES: `group=fast` leaves them out, `group=slow` runs only them).
+const SLOW := ["test_world_integrity", "test_trunks_hold", "test_soak_fishing"]
 
 
 func _ready() -> void:
@@ -141,20 +159,34 @@ func _ready() -> void:
 
 func _run() -> void:
 	var only := ""
+	# group=fast: all but the slow system checks (SLOW); group=slow: only those; else all
+	var group := ""
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("only="):
 			only = a.substr(5)
+		elif a.begins_with("group="):
+			group = a.substr(6)
 	gs = get_tree().root.get_node("GameState")
+	OS.add_logger(_catcher)
 	# (runs start straight away - the opening has its own test)
 	RunView3D.intro = false
 	for t in TESTS:
 		if only != "" and not t in only.split(","):
 			continue
+		if group == "fast" and t in SLOW:
+			continue
+		if group == "slow" and not t in SLOW:
+			continue
 		_current = t
 		var before := failures.size()
+		var started := Time.get_ticks_msec()
+		_catcher.errors.clear()
 		await _fresh_game()
 		await call(t)
-		print("%s %s" % ["PASS" if failures.size() == before else "FAIL", t])
+		for e in _catcher.errors:
+			checks += 1
+			failures.append("%s: script error: %s" % [t, e])
+		print("%s %s (%.1f s)" % ["PASS" if failures.size() == before else "FAIL", t, (Time.get_ticks_msec() - started) / 1000.0])
 	print("\n%d checks, %d failed" % [checks, failures.size()])
 	for f in failures:
 		print("  FAILED: " + f)
@@ -2521,7 +2553,7 @@ func test_warehouse_and_bag() -> void:
 	camp().begin_level("1-3")
 	check(int(camp().rules.bait) == 2, "level 1-3 keeps its own count")
 	camp().clear()
-	check(Profile.to_storage(Profile.bag_at(Profile.bag[0].cell)) == 0, "and can't be put in the warehouse")
+	check(Profile.bag.is_empty(), "no free bait in the bag at the start: nothing to guard, the bag is empty")
 	check(Profile.to_bag("lure_minnow", 12) == 12 and Profile.bag.filter(func(e): return e.id == "lure_minnow").size() == 2,
 		"ten to a cell: two stacks")
 	for _i in 4:
@@ -2536,7 +2568,11 @@ func test_warehouse_and_bag() -> void:
 	var li := Profile.bag.map(func(e): return e.id).find("lure_minnow")
 	check(Profile.bag_discard(li, 1) == 1 and Profile.bag_count("lure_minnow") == 11, "a lure thrown away")
 	Profile.bag[li].count += 1
-	check(Profile.bag_discard(0) == 0, "the base bait can't be thrown away")
+	# (no base bait is handed out now; one that an upgrade brought is still fixed in the bag)
+	var base_entry := {"id": "bait", "count": 5, "cell": Vector2i(-9, -9)}
+	Profile.bag.append(base_entry)
+	check(Profile.bag_discard(Profile.bag.size() - 1) == 0, "the base bait can't be thrown away")
+	Profile.bag.erase(base_entry)
 	check(Profile.buy_rod() and Profile.stored("rod_1") == 1 and Profile.rod_tier == 0, "a rod bought waits in the warehouse")
 	check(Profile.equip("rod_1") and Profile.rod_tier == 1 and Profile.stored("rod_0") == 1, "put on, the old one stored")
 	check(Profile.to_bag("rod_0", 1, Vector2i(3, 3)) == 1, "a spare rod packed")
@@ -7137,6 +7173,32 @@ func test_snow_theme() -> void:
 		if c is MeshInstance3D and c.material_override is ShaderMaterial and (c.material_override as ShaderMaterial).get_shader_parameter("snow") != null:
 			ground = c
 	check(ground != null and float((ground.material_override as ShaderMaterial).get_shader_parameter("snow")) > 0.5, "the ground is under snow")
+	# Holes in the ice: some, on the frozen fringe, drawn; a cast beside one waits less.
+	var holes := get_tree().get_nodes_in_group("ice_holes")
+	check(holes.size() >= 1, "holes cut in the ice (%d)" % holes.size())
+	var drawn := 0
+	for c in view.get_children():
+		if c.name.begins_with("IceHole3D"):
+			drawn += 1
+	check(drawn == holes.size(), "each drawn in 3D")
+	if not holes.is_empty():
+		var h: Node2D = holes[0]
+		check(IceHole.near(get_tree(), h.global_position + Vector2(30, 0)) and not IceHole.near(get_tree(), h.global_position + Vector2(400, 0)), "near one is within its reach")
+		var zone_ok := false
+		for z in get_tree().get_nodes_in_group("water_zones"):
+			var d: float = (z as WaterZone).depth(h.global_position)
+			if d >= 3.0 and d <= 24.0:
+				zone_ok = true
+		check(zone_ok, "on the iced fringe")
+	# Winter coats: the fox is white, the deer pale.
+	var coated := 0
+	for k in view._creatures:
+		var c: Dictionary = view._creatures[k]
+		if c.kind == "fox":
+			for mi in (c.model as Node3D).find_children("*", "MeshInstance3D", true, false):
+				if (mi as MeshInstance3D).get_surface_override_material(0) is ShaderMaterial:
+					coated += 1
+	check(coated > 0 or not view._creatures.values().any(func(c): return c.kind == "fox"), "foxes in their winter coats")
 	await seconds(1.0)
 	check(is_instance_valid(player()) and player().global_position.is_finite(), "and the run goes on")
 	camp().clear()
