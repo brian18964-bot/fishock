@@ -505,7 +505,7 @@ func _build() -> void:
 	if _snow:
 		_snowfall()
 		_tracks = SnowTracks.new()
-		_tracks._foot_key = rig.character if rig != null else Profile.character
+		_tracks.character = rig.character if rig != null else Profile.character
 		add_child(_tracks)
 	_rest_2d_only(main)
 	for n in main.get_children():
@@ -4703,11 +4703,14 @@ func _process(delta: float) -> void:
 		if is_instance_valid(pair[0]):
 			(pair[1] as Node3D).visible = (pair[0] as Node2D).visible
 	_place_traveller(delta)
-	if _tracks != null:
-		# (open ground only: not a deck, the altar's stone or the water's edge)
-		var feet := _feet()
-		var gy := ground_y(feet)
-		_tracks.walk(to3(feet, gy), gy < LAND_Y + 0.01 and gy > WATER_Y + 0.07)
+	if _tracks != null and rig != null:
+		# (each foot of the model as it comes down; open ground only - not a deck, the altar's
+		# stone or the water's edge)
+		_tracks.feel(rig.skeleton, func(at: Vector3) -> float: return ground_y(to2(at)),
+			func(at: Vector3) -> bool:
+				var gy := ground_y(to2(at))
+				return gy < LAND_Y + 0.01 and gy > WATER_Y + 0.07,
+			player.velocity.length() / PX)
 	_animate()
 	_aim_rod(delta)
 	if _drum != null:

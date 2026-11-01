@@ -7230,57 +7230,46 @@ func test_snow_theme() -> void:
 				if (mi as MeshInstance3D).get_surface_override_material(0) is ShaderMaterial:
 					coated += 1
 	check(coated > 0 or not view._creatures.values().any(func(c): return c.kind == "fox"), "foxes in their winter coats")
-	# Footprints: a walk across open snow leaves them, left and right in turn, along the way
-	# walked; they smooth over in time; a deck keeps none.
+	# Footprints (user request): one each time a foot of the model comes down - where it came down,
+	# pointing the way it went, left and right in turn, in that character's own sole (baked from
+	# its model) - none standing still; they smooth over in time.
 	var tracks: SnowTracks = view._tracks
-	check(tracks != null and tracks.count() == 0, "footprints: none before a step")
-	var from: Vector2 = player().global_position
-	for i in 160:
-		player().global_position = from + Vector2(float(i) * 5.0, 0.0)
-		await frames(1)
-	var made := tracks.count()
-	check(made >= 6 and made <= SnowTracks.MAX, "footprints along the walk (%d)" % made)
-	var sides := {}
-	for i in SnowTracks.MAX:
-		if tracks._age[i] >= 0.0:
-			sides[tracks._side[i]] = true
-	check(sides.has(1.0) and sides.has(-1.0), "a left foot and a right")
-	tracks._process(SnowTracks.HOLD * 0.5)
-	check(tracks.count() == made, "they stay whole a while")
+	check(tracks != null and tracks.character == view.rig.character, "footprints: the traveller's own feet")
+	var sole: Dictionary = SnowTracks.soles().get(tracks.character, {})
+	var all_soles := true
+	for c in Profile.CHARACTERS:
+		var e: Dictionary = SnowTracks.soles().get(c[0], {})
+		if e.is_empty() or (e.get("l", []) as Array).size() < 4 or (e.get("r", []) as Array).size() < 4 or int(e.row) >= SnowTracks.ROWS:
+			all_soles = false
+	check(all_soles and load(SnowTracks.SOLES_PNG) != null, "every character's soles are baked from its model")
+	await seconds(1.0)
+	check(tracks.made == 0, "none standing still")
+	var p := player()
+	p._move_joystick.output = Vector2(-0.5, 0.15)
+	await seconds(3.0)
+	var made := tracks.made
+	var walked := p.velocity.normalized()
+	check(made >= 4 and abs(int(tracks.steps["_l"]) - int(tracks.steps["_r"])) <= 1,
+		"a walk: a print a step, the feet in turn (%s)" % tracks.steps)
+	var along := 0
+	for k in mini(made, 6):
+		var i := (tracks._next - 1 - k + SnowTracks.MAX) % SnowTracks.MAX
+		if tracks.toe[i].dot(walked) > 0.5:
+			along += 1
+	check(along >= mini(made, 6) - 1, "each pointing the way walked (%d of %d)" % [along, mini(made, 6)])
+	# (and where the foot came down: a print each side of the way walked, a stride apart)
+	var a := tracks.spot[(tracks._next - 1 + SnowTracks.MAX) % SnowTracks.MAX]
+	var b := tracks.spot[(tracks._next - 2 + SnowTracks.MAX) % SnowTracks.MAX]
+	var gap := Vector2(a.x - b.x, a.z - b.z).length()
+	check(gap > 0.2 and gap < 1.6, "a step apart (%.2f m)" % gap)
+	p._move_joystick.output = Vector2.ZERO
+	await seconds(1.5)
+	var still := tracks.made
+	await seconds(1.5)
+	check(tracks.made == still, "stopped: no more")
+	check(tracks.count() > 0, "they stay whole a while")
 	tracks._process(SnowTracks.HOLD + SnowTracks.FADE)
 	check(tracks.count() == 0, "then the snow is as it was")
-	tracks.walk(Vector3(0, 0.05, 0), false)
-	tracks.walk(Vector3(5, 0.05, 5), false)
-	check(tracks.count() == 0, "off open ground (a deck, the water's edge): none")
-	# Each character's own foot: every one in the roster has its shape, size and stride; the
-	# crocodile drags its tail between the steps, the others don't.
-	var all_dressed := true
-	for c in Profile.CHARACTERS:
-		var foot: Dictionary = SnowTracks.FEET.get(c[0], {})
-		if foot.is_empty() or int(foot.kind) < 1 or int(foot.kind) > 6 or float(foot.size) <= 0.0 or float(foot.stride) <= 0.0:
-			all_dressed = false
-	check(all_dressed, "every character has a foot to print")
-	var kinds := {}
-	for c in Profile.CHARACTERS:
-		kinds[SnowTracks.FEET[c[0]].kind] = true
-	check(kinds.size() >= 6, "the feet differ (paws, bear's, hooves, bird's, webbed): %d kinds" % kinds.size())
-	for id in ["cat", "croc"]:
-		var t := SnowTracks.new()
-		t._foot_key = id
-		add_child(t)
-		await frames(1)
-		var at := Vector3(0, 0.05, 0)
-		t.walk(at, true)
-		for i in 40:
-			at.z -= 0.1
-			t.walk(at, true)
-		var drags := 0
-		for i in SnowTracks.MAX:
-			if t._age[i] >= 0.0 and t._kind[i] > 0.5:
-				drags += 1
-		check(t.count() >= 4 and (drags > 0) == (id == "croc"), "%s: prints%s (%d, %d drag marks)" % [id, " and a tail's drag" if id == "croc" else "", t.count(), drags])
-		t.queue_free()
-	await seconds(1.0)
 	check(is_instance_valid(player()) and player().global_position.is_finite(), "and the run goes on")
 	camp().clear()
 
