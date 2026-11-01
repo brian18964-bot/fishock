@@ -67,8 +67,8 @@ func fits(fish: Dictionary, cell: Vector2i, index := -1) -> bool:
 
 
 func put(from: Array, index: int, cell: Vector2i) -> String:
-	var src := "pack" if from == Profile.pack_fish else ("stash" if from == Profile.stash_fish else "")
-	if src == "" or cell.y != 0 or cell.x < 0 or cell.x >= cols():
+	var src := FishHoldings.at_camp().place_of(from)
+	if not src in ["pack", "stash"] or cell.y != 0 or cell.x < 0 or cell.x >= cols():
 		return "放不進那個位置"
 	return Profile.hang_fish(src, index, "%s:%d" % [slot, cell.x])
 

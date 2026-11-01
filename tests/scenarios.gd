@@ -98,6 +98,7 @@ const TESTS := [
 	"test_bag_arrange",
 	"test_fear_and_confusion",
 	"test_oxy_at_camp",
+	"test_fish_holdings",
 	"test_bag_moves_at_camp",
 	"test_snow_theme",
 	"test_world_integrity",
@@ -7094,6 +7095,40 @@ func test_oxy_at_camp() -> void:
 	# Taken out at camp: to the bag.
 	Profile.load_data(snap)
 	check(store.take(0) == "" and Profile.oxy_stock.size() == 1 and (Profile.pack_fish.size() + Profile.stash_fish.size()) >= 2, "taken out: to the bag (else the warehouse)")
+	Profile.load_data(saved)
+
+
+## User request (one source for the box, the bag and the warehouse): FishHoldings names each place's
+## list - the same one the game keeps, in a run or at camp - tells lists that look alike apart, and
+## is the one door fish go in and out of the box by, wherever they come from.
+func test_fish_holdings() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 500})
+	var home := FishHoldings.at_camp()
+	var out := FishHoldings.in_run()
+	check(is_same(home.list("pack"), Profile.pack_fish) and is_same(out.list("pack"), GameState.carried_fish), "the bag: at camp its fish, in a run what's carried")
+	check(is_same(home.list("oxy"), Profile.oxy_stock) and is_same(out.list("oxy"), GameState.oxy_fish), "the box: at camp its stock, in a run its fish")
+	check(is_same(home.list("stash"), Profile.stash_fish) and is_same(home.list("tank"), Profile.tank) and is_same(home.list("box"), Profile.fish_box), "the warehouse, tank and bucket")
+	# two lists that look alike are told apart (a copy of a fish in each)
+	var a := _alert_fish("甲", 0.9)
+	Profile.pack_fish = [a]
+	Profile.stash_fish = [a.duplicate()]
+	check(home.place_of(Profile.pack_fish) == "pack" and home.place_of(Profile.stash_fish) == "stash", "alike lists: the right place each")
+	check(home.place_of([]) == "" and home.place_of(Profile.pack_fish.duplicate()) == "", "a list that isn't one of the places: none")
+	# into the box from the tank (a fish that is in none of the bag's lists)
+	check(Profile.buy_oxy_box(), "the box bought")
+	var t := _alert_fish("乙", 0.9)
+	Profile.tank = [t]
+	check(home.put_in_box(Profile.tank, 0, Vector2i(0, 0)) == "" and Profile.oxy_stock.size() == 1 and Profile.tank.is_empty(), "a tank fish into the box")
+	check(home.put_in_box(Profile.stash_fish, 0, Vector2i(0, 0)) != "" and Profile.stash_fish.size() == 1, "onto it: no, and it stays where it was")
+	check(home.take_from_box(0) == "" and Profile.oxy_stock.is_empty(), "and out again")
+	# in a run only what's carried goes in
+	var c := _alert_fish("丙", 0.9)
+	GameState.carried_fish = [c]
+	Profile.stash_fish = [_alert_fish("丁", 0.9)]
+	check(out.put_in_box(Profile.stash_fish, 0) != "" and GameState.oxy_fish.is_empty(), "in a run the warehouse's fish aren't within reach")
+	check(out.put_in_box(GameState.carried_fish, 0) == "" and GameState.oxy_fish.size() == 1 and GameState.carried_fish.is_empty(), "a carried fish goes in")
+	check(is_same(FishHoldings.in_run().list("oxy"), GameState.oxy_fish) and GameState.oxy_take(0) == "", "the old doors reach the same box")
 	Profile.load_data(saved)
 
 

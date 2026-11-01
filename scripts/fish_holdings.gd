@@ -5,11 +5,13 @@ extends RefCounted
 ## place the rules of the fish box's cells live (user request: the box, the bag and the
 ## warehouse as one source - no copy of the rules in GameState, in OxyStore, in the screens).
 ##
-## Places: "bag" (what's carried in a run; the bag's fish at camp), "oxy" (the fish box's cells:
+## Places: "pack" (what's carried in a run; the bag's fish at camp), "oxy" (the fish box's cells:
 ## GameState.oxy_fish in a run, Profile.oxy_stock at camp), "stash" (the warehouse), "tank",
-## "bucket", "clasp". The lists themselves still live where they were saved (GameState / Profile);
-## everything that wants one asks `list(place)`, and everything that moves a fish asks `put` /
-## `take` / `move` / `rotate` here - Backpack, ItemBoard, FishPlacer, OxyStore, ClaspStore.
+## "box" (the bucket), "clasp". The lists themselves still live where they were saved (GameState /
+## Profile); everything that wants one asks `list(place)` (or `place_of(list)` for which one it
+## is), and everything that moves a fish into or out of the fish box goes through `put_in_box` /
+## `take_from_box` / `box_move` / `box_rotate` here - Backpack, ItemBoard, FishPlacer, OxyStore,
+## ClaspStore. (Moves between the other places are Profile.move_fish.)
 
 var home := false
 
@@ -26,22 +28,24 @@ static func at_camp() -> FishHoldings:
 	return FishHoldings.new(true)
 
 
-## The fish in `place` (the list itself: a change to it is the change).
+## The fish in `place` (the list itself: a change to it is the change). The names are the ones
+## Profile.move_fish uses - "pack", "stash", "tank", "box" (the bucket), "clasp" - and "oxy" (the
+## fish box's cells). "pack" is what's carried in a run (GameState.carried_fish).
 func list(place: String) -> Array:
 	match place:
-		"bag":
+		"pack":
 			return Profile.pack_fish if home else GameState.carried_fish
 		"oxy":
 			return Profile.oxy_stock if home else GameState.oxy_fish
-		"stash":
-			return Profile.stash_fish
-		"tank":
-			return Profile.tank
-		"bucket":
-			return Profile.fish_box
-		"clasp":
-			return Profile.clasp_fish
-	return []
+	return Profile.fish_list(place)
+
+
+## The place whose list is exactly `fish_list` (the same array, not one that looks like it), or "".
+func place_of(fish_list: Array) -> String:
+	for place in ["pack", "stash", "tank", "box", "clasp", "oxy"]:
+		if is_same(list(place), fish_list):
+			return place
+	return ""
 
 
 # ---------------------------------------------------------------- the box's cells

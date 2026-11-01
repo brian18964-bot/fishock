@@ -210,7 +210,7 @@ func drop(source: Dictionary, at: Vector2) -> bool:
 		_flyout.clear_hover()
 		if source.get("from", "") in ["pack_fish", "stash_fish"] and _flyout.contains(at):
 			var held := ItemBoard.fish_of(source)
-			var list := Profile.pack_fish if source.from == "pack_fish" else Profile.stash_fish
+			var list := ItemBoard.fish_list_of(source)
 			_flyout.drop_fish(list, int(source.index), at, _flyout.centered_grab(held))
 			return true
 	for v in _views:
@@ -383,8 +383,13 @@ func card(source: Dictionary) -> void:
 
 ## The fish a source ("pack_fish" / "stash_fish" and an index) names.
 static func fish_of(source: Dictionary) -> Dictionary:
-	var list := Profile.pack_fish if source.get("from", "") == "pack_fish" else Profile.stash_fish
+	var list := fish_list_of(source)
 	return list[source.index] if int(source.index) < list.size() else {}
+
+
+## The list a source's fish lie in ("pack_fish" -> the bag's, else the warehouse's).
+static func fish_list_of(source: Dictionary) -> Array:
+	return FishHoldings.at_camp().list("pack" if source.get("from", "") == "pack_fish" else "stash")
 
 
 ## User request: a fish at home in the bag or the warehouse - its card: how it
