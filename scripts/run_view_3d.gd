@@ -505,6 +505,7 @@ func _build() -> void:
 	if _snow:
 		_snowfall()
 		_tracks = SnowTracks.new()
+		_tracks._foot_key = rig.character if rig != null else Profile.character
 		add_child(_tracks)
 	_rest_2d_only(main)
 	for n in main.get_children():

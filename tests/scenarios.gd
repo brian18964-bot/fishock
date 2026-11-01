@@ -7252,6 +7252,34 @@ func test_snow_theme() -> void:
 	tracks.walk(Vector3(0, 0.05, 0), false)
 	tracks.walk(Vector3(5, 0.05, 5), false)
 	check(tracks.count() == 0, "off open ground (a deck, the water's edge): none")
+	# Each character's own foot: every one in the roster has its shape, size and stride; the
+	# crocodile drags its tail between the steps, the others don't.
+	var all_dressed := true
+	for c in Profile.CHARACTERS:
+		var foot: Dictionary = SnowTracks.FEET.get(c[0], {})
+		if foot.is_empty() or int(foot.kind) < 1 or int(foot.kind) > 6 or float(foot.size) <= 0.0 or float(foot.stride) <= 0.0:
+			all_dressed = false
+	check(all_dressed, "every character has a foot to print")
+	var kinds := {}
+	for c in Profile.CHARACTERS:
+		kinds[SnowTracks.FEET[c[0]].kind] = true
+	check(kinds.size() >= 6, "the feet differ (paws, bear's, hooves, bird's, webbed): %d kinds" % kinds.size())
+	for id in ["cat", "croc"]:
+		var t := SnowTracks.new()
+		t._foot_key = id
+		add_child(t)
+		await frames(1)
+		var at := Vector3(0, 0.05, 0)
+		t.walk(at, true)
+		for i in 40:
+			at.z -= 0.1
+			t.walk(at, true)
+		var drags := 0
+		for i in SnowTracks.MAX:
+			if t._age[i] >= 0.0 and t._kind[i] > 0.5:
+				drags += 1
+		check(t.count() >= 4 and (drags > 0) == (id == "croc"), "%s: prints%s (%d, %d drag marks)" % [id, " and a tail's drag" if id == "croc" else "", t.count(), drags])
+		t.queue_free()
 	await seconds(1.0)
 	check(is_instance_valid(player()) and player().global_position.is_finite(), "and the run goes on")
 	camp().clear()
