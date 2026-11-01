@@ -121,6 +121,7 @@ const TESTS := [
 	"test_floating_ghost_budget",
 	"test_backpack_grid",
 	"test_bag_card_closes",
+	"test_altar_this_run_only",
 	"test_water_ghost",
 	"test_willow_talk",
 	"test_altar_corrosion",
@@ -305,8 +306,9 @@ func of_script(file: String) -> Array:
 	return out
 
 
+## A fish caught in this run (it counts at the altar - GameState.run_id).
 func fish(name := "鯉魚", tier := "near") -> Dictionary:
-	return {"name": name, "value": 4.0, "tier": tier, "size": Inventory.size_for_catch(tier, false)}
+	return {"name": name, "value": 4.0, "tier": tier, "size": Inventory.size_for_catch(tier, false), "run_id": GameState.run_id}
 
 
 # --- tests -------------------------------------------------------------------
@@ -4331,6 +4333,36 @@ func test_floating_ghost_budget() -> void:
 		check(times[i] - times[i - 1] >= 19.9, "20 s apart (%.1f)" % (times[i] - times[i - 1]))
 
 
+## User request: a fish counts at the altar only in the run it was caught in - one brought from
+## camp (the bag, the fish box, a clasp) shows its worth as 0 there, "not this run's"; it still
+## sells as before.
+func test_altar_this_run_only() -> void:
+	var here := fish("新鮮", "near")
+	gs.add_carried_fish(here)
+	var old := fish("舊的", "near")
+	old["run_id"] = "an earlier run"
+	gs.add_carried_fish(old)
+	var legacy := fish("沒標記", "near")
+	legacy.erase("run_id")
+	gs.add_carried_fish(legacy)
+	check(FishLife.offer_value(here) > 0.0 and FishLife.caught_this_run(here), "this run's catch counts")
+	check(FishLife.offer_value(old) == 0.0 and FishLife.offer_value(legacy) == 0.0, "one from another run (or unmarked) counts 0")
+	check(FishLife.sale_value(old) == FishLife.sale_value(here), "its sale price is as it was")
+	var before: float = gs.quota_progress
+	gs.sacrifice_at(gs.carried_fish.find(old))
+	check(gs.quota_progress == before, "offered: nothing toward the quota")
+	gs.sacrifice_at(gs.carried_fish.find(here))
+	check(gs.quota_progress > before, "this run's: it counts")
+	# What's caught is marked with the run; a new run, a new mark - what came home is old then.
+	var caught := {"name": "鯽魚", "id": "carp", "value": 3.0, "tier": "near", "size": "small", "length": 30.0, "weight": 0.5}
+	caught["run_id"] = gs.run_id
+	var was: String = gs.run_id
+	gs.reset_run()
+	gs.start_run()
+	check(gs.run_id != "" and gs.run_id != was, "each run its own mark")
+	check(FishLife.offer_value(caught) == 0.0, "last run's catch, brought along: 0 at the altar")
+
+
 ## A tap (or click) at `at` (the 960x540 canvas), as the screen sends it.
 func _tap_at(at: Vector2, touch := false) -> void:
 	for down in [true, false]:
@@ -6875,7 +6907,8 @@ func test_rods_and_stats_page() -> void:
 
 
 func _alert_fish(name: String, vit: float) -> Dictionary:
-	var f := {"id": "carp", "name": name, "value": 5.0, "size": "small", "rarity": "common", "tier": "near", "length": 40.0, "weight": 1.0}
+	var f := {"id": "carp", "name": name, "value": 5.0, "size": "small", "rarity": "common", "tier": "near", "length": 40.0, "weight": 1.0,
+		"run_id": GameState.run_id}
 	FishLife.roll(f)
 	f["life_traits"] = []
 	f["vit"] = vit

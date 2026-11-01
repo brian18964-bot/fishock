@@ -108,6 +108,10 @@ var weather_timer: float = 0.0
 ## pressed "Start" on the title screen - otherwise browsing the shop
 ## would silently burn down the clock before the run even begins.
 var run_started: bool = false
+## User request: only the fish caught in this run count at the altar - those brought from camp (in
+## the bag, the fish box, on a clasp) show their worth but count 0. Each run its own id; a fish
+## caught carries it (fish.run_id).
+var run_id := ""
 ## How the last run ended, for the camp to show it coming home (user
 ## request, Camp v2): "escaped" (out of the 渡石) or "lost" (waking by the
 ## fire); "" once shown.
@@ -183,6 +187,7 @@ func light_stage() -> int:
 
 func start_run() -> void:
 	run_started = true
+	run_id = "%d:%d" % [int(Time.get_unix_time_from_system()), Time.get_ticks_usec()]
 	Profile.found_this_run.clear()
 	# User request: the fish packed in the bag at home (taken out of the tank)
 	# go on the run - those that fit; the rest back to the warehouse.

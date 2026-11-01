@@ -162,6 +162,8 @@ var upgrade_levels: Dictionary = {
 ## (equipped: slot -> item id; there's always a rod). The shop puts what
 ## it sells in the warehouse.
 var storage: Dictionary = {}
+## User request (locks): the warehouse's kinds of things locked (id -> true) - Locks.
+var storage_locks: Dictionary = {}
 var bag: Array = []
 var equipped: Dictionary = {"rod": "rod_0", "light": "", "offhand": ""}
 ## Uses left on what's worn out a little (id -> uses; see DURABILITY) -

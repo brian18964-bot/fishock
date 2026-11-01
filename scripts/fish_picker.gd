@@ -245,7 +245,10 @@ class FishCard extends Control:
 		# (what it counts for: its full value alive; dead, less as its freshness goes)
 		var line := "%s型・價值 %.0f" % [size_name, FishLife.offer_value(fish)]
 		UiKit.draw_text(self, Vector2(8, size.y - 26), line, 13, UiKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, size.x - 16.0)
-		if rotten:
+		if not rotten and not FishLife.caught_this_run(fish):
+			# (user request: brought from camp - shown, but worth nothing at the altar)
+			UiKit.draw_text(self, Vector2(8, size.y - 9), "非本場漁獲・獻祭無價值", 12, UiKit.DIM, HORIZONTAL_ALIGNMENT_LEFT, size.x - 16.0)
+		elif rotten:
 			UiKit.draw_text(self, Vector2(8, size.y - 9), "腐敗・獻祭會賭一把", 12, FishPicker.ROTTEN, HORIZONTAL_ALIGNMENT_LEFT, size.x - 16.0)
 		elif GameState.lure_index() == index:
 			UiKit.draw_text(self, Vector2(8, size.y - 9), "誘惑用的魚", 12, UiKit.GOLD, HORIZONTAL_ALIGNMENT_LEFT, size.x - 16.0)

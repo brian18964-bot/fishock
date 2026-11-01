@@ -3406,6 +3406,8 @@ func _succeed_catch() -> void:
 		# User request: its vitality and freshness, and what traits bend
 		# them (FishLife).
 		FishLife.roll(fish)
+		# (caught in this run: it counts at the altar - GameState.run_id)
+		fish["run_id"] = GameState.run_id
 		# User request: the catch card calls out a first catch of a kind
 		# (NEW), a trait not seen on it before, and a record size (BIGGER).
 		var seen: Dictionary = Profile.fish_log.get(fish.name, {})

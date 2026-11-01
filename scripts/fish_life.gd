@@ -607,9 +607,19 @@ static func worth(f: Dictionary) -> float:
 	return float(f.get("value", 0.0))
 
 
-## What it counts for at the altar: its worth, and 信仰's share more.
+## What it counts for at the altar: its worth, and 信仰's share more - only a fish caught in this
+## run (user request: a catch hoarded at camp and brought along counts 0; its sale price is as it
+## was).
 static func offer_value(f: Dictionary) -> float:
+	if not caught_this_run(f):
+		return 0.0
 	return worth(f) * (1.0 + val_of(f, "faith"))
+
+
+## Caught in the run going on now (GameState.run_id)?
+static func caught_this_run(f: Dictionary) -> bool:
+	var id: String = str(f.get("run_id", ""))
+	return id != "" and id == GameState.run_id
 
 
 ## 財富: the extra gold it brings when sold (a dead one's by its freshness).
