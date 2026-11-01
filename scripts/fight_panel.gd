@@ -120,6 +120,8 @@ var _pulse := 0.0
 var _drawn := false
 ## The numbers in the air: {text, label, pos, vel, age, life, size, color, kind}.
 var _pops: Array = []
+## How many numbers (and an edge flash) the last drawing held.
+var _drawn_pops := 0
 ## The tension bar flashes red when a move hurts (s left).
 var _hurt_flash := 0.0
 ## A flash round the screen's edge, and its colour: red for a hard hit taken, gold for
@@ -146,9 +148,12 @@ func _process(delta: float) -> void:
 	var player := _player()
 	var busy := player != null and (player.state == Player.State.REELING \
 		or player.state == Player.State.BITE or player.light_lure > 0.0)
+	# (what was on the canvas going into this frame: the frame the last number or edge flash runs
+	# out is drawn too - else its last, nearly faded picture stays up as a ghost)
+	var showing := not _pops.is_empty() or _edge > 0.0
 	_take_hits(player, delta)
 	_update_area(player, delta)
-	if busy or _drawn or not _pops.is_empty() or _edge > 0.0:
+	if busy or _drawn or showing or not _pops.is_empty() or _edge > 0.0:
 		_view.queue_redraw()
 	_drawn = busy
 
@@ -529,6 +534,8 @@ static func _fmt(n: int) -> String:
 
 
 func _draw_pops() -> void:
+	# (what this drawing holds - a test reads that nothing's left up once they've run out)
+	_drawn_pops = _pops.size() + (1 if _edge > 0.0 else 0)
 	_draw_edge()
 	for pop in _pops:
 		var t: float = pop.age / pop.life

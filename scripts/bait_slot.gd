@@ -78,12 +78,19 @@ static func current(p: Player) -> Array:
 	return ["bait", p.bait_count, "餌料"]
 
 
+## Nothing left on the hook to show (user request: no bait in the bag at all is an empty cell with
+## a faint +, not the base bait's picture with a 0).
+static func is_empty(p: Player) -> bool:
+	return int(current(p)[1]) <= 0
+
+
 ## What there is to fish with: [icon id, how many, name, put it on].
 static func choices(p: Player) -> Array:
 	var out := []
-	out.append(["bait", p.bait_count, "餌料", func():
-		p.choose_live_bait("")
-		p.choose_bobber()])
+	if p.bait_count > 0:
+		out.append(["bait", p.bait_count, "餌料", func():
+			p.choose_live_bait("")
+			p.choose_bobber()])
 	for key in Profile.LIVE_BAITS:
 		var n := Profile.bag_count("live_" + key)
 		if n > 0:
@@ -141,6 +148,10 @@ func tap() -> void:
 		return
 	if p.state != Player.State.IDLE:
 		GameState.report("收竿後才能換餌")
+		_slot.shake()
+		return
+	if choices(p).is_empty():
+		GameState.report("背包裡沒有餌料")
 		_slot.shake()
 		return
 	open_picker()
@@ -243,6 +254,14 @@ class SlotView extends Control:
 		box.set_border_width_all(2)
 		box.set_corner_radius_all(9)
 		draw_style_box(box, r)
+		if int(on[1]) <= 0:
+			# (nothing to put on: an empty cell, a faint +)
+			var c := r.get_center()
+			var arm := r.size.x * 0.2
+			draw_line(c - Vector2(arm, 0), c + Vector2(arm, 0), Color(BaitSlot.INK, 0.32), 2.5, true)
+			draw_line(c - Vector2(0, arm), c + Vector2(0, arm), Color(BaitSlot.INK, 0.32), 2.5, true)
+			_swivel(r)
+			return
 		var tex := Items.square_icon(on[0])
 		if tex != null:
 			draw_texture_rect(tex, r.grow(-8.0), false, Color(1, 1, 1, 0.92) if int(on[1]) > 0 else Color(0.45, 0.45, 0.45, 0.6))
@@ -252,7 +271,10 @@ class SlotView extends Control:
 		draw_string(font, Vector2(r.position.x, r.position.y + 15.0), n, HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 5.0, 13,
 			Color(1, 0.4, 0.35) if int(on[1]) == 0 else Color.WHITE)
 		UiKit.draw_text(self, Vector2(r.position.x, r.end.y - 4.0), "換餌", 11, UiKit.GOLD_BRIGHT, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, true)
-		# the swivel: an eye on the top edge, a ring over it
+		_swivel(r)
+
+	## The swivel: an eye on the top edge, a ring over it.
+	func _swivel(r: Rect2) -> void:
 		var top := Vector2(r.get_center().x, r.position.y)
 		draw_arc(top + Vector2(0, -1), 4.5, PI, TAU, 12, BaitSlot.INK, 2.0, true)
 		draw_line(top + Vector2(0, -6), top + Vector2(0, -10), BaitSlot.INK, 2.0, true)

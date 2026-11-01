@@ -2889,10 +2889,6 @@ func _launch_cast() -> void:
 	if pending_bait_flavor == BAIT_FLAVOR_WORM:
 		wait_timer *= 0.7
 	wait_timer *= float(lure_def().get("wait", 1.0))
-	# (a hole in the ice: the fish come sooner)
-	if IceHole.near(get_tree(), cast_target):
-		wait_timer *= IceHole.WAIT_MULT
-		GameState.push_message("冰洞邊，魚口比較好")
 	_wait_duration = wait_timer
 	retrieve_progress = 0.0
 	light_lure = 0.0

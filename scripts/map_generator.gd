@@ -109,7 +109,6 @@ const THEMES := {
 		"ground_kinds": {"plant": 0.5},
 		"animals": {"deer": 1.5, "stag": 1.0, "fox": 2.0, "wolf": 0.8},
 		"shore_extras": {"reeds": 0.08, "lilypad": 0.0, "driftwood": 0.12},
-		"ice_holes": 4,
 	},}
 ## User feedback: the water's edge is grass, small shrubs, pebbles and
 ## boardwalks (no big trees or boulders there), with bugs and frogs about.
@@ -172,7 +171,6 @@ func _ready() -> void:
 	GameState.night_fell.connect(_on_night_fell)
 	_generate_water_zones()
 	_place_docks()
-	_place_ice_holes()
 	_place_altar_and_escape()
 	_take_fixed_points()
 	# Docks and shores before the trees and rocks, so those can keep clear
@@ -312,43 +310,6 @@ static func _zone_area(zone: WaterZone) -> float:
 	for l in zone.world_lobes():
 		total += PI * l.z * l.z
 	return total
-
-
-## The snowy map's holes in the ice (IceHole): a few round the common ponds, on the frozen
-## fringe - a little way in from the shore, away from the docks.
-func _place_ice_holes() -> void:
-	var want := int(theme.get("ice_holes", 0))
-	if want <= 0:
-		return
-	var zones := water_zones.filter(func(z): return not (z as WaterZone).is_rare())
-	if zones.is_empty():
-		return
-	var made := 0
-	var tries := 0
-	var placed_holes: Array[Vector2] = []
-	while made < want and tries < 80:
-		tries += 1
-		var zone: WaterZone = zones[tries % zones.size()]
-		var dir := Vector2.from_angle(randf() * TAU)
-		var edge := zone.shore_point(dir)
-		var at := edge - dir * 12.0
-		if zone.depth(at) < 4.0 or zone.depth(at) > 22.0:
-			continue
-		var clear := true
-		for d in get_tree().get_nodes_in_group("walkways"):
-			if (d as Node2D).global_position.distance_to(at) < 130.0:
-				clear = false
-		for h in placed_holes:
-			if h.distance_to(at) < 160.0:
-				clear = false
-		if not clear:
-			continue
-		var hole := IceHole.new()
-		hole.name = "IceHole%d" % made
-		hole.position = at
-		get_parent().add_child.call_deferred(hole)
-		placed_holes.append(at)
-		made += 1
 
 
 func _place_docks() -> void:

@@ -410,6 +410,8 @@ static func attach(to: Node2D) -> RunView3D:
 ## The snowy map (MapGenerator's "snow_pine"): the pines and rocks whitened, the ground white, ice
 ## round the water's edge, snow falling, the night a little paler and colder.
 var _snow := false
+## The footprints in the snow (the snowy map's).
+var _tracks: SnowTracks
 const SNOW_WHITE := Color(0.9, 0.94, 1.0)
 
 
@@ -490,7 +492,6 @@ func _build() -> void:
 	_ground()
 	_water()
 	_docks()
-	_ice_holes()
 	var t1 := Time.get_ticks_msec()
 	_trees_and_rocks()
 	_start_camp()
@@ -503,6 +504,8 @@ func _build() -> void:
 	_fireflies()
 	if _snow:
 		_snowfall()
+		_tracks = SnowTracks.new()
+		add_child(_tracks)
 	_rest_2d_only(main)
 	for n in main.get_children():
 		_scan(n)
@@ -1957,70 +1960,6 @@ func _add_creature(n: Node) -> void:
 		"last": at, "size": float(spec[0]), "lift": float(spec[2]), "time": _rng.randf() * 10.0}
 	if kind == "dragon":
 		_dragon_gear(_creatures[n], model)
-
-
-## The holes in the ice (IceHole): a dark round hole in a raised pale rim, on the iced edge, and
-## a little breath rising from it.
-func _ice_holes() -> void:
-	for h in get_tree().get_nodes_in_group("ice_holes"):
-		var at: Vector2 = (h as Node2D).global_position
-		var holder := Node3D.new()
-		holder.name = "IceHole3D_%s" % h.name
-		holder.position = to3(at, WATER_Y + 0.012)
-		add_child(holder)
-		var rim := MeshInstance3D.new()
-		var rm := CylinderMesh.new()
-		rm.top_radius = 0.62
-		rm.bottom_radius = 0.7
-		rm.height = 0.05
-		rm.radial_segments = 20
-		rim.mesh = rm
-		var rmat := StandardMaterial3D.new()
-		rmat.albedo_color = Color(0.82, 0.9, 0.97)
-		rmat.roughness = 0.35
-		rim.material_override = rmat
-		rim.position.y = 0.02
-		rim.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		holder.add_child(rim)
-		var hole := MeshInstance3D.new()
-		var hm := CylinderMesh.new()
-		hm.top_radius = 0.4
-		hm.bottom_radius = 0.4
-		hm.height = 0.02
-		hm.radial_segments = 20
-		hole.mesh = hm
-		var hmat := StandardMaterial3D.new()
-		hmat.albedo_color = Color(0.01, 0.025, 0.045)
-		hmat.roughness = 0.08
-		hmat.metallic = 0.2
-		hole.material_override = hmat
-		hole.position.y = 0.05
-		hole.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		holder.add_child(hole)
-		var mist := CPUParticles3D.new()
-		mist.amount = 8
-		mist.lifetime = 2.6
-		mist.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-		mist.emission_sphere_radius = 0.25
-		mist.direction = Vector3.UP
-		mist.spread = 15.0
-		mist.gravity = Vector3(0.05, 0.12, 0.0)
-		mist.initial_velocity_min = 0.1
-		mist.initial_velocity_max = 0.25
-		var mm := SphereMesh.new()
-		mm.radius = 0.12
-		mm.height = 0.24
-		mm.radial_segments = 6
-		mm.rings = 3
-		var mmat := StandardMaterial3D.new()
-		mmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		mmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		mmat.albedo_color = Color(0.85, 0.92, 1.0, 0.12)
-		mm.material = mmat
-		mist.mesh = mm
-		mist.position.y = 0.1
-		mist.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		holder.add_child(mist)
 
 
 ## The snowy map's animals in their winter coats: how white each goes (the fox an arctic fox,
@@ -4763,6 +4702,11 @@ func _process(delta: float) -> void:
 		if is_instance_valid(pair[0]):
 			(pair[1] as Node3D).visible = (pair[0] as Node2D).visible
 	_place_traveller(delta)
+	if _tracks != null:
+		# (open ground only: not a deck, the altar's stone or the water's edge)
+		var feet := _feet()
+		var gy := ground_y(feet)
+		_tracks.walk(to3(feet, gy), gy < LAND_Y + 0.01 and gy > WATER_Y + 0.07)
 	_animate()
 	_aim_rod(delta)
 	if _drum != null:

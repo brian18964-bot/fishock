@@ -888,6 +888,19 @@ func test_bait_slot() -> void:
 	p.state = Player.State.IDLE
 	(BaitSlot.choices(p)[0][3] as Callable).call()
 	check(p.fishing_mode == Player.FishingMode.BOBBER and p.live_bait == "", "back to the base bait")
+	# User request: no bait in the bag at all - an empty cell with a faint +, not the base bait's
+	# picture with a 0 on it; a tap says so rather than opening an empty window.
+	Profile.bag = Profile.bag.filter(func(e): return not str(e.id).begins_with("live_"))
+	p.lure_stock.clear()
+	p.live_bait = ""
+	p.fishing_mode = Player.FishingMode.BOBBER
+	p.bait_count = 0
+	check(BaitSlot.is_empty(p) and BaitSlot.choices(p).is_empty(), "no bait: the slot is empty and there's nothing to pick")
+	bs.tap()
+	await frames(2)
+	check(not bs.picker_open(), "tapped when empty: no window of nothing")
+	p.bait_count = 3
+	check(not BaitSlot.is_empty(p) and BaitSlot.choices(p).size() == 1, "bait again: the base bait shows")
 	var card: StatusCard = main.find_child("StatusCard", true, false)
 	check(not StatusCard.SHOW_GEAR, "no bait under the character card any more")
 
@@ -7208,23 +7221,6 @@ func test_snow_theme() -> void:
 		if c is MeshInstance3D and c.material_override is ShaderMaterial and (c.material_override as ShaderMaterial).get_shader_parameter("snow") != null:
 			ground = c
 	check(ground != null and float((ground.material_override as ShaderMaterial).get_shader_parameter("snow")) > 0.5, "the ground is under snow")
-	# Holes in the ice: some, on the frozen fringe, drawn; a cast beside one waits less.
-	var holes := get_tree().get_nodes_in_group("ice_holes")
-	check(holes.size() >= 1, "holes cut in the ice (%d)" % holes.size())
-	var drawn := 0
-	for c in view.get_children():
-		if c.name.begins_with("IceHole3D"):
-			drawn += 1
-	check(drawn == holes.size(), "each drawn in 3D")
-	if not holes.is_empty():
-		var h: Node2D = holes[0]
-		check(IceHole.near(get_tree(), h.global_position + Vector2(30, 0)) and not IceHole.near(get_tree(), h.global_position + Vector2(400, 0)), "near one is within its reach")
-		var zone_ok := false
-		for z in get_tree().get_nodes_in_group("water_zones"):
-			var d: float = (z as WaterZone).depth(h.global_position)
-			if d >= 3.0 and d <= 24.0:
-				zone_ok = true
-		check(zone_ok, "on the iced fringe")
 	# Winter coats: the fox is white, the deer pale.
 	var coated := 0
 	for k in view._creatures:
@@ -7234,6 +7230,28 @@ func test_snow_theme() -> void:
 				if (mi as MeshInstance3D).get_surface_override_material(0) is ShaderMaterial:
 					coated += 1
 	check(coated > 0 or not view._creatures.values().any(func(c): return c.kind == "fox"), "foxes in their winter coats")
+	# Footprints: a walk across open snow leaves them, left and right in turn, along the way
+	# walked; they smooth over in time; a deck keeps none.
+	var tracks: SnowTracks = view._tracks
+	check(tracks != null and tracks.count() == 0, "footprints: none before a step")
+	var from: Vector2 = player().global_position
+	for i in 160:
+		player().global_position = from + Vector2(float(i) * 5.0, 0.0)
+		await frames(1)
+	var made := tracks.count()
+	check(made >= 6 and made <= SnowTracks.MAX, "footprints along the walk (%d)" % made)
+	var sides := {}
+	for i in SnowTracks.MAX:
+		if tracks._age[i] >= 0.0:
+			sides[tracks._side[i]] = true
+	check(sides.has(1.0) and sides.has(-1.0), "a left foot and a right")
+	tracks._process(SnowTracks.HOLD * 0.5)
+	check(tracks.count() == made, "they stay whole a while")
+	tracks._process(SnowTracks.HOLD + SnowTracks.FADE)
+	check(tracks.count() == 0, "then the snow is as it was")
+	tracks.walk(Vector3(0, 0.05, 0), false)
+	tracks.walk(Vector3(5, 0.05, 5), false)
+	check(tracks.count() == 0, "off open ground (a deck, the water's edge): none")
 	await seconds(1.0)
 	check(is_instance_valid(player()) and player().global_position.is_finite(), "and the run goes on")
 	camp().clear()
@@ -7992,6 +8010,13 @@ func test_damage_numbers() -> void:
 	panel._add_pop({"type": "hurt", "src": "割線", "n": 18})
 	check(panel._pops.back().text == "-18", "the line's life frayed away is a -")
 	check(panel._pops[-2].label == "躍出" and panel._pops[-2].pos.x > FightPanel.CENTER_X + FightPanel.SIZE.x * 0.5, "a hurt shows beside the tension bar, with its name")
+	# User report: a "+79" and a "-13" stayed up on the screen for good, faded - the frame the last
+	# number ran out wasn't drawn, so its nearly gone picture was never wiped.
+	await frames(4)
+	check(panel._drawn_pops > 0, "the numbers are drawn while they're up")
+	await seconds(2.5)
+	check(panel._pops.is_empty() and panel._edge <= 0.0, "the numbers run out")
+	check(panel._drawn_pops == 0, "and the last picture drawn is an empty one - no ghost left")
 	panel.queue_free()
 	await frames(1)
 
