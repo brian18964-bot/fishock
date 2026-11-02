@@ -185,6 +185,10 @@ static var quality := ""
 ## the lamp (share of the reach), the turn starting, its length, the
 ## pull-out from .. to]. (Off for the tests that play a run straight away.)
 static var intro := true
+## User request (the floating ghost, plan B, shown to the user first): an airy ghost - its lower
+## body and tail thinning out into mist, a trail of mist behind, drifting as a thing in the air
+## does (_mist_ghost / _drift_ghost). Off until the user's seen it next to the old one.
+static var ghost_mist := false
 ## User request (round 2): the hand on the lamp before it leaves the drum
 ## (grabbed once the fingers are on its bail - by "grab" of the reach at the
 ## latest); then held up and lit - the right hand brought to its glass
@@ -1960,6 +1964,207 @@ func _add_creature(n: Node) -> void:
 		"last": at, "size": float(spec[0]), "lift": float(spec[2]), "time": _rng.randf() * 10.0}
 	if kind == "dragon":
 		_dragon_gear(_creatures[n], model)
+	if kind == "ghost" and ghost_mist:
+		_mist_ghost(_creatures[n], model)
+
+
+const GHOST_MIST := preload("res://shaders/ghost_mist.gdshader")
+## The airy ghost's drift: its spring (how quickly it follows where the game has it - rad/s - and
+## how little it settles: under 1 it sways past and back), its weave as it goes (m, rad/s), its
+## rise and fall (a slow change of height, m, and two bobs that don't keep time), how far it
+## leans and banks (rad), how slowly it turns (/s).
+const MIST_SPRING := 4.2
+const MIST_DAMP := 0.62
+const MIST_WEAVE := Vector2(0.2, 1.3)
+const MIST_HEIGHT := 0.2
+const MIST_BOB := Vector2(0.09, 0.05)
+const MIST_LEAN := 0.32
+const MIST_BANK := 0.3
+const MIST_TURN := 2.2
+## (the middle of its head, over its holder: m)
+const MIST_HEAD := Vector3(-0.18, 1.6, 0.05)
+
+
+## The ghost made airy (ghost_mist): its body thins into mist from the waist down (the hard tail
+## goes with it - shaders/ghost_mist.gdshader), its claws and eyes kept; mist drifts off it and
+## hangs behind where it's been; a soft shadow under it, smaller and fainter the higher it is.
+func _mist_ghost(c: Dictionary, model: Node3D) -> void:
+	var parts: Array = model.find_children("*", "MeshInstance3D", true, false)
+	var body: MeshInstance3D = null
+	for mi in parts:
+		var m := mi as MeshInstance3D
+		if body == null or _verts(m) > _verts(body):
+			body = m
+	var whole := ShaderMaterial.new()
+	whole.shader = GHOST_MIST
+	whole.set_shader_parameter("waist", 0.0)
+	whole.set_shader_parameter("gone", 0.0)
+	whole.set_shader_parameter("core_alpha", 0.78)
+	var eye := StandardMaterial3D.new()
+	eye.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	eye.albedo_color = Color(0.05, 0.04, 0.09)
+	var thin: Array = []
+	for mi in parts:
+		var m := mi as MeshInstance3D
+		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		for i in m.mesh.get_surface_count():
+			m.set_surface_override_material(i, null)
+		if m == body:
+			var mat := ShaderMaterial.new()
+			mat.shader = GHOST_MIST
+			m.material_override = mat
+			thin.append(m)
+		elif _verts(m) < 100:
+			# (the eyes: the four little ones)
+			m.material_override = eye
+		else:
+			m.material_override = whole
+			thin.append(m)
+	c.mist = thin
+	c.phase = _rng.randf() * TAU
+	var holder: Node3D = c.node
+	var trail := CPUParticles3D.new()
+	trail.name = "Mist"
+	trail.amount = 12 if _low else 22
+	trail.lifetime = 1.0
+	trail.local_coords = false
+	trail.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	trail.emission_sphere_radius = 0.16
+	trail.direction = Vector3.DOWN
+	trail.spread = 70.0
+	trail.initial_velocity_min = 0.05
+	trail.initial_velocity_max = 0.25
+	trail.gravity = Vector3(0, 0.12, 0)
+	trail.damping_min = 0.3
+	trail.damping_max = 0.6
+	trail.angle_min = 0.0
+	trail.angle_max = 360.0
+	trail.scale_amount_min = 0.7
+	trail.scale_amount_max = 1.2
+	var grow := Curve.new()
+	grow.add_point(Vector2(0.0, 0.5))
+	grow.add_point(Vector2(1.0, 1.6))
+	trail.scale_amount_curve = grow
+	var ramp := Gradient.new()
+	ramp.offsets = PackedFloat32Array([0.0, 0.25, 1.0])
+	var tint := Color(0.82, 0.88, 1.0)
+	ramp.colors = PackedColorArray([Color(tint, 0.0), Color(tint, 0.2), Color(tint, 0.0)])
+	trail.color_ramp = ramp
+	trail.mesh = _mist_puff()
+	# (out of where the body thins away)
+	trail.position = Vector3(-0.15, 1.18, -0.02)
+	holder.add_child(trail)
+	var blob := MeshInstance3D.new()
+	blob.name = "Shadow"
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(1.2, 1.2)
+	blob.mesh = plane
+	var shade := StandardMaterial3D.new()
+	shade.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	shade.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	shade.albedo_texture = _soft_round()
+	shade.albedo_color = Color(0.0, 0.0, 0.02, 0.45)
+	blob.material_override = shade
+	blob.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	blob.top_level = true
+	holder.add_child(blob)
+	c.blob = blob
+	c.shade = shade
+
+
+static func _verts(m: MeshInstance3D) -> int:
+	return m.mesh.surface_get_array_len(0) if m.mesh != null and m.mesh.get_surface_count() > 0 else 0
+
+
+## A soft round spot, white in the middle fading out to its edge.
+var _round_tex: GradientTexture2D
+
+
+func _soft_round() -> GradientTexture2D:
+	if _round_tex == null:
+		var g := Gradient.new()
+		g.offsets = PackedFloat32Array([0.0, 0.45, 1.0])
+		g.colors = PackedColorArray([Color(1, 1, 1, 1), Color(1, 1, 1, 0.55), Color(1, 1, 1, 0)])
+		_round_tex = GradientTexture2D.new()
+		_round_tex.gradient = g
+		_round_tex.fill = GradientTexture2D.FILL_RADIAL
+		_round_tex.fill_from = Vector2(0.5, 0.5)
+		_round_tex.fill_to = Vector2(1.0, 0.5)
+		_round_tex.width = 64
+		_round_tex.height = 64
+	return _round_tex
+
+
+## A puff of the ghost's mist (facing the camera, its colour the particle's).
+var _puff: QuadMesh
+
+
+func _mist_puff() -> QuadMesh:
+	if _puff == null:
+		_puff = QuadMesh.new()
+		_puff.size = Vector2(0.5, 0.5)
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.vertex_color_use_as_albedo = true
+		m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+		m.albedo_texture = _soft_round()
+		_puff.material = m
+	return _puff
+
+
+## The airy ghost where the game has it: following on a spring (eased off, swaying a little past
+## where it stops), weaving as it goes, rising and falling, leaning into its going and banking
+## into its turns, slow to turn to face its way - and its shadow under it.
+func _drift_ghost(c: Dictionary, node: Node2D, delta: float) -> void:
+	var holder: Node3D = c.node
+	var at := node.global_position
+	var goal3 := to3(at)
+	var goal := Vector2(goal3.x, goal3.z)
+	if not c.has("p") or (c.p as Vector2).distance_to(goal) > 4.0:
+		c.p = goal
+		c.v = Vector2.ZERO
+		c.pitch = 0.0
+		c.roll = 0.0
+	var p: Vector2 = c.p
+	var v: Vector2 = c.v
+	var acc := (goal - p) * MIST_SPRING * MIST_SPRING - v * 2.0 * MIST_DAMP * MIST_SPRING
+	v += acc * delta
+	p += v * delta
+	c.p = p
+	c.v = v
+	var speed := v.length()
+	var going := clampf(speed / 1.6, 0.0, 1.0)
+	var dir := v / speed if speed > 0.05 else Vector2.ZERO
+	var t: float = c.time
+	var shown := p + Vector2(-dir.y, dir.x) * MIST_WEAVE.x * sin(t * MIST_WEAVE.y) * going
+	var y := ground_y(at)
+	var rise := MIST_HEIGHT * sin(t * 0.5 + float(c.phase)) \
+		+ (MIST_BOB.x * sin(t * 1.9) + MIST_BOB.y * sin(t * 0.83 + 1.1)) * (1.0 - 0.5 * going) + 0.12 * going
+	holder.position = Vector3(shown.x, y + rise, shown.y)
+	var head := holder.transform * MIST_HEAD
+	for m in c.mist:
+		(m as GeometryInstance3D).set_instance_shader_parameter("base_y", holder.position.y)
+		(m as GeometryInstance3D).set_instance_shader_parameter("center", head)
+	var turn := 0.0
+	if speed > 0.1:
+		var yaw := lerp_angle(float(c.yaw), atan2(v.x, v.y), minf(1.0, delta * MIST_TURN))
+		turn = angle_difference(float(c.yaw), yaw) / maxf(delta, 0.001)
+		c.yaw = yaw
+	holder.rotation.y = c.yaw
+	var ahead := acc.dot(dir) if speed > 0.05 else 0.0
+	c.pitch = lerpf(c.pitch, clampf(speed * 0.12 + ahead * 0.05, -0.18, MIST_LEAN), minf(1.0, delta * 3.0))
+	c.roll = lerpf(c.roll, clampf(-turn * 0.22, -MIST_BANK, MIST_BANK) + 0.05 * sin(t * 1.1), minf(1.0, delta * 3.0))
+	holder.rotation.x = c.pitch
+	holder.rotation.z = c.roll
+	var breath := sin(t * 2.4)
+	holder.scale = Vector3(1.0 - 0.035 * breath, 1.0 + 0.045 * breath, 1.0 - 0.035 * breath)
+	var blob: MeshInstance3D = c.blob
+	var high := clampf((rise + MIST_HEIGHT) / (2.0 * MIST_HEIGHT + 0.2), 0.0, 1.0)
+	blob.global_transform = Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * lerpf(1.05, 0.75, high)),
+		Vector3(shown.x, maxf(y, WATER_Y) + 0.03, shown.y))
+	var shade: StandardMaterial3D = c.shade
+	shade.albedo_color = Color(shade.albedo_color, lerpf(0.5, 0.25, high))
 
 
 ## The snowy map's animals in their winter coats: how white each goes (the fox an arctic fox,
@@ -2236,6 +2441,9 @@ func _sync_creatures(delta: float) -> void:
 		if not on:
 			continue
 		c.time += delta
+		if c.has("mist"):
+			_drift_ghost(c, node, delta)
+			continue
 		var at := node.global_position
 		var vel := (at - (c.last as Vector2)) / maxf(delta, 0.001)
 		if n is CharacterBody2D:
