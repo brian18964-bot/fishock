@@ -35,7 +35,8 @@ const LIVE_AGAIN := 25.0
 const MERCHANT_ROOM := 0.55
 
 ## The menu along the bottom: [page, its name].
-const QUICK := [["shop", "商城"], ["warehouse", "倉庫"], ["equipment", "裝備"], ["fish_tank", "魚缸"], ["journey", "出發"]]
+## (user request: 出發 is a button of its own beside it now, not one of these)
+const QUICK := [["shop", "商城"], ["warehouse", "倉庫"], ["equipment", "裝備"], ["fish_tank", "魚缸"]]
 
 var _joystick: Control
 ## A page opened from the menu: the camp stays live under it, the character
@@ -68,9 +69,14 @@ func _build() -> void:
 	# User request: a menu - each opens its page at once,
 	# the character going over to do its bit behind it (出發夜釣 is its
 	# 出發 now; 多人連線 up under the gold).
-	var play := _home.get_node_or_null("Play") as Control
+	# (user request: 出發 out of the folded menu, a button of its own - the chooser)
+	var play := _home.get_node_or_null("Play") as Button
 	if play != null:
-		play.visible = false
+		play.text = "出發"
+		play.add_theme_font_size_override("font_size", 22)
+		play.custom_minimum_size = Vector2(150, 54)
+		play.size = play.custom_minimum_size
+		play.position = Vector2(664, 474)
 	var multi := _home.get_node_or_null("Multiplayer") as Control
 	if multi != null:
 		multi.position = Vector2(764, 94)

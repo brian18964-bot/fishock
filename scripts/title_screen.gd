@@ -475,6 +475,10 @@ func _ask(spot: String) -> void:
 func _open_asked() -> void:
 	var page := _asked_page
 	_asked_page = ""
+	if page == "journey" and _page == null and _home.visible:
+		# (the 渡石: the way out - the chooser, as 出發)
+		_on_play()
+		return
 	if page != "" and _page == null and _home.visible:
 		open_page(page, _asked_tab)
 
@@ -617,10 +621,12 @@ func _exit_tree() -> void:
 	Engine.max_fps = 0
 
 
-## User request (the campaign): 出發夜釣 opens the journey - the levels,
-## the free run, the achievements - and the run picked there sets off.
+## User request: 出發 opens the chooser - 劇情模式 (the journey page's chapters) or 自由模式
+## (alone or with others, then the map) - and the run picked there sets off.
 func _on_play() -> void:
-	open_page("journey")
+	if find_child("DepartChooser", false, false) != null:
+		return
+	DepartChooser.open(self, self)
 
 
 func depart_level(id: String) -> void:

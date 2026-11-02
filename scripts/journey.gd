@@ -1,16 +1,14 @@
 extends Control
 
-## User request (the campaign): where a run is chosen - the camp's 出發夜釣
-## opens it. Three tabs:
+## User request (the campaign): 劇情模式 - the camp's 出發 chooser (DepartChooser) opens it. Two
+## tabs:
 ##   冒險      the five chapters; each chapter's five levels along a winding
 ##            path (stars won, locked ones dark, the next one pulsing), and
 ##            the chosen level's card: what it teaches, its map and danger,
 ##            its stars' conditions, the first-clear reward, Willow's hints
 ##            on or off, and 出發.
-##   自由夜釣   the free run (a random map, everything in it); after the last
-##            chapter, curses to make it harder for more gold.
 ##   成就      the achievements and how far along each is.
-## Setting off goes back to the camp (TitleScreen.depart_level / depart_free)
+## (The free run is DepartChooser's 自由模式.) Setting off goes back to the camp (TitleScreen.depart_level)
 ## for the walk out to the stone.
 
 const CH_NUM := ["一", "二", "三", "四", "五"]
@@ -30,15 +28,15 @@ var _card: VBoxContainer
 var _purse: PanelContainer
 var _stars_label: Label
 var _t := 0.0
-var _picked_curses: Array = []
 
 
 func _ready() -> void:
 	# Ones earned at the camp (the shop, the fish log) count here too.
 	Campaign.check_achievements()
-	_purse = UiKit.page_chrome(self, func(): UiKit.page_back(self), "BackButton", "depart")
+	# (user request: no page row here - 出發 is chosen when ready, from the camp's own button)
+	_purse = UiKit.page_chrome(self, func(): UiKit.page_back(self), "BackButton")
 	UiKit.set_purse(_purse, Profile.gold)
-	var made := UiKit.window("旅程")
+	var made := UiKit.window("劇情模式")
 	var book: PanelContainer = made[0]
 	var col: VBoxContainer = made[1]
 	book.position = Vector2(14, 56)
@@ -46,7 +44,8 @@ func _ready() -> void:
 	book.size = book.custom_minimum_size
 	var bar := HBoxContainer.new()
 	bar.add_theme_constant_override("separation", 8)
-	for t in [["story", "冒險"], ["free", "自由夜釣"], ["achievements", "成就"]]:
+	# (the free run is chosen in DepartChooser's 自由模式)
+	for t in [["story", "冒險"], ["achievements", "成就"]]:
 		var b := UiKit.button(t[1], 16)
 		b.name = "Tab_" + t[0]
 		b.custom_minimum_size = Vector2(120, 38)
@@ -86,8 +85,6 @@ func _show_tab(key: String) -> void:
 	match key:
 		"story":
 			_build_story()
-		"free":
-			_build_free()
 		"achievements":
 			_build_achievements()
 
@@ -298,93 +295,6 @@ func _depart_level(id: String) -> void:
 		camp.call("depart_level", id)
 		return
 	Campaign.begin_level(id)
-	GameState.start_run()
-	get_tree().change_scene_to_file("res://scenes/main.tscn")
-
-
-# ---------------------------------------------------------------- 自由夜釣
-
-## The free run's map style ("" the lakeside forest, "snow_pine" the snowy one).
-var _free_theme := ""
-
-
-func _build_free() -> void:
-	var box := VBoxContainer.new()
-	box.name = "FreeRun"
-	box.add_theme_constant_override("separation", 8)
-	box.position = Vector2(10, 6)
-	box.custom_minimum_size = Vector2(880, 0)
-	_body.add_child(box)
-	box.add_child(UiKit.label("自由夜釣", 22, UiKit.GOLD_BRIGHT, true))
-	var about := UiKit.label("隨機的大地圖、隨機的風景，所有威脅都在。額度 30，五分鐘。", 15, UiKit.TEXT)
-	about.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	about.custom_minimum_size.x = 860
-	box.add_child(about)
-	box.add_child(UiKit.label("紀錄：成功逃脫 %d 次　入夜後逃脫 %d 次　釣到 %d 條魚" % [int(Profile.stats.get("escapes", 0)),
-		int(Profile.record("escaped_night")), int(Profile.record("catch"))], 14, UiKit.DIM))
-	if not Campaign.free_open():
-		box.add_child(UiKit.label("通過第一章「初渡」後開放。", 16, UiKit.DANGER, true))
-		return
-	if Campaign.curses_open():
-		box.add_child(UiKit.label("詛咒：自己加難度，成功離開時依獻祭總值多拿金幣。", 15, UiKit.GOLD))
-		var grid := GridContainer.new()
-		grid.columns = 3
-		grid.add_theme_constant_override("h_separation", 16)
-		grid.add_theme_constant_override("v_separation", 4)
-		for key in Campaign.CURSE_ORDER:
-			var c: Dictionary = Campaign.CURSES[key]
-			var cb := CheckButton.new()
-			cb.name = "Curse_" + key
-			cb.text = "%s：%s（+%d%%）" % [c.name, c.desc, int(roundf(float(c.bonus) * 100.0))]
-			cb.focus_mode = Control.FOCUS_NONE
-			cb.add_theme_font_size_override("font_size", 14)
-			cb.button_pressed = key in _picked_curses
-			cb.toggled.connect(func(on):
-				if on and not key in _picked_curses:
-					_picked_curses.append(key)
-				elif not on:
-					_picked_curses.erase(key)
-				_show_tab("free"))
-			grid.add_child(cb)
-		box.add_child(grid)
-		var bonus := 0.0
-		for k in _picked_curses:
-			bonus += float(Campaign.CURSES[k].bonus)
-		box.add_child(UiKit.label("金幣加成：+%d%%　　最多同時通過 %d 種詛咒" % [int(roundf(bonus * 100.0)),
-			int(Profile.campaign.get("best_curses", 0))], 15, UiKit.GOLD_BRIGHT))
-	else:
-		box.add_child(UiKit.label("通過第五章後，可以加上「詛咒」挑戰更高難度。", 14, UiKit.DIM))
-	# The map's look: the lakeside forest, or the same forest under snow.
-	var looks := HBoxContainer.new()
-	looks.add_theme_constant_override("separation", 8)
-	looks.add_child(UiKit.label("地圖風格", 15, UiKit.GOLD))
-	for pair in [["", "湖畔森林"], ["snow_pine", "雪地森林"]]:
-		var b := UiKit.button(pair[1], 15, "red" if _free_theme == pair[0] else "gray")
-		b.name = "Look_" + (pair[0] if pair[0] != "" else "forest")
-		b.custom_minimum_size = Vector2(120, 36)
-		var key: String = pair[0]
-		b.pressed.connect(func():
-			_free_theme = key
-			_show_tab("free"))
-		looks.add_child(b)
-	box.add_child(looks)
-	var go := UiKit.button("出發：3D %s" % ("雪地森林" if _free_theme == "snow_pine" else "湖畔森林"), 20, "red")
-	go.name = "GoFree"
-	go.custom_minimum_size = Vector2(240, 52)
-	go.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	go.pressed.connect(_depart_free)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 16)
-	row.add_child(go)
-	box.add_child(row)
-
-
-func _depart_free() -> void:
-	var camp: Object = get_meta("camp", null)
-	if camp != null and is_instance_valid(camp) and camp.has_method("depart_free"):
-		camp.call("depart_free", _picked_curses, _free_theme)
-		return
-	Campaign.begin_free(_picked_curses, _free_theme)
 	GameState.start_run()
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
 

@@ -12,6 +12,7 @@ const TESTS := [
 	"test_campaign_curses",
 	"test_campaign_unlocks_and_achievements",
 	"test_journey_page",
+	"test_depart_chooser",
 	"test_run_3d",
 	"test_map_generation",
 	"test_layout_clear",
@@ -4016,8 +4017,10 @@ func test_camp_life() -> void:
 		await frames(1)
 		if title._page != null:
 			break
-	check(title._page != null and title._page.name.to_lower().contains("journey"), "a tap on it opens the journey (出發夜釣)")
-	UiKit.page_back(title._page)
+	var chooser: Node = title.find_child("DepartChooser", true, false)
+	check(chooser != null, "a tap on it opens 出發's chooser (劇情 / 自由)")
+	if chooser != null:
+		chooser.queue_free()
 	await seconds(0.8)
 	camp.view_pan = 0.0
 	# User request: lying down only in the tent - in under it, down, asleep,
@@ -5034,9 +5037,16 @@ func test_journey_page() -> void:
 	await frames(4)
 	var title: Node = get_tree().current_scene
 	title._on_play()
+	await frames(10)
+	var chooser: DepartChooser = title.find_child("DepartChooser", true, false)
+	check(chooser != null and chooser.find_child("StoryMode", true, false) != null and chooser.find_child("FreeMode", true, false) != null,
+		"出發 opens the chooser: 劇情模式 | 自由模式")
+	(chooser.find_child("GoStory", true, false) as Button).pressed.emit()
 	await frames(30)
 	var page: Node = title.find_child("Journey", true, false)
-	check(page != null, "出發夜釣 opens the journey")
+	check(page != null, "劇情模式 opens the journey's chapters")
+	check(page.find_child("PageNav", true, false) == null and page.find_child("Tab_free", true, false) == null,
+		"no page row on it, no free run tab (that's 自由模式's)")
 	check(page.selected == "1-1", "the first level picked to begin with")
 	page.select("1-3")
 	await frames(2)
@@ -5044,9 +5054,6 @@ func test_journey_page() -> void:
 	page._show_tab("achievements")
 	await frames(2)
 	check(page.find_child("Achievements", true, false) != null, "the achievements tab")
-	page._show_tab("free")
-	await frames(2)
-	check(page.find_child("GoFree", true, false) == null or camp().free_open(), "the free run waits for chapter 1")
 	page._show_tab("story")
 	page.select("1-1")
 	await frames(2)
@@ -5058,6 +5065,67 @@ func test_journey_page() -> void:
 	main = get_tree().current_scene
 	check(main != null and main.name == "Main" and camp().level_id == "1-1", "off into 1-1")
 	check(Player.WORLD_WIDTH < 1400.0 * RunView3D.MAP_SCALE, "on its small map")
+
+
+## User request: 出發 a button of its own on the camp's screen (not in the folded menu); tapped, a
+## window of two halves - 劇情模式 (the tutorial and story: the journey's chapters) and 自由模式
+## (單人 / 多人, then the map, and off). The pages' top row has no 出發.
+func test_depart_chooser() -> void:
+	reset_progress()
+	get_tree().change_scene_to_file(Camp3D.SCENE)
+	await frames(30)
+	var camp_screen: Node = get_tree().current_scene
+	var play: Button = camp_screen.find_child("Play", true, false)
+	check(play != null and play.is_visible_in_tree() and play.text == "出發", "出發 on the camp's screen, a button of its own")
+	check(camp_screen.find_child("Quick_journey", true, false) == null, "and not in the folded menu")
+	check(not UiKit.NAV.any(func(n): return n[0] in ["journey", "depart"]), "nor in the pages' top row")
+	play.pressed.emit()
+	await frames(5)
+	var chooser: DepartChooser = camp_screen.find_child("DepartChooser", true, false)
+	check(chooser != null, "tapped: the chooser")
+	var story: Control = chooser.find_child("StoryMode", true, false)
+	var free: Control = chooser.find_child("FreeMode", true, false)
+	check(story != null and free != null and story.get_global_rect().position.x < free.get_global_rect().position.x,
+		"劇情模式 on the left, 自由模式 on the right")
+	check((story.find_child("Picture", true, false) as TextureRect).texture != null and (free.find_child("Picture", true, false) as TextureRect).texture != null,
+		"each with its picture")
+	check((chooser.find_child("GoSolo", true, false) as Button).disabled and chooser.find_child("FreeLocked", true, false) != null,
+		"自由模式 waits for chapter 1")
+	chooser.queue_free()
+	await frames(2)
+	# Chapter 1 cleared: 單人 -> the maps -> off on the snowy one.
+	var escapes_were = Profile.stats.get("escapes", 0)
+	Profile.stats["escapes"] = 1
+	check(Campaign.free_open(), "(the free run open: a night got through)")
+	chooser = DepartChooser.open(camp_screen, camp_screen)
+	await frames(3)
+	var multi: Button = chooser.find_child("GoMulti", true, false)
+	multi.pressed.emit()
+	await frames(2)
+	check(chooser.get_child_count() > 0 and chooser.find_children("*", "Label", true, false).any(func(l): return (l as Label).text.contains("開發中")),
+		"多人: not yet - it says so")
+	(chooser.find_child("GoSolo", true, false) as Button).pressed.emit()
+	await frames(2)
+	check(chooser.step == "maps" and chooser.find_child("Map_forest", true, false) != null and chooser.find_child("Map_snow_pine", true, false) != null,
+		"單人: the maps to choose from")
+	(chooser.find_child("Map_snow_pine", true, false) as Button).pressed.emit()
+	await frames(2)
+	check(chooser.map_theme == "snow_pine" and (chooser.find_child("GoFree", true, false) as Button).text.contains("雪地森林"), "the snowy one picked")
+	(chooser.find_child("BackToModes", true, false) as Button).pressed.emit()
+	await frames(2)
+	check(chooser.step == "mode", "‹ 返回: back to the two halves")
+	(chooser.find_child("GoSolo", true, false) as Button).pressed.emit()
+	await frames(2)
+	(chooser.find_child("GoFree", true, false) as Button).pressed.emit()
+	for i in 60 * 30:
+		await get_tree().process_frame
+		if get_tree().current_scene != null and get_tree().current_scene.name == "Main":
+			break
+	main = get_tree().current_scene
+	check(main != null and main.name == "Main" and MapGenerator.current_theme == "snow_pine", "off on the snowy map")
+	Profile.stats["escapes"] = escapes_were
+	reset_progress()
+	camp().clear()
 
 
 ## The profile's things as they are, to put back after a test that buys.
@@ -7979,7 +8047,7 @@ func test_fight_stats() -> void:
 func test_camp_pages_nav() -> void:
 	var saved := Profile.snapshot()
 	Profile.load_data({"gold": 500})
-	for scene in ["shop", "warehouse", "equipment", "fish_tank", "fish_log", "journey"]:
+	for scene in ["shop", "warehouse", "equipment", "fish_tank", "fish_log"]:
 		var pg: Control = load("res://scenes/%s.tscn" % scene).instantiate()
 		get_tree().root.add_child(pg)
 		await frames(2)
