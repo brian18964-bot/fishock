@@ -61,7 +61,7 @@ void vertex() {
 	arm = smoothstep(0.24, 0.42, length(off)) * smoothstep(-0.02, 0.12, off.y)
 		* (1.0 - smoothstep(0.1, 0.22, abs(local.y - ARMS)));
 	float side = local.x * 9.0;
-	vec3 paw = vec3(0.0, 0.045 * sin(paw_t * 2.6 + side), 0.03 * sin(paw_t * 2.6 + side + 1.2));
+	vec3 paw = vec3(0.0, 0.1 * sin(paw_t * 2.6 + side), 0.07 * sin(paw_t * 2.6 + side + 1.2));
 	VERTEX += (from_ghost * vec4((hand + paw) * arm, 0.0)).xyz;
 	world = VERTEX;
 }

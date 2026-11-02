@@ -15,6 +15,7 @@ const TESTS := [
 	"test_depart_chooser",
 	"test_run_3d",
 	"test_ghost_mist",
+	"test_load_state",
 	"test_map_generation",
 	"test_layout_clear",
 	"test_proto3d",
@@ -4315,6 +4316,41 @@ func test_status_card_opens_bag() -> void:
 	check(card.feed.is_empty(), "and they fade away")
 
 
+## User request: 滿載而歸 - the fish carried that slow the traveller as a state of its own under
+## the card, how many in its corner (one each, on past the floor), the slowing stopping at 40%;
+## a tap on a state's icon says what it is.
+func test_load_state() -> void:
+	main.get_node("Loading").visible = false
+	var card: StatusCard = null
+	for c in main.get_children():
+		if c is StatusCard:
+			card = c
+	await frames(2)
+	check(not card._slots.any(func(sl): return sl[1] == "load"), "no fish: no 滿載而歸")
+	for i in 3:
+		gs.add_carried_fish(fish())
+	await frames(2)
+	var slot: Array = []
+	for sl in card._slots:
+		if sl[1] == "load":
+			slot = sl
+	check(not slot.is_empty() and StatusCard.load_count() == 3, "three fish: 滿載而歸, 3")
+	var says := StatusCard.tip_text("load", player())
+	check(says.contains("滿載而歸") and says.contains("85%"), "it says what it is: 3 fish, 85%% (%s)" % says)
+	for i in 11:
+		gs.add_carried_fish(fish())
+	await frames(2)
+	check(StatusCard.load_count() == 14 and is_equal_approx(Player.carry_speed_ratio(14), Player.MIN_SPEED_RATIO)
+		and StatusCard.tip_text("load", player()).contains("已達上限"), "14 fish: counted on, the slowing at its floor (40%)")
+	await _tap_at((slot[0] as Rect2).get_center(), true)
+	await frames(2)
+	check(card._tip.visible and card._tip_text.text.contains("滿載而歸"), "a tap on its icon: what it is")
+	await _tap_at(Vector2(480, 300), true)
+	await frames(2)
+	check(not card._tip.visible, "a tap elsewhere: put away")
+	gs.carried_fish.clear()
+
+
 func test_floating_ghost_budget() -> void:
 	for i in 8:
 		gs.add_carried_fish(fish())
@@ -4511,6 +4547,22 @@ func test_bag_card_closes() -> void:
 	await frames(2)
 	check(not bag._card.visible, "a tap in the bag off the card closes it")
 	check(bag.is_open(), "and the bag stays open")
+	# A tap on another thing in the bag while a card's up only puts the card away (a tap meant
+	# for the ✕, a little off, no longer opens what lay under it); the ✕'s ring is the ✕ too.
+	await seconds(0.6)
+	bag.select("fish", 0)
+	await frames(3)
+	var other: Rect2 = bag._grid.get_global_transform() * Rect2(Vector2(under) * Backpack.CELL, Vector2.ONE * Backpack.CELL)
+	await _tap_at(other.get_center(), true)
+	await frames(2)
+	check(not bag._card.visible and bag._selected.is_empty(), "a tap on another thing with a card up: the card goes, no other opens")
+	await seconds(0.6)
+	bag.select("fish", 0)
+	await frames(6)
+	var ring := x.get_global_rect().get_center() + Vector2(x.size.x * 0.5 + Backpack.CLOSE_PAD - 3.0, 0)
+	await _tap_at(ring, true)
+	await frames(2)
+	check(not bag._card.visible, "a tap just off the ✕ closes the card too")
 	bag.toggle()
 
 

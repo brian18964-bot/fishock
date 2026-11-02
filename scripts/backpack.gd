@@ -202,6 +202,19 @@ func _build_card() -> void:
 	var close := UiKit.close_button()
 	close.pressed.connect(deselect)
 	head.add_child(close)
+	# (user report, a phone: the ✕ was hard to hit - a finger a little off it fell through to
+	# the bag under the card: a wider ring round it that's the ✕ too)
+	var hit := Button.new()
+	hit.name = "CloseHit"
+	hit.flat = true
+	hit.focus_mode = Control.FOCUS_NONE
+	hit.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+	hit.add_theme_stylebox_override("hover", StyleBoxEmpty.new())
+	hit.add_theme_stylebox_override("pressed", StyleBoxEmpty.new())
+	hit.position = -Vector2.ONE * CLOSE_PAD
+	hit.size = Vector2(34, 34) + Vector2.ONE * CLOSE_PAD * 2.0
+	hit.pressed.connect(deselect)
+	close.add_child(hit)
 	col.add_child(head)
 	_detail = _label("", 15, UiKit.TEXT)
 	_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -276,6 +289,20 @@ var _closed_at := -100000
 
 func just_closed() -> bool:
 	return Time.get_ticks_msec() - _closed_at < REOPEN_GUARD_MS
+
+
+## How far round the card's ✕ a tap still is the ✕ (px).
+const CLOSE_PAD := 12.0
+
+
+## A tap on the bag's grid or a gear slot while a card's up: it only puts the card away (user
+## report: a tap meant for the ✕, a little off, opened the card of what lay under it - it
+## looked as if the card wouldn't close). True: it was taken so.
+func tap_closes_card() -> bool:
+	if not _card.visible:
+		return false
+	deselect()
+	return true
 
 
 func _process(delta: float) -> void:
@@ -1032,7 +1059,7 @@ class GridView extends Control:
 				if _press >= 0 and _press < items.size():
 					if _dragging:
 						owner_bag.drag_end(items[_press], get_global_transform() * event.position)
-					elif not owner_bag.just_closed():
+					elif not owner_bag.just_closed() and not owner_bag.tap_closes_card():
 						owner_bag.select(items[_press].kind, items[_press].index)
 				else:
 					owner_bag.deselect()
@@ -1150,7 +1177,7 @@ class EquipSlot extends Control:
 				if _dragging:
 					owner_bag.drag_end({"kind": "slot", "index": slot, "item": id}, get_global_transform() * event.position)
 				else:
-					if not owner_bag.just_closed():
+					if not owner_bag.just_closed() and not owner_bag.tap_closes_card():
 						owner_bag.select("slot", slot)
 				_dragging = false
 			accept_event()

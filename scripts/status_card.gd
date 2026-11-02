@@ -65,6 +65,16 @@ var _hooked: Player
 var feed: Array = []
 
 var _view: Node2D
+## The state slots drawn under the card this frame: [rect, key] (key: "ability", an item id for
+## what's been used, "load" for 滿載而歸).
+var _slots: Array = []
+## The little card a tapped state's slot opens: what it is (TIP_LIFE s, or until a tap elsewhere).
+var _tip: PanelContainer
+var _tip_text: Label
+var _tip_key := ""
+var _tip_left := 0.0
+const TIP_LIFE := 6.0
+const TIP_WIDTH := 260.0
 var _portrait: Texture2D
 var _font: Font
 var _touchscreen := false
@@ -82,6 +92,17 @@ func _ready() -> void:
 	_view = Node2D.new()
 	_view.draw.connect(_draw_card)
 	add_child(_view)
+	_tip = UiKit.tooltip_panel()
+	_tip.name = "StateTip"
+	_tip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tip.custom_minimum_size = Vector2(TIP_WIDTH, 0)
+	_tip.visible = false
+	_tip_text = UiKit.label("", 14, UiKit.TEXT)
+	_tip_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_tip_text.custom_minimum_size = Vector2(TIP_WIDTH - 20.0, 0)
+	_tip_text.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tip.add_child(_tip_text)
+	add_child(_tip)
 	GameState.event_reported.connect(_on_event)
 
 
@@ -125,6 +146,12 @@ func _process(delta: float) -> void:
 		_hooked = p
 		p.ability_triggered.connect(func(_k, _at, _n): _ability_flash = ABILITY_FLASH)
 	_ability_flash = maxf(_ability_flash - delta, 0.0)
+	if _tip.visible:
+		_tip_left -= delta
+		if _tip_left <= 0.0:
+			_tip.visible = false
+		elif p != null:
+			_tip_text.text = tip_text(_tip_key, p)
 	for line in feed:
 		line[2] += delta
 	feed = feed.filter(func(line): return line[2] < FEED_LIFE + FEED_FADE)
@@ -137,7 +164,20 @@ func _input(event: InputEvent) -> void:
 		pos = event.position
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and not _touchscreen:
 		pos = event.position
-	if pos.x < 0.0 or not contains(pos):
+	if pos.x < 0.0:
+		return
+	# (user request: a tap on a state's icon says what it is; a tap anywhere else puts that away)
+	for slot in _slots:
+		if (slot[0] as Rect2).grow(4.0).has_point(pos):
+			if _tip.visible and _tip_key == str(slot[1]):
+				_tip.visible = false
+			else:
+				_show_tip(str(slot[1]), slot[0])
+			get_viewport().set_input_as_handled()
+			return
+	if _tip.visible:
+		_tip.visible = false
+	if not contains(pos):
 		return
 	for c in get_parent().get_children():
 		if c is DialogBox and c.is_open():
@@ -152,10 +192,11 @@ func _player() -> Player:
 	return get_tree().get_first_node_in_group("player") as Player
 
 
-## How fast the player moves now, as a share of full speed.
+## How fast the player moves now, as a share of full speed (as Player moves it: the load, a
+## muddle or a stagger, poison, the oil drum, low spirit, the vigor potion, the cat at night).
 static func speed_share(p: Player) -> float:
 	var share := Player.carry_speed_ratio(GameState.carried_fish.size())
-	if p.water_ghost_timer > 0.0:
+	if p.water_ghost_timer > 0.0 or p.stagger_timer > 0.0:
 		share *= Player.WATER_GHOST_SPEED_MULT
 	if p.poison_timer > 0.0:
 		share *= Player.POISON_SPEED_MULT
@@ -163,7 +204,54 @@ static func speed_share(p: Player) -> float:
 		share *= Player.OIL_DRUM_SPEED_MULT
 	if p.vigor_timer > 0.0:
 		share *= Player.VIGOR_SPEED
+	share *= Profile.SPIRIT_SPEED[Profile.spirit_penalty()]
 	return share * p.night_ratio()
+
+
+## User request: 滿載而歸 - the fish carried that slow the traveller (the bag's and the clasps':
+## GameState.carried_fish), one each; past Player's floor they still count, the slowing doesn't.
+static func load_count() -> int:
+	return GameState.carried_fish.size()
+
+
+## What a state's slot says when it's tapped.
+static func tip_text(key: String, p: Player) -> String:
+	match key:
+		"load":
+			var n := load_count()
+			var share := Player.carry_speed_ratio(n)
+			var lines := ["【滿載而歸】", "身上帶著 %d 條魚（背包＋活魚扣），每條讓腳步慢 %d%%。" % [n, roundi(Player.WEIGHT_SPEED_PENALTY * 100.0)],
+				"負重速度：%d%%" % roundi(share * 100.0)]
+			if share <= Player.MIN_SPEED_RATIO + 0.001:
+				lines.append("已達上限：再多的魚也不會更慢（最低 %d%%）。" % roundi(Player.MIN_SPEED_RATIO * 100.0))
+			lines.append("目前總速度：%d%%（含其他狀態）" % roundi(speed_share(p) * 100.0))
+			return "\n".join(lines)
+		"ability":
+			var kind := Abilities.active_kind()
+			if kind == "":
+				var t := Profile.talent_of()
+				if Abilities.TALENTS.has(t):
+					return "【天賦：%s】\n%s" % [Abilities.TALENTS[t].name, Abilities.talent_text(t)]
+				return ""
+			var info := Abilities.info(kind)
+			return "【%s】\n%s\n%s" % [info.get("name", ""), info.get("desc", ""),
+				"生效中" if Abilities.active(kind, p) else "目前未生效"]
+	for e in effects(p):
+		if e[0] == key:
+			return "【%s】\n%s\n剩餘 %d 秒" % [Items.name_of(key), str(Items.def(key).get("desc", "")), ceili(float(e[1]))]
+	return "【%s】\n已經結束了" % Items.name_of(key)
+
+
+func _show_tip(key: String, at: Rect2) -> void:
+	var p := _player()
+	if p == null:
+		return
+	_tip_key = key
+	_tip_text.text = tip_text(key, p)
+	_tip_left = TIP_LIFE
+	_tip.visible = true
+	_tip.reset_size()
+	_tip.position = Vector2(clampf(at.position.x, 8.0, 950.0 - TIP_WIDTH), at.end.y + 8.0)
 
 
 ## What's wrong (or of note), most pressing first.
@@ -240,10 +328,37 @@ func _draw_ability(p: Player) -> bool:
 	return true
 
 
+func _slot_rect(i: int) -> Rect2:
+	return Rect2(EFFECT_AT + Vector2((EFFECT_SLOT + EFFECT_GAP) * i, 0), Vector2.ONE * EFFECT_SLOT)
+
+
+## User request: 滿載而歸 - a fish in its slot, the share of speed the load's taken swept dark
+## round it, how many are carried in its corner (red once the slowing's at its floor).
+func _draw_load(i: int) -> void:
+	var r := _slot_rect(i)
+	var n := load_count()
+	var share := Player.carry_speed_ratio(n)
+	var full := share <= Player.MIN_SPEED_RATIO + 0.001
+	UiKit.draw_slot(_view, r, "", false, null)
+	var fish := FishData.icon("carp")
+	if fish != null:
+		var sz := fish.get_size()
+		var k := minf((r.size.x - 6.0) / sz.x, (r.size.y - 10.0) / sz.y)
+		_view.draw_texture_rect(fish, Rect2(r.get_center() - sz * k * 0.5 - Vector2(0, 2), sz * k), false)
+	var taken := (1.0 - share) / (1.0 - Player.MIN_SPEED_RATIO)
+	if taken > 0.0:
+		_view.draw_arc(r.get_center(), r.size.x * 0.5 - 1.5, -PI / 2.0, -PI / 2.0 + TAU * taken, 24,
+			Color(WARN, 0.85) if full else Color(1.0, 0.8, 0.35, 0.85), 2.5, true)
+	UiKit.draw_text(_view, Vector2(r.position.x, r.end.y - 2.0), str(n), 13, WARN if full else Color.WHITE,
+		HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 2.0, true)
+	_slots.append([r, "load"])
+
+
 func _draw_effects(list: Array, from := 0) -> void:
 	for i in list.size():
 		var e: Array = list[i]
-		var r := Rect2(EFFECT_AT + Vector2((EFFECT_SLOT + EFFECT_GAP) * (i + from), 0), Vector2.ONE * EFFECT_SLOT)
+		var r := _slot_rect(i + from)
+		_slots.append([r, str(e[0])])
 		UiKit.draw_slot(_view, r, "", false, Items.square_icon(e[0]))
 		# (the time gone swept dark round from the top)
 		var gone := 1.0 - clampf(float(e[1]) / float(e[2]), 0.0, 1.0)
@@ -285,9 +400,16 @@ func _draw_card() -> void:
 	if SHOW_GEAR:
 		_draw_gear(p)
 	var working := effects(p)
+	_slots.clear()
 	var ability := _draw_ability(p)
-	_draw_effects(working, 1 if ability else 0)
-	_draw_feed(EFFECT_SLOT + 6.0 if ability or not working.is_empty() else 0.0)
+	if ability:
+		_slots.append([_slot_rect(0), "ability"])
+	var at := 1 if ability else 0
+	if load_count() > 0:
+		_draw_load(at)
+		at += 1
+	_draw_effects(working, at)
+	_draw_feed(EFFECT_SLOT + 6.0 if at > 0 or not working.is_empty() else 0.0)
 	var line := x
 	for cond in conditions(p):
 		var w := UiKit.font().get_string_size(cond[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x

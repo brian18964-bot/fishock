@@ -1990,9 +1990,9 @@ const MIST_HEAD := Vector3(-0.18, 1.6, 0.05)
 ## they swing past and back) toward where its going leaves them: trailing behind (s of its
 ## speed, at most m) and lifted (m). The shader bends its arms to them and paws the air.
 const HAND_SPRING := 6.0
-const HAND_DAMP := 0.38
-const HAND_TRAIL := Vector2(0.09, 0.16)
-const HAND_LIFT := 0.05
+const HAND_DAMP := 0.3
+const HAND_TRAIL := Vector2(0.2, 0.35)
+const HAND_LIFT := 0.12
 ## Its blinks (user request): every so often (s), quick (s), now and then twice over.
 const BLINK_GAP := Vector2(1.5, 5.0)
 const BLINK_TIME := 0.16
