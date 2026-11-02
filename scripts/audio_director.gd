@@ -36,6 +36,10 @@ var _quota := 0.0
 var _ghost_states := {}
 
 
+const FIGHT_SOUNDS := ["cast", "nibble", "splash_small", "splash", "perfect", "swipe_hit", "snap",
+	"tap", "fail", "catch", "flop", "reel_loop", "creak_loop", "plop"]
+
+
 func _ready() -> void:
 	var main := get_parent()
 	_player = main.get_node("Player")
@@ -55,6 +59,9 @@ func _ready() -> void:
 	GameState.weather_changed.connect(_on_weather)
 	GameState.quota_updated.connect(_on_quota)
 	GameState.run_ended.connect(_on_run_ended)
+	# (a fight's sounds read in now, not on the first bite: that read was part of its hitch)
+	for name in FIGHT_SOUNDS:
+		Sfx.stream(name)
 	if _big != null:
 		_chain = AudioStreamPlayer2D.new()
 		_chain.stream = Sfx.stream("chain_loop")

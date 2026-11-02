@@ -94,6 +94,18 @@ var _warm_frames := 0
 var _warmed := false
 ## The run's world is built and the picture's been drawn once already, unseen (see _prewarm).
 var _prewarmed := false
+## Frames still to write the panel's words and numbers once, unseen, at the sizes the fight uses:
+## each letter at each size is made the first time it's drawn - on a first bite, all at once.
+## Written on the loading screen (this panel's hidden through the opening: written here, it'd
+## all be made the moment the opening shows it - a hitch of its own).
+var _warm_text := 0
+var _warm_canvas: Node2D
+const WARM_SIZES := [13, 15, 16, 17, 18, 20, 22, 24, 26, 32, 36, 40, 42, 44, 48, 80]
+## (the words are only ever small)
+const WARM_WORD_SIZES := [13, 15, 16, 19, 20]
+const WARM_DIGITS := "0123456789+-%.×!/:"
+## Every letter the panel writes, and the numbers (see _warm_text).
+const WARM_WORDS := "0123456789+-%.×!/:・上下中亂了住來公出刺割力動卸反向咬回外完尺展岸張往憊手拉按捲揚撲擊收放暴水沒深游狂狠猛現甩疲白的空竄竿線美草衝角誘越跑跳轉進遠邊量鉤鍵鑽長面頂體鬆魚！，"
 var _sv_tick := 0
 ## How long the picture stays up after the way asked is done (s), and what's left.
 const LINGER := 2.0
@@ -153,7 +165,9 @@ func _process(delta: float) -> void:
 	var showing := not _pops.is_empty() or _edge > 0.0
 	_take_hits(player, delta)
 	_update_area(player, delta)
-	if busy or _drawn or showing or not _pops.is_empty() or _edge > 0.0:
+	if _warm_text > 0 and is_instance_valid(_warm_canvas):
+		_warm_canvas.queue_redraw()
+	if busy or _drawn or showing or not _pops.is_empty() or _edge > 0.0 or _warm_text > 0:
 		_view.queue_redraw()
 	_drawn = busy
 
@@ -253,7 +267,41 @@ func _prewarm() -> void:
 	_prewarmed = true
 	_ensure_view()
 	_warm_frames = 8
+	_warm_text = 2
+	var loading := get_parent().get_node_or_null("Loading") if get_parent() != null else null
+	if loading != null:
+		_warm_canvas = Node2D.new()
+		_warm_canvas.name = "WarmWords"
+		_warm_canvas.draw.connect(func(): _draw_warm_words(_warm_canvas))
+		loading.add_child(_warm_canvas)
+		loading.move_child(_warm_canvas, 0)
 	rv.warm_fight(8)
+
+
+## Warms the fight's picture and words up now (RunView3D.start_warm, behind the loading cover).
+func prewarm() -> void:
+	_prewarm()
+
+
+## Still warming up (the loading cover waits for it).
+func warming() -> bool:
+	return _warm_frames > 0 or _warm_text > 0
+
+
+## Writes the panel's letters, unseen, on `ci` (see _warm_text).
+func _draw_warm_words(ci: CanvasItem) -> void:
+	if _warm_text <= 0:
+		return
+	_warm_text -= 1
+	var far := Vector2(-4000, -4000)
+	for bold in [false, true]:
+		var f := UiKit.font(bold)
+		for size in WARM_SIZES:
+			var words: String = WARM_WORDS if size in WARM_WORD_SIZES else WARM_DIGITS
+			ci.draw_string_outline(f, far, words, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 4, Color(0, 0, 0, 0.004))
+			ci.draw_string(f, far, words, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(1, 1, 1, 0.004))
+	if _warm_text <= 0 and ci == _warm_canvas:
+		_warm_canvas.queue_free.call_deferred()
 
 
 ## What the area shows now: a move of the fish's, or a lure's bite (the way to strike).
@@ -610,6 +658,9 @@ static func mood_text(fight: FishFight) -> Array:
 
 
 func _draw_panel() -> void:
+	if _warm_text > 0 and not is_instance_valid(_warm_canvas):
+		# (no loading screen to write them on: here)
+		_draw_warm_words(_view)
 	var player := _player()
 	if player == null:
 		return

@@ -132,8 +132,11 @@ func _open_when_ready(clear_fog: Callable) -> void:
 		var now := Time.get_ticks_msec()
 		var view := get_node_or_null("RunView3D") as RunView3D
 		if view != null and view.built:
+			# (looked at every way the run will, its effects played once, before it's seen: the
+			# opening and the first bite no longer build shaders as they go - RunView3D.start_warm)
+			view.start_warm()
 			after += 1
-			smooth = smooth + 1 if now - last < LOAD_SMOOTH_MS else 0
+			smooth = smooth + 1 if now - last < LOAD_SMOOTH_MS and view.warmed() else 0
 		last = now
 		if (after >= int(LOAD.after) and smooth >= int(LOAD.smooth)) or now - start > float(LOAD.longest) * 1000.0:
 			break

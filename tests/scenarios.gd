@@ -5072,6 +5072,9 @@ func test_journey_page() -> void:
 ## (單人 / 多人, then the map, and off). The pages' top row has no 出發.
 func test_depart_chooser() -> void:
 	reset_progress()
+	# (no night got through yet - an earlier test's would open 自由模式 already)
+	var escapes_were = Profile.stats.get("escapes", 0)
+	Profile.stats["escapes"] = 0
 	get_tree().change_scene_to_file(Camp3D.SCENE)
 	await frames(30)
 	var camp_screen: Node = get_tree().current_scene
@@ -5094,7 +5097,6 @@ func test_depart_chooser() -> void:
 	chooser.queue_free()
 	await frames(2)
 	# Chapter 1 cleared: 單人 -> the maps -> off on the snowy one.
-	var escapes_were = Profile.stats.get("escapes", 0)
 	Profile.stats["escapes"] = 1
 	check(Campaign.free_open(), "(the free run open: a night got through)")
 	chooser = DepartChooser.open(camp_screen, camp_screen)

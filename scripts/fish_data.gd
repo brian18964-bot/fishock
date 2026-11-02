@@ -304,6 +304,15 @@ static func pool_for(water_key: String, zone_key: String, rarity_key: String) ->
 	return COMMON_FRESH + style[0] if randf() < STYLE_OWN_CHANCE else COMMON_FRESH
 
 
+## Every species a cast into these waters can bring up (for warming their models up before the
+## run's first bite: RunView3D.start_warm).
+static func species_in(water_key: String) -> Array:
+	if water_key == "sea":
+		return SEA_COMMON + SEA_RARE + SEA_LEGEND
+	var style: Array = STYLE_FISH.get(water_key, STYLE_FISH.forest)
+	return COMMON_FRESH + style[0] + [style[1]]
+
+
 ## How often an everyday freshwater catch may be one of the style's own.
 const STYLE_OWN_CHANCE := 0.3
 

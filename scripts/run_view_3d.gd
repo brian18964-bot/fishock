@@ -291,6 +291,17 @@ var _dist := CAMERA_DISTANCE
 ## the drum meanwhile, the drum, the way the traveller faced at first.
 var _intro_t := -1.0
 var _intro_shown := false
+## User report: the opening stuttered, and the first bite of a run hitched. Behind the loading
+## cover (main.gd waits for warmed()) the world is looked at once every way the run will look at
+## it - the play view, the opening's close one, round about - and a fight's effects are played
+## once out of sight (a splash, its ring, a leaping fish, a burst, a word), and the waters' fish
+## made: every shader built, every model in hand, before the first frame that's seen.
+const WARM_POSES := 9
+const WARM_HOLD := 2
+var _warm_step := -1
+var _warm_species: Array = []
+## (kept so they stay loaded)
+var _warm_skins: Array = []
 var _intro_grabbed := true
 var _intro_lamp: Node3D
 var _lamp_drum: Node3D
@@ -1789,30 +1800,7 @@ func _splash(fx: SplashFx) -> void:
 	var at: Vector2 = fx.global_position
 	var y := WATER_Y + 0.02
 	var drops := CPUParticles3D.new()
-	drops.one_shot = true
-	drops.emitting = true
-	drops.amount = 14 if not _low else 8
-	drops.lifetime = 0.7
-	drops.explosiveness = 0.9
-	drops.direction = Vector3.UP
-	drops.spread = 35.0
-	drops.initial_velocity_min = 1.0
-	drops.initial_velocity_max = 2.2 if fx.kind != "splash_bite" else 1.4
-	drops.gravity = Vector3(0, -6.0, 0)
-	drops.scale_amount_min = 0.6
-	drops.scale_amount_max = 1.2
-	var q := SphereMesh.new()
-	q.radius = 0.025
-	q.height = 0.05
-	q.radial_segments = 4
-	q.rings = 2
-	var m := StandardMaterial3D.new()
-	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.albedo_color = Color(0.8, 0.9, 1.0, 0.85)
-	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	q.material = m
-	drops.mesh = q
-	drops.position = to3(at, y)
+	_splash_drops(drops, to3(at, y), 2.2 if fx.kind != "splash_bite" else 1.4)
 	add_child(drops)
 	get_tree().create_timer(1.2).timeout.connect(drops.queue_free)
 	_splash_ring(at)
@@ -4096,10 +4084,43 @@ func _disc(im: ImmediateMesh, at: Vector3, r: float, color: Color) -> void:
 			im.surface_add_vertex(p)
 
 
+## A splash's drops thrown up at `at` (3D).
+func _splash_drops(drops: CPUParticles3D, at: Vector3, speed: float) -> void:
+	drops.one_shot = true
+	drops.emitting = true
+	drops.amount = 14 if not _low else 8
+	drops.lifetime = 0.7
+	drops.explosiveness = 0.9
+	drops.direction = Vector3.UP
+	drops.spread = 35.0
+	drops.initial_velocity_min = 1.0
+	drops.initial_velocity_max = speed
+	drops.gravity = Vector3(0, -6.0, 0)
+	drops.scale_amount_min = 0.6
+	drops.scale_amount_max = 1.2
+	var q := SphereMesh.new()
+	q.radius = 0.025
+	q.height = 0.05
+	q.radial_segments = 4
+	q.rings = 2
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = Color(0.8, 0.9, 1.0, 0.85)
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	q.material = m
+	drops.mesh = q
+	drops.position = at
+
+
 ## The small ring where a cast lands (main.gd's Ripple, in 3D).
 func _splash_ring(at: Vector2) -> void:
 	if _depth(at, _zones()) <= 0.0:
 		return
+	_ring_at(to3(at, WATER_Y + 0.01))
+
+
+## A ring spreading out over the water at `at` (3D).
+func _ring_at(at3: Vector3) -> void:
 	var ring := MeshInstance3D.new()
 	var t := TorusMesh.new()
 	t.inner_radius = 0.18
@@ -4111,7 +4132,7 @@ func _splash_ring(at: Vector2) -> void:
 	m.albedo_color = Color(0.85, 0.92, 1.0, 0.6)
 	ring.material_override = m
 	ring.scale = Vector3(1, 0.05, 1)
-	ring.position = to3(at, WATER_Y + 0.01)
+	ring.position = at3
 	add_child(ring)
 	var tw := create_tween().set_parallel()
 	tw.tween_property(ring, "scale", Vector3(4.0, 0.05, 4.0), 1.2).set_ease(Tween.EASE_OUT)
@@ -4277,7 +4298,10 @@ func _update_light() -> void:
 			var catching := 1.0 if _intro_t < 0.0 else smoothstep(float(INTRO.light_at), float(INTRO.light_at) + 0.35, _intro_t)
 			lamp_glow(held_lamp, LAMP_FLAME).set_shader_parameter("glow",
 				clampf(lantern.energy / maxf(LAMP_GLOW_AT, 0.01), 0.3, 1.4) * LAMP_GLOW * catching if lit_now else 0.0)
-		on = on and (beam or lamp_lit())
+		# (the warm-up has it lit already: the frame it first catches in the opening built every
+		# shader that's lit by it, and its shadow - the opening's hitch)
+		var warming := _warm_step >= 0 and _warm_step < WARM_POSES * WARM_HOLD
+		on = on and (beam or lamp_lit() or warming)
 		_lamp.visible = on and not beam
 		_beam.visible = on and beam
 		if on:
@@ -4311,7 +4335,7 @@ func _update_light() -> void:
 			else:
 				_lamp.omni_range = reach
 				_lamp.light_energy = lantern.energy * LAMP_POWER \
-					* (1.0 if _intro_t < 0.0 else smoothstep(float(INTRO.light_at), float(INTRO.light_at) + 0.35, _intro_t))
+					* (1.0 if _intro_t < 0.0 or warming else smoothstep(float(INTRO.light_at), float(INTRO.light_at) + 0.35, _intro_t))
 				_lamp.light_color = lantern.color
 				# (held up over the head, as a lantern lights the way: not glaring
 				# off the one under it)
@@ -4520,9 +4544,81 @@ func lamp_lit() -> bool:
 	return _intro_t < 0.0 or _intro_t >= float(INTRO.get("light_at", 0.0))
 
 
+## Starts the warm-up (main.gd, behind the loading cover).
+func start_warm() -> void:
+	if _warm_step >= 0:
+		return
+	_warm_step = 0
+	_warm_species = FishData.species_in(FishData.waters).duplicate()
+	_rehearse_fx()
+	var fp := main.get_node_or_null("FightPanel")
+	if fp != null and fp.has_method("prewarm"):
+		fp.call("prewarm")
+
+
+## Done warming: every pose looked through, the fish made, the fight's small view drawn.
+func warmed() -> bool:
+	if _warm_step < WARM_POSES * WARM_HOLD or not _warm_species.is_empty() or _fish_warm > 0:
+		return false
+	var fp := main.get_node_or_null("FightPanel")
+	return fp == null or not fp.has_method("warming") or not bool(fp.call("warming"))
+
+
+## The warm-up's camera `i`: the play view; the opening's - half way drawn back, then round in
+## front at the lamp being lit (level, the far woods and the sky in it); round the traveller - the
+## other three ways, from higher and further; and straight down over it.
+func _warm_pose(i: int, play_pose: Transform3D, look: Vector3, dist: float) -> Transform3D:
+	match i:
+		0:
+			return play_pose
+		1:
+			return play_pose.interpolate_with(_intro_camera(), 0.5)
+		2, 3:
+			var was := _intro_t
+			_intro_t = float(INTRO.light_from) + (0.4 if i == 2 else 1.0)
+			var pose := _intro_camera()
+			_intro_t = was
+			return pose
+		8:
+			var over := look + Vector3(0.01, dist * 1.8, 0)
+			return Transform3D(Basis.looking_at(look - over, Vector3.FORWARD), over)
+	var turn := (i - 3) * PI * 0.5
+	var pitch := deg_to_rad(CAMERA_PITCH + 8.0)
+	var back := Vector3(0, sin(pitch), cos(pitch)).rotated(Vector3.UP, turn) * dist * 1.5
+	var at := look + back
+	return Transform3D(Basis.looking_at(look - at, Vector3.UP), at)
+
+
+## A fight's effects, played once in front of the camera behind the cover.
+func _rehearse_fx() -> void:
+	var ahead := pivot.global_position + Vector3(0, 0, -1.5)
+	var y := WATER_Y + 0.02
+	var drops := CPUParticles3D.new()
+	_splash_drops(drops, ahead + Vector3(0, y - ahead.y, 0), 1.4)
+	add_child(drops)
+	get_tree().create_timer(1.0).timeout.connect(drops.queue_free)
+	_ring_at(ahead + Vector3(0.5, 0.0, 0.0))
+	if ResourceLoader.exists(JUMP_FISH):
+		var fish: Node3D = (load(JUMP_FISH) as PackedScene).instantiate()
+		add_child(fish)
+		fish.position = ahead + Vector3(-0.5, 0.3, 0)
+		fish.scale = Vector3.ONE * 0.2
+		get_tree().create_timer(0.6).timeout.connect(fish.queue_free)
+	_burst(ahead + Vector3(0, 0.5, 0), Color(1.0, 0.85, 0.2), 8, 0.6)
+	_pop_text("!", pivot, Vector3(0, 2.0, 0), Color(1.0, 0.85, 0.2), 140, 0.4)
+	# (the float: _update_line shows the real one only once it's cast)
+	var bob := _float.duplicate() as Node3D
+	add_child(bob)
+	bob.visible = true
+	bob.global_position = ahead + Vector3(0.3, 0, 0.3)
+	get_tree().create_timer(0.5).timeout.connect(bob.queue_free)
+
+
 ## The opening goes on (main.gd: once the loading screen's gone).
 func show_intro() -> void:
 	_intro_shown = true
+	# (the cover's up no longer: the warm-up's camera stops, done or not - main.gd's longest wait)
+	_warm_step = maxi(_warm_step, WARM_POSES * WARM_HOLD)
 
 
 ## Where the lamp stands on its drum before it's taken: on the top, at the
@@ -4675,6 +4771,16 @@ func _sync_tool(lantern: Node) -> void:
 # ---------------------------------------------------------------- each frame
 
 func _process(delta: float) -> void:
+	# (the warm-up's fish: a few made each frame - their models and skins in hand)
+	for _i in 4:
+		if _warm_species.is_empty():
+			break
+		var id: String = _warm_species.pop_back()
+		if FishModel.has_model(id):
+			FishModel.mesh(id)
+			var skin: String = FishModel.SKINS % id
+			if ResourceLoader.exists(skin):
+				_warm_skins.append(load(skin))
 	if _snow_fx != null and pivot != null:
 		_snow_fx.global_position = pivot.global_position + Vector3(0.0, 6.5, 0.0)
 	if not built:
@@ -4817,11 +4923,15 @@ func _update_camera(delta: float) -> void:
 	var look := target + Vector3(0, 0.8, 0)
 	var at := look + Vector3(0, sin(pitch), cos(pitch)) * dist
 	camera.global_transform = Transform3D(Basis.looking_at(look - at, Vector3.UP), at)
+	var play_pose := camera.global_transform
 	if _intro_t >= 0.0:
 		# (the opening: close behind the traveller, drawing back out to
 		# the usual view)
 		var k := smoothstep(float(INTRO.pull_from), float(INTRO.pull_to), _intro_t)
 		camera.global_transform = _intro_blend(_intro_camera(), _intro_look, at, look, k)
+	if _warm_step >= 0 and _warm_step < WARM_POSES * WARM_HOLD:
+		camera.global_transform = _warm_pose(floori(_warm_step / float(WARM_HOLD)), play_pose, look, dist)
+		_warm_step += 1
 	_dodge_buttons(delta)
 	# Further out, the trees near the camera stay solid longer.
 	var k := dist / CAMERA_DISTANCE
