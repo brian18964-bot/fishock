@@ -75,6 +75,7 @@ var _tip_key := ""
 var _tip_left := 0.0
 const TIP_LIFE := 6.0
 const TIP_WIDTH := 260.0
+const TIP_LAYER := 8
 var _portrait: Texture2D
 var _font: Font
 var _touchscreen := false
@@ -102,7 +103,12 @@ func _ready() -> void:
 	_tip_text.custom_minimum_size = Vector2(TIP_WIDTH - 20.0, 0)
 	_tip_text.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_tip.add_child(_tip_text)
-	add_child(_tip)
+	# (over the fish cards down the left - FishAlerts - and the bag's buttons: a layer of its own)
+	var over := CanvasLayer.new()
+	over.name = "StateTipLayer"
+	over.layer = TIP_LAYER
+	add_child(over)
+	over.add_child(_tip)
 	GameState.event_reported.connect(_on_event)
 
 
