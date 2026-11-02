@@ -575,7 +575,20 @@ func _bring_fish_home() -> String:
 	var dead := 0
 	var rotten := 0
 	var lost := 0
-	for fish in carried_fish + oxy_fish:
+	# User request: the live fish box's fish are kept on purpose (or were taken along in it) -
+	# home they stay in the box, as the clasp's stay on their hooks; only the bag's are sorted out
+	# (the living to the tank, the dead to the bucket). (The box gone - none home: sorted too.)
+	var boxed := 0
+	var home_box := Profile.has_oxy_box() or Profile.bag_count("oxy_box") > 0
+	var sort := carried_fish.duplicate()
+	for fish in oxy_fish:
+		fish.erase("brought")
+		if home_box:
+			Profile.oxy_stock.append(fish)
+			boxed += 1
+		else:
+			sort.append(fish)
+	for fish in sort:
 		fish.erase("brought")
 		if fish.get("clasped", false):
 			# (the clasp's fish go home on their hook, alive or not)
@@ -608,7 +621,9 @@ func _bring_fish_home() -> String:
 	if sold > 0:
 		text += "\n魚缸或魚桶滿了，其餘的漁獲賣了 %d 金幣" % sold
 	if dead > 0:
-		text += "\n死掉的魚 %d 條，帶去賣給商人" % dead
+		text += "\n死掉的魚 %d 條放進魚桶" % dead
+	if boxed > 0:
+		text += "\n活魚箱裡的 %d 條魚留在箱裡" % boxed
 	if rotten > 0:
 		text += "\n腐敗的魚 %d 條帶回來了（目前沒有用處）" % rotten
 	if lost > 0:

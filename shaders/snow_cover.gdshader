@@ -17,6 +17,8 @@ uniform float dust = 0.0;
 uniform float whiten = 0.0;
 uniform vec3 snow_color : source_color = vec3(0.92, 0.95, 1.0);
 uniform float rough = 0.9;
+// (an animal going off into the edge's trees: dithered away as it goes - RunView3D._fade_creature)
+uniform float vanish = 0.0;
 
 varying vec3 wn;
 
@@ -29,7 +31,7 @@ void fragment() {
 	if (scissor && t.a < scissor_cut) {
 		discard;
 	}
-	float f = smoothstep(fade_min, fade_max, -VERTEX.z);
+	float f = smoothstep(fade_min, fade_max, -VERTEX.z) * (1.0 - vanish);
 	float noise = fract(52.9829189 * fract(dot(FRAGCOORD.xy, vec2(0.06711056, 0.00583715))));
 	if (noise > f) {
 		discard;

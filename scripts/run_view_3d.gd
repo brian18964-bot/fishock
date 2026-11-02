@@ -2219,6 +2219,42 @@ func _blink(c: Dictionary, t: float, delta: float) -> void:
 		(l[0] as Node3D).transform = Transform3D(Basis.from_scale(squeeze), mid - mid * squeeze) * (l[1] as Transform3D)
 
 
+## An animal faded by `f` (0: as it is, 1: gone): each of its surfaces swapped for a see-through
+## copy (a winter coat's snow shader dithered away instead - `vanish`), put back once it's whole.
+func _fade_creature(c: Dictionary, f: float) -> void:
+	if f <= 0.001 and not c.has("fading"):
+		return
+	if not c.has("fading"):
+		var list: Array = []
+		var model: Node = c.model
+		for mi in model.find_children("*", "MeshInstance3D", true, false):
+			var m := mi as MeshInstance3D
+			if m.mesh == null:
+				continue
+			for s in m.mesh.get_surface_count():
+				var had := m.get_surface_override_material(s)
+				var src := m.get_active_material(s)
+				var see: Material = null
+				if src is StandardMaterial3D:
+					var copy := (src as StandardMaterial3D).duplicate() as StandardMaterial3D
+					copy.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+					copy.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS
+					see = copy
+				list.append([m, s, had, src, see])
+		c.fading = list
+	for e in c.fading:
+		var m: MeshInstance3D = e[0]
+		var s: int = e[1]
+		if e[4] is StandardMaterial3D:
+			var see: StandardMaterial3D = e[4]
+			see.albedo_color.a = (e[3] as StandardMaterial3D).albedo_color.a * (1.0 - f)
+			m.set_surface_override_material(s, see if f > 0.001 else e[2])
+		elif e[3] is ShaderMaterial:
+			(e[3] as ShaderMaterial).set_shader_parameter("vanish", f)
+	if f <= 0.001:
+		c.erase("fading")
+
+
 ## The snowy map's animals in their winter coats: how white each goes (the fox an arctic fox,
 ## the wolf a white one, the deer only paler).
 const WINTER_COAT := {"fox": 0.88, "wolf": 0.8, "husky": 0.6, "deer": 0.4, "stag": 0.4}
@@ -2479,6 +2515,16 @@ func _sync_creatures(delta: float) -> void:
 				(c.lamp as Node).queue_free()
 			_creatures.erase(n)
 			continue
+		if n is Critter and (n as Critter).species != c.kind:
+			# (user report: a frog caught gave a spider - a critter comes back (caught, or gone
+			# into the edge's trees) as another kind, and its model was still the old one's)
+			holder.queue_free()
+			_creatures.erase(n)
+			if _tracks != null:
+				_tracks.forget(n.get_instance_id())
+			if _creature_kind(n) != "":
+				_add_creature(n)
+			continue
 		var node := n as Node2D
 		var on := _shown(node)
 		if n is Critter and not (n as Critter).active:
@@ -2533,10 +2579,9 @@ func _sync_creatures(delta: float) -> void:
 				c.shown = Vector3(held.x, (c.shown as Vector3).y, held.y)
 		holder.position = c.shown
 		if n is Critter:
-			# (fading into the edge's trees: shrinking away into the ground - Critter.fade)
-			var f: float = (n as Critter).fade
-			holder.scale = Vector3.ONE * (1.0 - 0.9 * f)
-			holder.position.y -= 0.25 * f
+			# (fading into the edge's trees - Critter.fade: user request, the whole of it fading
+			# away, not shrinking)
+			_fade_creature(c, (n as Critter).fade)
 		if _tracks != null and SnowTracks.ANIMALS.has(kind):
 			# (user request: the animals and the big ghost leave prints in the snow too)
 			if not c.has("skel"):

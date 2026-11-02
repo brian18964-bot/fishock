@@ -45,10 +45,11 @@ func _ready() -> void:
 	_title.size = Vector2(w - 40.0, HEAD)
 	_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_title)
-	var x := UiKit.button("✕", 14)
-	x.name = "Close"
-	x.position = Vector2(w - 34.0, 2)
-	x.size = Vector2(28, 26)
+	# (user report: its close was a box - "✕" isn't in the font: the red ✕ every window has)
+	var x := UiKit.close_button()
+	x.position = Vector2(w - 36.0, 0)
+	x.size = Vector2(32, 32)
+	x.custom_minimum_size = Vector2(32, 32)
 	x.pressed.connect(close)
 	add_child(x)
 	_grid = Tiles.new()

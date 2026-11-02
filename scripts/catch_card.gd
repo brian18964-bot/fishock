@@ -69,7 +69,19 @@ func _ready() -> void:
 	row.add_child(text)
 	_panel.add_child(row)
 	_panel.modulate.a = 0.0
+	_panel.visible = false
 	add_child(_panel)
+	_untouchable(_panel)
+
+
+## User report (a phone): cards in the bag under where this shows wouldn't close, a thing there
+## wouldn't open - this toast, faded out, still lay over them (on a layer above the bag) and took
+## the taps. Nothing in it takes a touch, and it's put away once it's faded.
+static func _untouchable(n: Node) -> void:
+	if n is Control:
+		(n as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for c in n.get_children():
+		_untouchable(c)
 
 
 func show_catch(fish: Dictionary, legend: bool) -> void:
@@ -116,6 +128,8 @@ func show_catch(fish: Dictionary, legend: bool) -> void:
 		_tween.kill()
 	_panel.position = at + Vector2(0, 16)
 	_panel.modulate.a = 0.0
+	_panel.visible = true
+	_untouchable(_panel)
 	_glow.size = _panel.size * Vector2(1.4, 2.2)
 	_glow.position = at + _panel.size * 0.5 - _glow.size * 0.5
 	_glow.modulate.a = 0.0
@@ -127,6 +141,7 @@ func show_catch(fish: Dictionary, legend: bool) -> void:
 	_tween.tween_interval(HOLD + (1.2 if rarity == "legend" else 0.0))
 	_tween.tween_property(_panel, "modulate:a", 0.0, 0.3)
 	_tween.parallel().tween_property(_glow, "modulate:a", 0.0, 0.3)
+	_tween.tween_callback(func(): _panel.visible = false)
 
 
 ## A small plaque (NEW, BIGGER).

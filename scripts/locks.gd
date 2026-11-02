@@ -63,3 +63,29 @@ static func draw(ci: CanvasItem, r: Rect2) -> void:
 	ci.draw_arc(Vector2(body.get_center().x, body.position.y), s * 0.32, PI, TAU, 10, UiKit.GOLD_BRIGHT, 2.0, true)
 	ci.draw_rect(body, UiKit.GOLD_BRIGHT)
 	ci.draw_circle(body.get_center(), s * 0.09, Color(0.15, 0.1, 0.05))
+
+
+## The padlock as a button (LockToggle): a dark round, the lock in it - shut and gold, or its
+## shackle up and open, dim.
+static func draw_icon(ci: CanvasItem, r: Rect2, locked: bool) -> void:
+	var c := r.get_center()
+	var rad := minf(r.size.x, r.size.y) * 0.5
+	ci.draw_circle(c, rad, Color(0.05, 0.05, 0.07, 0.85))
+	ci.draw_arc(c, rad - 1.0, 0.0, TAU, 28, UiKit.GOLD if locked else Color(0.5, 0.5, 0.55), 1.5, true)
+	var w := rad * 0.9
+	var body := Rect2(c + Vector2(-w * 0.5, -rad * 0.05), Vector2(w, rad * 0.62))
+	var col := UiKit.GOLD_BRIGHT if locked else Color(0.75, 0.76, 0.8)
+	var arc_c := Vector2(body.get_center().x, body.position.y)
+	var arc_r := w * 0.33
+	if locked:
+		ci.draw_arc(arc_c, arc_r, PI, TAU, 12, col, 2.6, true)
+		ci.draw_line(arc_c + Vector2(-arc_r, 0), arc_c + Vector2(-arc_r, 2), col, 2.6)
+		ci.draw_line(arc_c + Vector2(arc_r, 0), arc_c + Vector2(arc_r, 2), col, 2.6)
+	else:
+		# (the shackle lifted and swung open on its right leg)
+		var up := arc_c + Vector2(arc_r * 0.9, -rad * 0.28)
+		ci.draw_arc(up, arc_r, PI, TAU, 12, col, 2.6, true)
+		ci.draw_line(up + Vector2(arc_r, 0), arc_c + Vector2(arc_r * 0.9 + arc_r, 2), col, 2.6)
+	ci.draw_rect(body, col)
+	ci.draw_circle(body.get_center() + Vector2(0, -1), rad * 0.09, Color(0.12, 0.09, 0.05))
+	ci.draw_line(body.get_center() + Vector2(0, -1), body.get_center() + Vector2(0, rad * 0.14), Color(0.12, 0.09, 0.05), 1.5)

@@ -152,6 +152,7 @@ func _process(delta: float) -> void:
 		_hooked = p
 		p.ability_triggered.connect(func(_k, _at, _n): _ability_flash = ABILITY_FLASH)
 	_ability_flash = maxf(_ability_flash - delta, 0.0)
+	_pulse_t += delta
 	if _tip.visible:
 		_tip_left -= delta
 		if _tip_left <= 0.0:
@@ -232,6 +233,13 @@ static func tip_text(key: String, p: Player) -> String:
 				lines.append("已達上限：再多的魚也不會更慢（最低 %d%%）。" % roundi(Player.MIN_SPEED_RATIO * 100.0))
 			lines.append("目前總速度：%d%%（含其他狀態）" % roundi(speed_share(p) * 100.0))
 			return "\n".join(lines)
+		"fear":
+			return "【害怕】\n%s：嚇得動彈不得，暫時不能移動。\n剩餘 %d 秒" % [p.fear_text if p.fear_text != "" else "被嚇到了", ceili(p.fear_timer)] \
+				if p.fear_timer > 0.0 else "【害怕】\n已經結束了"
+		"muddle":
+			return "【混亂】\n%s：方向亂掉，腳步變慢（速度 %d%%）。\n剩餘 %d 秒" % [p.affliction_text if p.affliction_text != "" else "頭昏眼花",
+				roundi(Player.WATER_GHOST_SPEED_MULT * 100.0), ceili(p.water_ghost_timer)] \
+				if p.water_ghost_timer > 0.0 else "【混亂】\n已經結束了"
 		"ability":
 			var kind := Abilities.active_kind()
 			if kind == "":
@@ -316,21 +324,24 @@ func _draw_face(c: Vector2, r: float) -> void:
 func _draw_ability(p: Player) -> bool:
 	var kind := Abilities.active_kind()
 	var tex := Abilities.icon(kind) if kind != "" else null
+	var r := Rect2(EFFECT_AT, Vector2.ONE * EFFECT_SLOT)
 	if kind == "" and Profile.talent_of() != "":
 		# (a talent taken in place of its own ability: its badge, always lit)
 		var tt := Abilities.talent_icon(Profile.talent_of())
 		if tt != null:
-			_view.draw_texture_rect(tt, Rect2(EFFECT_AT, Vector2.ONE * EFFECT_SLOT), false)
+			# (user request: every state's slot square, the talent's too)
+			UiKit.draw_slot(_view, r, "", false, null)
+			_view.draw_texture_rect(tt, r.grow(-3.0), false)
 			return true
 	if tex == null:
 		return false
-	var r := Rect2(EFFECT_AT, Vector2.ONE * EFFECT_SLOT)
 	var on := Abilities.active(kind, p)
 	if _ability_flash > 0.0:
 		var k := _ability_flash / ABILITY_FLASH
 		var color: Color = Abilities.info(kind).get("color", UiKit.GOLD)
 		_view.draw_texture_rect(UiKit.glow(), r.grow(10.0 + 6.0 * sin(k * PI * 3.0)), false, Color(color, 0.8 * k))
-	_view.draw_texture_rect(tex, r, false, Color.WHITE if on else Color(0.55, 0.55, 0.6, 0.75))
+	UiKit.draw_slot(_view, r, "", false, null)
+	_view.draw_texture_rect(tex, r.grow(-3.0), false, Color.WHITE if on else Color(0.55, 0.55, 0.6, 0.75))
 	return true
 
 
@@ -338,8 +349,8 @@ func _slot_rect(i: int) -> Rect2:
 	return Rect2(EFFECT_AT + Vector2((EFFECT_SLOT + EFFECT_GAP) * i, 0), Vector2.ONE * EFFECT_SLOT)
 
 
-## User request: 滿載而歸 - a fish in its slot, the share of speed the load's taken swept dark
-## round it, how many are carried in its corner (red once the slowing's at its floor).
+## User request: 滿載而歸 - a fish in its slot, how many are carried in its corner (red once the
+## slowing's at its floor).
 func _draw_load(i: int) -> void:
 	var r := _slot_rect(i)
 	var n := load_count()
@@ -351,13 +362,69 @@ func _draw_load(i: int) -> void:
 		var sz := fish.get_size()
 		var k := minf((r.size.x - 6.0) / sz.x, (r.size.y - 10.0) / sz.y)
 		_view.draw_texture_rect(fish, Rect2(r.get_center() - sz * k * 0.5 - Vector2(0, 2), sz * k), false)
-	var taken := (1.0 - share) / (1.0 - Player.MIN_SPEED_RATIO)
-	if taken > 0.0:
-		_view.draw_arc(r.get_center(), r.size.x * 0.5 - 1.5, -PI / 2.0, -PI / 2.0 + TAU * taken, 24,
-			Color(WARN, 0.85) if full else Color(1.0, 0.8, 0.35, 0.85), 2.5, true)
 	UiKit.draw_text(_view, Vector2(r.position.x, r.end.y - 2.0), str(n), 13, WARN if full else Color.WHITE,
 		HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 2.0, true)
 	_slots.append([r, "load"])
+
+
+## User request: being scared (an animal's or a ghost's doing) and muddled are states too - a slot
+## each, the time left swept round it and counted: [key, seconds left, of how long].
+var _fear_total := 0.0
+var _muddle_total := 0.0
+
+
+func afflictions(p: Player) -> Array:
+	var out := []
+	_fear_total = maxf(_fear_total, p.fear_timer) if p.fear_timer > 0.0 else 0.0
+	_muddle_total = maxf(_muddle_total, p.water_ghost_timer) if p.water_ghost_timer > 0.0 else 0.0
+	if p.fear_timer > 0.0:
+		out.append(["fear", p.fear_timer, _fear_total])
+	if p.water_ghost_timer > 0.0:
+		out.append(["muddle", p.water_ghost_timer, _muddle_total])
+	return out
+
+
+## The sweep of the time gone, dark from the top round, over `r`; the seconds left in its corner.
+func _draw_time(r: Rect2, left: float, total: float) -> void:
+	var gone := 1.0 - clampf(left / maxf(total, 0.001), 0.0, 1.0)
+	if gone > 0.0:
+		var c := r.get_center()
+		var pts := PackedVector2Array([c])
+		for k in 25:
+			var a := -PI / 2.0 + TAU * gone * k / 24.0
+			pts.append(c + Vector2(cos(a), sin(a)) * r.size.x)
+		for poly in Geometry2D.intersect_polygons(pts, PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)])):
+			_view.draw_colored_polygon(poly, Color(0, 0, 0, 0.5))
+	UiKit.draw_text(_view, Vector2(r.position.x, r.end.y - 2.0), str(ceili(left)), 13,
+		GOOD if left > 5.0 else WARN, HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 2.0, true)
+
+
+func _draw_afflictions(list: Array, from: int) -> void:
+	for i in list.size():
+		var e: Array = list[i]
+		var r := _slot_rect(i + from)
+		_slots.append([r, str(e[0])])
+		UiKit.draw_slot(_view, r, "", false, null)
+		var c := r.get_center() + Vector2(0, -2)
+		if e[0] == "fear":
+			# (a fright: a red mark, trembling)
+			var shake := Vector2(sin(_pulse_t * 40.0), 0.0) * 1.2
+			_view.draw_rect(Rect2(c + shake + Vector2(-2.5, -11), Vector2(5, 13)), WARN)
+			_view.draw_circle(c + shake + Vector2(0, 7), 2.8, WARN)
+			for k in [-1, 1]:
+				_view.draw_line(c + Vector2(9 * k, -8), c + Vector2(12 * k, -11), Color(WARN, 0.8), 1.5)
+				_view.draw_line(c + Vector2(10 * k, -2), c + Vector2(14 * k, -2), Color(WARN, 0.8), 1.5)
+		else:
+			# (a muddle: a turning spiral)
+			var pts := PackedVector2Array()
+			for k in 40:
+				var a := _pulse_t * 4.0 + k * 0.42
+				pts.append(c + Vector2(cos(a), sin(a)) * (1.5 + k * 0.28))
+			_view.draw_polyline(pts, Color(0.85, 0.7, 1.0), 2.0, true)
+		_draw_time(r, float(e[1]), float(e[2]))
+
+
+var _pulse_t := 0.0
 
 
 func _draw_effects(list: Array, from := 0) -> void:
@@ -414,10 +481,16 @@ func _draw_card() -> void:
 	if load_count() > 0:
 		_draw_load(at)
 		at += 1
+	var hurt := afflictions(p)
+	_draw_afflictions(hurt, at)
+	at += hurt.size()
 	_draw_effects(working, at)
 	_draw_feed(EFFECT_SLOT + 6.0 if at > 0 or not working.is_empty() else 0.0)
 	var line := x
 	for cond in conditions(p):
+		# (scared and muddled have slots of their own now)
+		if str(cond[0]).begins_with("害怕中") or str(cond[0]).begins_with("混亂中"):
+			continue
 		var w := UiKit.font().get_string_size(cond[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
 		if line + w > POS.x + SIZE.x - 4.0:
 			break

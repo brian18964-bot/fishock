@@ -356,15 +356,15 @@ func _card_for(i: int, src := "tank") -> void:
 				_say(why if why != "" else "沒有了"))
 		moves.add_child(vb)
 	col.add_child(moves)
-	# (user request: a lock, so it isn't sold or thrown away by a slip - Locks)
-	var lock := UiKit.button("解鎖" if Locks.fish(f) else "上鎖", 14)
-	lock.name = "Lock"
-	lock.custom_minimum_size = Vector2(80, 38)
-	lock.pressed.connect(func():
-		Locks.set_fish(f, not Locks.fish(f))
+	# (user request: a lock, so it isn't sold or thrown away by a slip - Locks: a padlock in the
+	# card's top right corner)
+	var corner := LockToggle.corner(Locks.fish(f), func(on: bool):
+		Locks.set_fish(f, on)
 		_close()
-		_rebuild())
-	moves.add_child(lock)
+		_rebuild()
+		_card_for(Profile.fish_list(src).find(f), src))
+	col.add_child(corner)
+	col.move_child(corner, 0)
 	var acts := HBoxContainer.new()
 	acts.add_theme_constant_override("separation", 8)
 	acts.alignment = BoxContainer.ALIGNMENT_END

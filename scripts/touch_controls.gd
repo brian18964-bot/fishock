@@ -376,12 +376,23 @@ static func draw_action(ci: CanvasItem, r: Rect2, tint: Color, pressed: bool, on
 
 ## A see-through round button (user request): a faint disc, a ring, the
 ## picture inside the circle; brighter pressed or lit.
+## How much of a square picture a round button shows (its middle; the square's corners are cut).
+const ROUND_ZOOM := 0.9
+
+
 static func draw_round(ci: CanvasItem, radius: float, pressed: bool, on: bool, icon: Texture2D) -> void:
 	ci.draw_circle(Vector2.ZERO, radius, Color(0, 0, 0, 0.32 if pressed else 0.16))
 	if icon != null:
-		var side := radius * 1.5
-		ci.draw_texture_rect(icon, Rect2(-Vector2(side, side) * 0.5 - Vector2(0, 3), Vector2(side, side)), false,
-			Color.WHITE if on else Color(0.5, 0.5, 0.55, 0.8))
+		# (user request: the picture round too, filling the ring - not a square in it; its
+		# middle, a little in from the square's edges)
+		var pts := PackedVector2Array()
+		var uvs := PackedVector2Array()
+		var inner := radius - 2.0
+		for k in 40:
+			var dir := Vector2.RIGHT.rotated(TAU * k / 40.0)
+			pts.append(dir * inner)
+			uvs.append(Vector2(0.5, 0.5) + dir * 0.5 * ROUND_ZOOM)
+		ci.draw_polygon(pts, PackedColorArray([Color.WHITE if on else Color(0.5, 0.5, 0.55, 0.8)]), uvs, icon)
 	ci.draw_arc(Vector2.ZERO, radius, 0.0, TAU, 48, Color(1.0, 0.88, 0.66, 0.75 if pressed else 0.48), 2.0, true)
 
 

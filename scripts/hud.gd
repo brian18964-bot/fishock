@@ -176,7 +176,9 @@ func _process(delta: float) -> void:
 	gold_label.text = "金幣：%d（庫存假餌 %d）" % [Profile.gold, Profile.loadout_lure_total()]
 
 	if _player.pending_bait_flavor != "":
-		gear_label.text += "（下竿餌料：%s）" % _player.pending_bait_flavor
+		# (the bait's own name: a flavor is what it does - the shrimp's is the frog's)
+		var named: String = Profile.LIVE_BAITS[_player.live_bait].name if Profile.LIVE_BAITS.has(_player.live_bait) else _player.pending_bait_flavor
+		gear_label.text += "（下竿餌料：%s）" % named
 
 
 func _on_state_changed(new_state: String) -> void:

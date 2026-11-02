@@ -199,6 +199,14 @@ func _build_card() -> void:
 	_card_sub = UiKit.label("", 13, UiKit.DIM)
 	words.add_child(_card_sub)
 	head.add_child(words)
+	# (user request: the lock a padlock in the card's corner, by its ✕ - _show_lock)
+	_lock = LockToggle.new()
+	_lock.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_lock.visible = false
+	_lock.changed.connect(func(on: bool):
+		if _lock_do.is_valid():
+			_lock_do.call(on))
+	head.add_child(_lock)
 	var close := UiKit.close_button()
 	close.pressed.connect(deselect)
 	head.add_child(close)
@@ -211,8 +219,9 @@ func _build_card() -> void:
 	hit.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
 	hit.add_theme_stylebox_override("hover", StyleBoxEmpty.new())
 	hit.add_theme_stylebox_override("pressed", StyleBoxEmpty.new())
-	hit.position = -Vector2.ONE * CLOSE_PAD
-	hit.size = Vector2(34, 34) + Vector2.ONE * CLOSE_PAD * 2.0
+	# (not out to its left: the padlock's there)
+	hit.position = Vector2(-2.0, -CLOSE_PAD)
+	hit.size = Vector2(34.0 + 2.0 + CLOSE_PAD, 34.0 + CLOSE_PAD * 2.0)
 	hit.pressed.connect(deselect)
 	close.add_child(hit)
 	col.add_child(head)
@@ -364,11 +373,25 @@ func _rebuild(periodic := false) -> void:
 	_show_selected(player, items, placed)
 
 
+var _lock: LockToggle
+var _lock_do: Callable
+
+
+## The card's padlock shown, `on` or off, turned by `fn(on)`.
+func _show_lock(on: bool, fn: Callable) -> void:
+	_lock.locked = on
+	_lock.queue_redraw()
+	_lock.visible = true
+	_lock_do = fn
+
+
 ## The tapped thing's card: filled in, and put beside it.
 func _show_selected(player: Player, items: Array, placed: Array) -> void:
 	for c in _actions.get_children():
 		_actions.remove_child(c)
 		c.queue_free()
+	_lock.visible = false
+	_lock_do = Callable()
 	_vitals.visible = false
 	if not _selected.is_empty() and _selected.kind == "slot":
 		_show_slot(player, _selected.index)
@@ -414,10 +437,10 @@ func _show_selected(player: Player, items: Array, placed: Array) -> void:
 			if item.size.x != item.size.y:
 				_actions.add_child(_action("旋轉", func(): _rotate(item)))
 			var locked := Locks.fish(fish)
-			_actions.add_child(_action("解鎖" if locked else "上鎖", func():
-				Locks.set_fish(fish, not locked)
+			_show_lock(locked, func(on: bool):
+				Locks.set_fish(fish, on)
 				_shown = {}
-				_rebuild()))
+				_rebuild())
 			if not locked:
 				_actions.add_child(_action("放在地上", func():
 					player.put_fish_down(item.index)
@@ -498,10 +521,10 @@ func _show_selected(player: Player, items: Array, placed: Array) -> void:
 	# User request (multiplayer to come): put things down for a teammate.
 	if item.has("bag"):
 		var bag_locked := Locks.bag(int(item.bag))
-		_actions.add_child(_action("解鎖" if bag_locked else "上鎖", func():
-			Locks.set_bag(int(item.bag), not bag_locked)
+		_show_lock(bag_locked, func(on: bool):
+			Locks.set_bag(int(item.bag), on)
 			_shown = {}
-			_rebuild()))
+			_rebuild())
 		if not bag_locked:
 			_actions.add_child(_action("放在地上", func():
 				player.put_item_down(item.bag)

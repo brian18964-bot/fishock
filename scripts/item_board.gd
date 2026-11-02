@@ -354,6 +354,15 @@ func card(source: Dictionary) -> void:
 			row.add_child(c)
 		col.add_child(row)
 
+	# (user request: a lock, so it isn't sold or thrown away by a slip - Locks: a padlock in the
+	# card's top right corner)
+	if lockable(source):
+		var corner := LockToggle.corner(locked(source), func(_on: bool):
+			move(source, {"to": "lock"}, 1)
+			_close_card()
+			card(source))
+		col.add_child(corner)
+		col.move_child(corner, 0)
 	var acts := HBoxContainer.new()
 	acts.add_theme_constant_override("separation", 8)
 	acts.alignment = BoxContainer.ALIGNMENT_END
@@ -466,13 +475,12 @@ func fish_card(source: Dictionary) -> void:
 			Profile.move_fish(src, i, dest)
 			_close_card())
 		acts.add_child(b)
-	var lock := UiKit.button("解鎖" if Locks.fish(f) else "上鎖", 15)
-	lock.name = "FishLock"
-	lock.custom_minimum_size = Vector2(80, 42)
-	lock.pressed.connect(func():
-		Locks.set_fish(f, not Locks.fish(f))
-		_close_card())
-	acts.add_child(lock)
+	var corner := LockToggle.corner(Locks.fish(f), func(on: bool):
+		Locks.set_fish(f, on)
+		_close_card()
+		fish_card(source))
+	col.add_child(corner)
+	col.move_child(corner, 0)
 	var cancel := UiKit.button("關閉", 15)
 	cancel.custom_minimum_size = Vector2(80, 42)
 	cancel.pressed.connect(_close_card)
@@ -562,14 +570,19 @@ func actions(source: Dictionary) -> Array:
 				out.append(["放回倉庫", {"to": "storage"}, true])
 				if can_discard:
 					out.append(["丟棄", {"to": "discard"}])
-	# (user request: a lock, so it isn't sold or thrown away by a slip - Locks)
-	if source.from == "bag" and not Items.def(source.id).get("fixed", false):
-		out.append(["解鎖" if Locks.bag(int(source.index)) else "上鎖", {"to": "lock"}])
-	elif source.from == "storage":
-		out.append(["解鎖" if Locks.stored(source.id) else "上鎖", {"to": "lock"}])
 	if slot != "" and source.from != "slot":
 		out.append(["裝備", {"to": "slot", "slot": slot}])
 	return out
+
+
+## A thing that can be locked here (Locks): a bag stack (not one fixed in it), a warehouse kind.
+static func lockable(source: Dictionary) -> bool:
+	return (source.get("from", "") == "bag" and not Items.def(str(source.get("id", ""))).get("fixed", false)) \
+		or source.get("from", "") == "storage"
+
+
+static func locked(source: Dictionary) -> bool:
+	return Locks.bag(int(source.index)) if source.get("from", "") == "bag" else Locks.stored(str(source.id))
 
 
 func _close_card() -> void:

@@ -16,6 +16,7 @@ const TESTS := [
 	"test_run_3d",
 	"test_ghost_mist",
 	"test_load_state",
+	"test_round_fixes",
 	"test_map_generation",
 	"test_layout_clear",
 	"test_proto3d",
@@ -4351,6 +4352,70 @@ func test_load_state() -> void:
 	gs.carried_fish.clear()
 
 
+## User reports, one round:
+## - cards in the bag under where a caught fish's toast shows wouldn't close, a thing there wouldn't
+##   open: the toast, faded out, still lay over them on a layer above the bag;
+## - a frog caught gave a spider: a critter back as another kind kept the old one's model;
+## - the live fish box's fish (and the clasp's) stay where they are home, only the bag's are sorted;
+## - scared and muddled are states with slots of their own.
+func test_round_fixes() -> void:
+	main.get_node("Loading").visible = false
+	var toast: CatchCard = null
+	for c in main.get_children():
+		if c is CatchCard:
+			toast = c
+	toast.show_catch({"name": "白鮭", "id": "whitefish", "value": 5.0, "size": "medium", "rarity": "rare"}, false)
+	await frames(2)
+	var takes := toast.find_children("*", "Control", true, false).filter(func(n): return (n as Control).mouse_filter != Control.MOUSE_FILTER_IGNORE)
+	check(takes.is_empty(), "the catch's toast takes no touch (%s)" % str(takes))
+	await seconds(CatchCard.HOLD + 1.0)
+	check(not toast._panel.visible, "and it's put away once it's faded")
+	# The critter's model follows its kind.
+	var view := RunView3D.active
+	var critter: Critter = null
+	for c in get_tree().get_nodes_in_group("critters") if not get_tree().get_nodes_in_group("critters").is_empty() else main.find_children("*", "Critter", true, false):
+		if c is Critter and not (c as Critter).ambient and view._creatures.has(c):
+			critter = c
+			break
+	if critter == null:
+		for c in main.find_children("*", "", true, false):
+			if c is Critter and not (c as Critter).ambient and view._creatures.has(c):
+				critter = c
+				break
+	check(critter != null, "(a live bait about, shown in 3D)")
+	if critter != null:
+		var other := "frog" if critter.species != "frog" else "spider"
+		critter.set_species(other)
+		await frames(3)
+		check(view._creatures.has(critter) and view._creatures[critter].kind == other, "back as a %s: shown as one" % other)
+	# Home: the box's fish stay in the box, the clasp's on their hooks; the bag's sorted.
+	var saved := Profile.snapshot()
+	Profile.equipped["offhand"] = "oxy_box"
+	Profile.oxy_stock = []
+	Profile.tank.clear()
+	var boxed := FishLife.roll({"name": "白鮭", "id": "whitefish", "value": 5.0, "size": "medium", "rarity": "rare"})
+	boxed["cell"] = [0, 0]
+	var bagged := FishLife.roll({"name": "鯽魚", "id": "crucian", "value": 4.0, "size": "small", "rarity": "common"})
+	GameState.oxy_fish = [boxed]
+	GameState.carried_fish = [bagged]
+	var said: String = GameState._bring_fish_home()
+	check(Profile.oxy_stock.size() == 1 and Profile.oxy_stock[0].name == "白鮭" and said.contains("活魚箱裡的 1 條魚留在箱裡"),
+		"the box's fish stay in the box (%s)" % said)
+	check(Profile.tank.size() == 1 and Profile.tank[0].name == "鯽魚", "the bag's live fish into the tank")
+	Profile.load_data(saved)
+	# Scared and muddled: slots of their own, counting down.
+	var card: StatusCard = null
+	for c in main.get_children():
+		if c is StatusCard:
+			card = c
+	player().afflict(3.0, "被鬼纏過", "被嚇到", "confuse")
+	player().afflict(3.0, "被鬼纏過", "被嚇到", "fear")
+	await frames(2)
+	var keys := card._slots.map(func(sl): return sl[1])
+	check("fear" in keys and "muddle" in keys, "scared and muddled: a slot each (%s)" % str(keys))
+	check(StatusCard.tip_text("muddle", player()).contains("混亂") and StatusCard.tip_text("fear", player()).contains("害怕"), "and they say what they are")
+
+
 func test_floating_ghost_budget() -> void:
 	for i in 8:
 		gs.add_carried_fish(fish())
@@ -4551,12 +4616,27 @@ func test_bag_card_closes() -> void:
 	# for the ✕, a little off, no longer opens what lay under it); the ✕'s ring is the ✕ too.
 	await seconds(0.6)
 	bag.select("fish", 0)
+	await frames(6)
+	# (the other thing in a cell clear of the card)
+	var card_rect: Rect2 = bag._card.get_global_rect()
+	var free_cell := Vector2i(-1, -1)
+	for cy in Profile.bag_rows():
+		for cx in Inventory.COLS:
+			var cr: Rect2 = bag._grid.get_global_transform() * Rect2(Vector2(cx, cy) * Backpack.CELL, Vector2.ONE * Backpack.CELL)
+			if free_cell.x < 0 and not card_rect.intersects(cr) and Vector2i(cx, cy) != Vector2i(0, 0) and Vector2i(cx, cy) != Vector2i(1, 0):
+				free_cell = Vector2i(cx, cy)
+	Profile.bag = [{"id": "eyeball", "count": 1, "cell": free_cell}]
+	bag._rebuild()
 	await frames(3)
-	var other: Rect2 = bag._grid.get_global_transform() * Rect2(Vector2(under) * Backpack.CELL, Vector2.ONE * Backpack.CELL)
+	var other: Rect2 = bag._grid.get_global_transform() * Rect2(Vector2(free_cell) * Backpack.CELL, Vector2.ONE * Backpack.CELL)
+	# (the guard against a tap's echo is on the wall clock, not the game's)
+	while bag.just_closed():
+		await frames(1)
 	await _tap_at(other.get_center(), true)
 	await frames(2)
 	check(not bag._card.visible and bag._selected.is_empty(), "a tap on another thing with a card up: the card goes, no other opens")
-	await seconds(0.6)
+	while bag.just_closed():
+		await frames(1)
 	bag.select("fish", 0)
 	await frames(6)
 	var ring := x.get_global_rect().get_center() + Vector2(x.size.x * 0.5 + Backpack.CLOSE_PAD - 3.0, 0)
