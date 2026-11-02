@@ -4293,7 +4293,8 @@ func test_status_card_opens_bag() -> void:
 	check(bag.is_open(), "tapping it opens the backpack")
 	bag.toggle()
 	check(StatusCard.speed_share(player()) > 0.99, "full speed when unladen")
-	player().ghost_confuse(3.0)
+	# (dizzy, not scared: a ghost's touch is either, by the dice)
+	player().afflict(3.0, "被鬼纏過，方向亂掉", "被鬼嚇到，動彈不得", "confuse")
 	check(StatusCard.speed_share(player()) < 0.7, "slowed when dizzy")
 	check(StatusCard.conditions(player()).size() > 0, "and it says why")
 	# User request: what happens on the run, in a few words under the card.
