@@ -4771,11 +4771,10 @@ func test_campaign_unlocks_and_achievements() -> void:
 ## User request: the lakeside forest as a whole run in 3D (RunView3D) -
 ## the same run, shown in 3D: the map's things where the map put them, the
 ## traveller acting out the 2D one's clips, fishing and all.
-## User request (the floating ghost, plan B - off in the game until the user's seen it next to
-## the old one): made airy, the ghost's body is in the mist shader (its eyes not), mist drifts off
-## it, a shadow lies on the ground under it - and it follows where the game has it, eased.
+## User request (the floating ghost, plan B): made airy, the ghost's body is in the mist shader
+## (its eyes not), no mist round it (user feedback), a shadow lies on the ground under it; it
+## follows where the game has it, eased; its hands trail its going; it blinks.
 func test_ghost_mist() -> void:
-	RunView3D.ghost_mist = true
 	await _fresh_game()
 	var view: RunView3D = null
 	for _i in 120:
@@ -4786,26 +4785,34 @@ func test_ghost_mist() -> void:
 	var ghost: Node2D = get_tree().get_nodes_in_group("ghosts")[0]
 	await frames(10)
 	var c: Dictionary = view._creatures.get(ghost, {}) if view != null else {}
-	RunView3D.ghost_mist = false
-	check(c.has("mist") and (c.mist as Array).size() >= 2, "the ghost's body (and claws) in the mist shader")
+	check(RunView3D.ghost_mist and c.has("mist") and (c.mist as Array).size() >= 2, "the ghost's body (and claws) in the mist shader")
 	if not c.has("mist"):
 		return
 	var holder: Node3D = c.node
 	var body := (c.mist as Array)[0] as MeshInstance3D
 	check((body.material_override as ShaderMaterial).shader == RunView3D.GHOST_MIST
 		and body.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "see-through: no hard shadow of its own")
-	check(holder.get_node_or_null("Mist") is CPUParticles3D and not (holder.get_node("Mist") as CPUParticles3D).local_coords,
-		"mist drifting off it, left behind where it's been")
+	check(holder.find_children("*", "GPUParticles3D", true, false).is_empty()
+		and holder.find_children("*", "CPUParticles3D", true, false).is_empty(), "no mist round it")
 	var blob: MeshInstance3D = c.blob
 	check(blob.top_level and absf(blob.global_position.y - maxf(view.ground_y(ghost.global_position), RunView3D.WATER_Y)) < 0.2,
 		"its shadow on the ground under it")
-	# Moved on: eased after, not snapped - and there in the end.
+	# It blinks: its eyes shut a moment, and open again.
+	c.blink_at = float(c.time)
+	await frames(6)
+	var lid: Node3D = (c.lids as Array)[0][0]
+	check(lid.transform.basis.get_scale().y < 0.6, "it blinks (its eyes shut a moment)")
+	await seconds(0.4)
+	check(lid.transform.basis.get_scale().y > 0.99, "and opens them again")
+	# Moved on: eased after, not snapped - its hands trailing - and there in the end.
 	ghost.set_physics_process(false)
 	var from := holder.global_position
 	ghost.global_position += Vector2(70, 0)
 	await frames(2)
 	var goal := RunView3D.to3(ghost.global_position)
 	check(holder.global_position.distance_to(from) < 0.5, "it eases after where it's gone (a drift, not a jump)")
+	await frames(12)
+	check((c.hand as Vector3).length() > 0.03, "its hands trail its going (%.3f m)" % (c.hand as Vector3).length())
 	await seconds(2.0)
 	var at := Vector2(holder.global_position.x, holder.global_position.z)
 	check(at.distance_to(Vector2(goal.x, goal.z)) < 0.45, "and gets there (%.2f m off)" % at.distance_to(Vector2(goal.x, goal.z)))

@@ -185,10 +185,11 @@ static var quality := ""
 ## the lamp (share of the reach), the turn starting, its length, the
 ## pull-out from .. to]. (Off for the tests that play a run straight away.)
 static var intro := true
-## User request (the floating ghost, plan B, shown to the user first): an airy ghost - its lower
-## body and tail thinning out into mist, a trail of mist behind, drifting as a thing in the air
-## does (_mist_ghost / _drift_ghost). Off until the user's seen it next to the old one.
-static var ghost_mist := false
+## User request (the floating ghost, plan B): an airy ghost - its lower body and tail thinning
+## out into mist, drifting as a thing in the air does, its arms moving with it, blinking
+## (_mist_ghost / _drift_ghost). (User feedback on the first look: no mist round it.) False:
+## the old one.
+static var ghost_mist := true
 ## User request (round 2): the hand on the lamp before it leaves the drum
 ## (grabbed once the fingers are on its bail - by "grab" of the reach at the
 ## latest); then held up and lit - the right hand brought to its glass
@@ -1972,29 +1973,43 @@ const GHOST_MIST := preload("res://shaders/ghost_mist.gdshader")
 ## The airy ghost's drift: its spring (how quickly it follows where the game has it - rad/s - and
 ## how little it settles: under 1 it sways past and back), its weave as it goes (m, rad/s), its
 ## rise and fall (a slow change of height, m, and two bobs that don't keep time), how far it
-## leans and banks (rad), how slowly it turns (/s).
+## leans and banks (rad), how quickly it turns to face the way it's going (/s) - and, still and
+## near, to look at the traveller (/s, m).
 const MIST_SPRING := 4.2
 const MIST_DAMP := 0.62
-const MIST_WEAVE := Vector2(0.2, 1.3)
+const MIST_WEAVE := Vector2(0.12, 1.3)
 const MIST_HEIGHT := 0.2
 const MIST_BOB := Vector2(0.09, 0.05)
-const MIST_LEAN := 0.32
+const MIST_LEAN := 0.3
 const MIST_BANK := 0.3
-const MIST_TURN := 2.2
+const MIST_TURN := 5.0
+const MIST_LOOK := Vector2(2.0, 10.0)
 ## (the middle of its head, over its holder: m)
 const MIST_HEAD := Vector3(-0.18, 1.6, 0.05)
+## Its hands (user request: not stuck on stiffly) - on a spring of their own (rad/s, damping:
+## they swing past and back) toward where its going leaves them: trailing behind (s of its
+## speed, at most m) and lifted (m). The shader bends its arms to them and paws the air.
+const HAND_SPRING := 6.0
+const HAND_DAMP := 0.38
+const HAND_TRAIL := Vector2(0.09, 0.16)
+const HAND_LIFT := 0.05
+## Its blinks (user request): every so often (s), quick (s), now and then twice over.
+const BLINK_GAP := Vector2(1.5, 5.0)
+const BLINK_TIME := 0.16
+const BLINK_TWICE := 0.25
 
 
 ## The ghost made airy (ghost_mist): its body thins into mist from the waist down (the hard tail
-## goes with it - shaders/ghost_mist.gdshader), its claws and eyes kept; mist drifts off it and
-## hangs behind where it's been; a soft shadow under it, smaller and fainter the higher it is.
+## goes with it - shaders/ghost_mist.gdshader), its arms bending with its going; its eyes kept,
+## and blinking; a soft shadow under it, smaller and fainter the higher it is.
 func _mist_ghost(c: Dictionary, model: Node3D) -> void:
 	var parts: Array = model.find_children("*", "MeshInstance3D", true, false)
 	var body: MeshInstance3D = null
 	for mi in parts:
-		var m := mi as MeshInstance3D
-		if body == null or _verts(m) > _verts(body):
-			body = m
+		if body == null or _verts(mi) > _verts(body):
+			body = mi
+	var thin := ShaderMaterial.new()
+	thin.shader = GHOST_MIST
 	var whole := ShaderMaterial.new()
 	whole.shader = GHOST_MIST
 	whole.set_shader_parameter("waist", 0.0)
@@ -2003,57 +2018,52 @@ func _mist_ghost(c: Dictionary, model: Node3D) -> void:
 	var eye := StandardMaterial3D.new()
 	eye.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	eye.albedo_color = Color(0.05, 0.04, 0.09)
-	var thin: Array = []
+	var glint := StandardMaterial3D.new()
+	glint.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	glint.albedo_color = Color(0.92, 0.95, 1.0)
+	var lit: Array = []
+	var eyes: Array = []
+	var glints: Array = []
 	for mi in parts:
 		var m := mi as MeshInstance3D
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		for i in m.mesh.get_surface_count():
 			m.set_surface_override_material(i, null)
 		if m == body:
-			var mat := ShaderMaterial.new()
-			mat.shader = GHOST_MIST
-			m.material_override = mat
-			thin.append(m)
+			m.material_override = thin
+			lit.append(m)
+		elif _verts(m) < 60:
+			# (the glints in its eyes: the two least)
+			m.material_override = glint
+			glints.append(m)
 		elif _verts(m) < 100:
-			# (the eyes: the four little ones)
 			m.material_override = eye
+			eyes.append(m)
 		else:
+			# (the claws: whole, bent along with its arms)
 			m.material_override = whole
-			thin.append(m)
-	c.mist = thin
+			lit.append(m)
+	c.mist = lit
+	c.mats = [thin, whole]
+	# (each eye closes about its middle - up is up in the model - its glint with it)
+	var lids: Array = []
+	for e in eyes:
+		lids.append([e, (e as Node3D).transform, (e as Node3D).transform * (e as MeshInstance3D).get_aabb().get_center()])
+	for g in glints:
+		var at: Vector3 = (g as Node3D).transform * (g as MeshInstance3D).get_aabb().get_center()
+		var mid := at
+		for l in lids:
+			if (l[2] as Vector3).distance_to(at) < mid.distance_to(at) or mid == at:
+				mid = l[2]
+		lids.append([g, (g as Node3D).transform, mid])
+	c.lids = lids
 	c.phase = _rng.randf() * TAU
+	c.blink_at = float(c.time) + _rng.randf_range(BLINK_GAP.x, BLINK_GAP.y)
+	c.blink_t = -1.0
+	c.twice = false
+	c.hand = Vector3.ZERO
+	c.hand_v = Vector3.ZERO
 	var holder: Node3D = c.node
-	var trail := CPUParticles3D.new()
-	trail.name = "Mist"
-	trail.amount = 12 if _low else 22
-	trail.lifetime = 1.0
-	trail.local_coords = false
-	trail.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	trail.emission_sphere_radius = 0.16
-	trail.direction = Vector3.DOWN
-	trail.spread = 70.0
-	trail.initial_velocity_min = 0.05
-	trail.initial_velocity_max = 0.25
-	trail.gravity = Vector3(0, 0.12, 0)
-	trail.damping_min = 0.3
-	trail.damping_max = 0.6
-	trail.angle_min = 0.0
-	trail.angle_max = 360.0
-	trail.scale_amount_min = 0.7
-	trail.scale_amount_max = 1.2
-	var grow := Curve.new()
-	grow.add_point(Vector2(0.0, 0.5))
-	grow.add_point(Vector2(1.0, 1.6))
-	trail.scale_amount_curve = grow
-	var ramp := Gradient.new()
-	ramp.offsets = PackedFloat32Array([0.0, 0.25, 1.0])
-	var tint := Color(0.82, 0.88, 1.0)
-	ramp.colors = PackedColorArray([Color(tint, 0.0), Color(tint, 0.2), Color(tint, 0.0)])
-	trail.color_ramp = ramp
-	trail.mesh = _mist_puff()
-	# (out of where the body thins away)
-	trail.position = Vector3(-0.15, 1.18, -0.02)
-	holder.add_child(trail)
 	var blob := MeshInstance3D.new()
 	blob.name = "Shadow"
 	var plane := PlaneMesh.new()
@@ -2095,27 +2105,11 @@ func _soft_round() -> GradientTexture2D:
 	return _round_tex
 
 
-## A puff of the ghost's mist (facing the camera, its colour the particle's).
-var _puff: QuadMesh
-
-
-func _mist_puff() -> QuadMesh:
-	if _puff == null:
-		_puff = QuadMesh.new()
-		_puff.size = Vector2(0.5, 0.5)
-		var m := StandardMaterial3D.new()
-		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		m.vertex_color_use_as_albedo = true
-		m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
-		m.albedo_texture = _soft_round()
-		_puff.material = m
-	return _puff
-
-
 ## The airy ghost where the game has it: following on a spring (eased off, swaying a little past
-## where it stops), weaving as it goes, rising and falling, leaning into its going and banking
-## into its turns, slow to turn to face its way - and its shadow under it.
+## where it stops), weaving as it goes, rising and falling; facing the way it really goes (and,
+## stopped near the traveller, looking at them); leaning into its going and banking into its
+## turns about the way it goes, not the way it faces; its hands trailing and swinging; blinking;
+## its shadow under it.
 func _drift_ghost(c: Dictionary, node: Node2D, delta: float) -> void:
 	var holder: Node3D = c.node
 	var at := node.global_position
@@ -2126,6 +2120,7 @@ func _drift_ghost(c: Dictionary, node: Node2D, delta: float) -> void:
 		c.v = Vector2.ZERO
 		c.pitch = 0.0
 		c.roll = 0.0
+		c.erase("seen")
 	var p: Vector2 = c.p
 	var v: Vector2 = c.v
 	var acc := (goal - p) * MIST_SPRING * MIST_SPRING - v * 2.0 * MIST_DAMP * MIST_SPRING
@@ -2142,29 +2137,86 @@ func _drift_ghost(c: Dictionary, node: Node2D, delta: float) -> void:
 	var rise := MIST_HEIGHT * sin(t * 0.5 + float(c.phase)) \
 		+ (MIST_BOB.x * sin(t * 1.9) + MIST_BOB.y * sin(t * 0.83 + 1.1)) * (1.0 - 0.5 * going) + 0.12 * going
 	holder.position = Vector3(shown.x, y + rise, shown.y)
+	# Facing: the way it really goes (its weave too); stopped near the traveller, at them.
+	var moved: Vector2 = (shown - (c.get("seen", shown) as Vector2)) / maxf(delta, 0.001)
+	c.seen = shown
+	var want := float(c.yaw)
+	var rate := 0.0
+	if moved.length() > 0.25:
+		want = atan2(moved.x, moved.y)
+		rate = MIST_TURN * clampf(moved.length() / 0.8, 0.3, 1.0)
+	elif pivot != null:
+		var to := Vector2(pivot.global_position.x, pivot.global_position.z) - shown
+		if to.length() < MIST_LOOK.y and to.length() > 0.3:
+			want = atan2(to.x, to.y)
+			rate = MIST_LOOK.x
+	var yaw := lerp_angle(float(c.yaw), want, minf(1.0, delta * rate))
+	var turn := angle_difference(float(c.yaw), yaw) / maxf(delta, 0.001)
+	c.yaw = yaw
+	# Leaning into its going and banking into its turns - about the way it goes.
+	var ahead := acc.dot(dir) if speed > 0.05 else 0.0
+	c.pitch = lerpf(c.pitch, clampf(speed * 0.12 + ahead * 0.05, -0.18, MIST_LEAN), minf(1.0, delta * 3.0))
+	c.roll = lerpf(c.roll, clampf(turn * 0.22, -MIST_BANK, MIST_BANK), minf(1.0, delta * 3.0))
+	var go3 := Vector3(dir.x, 0.0, dir.y)
+	var left := Vector3(cos(yaw), 0.0, -sin(yaw))
+	var tilt := go3 * float(c.pitch) + left * (float(c.roll) + 0.05 * sin(t * 1.1))
+	var lean := Basis.IDENTITY
+	if tilt.length() > 0.0001:
+		lean = Basis(Vector3.UP.cross(tilt).normalized(), tilt.length())
+	var breath := sin(t * 2.4)
+	holder.basis = lean * Basis(Vector3.UP, yaw) * Basis.from_scale(Vector3(1.0 - 0.035 * breath, 1.0 + 0.045 * breath, 1.0 - 0.035 * breath))
+	# Its hands: trailing behind its going, lifted, swinging past and back.
+	var mine := holder.global_basis.orthonormalized().inverse() * Vector3(v.x, 0.0, v.y)
+	var reach := (-mine * HAND_TRAIL.x).limit_length(HAND_TRAIL.y) + Vector3(0.0, HAND_LIFT * going, 0.0)
+	var hand: Vector3 = c.hand
+	var hand_v: Vector3 = c.hand_v
+	hand_v += ((reach - hand) * HAND_SPRING * HAND_SPRING - hand_v * 2.0 * HAND_DAMP * HAND_SPRING) * delta
+	hand += hand_v * delta
+	c.hand = hand
+	c.hand_v = hand_v
 	var head := holder.transform * MIST_HEAD
 	for m in c.mist:
 		(m as GeometryInstance3D).set_instance_shader_parameter("base_y", holder.position.y)
 		(m as GeometryInstance3D).set_instance_shader_parameter("center", head)
-	var turn := 0.0
-	if speed > 0.1:
-		var yaw := lerp_angle(float(c.yaw), atan2(v.x, v.y), minf(1.0, delta * MIST_TURN))
-		turn = angle_difference(float(c.yaw), yaw) / maxf(delta, 0.001)
-		c.yaw = yaw
-	holder.rotation.y = c.yaw
-	var ahead := acc.dot(dir) if speed > 0.05 else 0.0
-	c.pitch = lerpf(c.pitch, clampf(speed * 0.12 + ahead * 0.05, -0.18, MIST_LEAN), minf(1.0, delta * 3.0))
-	c.roll = lerpf(c.roll, clampf(-turn * 0.22, -MIST_BANK, MIST_BANK) + 0.05 * sin(t * 1.1), minf(1.0, delta * 3.0))
-	holder.rotation.x = c.pitch
-	holder.rotation.z = c.roll
-	var breath := sin(t * 2.4)
-	holder.scale = Vector3(1.0 - 0.035 * breath, 1.0 + 0.045 * breath, 1.0 - 0.035 * breath)
+	for mat in c.mats:
+		(mat as ShaderMaterial).set_shader_parameter("to_ghost", Projection(holder.global_transform.affine_inverse()))
+		(mat as ShaderMaterial).set_shader_parameter("from_ghost", Projection(holder.global_transform))
+		(mat as ShaderMaterial).set_shader_parameter("hand", hand)
+		(mat as ShaderMaterial).set_shader_parameter("paw_t", t + float(c.phase))
+	_blink(c, t, delta)
 	var blob: MeshInstance3D = c.blob
 	var high := clampf((rise + MIST_HEIGHT) / (2.0 * MIST_HEIGHT + 0.2), 0.0, 1.0)
 	blob.global_transform = Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * lerpf(1.05, 0.75, high)),
 		Vector3(shown.x, maxf(y, WATER_Y) + 0.03, shown.y))
 	var shade: StandardMaterial3D = c.shade
 	shade.albedo_color = Color(shade.albedo_color, lerpf(0.5, 0.25, high))
+
+
+## The airy ghost's eyes (user request: blinking now and then): shut and open again quickly,
+## every BLINK_GAP s or so, sometimes twice over.
+func _blink(c: Dictionary, t: float, delta: float) -> void:
+	if float(c.blink_t) < 0.0:
+		if t >= float(c.blink_at):
+			c.blink_t = 0.0
+	else:
+		c.blink_t = float(c.blink_t) + delta
+	var shut := 0.0
+	if float(c.blink_t) >= 0.0:
+		var u := float(c.blink_t) / BLINK_TIME
+		if u >= 1.0:
+			c.blink_t = -1.0
+			if c.twice:
+				c.twice = false
+				c.blink_at = t + 0.08
+			else:
+				c.twice = _rng.randf() < BLINK_TWICE
+				c.blink_at = t + _rng.randf_range(BLINK_GAP.x, BLINK_GAP.y)
+		else:
+			shut = sin(PI * u)
+	var squeeze := Vector3(1.0, 1.0 - 0.9 * shut, 1.0)
+	for l in c.lids:
+		var mid: Vector3 = l[2]
+		(l[0] as Node3D).transform = Transform3D(Basis.from_scale(squeeze), mid - mid * squeeze) * (l[1] as Transform3D)
 
 
 ## The snowy map's animals in their winter coats: how white each goes (the fox an arctic fox,
