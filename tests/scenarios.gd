@@ -3481,14 +3481,17 @@ func test_oxy_items() -> void:
 	GameState.run_over = false
 	GameState.end_run(false, "lost")
 	check(GameState.oxy_fish.is_empty(), "not escaped: what's in the box is lost too (%d)" % home)
-	# Escaped: they come home.
+	# Escaped: they come home - in the box (user request: they're kept there on purpose; only the
+	# bag's are sorted into the tank and the bucket).
 	Profile.tank.clear()
+	Profile.oxy_stock = []
+	Profile.equipped["offhand"] = "oxy_box"
 	GameState.reset_run()
 	var c := a.duplicate(true)
 	GameState.oxy_fish = [c]
 	GameState.run_started = true
 	GameState.end_run(true, "ok")
-	check(Profile.tank.size() == 1, "escaped: the boxed fish come home too")
+	check(Profile.oxy_stock.size() == 1 and Profile.tank.is_empty(), "escaped: the boxed fish come home, still in the box")
 	# It breaks: what's in it comes out.
 	GameState.reset_run()
 	Profile.wear["oxy_box"] = 1
