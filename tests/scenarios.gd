@@ -6544,7 +6544,7 @@ func test_run_intro_and_eye_guide() -> void:
 	for _i in 72:
 		await frames(1)
 		air = Vector2(minf(air.x, rig._air), maxf(air.y, rig._air))
-	check(rig._skin_mesh != null and rig._skin_mesh.mesh.get_blend_shape_count() == WingMembrane.SHAPES.size()
+	check(rig._skin_mesh != null and rig._skin_mesh.mesh.get_blend_shape_count() == DragonSkin.SHAPES.size()
 		and air.y > 0.6 and air.x < 0.0, "flying: its membrane filling and easing with the beat (%.2f..%.2f)" % [air.x, air.y])
 	# (user report: its horns bent with its wings - none of its head's skin follows the wing bones)
 	var skin_arrays: Array = rig._skin_mesh.mesh.surface_get_arrays(0)
@@ -6570,9 +6570,9 @@ func test_run_intro_and_eye_guide() -> void:
 		if on_head >= 0.05 and on_wing > 0.0:
 			head_wing += 1
 	check(head_wing == 0, "its head and horns keep none of the wings' weight (%d)" % head_wing)
-	# (and flying, its body leans into it, head held up, legs trailing - see DragonRig._fly_body)
-	check(rig.flight_seen.x > 0.25 and rig.flight_seen.y < 0.0,
-		"flying: leaning into it (%.2f), its legs trailing (%.2f)" % [rig.flight_seen.x, rig.flight_seen.y])
+	# (and flying, its upper body leans into it, its legs just hang - see DragonRig._fly_body)
+	check(rig.flight_seen.x > 0.1 and absf(rig.flight_seen.y) < 0.4,
+		"flying: its chest leaning into it (%.2f), its legs hanging (%.2f)" % [rig.flight_seen.x, rig.flight_seen.y])
 	var up: float = (c.shown as Vector3).y - RunView3D.WATER_Y
 	check(c.fly == 1.0 and rig.fly == 1.0 and up > RunView3D.DRAGON_FLY_LIFT - 0.1 and c.clip == "Idle",
 		"over the water: up off it (%.2f m), wings beating, not walking (%s)" % [up, c.clip])

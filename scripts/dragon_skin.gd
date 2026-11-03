@@ -1,5 +1,9 @@
-class_name WingMembrane
+class_name DragonSkin
 extends RefCounted
+
+## The dragon's skin (its mesh, rebuilt once when it's made - fit): its wing membrane given the air
+## (below), its horns kept off its wings (_free_head), and none of it on the skeleton's root
+## (_off_root).
 
 ## (And its horns kept still - see _free_head.)
 ## User report: the dragon's wingbeat was stiff - no membrane filled by the air between its wing
@@ -72,7 +76,12 @@ static func _make(src: ArrayMesh, skin: Skin) -> ArrayMesh:
 		return null
 	var per := bones.size() / n
 	weights = _free_head(verts, bones, weights, per, by_name, bind_side, skin)
+	if by_name.has("root") and by_name.has("pelvis"):
+		var moved_off: Array = _off_root(bones, weights, per, by_name["root"], by_name["pelvis"])
+		bones = moved_off[0]
+		weights = moved_off[1]
 	arrays[Mesh.ARRAY_WEIGHTS] = weights
+	arrays[Mesh.ARRAY_BONES] = bones
 	# (relative shapes: each vertex's offset from the base, its normal's and tangent's - unchanged)
 	var shapes: Array[PackedVector3Array] = []
 	for _i in SHAPES.size():
@@ -165,6 +174,29 @@ static func _free_head(verts: PackedVector3Array, bones: PackedInt32Array, weigh
 			else:
 				weights[v * per + k] /= rest
 	return weights
+
+
+## A strand of skin behind its hips, by the tail's root, had a little weight (~0.1) on the
+## skeleton's root - the bone at its feet, which never moves with the body: whenever the hips moved
+## (walking, flying), that share stayed behind and stretched the strand. The root's share goes to
+## the hips (`pelvis`) - in place, or added to the hips' own share if the vertex has one.
+## ([bones, weights], changed.)
+static func _off_root(bones: PackedInt32Array, weights: PackedFloat32Array, per: int, root: int, pelvis: int) -> Array:
+	for v in bones.size() / per:
+		for k in per:
+			var i := v * per + k
+			if bones[i] != root:
+				continue
+			var hips := -1
+			for j in per:
+				if bones[v * per + j] == pelvis:
+					hips = v * per + j
+			if hips >= 0:
+				weights[hips] += weights[i]
+				weights[i] = 0.0
+			else:
+				bones[i] = pelvis
+	return [bones, weights]
 
 
 static func _to_segment(p: Vector3, a: Vector3, b: Vector3) -> float:
