@@ -6570,8 +6570,8 @@ func test_run_intro_and_eye_guide() -> void:
 		if on_head >= 0.05 and on_wing > 0.0:
 			head_wing += 1
 	check(head_wing == 0, "its head and horns keep none of the wings' weight (%d)" % head_wing)
-	# (user report: two tails - the model's stray strand under its tail's root, on its left, is
-	# folded in: none of the tail's skin there hangs far from the tail's line)
+	# (user report: two tails - the model's stray tail under its tail's root, on its left, root and
+	# all, is gone: none of the tail's skin there stands far from the tail's line)
 	var tail_line: Array[Vector3] = []
 	for k in 7:
 		var b: int = range(binds.get_bind_count()).filter(func(i): return binds.get_bind_name(i) == "tail_%02d" % (k + 1))[0]
@@ -6587,14 +6587,15 @@ func test_run_intro_and_eye_guide() -> void:
 			elif bn.begins_with("thigh") or bn.begins_with("calf") or bn.begins_with("foot"):
 				on_leg += vw[v * 4 + k]
 		var p := vv[v]
-		# (the tail's skin there - the robe over the legs aside)
-		if on_tail < 0.3 or on_leg > 0.35 or p.x < 0.16 or p.y > 0.66 or p.z < -0.55:
+		# (the tail's skin there, root and all - the robe over the legs aside; the model's own has
+		# ~400 there, folded none)
+		if on_tail < 0.3 or on_leg > 0.35 or p.x < 0.1 or p.y > 0.78 or p.z < -0.55:
 			continue
 		var d := 99.0
 		for i in tail_line.size() - 1:
 			var ab := tail_line[i + 1] - tail_line[i]
 			d = minf(d, p.distance_to(tail_line[i] + ab * clampf((p - tail_line[i]).dot(ab) / ab.length_squared(), 0.0, 1.0)))
-		if d > 0.32:
+		if d > 0.3:
 			fork_left += 1
 	check(fork_left == 0, "one tail: the stray strand folded away (%d left)" % fork_left)
 	# (and flying, its upper body leans into it, its legs just hang - see DragonRig._fly_body)
