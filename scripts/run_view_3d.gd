@@ -2331,6 +2331,47 @@ func _dragon_notices(n: Node, at: Vector2) -> bool:
 	return false
 
 
+## User request: the dragon walked on the water - now it flies over it. Seeing it'll cross (water
+## ahead on its way - DRAGON_LOOK m - and where it's going beyond that), it opens its wings and
+## beats them (DragonRig.fly), rising off the water (DRAGON_FLY_LIFT m) once they're going, bobbing
+## with the beat; past the water it comes down and folds them again. The lift (m).
+const DRAGON_LOOK := [0.8, 1.6, 2.4, 3.2]
+const DRAGON_FLY_LIFT := 0.45
+## (flying fast it leans into it - rad)
+const DRAGON_FLY_LEAN := 0.2
+
+
+func _dragon_flight(c: Dictionary, n: Node, at: Vector2, vel: Vector2, delta: float) -> float:
+	var zones := _zones()
+	var crossing := _over_water(at, zones)
+	if not crossing and vel.length() / PX > 0.2:
+		# (only water it'll really reach: not past where it's going)
+		var dir := vel.normalized()
+		var goal: Variant = n.get("_target")
+		var reach: float = at.distance_to(goal) if goal is Vector2 else 9999.0
+		for m in DRAGON_LOOK:
+			if float(m) * PX > reach + 20.0:
+				break
+			if _over_water(at + dir * float(m) * PX, zones):
+				crossing = true
+				break
+	c.fly = move_toward(float(c.get("fly", 0.0)), 1.0 if crossing else 0.0, delta * (1.4 if crossing else 0.9))
+	var rig: DragonRig = c.get("rig")
+	var bob := 0.06 * sin(TAU * rig.beat_phase + 0.6) if rig != null else 0.0
+	var up := smoothstep(0.35, 1.0, float(c.fly))
+	return (DRAGON_FLY_LIFT + bob) * up
+
+
+## (open water under `p`: past the shore's edge, and no deck over it)
+func _over_water(p: Vector2, zones: Array) -> bool:
+	if _depth(p, zones) < 3.0:
+		return false
+	for w in _walk:
+		if (w[0] as Rect2).has_point(p):
+			return false
+	return true
+
+
 ## The dragon's wings open when it hunts or holds someone, folded calm; its
 ## tail swung clear of any tree or rock it would sweep through.
 func _dragon_rig(c: Dictionary, n: Node, mode: int) -> void:
@@ -2561,6 +2602,8 @@ func _sync_creatures(delta: float) -> void:
 				var v: Node2D = n.get("_visual")
 				if v != null:
 					lift = -v.position.y / PX
+			"dragon":
+				lift = _dragon_flight(c, n, at, vel, delta)
 		# User request (3D: smooth, no "it was 2D"): the 2D world moves in
 		# physics steps, the picture in frames - eased toward where it is,
 		# so a step never shows as a hitch; its pace eased too, so a clip
@@ -2582,7 +2625,7 @@ func _sync_creatures(delta: float) -> void:
 			# (fading into the edge's trees - Critter.fade: user request, the whole of it fading
 			# away, not shrinking)
 			_fade_creature(c, (n as Critter).fade)
-		if _tracks != null and SnowTracks.ANIMALS.has(kind):
+		if _tracks != null and SnowTracks.ANIMALS.has(kind) and float(c.get("fly", 0.0)) < 0.3:
 			# (user request: the animals and the big ghost leave prints in the snow too)
 			if not c.has("skel"):
 				var sks: Array = (c.model as Node).find_children("*", "Skeleton3D", true, false) if c.model != null else []
@@ -2595,6 +2638,10 @@ func _sync_creatures(delta: float) -> void:
 			var lean := clampf(speed * 0.12, 0.0, 0.3)
 			holder.rotation.x = lerpf(holder.rotation.x, lean, minf(1.0, delta * 4.0))
 			holder.scale = Vector3(1.0 - 0.04 * sin(c.time * 3.1), 1.0 + 0.05 * sin(c.time * 3.1), 1.0 - 0.04 * sin(c.time * 3.1))
+		elif kind == "dragon":
+			# (flying: leaning into its going, the more the faster)
+			var lean := DRAGON_FLY_LEAN * float(c.get("fly", 0.0)) * clampf(speed / 2.5, 0.0, 1.0)
+			holder.rotation.x = lerpf(holder.rotation.x, lean, minf(1.0, delta * 3.0))
 		elif kind == "willow":
 			# (no rig: it stands - breathing, and swaying in its rite)
 			var v2: Node2D = n.get("visual")
@@ -2640,8 +2687,15 @@ func _sync_creatures(delta: float) -> void:
 						clip = "Walk" if moving else ("Idle_Lamp" if near else "Idle")
 						if moving:
 							rate = clampf(speed / 0.9, 0.5, 1.6)
+				var flying := float(c.get("fly", 0.0)) > 0.6 and mode != BigGhost.Mode.GRAB and mode != BigGhost.Mode.EAT
+				if flying:
+					# (over the water: off its feet - no walking in the air)
+					clip = "Idle"
+					rate = 1.0
 				var rig: DragonRig = c.get("rig")
 				if rig != null:
+					rig.fly = float(c.get("fly", 0.0))
+					rig.hurry = clampf((speed - 0.3) / 2.2, 0.0, 1.0)
 					# (the arm up on the move when someone's near - stood, the
 					# clip holds it up; holding someone, the hands are busy)
 					rig.raise = 1.0 if near and clip in ["Walk", "Chase"] else 0.0

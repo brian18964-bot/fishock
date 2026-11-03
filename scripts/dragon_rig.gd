@@ -30,6 +30,16 @@ const EASE := 2.5
 
 ## 0 folded .. 1 open (what it's doing - RunView3D sets it).
 var spread := 0.0
+## User request: over water it flies - `fly` 0..1 (RunView3D: from when it sees it'll cross): the
+## wings open and beat harder; and the faster it goes (`hurry` 0..1) the quicker and wider the
+## beat. (The beat's phase, kept as it speeds up and slows: `beat_phase`, 0..1 a beat.)
+var fly := 0.0
+var hurry := 0.0
+var beat_phase := 0.0
+const FLY_BEAT := 0.6
+const HURRY_BEAT := 0.8
+## (flying, the beat swung out from the body - deg: the wings out to its sides, not up its back)
+const FLY_OUT := 30.0
 ## User request: the tail and the wings swing with its going - they lag
 ## behind when it sets off, swing on when it stops or turns, and the tail
 ## sways with its stride. `motion`: how it's moving, in its own frame
@@ -83,7 +93,8 @@ func _process_modification() -> void:
 	var dt := clampf(now - _last, 0.0, 0.1) if _last >= 0.0 else 0.0
 	_last = now
 	_time += dt
-	_open = move_toward(_open, clampf(spread, 0.0, 1.0), dt * EASE)
+	_open = move_toward(_open, clampf(maxf(spread, fly), 0.0, 1.0), dt * EASE)
+	beat_phase = fmod(beat_phase + dt / BEAT_TIME * (1.0 + HURRY_BEAT * hurry + FLY_BEAT * fly), 1.0)
 	_tail_now = lerpf(_tail_now, tail_turn, 1.0 - exp(-dt * 4.0))
 	# The lag: its change of pace (side to side, ahead and back) drives a
 	# spring the tail and wings hang on.
@@ -115,7 +126,8 @@ func _process_modification() -> void:
 	var chest_now := sk.get_bone_global_pose(_chest).basis.orthonormalized()
 	var chest_rest := sk.get_bone_global_rest(_chest).basis.orthonormalized()
 	var frame := chest_now * chest_rest.inverse()
-	var beat := sin(TAU * _time / BEAT_TIME)
+	var beat := sin(TAU * beat_phase)
+	var wide := 1.0 + 0.55 * fly + 0.35 * hurry
 	for w in _wings:
 		var rest_dir: Vector3 = w.rest
 		var want: Vector3 = rest_dir.slerp(w.fold, 1.0 - _open) if rest_dir.angle_to(w.fold) < PI - 0.01 \
@@ -123,7 +135,7 @@ func _process_modification() -> void:
 		if w.root:
 			# (up and down about the body's forward axis, the left and the
 			# right wing mirrored; swung by the lag, and a little by the stride)
-			var deg: float = BEAT * _open * beat + BREATH * (1.0 - _open) * sin(TAU * _time / 3.3) \
+			var deg: float = BEAT * wide * _open * beat - FLY_OUT * fly + BREATH * (1.0 - _open) * sin(TAU * _time / 3.3) \
 				+ rad_to_deg(_lag.y) * 0.5 + 3.0 * pace * sin(TAU * stride * 2.0)
 			want = Basis(Vector3.BACK, deg_to_rad(deg) * float(w.side)) * want
 			want = Basis(Vector3.UP, _lag.x * 0.4) * want

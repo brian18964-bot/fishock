@@ -6480,6 +6480,75 @@ func test_run_intro_and_eye_guide() -> void:
 		(c.node as Node3D).global_position.z - view.pivot.global_position.z).length()
 	check(c.clip == "Grab" and rig.spread == 1.0 and apart > RunView3D.DRAGON_ROOM - 0.05,
 		"grabbing: Grab, wings open, held off the traveller (%.2f m)" % apart)
+	# User request: it walked on the water - now it flies over it. Seeing it'll cross, it opens its
+	# wings and beats them before the shore; over the water it's up off it, beating; the faster it
+	# goes, the faster the beat. Water it won't reach: it keeps walking.
+	var zones: Array = view._zones()
+	var wet := Vector2.INF
+	for z in zones:
+		for lobe in (z as WaterZone).lobes:
+			var mid: Vector2 = (z as WaterZone).global_position + Vector2(lobe.x, lobe.y)
+			if view._over_water(mid, zones) and view._depth(mid, zones) > 30.0:
+				wet = mid
+				break
+		if wet != Vector2.INF:
+			break
+	check(wet != Vector2.INF, "a pond on the map")
+	# (the nearest shore out from it, and a way in from 5 m off it)
+	var shore := Vector2.INF
+	for k in 16:
+		var out := Vector2.RIGHT.rotated(TAU * k / 16.0)
+		var p := wet
+		for _s in 200:
+			if view._depth(p, zones) < -40.0:
+				break
+			p += out * 6.0
+		if shore == Vector2.INF or p.distance_to(wet) < shore.distance_to(wet):
+			shore = p
+	var way := (wet - shore).normalized()
+	var start := shore - way * 5.0 * RunView3D.PX
+	var player_at := player().global_position
+	player().global_position = start - way * 20.0 * RunView3D.PX
+	bg.mode = bg.Mode.WANDER
+	# (going only as far as just off the shore: no flight)
+	bg.global_position = start
+	bg._target = start + way * 1.0 * RunView3D.PX
+	await seconds(1.0)
+	for _i in 20:
+		bg.global_position = bg.global_position.move_toward(bg._target, BigGhost.WANDER_SPEED / 60.0)
+		await frames(1)
+	check(float(c.get("fly", 0.0)) == 0.0 and rig.fly == 0.0, "water it won't reach: still walking (fly %.2f)" % float(c.get("fly", 0.0)))
+	# (going across it: wings going before it's there)
+	bg.global_position = start
+	bg._target = wet + way * 3.0 * RunView3D.PX
+	await seconds(0.5)
+	var at_shore := -1.0
+	var opened := -1.0
+	var hurried := 0.0
+	for _i in 400:
+		bg.global_position = bg.global_position.move_toward(wet, BigGhost.CHASE_SPEED / 60.0)
+		await frames(1)
+		hurried = maxf(hurried, rig.hurry)
+		if at_shore < 0.0 and view._over_water(bg.global_position, zones):
+			at_shore = float(c.fly)
+			opened = rig._open
+		if bg.global_position == wet:
+			break
+	check(at_shore > 0.5 and opened > 0.3, "at the shore its wings already beating (fly %.2f, open %.2f)" % [at_shore, opened])
+	check(hurried > 0.6, "going fast, the beat hurried (%.2f)" % hurried)
+	var slow_beat := 1.0 + DragonRig.FLY_BEAT
+	check(hurried * DragonRig.HURRY_BEAT > 0.4, "fast, its beat %.1fx a hover's" % ((slow_beat + hurried * DragonRig.HURRY_BEAT) / slow_beat))
+	await seconds(1.2)
+	var up: float = (c.shown as Vector3).y - RunView3D.WATER_Y
+	check(c.fly == 1.0 and rig.fly == 1.0 and up > RunView3D.DRAGON_FLY_LIFT - 0.1 and c.clip == "Idle",
+		"over the water: up off it (%.2f m), wings beating, not walking (%s)" % [up, c.clip])
+	# (back on land: down, wings folded)
+	bg.global_position = start
+	bg._target = start
+	await seconds(2.0)
+	check(c.fly == 0.0 and absf((c.shown as Vector3).y - view.ground_y(start)) < 0.05,
+		"back on land: on its feet, the wings folding (fly %.2f)" % float(c.fly))
+	player().global_position = player_at
 	bg.mode = bg.Mode.ASLEEP
 	bg.set_physics_process(true)
 	_restore_profile(kept)
