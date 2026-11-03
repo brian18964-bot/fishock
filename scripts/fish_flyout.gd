@@ -4,8 +4,8 @@ extends Control
 ## User request (the fish box and the live-fish clasp, the same everywhere - in a run's bag, at
 ## camp's equipment, bag and warehouse): 使用 on one, or a fish dragged onto it, opens a small
 ## window of cells beside its icon. The fish are dragged into the cells by hand (a fish takes
-## the cells its size does; turned with R, or a tap on it), moved about in them, and dragged
-## out to take them out. The window's `store` (OxyStore / ClaspStore) does the moving.
+## the cells its size does; turned with R while held), moved about in them, and dragged out to
+## take them out; a tap on one opens its card (turn it, take it out, lock it). The window's `store` (OxyStore / ClaspStore) does the moving.
 
 signal closed
 signal said(text: String)
@@ -87,9 +87,9 @@ func _input(event: InputEvent) -> void:
 	# a tap outside the window closes it (a drag from outside - a fish on its way in - doesn't)
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
-			_out_armed = not contains(event.position)
+			_out_armed = not contains(event.position) and not on_card(event.position)
 			_out_at = event.position
-		elif _out_armed and not contains(event.position) and event.position.distance_to(_out_at) < 10.0:
+		elif _out_armed and not contains(event.position) and not on_card(event.position) and event.position.distance_to(_out_at) < 10.0:
 			_out_armed = false
 			close()
 		else:
@@ -129,6 +129,8 @@ func close() -> void:
 func refresh() -> void:
 	if _grid == null:
 		return
+	if _card != null and _card_index >= store.list().size():
+		_close_card()
 	_title.text = store.title()
 	_grid.fish = store.list()
 	var placed: Array = store.placed()
@@ -220,14 +222,111 @@ func drag_end(index: int, at: Vector2, grab: Vector2i) -> void:
 		_ghost.queue_free()
 		_ghost = null
 	clear_hover()
+	_close_card()
 	if contains(at):
 		_say(store.move(index, cell_at(at) - grab))
 	else:
 		_say(store.take(index))
 
 
+## User request: a tap on a fish in the cells opens its card, as the bag's and the warehouse's do -
+## what it is, turn it, take it out, lock it - not a turn straight away.
 func tap(index: int) -> void:
-	_say(store.rotate(index))
+	if _card != null and _card_index == index:
+		_close_card()
+		return
+	_open_card(index)
+
+
+const CARD_WIDTH := 290.0
+var _card: PanelContainer
+var _card_index := -1
+
+
+func _open_card(index: int) -> void:
+	_close_card()
+	var l: Array = store.list()
+	if index < 0 or index >= l.size():
+		return
+	var f: Dictionary = l[index]
+	_card_index = index
+	_card = UiKit.tooltip_panel()
+	_card.name = "FishCard"
+	_card.mouse_filter = Control.MOUSE_FILTER_STOP
+	_card.custom_minimum_size = Vector2(CARD_WIDTH, 0)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 6)
+	var name_row := FishVitals.name_row(f, 19)
+	name_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(name_row)
+	var lock := LockToggle.new(Locks.fish(f))
+	lock.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	lock.changed.connect(func(on: bool):
+		Locks.set_fish(f, on)
+		refresh()
+		_open_card(store.list().find(f)))
+	head.add_child(lock)
+	var x := UiKit.close_button()
+	x.name = "CloseCard"
+	x.pressed.connect(_close_card)
+	head.add_child(x)
+	col.add_child(head)
+	var vitals := FishVitals.new()
+	vitals.custom_minimum_size.x = CARD_WIDTH - 24.0
+	col.add_child(vitals)
+	vitals.show_fish(f, false, "camp" if store.get("home") == true else "field")
+	var acts := HFlowContainer.new()
+	acts.custom_minimum_size.x = CARD_WIDTH - 24.0
+	acts.add_theme_constant_override("h_separation", 8)
+	acts.add_theme_constant_override("v_separation", 8)
+	var sz: Vector2i = store.size_of(f)
+	if sz.x != sz.y:
+		var turn := UiKit.button("旋轉", 15)
+		turn.name = "Turn"
+		turn.custom_minimum_size = Vector2(90, 40)
+		turn.pressed.connect(func():
+			_say(store.rotate(store.list().find(f)))
+			_open_card(store.list().find(f)))
+		acts.add_child(turn)
+	var out := UiKit.button("取出", 15, "red")
+	out.name = "TakeOut"
+	out.custom_minimum_size = Vector2(90, 40)
+	out.pressed.connect(func():
+		var why: String = store.take(store.list().find(f))
+		_close_card()
+		_say(why))
+	acts.add_child(out)
+	col.add_child(acts)
+	_card.add_child(col)
+	add_child(_card)
+	_place_card()
+
+
+## Beside the window: its right if there's room, else its left; level with its top.
+func _place_card() -> void:
+	if _card == null:
+		return
+	_card.reset_size()
+	var sz := _card.get_combined_minimum_size()
+	var at := Vector2(global_position.x + size.x + 6.0, global_position.y)
+	if at.x + sz.x > 956.0:
+		at.x = global_position.x - 6.0 - sz.x
+	at.y = clampf(at.y, 4.0, 536.0 - sz.y)
+	_card.global_position = Vector2(clampf(at.x, 4.0, 956.0 - sz.x), at.y)
+
+
+func _close_card() -> void:
+	if _card != null and is_instance_valid(_card):
+		_card.queue_free()
+	_card = null
+	_card_index = -1
+
+
+## Is the global point over the fish's card?
+func on_card(at: Vector2) -> bool:
+	return _card != null and is_instance_valid(_card) and _card.get_global_rect().has_point(at)
 
 
 func _unhandled_key_input(event: InputEvent) -> void:

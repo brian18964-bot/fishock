@@ -3447,8 +3447,21 @@ func test_oxy_items() -> void:
 	var spot := flyout._grid.get_global_rect().position + Vector2(1.5, 0.5) * FishFlyout.CELL
 	check(flyout.drop_fish(GameState.carried_fish, 0, spot, Vector2i.ZERO), "a fish let go over the cells")
 	check(GameState.oxy_fish.size() == 1 and GameState.oxy_placed()[0].position == Vector2i(1, 0) and flyout._grid.fish.size() == 1, "goes in the cell it's over")
+	# (user request: a tap opens its card - as the bag's - turned, taken out, locked from there)
 	flyout.tap(0)
-	check(GameState.oxy_fish[0].get("rot", false) == true or GameState.oxy_placed()[0].size == Vector2i(2, 1), "a tap turns it")
+	await frames(2)
+	var fcard: Control = flyout._card
+	check(fcard != null and fcard.find_child("Turn", true, false) != null and fcard.find_child("TakeOut", true, false) != null
+		and fcard.find_child("LockToggle", true, false) != null, "a tap opens its card: turn, take out, a padlock")
+	(fcard.find_child("Turn", true, false) as Button).pressed.emit()
+	await frames(2)
+	check(GameState.oxy_fish[0].get("rot", false) == true or GameState.oxy_placed()[0].size == Vector2i(2, 1), "旋轉 turns it")
+	var lock_t: LockToggle = flyout._card.find_child("LockToggle", true, false)
+	lock_t.changed.emit(true)
+	await frames(2)
+	check(Locks.fish(GameState.oxy_fish[0]), "the padlock locks it")
+	Locks.set_fish(GameState.oxy_fish[0], false)
+	flyout._close_card()
 	flyout.drag_end(0, Vector2(900, 500), Vector2i.ZERO)
 	check(GameState.oxy_fish.is_empty() and GameState.carried_fish.size() == 1, "dragged out of the cells: taken out")
 	# A tap outside the window closes it; a drag from outside doesn't.
@@ -8540,7 +8553,6 @@ func test_fish_clasp() -> void:
 	var panel: FishFlyout = eq.find_child("FishFlyout", true, false)
 	check(panel != null and panel.store is ClaspStore and panel._grid.fish.size() == 1, "tapping the clasp opens its hooks beside it, the fish hung")
 	check(panel.global_position.x >= 200.0 - 36.0, "(beside the icon)")
-	panel.tap(0)
 	panel.drag_end(0, Vector2(900, 500), Vector2i.ZERO)
 	await frames(2)
 	check(Profile.clasp_fish.is_empty() and Profile.pack_fish.size() == 2, "a hung fish dragged out is taken off, to the bag")

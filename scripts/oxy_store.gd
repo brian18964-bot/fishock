@@ -33,7 +33,7 @@ func title() -> String:
 
 
 func hint() -> String:
-	return "把魚拖進格子（按 R 或點魚可轉向）；把魚拖出格子就拿出來"
+	return "把魚拖進格子；點魚看詳情（轉向、取出、上鎖）；把魚拖出格子就拿出來"
 
 
 ## Where each fish lies (Rect2i, same order), [] if they don't all fit.
