@@ -1865,7 +1865,7 @@ const BY_SCRIPT := {"ghost.gd": "ghost", "big_ghost.gd": "dragon", "water_ghost.
 ## node -> {node: Node3D (the holder), model, anim, clip, yaw, last (2D pos)}
 var _creatures := {}
 var _rune_glow: Array = []
-## User request: the big ghost is a dragon now (tools/build_dragon_meshy.py:
+## User request: the big ghost is a dragon now (tools/build_dragon_sage.py:
 ## the user's Meshy model, rigged) - and, as the ghost did, a lantern
 ## glowing green in its right hand, hung from its bail (CharacterRig.
 ## LAMP_BAIL), swinging as it moves; the 2D one's light (BigGhost.
@@ -2288,7 +2288,11 @@ func _dragon_gear(c: Dictionary, model: Node3D) -> void:
 	c.rig = rig
 	# (its tail at rest, in the model: the root and the tip - the dodge)
 	var root := sk.find_bone("tail_01")
-	var last := sk.find_bone("tail_07")
+	var last := -1
+	var k := 1
+	while sk.find_bone("tail_%02d" % k) >= 0:
+		last = sk.find_bone("tail_%02d" % k)
+		k += 1
 	if root >= 0 and last >= 0:
 		var to_model := model.global_transform.affine_inverse() * sk.global_transform
 		var tip_rest := sk.get_bone_global_rest(last)
@@ -2317,6 +2321,8 @@ func _dragon_gear(c: Dictionary, model: Node3D) -> void:
 	c.swing = Vector2.ZERO
 	c.swing_vel = Vector2.ZERO
 	c.hand_last = Vector3.ZERO
+	# (hung once the skeleton's posed for the frame - the fist where it is now, not a frame behind)
+	sk.skeleton_updated.connect(func(): _hang_dragon_lamp(c, get_process_delta_time()))
 
 
 ## Whether the dragon at `at` has someone near: the traveller within
@@ -2405,15 +2411,20 @@ func _dragon_rig(c: Dictionary, n: Node, mode: int) -> void:
 	rig.tail_turn = best
 
 
-## Hung from the dragon's hand by its bail, upright, swinging as the hand
-## moves (a pendulum, as the traveller's).
+## Hung from the dragon's fist by its bail (user request: carried for real - its bail through the
+## fist, DragonRig.grip - not floating at the wrist), upright, swinging as the hand moves (a
+## pendulum, as the traveller's); its bail along the fist's knuckles.
 func _hang_dragon_lamp(c: Dictionary, delta: float) -> void:
+	if not is_instance_valid(c.get("lamp")) or not (c.model as Node3D).is_inside_tree():
+		return
 	var hand: Node3D = c.hand
 	var lamp: Node3D = c.lamp
 	lamp.visible = (c.node as Node3D).visible
 	var model: Node3D = c.model
 	var k := model.global_basis.get_scale().x * DRAGON_LAMP_SIZE
-	var grip := hand.global_position
+	var rig: DragonRig = c.get("rig")
+	var fist := rig.grip_world() if rig != null else Transform3D(Basis(), hand.global_position)
+	var grip := fist.origin
 	# The lamp's weight hanging from the bail (verlet): the hand drags the
 	# bail about, the weight swings after it under its own gravity.
 	var arm := CharacterRig.LAMP_BAIL.length() * k
@@ -2437,13 +2448,14 @@ func _hang_dragon_lamp(c: Dictionary, delta: float) -> void:
 	next = grip + down * arm
 	c.bob_last = bob
 	c.bob = next
-	# Its up the way from the weight to the bail; facing kept to the body's.
+	# Its up the way from the weight to the bail; its bail (its x) through the fist, along the
+	# knuckles.
 	var up := -down
-	var fwd := yaw.z - up * yaw.z.dot(up)
-	if fwd.length() < 0.01:
-		fwd = yaw.x.cross(up)
-	fwd = fwd.normalized()
-	var b := Basis(up.cross(fwd).normalized(), up, fwd)
+	var along := fist.basis.x - up * fist.basis.x.dot(up)
+	if along.length() < 0.05:
+		along = yaw.x - up * yaw.x.dot(up)
+	along = along.normalized()
+	var b := Basis(along, up, along.cross(up).normalized())
 	c.swing = Vector2(b.y.x, b.y.z)
 	lamp.global_transform = Transform3D(b.scaled(Vector3.ONE * k), grip - (b.scaled(Vector3.ONE * k)) * CharacterRig.LAMP_BAIL)
 
@@ -2571,7 +2583,6 @@ func _sync_creatures(delta: float) -> void:
 			on = false
 		holder.visible = on
 		if c.has("lamp"):
-			_hang_dragon_lamp(c, delta)
 			# (asleep its lantern's out, as the 2D one's)
 			var awake := int(n.get("mode")) != BigGhost.Mode.ASLEEP
 			(c.lamp as Node).get_node("Flame").visible = awake

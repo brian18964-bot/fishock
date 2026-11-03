@@ -6464,9 +6464,9 @@ func test_run_intro_and_eye_guide() -> void:
 	check(c.clip == "Idle", "no one near: the lantern down (%s)" % c.clip)
 	bg.global_position = player().global_position + Vector2(-110, -40)
 	await seconds(1.5)
-	var hand: Vector3 = (c.hand as Node3D).global_position
-	var bail: Vector3 = (c.lamp as Node3D).global_transform * CharacterRig.LAMP_BAIL
-	check(hand.distance_to(bail) < 0.05, "the lantern hangs from its hand (%.2f m)" % hand.distance_to(bail))
+	# (user request: carried for real - its bail through the closed fist, not floating at the wrist)
+	var carried: Dictionary = await _dragon_seen(rig, c)
+	check(carried.holds, "the lantern hung from its closed fist by the bail - %s" % carried.text)
 	var glow: OmniLight3D = view._lights.get(bg.lamp_light)
 	var flame: Vector3 = (c.lamp as Node3D).get_node("Flame").global_position
 	check(glow != null and glow.global_position.distance_to(flame) < RunView3D.DRAGON_LIGHT_OFF + 0.01
@@ -6573,9 +6573,11 @@ func test_run_intro_and_eye_guide() -> void:
 	# (user report: two tails - the model's stray tail under its tail's root, on its left, root and
 	# all, is gone: none of the tail's skin there stands far from the tail's line)
 	var tail_line: Array[Vector3] = []
-	for k in 7:
-		var b: int = range(binds.get_bind_count()).filter(func(i): return binds.get_bind_name(i) == "tail_%02d" % (k + 1))[0]
-		tail_line.append(binds.get_bind_pose(b).affine_inverse().origin)
+	for k in 20:
+		var found: Array = range(binds.get_bind_count()).filter(func(i): return binds.get_bind_name(i) == "tail_%02d" % (k + 1))
+		if found.is_empty():
+			break
+		tail_line.append(binds.get_bind_pose(found[0]).affine_inverse().origin)
 	var fork_left := 0
 	for v in vv.size():
 		var on_tail := 0.0
@@ -6601,6 +6603,21 @@ func test_run_intro_and_eye_guide() -> void:
 	# (and flying, its upper body leans into it, its legs just hang - see DragonRig._fly_body)
 	check(rig.flight_seen.x > 0.1 and absf(rig.flight_seen.y) < 0.4,
 		"flying: its chest leaning into it (%.2f), its legs hanging (%.2f)" % [rig.flight_seen.x, rig.flight_seen.y])
+	var flying_seen: Dictionary = await _dragon_seen(rig, c)
+	check(flying_seen.holds, "flying, the lantern still in its fist - %s" % flying_seen.text)
+	# (user request: the wings the same both sides - the clip's turn of the chest kept out of them)
+	check(flying_seen.unalike < 0.15, "flying, its wings alike both sides (%.2f apart)" % flying_seen.unalike)
+	# (no tears: its membrane comes away from its back, its tail from the robe, stretching none of
+	# its skin far - user request: the wings' and the tail's motion must look right)
+	var tear := await _dragon_tear(rig)
+	check(tear < 0.2, "flying: none of its skin torn out of shape (worst %.2f m over)" % tear)
+	# (the tail: a chain swung free, but whole - its joints as far apart as its bones are long)
+	var chain_ok := rig._tail_p.size() == rig._tail.size() and rig._tail.size() >= 8
+	for i in rig._tail_p.size() - 1:
+		var gap := rig._tail_p[i].distance_to(rig._tail_p[i + 1])
+		var link := rig._tail_len[i + 1] * (c.model as Node3D).global_basis.get_scale().x
+		chain_ok = chain_ok and rig._tail_p[i].is_finite() and absf(gap - link) < link * 0.35 + 0.02
+	check(chain_ok, "its tail a whole chain of %d, swinging free" % rig._tail.size())
 	var up: float = (c.shown as Vector3).y - RunView3D.WATER_Y
 	check(c.fly == 1.0 and rig.fly == 1.0 and up > RunView3D.DRAGON_FLY_LIFT - 0.1 and c.clip == "Idle",
 		"over the water: up off it (%.2f m), wings beating, not walking (%s)" % [up, c.clip])
@@ -6619,6 +6636,8 @@ func test_run_intro_and_eye_guide() -> void:
 	bg.mode = bg.Mode.EAT
 	await seconds(1.5)
 	check(c.clip == "Eat" and rig.crouch == 1.0 and rig._crouched > 0.99, "eating the fish: crouched over it (%s, %.2f)" % [c.clip, rig._crouched])
+	var tear_low := await _dragon_tear(rig)
+	check(tear_low < 0.35, "crouched: its tail free of the robe, none of it torn (worst %.2f m over)" % tear_low)
 	bg.mode = bg.Mode.WANDER
 	await seconds(1.0)
 	check(rig._crouched < 0.2, "done eating: standing up again (%.2f)" % rig._crouched)
@@ -6628,6 +6647,73 @@ func test_run_intro_and_eye_guide() -> void:
 	bg.set_physics_process(true)
 	_restore_profile(kept)
 	await frames(1)
+
+
+## The dragon as drawn this frame (read once its pose is final - the rig's own, not the clip's):
+## its lantern carried for real - hung by its bail from the rig's grip (the fist), the index,
+## middle and ring fingers closed round it, the grip well off the wrist (`holds`, `text`); and
+## how far its wingtips are from mirroring each other (`unalike`, m in its skeleton).
+func _dragon_seen(rig: DragonRig, c: Dictionary) -> Dictionary:
+	var sk: Skeleton3D = rig.get_skeleton()
+	await sk.skeleton_updated
+	var fist := rig.grip_world()
+	var bail: Vector3 = (c.lamp as Node3D).global_transform * CharacterRig.LAMP_BAIL
+	var at := func(bone: String) -> Vector3: return sk.global_transform * sk.get_bone_global_pose(sk.find_bone(bone)).origin
+	var fingers := 0.0
+	for f in ["index", "middle", "ring"]:
+		fingers = maxf(fingers, (at.call("%s_03_r" % f) as Vector3).distance_to(fist.origin))
+	var wrist: float = (at.call("hand_r") as Vector3).distance_to(fist.origin)
+	var off := bail.distance_to(fist.origin)
+	var pose := func(bone: String) -> Vector3: return sk.get_bone_global_pose(sk.find_bone(bone)).origin
+	var tip_l: Vector3 = pose.call("wing_l_f1_04")
+	var tip_r: Vector3 = pose.call("wing_r_f1_04")
+	var mid_x: float = ((pose.call("wing_l") as Vector3).x + (pose.call("wing_r") as Vector3).x) * 0.5
+	return {"holds": off < 0.05 and fingers < wrist * 0.8 and wrist > 0.08,
+		"text": "bail %.2f m off the grip, its fingertips within %.2f, the wrist %.2f off" % [off, fingers, wrist],
+		"unalike": tip_l.distance_to(Vector3(2.0 * mid_x - tip_r.x, tip_r.y, tip_r.z))}
+
+
+static var _tear_edges := {}
+
+
+## The dragon's skin as the GPU draws it this frame (skinned here, once its pose is final): how much
+## further than it should stretch its worst edge goes (m, beyond 2.5x its rest or 2 cm more) - a
+## tear where skin's weighted to two parts that move apart.
+func _dragon_tear(rig: DragonRig) -> float:
+	var mi: MeshInstance3D = rig._skin_mesh
+	var sk: Skeleton3D = rig.get_skeleton()
+	var arr := (mi.mesh as ArrayMesh).surface_get_arrays(0)
+	var V: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var B: PackedInt32Array = arr[Mesh.ARRAY_BONES]
+	var Wt: PackedFloat32Array = arr[Mesh.ARRAY_WEIGHTS]
+	if not _tear_edges.has(mi.mesh):
+		var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+		var seen := {}
+		for i in range(0, idx.size(), 3):
+			for k in 3:
+				var a := idx[i + k]
+				var b := idx[i + (k + 1) % 3]
+				seen[Vector2i(mini(a, b), maxi(a, b))] = true
+		_tear_edges[mi.mesh] = seen.keys()
+	await sk.skeleton_updated
+	var xf := []
+	for i in mi.skin.get_bind_count():
+		xf.append(sk.get_bone_global_pose(sk.find_bone(mi.skin.get_bind_name(i))) * mi.skin.get_bind_pose(i))
+	var per := B.size() / V.size()
+	var P := PackedVector3Array()
+	P.resize(V.size())
+	for v in V.size():
+		var q := Vector3.ZERO
+		for k in per:
+			var w := Wt[v * per + k]
+			if w > 0.0:
+				q += (xf[B[v * per + k]] as Transform3D) * V[v] * w
+		P[v] = q
+	var worst := 0.0
+	for e in _tear_edges[mi.mesh]:
+		var l0 := V[e.x].distance_to(V[e.y])
+		worst = maxf(worst, P[e.x].distance_to(P[e.y]) - maxf(l0 * 2.5, l0 + 0.02))
+	return worst
 
 
 ## User request (魚桶): a bucket at the tank's side. A live fish put in dies

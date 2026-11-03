@@ -2,19 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dsycmy6evrs2w"
-path="res://.godot/imported/dragon_Image_0.jpg-d1f549f1db05844780947d5596293b54.ctex"
+uid="uid://dhnx6xhuv8ja7"
+path="res://.godot/imported/dragon_DragonGhost_Colour.jpg-0ad83570504ae62b02016fd821a2225e.ctex"
 metadata={
 "vram_texture": false
 }
 generator_parameters={
-"md5": "867fde55c4f5d9da3a2613ddc725ca98"
+"md5": "9b18e0c3903869a82ed77f613b74ac0c"
 }
 
 [deps]
 
-source_file="res://assets/models/run3d/dragon_Image_0.jpg"
-dest_files=["res://.godot/imported/dragon_Image_0.jpg-d1f549f1db05844780947d5596293b54.ctex"]
+source_file="res://assets/models/run3d/dragon_DragonGhost_Colour.jpg"
+dest_files=["res://.godot/imported/dragon_DragonGhost_Colour.jpg-0ad83570504ae62b02016fd821a2225e.ctex"]
 
 [params]
 
