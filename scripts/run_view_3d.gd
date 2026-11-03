@@ -2690,6 +2690,8 @@ func _sync_creatures(delta: float) -> void:
 				var rig: DragonRig = c.get("rig")
 				if rig != null:
 					rig.fly = float(c.get("fly", 0.0))
+					# (user request: lured, it crouches to eat the fish)
+					rig.crouch = 1.0 if clip == "Eat" else 0.0
 					rig.hurry = clampf((speed - 0.3) / 2.2, 0.0, 1.0)
 					# (the arm up on the move when someone's near - stood, the
 					# clip holds it up; holding someone, the hands are busy)

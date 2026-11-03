@@ -2,8 +2,8 @@ class_name DragonSkin
 extends RefCounted
 
 ## The dragon's skin (its mesh, rebuilt once when it's made - fit): its wing membrane given the air
-## (below), its horns kept off its wings (_free_head), and none of it on the skeleton's root
-## (_off_root).
+## (below), its horns kept off its wings (_free_head), none of it on the skeleton's root
+## (_off_root), and the model's stray second tail folded into its tail (_fold_fork).
 
 ## (And its horns kept still - see _free_head.)
 ## User report: the dragon's wingbeat was stiff - no membrane filled by the air between its wing
@@ -82,6 +82,8 @@ static func _make(src: ArrayMesh, skin: Skin) -> ArrayMesh:
 		weights = moved_off[1]
 	arrays[Mesh.ARRAY_WEIGHTS] = weights
 	arrays[Mesh.ARRAY_BONES] = bones
+	verts = _fold_fork(verts, bones, weights, per, by_name, skin)
+	arrays[Mesh.ARRAY_VERTEX] = verts
 	# (relative shapes: each vertex's offset from the base, its normal's and tangent's - unchanged)
 	var shapes: Array[PackedVector3Array] = []
 	for _i in SHAPES.size():
@@ -197,6 +199,73 @@ static func _off_root(bones: PackedInt32Array, weights: PackedFloat32Array, per:
 			else:
 				bones[i] = pelvis
 	return [bones, weights]
+
+
+## User report: two tails. The model itself has a second, spiky strand forking down from under its
+## tail's root, behind its left leg (seen from above or behind, a second tail). Its skin - on the
+## tail's bones (not the legs' - the robe's there), on its left (x past FORK_SIDE), below
+## FORK_TOP, ahead of FORK_BACK, and away from the tail's line (FORK: from this far, m, all of it
+## by the next) - shrinks toward where it springs from (the middle of its eased edge) to FORK_LEFT
+## of its size: a nub under the tail's root, its own skin kept whole (drawn onto the tail's line it
+## showed as a sliced flap). (The tail's line: its bones' heads, on to its tip.)
+const FORK := Vector2(0.17, 0.25)
+const FORK_LEFT := 0.08
+const FORK_SIDE := Vector2(0.1, 0.16)
+const FORK_TOP := Vector2(0.66, 0.72)
+const FORK_BACK := -0.55
+
+
+static func _fold_fork(verts: PackedVector3Array, bones: PackedInt32Array, weights: PackedFloat32Array,
+		per: int, by_name: Dictionary, skin: Skin) -> PackedVector3Array:
+	var line: Array[Vector3] = []
+	var tail_binds := {}
+	for k in 7:
+		var name := "tail_%02d" % (k + 1)
+		if not by_name.has(name):
+			return verts
+		line.append(skin.get_bind_pose(by_name[name]).affine_inverse().origin)
+		tail_binds[by_name[name]] = true
+	var last := skin.get_bind_pose(by_name["tail_07"]).affine_inverse()
+	line.append(last.origin + last.basis.y.normalized() * 0.3)
+	var leg_binds := {}
+	for name in ["thigh_l", "thigh_r", "calf_l", "calf_r", "foot_l", "foot_r"]:
+		if by_name.has(name):
+			leg_binds[by_name[name]] = true
+	# (how much of each vertex is the fork; where its edge is)
+	var fold := PackedFloat32Array()
+	fold.resize(verts.size())
+	var edge := Vector3.ZERO
+	var edge_n := 0.0
+	for v in verts.size():
+		var p := verts[v]
+		if p.z < FORK_BACK:
+			continue
+		var on_tail := 0.0
+		var on_leg := 0.0
+		for k in per:
+			if tail_binds.has(bones[v * per + k]):
+				on_tail += weights[v * per + k]
+			elif leg_binds.has(bones[v * per + k]):
+				on_leg += weights[v * per + k]
+		# (the tail's, not the legs' or the robe's over them)
+		if on_tail < 0.3 or on_leg > 0.35:
+			continue
+		var d := 99.0
+		for i in line.size() - 1:
+			d = minf(d, _to_segment(p, line[i], line[i + 1]))
+		var f := smoothstep(FORK.x, FORK.y, d) * smoothstep(FORK_SIDE.x, FORK_SIDE.y, p.x) \
+			* (1.0 - smoothstep(FORK_TOP.x, FORK_TOP.y, p.y))
+		fold[v] = f
+		if f > 0.02 and f < 0.35:
+			edge += p
+			edge_n += 1.0
+	if edge_n < 1.0:
+		return verts
+	edge /= edge_n
+	for v in verts.size():
+		if fold[v] > 0.0:
+			verts[v] = edge + (verts[v] - edge) * lerpf(1.0, FORK_LEFT, fold[v])
+	return verts
 
 
 static func _to_segment(p: Vector3, a: Vector3, b: Vector3) -> float:

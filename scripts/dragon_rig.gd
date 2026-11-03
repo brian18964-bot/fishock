@@ -71,26 +71,46 @@ const RIPPLE_RATE := Vector2(13.0, 22.0)
 ## wings come down (FLY_NOD); its head held steady against all that (HEAD_KEEP: the share of the
 ## lean its neck and head take back - the nod they take back whole). User report: the legs
 ## looked wrong, and it had two tails. The lean is its upper body's, spread down its spine - its
-## hips stay as they stand: the model's tail drops from its hips to the ground and then runs back
-## along it, and tipped forward that bend opened into two strands. Its arms and legs just hang,
-## as limbs do (HANG_BACK: the legs a little behind straight down, more in the wind; knees easy,
-## feet dropped), swinging to the beat (LIMB_SWING rad, LIMB_LAG of a beat after the wings - the
-## lower joint later still; the right never quite in step with the left) and swung back when it
-## speeds up, forward when it slows (the lag spring the tail hangs on); its tail as it is, a wave
-## running down it to the beat (up as the wings go down) and a slow sway.
+## hips stay as they stand. Its arms and legs just hang, as limbs do (HANG_BACK: the legs a little
+## behind straight down, more in the wind; knees easy, feet dropped), each swinging as a pendulum
+## (LIMB_SPRING, below). Its tail as it is, a wave running down it to the beat (up as the wings go
+## down) and a slow sway.
 const FLY_PITCH := Vector2(0.32, 0.7)
 const FLY_NOD := 0.07
 const HEAD_KEEP := 0.7
 const HANG_BACK := Vector2(0.08, 0.25)
 const KNEE := 0.12
 const ANKLE := 0.45
-const LIMB_SWING := 0.12
-const LIMB_LAG := 0.15
-const ARM_SWING := 0.09
+## User report: the legs' swing was stiff (a sine with a lag: mechanical). Now each limb is a
+## pendulum on a spring (LIMB_SPRING: stiffness /s², damping /s - a hanging leg is slow, its own
+## sway, not the beat's), pushed as the body is: surging ahead on each downstroke (SURGE rad/s²,
+## more the faster) and as it speeds up or slows (its change of pace - SURGE_PACE per m/s²). The
+## lower joint (knee, ankle, forearm) hangs on the one above it: thrown the other way as that one
+## swings (FOLLOW), on a spring of its own. Left and right a little apart, never in step.
+const LIMB_SPRING := {"thigh": Vector2(20.0, 2.6), "calf": Vector2(34.0, 3.4), "foot": Vector2(46.0, 4.0),
+	"upperarm": Vector2(26.0, 3.0), "lowerarm": Vector2(40.0, 3.6)}
+const SURGE := 6.0
+const SURGE_PACE := 2.0
+const FOLLOW := 0.55
 const TAIL_WAVE := 0.05
 const TAIL_SWAY := 0.035
+## User request: lured by a fish, it crouches down to eat it (`crouch` 0..1 - RunView3D: eating
+## at the fish; eased): its hips drop (CROUCH_DROP m, a little back), its feet kept where they
+## stand (each leg bent to reach them - knee forward), its back bent over (CROUCH_LEAN rad down
+## its spine) and its head down to the fish (CROUCH_LOOK), its tail lifted clear of the ground
+## (CROUCH_TAIL) - the clip's hand-to-mouth going on over it.
+var crouch := 0.0
+const CROUCH_DROP := Vector2(0.4, 0.1)
+const CROUCH_LEAN := 0.55
+const CROUCH_LOOK := 0.6
+const CROUCH_TAIL := 0.18
+const CROUCH_EASE := 2.2
+var _crouched := 0.0
 ## {bone name: index} of the body's bones the flight moves
 var _body := {}
+## the limbs' pendulums: {name: Vector3(angle, speed, last acceleration)}; its change of pace
+var _limbs := {}
+var _accel := Vector3.ZERO
 ## (as it last flew, in the skeleton's space: how far its chest's up leans ahead (z), and its left
 ## thigh's way (z: - trailing) - the skeleton keeps the clip's pose outside the modifier)
 var flight_seen := Vector2.ZERO
@@ -154,11 +174,15 @@ func _process_modification_with_delta(delta: float) -> void:
 	_open = move_toward(_open, clampf(maxf(spread, fly), 0.0, 1.0), dt * EASE)
 	beat_phase = fmod(beat_phase + dt / BEAT_TIME * (1.0 + HURRY_BEAT * hurry + FLY_BEAT * fly), 1.0)
 	_tail_now = lerpf(_tail_now, tail_turn, 1.0 - exp(-dt * 4.0))
-	_fly_body(sk, smoothstep(0.0, 1.0, fly))
+	_fly_body(sk, smoothstep(0.0, 1.0, fly), dt)
+	_crouched = move_toward(_crouched, clampf(crouch, 0.0, 1.0), dt * CROUCH_EASE)
+	if _crouched > 0.001:
+		_crouch_body(sk, smoothstep(0.0, 1.0, _crouched))
 	# The lag: its change of pace (side to side, ahead and back) drives a
 	# spring the tail and wings hang on.
 	if dt > 0.0:
 		var accel := (motion - _was) / dt
+		_accel = _accel.lerp(accel.limit_length(12.0), 1.0 - exp(-dt * 10.0))
 		_was = motion
 		var push := Vector2(-accel.x, -accel.z).limit_length(12.0) * deg_to_rad(LAG)
 		_lag_vel += (push - _lag * LAG_STIFF - _lag_vel * LAG_DAMP) * dt
@@ -256,8 +280,9 @@ func _fill_membrane(dt: float, amp: float, flown: float, spans: Dictionary) -> v
 
 
 ## The flying body (see FLY_PITCH): its hips, head, legs, arms and tail, `flown` of the way.
-func _fly_body(sk: Skeleton3D, flown: float) -> void:
+func _fly_body(sk: Skeleton3D, flown: float, dt: float) -> void:
 	if flown <= 0.001 or _body.is_empty():
+		_limbs.clear()
 		return
 	# (+1 mid-downstroke, -1 mid-upstroke: `lag` of a beat after the wings)
 	var stroke := func(lag: float) -> float: return -cos(TAU * (beat_phase - lag))
@@ -267,20 +292,22 @@ func _fly_body(sk: Skeleton3D, flown: float) -> void:
 		_turn(sk, spine, flown * (lean - nod) / 3.0)
 	_turn(sk, "neck_01", -flown * (lean * HEAD_KEEP - nod) * 0.5)
 	_turn(sk, "Head", -flown * (lean * HEAD_KEEP - nod) * 0.5)
-	# (limbs: hung straight down, then the swing - the spring's when it changes pace)
-	var drag := -_lag.y * 0.8
+	# (limbs: hung straight down, then each its pendulum's swing - + back)
+	var surge: float = SURGE * (1.0 + hurry) * stroke.call(0.0) + _accel.z * SURGE_PACE
 	for side in ["l", "r"]:
-		# (the right a touch behind the left: never quite in step)
-		var late := 0.0 if side == "l" else 0.05
-		var hip: float = LIMB_SWING * stroke.call(LIMB_LAG + late) + drag
-		var knee: float = LIMB_SWING * 0.7 * stroke.call(LIMB_LAG * 2.0 + late) + drag * 0.5
 		var out := 1.0 if side == "l" else -1.0
-		_hang(sk, "thigh_" + side, Vector3(0.18 * out, -1.0, 0.0), lerpf(HANG_BACK.x, HANG_BACK.y, hurry) - hip, flown)
+		# (the right a touch stiffer: never quite in step)
+		var own := 1.0 if side == "l" else 1.08
+		var hip := _swing("thigh_" + side, surge, own, dt)
+		var knee := _swing("calf_" + side, -FOLLOW * _limb_acc("thigh_" + side), own, dt)
+		var ankle := _swing("foot_" + side, -FOLLOW * _limb_acc("calf_" + side), own, dt)
+		_hang(sk, "thigh_" + side, Vector3(0.18 * out, -1.0, 0.0), lerpf(HANG_BACK.x, HANG_BACK.y, hurry) + hip, flown)
 		_turn(sk, "calf_" + side, flown * (KNEE + knee))
-		_turn(sk, "foot_" + side, flown * (ANKLE + knee * 0.6))
-		var arm: float = ARM_SWING * stroke.call(LIMB_LAG + 0.08 + late) + drag * 0.6
-		_hang(sk, "upperarm_" + side, Vector3(0.3 * out, -1.0, 0.05), -arm, flown)
-		_turn(sk, "lowerarm_" + side, flown * (-arm * 0.6))
+		_turn(sk, "foot_" + side, flown * (ANKLE + ankle))
+		var arm := _swing("upperarm_" + side, surge * 0.7, own, dt)
+		var elbow := _swing("lowerarm_" + side, -FOLLOW * _limb_acc("upperarm_" + side), own, dt)
+		_hang(sk, "upperarm_" + side, Vector3(0.3 * out, -1.0, 0.05), arm, flown)
+		_turn(sk, "lowerarm_" + side, flown * elbow)
 	flight_seen = Vector2((sk.get_bone_global_pose(_body["spine_03"]).basis * Vector3.UP).normalized().z,
 		(sk.get_bone_global_pose(_body["thigh_l"]).basis * Vector3.UP).normalized().z) \
 		if _body.has("spine_03") and _body.has("thigh_l") else Vector2.ZERO
@@ -289,6 +316,91 @@ func _fly_body(sk: Skeleton3D, flown: float) -> void:
 		var name := "tail_%02d" % (k + 1)
 		_turn(sk, name, flown * TAIL_WAVE * stroke.call(0.1 + 0.06 * k))
 		_turn(sk, name, flown * TAIL_SWAY * sin(TAU * _time / 2.6 - k * 0.45), Vector3.UP)
+
+
+## Crouched `c` of the way (see `crouch`).
+func _crouch_body(sk: Skeleton3D, c: float) -> void:
+	var hips: int = _body.get("pelvis", -1)
+	if hips < 0:
+		return
+	# (where its feet are, and how they lie, before the hips drop)
+	var feet := {}
+	for side in ["l", "r"]:
+		var foot: int = _body.get("foot_" + side, -1)
+		if foot >= 0:
+			feet[side] = sk.get_bone_global_pose(foot)
+	var g := sk.get_bone_global_pose(hips)
+	var dropped := g.origin + Vector3(0.0, -CROUCH_DROP.x, -CROUCH_DROP.y) * c
+	var pr := sk.get_bone_parent(hips)
+	var parent := sk.get_bone_global_pose(pr) if pr >= 0 else Transform3D()
+	sk.set_bone_pose_position(hips, parent.affine_inverse() * dropped)
+	for side in feet:
+		_reach(sk, side, (feet[side] as Transform3D))
+	for spine in ["spine_01", "spine_02", "spine_03"]:
+		_turn(sk, spine, c * CROUCH_LEAN / 3.0)
+	_turn(sk, "neck_01", c * CROUCH_LOOK * 0.5)
+	_turn(sk, "Head", c * CROUCH_LOOK * 0.5)
+	_turn(sk, "tail_01", c * CROUCH_TAIL * 2.0)
+	_turn(sk, "tail_02", c * CROUCH_TAIL)
+
+
+## A leg (`side`) bent to put its foot back where `foot` (its old pose) had it: two bones, the
+## knee forward of the line from hip to ankle (as it was).
+func _reach(sk: Skeleton3D, side: String, foot: Transform3D) -> void:
+	var thigh: int = _body.get("thigh_" + side, -1)
+	var calf: int = _body.get("calf_" + side, -1)
+	var ankle: int = _body.get("foot_" + side, -1)
+	if thigh < 0 or calf < 0 or ankle < 0:
+		return
+	var hip := sk.get_bone_global_pose(thigh).origin
+	var knee_was := sk.get_bone_global_pose(calf).origin
+	var upper := sk.get_bone_global_rest(thigh).origin.distance_to(sk.get_bone_global_rest(calf).origin)
+	var lower := sk.get_bone_global_rest(calf).origin.distance_to(sk.get_bone_global_rest(ankle).origin)
+	var to := foot.origin - hip
+	var d := clampf(to.length(), absf(upper - lower) + 0.01, upper + lower - 0.001)
+	var along := to.normalized()
+	var bend := (knee_was - hip) - along * (knee_was - hip).dot(along)
+	if bend.length() < 0.001:
+		bend = Vector3.BACK
+	bend = bend.normalized()
+	var a := (upper * upper - lower * lower + d * d) / (2.0 * d)
+	var knee := hip + along * a + bend * sqrt(maxf(upper * upper - a * a, 0.0))
+	_aim(sk, thigh, knee - hip)
+	_aim(sk, calf, foot.origin - sk.get_bone_global_pose(calf).origin)
+	# (the foot laid as it was)
+	var pc := sk.get_bone_global_pose(calf)
+	sk.set_bone_pose_rotation(ankle, (pc.basis.inverse() * foot.basis).get_rotation_quaternion())
+
+
+## Points a bone (its +Y) along `want` (the skeleton's space), turning it the least way.
+func _aim(sk: Skeleton3D, bone: int, want: Vector3) -> void:
+	if want.length() < 0.0001:
+		return
+	var g := sk.get_bone_global_pose(bone)
+	var dir := (g.basis * Vector3.UP).normalized()
+	var to := want.normalized()
+	if dir.angle_to(to) < 0.0005:
+		return
+	var pg := sk.get_bone_global_pose(sk.get_bone_parent(bone))
+	sk.set_bone_pose_rotation(bone, (pg.basis.inverse() * (Basis(Quaternion(dir, to)) * g.basis)).get_rotation_quaternion())
+
+
+## A limb's pendulum (`name`: its joint - its spring from LIMB_SPRING by the part before the side),
+## pushed by `force` (rad/s²) for `dt`: its angle now (rad, + swung back). `own` - its stiffness's
+## share (each limb a little its own).
+func _swing(name: String, force: float, own: float, dt: float) -> float:
+	var spring: Vector2 = LIMB_SPRING[name.substr(0, name.rfind("_"))]
+	var st: Vector3 = _limbs.get(name, Vector3.ZERO)
+	var acc := -spring.x * own * st.x - spring.y * st.y + force
+	st.y += acc * dt
+	st.x = clampf(st.x + st.y * dt, -0.6, 0.6)
+	st.z = acc
+	_limbs[name] = st
+	return st.x
+
+
+func _limb_acc(name: String) -> float:
+	return (_limbs.get(name, Vector3.ZERO) as Vector3).z
 
 
 ## Points a limb's bone (by name) straight down (`down`: in the skeleton's space - a little out to
@@ -340,7 +452,7 @@ func _raise_arm(sk: Skeleton3D) -> void:
 
 func _build(sk: Skeleton3D) -> void:
 	_built = true
-	for name in ["spine_01", "spine_02", "spine_03", "neck_01", "Head", "thigh_l", "calf_l", "foot_l", "thigh_r", "calf_r", "foot_r",
+	for name in ["pelvis", "spine_01", "spine_02", "spine_03", "neck_01", "Head", "thigh_l", "calf_l", "foot_l", "thigh_r", "calf_r", "foot_r",
 			"upperarm_l", "lowerarm_l", "upperarm_r", "lowerarm_r", "tail_01", "tail_02", "tail_03",
 			"tail_04", "tail_05", "tail_06", "tail_07"]:
 		var i := sk.find_bone(name)

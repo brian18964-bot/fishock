@@ -6570,6 +6570,33 @@ func test_run_intro_and_eye_guide() -> void:
 		if on_head >= 0.05 and on_wing > 0.0:
 			head_wing += 1
 	check(head_wing == 0, "its head and horns keep none of the wings' weight (%d)" % head_wing)
+	# (user report: two tails - the model's stray strand under its tail's root, on its left, is
+	# folded in: none of the tail's skin there hangs far from the tail's line)
+	var tail_line: Array[Vector3] = []
+	for k in 7:
+		var b: int = range(binds.get_bind_count()).filter(func(i): return binds.get_bind_name(i) == "tail_%02d" % (k + 1))[0]
+		tail_line.append(binds.get_bind_pose(b).affine_inverse().origin)
+	var fork_left := 0
+	for v in vv.size():
+		var on_tail := 0.0
+		var on_leg := 0.0
+		for k in 4:
+			var bn := String(binds.get_bind_name(vb[v * 4 + k]))
+			if bn.begins_with("tail"):
+				on_tail += vw[v * 4 + k]
+			elif bn.begins_with("thigh") or bn.begins_with("calf") or bn.begins_with("foot"):
+				on_leg += vw[v * 4 + k]
+		var p := vv[v]
+		# (the tail's skin there - the robe over the legs aside)
+		if on_tail < 0.3 or on_leg > 0.35 or p.x < 0.16 or p.y > 0.66 or p.z < -0.55:
+			continue
+		var d := 99.0
+		for i in tail_line.size() - 1:
+			var ab := tail_line[i + 1] - tail_line[i]
+			d = minf(d, p.distance_to(tail_line[i] + ab * clampf((p - tail_line[i]).dot(ab) / ab.length_squared(), 0.0, 1.0)))
+		if d > 0.32:
+			fork_left += 1
+	check(fork_left == 0, "one tail: the stray strand folded away (%d left)" % fork_left)
 	# (and flying, its upper body leans into it, its legs just hang - see DragonRig._fly_body)
 	check(rig.flight_seen.x > 0.1 and absf(rig.flight_seen.y) < 0.4,
 		"flying: its chest leaning into it (%.2f), its legs hanging (%.2f)" % [rig.flight_seen.x, rig.flight_seen.y])
@@ -6582,6 +6609,19 @@ func test_run_intro_and_eye_guide() -> void:
 	await seconds(2.0)
 	check(c.fly == 0.0 and absf((c.shown as Vector3).y - view.ground_y(start)) < 0.05,
 		"back on land: on its feet, the wings folding (fly %.2f)" % float(c.fly))
+	# User request: lured by a fish, it crouches down to eat it.
+	var bait: DroppedFish = load("res://scenes/dropped_fish.tscn").instantiate()
+	main.add_child(bait)
+	bait.setup({"name": "鯉魚", "id": "carp", "size": "medium"})
+	bait.global_position = start + Vector2(0, 20)
+	bg._fish = bait
+	bg.mode = bg.Mode.EAT
+	await seconds(1.5)
+	check(c.clip == "Eat" and rig.crouch == 1.0 and rig._crouched > 0.99, "eating the fish: crouched over it (%s, %.2f)" % [c.clip, rig._crouched])
+	bg.mode = bg.Mode.WANDER
+	await seconds(1.0)
+	check(rig._crouched < 0.2, "done eating: standing up again (%.2f)" % rig._crouched)
+	bait.queue_free()
 	player().global_position = player_at
 	bg.mode = bg.Mode.ASLEEP
 	bg.set_physics_process(true)
