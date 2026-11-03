@@ -38,8 +38,40 @@ var hurry := 0.0
 var beat_phase := 0.0
 const FLY_BEAT := 0.6
 const HURRY_BEAT := 0.8
-## (flying, the beat swung out from the body - deg: the wings out to its sides, not up its back)
-const FLY_OUT := 30.0
+## User report: the beat was stiff - the open wing (spread up behind its back, a fan facing back)
+## swung about its forward axis, i.e. within its own plane, like a wiper, the forearm and fingers
+## not following. Flying now the wings go out to its sides, flat - the arm the leading edge, the
+## fingers swept back from the wrist (where each bone points, as FOLD) - and beat through the air,
+## up and down; standing open, they sweep forward and back. The beat runs out the wing, each joint
+## behind the one before (WAVE: share of a beat), so it bends like a whip rather than a board;
+## coming up, the fingers draw in toward the arm, the membrane eased (UPSTROKE_FOLD); flying, the
+## fingertips flutter.
+const FLIGHT := {
+	"": Vector3(0.86, 0.45, 0.2),
+	"_02": Vector3(0.96, 0.16, 0.16),
+	"_f1": Vector3(0.88, -0.1, -0.46),
+	"_f2": Vector3(0.6, -0.18, -0.78),
+	"_f3": Vector3(0.24, -0.28, -0.93),
+}
+const WAVE := {"": 0.0, "_02": 0.07, "_f1": 0.14, "_f2": 0.16, "_f3": 0.18}
+const UPSTROKE_FOLD := 0.22
+const SWEEP := 0.6
+const FLUTTER := 2.5
+## The membrane (WingMembrane's shapes): the air on it - pushed up on the downstroke, down a little
+## coming up, a little filled all the while it flies; standing open, pushed against its sweep - on
+## a spring (stiffness, damping), so it gives and swings past rather than following at once; and
+## flying, a ripple running out along it (rad/s: quicker the faster it goes).
+const AIR_STIFF := 90.0
+const AIR_DAMP := 8.0
+const AIR_LIFT := 0.35
+const AIR_STROKE := 0.8
+const RIPPLE_RATE := Vector2(13.0, 22.0)
+var _skin_mesh: MeshInstance3D
+var _bulge := -1
+var _ripple := Vector2i(-1, -1)
+var _air := 0.0
+var _air_vel := 0.0
+var _ripple_t := 0.0
 ## User request: the tail and the wings swing with its going - they lag
 ## behind when it sets off, swing on when it stops or turns, and the tail
 ## sways with its stride. `motion`: how it's moving, in its own frame
@@ -76,22 +108,20 @@ var _tail_now := 0.0
 var _tail: Array = []
 var _open := 0.0
 var _time := 0.0
-var _last := -1.0
 ## [{bone, parent, rest (the way it points at rest), fold, side, root}]
 var _wings: Array = []
 var _chest := -1
 var _built := false
 
 
-func _process_modification() -> void:
+func _process_modification_with_delta(delta: float) -> void:
 	var sk := get_skeleton()
 	if sk == null:
 		return
 	if not _built:
 		_build(sk)
-	var now := Time.get_ticks_usec() / 1000000.0
-	var dt := clampf(now - _last, 0.0, 0.1) if _last >= 0.0 else 0.0
-	_last = now
+	# (game time - not the clock's: a recording or a hitch doesn't hurry it)
+	var dt := clampf(delta, 0.0, 0.1)
 	_time += dt
 	_open = move_toward(_open, clampf(maxf(spread, fly), 0.0, 1.0), dt * EASE)
 	beat_phase = fmod(beat_phase + dt / BEAT_TIME * (1.0 + HURRY_BEAT * hurry + FLY_BEAT * fly), 1.0)
@@ -126,20 +156,40 @@ func _process_modification() -> void:
 	var chest_now := sk.get_bone_global_pose(_chest).basis.orthonormalized()
 	var chest_rest := sk.get_bone_global_rest(_chest).basis.orthonormalized()
 	var frame := chest_now * chest_rest.inverse()
-	var beat := sin(TAU * beat_phase)
-	var wide := 1.0 + 0.55 * fly + 0.35 * hurry
+	var amp := BEAT * (1.0 + 0.55 * fly + 0.35 * hurry) * _open
+	var flown := smoothstep(0.0, 1.0, fly)
+	var forearm := Vector3.ZERO
+	var spans := {}
 	for w in _wings:
+		var part: String = w.part
+		var side: float = w.side
 		var rest_dir: Vector3 = w.rest
 		var want: Vector3 = rest_dir.slerp(w.fold, 1.0 - _open) if rest_dir.angle_to(w.fold) < PI - 0.01 \
 			else w.fold.lerp(rest_dir, _open).normalized()
+		want = want.slerp(w.flight, flown).normalized()
+		# (the beat where this joint is in it: later the further out)
+		var wave := TAU * (beat_phase - float(WAVE[part]))
+		var a := deg_to_rad(amp * sin(wave))
+		if part.begins_with("_f"):
+			# (coming up the fingers draw in toward the arm; flying, their tips flutter)
+			var rising := maxf(0.0, cos(wave)) * _open
+			if forearm != Vector3.ZERO:
+				want = want.slerp(forearm, UPSTROKE_FOLD * rising * (0.4 + 0.6 * flown)).normalized()
+			a += deg_to_rad(FLUTTER * flown * sin(_time * 13.0 + float(WAVE[part]) * 40.0))
+		# Flying: up and down about its forward axis; open on its feet: forward and back.
+		want = Basis(Vector3.BACK, a * flown * side) * want
+		want = Basis(Vector3.UP, a * SWEEP * (1.0 - flown) * side) * want
 		if w.root:
-			# (up and down about the body's forward axis, the left and the
-			# right wing mirrored; swung by the lag, and a little by the stride)
-			var deg: float = BEAT * wide * _open * beat - FLY_OUT * fly + BREATH * (1.0 - _open) * sin(TAU * _time / 3.3) \
+			# (calm, a slow breath in the folded wings; swung by the lag, and a little by the stride)
+			var deg: float = BREATH * (1.0 - _open) * sin(TAU * _time / 3.3) \
 				+ rad_to_deg(_lag.y) * 0.5 + 3.0 * pace * sin(TAU * stride * 2.0)
-			want = Basis(Vector3.BACK, deg_to_rad(deg) * float(w.side)) * want
+			want = Basis(Vector3.BACK, deg_to_rad(deg) * side) * want
 			want = Basis(Vector3.UP, _lag.x * 0.4) * want
+		if part == "_02":
+			forearm = want
 		want = (frame * want).normalized()
+		if part == "_f1" or part == "_f3":
+			spans[part + str(side)] = want
 		var g := sk.get_bone_global_pose(w.bone)
 		var dir := (g.basis * Vector3.UP).normalized()
 		if dir.angle_to(want) < 0.001:
@@ -149,6 +199,31 @@ func _process_modification() -> void:
 		var parent_g := sk.get_bone_global_pose(w.parent)
 		var local := parent_g.basis.inverse() * new_basis
 		sk.set_bone_pose_rotation(w.bone, local.get_rotation_quaternion())
+	_fill_membrane(dt, amp, flown, spans)
+
+
+## The air on the membrane (see AIR_*): its bulge, and its ripple.
+func _fill_membrane(dt: float, amp: float, flown: float, spans: Dictionary) -> void:
+	if _skin_mesh == null or _bulge < 0:
+		return
+	var push := 0.0
+	if _open > 0.001 and spans.size() == 4:
+		# (which way the bulge goes across each wing now - its fingers' plane - against up)
+		var l: Vector3 = (spans["_f11.0"] as Vector3).cross(spans["_f31.0"])
+		var r: Vector3 = (spans["_f3-1.0"] as Vector3).cross(spans["_f1-1.0"])
+		var up := clampf((l.normalized().y + r.normalized().y) * 0.5 * 2.5, -1.0, 1.0)
+		var stroke := cos(TAU * (beat_phase - float(WAVE["_f2"])))
+		var flying := (AIR_LIFT - AIR_STROKE * stroke) * up
+		var standing := -0.6 * cos(TAU * beat_phase) * amp / BEAT
+		push = _open * (flown * flying + (1.0 - flown) * standing)
+	_air_vel += ((push - _air) * AIR_STIFF - _air_vel * AIR_DAMP) * dt
+	_air = clampf(_air + _air_vel * dt, -1.0, 1.0)
+	_skin_mesh.set_blend_shape_value(_bulge, _air)
+	if _ripple.x >= 0:
+		var flutter := flown * _open * (0.35 + 0.65 * hurry)
+		_ripple_t = fmod(_ripple_t + dt * lerpf(RIPPLE_RATE.x, RIPPLE_RATE.y, hurry), TAU)
+		_skin_mesh.set_blend_shape_value(_ripple.x, flutter * cos(_ripple_t))
+		_skin_mesh.set_blend_shape_value(_ripple.y, -flutter * sin(_ripple_t))
 
 
 ## The right arm toward RAISE (in the chest's frame), as far as `_raised`.
@@ -171,6 +246,13 @@ func _raise_arm(sk: Skeleton3D) -> void:
 
 func _build(sk: Skeleton3D) -> void:
 	_built = true
+	for mi in sk.find_children("*", "MeshInstance3D", false, false):
+		if WingMembrane.fit(mi):
+			_skin_mesh = mi
+			_bulge = (mi as MeshInstance3D).find_blend_shape_by_name("bulge")
+			_ripple = Vector2i((mi as MeshInstance3D).find_blend_shape_by_name("ripple_s"),
+				(mi as MeshInstance3D).find_blend_shape_by_name("ripple_c"))
+			break
 	for name in RAISE:
 		var i := sk.find_bone(name)
 		if i >= 0:
@@ -190,6 +272,8 @@ func _build(sk: Skeleton3D) -> void:
 				continue
 			var rest_dir := (sk.get_bone_global_rest(i).basis * Vector3.UP).normalized()
 			var f: Vector3 = FOLD[part]
+			var fl: Vector3 = FLIGHT[part]
 			_wings.append({"bone": i, "parent": sk.get_bone_parent(i), "side": k, "root": part == "",
-				"rest": rest_dir,
-				"fold": Vector3(f.x * k, f.y, f.z).normalized()})
+				"part": part, "rest": rest_dir,
+				"fold": Vector3(f.x * k, f.y, f.z).normalized(),
+				"flight": Vector3(fl.x * k, fl.y, fl.z).normalized()})

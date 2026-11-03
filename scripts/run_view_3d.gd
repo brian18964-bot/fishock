@@ -2356,8 +2356,9 @@ func _dragon_flight(c: Dictionary, n: Node, at: Vector2, vel: Vector2, delta: fl
 				crossing = true
 				break
 	c.fly = move_toward(float(c.get("fly", 0.0)), 1.0 if crossing else 0.0, delta * (1.4 if crossing else 0.9))
+	# (it rises as its wings come down, a little after: highest at the stroke's end)
 	var rig: DragonRig = c.get("rig")
-	var bob := 0.06 * sin(TAU * rig.beat_phase + 0.6) if rig != null else 0.0
+	var bob := 0.06 * sin(TAU * (rig.beat_phase - 0.55)) if rig != null else 0.0
 	var up := smoothstep(0.35, 1.0, float(c.fly))
 	return (DRAGON_FLY_LIFT + bob) * up
 

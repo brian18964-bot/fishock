@@ -6538,7 +6538,14 @@ func test_run_intro_and_eye_guide() -> void:
 	check(hurried > 0.6, "going fast, the beat hurried (%.2f)" % hurried)
 	var slow_beat := 1.0 + DragonRig.FLY_BEAT
 	check(hurried * DragonRig.HURRY_BEAT > 0.4, "fast, its beat %.1fx a hover's" % ((slow_beat + hurried * DragonRig.HURRY_BEAT) / slow_beat))
-	await seconds(1.2)
+	# (user report: the beat was stiff - now its membrane fills with the air: pushed up as the
+	# wings come down, eased back as they rise)
+	var air := Vector2(INF, -INF)
+	for _i in 72:
+		await frames(1)
+		air = Vector2(minf(air.x, rig._air), maxf(air.y, rig._air))
+	check(rig._skin_mesh != null and rig._skin_mesh.mesh.get_blend_shape_count() == WingMembrane.SHAPES.size()
+		and air.y > 0.6 and air.x < 0.0, "flying: its membrane filling and easing with the beat (%.2f..%.2f)" % [air.x, air.y])
 	var up: float = (c.shown as Vector3).y - RunView3D.WATER_Y
 	check(c.fly == 1.0 and rig.fly == 1.0 and up > RunView3D.DRAGON_FLY_LIFT - 0.1 and c.clip == "Idle",
 		"over the water: up off it (%.2f m), wings beating, not walking (%s)" % [up, c.clip])
