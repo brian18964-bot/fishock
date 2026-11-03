@@ -66,6 +66,38 @@ const AIR_DAMP := 8.0
 const AIR_LIFT := 0.35
 const AIR_STROKE := 0.8
 const RIPPLE_RATE := Vector2(13.0, 22.0)
+## User request: flying, its body too - after how flyers are animated (and how bats fly): it
+## leans into its flight (FLY_PITCH rad: hovering .. at speed), nodding nose-up a little as its
+## wings come down (FLY_NOD); its head held steady against all that (HEAD_KEEP: the share of the
+## lean its neck and head take back - the nod they take back whole); its legs trailing behind
+## (LEG_TRAIL: the hips, hovering .. at speed, the wind pushing them back), knees bent and feet
+## pointed, swinging forward with the downstroke and back after it - a little behind the wings
+## (LIMB_LAG of a beat), the knee behind the hip; its arms drawn in (ARM_TUCK: shoulder, elbow),
+## swinging after the beat too; its tail out behind as its counterweight (TAIL_DROOP),
+## going up as the wings go down, the wave running down it, a slow sway side to side. (The
+## lean is its hips', about them - not the whole of it tipped about its feet.)
+const FLY_PITCH := Vector2(0.32, 0.7)
+const FLY_NOD := 0.07
+const HEAD_KEEP := 0.7
+const LEG_TRAIL := Vector2(0.3, 0.55)
+const KNEE := 0.45
+const ANKLE := 0.5
+const LIMB_SWING := 0.14
+const LIMB_LAG := 0.12
+## (the free left arm folded in against it; the right, the lantern's, held a little ahead and
+## down so the lantern hangs clear of it)
+const ARM_TUCK := {"l": Vector2(0.25, -1.5), "r": Vector2(-0.35, -0.5)}
+## (the tail flying: each bone pointed back along a gentle droop - the root most, the tip least,
+## as m down per m back - for TAIL_HOLD of the way; its own curve up would curl it over its back)
+const TAIL_DROOP := Vector2(0.3, 0.02)
+const TAIL_HOLD := 0.85
+const TAIL_WAVE := 0.1
+const TAIL_SWAY := 0.06
+## {bone name: index} of the body's bones the flight moves
+var _body := {}
+## (as it last flew, in the skeleton's space: how far its hips' up leans ahead (z), and its left
+## thigh's way (z: - trailing) - the skeleton keeps the clip's pose outside the modifier)
+var flight_seen := Vector2.ZERO
 var _skin_mesh: MeshInstance3D
 var _bulge := -1
 var _ripple := Vector2i(-1, -1)
@@ -126,6 +158,7 @@ func _process_modification_with_delta(delta: float) -> void:
 	_open = move_toward(_open, clampf(maxf(spread, fly), 0.0, 1.0), dt * EASE)
 	beat_phase = fmod(beat_phase + dt / BEAT_TIME * (1.0 + HURRY_BEAT * hurry + FLY_BEAT * fly), 1.0)
 	_tail_now = lerpf(_tail_now, tail_turn, 1.0 - exp(-dt * 4.0))
+	_fly_body(sk, smoothstep(0.0, 1.0, fly))
 	# The lag: its change of pace (side to side, ahead and back) drives a
 	# spring the tail and wings hang on.
 	if dt > 0.0:
@@ -226,6 +259,64 @@ func _fill_membrane(dt: float, amp: float, flown: float, spans: Dictionary) -> v
 		_skin_mesh.set_blend_shape_value(_ripple.y, -flutter * sin(_ripple_t))
 
 
+## The flying body (see FLY_PITCH): its hips, head, legs, arms and tail, `flown` of the way.
+func _fly_body(sk: Skeleton3D, flown: float) -> void:
+	if flown <= 0.001 or _body.is_empty():
+		return
+	# (+1 mid-downstroke, -1 mid-upstroke: `lag` of a beat after the wings)
+	var stroke := func(lag: float) -> float: return -cos(TAU * (beat_phase - lag))
+	var lean := lerpf(FLY_PITCH.x, FLY_PITCH.y, hurry)
+	var nod: float = FLY_NOD * stroke.call(0.05)
+	_turn(sk, "pelvis", flown * (lean - nod))
+	_turn(sk, "neck_01", -flown * (lean * HEAD_KEEP - nod) * 0.5)
+	_turn(sk, "Head", -flown * (lean * HEAD_KEEP - nod) * 0.5)
+	for side in ["l", "r"]:
+		# (the right a touch behind the left: never quite in step)
+		var late := 0.0 if side == "l" else 0.04
+		var hip: float = LIMB_SWING * stroke.call(LIMB_LAG + late)
+		var knee: float = LIMB_SWING * stroke.call(LIMB_LAG * 2.0 + late)
+		_turn(sk, "thigh_" + side, flown * (lerpf(LEG_TRAIL.x, LEG_TRAIL.y, hurry) - hip))
+		_turn(sk, "calf_" + side, flown * (KNEE - knee * 0.8))
+		_turn(sk, "foot_" + side, flown * (ANKLE - knee * 0.5))
+		var tuck: Vector2 = ARM_TUCK[side]
+		_turn(sk, "upperarm_" + side, flown * (tuck.x + hip * 0.5))
+		_turn(sk, "lowerarm_" + side, flown * (tuck.y + knee * 0.4))
+	flight_seen = Vector2((sk.get_bone_global_pose(_body["pelvis"]).basis * Vector3.UP).normalized().z,
+		(sk.get_bone_global_pose(_body["thigh_l"]).basis * Vector3.UP).normalized().z) \
+		if _body.has("pelvis") and _body.has("thigh_l") else Vector2.ZERO
+	# (the tail: out behind, going up as the wings go down - the wave running down it, each bone a
+	# little later - and swaying slowly side to side; the faster, the straighter)
+	for k in 7:
+		var name := "tail_%02d" % (k + 1)
+		var bone: int = _body.get(name, -1)
+		if bone < 0:
+			continue
+		var droop := lerpf(TAIL_DROOP.x, TAIL_DROOP.y, k / 6.0) * (1.0 - 0.5 * hurry)
+		var want := Vector3(0.0, -droop, -1.0).normalized()
+		want = Basis(Vector3.RIGHT, TAIL_WAVE * stroke.call(0.1 + 0.06 * k)) * want
+		want = Basis(Vector3.UP, TAIL_SWAY * sin(TAU * _time / 2.6 - k * 0.45)) * want
+		var g := sk.get_bone_global_pose(bone)
+		var dir := (g.basis * Vector3.UP).normalized()
+		var to := dir.slerp(want, flown * TAIL_HOLD).normalized()
+		if dir.angle_to(to) < 0.001:
+			continue
+		var pg := sk.get_bone_global_pose(sk.get_bone_parent(bone))
+		var turned := Basis(Quaternion(dir, to)) * g.basis
+		sk.set_bone_pose_rotation(bone, (pg.basis.inverse() * turned).get_rotation_quaternion())
+
+
+## Turns a bone of the body (by name) about `axis` (the skeleton's: RIGHT its side to side - a
+## + turn tips it forward, or swings a limb hanging down back), where it is now.
+func _turn(sk: Skeleton3D, name: String, angle: float, axis := Vector3.RIGHT) -> void:
+	var bone: int = _body.get(name, -1)
+	if bone < 0 or absf(angle) < 0.0001:
+		return
+	var g := sk.get_bone_global_pose(bone)
+	var parent := sk.get_bone_parent(bone)
+	var pg := sk.get_bone_global_pose(parent) if parent >= 0 else Transform3D()
+	sk.set_bone_pose_rotation(bone, (pg.basis.inverse() * (Basis(axis, angle) * g.basis)).get_rotation_quaternion())
+
+
 ## The right arm toward RAISE (in the chest's frame), as far as `_raised`.
 func _raise_arm(sk: Skeleton3D) -> void:
 	if _chest < 0:
@@ -246,6 +337,12 @@ func _raise_arm(sk: Skeleton3D) -> void:
 
 func _build(sk: Skeleton3D) -> void:
 	_built = true
+	for name in ["pelvis", "neck_01", "Head", "thigh_l", "calf_l", "foot_l", "thigh_r", "calf_r", "foot_r",
+			"upperarm_l", "lowerarm_l", "upperarm_r", "lowerarm_r", "tail_01", "tail_02", "tail_03",
+			"tail_04", "tail_05", "tail_06", "tail_07"]:
+		var i := sk.find_bone(name)
+		if i >= 0:
+			_body[name] = i
 	for mi in sk.find_children("*", "MeshInstance3D", false, false):
 		if WingMembrane.fit(mi):
 			_skin_mesh = mi

@@ -1,6 +1,7 @@
 class_name WingMembrane
 extends RefCounted
 
+## (And its horns kept still - see _free_head.)
 ## User report: the dragon's wingbeat was stiff - no membrane filled by the air between its wing
 ## bones. The skin between them (the mesh's vertices weighted to the wing bones, away from the
 ## bones themselves) gets blend shapes - offsets made at rest, so its bones carry them along:
@@ -70,6 +71,8 @@ static func _make(src: ArrayMesh, skin: Skin) -> ArrayMesh:
 	if n == 0 or bones.size() % n != 0:
 		return null
 	var per := bones.size() / n
+	weights = _free_head(verts, bones, weights, per, by_name, bind_side, skin)
+	arrays[Mesh.ARRAY_WEIGHTS] = weights
 	# (relative shapes: each vertex's offset from the base, its normal's and tangent's - unchanged)
 	var shapes: Array[PackedVector3Array] = []
 	for _i in SHAPES.size():
@@ -128,6 +131,40 @@ static func _make(src: ArrayMesh, skin: Skin) -> ArrayMesh:
 	made.surface_set_name(0, src.surface_get_name(0))
 	made.set_meta("membrane", true)
 	return made
+
+
+## User report: its horns bent with its wings. The head's and the neck's skin had a little of the
+## wing bones' weight (Blender's bone heat - the horns rise beside the wing's second joint), so
+## every beat dragged at them. A vertex on the head or neck - some weight there, and more of it
+## than the wings', or any at all from the head bone up - loses the wings' share, the rest scaled
+## back up to the whole.
+static func _free_head(verts: PackedVector3Array, bones: PackedInt32Array, weights: PackedFloat32Array,
+		per: int, by_name: Dictionary, bind_side: Dictionary, skin: Skin) -> PackedFloat32Array:
+	if not by_name.has("Head"):
+		return weights
+	var head_y := skin.get_bind_pose(by_name["Head"]).affine_inverse().origin.y
+	var head := {}
+	for name in ["Head", "neck_01"]:
+		if by_name.has(name):
+			head[by_name[name]] = true
+	for v in verts.size():
+		var on_head := 0.0
+		var on_wing := 0.0
+		for k in per:
+			var b: int = bones[v * per + k]
+			if head.has(b):
+				on_head += weights[v * per + k]
+			elif bind_side.has(b):
+				on_wing += weights[v * per + k]
+		if on_wing <= 0.0 or on_head < 0.05 or (on_head < on_wing and verts[v].y < head_y):
+			continue
+		var rest := maxf(1.0 - on_wing, 0.0001)
+		for k in per:
+			if bind_side.has(bones[v * per + k]):
+				weights[v * per + k] = 0.0
+			else:
+				weights[v * per + k] /= rest
+	return weights
 
 
 static func _to_segment(p: Vector3, a: Vector3, b: Vector3) -> float:

@@ -6546,6 +6546,33 @@ func test_run_intro_and_eye_guide() -> void:
 		air = Vector2(minf(air.x, rig._air), maxf(air.y, rig._air))
 	check(rig._skin_mesh != null and rig._skin_mesh.mesh.get_blend_shape_count() == WingMembrane.SHAPES.size()
 		and air.y > 0.6 and air.x < 0.0, "flying: its membrane filling and easing with the beat (%.2f..%.2f)" % [air.x, air.y])
+	# (user report: its horns bent with its wings - none of its head's skin follows the wing bones)
+	var skin_arrays: Array = rig._skin_mesh.mesh.surface_get_arrays(0)
+	var binds: Skin = rig._skin_mesh.skin
+	var vb: PackedInt32Array = skin_arrays[Mesh.ARRAY_BONES]
+	var vw: PackedFloat32Array = skin_arrays[Mesh.ARRAY_WEIGHTS]
+	var head_wing := 0
+	var vv: PackedVector3Array = skin_arrays[Mesh.ARRAY_VERTEX]
+	var head_y := binds.get_bind_pose(range(binds.get_bind_count()).filter(func(b): return binds.get_bind_name(b) == "Head")[0]).affine_inverse().origin.y
+	for v in vb.size() / 4:
+		# (the head and its horns, from the head bone up - below, the nape between the wings' roots
+		# goes with them)
+		if vv[v].y < head_y:
+			continue
+		var on_head := 0.0
+		var on_wing := 0.0
+		for k in 4:
+			var bn := String(binds.get_bind_name(vb[v * 4 + k]))
+			if bn == "Head":
+				on_head += vw[v * 4 + k]
+			elif bn.begins_with("wing"):
+				on_wing += vw[v * 4 + k]
+		if on_head >= 0.05 and on_wing > 0.0:
+			head_wing += 1
+	check(head_wing == 0, "its head and horns keep none of the wings' weight (%d)" % head_wing)
+	# (and flying, its body leans into it, head held up, legs trailing - see DragonRig._fly_body)
+	check(rig.flight_seen.x > 0.25 and rig.flight_seen.y < 0.0,
+		"flying: leaning into it (%.2f), its legs trailing (%.2f)" % [rig.flight_seen.x, rig.flight_seen.y])
 	var up: float = (c.shown as Vector3).y - RunView3D.WATER_Y
 	check(c.fly == 1.0 and rig.fly == 1.0 and up > RunView3D.DRAGON_FLY_LIFT - 0.1 and c.clip == "Idle",
 		"over the water: up off it (%.2f m), wings beating, not walking (%s)" % [up, c.clip])

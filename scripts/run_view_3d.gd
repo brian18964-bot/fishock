@@ -2337,8 +2337,6 @@ func _dragon_notices(n: Node, at: Vector2) -> bool:
 ## with the beat; past the water it comes down and folds them again. The lift (m).
 const DRAGON_LOOK := [0.8, 1.6, 2.4, 3.2]
 const DRAGON_FLY_LIFT := 0.45
-## (flying fast it leans into it - rad)
-const DRAGON_FLY_LEAN := 0.2
 
 
 func _dragon_flight(c: Dictionary, n: Node, at: Vector2, vel: Vector2, delta: float) -> float:
@@ -2639,10 +2637,6 @@ func _sync_creatures(delta: float) -> void:
 			var lean := clampf(speed * 0.12, 0.0, 0.3)
 			holder.rotation.x = lerpf(holder.rotation.x, lean, minf(1.0, delta * 4.0))
 			holder.scale = Vector3(1.0 - 0.04 * sin(c.time * 3.1), 1.0 + 0.05 * sin(c.time * 3.1), 1.0 - 0.04 * sin(c.time * 3.1))
-		elif kind == "dragon":
-			# (flying: leaning into its going, the more the faster)
-			var lean := DRAGON_FLY_LEAN * float(c.get("fly", 0.0)) * clampf(speed / 2.5, 0.0, 1.0)
-			holder.rotation.x = lerpf(holder.rotation.x, lean, minf(1.0, delta * 3.0))
 		elif kind == "willow":
 			# (no rig: it stands - breathing, and swaying in its rite)
 			var v2: Node2D = n.get("visual")
