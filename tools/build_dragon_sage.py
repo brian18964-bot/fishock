@@ -178,15 +178,25 @@ JAW_FADE = ((-0.39, -0.43), (0.545, 0.57))
 # horns (above SKULL_HORNS z) - and the lower jaw is what's under the parted lips, face by face.
 SKULL = ((-0.33, -0.37), (0.565, 0.585))
 SKULL_HORNS = 0.74
-# User request: eyes and teeth - the model has none (Meshy left a dark slit where an eye would be,
-# and a smooth lip) - after the user's red dragon (an open model: an amber eye with a slit pupil set
-# into the head under its brow; a row of pale cone teeth along each jaw, tilted back). Its eye picture
-# is cut from that model's (the build's fourth input; drawn instead without it), painted with the
-# teeth's colour and the mouth's into a free corner of the colour picture (one material still).
-# EYE: where the slit was (y, z as made; x on the skin), its radius (m), how much of it stands out of
-# the skin (share of its radius), how flat it is out of it (share), and which way it looks (the
-# left one: out, ahead, up).
-EYE = {"at": (-0.433, 0.646), "r": 0.0075, "out": 0.45, "flat": 0.7, "look": (1.0, -0.55, 0.15)}
+# User request: eyes and teeth - the model has none (Meshy left only shading where they'd be) -
+# after the user's red dragon (an amber eye with a slit pupil set into the head under its brow; a
+# row of pale cone teeth along each jaw, tilted back). (user report: the eye first put on the
+# cheek, by the mouth's corner - it belongs under the brow, at the outer end of the groove each side
+# of the nose's ridge, as the first dragon's was; and green, glowing, as that one's) The eye is an
+# almond set deep under the brow, slanted up toward its outer corner, looking ahead and out - green,
+# its iris's grain taken from the red dragon's eye (the build's fourth input; plain without it),
+# glowing (an emission picture: EYE_GLOW its strength). Painted, with the teeth's colour and the
+# mouth's, into free corners of the colour picture (one material still).
+# EYE: its centre's height and how far back (z, y as made: found on the skin from ahead and out, the
+# way it looks - EYE "look", the left one: out, ahead, up), its half length (m) and how tall it is
+# (share), how much stands out of the skin (share of its depth), how deep it is (share of its half
+# length), its slant (deg, its outer corner up)
+EYE = {"at": (-0.447, 0.653), "r": 0.0105, "tall": 0.55, "out": 0.35, "deep": 0.6, "slant": 18.0,
+       "look": (1.0, -0.8, 0.12)}
+EYE_GREEN = ((0.85, 1.0, 0.5), (0.3, 0.95, 0.42), (0.04, 0.32, 0.12))   # its middle, its iris, its rim
+EYE_GLOW = 2.5
+EYE_GLOW_TINT = (0.25, 1.0, 0.35)   # (its glow greener than its colour - bright, it would go white)
+SHIP_GLOW = 1024
 # TEETH: along each lip from its front to its back (y), each tooth's length (m) front to back on each
 # side, above and below, how thick at its root (share of its length); rooted under the lip's skin
 # (TOOTH_ROOT m in from its edge, above / below the plane), tilted back (share of its length)
@@ -832,17 +842,37 @@ def paint_rooms(body):
             px[b:d, a:c_, 3] = 1.0
         img.pixels.foreach_set(px.ravel())
         img.update()
+    # (its glow: black but for the eye - the BSDF's emission, EYE_GLOW strong)
+    glow = bpy.data.images.new("DragonGhost_Glow", SHIP_GLOW, SHIP_GLOW)
+    px = np.zeros((SHIP_GLOW, SHIP_GLOW, 4), np.float32)
+    px[:, :, 3] = 1.0
+    u0, v0, u1, v1 = ROOM["eye"]
+    a, b, c_, d = (int(round(q * SHIP_GLOW)) for q in (u0, v0, u1, v1))
+    ys = (np.arange(d - b) * eye.shape[0] // max(d - b, 1)).clip(0, eye.shape[0] - 1)
+    xs = (np.arange(c_ - a) * eye.shape[1] // max(c_ - a, 1)).clip(0, eye.shape[1] - 1)
+    px[b:d, a:c_, :3] = eye[ys][:, xs] * np.array(EYE_GLOW_TINT)
+    glow.pixels.foreach_set(px.ravel())
+    glow.update()
+    glow.pack()
+    nt = body.data.materials[0].node_tree
+    bsdf = next(n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED')
+    node = nt.nodes.new('ShaderNodeTexImage')
+    node.image = glow
+    socket = bsdf.inputs.get("Emission Color") or bsdf.inputs["Emission"]
+    nt.links.new(node.outputs['Color'], socket)
+    bsdf.inputs["Emission Strength"].default_value = EYE_GLOW
     log("painted the eye, the teeth, the mouth: %s" % {k_: tuple(round(x, 3) for x in v) for k_, v in ROOM.items()})
 
 
 def _eye_picture(size):
-    """(size, size, 3) the eye: the red dragon's (RED, RED_EYE) - or drawn: amber, a slit pupil - its
-    rim darkened into the socket. Rows from the bottom (as Blender's pictures are)."""
+    """(size, size, 3) the eye (see EYE_GREEN): green, lightest in its middle, a slit pupil, its rim
+    darkened into the socket - its iris's grain the red dragon's eye's (RED, RED_EYE), if given. Rows
+    from the bottom (as Blender's pictures are)."""
     yy, xx = np.mgrid[0:size, 0:size]
     x = (xx + 0.5) / size * 2 - 1
     y = (yy + 0.5) / size * 2 - 1
     r = np.sqrt(x * x + y * y)
-    pic = None
+    grain = np.ones((size, size))
     if RED and os.path.exists(RED):
         img = bpy.data.images.load(RED)
         w, h = img.size
@@ -854,15 +884,19 @@ def _eye_picture(size):
         n = size * k
         x0 = int(cu * w) - n // 2
         y0 = int(cv * h) - n // 2
-        pic = px[y0:y0 + n, x0:x0 + n].reshape(size, k, size, k, 3).mean((1, 3))
+        lum = px[y0:y0 + n, x0:x0 + n].mean(2).reshape(size, k, size, k).mean((1, 3))
+        grain = np.clip(0.55 + 0.9 * (lum - lum.mean()) / max(lum.std() * 3, 1e-6) + 0.45, 0.6, 1.3)
         bpy.data.images.remove(img)
-        log("the eye cut from", os.path.basename(RED))
-    if pic is None:
-        amber = np.array([1.0, 0.78, 0.22]) * (1 - r[..., None]) + np.array([0.82, 0.36, 0.08]) * r[..., None]
-        slit = np.abs(x) < 0.09 * np.sqrt(np.clip(1 - (y / 0.8) ** 2, 0, 1))
-        pic = np.where(slit[..., None], 0.03, amber)
-    rim = np.clip((r - 0.8) / 0.2, 0, 1)
-    return pic * (1 - 0.85 * rim * rim * (3 - 2 * rim))[..., None]
+        log("the eye's grain from", os.path.basename(RED))
+    mid, iris, rim = (np.array(c) for c in EYE_GREEN)
+    s1 = np.clip(r / 0.55, 0, 1)[..., None]
+    s2 = np.clip((r - 0.55) / 0.4, 0, 1)[..., None]
+    pic = (mid * (1 - s1) + iris * s1) * (1 - s2) + rim * s2
+    pic = np.clip(pic * grain[..., None], 0, 1)
+    slit = np.abs(x) < 0.07 * np.sqrt(np.clip(1 - (y / 0.85) ** 2, 0, 1)) + 0.012
+    pic = np.where(slit[..., None], 0.02, pic)
+    edge = np.clip((r - 0.82) / 0.18, 0, 1)
+    return pic * (1 - 0.8 * edge * edge * (3 - 2 * edge))[..., None]
 
 
 def _tooth_colour():
@@ -920,16 +954,24 @@ def eyes_and_teeth(body, lift):
     # ---- the eyes
     (ey, ez), r = EYE["at"], EYE["r"]
     for sx in (1.0, -1.0):
-        hit, nrm, _, _ = bvh.ray_cast(Vector((0.3 * sx, ey, ez + lift)), Vector((-sx, 0.0, 0.0)), 0.4)
+        look = Vector((EYE["look"][0] * sx, EYE["look"][1], EYE["look"][2])).normalized()
+        # (on the skin seen from ahead and out, the way it looks: from the head's middle out)
+        inside = Vector((0.0, ey, ez + lift))
+        hit, nrm, _, _ = bvh.ray_cast(inside + look * 0.3, -look, 0.4)
         if hit is None:
             raise RuntimeError("no skin where the eye goes")
-        look = Vector((EYE["look"][0] * sx, EYE["look"][1], EYE["look"][2])).normalized()
-        d = (look + nrm).normalized()
-        e2 = (Vector((0, 0, 1)) - d * d.z).normalized()       # up across it: the slit upright
-        e1 = e2.cross(d)
-        depth = r * EYE["flat"]
-        centre = hit + d * (r * EYE["out"] * EYE["flat"]) - d * depth
-        rings, segs = 7, 14
+        d = (look * 2.0 + nrm).normalized()
+        back = (Vector((0, 1, 0)) - d * d.y).normalized()
+        up = d.cross(back) if sx > 0 else back.cross(d)
+        if up.z < 0:
+            up = -up
+        t = math.radians(EYE["slant"])
+        e1 = back * math.cos(t) + up * math.sin(t)            # along it, to its outer corner
+        e2 = (up * math.cos(t) - back * math.sin(t))          # across it: the slit along this
+        a, b = r, r * EYE["tall"]
+        depth = r * EYE["deep"]
+        centre = hit + d * (depth * EYE["out"]) - d * depth
+        rings, segs = 7, 16
         verts = []
         tip = bm.verts.new(centre + d * depth)
         weigh(tip, 0.0)
@@ -938,7 +980,7 @@ def eyes_and_teeth(body, lift):
             ring = []
             for j in range(segs):
                 ph = 2 * math.pi * j / segs
-                v = bm.verts.new(centre + r * math.sin(th) * (math.cos(ph) * e1 + math.sin(ph) * e2)
+                v = bm.verts.new(centre + math.sin(th) * (a * math.cos(ph) * e1 + b * math.sin(ph) * e2)
                                  + d * depth * math.cos(th))
                 weigh(v, 0.0)
                 ring.append(v)
@@ -946,15 +988,17 @@ def eyes_and_teeth(body, lift):
 
         def euv(v):
             q = v.co - centre
-            return room_uv("eye", 0.96 * q.dot(e1) / r * sx, 0.96 * q.dot(e2) / r)
+            return room_uv("eye", 0.96 * q.dot(e1) / a, 0.96 * q.dot(e2) / b)
         for j in range(segs):
-            a, b = verts[0][j], verts[0][(j + 1) % segs]
-            face([tip, a, b], [euv(tip), euv(a), euv(b)], centre)
+            p0, p1 = verts[0][j], verts[0][(j + 1) % segs]
+            face([tip, p0, p1], [euv(tip), euv(p0), euv(p1)], centre)
             for i in range(rings - 1):
-                a, b = verts[i][j], verts[i][(j + 1) % segs]
-                c, e = verts[i + 1][(j + 1) % segs], verts[i + 1][j]
-                face([a, e, c, b], [euv(a), euv(e), euv(c), euv(b)], centre)
+                p0, p1 = verts[i][j], verts[i][(j + 1) % segs]
+                p2, p3 = verts[i + 1][(j + 1) % segs], verts[i + 1][j]
+                face([p0, p3, p2, p1], [euv(p0), euv(p3), euv(p2), euv(p1)], centre)
         made["eye"] += 1
+        log("eye %s: at %s, looking %s" % ("left" if sx > 0 else "right", tuple(round(x, 3) for x in hit),
+                                             tuple(round(x, 2) for x in d)))
     # ---- the teeth
     (y0, z0), (y1, z1) = JAW_LIP
     back = Vector((0.0, y1 - y0, z1 - z0)).normalized()

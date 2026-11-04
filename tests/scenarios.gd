@@ -6674,7 +6674,7 @@ func test_run_intro_and_eye_guide() -> void:
 	# tools/build_dragon_sage.py JAW_LIP, EYE - as made, y back and z up, here -z and y less its lift)
 	var lift := 0.869
 	var lip_at := func(ym: float) -> float: return lift + 0.600 + (ym + 0.512) * (0.625 - 0.600) / (0.512 - 0.42)
-	var eye_at := Vector3(0.052, lift + 0.646, 0.433)
+	var eye_at := Vector3(0.034, lift + 0.657, 0.473)
 	var eyes := [0, 0]
 	var teeth := [0, 0]
 	var loose := 0
@@ -6710,7 +6710,7 @@ func test_run_intro_and_eye_guide() -> void:
 			elif above > 0.003 and above < 0.025 and float(on.get("jaw", 0.0)) > 0.8:
 				teeth[1] += 1
 		for k in 2:
-			if p.distance_to(Vector3(eye_at.x * (1 - 2 * k), eye_at.y, eye_at.z)) < 0.015 \
+			if p.distance_to(Vector3(eye_at.x * (1 - 2 * k), eye_at.y, eye_at.z)) < 0.018 \
 					and float(on.get("Head", 0.0)) > 0.99:
 				eyes[k] += 1
 	flares.sort()
