@@ -163,7 +163,9 @@ TAIL_TAPER = 0.92   # each tail bone this much of the one before
 JAW_LIP = ((-0.512, 0.600), (-0.42, 0.625))
 JAW_CORNER = -0.415
 JAW_WIDE = 0.08
-JAW_FADE = ((-0.34, -0.43), (0.53, 0.57))
+# (user report: the throat went with the jaw, pulled into a sheet - the jaw is only what's ahead of
+# its hinge, above the throat)
+JAW_FADE = ((-0.39, -0.43), (0.545, 0.57))
 # User request: the robe flows. Its skirt hangs on SKIRT_CHAINS chains of SKIRT_BONES bones round
 # the hips (front, front-left, ... - joints measured off the robe itself, from its belt, SKIRT_TOP,
 # down to near its hem), swung by DragonRig as the tail is; each skirt vertex shared between the two
@@ -178,6 +180,20 @@ SKIRT_CENTRE = (0.0, -0.34)
 SKIRT_THIN = (0.025, 0.045)
 SKIRT_LEG = (0.06, 0.13)
 SKIRT_CLEAR = 0.12
+# User request: the skirt's four panels hang - the model (made from a drawing) has them flared out,
+# the left one most, as if blown. Once weighted, each skirt vertex is turned down in its own
+# upright plane about the belt toward a hang: any flare past DRAPE[0] deg kept only DRAPE[1] of -
+# smoothed over the skin (DRAPE_SMOOTH passes), so a strand turns as one and keeps its thickness;
+# never into the legs (DRAPE_LEG m off their bones). Its chains' joints turned alike.
+DRAPE = (12.0, 0.25)
+DRAPE_SMOOTH = 12
+DRAPE_LEG = 0.085
+# User request: the sleeves hang too. The model holds its arms straight out, its shoulders' cloth
+# lying out along them; weighted to the shoulder it stayed out flat when the arm came down. Past the
+# shoulder's joint (SLEEVE_EASE m along the upper arm: none .. wholly) its cloth - dark, or thin as
+# its pale ragged edges are - goes with the arm.
+SLEEVE_EASE = (-0.04, 0.05)
+SLEEVE_NEAR = 0.2
 # (m from the tail's root) what Meshy grew onto the tail's underside - the robe, the skin between
 # the legs - is parted from it further out than this: the tail swings free of it (crouched, that
 # goes with the legs)
@@ -477,6 +493,118 @@ def skirt_joints(body, lift, spec, thick):
             name = "skirt_%d_%02d" % (k, i + 1)
             out[name] = (pts[i], pts[i + 1], "pelvis" if i == 0 else "skirt_%d_%02d" % (k, i))
     return out
+
+
+def drape_skirt(body, arm, lift):
+    """The skirt turned down to hang (see DRAPE): its skin, and its chains' joints."""
+    me = body.data
+    n = len(me.vertices)
+    skirt_groups = {g.index for g in body.vertex_groups if g.name.startswith("skirt_")}
+    share = np.zeros(n)
+    for v in me.vertices:
+        for g in v.groups:
+            if g.group in skirt_groups:
+                share[v.index] += g.weight
+    mw = body.matrix_world
+    P = np.array([tuple(mw @ v.co) for v in me.vertices])
+    cx, cy = SKIRT_CENTRE
+    # (the belt's own radius round the hips, every 10 deg, smoothed round)
+    def polar(Q):
+        r = np.hypot(Q[:, 0] - cx, Q[:, 1] - cy)
+        return r, _skirt_angle(Q)
+    r, ang = polar(P)
+    belt = (np.abs(P[:, 2] - lift - SKIRT_TOP) < 0.03) & (r < 0.4)
+    bins = np.full(36, np.nan)
+    for k in range(36):
+        d = np.abs((ang - (k * 10.0 - 175.0) + 180.0) % 360.0 - 180.0) < 5.0
+        if (d & belt).sum() >= 3:
+            bins[k] = np.median(r[d & belt])
+    good = ~np.isnan(bins)
+    idx = np.arange(36)
+    bins = np.interp(idx, idx[good], bins[good], period=36)
+    bins = (np.roll(bins, 1) + 2.0 * bins + np.roll(bins, -1)) / 4.0
+    centres = idx * 10.0 - 175.0
+
+    def belt_r(a):
+        return np.interp(a, centres, bins, period=360.0)
+    t0 = math.radians(DRAPE[0])
+
+    def hang(phi):
+        return np.where(phi > t0, t0 + (phi - t0) * DRAPE[1], phi)
+
+    def turned(Q, base, dphi):
+        r_, a_ = polar(Q)
+        dr = r_ - base
+        dz = lift + SKIRT_TOP - Q[:, 2]
+        L = np.hypot(dr, dz)
+        phi = np.arctan2(dr, dz) + dphi
+        nr = base + L * np.sin(phi)
+        ux = (Q[:, 0] - cx) / np.maximum(r_, 1e-6)
+        uy = (Q[:, 1] - cy) / np.maximum(r_, 1e-6)
+        out = Q.copy()
+        out[:, 0] = cx + ux * nr
+        out[:, 1] = cy + uy * nr
+        out[:, 2] = lift + SKIRT_TOP - L * np.cos(phi)
+        return out
+    base = belt_r(ang)
+    dz = lift + SKIRT_TOP - P[:, 2]
+    phi = np.arctan2(r - base, dz)
+    delta = (hang(phi) - phi) * share * (dz > 0)
+    ed = np.zeros(len(me.edges) * 2, int)
+    me.edges.foreach_get("vertices", ed)
+    ed = ed.reshape(-1, 2)
+    on = share > 0.0
+    keep = on[ed[:, 0]] & on[ed[:, 1]]
+    ed = ed[keep]
+    deg = np.bincount(ed.ravel(), minlength=n).astype(float)
+    for _ in range(DRAPE_SMOOTH):
+        acc = np.zeros(n)
+        np.add.at(acc, ed[:, 0], delta[ed[:, 1]])
+        np.add.at(acc, ed[:, 1], delta[ed[:, 0]])
+        delta = np.where(on, np.where(deg > 0, 0.5 * delta + 0.5 * acc / np.maximum(deg, 1), delta), 0.0)
+    Q = turned(P, base, delta)
+    # (never into the legs as they stand)
+    legs = []
+    for side in ("l", "r"):
+        for a_, b_ in (("thigh", "calf"), ("calf", "foot")):
+            ha = np.array(arm.data.bones["%s_%s" % (a_, side)].head_local)
+            hb = np.array(arm.data.bones["%s_%s" % (b_, side)].head_local)
+            legs.append((ha, hb))
+    moved = 0
+    for i in np.nonzero(on & (np.abs(delta) > 1e-4))[0]:
+        for a_, b_ in legs:
+            d, _ = _seg_dist(Q[i:i + 1], a_, b_)
+            if d[0] < DRAPE_LEG:
+                ab = b_ - a_
+                tq = np.clip(((Q[i] - a_) @ ab) / (ab @ ab), 0, 1)
+                off = Q[i] - (a_ + tq * ab)
+                Q[i] = a_ + tq * ab + off / max(np.linalg.norm(off), 1e-6) * DRAPE_LEG
+        moved += 1
+    inv = mw.inverted()
+    for i in np.nonzero(on)[0]:
+        me.vertices[i].co = inv @ Vector(tuple(Q[i]))
+    me.update()
+    log("skirt draped: %d vertices turned (flare %.0f deg most -> %.0f)" % (
+        moved, math.degrees(float(phi[on & (dz > 0)].max())) if on.any() else 0.0,
+        math.degrees(float(hang(phi[on & (dz > 0)]).max())) if on.any() else 0.0))
+    # its chains' joints, turned alike
+    select([arm])
+    bpy.ops.object.mode_set(mode='EDIT')
+    eb = arm.data.edit_bones
+    joints_ = {}
+    for b in eb:
+        if b.name.startswith("skirt_"):
+            joints_[b.name] = (np.array(b.head), np.array(b.tail))
+    for name, (h, t) in joints_.items():
+        J = np.array([h, t])
+        rj, aj = polar(J)
+        bj = belt_r(aj) * 0.92
+        phij = np.arctan2(rj - bj, lift + SKIRT_TOP - J[:, 2])
+        dj = np.where(lift + SKIRT_TOP - J[:, 2] > 1e-4, hang(phij) - phij, 0.0)
+        Jn = turned(J, bj, dj)
+        eb[name].head = Vector(tuple(Jn[0]))
+        eb[name].tail = Vector(tuple(Jn[1]))
+    bpy.ops.object.mode_set(mode='OBJECT')
 
 
 def joints(lift):
@@ -779,6 +907,21 @@ def weights(body, arm, spec, thick):
                 sub[i, hoff[kk]:hoff[kk] + width] += w * fa[kk][i]
         put(hreg, sub, hb)
         log("hand %s: %d vertices" % (side, int((hreg > 0).sum())))
+    # ---- the sleeves (see SLEEVE_EASE)
+    owned_now = W[:, [col[b] for b in names if b.startswith(("wing", "hand", "thumb", "index", "middle",
+                                                              "ring", "pinky"))]].sum(1)
+    for side, sx in (("l", 1.0), ("r", -1.0)):
+        sh, el = H["upperarm_" + side]
+        ax = (el - sh) / np.linalg.norm(el - sh)
+        along = (P - sh) @ ax
+        rad = np.linalg.norm((P - sh) - np.outer(along, ax), axis=1)
+        # (its cloth: dark, or thin - its pale ragged edges)
+        sleeve = (cloth | (thick < SKIRT_THIN[1])) & (rad < SLEEVE_NEAR) & (P[:, 0] * sx > 0.12) \
+            & (P[:, 2] - lift > 0.2)
+        ease = np.clip((along - SLEEVE_EASE[0]) / (SLEEVE_EASE[1] - SLEEVE_EASE[0]), 0, 1)
+        sreg_ = sleeve * ease * np.clip(1.0 - 2.0 * owned_now, 0, 1)
+        put(sreg_, np.ones((n, 1)), ["upperarm_" + side])
+        log("sleeve %s: %d vertices (%d wholly)" % (side, int((sreg_ > 0).sum()), int((sreg_ > 0.99).sum())))
     # ---- the tail
     tb = ["tail_%02d" % (i + 1) for i in range(TAIL_BONES)]
     pts = [H[tb[0]][0]] + [H[b][1] for b in tb]
@@ -803,7 +946,7 @@ def weights(body, arm, spec, thick):
     zm = P[:, 2] - lift
     lip = _lip_z(P[:, 1])
     # (the head's own width - not the hood round it)
-    jreg = ((zm < lip - 0.001) & (P[:, 1] < -0.33) & (zm > 0.45) & ~cloth).astype(float) \
+    jreg = ((zm < lip - 0.001) & (P[:, 1] < -0.33) & (zm > 0.45) & (~cloth | (P[:, 1] < JAW_CORNER))).astype(float) \
         * np.clip((JAW_WIDE - np.abs(P[:, 0])) / 0.015, 0, 1) \
         * np.clip((JAW_FADE[0][0] - P[:, 1]) / (JAW_FADE[0][0] - JAW_FADE[0][1]), 0, 1) \
         * np.clip((zm - JAW_FADE[1][0]) / (JAW_FADE[1][1] - JAW_FADE[1][0]), 0, 1)
@@ -1070,6 +1213,7 @@ def main():
     spec.update(skirt_joints(body, lift, spec, thick))
     arm = skeleton(spec)
     weights(body, arm, spec, thick)
+    drape_skirt(body, arm, lift)
     if STAGE == "weights":
         bpy.ops.wm.save_as_mainfile(filepath=OUT + ".weights.blend")
         return

@@ -6652,9 +6652,72 @@ func test_run_intro_and_eye_guide() -> void:
 		if d > 0.3:
 			fork_left += 1
 	check(fork_left == 0, "one tail: the stray strand folded away (%d left)" % fork_left)
+	# (user requests: the skirt's panels hang, not flared out as made; the sleeves go with the arm
+	# past the shoulder's joint, not stuck out on the shoulder; the jaw is only the jaw - none of
+	# the throat behind its hinge goes with it)
+	var bind_at := func(bone: String) -> Vector3:
+		var found: Array = range(binds.get_bind_count()).filter(func(i): return binds.get_bind_name(i) == bone)
+		return binds.get_bind_pose(found[0]).affine_inverse().origin if not found.is_empty() else Vector3.INF
+	var belt_y: float = (bind_at.call("skirt_0_01") as Vector3).y
+	var hinge: Vector3 = bind_at.call("jaw")
+	var flares: Array[float] = []
+	var stuck := 0
+	var throat := 0
+	for v in vv.size():
+		var on := {}
+		for k in 4:
+			var bn := String(binds.get_bind_name(vb[v * 4 + k]))
+			var key := "skirt" if bn.begins_with("skirt") else bn
+			on[key] = float(on.get(key, 0.0)) + vw[v * 4 + k]
+		var p := vv[v]
+		if float(on.get("skirt", 0.0)) > 0.5 and p.y < belt_y - 0.05:
+			var r := Vector2(p.x, p.z - 0.34).length()
+			flares.append(rad_to_deg(atan2(r - 0.2, belt_y - p.y)))
+		for side in ["l", "r"]:
+			var sh: Vector3 = bind_at.call("upperarm_" + side)
+			var el: Vector3 = bind_at.call("lowerarm_" + side)
+			var ax := (el - sh).normalized()
+			var along := (p - sh).dot(ax)
+			# (over the arm held out as made, where its cloth lay - not the flesh under it)
+			var off := (p - sh) - ax * along
+			if along > 0.06 and off.length() < 0.2 and off.y > 0.0 \
+					and float(on.get("clavicle_" + side, 0.0)) + float(on.get("spine_03", 0.0)) > 0.3:
+				stuck += 1
+		if float(on.get("jaw", 0.0)) > 0.05 and p.z < hinge.z - 0.01:
+			throat += 1
+	flares.sort()
+	var flare95: float = flares[int(flares.size() * 0.95)] if not flares.is_empty() else 99.0
+	check(flares.size() > 500 and flare95 < 30.0, "its skirt hanging, not flared out (95%% within %.0f deg)" % flare95)
+	check(stuck == 0, "its sleeves going with its arms past the shoulder (%d left on it)" % stuck)
+	check(throat == 0, "its jaw only its jaw, none of its throat (%d)" % throat)
 	# (and flying, its upper body leans into it, its legs just hang - see DragonRig._fly_body)
 	check(rig.flight_seen.x > 0.1 and absf(rig.flight_seen.y) < 0.4,
 		"flying: its chest leaning into it (%.2f), its legs hanging (%.2f)" % [rig.flight_seen.x, rig.flight_seen.y])
+	# (user requests: flying, its feet hang limp to the toes; its head steady, looking ahead)
+	var fsk: Skeleton3D = rig.get_skeleton()
+	await fsk.skeleton_updated
+	var hung := 99.0
+	for side in ["l", "r"]:
+		for part in ["foot_", "ball_"]:
+			var d := fsk.get_bone_global_pose(fsk.find_bone(part + side)).basis.y.normalized()
+			hung = minf(hung, rad_to_deg(asin(clampf(-d.y, -1.0, 1.0))))
+	var pitches: Array[float] = []
+	for _i in 90:
+		await fsk.skeleton_updated
+		var fh := fsk.find_bone("Head")
+		var f := (fsk.get_bone_global_pose(fh).basis.orthonormalized() * fsk.get_bone_global_rest(fh).basis.orthonormalized().inverse()) * Vector3.BACK
+		pitches.append(rad_to_deg(atan2(f.y, Vector2(f.x, f.z).length())))
+	var mean_p := 0.0
+	for q in pitches:
+		mean_p += q
+	mean_p /= pitches.size()
+	var rms_p := 0.0
+	for q in pitches:
+		rms_p += (q - mean_p) * (q - mean_p)
+	rms_p = sqrt(rms_p / pitches.size())
+	check(hung > 55.0, "flying: its feet hanging limp, toes down (%.0f deg below level at least)" % hung)
+	# (its nod there: 12.9 deg before it held its head steady flying - 7.4 now)
+	check(rms_p < 9.0, "flying: its head steady (%.1f deg its nod)" % rms_p)
 	var flying_seen: Dictionary = await _dragon_seen(rig, c)
 	check(flying_seen.holds, "flying, the lantern still in its fist - %s" % flying_seen.text)
 	# (user request: the wings the same both sides - the clip's turn of the chest kept out of them)

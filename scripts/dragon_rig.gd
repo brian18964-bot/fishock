@@ -138,7 +138,9 @@ const RIPPLE_RATE := Vector2(13.0, 22.0)
 ## (FLY_NOD); its head held steady against all that (HEAD_KEEP: the share of the lean its neck and
 ## head take back). The lean is its upper body's, spread down its spine - its hips stay as they
 ## stand. Its arms and legs just hang (HANG_BACK: the legs a little behind straight down, more in
-## the wind; knees easy, feet dropped), each a pendulum on a spring (LIMB_SPRING: stiffness /s²,
+## the wind; below it, user request: the leg hanging limp to its toes - HANG_SHIN, HANG_FOOT,
+## HANG_TOES: each bone's way, the skeleton's space - the shin back and down, the foot and its toes
+## pointing down), each a pendulum on a spring (LIMB_SPRING: stiffness /s²,
 ## damping /s), pushed as the body is: surging ahead on each downstroke (SURGE rad/s², more the
 ## faster) and as it speeds up or slows (SURGE_PACE per m/s²); the lower joint thrown the other way
 ## as the one above swings (FOLLOW). Left and right a little apart. The right arm carries the
@@ -147,8 +149,9 @@ const FLY_PITCH := Vector2(0.32, 0.7)
 const FLY_NOD := 0.07
 const HEAD_KEEP := 0.7
 const HANG_BACK := Vector2(0.08, 0.25)
-const KNEE := 0.12
-const ANKLE := 0.45
+const HANG_SHIN := Vector3(0.05, -0.75, -0.66)
+const HANG_FOOT := Vector3(0.0, -0.95, -0.3)
+const HANG_TOES := Vector3(0.0, -1.0, 0.15)
 const LIMB_SPRING := {"thigh": Vector2(20.0, 2.6), "calf": Vector2(34.0, 3.4), "foot": Vector2(46.0, 4.0),
 	"upperarm": Vector2(26.0, 3.0), "lowerarm": Vector2(40.0, 3.6)}
 const SURGE := 6.0
@@ -252,6 +255,9 @@ const RELAX_FLICK := 22.0
 ## down as LOOK_MAX (rad), easing to it (LOOK_EASE /s); with no one to look at, turning, it leads
 ## with its head (TURN_LEAD rad per rad/s), and standing, it glances about now and then (GLANCE s
 ## apart, as far as GLANCE_REACH rad). It breathes (BREATHE: s a breath, rad its neck rises and falls).
+## User request: flying, it holds its head steady, looking ahead - all its head's swaying (its
+## weight's swing, its breath, its leading into a turn) FLY_HEAD_CALM of what it is on its feet.
+const FLY_HEAD_CALM := 0.56
 const HEAD_SPRING := {"neck": Vector2(55.0, 7.0), "head": Vector2(85.0, 8.5)}
 const HEAD_BOB := 0.03
 const HEAD_SURGE := 0.035
@@ -863,8 +869,9 @@ func _head_life(sk: Skeleton3D, dt: float) -> void:
 		return
 	var flown := smoothstep(0.0, 1.0, fly)
 	# Its weight swung on its neck: up and down (pitch: + nods it), aside (roll: + to its right).
+	var calm := lerpf(1.0, FLY_HEAD_CALM, flown)
 	var up := _hips_acc.y + _w_acc.y
-	var push := Vector2((up * HEAD_BOB - _w_acc.z * HEAD_SURGE), (_w_acc.x + _hips_acc.x) * HEAD_SIDE)
+	var push := Vector2((up * HEAD_BOB - _w_acc.z * HEAD_SURGE), (_w_acc.x + _hips_acc.x) * HEAD_SIDE) * calm
 	var ns: Vector2 = HEAD_SPRING.neck
 	var hs: Vector2 = HEAD_SPRING.head
 	var was := Vector2(_neck_st.y, _neck_st.w)
@@ -890,7 +897,7 @@ func _head_life(sk: Skeleton3D, dt: float) -> void:
 				if _rng.randf() < 0.75 else Vector2.ZERO
 		want = _glance * (1.0 - clampf(pace * 1.5, 0.0, 1.0)) * (1.0 - flown)
 	if not look_at.is_finite():
-		want.x += clampf(_w_turn * TURN_LEAD, -0.5, 0.5)
+		want.x += clampf(_w_turn * TURN_LEAD, -0.5, 0.5) * calm
 	want *= (1.0 - _crouched) * (1.0 - 0.5 * flown)
 	# (critically damped toward it)
 	var k := LOOK_EASE
@@ -899,7 +906,7 @@ func _head_life(sk: Skeleton3D, dt: float) -> void:
 	var side := face * Vector3.RIGHT
 	var turn_up := face * Vector3.UP
 	var ahead := face * Vector3.BACK
-	var breath := BREATHE.y * sin(TAU * _time / BREATHE.x)
+	var breath := BREATHE.y * sin(TAU * _time / BREATHE.x) * calm
 	_turn_bone(sk, neck, _look.x * NECK_SHARE, turn_up)
 	_turn_bone(sk, neck, _look.y * NECK_SHARE + _neck_st.x + breath, side)
 	_turn_bone(sk, neck, _neck_st.z, ahead)
@@ -972,8 +979,9 @@ func _fly_body(sk: Skeleton3D, flown: float, dt: float) -> void:
 		var knee := _swing("calf_" + side, -FOLLOW * _limb_acc("thigh_" + side), own, dt)
 		var ankle := _swing("foot_" + side, -FOLLOW * _limb_acc("calf_" + side), own, dt)
 		_hang(sk, "thigh_" + side, Vector3(0.18 * out, -1.0, 0.0), lerpf(HANG_BACK.x, HANG_BACK.y, hurry) + hip, flown)
-		_turn(sk, "calf_" + side, flown * (KNEE + knee))
-		_turn(sk, "foot_" + side, flown * (ANKLE + ankle))
+		_hang(sk, "calf_" + side, Vector3(HANG_SHIN.x * out, HANG_SHIN.y, HANG_SHIN.z), knee, flown)
+		_hang(sk, "foot_" + side, HANG_FOOT, ankle, flown)
+		_hang(sk, "ball_" + side, HANG_TOES, ankle * 0.6, flown)
 		var arm := _swing("upperarm_" + side, surge * 0.7, own, dt)
 		var elbow := _swing("lowerarm_" + side, -FOLLOW * _limb_acc("upperarm_" + side), own, dt)
 		if side == "r":
@@ -1210,7 +1218,7 @@ func _build(sk: Skeleton3D) -> void:
 	_built = true
 	_rng.seed = hash(get_instance_id())
 	for name in ["pelvis", "spine_01", "spine_02", "spine_03", "neck_01", "Head", "thigh_l", "calf_l", "foot_l",
-			"thigh_r", "calf_r", "foot_r", "upperarm_l", "lowerarm_l", "upperarm_r", "lowerarm_r", "hand_r", "hand_l",
+			"thigh_r", "calf_r", "foot_r", "ball_l", "ball_r", "upperarm_l", "lowerarm_l", "upperarm_r", "lowerarm_r", "hand_r", "hand_l",
 			"index_02_r", "middle_02_r", "ring_02_r", "pinky_02_r", "index_03_r", "middle_03_r", "ring_03_r", "pinky_03_r"]:
 		var i := sk.find_bone(name)
 		if i >= 0:
