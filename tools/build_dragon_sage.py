@@ -765,10 +765,40 @@ def even_tails(body, arm):
               ("tail_b%02d", TAIL2_BONES, turned(TAIL2_LINE, -spread)))
     # (a tail's skin past its root its own: bone heat gave the main tail's, wound round the leg, a
     # share of the leg's - left behind as the tail swung, it tore out in a flap)
+    # (and its skin against the leg - given the leg, so as not to tear standing - taken back: each
+    # vertex there the tail's or the leg's by which it lies nearer, each by its own girth)
     me = body.data
     groups = {g.index: g.name for g in body.vertex_groups}
+    mw = body.matrix_world
+    P = np.array([(mw @ v.co)[:] for v in me.vertices])
+    legs = np.full(len(P), 9.0)
+    for nm in ("thigh_l", "thigh_r", "calf_l", "calf_r"):
+        b = arm.data.bones[nm]
+        d, _ = _seg_dist(P, np.array(b.head_local[:]), np.array(b.tail_local[:]))
+        legs = np.minimum(legs, d)
     for fmt, n, line in chains:
-        own = {fmt % (i + 1) for i in range(n)}
+        names = [fmt % (i + 1) for i in range(n)]
+        own = set(names)
+        bones = [arm.data.bones[b] for b in names]
+        pts = [np.array(bones[0].head_local[:])] + [np.array(b.tail_local[:]) for b in bones]
+        dt_, sg, t = _chain(P, pts)
+        lens = [np.linalg.norm(pts[i + 1] - pts[i]) for i in range(len(pts) - 1)]
+        s_along = np.concatenate([[0], np.cumsum(lens)])[sg] + t * np.array(lens)[sg]
+        radius = np.interp(s_along, [0, 0.3, 0.6, 1.0], [0.12, 0.09, 0.06, 0.04]) * TAILS_EVEN["girth"]
+        take = (s_along > TAILS_EVEN["root"]) & (dt_ < radius) & (dt_ / radius < legs / TAILS_EVEN["leg"])
+        Wt = _along(names, sg, t, 0.4)
+        taken = 0
+        for i in np.nonzero(take)[0]:
+            v = me.vertices[int(i)]
+            if sum(g.weight for g in v.groups if groups[g.group] in own) > 0.99:
+                continue
+            for g in list(v.groups):
+                body.vertex_groups[g.group].remove([v.index])
+            for k, nm in enumerate(names):
+                if Wt[i, k] > 1e-4:
+                    body.vertex_groups[nm].add([v.index], float(Wt[i, k]), 'REPLACE')
+            taken += 1
+        log("tail %s: %d vertices against the leg taken back" % (fmt % 1, taken))
         root = arm.data.bones[fmt % 1].head_local
         for v in me.vertices:
             tw = sum(g.weight for g in v.groups if groups[g.group] in own)

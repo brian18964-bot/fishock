@@ -62,8 +62,9 @@ TAIL2_LINE = [(0, -0.04, 0.04), (0, 0.12, 0.0), (0, 0.22, -0.1), (0, 0.28, -0.22
 # (user request: the main tail swept to one side, one big and one small, looked wrong - both one
 # size, both behind it: the main one shortened to the second's length, its width near kept, both
 # posed as the second hangs, each swung this far out to its side; past `root` from its root a
-# tail's skin all its own)
-TAILS_EVEN = {"spread": 28.0, "thick": 0.95, "root": 0.12}
+# tail's skin all its own - against the leg too (within `girth` of its weighting's radius, nearer
+# it than the leg's skin of `leg` radius is to the leg))
+TAILS_EVEN = {"spread": 28.0, "thick": 0.95, "root": 0.12, "girth": 1.25, "leg": 0.085}
 # (the robe's skirt: the belt's middle, x and y)
 SKIRT_CENTRE = (0.0, -0.21)
 # Its head (stage 3): the lips' line (y, z at the snout's tip and at the mouth's corner - level, the
