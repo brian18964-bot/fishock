@@ -199,9 +199,15 @@ EYE = {"at": (-0.471, 0.644), "r": 0.0085, "tall": 0.42, "out": 0.45, "deep": 0.
 EYE_FINE = (0.024, 3)
 EYE_SOCKET = {"across": 0.0075, "along": 0.0135, "deep": 0.0028, "brow": 0.0018}
 EYE_GREEN = ((0.85, 1.0, 0.5), (0.3, 0.95, 0.42), (0.04, 0.32, 0.12))   # its middle, its iris, its rim
-EYE_GLOW = 0.45
+EYE_GLOW = 0.22
 EYE_GLOW_TINT = (0.25, 1.0, 0.35)   # (its glow greener than its colour)
 SHIP_GLOW = 1024
+# User request: the skin the first dragon's deep red, not this one's pink. Measured on the two colour
+# pictures (their red skin - the robe, the bone, the pale belly aside): this one's brightness 0.70
+# (spread 0.12), saturation 0.45 (0.08); the first one's 0.49 (0.13), 0.59 (0.14), the same hue. The
+# skin's brightness and saturation are moved onto the first one's (SKIN_TONE: (from, to, spread
+# kept)), by how plainly red each texel is - the bone, the robe, the patches painted in left be.
+SKIN_TONE = {"v": (0.697, 0.486, 1.0), "s": (0.454, 0.586, 1.3)}
 # TEETH: along each lip from its front to its back (y), each tooth's length (m) front to back on each
 # side, above and below, how thick at its root (share of its length); rooted under the lip's skin
 # (TOOTH_ROOT m in from its edge, above / below the plane), tilted back (share of its length)
@@ -870,7 +876,7 @@ def paint_rooms(body):
 
 
 def _eye_picture(size):
-    """(size, size, 3) the eye (see EYE_GREEN): green, lightest in its middle, a slit pupil, its rim
+    """(size, size, 3) the eye (see EYE_GREEN): green, lightest in its middle (no pupil - user request), its rim
     darkened into the socket - its iris's grain the red dragon's eye's (RED, RED_EYE), if given. Rows
     from the bottom (as Blender's pictures are)."""
     yy, xx = np.mgrid[0:size, 0:size]
@@ -898,8 +904,6 @@ def _eye_picture(size):
     s2 = np.clip((r - 0.55) / 0.4, 0, 1)[..., None]
     pic = (mid * (1 - s1) + iris * s1) * (1 - s2) + rim * s2
     pic = np.clip(pic * grain[..., None], 0, 1)
-    slit = np.abs(x) < 0.07 * np.sqrt(np.clip(1 - (y / 0.85) ** 2, 0, 1)) + 0.012
-    pic = np.where(slit[..., None], 0.02, pic)
     edge = np.clip((r - 0.82) / 0.18, 0, 1)
     return pic * (1 - 0.8 * edge * edge * (3 - 2 * edge))[..., None]
 
@@ -916,6 +920,35 @@ def _tooth_colour():
         base = px[int(0.6 * h):int(0.9 * h), int(0.08 * w):int(0.42 * w)].reshape(-1, 3).mean(0)
         bpy.data.images.remove(img)
     return base * np.array([0.72, 0.66, 0.55]), np.minimum(base * 1.12, 1.0)
+
+
+def deepen_skin(body):
+    """The skin's red the first dragon's (see SKIN_TONE): each texel's brightness and saturation moved,
+    its hue kept, by how plainly red it is (not the robe, the bone, the painted patches)."""
+    img = _picture(body, "DragonGhost_Colour")
+    w, h = img.size
+    px = np.empty(w * h * 4, np.float32)
+    img.pixels.foreach_get(px)
+    px = px.reshape(h, w, 4)
+    c = px[:, :, :3]
+    hi, lo = c.max(2), c.min(2)
+    sat = np.where(hi > 1e-4, (hi - lo) / np.maximum(hi, 1e-4), 0.0)
+    span = np.maximum(hi - lo, 1e-4)
+    # (red: its red the most, its hue near red - green over blue not by much either way)
+    hue = (c[:, :, 1] - c[:, :, 2]) / span
+    red = (c[:, :, 0] >= hi - 1e-6) & (hue > -0.5) & (hue < 0.7)
+    share = red * np.clip((sat - 0.18) / 0.12, 0, 1) * np.clip((hi - 0.06) / 0.06, 0, 1)
+    for u0, v0, u1, v1 in ROOM.values():
+        share[int(v0 * h) - 2:int(v1 * h) + 2, int(u0 * w) - 2:int(u1 * w) + 2] = 0.0
+    (va, vb, vk), (sa, sb, sk) = SKIN_TONE["v"], SKIN_TONE["s"]
+    v2 = np.clip(vb + (hi - va) * vk, 0.0, 1.0)
+    s2 = np.clip(sb + (sat - sa) * sk, 0.0, 1.0)
+    f = (c - lo[..., None]) / span[..., None]                # each channel's place between the two
+    deep = v2[..., None] * (1.0 - s2[..., None] * (1.0 - f))
+    px[:, :, :3] = c + share[..., None] * (deep - c)
+    img.pixels.foreach_set(px.ravel())
+    img.update()
+    log("skin deepened: %.0f%% of the picture" % (100 * float((share > 0.5).mean())))
 
 
 def eyes_and_teeth(body, lift):
@@ -1579,6 +1612,7 @@ def main():
     arm = skeleton(spec)
     weights(body, arm, spec, thick)
     drape_skirt(body, arm, lift)
+    deepen_skin(body)
     eyes_and_teeth(body, lift)
     if STAGE == "weights":
         bpy.ops.wm.save_as_mainfile(filepath=OUT + ".weights.blend")
