@@ -8146,6 +8146,7 @@ func test_bag_moves_at_camp() -> void:
 ## comes to a stand, turns right round on the spot with the 2D one, runs after someone and pulls up;
 ## its planted foot keeps to the ground; caught, one swipe and then it holds them, lantern up.
 func test_dragon_gait() -> void:
+	var intro_was := RunView3D.intro
 	RunView3D.intro = false
 	await _fresh_game()
 	var view: RunView3D = null
@@ -8186,6 +8187,7 @@ func test_dragon_gait() -> void:
 	check(gait != null and gait.anim.has_animation("Start") and gait.anim.has_animation("Turn_180_L"),
 		"the dragon's gait, its moves the user's clips")
 	if gait == null:
+		RunView3D.intro = intro_was
 		return
 	var sk: Skeleton3D = (c.model as Node3D).find_children("*", "Skeleton3D", true, false)[0]
 	var toes := [sk.find_bone("ball_l"), sk.find_bone("ball_r")]
@@ -8240,7 +8242,7 @@ func test_dragon_gait() -> void:
 	await seconds(2.4)
 	check(c.clip == "Idle_Lamp" and gait.state == "act", "then it holds them, its lantern up (%s)" % c.clip)
 	bg.mode = bg.Mode.WANDER
-	RunView3D.intro = true
+	RunView3D.intro = intro_was
 
 
 func test_snow_theme() -> void:
