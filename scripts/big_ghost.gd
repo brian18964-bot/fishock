@@ -77,6 +77,9 @@ const EAT_TIME := 4.0
 const FED_TIME := 14.0
 ## Caught: this long to get free.
 const GRAB_TIME := 4.0
+## User request: not free in time, it shows it has them - a moment (CLAIM_TIME s: its wings spread
+## wide - RunView3D) before they're taken; nothing frees them then (`claiming`).
+const CLAIM_TIME := 1.6
 ## Shaken off, it keeps away this long.
 const REST_TIME := 18.0
 const WANDER_REPICK := Vector2(7.0, 13.0)
@@ -97,6 +100,8 @@ var _lost := 0.0
 var _hunt_announced := false
 var _fish: Node2D
 var _timer := 0.0
+var claiming := false
+var _claim := 0.0
 var _dir := 0
 var _bob := 0.0
 var _anim := 0.0
@@ -149,6 +154,8 @@ func stun(duration: float) -> void:
 	if mode == Mode.ASLEEP:
 		return
 	if mode == Mode.GRAB:
+		if claiming:
+			return
 		# The strong light in its face: it lets go.
 		_let_go("強光照得大鬼鬆開了手！趁現在逃！")
 	stun_timer = maxf(stun_timer, duration)
@@ -156,7 +163,7 @@ func stun(duration: float) -> void:
 
 ## The heart, spent by hand while it holds you: it lets go and keeps off.
 func escape_with_heart() -> bool:
-	if mode != Mode.GRAB or not GameState.use_heart():
+	if mode != Mode.GRAB or claiming or not GameState.use_heart():
 		return false
 	_let_go("心臟猛地一跳，震開了大鬼的手！")
 	return true
@@ -164,7 +171,7 @@ func escape_with_heart() -> bool:
 
 ## Seconds left to get free (0 when it isn't holding anyone).
 func grip_left() -> float:
-	return maxf(_timer, 0.0) if mode == Mode.GRAB else 0.0
+	return maxf(_timer, 0.0) if mode == Mode.GRAB and not claiming else 0.0
 
 
 ## Lets the player go: they stagger back, it keeps off a while.
@@ -268,7 +275,11 @@ func _physics_process(delta: float) -> void:
 			# that; time up, they're taken.
 			_timer -= delta
 			_dir = Art.facing8(_player.global_position - global_position, _dir)
-			if _fish_near() != null:
+			if claiming:
+				_claim -= delta
+				if _claim <= 0.0:
+					GameState.caught()
+			elif _fish_near() != null:
 				var fish := _fish_near()
 				_player.break_free(global_position)
 				_fish = fish
@@ -276,7 +287,8 @@ func _physics_process(delta: float) -> void:
 				_set_mode(Mode.EAT)
 				GameState.push_message("大鬼丟下你撲向那條魚！快跑！")
 			elif _timer <= 0.0:
-				GameState.caught()
+				claiming = true
+				_claim = CLAIM_TIME
 
 
 ## Charging - for as long as the lamp stays on it.
@@ -506,6 +518,7 @@ func _set_mode(m: Mode) -> void:
 		GameState.report("甩掉大鬼了", "good")
 	mode = m
 	_lost = 0.0
+	claiming = false
 	mode_changed.emit(Mode.keys()[m])
 
 

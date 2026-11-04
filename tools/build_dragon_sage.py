@@ -139,9 +139,11 @@ MEMBRANE_REACH = 0.22
 # the back is about as near a forearm as a spar, and that mustn't decide whose it is
 BACK_Y = -0.17
 # The membrane shared among its spars by how near it is to each (each's share 1/d^SPAR_POWER) - smooth
-# everywhere, as the nearest two alone aren't where the second nearest changes; the wing's flesh
+# everywhere, as the nearest two alone aren't where the second nearest changes; and soft enough that
+# spreading the wing far wider than it was made (DragonRig.SPREAD_*) opens each panel evenly, as a
+# fan - sharper, all of it stretched in a thin band midway between two fingers. The wing's flesh
 # against the body's eased over WING_SOFT (m) of which is nearer
-SPAR_POWER = 4.0
+SPAR_POWER = 2.0
 WING_SOFT = 0.08
 # (m from the wing's root, its shoulder) Meshy grew each wing's inner membrane into the back the
 # whole way down from its shoulder, a seam standing up behind it as the wing does - which, the

@@ -6,14 +6,16 @@ extends SkeletonModifier3D
 ## fold, open, beat and fly; its tail swings free, a chain hanging on springs; its right hand closes
 ## on the lantern's bail; flying, its body leans in and its limbs hang; lured by a fish, it crouches.
 ##
-## The wings. Calm it keeps them folded against its back as a dragon does - the elbow back and down
-## behind the shoulder, the forearm up from it so the wrist and its hooked claw stand above the
-## shoulder, the fingers folded down along its back; hunting (or holding someone) it opens them (`spread`,
-## eased) and beats them slowly; over water it flies. Each of the arm's bones, and each finger's
-## first, is pointed where the pose wants it, in the chest's own frame (so the wings go with the
-## body); a finger's further bones lie along its first folded, and as modelled open (flying, the whole
-## wing's turn - FLY_SPAN), bending at their knuckles: folded, in toward the arm (FOLD_CURL); flying,
-## down out of the membrane's plane (CAMBER) - its trailing edge curved as a wing's is, not a board.
+## The wings. Calm, and chasing on land, it keeps them folded against its back as a dragon does -
+## the elbow back and down behind the shoulder, the forearm up from it so the wrist and its hooked
+## claw stand above the shoulder, the fingers folded down along its back; searching (or holding
+## someone) it half raises them as modelled (`spread`); over water it takes off and flies, the wings
+## fully spread (SPREAD_*), opened and folded stage by stage (OPEN_RATE); not freeing whoever it holds,
+## it spreads them wide to show it (`display`). Each of the arm's bones, and each finger's first, is
+## pointed where the pose wants it, in the chest's own frame (so the wings go with the body); a
+## finger's further bones lie along its first folded, and as modelled or spread open, bending at
+## their knuckles: folded, in toward the arm (FOLD_CURL); spread, down out of the membrane's plane
+## (CAMBER) - its trailing edge curved as a wing's is, not a board.
 
 ## Where each bone points folded / flying (skeleton space with the chest at rest: +x the left side,
 ## +y up, +z forward) - the left wing's; the right's mirrored. ("": the arm to the elbow; _02 the
@@ -26,23 +28,73 @@ const FOLD := {
 	"_f2": Vector3(0.1, -0.87, -0.48),
 	"_f3": Vector3(0.05, -0.88, -0.47),
 }
-## Flying, the wing is the one it was made with - open, the membrane spread between its fingers as
-## modelled (a fan standing up behind it, facing back) - turned whole about the shoulder to lie out
-## to its side, its back up: its span (shoulder to the first finger's last knuckle) along FLY_SPAN,
-## its back (the membrane's back) up, so the membrane is neither crushed nor stretched. The faster
-## it goes the more it sweeps back (FLY_SWEEP rad).
-const FLY_SPAN := Vector3(0.95, 0.16, 0.26)
+## User request: spread as a dragon's wing is, not the model's half-open one (its wrist up by its
+## shoulder) turned flat - its arm stretched out to its side as the leading edge, the elbow a little
+## back and the wrist ahead (each arm bone: deg back from straight out, deg up), its fingers fanned
+## out behind from the wrist, the last back toward its hips (each finger's first bone the same way),
+## each finger keeping its own curve, straightened by SPREAD_STRAIGHT. The membrane, made folded
+## half shut, is stretched to it (its weights shared among the spars smoothly - build_dragon_sage.py
+## SPAR_POWER - so it opens as a fan does, evenly). The faster it flies the more the spread wing
+## sweeps back (FLY_SWEEP rad).
 const FLY_SWEEP := 0.3
+const SPREAD_ARM := {"": Vector2(30.0, 25.0), "_02": Vector2(-35.0, 8.0), "_03": Vector2(-10.0, 5.0)}
+const SPREAD_FAN := {"f1": Vector2(2.0, 4.0), "f2": Vector2(50.0, 0.0), "f3": Vector2(100.0, -4.0)}
+const SPREAD_STRAIGHT := 0.6
+## User request: the wings open the way a dragon's do - stage by stage out from the shoulder: the
+## upper arm lifts the wing off the back, the forearm swings out, the hand and the fan come open,
+## last the fingers straighten; folding, the other way round (the fingers first). Each stage moves at
+## OPEN_RATE (1/s), only once the one before is OPEN_GATE of the way open (closing: once the one after
+## is that far closed) - so a change of mind halfway is smooth.
+const OPEN_RATE := 2.6
+const OPEN_GATE := 0.45
+## User request: crossing water on its rounds it takes off deliberately, in about two seconds:
+## its wings unfold stage by stage as it walks on (TAKEOFF.unfold s), it crouching a little and
+## leaning in, the wings rising high at the last; then it beats them down hard and slow, twice
+## (TAKEOFF.power s - POWER_AMP of the flying beat), each stroke lifting it, its feet off the ground
+## on the second; then it flies, beating evenly. Coming to the far shore it lands as fully: its
+## wings swept forward and their front tilted up into the air to brake (LANDING.flare s - FLARE),
+## sinking onto its feet, which take the weight (a dip), the wings held out a moment (LANDING.settle
+## s), then folding back the other way round. The faster it goes the quicker it does it all (up to
+## twice as quick, `hurry` 1). RunView3D says whether it means to fly (`want_fly`) and, come late to
+## the shore, how much quicker it must be (`fly_rate`); it reads how far up it is (`airborne`).
+const TAKEOFF := {"unfold": 0.9, "power": 1.1}
+const LANDING := {"flare": 0.6, "settle": 0.45}
+const POWER_BEATS := 2
+const POWER_AMP := 1.6
+## (deg: the wing's front tilted up, swept forward)
+const FLARE := Vector2(50.0, 28.0)
+const PREP_CROUCH := 0.28
+const LAND_DIP := 0.32
+enum Air { GROUND, UNFOLD, POWER, CRUISE, FLARE, SETTLE }
+var auto_fly := false
+var want_fly := false
+var fly_rate := 1.0
+var airborne := 0.0
+var air_state := Air.GROUND
+## User request: not freed in time, it shows the traveller it has them - its wings spread wide and
+## high, their faces turned to the front, slowly heaving (`display` 0..1 - RunView3D: BigGhost's
+## claim), its chest up.
+var display := 0.0
+const DISPLAY := Vector2(34.0, 22.0)
+var _air_t := 0.0
+var _stage: Array[float] = [0.0, 0.0, 0.0, 0.0]
+var _kind := 0.0
+var _ready := 0.0
+var _amp_mul := 1.0
+var _stroke_v := 0.0
+var _flare := 0.0
+var _prep := 0.0
+var _shown := 0.0
+var _beat_rate := 0.0
 ## (deg at each knuckle: folded, a finger's further bones in toward the arm; flying, down out of
 ## the membrane - its camber)
 const FOLD_CURL := 11.0
 const CAMBER := 5.0
 ## Open, the beat: how far up and down (deg) at the shoulder, how long one takes (s); calm, a slow
-## breath in the folded wings (deg). How fast the wings open and close (1/s).
+## breath in the folded wings (deg).
 const BEAT := 24.0
 const BEAT_TIME := 1.1
 const BREATH := 3.0
-const EASE := 2.5
 ## 0 folded .. 1 open (what it's doing - RunView3D sets it).
 var spread := 0.0
 ## User request: over water it flies - `fly` 0..1 (RunView3D: from when it sees it'll cross): the
@@ -68,6 +120,7 @@ const SWEEP := 0.6
 const WING_LEVEL := 0.85
 var _lean_now := 0.0
 const FLUTTER := 2.5
+const STROKE_DOWN := 0.6
 ## The membrane (DragonSkin's shapes): the air on it - pushed up on the downstroke, down a little
 ## coming up, a little filled all the while it flies; standing open, pushed against its sweep - on a
 ## spring (stiffness, damping), so it gives and swings past rather than following at once; and
@@ -207,8 +260,21 @@ func _process_modification_with_delta(delta: float) -> void:
 	# (game time - not the clock's: a recording or a hitch doesn't hurry it)
 	var dt := clampf(delta, 0.0, 0.1)
 	_time += dt
-	_open = move_toward(_open, clampf(maxf(spread, fly), 0.0, 1.0), dt * EASE)
-	beat_phase = fmod(beat_phase + dt / BEAT_TIME * (1.0 + HURRY_BEAT * hurry + FLY_BEAT * fly), 1.0)
+	if auto_fly:
+		_air_step(dt)
+	_open_wings(dt)
+	var cruise := (1.0 + HURRY_BEAT * hurry + FLY_BEAT * fly) / BEAT_TIME
+	var rate := cruise
+	match air_state:
+		Air.UNFOLD:
+			rate = 0.0
+		Air.POWER:
+			rate = POWER_BEATS / _span(TAKEOFF.power)
+	if not auto_fly:
+		rate = cruise
+	rate = lerpf(rate, 0.55, _shown)
+	_beat_rate = rate if air_state in [Air.UNFOLD, Air.POWER] else lerpf(_beat_rate, rate, 1.0 - exp(-dt * 3.0))
+	beat_phase = fmod(beat_phase + dt * _beat_rate, 1.0)
 	if dt > 0.0:
 		var accel := (motion - _was) / dt
 		_accel = _accel.lerp(accel.limit_length(12.0), 1.0 - exp(-dt * 10.0))
@@ -221,6 +287,14 @@ func _process_modification_with_delta(delta: float) -> void:
 	_crouched = move_toward(_crouched, clampf(crouch, 0.0, 1.0), dt * CROUCH_EASE)
 	if _crouched > 0.001:
 		_crouch_body(sk, smoothstep(0.0, 1.0, _crouched))
+	elif _prep > 0.001:
+		# (gathering itself to spring up, or taking its weight as it lands: its hips down, its head kept)
+		_crouch_body(sk, _prep, 0.3, -0.3)
+	if _shown > 0.001:
+		# (showing its wings: its chest up and out, its head up)
+		for spine in ["spine_02", "spine_03"]:
+			_turn(sk, spine, -0.09 * _shown)
+		_turn(sk, "Head", -0.12 * _shown)
 	_raised = move_toward(_raised, clampf(raise, 0.0, 1.0), dt * 1.8)
 	if _raised > 0.001:
 		_raise_arm(sk)
@@ -235,6 +309,7 @@ func _beat_wings(sk: Skeleton3D, dt: float) -> void:
 	if _chest < 0 or _wings.is_empty():
 		return
 	var flown := smoothstep(0.0, 1.0, fly)
+	var vert := _stroke_v
 	# The frame the wings are posed in: folded, the chest as it is now against its rest (they lie on
 	# its back); open, held square to the body - the clip's turn of the chest (an idle's twist, a
 	# walk's sway) left out, only its pitch kept; flying, not even that, only a little of its lean
@@ -245,16 +320,16 @@ func _beat_wings(sk: Skeleton3D, dt: float) -> void:
 	var square := Basis(Vector3.RIGHT, lerpf(atan2(up.z, up.y), _lean_now * (1.0 - WING_LEVEL), flown))
 	var frame := Basis(chest.get_rotation_quaternion().slerp(square.get_rotation_quaternion(),
 		smoothstep(0.0, 1.0, _open)))
-	var amp := BEAT * (1.0 + 0.55 * fly + 0.35 * hurry) * _open * beat_scale
+	var amp := BEAT * (1.0 + 0.55 * fly + 0.35 * hurry) * _open * beat_scale * _amp_mul
 	var spans := {}
 	for w in _wings:
 		var side: float = w.side
 		# the arm: each bone to its pose, beaten
 		for k in 3:
 			var b: Dictionary = w.arm[k]
-			var want := _pose_dir(b, flown)
+			var want := _pose_dir(b, _stage[k])
 			var wave := TAU * (beat_phase - float(b.lag))
-			want = _beaten(want, deg_to_rad(amp * sin(wave)), flown, side)
+			want = _beaten(want, _stroke(amp, b), vert, side)
 			if k == 0:
 				# (calm, a slow breath in the folded wings; swung by the lag, and a little by the stride)
 				var deg: float = BREATH * (1.0 - _open) * sin(TAU * _time / 3.3) \
@@ -265,7 +340,7 @@ func _beat_wings(sk: Skeleton3D, dt: float) -> void:
 		# the fingers: the first bone to its pose, the rest turned with it and bent at the knuckles
 		var firsts := {}
 		for f in w.fingers:
-			firsts[f] = _pose_dir(w.fingers[f][0], flown)
+			firsts[f] = _pose_dir(w.fingers[f][0], _stage[2])
 		var normal: Vector3 = (firsts["f1"] as Vector3).cross(firsts["f3"]).normalized() * side
 		for f in w.fingers:
 			var chain: Array = w.fingers[f]
@@ -274,13 +349,13 @@ func _beat_wings(sk: Skeleton3D, dt: float) -> void:
 				var b: Dictionary = chain[k]
 				# (each bone its own way: open, as modelled; flying, the whole wing's turn of it;
 				# folded, along its finger's fold)
-				var want: Vector3 = firsts[f] if k == 0 else _pose_dir(b, flown)
+				var want: Vector3 = firsts[f] if k == 0 else _pose_dir(b, _stage[3])
 				var wave := TAU * (beat_phase - float(b.lag))
-				rising = maxf(0.0, cos(wave)) * _open
+				rising = maxf(0.0, cos(wave)) * _open * (1.0 if _beat_rate > 0.0 else 0.0)
 				if k > 0:
-					# (folded, in toward the arm; flying, down out of the membrane - less coming up)
-					var curl := deg_to_rad(FOLD_CURL * k) * (1.0 - _open) * side
-					var camber := deg_to_rad(CAMBER * k) * flown * (1.0 - 0.7 * rising)
+					# (folded, in toward the arm; spread, down out of the membrane - less coming up)
+					var curl := deg_to_rad(FOLD_CURL * k) * (1.0 - _stage[3]) * side
+					var camber := deg_to_rad(CAMBER * k) * _kind * _stage[3] * (1.0 - 0.7 * rising)
 					want = Basis(normal, curl) * want
 					var bend_axis := want.cross(normal).normalized()
 					if bend_axis.length() > 0.5:
@@ -292,36 +367,77 @@ func _beat_wings(sk: Skeleton3D, dt: float) -> void:
 					var to_lead: Vector3 = (firsts["f1"] as Vector3)
 					var axis := want.cross(to_lead)
 					if axis.length() > 0.01:
-						want = Basis(axis.normalized(), minf(deg_to_rad(close) * rising * (0.35 + 0.65 * flown),
+						want = Basis(axis.normalized(), minf(deg_to_rad(close) * rising * (0.35 + 0.65 * vert),
 							want.angle_to(to_lead) * 0.8)) * want
-				var a := deg_to_rad(amp * sin(wave))
+				var a := _stroke(amp, b)
 				a += deg_to_rad(FLUTTER * flown * sin(_time * 13.0 + k * 1.7 + float(f.substr(1)) * 2.3)) * (k + 1) / 4.0
-				want = _beaten(want, a, flown, side)
+				want = _beaten(want, a, vert, side)
 				var world := (frame * want).normalized()
 				if k == 0 and (f == "f1" or f == "f3"):
 					spans[f + str(side)] = world
 				_point(sk, b, world)
-	_fill_membrane(dt, amp, flown, spans)
+	_fill_membrane(dt, amp, maxf(flown, vert * _open), spans)
 
 
-## A wing bone's way in the chest's frame: its rest to its fold as it closes, toward its flight
-## as it flies.
-func _pose_dir(b: Dictionary, flown: float) -> Vector3:
-	var rest: Vector3 = b.rest
+## A wing bone's way in the chest's frame, its stage `g` of the way open: from its fold toward how
+## it's opening to - as modelled (on its feet), or spread (flying, or showing them; `_kind`) - the
+## spread wing swept back the faster it flies, swept forward and tilted up braking to land, raised
+## and turned to the front showing them.
+func _pose_dir(b: Dictionary, g: float) -> Vector3:
 	var fold: Vector3 = b.fold
-	var want: Vector3 = rest.slerp(fold, 1.0 - _open) if rest.angle_to(fold) < PI - 0.01 \
-		else fold.lerp(rest, _open).normalized()
-	var flight: Vector3 = b.flight
+	var side: float = b.side
+	var to: Vector3 = (b.rest as Vector3).slerp(b.flight, _kind).normalized()
 	if hurry > 0.0:
-		flight = Basis(Vector3.UP, -FLY_SWEEP * hurry * float(b.side)) * flight
-	return want.slerp(flight, flown).normalized()
+		to = Basis(Vector3.UP, -FLY_SWEEP * hurry * side * _kind) * to
+	if _flare > 0.0:
+		to = Basis(Vector3.RIGHT, -deg_to_rad(FLARE.x) * _flare) * (Basis(Vector3.UP, deg_to_rad(FLARE.y) * _flare * side) * to)
+	if _shown > 0.0:
+		to = Basis(Vector3.RIGHT, -deg_to_rad(DISPLAY.y) * _shown) * (Basis(Vector3.BACK, deg_to_rad(DISPLAY.x) * _shown * side) * to)
+	if fold.angle_to(to) > PI - 0.01:
+		return fold.lerp(to, g).normalized()
+	return fold.slerp(to.normalized(), g).normalized()
 
 
-## Turned by the beat (`a` rad): flying, up and down about its forward axis; open on its feet,
-## forward and back.
-func _beaten(want: Vector3, a: float, flown: float, side: float) -> Vector3:
-	want = Basis(Vector3.BACK, a * flown * side) * want
-	return Basis(Vector3.UP, a * SWEEP * (1.0 - flown) * side) * want
+## The beat's angle for bone `b` now (rad): its wave down the wing - in the air, high above and
+## less far below (STROKE_DOWN of it: the wings beat down to under the body's side, not round
+## its front), smoothly.
+func _stroke(amp: float, b: Dictionary) -> float:
+	var wave := TAU * (beat_phase - float(b.lag))
+	var down := lerpf(1.0, STROKE_DOWN, _stroke_v)
+	return deg_to_rad(amp * ((1.0 - down) * 0.5 + (1.0 + down) * 0.5 * sin(wave)))
+
+
+## Turned by the beat (`a` rad): in the air (or about to be - `vert`), up and down about its
+## forward axis; open on its feet, forward and back.
+func _beaten(want: Vector3, a: float, vert: float, side: float) -> Vector3:
+	want = Basis(Vector3.BACK, a * vert * side) * want
+	return Basis(Vector3.UP, a * SWEEP * (1.0 - vert) * side) * want
+
+
+## The wings' stages (see OPEN_RATE) toward open as far as it means them to be - flying, landing,
+## showing them: wholly, spread; else `spread`, as modelled.
+func _open_wings(dt: float) -> void:
+	var aloft := air_state != Air.GROUND or (not auto_fly and fly > 0.0)
+	var target := 1.0 if aloft or display > 0.0 else clampf(maxf(spread, fly), 0.0, 1.0)
+	var opening := target > _stage[0] or target > _stage[3]
+	for i in 4:
+		var want: float = target
+		if want > _stage[i] and i > 0 and _stage[i - 1] < minf(target, 1.0) * OPEN_GATE:
+			want = _stage[i]
+		elif want < _stage[i] and i < 3 and _stage[i + 1] > maxf(_stage[i] - (1.0 - OPEN_GATE) * 0.5, 0.001):
+			want = _stage[i]
+		_stage[i] = move_toward(_stage[i], want, dt * OPEN_RATE * (1.0 + hurry) * fly_rate)
+	_open = (_stage[0] + _stage[1] + _stage[2] + _stage[3]) * 0.25
+	# (spread, not as modelled: flying or showing; back as modelled only once mostly folded)
+	var kind := 1.0 if aloft or display > 0.0 else (fly if not auto_fly else 0.0)
+	if kind < _kind and _open > 0.3 and not opening:
+		kind = _kind
+	_kind = move_toward(_kind, kind, dt * 2.0)
+	_shown = move_toward(_shown, clampf(display, 0.0, 1.0) * smoothstep(0.6, 1.0, _stage[3]), dt * 1.6)
+	var vert := 1.0 if aloft or display > 0.0 else 0.0
+	_stroke_v = move_toward(_stroke_v, vert, dt * 2.5)
+	if not auto_fly:
+		_amp_mul = lerpf(1.0, 0.35, _shown)
 
 
 ## A bone (`b`: {bone, parent}) pointed along `world` (the skeleton's space), turning it the least way.
@@ -357,6 +473,91 @@ func _fill_membrane(dt: float, amp: float, flown: float, spans: Dictionary) -> v
 		_ripple_t = fmod(_ripple_t + dt * lerpf(RIPPLE_RATE.x, RIPPLE_RATE.y, hurry), TAU)
 		_skin_mesh.set_blend_shape_value(_ripple.x, flutter * cos(_ripple_t))
 		_skin_mesh.set_blend_shape_value(_ripple.y, -flutter * sin(_ripple_t))
+
+
+# ------------------------------------------------------------------ taking off, landing
+
+## Seconds a stage of taking off or landing takes, as quick as it's going.
+func _span(t: float) -> float:
+	return t / ((1.0 + hurry) * maxf(fly_rate, 0.2))
+
+
+## A step of its flight (see TAKEOFF, LANDING): what it's doing, and so how much its body flies
+## (`fly`), how far up it is (`airborne`), its beat's strength, its crouch, its wings' brake.
+func _air_step(dt: float) -> void:
+	_air_t += dt
+	var p := 0.0
+	match air_state:
+		Air.GROUND:
+			_amp_mul = lerpf(_amp_mul, lerpf(1.0, 0.35, _shown), 1.0 - exp(-dt * 3.0))
+			fly = move_toward(fly, 0.0, dt * 2.0)
+			airborne = move_toward(airborne, 0.0, dt * 2.0)
+			_prep = move_toward(_prep, 0.0, dt * 2.0)
+			_ready = 0.0
+			if want_fly:
+				_to(Air.UNFOLD)
+		Air.UNFOLD:
+			p = clampf(_air_t / _span(TAKEOFF.unfold), 0.0, 1.0)
+			_prep = PREP_CROUCH * smoothstep(0.25, 1.0, p)
+			# (the wings rising high to the top of the first stroke, the beat held there)
+			_ready = smoothstep(0.45, 1.0, p)
+			beat_phase = 0.25
+			_amp_mul = POWER_AMP * _ready
+			fly = move_toward(fly, 0.15, dt)
+			if not want_fly:
+				_to(Air.GROUND)
+			elif p >= 1.0 and _stage[3] > 0.96:
+				_to(Air.POWER)
+		Air.POWER:
+			p = clampf(_air_t / _span(TAKEOFF.power), 0.0, 1.0)
+			_amp_mul = POWER_AMP
+			_ready = 1.0
+			# (sprung up on the first stroke; each down-stroke lifting it, a little sinking between)
+			_prep = PREP_CROUCH * (1.0 - smoothstep(0.0, 0.12, p))
+			airborne = maxf(airborne, 0.42 * smoothstep(0.0, 0.25, p) - 0.06 * smoothstep(0.25, 0.5, p)
+				+ 0.64 * smoothstep(0.5, 0.78, p))
+			fly = maxf(fly, smoothstep(0.05, 0.8, p))
+			if p >= 1.0:
+				_to(Air.CRUISE)
+		Air.CRUISE:
+			_amp_mul = lerpf(_amp_mul, 1.0, 1.0 - exp(-dt * 2.5))
+			fly = move_toward(fly, 1.0, dt * 2.0)
+			airborne = move_toward(airborne, 1.0, dt * 1.5)
+			_prep = 0.0
+			if not want_fly:
+				_to(Air.FLARE)
+		Air.FLARE:
+			p = clampf(_air_t / _span(LANDING.flare), 0.0, 1.0)
+			# (one strong stroke forward against the air, then held, sinking)
+			_flare = smoothstep(0.0, 0.45, p)
+			_amp_mul = lerpf(_amp_mul, 0.25, 1.0 - exp(-dt * 6.0))
+			airborne = minf(airborne, 1.0 - smoothstep(0.0, 1.0, p))
+			# (its legs down to stand as it comes in)
+			fly = minf(fly, 1.0 - smoothstep(0.3, 1.0, p))
+			if want_fly:
+				_to(Air.CRUISE)
+			elif p >= 1.0:
+				_to(Air.SETTLE)
+		Air.SETTLE:
+			p = clampf(_air_t / _span(LANDING.settle), 0.0, 1.0)
+			airborne = 0.0
+			fly = 0.0
+			_prep = LAND_DIP * sin(PI * minf(p * 1.6, 1.0))
+			_amp_mul = lerpf(_amp_mul, 0.1, 1.0 - exp(-dt * 6.0))
+			_flare = 1.0 - smoothstep(0.2, 1.0, p)
+			if want_fly:
+				_to(Air.UNFOLD)
+			elif p >= 1.0:
+				_to(Air.GROUND)
+	if air_state != Air.FLARE and air_state != Air.SETTLE:
+		_flare = move_toward(_flare, 0.0, dt * 3.0)
+
+
+func _to(state: Air) -> void:
+	if state == Air.POWER:
+		beat_phase = 0.25
+	air_state = state
+	_air_t = 0.0
 
 
 # ------------------------------------------------------------------ the tail
@@ -494,7 +695,7 @@ func _fly_body(sk: Skeleton3D, flown: float, dt: float) -> void:
 
 
 ## Crouched `c` of the way (see `crouch`).
-func _crouch_body(sk: Skeleton3D, c: float) -> void:
+func _crouch_body(sk: Skeleton3D, c: float, lean := 1.0, look := 1.0) -> void:
 	var hips: int = _body.get("pelvis", -1)
 	if hips < 0:
 		return
@@ -512,9 +713,9 @@ func _crouch_body(sk: Skeleton3D, c: float) -> void:
 	for side in feet:
 		_reach(sk, side, (feet[side] as Transform3D))
 	for spine in ["spine_01", "spine_02", "spine_03"]:
-		_turn(sk, spine, c * CROUCH_LEAN / 3.0)
-	_turn(sk, "neck_01", c * CROUCH_LOOK * 0.5)
-	_turn(sk, "Head", c * CROUCH_LOOK * 0.5)
+		_turn(sk, spine, c * CROUCH_LEAN * lean / 3.0)
+	_turn(sk, "neck_01", c * CROUCH_LOOK * look * 0.5)
+	_turn(sk, "Head", c * CROUCH_LOOK * look * 0.5)
 
 
 ## A leg (`side`) bent to put its foot back where `foot` (its old pose) had it: two bones, the
@@ -725,9 +926,8 @@ func _build(sk: Skeleton3D) -> void:
 		var s := 1.0 if side == "l" else -1.0
 		var w := {"side": s, "arm": [], "fingers": {}}
 		var ok := true
-		var fly_turn := _fly_turn(sk, side, s)
 		for part in ["", "_02", "_03"]:
-			var b := _wing_bone(sk, "wing_%s%s" % [side, part], FOLD[part], fly_turn, s)
+			var b := _wing_bone(sk, "wing_%s%s" % [side, part], FOLD[part], s)
 			if b.is_empty():
 				ok = false
 				break
@@ -736,13 +936,14 @@ func _build(sk: Skeleton3D) -> void:
 			var chain: Array = []
 			for j in 4:
 				var name := "wing_%s_%s" % [side, f] + ("" if j == 0 else "_%02d" % (j + 1))
-				var b := _wing_bone(sk, name, FOLD["_" + f], fly_turn, s)
+				var b := _wing_bone(sk, name, FOLD["_" + f], s)
 				if b.is_empty():
 					ok = false
 					break
 				chain.append(b)
 			w.fingers[f] = chain
 		if ok:
+			_spread_wing(sk, w, s)
 			# (each bone's lag: how far out its joint is, against the first finger's last knuckle)
 			var root := sk.get_bone_global_rest((w.arm[0] as Dictionary).bone).origin
 			var reach := root.distance_to(sk.get_bone_global_rest((w.fingers.f1[3] as Dictionary).bone).origin)
@@ -751,33 +952,38 @@ func _build(sk: Skeleton3D) -> void:
 			_wings.append(w)
 
 
-func _wing_bone(sk: Skeleton3D, name: String, fold: Vector3, fly_turn: Basis, s: float) -> Dictionary:
+func _wing_bone(sk: Skeleton3D, name: String, fold: Vector3, s: float) -> Dictionary:
 	var i := sk.find_bone(name)
 	if i < 0:
 		return {}
 	var rest := (sk.get_bone_global_rest(i).basis * Vector3.UP).normalized()
 	return {"bone": i, "parent": sk.get_bone_parent(i), "rest": rest, "side": s,
-		"fold": Vector3(fold.x * s, fold.y, fold.z).normalized(),
-		"flight": (fly_turn * rest).normalized()}
+		"fold": Vector3(fold.x * s, fold.y, fold.z).normalized(), "flight": rest}
 
 
-## The turn that lays a side's wing, as modelled, out flying (see FLY_SPAN).
-func _fly_turn(sk: Skeleton3D, side: String, s: float) -> Basis:
-	var root := sk.find_bone("wing_" + side)
-	var f1 := sk.find_bone("wing_%s_f1_04" % side)
-	var f3 := sk.find_bone("wing_%s_f3_04" % side)
-	if root < 0 or f1 < 0 or f3 < 0:
-		return Basis()
-	var h := sk.get_bone_global_rest(root).origin
-	var a := sk.get_bone_global_rest(f1).origin - h
-	var b := sk.get_bone_global_rest(f3).origin - h
-	var back := a.cross(b).normalized()
-	if back.dot(Vector3.BACK * -1.0) < 0.0:      # (the membrane's back: toward -z, behind it)
+## Each bone of a side's wing (`w`) its way spread (SPREAD_*): its `flight`.
+func _spread_wing(sk: Skeleton3D, w: Dictionary, s: float) -> void:
+	var out := Vector3(s, 0.0, 0.0)
+	var aim := func(deg: Vector2) -> Vector3:
+		var az := deg_to_rad(deg.x)
+		var el := deg_to_rad(deg.y)
+		return (out * cos(az) * cos(el) + Vector3.FORWARD * sin(az) * cos(el) + Vector3.UP * sin(el)).normalized()
+	for k in 3:
+		(w.arm[k] as Dictionary).flight = aim.call(SPREAD_ARM[["", "_02", "_03"][k]])
+	# (the fan's back at rest - it stands behind, facing back - laid up)
+	var f1: Vector3 = (w.fingers.f1[0] as Dictionary).rest
+	var f3: Vector3 = (w.fingers.f3[0] as Dictionary).rest
+	var back := f1.cross(f3).normalized()
+	if back.z > 0.0:
 		back = -back
-	var span := a.normalized()
-	back = (back - span * back.dot(span)).normalized()
-	var rest_frame := Basis(span, back, span.cross(back))
-	var to_span := Vector3(FLY_SPAN.x * s, FLY_SPAN.y, FLY_SPAN.z).normalized()
-	var up := (Vector3.UP - to_span * Vector3.UP.dot(to_span)).normalized()
-	var fly_frame := Basis(to_span, up, to_span.cross(up))
-	return fly_frame * rest_frame.inverse()
+	for f in w.fingers:
+		var chain: Array = w.fingers[f]
+		var base: Vector3 = (chain[0] as Dictionary).rest
+		var to: Vector3 = aim.call(SPREAD_FAN[f])
+		var rn := (back - base * back.dot(base)).normalized()
+		var tn := (Vector3.UP - to * Vector3.UP.dot(to)).normalized()
+		var turn := Basis(to, tn, to.cross(tn)) * Basis(base, rn, base.cross(rn)).inverse()
+		for k in chain.size():
+			var b: Dictionary = chain[k]
+			var d: Vector3 = (turn * (b.rest as Vector3)).normalized()
+			b.flight = to if k == 0 else d.slerp(to, SPREAD_STRAIGHT).normalized()

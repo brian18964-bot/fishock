@@ -5,13 +5,16 @@ extends Control
 ## darkening, throbbing with the heartbeat - and says what can get you
 ## loose before the time (BigGhost.GRAB_TIME, a bar running down) is up:
 ## the strong light (the light button), a fish thrown to it (誘惑), the
-## heart (its own button here, when you have one - spent by hand).
+## heart (its own button here, when you have one - spent by hand). Not free in time
+## (BigGhost.claiming: it spreads its wings over them), the ways out gone, the
+## shade drawn back a little so its claim is seen.
 
 var _player: Player
 var _shade: TextureRect
 var _bar: Control
 var _heart: Button
 var _hint: Label
+var _title: Label
 var _time := 0.0
 
 
@@ -31,6 +34,7 @@ func _ready() -> void:
 	title.custom_minimum_size = Vector2(300, 0)
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(title)
+	_title = title
 	_bar = Bar.new()
 	_bar.position = Vector2(355, 166)
 	_bar.size = Vector2(250, 14)
@@ -62,16 +66,21 @@ func _process(delta: float) -> void:
 	var left: float = big.grip_left() if big != null else 0.0
 	(_bar as Bar).share = clampf(left / BigGhost.GRAB_TIME, 0.0, 1.0)
 	_bar.queue_redraw()
+	var claimed: bool = big != null and bool(big.get("claiming"))
+	_title.text = "逃不掉了……" if claimed else "掙脫！"
+	_bar.visible = not claimed
+	_hint.visible = not claimed
 	# The heartbeat: two beats a second, closing in.
 	var beat := pow(maxf(sin(_time * TAU * 1.6), 0.0), 6.0)
-	_shade.modulate = Color(0.25, 0.0, 0.0, 0.55 + 0.25 * beat + 0.15 * minf(_time, 1.0))
+	var a := 0.55 + 0.25 * beat + 0.15 * minf(_time, 1.0)
+	_shade.modulate = Color(0.25, 0.0, 0.0, 0.45 if claimed else a)
 	var ways := ["強光（燈光鍵）"]
 	if GameState.lure_index() >= 0:
 		ways.append("丟魚（誘惑）")
 	if GameState.has_heart:
 		ways.append("心臟")
 	_hint.text = "　・　".join(ways)
-	_heart.visible = GameState.has_heart
+	_heart.visible = GameState.has_heart and not claimed
 
 
 class Bar extends Control:

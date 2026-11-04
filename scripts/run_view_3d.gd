@@ -2283,6 +2283,8 @@ func _dragon_gear(c: Dictionary, model: Node3D) -> void:
 		return
 	var sk := sks[0] as Skeleton3D
 	var rig := DragonRig.new()
+	# (its takeoffs and landings its own: told when it means to fly - _dragon_flight)
+	rig.auto_fly = true
 	sk.add_child(rig)
 	sk.add_child(EarTailSway.new())
 	c.rig = rig
@@ -2337,34 +2339,66 @@ func _dragon_notices(n: Node, at: Vector2) -> bool:
 	return false
 
 
-## User request: the dragon walked on the water - now it flies over it. Seeing it'll cross (water
-## ahead on its way - DRAGON_LOOK m - and where it's going beyond that), it opens its wings and
-## beats them (DragonRig.fly), rising off the water (DRAGON_FLY_LIFT m) once they're going, bobbing
-## with the beat; past the water it comes down and folds them again. The lift (m).
-const DRAGON_LOOK := [0.8, 1.6, 2.4, 3.2]
+## User request: the dragon walked on the water - now it flies over it, taking off and landing as
+## a dragon does (DragonRig.TAKEOFF, LANDING: about two seconds each way on its rounds). Seeing
+## it'll cross - water ahead on its way, far enough off for all of its takeoff at the pace it's going
+## (DRAGON_LOOK_STEP m at a time), and where it's going beyond that - it means to fly
+## (DragonRig.want_fly); come to it late (turned toward it near the shore), it takes off the quicker
+## (DragonRig.fly_rate). Over the water it keeps flying - unless the far shore is as near as its
+## landing takes, and it's going on past it. Its height (DRAGON_FLY_LIFT m) as far as the rig has it
+## up (DragonRig.airborne), bobbing with the beat. The lift (m).
+const DRAGON_LOOK_STEP := 0.4
+const DRAGON_LOOK_MORE := 0.8
 const DRAGON_FLY_LIFT := 0.45
 
 
-func _dragon_flight(c: Dictionary, n: Node, at: Vector2, vel: Vector2, delta: float) -> float:
-	var zones := _zones()
-	var crossing := _over_water(at, zones)
-	if not crossing and vel.length() / PX > 0.2:
-		# (only water it'll really reach: not past where it's going)
-		var dir := vel.normalized()
-		var goal: Variant = n.get("_target")
-		var reach: float = at.distance_to(goal) if goal is Vector2 else 9999.0
-		for m in DRAGON_LOOK:
-			if float(m) * PX > reach + 20.0:
-				break
-			if _over_water(at + dir * float(m) * PX, zones):
-				crossing = true
-				break
-	c.fly = move_toward(float(c.get("fly", 0.0)), 1.0 if crossing else 0.0, delta * (1.4 if crossing else 0.9))
-	# (it rises as its wings come down, a little after: highest at the stroke's end)
+func _dragon_flight(c: Dictionary, n: Node, at: Vector2, vel: Vector2, _delta: float) -> float:
 	var rig: DragonRig = c.get("rig")
-	var bob := 0.06 * sin(TAU * (rig.beat_phase - 0.55)) if rig != null else 0.0
-	var up := smoothstep(0.35, 1.0, float(c.fly))
-	return (DRAGON_FLY_LIFT + bob) * up
+	if rig == null:
+		return 0.0
+	var zones := _zones()
+	var over := _over_water(at, zones)
+	var speed := vel.length() / PX
+	var quick := 1.0 + clampf((speed - 0.3) / 2.2, 0.0, 1.0)
+	var goal: Variant = n.get("_target")
+	var reach: float = at.distance_to(goal) / PX if goal is Vector2 else 9999.0
+	var dir := vel.normalized() if speed > 0.05 else Vector2.ZERO
+	var want := over
+	var rate := 1.0
+	if not over and speed > 0.2:
+		# (only water it'll really reach: not past where it's going)
+		var takeoff: float = (DragonRig.TAKEOFF.unfold + DragonRig.TAKEOFF.power) / quick
+		var look := minf(speed * takeoff + DRAGON_LOOK_MORE, reach + 0.7)
+		var m := DRAGON_LOOK_STEP
+		while m <= look:
+			if _over_water(at + dir * m * PX, zones):
+				want = true
+				# (late: quicker, to be up by the shore)
+				rate = maxf(1.0, speed * takeoff / maxf(m - 0.2, 0.3))
+				break
+			m += DRAGON_LOOK_STEP
+	elif over and speed > 0.2:
+		# (the far shore as near as its landing takes - and going on past it: down onto it)
+		var flare: float = DragonRig.LANDING.flare / quick
+		var m := DRAGON_LOOK_STEP * 0.5
+		while m <= speed * flare + 0.3:
+			if not _over_water(at + dir * m * PX, zones):
+				if reach > m + 0.4:
+					want = false
+				break
+			m += DRAGON_LOOK_STEP * 0.5
+	if want and not rig.want_fly:
+		c.fly_rate = rate
+	elif not want and rig.want_fly:
+		c.fly_rate = 1.0
+	rig.want_fly = want
+	# (over the water and not yet up - turned onto it, or set down on it: no time to lose)
+	var hurried := 3.0 if over and rig.airborne < 0.4 else 1.0
+	rig.fly_rate = maxf(float(c.get("fly_rate", 1.0)), hurried) if rig.air_state != DragonRig.Air.CRUISE else 1.0
+	c.fly = rig.fly
+	# (it rises as its wings come down, a little after: highest at the stroke's end)
+	var bob := 0.06 * sin(TAU * (rig.beat_phase - 0.55)) * smoothstep(0.5, 1.0, rig.airborne)
+	return (DRAGON_FLY_LIFT + bob) * rig.airborne
 
 
 ## (open water under `p`: past the shore's edge, and no deck over it)
@@ -2384,12 +2418,15 @@ func _dragon_rig(c: Dictionary, n: Node, mode: int) -> void:
 	if rig == null:
 		return
 	match mode:
-		BigGhost.Mode.CHASE, BigGhost.Mode.GRAB:
-			rig.spread = 1.0
+		BigGhost.Mode.GRAB:
+			# (holding someone: its wings half raised over them - not freed in time, spread wide: its claim)
+			rig.spread = 0.45
 		BigGhost.Mode.SEARCH, BigGhost.Mode.SUSPICIOUS:
 			rig.spread = 0.45
 		_:
+			# (user request: chasing on land, its wings stay folded)
 			rig.spread = 0.0
+	rig.display = 1.0 if mode == BigGhost.Mode.GRAB and bool(n.get("claiming")) else 0.0
 	if not c.has("tail_root"):
 		return
 	var holder: Node3D = c.node
@@ -2635,7 +2672,7 @@ func _sync_creatures(delta: float) -> void:
 			# (fading into the edge's trees - Critter.fade: user request, the whole of it fading
 			# away, not shrinking)
 			_fade_creature(c, (n as Critter).fade)
-		if _tracks != null and SnowTracks.ANIMALS.has(kind) and float(c.get("fly", 0.0)) < 0.3:
+		if _tracks != null and SnowTracks.ANIMALS.has(kind) and float(c.get("air", 0.0)) < 0.3:
 			# (user request: the animals and the big ghost leave prints in the snow too)
 			if not c.has("skel"):
 				var sks: Array = (c.model as Node).find_children("*", "Skeleton3D", true, false) if c.model != null else []
@@ -2693,14 +2730,14 @@ func _sync_creatures(delta: float) -> void:
 						clip = "Walk" if moving else ("Idle_Lamp" if near else "Idle")
 						if moving:
 							rate = clampf(speed / 0.9, 0.5, 1.6)
-				var flying := float(c.get("fly", 0.0)) > 0.6 and mode != BigGhost.Mode.GRAB and mode != BigGhost.Mode.EAT
+				var rig: DragonRig = c.get("rig")
+				var flying := rig != null and rig.airborne > 0.35 and mode != BigGhost.Mode.GRAB and mode != BigGhost.Mode.EAT
 				if flying:
 					# (over the water: off its feet - no walking in the air)
 					clip = "Idle"
 					rate = 1.0
-				var rig: DragonRig = c.get("rig")
 				if rig != null:
-					rig.fly = float(c.get("fly", 0.0))
+					c.air = rig.airborne
 					# (user request: lured, it crouches to eat the fish)
 					rig.crouch = 1.0 if clip == "Eat" else 0.0
 					rig.hurry = clampf((speed - 0.3) / 2.2, 0.0, 1.0)

@@ -603,11 +603,21 @@ func test_big_ghost_grab_lost() -> void:
 	check(player().get_node("Body").struggling, "the struggle sheet")
 	await seconds(1.0)
 	check(player().global_position.distance_to(spot) < 1.0 and not gs.run_over, "not carried off - held, the clock running")
+	# (user request: not free in time, it shows it has them a moment - nothing frees them then)
 	for _i in 60 * 5:
+		await get_tree().process_frame
+		if bg.claiming:
+			break
+	gs.grant_heart()
+	check(bg.claiming and not gs.run_over and bg.grip_left() == 0.0 and not player().use_heart_to_escape(),
+		"time up: its claim - a moment, no way free now")
+	bg.stun(2.0)
+	check(bg.mode == bg.Mode.GRAB and bg.claiming, "not even the strong light")
+	for _i in 60 * 3:
 		await get_tree().process_frame
 		if gs.run_over:
 			break
-	check(gs.run_over and gs.last_cause == "caught" and gs.last_return == "lost", "not free in time: taken")
+	check(gs.run_over and gs.last_cause == "caught" and gs.last_return == "lost", "then taken")
 	check(is_equal_approx(Profile.spirit, 55.0), "spirit -25 (%d)" % Profile.spirit)
 	Profile.spirit = 100.0
 
@@ -6478,8 +6488,19 @@ func test_run_intro_and_eye_guide() -> void:
 	await seconds(0.6)
 	var apart := Vector2((c.node as Node3D).global_position.x - view.pivot.global_position.x,
 		(c.node as Node3D).global_position.z - view.pivot.global_position.z).length()
-	check(c.clip == "Grab" and rig.spread == 1.0 and apart > RunView3D.DRAGON_ROOM - 0.05,
-		"grabbing: Grab, wings open, held off the traveller (%.2f m)" % apart)
+	check(c.clip == "Grab" and rig.spread == 0.45 and apart > RunView3D.DRAGON_ROOM - 0.05,
+		"grabbing: Grab, its wings half raised over them, held off the traveller (%.2f m)" % apart)
+	# (user request: not freed in time, its claim - its wings spread wide and high)
+	bg.claiming = true
+	await seconds(1.2)
+	check(rig.display == 1.0 and rig._kind > 0.9 and rig._stage[3] > 0.95 and rig._shown > 0.5,
+		"its claim: its wings spread wide (open %.2f, shown %.2f)" % [rig._stage[3], rig._shown])
+	bg.claiming = false
+	# (user request: chasing on land, its wings stay folded)
+	bg.mode = bg.Mode.CHASE
+	bg.global_position = player().global_position + Vector2(-140, -60)
+	await seconds(1.5)
+	check(rig.spread == 0.0 and rig._open < 0.05, "chasing on land: its wings folded (%.2f)" % rig._open)
 	# User request: it walked on the water - now it flies over it. Seeing it'll cross, it opens its
 	# wings and beats them before the shore; over the water it's up off it, beating; the faster it
 	# goes, the faster the beat. Water it won't reach: it keeps walking.
@@ -6525,16 +6546,23 @@ func test_run_intro_and_eye_guide() -> void:
 	var at_shore := -1.0
 	var opened := -1.0
 	var hurried := 0.0
+	# (user request: the wings unfold a stage at a time - the upper arm first, the fingers last)
+	var in_order := true
+	var seen_unfold := false
 	for _i in 400:
 		bg.global_position = bg.global_position.move_toward(wet, BigGhost.CHASE_SPEED / 60.0)
 		await frames(1)
 		hurried = maxf(hurried, rig.hurry)
+		if rig.air_state == DragonRig.Air.UNFOLD:
+			seen_unfold = true
+			in_order = in_order and rig._stage[0] >= rig._stage[1] and rig._stage[1] >= rig._stage[2] and rig._stage[2] >= rig._stage[3]
 		if at_shore < 0.0 and view._over_water(bg.global_position, zones):
-			at_shore = float(c.fly)
+			at_shore = rig.airborne
 			opened = rig._open
 		if bg.global_position == wet:
 			break
-	check(at_shore > 0.5 and opened > 0.3, "at the shore its wings already beating (fly %.2f, open %.2f)" % [at_shore, opened])
+	check(seen_unfold and in_order, "taking off: its wings unfolding shoulder first, fingers last")
+	check(at_shore > 0.5 and opened > 0.9, "by the shore it's up off its feet, its wings spread (up %.2f, open %.2f)" % [at_shore, opened])
 	check(hurried > 0.6, "going fast, the beat hurried (%.2f)" % hurried)
 	var slow_beat := 1.0 + DragonRig.FLY_BEAT
 	check(hurried * DragonRig.HURRY_BEAT > 0.4, "fast, its beat %.1fx a hover's" % ((slow_beat + hurried * DragonRig.HURRY_BEAT) / slow_beat))
