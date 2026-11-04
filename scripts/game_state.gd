@@ -539,6 +539,17 @@ func _guide_gift() -> String:
 ## come back, weak (to the bag); what was found or caught is gone.
 func _return_brought_weak() -> String:
 	var back := 0
+	# (user request: the live fish box's fish go back in the box - weak, but there they don't run
+	# down, so they won't die: no warning for them)
+	var home_box := Profile.has_oxy_box() or Profile.bag_count("oxy_box") > 0
+	for fish in oxy_fish:
+		if not fish.get("brought", false) or not home_box:
+			continue
+		fish.erase("brought")
+		if FishLife.state(fish) == "alive":
+			FishLife.make_weak(fish)
+		Profile.oxy_stock.append(fish)
+		back += 1
 	for fish in carried_fish + oxy_fish:
 		if not fish.get("brought", false):
 			continue

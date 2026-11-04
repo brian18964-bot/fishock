@@ -125,6 +125,9 @@ func _process(delta: float) -> void:
 		return
 	var li := GameState.lure_index()
 	var player := get_tree().get_first_node_in_group("player")
+	# (held while the bag opens over it, or the buttons go: not thrown - put back)
+	if _lure_touch >= 0 and (not visible or _bag_open()):
+		_lure_release(true)
 	_lure_view.set_state(GameState.carried_fish[li] if li >= 0 else {}, _lure_touch >= 0,
 		player.lure_charge if player != null else 0.0)
 	_skill_view.set_state(_skill_touch != -1, lantern.tool == Lantern.Tool.FLASHLIGHT, lantern.boost,
@@ -157,6 +160,13 @@ func _process(delta: float) -> void:
 
 
 func _input(event: InputEvent) -> void:
+	# (user report: the 誘惑 throw stuck aimed, the fish never thrown, picking again no use - its
+	# finger's lift came while the bag was open and was never seen, so the button stayed held and
+	# took no new press: the lift is taken whatever's open)
+	if event is InputEventScreenTouch and not event.pressed and _lure_touch != -1 \
+			and (event.index == _lure_touch or _lure_touch == -2) and (not visible or _bag_open()):
+		_lure_release(not visible or _bag_open())
+		return
 	if not visible or _bag_open():
 		return
 	if event is InputEventScreenTouch and _lure_input(event):
@@ -235,6 +245,11 @@ func _lure_input(event: InputEventScreenTouch) -> bool:
 	var player := get_tree().get_first_node_in_group("player")
 	if player == null:
 		return false
+	# (a new touch with the held one's number: that one's lift was lost - it's over)
+	if event.pressed and _lure_touch >= 0 and event.index == _lure_touch:
+		_lure_release(true)
+	if event.pressed and _lure_touch == -2 and event.index == 0:
+		_lure_touch = -1
 	if event.pressed and _lure_touch == -1 and event.position.distance_to(_lure_center) <= LURE_RADIUS + 4.0:
 		_lure_touch = event.index
 		if GameState.lure_index() < 0:
@@ -246,12 +261,22 @@ func _lure_input(event: InputEventScreenTouch) -> bool:
 			player.lure_held = true
 		return true
 	if not event.pressed and (event.index == _lure_touch or (_lure_touch == -2)):
-		if _lure_touch >= 0:
-			player.lure_held = false
-		_lure_touch = -1
-		_lure_view.set_knob(Vector2.ZERO)
+		_lure_release(false)
 		return true
 	return false
+
+
+## The 誘惑 button let go: thrown (or, `cancel`, put back - the bag opened over it, the buttons
+## went, its lift lost).
+func _lure_release(cancel: bool) -> void:
+	var player := get_tree().get_first_node_in_group("player")
+	if _lure_touch >= 0 and player != null:
+		if cancel:
+			player.cancel_lure()
+		else:
+			player.lure_held = false
+	_lure_touch = -1
+	_lure_view.set_knob(Vector2.ZERO)
 
 
 func _end_press() -> void:

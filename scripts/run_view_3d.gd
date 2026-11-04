@@ -656,6 +656,7 @@ func _ground() -> void:
 		mat.set_shader_parameter(pair[0] + "_tex", load("res://assets/sprites/ground/%s_albedo.png" % pair[1]))
 		mat.set_shader_parameter(pair[0] + "_nrm", load("res://assets/sprites/ground/%s_normal.png" % pair[1]))
 	mat.set_shader_parameter("snow", 1.0 if _snow else 0.0)
+	mat.set_shader_parameter("snow_bright", SNOW_GROUND)
 	mi.material_override = mat
 	add_child(mi)
 
@@ -4679,6 +4680,15 @@ func _environment() -> void:
 	camera.current = true
 
 
+## (the snowy map's light: its white ground lit by this much of the forest's ambient and moon, its
+## haze's light this much - user request: the snow too bright, the lamp no use)
+const SNOW_LIGHT := 0.3
+const SNOW_HAZE := 0.3
+## (and its snow on the ground this pale - night snow, grey-blue: white, it took even the lamp's
+## faint edge and the whole view was lit)
+const SNOW_GROUND := 0.45
+
+
 ## The 2D night's dark (main's Darkness) as the 3D one's light: the
 ## ambient and the moon down with it.
 func _update_light() -> void:
@@ -4699,10 +4709,13 @@ func _update_light() -> void:
 	_moon.light_color = Color(0.62, 0.72, 0.95).lerp(Color(0.9, 0.88, 0.85), k)
 	_env.fog_light_color = (Color(0.05, 0.07, 0.11).lerp(Color(0.2, 0.22, 0.25), k) * NIGHT_DIM)
 	if _snow:
-		# (snow gives the night back its light: a paler, colder dark, a thicker haze)
-		_env.ambient_light_energy *= 1.45
+		# (a colder dark, a thicker haze. User request: the snow far too bright - it gave the night
+		# back so much light the lamp did nothing (its ground ~30x the forest's at night): the
+		# white ground lit by far less - SNOW_LIGHT of the forest's ambient and moon, its haze dark)
+		_env.ambient_light_energy *= SNOW_LIGHT
 		_env.ambient_light_color = _env.ambient_light_color.lerp(Color(0.55, 0.65, 0.85), 0.5)
-		_env.fog_light_color = _env.fog_light_color.lerp(Color(0.16, 0.2, 0.28), 0.6)
+		_moon.light_energy *= SNOW_LIGHT
+		_env.fog_light_color = _env.fog_light_color.lerp(Color(0.16, 0.2, 0.28) * SNOW_HAZE, 0.6)
 		_env.fog_density = 0.024
 	_env.background_color = _env.fog_light_color * 0.5
 	# (the owl in the dark: the whole view brighter - Abilities 夜視)
@@ -5385,6 +5398,7 @@ uniform sampler2D stone_nrm : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform sampler2D mud_tex : source_color, filter_linear_mipmap, repeat_enable;
 uniform sampler2D mud_nrm : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform float snow = 0.0;
+uniform float snow_bright = 1.1;
 varying vec4 paint;
 void vertex() { paint = COLOR; }
 void fragment() {
@@ -5403,7 +5417,7 @@ void fragment() {
 	vec3 icy = vec3(0.55, 0.66, 0.76) * (0.8 + 0.4 * shade);
 	vec3 sn = mix(white, icy, clamp(paint.b * 0.8 + paint.g * 0.5, 0.0, 1.0));
 	c = mix(c, sn, snow * 0.92);
-	ALBEDO = c * mix(0.85, 1.1, snow);
+	ALBEDO = c * mix(0.85, snow_bright, snow);
 	NORMAL_MAP = n;
 	NORMAL_MAP_DEPTH = mix(1.2, 0.5, snow);
 	ROUGHNESS = mix(0.92, 0.8, snow);

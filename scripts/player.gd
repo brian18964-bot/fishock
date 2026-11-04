@@ -1733,6 +1733,18 @@ func _update_lure_throw(delta: float) -> void:
 		lure_pull = -1.0
 
 
+## The 誘惑 throw called off (its button's touch lost, the bag opened over it): not thrown, the
+## aim put away.
+func cancel_lure() -> void:
+	lure_held = false
+	_lure_charging = false
+	if _lure_guide != null:
+		_lure_guide.hide_throw()
+	lure_charge = 0.0
+	lure_aim = Vector2.ZERO
+	lure_pull = -1.0
+
+
 ## Where the lure fish would land now: out along the aim (dragged, or the
 ## way you face) by the charge, short of any water.
 func lure_target() -> Vector2:

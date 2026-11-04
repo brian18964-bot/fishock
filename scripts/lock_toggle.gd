@@ -21,8 +21,20 @@ func _init(on := false) -> void:
 	tooltip_text = "已上鎖：點一下解鎖" if on else "點一下上鎖"
 
 
+## (user report: tapped, nothing happened - on a phone's browser one tap comes twice, the touch's
+## mouse click and the browser's own a moment later; turned twice it stayed as it was. The echo
+## within ECHO_MS is the same tap. Shared by every padlock: the card's rebuilt under the finger.)
+const ECHO_MS := 400
+static var _last_ms := -100000
+
+
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
+		accept_event()
+		var now := Time.get_ticks_msec()
+		if now - _last_ms < ECHO_MS:
+			return
+		_last_ms = now
 		locked = not locked
 		tooltip_text = "已上鎖：點一下解鎖" if locked else "點一下上鎖"
 		queue_redraw()

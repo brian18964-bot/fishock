@@ -2870,6 +2870,56 @@ func test_lure_throw_and_drops() -> void:
 		if d.global_position.distance_to(aim) < 4.0:
 			landed = true
 	check(landed and get_tree().get_nodes_in_group("dropped_fish").size() == before + 1, "it landed where aimed")
+	# User report: aimed by touch, the fish never thrown and picking again no use - the finger's
+	# lift came while the bag was open, the button stayed held. Now: held, the bag opened over
+	# it, let go there - not thrown, not stuck; a fresh press and lift throws it.
+	var tc: TouchControls = null
+	for c in main.get_children():
+		if c is TouchControls:
+			tc = c
+	var was_visible := tc.visible
+	tc.visible = true
+	gs.set_lure(0)
+	var touch := func(pressed: bool, at: Vector2) -> void:
+		var e := InputEventScreenTouch.new()
+		e.index = 0
+		e.position = at
+		e.pressed = pressed
+		tc._input(e)
+	touch.call(true, tc._lure_center)
+	var pull := InputEventScreenDrag.new()
+	pull.index = 0
+	pull.position = tc._lure_center + Vector2(-60, -40)
+	tc._input(pull)
+	await frames(3)
+	check(p.lure_held and p._lure_guide.visible, "touch: held and aimed")
+	bag.toggle()
+	await frames(2)
+	touch.call(false, pull.position)
+	bag.toggle()
+	await frames(2)
+	check(not p.lure_held and not p._lure_guide.visible and tc._lure_touch == -1 and gs.carried_fish.size() == 2 and gs.lure_index() == 0,
+		"let go with the bag open over it: put back, not stuck")
+	touch.call(true, tc._lure_center)
+	await frames(3)
+	touch.call(false, tc._lure_center)
+	await frames(2)
+	check(gs.carried_fish.size() == 1, "pressed again and let go: thrown")
+	# (its lift lost altogether: the next touch with its number frees it)
+	gs.add_carried_fish({"name": "鯉魚", "id": "carp", "value": 4.0, "size": "small"})
+	gs.set_lure(0)
+	touch.call(true, tc._lure_center)
+	await frames(2)
+	touch.call(true, tc._lure_center + Vector2(-300, 0))
+	await frames(2)
+	check(not p.lure_held and tc._lure_touch == -1 and not p._lure_guide.visible, "a lift never seen: the next touch frees the button")
+	touch.call(false, tc._lure_center + Vector2(-300, 0))
+	tc.visible = was_visible
+	for d in get_tree().get_nodes_in_group("dropped_fish"):
+		d.queue_free()
+	gs.carried_fish.clear()
+	gs.add_carried_fish({"name": "鯉魚", "id": "carp", "value": 4.0, "size": "small"})
+	gs.add_carried_fish({"name": "鯉魚", "id": "carp", "value": 4.0, "size": "small"})
 	# Settings: the cheapest fish carried becomes the next lure.
 	Profile.set_setting("auto_lure", true)
 	gs.add_carried_fish({"name": "沙丁魚", "id": "sardine", "value": 1.0, "size": "small"})
@@ -4512,6 +4562,39 @@ func test_locks() -> void:
 	p.put_fish_down(i)
 	check(gs.carried_fish.has(prize), "(put down from the bag: no)")
 	Locks.set_fish(prize, false)
+	# User report (a phone): the padlock tapped, nothing happened - the tap came twice (the touch's
+	# click and the browser's echo) and turned it back. Tapped on the bag's card, echo and all: locked.
+	var bag: Backpack = p.backpack()
+	bag.toggle()
+	await frames(2)
+	bag.select("fish", gs.carried_fish.find(prize))
+	await frames(2)
+	var lock_at: Vector2 = bag._lock.get_global_rect().get_center()
+	# (the run's loading screen, still up in a headless run, over everything)
+	var loading := main.get_node_or_null("Loading") as CanvasLayer
+	if loading != null:
+		loading.visible = false
+	var click := func(pressed: bool) -> void:
+		var e := InputEventMouseButton.new()
+		e.button_index = MOUSE_BUTTON_LEFT
+		e.pressed = pressed
+		e.position = lock_at
+		e.global_position = lock_at
+		get_viewport().push_input(e, true)
+	LockToggle._last_ms = -100000
+	for _echo in 2:
+		click.call(true)
+		click.call(false)
+		await frames(2)
+	check(bag._lock.visible and Locks.fish(prize), "the bag card's padlock tapped (its echo too): locked")
+	# (a while later - real time, the echo's guard: the test's frames run faster than that)
+	LockToggle._last_ms -= LockToggle.ECHO_MS
+	click.call(true)
+	click.call(false)
+	await frames(2)
+	check(not Locks.fish(prize), "tapped again: unlocked")
+	bag.toggle()
+	await frames(1)
 	check(not gs.sacrifice_at(gs.carried_fish.find(prize)).is_empty(), "unlocked: offered")
 	# At camp: the tank, the bucket - not sold, not thrown away; a dead one lockable too.
 	var kept := _alert_fish("收藏", 0.9)
@@ -7507,6 +7590,22 @@ func test_stats_gate_weak() -> void:
 	check(GameState.carried_fish.is_empty() and Profile.run_brought.is_empty() and Profile.weak_news.size() == 1, "the catch is gone; the warning is set")
 	# The warning's way out: all the weak ones into the tank.
 	check(Profile.weak_count() == 1 and Profile.weak_to_tank() == 1 and Profile.tank.size() == 1 and Profile.pack_fish.is_empty(), "weak fish put in the tank")
+	# User request: the live fish box's fish come home in the box - they don't run down there, so
+	# they won't die: no warning for them.
+	var hand: String = Profile.equipped.get("offhand", "")
+	Profile.equipped["offhand"] = "oxy_box"
+	Profile.weak_news = []
+	var boxed := pristine.duplicate(true)
+	boxed["name"] = "箱裡的魚"
+	Profile.oxy_stock = [boxed]
+	GameState.reset_run()
+	GameState.start_run()
+	check(GameState.oxy_fish.size() == 1, "(the box's fish taken along)")
+	GameState.end_run(false, "被抓了")
+	check(Profile.oxy_stock.size() == 1 and Profile.oxy_stock[0].name == "箱裡的魚" and Profile.weak_news.is_empty(),
+		"a lost night: the box's fish back in the box, no warning")
+	Profile.oxy_stock = []
+	Profile.equipped["offhand"] = hand
 	# Feeding.
 	var weak: Dictionary = Profile.tank[0]
 	check(FishLife.use_vigor_feed(weak) == "" and not weak.weak and weak.vit > 0.5, "feed restores")
@@ -8073,6 +8172,9 @@ func test_snow_theme() -> void:
 		if c is MeshInstance3D and c.material_override is ShaderMaterial and (c.material_override as ShaderMaterial).get_shader_parameter("snow") != null:
 			ground = c
 	check(ground != null and float((ground.material_override as ShaderMaterial).get_shader_parameter("snow")) > 0.5, "the ground is under snow")
+	# (user request: the snow far too bright, the lamp no use - night snow grey-blue, lit by little)
+	check(float((ground.material_override as ShaderMaterial).get_shader_parameter("snow_bright")) == RunView3D.SNOW_GROUND
+		and RunView3D.SNOW_GROUND < 0.6 and view._env.ambient_light_energy < 0.3 * RunView3D.NIGHT_DIM, "the snowy night dark: its lamp's what shows the way")
 	# Winter coats: the fox is white, the deer pale.
 	var coated := 0
 	for k in view._creatures:
