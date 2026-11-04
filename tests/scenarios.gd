@@ -6668,6 +6668,16 @@ func test_run_intro_and_eye_guide() -> void:
 	var flares: Array[float] = []
 	var stuck := 0
 	var throat := 0
+	# (user report: a strip between the lips - its snout was part the neck's: the skull is rigid now;
+	# user request: eyes and teeth, after the red dragon's - each eye on the head, the upper teeth
+	# below the lips' plane on the head, the lower above it on the jaw. The build's own measures:
+	# tools/build_dragon_sage.py JAW_LIP, EYE - as made, y back and z up, here -z and y less its lift)
+	var lift := 0.869
+	var lip_at := func(ym: float) -> float: return lift + 0.600 + (ym + 0.512) * (0.625 - 0.600) / (0.512 - 0.42)
+	var eye_at := Vector3(0.052, lift + 0.646, 0.433)
+	var eyes := [0, 0]
+	var teeth := [0, 0]
+	var loose := 0
 	for v in vv.size():
 		var on := {}
 		for k in 4:
@@ -6689,11 +6699,28 @@ func test_run_intro_and_eye_guide() -> void:
 				stuck += 1
 		if float(on.get("jaw", 0.0)) > 0.05 and p.z < hinge.z - 0.01:
 			throat += 1
+		var ym := -p.z
+		if ym < -0.37 and p.y - lift > 0.585 and absf(p.x) < 0.1 \
+				and float(on.get("neck_01", 0.0)) + float(on.get("spine_03", 0.0)) > 0.05:
+			loose += 1
+		if ym > -0.505 and ym < -0.425 and absf(p.x) < 0.06:
+			var above: float = p.y - lip_at.call(ym)
+			if above < -0.003 and above > -0.025 and float(on.get("Head", 0.0)) > 0.99:
+				teeth[0] += 1
+			elif above > 0.003 and above < 0.025 and float(on.get("jaw", 0.0)) > 0.8:
+				teeth[1] += 1
+		for k in 2:
+			if p.distance_to(Vector3(eye_at.x * (1 - 2 * k), eye_at.y, eye_at.z)) < 0.015 \
+					and float(on.get("Head", 0.0)) > 0.99:
+				eyes[k] += 1
 	flares.sort()
 	var flare95: float = flares[int(flares.size() * 0.95)] if not flares.is_empty() else 99.0
 	check(flares.size() > 500 and flare95 < 30.0, "its skirt hanging, not flared out (95%% within %.0f deg)" % flare95)
 	check(stuck == 0, "its sleeves going with its arms past the shoulder (%d left on it)" % stuck)
 	check(throat == 0, "its jaw only its jaw, none of its throat (%d)" % throat)
+	check(loose == 0, "its skull rigid - none of its head ahead of the neck on the neck (%d)" % loose)
+	check(eyes[0] > 60 and eyes[1] > 60, "its eyes, one each side, on its head (%d, %d)" % eyes)
+	check(teeth[0] > 30 and teeth[1] > 30, "its teeth: above on its head, below on its jaw (%d, %d)" % teeth)
 	# (and flying, its upper body leans into it, its legs just hang - see DragonRig._fly_body)
 	check(rig.flight_seen.x > 0.1 and absf(rig.flight_seen.y) < 0.4,
 		"flying: its chest leaning into it (%.2f), its legs hanging (%.2f)" % [rig.flight_seen.x, rig.flight_seen.y])

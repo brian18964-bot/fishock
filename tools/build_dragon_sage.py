@@ -10,8 +10,11 @@ game with a finer skeleton than the second make had. Built from
              this one - `git show 972020b:assets/models/run3d/dragon.glb`): its six clips,
              already carried onto the characters' bone names, are carried
              again onto this one (tools/retarget.py)
+  RED_TEX    (optional) the colour picture of the user's red dragon (an open
+             model, kept out of the repo too: "DRAGON-wings_wings, teeth,
+             eye_BaseColor.jpg") - its eye is cut from it (see EYE)
 
-  bpyenv/bin/python tools/build_dragon_sage.py SAGE_FBX OLD_GLB OUT.glb
+  bpyenv/bin/python tools/build_dragon_sage.py SAGE_FBX OLD_GLB OUT.glb [RED_TEX]
 
 The mesh is brought down to TRIS triangles - the wing membranes kept denser
 than the rest (they bend and fill with air), left and right alike - the
@@ -58,7 +61,9 @@ from mathutils.bvhtree import BVHTree
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import retarget  # noqa: E402
 
-SAGE, OLD, OUT = sys.argv[-3:]
+_ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
+SAGE, OLD, OUT = _ARGS[:3]
+RED = _ARGS[3] if len(_ARGS) > 3 else None
 STAGE = os.environ.get("STAGE", "all")
 TRIS = 40000
 # The decimation goes easier on the membrane: its vertices weighted MEMBRANE_W (the rest 1) at
@@ -166,6 +171,33 @@ JAW_WIDE = 0.08
 # (user report: the throat went with the jaw, pulled into a sheet - the jaw is only what's ahead of
 # its hinge, above the throat)
 JAW_FADE = ((-0.39, -0.43), (0.545, 0.57))
+# (user report: still a strip between the lips, the mouth open) Bone heat had the snout ~20% on the
+# neck - turning the head, the upper jaw lagged the lower (the jaw's, rigid); and a vertex just under
+# the lips' plane was left the head's among the jaw's. The skull is rigid now - ahead of the neck
+# (SKULL: y, from none to wholly; above the throat, z from none to wholly) all the head's, and the
+# horns (above SKULL_HORNS z) - and the lower jaw is what's under the parted lips, face by face.
+SKULL = ((-0.33, -0.37), (0.565, 0.585))
+SKULL_HORNS = 0.74
+# User request: eyes and teeth - the model has none (Meshy left a dark slit where an eye would be,
+# and a smooth lip) - after the user's red dragon (an open model: an amber eye with a slit pupil set
+# into the head under its brow; a row of pale cone teeth along each jaw, tilted back). Its eye picture
+# is cut from that model's (the build's fourth input; drawn instead without it), painted with the
+# teeth's colour and the mouth's into a free corner of the colour picture (one material still).
+# EYE: where the slit was (y, z as made; x on the skin), its radius (m), how much of it stands out of
+# the skin (share of its radius), how flat it is out of it (share), and which way it looks (the
+# left one: out, ahead, up).
+EYE = {"at": (-0.433, 0.646), "r": 0.0075, "out": 0.45, "flat": 0.7, "look": (1.0, -0.55, 0.15)}
+# TEETH: along each lip from its front to its back (y), each tooth's length (m) front to back on each
+# side, above and below, how thick at its root (share of its length); rooted under the lip's skin
+# (TOOTH_ROOT m in from its edge, above / below the plane), tilted back (share of its length)
+TEETH_Y = (-0.503, -0.428)
+TEETH_UPPER = (0.010, 0.018, 0.016, 0.014, 0.013, 0.012, 0.011, 0.010)
+TEETH_LOWER = (0.009, 0.015, 0.013, 0.012, 0.011, 0.010, 0.009)
+TOOTH_BASE = 0.2
+TOOTH_ROOT = (0.003, 0.002)
+TOOTH_BACK = (0.25, 0.1)
+# (the red dragon's eye in its picture: its centre, and the radius of its iris, UV)
+RED_EYE = ((0.783, 0.797), 0.14)
 # User request: the robe flows. Its skirt hangs on SKIRT_CHAINS chains of SKIRT_BONES bones round
 # the hips (front, front-left, ... - joints measured off the robe itself, from its belt, SKIRT_TOP,
 # down to near its hem), swung by DragonRig as the tail is; each skirt vertex shared between the two
@@ -713,18 +745,266 @@ def _along(bones, seg, t, blend):
     return W
 
 
-def _dark_uv(body):
-    """A place in the colour picture that's near black all round (the mouth's inside)."""
-    img = next(n.image for n in body.data.materials[0].node_tree.nodes
-               if n.type == 'TEX_IMAGE' and n.image and n.image.name == "DragonGhost_Colour")
-    w, h = img.size
-    px = np.empty(w * h * 4, np.float32)
-    img.pixels.foreach_get(px)
-    lum = px.reshape(h, w, 4)[:, :, :3].mean(2)
-    k = 16
-    blocks = lum[:h // k * k, :w // k * k].reshape(h // k, k, w // k, k).max((1, 3))
-    by, bx = np.unravel_index(np.argmin(blocks), blocks.shape)
-    return ((bx + 0.5) * k / w, (by + 0.5) * k / h)
+def _picture(body, name):
+    return next(n.image for n in body.data.materials[0].node_tree.nodes
+                if n.type == 'TEX_IMAGE' and n.image and n.image.name == name)
+
+
+# (texels a side of each painted patch - the eye's picture, the teeth's colour root to tip, the
+# palate's and the tongue's - in the colour picture, SHIP_COLOUR a side)
+ROOMS = {"eye": 80, "teeth": 32, "palate": 32, "tongue": 32}
+ROOM = {}
+
+
+def paint_rooms(body):
+    """The eye's picture, the teeth's and the mouth's colours painted where no face of the skin has its
+    UV (each patch a few texels clear of any): ROOM[name] = its (u0, v0, u1, v1). Their normal flat,
+    their roughness their own."""
+    me = body.data
+    uv = np.empty(len(me.loops) * 2, np.float32)
+    me.uv_layers.active.data.foreach_get("uv", uv)
+    uv = uv.reshape(-1, 2)
+    k = 4                                           # texels a cell
+    g = SHIP_COLOUR // k
+    used = np.zeros((g, g), bool)
+    for p in me.polygons:
+        q = uv[p.loop_start:p.loop_start + p.loop_total] * g
+        lo = np.clip(np.floor(q.min(0)).astype(int), 0, g - 1)
+        hi = np.clip(np.floor(q.max(0)).astype(int), 0, g - 1)
+        cy, cx = np.mgrid[lo[1]:hi[1] + 1, lo[0]:hi[0] + 1]
+        pt = np.stack([cx.ravel() + 0.5, cy.ravel() + 0.5], 1)
+        hit = np.zeros(len(pt), bool)
+        for t in range(1, len(q) - 1):              # (each triangle of its fan, a cell's width wider)
+            a, b, c = q[0], q[t], q[t + 1]
+            den = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
+            if abs(den) < 1e-12:
+                continue
+            l1 = ((b[1] - c[1]) * (pt[:, 0] - c[0]) + (c[0] - b[0]) * (pt[:, 1] - c[1])) / den
+            l2 = ((c[1] - a[1]) * (pt[:, 0] - c[0]) + (a[0] - c[0]) * (pt[:, 1] - c[1])) / den
+            slack = 1.5 / max(np.abs(np.array([a - b, b - c, c - a])).max(), 1.0)
+            hit |= (l1 > -slack) & (l2 > -slack) & (1 - l1 - l2 > -slack)
+        used[cy.ravel()[hit], cx.ravel()[hit]] = True
+        used[lo[1], lo[0]] = True
+    # (a cell clear round every face's)
+    grown = used.copy()
+    grown[1:] |= used[:-1]; grown[:-1] |= used[1:]
+    grown[:, 1:] |= grown[:, :-1].copy(); grown[:, :-1] |= grown[:, 1:].copy()
+    used = grown
+    for name, size in ROOMS.items():
+        c = size // k + 2                           # its cells, with one clear round it
+        sat = np.pad(used.astype(int).cumsum(0).cumsum(1), ((1, 0), (1, 0)))
+        free = (sat[c:, c:] - sat[:-c, c:] - sat[c:, :-c] + sat[:-c, :-c]) == 0
+        ys, xs = np.nonzero(free)
+        if not len(ys):
+            raise RuntimeError("no room in the colour picture for the " + name)
+        # (of the free places, the one nearest the picture's middle - any would do; so each build alike)
+        i = int(np.argmin((ys + c / 2 - g / 2) ** 2 + (xs + c / 2 - g / 2) ** 2))
+        y0, x0 = ys[i] + 1, xs[i] + 1
+        used[y0 - 1:y0 + c - 1, x0 - 1:x0 + c - 1] = True
+        ROOM[name] = (x0 * k / SHIP_COLOUR, y0 * k / SHIP_COLOUR, (x0 * k + size) / SHIP_COLOUR,
+                      (y0 * k + size) / SHIP_COLOUR)
+    # the colours
+    eye = _eye_picture(ROOMS["eye"])
+    t = np.linspace(0.0, 1.0, ROOMS["teeth"])[:, None, None]
+    root, tip = _tooth_colour()
+    teeth = np.broadcast_to(root * (1 - t) + tip * t, (ROOMS["teeth"], ROOMS["teeth"], 3))
+    pal = np.broadcast_to(np.array([0.24, 0.05, 0.06]), (32, 32, 3))
+    ton = np.broadcast_to(np.array([0.40, 0.11, 0.12]), (32, 32, 3))
+    looks = {"eye": (eye, (0.5, 0.5, 1.0), 0.3), "teeth": (teeth, (0.5, 0.5, 1.0), 0.45),
+             "palate": (pal, (0.5, 0.5, 1.0), 0.6), "tongue": (ton, (0.5, 0.5, 1.0), 0.5)}
+    for pic, which in (("DragonGhost_Colour", 0), ("DragonGhost_Normal", 1), ("DragonGhost_Roughness", 2)):
+        img = _picture(body, pic)
+        w, h = img.size
+        px = np.empty(w * h * 4, np.float32)
+        img.pixels.foreach_get(px)
+        px = px.reshape(h, w, 4)
+        for name, (u0, v0, u1, v1) in ROOM.items():
+            a, b, c_, d = int(round(u0 * w)), int(round(v0 * h)), int(round(u1 * w)), int(round(v1 * h))
+            val = looks[name][which]
+            if which == 0:
+                # (resampled to this picture's texels)
+                src = np.asarray(val, np.float32)
+                ys = (np.arange(d - b) * src.shape[0] // max(d - b, 1)).clip(0, src.shape[0] - 1)
+                xs = (np.arange(c_ - a) * src.shape[1] // max(c_ - a, 1)).clip(0, src.shape[1] - 1)
+                px[b:d, a:c_, :3] = src[ys][:, xs]
+            else:
+                px[b:d, a:c_, :3] = val
+            px[b:d, a:c_, 3] = 1.0
+        img.pixels.foreach_set(px.ravel())
+        img.update()
+    log("painted the eye, the teeth, the mouth: %s" % {k_: tuple(round(x, 3) for x in v) for k_, v in ROOM.items()})
+
+
+def _eye_picture(size):
+    """(size, size, 3) the eye: the red dragon's (RED, RED_EYE) - or drawn: amber, a slit pupil - its
+    rim darkened into the socket. Rows from the bottom (as Blender's pictures are)."""
+    yy, xx = np.mgrid[0:size, 0:size]
+    x = (xx + 0.5) / size * 2 - 1
+    y = (yy + 0.5) / size * 2 - 1
+    r = np.sqrt(x * x + y * y)
+    pic = None
+    if RED and os.path.exists(RED):
+        img = bpy.data.images.load(RED)
+        w, h = img.size
+        px = np.empty(w * h * 4, np.float32)
+        img.pixels.foreach_get(px)
+        px = px.reshape(h, w, 4)[:, :, :3]
+        (cu, cv), rad = RED_EYE
+        k = max(1, int(2 * rad * w) // size)
+        n = size * k
+        x0 = int(cu * w) - n // 2
+        y0 = int(cv * h) - n // 2
+        pic = px[y0:y0 + n, x0:x0 + n].reshape(size, k, size, k, 3).mean((1, 3))
+        bpy.data.images.remove(img)
+        log("the eye cut from", os.path.basename(RED))
+    if pic is None:
+        amber = np.array([1.0, 0.78, 0.22]) * (1 - r[..., None]) + np.array([0.82, 0.36, 0.08]) * r[..., None]
+        slit = np.abs(x) < 0.09 * np.sqrt(np.clip(1 - (y / 0.8) ** 2, 0, 1))
+        pic = np.where(slit[..., None], 0.03, amber)
+    rim = np.clip((r - 0.8) / 0.2, 0, 1)
+    return pic * (1 - 0.85 * rim * rim * (3 - 2 * rim))[..., None]
+
+
+def _tooth_colour():
+    """The teeth's colour at the root and at the tip (the red dragon's teeth's, else bone)."""
+    base = np.array([0.86, 0.80, 0.66])
+    if RED and os.path.exists(RED):
+        img = bpy.data.images.load(RED)
+        w, h = img.size
+        px = np.empty(w * h * 4, np.float32)
+        img.pixels.foreach_get(px)
+        px = px.reshape(h, w, 4)[:, :, :3]
+        base = px[int(0.6 * h):int(0.9 * h), int(0.08 * w):int(0.42 * w)].reshape(-1, 3).mean(0)
+        bpy.data.images.remove(img)
+    return base * np.array([0.72, 0.66, 0.55]), np.minimum(base * 1.12, 1.0)
+
+
+def eyes_and_teeth(body, lift):
+    """The eyes (on the head) and the teeth (the upper on the head, the lower on the jaw as its skin
+    is): see EYE, TEETH_*. Built into the skin, UV on the painted patches (ROOM)."""
+    me = body.data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    mw = body.matrix_world
+    inv = mw.inverted()
+    bm.transform(mw)
+    bvh = BVHTree.FromBMesh(bm)
+    dl = bm.verts.layers.deform.verify()
+    uvl = bm.loops.layers.uv.active
+    head = body.vertex_groups["Head"].index
+    jaw = body.vertex_groups["jaw"].index
+    made = {"eye": 0, "tooth": 0}
+
+    def weigh(v, f_jaw):
+        if f_jaw > 0:
+            v[dl][jaw] = f_jaw
+        if f_jaw < 1:
+            v[dl][head] = 1.0 - f_jaw
+
+    def face(vs, uvs, out_from):
+        try:
+            f = bm.faces.new(vs)
+        except ValueError:
+            return
+        f.normal_update()
+        if f.normal.dot(f.calc_center_median() - out_from) < 0:
+            f.normal_flip()
+        for l in f.loops:
+            l[uvl].uv = uvs[vs.index(l.vert)]
+        f.smooth = True
+        return f
+
+    def room_uv(name, a, b):
+        u0, v0, u1, v1 = ROOM[name]
+        return Vector((u0 + (u1 - u0) * (0.5 + 0.5 * a), v0 + (v1 - v0) * (0.5 + 0.5 * b)))
+    # ---- the eyes
+    (ey, ez), r = EYE["at"], EYE["r"]
+    for sx in (1.0, -1.0):
+        hit, nrm, _, _ = bvh.ray_cast(Vector((0.3 * sx, ey, ez + lift)), Vector((-sx, 0.0, 0.0)), 0.4)
+        if hit is None:
+            raise RuntimeError("no skin where the eye goes")
+        look = Vector((EYE["look"][0] * sx, EYE["look"][1], EYE["look"][2])).normalized()
+        d = (look + nrm).normalized()
+        e2 = (Vector((0, 0, 1)) - d * d.z).normalized()       # up across it: the slit upright
+        e1 = e2.cross(d)
+        depth = r * EYE["flat"]
+        centre = hit + d * (r * EYE["out"] * EYE["flat"]) - d * depth
+        rings, segs = 7, 14
+        verts = []
+        tip = bm.verts.new(centre + d * depth)
+        weigh(tip, 0.0)
+        for i in range(1, rings + 1):
+            th = math.radians(105.0) * i / rings
+            ring = []
+            for j in range(segs):
+                ph = 2 * math.pi * j / segs
+                v = bm.verts.new(centre + r * math.sin(th) * (math.cos(ph) * e1 + math.sin(ph) * e2)
+                                 + d * depth * math.cos(th))
+                weigh(v, 0.0)
+                ring.append(v)
+            verts.append(ring)
+
+        def euv(v):
+            q = v.co - centre
+            return room_uv("eye", 0.96 * q.dot(e1) / r * sx, 0.96 * q.dot(e2) / r)
+        for j in range(segs):
+            a, b = verts[0][j], verts[0][(j + 1) % segs]
+            face([tip, a, b], [euv(tip), euv(a), euv(b)], centre)
+            for i in range(rings - 1):
+                a, b = verts[i][j], verts[i][(j + 1) % segs]
+                c, e = verts[i + 1][(j + 1) % segs], verts[i + 1][j]
+                face([a, e, c, b], [euv(a), euv(e), euv(c), euv(b)], centre)
+        made["eye"] += 1
+    # ---- the teeth
+    (y0, z0), (y1, z1) = JAW_LIP
+    back = Vector((0.0, y1 - y0, z1 - z0)).normalized()
+    up = Vector((1.0, 0.0, 0.0)).cross(back).normalized()
+    if up.z < 0:
+        up = -up
+    for upper, lengths in ((True, TEETH_UPPER), (False, TEETH_LOWER)):
+        for sx in (1.0, -1.0):
+            for i, L in enumerate(lengths):
+                y = TEETH_Y[0] + (TEETH_Y[1] - TEETH_Y[0]) * (i + 0.5) / len(lengths)
+                z = float(_lip_z(y)) + lift + (0.0015 if upper else -0.0015)
+                hit = bvh.ray_cast(Vector((0.2 * sx, y, z)), Vector((-sx, 0.0, 0.0)), 0.3)[0]
+                if hit is None:
+                    continue
+                inward = Vector((-sx, 0.0, 0.0))
+                root = Vector((hit.x, y, z)) + inward * (TOOTH_ROOT[0] + L * TOOTH_BASE) \
+                    + up * (TOOTH_ROOT[1] if upper else -TOOTH_ROOT[1])
+                axis = ((-up if upper else up) + back * (TOOTH_BACK[0] if upper else TOOTH_BACK[1])
+                        + inward * 0.08).normalized()
+                s1 = back.cross(axis).normalized()
+                s2 = axis.cross(s1)
+                rb = L * TOOTH_BASE
+                f_jaw = 0.0 if upper else float(np.clip((JAW_FADE[0][0] - y) / (JAW_FADE[0][0] - JAW_FADE[0][1]),
+                                                        0, 1))
+                rings = []
+                for t, rr, bend in ((0.0, rb, 0.0), (0.5, rb * 0.72, 0.05)):
+                    ring = []
+                    for j in range(6):
+                        ph = 2 * math.pi * j / 6
+                        v = bm.verts.new(root + axis * (L * t) + back * (L * bend)
+                                         + rr * (math.cos(ph) * s1 + math.sin(ph) * s2))
+                        weigh(v, f_jaw)
+                        ring.append(v)
+                    rings.append(ring)
+                tipv = bm.verts.new(root + axis * L + back * (L * 0.14))
+                weigh(tipv, f_jaw)
+                mid = root + axis * (L * 0.5)
+                tu = lambda t_: room_uv("teeth", 0.0, 2.0 * t_ - 1.0)
+                for j in range(6):
+                    a, b = rings[0][j], rings[0][(j + 1) % 6]
+                    c, e = rings[1][(j + 1) % 6], rings[1][j]
+                    face([a, b, c, e], [tu(0.05), tu(0.05), tu(0.5), tu(0.5)], mid)
+                    face([e, c, tipv], [tu(0.5), tu(0.5), tu(0.98)], mid)
+                face(list(rings[0]), [tu(0.02)] * 6, mid)
+                made["tooth"] += 1
+    bm.transform(inv)
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    log("eyes: %d, teeth: %d" % (made["eye"], made["tooth"]))
 
 
 def _cloth(body):
@@ -942,11 +1222,18 @@ def weights(body, arm, spec, thick):
         * np.clip((near_legs - dt_) / 0.05 + 0.5, 0, 1) * (~robe)
     put(treg, _along(tb, sg, t, 0.4), tb)
     log("tail: %d vertices (%d wholly)" % (int((treg > 0).sum()), int((treg > 0.99).sum())))
-    # ---- the jaw (see JAW_LIP)
+    # ---- the skull, rigid (see SKULL): ahead of the neck, and its horns, all the head's
     zm = P[:, 2] - lift
+    skull = np.maximum(np.clip((SKULL[0][0] - P[:, 1]) / (SKULL[0][0] - SKULL[0][1]), 0, 1)
+                       * np.clip((zm - SKULL[1][0]) / (SKULL[1][1] - SKULL[1][0]), 0, 1),
+                       ((zm > SKULL_HORNS) & (W[:, col["Head"]] > 0.5)).astype(float)) \
+        * (np.abs(P[:, 0]) < 0.12) * (~cloth)
+    put(skull, np.ones((n, 1)), ["Head"])
+    log("skull: %d vertices the head's alone" % int((skull > 0.99).sum()))
+    # ---- the jaw (see JAW_LIP)
     lip = _lip_z(P[:, 1])
     # (the head's own width - not the hood round it)
-    jreg = ((zm < lip - 0.001) & (P[:, 1] < -0.33) & (zm > 0.45) & (~cloth | (P[:, 1] < JAW_CORNER))).astype(float) \
+    jreg = ((zm < lip - 0.0006) &(P[:, 1] < -0.33) & (zm > 0.45) & (~cloth | (P[:, 1] < JAW_CORNER))).astype(float) \
         * np.clip((JAW_WIDE - np.abs(P[:, 0])) / 0.015, 0, 1) \
         * np.clip((JAW_FADE[0][0] - P[:, 1]) / (JAW_FADE[0][0] - JAW_FADE[0][1]), 0, 1) \
         * np.clip((zm - JAW_FADE[1][0]) / (JAW_FADE[1][1] - JAW_FADE[1][0]), 0, 1)
@@ -1024,7 +1311,8 @@ def weights(body, arm, spec, thick):
     # (the mouth's lips, parted: each edge closed in by a dark fan - palate above, tongue below)
     bm.verts.ensure_lookup_table()
     uvl = bm.loops.layers.uv.active
-    dark = _dark_uv(body)
+    mouth = {side: Vector(((ROOM[k][0] + ROOM[k][2]) / 2, (ROOM[k][1] + ROOM[k][3]) / 2))
+             for side, k in (("upper", "palate"), ("lower", "tongue"))}
     caps = 0
     for side in ("upper", "lower"):
         edges = []
@@ -1054,7 +1342,7 @@ def weights(body, arm, spec, thick):
             except ValueError:
                 continue
             for l in nf.loops:
-                l[uvl].uv = dark
+                l[uvl].uv = mouth[side]
             nf.material_index = f_.material_index
             kind[nf] = "j" if side == "lower" else "b"
             caps += 1
@@ -1112,13 +1400,16 @@ def weights(body, arm, spec, thick):
         W[i, ~keep] = 0.0
         if W[i].sum() < 1e-6:
             W[i] = before[i]
-    # (the lips' copies: the lower one the jaw's - as its fade has it - the upper one the head's)
+    # (the lips' copies: the lower one the jaw's - as its fade has it - the upper one the head's; and
+    # so every vertex of the snout all of whose faces are under the parted lips, or over them)
     lipd = np.abs(Pn[:, 2] - lift - _lip_z(Pn[:, 1]))
     at_lip = (np.bincount(rows)[rows] > 1) & (Pn[:, 1] < JAW_CORNER + 0.005) & (lipd < 0.002)
+    snout = (Pn[:, 1] < JAW_CORNER + 0.005) & (np.abs(Pn[:, 0]) < JAW_WIDE) & (Pn[:, 2] - lift > 0.5)
     jc, hc = col["jaw"], col["Head"]
-    for i in np.nonzero(at_lip)[0]:
+    for i in np.nonzero(at_lip | snout)[0]:
         if jaw_side[i] == "j":
-            f = float(np.clip((JAW_FADE[0][0] - Pn[i, 1]) / (JAW_FADE[0][0] - JAW_FADE[0][1]), 0, 1))
+            f = float(np.clip((JAW_FADE[0][0] - Pn[i, 1]) / (JAW_FADE[0][0] - JAW_FADE[0][1]), 0, 1)
+                      * np.clip((Pn[i, 2] - lift - JAW_FADE[1][0]) / (JAW_FADE[1][1] - JAW_FADE[1][0]), 0, 1))
             W[i] = 0.0
             W[i, jc], W[i, hc] = f, 1.0 - f
         elif jaw_side[i] == "h":
@@ -1208,12 +1499,14 @@ def main():
         if STAGE == "mesh":
             return
     cut_mouth(body, lift)
+    paint_rooms(body)
     spec = joints(lift)
     thick = thickness(body)
     spec.update(skirt_joints(body, lift, spec, thick))
     arm = skeleton(spec)
     weights(body, arm, spec, thick)
     drape_skirt(body, arm, lift)
+    eyes_and_teeth(body, lift)
     if STAGE == "weights":
         bpy.ops.wm.save_as_mainfile(filepath=OUT + ".weights.blend")
         return
