@@ -179,23 +179,28 @@ JAW_FADE = ((-0.39, -0.43), (0.545, 0.57))
 SKULL = ((-0.33, -0.37), (0.565, 0.585))
 SKULL_HORNS = 0.74
 # User request: eyes and teeth - the model has none (Meshy left only shading where they'd be) -
-# after the user's red dragon (an amber eye with a slit pupil set into the head under its brow; a
-# row of pale cone teeth along each jaw, tilted back). (user report: the eye first put on the
-# cheek, by the mouth's corner - it belongs under the brow, at the outer end of the groove each side
-# of the nose's ridge, as the first dragon's was; and green, glowing, as that one's) The eye is an
-# almond set deep under the brow, slanted up toward its outer corner, looking ahead and out - green,
-# its iris's grain taken from the red dragon's eye (the build's fourth input; plain without it),
-# glowing (an emission picture: EYE_GLOW its strength). Painted, with the teeth's colour and the
-# mouth's, into free corners of the colour picture (one material still).
-# EYE: its centre's height and how far back (z, y as made: found on the skin from ahead and out, the
-# way it looks - EYE "look", the left one: out, ahead, up), its half length (m) and how tall it is
-# (share), how much stands out of the skin (share of its depth), how deep it is (share of its half
-# length), its slant (deg, its outer corner up)
-EYE = {"at": (-0.447, 0.653), "r": 0.0105, "tall": 0.55, "out": 0.35, "deep": 0.6, "slant": 18.0,
-       "look": (1.0, -0.8, 0.12)}
+# after the user's red dragon (an eye with a slit pupil set into the head under its brow; a row of
+# pale cone teeth along each jaw, tilted back). User reports: the eye put first on the cheek, then on
+# the snout's slope - it goes in the crease under the brow each side of the snout (the user marked
+# it), set into the head, a slit, green with a faint glow as the first dragon's. That crease is in
+# the model, though shallow (the cheek stands ~1 cm out below it, the brow only slopes in above): the
+# skin about it is made finer (EYE_FINE: within this of the eye, its edges cut this many times), the
+# socket pressed into it and the brow drawn out and down over it (EYE_SOCKET: across, along, deep - m;
+# the brow's lift), the eye set in the socket's bottom - green (its iris's grain the red dragon's eye's,
+# the build's fourth input; plain without it), glowing faintly (an emission picture, EYE_GLOW its
+# strength). Its picture, the teeth's colour and the mouth's painted into free corners of the colour
+# picture (one material still).
+# EYE: where the crease is (z, y as made; x its bottom, found from the side), the eye's half length (m)
+# and how tall (share), how much of it stands out of the socket's bottom (share of its depth), how
+# deep (share of its half length), its slant along the crease (deg, its outer corner up), which way
+# it looks (the left one, blended with the skin's own way out: out, ahead, up)
+EYE = {"at": (-0.471, 0.644), "r": 0.0085, "tall": 0.42, "out": 0.45, "deep": 0.6, "slant": 22.0,
+       "look": (1.0, -0.35, 0.1)}
+EYE_FINE = (0.024, 3)
+EYE_SOCKET = {"across": 0.0075, "along": 0.0135, "deep": 0.0028, "brow": 0.0018}
 EYE_GREEN = ((0.85, 1.0, 0.5), (0.3, 0.95, 0.42), (0.04, 0.32, 0.12))   # its middle, its iris, its rim
-EYE_GLOW = 2.5
-EYE_GLOW_TINT = (0.25, 1.0, 0.35)   # (its glow greener than its colour - bright, it would go white)
+EYE_GLOW = 0.45
+EYE_GLOW_TINT = (0.25, 1.0, 0.35)   # (its glow greener than its colour)
 SHIP_GLOW = 1024
 # TEETH: along each lip from its front to its back (y), each tooth's length (m) front to back on each
 # side, above and below, how thick at its root (share of its length); rooted under the lip's skin
@@ -951,26 +956,50 @@ def eyes_and_teeth(body, lift):
     def room_uv(name, a, b):
         u0, v0, u1, v1 = ROOM[name]
         return Vector((u0 + (u1 - u0) * (0.5 + 0.5 * a), v0 + (v1 - v0) * (0.5 + 0.5 * b)))
-    # ---- the eyes
+    # ---- the eyes: each one's socket first - the skin about it made finer, pressed in, its brow drawn
+    # out and down over it - then the eye in its bottom
     (ey, ez), r = EYE["at"], EYE["r"]
+    sock = EYE_SOCKET
+    frames = []
     for sx in (1.0, -1.0):
-        look = Vector((EYE["look"][0] * sx, EYE["look"][1], EYE["look"][2])).normalized()
-        # (on the skin seen from ahead and out, the way it looks: from the head's middle out)
-        inside = Vector((0.0, ey, ez + lift))
-        hit, nrm, _, _ = bvh.ray_cast(inside + look * 0.3, -look, 0.4)
+        hit, nrm, _, _ = bvh.ray_cast(Vector((0.3 * sx, ey, ez + lift)), Vector((-sx, 0.0, 0.0)), 0.4)
         if hit is None:
             raise RuntimeError("no skin where the eye goes")
-        d = (look * 2.0 + nrm).normalized()
+        look = Vector((EYE["look"][0] * sx, EYE["look"][1], EYE["look"][2])).normalized()
+        d = (look + nrm).normalized()
         back = (Vector((0, 1, 0)) - d * d.y).normalized()
         up = d.cross(back) if sx > 0 else back.cross(d)
         if up.z < 0:
             up = -up
         t = math.radians(EYE["slant"])
         e1 = back * math.cos(t) + up * math.sin(t)            # along it, to its outer corner
-        e2 = (up * math.cos(t) - back * math.sin(t))          # across it: the slit along this
+        e2 = up * math.cos(t) - back * math.sin(t)            # across it: the slit along this
+        frames.append((sx, hit.copy(), d, e1, e2))
+    for sx, c, d, e1, e2 in frames:
+        near = [f for f in bm.faces if (f.calc_center_median() - c).length < EYE_FINE[0]]
+        bmesh.ops.subdivide_edges(bm, edges=list({e for f in near for e in f.edges}), cuts=EYE_FINE[1],
+                                  use_grid_fill=True)
+    moved = 0
+    for sx, c, d, e1, e2 in frames:
+        for v in bm.verts:
+            q = v.co - c
+            if q.length > 0.03 or v.co.x * sx < 0.005 or abs(q.dot(d)) > 0.012:
+                continue
+            s_, t_ = q.dot(e1), q.dot(e2)
+            r2 = (s_ / sock["along"]) ** 2 + (t_ / sock["across"]) ** 2
+            dent = sock["deep"] * max(0.0, 1.0 - r2) ** 2
+            brow = sock["brow"] * math.exp(-((t_ - 0.85 * sock["across"]) / (0.45 * sock["across"])) ** 2) \
+                * max(0.0, 1.0 - (s_ / (1.15 * sock["along"])) ** 2) ** 2
+            if dent > 1e-5 or brow > 1e-5:
+                v.co += d * (brow - dent) - e2 * (0.6 * brow)
+                moved += 1
+    bm.normal_update()
+    bvh = BVHTree.FromBMesh(bm)
+    log("eye sockets: %d vertices of the skin moved" % moved)
+    for sx, c, d, e1, e2 in frames:
         a, b = r, r * EYE["tall"]
         depth = r * EYE["deep"]
-        centre = hit + d * (depth * EYE["out"]) - d * depth
+        centre = c - d * sock["deep"] + d * (depth * EYE["out"]) - d * depth
         rings, segs = 7, 16
         verts = []
         tip = bm.verts.new(centre + d * depth)
@@ -997,7 +1026,7 @@ def eyes_and_teeth(body, lift):
                 p2, p3 = verts[i + 1][(j + 1) % segs], verts[i + 1][j]
                 face([p0, p3, p2, p1], [euv(p0), euv(p3), euv(p2), euv(p1)], centre)
         made["eye"] += 1
-        log("eye %s: at %s, looking %s" % ("left" if sx > 0 else "right", tuple(round(x, 3) for x in hit),
+        log("eye %s: at %s, looking %s" % ("left" if sx > 0 else "right", tuple(round(x, 3) for x in c),
                                              tuple(round(x, 2) for x in d)))
     # ---- the teeth
     (y0, z0), (y1, z1) = JAW_LIP

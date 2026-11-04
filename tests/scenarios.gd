@@ -6674,7 +6674,7 @@ func test_run_intro_and_eye_guide() -> void:
 	# tools/build_dragon_sage.py JAW_LIP, EYE - as made, y back and z up, here -z and y less its lift)
 	var lift := 0.869
 	var lip_at := func(ym: float) -> float: return lift + 0.600 + (ym + 0.512) * (0.625 - 0.600) / (0.512 - 0.42)
-	var eye_at := Vector3(0.034, lift + 0.657, 0.473)
+	var eye_at := Vector3(0.03, lift + 0.642, 0.473)
 	var eyes := [0, 0]
 	var teeth := [0, 0]
 	var loose := 0
