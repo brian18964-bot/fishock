@@ -158,6 +158,14 @@ WING_SOFT = 0.08
 # root (wholly within the first, eased off by the second), the rest of that seam parted
 ROOT_KEEP = (0.12, 0.2)
 TAIL_TAPER = 0.92   # each tail bone this much of the one before
+# A second tail (tools/build_dragon_warden.py - the black two-tailed one): its line and bones
+# (tail_b01..), weighted as the first is. None here.
+TAIL2_LINE = []
+TAIL2_BONES = 8
+# What this build makes beyond the skeleton (another dragon's build - tools/build_dragon_warden.py -
+# turns off what it hasn't measured yet): the mouth cut and parted, its eyes and teeth, the skin's
+# red deepened, the skirt's chains, the skirt draped
+FEATURES = {"mouth": True, "eyes": True, "deepen": True, "skirt": True, "drape": True}
 # User request: its mouth opens. The lips are one skin (Meshy closed the mouth) and the head too
 # coarse for an edge to run along them, so the snout is cut through (before anything else) on the
 # plane along the line between them, level across (JAW_LIP: (y, z) at the snout's tip and at the
@@ -282,6 +290,12 @@ def thickness(obj):
     return th
 
 
+def _dense(co, th):
+    """Whether a vertex (as made) is kept denser by the decimation: the wings' thin skin, the hands."""
+    return (th < 0.016 and abs(co.x) > 0.24 and co.z > -0.12 and co.y > -0.22) \
+        or (abs(co.x) > 0.68 and co.y < -0.15 and 0.15 < co.z < 0.5)   # (their fingers close on the bail)
+
+
 def mesh():
     before = set(bpy.data.objects)
     bpy.ops.import_scene.fbx(filepath=SAGE)
@@ -311,10 +325,7 @@ def mesh():
     # The membranes kept denser: a group of the wings' thin skin.
     th = thickness(lo)
     keep = lo.vertex_groups.new(name="Membrane")
-    idx = [v.index for v in lo.data.vertices
-           if (th[v.index] < 0.016 and abs(v.co.x) > 0.24 and v.co.z > -0.12 and v.co.y > -0.22)
-           # (and the hands: their fingers close on the lantern's bail)
-           or (abs(v.co.x) > 0.68 and v.co.y < -0.15 and 0.15 < v.co.z < 0.5)]
+    idx = [v.index for v in lo.data.vertices if _dense(v.co, th[v.index])]
     keep.add([v.index for v in lo.data.vertices], 1.0, 'REPLACE')
     keep.add(idx, MEMBRANE_W, 'REPLACE')
     log("membrane and hand vertices kept denser: %d" % len(idx))
@@ -399,12 +410,14 @@ def mesh():
 
 # ------------------------------------------------------------ the skeleton
 
-def _tail_joints():
-    """TAIL_LINE resampled into TAIL_BONES bones, each TAIL_TAPER of the one before."""
-    pts = [p.copy() for p in TAIL_LINE]
+def _tail_joints(line=None, bones=None):
+    """A tail's line (TAIL_LINE) resampled into its bones (TAIL_BONES), each TAIL_TAPER of the one before."""
+    line = TAIL_LINE if line is None else line
+    TAIL_BONES_ = TAIL_BONES if bones is None else bones
+    pts = [p.copy() for p in line]
     seg = [(pts[i + 1] - pts[i]).length for i in range(len(pts) - 1)]
     total = sum(seg)
-    share = [TAIL_TAPER ** i for i in range(TAIL_BONES)]
+    share = [TAIL_TAPER ** i for i in range(TAIL_BONES_)]
     k = total / sum(share)
     out = [pts[0]]
     run = 0.0
@@ -688,6 +701,10 @@ def joints(lift):
     tj = _tail_joints()
     for i in range(TAIL_BONES):
         out["tail_%02d" % (i + 1)] = (tj[i] + up, tj[i + 1] + up, "pelvis" if i == 0 else "tail_%02d" % i)
+    if TAIL2_LINE:
+        tj = _tail_joints(TAIL2_LINE, TAIL2_BONES)
+        for i in range(TAIL2_BONES):
+            out["tail_b%02d" % (i + 1)] = (tj[i] + up, tj[i + 1] + up, "pelvis" if i == 0 else "tail_b%02d" % i)
     return out
 
 
@@ -1308,32 +1325,36 @@ def weights(body, arm, spec, thick):
         sreg_ = sleeve * ease * np.clip(1.0 - 2.0 * owned_now, 0, 1)
         put(sreg_, np.ones((n, 1)), ["upperarm_" + side])
         log("sleeve %s: %d vertices (%d wholly)" % (side, int((sreg_ > 0).sum()), int((sreg_ > 0.99).sum())))
-    # ---- the tail
-    tb = ["tail_%02d" % (i + 1) for i in range(TAIL_BONES)]
-    pts = [H[tb[0]][0]] + [H[b][1] for b in tb]
-    dt_, sg, t = _chain(P, pts)
-    # how far along it from its root (m)
-    lens = [np.linalg.norm(pts[i + 1] - pts[i]) for i in range(len(pts) - 1)]
-    cum = np.concatenate([[0], np.cumsum(lens)])
-    s_along = cum[sg] + t * np.array(lens)[sg]
+    # ---- the tail (and a second, if it has one)
     near_legs = np.full(n, 9.0)
     for nm in ("thigh_l", "thigh_r", "calf_l", "calf_r"):
         d, _ = _seg_dist(P, *H[nm])
         near_legs = np.minimum(near_legs, d - 0.07)
-    radius = np.interp(s_along, [0, 0.3, 0.6, 1.0], [0.12, 0.09, 0.06, 0.04])
-    # (its spikes are pale bone: not cloth, near its line)
-    robe = cloth & (dt_ > radius)
-    # (eased into the body - the legs', its hips' - over a few cm, so the root bends, not tears)
-    treg = np.clip((s_along - 0.05) / 0.1, 0, 1) * np.clip((radius * 1.6 - dt_) / 0.04 + 0.5, 0, 1) \
-        * np.clip((near_legs - dt_) / 0.05 + 0.5, 0, 1) * (~robe)
-    put(treg, _along(tb, sg, t, 0.4), tb)
-    log("tail: %d vertices (%d wholly)" % (int((treg > 0).sum()), int((treg > 0.99).sum())))
+
+    def weigh_tail(tb):
+        pts = [H[tb[0]][0]] + [H[b][1] for b in tb]
+        dt_, sg, t = _chain(P, pts)
+        # how far along it from its root (m)
+        lens = [np.linalg.norm(pts[i + 1] - pts[i]) for i in range(len(pts) - 1)]
+        cum = np.concatenate([[0], np.cumsum(lens)])
+        s_along = cum[sg] + t * np.array(lens)[sg]
+        radius = np.interp(s_along, [0, 0.3, 0.6, 1.0], [0.12, 0.09, 0.06, 0.04])
+        # (its spikes are pale bone: not cloth, near its line)
+        robe = cloth & (dt_ > radius)
+        # (eased into the body - the legs', its hips' - over a few cm, so the root bends, not tears)
+        treg = np.clip((s_along - 0.05) / 0.1, 0, 1) * np.clip((radius * 1.6 - dt_) / 0.04 + 0.5, 0, 1) \
+            * np.clip((near_legs - dt_) / 0.05 + 0.5, 0, 1) * (~robe)
+        put(treg, _along(tb, sg, t, 0.4), tb)
+        log("%s: %d vertices (%d wholly)" % (tb[0][:-2], int((treg > 0).sum()), int((treg > 0.99).sum())))
+    for tb in [["tail_%02d" % (i + 1) for i in range(TAIL_BONES)]] \
+            + ([["tail_b%02d" % (i + 1) for i in range(TAIL2_BONES)]] if TAIL2_LINE else []):
+        weigh_tail(tb)
     # ---- the skull, rigid (see SKULL): ahead of the neck, and its horns, all the head's
     zm = P[:, 2] - lift
     skull = np.maximum(np.clip((SKULL[0][0] - P[:, 1]) / (SKULL[0][0] - SKULL[0][1]), 0, 1)
                        * np.clip((zm - SKULL[1][0]) / (SKULL[1][1] - SKULL[1][0]), 0, 1),
                        ((zm > SKULL_HORNS) & (W[:, col["Head"]] > 0.5)).astype(float)) \
-        * (np.abs(P[:, 0]) < 0.12) * (~cloth)
+        * (np.abs(P[:, 0]) < 0.12) * (~cloth) * float(FEATURES["mouth"])
     put(skull, np.ones((n, 1)), ["Head"])
     log("skull: %d vertices the head's alone" % int((skull > 0.99).sum()))
     # ---- the jaw (see JAW_LIP)
@@ -1342,30 +1363,31 @@ def weights(body, arm, spec, thick):
     jreg = ((zm < lip - 0.0006) &(P[:, 1] < -0.33) & (zm > 0.45) & (~cloth | (P[:, 1] < JAW_CORNER))).astype(float) \
         * np.clip((JAW_WIDE - np.abs(P[:, 0])) / 0.015, 0, 1) \
         * np.clip((JAW_FADE[0][0] - P[:, 1]) / (JAW_FADE[0][0] - JAW_FADE[0][1]), 0, 1) \
-        * np.clip((zm - JAW_FADE[1][0]) / (JAW_FADE[1][1] - JAW_FADE[1][0]), 0, 1)
+        * np.clip((zm - JAW_FADE[1][0]) / (JAW_FADE[1][1] - JAW_FADE[1][0]), 0, 1) * float(FEATURES["mouth"])
     put(jreg, np.ones((n, 1)), ["jaw"])
     log("jaw: %d vertices (%d wholly)" % (int((jreg > 0).sum()), int((jreg > 0.99).sum())))
     # ---- the skirt (see SKIRT_CHAINS)
-    sang = _skirt_angle(P)
-    # (not what's already the wings', the tail's, the hands')
-    owned = W[:, [col[b] for b in names if b.startswith(("wing", "tail", "hand", "thumb", "index", "middle",
-                                                          "ring", "pinky"))]].sum(1)
-    sreg = _skirt_region(body, lift, spec, thick) * np.clip(1.0 - 2.0 * owned, 0, 1)
-    sb, ssub = [], []
-    step = 360.0 / SKIRT_CHAINS
-    for k in range(SKIRT_CHAINS):
-        bones = ["skirt_%d_%02d" % (k, i + 1) for i in range(SKIRT_BONES)]
-        pts = [H[bones[0]][0]] + [H[b][1] for b in bones]
-        _, sg, t = _chain(P, pts)
-        d = np.abs((sang - step * k + 180.0) % 360.0 - 180.0)
-        share = np.clip(1.0 - d / step, 0, 1)
-        sb += bones
-        ssub.append(share[:, None] * _along(bones, sg, t, 0.35))
-    ssub = np.concatenate(ssub, 1)
-    tot = ssub.sum(1, keepdims=True)
-    ssub = np.where(tot > 0, ssub / np.maximum(tot, 1e-9), 0.0)
-    put(sreg * (tot[:, 0] > 0), ssub, sb)
-    log("skirt: %d vertices (%d wholly)" % (int((sreg > 0).sum()), int((sreg > 0.99).sum())))
+    if FEATURES["skirt"]:
+        sang = _skirt_angle(P)
+        # (not what's already the wings', the tail's, the hands')
+        owned = W[:, [col[b] for b in names if b.startswith(("wing", "tail", "hand", "thumb", "index", "middle",
+                                                              "ring", "pinky"))]].sum(1)
+        sreg = _skirt_region(body, lift, spec, thick) * np.clip(1.0 - 2.0 * owned, 0, 1)
+        sb, ssub = [], []
+        step = 360.0 / SKIRT_CHAINS
+        for k in range(SKIRT_CHAINS):
+            bones = ["skirt_%d_%02d" % (k, i + 1) for i in range(SKIRT_BONES)]
+            pts = [H[bones[0]][0]] + [H[b][1] for b in bones]
+            _, sg, t = _chain(P, pts)
+            d = np.abs((sang - step * k + 180.0) % 360.0 - 180.0)
+            share = np.clip(1.0 - d / step, 0, 1)
+            sb += bones
+            ssub.append(share[:, None] * _along(bones, sg, t, 0.35))
+        ssub = np.concatenate(ssub, 1)
+        tot = ssub.sum(1, keepdims=True)
+        ssub = np.where(tot > 0, ssub / np.maximum(tot, 1e-9), 0.0)
+        put(sreg * (tot[:, 0] > 0), ssub, sb)
+        log("skirt: %d vertices (%d wholly)" % (int((sreg > 0).sum()), int((sreg > 0.99).sum())))
     # Where Meshy grew the membrane onto the body - onto the arm held out in front of it, into the
     # back below the wing's root (ROOT_KEEP) - the two are parted, not a face lost: each face is the
     # wing's or the body's by its vertices' shares, and the edges between a wing face and a body
@@ -1391,7 +1413,7 @@ def weights(body, arm, spec, thick):
         # (the lower jaw's: below the lips' plane, ahead of the corner - however its vertices on the
         # cut were shared)
         c = np.array(body.matrix_world @ f.calc_center_median())
-        jaws = np.mean(jaw_share[vs]) > 0.5 or (c[1] < JAW_CORNER and c[2] - lift < _lip_z(c[1])
+        jaws = FEATURES["mouth"] and (np.mean(jaw_share[vs]) > 0.5) or FEATURES["mouth"] and (c[1] < JAW_CORNER and c[2] - lift < _lip_z(c[1])
                                                  and abs(c[0]) < JAW_WIDE and c[2] - lift > 0.5)
         kind[f] = "w" if np.mean(wing_share[vs]) > 0.5 else "t" if np.mean(tail_share[vs]) > 0.5 \
             else "j" if jaws else "r" if np.mean(cloth[vs]) > 0.5 else "b"
@@ -1418,9 +1440,9 @@ def weights(body, arm, spec, thick):
     bm.verts.ensure_lookup_table()
     uvl = bm.loops.layers.uv.active
     mouth = {side: Vector(((ROOM[k][0] + ROOM[k][2]) / 2, (ROOM[k][1] + ROOM[k][3]) / 2))
-             for side, k in (("upper", "palate"), ("lower", "tongue"))}
+             for side, k in (("upper", "palate"), ("lower", "tongue"))} if FEATURES["mouth"] else {}
     caps = 0
-    for side in ("upper", "lower"):
+    for side in ("upper", "lower") if FEATURES["mouth"] else ():
         edges = []
         for e in bm.edges:
             if not e.is_boundary or not e.link_faces:
@@ -1510,7 +1532,9 @@ def weights(body, arm, spec, thick):
     # so every vertex of the snout all of whose faces are under the parted lips, or over them)
     lipd = np.abs(Pn[:, 2] - lift - _lip_z(Pn[:, 1]))
     at_lip = (np.bincount(rows)[rows] > 1) & (Pn[:, 1] < JAW_CORNER + 0.005) & (lipd < 0.002)
-    snout = (Pn[:, 1] < JAW_CORNER + 0.005) & (np.abs(Pn[:, 0]) < JAW_WIDE) & (Pn[:, 2] - lift > 0.5)
+    snout = (Pn[:, 1] < JAW_CORNER + 0.005) & (np.abs(Pn[:, 0]) < JAW_WIDE) & (Pn[:, 2] - lift > 0.5) \
+        & FEATURES["mouth"]
+    at_lip &= FEATURES["mouth"]
     jc, hc = col["jaw"], col["Head"]
     for i in np.nonzero(at_lip | snout)[0]:
         if jaw_side[i] == "j":
@@ -1604,16 +1628,22 @@ def main():
         bpy.ops.wm.save_as_mainfile(filepath=cache)
         if STAGE == "mesh":
             return
-    cut_mouth(body, lift)
-    paint_rooms(body)
+    if FEATURES["mouth"]:
+        cut_mouth(body, lift)
+    if FEATURES["mouth"] or FEATURES["eyes"]:
+        paint_rooms(body)
     spec = joints(lift)
     thick = thickness(body)
-    spec.update(skirt_joints(body, lift, spec, thick))
+    if FEATURES["skirt"]:
+        spec.update(skirt_joints(body, lift, spec, thick))
     arm = skeleton(spec)
     weights(body, arm, spec, thick)
-    drape_skirt(body, arm, lift)
-    deepen_skin(body)
-    eyes_and_teeth(body, lift)
+    if FEATURES["skirt"] and FEATURES["drape"]:
+        drape_skirt(body, arm, lift)
+    if FEATURES["deepen"]:
+        deepen_skin(body)
+    if FEATURES["eyes"]:
+        eyes_and_teeth(body, lift)
     if STAGE == "weights":
         bpy.ops.wm.save_as_mainfile(filepath=OUT + ".weights.blend")
         return
