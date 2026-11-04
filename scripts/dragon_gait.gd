@@ -18,13 +18,15 @@ extends RefCounted
 ## the same step (its feet's lead, `feet`, matched: the left foot ahead in one, ahead in the next).
 
 ## (m/s) it starts off above MOVE_ON, stops under STOP_BELOW (a moment: STOP_WAIT s); runs above
-## RUN_ABOVE when after someone, back to a walk under RUN_BELOW; pulls up from a run under RUN_HALT
+## RUN_ABOVE when after someone, back to a walk under RUN_BELOW; pulls up from a run (Run_Stop) when,
+## slowing as it is, it would be stood within HALT_LOOK s - under RUN_HALT; easing back, it walks on
 const MOVE_ON := 0.18
 const STOP_BELOW := 0.1
 const STOP_WAIT := 0.18
 const RUN_ABOVE := 1.9
 const RUN_BELOW := 1.5
 const RUN_HALT := 0.5
+const HALT_LOOK := 0.3
 ## (deg) how far off its way it has to be for each turn: under VEER it steers; under QUARTER it veers;
 ## under ROUND a quarter turn; past it right round (Turn_180, or Turn_180_L - it mirrored - to its left)
 const VEER := 22.0
@@ -56,6 +58,9 @@ var yaw := 0.0
 var _from := 0.0
 var _by := 0.0
 var _slow := 0.0
+## (m/s²) how fast it's speeding up (-: slowing), smoothed; and its speed the frame before
+var _accel := 0.0
+var _was_speed := 0.0
 var _rest := 0.0
 var _start_at := 0.0
 var _start_out := 0.0
@@ -111,6 +116,8 @@ const STOP_LAST := 0.55
 func reset(stand: String) -> void:
 	state = "idle"
 	_slow = 0.0
+	_accel = 0.0
+	_was_speed = 0.0
 	_rest = 0.0
 	_play(stand, 0.0)
 
@@ -233,6 +240,9 @@ func step(delta: float, speed: float, heading: float, gait: String, face: float,
 	var err := wrapf(heading - yaw, -PI, PI)
 	var rate := 1.0
 	_slow = _slow + delta if speed < STOP_BELOW else 0.0
+	if delta > 0.0:
+		_accel = lerpf(_accel, (speed - _was_speed) / delta, 1.0 - exp(-delta * 12.0))
+	_was_speed = speed
 	if gait.begins_with("act:") or gait == "fly":
 		var c := gait.substr(4) if gait.begins_with("act:") else stand
 		if state != "act" or (_acting != c):
@@ -254,18 +264,22 @@ func step(delta: float, speed: float, heading: float, gait: String, face: float,
 	match state:
 		"idle":
 			if speed > MOVE_ON:
-				if absf(rad_to_deg(err)) >= QUARTER:
-					_pick_turn(err)
-				elif gait == "run":
+				# (after someone it doesn't stop to turn: it wheels round as it breaks into a run)
+				if gait == "run":
 					state = "run"
 					_play("Chase", BLEND)
+				elif absf(rad_to_deg(err)) >= QUARTER:
+					_pick_turn(err)
 				else:
 					state = "start"
 					_play("Start", BLEND, _start_at)
 			else:
 				if clip != stand:
 					_play(stand, BLEND_STAND)
-				if not is_nan(face) and _rest <= 0.0:
+				if gait == "run" and not is_nan(face):
+					# (after someone, stood a moment: it wheels to them, no stepping round)
+					yaw = lerp_angle(yaw, face, 1.0 - exp(-delta * STEER_RUN))
+				elif not is_nan(face) and _rest <= 0.0:
 					var fe := wrapf(face - yaw, -PI, PI)
 					var round_clip := "Turn_180_L" if fe > 0.0 else "Turn_180"
 					if absf(rad_to_deg(fe)) > STOOD_TURN and anim.has_animation(round_clip):
@@ -303,6 +317,11 @@ func step(delta: float, speed: float, heading: float, gait: String, face: float,
 			elif not _pick_turn(err):
 				yaw = lerp_angle(yaw, heading, 1.0 - exp(-delta * STEER_WALK))
 		"turn", "pivot":
+			if gait == "run" and speed > MOVE_ON:
+				state = "run"
+				_play("Chase", BLEND)
+				anim.speed_scale = 1.0
+				return
 			var m: Dictionary = moves.get(clip, {})
 			var total := float(m.turn[-1]) if not m.is_empty() else 1.0
 			var part := clampf(_at(clip, "turn", anim.current_animation_position) / total, -0.1, 1.05) \
@@ -340,10 +359,13 @@ func step(delta: float, speed: float, heading: float, gait: String, face: float,
 		"run":
 			rate = clampf(speed / maxf(_pace("Chase"), 0.01), 0.75, 1.35)
 			yaw = lerp_angle(yaw, heading, 1.0 - exp(-delta * STEER_RUN))
-			if speed < RUN_HALT and _slow > 0.0 or (gait != "run" and speed < RUN_HALT):
+			# (pulling up short - where it'd be stood in a moment, slowing as it is - or nearly stood)
+			var soon := speed + minf(_accel, 0.0) * HALT_LOOK
+			if speed < RUN_BELOW + 0.3 and (soon < MOVE_ON or speed < RUN_HALT):
 				state = "halt"
 				_play("Run_Stop", 0.2, 0.0)
-			elif speed < RUN_BELOW or gait != "run":
+			elif speed < RUN_BELOW:
+				# (no longer after anyone, it runs on till it's slowed to a walk)
 				state = "walk"
 				_play(_walk_clip(gait), BLEND, _same_step(_walk_clip(gait)))
 		"halt":

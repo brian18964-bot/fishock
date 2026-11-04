@@ -14,6 +14,7 @@ const TESTS := [
 	"test_journey_page",
 	"test_depart_chooser",
 	"test_run_3d",
+	"test_dragon_gait",
 	"test_ghost_mist",
 	"test_load_state",
 	"test_round_fixes",
@@ -8140,6 +8141,108 @@ func test_bag_moves_at_camp() -> void:
 
 ## User request: a second look for the map - the snowy pine forest: picked for the free run, its
 ## own fish waters, the 3D world white, ice at the water's edge, snow falling.
+## User request (the dragons' moves - the user's Mixamo clips - as natural as can be: it goes about
+## on its own): moved as the game moves it (BigGhost._amble), its gait (DragonGait) starts off, walks,
+## comes to a stand, turns right round on the spot with the 2D one, runs after someone and pulls up;
+## its planted foot keeps to the ground; caught, one swipe and then it holds them, lantern up.
+func test_dragon_gait() -> void:
+	RunView3D.intro = false
+	await _fresh_game()
+	var view: RunView3D = null
+	for _i in 200:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	var bg = main.get_node("BigGhost")
+	bg.set_physics_process(false)
+	bg.mode = bg.Mode.WANDER
+	# (somewhere clear and dry for the whole walk: no water to fly over, nothing in the way)
+	var path := [[1.0, 0.0, 0.0], [6.0, 34.0, 0.0], [3.0, 0.0, 0.0], [4.0, 34.0, 180.0], [3.0, 84.0, 180.0], [2.5, 0.0, 180.0]]
+	var start := Vector2.ZERO
+	seed(3)
+	for _k in 600:
+		var cand := Vector2(randf_range(300, 3500), randf_range(300, 3500))
+		var pt := cand
+		var ok := true
+		for p in path:
+			var dir := Vector2.RIGHT.rotated(deg_to_rad(float(p[2])))
+			for i in 12:
+				pt += dir * float(p[0]) * float(p[1]) / 12.0
+				if Ripple.water_at(get_tree(), pt) != null or not Solids.is_free(get_tree(), pt, 40.0):
+					ok = false
+			for st in get_tree().get_nodes_in_group("fuel_stations"):
+				if pt.distance_to(st.global_position) < 420.0:
+					ok = false
+		if ok:
+			start = cand
+			break
+	check(start != Vector2.ZERO, "(somewhere clear to walk it)")
+	bg.global_position = start
+	player().global_position = start + Vector2(0, -260)
+	await frames(20)
+	var c: Dictionary = view._creatures.get(bg, {})
+	var gait: DragonGait = c.get("gait")
+	check(gait != null and gait.anim.has_animation("Start") and gait.anim.has_animation("Turn_180_L"),
+		"the dragon's gait, its moves the user's clips")
+	if gait == null:
+		return
+	var sk: Skeleton3D = (c.model as Node3D).find_children("*", "Skeleton3D", true, false)[0]
+	var toes := [sk.find_bone("ball_l"), sk.find_bone("ball_r")]
+	var last := []
+	var walked := []
+	var ran := []
+	for p in path:
+		bg.mode = bg.Mode.CHASE if float(p[1]) > 60.0 else bg.Mode.WANDER
+		var t := 0.0
+		while t < float(p[0]):
+			var dt := 1.0 / 60.0
+			if float(p[1]) > 0.0:
+				var far: Vector2 = bg.global_position + Vector2.RIGHT.rotated(deg_to_rad(float(p[2]))) * 2000.0
+				if float(p[1]) > 60.0:
+					bg._move_toward(far, float(p[1]), dt, false)
+				else:
+					bg._amble(far, float(p[1]), dt)
+			player().global_position = bg.global_position + Vector2(0, -260)
+			await frames(1)
+			t += dt
+			var now := []
+			for b in toes:
+				now.append(sk.global_transform * sk.get_bone_global_pose(b).origin)
+			if last.size() == 2:
+				var slow := INF
+				for i in 2:
+					var v: Vector3 = (now[i] - last[i]) / dt
+					slow = minf(slow, Vector2(v.x, v.z).length())
+				if gait.state == "walk":
+					walked.append(slow)
+				elif gait.state == "run":
+					ran.append(slow)
+			last = now
+	var seen := gait.log.map(func(e): return str(e[1]) + ":" + str(e[2]))
+	var has := func(what: String) -> bool: return seen.any(func(e): return e.begins_with(what))
+	check(has.call("start:Start") and has.call("walk:Walk"), "from a stand it starts off, then walks (%s)" % str(seen))
+	check(has.call("stop:Stop"), "it comes to a stand with its stopping steps")
+	check(has.call("pivot:Turn_180") and bg.global_position.x < start.x + 34.0 * 6.0 + 40.0,
+		"to go back the way it came it turns round where it stands, with the 2D one")
+	check(has.call("run:Chase") and (has.call("halt:Run_Stop") or has.call("stop:Stop")), "after someone it runs, and pulls up")
+	walked.sort()
+	ran.sort()
+	var w: float = walked[walked.size() / 2] if not walked.is_empty() else INF
+	var r: float = ran[ran.size() / 2] if not ran.is_empty() else INF
+	print("  dragon gait: %s; slower toe walking %.2f m/s, running %.2f" % [str(seen), w, r])
+	check(w < 0.6 and r < 1.4, "its planted foot keeps to the ground (slower toe: walking %.2f m/s, running %.2f)" % [w, r])
+	# Caught: one swipe, then it holds them - its lantern up.
+	bg.global_position = player().global_position + Vector2(6, 3)
+	bg.mode = bg.Mode.GRAB
+	await seconds(0.5)
+	check(c.clip == "Grab", "caught: a swipe (%s)" % c.clip)
+	await seconds(2.4)
+	check(c.clip == "Idle_Lamp" and gait.state == "act", "then it holds them, its lantern up (%s)" % c.clip)
+	bg.mode = bg.Mode.WANDER
+	RunView3D.intro = true
+
+
 func test_snow_theme() -> void:
 	seed(7)
 	camp().clear()
