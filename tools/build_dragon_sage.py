@@ -179,6 +179,10 @@ JAW_WIDE = 0.08
 # (user report: the throat went with the jaw, pulled into a sheet - the jaw is only what's ahead of
 # its hinge, above the throat)
 JAW_FADE = ((-0.39, -0.43), (0.545, 0.57))
+# (the snout's box, as made: its half width, its bottom and top - what's cut on the lips; and how far
+# back and how low the jaw's skin can be at all)
+SNOUT_BOX = (0.1, 0.5, 0.72)
+JAW_REACH = (-0.33, 0.45)
 # (user report: still a strip between the lips, the mouth open) Bone heat had the snout ~20% on the
 # neck - turning the head, the upper jaw lagged the lower (the jaw's, rigid); and a vertex just under
 # the lips' plane was left the head's among the jaw's. The skull is rigid now - ahead of the neck
@@ -450,7 +454,7 @@ def cut_mouth(body, lift):
     def snout(f):
         for v in f.verts:
             q = mw @ v.co
-            if not (q.y < JAW_CORNER + 0.005 and abs(q.x) < 0.1 and 0.5 + lift < q.z < 0.72 + lift):
+            if not (q.y < JAW_CORNER + 0.005 and abs(q.x) < SNOUT_BOX[0] and SNOUT_BOX[1] + lift < q.z < SNOUT_BOX[2] + lift):
                 return False
         return True
     faces = [f for f in bm.faces if snout(f)]
@@ -1360,7 +1364,7 @@ def weights(body, arm, spec, thick):
     # ---- the jaw (see JAW_LIP)
     lip = _lip_z(P[:, 1])
     # (the head's own width - not the hood round it)
-    jreg = ((zm < lip - 0.0006) &(P[:, 1] < -0.33) & (zm > 0.45) & (~cloth | (P[:, 1] < JAW_CORNER))).astype(float) \
+    jreg = ((zm < lip - 0.0006) &(P[:, 1] < JAW_REACH[0]) & (zm > JAW_REACH[1]) & (~cloth | (P[:, 1] < JAW_CORNER))).astype(float) \
         * np.clip((JAW_WIDE - np.abs(P[:, 0])) / 0.015, 0, 1) \
         * np.clip((JAW_FADE[0][0] - P[:, 1]) / (JAW_FADE[0][0] - JAW_FADE[0][1]), 0, 1) \
         * np.clip((zm - JAW_FADE[1][0]) / (JAW_FADE[1][1] - JAW_FADE[1][0]), 0, 1) * float(FEATURES["mouth"])
@@ -1414,7 +1418,7 @@ def weights(body, arm, spec, thick):
         # cut were shared)
         c = np.array(body.matrix_world @ f.calc_center_median())
         jaws = FEATURES["mouth"] and (np.mean(jaw_share[vs]) > 0.5) or FEATURES["mouth"] and (c[1] < JAW_CORNER and c[2] - lift < _lip_z(c[1])
-                                                 and abs(c[0]) < JAW_WIDE and c[2] - lift > 0.5)
+                                                 and abs(c[0]) < JAW_WIDE and c[2] - lift > SNOUT_BOX[1])
         kind[f] = "w" if np.mean(wing_share[vs]) > 0.5 else "t" if np.mean(tail_share[vs]) > 0.5 \
             else "j" if jaws else "r" if np.mean(cloth[vs]) > 0.5 else "b"
 
@@ -1532,7 +1536,7 @@ def weights(body, arm, spec, thick):
     # so every vertex of the snout all of whose faces are under the parted lips, or over them)
     lipd = np.abs(Pn[:, 2] - lift - _lip_z(Pn[:, 1]))
     at_lip = (np.bincount(rows)[rows] > 1) & (Pn[:, 1] < JAW_CORNER + 0.005) & (lipd < 0.002)
-    snout = (Pn[:, 1] < JAW_CORNER + 0.005) & (np.abs(Pn[:, 0]) < JAW_WIDE) & (Pn[:, 2] - lift > 0.5) \
+    snout = (Pn[:, 1] < JAW_CORNER + 0.005) & (np.abs(Pn[:, 0]) < JAW_WIDE) & (Pn[:, 2] - lift > SNOUT_BOX[1]) \
         & FEATURES["mouth"]
     at_lip &= FEATURES["mouth"]
     jc, hc = col["jaw"], col["Head"]

@@ -61,3 +61,30 @@ TAIL2_LINE = [(0, -0.04, 0.04), (0, 0.12, 0.0), (0, 0.22, -0.1), (0, 0.28, -0.22
               (0, 0.385, -0.45), (0, 0.395, -0.6), (0, 0.38, -0.785)]
 # (the robe's skirt: the belt's middle, x and y)
 SKIRT_CENTRE = (0.0, -0.21)
+# Its head (stage 3): the lips' line (y, z at the snout's tip and at the mouth's corner - level, the
+# snout short and the lower jaw thin), how far back it's cut and how wide; the jaw's fade into the
+# throat (y, z); the snout's box and how far back / low its jaw's skin can be; the skull rigid ahead
+# of the neck (y, z) and its horns above
+JAW_LIP = ((-0.394, 0.677), (-0.31, 0.668))
+JAW_CORNER = -0.31
+JAW_WIDE = 0.06
+JAW_FADE = ((-0.275, -0.35), (0.62, 0.64))
+SNOUT_BOX = (0.07, 0.6, 0.71)
+JAW_REACH = (-0.285, 0.6)
+SKULL = ((-0.24, -0.28), (0.64, 0.66))
+SKULL_HORNS = 0.80
+# its eyes: in its own sockets, where the first dragon's were (the user's: the dark almond under the
+# brow); red, as its lantern
+EYE = {"at": (-0.322, 0.732), "r": 0.0075, "tall": 0.42, "out": 0.4, "deep": 0.6, "slant": 15.0,
+       "look": (1.0, -0.6, 0.1)}
+EYE_SOCKET = {"across": 0.006, "along": 0.011, "deep": 0.0015, "brow": 0.0012}
+EYE_RED = ((1.0, 0.6, 0.35), (0.95, 0.14, 0.08), (0.3, 0.03, 0.02))
+EYE_GLOW_TINT = (1.0, 0.22, 0.18)
+# its teeth along its shorter snout (its lower jaw ~1 cm thick: the upper teeth shorter, so shut
+# they stay inside it)
+TEETH_Y = (-0.386, -0.318)
+TEETH_UPPER = (0.007, 0.012, 0.011, 0.010, 0.009, 0.008, 0.008, 0.007)
+TEETH_LOWER = (0.006, 0.010, 0.009, 0.008, 0.008, 0.007, 0.006)
+# its skin black (measured: its red 0.49 bright, 0.59 saturated): brightness, saturation (from, to,
+# spread kept)
+SKIN_TONE = {"v": (0.486, 0.13, 0.5), "s": (0.586, 0.35, 0.6)}
