@@ -162,6 +162,11 @@ TAIL_TAPER = 0.92   # each tail bone this much of the one before
 # (tail_b01..), weighted as the first is. None here.
 TAIL2_LINE = []
 TAIL2_BONES = 8
+# (user request, the black dragon: its two tails one size, both behind it - not one swept out to
+# its side, the other hanging: the main tail shortened to the second's length - `thick` its width
+# kept - and both posed as the second hangs, each swung `spread` degrees out to its own side, then
+# made their rest. None: as made)
+TAILS_EVEN = None
 # What this build makes beyond the skeleton (another dragon's build - tools/build_dragon_warden.py -
 # turns off what it hasn't measured yet): the mouth cut and parted, its eyes and teeth, the skin's
 # red deepened, the skirt's chains, the skirt draped
@@ -744,6 +749,74 @@ def skeleton(spec):
     log("skeleton: %d bones" % len(data.bones))
     return arm
 
+
+
+def even_tails(body, arm):
+    """The two tails posed alike behind it (TAILS_EVEN), the body skinned to them, that pose its rest."""
+    from mathutils import Matrix
+    spread = math.radians(TAILS_EVEN["spread"])
+    thick = TAILS_EVEN["thick"]
+
+    def turned(line, ang):
+        R = Matrix.Rotation(ang, 3, 'Z')
+        return [line[0] + R @ (p - line[0]) for p in line]
+    # (its right is -x: the main tail, swept out to its right as made, stays on its right)
+    chains = (("tail_%02d", TAIL_BONES, turned(TAIL2_LINE, spread)),
+              ("tail_b%02d", TAIL2_BONES, turned(TAIL2_LINE, -spread)))
+    # (a tail's skin past its root its own: bone heat gave the main tail's, wound round the leg, a
+    # share of the leg's - left behind as the tail swung, it tore out in a flap)
+    me = body.data
+    groups = {g.index: g.name for g in body.vertex_groups}
+    for fmt, n, line in chains:
+        own = {fmt % (i + 1) for i in range(n)}
+        root = arm.data.bones[fmt % 1].head_local
+        for v in me.vertices:
+            tw = sum(g.weight for g in v.groups if groups[g.group] in own)
+            if tw < 0.5 or (body.matrix_world @ v.co - root).length < TAILS_EVEN["root"]:
+                continue
+            for g in list(v.groups):
+                if groups[g.group] not in own:
+                    body.vertex_groups[g.group].remove([v.index])
+            for g in v.groups:
+                g.weight /= tw
+    select([arm], active=arm)
+    bpy.ops.object.mode_set(mode='POSE')
+    for pb in arm.pose.bones:
+        pb.matrix_basis.identity()
+    bpy.context.view_layer.update()
+    for fmt, n, line in chains:
+        names = [fmt % (i + 1) for i in range(n)]
+        bones = [arm.data.bones[b] for b in names]
+        js = _tail_joints(line, n)
+        root = bones[0].head_local.copy()
+        js = [root + (j - js[0]) for j in js]
+        was = sum((b.tail_local - b.head_local).length for b in bones)
+        for i, b in enumerate(bones):
+            pb = arm.pose.bones[b.name]
+            rest = b.matrix_local
+            d0 = (b.tail_local - b.head_local)
+            d1 = js[i + 1] - js[i]
+            q = d0.normalized().rotation_difference(d1.normalized())
+            rot = q.to_matrix() @ rest.to_3x3().normalized()
+            scale = Matrix.Diagonal((thick, d1.length / d0.length, thick))
+            pb.matrix = Matrix.Translation(js[i]) @ (rot @ scale).to_4x4()
+            bpy.context.view_layer.update()
+        log("tail %s: %.2f m -> %.2f m, swung %+.0f deg, behind it" % (
+            fmt % 1, was, sum((js[i + 1] - js[i]).length for i in range(n)), math.degrees(spread if fmt == "tail_%02d" else -spread)))
+    bpy.ops.object.mode_set(mode='OBJECT')
+    # the body skinned to that pose; the pose made the skeleton's rest
+    mod = next(m for m in body.modifiers if m.type == 'ARMATURE')
+    name = mod.name
+    select([body], active=body)
+    bpy.ops.object.modifier_apply(modifier=name)
+    m = body.modifiers.new(name, 'ARMATURE')
+    m.object = arm
+    while body.modifiers[0] != m:
+        bpy.ops.object.modifier_move_up(modifier=name)
+    select([arm], active=arm)
+    bpy.ops.object.mode_set(mode='POSE')
+    bpy.ops.pose.armature_apply(selected=False)
+    bpy.ops.object.mode_set(mode='OBJECT')
 
 
 # ------------------------------------------------------------ the weights
@@ -1650,6 +1723,8 @@ def main():
         spec.update(skirt_joints(body, lift, spec, thick))
     arm = skeleton(spec)
     weights(body, arm, spec, thick)
+    if TAILS_EVEN and TAIL2_LINE:
+        even_tails(body, arm)
     if FEATURES["skirt"] and FEATURES["drape"]:
         drape_skirt(body, arm, lift)
     if FEATURES["deepen"]:

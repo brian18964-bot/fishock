@@ -59,6 +59,11 @@ TAIL_LINE = [(0, -0.02, 0.05), (-0.13, 0.17, 0.0), (-0.3, 0.22, -0.15), (-0.39, 
              (-0.47, 0.09, -0.45), (-0.62, -0.01, -0.565), (-0.78, -0.085, -0.63), (-0.96, -0.165, -0.745)]
 TAIL2_LINE = [(0, -0.04, 0.04), (0, 0.12, 0.0), (0, 0.22, -0.1), (0, 0.28, -0.22), (0, 0.34, -0.33),
               (0, 0.385, -0.45), (0, 0.395, -0.6), (0, 0.38, -0.785)]
+# (user request: the main tail swept to one side, one big and one small, looked wrong - both one
+# size, both behind it: the main one shortened to the second's length, its width near kept, both
+# posed as the second hangs, each swung this far out to its side; past `root` from its root a
+# tail's skin all its own)
+TAILS_EVEN = {"spread": 28.0, "thick": 0.95, "root": 0.12}
 # (the robe's skirt: the belt's middle, x and y)
 SKIRT_CENTRE = (0.0, -0.21)
 # Its head (stage 3): the lips' line (y, z at the snout's tip and at the mouth's corner - level, the

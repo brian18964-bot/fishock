@@ -36,6 +36,8 @@ B.WING = {f: [_v(p) for p in pts] for f, pts in W.WING.items()}
 B.TAIL_LINE = [_v(p) for p in W.TAIL_LINE]
 B.TAIL2_LINE = [_v(p) for p in W.TAIL2_LINE]
 B.TAIL2_BONES = 8
+# (user request: its two tails one size, both behind it - dragon_warden_profile.TAILS_EVEN)
+B.TAILS_EVEN = W.TAILS_EVEN
 # (its wings' fingertips end at z ~0.0; the arms held down in front of it, the membrane behind)
 B.WING_LOW = -0.05
 B.BACK_Y = -0.12
