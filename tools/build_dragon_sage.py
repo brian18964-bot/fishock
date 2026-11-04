@@ -220,6 +220,9 @@ SHIP_GLOW = 1024
 # skin's brightness and saturation are moved onto the first one's (SKIN_TONE: (from, to, spread
 # kept)), by how plainly red each texel is - the bone, the robe, the patches painted in left be.
 SKIN_TONE = {"v": (0.697, 0.486, 1.0), "s": (0.454, 0.586, 1.3)}
+# (another dragon's robe lightened - tools/build_dragon_warden.py: its cloth, dark and grey, this much
+# brighter; none here)
+ROBE_LIGHTEN = 1.0
 # TEETH: along each lip from its front to its back (y), each tooth's length (m) front to back on each
 # side, above and below, how thick at its root (share of its length); rooted under the lip's skin
 # (TOOTH_ROOT m in from its edge, above / below the plane), tilted back (share of its length)
@@ -966,7 +969,12 @@ def deepen_skin(body):
     s2 = np.clip(sb + (sat - sa) * sk, 0.0, 1.0)
     f = (c - lo[..., None]) / span[..., None]                # each channel's place between the two
     deep = v2[..., None] * (1.0 - s2[..., None] * (1.0 - f))
+    robe = (sat < 0.22) & (hi < 0.45) & (share <= 0.0)
+    for u0, v0, u1, v1 in ROOM.values():
+        robe[int(v0 * h) - 2:int(v1 * h) + 2, int(u0 * w) - 2:int(u1 * w) + 2] = False
     px[:, :, :3] = c + share[..., None] * (deep - c)
+    if ROBE_LIGHTEN != 1.0:
+        px[:, :, :3] = np.where(robe[..., None], np.clip(c * ROBE_LIGHTEN, 0.0, 1.0), px[:, :, :3])
     img.pixels.foreach_set(px.ravel())
     img.update()
     log("skin deepened: %.0f%% of the picture" % (100 * float((share > 0.5).mean())))

@@ -1890,6 +1890,13 @@ const DRAGON_ROOM := 1.2
 const TAIL_DODGE := 0.9
 const TAIL_CHECK := [0.5, 1.0]
 const DRAGON_LAMP_GREEN := Color(0.55, 1.0, 0.6)
+## User request: the snowy map's big ghost is the black two-tailed dragon (dragon_black.glb -
+## tools/build_dragon_warden.py: the first dragon, rigged as the red one is, two tails, red eyes),
+## the forest lake's the red one; the same ghost, the same behaviour - only its model, a size
+## DRAGON_BLACK_SIZE times the red one's, and its lantern red (DRAGON_LAMP_RED, its light too).
+const DRAGON_BLACK := "dragon_black"
+const DRAGON_BLACK_SIZE := 1.15
+const DRAGON_LAMP_RED := Color(1.0, 0.36, 0.28)
 ## (user request: the glass's glow too bright, gone white - soft, the green
 ## of its light kept)
 const DRAGON_LAMP_GLOW := 0.4
@@ -1937,12 +1944,13 @@ func _add_creature(n: Node) -> void:
 	var holder := Node3D.new()
 	holder.name = "Creature_" + kind
 	add_child(holder)
-	var model: Node3D = (load(CREATURE_DIR + kind + ".glb") as PackedScene).instantiate()
+	var black := kind == "dragon" and _snow and ResourceLoader.exists(CREATURE_DIR + DRAGON_BLACK + ".glb")
+	var model: Node3D = (load(CREATURE_DIR + (DRAGON_BLACK if black else kind) + ".glb") as PackedScene).instantiate()
 	holder.add_child(model)
 	var box := _aabb(model)
 	var spec: Array = CREATURES[kind]
 	var along := box.size.y if spec[1] == "h" else maxf(box.size.x, box.size.z)
-	var k := float(spec[0]) / maxf(along, 0.001)
+	var k := float(spec[0]) * (DRAGON_BLACK_SIZE if black else 1.0) / maxf(along, 0.001)
 	model.scale = Vector3.ONE * k
 	model.position = Vector3(-(box.position.x + box.size.x * 0.5) * k, -box.position.y * k + float(spec[2]),
 		-(box.position.z + box.size.z * 0.5) * k)
@@ -1962,7 +1970,15 @@ func _add_creature(n: Node) -> void:
 				anim.get_animation(a).loop_mode = Animation.LOOP_LINEAR
 	var at := (n as Node2D).global_position
 	_creatures[n] = {"node": holder, "model": model, "anim": anim, "clip": "", "kind": kind, "yaw": 0.0,
-		"last": at, "size": float(spec[0]), "lift": float(spec[2]), "time": _rng.randf() * 10.0}
+		"last": at, "size": float(spec[0]) * (DRAGON_BLACK_SIZE if black else 1.0), "lift": float(spec[2]),
+		"time": _rng.randf() * 10.0}
+	if kind == "dragon":
+		_creatures[n].black = black
+		_creatures[n].lamp_color = DRAGON_LAMP_RED if black else DRAGON_LAMP_GREEN
+		# (the 2D ghost's lamp light - the 3D one drawn from it - the same colour)
+		var light := n.get_node_or_null("LampLight") as PointLight2D
+		if light != null and black:
+			light.color = DRAGON_LAMP_RED
 	if kind == "dragon":
 		_dragon_gear(_creatures[n], model)
 	if kind == "ghost" and ghost_mist:
@@ -2309,11 +2325,11 @@ func _dragon_gear(c: Dictionary, model: Node3D) -> void:
 	for mi in lamp.find_children("*", "MeshInstance3D", true, false):
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	# (user request: green only where it burns, not the whole lantern)
-	lamp_glow(lamp, DRAGON_LAMP_GREEN).set_shader_parameter("glow", DRAGON_LAMP_GLOW)
+	lamp_glow(lamp, c.get("lamp_color", DRAGON_LAMP_GREEN)).set_shader_parameter("glow", DRAGON_LAMP_GLOW)
 	var glow := OmniLight3D.new()
 	glow.name = "Flame"
 	glow.light_cull_mask = ~LAMP_LAYER
-	glow.light_color = DRAGON_LAMP_GREEN
+	glow.light_color = c.get("lamp_color", DRAGON_LAMP_GREEN)
 	glow.light_energy = 0.6
 	glow.omni_range = 0.9
 	glow.position = Vector3(0, 0.13, 0)
@@ -2625,7 +2641,7 @@ func _sync_creatures(delta: float) -> void:
 			# (asleep its lantern's out, as the 2D one's)
 			var awake := int(n.get("mode")) != BigGhost.Mode.ASLEEP
 			(c.lamp as Node).get_node("Flame").visible = awake
-			lamp_glow(c.lamp, DRAGON_LAMP_GREEN).set_shader_parameter("glow", DRAGON_LAMP_GLOW if awake else 0.0)
+			lamp_glow(c.lamp, c.get("lamp_color", DRAGON_LAMP_GREEN)).set_shader_parameter("glow", DRAGON_LAMP_GLOW if awake else 0.0)
 		if not on:
 			continue
 		c.time += delta

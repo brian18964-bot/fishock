@@ -88,3 +88,5 @@ TEETH_LOWER = (0.006, 0.010, 0.009, 0.008, 0.008, 0.007, 0.006)
 # its skin black (measured: its red 0.49 bright, 0.59 saturated): brightness, saturation (from, to,
 # spread kept)
 SKIN_TONE = {"v": (0.486, 0.13, 0.5), "s": (0.586, 0.35, 0.6)}
+# its robe lighter (user request): its dark grey cloth this much brighter
+ROBE_LIGHTEN = 1.8

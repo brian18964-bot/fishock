@@ -6465,6 +6465,8 @@ func test_run_intro_and_eye_guide() -> void:
 	await seconds(1.5)
 	var c: Dictionary = view._creatures.get(bg, {})
 	check(c.get("kind") == "dragon" and c.has("lamp") and c.anim != null, "the big ghost shown as the dragon, lantern and all")
+	check(c.get("black") == false and c.get("lamp_color") == RunView3D.DRAGON_LAMP_GREEN and (c.lamp as Node).get_node("Flame").light_color == RunView3D.DRAGON_LAMP_GREEN,
+		"by the forest lake the red dragon, its lantern green")
 	var rig: DragonRig = c.get("rig")
 	check(c.get("clip") == "Idle_Lamp" and (c.node as Node3D).find_children("*", "EarTailSway", true, false).size() == 1
 		and rig != null and rig.spread == 0.0, "standing, the traveller near: the lantern held up, its tail swaying, its wings folded")
@@ -8092,6 +8094,20 @@ func test_snow_theme() -> void:
 		if e.is_empty() or (e.get("l", []) as Array).size() < 4 or (e.get("r", []) as Array).size() < 4 or int(e.row) >= SnowTracks.ROWS:
 			all_soles = false
 	check(all_soles and load(SnowTracks.SOLES_PNG) != null, "every character's soles are baked from its model")
+	# User request: the snowy map's big ghost the black two-tailed dragon - its red eyes, a red
+	# lantern (its light too), 15% bigger than the red one; the same ghost, the same behaviour.
+	var bg = main.get_node_or_null("BigGhost")
+	if bg != null:
+		var dc: Dictionary = view._creatures.get(bg, {})
+		var drig: DragonRig = dc.get("rig")
+		check(dc.get("kind") == "dragon" and dc.get("black") == true and drig != null and drig._tail2.size() >= 6,
+			"the snow's big ghost: the black dragon, both its tails swinging")
+		check(is_equal_approx(float(dc.get("size", 0.0)), float(RunView3D.CREATURES.dragon[0]) * RunView3D.DRAGON_BLACK_SIZE),
+			"the black dragon 15%% bigger than the red one (%.2f)" % float(dc.get("size", 0.0)))
+		var flame := (dc.lamp as Node).get_node("Flame") as OmniLight3D if dc.has("lamp") else null
+		var lamp2d := bg.get_node("LampLight") as PointLight2D
+		check(dc.get("lamp_color") == RunView3D.DRAGON_LAMP_RED and flame != null and flame.light_color == RunView3D.DRAGON_LAMP_RED
+			and lamp2d.color == RunView3D.DRAGON_LAMP_RED, "its lantern red, and its light")
 	await seconds(1.0)
 	check(tracks.made == 0, "none standing still")
 	var p := player()

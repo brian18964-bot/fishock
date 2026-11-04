@@ -43,7 +43,7 @@ B.BACK_Y = -0.12
 B.SKIRT_CENTRE = W.SKIRT_CENTRE
 # (stage 3: its head - the mouth cut and parted, its eyes and teeth, its skin black)
 for _k in ("JAW_LIP", "JAW_CORNER", "JAW_WIDE", "JAW_FADE", "SNOUT_BOX", "JAW_REACH", "SKULL", "SKULL_HORNS",
-           "EYE", "EYE_SOCKET", "EYE_GLOW_TINT", "TEETH_Y", "TEETH_UPPER", "TEETH_LOWER", "SKIN_TONE"):
+           "EYE", "EYE_SOCKET", "EYE_GLOW_TINT", "TEETH_Y", "TEETH_UPPER", "TEETH_LOWER", "SKIN_TONE", "ROBE_LIGHTEN"):
     setattr(B, _k, getattr(W, _k))
 B.EYE_GREEN = W.EYE_RED
 # (its colour picture has less room free: smaller patches)
