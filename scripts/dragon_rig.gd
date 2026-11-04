@@ -190,6 +190,17 @@ const TAIL_IDLE_TIME := Vector2(3.1, 1.7)
 const STRIDE_SWAY := 7.0
 const TAIL_WAVE := 0.05
 const TAIL_RADIUS := Vector2(0.07, 0.025)
+## A second tail (the black dragon's two - tools/build_dragon_warden.py: tail_b01..; user request: each
+## swings of its own, never through the other): its own chain on its own springs, hanging heavier
+## (TAIL2_*), its wave out of step with the first's (TAIL2_IDLE_TIME), its stride's sway the other
+## way; both kept apart - each the other's width off it (and off the legs).
+const TAIL2_FOLLOW := Vector2(0.26, 0.05)
+const TAIL2_KEEP := 0.9
+const TAIL2_SAG := 3.2
+const TAIL2_BEND := 0.6
+const TAIL2_IDLE := Vector2(0.07, 0.03)
+const TAIL2_IDLE_TIME := Vector2(3.7, 2.3)
+const TAIL2_RADIUS := Vector2(0.06, 0.022)
 ## The tail swung aside (rad, + to its left) - out of a tree's way (RunView3D sets it): the most at
 ## its root, less down it.
 var tail_turn := 0.0
@@ -315,6 +326,8 @@ var _wings: Array = []
 var _chest := -1
 var _tail: Array[int] = []
 var _tail_len: Array[float] = []
+var _tail2: Array[int] = []
+var _tail2_c := {}
 ## (each chain swinging free in the world - see `_chain_step`)
 var _tail_c := {}
 var _arm_c := {}
@@ -680,7 +693,38 @@ func _tail_swing(sk: Skeleton3D, dt: float) -> void:
 			pitch += _crouched * CROUCH_TAIL * (1.4 if k == 0 else 0.8)
 		_turn_bone(sk, _tail[k], yaw, Vector3.UP)
 		_turn_bone(sk, _tail[k], pitch, Vector3.RIGHT)
-	_chain_step(sk, _tail_c, _chain_want(sk, _tail_c), dt, _leg_capsules(sk))
+	var legs := _leg_capsules(sk)
+	if _tail2.is_empty():
+		_chain_step(sk, _tail_c, _chain_want(sk, _tail_c), dt, legs)
+		return
+	# Two tails: the first kept off the second as it last was, the second off the first as it is now.
+	var scale := sk.global_transform.basis.get_scale().x
+	_chain_step(sk, _tail_c, _chain_want(sk, _tail_c), dt, legs + _chain_capsules(_tail2_c, TAIL2_RADIUS, scale))
+	var m := _tail2.size()
+	for k in m:
+		var t := float(k) / maxf(m - 1, 1)
+		var share := 1.0 - t * 0.7
+		var yaw := tail_turn * (0.15 if k < 3 else 0.04) \
+			+ lerpf(TAIL2_IDLE.x * 0.4, TAIL2_IDLE.x, t) * sin(TAU * _time / TAIL2_IDLE_TIME.x - t * 2.2 + 1.9) \
+			- deg_to_rad(STRIDE_SWAY) * pace * sin(TAU * stride - t * 1.6) * share * 0.3
+		var pitch: float = lerpf(TAIL2_IDLE.y * 0.3, TAIL2_IDLE.y, t) * sin(TAU * _time / TAIL2_IDLE_TIME.y - t * 1.7 + 2.4) \
+			+ flown * TAIL_WAVE * stroke.call(0.2 + 0.05 * k)
+		if k < 2:
+			pitch += _crouched * CROUCH_TAIL * (1.4 if k == 0 else 0.8)
+		_turn_bone(sk, _tail2[k], yaw, Vector3.UP)
+		_turn_bone(sk, _tail2[k], pitch, Vector3.RIGHT)
+	_chain_step(sk, _tail2_c, _chain_want(sk, _tail2_c), dt, legs + _chain_capsules(_tail_c, TAIL_RADIUS, scale))
+
+
+## A chain's joints as it last swung, as capsules [from, to, its width there] - another chain kept
+## that far off it (its own width added).
+func _chain_capsules(c: Dictionary, radius: Vector2, scale: float) -> Array:
+	var p: PackedVector3Array = c.get("p", PackedVector3Array())
+	var out: Array = []
+	for k in p.size() - 1:
+		var t := float(k) / maxf(p.size() - 2, 1)
+		out.append([p[k], p[k + 1], lerpf(radius.x, radius.y, t) * scale])
+	return out
 
 
 # ------------------------------------------------------------------ chains swinging free
@@ -781,7 +825,7 @@ func _chain_step(sk: Skeleton3D, c: Dictionary, want: PackedVector3Array, dt: fl
 					var ab: Vector3 = (leg[1] as Vector3) - a
 					var on := a + ab * clampf((q - a).dot(ab) / maxf(ab.length_squared(), 0.000001), 0.0, 1.0)
 					var off := q - on
-					var space := r + room * scale
+					var space := r + (float(leg[2]) if leg.size() > 2 else room * scale)
 					if off.length() < space:
 						q = on + (off.normalized() if off.length() > 0.0001 else Vector3.BACK) * space
 				q.y = maxf(q.y, ground + r)
@@ -1247,6 +1291,21 @@ func _build(sk: Skeleton3D) -> void:
 			_tail_len.append(_tail_len[i - 1] * 0.9 if i > 0 else 0.1)
 	_tail_c = {"bones": _tail, "len": _tail_len, "follow": TAIL_FOLLOW, "keep": TAIL_KEEP, "sag": TAIL_SAG,
 		"bend": TAIL_BEND, "radius": TAIL_RADIUS, "room": 0.07}
+	# (a second tail, if it has one: tail_b01..)
+	k = 1
+	var len2: Array[float] = []
+	while sk.find_bone("tail_b%02d" % k) >= 0:
+		_tail2.append(sk.find_bone("tail_b%02d" % k))
+		k += 1
+	for i in _tail2.size():
+		var here := sk.get_bone_global_rest(_tail2[i]).origin
+		if i + 1 < _tail2.size():
+			len2.append(here.distance_to(sk.get_bone_global_rest(_tail2[i + 1]).origin))
+		else:
+			len2.append(len2[i - 1] * 0.9 if i > 0 else 0.1)
+	if not _tail2.is_empty():
+		_tail2_c = {"bones": _tail2, "len": len2, "follow": TAIL2_FOLLOW, "keep": TAIL2_KEEP, "sag": TAIL2_SAG,
+			"bend": TAIL2_BEND, "radius": TAIL2_RADIUS, "room": 0.07}
 	# the fist: each finger bone's curl about its own axis across the palm (the palm faces down at
 	# rest - the arm held out)
 	for f in FIST:
