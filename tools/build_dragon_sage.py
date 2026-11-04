@@ -60,6 +60,7 @@ from mathutils.bvhtree import BVHTree
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import retarget  # noqa: E402
+import dragon_moves  # noqa: E402
 
 _ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
 SAGE, OLD, OUT = _ARGS[:3]
@@ -78,6 +79,28 @@ SHIP_DETAIL = 1024
 CLIPS = ("Idle", "Idle_Lamp", "Walk", "Chase", "Grab", "Eat")
 LOOPING = ("Idle", "Idle_Lamp", "Walk", "Chase")
 SAMPLES = 24
+# User request: its moves the user's Mixamo clips (tools/dragon_moves.py; MOVES_DIR, kept out of the
+# repo - without it the old clips stay): starting off and stopping, its walk with the lantern at its
+# side, a prowl, turning as it walks (a quarter turn each way, a veer each way - the left one
+# mirrored), turning right round (either way: the right one mirrored), its run after you and pulling up from it, a swipe as it catches
+# you. Each dragon its own walk, prowl and run (the black one's: tools/build_dragon_warden.py).
+MOVES_DIR = os.environ.get("MOVES_DIR", "")
+MOVES_SHARED = {
+    "Start": {"file": "Start_Walking", "kind": "walk"},
+    "Stop": {"file": "Stop_Walking", "kind": "walk"},
+    "Turn_L": {"file": "Left_Turn_W_Briefcase", "kind": "turn"},
+    "Turn_R": {"file": "Right_Turn_W__Briefcase", "kind": "turn"},
+    "Veer_L": {"file": "Walking_Left_Turn", "kind": "turn"},
+    "Veer_R": {"file": "Walking_Left_Turn", "kind": "turn", "mirror": True},
+    "Turn_180": {"file": "Walking_Turn_180", "kind": "turn"},
+    "Turn_180_L": {"file": "Walking_Turn_180", "kind": "turn", "mirror": True},
+    "Run_Stop": {"file": "Run_To_Stop", "kind": "run"},
+    "Grab": {"file": "Stable_Sword_Outward_Slash", "kind": "act"},
+}
+MOVES = {**MOVES_SHARED,
+         "Walk": {"file": "Walk_With_Briefcase", "kind": "walk", "loop": True},
+         "Prowl": {"file": "Walking", "kind": "walk", "loop": True},
+         "Chase": {"file": "Running", "kind": "run", "loop": True}}
 ARM_AIM = ("upperarm_l", "lowerarm_l", "hand_l", "upperarm_r", "lowerarm_r", "hand_r")
 
 
@@ -1737,6 +1760,8 @@ def carry(arm, src):
     mapping = [b.name for b in arm.data.bones
                if b.name in src.data.bones and not b.name.startswith(("wing", "tail")) and b.name != "root"]
     for game in CLIPS:
+        if MOVES_DIR and game in MOVES:
+            continue
         loop = game in LOOPING
         clip = retarget.Clip(src, game, mapping, SAMPLES if loop else SAMPLES + 1, loop=loop, ref="rest")
         src_hips = (src.matrix_world @ src.data.bones["pelvis"].head_local).z
@@ -1817,6 +1842,10 @@ def main():
     for o in src.children:
         o.hide_render = True
     clips = carry(arm, src)
+    if MOVES_DIR:
+        moved, meta = dragon_moves.carry(arm, MOVES_DIR, MOVES, log)
+        clips.update(moved)
+        dragon_moves.write(meta, OUT + ".moves.json")
     for o in [src] + list(src.children):
         bpy.data.objects.remove(o, do_unlink=True)
     ad = arm.animation_data or arm.animation_data_create()

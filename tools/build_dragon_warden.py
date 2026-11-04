@@ -50,6 +50,11 @@ for _k in ("JAW_LIP", "JAW_CORNER", "JAW_WIDE", "JAW_FADE", "SNOUT_BOX", "JAW_RE
 B.EYE_GREEN = W.EYE_RED
 # (its colour picture has less room free: smaller patches)
 B.ROOMS = {"eye": 48, "teeth": 16, "palate": 16, "tongue": 16}
+# (its own walk - a swagger, its arms swinging -, prowl and run: user request, each dragon its own)
+B.MOVES = {**B.MOVES_SHARED,
+           "Walk": {"file": "Swagger_Walk", "kind": "walk", "loop": True},
+           "Prowl": {"file": "Standard_Walk", "kind": "walk", "loop": True},
+           "Chase": {"file": "Standard_Run", "kind": "run", "loop": True}}
 B.FEATURES = {"mouth": True, "eyes": True, "deepen": True, "skirt": True, "drape": False}
 
 

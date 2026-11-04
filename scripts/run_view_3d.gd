@@ -1982,6 +1982,10 @@ func _add_creature(n: Node) -> void:
 			light.color = DRAGON_LAMP_RED
 	if kind == "dragon":
 		_dragon_gear(_creatures[n], model)
+		# (user request: its own moves - the user's clips - picked, timed and turned by its gait)
+		var mv: Dictionary = DragonMoves.MOVES.get(DRAGON_BLACK if black else "dragon", {})
+		if anim != null and not mv.is_empty() and anim.has_animation("Start"):
+			_creatures[n].gait = DragonGait.new(anim, mv, model.scale.x, 0.0)
 	if kind == "ghost" and ghost_mist:
 		_mist_ghost(_creatures[n], model)
 
@@ -2651,6 +2655,10 @@ func _sync_creatures(delta: float) -> void:
 			continue
 		var at := node.global_position
 		var vel := (at - (c.last as Vector2)) / maxf(delta, 0.001)
+		# (put somewhere else, not walked there - as the picture snaps to it past 3 m)
+		var jumped := (at - (c.last as Vector2)).length() > 3.0 * PX
+		if jumped:
+			vel = Vector2.ZERO
 		if n is CharacterBody2D:
 			vel = (n as CharacterBody2D).velocity
 		c.last = at
@@ -2755,6 +2763,34 @@ func _sync_creatures(delta: float) -> void:
 					# (over the water: off its feet - no walking in the air)
 					clip = "Idle"
 					rate = 1.0
+				var gait: DragonGait = c.get("gait")
+				if gait != null and jumped:
+					gait.reset("Idle_Lamp" if near else "Idle")
+				if gait != null:
+					# (its gait picks the move, its pace and which way it faces - DragonGait)
+					var how := "walk"
+					match mode:
+						BigGhost.Mode.GRAB:
+							how = "act:Grab"
+						BigGhost.Mode.EAT:
+							how = "act:Eat" if speed < 0.3 else "run"
+						BigGhost.Mode.CHASE:
+							how = "run"
+						BigGhost.Mode.SEARCH, BigGhost.Mode.SUSPICIOUS:
+							how = "prowl"
+					if flying:
+						how = "fly"
+					var face := NAN
+					if player != null and (player.global_position - at).length() > 1.0 and (near or mode != BigGhost.Mode.WANDER):
+						var to_p := player.global_position - at
+						face = atan2(to_p.x, to_p.y)
+					var heading := atan2(vel.x, vel.y) if vel.length() > 0.5 else gait.yaw
+					gait.step(delta, speed, heading, how, face, "Idle_Lamp" if near else "Idle")
+					c.yaw = gait.yaw
+					holder.rotation.y = c.yaw
+					clip = gait.clip
+					c.clip = clip
+					rate = anim.speed_scale
 				if rig != null:
 					c.air = rig.airborne
 					# (user request: lured, it crouches to eat the fish)
@@ -2762,11 +2798,12 @@ func _sync_creatures(delta: float) -> void:
 					rig.hurry = clampf((speed - 0.3) / 2.2, 0.0, 1.0)
 					# (the arm up on the move when someone's near - stood, the
 					# clip holds it up; holding someone, the hands are busy)
-					rig.raise = 1.0 if near and clip in ["Walk", "Chase"] else 0.0
+					var on_foot := clip in ["Walk", "Chase"] or (gait != null and gait.state in ["start", "walk", "turn", "run", "stop", "halt"])
+					rig.raise = 1.0 if near and on_foot else 0.0
 					var model_yaw := Basis(Vector3.UP, float(c.yaw))
 					var v3 := Vector3(vel.x, 0.0, vel.y) / PX
 					rig.motion = model_yaw.inverse() * v3
-					rig.pace = clampf(speed / 1.2, 0.0, 1.0) if clip in ["Walk", "Chase"] else 0.0
+					rig.pace = clampf(speed / 1.2, 0.0, 1.0) if on_foot else 0.0
 					if anim.current_animation != "" and anim.has_animation(anim.current_animation):
 						rig.stride = anim.current_animation_position / maxf(anim.get_animation(anim.current_animation).length, 0.01)
 					# (user request: its head alive - it looks at the traveller near it, or that it's after)
