@@ -771,6 +771,7 @@ def even_tails(body, arm):
     groups = {g.index: g.name for g in body.vertex_groups}
     mw = body.matrix_world
     P = np.array([(mw @ v.co)[:] for v in me.vertices])
+    cloth = _cloth(body)
     legs = np.full(len(P), 9.0)
     for nm in ("thigh_l", "thigh_r", "calf_l", "calf_r"):
         b = arm.data.bones[nm]
@@ -784,13 +785,17 @@ def even_tails(body, arm):
         dt_, sg, t = _chain(P, pts)
         lens = [np.linalg.norm(pts[i + 1] - pts[i]) for i in range(len(pts) - 1)]
         s_along = np.concatenate([[0], np.cumsum(lens)])[sg] + t * np.array(lens)[sg]
-        radius = np.interp(s_along, [0, 0.3, 0.6, 1.0], [0.12, 0.09, 0.06, 0.04]) * TAILS_EVEN["girth"]
+        radius = np.interp(s_along, *TAILS_EVEN["girths"]) * TAILS_EVEN["girth"]
         take = (s_along > TAILS_EVEN["root"]) & (dt_ < radius) & (dt_ / radius < legs / TAILS_EVEN["leg"])
         Wt = _along(names, sg, t, 0.4)
         taken = 0
         for i in np.nonzero(take)[0]:
             v = me.vertices[int(i)]
             if sum(g.weight for g in v.groups if groups[g.group] in own) > 0.99:
+                continue
+            # (the robe's cloth hanging by it - by its colour - stays the robe's: the tail's skin
+            # bone heat gave the skirt's chains comes back)
+            if cloth[i] and dt_[i] > radius[i] / TAILS_EVEN["girth"]:
                 continue
             for g in list(v.groups):
                 body.vertex_groups[g.group].remove([v.index])
@@ -802,13 +807,19 @@ def even_tails(body, arm):
         root = arm.data.bones[fmt % 1].head_local
         for v in me.vertices:
             tw = sum(g.weight for g in v.groups if groups[g.group] in own)
-            if tw < 0.5 or (body.matrix_world @ v.co - root).length < TAILS_EVEN["root"]:
+            if tw <= 0.0 or (body.matrix_world @ v.co - root).length < TAILS_EVEN["root"]:
+                continue
+            # (wholly the tail's, or none of it: the leg's skin, the robe's, stay where they are)
+            keep_tail = tw >= 0.5
+            rest = 1.0 - tw
+            if not keep_tail and rest <= 1e-4:
                 continue
             for g in list(v.groups):
-                if groups[g.group] not in own:
+                if (groups[g.group] in own) != keep_tail:
                     body.vertex_groups[g.group].remove([v.index])
             for g in v.groups:
-                g.weight /= tw
+                g.weight /= (tw if keep_tail else rest)
+    before = np.array([(mw @ v.co)[:] for v in me.vertices])
     select([arm], active=arm)
     bpy.ops.object.mode_set(mode='POSE')
     for pb in arm.pose.bones:
@@ -843,6 +854,44 @@ def even_tails(body, arm):
     m.object = arm
     while body.modifiers[0] != m:
         bpy.ops.object.modifier_move_up(modifier=name)
+    # (where the tail was grown onto the leg, the robe, the other tail: the skin between them, torn
+    # long as they parted, cut away; each side's opening closed)
+    after = np.array([(mw @ v.co)[:] for v in me.vertices])
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.verts.ensure_lookup_table()
+    torn = []
+    for f in bm.faces:
+        vs = [v.index for v in f.verts]
+        worst = 0.0
+        for i in range(len(vs)):
+            a, b = vs[i], vs[(i + 1) % len(vs)]
+            was = np.linalg.norm(before[a] - before[b])
+            worst = max(worst, np.linalg.norm(after[a] - after[b]) / max(was, 1e-6))
+        if worst > TAILS_EVEN["torn"]:
+            torn.append(f)
+    open_before = {e.index for e in bm.edges if e.is_boundary}
+    uv = bm.loops.layers.uv.active
+    kept_uv = {}
+    for f in bm.faces:
+        if f in torn:
+            continue
+        for lp in f.loops:
+            kept_uv.setdefault(lp.vert.index, lp[uv].uv.copy())
+    bmesh.ops.delete(bm, geom=torn, context='FACES_ONLY')
+    bm.edges.ensure_lookup_table()
+    opened = [e for e in bm.edges if e.is_boundary and e.index not in open_before]
+    made = bmesh.ops.holes_fill(bm, edges=opened, sides=0)["faces"]
+    for f in made:
+        for lp in f.loops:
+            if lp.vert.index in kept_uv:
+                lp[uv].uv = kept_uv[lp.vert.index]
+    loose = [v for v in bm.verts if not v.link_faces]
+    bmesh.ops.delete(bm, geom=loose, context='VERTS')
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    log("tails parted: %d torn faces cut, %d openings closed (%d faces)" % (len(torn), len(opened), len(made)))
     select([arm], active=arm)
     bpy.ops.object.mode_set(mode='POSE')
     bpy.ops.pose.armature_apply(selected=False)
