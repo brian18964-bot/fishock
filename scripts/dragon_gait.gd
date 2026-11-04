@@ -27,6 +27,8 @@ const RUN_ABOVE := 1.9
 const RUN_BELOW := 1.5
 const RUN_HALT := 0.5
 const HALT_LOOK := 0.3
+## (s) how long under RUN_BELOW before it's walking - its slowing measured meanwhile, to pull up instead
+const RUN_SETTLE := 0.12
 ## (deg) how far off its way it has to be for each turn: under VEER it steers; under QUARTER it veers;
 ## under ROUND a quarter turn; past it right round (Turn_180, or Turn_180_L - it mirrored - to its left)
 const VEER := 22.0
@@ -61,6 +63,8 @@ var _slow := 0.0
 ## (m/s²) how fast it's speeding up (-: slowing), smoothed; and its speed the frame before
 var _accel := 0.0
 var _was_speed := 0.0
+## (s) how long it's been running under RUN_BELOW
+var _below := 0.0
 var _rest := 0.0
 var _start_at := 0.0
 var _start_out := 0.0
@@ -261,6 +265,8 @@ func step(delta: float, speed: float, heading: float, gait: String, face: float,
 		state = "idle"
 		_acting = ""
 		_play(stand, BLEND_STAND)
+	if state != "run":
+		_below = 0.0
 	match state:
 		"idle":
 			if speed > MOVE_ON:
@@ -361,10 +367,11 @@ func step(delta: float, speed: float, heading: float, gait: String, face: float,
 			yaw = lerp_angle(yaw, heading, 1.0 - exp(-delta * STEER_RUN))
 			# (pulling up short - where it'd be stood in a moment, slowing as it is - or nearly stood)
 			var soon := speed + minf(_accel, 0.0) * HALT_LOOK
+			_below = _below + delta if speed < RUN_BELOW else 0.0
 			if speed < RUN_BELOW + 0.3 and (soon < MOVE_ON or speed < RUN_HALT):
 				state = "halt"
 				_play("Run_Stop", 0.2, 0.0)
-			elif speed < RUN_BELOW:
+			elif speed < RUN_BELOW and _below > RUN_SETTLE:
 				# (no longer after anyone, it runs on till it's slowed to a walk)
 				state = "walk"
 				_play(_walk_clip(gait), BLEND, _same_step(_walk_clip(gait)))

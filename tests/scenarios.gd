@@ -8227,7 +8227,7 @@ func test_dragon_gait() -> void:
 	check(has.call("stop:Stop"), "it comes to a stand with its stopping steps")
 	check(has.call("pivot:Turn_180") and bg.global_position.x < start.x + 34.0 * 6.0 + 40.0,
 		"to go back the way it came it turns round where it stands, with the 2D one")
-	check(has.call("run:Chase") and (has.call("halt:Run_Stop") or has.call("stop:Stop")), "after someone it runs, and pulls up")
+	check(has.call("run:Chase") and has.call("halt:Run_Stop"), "after someone it runs, and pulls up short (Run_Stop)")
 	walked.sort()
 	ran.sort()
 	var w: float = walked[walked.size() / 2] if not walked.is_empty() else INF
