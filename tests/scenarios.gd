@@ -6477,6 +6477,24 @@ func test_run_intro_and_eye_guide() -> void:
 	# (user request: carried for real - its bail through the closed fist, not floating at the wrist)
 	var carried: Dictionary = await _dragon_seen(rig, c)
 	check(carried.holds, "the lantern hung from its closed fist by the bail - %s" % carried.text)
+	# (user request: its thumb closed over its fingers too - not stuck out beside the fist)
+	var thumb_off := (rig.thumb_seen[0] as Vector3).distance_to(rig.thumb_seen[1])
+	var thumb_tip := (rig.thumb_seen[2] as Vector3).distance_to(rig.thumb_seen[3])
+	check(thumb_off < 0.01 and thumb_tip < 0.03,
+		"its thumb laid across its curled fingers (knuckle %.3f m off, tip %.3f)" % [thumb_off, thumb_tip])
+	# (user request: its head alive - it looks at the traveller near it: its face turned to them)
+	var dsk: Skeleton3D = rig.get_skeleton()
+	check(rig.look_at.is_finite() and rig.look_at.distance_to(RunView3D.to3(player().global_position, RunView3D.DRAGON_LOOK_AT)) < 0.01,
+		"near the traveller: it looks at them")
+	await dsk.skeleton_updated
+	var hb := dsk.find_bone("Head")
+	var hg := dsk.get_bone_global_pose(hb)
+	var face := (hg.basis.orthonormalized() * dsk.get_bone_global_rest(hb).basis.orthonormalized().inverse()) * Vector3.BACK
+	var to_them := dsk.global_transform.affine_inverse() * rig.look_at - hg.origin
+	var off_them := Vector2(face.x, face.z).angle_to(Vector2(to_them.x, to_them.z))
+	check(absf(off_them) < 0.35, "its face turned to the traveller (%.2f rad off)" % off_them)
+	# (user request: its jaw too - breathing, only just parted)
+	check(rig._jaw >= 0 and rig._jaw_st.x < 0.15, "standing: its jaws only just parted, breathing (%.2f)" % rig._jaw_st.x)
 	var glow: OmniLight3D = view._lights.get(bg.lamp_light)
 	var flame: Vector3 = (c.lamp as Node3D).get_node("Flame").global_position
 	check(glow != null and glow.global_position.distance_to(flame) < RunView3D.DRAGON_LIGHT_OFF + 0.01
@@ -6495,6 +6513,12 @@ func test_run_intro_and_eye_guide() -> void:
 	await seconds(1.2)
 	check(rig.display == 1.0 and rig._kind > 0.9 and rig._stage[3] > 0.95 and rig._shown > 0.5,
 		"its claim: its wings spread wide (open %.2f, shown %.2f)" % [rig._stage[3], rig._shown])
+	# (user request: its mouth opens - claiming them, it roars; its lips parted clean, nothing torn)
+	await dsk.skeleton_updated
+	var jaw_open := rad_to_deg(dsk.get_bone_pose_rotation(rig._jaw).angle_to(dsk.get_bone_rest(rig._jaw).basis.get_rotation_quaternion()))
+	check(jaw_open > 15.0, "its claim: its jaws wide in a roar (%.0f deg)" % jaw_open)
+	var tear_roar := await _dragon_tear(rig)
+	check(tear_roar < 0.2, "roaring: its mouth open, none of its skin torn (worst %.2f m over)" % tear_roar)
 	bg.claiming = false
 	# (user request: chasing on land, its wings stay folded)
 	bg.mode = bg.Mode.CHASE
@@ -6640,11 +6664,12 @@ func test_run_intro_and_eye_guide() -> void:
 	var tear := await _dragon_tear(rig)
 	check(tear < 0.2, "flying: none of its skin torn out of shape (worst %.2f m over)" % tear)
 	# (the tail: a chain swung free, but whole - its joints as far apart as its bones are long)
-	var chain_ok := rig._tail_p.size() == rig._tail.size() and rig._tail.size() >= 8
-	for i in rig._tail_p.size() - 1:
-		var gap := rig._tail_p[i].distance_to(rig._tail_p[i + 1])
+	var tail_p: PackedVector3Array = rig._tail_c.get("p", PackedVector3Array())
+	var chain_ok := tail_p.size() == rig._tail.size() and rig._tail.size() >= 8
+	for i in tail_p.size() - 1:
+		var gap := tail_p[i].distance_to(tail_p[i + 1])
 		var link := rig._tail_len[i + 1] * (c.model as Node3D).global_basis.get_scale().x
-		chain_ok = chain_ok and rig._tail_p[i].is_finite() and absf(gap - link) < link * 0.35 + 0.02
+		chain_ok = chain_ok and tail_p[i].is_finite() and absf(gap - link) < link * 0.35 + 0.02
 	check(chain_ok, "its tail a whole chain of %d, swinging free" % rig._tail.size())
 	var up: float = (c.shown as Vector3).y - RunView3D.WATER_Y
 	check(c.fly == 1.0 and rig.fly == 1.0 and up > RunView3D.DRAGON_FLY_LIFT - 0.1 and c.clip == "Idle",
@@ -6655,6 +6680,24 @@ func test_run_intro_and_eye_guide() -> void:
 	await seconds(2.0)
 	check(c.fly == 0.0 and absf((c.shown as Vector3).y - view.ground_y(start)) < 0.05,
 		"back on land: on its feet, the wings folding (fly %.2f)" % float(c.fly))
+	# User request: its robe flows - walking, its skirt swings, stood it only stirs; its free arm and
+	# skirt chains swinging free, but whole, none of its skin torn.
+	var calm := rig.skirt_swing
+	var skirt_most := 0.0
+	var away := (start - wet).normalized()
+	for _i in 80:
+		bg.global_position += away * BigGhost.WANDER_SPEED / 60.0
+		await frames(1)
+		skirt_most = maxf(skirt_most, rig.skirt_swing)
+	check(calm < deg_to_rad(4.0) and skirt_most > deg_to_rad(5.0),
+		"its skirt: stirring stood (%.1f deg), swinging walking (%.1f deg)" % [rad_to_deg(calm), rad_to_deg(skirt_most)])
+	var whole := rig._skirt.size() == 8 and (rig._arm_c.get("p", PackedVector3Array()) as PackedVector3Array).size() == 3
+	for chain in rig._skirt + [rig._arm_c]:
+		for q in (chain.get("p", PackedVector3Array()) as PackedVector3Array):
+			whole = whole and q.is_finite()
+	check(whole, "its eight skirt chains and its free arm swinging, whole")
+	var tear_walk := await _dragon_tear(rig)
+	check(tear_walk < 0.2, "walking: its skirt swinging, none of its skin torn (worst %.2f m over)" % tear_walk)
 	# User request: lured by a fish, it crouches down to eat it.
 	var bait: DroppedFish = load("res://scenes/dropped_fish.tscn").instantiate()
 	main.add_child(bait)

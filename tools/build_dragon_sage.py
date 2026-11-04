@@ -91,6 +91,8 @@ TRUNK = {
     "spine_03": (V3(0, -0.309, 0.327), V3(0, -0.28, 0.479), "spine_02"),
     "neck_01": (V3(0, -0.28, 0.479), V3(0, -0.263, 0.59), "spine_03"),
     "Head": (V3(0, -0.263, 0.59), V3(0, -0.30, 0.80), "neck_01"),
+    # the lower jaw: from its hinge behind the mouth's corner to the chin (see JAW)
+    "jaw": (V3(0, -0.392, 0.616), V3(0, -0.512, 0.592), "Head"),
 }
 SIDE = {
     "clavicle": (V3(0.107, -0.28, 0.443), V3(0.261, -0.28, 0.37), "spine_03"),
@@ -151,6 +153,31 @@ WING_SOFT = 0.08
 # root (wholly within the first, eased off by the second), the rest of that seam parted
 ROOT_KEEP = (0.12, 0.2)
 TAIL_TAPER = 0.92   # each tail bone this much of the one before
+# User request: its mouth opens. The lips are one skin (Meshy closed the mouth) and the head too
+# coarse for an edge to run along them, so the snout is cut through (before anything else) on the
+# plane along the line between them, level across (JAW_LIP: (y, z) at the snout's tip and at the
+# mouth's corner - measured off the head side-on), as far back as the corner (JAW_CORNER) and parted
+# there, the lower jaw on its own bone below it, fading into the throat behind (JAW_FADE: y, and
+# z where the neck begins); each lip's edge closed by a dark palate / tongue going in, so the open
+# mouth shows a dark maw, not the inside of the head.
+JAW_LIP = ((-0.512, 0.600), (-0.42, 0.625))
+JAW_CORNER = -0.415
+JAW_WIDE = 0.08
+JAW_FADE = ((-0.34, -0.43), (0.53, 0.57))
+# User request: the robe flows. Its skirt hangs on SKIRT_CHAINS chains of SKIRT_BONES bones round
+# the hips (front, front-left, ... - joints measured off the robe itself, from its belt, SKIRT_TOP,
+# down to near its hem), swung by DragonRig as the tail is; each skirt vertex shared between the two
+# chains nearest round it and along its chain, eased in from the belt over SKIRT_EASE (m).
+SKIRT_CHAINS = 8
+SKIRT_BONES = 3
+SKIRT_TOP = 0.04
+SKIRT_EASE = 0.12
+SKIRT_CENTRE = (0.0, -0.34)
+# (m) thin enough to be its strands (wholly ... not at all); off the legs' bones (never nearer -
+# their flesh; wholly beyond - the front panel, however thick)
+SKIRT_THIN = (0.025, 0.045)
+SKIRT_LEG = (0.06, 0.13)
+SKIRT_CLEAR = 0.12
 # (m from the tail's root) what Meshy grew onto the tail's underside - the robe, the skin between
 # the legs - is parted from it further out than this: the tail swings free of it (crouched, that
 # goes with the legs)
@@ -324,6 +351,134 @@ def _tail_joints():
     return out
 
 
+def _lip_z(y):
+    """The lip line's height (z, as made) at `y` (see JAW_LIP)."""
+    (y0, z0), (y1, z1) = JAW_LIP
+    return z0 + (np.asarray(y) - y0) * (z1 - z0) / (y1 - y0)
+
+
+def cut_mouth(body, lift):
+    """The snout cut through on the lips' plane (see JAW_LIP): an edge along each lip."""
+    me = body.data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    mw = body.matrix_world
+    inv = mw.inverted()
+
+    def snout(f):
+        for v in f.verts:
+            q = mw @ v.co
+            if not (q.y < JAW_CORNER + 0.005 and abs(q.x) < 0.1 and 0.5 + lift < q.z < 0.72 + lift):
+                return False
+        return True
+    faces = [f for f in bm.faces if snout(f)]
+    geom = faces + list({e for f in faces for e in f.edges}) + list({v for f in faces for v in f.verts})
+    (y0, z0), (y1, z1) = JAW_LIP
+    along = Vector((0.0, y1 - y0, z1 - z0)).normalized()
+    no = Vector((1.0, 0.0, 0.0)).cross(along).normalized()
+    if no.z < 0:
+        no = -no
+    before = len(bm.verts)
+    bmesh.ops.bisect_plane(bm, geom=geom, dist=0.0005, plane_co=inv @ Vector((0.0, y0, z0 + lift)),
+                           plane_no=(inv.to_3x3() @ no).normalized())
+    log("mouth: the snout cut on its lips (%d faces, %d new vertices)" % (len(faces), len(bm.verts) - before))
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+
+
+def _skirt_angle(P):
+    """Each point's angle round the hips (deg: 0 ahead, +90 its left)."""
+    return np.degrees(np.arctan2(P[:, 0] - SKIRT_CENTRE[0], -(P[:, 1] - SKIRT_CENTRE[1])))
+
+
+def _skirt_region(body, lift, spec, thick):
+    """Per vertex 0..1: how much of it is the robe's skirt - below its belt, thin (its hanging
+    strands, a cm or two) or well away from the legs (its front panel), never the legs' own flesh;
+    eased in from the belt, and smoothed over the skin so it fades, not steps, into the body."""
+    me = body.data
+    P = np.array([tuple(body.matrix_world @ v.co) for v in me.vertices])
+    zm = P[:, 2] - lift
+    dl = np.full(len(P), 9.0)
+    df = np.full(len(P), 9.0)
+    for part in ("thigh", "calf", "foot", "ball"):
+        for side in ("l", "r"):
+            h, t, _ = spec["%s_%s" % (part, side)]
+            d, _ = _seg_dist(P, np.array(h), np.array(t))
+            dl = np.minimum(dl, d)
+            if part in ("foot", "ball"):
+                df = np.minimum(df, d)
+    thin = np.clip((SKIRT_THIN[1] - thick) / (SKIRT_THIN[1] - SKIRT_THIN[0]), 0, 1)
+    far = np.clip((dl - SKIRT_LEG[1]) / 0.04, 0, 1) * (zm > -0.65)
+    r = np.maximum(thin, far) * (zm < SKIRT_TOP)
+    ed = np.zeros(len(me.edges) * 2, int)
+    me.edges.foreach_get("vertices", ed)
+    ed = ed.reshape(-1, 2)
+    deg = np.bincount(ed.ravel(), minlength=len(P)).astype(float)
+    for _ in range(4):
+        acc = np.zeros(len(P))
+        np.add.at(acc, ed[:, 0], r[ed[:, 1]])
+        np.add.at(acc, ed[:, 1], r[ed[:, 0]])
+        r = 0.5 * r + 0.5 * acc / np.maximum(deg, 1)
+    r *= np.clip((SKIRT_TOP - zm) / SKIRT_EASE, 0, 1)
+    r *= np.clip((dl - SKIRT_LEG[0]) / 0.05, 0, 1)
+    # (nor the feet's claws - thin too, past their bones' ends)
+    r *= np.clip((df - 0.10) / 0.04, 0, 1)
+    return r
+
+
+def skirt_joints(body, lift, spec, thick):
+    """{name: (head, tail, parent)} for the skirt's chains, measured off the robe."""
+    P = np.array([tuple(body.matrix_world @ v.co) for v in body.data.vertices])
+    P[:, 2] -= lift
+    reg = _skirt_region(body, lift, spec, thick)
+    tb = ["tail_%02d" % (i + 1) for i in range(TAIL_BONES)]
+    tpts = [np.array(spec[tb[0]][0])] + [np.array(spec[b][1]) for b in tb]
+    Pw = P.copy()
+    Pw[:, 2] += lift
+    dt_, _, _ = _chain(Pw, tpts)
+    r_all = np.hypot(P[:, 0] - SKIRT_CENTRE[0], P[:, 1] - SKIRT_CENTRE[1])
+    ang_all = _skirt_angle(P)
+    # (its strands - not the folded wings' tips hanging beside them, nor the tail)
+    strand = (reg > 0.5) & (dt_ > 0.14) & (r_all < 0.5)
+    belt = np.abs(P[:, 2] - SKIRT_TOP) < 0.03
+    out = {}
+    up = Vector((0, 0, lift))
+    for k in range(SKIRT_CHAINS):
+        a = 360.0 * k / SKIRT_CHAINS
+        d = (ang_all - a + 180.0) % 360.0 - 180.0
+        inside = np.abs(d) < 0.6 * 360.0 / SKIRT_CHAINS
+        S, r = P[inside & strand], r_all[inside & strand]
+        bottom = float(np.clip(np.percentile(S[:, 2], 6), -0.62, -0.25))
+        # (its radius straight from the belt - the waist's own - to the hem: the strands' own
+        # scatter doesn't kink it)
+        top_r = float(np.median(r_all[inside & belt & (r_all < 0.4)]))
+        low = S[:, 2] < bottom + 0.12
+        low_r = float(np.median(r[low] if low.sum() > 3 else r))
+        rr = math.radians(a)
+        out_dir = np.array([math.sin(rr), -math.cos(rr), 0.0])
+        pts = []
+        last = 0.0
+        for i in range(SKIRT_BONES + 1):
+            f = i / SKIRT_BONES
+            z = SKIRT_TOP + (bottom - SKIRT_TOP) * f
+            # (never in again below where it's been pushed out: it hangs, flaring)
+            rad = max((top_r + (low_r - top_r) * f) * 0.92, last)
+            # (and clear of the legs as they stand - they swing into it, not start inside it)
+            while rad < 0.6:
+                q = np.array([SKIRT_CENTRE[0], SKIRT_CENTRE[1], z + lift]) + out_dir * rad
+                if min(float(_seg_dist(q[None], np.array(spec[nm][0]), np.array(spec[nm][1]))[0][0])
+                       for nm in ("thigh_l", "thigh_r", "calf_l", "calf_r")) >= SKIRT_CLEAR:
+                    break
+                rad += 0.01
+            last = rad
+            pts.append(Vector((SKIRT_CENTRE[0] + rad * math.sin(rr), SKIRT_CENTRE[1] - rad * math.cos(rr), z)) + up)
+        for i in range(SKIRT_BONES):
+            name = "skirt_%d_%02d" % (k, i + 1)
+            out[name] = (pts[i], pts[i + 1], "pelvis" if i == 0 else "skirt_%d_%02d" % (k, i))
+    return out
+
+
 def joints(lift):
     """{name: (head, tail, parent)}, stood on the ground."""
     up = Vector((0, 0, lift))
@@ -430,6 +585,20 @@ def _along(bones, seg, t, blend):
     return W
 
 
+def _dark_uv(body):
+    """A place in the colour picture that's near black all round (the mouth's inside)."""
+    img = next(n.image for n in body.data.materials[0].node_tree.nodes
+               if n.type == 'TEX_IMAGE' and n.image and n.image.name == "DragonGhost_Colour")
+    w, h = img.size
+    px = np.empty(w * h * 4, np.float32)
+    img.pixels.foreach_get(px)
+    lum = px.reshape(h, w, 4)[:, :, :3].mean(2)
+    k = 16
+    blocks = lum[:h // k * k, :w // k * k].reshape(h // k, k, w // k, k).max((1, 3))
+    by, bx = np.unravel_index(np.argmin(blocks), blocks.shape)
+    return ((bx + 0.5) * k / w, (by + 0.5) * k / h)
+
+
 def _cloth(body):
     """Per vertex: whether it's the robe's cloth (dark, grey: its colour picture)."""
     me = body.data
@@ -451,9 +620,9 @@ def _cloth(body):
     return (mx < 0.5) & ((mx - mn) < 0.2 * mx + 0.035)
 
 
-def weights(body, arm, spec):
+def weights(body, arm, spec, thick):
     """Bone heat for the body; its own for the wings, the hands and the tail (see the top)."""
-    own = ("wing_", "tail_", "thumb_", "index_", "middle_", "ring_", "pinky_")
+    own = ("wing_", "tail_", "thumb_", "index_", "middle_", "ring_", "pinky_", "jaw", "skirt_")
     for b in arm.data.bones:
         b.use_deform = not b.name.startswith(own) and b.name != "root"
     select([body, arm], active=arm)
@@ -478,7 +647,6 @@ def weights(body, arm, spec):
     W[s > 0] /= s[s > 0][:, None]
     P = np.array([tuple(body.matrix_world @ v.co) for v in me.vertices])
     cloth = _cloth(body)
-    thick = thickness(body)
     lift = float(body["lift"])
     H = {k: (np.array(v[0]), np.array(v[1])) for k, v in spec.items()}
     # the body as capsules (bone, radius): how near a point is to the body's own flesh
@@ -631,6 +799,37 @@ def weights(body, arm, spec):
         * np.clip((near_legs - dt_) / 0.05 + 0.5, 0, 1) * (~robe)
     put(treg, _along(tb, sg, t, 0.4), tb)
     log("tail: %d vertices (%d wholly)" % (int((treg > 0).sum()), int((treg > 0.99).sum())))
+    # ---- the jaw (see JAW_LIP)
+    zm = P[:, 2] - lift
+    lip = _lip_z(P[:, 1])
+    # (the head's own width - not the hood round it)
+    jreg = ((zm < lip - 0.001) & (P[:, 1] < -0.33) & (zm > 0.45) & ~cloth).astype(float) \
+        * np.clip((JAW_WIDE - np.abs(P[:, 0])) / 0.015, 0, 1) \
+        * np.clip((JAW_FADE[0][0] - P[:, 1]) / (JAW_FADE[0][0] - JAW_FADE[0][1]), 0, 1) \
+        * np.clip((zm - JAW_FADE[1][0]) / (JAW_FADE[1][1] - JAW_FADE[1][0]), 0, 1)
+    put(jreg, np.ones((n, 1)), ["jaw"])
+    log("jaw: %d vertices (%d wholly)" % (int((jreg > 0).sum()), int((jreg > 0.99).sum())))
+    # ---- the skirt (see SKIRT_CHAINS)
+    sang = _skirt_angle(P)
+    # (not what's already the wings', the tail's, the hands')
+    owned = W[:, [col[b] for b in names if b.startswith(("wing", "tail", "hand", "thumb", "index", "middle",
+                                                          "ring", "pinky"))]].sum(1)
+    sreg = _skirt_region(body, lift, spec, thick) * np.clip(1.0 - 2.0 * owned, 0, 1)
+    sb, ssub = [], []
+    step = 360.0 / SKIRT_CHAINS
+    for k in range(SKIRT_CHAINS):
+        bones = ["skirt_%d_%02d" % (k, i + 1) for i in range(SKIRT_BONES)]
+        pts = [H[bones[0]][0]] + [H[b][1] for b in bones]
+        _, sg, t = _chain(P, pts)
+        d = np.abs((sang - step * k + 180.0) % 360.0 - 180.0)
+        share = np.clip(1.0 - d / step, 0, 1)
+        sb += bones
+        ssub.append(share[:, None] * _along(bones, sg, t, 0.35))
+    ssub = np.concatenate(ssub, 1)
+    tot = ssub.sum(1, keepdims=True)
+    ssub = np.where(tot > 0, ssub / np.maximum(tot, 1e-9), 0.0)
+    put(sreg * (tot[:, 0] > 0), ssub, sb)
+    log("skirt: %d vertices (%d wholly)" % (int((sreg > 0).sum()), int((sreg > 0.99).sum())))
     # Where Meshy grew the membrane onto the body - onto the arm held out in front of it, into the
     # back below the wing's root (ROOT_KEEP) - the two are parted, not a face lost: each face is the
     # wing's or the body's by its vertices' shares, and the edges between a wing face and a body
@@ -649,11 +848,17 @@ def weights(body, arm, spec):
     orig = bm.verts.layers.int.new("orig")
     for v in bm.verts:
         v[orig] = v.index
+    jaw_share = W[:, col["jaw"]]
     kind = {}
     for f in bm.faces:
         vs = [v.index for v in f.verts]
+        # (the lower jaw's: below the lips' plane, ahead of the corner - however its vertices on the
+        # cut were shared)
+        c = np.array(body.matrix_world @ f.calc_center_median())
+        jaws = np.mean(jaw_share[vs]) > 0.5 or (c[1] < JAW_CORNER and c[2] - lift < _lip_z(c[1])
+                                                 and abs(c[0]) < JAW_WIDE and c[2] - lift > 0.5)
         kind[f] = "w" if np.mean(wing_share[vs]) > 0.5 else "t" if np.mean(tail_share[vs]) > 0.5 \
-            else "r" if np.mean(cloth[vs]) > 0.5 else "b"
+            else "j" if jaws else "r" if np.mean(cloth[vs]) > 0.5 else "b"
 
     def mid(e):
         m = (np.array(e.verts[0].co) + np.array(e.verts[1].co)) * 0.5
@@ -667,14 +872,56 @@ def weights(body, arm, spec):
             return min(np.linalg.norm(mid(e) - r) for r in roots) >= ROOT_KEEP[0]
         if "t" in ks and len(ks) == 2:
             return np.linalg.norm(mid(e) - tail_root) >= TAIL_KEEP
+        if "j" in ks and len(ks) == 2:
+            q = mid(e)
+            return q[1] < JAW_CORNER and abs(q[2] - lift - _lip_z(q[1])) < 0.002
         return False
     seam = [e for e in bm.edges if parted(e)]
     bmesh.ops.split_edges(bm, edges=seam)
+    # (the mouth's lips, parted: each edge closed in by a dark fan - palate above, tongue below)
+    bm.verts.ensure_lookup_table()
+    uvl = bm.loops.layers.uv.active
+    dark = _dark_uv(body)
+    caps = 0
+    for side in ("upper", "lower"):
+        edges = []
+        for e in bm.edges:
+            if not e.is_boundary or not e.link_faces:
+                continue
+            q = mid(e)
+            if q[1] > JAW_CORNER + 0.005 or abs(q[2] - lift - _lip_z(q[1])) > 0.002:
+                continue
+            if (kind.get(e.link_faces[0]) == "j") == (side == "lower"):
+                edges.append(e)
+        if not edges:
+            continue
+        vs = {v for e in edges for v in e.verts}
+        c = sum((v.co for v in vs), Vector()) / len(vs)
+        inward = body.matrix_world.inverted().to_3x3() @ Vector((0.0, 0.02, 0.01 if side == "upper" else -0.008))
+        centre = bm.verts.new(c + inward)
+        centre[orig] = -1 if side == "upper" else -2
+        for e in edges:
+            a, b = e.verts
+            f_ = e.link_faces[0]
+            # (wound against the lip's own face, so it faces into the mouth)
+            loop = next(l for l in f_.loops if l.edge == e)
+            first, second = (b, a) if loop.vert == a else (a, b)
+            try:
+                nf = bm.faces.new((first, second, centre))
+            except ValueError:
+                continue
+            for l in nf.loops:
+                l[uvl].uv = dark
+            nf.material_index = f_.material_index
+            kind[nf] = "j" if side == "lower" else "b"
+            caps += 1
     bm.verts.ensure_lookup_table()
     rows = np.array([v[orig] for v in bm.verts])
     side_of = []
+    jaw_side = []
     for v in bm.verts:
         ks = {kind.get(f, "") for f in v.link_faces}
+        jaw_side.append("j" if ks == {"j"} else "h" if ks and "j" not in ks else "")
         # (the body's side: anything not the wing's - for the tail's seam, the tail's or the robe's)
         side_of.append("w" if ks == {"w"} else "b" if ks and "w" not in ks and "t" not in ks
                        else "t" if ks == {"t"} else "")
@@ -682,9 +929,13 @@ def weights(body, arm, spec):
     bm.to_mesh(me)
     bm.free()
     me.update()
-    W = W[rows]
+    upper_w = np.zeros(W.shape[1]); upper_w[col["Head"]] = 1.0
+    lower_w = np.zeros(W.shape[1]); lower_w[col["jaw"]] = 1.0
+    rows = np.where(rows == -1, n, np.where(rows == -2, n + 1, rows))
+    W = np.concatenate([W, upper_w[None], lower_w[None]], 0)[rows]
     split = len(rows) - n
     n = len(rows)
+    log("mouth: %d faces closing its lips" % caps)
     # (each copy on its own side's bones - and away from the roots, any vertex all of whose faces
     # are one side's: what it had of them - or, had it none, its neighbours' on that side)
     Pn = np.array([tuple(body.matrix_world @ v.co) for v in me.vertices])
@@ -718,8 +969,22 @@ def weights(body, arm, spec):
         W[i, ~keep] = 0.0
         if W[i].sum() < 1e-6:
             W[i] = before[i]
+    # (the lips' copies: the lower one the jaw's - as its fade has it - the upper one the head's)
+    lipd = np.abs(Pn[:, 2] - lift - _lip_z(Pn[:, 1]))
+    at_lip = (np.bincount(rows)[rows] > 1) & (Pn[:, 1] < JAW_CORNER + 0.005) & (lipd < 0.002)
+    jc, hc = col["jaw"], col["Head"]
+    for i in np.nonzero(at_lip)[0]:
+        if jaw_side[i] == "j":
+            f = float(np.clip((JAW_FADE[0][0] - Pn[i, 1]) / (JAW_FADE[0][0] - JAW_FADE[0][1]), 0, 1))
+            W[i] = 0.0
+            W[i, jc], W[i, hc] = f, 1.0 - f
+        elif jaw_side[i] == "h":
+            W[i, jc] = 0.0
+            if W[i].sum() < 1e-6:
+                W[i, hc] = 1.0
     s_ = W.sum(1)
     W[s_ > 0] /= s_[s_ > 0][:, None]
+    log("lips parted: %d vertices" % int(at_lip.sum()))
     log("membrane parted from the body: %d edges split, %d vertices doubled" % (len(seam), split))
     # at most four bones each, adding up to one
     order = np.argsort(-W, 1)[:, :4]
@@ -799,9 +1064,12 @@ def main():
         bpy.ops.wm.save_as_mainfile(filepath=cache)
         if STAGE == "mesh":
             return
+    cut_mouth(body, lift)
     spec = joints(lift)
+    thick = thickness(body)
+    spec.update(skirt_joints(body, lift, spec, thick))
     arm = skeleton(spec)
-    weights(body, arm, spec)
+    weights(body, arm, spec, thick)
     if STAGE == "weights":
         bpy.ops.wm.save_as_mainfile(filepath=OUT + ".weights.blend")
         return

@@ -2,9 +2,11 @@ class_name DragonRig
 extends SkeletonModifier3D
 
 ## The dragon's own motion, laid over whatever clip plays (tools/build_dragon_sage.py: the third
-## make - each wing on fifteen bones, the tail on ten, each hand's five fingers on three). Its wings
-## fold, open, beat and fly; its tail swings free, a chain hanging on springs; its right hand closes
-## on the lantern's bail; flying, its body leans in and its limbs hang; lured by a fish, it crouches.
+## make - each wing on fifteen bones, the tail on ten, each hand's five fingers on three, its jaw,
+## its skirt on eight chains of three). Its wings fold, open, beat and fly; its tail, its free arm and
+## its skirt swing free, chains on springs in the world; its right hand closes on the lantern's bail,
+## the thumb wrapped over; its head and neck carry their own weight, look about and breathe, its jaw
+## opens; flying, its body leans in and its limbs hang; lured by a fish, it crouches.
 ##
 ## The wings. Calm, and chasing on land, it keeps them folded against its back as a dragon does -
 ## the elbow back and down behind the shoulder, the forearm up from it so the wrist and its hooked
@@ -216,7 +218,72 @@ const FIST := {
 	"index": [72.0, 84.0, 58.0], "middle": [74.0, 86.0, 60.0], "ring": [76.0, 86.0, 60.0],
 	"pinky": [78.0, 84.0, 58.0], "thumb": [28.0, 40.0, 38.0],
 }
+## User request: the thumb closed too - not stuck up beside the fist: from FIST's curl, it's laid
+## across the front of the curled fingers' middle bones (over their backs, THUMB_ON.z m out) as a
+## thumb locks a grip - its last knuckle brought onto them THUMB_ON.x of the way from the index to the
+## little finger's (its first two bones bent round the outside of the fist to put it there), its last
+## bone on across them toward THUMB_ON.y.
+const THUMB_ON := Vector3(0.3, 1.2, 0.016)
 var grip := Transform3D.IDENTITY
+## (where the thumb's last knuckle and its tip were meant to go and went - the skeleton's space - as
+## it last closed: [knuckle meant, knuckle, tip meant, tip])
+var thumb_seen: Array = [Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, Vector3.ZERO]
+
+## User request: none of it stiff. Its free (left) arm swings after its body - each joint lagging
+## the one before (a chain on springs in the world, as the tail: ARM_SWING - how hard each joint is
+## pulled to the clip's pose, root .. tip, per frame at 60/s; how much swing it keeps; how far it may
+## bend from the pose, rad), so a stride's swing runs out through the forearm to the hand and on,
+## a stop swings it on past and back; its fingers rest easy, half curled (RELAX deg each joint,
+## breathing open and closed a little - RELAX_BREATH deg), and flick with the hand's swing
+## (RELAX_FLICK deg per rad it lags).
+const ARM_SWING := {"follow": Vector2(0.16, 0.07), "keep": 0.9, "sag": 1.0, "bend": 0.5}
+const RELAX := {
+	"index": [16.0, 20.0, 14.0], "middle": [20.0, 24.0, 16.0], "ring": [24.0, 28.0, 18.0],
+	"pinky": [28.0, 30.0, 20.0], "thumb": [8.0, 12.0, 10.0],
+}
+const RELAX_BREATH := 4.0
+const RELAX_FLICK := 22.0
+## User request: its head and neck alive - not held as the clip holds them. Its head has weight: its
+## body's going swings it on its neck (HEAD_SPRING: stiffness /s², damping /s - the neck's, the head's
+## after it, FOLLOW its neck's swing): each step's rise and fall nods it (HEAD_BOB rad per m/s² up),
+## setting off tips it back and stopping forward (HEAD_SURGE per m/s² ahead), going aside sways it
+## (HEAD_SIDE). It looks at whoever it's after (`look_at`, in the world - RunView3D: the traveller
+## near it), from where the clip has its face, its neck taking NECK_SHARE of the turn, as far round /
+## down as LOOK_MAX (rad), easing to it (LOOK_EASE /s); with no one to look at, turning, it leads
+## with its head (TURN_LEAD rad per rad/s), and standing, it glances about now and then (GLANCE s
+## apart, as far as GLANCE_REACH rad). It breathes (BREATHE: s a breath, rad its neck rises and falls).
+const HEAD_SPRING := {"neck": Vector2(55.0, 7.0), "head": Vector2(85.0, 8.5)}
+const HEAD_BOB := 0.03
+const HEAD_SURGE := 0.035
+const HEAD_SIDE := 0.03
+const HEAD_FOLLOW := 0.6
+const HEAD_MOST := 0.3
+const TURN_LEAD := 0.25
+const NECK_SHARE := 0.4
+const LOOK_MAX := Vector3(1.0, 0.45, 0.25)
+const LOOK_EASE := 6.0
+const GLANCE := Vector2(2.2, 5.0)
+const GLANCE_REACH := Vector2(0.6, 0.15)
+const BREATHE := Vector2(3.6, 0.02)
+var look_at := Vector3.INF
+## User request: its mouth opens (build_dragon_sage.py: the jaw parted from the head at its lips,
+## a dark maw inside): breathing, its lips part a little and close; showing its wings over whoever
+## it's taken, it roars - wide open, rumbling; eating, it bites; after a chase it pants. (`mouth` 0..1
+## opens it more from outside.) As far as JAW_OPEN deg, on a spring (JAW_SPRING).
+const JAW_OPEN := 30.0
+const JAW_SPRING := Vector2(140.0, 15.0)
+var mouth := 0.0
+## User request: its robe flows. The skirt's chains (build_dragon_sage.py SKIRT_CHAINS) swing as the
+## tail does, but looser - cloth (SKIRT_SWING as ARM_SWING; `drag`: how the air holds it back, /s),
+## off its legs as they stride through it (SKIRT_ROOM m beyond their bones), on the ground if it
+## comes down to it; a breeze stirring it standing (SKIRT_BREEZE m/s), fluttering it flying
+## (SKIRT_FLUTTER m/s).
+const SKIRT_SWING := {"follow": Vector2(0.05, 0.02), "keep": 0.95, "sag": 1.0, "bend": 0.6, "drag": 3.0}
+const SKIRT_ROOM := 0.05
+const SKIRT_BREEZE := 0.35
+const SKIRT_FLUTTER := 1.6
+## (how far its skirt's bones swing from where the pose has them, on average - rad, as it last swung)
+var skirt_swing := 0.0
 
 ## (as it last flew, in the skeleton's space: how far its chest's up leans ahead (z), and its left
 ## thigh's way (z: - trailing) - the skeleton keeps the clip's pose outside the modifier)
@@ -242,10 +309,31 @@ var _wings: Array = []
 var _chest := -1
 var _tail: Array[int] = []
 var _tail_len: Array[float] = []
-var _tail_p: PackedVector3Array = []
-var _tail_prev: PackedVector3Array = []
-var _tail_at := Vector3.INF
+## (each chain swinging free in the world - see `_chain_step`)
+var _tail_c := {}
+var _arm_c := {}
+var _skirt: Array = []
 var _fist: Array = []
+var _thumb: Array = []
+var _relax: Array = []
+var _jaw := -1
+var _jaw_st := Vector2.ZERO
+## (how it's going, from where its skeleton is in the world: velocity m/s; acceleration in its own
+## frame, m/s² - x its left, y up, z ahead; turning, rad/s - + to its left)
+var _w_at := Vector3.INF
+var _w_yaw := 0.0
+var _w_vel := Vector3.ZERO
+var _w_acc := Vector3.ZERO
+var _w_turn := 0.0
+var _hips_at: PackedVector3Array = [Vector3.ZERO, Vector3.ZERO, Vector3.ZERO]
+var _hips_acc := Vector3.ZERO
+var _neck_st := Vector4.ZERO
+var _head_st := Vector4.ZERO
+var _look := Vector2.ZERO
+var _look_v := Vector2.ZERO
+var _glance := Vector2.ZERO
+var _glance_t := 1.5
+var _rng := RandomNumberGenerator.new()
 var _grip_joints: Array = []
 var _knuckles: Array[int] = []
 var _built := false
@@ -260,6 +348,7 @@ func _process_modification_with_delta(delta: float) -> void:
 	# (game time - not the clock's: a recording or a hitch doesn't hurry it)
 	var dt := clampf(delta, 0.0, 0.1)
 	_time += dt
+	_sense(sk, dt)
 	if auto_fly:
 		_air_step(dt)
 	_open_wings(dt)
@@ -299,7 +388,11 @@ func _process_modification_with_delta(delta: float) -> void:
 	if _raised > 0.001:
 		_raise_arm(sk)
 	_close_fist(sk)
+	_head_life(sk, dt)
+	_jaw_life(sk, dt)
+	_arm_life(sk, dt)
 	_tail_swing(sk, dt)
+	_skirt_swing(sk, dt)
 	_beat_wings(sk, dt)
 
 
@@ -581,76 +674,277 @@ func _tail_swing(sk: Skeleton3D, dt: float) -> void:
 			pitch += _crouched * CROUCH_TAIL * (1.4 if k == 0 else 0.8)
 		_turn_bone(sk, _tail[k], yaw, Vector3.UP)
 		_turn_bone(sk, _tail[k], pitch, Vector3.RIGHT)
-	# (the pose's joints, in the world)
+	_chain_step(sk, _tail_c, _chain_want(sk, _tail_c), dt, _leg_capsules(sk))
+
+
+# ------------------------------------------------------------------ chains swinging free
+
+## Where the pose puts a chain's joints, in the world: its root, then each bone's end.
+func _chain_want(sk: Skeleton3D, c: Dictionary) -> PackedVector3Array:
 	var xf := sk.global_transform
+	var bones: Array = c.bones
+	var lens: Array = c.len
 	var want := PackedVector3Array()
-	want.resize(n + 1)
-	want[0] = xf * sk.get_bone_global_pose(_tail[0]).origin
-	for k in n:
-		var g := sk.get_bone_global_pose(_tail[k])
-		want[k + 1] = xf * (g.origin + g.basis.y.normalized() * _tail_len[k])
-	var scale := xf.basis.get_scale().x
-	if _tail_p.size() != n or dt <= 0.0 or not _tail_at.is_finite() or _tail_at.distance_to(xf.origin) > 3.0 * scale:
-		_tail_p = want.slice(1)
-		_tail_prev = _tail_p.duplicate()
-	_tail_at = xf.origin
-	var ground := xf.origin.y
+	want.resize(bones.size() + 1)
+	want[0] = xf * sk.get_bone_global_pose(bones[0]).origin
+	for k in bones.size():
+		var g := sk.get_bone_global_pose(bones[k])
+		want[k + 1] = xf * (g.origin + g.basis.y.normalized() * float(lens[k]))
+	return want
+
+
+## The legs as capsules in the world: [from, to] for each thigh and calf.
+func _leg_capsules(sk: Skeleton3D) -> Array:
+	var xf := sk.global_transform
 	var legs: Array = []
 	for pair in [["thigh_l", "calf_l"], ["calf_l", "foot_l"], ["thigh_r", "calf_r"], ["calf_r", "foot_r"]]:
 		var a: int = _body.get(pair[0], -1)
 		var b: int = _body.get(pair[1], -1)
 		if a >= 0 and b >= 0:
 			legs.append([xf * sk.get_bone_global_pose(a).origin, xf * sk.get_bone_global_pose(b).origin])
+	return legs
+
+
+## A chain of bones (`c`: "bones", each one's "len"gth; how it swings - "follow" root .. tip, the
+## share of the way to its pose each joint's pulled per frame at 60/s; "keep", the share of its swing
+## it keeps per frame; "sag", its weight, m/s²; "bend", rad it may bend from its pose at a joint;
+## "radius" root .. tip and "room" beyond it, m, kept off the legs; "drag" /s and "wind" m/s, the air
+## on it) swinging free in the world toward its pose's joints `want`: its swing comes of the body's
+## own going - lagging when it sets off, swinging on when it stops or turns - never through the
+## ground or its legs. Its joints are kept in `c` ("p", "prev", "at" - where the skeleton was).
+func _chain_step(sk: Skeleton3D, c: Dictionary, want: PackedVector3Array, dt: float, legs: Array) -> void:
+	var bones: Array = c.bones
+	var lens: Array = c.len
+	var n := bones.size()
+	if n == 0:
+		return
+	var xf := sk.global_transform
+	var scale := xf.basis.get_scale().x
+	var p: PackedVector3Array = c.get("p", PackedVector3Array())
+	var prev: PackedVector3Array = c.get("prev", PackedVector3Array())
+	var at: Vector3 = c.get("at", Vector3.INF)
+	if p.size() != n or dt <= 0.0 or not at.is_finite() or at.distance_to(xf.origin) > 3.0 * scale:
+		p = want.slice(1)
+		prev = p.duplicate()
+	c.at = xf.origin
+	var ground := xf.origin.y
 	var steps := 2
 	var h := dt / steps
-	var keep := pow(TAIL_KEEP, h * 60.0)
+	var keep := pow(float(c.keep), h * 60.0)
+	var follow: Vector2 = c.follow
+	var radius: Vector2 = c.get("radius", Vector2.ZERO)
+	var room: float = c.get("room", 0.0)
+	var drag: float = c.get("drag", 0.0)
+	var wind: Vector3 = c.get("wind", Vector3.ZERO) * scale
+	var limit: float = c.bend
 	for _s in steps:
 		for k in n:
 			var t := float(k) / maxf(n - 1, 1)
-			var p: Vector3 = _tail_p[k]
-			var v: Vector3 = (p - _tail_prev[k]) * keep
-			_tail_prev[k] = p
-			p += v + Vector3.DOWN * TAIL_SAG * scale * h * h
-			var pull := lerpf(TAIL_FOLLOW.x, TAIL_FOLLOW.y, t)
-			p += (want[k + 1] - p) * (1.0 - pow(1.0 - pull, h * 60.0))
-			_tail_p[k] = p
+			var q: Vector3 = p[k]
+			var v: Vector3 = (q - prev[k]) * keep
+			prev[k] = q
+			var acc := Vector3.DOWN * float(c.sag) * scale
+			if drag > 0.0 and h > 0.0:
+				acc += (wind - v / h) * drag
+			q += v + acc * h * h
+			var pull := lerpf(follow.x, follow.y, t)
+			q += (want[k + 1] - q) * (1.0 - pow(1.0 - pull, h * 60.0))
+			p[k] = q
 		for _pass in 2:
 			var from: Vector3 = want[0]
 			for k in n:
 				var t := float(k) / maxf(n - 1, 1)
-				var p: Vector3 = _tail_p[k]
-				var link := _tail_len[k] * scale
-				var dir := (p - from)
+				var q: Vector3 = p[k]
+				var link := float(lens[k]) * scale
+				var dir := (q - from)
 				var pose_dir := (want[k + 1] - want[k]).normalized()
 				if dir.length() < 0.0001:
 					dir = pose_dir
 				dir = dir.normalized()
-				# (bent no further than TAIL_BEND from the pose's way)
+				# (bent no further than its limit from the pose's way)
 				var bent := dir.angle_to(pose_dir)
-				if bent > TAIL_BEND:
+				if bent > limit:
 					var axis := pose_dir.cross(dir).normalized()
 					if axis.length() > 0.5:
-						dir = pose_dir.rotated(axis, TAIL_BEND)
-				p = from + dir * link
-				var r := lerpf(TAIL_RADIUS.x, TAIL_RADIUS.y, t) * scale
+						dir = pose_dir.rotated(axis, limit)
+				q = from + dir * link
+				var r := lerpf(radius.x, radius.y, t) * scale
 				# (out of its legs, off the ground)
 				for leg in legs:
 					var a: Vector3 = leg[0]
 					var ab: Vector3 = (leg[1] as Vector3) - a
-					var q := a + ab * clampf((p - a).dot(ab) / maxf(ab.length_squared(), 0.000001), 0.0, 1.0)
-					var off := p - q
-					var room := r + 0.07 * scale
-					if off.length() < room:
-						p = q + (off.normalized() if off.length() > 0.0001 else Vector3.BACK) * room
-				p.y = maxf(p.y, ground + r)
-				_tail_p[k] = p
-				from = p
+					var on := a + ab * clampf((q - a).dot(ab) / maxf(ab.length_squared(), 0.000001), 0.0, 1.0)
+					var off := q - on
+					var space := r + room * scale
+					if off.length() < space:
+						q = on + (off.normalized() if off.length() > 0.0001 else Vector3.BACK) * space
+				q.y = maxf(q.y, ground + r)
+				p[k] = q
+				from = q
+	c.p = p
+	c.prev = prev
 	# The bones along it.
 	var inv := xf.affine_inverse()
 	for k in n:
-		var g := sk.get_bone_global_pose(_tail[k])
-		var to := inv * _tail_p[k] - g.origin
-		_aim(sk, _tail[k], to)
+		var g := sk.get_bone_global_pose(bones[k])
+		_aim(sk, bones[k], inv * p[k] - g.origin)
+
+
+## The skirt's chains swinging (see SKIRT_SWING).
+func _skirt_swing(sk: Skeleton3D, dt: float) -> void:
+	if _skirt.is_empty():
+		return
+	var legs := _leg_capsules(sk)
+	var flown := smoothstep(0.0, 1.0, fly)
+	var still := 1.0 - clampf(_w_vel.length() / 1.5, 0.0, 1.0)
+	var swung := 0.0
+	var n := 0
+	for k in _skirt.size():
+		var c: Dictionary = _skirt[k]
+		var ph := float(k) * 0.9
+		c.wind = Vector3(sin(_time * 0.71 + ph * 0.3) + 0.4 * sin(_time * 1.9 + ph), 0.0,
+				cos(_time * 0.53 + ph * 0.2) + 0.4 * sin(_time * 2.3 + ph * 1.3)) * SKIRT_BREEZE * still \
+			+ Vector3(sin(_time * 11.0 + ph * 1.7), 0.5 * sin(_time * 8.3 + ph), cos(_time * 13.0 + ph * 2.1)) \
+				* SKIRT_FLUTTER * flown
+		var want := _chain_want(sk, c)
+		_chain_step(sk, c, want, dt, legs)
+		var p: PackedVector3Array = c.p
+		for i in p.size():
+			swung += (p[i] - (want[0] if i == 0 else p[i - 1])).angle_to(want[i + 1] - want[i])
+			n += 1
+	skirt_swing = swung / maxf(n, 1)
+
+
+# ------------------------------------------------------------------ alive
+
+## How it's going, from where its skeleton is in the world (see `_w_vel`), and the clip's own rise
+## and fall (and sway) of its hips.
+func _sense(sk: Skeleton3D, dt: float) -> void:
+	var xf := sk.global_transform
+	var scale := maxf(xf.basis.get_scale().x, 0.0001)
+	var fwd := xf.basis.z
+	var yaw := atan2(fwd.x, fwd.z)
+	var hips: int = _body.get("pelvis", -1)
+	var hp := sk.get_bone_global_pose(hips).origin if hips >= 0 else Vector3.ZERO
+	if not _w_at.is_finite() or dt <= 0.0 or _w_at.distance_to(xf.origin) > 2.0 * scale:
+		_w_at = xf.origin
+		_w_yaw = yaw
+		_w_vel = Vector3.ZERO
+		_hips_at = [hp, hp, hp]
+		return
+	var v := (xf.origin - _w_at) / dt / scale
+	var acc := xf.basis.orthonormalized().inverse() * ((v - _w_vel) / dt)
+	_w_vel = _w_vel.lerp(v, 1.0 - exp(-dt * 14.0))
+	_w_acc = _w_acc.lerp(acc.limit_length(12.0), 1.0 - exp(-dt * 10.0))
+	_w_turn = lerpf(_w_turn, wrapf(yaw - _w_yaw, -PI, PI) / dt, 1.0 - exp(-dt * 6.0))
+	_w_at = xf.origin
+	_w_yaw = yaw
+	_hips_at = [hp, _hips_at[0], _hips_at[1]]
+	var hips_acc := (_hips_at[0] - 2.0 * _hips_at[1] + _hips_at[2]) / (dt * dt)
+	_hips_acc = _hips_acc.lerp(hips_acc.limit_length(8.0), 1.0 - exp(-dt * 20.0))
+
+
+## A spring's state (x angle, y its speed; z, w the same for a second angle) pushed by `force`
+## (rad/s², each angle) on `spring` (stiffness, damping) for `dt`; its acceleration out in `acc`.
+func _spring2(st: Vector4, force: Vector2, spring: Vector2, dt: float) -> Vector4:
+	var a := Vector2(-spring.x * st.x - spring.y * st.y + force.x, -spring.x * st.z - spring.y * st.w + force.y)
+	st.y += a.x * dt
+	st.w += a.y * dt
+	st.x = clampf(st.x + st.y * dt, -HEAD_MOST, HEAD_MOST)
+	st.z = clampf(st.z + st.w * dt, -HEAD_MOST, HEAD_MOST)
+	return st
+
+
+## The head and neck (see HEAD_SPRING).
+func _head_life(sk: Skeleton3D, dt: float) -> void:
+	var neck: int = _body.get("neck_01", -1)
+	var head: int = _body.get("Head", -1)
+	if neck < 0 or head < 0 or dt <= 0.0:
+		return
+	var flown := smoothstep(0.0, 1.0, fly)
+	# Its weight swung on its neck: up and down (pitch: + nods it), aside (roll: + to its right).
+	var up := _hips_acc.y + _w_acc.y
+	var push := Vector2((up * HEAD_BOB - _w_acc.z * HEAD_SURGE), (_w_acc.x + _hips_acc.x) * HEAD_SIDE)
+	var ns: Vector2 = HEAD_SPRING.neck
+	var hs: Vector2 = HEAD_SPRING.head
+	var was := Vector2(_neck_st.y, _neck_st.w)
+	_neck_st = _spring2(_neck_st, push * ns.x, ns, dt)
+	var neck_acc := (Vector2(_neck_st.y, _neck_st.w) - was) / dt
+	_head_st = _spring2(_head_st, (push * 0.4 * hs.x) - neck_acc * HEAD_FOLLOW, hs, dt)
+	# Where it looks: whoever it's after; else, standing, about it now and then; turning, into the turn.
+	# (from where the clip has its head facing - its own frame against its rest)
+	var face := sk.get_bone_global_pose(head).basis.orthonormalized() \
+		* sk.get_bone_global_rest(head).basis.orthonormalized().inverse()
+	var want := Vector2.ZERO
+	if look_at.is_finite() and sk.is_inside_tree():
+		var d := face.inverse() * (sk.global_transform.affine_inverse() * look_at - sk.get_bone_global_pose(head).origin)
+		var yaw := atan2(d.x, d.z)
+		if absf(yaw) < 2.4:
+			want = Vector2(clampf(yaw, -LOOK_MAX.x, LOOK_MAX.x),
+				clampf(atan2(-d.y, Vector2(d.x, d.z).length()), -LOOK_MAX.z, LOOK_MAX.y))
+	else:
+		_glance_t -= dt
+		if _glance_t <= 0.0:
+			_glance_t = _rng.randf_range(GLANCE.x, GLANCE.y)
+			_glance = Vector2(_rng.randf_range(-1.0, 1.0) * GLANCE_REACH.x, _rng.randf_range(-0.3, 1.0) * GLANCE_REACH.y) \
+				if _rng.randf() < 0.75 else Vector2.ZERO
+		want = _glance * (1.0 - clampf(pace * 1.5, 0.0, 1.0)) * (1.0 - flown)
+	if not look_at.is_finite():
+		want.x += clampf(_w_turn * TURN_LEAD, -0.5, 0.5)
+	want *= (1.0 - _crouched) * (1.0 - 0.5 * flown)
+	# (critically damped toward it)
+	var k := LOOK_EASE
+	_look_v += ((want - _look) * k * k - _look_v * 2.0 * k) * dt
+	_look += _look_v * dt
+	var side := face * Vector3.RIGHT
+	var turn_up := face * Vector3.UP
+	var ahead := face * Vector3.BACK
+	var breath := BREATHE.y * sin(TAU * _time / BREATHE.x)
+	_turn_bone(sk, neck, _look.x * NECK_SHARE, turn_up)
+	_turn_bone(sk, neck, _look.y * NECK_SHARE + _neck_st.x + breath, side)
+	_turn_bone(sk, neck, _neck_st.z, ahead)
+	_turn_bone(sk, head, _look.x * (1.0 - NECK_SHARE), turn_up)
+	_turn_bone(sk, head, _look.y * (1.0 - NECK_SHARE) + _head_st.x - breath * 0.6, side)
+	_turn_bone(sk, head, _head_st.z, ahead)
+
+
+## The jaw (see JAW_OPEN).
+func _jaw_life(sk: Skeleton3D, dt: float) -> void:
+	var head: int = _body.get("Head", -1)
+	if _jaw < 0 or head < 0 or dt <= 0.0:
+		return
+	var want := 0.035 + 0.045 * (0.5 + 0.5 * sin(TAU * _time / BREATHE.x - 0.6))
+	want = maxf(want, hurry * 0.22 * (0.6 + 0.4 * sin(_time * 9.0)))
+	if _crouched > 0.6:
+		want = maxf(want, 0.55 * maxf(0.0, sin(_time * 6.5)))
+	if _shown > 0.05:
+		want = maxf(want, smoothstep(0.05, 0.6, _shown) * (0.85 + 0.06 * sin(_time * 31.0)))
+	want = maxf(want, clampf(mouth, 0.0, 1.0))
+	var a := -JAW_SPRING.x * (_jaw_st.x - want) - JAW_SPRING.y * _jaw_st.y
+	_jaw_st.y += a * dt
+	_jaw_st.x = clampf(_jaw_st.x + _jaw_st.y * dt, 0.0, 1.05)
+	var hg := sk.get_bone_global_pose(head).basis.orthonormalized() * sk.get_bone_global_rest(head).basis.orthonormalized().inverse()
+	_turn_bone(sk, _jaw, deg_to_rad(JAW_OPEN) * _jaw_st.x, hg * Vector3.RIGHT)
+
+
+## The free arm and its fingers (see ARM_SWING, RELAX).
+func _arm_life(sk: Skeleton3D, dt: float) -> void:
+	var lag := 0.0
+	if not _arm_c.is_empty():
+		var want := _chain_want(sk, _arm_c)
+		_chain_step(sk, _arm_c, want, dt, [])
+		# (how far its hand lags its pose, across its palm: its fingers flick with it)
+		var hand: int = (_arm_c.bones as Array)[2]
+		var g := sk.get_bone_global_pose(hand)
+		var now := (g.basis * Vector3.UP).normalized()
+		var was := sk.global_transform.basis.inverse() * (want[3] - want[2])
+		var palm := (g.basis.orthonormalized() * sk.get_bone_global_rest(hand).basis.orthonormalized().inverse()) * Vector3.DOWN
+		lag = clampf(now.cross(was.normalized()).length() * signf(was.normalized().dot(palm) - now.dot(palm)), -0.5, 0.5) \
+			if was.length() > 0.0001 else 0.0
+	var breath := sin(TAU * _time / BREATHE.x + 1.1)
+	for f in _relax:
+		var ang: float = f.angle + deg_to_rad(RELAX_BREATH * breath + RELAX_FLICK * lag) * float(f.share)
+		sk.set_bone_pose_rotation(f.bone, sk.get_bone_pose_rotation(f.bone) * Quaternion(f.axis, maxf(ang, 0.0)))
 
 
 # ------------------------------------------------------------------ the body flying
@@ -763,12 +1057,60 @@ func _close_fist(sk: Skeleton3D) -> void:
 		acc += g.origin + g.basis.y.normalized() * float(j.out)
 	var hand := sk.get_bone_global_pose(h)
 	var middle := acc / maxf(_grip_joints.size(), 1)
+	_wrap_thumb(sk, middle)
 	var across := hand.basis.x.normalized()
 	if _knuckles.size() == 2:
 		across = (sk.get_bone_global_pose(_knuckles[0]).origin - sk.get_bone_global_pose(_knuckles[1]).origin).normalized()
 	var up := hand.basis.y.normalized()
 	var z := across.cross(up).normalized()
 	grip = Transform3D(Basis(across, z.cross(across).normalized(), z), middle)
+
+
+## The thumb laid over the curled fingers (see THUMB_ON): each of its bones turned in turn toward
+## putting its tip there - its first any way, the others only about their knuckles' own axis.
+func _wrap_thumb(sk: Skeleton3D, hole: Vector3) -> void:
+	if _thumb.size() != 3:
+		return
+	# (the curled fingers' front, index to little: their middle bones' middles, out over their backs -
+	# away from the hole they close round)
+	var front := PackedVector3Array()
+	for f in ["index", "middle", "ring", "pinky"]:
+		var b: int = _body.get(f + "_02_r", -1)
+		var e: int = _body.get(f + "_03_r", -1)
+		if b < 0 or e < 0:
+			return
+		var mid := (sk.get_bone_global_pose(b).origin + sk.get_bone_global_pose(e).origin) * 0.5
+		var out := mid - hole
+		front.append(mid + (out.normalized() if out.length() > 0.0001 else Vector3.DOWN) * THUMB_ON.z)
+	var at := func(u: float) -> Vector3:
+		var k := mini(int(u), front.size() - 2)
+		return front[k].lerp(front[k + 1], u - k)
+	var knuckle_at: Vector3 = at.call(THUMB_ON.x)
+	var tip_at: Vector3 = at.call(THUMB_ON.y)
+	var last: Dictionary = _thumb[2]
+	var knuckle := func() -> Vector3: return sk.get_bone_global_pose(last.bone).origin
+	var tip := func() -> Vector3:
+		var gl := sk.get_bone_global_pose(last.bone)
+		return gl.origin + gl.basis.y.normalized() * float(last.len)
+	# its last knuckle onto the front by its first two bones - bent outward, round the fist, not
+	# into it (two bones: where its middle knuckle must be) - then its last bone on across it
+	var root := sk.get_bone_global_pose(_thumb[0].bone).origin
+	var l0: float = _thumb[0].len
+	var l1: float = _thumb[1].len
+	var to := knuckle_at - root
+	var d := clampf(to.length(), absf(l0 - l1) + 0.001, l0 + l1 - 0.0005)
+	var along := to.normalized()
+	var bulge := (root + knuckle_at) * 0.5 - hole
+	bulge = (bulge - along * bulge.dot(along))
+	if bulge.length() < 0.0001:
+		bulge = along.cross(Vector3.UP)
+	bulge = bulge.normalized()
+	var a := (l0 * l0 - l1 * l1 + d * d) / (2.0 * d)
+	var mid := root + along * a + bulge * sqrt(maxf(l0 * l0 - a * a, 0.0))
+	_aim(sk, _thumb[0].bone, mid - root)
+	_aim(sk, _thumb[1].bone, knuckle_at - sk.get_bone_global_pose(_thumb[1].bone).origin)
+	_aim(sk, _thumb[2].bone, tip_at - sk.get_bone_global_pose(_thumb[2].bone).origin)
+	thumb_seen = [knuckle_at, knuckle.call(), tip_at, tip.call()]
 
 
 ## Where the bail goes through the fist, in the world (`grip` mapped through the skeleton).
@@ -866,8 +1208,10 @@ func _turn_bone(sk: Skeleton3D, bone: int, angle: float, axis: Vector3) -> void:
 
 func _build(sk: Skeleton3D) -> void:
 	_built = true
+	_rng.seed = hash(get_instance_id())
 	for name in ["pelvis", "spine_01", "spine_02", "spine_03", "neck_01", "Head", "thigh_l", "calf_l", "foot_l",
-			"thigh_r", "calf_r", "foot_r", "upperarm_l", "lowerarm_l", "upperarm_r", "lowerarm_r", "hand_r"]:
+			"thigh_r", "calf_r", "foot_r", "upperarm_l", "lowerarm_l", "upperarm_r", "lowerarm_r", "hand_r", "hand_l",
+			"index_02_r", "middle_02_r", "ring_02_r", "pinky_02_r", "index_03_r", "middle_03_r", "ring_03_r", "pinky_03_r"]:
 		var i := sk.find_bone(name)
 		if i >= 0:
 			_body[name] = i
@@ -893,6 +1237,8 @@ func _build(sk: Skeleton3D) -> void:
 			_tail_len.append(here.distance_to(sk.get_bone_global_rest(_tail[i + 1]).origin))
 		else:
 			_tail_len.append(_tail_len[i - 1] * 0.9 if i > 0 else 0.1)
+	_tail_c = {"bones": _tail, "len": _tail_len, "follow": TAIL_FOLLOW, "keep": TAIL_KEEP, "sag": TAIL_SAG,
+		"bend": TAIL_BEND, "radius": TAIL_RADIUS, "room": 0.07}
 	# the fist: each finger bone's curl about its own axis across the palm (the palm faces down at
 	# rest - the arm held out)
 	for f in FIST:
@@ -906,6 +1252,11 @@ func _build(sk: Skeleton3D) -> void:
 			var axis_g := dir.cross(palm).normalized()
 			var axis := (rest.basis.orthonormalized().inverse() * axis_g).normalized()
 			_fist.append({"bone": b, "axis": axis, "angle": deg_to_rad(float(FIST[f][j]))})
+			if f == "thumb":
+				var nxt := sk.find_bone("thumb_%02d_r" % (j + 2))
+				var length := sk.get_bone_global_rest(nxt).origin.distance_to(rest.origin) if nxt >= 0 \
+					else float((_thumb[j - 1] as Dictionary).len) if j > 0 else 0.03
+				_thumb.append({"bone": b, "len": length})
 		if f in ["index", "middle", "ring"]:
 			for j in 3:
 				var b := sk.find_bone("%s_%02d_r" % [f, j + 1])
@@ -919,6 +1270,50 @@ func _build(sk: Skeleton3D) -> void:
 	for name in ["index_01_r", "pinky_01_r"]:
 		if sk.find_bone(name) >= 0:
 			_knuckles.append(sk.find_bone(name))
+	# the free hand at rest: each finger bone's easy curl, as the fist's (its palm down at rest)
+	for f in RELAX:
+		for j in 3:
+			var b := sk.find_bone("%s_%02d_l" % [f, j + 1])
+			if b < 0:
+				continue
+			var rest := sk.get_bone_global_rest(b)
+			var dir := rest.basis.y.normalized()
+			var palm := Vector3.DOWN if f != "thumb" else Vector3(-1.0, -0.6, 0.0).normalized()
+			var axis := (rest.basis.orthonormalized().inverse() * dir.cross(palm).normalized()).normalized()
+			_relax.append({"bone": b, "axis": axis, "angle": deg_to_rad(float(RELAX[f][j])), "share": 0.5 + 0.25 * j})
+	_jaw = sk.find_bone("jaw")
+	# the chains swinging free: the free arm (to its knuckles), the skirt's
+	var arm: Array = []
+	for name in ["upperarm_l", "lowerarm_l", "hand_l"]:
+		if sk.find_bone(name) >= 0:
+			arm.append(sk.find_bone(name))
+	var knuckle := sk.find_bone("middle_01_l")
+	if arm.size() == 3 and knuckle >= 0:
+		var lens: Array = []
+		for ai in 3:
+			var to := knuckle if ai == 2 else int(arm[ai + 1])
+			lens.append(sk.get_bone_global_rest(arm[ai]).origin.distance_to(sk.get_bone_global_rest(to).origin))
+		_arm_c = ARM_SWING.duplicate()
+		_arm_c.bones = arm
+		_arm_c.len = lens
+	for ci in 16:
+		var chain: Array = []
+		for j in 3:
+			var b := sk.find_bone("skirt_%d_%02d" % [ci, j + 1])
+			if b >= 0:
+				chain.append(b)
+		if chain.size() != 3:
+			break
+		var lens: Array = []
+		for j in 3:
+			lens.append(sk.get_bone_global_rest(chain[j]).origin.distance_to(sk.get_bone_global_rest(chain[j + 1]).origin)
+				if j < 2 else float(lens[1]))
+		var c := SKIRT_SWING.duplicate()
+		c.bones = chain
+		c.len = lens
+		c.radius = Vector2(0.02, 0.015)
+		c.room = SKIRT_ROOM
+		_skirt.append(c)
 	_chest = sk.find_bone("spine_03")
 	if _chest < 0:
 		return

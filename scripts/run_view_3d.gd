@@ -2347,6 +2347,8 @@ func _dragon_notices(n: Node, at: Vector2) -> bool:
 ## (DragonRig.fly_rate). Over the water it keeps flying - unless the far shore is as near as its
 ## landing takes, and it's going on past it. Its height (DRAGON_FLY_LIFT m) as far as the rig has it
 ## up (DragonRig.airborne), bobbing with the beat. The lift (m).
+## (m: how high on the traveller the dragon looks - DragonRig.look_at)
+const DRAGON_LOOK_AT := 0.9
 const DRAGON_LOOK_STEP := 0.4
 const DRAGON_LOOK_MORE := 0.8
 const DRAGON_FLY_LIFT := 0.45
@@ -2750,6 +2752,10 @@ func _sync_creatures(delta: float) -> void:
 					rig.pace = clampf(speed / 1.2, 0.0, 1.0) if clip in ["Walk", "Chase"] else 0.0
 					if anim.current_animation != "" and anim.has_animation(anim.current_animation):
 						rig.stride = anim.current_animation_position / maxf(anim.get_animation(anim.current_animation).length, 0.01)
+					# (user request: its head alive - it looks at the traveller near it, or that it's after)
+					var after := mode in [BigGhost.Mode.CHASE, BigGhost.Mode.GRAB, BigGhost.Mode.SUSPICIOUS]
+					rig.look_at = to3(player.global_position, DRAGON_LOOK_AT) if player != null \
+						and (after or player.global_position.distance_to(at) < DRAGON_NOTICE * PX) else Vector3.INF
 			"water_ghost":
 				clip = "Claw" if int(n.get("_phase")) == 2 else "Walk"
 			_:
