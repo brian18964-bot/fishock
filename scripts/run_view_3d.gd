@@ -1891,6 +1891,12 @@ const DRAGON_ROOM := 1.2
 const TAIL_DODGE := 0.9
 const TAIL_CHECK := [0.5, 1.0]
 const DRAGON_LAMP_GREEN := Color(0.55, 1.0, 0.6)
+## How closely (1/s) the dragon's body follows the 2D one by what it's doing - loosely about its
+## business (it rounds a corner), closer after you, at once holding or eating - and how far
+## behind (m) it may be before it hurries to keep up (DragonGait).
+const DRAGON_FOLLOW := {BigGhost.Mode.WANDER: 8.0, BigGhost.Mode.SUSPICIOUS: 6.0, BigGhost.Mode.SEARCH: 8.0,
+	BigGhost.Mode.REST: 8.0, BigGhost.Mode.CHASE: 6.0, BigGhost.Mode.GRAB: 16.0, BigGhost.Mode.EAT: 10.0}
+const DRAGON_LAG := 0.8
 ## User request: the snowy map's big ghost is the black two-tailed dragon (dragon_black.glb -
 ## tools/build_dragon_warden.py: the first dragon, rigged as the red one is, two tails, red eyes),
 ## the forest lake's the red one; the same ghost, the same behaviour - only its model, a size
@@ -2685,7 +2691,18 @@ func _sync_creatures(delta: float) -> void:
 		var target := to3(at, y + lift)
 		if not c.has("shown") or (c.shown as Vector3).distance_to(target) > 3.0:
 			c.shown = target
-		c.shown = (c.shown as Vector3).lerp(target, 1.0 - exp(-delta * 16.0))
+		var was_shown: Vector3 = c.shown
+		var follow := 16.0
+		if kind == "dragon" and c.has("gait"):
+			# (user request: its walk natural - about its business the 2D one walks round its turns
+			# (BigGhost._amble); after you it turns in a frame: the dragon's body follows it a touch
+			# looser (DRAGON_FOLLOW by what it's doing), rounding the corner; never more than ~DRAGON_LAG behind)
+			follow = float(DRAGON_FOLLOW.get(int(n.get("mode")), 16.0))
+			var gap := Vector2(target.x - was_shown.x, target.z - was_shown.z).length()
+			if gap > DRAGON_LAG:
+				follow *= gap / DRAGON_LAG
+		c.shown = (c.shown as Vector3).lerp(target, 1.0 - exp(-delta * follow))
+		c.shown_vel = ((c.shown as Vector3) - was_shown) / maxf(delta, 0.001)
 		if kind == "dragon" and player != null:
 			# (never into the traveller: held off at DRAGON_ROOM)
 			var me := Vector2(c.shown.x, c.shown.z)
@@ -2784,8 +2801,20 @@ func _sync_creatures(delta: float) -> void:
 					if player != null and (player.global_position - at).length() > 1.0 and (near or mode != BigGhost.Mode.WANDER):
 						var to_p := player.global_position - at
 						face = atan2(to_p.x, to_p.y)
-					var heading := atan2(vel.x, vel.y) if vel.length() > 0.5 else gait.yaw
-					gait.step(delta, speed, heading, how, face, "Idle_Lamp" if near else "Idle")
+					# (the way its body goes, as it's shown - following the 2D one round its corners)
+					var sv: Vector3 = c.get("shown_vel", Vector3.ZERO)
+					var walk_speed := Vector2(sv.x, sv.z).length()
+					var heading := atan2(sv.x, sv.z) if walk_speed > 0.05 else gait.yaw
+					# (stood turning round, it says where to - its body steps round with it)
+					if bool(n.get("pivoting")):
+						var pt: Vector2 = n.get("pivot_to")
+						heading = atan2(pt.x, pt.y)
+						face = heading
+					gait.step(delta, walk_speed, heading, how, face, "Idle_Lamp" if near else "Idle")
+					# (come to a stand, it'll set off the way its body faces then)
+					if gait.state == "idle" and c.get("stood_as", "") != "idle" and n.has_method("face"):
+						n.face(Vector2(sin(gait.yaw), cos(gait.yaw)))
+					c.stood_as = gait.state
 					c.yaw = gait.yaw
 					holder.rotation.y = c.yaw
 					clip = gait.clip

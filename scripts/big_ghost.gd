@@ -254,7 +254,7 @@ func _physics_process(delta: float) -> void:
 				_check_fish()
 		Mode.SEARCH:
 			_timer -= delta
-			_move_toward(_target, LOOK_SPEED, delta)
+			_amble(_target, LOOK_SPEED, delta)
 			_watch()
 			if mode == Mode.SEARCH and _timer <= 0.0:
 				_set_mode(Mode.WANDER)
@@ -408,7 +408,50 @@ func _roam(delta: float) -> void:
 	_repick -= delta
 	if _repick <= 0.0 or global_position.distance_to(_target) < 12.0:
 		_pick_wander_target()
-	_move_toward(_target, WANDER_SPEED, delta)
+	_amble(_target, WANDER_SPEED, delta)
+
+
+## User request (its walk natural - an NPC's moves are much of the game's feel): about its own
+## business it doesn't turn on a coin. It walks round (AMBLE_TURN rad/s - a big beast's turn, as its
+## turns' clips take it); to go back the way it came
+## (past AMBLE_PIVOT rad) it stops and turns where it stands (PIVOT_TURN), then goes - as its body,
+## in 3D, steps round (DragonGait). After someone it turns as it did (_move_toward).
+const AMBLE_TURN := 0.75
+const AMBLE_PIVOT := 1.92
+const PIVOT_TURN := 3.2
+var _heading := Vector2.ZERO
+## (it's stood turning round - to `pivot_to`)
+var pivoting := false
+var pivot_to := Vector2.ZERO
+const AMBLE_SPEED_UP := 1.6
+var _amble_pace := 0.0
+
+
+## Which way it faces, stood (RunView3D: as its body in 3D does) - it sets off from there.
+func face(dir: Vector2) -> void:
+	if dir.length() > 0.01:
+		_heading = dir.normalized()
+
+
+func _amble(target: Vector2, speed: float, delta: float) -> void:
+	var to := target - global_position
+	if to.length() < 0.5:
+		return
+	var want := to.normalized()
+	if _heading == Vector2.ZERO:
+		_heading = want
+	var off := _heading.angle_to(want)
+	pivoting = absf(off) > AMBLE_PIVOT or (pivoting and absf(off) > 0.35)
+	pivot_to = want
+	var turn := (PIVOT_TURN if pivoting else AMBLE_TURN) * delta
+	_heading = _heading.rotated(clampf(off, -turn, turn)).normalized()
+	if pivoting:
+		_amble_pace = 0.0
+		return
+	# (from a stand it gets going over AMBLE_SPEED_UP s, as a big beast does)
+	_amble_pace = minf(_amble_pace + speed * delta / AMBLE_SPEED_UP, speed)
+	# (where it's headed now, a step on; the way round things, the lit places, as ever)
+	_move_toward(global_position + _heading * maxf(speed * delta * 6.0, 8.0), _amble_pace, delta)
 
 
 ## (Solids.detour: the way round something, kept)
@@ -518,6 +561,9 @@ func _set_mode(m: Mode) -> void:
 		GameState.report("甩掉大鬼了", "good")
 	mode = m
 	_lost = 0.0
+	# (stood holding someone, eating, asleep: it sets off again from a stand)
+	if m in [Mode.GRAB, Mode.EAT, Mode.ASLEEP]:
+		_amble_pace = 0.0
 	claiming = false
 	mode_changed.emit(Mode.keys()[m])
 

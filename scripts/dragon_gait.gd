@@ -30,6 +30,8 @@ const RUN_HALT := 0.5
 const VEER := 22.0
 const QUARTER := 62.0
 const ROUND := 135.0
+## (m/s) right round on the spot only slower than this
+const PIVOT_BELOW := 0.45
 ## (rad/s) how fast it steers between turns: walking, running
 const STEER_WALK := 1.3
 const STEER_RUN := 3.2
@@ -201,7 +203,8 @@ func _pick_turn(err: float) -> bool:
 	var e := rad_to_deg(err)
 	if absf(e) < VEER or _rest > 0.0:
 		return false
-	if absf(e) >= ROUND and anim.has_animation("Turn_180") and anim.has_animation("Turn_180_L"):
+	# (right round on the spot only nearly stood; on the move, a quarter turn walked round further)
+	if absf(e) >= ROUND and _speed < PIVOT_BELOW and anim.has_animation("Turn_180") and anim.has_animation("Turn_180_L"):
 		_turn("Turn_180_L" if e > 0.0 else "Turn_180", err)
 	elif absf(e) >= QUARTER:
 		_turn("Turn_L" if e > 0.0 else "Turn_R", err)
@@ -213,23 +216,40 @@ func _pick_turn(err: float) -> bool:
 ## One frame: `speed` (m/s) and `heading` (rad) it's moving at, `gait` ("walk", "prowl", "run",
 ## "fly", or "act:<clip>" - caught someone, eating), `face` the way to face stood (or NAN), and the
 ## clip it stands in.
+var _speed := 0.0
+var _acting := ""
+## (rad/s) how fast its way's coming round, smoothed
+var _turning := 0.0
+var _last_heading := NAN
+
+
 func step(delta: float, speed: float, heading: float, gait: String, face: float, stand: String) -> void:
 	_t += delta
+	_speed = speed
+	if not is_nan(_last_heading) and delta > 0.0:
+		_turning = lerpf(_turning, absf(wrapf(heading - _last_heading, -PI, PI)) / delta, 1.0 - exp(-delta * 4.0))
+	_last_heading = heading
 	_rest = maxf(_rest - delta, 0.0)
 	var err := wrapf(heading - yaw, -PI, PI)
 	var rate := 1.0
 	_slow = _slow + delta if speed < STOP_BELOW else 0.0
 	if gait.begins_with("act:") or gait == "fly":
 		var c := gait.substr(4) if gait.begins_with("act:") else stand
-		if state != "act" or clip != c:
+		if state != "act" or (_acting != c):
 			state = "act"
-			_play(c, 0.25)
+			_acting = c
+			_play(c, 0.25 if c != "Grab" else 0.12)
+		elif not bool(moves.get(c, {}).get("loop", true)) and clip == c and _done():
+			# (user request: caught - one swipe as it takes you, then it holds you, its lantern up
+			# over you)
+			_play("Idle_Lamp" if anim.has_animation("Idle_Lamp") else stand, BLEND_STAND)
 		if speed > STOP_BELOW:
 			yaw = lerp_angle(yaw, heading, 1.0 - exp(-delta * STEER_RUN))
 		anim.speed_scale = 1.0
 		return
 	if state == "act":
 		state = "idle"
+		_acting = ""
 		_play(stand, BLEND_STAND)
 	match state:
 		"idle":
@@ -255,7 +275,11 @@ func step(delta: float, speed: float, heading: float, gait: String, face: float,
 						_play(round_clip, BLEND)
 		"start":
 			yaw = lerp_angle(yaw, heading, 1.0 - exp(-delta * STEER_WALK * 1.5))
-			rate = clampf(speed / maxf(_pace("Walk"), 0.01), 0.8, 1.25)
+			# (its pace as it gets going - the clip's own, there, against its own)
+			var here := anim.current_animation_position
+			var going := (_at("Start", "fwd", here + 0.2) - _at("Start", "fwd", here - 0.2)) / 0.4 \
+				* float(moves.Start.stride) * size
+			rate = clampf(speed / going, 0.7, 1.4) if going > 0.15 else 1.0
 			if _slow > STOP_WAIT:
 				state = "idle"
 				_play(stand, BLEND_STAND)
@@ -289,8 +313,11 @@ func step(delta: float, speed: float, heading: float, gait: String, face: float,
 				if signf(now) == signf(_by):
 					_by = now
 			yaw = _from + _by * part
-			if state == "turn" and speed > 0.1:
-				rate = clampf(speed / maxf(_pace(clip), 0.01), 0.8, 1.3)
+			# (its feet turning it as fast as it's turning: the clip's own turn pace against how fast
+			# its way's coming round)
+			if state == "turn" and speed > 0.1 and absf(total) > 0.5:
+				var clip_turn := deg_to_rad(absf(total)) / maxf(float(m.length), 0.1)
+				rate = clampf(_turning / clip_turn, 0.75, 1.35) if _turning > 0.05 else 1.0
 			if _done():
 				yaw = _from + _by
 				_rest = TURN_REST
