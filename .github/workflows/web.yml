@@ -63,8 +63,9 @@ jobs:
 
       # Scenario tests (tests/scenarios.gd): the real game scene, scripted
       # play, checked outcomes. A failure stops the build and the deploy.
+      # (the whole suite runs ~13-15 min on a hosted runner - room to spare)
       - name: Tests
-        run: timeout 900 "$GODOT" --headless --fixed-fps 60 -s tests/run_tests.gd
+        run: timeout 1200 "$GODOT" --headless --fixed-fps 60 -s tests/run_tests.gd
 
       # The game, and each character but the first as a pack of its own,
       # fetched when it's wanted (tools/export_web.py).

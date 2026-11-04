@@ -6660,6 +6660,11 @@ func test_run_intro_and_eye_guide() -> void:
 		return binds.get_bind_pose(found[0]).affine_inverse().origin if not found.is_empty() else Vector3.INF
 	var belt_y: float = (bind_at.call("skirt_0_01") as Vector3).y
 	var hinge: Vector3 = bind_at.call("jaw")
+	# (each upper arm: its shoulder, its way - looked up once)
+	var arms := {}
+	for side in ["l", "r"]:
+		var sh: Vector3 = bind_at.call("upperarm_" + side)
+		arms[side] = [sh, ((bind_at.call("lowerarm_" + side) as Vector3) - sh).normalized()]
 	var flares: Array[float] = []
 	var stuck := 0
 	var throat := 0
@@ -6673,10 +6678,9 @@ func test_run_intro_and_eye_guide() -> void:
 		if float(on.get("skirt", 0.0)) > 0.5 and p.y < belt_y - 0.05:
 			var r := Vector2(p.x, p.z - 0.34).length()
 			flares.append(rad_to_deg(atan2(r - 0.2, belt_y - p.y)))
-		for side in ["l", "r"]:
-			var sh: Vector3 = bind_at.call("upperarm_" + side)
-			var el: Vector3 = bind_at.call("lowerarm_" + side)
-			var ax := (el - sh).normalized()
+		for side in arms:
+			var sh: Vector3 = arms[side][0]
+			var ax: Vector3 = arms[side][1]
 			var along := (p - sh).dot(ax)
 			# (over the arm held out as made, where its cloth lay - not the flesh under it)
 			var off := (p - sh) - ax * along
