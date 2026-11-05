@@ -690,6 +690,8 @@ func test_big_ghost_follows_the_light() -> void:
 	var lantern: Lantern = player().get_node("Lantern")
 	gs.time_remaining = gs.DAY_DURATION * 0.7
 	await frames(5)
+	# (woken on its own it came down out of the sky; put somewhere, it's already down)
+	bg.descending = 0.0
 	bg.global_position = Vector2(1500, 300)
 	bg.mode = bg.Mode.WANDER
 	player().set_physics_process(false)
@@ -736,6 +738,8 @@ func test_big_ghost_eats_thrown_fish() -> void:
 	var bg = main.get_node("BigGhost")
 	gs.time_remaining = gs.DAY_DURATION * 0.7
 	await frames(5)
+	# (woken on its own it came down out of the sky; put somewhere, it's already down)
+	bg.descending = 0.0
 	bg.global_position = Vector2(1500, 300)
 	bg.mode = bg.Mode.CHASE
 	await put(bg.global_position + Vector2(-120, 0))
@@ -753,10 +757,14 @@ func test_big_ghost_fish_taken_back() -> void:
 	var bg = main.get_node("BigGhost")
 	gs.time_remaining = gs.DAY_DURATION * 0.7
 	await frames(5)
+	# (woken on its own it came down out of the sky; put somewhere, it's already down)
+	bg.descending = 0.0
 	bg.global_position = Vector2(1500, 300)
 	bg.mode = bg.Mode.CHASE
 	await put(bg.global_position + Vector2(-200, 0))
 	player().aim_dir = Vector2.RIGHT
+	# (the lamp off: the red dragon sees it from this far now - RED_SIGHT - and this is about the fish)
+	player().get_node("Lantern").lit = false
 	gs.add_carried_fish(fish())
 	player().throw_fish(0)
 	await frames(3)
