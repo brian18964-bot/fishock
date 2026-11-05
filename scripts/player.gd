@@ -828,6 +828,41 @@ var _confuse_redirect := 0.0
 var stagger_timer := 0.0
 
 
+## User request (the black dragon's red lamp): in its light the traveller is under 壓力 (stress) -
+## RED_LAMP_SLOW the pace, and a count, one a second to STRESS_COUNT: there, muddled too
+## (STRESS_MUDDLE s, the count stood still meanwhile); still in the light after it, it counts again.
+## Out of the light, the stress is gone. BigGhost says when its light's on them (`red_lamp_on`).
+const RED_LAMP_SLOW := 0.9
+const STRESS_COUNT := 5.0
+const STRESS_MUDDLE := 3.0
+var stress := 0.0
+var _red_lamp_frame := -10
+
+
+## (BigGhost, each physics frame the black dragon's red light is on the traveller)
+func red_lamp_on() -> void:
+	_red_lamp_frame = Engine.get_physics_frames()
+
+
+## In the black dragon's red light now?
+func under_red_lamp() -> bool:
+	return Engine.get_physics_frames() - _red_lamp_frame <= 1
+
+
+func _tick_stress(delta: float) -> void:
+	if not under_red_lamp() or held:
+		stress = 0.0
+		return
+	# (muddled - by it or anything - the count waits)
+	if water_ghost_timer > 0.0:
+		return
+	stress += delta
+	if stress >= STRESS_COUNT:
+		stress = 0.0
+		afflict(STRESS_MUDDLE, "紅燈的壓力讓你方向亂掉", "", "confuse")
+		GameState.push_message("紅燈的壓迫感讓你頭昏眼花，快離開紅光！")
+
+
 func afflict(duration: float, confuse_text: String, fear_msg: String, force := "") -> void:
 	var kind := force if force != "" else ("fear" if randf() < 0.5 else "confuse")
 	if kind == "fear":
@@ -1954,6 +1989,7 @@ func _physics_process(delta: float) -> void:
 	stagger_timer = maxf(stagger_timer - delta, 0.0)
 	_confuse_redirect -= delta
 	poison_timer = maxf(poison_timer - delta, 0.0)
+	_tick_stress(delta)
 	move_left = maxf(move_left - delta, 0.0)
 	if _escape_left >= 0.0:
 		_escape_left -= delta
@@ -2120,6 +2156,8 @@ func _update_movement() -> void:
 	var affliction_ratio: float = WATER_GHOST_SPEED_MULT if (water_ghost_timer > 0.0 or stagger_timer > 0.0) else 1.0
 	if poison_timer > 0.0:
 		affliction_ratio *= POISON_SPEED_MULT
+	if under_red_lamp():
+		affliction_ratio *= RED_LAMP_SLOW
 	var drum_ratio: float = OIL_DRUM_SPEED_MULT if carrying_oil_drum else 1.0
 	$CarriedCan.visible = carrying_oil_drum
 	# Low spirit: heavier on their feet (Profile.SPIRIT_SPEED).

@@ -207,6 +207,8 @@ static func speed_share(p: Player) -> float:
 		share *= Player.WATER_GHOST_SPEED_MULT
 	if p.poison_timer > 0.0:
 		share *= Player.POISON_SPEED_MULT
+	if p.under_red_lamp():
+		share *= Player.RED_LAMP_SLOW
 	if p.carrying_oil_drum:
 		share *= Player.OIL_DRUM_SPEED_MULT
 	if p.vigor_timer > 0.0:
@@ -236,6 +238,10 @@ static func tip_text(key: String, p: Player) -> String:
 		"fear":
 			return "【害怕】\n%s：嚇得動彈不得，暫時不能移動。\n剩餘 %d 秒" % [p.fear_text if p.fear_text != "" else "被嚇到了", ceili(p.fear_timer)] \
 				if p.fear_timer > 0.0 else "【害怕】\n已經結束了"
+		"stress":
+			return "【壓力】\n黑龍的紅燈照著你：腳步慢 %d%%，每秒累積一次壓力，數到 %d 就陷入混亂（%d 秒）。\n離開紅光就會解除。\n目前：%d／%d" % [
+				roundi((1.0 - Player.RED_LAMP_SLOW) * 100.0), int(Player.STRESS_COUNT), int(Player.STRESS_MUDDLE),
+				stress_count(p), int(Player.STRESS_COUNT)] if p.under_red_lamp() else "【壓力】\n已經離開紅光了"
 		"muddle":
 			return "【混亂】\n%s：方向亂掉，腳步變慢（速度 %d%%）。\n剩餘 %d 秒" % [p.affliction_text if p.affliction_text != "" else "頭昏眼花",
 				roundi(Player.WATER_GHOST_SPEED_MULT * 100.0), ceili(p.water_ghost_timer)] \
@@ -381,7 +387,15 @@ func afflictions(p: Player) -> Array:
 		out.append(["fear", p.fear_timer, _fear_total])
 	if p.water_ghost_timer > 0.0:
 		out.append(["muddle", p.water_ghost_timer, _muddle_total])
+	# (user request: in the black dragon's red light, 壓力 - its count, 1 to 5)
+	if p.under_red_lamp():
+		out.append(["stress", p.stress, Player.STRESS_COUNT])
 	return out
+
+
+## The 壓力 slot's count: 1 the first second in the red light, up to STRESS_COUNT.
+static func stress_count(p: Player) -> int:
+	return clampi(floori(p.stress) + 1, 1, int(Player.STRESS_COUNT))
 
 
 ## The sweep of the time gone, dark from the top round, over `r`; the seconds left in its corner.
@@ -406,6 +420,19 @@ func _draw_afflictions(list: Array, from: int) -> void:
 		_slots.append([r, str(e[0])])
 		UiKit.draw_slot(_view, r, "", false, null)
 		var c := r.get_center() + Vector2(0, -2)
+		if e[0] == "stress":
+			# (壓力: a red lamp's glow, pulsing faster as the count goes up; its count in the corner)
+			var n := stress_count(_player())
+			var beat := 0.5 + 0.5 * sin(_pulse_t * (4.0 + n * 2.0))
+			_view.draw_circle(c, 10.0 + beat * 2.0, Color(1.0, 0.25, 0.2, 0.25 + 0.2 * beat))
+			_view.draw_circle(c, 5.5, Color(1.0, 0.36, 0.28))
+			_view.draw_rect(Rect2(c + Vector2(-4, -11), Vector2(8, 3)), Color(0.75, 0.6, 0.4))
+			for k in n:
+				var a := -PI / 2.0 + TAU * k / Player.STRESS_COUNT
+				_view.draw_circle(c + Vector2(cos(a), sin(a)) * 13.0, 1.8, WARN)
+			UiKit.draw_text(_view, Vector2(r.position.x, r.end.y - 2.0), str(n), 13, WARN,
+				HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 2.0, true)
+			continue
 		if e[0] == "fear":
 			# (a fright: a red mark, trembling)
 			var shake := Vector2(sin(_pulse_t * 40.0), 0.0) * 1.2

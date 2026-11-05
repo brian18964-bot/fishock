@@ -65,6 +65,15 @@ const NOTICE := 90.0
 const NIGHT_NOTICE := 130.0
 ## Lit by the player's lamp within this range, it charges.
 const LIT_SIGHT := 260.0
+## User request: the red dragon (the forest's - the snowy map's is the black one) finds the
+## traveller from RED_SIGHT times as far (passing close, and the lamp on it - its light seen that
+## much farther off), and once it has (looking, after them), goes RED_HASTE times as fast.
+const RED_SIGHT := 1.5
+const RED_HASTE := 1.15
+## User request: the black dragon's red lamp lights BLACK_LAMP_REACH times as far as the red one's
+## green (its 2D light and so its 3D one); its light on the traveller, they're under stress (Player).
+const LAMP_SCALE := 0.45
+const BLACK_LAMP_REACH := 1.5
 ## Out of the light this long, it has lost the player.
 const LOSE_TIME := 2.0
 const LOOK_TIME := 3.0
@@ -134,7 +143,7 @@ func _ready() -> void:
 	_last_pos = global_position
 	Art.place(visual, OFFSET, SPRITE_SCALE)
 	lamp_light.texture = LightTextureFactory.make_radial_texture()
-	lamp_light.texture_scale = 0.45
+	lamp_light.texture_scale = LAMP_SCALE * (1.0 if is_red() else BLACK_LAMP_REACH)
 	lamp_light.color = LAMP_COLOR
 	lamp_light.energy = 0.9
 	lamp_light.height = Lantern.LIGHT_HEIGHT
@@ -204,10 +213,25 @@ func enter_frenzy(duration: float) -> void:
 	frenzy_timer = maxf(frenzy_timer, duration)
 
 
+## How far its lamp's light reaches (px) - the 2D light's radius.
+func lamp_reach() -> float:
+	var half := 128.0 if lamp_light.texture == null else lamp_light.texture.get_width() * 0.5
+	return half * lamp_light.texture_scale
+
+
+## Is the traveller in its lamp's light (it out on the map, its lamp lit)?
+func lamp_on_player() -> bool:
+	return _player != null and lamp_light.visible and mode != Mode.ASLEEP \
+		and _player.global_position.distance_to(lamp_light.global_position) <= lamp_reach()
+
+
 func _physics_process(delta: float) -> void:
 	frenzy_timer = maxf(frenzy_timer - delta, 0.0)
 	if _lair == null or GameState.run_over:
 		return
+	# (the black dragon's red light: stress - Player)
+	if not is_red() and lamp_on_player():
+		_player.red_lamp_on()
 	if stun_timer > 0.0:
 		stun_timer -= delta
 		return
@@ -239,7 +263,7 @@ func _physics_process(delta: float) -> void:
 			if _near_player():
 				_target = _player.global_position
 				_timer = LOOK_TIME
-			_move_toward(_target, LOOK_SPEED, delta)
+			_move_toward(_target, LOOK_SPEED * haste(), delta)
 			_try_catch()
 			if mode == Mode.SUSPICIOUS:
 				if _lit():
@@ -291,9 +315,24 @@ func _physics_process(delta: float) -> void:
 				_claim = CLAIM_TIME
 
 
+## Is it the red dragon (not the snowy map's black one)?
+static func is_red() -> bool:
+	return not MapGenerator.current_theme.begins_with("snow")
+
+
+## How far it sees, as a share of its own (RED_SIGHT for the red one).
+static func sight() -> float:
+	return RED_SIGHT if is_red() else 1.0
+
+
+## Its pace after someone, as a share (RED_HASTE for the red one).
+static func haste() -> float:
+	return RED_HASTE if is_red() else 1.0
+
+
 ## Charging - for as long as the lamp stays on it.
 func _chase(delta: float) -> void:
-	var speed := NIGHT_SPEED if GameState.is_night else CHASE_SPEED
+	var speed := (NIGHT_SPEED if GameState.is_night else CHASE_SPEED) * haste()
 	if frenzy_timer > 0.0:
 		speed *= 1.25
 	if GameState.is_night:
@@ -310,7 +349,7 @@ func _chase(delta: float) -> void:
 		_move_toward(_target, speed, delta)
 	else:
 		_lost += delta
-		_move_toward(_target, LOOK_SPEED, delta)
+		_move_toward(_target, LOOK_SPEED * haste(), delta)
 	_try_catch()
 	if mode == Mode.CHASE and _lost >= LOSE_TIME:
 		GameState.push_message("大鬼失去了你的蹤影")
@@ -355,12 +394,12 @@ func _watch() -> void:
 
 func _lit() -> bool:
 	var lamp: Lantern = _player.get_node("Lantern")
-	return lamp.lit and global_position.distance_to(_player.global_position) <= LIT_SIGHT \
-		and lamp.illuminates(global_position)
+	return lamp.lit and global_position.distance_to(_player.global_position) <= LIT_SIGHT * sight() \
+		and lamp.illuminates(global_position, sight())
 
 
 func _near_player() -> bool:
-	var reach := NIGHT_NOTICE if GameState.is_night else NOTICE
+	var reach := (NIGHT_NOTICE if GameState.is_night else NOTICE) * sight()
 	return global_position.distance_to(_player.global_position) <= reach
 
 

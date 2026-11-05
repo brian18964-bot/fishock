@@ -29,6 +29,8 @@ const RUN_HALT := 0.5
 const HALT_LOOK := 0.3
 ## (s) how long under RUN_BELOW before it's walking - its slowing measured meanwhile, to pull up instead
 const RUN_SETTLE := 0.12
+## (s) breaking into a run, how long it has to get up to a run's speed before it walks instead
+const RUN_RISE := 0.6
 ## (deg) how far off its way it has to be for each turn: under VEER it steers; under QUARTER it veers;
 ## under ROUND a quarter turn; past it right round (Turn_180, or Turn_180_L - it mirrored - to its left)
 const VEER := 22.0
@@ -65,6 +67,8 @@ var _accel := 0.0
 var _was_speed := 0.0
 ## (s) how long it's been running under RUN_BELOW
 var _below := 0.0
+## Has this run been at a run's speed yet (over RUN_BELOW)? - only then does it pull up short
+var _ran := false
 var _rest := 0.0
 var _start_at := 0.0
 var _start_out := 0.0
@@ -267,6 +271,7 @@ func step(delta: float, speed: float, heading: float, gait: String, face: float,
 		_play(stand, BLEND_STAND)
 	if state != "run":
 		_below = 0.0
+		_ran = false
 	match state:
 		"idle":
 			if speed > MOVE_ON:
@@ -368,7 +373,18 @@ func step(delta: float, speed: float, heading: float, gait: String, face: float,
 			# (pulling up short - where it'd be stood in a moment, slowing as it is - or nearly stood)
 			var soon := speed + minf(_accel, 0.0) * HALT_LOOK
 			_below = _below + delta if speed < RUN_BELOW else 0.0
-			if speed < RUN_BELOW + 0.3 and (soon < MOVE_ON or speed < RUN_HALT):
+			_ran = _ran or speed >= RUN_BELOW
+			if not _ran:
+				# (breaking into a run from a stand or a walk: no pulling up from it yet - stood
+				# still a moment, it stands)
+				if speed < STOP_BELOW and _slow > STOP_WAIT:
+					state = "idle"
+					_play(stand, BLEND_STAND)
+				elif speed > MOVE_ON and _below > RUN_RISE:
+					# (never got up to a run's speed: it walks)
+					state = "walk"
+					_play(_walk_clip(gait), BLEND, _same_step(_walk_clip(gait)))
+			elif speed < RUN_BELOW + 0.3 and (soon < MOVE_ON or speed < RUN_HALT):
 				state = "halt"
 				_play("Run_Stop", 0.2, 0.0)
 			elif speed < RUN_BELOW and _below > RUN_SETTLE:

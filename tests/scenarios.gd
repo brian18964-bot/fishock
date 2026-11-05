@@ -15,6 +15,7 @@ const TESTS := [
 	"test_depart_chooser",
 	"test_run_3d",
 	"test_dragon_gait",
+	"test_dragon_lamps_and_sight",
 	"test_ghost_mist",
 	"test_load_state",
 	"test_round_fixes",
@@ -8260,6 +8261,77 @@ func test_dragon_gait() -> void:
 	check(c.clip == "Idle_Lamp" and gait.state == "act", "then it holds them, its lantern up (%s)" % c.clip)
 	bg.mode = bg.Mode.WANDER
 	RunView3D.intro = intro_was
+
+
+## User requests: the black dragon's red lamp lights 50% farther; in its light the traveller is 10%
+## slower and under 壓力 - a count 1 to 5, at 5 muddled; still in it after, it counts again; out of
+## it, gone. And the red dragon finds them from 50% farther, and goes 15% faster after them.
+func test_dragon_lamps_and_sight() -> void:
+	# The forest's red dragon: farther sight, quicker after someone; its lamp as it was.
+	var bg = main.get_node("BigGhost")
+	check(BigGhost.is_red() and is_equal_approx(BigGhost.sight(), 1.5) and is_equal_approx(BigGhost.haste(), 1.15)
+		and is_equal_approx(bg.lamp_light.texture_scale, BigGhost.LAMP_SCALE), "the red dragon: sees 50%% farther, 15%% quicker after you, its lamp as it was")
+	bg.set_physics_process(false)
+	bg.mode = bg.Mode.WANDER
+	bg.global_position = player().global_position + Vector2(BigGhost.NOTICE * 1.3, 0)
+	check(bg._near_player(), "passing at 1.3x the old reach, it notices (it'd not have before)")
+	bg.global_position = player().global_position + Vector2(BigGhost.NOTICE * 1.6, 0)
+	check(not bg._near_player(), "past 1.5x, not")
+	# The snowy map's black dragon.
+	seed(7)
+	camp().clear()
+	gs.reset_run()
+	gs.last_return = ""
+	camp().begin_free([], "snow_pine")
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	await frames(3)
+	main = get_tree().current_scene
+	gs.start_run()
+	await frames(5)
+	bg = main.get_node("BigGhost")
+	check(not BigGhost.is_red() and is_equal_approx(BigGhost.sight(), 1.0)
+		and is_equal_approx(bg.lamp_light.texture_scale, BigGhost.LAMP_SCALE * 1.5), "the black dragon: its red lamp's light 50%% farther")
+	# (out on the map, about its business; kept where it is)
+	bg.global_position = player().global_position + Vector2(300, 0)
+	bg.mode = bg.Mode.REST
+	bg._timer = 999.0
+	await frames(3)
+	var p := player()
+	var keep_in := func() -> void:
+		bg.global_position = Vector2(clampf(bg.global_position.x, 300, 3500), clampf(bg.global_position.y, 300, 3500))
+		p.global_position = bg.lamp_light.global_position + Vector2(bg.lamp_reach() * 0.6, 0)
+	var free_share := StatusCard.speed_share(p)
+	keep_in.call()
+	await frames(3)
+	keep_in.call()
+	await frames(1)
+	check(p.under_red_lamp() and is_equal_approx(StatusCard.speed_share(p), free_share * 0.9), "in its light: 10%% slower (%.2f of %.2f)" % [StatusCard.speed_share(p), free_share])
+	var cards := get_tree().root.find_children("*", "", true, false).filter(func(n): return n is StatusCard)
+	var card: Node = cards.front() if not cards.is_empty() else null
+	check(card != null, "(the status card)")
+	for _i in int(2.5 * 60):
+		keep_in.call()
+		await frames(1)
+	check(StatusCard.stress_count(p) == 3 and p.water_ghost_timer <= 0.0, "壓力: counting, 3 (%d)" % StatusCard.stress_count(p))
+	if card != null:
+		check(card.afflictions(p).any(func(e): return e[0] == "stress"), "its slot in the states")
+	for _i in int(2.7 * 60):
+		keep_in.call()
+		await frames(1)
+	check(p.water_ghost_timer > 0.0, "at 5: muddled")
+	var during := p.stress
+	for _i in int(1.0 * 60):
+		keep_in.call()
+		await frames(1)
+	check(p.stress == during, "muddled, the count waits")
+	for _i in int((Player.STRESS_MUDDLE + 0.5) * 60):
+		keep_in.call()
+		await frames(1)
+	check(p.water_ghost_timer <= 0.0 and p.stress > 0.0 and p.under_red_lamp(), "the muddle over, still in its light: counting again (%.1f)" % p.stress)
+	p.global_position = bg.lamp_light.global_position + Vector2(bg.lamp_reach() * 1.4, 0)
+	await frames(3)
+	check(not p.under_red_lamp() and p.stress == 0.0, "out of its light, the stress is gone")
+	camp().clear()
 
 
 func test_snow_theme() -> void:

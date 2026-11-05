@@ -477,12 +477,13 @@ func _try_flash(reach: float = FLASH_RANGE, stun: float = FLASH_STUN_DURATION, c
 ## True if `point` currently falls inside the lit area (design doc §3.1:
 ## light aimed at the ghost gives the player away). Used by ghost
 ## perception and by the strong-light skill.
-func illuminates(point: Vector2) -> bool:
+## (`farther`: the light seen from that many times its own reach - the red dragon's eyes, BigGhost)
+func illuminates(point: Vector2, farther := 1.0) -> bool:
 	if not visible:
 		return false
 	var offset := point - global_position
 	var dist := offset.length()
-	var effective_radius := TEXTURE_HALF_SIZE * texture_scale
+	var effective_radius := TEXTURE_HALF_SIZE * texture_scale * farther
 	if dist > effective_radius:
 		return false
 	var relative_angle: float = abs(wrapf(offset.angle() - rotation, -PI, PI))
