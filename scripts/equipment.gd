@@ -220,7 +220,7 @@ func _on_tent(i: int) -> void:
 
 ## The fish packed in the bag at home that would count on a run (alive, not weak).
 func _packed() -> Array:
-	return (Profile.pack_fish + Profile.clasp_fish).filter(func(f): return FishLife.stats_count(f))
+	return Stats.at_camp().filter(func(f): return FishLife.stats_count(f))
 
 
 ## A stat's card: its number and where it comes from, and what it touches.
@@ -232,7 +232,7 @@ func _show_stat(stat: String) -> void:
 	lines.append("總和 %d　＝　%s" % [Stats.total(stat, _packed()), "　＋　".join(parts) if not parts.is_empty() else "0"])
 	lines.append(Stats.INFO[stat])
 	if stat != Stats.LUCK:
-		lines.append("起始素質是這個角色天生的（總和 10 點，依動物特質分配），其他來自釣竿、天賦、裝備，和出發時帶在包包裡的活魚詞綴（虛弱或死掉的不算）。")
+		lines.append("起始素質是這個角色天生的（總和 10 點，依動物特質分配），其他來自釣竿、天賦、裝備，和出發時帶著的活魚詞綴（包包、活魚扣、活魚箱裡的都算；虛弱或死掉的不算）。")
 	var note := MenuStyle.notice(self, Stats.NAMES[stat], lines)
 	note.name = "StatNote"
 

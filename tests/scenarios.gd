@@ -7545,6 +7545,23 @@ func test_stats_gate_weak() -> void:
 	check(Stats.total("might") == base_might + 25, "a drink's boost counts")
 	GameState.carried_fish.clear()
 	GameState.stat_buffs.clear()
+	# User request: the fish in what's worn count as the bag's do - the fish box's in a run, and at
+	# camp the clasps' and the box's (when it goes along: worn or in the bag) on the character page.
+	var worn_box_fish := big.duplicate(true)
+	GameState.oxy_fish = [worn_box_fish]
+	check(Stats.total("might") == base_might + 20, "in a run, a fish in the fish box counts")
+	GameState.oxy_fish.clear()
+	var hung_fish := big.duplicate(true)
+	Profile.clasp_fish = [hung_fish]
+	Profile.oxy_stock = [worn_box_fish]
+	Profile.equipped["offhand"] = ""
+	var camp_m := func() -> int: return Stats.total("might", Stats.at_camp().filter(func(f): return FishLife.stats_count(f)))
+	check(camp_m.call() == base_might + 20, "at camp, a fish on a clasp counts (the box left at home: its fish don't)")
+	Profile.equipped["offhand"] = "oxy_box"
+	check(camp_m.call() == base_might + 40, "the box worn: its fish count too")
+	Profile.clasp_fish = []
+	Profile.oxy_stock = []
+	Profile.equipped["offhand"] = ""
 	# The gate: a giant asks one stat; the short stat is named by the text.
 	var gate := FishData.gate_for("carp", "legend", 80.0)
 	check(gate.size() == 3, "a legend asks three stats")

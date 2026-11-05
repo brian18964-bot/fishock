@@ -42,9 +42,26 @@ static func rod_stat(stat: String, tier: int) -> int:
 const CHALLENGE := 0.12
 
 
+## The fish whose affixes count in a run: the bag's, the clasps' (they're in it too, `clasped`) and
+## the fish box's (user request: the fish in what's worn count, as the bag's do).
+static func carried() -> Array:
+	return GameState.carried_fish + GameState.oxy_fish
+
+
+## At camp, what would go along: the bag's, the clasps', and the fish box's if the box goes too
+## (worn or in the bag - GameState.start_run).
+static func at_camp() -> Array:
+	var out: Array = Profile.pack_fish + Profile.clasp_fish
+	if Profile.has_oxy_box() or Profile.bag_count("oxy_box") > 0:
+		out += Profile.oxy_stock
+	return out
+
+
 ## [[where from, number], ...] for `stat`: the rod, each fish carried alive
 ## that has it, the gear worn, what's been drunk or an event's.
-static func sources(stat: String, fish: Array = GameState.carried_fish) -> Array:
+static func sources(stat: String, fish = null) -> Array:
+	if fish == null:
+		fish = carried()
 	var out := []
 	var start := int(Profile.START_STATS.get(Profile.character, {}).get(stat, 0))
 	if start != 0:
@@ -78,7 +95,7 @@ static func sources(stat: String, fish: Array = GameState.carried_fish) -> Array
 	return out
 
 
-static func total(stat: String, fish: Array = GameState.carried_fish) -> int:
+static func total(stat: String, fish = null) -> int:
 	var n := 0
 	for s in sources(stat, fish):
 		n += int(s[1])
