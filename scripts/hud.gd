@@ -153,7 +153,7 @@ func _process(delta: float) -> void:
 		else:
 			fuel_label.text = "手電筒電量（電池 %d）" % Profile.batteries
 
-	if GameState.is_night or GameState.day_phase != GameState.DayPhase.FISHING:
+	if GameState.is_night or not GameState.ticking():
 		time_label.text = ""
 	else:
 		var total: int = int(GameState.time_remaining)
@@ -404,22 +404,50 @@ class QuotaView extends Control:
 		UiKit.draw_text(self, Vector2(0, 15), text, 13, Color(1, 0.96, 0.86), HORIZONTAL_ALIGNMENT_CENTER, W, true)
 		var under := ""
 		var col := UiKit.TEXT
+		var timed := GameState.day_duration > 0.0 and GameState.ticking()
+		if timed or GameState.is_night:
+			_time_bar()
+		var total: int = int(GameState.time_remaining)
+		var clock := "%02d:%02d" % [total / 60, total % 60]
 		if GameState.is_night:
-			under = "夜晚降臨"
-			col = UiKit.DANGER
+			under = "龍在狩獵"
+			col = HUNT
 		elif GameState.day_phase == GameState.DayPhase.ESCAPE:
-			under = "額度已滿！去發光的渡石逃離"
+			under = ("渡石已開  " + clock) if timed else "額度已滿！去發光的渡石逃離"
 			col = FULL
 		elif GameState.day_phase == GameState.DayPhase.FISHING and GameState.day_duration <= 0.0:
 			under = "不限時"
 			col = UiKit.DIM
 		elif GameState.day_phase == GameState.DayPhase.FISHING:
-			var total: int = int(GameState.time_remaining)
-			under = "%02d:%02d" % [total / 60, total % 60]
-			if total < 60:
-				col = Color(1.0, 0.55, 0.4)
+			under = clock
+			if GameState.dragon_out:
+				col = PATROL
 		if under != "":
 			UiKit.draw_text(self, Vector2(0, 42), under, 18, col, HORIZONTAL_ALIGNMENT_CENTER, W, true)
+
+	## User request (the night's own clock): the day's time under the quota - a thin bar filling
+	## as it goes, its last part (the dragon about the map, GameState.DRAGON_AT on) another
+	## colour; the night's hunt, all of it a third, beating.
+	const TIME_Y := 23.0
+	const TIME_H := 4.0
+	const CALM := Color(0.86, 0.78, 0.55)
+	const PATROL := Color(1.0, 0.5, 0.25)
+	const HUNT := Color(0.9, 0.16, 0.12)
+
+	func _time_bar() -> void:
+		var r := Rect2(0, TIME_Y, W, TIME_H)
+		draw_rect(r.grow(1.0), Color(0.04, 0.03, 0.03, 0.85))
+		if GameState.is_night:
+			var beat := 0.75 + 0.25 * sin(Time.get_ticks_msec() * 0.008)
+			draw_rect(r, Color(HUNT, beat))
+			return
+		var cut := W * GameState.DRAGON_AT
+		draw_rect(Rect2(0, TIME_Y, cut, TIME_H), Color(CALM, 0.18))
+		draw_rect(Rect2(cut, TIME_Y, W - cut, TIME_H), Color(PATROL, 0.22))
+		var done := W * clampf(GameState.day_progress(), 0.0, 1.0)
+		draw_rect(Rect2(0, TIME_Y, minf(done, cut), TIME_H), CALM)
+		if done > cut:
+			draw_rect(Rect2(cut, TIME_Y, done - cut, TIME_H), PATROL)
 
 	## A small gold diamond capping the bar's end.
 	func _gem(c: Vector2) -> void:

@@ -17,6 +17,8 @@ const TESTS := [
 	"test_dragon_gait",
 	"test_dragon_lamps_and_sight",
 	"test_dragon_comes_at_night",
+	"test_quota_made_clock_goes_on",
+	"test_dragon_lines",
 	"test_dragon_crouch_skin",
 	"test_ghost_mist",
 	"test_load_state",
@@ -5031,7 +5033,7 @@ func test_campaign_levels_build() -> void:
 		check(rare == int(r.ponds[1]), "%s: %d dark pond(s), got %d" % [l.id, int(r.ponds[1]), rare])
 		if not gen.theme.get("sea", false) and int(r.ponds[0]) >= 0:
 			check(common == int(r.ponds[0]), "%s: %d pond(s), got %d" % [l.id, int(r.ponds[0]), common])
-		check(gs.quota_target == float(r.quota) and is_equal_approx(gs.day_duration, float(r.day) * gs.DAY_PACE * (1.0 if r.get("night_fails", false) else gs.NIGHT_SOONER)), "%s: quota and day" % l.id)
+		check(gs.quota_target == float(r.quota) and is_equal_approx(gs.day_duration, float(r.day) * (gs.DAY_PACE if r.get("night_fails", false) else gs.HUNT_PACE)), "%s: quota and day" % l.id)
 		var big: Node = main.get_node("BigGhost")
 		check((big.process_mode != Node.PROCESS_MODE_DISABLED) == r.big_ghost, "%s: the big ghost %s" % [l.id, "in" if r.big_ghost else "out"])
 		var floating := get_tree().get_nodes_in_group("ghosts").filter(func(g): return not g is BigGhost).size()
@@ -5120,7 +5122,7 @@ func test_campaign_curses() -> void:
 	main = get_tree().current_scene
 	gs.start_run()
 	await frames(3)
-	check(is_equal_approx(gs.quota_target, 45.0) and is_equal_approx(gs.day_duration, 180.0 * gs.DAY_PACE * gs.NIGHT_SOONER), "貪念 and 急潮")
+	check(is_equal_approx(gs.quota_target, 45.0) and is_equal_approx(gs.day_duration, 180.0 * gs.HUNT_PACE), "貪念 and 急潮")
 	var floating := get_tree().get_nodes_in_group("ghosts").filter(func(g): return not g is BigGhost).size()
 	check(floating == 3, "群鬼: three floating ghosts (%d)" % floating)
 	await frames(2)
@@ -8572,18 +8574,27 @@ func test_dragon_comes_at_night() -> void:
 		await frames(1)
 	var bg = main.get_node("BigGhost")
 	check(bg.mode == bg.Mode.ASLEEP, "before the night, not out yet (this run's)")
-	# (user request: only when night falls - not in the evening's last part either)
-	gs.time_remaining = gs.DAY_DURATION * 0.05
+	# User request (the night's own clock): a free run's seven minutes - the dragon down at five, the
+	# hunt at seven; the day darkening in three stages to the dragon, the darkest its two minutes.
+	check(is_equal_approx(gs.day_duration, 420.0), "a free run's day: seven minutes (%.0f s)" % gs.day_duration)
+	var stages := []
+	for p in [0.1, 0.3, 0.55, 0.7]:
+		gs.time_remaining = gs.day_duration * (1.0 - p)
+		stages.append(gs.light_stage())
+	check(stages == [0, 1, 2, 2], "the first three stages share its first five minutes (%s)" % [stages])
+	gs.time_remaining = gs.day_duration * (1.0 - gs.DRAGON_AT) + 2.0
 	await frames(10)
-	check(gs.light_stage() == 3 and bg.mode == bg.Mode.ASLEEP, "the evening's last part: still not out")
-	# (far off from the traveller, as the night will find them)
-	var played := []
+	check(bg.mode == bg.Mode.ASLEEP and not gs.dragon_out, "4:58: not out yet")
 	var feed := []
 	GameState.event_reported.connect(func(t, _tone): feed.append(t))
-	gs._trigger_night()
+	for _i in 200:
+		await frames(1)
+		if gs.dragon_out:
+			break
 	await frames(2)
-	check(bg.descending > 0.0 and bg.mode == bg.Mode.WANDER, "night: it comes, coming down")
-	check(feed.has("進入暗夜，龍鬼來了..."), "the feed: 進入暗夜，龍鬼來了...")
+	check(gs.dragon_out and gs.light_stage() == 3, "5:00 - the darkest stage with it")
+	check(bg.descending > 0.0 and bg.mode == bg.Mode.WANDER, "5:00: it comes, coming down")
+	check(feed.has(BigGhost.CAME_SAID), "the feed: " + BigGhost.CAME_SAID)
 	check(Sfx.stream("dragon_roar") != null, "its roar's sound")
 	var c: Dictionary = view._creatures.get(bg, {})
 	var rig: DragonRig = c.get("rig")
@@ -8617,7 +8628,152 @@ func test_dragon_comes_at_night() -> void:
 		await frames(1)
 	high = (c.shown as Vector3).y - view.ground_y(bg.global_position)
 	check(bg.arriving <= 0.0 and rig.airborne < 0.05 and high < 0.3, "down on its feet (%.2f m)" % high)
+	check(bg.mode != bg.Mode.CHASE and bg.patrolling(), "then it walks the map - not hunting yet (%s)" % bg.mode)
+	# (drawn the traveller's way: of the places it makes for, half near them at first, most by the night)
+	var near_at := func() -> float:
+		var n := 0
+		for _i in 300:
+			bg._pick_wander_target()
+			var d: float = bg._target.distance_to(player().global_position)
+			if d >= BigGhost.NEAR_FROM - 1.0 and d <= BigGhost.NEAR_TO + 1.0:
+				n += 1
+		return n / 300.0
+	var first: float = near_at.call()
+	var keep: float = gs.time_remaining
+	gs.time_remaining = 1.0
+	var last: float = near_at.call()
+	gs.time_remaining = keep
+	check(first > 0.4 and first < 0.7 and last > 0.7, "it makes for near the traveller: %.0f%% at first, %.0f%% by the night" % [first * 100.0, last * 100.0])
+	# 7:00 - the night, the hunt: by their scent, wherever they are
+	bg.global_position = player().global_position + Vector2(900, 0)
+	gs.time_remaining = 0.5
+	for _i in 120:
+		await frames(1)
+		if gs.is_night:
+			break
+	await frames(3)
+	check(gs.is_night and feed.has(BigGhost.HUNT_SAID), "7:00: " + BigGhost.HUNT_SAID)
 	check(bg.mode == bg.Mode.CHASE, "then it hunts (%s)" % bg.mode)
+	var hud := main.get_node("HUD")
+	check(hud != null, "the HUD (its time bar beats red)")
+
+
+## User request (the night's own clock): the quota made early, the clock goes on - the ferry open,
+## the dragon down at five and the hunt at seven all the same; a level whose night is its end stops.
+func test_quota_made_clock_goes_on() -> void:
+	camp().clear()
+	gs.reset_run()
+	gs.start_run()
+	gs.quota_progress = gs.quota_target
+	gs._enter_escape_phase()
+	var left: float = gs.time_remaining
+	await frames(30)
+	check(gs.day_phase == gs.DayPhase.ESCAPE and gs.time_remaining < left - 0.3, "quota made: the clock still runs (%.1f -> %.1f)" % [left, gs.time_remaining])
+	gs.time_remaining = gs.day_duration * (1.0 - gs.DRAGON_AT) + 0.1
+	await frames(20)
+	check(gs.dragon_out, "the dragon comes at five all the same")
+	gs.time_remaining = 0.1
+	await frames(20)
+	check(gs.is_night and not gs.run_over, "and the night with its hunt - the ferry still open")
+
+
+## User request (the dragon's words): its lines - each traveller's own, the red dragon's and the
+## black's, "far" (it hasn't found them) and "see" (it has), 5+ each; heard by chance as it walks the
+## map: 30% the first time it's seen, 25% after, 20 s apart at least, 3-4 a run, none twice; over its
+## head, down the left, a growl under it.
+func test_dragon_lines() -> void:
+	for pair in Profile.CHARACTERS + [["any", "通用"]]:
+		var ok := true
+		for red in [true, false]:
+			for kind in ["far", "see"]:
+				var l: Array = DragonLines.of(pair[0], red, kind)
+				var uniq := {}
+				for x in l:
+					uniq[x] = true
+				ok = ok and l.size() >= 5 and l.size() <= 10 and uniq.size() == l.size()
+		check(ok, "%s: 5-10 lines each, red and black, far and see" % pair[1])
+	check(Sfx.stream("dragon_growl") != null, "its growl's sound")
+	var view: RunView3D = null
+	for _i in 200:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	var bg = main.get_node("BigGhost")
+	Profile.character = "cat"
+	gs.time_remaining = gs.day_duration * (1.0 - gs.DRAGON_AT) - 1.0
+	gs.dragon_out = true
+	bg._appear()
+	bg.descending = 0.0
+	bg._arrive_after = false
+	bg.arriving = 0.0
+	bg.global_position = player().global_position + Vector2(0, -120)
+	await frames(10)
+	check(bg.patrolling() and bg._on_screen(), "walking the map, on the screen")
+	bg.global_position = player().global_position + Vector2(2400, 0)
+	await frames(10)
+	check(not bg._on_screen(), "far off: not on the screen")
+	# its picks: the cat's own or anyone's, none twice
+	var own := DragonLines.of("cat", bg.is_red(), "see")
+	var any := DragonLines.of("any", bg.is_red(), "see")
+	var got := {}
+	var fair := true
+	for _i in own.size() + any.size():
+		var line: String = bg.pick_line("see")
+		fair = fair and (line in own or line in any) and not got.has(line)
+		got[line] = true
+		bg._said[line] = true
+	check(fair and bg.pick_line("see") == "", "its lines: the cat's or anyone's, none twice")
+	# the chances: 30% the first time
+	bg.say_rng.seed = 11
+	var hit := 0
+	for _i in 600:
+		bg._said.clear()
+		bg._says = 0
+		bg._rolled = false
+		bg._said_at = -1.0e9
+		var was: int = bg._says
+		bg._maybe_say("far")
+		hit += bg._says - was
+	check(hit > 600 * 0.24 and hit < 600 * 0.36, "the first sighting: %.0f%% of the time" % (hit / 6.0))
+	hit = 0
+	for _i in 600:
+		bg._said.clear()
+		bg._says = 0
+		bg._rolled = true
+		bg._said_at = -1.0e9
+		bg._maybe_say("far")
+		hit += bg._says
+	check(hit > 600 * 0.19 and hit < 600 * 0.31, "after: %.0f%% of the time" % (hit / 6.0))
+	# 20 s apart; 3-4 a run
+	bg._says = 0
+	bg._rolled = true
+	bg._said_at = bg._clock - 5.0
+	for _i in 200:
+		bg._maybe_say("far")
+	check(bg._says == 0, "within 20 s of the last: nothing")
+	bg._said_at = -1.0e9
+	bg._says = bg._say_cap
+	for _i in 200:
+		bg._said_at = -1.0e9
+		bg._maybe_say("far")
+	check(bg._says == bg._say_cap and bg._say_cap in [3, 4], "%d a run at most" % bg._say_cap)
+	# said: over its head, down the left
+	var feed := []
+	GameState.event_reported.connect(func(t, _tone): feed.append(t))
+	bg.global_position = player().global_position + Vector2(0, -120)
+	await frames(5)
+	bg._said.clear()
+	bg.say("小貓咪，我看見你了……")
+	await frames(2)
+	var c: Dictionary = view._creatures.get(bg, {})
+	var bubble = c.get("said")
+	check(bubble is Label3D and (bubble as Label3D).text == "小貓咪，我看見你了……", "over its head")
+	check(feed.has("龍：「小貓咪，我看見你了……」"), "down the left")
+	for _i in int((RunView3D.SAY_TIME + 1.2) * 60):
+		await frames(1)
+	check(not is_instance_valid(bubble), "gone after a few seconds")
+	gs.dragon_out = false
 
 
 ## User request (重建模型): the red dragon's crouching moves (landing, the

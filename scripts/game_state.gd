@@ -19,6 +19,9 @@ signal day_phase_changed(phase: String)
 signal offering_pool_updated(pool: Array, evil_count: int)
 signal run_ended(success: bool, message: String)
 signal night_fell()
+## User request (the night's own clock): at DRAGON_AT of the day the dragon comes down out of the
+## sky and walks the map - the hunt only when the day's out (night_fell).
+signal dragon_came()
 signal light_stage_changed(stage: int)
 signal weather_changed(weather: String)
 
@@ -37,10 +40,15 @@ const DAY_DURATION := 300.0
 ## twice as long as they did, and each level's day (Campaign rules.day)
 ## runs this much longer to leave time for them.
 const DAY_PACE := 1.35
-## User request: night comes far sooner - the dragon out after the traveller early. The day (to the
-## night, if the quota isn't made) is this share of what it was; a level whose night is its end
-## (rules.night_fails - nothing deadly out in the dark) keeps its whole day.
-const NIGHT_SOONER := 0.5
+## User request (the night's own clock): a free run's seven minutes - five to fish and gather, then
+## the dragon down out of the sky and about the map for two, then the night and its hunt. A level's
+## day (rules.day; the free run's 300) runs HUNT_PACE times as long, so the free run's is 420 s and
+## the story's keep their own lengths in proportion; the dragon comes at DRAGON_AT of it. A level
+## whose night is its end (rules.night_fails - nothing deadly out in the dark) keeps its DAY_PACE.
+const HUNT_PACE := 1.4
+const DRAGON_AT := 5.0 / 7.0
+## (the dragon's down - since DRAGON_AT of the day)
+var dragon_out := false
 ## User request: the day darkens in four stages (quarters of the day) - at
 ## first the lamp at its lowest setting is enough to see ahead; by the last
 ## you have to turn it right up. See light_stage(), DarknessController and
@@ -161,7 +169,7 @@ func _process(delta: float) -> void:
 	elif not run_started:
 		# (the bucket, the bag and the warehouse at home)
 		Profile.age_home(delta)
-	if not run_started or run_over or is_night or day_phase != DayPhase.FISHING:
+	if not run_started or run_over or is_night or not ticking():
 		return
 	if day_duration > 0.0:
 		time_remaining = max(time_remaining - delta, 0.0)
@@ -169,7 +177,12 @@ func _process(delta: float) -> void:
 		if stage != _light_stage:
 			_light_stage = stage
 			light_stage_changed.emit(stage)
-			push_message(LIGHT_STAGE_MESSAGES[stage])
+			# (the last stage comes with the dragon - its own word says it)
+			if stage < LIGHT_STAGES - 1:
+				push_message(LIGHT_STAGE_MESSAGES[stage])
+		if not dragon_out and day_progress() >= DRAGON_AT and not Campaign.rules.get("night_fails", false):
+			dragon_out = true
+			dragon_came.emit()
 		if time_remaining <= 0.0:
 			_trigger_night()
 			return
@@ -179,14 +192,37 @@ func _process(delta: float) -> void:
 		_next_weather()
 
 
-## 0 at the start of the day ... LIGHT_STAGES - 1 in its last quarter (and
-## through the night).
+## 0 at the start of the day ... LIGHT_STAGES - 1 in its last part (and through the night). User
+## request (the night's own clock): the first stages share the day up to the dragon (DRAGON_AT) -
+## the last, the darkest, is the dragon's walk to the night.
 func light_stage() -> int:
 	if is_night:
 		return LIGHT_STAGES - 1
 	if day_duration <= 0.0:
 		return 0
-	return clampi(int((1.0 - time_remaining / day_duration) * LIGHT_STAGES), 0, LIGHT_STAGES - 1)
+	var p := day_progress()
+	if p >= DRAGON_AT:
+		return LIGHT_STAGES - 1
+	return clampi(int(p / DRAGON_AT * (LIGHT_STAGES - 1)), 0, LIGHT_STAGES - 2)
+
+
+## How far through the day (0 at the start, 1 at the night).
+func day_progress() -> float:
+	return 1.0 - time_remaining / day_duration if day_duration > 0.0 else 0.0
+
+
+## How far from the dragon's coming to the night (0..1; 0 before it).
+func patrol_progress() -> float:
+	return clampf((day_progress() - DRAGON_AT) / (1.0 - DRAGON_AT), 0.0, 1.0)
+
+
+## Is the day's clock running? Fishing, and (user request: the quota made early, the night still
+## comes - the ferry open, what's next the traveller's to choose) once it's made too; not in a
+## level whose night is its end (there the quota made, it's over).
+func ticking() -> bool:
+	if day_phase == DayPhase.FISHING:
+		return true
+	return day_phase == DayPhase.ESCAPE and not Campaign.rules.get("night_fails", false)
 
 
 func start_run() -> void:
@@ -465,9 +501,10 @@ func reset_run() -> void:
 	run_over = false
 	_quota_since_offering = 0.0
 	quota_target = float(Campaign.rules.quota)
-	day_duration = float(Campaign.rules.day) * DAY_PACE * (1.0 if Campaign.rules.get("night_fails", false) else NIGHT_SOONER)
+	day_duration = float(Campaign.rules.day) * (DAY_PACE if Campaign.rules.get("night_fails", false) else HUNT_PACE)
 	time_remaining = day_duration
 	_light_stage = 0
+	dragon_out = false
 	is_night = false
 	run_started = false
 	has_heart = false
@@ -698,8 +735,10 @@ func _trigger_night() -> void:
 		end_run(false, "天黑了，額度沒有補滿，渡石沒有亮起來……\n下次早一點開始獻祭吧。")
 		return
 	night_fell.emit()
-	push_message("時間到了，額度沒補滿...夜晚降臨，鬼進入獵殺模式！")
-	report("夜晚降臨，鬼開始獵殺！")
+	# (the dragon's own word, if it's out on this map - BigGhost)
+	if not Campaign.rules.get("big_ghost", true):
+		push_message("時間到了...夜晚降臨，鬼進入獵殺模式！")
+		report("夜晚降臨，鬼開始獵殺！")
 
 
 func grant_heart() -> void:

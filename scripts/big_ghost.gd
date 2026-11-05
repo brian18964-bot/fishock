@@ -26,6 +26,8 @@ extends Node2D
 ## fish or the strong light still hold it off for a while).
 
 signal mode_changed(mode: String)
+## (a line said - DragonLines; RunView3D puts it over its head)
+signal said(text: String)
 
 enum Mode { ASLEEP, WANDER, SUSPICIOUS, CHASE, SEARCH, EAT, GRAB, REST }
 
@@ -93,6 +95,33 @@ var descents := 0
 ## trembling. (`roar_left` of `roar_total` s: its maw open - RunView3D.)
 const ARRIVE_LAND := 1.0
 const ROARS := ["Roar", "Roar_2", "Roar_3"]
+const CAME_SAID := "龍來了……"
+const HUNT_SAID := "進入暗夜，龍循著你的氣味追過來了"
+## User request (the night's own clock): about the map before the night it's drawn the traveller's
+## way - each new place it makes for is near them (NEAR_FROM..NEAR_TO px off, 8-15 m) this share of
+## the time, more as the night comes (PATROL_NEAR, at its coming .. at the night).
+const PATROL_NEAR := Vector2(0.5, 0.8)
+## User request (its words, DragonLines): walking the map before the night, seen on the traveller's
+## screen (a new sighting) it may say something - SAY_FIRST the first time, SAY_AGAIN after - or the
+## moment it finds them; SAY_GAP s at least between lines, SAY_MOST of them a run (one or the
+## other), none twice; SAY_ANY of the time a line anyone might hear. Over its head (RunView3D),
+## down the left (GameState.report), a low growl under it.
+const SAY_FIRST := 0.3
+const SAY_AGAIN := 0.25
+const SAY_GAP := 20.0
+const SAY_MOST := Vector2i(3, 4)
+const SAY_ANY := 0.3
+var _said := {}
+var _says := 0
+var _say_cap := 3
+var _said_at := -1.0e9
+var _rolled := false
+var _was_seen := false
+var _clock := 0.0
+## (its own dice for its words - the game's draws, seeded, go on as they were)
+var say_rng := RandomNumberGenerator.new()
+const NEAR_FROM := 216.0
+const NEAR_TO := 405.0
 var arriving := 0.0
 var roar_clip := "Roar"
 var roar_left := 0.0
@@ -167,6 +196,7 @@ func _ready() -> void:
 			_lamps.append(Vector2(p[0], p[1]))
 	_last_pos = global_position
 	GameState.night_fell.connect(_on_night_fell)
+	GameState.dragon_came.connect(_on_dragon_came)
 	Art.place(visual, OFFSET, SPRITE_SCALE)
 	lamp_light.texture = LightTextureFactory.make_radial_texture()
 	lamp_light.texture_scale = LAMP_SCALE * (1.0 if is_red() else BLACK_LAMP_REACH)
@@ -226,8 +256,8 @@ func _appear() -> void:
 	_set_mode(Mode.WANDER)
 	descending = DESCEND_TIME
 	descents += 1
-	# (at nightfall, landed it roars)
-	_arrive_after = GameState.is_night
+	# (at its coming or the nightfall, landed it roars)
+	_arrive_after = GameState.is_night or GameState.dragon_out
 	roar_clip = ROARS[randi() % ROARS.size()]
 
 
@@ -253,17 +283,31 @@ func _roar_now() -> void:
 		scene.rumble(minf(roar_total, ROAR_TIME), ROAR_SHAKE)
 
 
+## User request (the night's own clock): five minutes in (GameState.DRAGON_AT of the day) it comes
+## down out of the sky, roars - heard wherever the traveller is - and walks the map, drawn more and
+## more their way; out already (a level's own wake), it roars where it stands.
+func _on_dragon_came() -> void:
+	if _lair == null or GameState.run_over:
+		return
+	GameState.push_message(CAME_SAID)
+	GameState.report(CAME_SAID)
+	if mode == Mode.ASLEEP:
+		_appear()
+	elif mode in [Mode.WANDER, Mode.REST, Mode.SEARCH, Mode.SUSPICIOUS] and descending <= 0.0 and arriving <= 0.0:
+		roar_clip = ROARS[randi() % ROARS.size()]
+		_stand_and_roar(false)
+
+
+## The night: the hunt - it's after the traveller by their scent, never losing them (_start_hunt).
+## Not out yet (no day's clock to bring it), it comes down first.
 func _on_night_fell() -> void:
 	if _lair == null or GameState.run_over:
 		return
-	GameState.push_message("進入暗夜，龍鬼來了...")
-	GameState.report("進入暗夜，龍鬼來了...")
+	GameState.push_message(HUNT_SAID)
+	GameState.report(HUNT_SAID)
+	_hunt_announced = true
 	if mode == Mode.ASLEEP:
 		_appear()
-	elif mode in [Mode.WANDER, Mode.REST, Mode.SEARCH, Mode.SUSPICIOUS] and descending <= 0.0:
-		# (out already - a level's own wake: it roars where it stands)
-		roar_clip = ROARS[randi() % ROARS.size()]
-		_stand_and_roar(false)
 
 
 ## User request (the pistol): a shot heard at `at` - asleep, it wakes;
@@ -300,6 +344,7 @@ func lamp_on_player() -> bool:
 
 func _physics_process(delta: float) -> void:
 	frenzy_timer = maxf(frenzy_timer - delta, 0.0)
+	_clock += delta
 	if _lair == null or GameState.run_over:
 		return
 	# (the black dragon's red light: stress - Player)
@@ -328,15 +373,20 @@ func _physics_process(delta: float) -> void:
 		_hunt_announced = false
 	elif mode in [Mode.WANDER, Mode.SEARCH, Mode.SUSPICIOUS]:
 		_start_hunt()
+	# (seen anew on the traveller's screen as it walks the map: it may say something)
+	var seen := patrolling() and _on_screen()
+	if seen and not _was_seen:
+		_maybe_say("far")
+	_was_seen = seen
 	match mode:
 		Mode.ASLEEP:
 			# (user request: not on the map at all till it sets out - then
 			# somewhere on it at random, away from the traveller)
 			global_position = _lair.global_position + HOME
 			var wake: int = int(Campaign.rules.big_wake) if int(Campaign.rules.big_wake) >= 0 else ACTIVE_FROM_STAGE
-			if GameState.run_started and (GameState.is_night or (wake >= 0 and GameState.light_stage() >= wake)):
+			if GameState.run_started and (GameState.is_night or GameState.dragon_out or (wake >= 0 and GameState.light_stage() >= wake)):
 				_appear()
-				if not GameState.is_night:
+				if not GameState.is_night and not GameState.dragon_out:
 					GameState.push_message("遠處傳來鐵鍊拖地的聲音...大鬼出現了")
 		Mode.WANDER, Mode.REST:
 			if mode == Mode.REST:
@@ -457,7 +507,7 @@ func _start_hunt() -> void:
 	_set_mode(Mode.CHASE)
 	if not _hunt_announced:
 		_hunt_announced = true
-		GameState.push_message("大鬼循著你的氣味直直追過來了！丟魚或強光能拖住牠")
+		GameState.push_message(HUNT_SAID)
 
 
 func _start_search(at: Vector2) -> void:
@@ -471,13 +521,66 @@ func _start_search(at: Vector2) -> void:
 func _watch() -> void:
 	if _check_fish():
 		return
+	var walking := patrolling()
 	if _lit():
 		_start_chase()
+		if walking:
+			_maybe_say("see")
 	elif _near_player():
 		_target = _player.global_position
 		_timer = LOOK_TIME
 		_set_mode(Mode.SUSPICIOUS)
 		GameState.push_message("大鬼注意到附近有動靜...")
+		if walking:
+			_maybe_say("see")
+
+
+## Walking the map before the night (down, not roaring, not after anyone yet).
+func patrolling() -> bool:
+	return GameState.dragon_out and not GameState.is_night and not GameState.run_over \
+		and mode in [Mode.WANDER, Mode.SEARCH, Mode.SUSPICIOUS, Mode.REST] and descending <= 0.0 and arriving <= 0.0
+
+
+## On the traveller's screen (its body, in 3D; else where the 2D camera looks).
+func _on_screen() -> bool:
+	if RunView3D.active != null and is_instance_valid(RunView3D.active):
+		return RunView3D.active.dragon_on_screen(self)
+	var at := get_viewport().get_canvas_transform() * global_position
+	return get_viewport().get_visible_rect().has_point(at)
+
+
+## Its chance to say something (`kind` "far" or "see" - DragonLines), as the rules above let it.
+func _maybe_say(kind: String) -> void:
+	if _says >= _say_cap or _clock - _said_at < SAY_GAP:
+		return
+	var chance := SAY_AGAIN if _rolled else SAY_FIRST
+	_rolled = true
+	if say_rng.randf() >= chance:
+		return
+	var line := pick_line(kind)
+	if line != "":
+		say(line)
+
+
+## A line not said yet this run: the traveller's own (Profile.character), SAY_ANY of the time one
+## anyone might hear ("" when all are said).
+func pick_line(kind: String) -> String:
+	var own := DragonLines.of(Profile.character, is_red(), kind).filter(func(l): return not _said.has(l))
+	var any := DragonLines.of("any", is_red(), kind).filter(func(l): return not _said.has(l))
+	if not any.is_empty() and (own.is_empty() or say_rng.randf() < SAY_ANY):
+		return any[say_rng.randi() % any.size()]
+	return own[say_rng.randi() % own.size()] if not own.is_empty() else ""
+
+
+func say(line: String) -> void:
+	_said[line] = true
+	_says += 1
+	_said_at = _clock
+	said.emit(line)
+	Sfx.play("dragon_growl", -6.0, 0.08)
+	GameState.report("龍：「%s」" % line)
+	if RunView3D.active != null and is_instance_valid(RunView3D.active):
+		RunView3D.active.dragon_say(self, line)
 
 
 func _lit() -> bool:
@@ -669,6 +772,11 @@ func _wet(pos: Vector2) -> bool:
 
 func _pick_wander_target(away_from_player := false) -> void:
 	_repick = randf_range(WANDER_REPICK.x, WANDER_REPICK.y)
+	if not away_from_player and GameState.dragon_out and not GameState.is_night and _player != null \
+			and randf() < lerpf(PATROL_NEAR.x, PATROL_NEAR.y, GameState.patrol_progress()):
+		var at: Vector2 = _player.global_position + Vector2.RIGHT.rotated(randf() * TAU) * randf_range(NEAR_FROM, NEAR_TO)
+		_target = Vector2(clampf(at.x, 80.0, Player.WORLD_WIDTH - 80.0), clampf(at.y, 80.0, Player.WORLD_HEIGHT - 80.0))
+		return
 	for _i in 12:
 		_target = Vector2(randf_range(80.0, Player.WORLD_WIDTH - 80.0), randf_range(80.0, Player.WORLD_HEIGHT - 80.0))
 		if not away_from_player or _target.distance_to(_player.global_position) > 600.0:
@@ -697,6 +805,12 @@ func _set_mode(m: Mode) -> void:
 
 func _go_home() -> void:
 	_lair = get_tree().get_first_node_in_group("ghost_cages") as GhostCage
+	_said.clear()
+	_says = 0
+	_say_cap = say_rng.randi_range(SAY_MOST.x, SAY_MOST.y)
+	_said_at = -1.0e9
+	_rolled = false
+	_was_seen = false
 	mode = Mode.ASLEEP
 	stun_timer = 0.0
 	if _lair != null:

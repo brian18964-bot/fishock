@@ -1267,6 +1267,59 @@ func _pop_text(text: String, parent: Node3D, at: Vector3, color: Color, size: in
 	tw.tween_callback(l.queue_free)
 
 
+## User request (the dragon's words, BigGhost.say): over its head as it walks the map, SAY_UP m
+## above its head, fading in, held SAY_TIME s, fading out; a new line takes the old one's place.
+const SAY_TIME := 3.0
+const SAY_UP := 0.75
+const SAY_RED := Color(1.0, 0.86, 0.78)
+const SAY_BLACK := Color(0.88, 0.86, 0.96)
+
+
+## Is the dragon `n`'s body on the screen?
+func dragon_on_screen(n: Node2D) -> bool:
+	var c: Dictionary = _creatures.get(n, {})
+	if c.is_empty() or camera == null or not (c.node as Node3D).visible:
+		return false
+	return camera.is_position_in_frustum((c.node as Node3D).global_position + Vector3.UP * 1.5)
+
+
+func dragon_say(n: Node2D, text: String) -> void:
+	var c: Dictionary = _creatures.get(n, {})
+	if c.is_empty():
+		return
+	var holder: Node3D = c.node
+	if c.has("said") and is_instance_valid(c.said):
+		(c.said as Node).queue_free()
+	var l := Label3D.new()
+	l.name = "Said"
+	l.text = text
+	l.font_size = 46
+	l.outline_size = 16
+	l.modulate = SAY_RED if bool(n.call("is_red")) else SAY_BLACK
+	l.outline_modulate = Color(0.06, 0.02, 0.02, 0.95)
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.no_depth_test = true
+	l.pixel_size = 0.004
+	l.width = 1100.0
+	l.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
+	var up := 2.8
+	var rig = c.get("rig")
+	if rig is DragonRig:
+		var sk: Skeleton3D = (rig as DragonRig).get_skeleton()
+		var hb := sk.find_bone("Head")
+		if hb >= 0:
+			up = holder.to_local(sk.global_transform * sk.get_bone_global_pose(hb).origin).y
+	l.position = Vector3(0, up + SAY_UP, 0)
+	holder.add_child(l)
+	c.said = l
+	l.modulate.a = 0.0
+	var tw := l.create_tween()
+	tw.tween_property(l, "modulate:a", 1.0, 0.25)
+	tw.tween_interval(SAY_TIME)
+	tw.tween_property(l, "modulate:a", 0.0, 0.5)
+	tw.tween_callback(l.queue_free)
+
+
 ## What the dog found, named over it, until it's picked up (or a while).
 const NAME_TAG_TIME := 15.0
 

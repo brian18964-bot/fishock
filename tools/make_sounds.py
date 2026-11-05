@@ -441,6 +441,25 @@ def dragon_roar():
     return norm(fade(reverb(x, 0.85, 2.6, 0.5), 0.01, 0.6), 0.95)
 
 
+def dragon_growl():
+    """User request (the dragon's words as it walks the map before the night): under each line a
+    low throaty growl - short, quiet, close: the roar's voice without its rise, a breath of rasp,
+    no echo of the woods."""
+    d = 1.3
+    n = int(d * SR)
+    t = t_axis(d)
+    f = 58 + 10 * np.sin(np.pi * np.clip(t / d, 0, 1))
+    f = f * (1 + 0.04 * np.sin(2 * np.pi * 19 * t) + 0.02 * RNG.standard_normal(n).cumsum() / np.sqrt(n))
+    phase = 2 * np.pi * np.cumsum(f) / SR
+    voice = sum(np.sin(phase * k + RNG.uniform(0, 6)) / k ** 1.1 for k in range(1, 12))
+    voice *= 0.6 + 0.4 * np.abs(np.sin(2 * np.pi * 27 * t)) ** 0.4
+    shape = env_ad(n, 0.18, 0.7)
+    throat = sum(bandpass(voice, fc, bw) * g for fc, bw, g in ((220, 120, 1.0), (520, 220, 0.6), (1300, 400, 0.25)))
+    rasp = bandpass(white(d), 1100, 600) * (0.5 + 0.5 * np.abs(np.sin(2 * np.pi * 27 * t))) * 0.35
+    x = (throat + lowpass(voice, 200) * 0.6 + rasp) * shape
+    return norm(fade(reverb(x, 0.3, 0.6, 0.2), 0.01, 0.3), 0.6)
+
+
 def escape_sparkle():
     d = 1.6
     x = np.zeros(int(d * SR))
@@ -751,6 +770,7 @@ SOUNDS = {
     "step_snow": lambda: step("snow"), "chain_loop": chain_loop, "whisper": whisper, "moan": moan,
     "emerge": emerge, "cage": cage, "heartbeat_loop": heartbeat_loop, "offering": offering,
     "rock_flip": rock_flip, "chop": chop, "gunshot": gunshot, "tap": tap, "swipe_hit": whoosh_hit, "flop": flop, "thunder": thunder, "dragon_roar": dragon_roar,
+    "dragon_growl": dragon_growl,
     "escape": escape_sparkle,
     "amb_night": amb_night, "amb_day": amb_day, "amb_water": amb_water, "amb_rain": amb_rain,
     "amb_wind": amb_wind, "amb_swamp": amb_swamp, "amb_jungle": amb_jungle, "amb_surf": amb_surf,
