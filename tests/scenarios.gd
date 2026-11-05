@@ -8718,6 +8718,8 @@ func test_dragon_lines() -> void:
 	var any := DragonLines.of("any", bg.is_red(), "see")
 	var got := {}
 	var fair := true
+	# (it may have said something already, seen walking about just now)
+	bg._said.clear()
 	for _i in own.size() + any.size():
 		var line: String = bg.pick_line("see")
 		fair = fair and (line in own or line in any) and not got.has(line)
