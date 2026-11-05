@@ -426,6 +426,8 @@ static func attach(to: Node2D) -> RunView3D:
 ## The snowy map (MapGenerator's "snow_pine"): the pines and rocks whitened, the ground white, ice
 ## round the water's edge, snow falling, the night a little paler and colder.
 var _snow := false
+## (the ground's material: its snow's paleness follows the evening's light - _update_light)
+var _ground_mat: ShaderMaterial
 ## The footprints in the snow (the snowy map's).
 var _tracks: SnowTracks
 const SNOW_WHITE := Color(0.9, 0.94, 1.0)
@@ -657,6 +659,7 @@ func _ground() -> void:
 		mat.set_shader_parameter(pair[0] + "_nrm", load("res://assets/sprites/ground/%s_normal.png" % pair[1]))
 	mat.set_shader_parameter("snow", 1.0 if _snow else 0.0)
 	mat.set_shader_parameter("snow_bright", SNOW_GROUND)
+	_ground_mat = mat
 	mi.material_override = mat
 	add_child(mi)
 
@@ -4747,12 +4750,22 @@ func _environment() -> void:
 
 
 ## (the snowy map's light: its white ground lit by this much of the forest's ambient and moon, its
-## haze's light this much - user request: the snow too bright, the lamp no use)
+## haze's light this much - user request: the snow too bright, the lamp no use - at night; then
+## (user request: at the start too dark to tell it's snow - it should get darker as the night
+## goes on) at the evening's first light SNOW_LIGHT_DUSK, going down to it with the day's dark)
 const SNOW_LIGHT := 0.3
+const SNOW_LIGHT_DUSK := 0.65
 const SNOW_HAZE := 0.3
+const SNOW_HAZE_DUSK := 0.65
 ## (and its snow on the ground this pale - night snow, grey-blue: white, it took even the lamp's
-## faint edge and the whole view was lit)
+## faint edge and the whole view was lit; at dusk SNOW_GROUND_DUSK, still white)
 const SNOW_GROUND := 0.45
+const SNOW_GROUND_DUSK := 0.8
+
+
+## (the snow's share of the forest's light at `k` - 1 the evening's first light, 0 the night)
+static func snow_light(k: float) -> float:
+	return lerpf(SNOW_LIGHT, SNOW_LIGHT_DUSK, clampf(k, 0.0, 1.0))
 
 
 ## The 2D night's dark (main's Darkness) as the 3D one's light: the
@@ -4778,11 +4791,18 @@ func _update_light() -> void:
 		# (a colder dark, a thicker haze. User request: the snow far too bright - it gave the night
 		# back so much light the lamp did nothing (its ground ~30x the forest's at night): the
 		# white ground lit by far less - SNOW_LIGHT of the forest's ambient and moon, its haze dark)
-		_env.ambient_light_energy *= SNOW_LIGHT
+		# (the evening measured from the night's own colour - its blue 0.06, breathing up to 0.064:
+		# at night the snow as dark as it was made, not a shade over; eased: the snow keeps its
+		# light through the evening's middle, then goes)
+		var ks := sqrt(clampf((level - 0.066) / (0.26 - 0.066), 0.0, 1.0))
+		var lit := snow_light(ks)
+		_env.ambient_light_energy *= lit
 		_env.ambient_light_color = _env.ambient_light_color.lerp(Color(0.55, 0.65, 0.85), 0.5)
-		_moon.light_energy *= SNOW_LIGHT
-		_env.fog_light_color = _env.fog_light_color.lerp(Color(0.16, 0.2, 0.28) * SNOW_HAZE, 0.6)
+		_moon.light_energy *= lit
+		_env.fog_light_color = _env.fog_light_color.lerp(Color(0.16, 0.2, 0.28) * lerpf(SNOW_HAZE, SNOW_HAZE_DUSK, ks), 0.6)
 		_env.fog_density = 0.024
+		if _ground_mat != null:
+			_ground_mat.set_shader_parameter("snow_bright", lerpf(SNOW_GROUND, SNOW_GROUND_DUSK, ks))
 	_env.background_color = _env.fog_light_color * 0.5
 	# (the owl in the dark: the whole view brighter - Abilities 夜視)
 	var sight := Abilities.OWL_DARK_SIGHT if Abilities.has("owl") and player.unlit() else 1.0

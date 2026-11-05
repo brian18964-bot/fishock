@@ -8294,9 +8294,21 @@ func test_snow_theme() -> void:
 		if c is MeshInstance3D and c.material_override is ShaderMaterial and (c.material_override as ShaderMaterial).get_shader_parameter("snow") != null:
 			ground = c
 	check(ground != null and float((ground.material_override as ShaderMaterial).get_shader_parameter("snow")) > 0.5, "the ground is under snow")
-	# (user request: the snow far too bright, the lamp no use - night snow grey-blue, lit by little)
-	check(float((ground.material_override as ShaderMaterial).get_shader_parameter("snow_bright")) == RunView3D.SNOW_GROUND
-		and RunView3D.SNOW_GROUND < 0.6 and view._env.ambient_light_energy < 0.3 * RunView3D.NIGHT_DIM, "the snowy night dark: its lamp's what shows the way")
+	# (user requests: the snow far too bright, the lamp no use - night snow grey-blue, lit by little;
+	# then: at the start too dark to tell it's snow - light at first, darker as the night goes on)
+	var gm := ground.material_override as ShaderMaterial
+	await frames(5)
+	var early_snow := float(gm.get_shader_parameter("snow_bright"))
+	var early_amb := view._env.ambient_light_energy
+	check(early_snow > RunView3D.SNOW_GROUND + 0.25, "the evening's first light: the snow still white enough to tell (%.2f)" % early_snow)
+	var dc_node: CanvasModulate = main.get_node("Darkness")
+	dc_node.set_process(false)
+	dc_node.color = dc_node.NIGHT_COLOR
+	await frames(3)
+	check(is_equal_approx(float(gm.get_shader_parameter("snow_bright")), RunView3D.SNOW_GROUND) and RunView3D.SNOW_GROUND < 0.6
+		and view._env.ambient_light_energy < early_amb * 0.3 and view._env.ambient_light_energy < 0.3 * RunView3D.NIGHT_DIM,
+		"the snowy night dark: its lamp's what shows the way (light %.3f from %.3f)" % [view._env.ambient_light_energy, early_amb])
+	dc_node.set_process(true)
 	# Winter coats: the fox is white, the deer pale.
 	var coated := 0
 	for k in view._creatures:
