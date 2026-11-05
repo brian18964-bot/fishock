@@ -46,6 +46,33 @@ RATE = 15.0          # samples a second (the clips are 30 fps)
 SMOOTH = 0.6         # s: the path and the heading smoothed over this (a step or two) - what's left stays in the clip
 
 
+def moving(poses, eps=1e-4):
+    """The bones posed at all in `poses` ([{bone: (location, rotation)}, ...]) - away from their rest
+    in any of them. (User request: the files kept small - a clip keys only these; the rest of the
+    skeleton - the wings, the tail, the fingers, the skirt, set by DragonRig - stays at rest.)"""
+    out = set()
+    for pose in poses:
+        for b, (loc, rot) in pose.items():
+            if b in out:
+                continue
+            if loc.length > eps or rot.rotation_difference(Quaternion()).angle > eps:
+                out.add(b)
+    return out
+
+
+def bake(arm, frames, poses):
+    """Keys `poses` at `frames` on `arm`'s action - only the bones that move (moving)."""
+    keep = moving(poses)
+    for f, pose in zip(frames, poses):
+        for pb in arm.pose.bones:
+            if pb.name not in keep:
+                continue
+            pb.location, pb.rotation_quaternion = pose[pb.name]
+            pb.keyframe_insert("location", frame=f)
+            pb.keyframe_insert("rotation_quaternion", frame=f)
+    return keep
+
+
 def _swap(name):
     if name.endswith("_l"):
         return name[:-2] + "_r"
@@ -194,11 +221,7 @@ def carry(arm, moves_dir, moves, log):
         frames = [1 + i * step for i in range(n)] + ([1 + n * step] if loop else [])
         if loop:
             poses.append(poses[0])
-        for f, pose in zip(frames, poses):
-            for pb in arm.pose.bones:
-                pb.location, pb.rotation_quaternion = pose[pb.name]
-                pb.keyframe_insert("location", frame=f)
-                pb.keyframe_insert("rotation_quaternion", frame=f)
+        bake(arm, frames, poses)
         ad.action = None
         actions[game] = out
         m = meta[game]

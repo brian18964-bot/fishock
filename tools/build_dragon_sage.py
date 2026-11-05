@@ -286,6 +286,10 @@ RED_EYE = ((0.783, 0.797), 0.14)
 # down to near its hem), swung by DragonRig as the tail is; each skirt vertex shared between the two
 # chains nearest round it and along its chain, eased in from the belt over SKIRT_EASE (m).
 SKIRT_CHAINS = 8
+# (the legs' skin grown onto the flaps between them: a vertex this much the thighs', next to one this
+# much the skirt's - and CROTCH_RINGS - 1 rings round them - goes with the pelvis; see skin())
+CROTCH = (0.15, 0.3)
+CROTCH_RINGS = 2
 SKIRT_BONES = 3
 SKIRT_TOP = 0.04
 SKIRT_EASE = 0.12
@@ -1594,6 +1598,39 @@ def weights(body, arm, spec, thick):
         ssub = np.where(tot > 0, ssub / np.maximum(tot, 1e-9), 0.0)
         put(sreg * (tot[:, 0] > 0), ssub, sb)
         log("skirt: %d vertices (%d wholly)" % (int((sreg > 0).sum()), int((sreg > 0.99).sum())))
+        # User request (the skin torn under the robe crouching - holding someone down, picking a fish
+        # up, landing): where the legs' skin meets the robe's flaps, between the legs, Meshy grew them
+        # together; the thighs swinging up pulled it away from the flap hanging down. That skin -
+        # any vertex at least CROTCH[0] the thighs' next to one at least CROTCH[1] the skirt's, and
+        # a ring further - goes with the pelvis instead (all its thighs' weight; the ring, half).
+        thighs = [col["thigh_l"], col["thigh_r"]]
+        skirt_cols = [col[b] for b in sb]
+        tshare = W[:, thighs].sum(1)
+        sshare = W[:, skirt_cols].sum(1)
+        nb = [[] for _ in range(n)]
+        for e in me.edges:
+            a, b = e.vertices
+            nb[a].append(b)
+            nb[b].append(a)
+        ring = {}
+        for v in np.nonzero(tshare >= CROTCH[0])[0]:
+            if any(sshare[u] >= CROTCH[1] for u in nb[v]):
+                ring[int(v)] = 0
+        front = list(ring)
+        for r in range(1, CROTCH_RINGS):
+            nxt = []
+            for v in front:
+                for u in nb[v]:
+                    if u not in ring and tshare[u] > 0.05:
+                        ring[u] = r
+                        nxt.append(u)
+            front = nxt
+        for v, r in ring.items():
+            k = 1.0 - r / CROTCH_RINGS
+            took = W[v, thighs].sum() * k
+            W[v, thighs] *= 1.0 - k
+            W[v, col["pelvis"]] += took
+        log("crotch: %d vertices onto the pelvis" % len(ring))
     # Where Meshy grew the membrane onto the body - onto the arm held out in front of it, into the
     # back below the wing's root (ROOT_KEEP) - the two are parted, not a face lost: each face is the
     # wing's or the body's by its vertices' shares, and the edges between a wing face and a body
@@ -1804,11 +1841,7 @@ def carry(arm, src):
         frames = [1 + i * step for i in range(n)] + ([1 + n * step] if loop else [])
         if loop:
             poses.append(poses[0])
-        for f, pose in zip(frames, poses):
-            for pb in arm.pose.bones:
-                pb.location, pb.rotation_quaternion = pose[pb.name]
-                pb.keyframe_insert("location", frame=f)
-                pb.keyframe_insert("rotation_quaternion", frame=f)
+        dragon_moves.bake(arm, frames, poses)
         ad.action = None
         out[game] = act
         log("clip %s: %d keys over %.0f frames" % (game, len(frames), frames[-1] - 1))

@@ -37,6 +37,10 @@ const DAY_DURATION := 300.0
 ## twice as long as they did, and each level's day (Campaign rules.day)
 ## runs this much longer to leave time for them.
 const DAY_PACE := 1.35
+## User request: night comes far sooner - the dragon out after the traveller early. The day (to the
+## night, if the quota isn't made) is this share of what it was; a level whose night is its end
+## (rules.night_fails - nothing deadly out in the dark) keeps its whole day.
+const NIGHT_SOONER := 0.5
 ## User request: the day darkens in four stages (quarters of the day) - at
 ## first the lamp at its lowest setting is enough to see ahead; by the last
 ## you have to turn it right up. See light_stage(), DarknessController and
@@ -461,7 +465,7 @@ func reset_run() -> void:
 	run_over = false
 	_quota_since_offering = 0.0
 	quota_target = float(Campaign.rules.quota)
-	day_duration = float(Campaign.rules.day) * DAY_PACE
+	day_duration = float(Campaign.rules.day) * DAY_PACE * (1.0 if Campaign.rules.get("night_fails", false) else NIGHT_SOONER)
 	time_remaining = day_duration
 	_light_stage = 0
 	is_night = false
