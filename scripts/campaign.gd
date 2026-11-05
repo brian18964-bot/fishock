@@ -312,6 +312,7 @@ const ACHIEVEMENTS := [
 	["dancer", "隱藏", "水鬼的舞伴", "一輪裡被水鬼抓 3 次還成功離開", 100, {"run": "water_ghost_hit", "min": 3, "won": true}],
 	["feeder", "隱藏", "餵鬼人", "一輪裡用魚引開大鬼 3 次", 100, {"run": "big_ghost_lured", "min": 3}],
 	["one_cast", "隱藏", "一竿入魂", "一輪的第一竿就釣到遠海大魚", 80, {"run": "first_cast_far", "min": 1}],
+	["dragon_joke", "隱藏", "龍就只是個笑話!", "龍熄滅營火之後，還從渡石逃了出去", 1000, {"run": "escaped_doused", "min": 1, "won": true}],
 ]
 
 ## The tutorials: steps of [what Willow says, until (a stat reaching "min"
@@ -934,6 +935,8 @@ func finish(success: bool) -> Dictionary:
 		run["won"] = 1.0
 		if GameState.is_night:
 			stat("escaped_night")
+		if GameState.dark_fell:
+			stat("escaped_doused")
 		if GameState.evil_count == 0:
 			stat("pure_escape")
 		stat("escaped")

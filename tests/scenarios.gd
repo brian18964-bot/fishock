@@ -19,6 +19,7 @@ const TESTS := [
 	"test_dragon_comes_at_night",
 	"test_quota_made_clock_goes_on",
 	"test_dragon_lines",
+	"test_camp_doused",
 	"test_dragon_crouch_skin",
 	"test_ghost_mist",
 	"test_load_state",
@@ -8677,6 +8678,46 @@ func test_quota_made_clock_goes_on() -> void:
 	check(gs.is_night and not gs.run_over, "and the night with its hunt - the ferry still open")
 
 
+## User request: three minutes into the hunt (10:00 of a free run) the dragon tears into the camp's
+## oil - the fire out for good, the map black but for the lamps, the camp no shelter; out by the ferry
+## after that: 「龍就只是個笑話!」 and 1000 gold.
+func test_camp_doused() -> void:
+	var bg = main.get_node("BigGhost")
+	var station = get_tree().get_first_node_in_group("fuel_stations")
+	check(is_equal_approx(gs.day_duration * gs.DOOM_AFTER, 180.0), "a free run's: three minutes into the hunt")
+	gs.time_remaining = 0.05
+	await frames(5)
+	check(gs.is_night and not gs.dark_fell and station.light.visible, "the hunt: the camp's fire still lit")
+	var feed := []
+	GameState.event_reported.connect(func(t, _tone): feed.append(t))
+	gs.night_time = gs.day_duration * gs.DOOM_AFTER - 0.05
+	for _i in 30:
+		await frames(1)
+		if gs.dark_fell:
+			break
+	await frames(3)
+	check(gs.dark_fell and station.total_fuel == 0.0 and not station.light.visible, "10:00: the camp's oil gone, its fire out")
+	check(feed.has(gs.DOUSED_SAID), "the feed: " + gs.DOUSED_SAID)
+	check(not bg._in_safe_zone(station.global_position), "the camp no shelter now")
+	station.add_fuel(200.0)
+	await frames(3)
+	check(not station.light.visible, "no fire again this run (oil carried back or no)")
+	var lamp: Lantern = player().get_node("Lantern")
+	lamp.fuel = 1.0
+	check(not station.try_refuel(lamp), "no oil to fill the lamp from")
+	# (it eases into the dark over a few seconds)
+	for _i in 600:
+		await frames(1)
+	var dark: CanvasModulate = main.get_node("Darkness")
+	check(maxf(dark.color.r, maxf(dark.color.g, dark.color.b)) < 0.03, "the whole map black (%.3f)" % maxf(dark.color.r, dark.color.b))
+	# out by the ferry after it: the achievement, its gold
+	var gold := Profile.gold
+	Profile.achievements.erase("dragon_joke")
+	var res: Dictionary = Campaign.finish(true)
+	check(Profile.has_achievement("dragon_joke") and "dragon_joke" in res.achievements, "「龍就只是個笑話!」")
+	check(Profile.gold >= gold + 1000, "and its 1000 gold (%d -> %d)" % [gold, Profile.gold])
+
+
 ## User request (the dragon's words): its lines - each traveller's own, the red dragon's and the
 ## black's, "far" (it hasn't found them) and "see" (it has), 5+ each; heard by chance as it walks the
 ## map: 30% the first time it's seen, 25% after, 20 s apart at least, 3-4 a run, none twice; over its
@@ -8770,7 +8811,10 @@ func test_dragon_lines() -> void:
 	await frames(2)
 	var c: Dictionary = view._creatures.get(bg, {})
 	var bubble = c.get("said")
-	check(bubble is Label3D and (bubble as Label3D).text == "小貓咪，我看見你了……", "over its head")
+	var words: Label3D = (bubble as Node).get_child(0) if bubble is Node3D else null
+	check(words != null and words.text == "小貓咪，我看見你了……", "over its head")
+	check(bubble is Node3D and (bubble as Node).get_child(1) is Sprite3D and ((bubble as Node).get_child(1) as Sprite3D).texture != null,
+		"in a frame (user request: 加框)")
 	check(feed.has("龍：「小貓咪，我看見你了……」"), "down the left")
 	for _i in int((RunView3D.SAY_TIME + 1.2) * 60):
 		await frames(1)

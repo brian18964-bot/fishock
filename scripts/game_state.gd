@@ -22,6 +22,10 @@ signal night_fell()
 ## User request (the night's own clock): at DRAGON_AT of the day the dragon comes down out of the
 ## sky and walks the map - the hunt only when the day's out (night_fell).
 signal dragon_came()
+## User request: three minutes into the hunt (DOOM_AFTER of the day) the dragon tears into the camp's
+## oil drums - the camp's fire out for good, the whole map black but for the dragon's lamp and the
+## traveller's own; the camp no shelter. Still out by the ferry after it: 「龍就只是個笑話!」.
+signal camp_doused()
 signal light_stage_changed(stage: int)
 signal weather_changed(weather: String)
 
@@ -49,6 +53,11 @@ const HUNT_PACE := 1.4
 const DRAGON_AT := 5.0 / 7.0
 ## (the dragon's down - since DRAGON_AT of the day)
 var dragon_out := false
+const DOOM_AFTER := 3.0 / 7.0
+const DOUSED_SAID := "龍一爪掀翻了營地的油桶……營火熄滅，四周只剩一片漆黑"
+## (the night's been on this long; the camp's fire put out by the dragon)
+var night_time := 0.0
+var dark_fell := false
 ## User request: the day darkens in four stages (quarters of the day) - at
 ## first the lamp at its lowest setting is enough to see ahead; by the last
 ## you have to turn it right up. See light_stage(), DarknessController and
@@ -169,6 +178,11 @@ func _process(delta: float) -> void:
 	elif not run_started:
 		# (the bucket, the bag and the warehouse at home)
 		Profile.age_home(delta)
+	if run_started and not run_over and is_night and not dark_fell and day_duration > 0.0 \
+			and not Campaign.rules.get("night_fails", false) and Campaign.rules.get("big_ghost", true):
+		night_time += delta
+		if night_time >= day_duration * DOOM_AFTER:
+			douse_camp()
 	if not run_started or run_over or is_night or not ticking():
 		return
 	if day_duration > 0.0:
@@ -505,6 +519,8 @@ func reset_run() -> void:
 	time_remaining = day_duration
 	_light_stage = 0
 	dragon_out = false
+	night_time = 0.0
+	dark_fell = false
 	is_night = false
 	run_started = false
 	has_heart = false
@@ -725,6 +741,24 @@ func _announce_weather() -> void:
 		Weather.CLEAR:
 			push_message("天氣恢復平靜")
 			report("天氣恢復平靜", "info")
+
+
+## The dragon at the camp's oil: every fire out (and none lit again this run - FuelStation).
+func douse_camp() -> void:
+	if dark_fell:
+		return
+	dark_fell = true
+	for station in get_tree().get_nodes_in_group("fuel_stations"):
+		station.total_fuel = 0.0
+		station._refresh_label()
+	camp_doused.emit()
+	push_message(DOUSED_SAID)
+	report(DOUSED_SAID)
+
+
+## How long the hunt has till the camp's doused (s; 0 once it is).
+func doom_left() -> float:
+	return maxf(day_duration * DOOM_AFTER - night_time, 0.0) if not dark_fell else 0.0
 
 
 func _trigger_night() -> void:

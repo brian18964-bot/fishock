@@ -1273,6 +1273,12 @@ const SAY_TIME := 3.0
 const SAY_UP := 0.75
 const SAY_RED := Color(1.0, 0.86, 0.78)
 const SAY_BLACK := Color(0.88, 0.86, 0.96)
+const SAY_EDGE_RED := Color(0.85, 0.32, 0.22, 0.95)
+const SAY_EDGE_BLACK := Color(0.62, 0.58, 0.78, 0.95)
+const SAY_FONT := 42
+const SAY_PIXEL := 0.004
+const SAY_PAD := Vector2(26.0, 14.0)
+const SAY_TAIL := 9.0
 
 
 ## Is the dragon `n`'s body on the screen?
@@ -1290,18 +1296,34 @@ func dragon_say(n: Node2D, text: String) -> void:
 	var holder: Node3D = c.node
 	if c.has("said") and is_instance_valid(c.said):
 		(c.said as Node).queue_free()
+	var red := bool(n.call("is_red"))
+	var said := Node3D.new()
+	said.name = "Said"
 	var l := Label3D.new()
-	l.name = "Said"
 	l.text = text
-	l.font_size = 46
-	l.outline_size = 16
-	l.modulate = SAY_RED if bool(n.call("is_red")) else SAY_BLACK
+	l.font = UiKit.font()
+	l.font_size = SAY_FONT
+	l.outline_size = 10
+	l.modulate = SAY_RED if red else SAY_BLACK
 	l.outline_modulate = Color(0.06, 0.02, 0.02, 0.95)
 	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	l.no_depth_test = true
-	l.pixel_size = 0.004
-	l.width = 1100.0
-	l.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
+	l.render_priority = 2
+	l.outline_render_priority = 1
+	l.pixel_size = SAY_PIXEL
+	said.add_child(l)
+	# (user request: in a frame - a dark rounded box, its edge the dragon's colour, a tail at its foot)
+	var w := UiKit.font().get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, SAY_FONT).x
+	var frame := Sprite3D.new()
+	frame.texture = _say_frame(w + SAY_PAD.x * 2.0, SAY_FONT + SAY_PAD.y * 2.0, SAY_EDGE_RED if red else SAY_EDGE_BLACK)
+	frame.pixel_size = SAY_PIXEL * 2.0
+	frame.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	frame.no_depth_test = true
+	frame.shaded = false
+	frame.render_priority = 0
+	frame.offset = Vector2(0, -SAY_TAIL * 0.5)
+	frame.position = Vector3(0, 0, 0)
+	said.add_child(frame)
 	var up := 2.8
 	var rig = c.get("rig")
 	if rig is DragonRig:
@@ -1309,15 +1331,48 @@ func dragon_say(n: Node2D, text: String) -> void:
 		var hb := sk.find_bone("Head")
 		if hb >= 0:
 			up = holder.to_local(sk.global_transform * sk.get_bone_global_pose(hb).origin).y
-	l.position = Vector3(0, up + SAY_UP, 0)
-	holder.add_child(l)
-	c.said = l
+	said.position = Vector3(0, up + SAY_UP, 0)
+	holder.add_child(said)
+	c.said = said
+	var full_text := l.modulate
 	l.modulate.a = 0.0
-	var tw := l.create_tween()
-	tw.tween_property(l, "modulate:a", 1.0, 0.25)
+	frame.modulate.a = 0.0
+	var tw := said.create_tween()
+	tw.tween_property(l, "modulate:a", full_text.a, 0.25)
+	tw.parallel().tween_property(frame, "modulate:a", 1.0, 0.25)
 	tw.tween_interval(SAY_TIME)
 	tw.tween_property(l, "modulate:a", 0.0, 0.5)
-	tw.tween_callback(l.queue_free)
+	tw.parallel().tween_property(frame, "modulate:a", 0.0, 0.5)
+	tw.tween_callback(said.queue_free)
+
+
+## The line's frame (w x h px of the line's own, drawn at half that): a dark rounded box, an edge in
+## `edge`, a little tail down from its foot to the dragon.
+func _say_frame(w: float, h: float, edge: Color) -> ImageTexture:
+	var iw := int(ceil(w * 0.5))
+	var ih := int(ceil(h * 0.5))
+	var tail := int(SAY_TAIL)
+	var img := Image.create(iw, ih + tail, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var r := 7.0
+	var fill := Color(0.04, 0.03, 0.035, 0.82)
+	for y in ih:
+		for x in iw:
+			# (the distance in from the rounded edge)
+			var cx := clampf(x + 0.5, r, iw - r)
+			var cy := clampf(y + 0.5, r, ih - r)
+			var d := r - Vector2(x + 0.5 - cx, y + 0.5 - cy).length()
+			if d < 0.0:
+				continue
+			var a := clampf(d, 0.0, 1.0)
+			var c := edge if d < 2.0 else fill
+			img.set_pixel(x, y, Color(c, c.a * a))
+	for t in tail:
+		var half := int((tail - t) * 0.6)
+		for x in range(iw / 2 - half, iw / 2 + half + 1):
+			var side := absi(x - iw / 2) >= half - 1
+			img.set_pixel(x, ih - 1 + t, edge if side else fill)
+	return ImageTexture.create_from_image(img)
 
 
 ## What the dog found, named over it, until it's picked up (or a while).
@@ -4853,6 +4908,7 @@ func _environment() -> void:
 ## goes on) at the evening's first light SNOW_LIGHT_DUSK, going down to it with the day's dark)
 const SNOW_LIGHT := 0.3
 const SNOW_LIGHT_DUSK := 0.65
+const DOUSED_DIM := 0.12
 const SNOW_HAZE := 0.3
 const SNOW_HAZE_DUSK := 0.65
 ## (and its snow on the ground this pale - night snow, grey-blue: white, it took even the lamp's
@@ -4901,6 +4957,11 @@ func _update_light() -> void:
 		_env.fog_density = 0.024
 		if _ground_mat != null:
 			_ground_mat.set_shader_parameter("snow_bright", lerpf(SNOW_GROUND, SNOW_GROUND_DUSK, ks))
+	if GameState.dark_fell:
+		# (user request: the camp doused, the whole map black - the lamps all that's left)
+		_env.ambient_light_energy *= DOUSED_DIM
+		_moon.light_energy *= DOUSED_DIM
+		_env.fog_light_color *= DOUSED_DIM
 	_env.background_color = _env.fog_light_color * 0.5
 	# (the owl in the dark: the whole view brighter - Abilities 夜視)
 	var sight := Abilities.OWL_DARK_SIGHT if Abilities.has("owl") and player.unlit() else 1.0

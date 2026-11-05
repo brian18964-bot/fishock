@@ -17,6 +17,8 @@ const FOG_MULT := 0.8
 ## Seconds to ease from one stage into the next.
 const STAGE_EASE := 6.0
 const NIGHT_COLOR := Color(0.035, 0.035, 0.06, 1)
+## (the camp doused - GameState.dark_fell: all black but for the lamps)
+const DOUSED_COLOR := Color(0.006, 0.006, 0.012, 1)
 
 ## User request: the dark breathes - the whole scene's light swells and
 ## fades by a few percent on a slow cycle.
@@ -35,7 +37,7 @@ func _process(delta: float) -> void:
 	_time += delta
 	var target: Color = STAGE_COLORS[GameState.light_stage()]
 	if GameState.is_night:
-		target = NIGHT_COLOR
+		target = DOUSED_COLOR if GameState.dark_fell else NIGHT_COLOR
 	elif GameState.weather == GameState.Weather.FOG:
 		target = target * FOG_MULT
 	if not GameState.is_night:

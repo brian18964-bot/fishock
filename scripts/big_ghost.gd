@@ -197,6 +197,7 @@ func _ready() -> void:
 	_last_pos = global_position
 	GameState.night_fell.connect(_on_night_fell)
 	GameState.dragon_came.connect(_on_dragon_came)
+	GameState.camp_doused.connect(_on_camp_doused)
 	Art.place(visual, OFFSET, SPRITE_SCALE)
 	lamp_light.texture = LightTextureFactory.make_radial_texture()
 	lamp_light.texture_scale = LAMP_SCALE * (1.0 if is_red() else BLACK_LAMP_REACH)
@@ -296,6 +297,17 @@ func _on_dragon_came() -> void:
 	elif mode in [Mode.WANDER, Mode.REST, Mode.SEARCH, Mode.SUSPICIOUS] and descending <= 0.0 and arriving <= 0.0:
 		roar_clip = ROARS[randi() % ROARS.size()]
 		_stand_and_roar(false)
+
+
+## User request: three minutes into the hunt it tears into the camp's oil - heard all over the map,
+## the view shaking; the hunt goes on, the camp no shelter now (its fire's out - _in_safe_zone).
+func _on_camp_doused() -> void:
+	if _lair == null or GameState.run_over:
+		return
+	Sfx.play("dragon_roar", 0.0, 0.0)
+	var scene := get_tree().current_scene
+	if scene != null and scene.has_method("rumble"):
+		scene.rumble(ROAR_TIME, ROAR_SHAKE)
 
 
 ## The night: the hunt - it's after the traveller by their scent, never losing them (_start_hunt).

@@ -409,8 +409,12 @@ class QuotaView extends Control:
 			_time_bar()
 		var total: int = int(GameState.time_remaining)
 		var clock := "%02d:%02d" % [total / 60, total % 60]
-		if GameState.is_night:
-			under = "龍在狩獵"
+		if GameState.is_night and GameState.dark_fell:
+			under = "營火已滅"
+			col = HUNT
+		elif GameState.is_night:
+			var fire: int = ceili(GameState.doom_left())
+			under = "龍在狩獵　營火 %02d:%02d" % [fire / 60, fire % 60] if GameState.day_duration > 0.0 else "龍在狩獵"
 			col = HUNT
 		elif GameState.day_phase == GameState.DayPhase.ESCAPE:
 			under = ("渡石已開  " + clock) if timed else "額度已滿！去發光的渡石逃離"
@@ -438,8 +442,11 @@ class QuotaView extends Control:
 		var r := Rect2(0, TIME_Y, W, TIME_H)
 		draw_rect(r.grow(1.0), Color(0.04, 0.03, 0.03, 0.85))
 		if GameState.is_night:
+			# (the hunt: deep red, beating - what's left of it till the camp's doused)
 			var beat := 0.75 + 0.25 * sin(Time.get_ticks_msec() * 0.008)
-			draw_rect(r, Color(HUNT, beat))
+			draw_rect(r, Color(HUNT, 0.22))
+			var left := GameState.doom_left() / maxf(GameState.day_duration * GameState.DOOM_AFTER, 1.0)
+			draw_rect(Rect2(0, TIME_Y, W * clampf(left, 0.0, 1.0), TIME_H), Color(HUNT, beat))
 			return
 		var cut := W * GameState.DRAGON_AT
 		draw_rect(Rect2(0, TIME_Y, cut, TIME_H), Color(CALM, 0.18))

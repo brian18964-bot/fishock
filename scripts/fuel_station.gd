@@ -238,13 +238,17 @@ func solids() -> Array:
 
 
 func _process(delta: float) -> void:
-	var lit := total_fuel > 0.0
+	# (the dragon's doused the camp - GameState.dark_fell: no fire again this run)
+	var lit := total_fuel > 0.0 and not GameState.dark_fell
 	light.visible = lit
 	glow.visible = lit
 	_embers.visible = lit
 	_flames.emitting = lit
 	if lit != _was_lit:
 		_was_lit = lit
+		if GameState.dark_fell:
+			Campaign.stat("fire_out")
+			return
 		GameState.push_message("營火重新燒起來了，營地又安全了" if lit else "油桶的油用完了，營火熄了——營地不再安全（從地圖提油箱回來補）")
 		GameState.report("營火又燒起來了" if lit else "營火熄了，營地不再安全", "good" if lit else "warn")
 		if not lit:
@@ -263,7 +267,7 @@ func _process(delta: float) -> void:
 ## either have or don't, just a total that drains by the amount actually
 ## used and that partial refuels are fine against.
 func try_refuel(lantern: Lantern) -> bool:
-	if total_fuel <= 0.0:
+	if total_fuel <= 0.0 or GameState.dark_fell:
 		return false
 	var needed: float = lantern.max_fuel - lantern.fuel
 	if needed <= 0.01:
