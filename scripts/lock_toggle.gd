@@ -62,4 +62,14 @@ static func corner(on: bool, on_change: Callable, inset := Vector2(2, 2)) -> Con
 	t.offset_bottom = inset.y + SIDE
 	t.changed.connect(on_change)
 	c.add_child(t)
+	# (user report: the padlock did nothing on the camp's cards - first in the card, the rows after
+	# it (its picture, the fish's name row) were drawn over it and took the tap. So it goes last -
+	# drawn, and tapped, over all of them - and is lifted back up to the card's top right.)
+	c.ready.connect(func():
+		var parent := c.get_parent()
+		if parent != null:
+			parent.move_child.call_deferred(c, -1), CONNECT_ONE_SHOT)
+	c.item_rect_changed.connect(func():
+		t.offset_top = inset.y - c.position.y
+		t.offset_bottom = t.offset_top + SIDE)
 	return c

@@ -130,6 +130,7 @@ const TESTS := [
 	"test_bag_card_closes",
 	"test_altar_this_run_only",
 	"test_locks",
+	"test_locks_everywhere",
 	"test_critters_leave_edge_trees",
 	"test_water_ghost",
 	"test_willow_talk",
@@ -4630,6 +4631,92 @@ func test_locks() -> void:
 	var snap := Profile.snapshot()
 	Profile.load_data(snap)
 	check(Locks.fish(Profile.stash_fish[0]) and Locks.bag(Profile.bag.map(func(e): return e.id).find("salt")), "the locks keep through a save")
+	Profile.load_data(saved)
+
+
+## User report: the padlock did nothing anywhere but on the fish box's cards - tapped (as the screen
+## sends a tap, at the padlock) on every card it's on: the warehouse's things, the bag's things, the
+## warehouse's and the bag's fish, the tank's and the bucket's fish - each turns locked, and back.
+func test_locks_everywhere() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 100})
+	GameState.run_started = false
+	var tap := func(t: Control) -> void:
+		var at := t.get_global_rect().get_center()
+		LockToggle._last_ms = -100000
+		for down in [true, false]:
+			var e := InputEventMouseButton.new()
+			e.button_index = MOUSE_BUTTON_LEFT
+			e.pressed = down
+			e.position = at
+			e.global_position = at
+			get_viewport().push_input(e, true)
+		await frames(2)
+	var toggle_in := func(page: Node) -> Control:
+		var all := page.find_children("*", "", true, false).filter(func(n): return n is LockToggle and n.is_visible_in_tree())
+		return all.back() if not all.is_empty() else null
+	# Things and fish in every place.
+	Profile.storage = {"salt": 2}
+	Profile.storage_locks = {}
+	Profile.bag = []
+	Profile.to_bag("salt", 1)
+	Profile.stash_fish = [_alert_fish("倉庫魚", 0.9)]
+	Profile.pack_fish = [_alert_fish("背包魚", 0.9)]
+	Profile.tank = [_alert_fish("缸裡的", 0.9)]
+	var dead := _alert_fish("桶裡的", 0.9)
+	FishLife.kill(dead)
+	Profile.fish_box = [dead]
+	# At camp, its pages opened as the camp opens them.
+	get_tree().change_scene_to_file(Camp3D.SCENE)
+	await frames(30)
+	var camp := get_tree().current_scene
+	camp.open_page("warehouse")
+	await frames(5)
+	var page: Node = get_tree().root.find_children("*", "", true, false).filter(func(n): return n.has_method("fish_card") and n.is_visible_in_tree()).front()
+	var cases := [
+		["the warehouse's thing", {"from": "storage", "id": "salt"}, func() -> bool: return Locks.stored("salt")],
+		["the bag's thing", {"from": "bag", "id": "salt", "index": 0}, func() -> bool: return Locks.bag(0)],
+		["the warehouse's fish", {"from": "stash_fish", "index": 0}, func() -> bool: return Locks.fish(Profile.stash_fish[0])],
+		["the bag's fish", {"from": "pack_fish", "index": 0}, func() -> bool: return Locks.fish(Profile.pack_fish[0])],
+	]
+	for cs in cases:
+		page.card(cs[1])
+		await frames(2)
+		var t: Control = toggle_in.call(page)
+		check(t != null, "(%s: its card's padlock)" % cs[0])
+		if t == null:
+			continue
+		await tap.call(t)
+		check(cs[2].call(), "%s: its padlock tapped, locked" % cs[0])
+		t = toggle_in.call(page)
+		if t != null:
+			await tap.call(t)
+		check(not cs[2].call(), "%s: tapped again, unlocked" % cs[0])
+		page._close_card()
+		await frames(1)
+	camp.close_page()
+	await frames(3)
+	camp.open_page("fish_tank")
+	await frames(5)
+	var pg: Node = get_tree().root.find_children("*", "", true, false).filter(func(n): return n.has_method("_card_for") and n.is_visible_in_tree()).front()
+	for src in ["tank", "box"]:
+		pg._card_for(0, src)
+		await frames(2)
+		var t: Control = toggle_in.call(pg)
+		check(t != null, "(the %s's fish card's padlock)" % src)
+		if t == null:
+			continue
+		await tap.call(t)
+		var f: Dictionary = Profile.fish_list(src)[0]
+		check(Locks.fish(f), "the %s's fish: its padlock tapped, locked" % src)
+		t = toggle_in.call(pg)
+		if t != null:
+			await tap.call(t)
+		check(not Locks.fish(f), "the %s's fish: tapped again, unlocked" % src)
+		pg._close()
+		await frames(1)
+	camp.close_page()
+	await frames(2)
 	Profile.load_data(saved)
 
 
