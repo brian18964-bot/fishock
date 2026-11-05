@@ -11,7 +11,14 @@ extends RefCounted
 ##   turning as it walks: a veer (Veer_L / Veer_R, ~36 deg), a quarter turn (Turn_L / Turn_R, ~90),
 ##   right round (Turn_180) - its body turned with the clip's own feet (the clip's turn, sampled,
 ##   scaled to the turn it has to make, the way it has to make it), not slid round;
-##   stood and facing someone behind it: it turns on the spot.
+##   stood and facing someone behind it: it turns on the spot - a quarter turn (Quarter_L /
+##   Quarter_R, the user's second lot), or right round past ROUND;
+##   stood a while, now and then shifting its weight or looking round (IDLE_MOVES - looking round
+##   the more when it's looking for someone); after you but out of breath for it - slower than a
+##   run - a tired run (Jog);
+##   doing something ("act:" - its moves one after another, "act:Grab>Hold": the swipe, then holding
+##   them down): caught someone, eating (Pick>Eat), dazzled (Dizzy), come down at nightfall
+##   (Land>Roar), its scream when they're its (Scream).
 ##
 ## Each move's speed is matched to the ground (how far its feet go in it - its hips' path times its
 ## stride, at the model's size - against how fast it's going), and one move goes on from another at
@@ -51,6 +58,11 @@ const RATE := Vector2(0.65, 1.45)
 ## (s) crossfades: into a loop, out of a one-off, to standing
 const BLEND := 0.3
 const BLEND_STAND := 0.45
+## Stood about this long (s, a range), it does one of its idle moves; looking for someone, sooner
+## (IDLE_SOON times), and looking round rather than shifting its weight
+const IDLE_EVERY := Vector2(6.0, 11.0)
+const IDLE_SOON := 0.45
+const IDLE_MOVES := ["Idle_Shift", "Idle_Look", "Idle_Look2"]
 
 var anim: AnimationPlayer
 var moves: Dictionary
@@ -76,6 +88,12 @@ var _stop_at := 0.0
 ## (for the probes and the tests: each move it went into, and when)
 var log: Array = []
 var _t := 0.0
+## (an "act:" run of moves: them, and which is playing)
+var _seq: Array = []
+var _seq_at := 0
+## (s) till its next idle move; and whether one's playing
+var _fidget := 8.0
+var _fidgeting := false
 
 
 func _init(p_anim: AnimationPlayer, p_moves: Dictionary, p_size: float, p_yaw: float) -> void:
@@ -87,6 +105,9 @@ func _init(p_anim: AnimationPlayer, p_moves: Dictionary, p_size: float, p_yaw: f
 		if anim.has_animation(c):
 			anim.get_animation(c).loop_mode = Animation.LOOP_LINEAR if bool(moves[c].get("loop", false)) \
 				else Animation.LOOP_NONE
+	# (eating - the old clip, not one of the moves: crouched over the fish till it's done)
+	if anim.has_animation("Eat"):
+		anim.get_animation("Eat").loop_mode = Animation.LOOP_LINEAR
 	# Where it starts off from in Start (its first stir), where it's into its stride (its pace up to
 	# its walk's), and where Stop's last steps begin (its last ~STOP_LAST m to go)
 	var st: Dictionary = moves.get("Start", {})
@@ -210,6 +231,9 @@ func _turn(c: String, by: float) -> void:
 
 ## The loop it goes on in (walking): its prowl when it's looking for someone.
 func _walk_clip(gait: String) -> String:
+	if gait == "run" and anim.has_animation("Jog"):
+		# (after someone but no faster than this: out of breath - its tired run)
+		return "Jog"
 	return "Prowl" if gait == "prowl" and anim.has_animation("Prowl") else "Walk"
 
 
@@ -221,6 +245,9 @@ func _pick_turn(err: float) -> bool:
 	# (right round on the spot only nearly stood; on the move, a quarter turn walked round further)
 	if absf(e) >= ROUND and _speed < PIVOT_BELOW and anim.has_animation("Turn_180") and anim.has_animation("Turn_180_L"):
 		_turn("Turn_180_L" if e > 0.0 else "Turn_180", err)
+	elif absf(e) >= QUARTER and _speed < PIVOT_BELOW and anim.has_animation("Quarter_L") and anim.has_animation("Quarter_R"):
+		# (nearly stood: a quarter turn on the spot, not walked round)
+		_turn("Quarter_L" if e > 0.0 else "Quarter_R", err)
 	elif absf(e) >= QUARTER:
 		_turn("Turn_L" if e > 0.0 else "Turn_R", err)
 	else:
@@ -256,11 +283,19 @@ func step(delta: float, speed: float, heading: float, gait: String, face: float,
 		if state != "act" or (_acting != c):
 			state = "act"
 			_acting = c
-			_play(c, 0.25 if c != "Grab" else 0.12)
-		elif not bool(moves.get(c, {}).get("loop", true)) and clip == c and _done():
-			# (user request: caught - one swipe as it takes you, then it holds you, its lantern up
-			# over you)
-			_play("Idle_Lamp" if anim.has_animation("Idle_Lamp") else stand, BLEND_STAND)
+			_seq = Array(c.split(">")).filter(func(x): return anim.has_animation(x))
+			_seq_at = 0
+			if _seq.is_empty():
+				_seq = [stand]
+			_play(_seq[0], 0.25 if _seq[0] != "Grab" else 0.12, 0.0)
+		elif clip == _seq[_seq_at] and anim.get_animation(clip).loop_mode == Animation.LOOP_NONE and _done():
+			# (one move done: the next - user request: caught, one swipe as it takes you, then it
+			# holds you down; the last one done, it stands - its lantern up over you)
+			if _seq_at + 1 < _seq.size():
+				_seq_at += 1
+				_play(_seq[_seq_at], BLEND, 0.0)
+			else:
+				_play("Idle_Lamp" if anim.has_animation("Idle_Lamp") else stand, BLEND_STAND)
 		if speed > STOP_BELOW:
 			yaw = lerp_angle(yaw, heading, 1.0 - exp(-delta * STEER_RUN))
 		anim.speed_scale = 1.0
@@ -268,6 +303,7 @@ func step(delta: float, speed: float, heading: float, gait: String, face: float,
 	if state == "act":
 		state = "idle"
 		_acting = ""
+		_seq = []
 		_play(stand, BLEND_STAND)
 	if state != "run":
 		_below = 0.0
@@ -285,15 +321,31 @@ func step(delta: float, speed: float, heading: float, gait: String, face: float,
 					state = "start"
 					_play("Start", BLEND, _start_at)
 			else:
-				if clip != stand:
+				_fidget -= delta * (1.0 / IDLE_SOON if gait == "prowl" else 1.0)
+				if _fidgeting and (clip not in IDLE_MOVES or _done()):
+					_fidgeting = false
 					_play(stand, BLEND_STAND)
+				elif not _fidgeting and clip != stand:
+					_play(stand, BLEND_STAND)
+				elif not _fidgeting and _fidget <= 0.0 and gait != "run":
+					# (stood a while: shifts its weight, looks round - looking for someone, it looks)
+					var pool := IDLE_MOVES.filter(func(x): return anim.has_animation(x) and (gait != "prowl" or x != "Idle_Shift"))
+					_fidget = randf_range(IDLE_EVERY.x, IDLE_EVERY.y)
+					if not pool.is_empty():
+						_fidgeting = true
+						_play(pool[randi() % pool.size()], BLEND_STAND, 0.0)
 				if gait == "run" and not is_nan(face):
 					# (after someone, stood a moment: it wheels to them, no stepping round)
 					yaw = lerp_angle(yaw, face, 1.0 - exp(-delta * STEER_RUN))
 				elif not is_nan(face) and _rest <= 0.0:
 					var fe := wrapf(face - yaw, -PI, PI)
 					var round_clip := "Turn_180_L" if fe > 0.0 else "Turn_180"
+					# (under ROUND, a quarter turn on the spot - the user's second lot)
+					var quarter := "Quarter_L" if fe > 0.0 else "Quarter_R"
+					if absf(rad_to_deg(fe)) < ROUND and anim.has_animation(quarter):
+						round_clip = quarter
 					if absf(rad_to_deg(fe)) > STOOD_TURN and anim.has_animation(round_clip):
+						_fidgeting = false
 						state = "pivot"
 						_from = yaw
 						_by = fe

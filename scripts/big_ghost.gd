@@ -87,7 +87,18 @@ const DESCEND_TIME := 3.3
 var descending := 0.0
 ## (how many times it's come down: RunView3D sets its flight going afresh each one)
 var descents := 0
+## User request (the user's second lot of moves): come down at nightfall it lands hard and roars
+## where it landed (`arriving` s: ARRIVE_LAND, then its roar - one of ROARS, `roar_clip`, as long as
+## the clip is), stood, after no one yet; its roar's sound heard all over the map then, the view
+## trembling. (`roar_left` of `roar_total` s: its maw open - RunView3D.)
+const ARRIVE_LAND := 1.0
+const ROARS := ["Roar", "Roar_2", "Roar_3"]
+var arriving := 0.0
+var roar_clip := "Roar"
 var roar_left := 0.0
+var roar_total := ROAR_TIME
+var _roar_due := false
+var _arrive_after := false
 ## Out of the light this long, it has lost the player.
 const LOSE_TIME := 2.0
 const LOOK_TIME := 3.0
@@ -215,20 +226,44 @@ func _appear() -> void:
 	_set_mode(Mode.WANDER)
 	descending = DESCEND_TIME
 	descents += 1
+	# (at nightfall, landed it roars)
+	_arrive_after = GameState.is_night
+	roar_clip = ROARS[randi() % ROARS.size()]
+
+
+## How long roar `clip` is (s) - its clip's, for the model it is (DragonMoves); ROAR_TIME else.
+func roar_length(clip: String) -> float:
+	var m: Dictionary = DragonMoves.MOVES.get("dragon" if is_red() else "dragon_black", {}).get(clip, {})
+	return float(m.get("length", ROAR_TIME))
+
+
+## Stood where it is, roaring (`land`: first its hard landing's ARRIVE_LAND s).
+func _stand_and_roar(land: bool) -> void:
+	arriving = (ARRIVE_LAND if land else 0.0) + roar_length(roar_clip)
+	_roar_due = true
+
+
+func _roar_now() -> void:
+	_roar_due = false
+	roar_total = roar_length(roar_clip)
+	roar_left = roar_total
+	Sfx.play("dragon_roar", 0.0, 0.0)
+	var scene := get_tree().current_scene
+	if scene != null and scene.has_method("rumble"):
+		scene.rumble(minf(roar_total, ROAR_TIME), ROAR_SHAKE)
 
 
 func _on_night_fell() -> void:
 	if _lair == null or GameState.run_over:
 		return
-	roar_left = ROAR_TIME
-	Sfx.play("dragon_roar", 0.0, 0.0)
-	var scene := get_tree().current_scene
-	if scene != null and scene.has_method("rumble"):
-		scene.rumble(ROAR_TIME, ROAR_SHAKE)
 	GameState.push_message("進入暗夜，龍鬼來了...")
 	GameState.report("進入暗夜，龍鬼來了...")
 	if mode == Mode.ASLEEP:
 		_appear()
+	elif mode in [Mode.WANDER, Mode.REST, Mode.SEARCH, Mode.SUSPICIOUS] and descending <= 0.0:
+		# (out already - a level's own wake: it roars where it stands)
+		roar_clip = ROARS[randi() % ROARS.size()]
+		_stand_and_roar(false)
 
 
 ## User request (the pistol): a shot heard at `at` - asleep, it wakes;
@@ -274,6 +309,16 @@ func _physics_process(delta: float) -> void:
 	if descending > 0.0:
 		# (coming down out of the sky - nothing else till it's landed)
 		descending = maxf(descending - delta, 0.0)
+		_last_pos = global_position
+		if descending <= 0.0 and _arrive_after:
+			_arrive_after = false
+			_stand_and_roar(true)
+		return
+	if arriving > 0.0:
+		# (landed at nightfall: its roar, stood where it is)
+		arriving = maxf(arriving - delta, 0.0)
+		if _roar_due and arriving <= roar_length(roar_clip):
+			_roar_now()
 		_last_pos = global_position
 		return
 	if stun_timer > 0.0:

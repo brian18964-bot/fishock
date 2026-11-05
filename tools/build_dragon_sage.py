@@ -96,6 +96,25 @@ MOVES_SHARED = {
     "Turn_180_L": {"file": "Walking_Turn_180", "kind": "turn", "mirror": True},
     "Run_Stop": {"file": "Run_To_Stop", "kind": "run"},
     "Grab": {"file": "Stable_Sword_Outward_Slash", "kind": "act"},
+    # (the second lot: standing quarter turns; at night's fall, its landing and its roar (three, one
+    # picked); caught, holding them down, and not freed in time its scream; picking a thrown fish
+    # off the ground; dazzled, dizzy; stood about, shifting its weight and looking round; after you
+    # but you've lost it, a tired run)
+    "Quarter_L": {"file": "Left_Turn", "kind": "turn"},
+    "Quarter_R": {"file": "Right_Turn", "kind": "turn"},
+    "Fall_Land": {"file": "Falling_To_Landing", "kind": "act"},
+    "Land": {"file": "Hard_Landing", "kind": "act"},
+    "Roar": {"file": "Mutant_Roaring", "kind": "act"},
+    "Roar_2": {"file": "Standing_Taunt_Battlecry", "kind": "act"},
+    "Roar_3": {"file": "Yelling_Out", "kind": "act"},
+    "Hold": {"file": "Holding_Down", "kind": "act", "loop": True},
+    "Scream": {"file": "Zombie_Scream", "kind": "act"},
+    "Pick": {"file": "Unarmed_Grab_Torch_From_Floor", "kind": "act"},
+    "Dizzy": {"file": "Dizzy_Idle", "kind": "act", "loop": True},
+    "Idle_Shift": {"file": "Weight_Shift", "kind": "act"},
+    "Idle_Look": {"file": "Looking_Around", "kind": "act"},
+    "Idle_Look2": {"file": "Unarmed_Idle_Looking_Ver._1", "kind": "act"},
+    "Jog": {"file": "Running_Tired", "kind": "run", "loop": True},
 }
 MOVES = {**MOVES_SHARED,
          "Walk": {"file": "Walk_With_Briefcase", "kind": "walk", "loop": True},

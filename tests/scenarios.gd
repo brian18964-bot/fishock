@@ -724,6 +724,10 @@ func test_big_ghost_night_hunt() -> void:
 	gs.time_remaining = 0.0
 	await frames(3)
 	check(gs.is_night, "time's up: night")
+	# (out already when night falls: it roars where it stands first - BigGhost.arriving)
+	check(bg.arriving > 0.0, "nightfall: it roars where it stands")
+	for _i in int((bg.arriving + 0.3) * 60):
+		await frames(1)
 	await frames(3)
 	check(bg.mode == bg.Mode.CHASE, "at night it comes for you (mode %s)" % bg.Mode.keys()[bg.mode])
 	var before: float = bg.global_position.distance_to(player().global_position)
@@ -6746,8 +6750,10 @@ func test_run_intro_and_eye_guide() -> void:
 	await dsk.skeleton_updated
 	var jaw_open := rad_to_deg(dsk.get_bone_pose_rotation(rig._jaw).angle_to(dsk.get_bone_rest(rig._jaw).basis.get_rotation_quaternion()))
 	check(jaw_open > 15.0, "its claim: its jaws wide in a roar (%.0f deg)" % jaw_open)
-	var tear_roar := await _dragon_tear(rig)
-	check(tear_roar < 0.2, "roaring: its mouth open, none of its skin torn (worst %.2f m over)" % tear_roar)
+	# (its head's skin: its scream's crouch pulls the robe's front flap from between its legs as
+	# eating's crouch always has - under the robe, unseen)
+	var tear_roar := await _dragon_tear(rig, ["Head", "jaw", "neck_01"])
+	check(tear_roar < 0.2, "roaring: its mouth open, none of its head's skin torn (worst %.2f m over)" % tear_roar)
 	bg.claiming = false
 	# (user request: chasing on land, its wings stay folded)
 	bg.mode = bg.Mode.CHASE
@@ -7028,6 +7034,14 @@ func test_run_intro_and_eye_guide() -> void:
 	bait.global_position = start + Vector2(0, 20)
 	bg._fish = bait
 	bg.mode = bg.Mode.EAT
+	# (the user's second lot: first it picks the fish up off the ground)
+	await seconds(0.8)
+	check(c.clip == "Pick", "lured: it picks the fish up off the ground (%s)" % c.clip)
+	bg._timer = 99.0
+	for _i in 300:
+		await frames(1)
+		if c.clip == "Eat":
+			break
 	await seconds(1.5)
 	check(c.clip == "Eat" and rig.crouch == 1.0 and rig._crouched > 0.99, "eating the fish: crouched over it (%s, %.2f)" % [c.clip, rig._crouched])
 	var tear_low := await _dragon_tear(rig)
@@ -7073,7 +7087,8 @@ static var _tear_edges := {}
 ## The dragon's skin as the GPU draws it this frame (skinned here, once its pose is final): how much
 ## further than it should stretch its worst edge goes (m, beyond 2.5x its rest or 2 cm more) - a
 ## tear where skin's weighted to two parts that move apart.
-func _dragon_tear(rig: DragonRig) -> float:
+## (`only`: just the edges with a vertex on one of these bones - the head's, for its mouth)
+func _dragon_tear(rig: DragonRig, only: Array = []) -> float:
 	var mi: MeshInstance3D = rig._skin_mesh
 	var sk: Skeleton3D = rig.get_skeleton()
 	var arr := (mi.mesh as ArrayMesh).surface_get_arrays(0)
@@ -7104,7 +7119,19 @@ func _dragon_tear(rig: DragonRig) -> float:
 				q += (xf[B[v * per + k]] as Transform3D) * V[v] * w
 		P[v] = q
 	var worst := 0.0
+	var keep_bind := {}
+	for i in mi.skin.get_bind_count():
+		if mi.skin.get_bind_name(i) in only:
+			keep_bind[i] = true
 	for e in _tear_edges[mi.mesh]:
+		if not only.is_empty():
+			var on := false
+			for v in [e.x, e.y]:
+				for k in per:
+					if Wt[v * per + k] > 0.2 and keep_bind.has(B[v * per + k]):
+						on = true
+			if not on:
+				continue
 		var l0 := V[e.x].distance_to(V[e.y])
 		worst = maxf(worst, P[e.x].distance_to(P[e.y]) - maxf(l0 * 2.5, l0 + 0.02))
 	return worst
@@ -8400,7 +8427,48 @@ func test_dragon_gait() -> void:
 	await seconds(0.5)
 	check(c.clip == "Grab", "caught: a swipe (%s)" % c.clip)
 	await seconds(2.4)
-	check(c.clip == "Idle_Lamp" and gait.state == "act", "then it holds them, its lantern up (%s)" % c.clip)
+	check(c.clip == "Hold" and gait.state == "act", "then it holds them down (%s)" % c.clip)
+	# (the user's second lot) not freed in time: its scream over them.
+	bg.claiming = true
+	await seconds(0.4)
+	check(c.clip == "Scream", "not freed in time: its scream (%s)" % c.clip)
+	bg.claiming = false
+	player().break_free(bg.global_position)
+	# Dazzled: dizzy where it stands.
+	bg.mode = bg.Mode.WANDER
+	bg.stun_timer = 3.0
+	await seconds(0.5)
+	check(c.clip == "Dizzy", "dazzled by the light: dizzy (%s)" % c.clip)
+	bg.stun_timer = 0.0
+	# A thrown fish: it picks it up off the ground.
+	bg.mode = bg.Mode.EAT
+	await seconds(0.5)
+	check(c.clip == "Pick", "eating: it picks the fish up off the ground (%s)" % c.clip)
+	bg.mode = bg.Mode.WANDER
+	await seconds(1.0)
+	# Stood, someone a quarter round from it: a quarter turn on the spot.
+	gait.reset("Idle_Lamp")
+	gait._rest = 0.0
+	var side: Vector2 = Vector2(cos(gait.yaw), -sin(gait.yaw))
+	player().global_position = bg.global_position + side * 60.0
+	await seconds(0.3)
+	check(c.clip in ["Quarter_L", "Quarter_R"], "stood, someone off to its side: a quarter turn on the spot (%s)" % c.clip)
+	await seconds(1.5)
+	# Stood a while: it shifts its weight, looks round.
+	player().global_position = bg.global_position + Vector2(0, -400)
+	gait.reset("Idle")
+	gait._fidget = 0.2
+	await seconds(0.6)
+	check(c.clip in DragonGait.IDLE_MOVES, "stood a while: an idle move (%s)" % c.clip)
+	# After someone, no faster than a jog: its tired run.
+	gait.reset("Idle")
+	bg.mode = bg.Mode.CHASE
+	var tired := false
+	for _i in 90:
+		bg._move_toward(bg.global_position + Vector2(2000, 0), 40.0, 1.0 / 60.0, false)
+		await frames(1)
+		tired = tired or c.clip == "Jog"
+	check(tired, "after someone at a jog's pace: its tired run (%s)" % c.clip)
 	bg.mode = bg.Mode.WANDER
 	RunView3D.intro = intro_was
 
@@ -8498,30 +8566,41 @@ func test_dragon_comes_at_night() -> void:
 	GameState.event_reported.connect(func(t, _tone): feed.append(t))
 	gs._trigger_night()
 	await frames(2)
-	check(bg.descending > 0.0 and bg.mode == bg.Mode.WANDER and bg.roar_left > 0.0, "night: it comes, coming down")
+	check(bg.descending > 0.0 and bg.mode == bg.Mode.WANDER, "night: it comes, coming down")
 	check(feed.has("進入暗夜，龍鬼來了..."), "the feed: 進入暗夜，龍鬼來了...")
 	check(Sfx.stream("dragon_roar") != null, "its roar's sound")
 	var c: Dictionary = view._creatures.get(bg, {})
 	var rig: DragonRig = c.get("rig")
+	var gait: DragonGait = c.get("gait")
 	await frames(20)
-	var model := c.model as Node3D
 	var high := (c.shown as Vector3).y - view.ground_y(bg.global_position)
 	check(rig != null and rig.airborne > 0.9 and high > 4.0, "flying in high (%.1f m up, its wings %s)" % [high, rig.air_state if rig else "-"])
-	check(rig != null and rig.mouth > 0.5, "roaring, its maw open")
-	check(float(main._shake) > 0.5, "the view trembling (%.2f)" % float(main._shake))
 	var where: Vector2 = bg.global_position
-	var landed := false
+	var saw_land := false
 	for _i in int((BigGhost.DESCEND_TIME + 0.5) * 60):
 		await frames(1)
+		saw_land = saw_land or c.get("clip", "") == "Land"
 		if bg.descending <= 0.0:
 			break
-		if bg.global_position != where:
+	check(bg.global_position.distance_to(where) < 1.0, "coming down it stays where it lands (not after anyone yet)")
+	# User request (the second lot): landed, a hard landing, then it roars where it stands - heard
+	# all over the map, the view trembling, its maw open.
+	for _i in int((BigGhost.ARRIVE_LAND + 0.4) * 60):
+		await frames(1)
+		saw_land = saw_land or c.get("clip", "") == "Land"
+	check(saw_land, "its hard landing")
+	check(bg.arriving > 0.0 and bg.roar_left > 0.0 and c.get("clip", "") in BigGhost.ROARS, "then it roars (%s)" % c.get("clip", ""))
+	await frames(20)
+	check(rig.mouth > 0.5 and float(main._shake) > 0.5, "its maw open, the view trembling (%.2f)" % float(main._shake))
+	check(bg.global_position.distance_to(where) < 1.0 and bg.mode != bg.Mode.CHASE, "roaring, it stands where it landed")
+	for _i in int((bg.arriving + 0.5) * 60):
+		await frames(1)
+		if bg.arriving <= 0.0:
 			break
-	check(bg.global_position.distance_to(where) < 1.0 or bg.descending <= 0.0, "coming down it stays where it lands (not after anyone yet)")
-	for _i in 40:
+	for _i in 30:
 		await frames(1)
 	high = (c.shown as Vector3).y - view.ground_y(bg.global_position)
-	check(bg.descending <= 0.0 and rig.airborne < 0.05 and high < 0.3, "down on its feet (%.2f m)" % high)
+	check(bg.arriving <= 0.0 and rig.airborne < 0.05 and high < 0.3, "down on its feet (%.2f m)" % high)
 	check(bg.mode == bg.Mode.CHASE, "then it hunts (%s)" % bg.mode)
 
 

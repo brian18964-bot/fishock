@@ -2481,8 +2481,12 @@ func _dragon_rig(c: Dictionary, n: Node, mode: int) -> void:
 	rig.display = 1.0 if mode == BigGhost.Mode.GRAB and bool(n.get("claiming")) else 0.0
 	# (nightfall's roar: its maw wide open, shuddering - BigGhost.roar_left)
 	var roar := float(n.get("roar_left")) if n.get("roar_left") != null else 0.0
-	var opened := clampf((BigGhost.ROAR_TIME - roar) / 0.25, 0.0, 1.0) * clampf(roar / 0.3, 0.0, 1.0)
+	var total := float(n.get("roar_total")) if n.get("roar_total") != null else BigGhost.ROAR_TIME
+	var opened := clampf((total - roar) / 0.25, 0.0, 1.0) * clampf(roar / 0.3, 0.0, 1.0)
 	rig.mouth = (0.9 + 0.08 * sin(c.time * 31.0)) * opened if roar > 0.0 else 0.0
+	# (its scream over whoever it's taken: its maw open too)
+	if c.get("clip", "") == "Scream":
+		rig.mouth = maxf(rig.mouth, 0.85 + 0.1 * sin(c.time * 27.0))
 	if not c.has("tail_root"):
 		return
 	var holder: Node3D = c.node
@@ -2815,15 +2819,29 @@ func _sync_creatures(delta: float) -> void:
 					var how := "walk"
 					match mode:
 						BigGhost.Mode.GRAB:
-							how = "act:Grab"
+							# (user request, the second lot: the swipe, then holding them down; not
+							# freed in time, its scream over them, wings spread)
+							how = "act:Scream" if bool(n.get("claiming")) else "act:Grab>Hold"
 						BigGhost.Mode.EAT:
-							how = "act:Eat" if speed < 0.3 else "run"
+							# (picking the fish up off the ground, then crouched eating it)
+							how = "act:Pick>Eat" if speed < 0.3 else "run"
 						BigGhost.Mode.CHASE:
 							how = "run"
 						BigGhost.Mode.SEARCH, BigGhost.Mode.SUSPICIOUS:
 							how = "prowl"
+					if float(n.get("stun_timer")) > 0.0:
+						# (dazzled by the light: dizzy where it stands)
+						how = "act:Dizzy"
 					if flying:
 						how = "fly"
+					# (come down at nightfall: its hard landing, then its roar - BigGhost.arriving)
+					var landing := float(n.get("descending")) > 0.0 or float(n.get("arriving")) > 0.0
+					if landing and not flying:
+						var roared := str(n.get("roar_clip"))
+						how = ("act:Land>" + roared) if c.get("landed_from", -1) == int(n.get("descents")) or float(n.get("descending")) > 0.0 \
+							else "act:" + roared
+						if float(n.get("descending")) > 0.0:
+							c.landed_from = int(n.get("descents"))
 					var face := NAN
 					if player != null and (player.global_position - at).length() > 1.0 and (near or mode != BigGhost.Mode.WANDER):
 						var to_p := player.global_position - at
@@ -2866,6 +2884,9 @@ func _sync_creatures(delta: float) -> void:
 					var after := mode in [BigGhost.Mode.CHASE, BigGhost.Mode.GRAB, BigGhost.Mode.SUSPICIOUS]
 					rig.look_at = to3(player.global_position, DRAGON_LOOK_AT) if player != null \
 						and (after or player.global_position.distance_to(at) < DRAGON_NOTICE * PX) else Vector3.INF
+					# (its roar's and its scream's own head - thrown back, shaken - not turned to look too)
+					if clip in BigGhost.ROARS or clip == "Scream":
+						rig.look_at = Vector3.INF
 			"water_ghost":
 				clip = "Claw" if int(n.get("_phase")) == 2 else "Walk"
 			_:
