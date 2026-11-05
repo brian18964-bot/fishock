@@ -2382,12 +2382,32 @@ const DRAGON_LOOK_AT := 0.9
 const DRAGON_LOOK_STEP := 0.4
 const DRAGON_LOOK_MORE := 0.8
 const DRAGON_FLY_LIFT := 0.45
+## (its coming down out of the sky: from this high (m), down by this long (s) into it)
+const DRAGON_DESCEND_FROM := 9.0
+const DRAGON_DESCEND_DROP := 2.4
 
 
 func _dragon_flight(c: Dictionary, n: Node, at: Vector2, vel: Vector2, _delta: float) -> float:
 	var rig: DragonRig = c.get("rig")
 	if rig == null:
 		return 0.0
+	# User request: it comes onto the map down out of the sky (BigGhost.descending): flying in high
+	# (DRAGON_DESCEND_FROM m up), beating down to the ground (gone by DRAGON_DESCEND_DROP s), then
+	# landing as it does (its flare, settling, folding) - begun DragonRig.LANDING's span from the end.
+	var falling := float(n.get("descending")) if n.get("descending") != null else 0.0
+	if falling > 0.0:
+		var nth := int(n.get("descents"))
+		if int(c.get("descent", -1)) != nth:
+			c.descent = nth
+			rig.arrive_flying()
+		var t := BigGhost.DESCEND_TIME - falling
+		var land: float = DragonRig.LANDING.flare + DragonRig.LANDING.settle
+		rig.want_fly = falling > land + 0.25
+		rig.fly_rate = 1.0
+		c.fly = rig.fly
+		var high := DRAGON_DESCEND_FROM * pow(1.0 - clampf(t / DRAGON_DESCEND_DROP, 0.0, 1.0), 2.0)
+		var beat := 0.06 * sin(TAU * (rig.beat_phase - 0.55)) * smoothstep(0.5, 1.0, rig.airborne)
+		return (DRAGON_FLY_LIFT + beat) * rig.airborne + high
 	var zones := _zones()
 	var over := _over_water(at, zones)
 	var speed := vel.length() / PX
@@ -2459,6 +2479,10 @@ func _dragon_rig(c: Dictionary, n: Node, mode: int) -> void:
 			# (user request: chasing on land, its wings stay folded)
 			rig.spread = 0.0
 	rig.display = 1.0 if mode == BigGhost.Mode.GRAB and bool(n.get("claiming")) else 0.0
+	# (nightfall's roar: its maw wide open, shuddering - BigGhost.roar_left)
+	var roar := float(n.get("roar_left")) if n.get("roar_left") != null else 0.0
+	var opened := clampf((BigGhost.ROAR_TIME - roar) / 0.25, 0.0, 1.0) * clampf(roar / 0.3, 0.0, 1.0)
+	rig.mouth = (0.9 + 0.08 * sin(c.time * 31.0)) * opened if roar > 0.0 else 0.0
 	if not c.has("tail_root"):
 		return
 	var holder: Node3D = c.node

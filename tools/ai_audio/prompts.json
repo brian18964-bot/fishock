@@ -23,6 +23,7 @@
   ],
 
   "sfx": [
+    {"name": "dragon_roar", "seconds": 4, "prompt": "A huge dragon roaring once from far away over a dark frozen forest at night, a deep rumbling throat rising into a ragged terrifying bellow then fading, long echo off the hills, no music"},
     {"name": "splash", "seconds": 2, "prompt": "A large fish thrashing and splashing at the surface of a lake, a big heavy water splash"},
     {"name": "splash_small", "seconds": 1, "prompt": "A small quick water splash, a little fish jumping and falling back into a lake"},
     {"name": "plop", "seconds": 1, "prompt": "A fishing float and lure landing in calm water, a soft single plop"},

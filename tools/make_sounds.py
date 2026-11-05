@@ -418,6 +418,29 @@ def thunder():
     return norm(fade(crack * 0.4 + rumble, 0.01, 0.5), 0.9)
 
 
+def dragon_roar():
+    """User request: the night falls and the dragon comes - its roar, heard all over the map. A
+    big throat: a low voice gliding up then down (rough with fast wobble), a rasp of breath over
+    it, formants of a wide-open maw, a ground rumble under it, and the far woods' echo."""
+    d = 3.4
+    n = int(d * SR)
+    t = t_axis(d)
+    rise = np.minimum(t / 0.5, 1.0)
+    f = 70 + 75 * np.sin(np.pi * np.clip(t / 2.6, 0, 1)) ** 0.7 * rise
+    f = f * (1 + 0.035 * np.sin(2 * np.pi * 23 * t) + 0.02 * RNG.standard_normal(n).cumsum() / np.sqrt(n))
+    phase = 2 * np.pi * np.cumsum(f) / SR
+    voice = sum(np.sin(phase * k + RNG.uniform(0, 6)) / k ** 0.9 for k in range(1, 14))
+    # (a rough, growling throat: the voice gated by its own fast flutter)
+    voice *= 0.65 + 0.35 * np.sign(np.sin(2 * np.pi * 31 * t)) * np.abs(np.sin(2 * np.pi * 31 * t)) ** 0.3
+    shape = env_ad(n, 0.25, 1.6) * np.clip((2.9 - t) / 0.7, 0, 1)
+    maw = sum(bandpass(voice, fc, bw) * g for fc, bw, g in ((300, 160, 1.0), (750, 260, 0.8), (1700, 500, 0.45), (2900, 700, 0.2)))
+    rasp = sum(bandpass(white(d), fc, bw) * g for fc, bw, g in ((900, 400, 0.6), (2200, 900, 0.4), (4200, 1500, 0.2)))
+    rasp *= (0.6 + 0.4 * np.abs(np.sin(2 * np.pi * 31 * t))) * shape
+    rumble = lowpass(pink(d), 120) * env_ad(n, 0.2, 2.0) * 0.9
+    x = (maw * 0.9 + lowpass(voice, 260) * 0.5) * shape + rasp * 0.5 + rumble
+    return norm(fade(reverb(x, 0.85, 2.6, 0.5), 0.01, 0.6), 0.95)
+
+
 def escape_sparkle():
     d = 1.6
     x = np.zeros(int(d * SR))
@@ -727,7 +750,7 @@ SOUNDS = {
     "step_soft": lambda: step("soft"), "step_hard": lambda: step("hard"), "step_wood": lambda: step("wood"),
     "step_snow": lambda: step("snow"), "chain_loop": chain_loop, "whisper": whisper, "moan": moan,
     "emerge": emerge, "cage": cage, "heartbeat_loop": heartbeat_loop, "offering": offering,
-    "rock_flip": rock_flip, "chop": chop, "gunshot": gunshot, "tap": tap, "swipe_hit": whoosh_hit, "flop": flop, "thunder": thunder,
+    "rock_flip": rock_flip, "chop": chop, "gunshot": gunshot, "tap": tap, "swipe_hit": whoosh_hit, "flop": flop, "thunder": thunder, "dragon_roar": dragon_roar,
     "escape": escape_sparkle,
     "amb_night": amb_night, "amb_day": amb_day, "amb_water": amb_water, "amb_rain": amb_rain,
     "amb_wind": amb_wind, "amb_swamp": amb_swamp, "amb_jungle": amb_jungle, "amb_surf": amb_surf,

@@ -74,6 +74,18 @@ const RED_HASTE := 1.15
 ## green (its 2D light and so its 3D one); its light on the traveller, they're under stress (Player).
 const LAMP_SCALE := 0.45
 const BLACK_LAMP_REACH := 1.5
+## User request: night falls, the dragon comes - wherever the traveller is: its roar (ROAR_TIME s:
+## Sfx "dragon_roar", heard all over the map; its maw open in 3D), the view trembling (main.rumble,
+## ROAR_SHAKE), and in the feed 進入暗夜，龍鬼來了...; not out yet, it comes now. Every coming onto
+## the map is down out of the sky: DESCEND_TIME s (`descending`) it flies down and lands (RunView3D),
+## doing nothing else meanwhile - not after anyone, catching no one.
+const ROAR_TIME := 2.6
+const ROAR_SHAKE := 2.2
+const DESCEND_TIME := 3.3
+var descending := 0.0
+## (how many times it's come down: RunView3D sets its flight going afresh each one)
+var descents := 0
+var roar_left := 0.0
 ## Out of the light this long, it has lost the player.
 const LOSE_TIME := 2.0
 const LOOK_TIME := 3.0
@@ -141,6 +153,7 @@ func _ready() -> void:
 		for p in meta.lamp:
 			_lamps.append(Vector2(p[0], p[1]))
 	_last_pos = global_position
+	GameState.night_fell.connect(_on_night_fell)
 	Art.place(visual, OFFSET, SPRITE_SCALE)
 	lamp_light.texture = LightTextureFactory.make_radial_texture()
 	lamp_light.texture_scale = LAMP_SCALE * (1.0 if is_red() else BLACK_LAMP_REACH)
@@ -193,6 +206,29 @@ func _let_go(message: String) -> void:
 	GameState.push_message(message)
 
 
+## Onto the map: somewhere on it at random, away from the traveller - down out of the sky.
+func _appear() -> void:
+	global_position = _spawn_point()
+	_last_pos = global_position
+	_set_mode(Mode.WANDER)
+	descending = DESCEND_TIME
+	descents += 1
+
+
+func _on_night_fell() -> void:
+	if _lair == null or GameState.run_over:
+		return
+	roar_left = ROAR_TIME
+	Sfx.play("dragon_roar", 0.0, 0.0)
+	var scene := get_tree().current_scene
+	if scene != null and scene.has_method("rumble"):
+		scene.rumble(ROAR_TIME, ROAR_SHAKE)
+	GameState.push_message("進入暗夜，龍鬼來了...")
+	GameState.report("進入暗夜，龍鬼來了...")
+	if mode == Mode.ASLEEP:
+		_appear()
+
+
 ## User request (the pistol): a shot heard at `at` - asleep, it wakes;
 ## wandering, resting or searching, it comes to look there (as when it
 ## notices someone close). Already after someone, or eating, it carries on.
@@ -232,6 +268,12 @@ func _physics_process(delta: float) -> void:
 	# (the black dragon's red light: stress - Player)
 	if not is_red() and lamp_on_player():
 		_player.red_lamp_on()
+	roar_left = maxf(roar_left - delta, 0.0)
+	if descending > 0.0:
+		# (coming down out of the sky - nothing else till it's landed)
+		descending = maxf(descending - delta, 0.0)
+		_last_pos = global_position
+		return
 	if stun_timer > 0.0:
 		stun_timer -= delta
 		return
@@ -246,10 +288,9 @@ func _physics_process(delta: float) -> void:
 			global_position = _lair.global_position + HOME
 			var wake: int = int(Campaign.rules.big_wake) if int(Campaign.rules.big_wake) >= 0 else ACTIVE_FROM_STAGE
 			if GameState.run_started and (GameState.is_night or GameState.light_stage() >= wake):
-				global_position = _spawn_point()
-				_last_pos = global_position
-				_set_mode(Mode.WANDER)
-				GameState.push_message("遠處傳來鐵鍊拖地的聲音...大鬼出現了")
+				_appear()
+				if not GameState.is_night:
+					GameState.push_message("遠處傳來鐵鍊拖地的聲音...大鬼出現了")
 		Mode.WANDER, Mode.REST:
 			if mode == Mode.REST:
 				_timer -= delta

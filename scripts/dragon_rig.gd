@@ -589,6 +589,20 @@ func _fill_membrane(dt: float, amp: float, flown: float, spans: Dictionary) -> v
 
 # ------------------------------------------------------------------ taking off, landing
 
+## Already up and flying (coming down out of the sky - RunView3D): wings open, beating evenly.
+func arrive_flying() -> void:
+	air_state = Air.CRUISE
+	_air_t = 0.0
+	airborne = 1.0
+	fly = 1.0
+	want_fly = true
+	_amp_mul = 1.0
+	_ready = 1.0
+	_prep = 0.0
+	for i in _stage.size():
+		_stage[i] = 1.0
+
+
 ## Seconds a stage of taking off or landing takes, as quick as it's going.
 func _span(t: float) -> float:
 	return t / ((1.0 + hurry) * maxf(fly_rate, 0.2))

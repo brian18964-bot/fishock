@@ -223,7 +223,9 @@ func _on_big_mode(mode: String) -> void:
 
 func _on_night() -> void:
 	_bed_for_time()
-	Sfx.play("moan", -2.0, 0.0)
+	# (the dragon roars instead, when there's one - BigGhost)
+	if _big == null:
+		Sfx.play("moan", -2.0, 0.0)
 
 
 func _on_weather(weather: String) -> void:

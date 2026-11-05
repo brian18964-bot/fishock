@@ -33,6 +33,17 @@ const SHAKE_RUN := 2.0
 const SHAKE_DECAY := 14.0
 
 var _shake := 0.0
+## (a long low tremble - the dragon's roar at nightfall: `rumble`; seconds left, of how long, how hard)
+var _rumble_left := 0.0
+var _rumble_len := 1.0
+var _rumble_amp := 0.0
+
+
+## The view trembling `amount` (as _shake) for `seconds`, swelling and dying away.
+func rumble(seconds: float, amount: float) -> void:
+	_rumble_left = seconds
+	_rumble_len = maxf(seconds, 0.01)
+	_rumble_amp = amount
 
 ## User decision (Diablo II as the reference for scale): walking about, the
 ## camera sits close; the moment fishing starts - charging, waiting, the
@@ -337,6 +348,10 @@ func _update_camera(delta: float) -> void:
 	var floor_amount := 0.0
 	if player.state == Player.State.REELING:
 		floor_amount = SHAKE_RUN if player.fish_run_active_time > 0.0 else SHAKE_FIGHT
+	if _rumble_left > 0.0:
+		_rumble_left = maxf(_rumble_left - delta, 0.0)
+		var k := 1.0 - _rumble_left / _rumble_len
+		floor_amount = maxf(floor_amount, _rumble_amp * smoothstep(0.0, 0.15, k) * (1.0 - smoothstep(0.55, 1.0, k)))
 	_shake = maxf(move_toward(_shake, 0.0, SHAKE_DECAY * delta), floor_amount)
 	var shake := Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _shake if _shake > 0.05 else Vector2.ZERO
 	# The camera's limits clamp its own position before the offset is

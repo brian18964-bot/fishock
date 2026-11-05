@@ -16,6 +16,7 @@ const TESTS := [
 	"test_run_3d",
 	"test_dragon_gait",
 	"test_dragon_lamps_and_sight",
+	"test_dragon_comes_at_night",
 	"test_ghost_mist",
 	"test_load_state",
 	"test_round_fixes",
@@ -8332,6 +8333,51 @@ func test_dragon_lamps_and_sight() -> void:
 	await frames(3)
 	check(not p.under_red_lamp() and p.stress == 0.0, "out of its light, the stress is gone")
 	camp().clear()
+
+
+## User request: night falls - wherever the traveller is, the dragon's roar, the view trembling, the
+## feed says 進入暗夜，龍鬼來了...; not out yet, it comes now - down out of the sky (flying in high,
+## landing), doing nothing else till it's down; then it hunts.
+func test_dragon_comes_at_night() -> void:
+	var view: RunView3D = null
+	for _i in 200:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	var bg = main.get_node("BigGhost")
+	check(bg.mode == bg.Mode.ASLEEP, "before the night, not out yet (this run's)")
+	# (far off from the traveller, as the night will find them)
+	var played := []
+	var feed := []
+	GameState.event_reported.connect(func(t, _tone): feed.append(t))
+	gs._trigger_night()
+	await frames(2)
+	check(bg.descending > 0.0 and bg.mode == bg.Mode.WANDER and bg.roar_left > 0.0, "night: it comes, coming down")
+	check(feed.has("進入暗夜，龍鬼來了..."), "the feed: 進入暗夜，龍鬼來了...")
+	check(Sfx.stream("dragon_roar") != null, "its roar's sound")
+	var c: Dictionary = view._creatures.get(bg, {})
+	var rig: DragonRig = c.get("rig")
+	await frames(20)
+	var model := c.model as Node3D
+	var high := (c.shown as Vector3).y - view.ground_y(bg.global_position)
+	check(rig != null and rig.airborne > 0.9 and high > 4.0, "flying in high (%.1f m up, its wings %s)" % [high, rig.air_state if rig else "-"])
+	check(rig != null and rig.mouth > 0.5, "roaring, its maw open")
+	check(float(main._shake) > 0.5, "the view trembling (%.2f)" % float(main._shake))
+	var where: Vector2 = bg.global_position
+	var landed := false
+	for _i in int((BigGhost.DESCEND_TIME + 0.5) * 60):
+		await frames(1)
+		if bg.descending <= 0.0:
+			break
+		if bg.global_position != where:
+			break
+	check(bg.global_position.distance_to(where) < 1.0 or bg.descending <= 0.0, "coming down it stays where it lands (not after anyone yet)")
+	for _i in 40:
+		await frames(1)
+	high = (c.shown as Vector3).y - view.ground_y(bg.global_position)
+	check(bg.descending <= 0.0 and rig.airborne < 0.05 and high < 0.3, "down on its feet (%.2f m)" % high)
+	check(bg.mode == bg.Mode.CHASE, "then it hunts (%s)" % bg.mode)
 
 
 func test_snow_theme() -> void:
