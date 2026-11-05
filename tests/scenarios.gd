@@ -131,6 +131,7 @@ const TESTS := [
 	"test_altar_this_run_only",
 	"test_locks",
 	"test_locks_everywhere",
+	"test_altar_fish_detail",
 	"test_critters_leave_edge_trees",
 	"test_water_ghost",
 	"test_willow_talk",
@@ -4718,6 +4719,51 @@ func test_locks_everywhere() -> void:
 	camp.close_page()
 	await frames(2)
 	Profile.load_data(saved)
+
+
+## User request: at the altar, a fish tapped shows its full card (as the bag's); picking it is the
+## see-through tick in its card's top right - tapped once its card's been read.
+func test_altar_fish_detail() -> void:
+	var f1 := fish("看看這條", "near")
+	gs.add_carried_fish(f1)
+	gs.add_carried_fish(fish("另一條", "near"))
+	var loading := main.get_node_or_null("Loading") as CanvasLayer
+	if loading != null:
+		loading.visible = false
+	var bag: Backpack = player().backpack()
+	bag.open_mode("sacrifice")
+	await frames(3)
+	var picker: FishPicker = bag._picker
+	var card: Control = picker._cards.get_node("Fish_0")
+	var tap := func(at: Vector2) -> void:
+		for down in [true, false]:
+			var e := InputEventMouseButton.new()
+			e.button_index = MOUSE_BUTTON_LEFT
+			e.pressed = down
+			e.position = at
+			e.global_position = at
+			get_viewport().push_input(e, true)
+		await frames(3)
+	var r := card.get_global_rect()
+	await tap.call(r.position + Vector2(r.size.x * 0.35, r.size.y * 0.6))
+	check(picker.detail_index == 0 and picker._detail != null and picker._detail.find_children("*", "FishVitals", true, false).size() == 1,
+		"a fish tapped: its full card beside it")
+	check(not picker.is_picked(0), "and it's not picked by that")
+	await tap.call(r.position + Vector2(r.size.x - FishPicker.TICK_AT.x, FishPicker.TICK_AT.y))
+	check(picker.is_picked(0), "its tick tapped: picked to offer")
+	await tap.call(r.position + Vector2(r.size.x - FishPicker.TICK_AT.x, FishPicker.TICK_AT.y))
+	check(not picker.is_picked(0), "tapped again: put back")
+	await tap.call(r.position + Vector2(r.size.x * 0.35, r.size.y * 0.6))
+	check(picker._detail == null, "the fish tapped again: its card goes")
+	# (its card over the next one's tick: a tap there is its own - it goes, the next isn't picked)
+	await tap.call(r.position + Vector2(r.size.x * 0.35, r.size.y * 0.6))
+	var next_tick: Vector2 = (picker._cards.get_node("Fish_1") as Control).get_global_rect().position + Vector2(picker._cards.get_node("Fish_1").size.x - FishPicker.TICK_AT.x, FishPicker.TICK_AT.y)
+	if picker._detail != null and picker._detail.get_global_rect().has_point(next_tick):
+		await tap.call(next_tick)
+		check(picker._detail == null and not picker.is_picked(1), "a tap on its card over the next fish's tick: the card goes, nothing picked")
+	bag.toggle()
+	await frames(2)
+	check(not picker.visible, "(closed)")
 
 
 ## User request: a fish counts at the altar only in the run it was caught in - one brought from

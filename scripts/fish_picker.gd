@@ -2,9 +2,11 @@ class_name FishPicker
 extends Control
 
 ## User request: offering at the altar shows only the fish carried, not
-## the whole bag - big cards in a big window: tap a fish to pick it (tap
-## again to put it back), see what the picked ones add, offer them. The
-## 誘惑 fish (pick_lure) is picked the same way, one fish. Opened by
+## the whole bag - big cards in a big window: see what the picked ones add,
+## offer them. (User request: a fish tapped shows its full card, as the bag's
+## does - FishVitals; it's picked by the see-through tick in its top right
+## corner, once its card's been read - tapped again, put back.) The 誘惑 fish
+## (pick_lure) is picked the same way, one fish. Opened by
 ## Backpack.open_mode(); Backpack.select("fish", i) picks too.
 
 const WINDOW := Vector2(880, 486)
@@ -26,6 +28,13 @@ var _hint: Label
 var _cards: GridContainer
 var _summary: Label
 var _buttons: HBoxContainer
+## The fish's full card, beside it (tapped: show_detail), and whose it is.
+var _detail: Control
+var detail_index := -1
+## (the tick: its centre from the card's top right, its radius - tapped within TICK_HIT)
+const TICK_AT := Vector2(18.0, 18.0)
+const TICK_R := 12.0
+const TICK_HIT := 24.0
 
 
 func _ready() -> void:
@@ -95,6 +104,64 @@ func close() -> void:
 	visible = false
 	marked.clear()
 	chosen = -1
+	hide_detail()
+
+
+## A fish's full card (as the bag's: its name row, FishVitals) beside its card; tapped again, gone.
+func show_detail(index: int) -> void:
+	if index < 0 or index >= GameState.carried_fish.size():
+		return
+	var same := detail_index == index
+	hide_detail()
+	if same:
+		return
+	detail_index = index
+	var fish: Dictionary = GameState.carried_fish[index]
+	_detail = UiKit.tooltip_panel()
+	_detail.name = "FishDetail"
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	col.add_child(FishVitals.name_row(fish, 17))
+	var vitals := FishVitals.new()
+	vitals.custom_minimum_size.x = 230.0
+	vitals.show_fish(fish, false, "field")
+	col.add_child(vitals)
+	var how := UiKit.label(("確定要%s就點魚卡右上角的勾勾（點這裡關閉）" % ("獻祭" if kind == "sacrifice" else "用牠當誘餌")) if not Locks.fish(fish) else Locks.SAID, 13, UiKit.DIM)
+	col.add_child(how)
+	_detail.add_child(col)
+	# (over the cards beside it: a tap on it is its own - it goes - never the hidden card's tick under it)
+	_detail.mouse_filter = Control.MOUSE_FILTER_STOP
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_detail.gui_input.connect(func(e):
+		if e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT and not e.pressed:
+			hide_detail())
+	add_child(_detail)
+	Sfx.play("ui_click", -12.0)
+	for c in _cards.get_children():
+		c.queue_redraw()
+	_place_detail.call_deferred()
+
+
+func hide_detail() -> void:
+	if _detail != null:
+		_detail.queue_free()
+		_detail = null
+	detail_index = -1
+	if _cards != null:
+		for c in _cards.get_children():
+			c.queue_redraw()
+
+
+func _place_detail() -> void:
+	var card: Control = _cards.get_node_or_null("Fish_%d" % detail_index)
+	if _detail == null or card == null:
+		return
+	_detail.reset_size()
+	var r := card.get_global_rect()
+	var x := r.end.x + 8.0
+	if x + _detail.size.x > 952.0:
+		x = r.position.x - 8.0 - _detail.size.x
+	_detail.global_position = Vector2(clampf(x, 8.0, 952.0 - _detail.size.x), clampf(r.position.y, 8.0, 532.0 - _detail.size.y))
 
 
 func is_picked(index: int) -> bool:
@@ -141,9 +208,9 @@ func refresh() -> void:
 	if GameState.carried_fish.is_empty():
 		_hint.text = "背包裡沒有魚"
 	elif kind == "sacrifice":
-		_hint.text = "點魚選擇要獻上的（可以選好幾條，再點一次取消）"
+		_hint.text = "點魚看詳細資料，點右上角的勾勾選擇要獻上的（可以選好幾條，再點一次取消）"
 	else:
-		_hint.text = "點一條魚，選它當誘餌"
+		_hint.text = "點魚看詳細資料，點右上角的勾勾選它當誘餌"
 	if kind == "sacrifice":
 		var total := 0.0
 		var rotten := 0
@@ -228,7 +295,14 @@ class FishCard extends Control:
 			if event.pressed:
 				_down = event.position
 			elif event.position.distance_to(_down) < 12.0:
-				picker.toggle(index)
+				# (the tick picks; anywhere else, its full card)
+				if event.position.distance_to(tick_center()) <= FishPicker.TICK_HIT:
+					picker.toggle(index)
+				else:
+					picker.show_detail(index)
+
+	func tick_center() -> Vector2:
+		return Vector2(size.x - FishPicker.TICK_AT.x, FishPicker.TICK_AT.y)
 
 	func _draw() -> void:
 		if index >= GameState.carried_fish.size():
@@ -259,10 +333,18 @@ class FishCard extends Control:
 			UiKit.draw_text(self, Vector2(8, size.y - 9), "腐敗・獻祭會賭一把", 12, FishPicker.ROTTEN, HORIZONTAL_ALIGNMENT_LEFT, size.x - 16.0)
 		elif GameState.lure_index() == index:
 			UiKit.draw_text(self, Vector2(8, size.y - 9), "誘惑用的魚", 12, UiKit.GOLD, HORIZONTAL_ALIGNMENT_LEFT, size.x - 16.0)
+		var at := tick_center()
+		var rad := FishPicker.TICK_R
 		if picked:
 			draw_rect(r.grow(-2.0), Color(FishPicker.PICKED, 0.14))
 			draw_rect(r.grow(-2.0), Color(FishPicker.PICKED, 0.95), false, 3.0)
-			var at := Vector2(size.x - 18.0, 18.0)
-			draw_circle(at, 12.0, Color(0.15, 0.5, 0.2))
-			draw_arc(at, 12.0, 0.0, TAU, 24, FishPicker.PICKED, 2.0)
+			draw_circle(at, rad, Color(0.15, 0.5, 0.2))
+			draw_arc(at, rad, 0.0, TAU, 24, FishPicker.PICKED, 2.0)
 			UiKit.draw_text(self, at + Vector2(-12, 6), "✓", 16, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, 24, true)
+		elif not Locks.fish(fish):
+			# (not picked: the tick see-through - a pale ring, its mark faint)
+			draw_circle(at, rad, Color(1, 1, 1, 0.08))
+			draw_arc(at, rad, 0.0, TAU, 24, Color(1, 1, 1, 0.55), 1.5, true)
+			UiKit.draw_text(self, at + Vector2(-12, 6), "✓", 16, Color(1, 1, 1, 0.45), HORIZONTAL_ALIGNMENT_CENTER, 24)
+		if picker.detail_index == index:
+			draw_rect(r.grow(-1.0), Color(UiKit.GOLD, 0.9), false, 2.0)
