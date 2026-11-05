@@ -221,7 +221,8 @@ def carry(arm, moves_dir, moves, log):
         frames = [1 + i * step for i in range(n)] + ([1 + n * step] if loop else [])
         if loop:
             poses.append(poses[0])
-        bake(arm, frames, poses)
+        kept = bake(arm, frames, poses)
+        log("  %s keys %d of %d bones" % (game, len(kept), len(arm.pose.bones)))
         ad.action = None
         actions[game] = out
         m = meta[game]

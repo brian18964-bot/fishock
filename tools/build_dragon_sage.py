@@ -1598,39 +1598,6 @@ def weights(body, arm, spec, thick):
         ssub = np.where(tot > 0, ssub / np.maximum(tot, 1e-9), 0.0)
         put(sreg * (tot[:, 0] > 0), ssub, sb)
         log("skirt: %d vertices (%d wholly)" % (int((sreg > 0).sum()), int((sreg > 0.99).sum())))
-        # User request (the skin torn under the robe crouching - holding someone down, picking a fish
-        # up, landing): where the legs' skin meets the robe's flaps, between the legs, Meshy grew them
-        # together; the thighs swinging up pulled it away from the flap hanging down. That skin -
-        # any vertex at least CROTCH[0] the thighs' next to one at least CROTCH[1] the skirt's, and
-        # a ring further - goes with the pelvis instead (all its thighs' weight; the ring, half).
-        thighs = [col["thigh_l"], col["thigh_r"]]
-        skirt_cols = [col[b] for b in sb]
-        tshare = W[:, thighs].sum(1)
-        sshare = W[:, skirt_cols].sum(1)
-        nb = [[] for _ in range(n)]
-        for e in me.edges:
-            a, b = e.vertices
-            nb[a].append(b)
-            nb[b].append(a)
-        ring = {}
-        for v in np.nonzero(tshare >= CROTCH[0])[0]:
-            if any(sshare[u] >= CROTCH[1] for u in nb[v]):
-                ring[int(v)] = 0
-        front = list(ring)
-        for r in range(1, CROTCH_RINGS):
-            nxt = []
-            for v in front:
-                for u in nb[v]:
-                    if u not in ring and tshare[u] > 0.05:
-                        ring[u] = r
-                        nxt.append(u)
-            front = nxt
-        for v, r in ring.items():
-            k = 1.0 - r / CROTCH_RINGS
-            took = W[v, thighs].sum() * k
-            W[v, thighs] *= 1.0 - k
-            W[v, col["pelvis"]] += took
-        log("crotch: %d vertices onto the pelvis" % len(ring))
     # Where Meshy grew the membrane onto the body - onto the arm held out in front of it, into the
     # back below the wing's root (ROOT_KEEP) - the two are parted, not a face lost: each face is the
     # wing's or the body's by its vertices' shares, and the edges between a wing face and a body
@@ -1793,6 +1760,41 @@ def weights(body, arm, spec, thick):
     W[s_ > 0] /= s_[s_ > 0][:, None]
     log("lips parted: %d vertices" % int(at_lip.sum()))
     log("membrane parted from the body: %d edges split, %d vertices doubled" % (len(seam), split))
+    if FEATURES["skirt"]:
+        # (done last, on the mesh as it ends up - its seams split - and its weights as they end up)
+        # User request (the skin torn under the robe crouching - holding someone down, picking a fish
+        # up, landing): where the legs' skin meets the robe's flaps, between the legs, Meshy grew them
+        # together; the thighs swinging up pulled it away from the flap hanging down. That skin -
+        # any vertex at least CROTCH[0] the thighs' next to one at least CROTCH[1] the skirt's, and
+        # a ring further - goes with the pelvis instead (all its thighs' weight; the ring, half).
+        thighs = [col["thigh_l"], col["thigh_r"]]
+        skirt_cols = [col[b] for b in names if b.startswith("skirt_")]
+        tshare = W[:, thighs].sum(1)
+        sshare = W[:, skirt_cols].sum(1)
+        nb = [[] for _ in range(n)]
+        for e in me.edges:
+            a, b = e.vertices
+            nb[a].append(b)
+            nb[b].append(a)
+        ring = {}
+        for v in np.nonzero(tshare >= CROTCH[0])[0]:
+            if any(sshare[u] >= CROTCH[1] for u in nb[v]):
+                ring[int(v)] = 0
+        front = list(ring)
+        for r in range(1, CROTCH_RINGS):
+            nxt = []
+            for v in front:
+                for u in nb[v]:
+                    if u not in ring and tshare[u] > 0.05:
+                        ring[u] = r
+                        nxt.append(u)
+            front = nxt
+        for v, r in ring.items():
+            k = 1.0 - r / CROTCH_RINGS
+            took = W[v, thighs].sum() * k
+            W[v, thighs] *= 1.0 - k
+            W[v, col["pelvis"]] += took
+        log("crotch: %d vertices onto the pelvis" % len(ring))
     # at most four bones each, adding up to one
     order = np.argsort(-W, 1)[:, :4]
     top = np.take_along_axis(W, order, 1)
@@ -1915,6 +1917,8 @@ def main():
     select([arm, body], active=arm)
     bpy.ops.export_scene.gltf(filepath=OUT, export_format='GLB', use_selection=True,
                               export_animation_mode="NLA_TRACKS", export_optimize_animation_size=True,
+                              # (only what each clip keys - dragon_moves.bake: not every bone sampled)
+                              export_force_sampling=False, export_optimize_animation_keep_anim_armature=False,
                               export_anim_single_armature=True, export_def_bones=False,
                               export_image_format='JPEG', export_jpeg_quality=88)
     log("wrote", OUT, os.path.getsize(OUT) // 1024, "KB")

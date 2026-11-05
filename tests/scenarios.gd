@@ -17,6 +17,7 @@ const TESTS := [
 	"test_dragon_gait",
 	"test_dragon_lamps_and_sight",
 	"test_dragon_comes_at_night",
+	"test_dragon_crouch_skin",
 	"test_ghost_mist",
 	"test_load_state",
 	"test_round_fixes",
@@ -5030,7 +5031,7 @@ func test_campaign_levels_build() -> void:
 		check(rare == int(r.ponds[1]), "%s: %d dark pond(s), got %d" % [l.id, int(r.ponds[1]), rare])
 		if not gen.theme.get("sea", false) and int(r.ponds[0]) >= 0:
 			check(common == int(r.ponds[0]), "%s: %d pond(s), got %d" % [l.id, int(r.ponds[0]), common])
-		check(gs.quota_target == float(r.quota) and is_equal_approx(gs.day_duration, float(r.day) * gs.DAY_PACE), "%s: quota and day" % l.id)
+		check(gs.quota_target == float(r.quota) and is_equal_approx(gs.day_duration, float(r.day) * gs.DAY_PACE * (1.0 if r.get("night_fails", false) else gs.NIGHT_SOONER)), "%s: quota and day" % l.id)
 		var big: Node = main.get_node("BigGhost")
 		check((big.process_mode != Node.PROCESS_MODE_DISABLED) == r.big_ghost, "%s: the big ghost %s" % [l.id, "in" if r.big_ghost else "out"])
 		var floating := get_tree().get_nodes_in_group("ghosts").filter(func(g): return not g is BigGhost).size()
@@ -5119,7 +5120,7 @@ func test_campaign_curses() -> void:
 	main = get_tree().current_scene
 	gs.start_run()
 	await frames(3)
-	check(is_equal_approx(gs.quota_target, 45.0) and is_equal_approx(gs.day_duration, 180.0 * gs.DAY_PACE), "貪念 and 急潮")
+	check(is_equal_approx(gs.quota_target, 45.0) and is_equal_approx(gs.day_duration, 180.0 * gs.DAY_PACE * gs.NIGHT_SOONER), "貪念 and 急潮")
 	var floating := get_tree().get_nodes_in_group("ghosts").filter(func(g): return not g is BigGhost).size()
 	check(floating == 3, "群鬼: three floating ghosts (%d)" % floating)
 	await frames(2)
@@ -7087,8 +7088,9 @@ static var _tear_edges := {}
 ## The dragon's skin as the GPU draws it this frame (skinned here, once its pose is final): how much
 ## further than it should stretch its worst edge goes (m, beyond 2.5x its rest or 2 cm more) - a
 ## tear where skin's weighted to two parts that move apart.
-## (`only`: just the edges with a vertex on one of these bones - the head's, for its mouth)
-func _dragon_tear(rig: DragonRig, only: Array = []) -> float:
+## (`only`: just the edges with a vertex on one of these bones - the head's, for its mouth;
+## `skip`: leave out the edges on these)
+func _dragon_tear(rig: DragonRig, only: Array = [], skip: Array = []) -> float:
 	var mi: MeshInstance3D = rig._skin_mesh
 	var sk: Skeleton3D = rig.get_skeleton()
 	var arr := (mi.mesh as ArrayMesh).surface_get_arrays(0)
@@ -7123,7 +7125,19 @@ func _dragon_tear(rig: DragonRig, only: Array = []) -> float:
 	for i in mi.skin.get_bind_count():
 		if mi.skin.get_bind_name(i) in only:
 			keep_bind[i] = true
+	var skip_bind := {}
+	for i in mi.skin.get_bind_count():
+		if mi.skin.get_bind_name(i) in skip:
+			skip_bind[i] = true
 	for e in _tear_edges[mi.mesh]:
+		if not skip.is_empty():
+			var off := false
+			for v in [e.x, e.y]:
+				for k in per:
+					if Wt[v * per + k] > 0.2 and skip_bind.has(B[v * per + k]):
+						off = true
+			if off:
+				continue
 		if not only.is_empty():
 			var on := false
 			for v in [e.x, e.y]:
@@ -7133,7 +7147,9 @@ func _dragon_tear(rig: DragonRig, only: Array = []) -> float:
 			if not on:
 				continue
 		var l0 := V[e.x].distance_to(V[e.y])
-		worst = maxf(worst, P[e.x].distance_to(P[e.y]) - maxf(l0 * 2.5, l0 + 0.02))
+		var over := P[e.x].distance_to(P[e.y]) - maxf(l0 * 2.5, l0 + 0.02)
+		if over > worst:
+			worst = over
 	return worst
 
 
@@ -8602,6 +8618,57 @@ func test_dragon_comes_at_night() -> void:
 	high = (c.shown as Vector3).y - view.ground_y(bg.global_position)
 	check(bg.arriving <= 0.0 and rig.airborne < 0.05 and high < 0.3, "down on its feet (%.2f m)" % high)
 	check(bg.mode == bg.Mode.CHASE, "then it hunts (%s)" % bg.mode)
+
+
+## User request (重建模型): the red dragon's crouching moves (landing, the
+## pick-up, the scream, the roar) no longer stretch the leg's skin at the crotch
+## where it meets the robe's flap - that seam's weighted to the pelvis now.
+func test_dragon_crouch_skin() -> void:
+	seed(7)
+	camp().clear()
+	gs.reset_run()
+	gs.last_return = ""
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	await frames(3)
+	main = get_tree().current_scene
+	gs.start_run()
+	var view: RunView3D = null
+	for _i in 200:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	var bg = main.get_node("BigGhost")
+	bg.set_physics_process(false)
+	bg.mode = bg.Mode.WANDER
+	bg.global_position = player().global_position + Vector2(0, -150)
+	await frames(10)
+	var c: Dictionary = view._creatures.get(bg, {})
+	var rig: DragonRig = c.get("rig")
+	var setups := {
+		"land": func(): bg.descending = 0.5; bg.roar_clip = "Roar_2",
+		"pick": func(): bg.mode = bg.Mode.EAT,
+		"scream": func(): bg.global_position = player().global_position + Vector2(6, 3); bg.mode = bg.Mode.GRAB; bg.claiming = true,
+		"roar": func(): bg.roar_clip = "Roar"; bg.arriving = 9.0,
+	}
+	for key in setups:
+		bg.arriving = 0.0
+		bg.claiming = false
+		bg.mode = bg.Mode.WANDER
+		bg.global_position = player().global_position + Vector2(0, -150)
+		await frames(60)
+		setups[key].call()
+		var worst := 0.0
+		var t := 0.0
+		while t < 4.0:
+			await frames(9)
+			t += 9.0 / 60.0
+			worst = maxf(worst, await _dragon_tear(rig, [], ["Head", "jaw", "neck_01", "wing_r", "wing_l"]))
+		check(worst < 0.2, "%s: its skin holds at the crotch (%.3f)" % [key, worst])
+	bg.arriving = 0.0
+	bg.claiming = false
+	bg.mode = bg.Mode.WANDER
+	camp().clear()
 
 
 func test_snow_theme() -> void:
