@@ -8488,6 +8488,10 @@ func test_dragon_comes_at_night() -> void:
 		await frames(1)
 	var bg = main.get_node("BigGhost")
 	check(bg.mode == bg.Mode.ASLEEP, "before the night, not out yet (this run's)")
+	# (user request: only when night falls - not in the evening's last part either)
+	gs.time_remaining = gs.DAY_DURATION * 0.05
+	await frames(10)
+	check(gs.light_stage() == 3 and bg.mode == bg.Mode.ASLEEP, "the evening's last part: still not out")
 	# (far off from the traveller, as the night will find them)
 	var played := []
 	var feed := []

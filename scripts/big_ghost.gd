@@ -55,7 +55,9 @@ const HOVER := 4.0
 const HOME := Vector2(40.0, 12.0)
 const BOB := 2.0
 
-const ACTIVE_FROM_STAGE := 1
+## User request: it comes onto the map when night falls (down out of the sky, roaring) - not before;
+## a level (or a curse) can still have it out from a light stage of its own (Campaign.rules.big_wake).
+const ACTIVE_FROM_STAGE := -1
 const WANDER_SPEED := 34.0
 const LOOK_SPEED := 46.0
 const CHASE_SPEED := 70.0
@@ -287,7 +289,7 @@ func _physics_process(delta: float) -> void:
 			# somewhere on it at random, away from the traveller)
 			global_position = _lair.global_position + HOME
 			var wake: int = int(Campaign.rules.big_wake) if int(Campaign.rules.big_wake) >= 0 else ACTIVE_FROM_STAGE
-			if GameState.run_started and (GameState.is_night or GameState.light_stage() >= wake):
+			if GameState.run_started and (GameState.is_night or (wake >= 0 and GameState.light_stage() >= wake)):
 				_appear()
 				if not GameState.is_night:
 					GameState.push_message("遠處傳來鐵鍊拖地的聲音...大鬼出現了")
