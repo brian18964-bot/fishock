@@ -374,7 +374,7 @@ func _update_hunt(delta: float, dist: float) -> void:
 				_pick_target(true)
 			return
 	# (鮮美 carried: they notice from farther)
-	if _cooldown <= 0.0 and dist < _data.chase_radius * FishLife.beast_attention(GameState.carried_fish) and _can_hunt():
+	if _cooldown <= 0.0 and dist < _data.chase_radius * FishLife.beast_attention(Stats.carried()) and _can_hunt():
 		# User request (the pistol): shot at as it comes - it bolts.
 		if _player.has_method("shoot_at") and _player.shoot_at(self):
 			scare()

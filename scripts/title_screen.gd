@@ -31,7 +31,7 @@ extends Control
 const RENDER_SCALE := 1.5
 const ENTRIES := [
 	["warehouse", "倉庫", "res://assets/sprites/icons/battery.png"],
-	["equipment", "角色", ""],
+	["equipment", "裝備", ""],
 	["bag", "背包", ""],
 	["fish_tank", "魚缸", ""],
 	["shop", "商城", "res://assets/sprites/icons/lamp.png"],

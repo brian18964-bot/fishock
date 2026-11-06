@@ -31,9 +31,19 @@ uniform mat4 to_ghost = mat4(1.0);
 uniform mat4 from_ghost = mat4(1.0);
 uniform vec3 hand = vec3(0.0);
 uniform float paw_t = 0.0;
+// User request (its tail went one way only): the model's tail curls off to its right and back,
+// whatever it does - straightened here (TAIL_BAKED at its tip, less up it), then hung where `tail`
+// says (RunView3D's spring, in its holder's space at the tip: trailing behind its going, swinging
+// past and back, draped back a little at rest), a slow wave going down it.
+uniform vec3 tail = vec3(0.0, 0.0, -0.25);
 // (its body's middle, from above, and its arms' height: m in its holder's space)
 const vec2 AXIS = vec2(-0.15, 0.05);
 const float ARMS = 1.42;
+// (where its tail starts and ends, m up its holder; its tip's curl as made, from the axis)
+const float HIP = 1.38;
+const float TIP = 0.9;
+const vec2 TAIL_BAKED = vec2(0.68, -0.46);
+const float ARM_DROOP = 0.75;
 
 varying vec3 world;
 // (how much of it is arm: kept whole, never thinned away - its claws would hang there alone)
@@ -60,9 +70,29 @@ void vertex() {
 	vec2 off = local.xz - AXIS;
 	arm = smoothstep(0.24, 0.42, length(off)) * smoothstep(-0.02, 0.12, off.y)
 		* (1.0 - smoothstep(0.1, 0.22, abs(local.y - ARMS)));
-	float side = local.x * 9.0;
-	vec3 paw = vec3(0.0, 0.1 * sin(paw_t * 2.6 + side), 0.07 * sin(paw_t * 2.6 + side + 1.2));
-	VERTEX += (from_ghost * vec4((hand + paw) * arm, 0.0)).xyz;
+	// Its arms (user request: their moving unnatural - they rippled along their length): each one
+	// swung whole from the shoulder - the farther out, the more it moves, as a limb turning would -
+	// drifting up and down and to and fro as if held up in water, the two out of step, and
+	// trailing on their spring.
+	float reach = smoothstep(0.18, 0.6, length(off));
+	float which = smoothstep(-0.12, 0.12, off.x);
+	vec3 drift = vec3(0.0,
+		0.075 * sin(paw_t * 1.25 + which * 1.9) + 0.025 * sin(paw_t * 2.3 + which * 0.7),
+		0.05 * sin(paw_t * 0.85 + which * 2.4 + 1.0));
+	vec3 move = (hand + drift) * arm * reach;
+	// (the model holds an arm straight out to the side, stiff: let down from the shoulder - turned
+	// ARM_DROOP rad down about it, the way an arm hangs when nothing holds it up)
+	float out_from = max(length(off) - 0.25, 0.0) * arm;
+	vec2 out_dir = normalize(off + vec2(0.0001));
+	move.xz += out_dir * out_from * (cos(ARM_DROOP) - 1.0);
+	move.y -= out_from * sin(ARM_DROOP);
+	// Its tail: straightened, then hung back where it's trailing, a wave going down it.
+	float d = clamp((HIP - local.y) / (HIP - TIP), 0.0, 1.0) * (1.0 - arm);
+	vec2 straight = -TAIL_BAKED * pow(d, 0.7);
+	vec2 hang = tail.xz * pow(d, 1.25);
+	vec2 wave = vec2(sin(paw_t * 1.15 - d * 2.6), cos(paw_t * 0.8 - d * 2.1)) * 0.09 * pow(d, 1.4);
+	move.xz += straight + hang + wave;
+	VERTEX += (from_ghost * vec4(move, 0.0)).xyz;
 	world = VERTEX;
 }
 

@@ -395,6 +395,7 @@ class Tiles extends Control:
 				var colr: Color = FishVitals.FRESH_COLOR if bar.kind == "fresh" else (FishVitals.ROT_COLOR if bar.kind == "rotten" \
 					else FishVitals.VIT_COLOR.lerp(FishVitals.VIT_LOW, 1.0 - clampf(float(bar.share) * 2.0, 0.0, 1.0)))
 				draw_rect(Rect2(strip.position, Vector2(strip.size.x * clampf(float(bar.share), 0.0, 1.0), strip.size.y)), colr)
+			ItemBoard.weak_tag(self, inner, f)
 		if preview.size != Vector2i.ZERO:
 			var pr := Rect2(Vector2(preview.position) * FishFlyout.CELL, Vector2(preview.size) * FishFlyout.CELL).grow(-1.0)
 			var shown := pr.intersection(Rect2(Vector2.ZERO, size))

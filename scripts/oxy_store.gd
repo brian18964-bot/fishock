@@ -33,7 +33,9 @@ func title() -> String:
 
 
 func hint() -> String:
-	return "把魚拖進格子；點魚看詳情（轉向、取出、上鎖）；把魚拖出格子就拿出來"
+	if home and not Profile.box_goes():
+		return "魚箱在倉庫：裡面的魚不算素質、也不會一起出發。把魚箱放進背包或裝上副手"
+	return "把魚拖進格子；點魚看詳情（轉向、取出、上鎖）；把魚拖出格子就拿出來。虛弱的魚不算素質（餵活力飼料）"
 
 
 ## Where each fish lies (Rect2i, same order), [] if they don't all fit.

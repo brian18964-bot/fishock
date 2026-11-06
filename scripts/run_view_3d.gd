@@ -669,6 +669,9 @@ func _ground() -> void:
 ## (WaterZone.depth) - pale and see-through at the very edge, a wet line
 ## along the shore, darker out deep; glossy, so the lamp's light (and the
 ## moon's) shines off it: walk near with the light up and it gleams.
+var _water_mats: Array = []
+
+
 func _water() -> void:
 	var i := 0
 	var sh := Shader.new()
@@ -688,6 +691,7 @@ func _water() -> void:
 		var box: Rect2 = zone.get_meta("bounds")
 		var mat := ShaderMaterial.new()
 		mat.shader = sh
+		_water_mats.append(mat)
 		mat.set_shader_parameter("wave_tex", t)
 		mat.set_shader_parameter("moon_dir", MOON_DIR)
 		mat.set_shader_parameter("ice", 1.0 if _snow else 0.0)
@@ -738,6 +742,9 @@ uniform vec3 shallow : source_color = vec3(0.07, 0.13, 0.16);
 uniform vec3 edge_tint : source_color = vec3(0.62, 0.78, 0.85);
 uniform vec3 moon_dir = vec3(0.25, 0.22, -1.0);
 uniform float ice = 0.0;
+// (user report: the water's flecks bright on a dark night - the sky in it and the moon's glints as
+// strong as the moon is now: _update_light sets it, 1 the evening's first light)
+uniform float moon = 1.0;
 varying vec3 wpos;
 void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
@@ -763,7 +770,7 @@ void fragment() {
 	vec3 m = normalize((VIEW_MATRIX * vec4(normalize(moon_dir), 0.0)).xyz);
 	float g = pow(max(dot(r, m), 0.0), 140.0);
 	// (a faint night sky in it, more at a glance; the moon's glints)
-	EMISSION = vec3(0.03, 0.045, 0.07) * fres + vec3(0.6, 0.7, 0.85) * g * 0.35 + edge_tint * line * 0.035;
+	EMISSION = vec3(0.03, 0.045, 0.07) * fres * moon + vec3(0.6, 0.7, 0.85) * g * 0.35 * moon * moon + edge_tint * line * 0.035 * mix(0.35, 1.0, moon);
 	ROUGHNESS = 0.06;
 	SPECULAR = 0.75;
 	METALLIC = 0.15;
@@ -773,7 +780,7 @@ void fragment() {
 	ALBEDO = mix(ALBEDO, vec3(0.74, 0.86, 0.94), fringe * 0.9);
 	ALPHA = mix(ALPHA, 0.98, fringe);
 	ROUGHNESS = mix(ROUGHNESS, 0.12, fringe);
-	EMISSION += vec3(0.08, 0.1, 0.14) * fringe;
+	EMISSION += vec3(0.08, 0.1, 0.14) * fringe * mix(0.3, 1.0, moon);
 }
 """
 
@@ -1273,8 +1280,6 @@ const SAY_TIME := 3.0
 const SAY_UP := 0.75
 const SAY_RED := Color(1.0, 0.86, 0.78)
 const SAY_BLACK := Color(0.88, 0.86, 0.96)
-const SAY_EDGE_RED := Color(0.85, 0.32, 0.22, 0.95)
-const SAY_EDGE_BLACK := Color(0.62, 0.58, 0.78, 0.95)
 const SAY_FONT := 42
 const SAY_PIXEL := 0.004
 const SAY_PAD := Vector2(26.0, 14.0)
@@ -1315,7 +1320,8 @@ func dragon_say(n: Node2D, text: String) -> void:
 	# (user request: in a frame - a dark rounded box, its edge the dragon's colour, a tail at its foot)
 	var w := UiKit.font().get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, SAY_FONT).x
 	var frame := Sprite3D.new()
-	frame.texture = _say_frame(w + SAY_PAD.x * 2.0, SAY_FONT + SAY_PAD.y * 2.0, SAY_EDGE_RED if red else SAY_EDGE_BLACK)
+	# (user request: the frame the words' own colour - its edge theirs, its ground a deep shade of it)
+	frame.texture = _say_frame(w + SAY_PAD.x * 2.0, SAY_FONT + SAY_PAD.y * 2.0, SAY_RED if red else SAY_BLACK)
 	frame.pixel_size = SAY_PIXEL * 2.0
 	frame.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	frame.no_depth_test = true
@@ -1355,7 +1361,7 @@ func _say_frame(w: float, h: float, edge: Color) -> ImageTexture:
 	var img := Image.create(iw, ih + tail, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
 	var r := 7.0
-	var fill := Color(0.04, 0.03, 0.035, 0.82)
+	var fill := Color(edge.darkened(0.88), 0.86)
 	for y in ih:
 		for x in iw:
 			# (the distance in from the rounded edge)
@@ -1717,6 +1723,9 @@ func _cover() -> void:
 			"lilypad":
 				var leaf := CampModel.make("lotus_leaf")
 				if leaf != null:
+					# (user report: bright green on the water when it's dark - the camp's leaf, a bright
+					# picture laid flat to the moon: a darker, duller one out here)
+					leaf.material_override = _night_leaf(leaf.material_override as StandardMaterial3D)
 					leaf.position = to3(p, WATER_Y + 0.01)
 					leaf.rotation.y = _rng.randf() * TAU
 					leaf.scale = Vector3.ONE * _rng.randf_range(0.22, 0.34)
@@ -1748,6 +1757,23 @@ func _cover() -> void:
 		_scatter(tuft_mesh[0], tufts, false, COVER_REACH)
 	if not reed_mesh.is_empty():
 		_scatter(reed_mesh[0], reeds, false, COVER_REACH)
+
+
+var _leaf_mat: StandardMaterial3D
+
+
+## The lily pad's material out on the night's water: its picture darkened (LEAF_NIGHT), matte.
+const LEAF_NIGHT := Color(0.42, 0.48, 0.42)
+
+
+func _night_leaf(src: StandardMaterial3D) -> StandardMaterial3D:
+	if _leaf_mat == null:
+		_leaf_mat = (src.duplicate() if src != null else StandardMaterial3D.new()) as StandardMaterial3D
+		_leaf_mat.albedo_color = LEAF_NIGHT
+		_leaf_mat.roughness = 1.0
+		_leaf_mat.metallic_specular = 0.15
+		_leaf_mat.emission_enabled = false
+	return _leaf_mat
 
 
 ## Many of one mesh, in square chunks of the map (CHUNK m) - each its own
@@ -2127,10 +2153,17 @@ const MIST_HEAD := Vector3(-0.18, 1.6, 0.05)
 ## Its hands (user request: not stuck on stiffly) - on a spring of their own (rad/s, damping:
 ## they swing past and back) toward where its going leaves them: trailing behind (s of its
 ## speed, at most m) and lifted (m). The shader bends its arms to them and paws the air.
-const HAND_SPRING := 6.0
-const HAND_DAMP := 0.3
-const HAND_TRAIL := Vector2(0.2, 0.35)
-const HAND_LIFT := 0.12
+const HAND_SPRING := 4.5
+const HAND_DAMP := 0.35
+const HAND_TRAIL := Vector2(0.14, 0.22)
+const HAND_LIFT := 0.08
+## Its tail (user request: it went one way only - the model's own curl): straightened in the
+## shader and hung where this spring has it (its tip, m in its holder's space) - behind its going
+## (s of its speed, at most m), draped back TAIL_REST m at rest; slower than its hands, so it lags.
+const TAIL_SPRING := 2.8
+const TAIL_DAMP := 0.32
+const TAIL_TRAIL := Vector2(0.32, 0.6)
+const TAIL_REST := 0.22
 ## Its blinks (user request): every so often (s), quick (s), now and then twice over.
 const BLINK_GAP := Vector2(1.5, 5.0)
 const BLINK_TIME := 0.16
@@ -2201,6 +2234,8 @@ func _mist_ghost(c: Dictionary, model: Node3D) -> void:
 	c.twice = false
 	c.hand = Vector3.ZERO
 	c.hand_v = Vector3.ZERO
+	c.tail = Vector3(0.0, 0.0, -TAIL_REST)
+	c.tail_v = Vector3.ZERO
 	var holder: Node3D = c.node
 	var blob := MeshInstance3D.new()
 	blob.name = "Shadow"
@@ -2312,6 +2347,15 @@ func _drift_ghost(c: Dictionary, node: Node2D, delta: float) -> void:
 	hand += hand_v * delta
 	c.hand = hand
 	c.hand_v = hand_v
+	# Its tail: behind its going, on a slower spring - lagging, swinging past and back.
+	var trail := Vector3(-mine.x, 0.0, -mine.z) * TAIL_TRAIL.x
+	var tail_want := (Vector3(0.0, 0.0, -TAIL_REST) + trail).limit_length(TAIL_TRAIL.y)
+	var tail: Vector3 = c.tail
+	var tail_v: Vector3 = c.tail_v
+	tail_v += ((tail_want - tail) * TAIL_SPRING * TAIL_SPRING - tail_v * 2.0 * TAIL_DAMP * TAIL_SPRING) * delta
+	tail += tail_v * delta
+	c.tail = tail
+	c.tail_v = tail_v
 	var head := holder.transform * MIST_HEAD
 	for m in c.mist:
 		(m as GeometryInstance3D).set_instance_shader_parameter("base_y", holder.position.y)
@@ -2320,6 +2364,7 @@ func _drift_ghost(c: Dictionary, node: Node2D, delta: float) -> void:
 		(mat as ShaderMaterial).set_shader_parameter("to_ghost", Projection(holder.global_transform.affine_inverse()))
 		(mat as ShaderMaterial).set_shader_parameter("from_ghost", Projection(holder.global_transform))
 		(mat as ShaderMaterial).set_shader_parameter("hand", hand)
+		(mat as ShaderMaterial).set_shader_parameter("tail", tail)
 		(mat as ShaderMaterial).set_shader_parameter("paw_t", t + float(c.phase))
 	_blink(c, t, delta)
 	var blob: MeshInstance3D = c.blob
@@ -4939,6 +4984,10 @@ func _update_light() -> void:
 	_env.ambient_light_energy = lerpf(0.09, 0.3, k) * NIGHT_DIM
 	_env.ambient_light_color = Color(0.2, 0.26, 0.38).lerp(Color(0.42, 0.45, 0.5), k)
 	_moon.light_energy = lerpf(0.12, 0.34, k) * MOON_DIM * NIGHT_DIM
+	# (user report: white flecks on the water in the dark - the moon's shine off the glossy water
+	# stayed as bright as at dusk: with the dark it goes; the camp doused, all but gone)
+	# (glossy water makes a pin of even a faint moon - so it eases out with the square of the light)
+	_moon.light_specular = 0.2 * k * k * (0.0 if GameState.dark_fell else 1.0)
 	_moon.light_color = Color(0.62, 0.72, 0.95).lerp(Color(0.9, 0.88, 0.85), k)
 	_env.fog_light_color = (Color(0.05, 0.07, 0.11).lerp(Color(0.2, 0.22, 0.25), k) * NIGHT_DIM)
 	if _snow:
@@ -4963,6 +5012,10 @@ func _update_light() -> void:
 		_moon.light_energy *= DOUSED_DIM
 		_env.fog_light_color *= DOUSED_DIM
 	_env.background_color = _env.fog_light_color * 0.5
+	# (the water's sky and moon glints as bright as the moon is now - WATER_SHADER's `moon`)
+	var moon_k := clampf(_moon.light_energy / (0.34 * MOON_DIM * NIGHT_DIM), 0.0, 1.0)
+	for wm in _water_mats:
+		(wm as ShaderMaterial).set_shader_parameter("moon", moon_k)
 	# (the owl in the dark: the whole view brighter - Abilities 夜視)
 	var sight := Abilities.OWL_DARK_SIGHT if Abilities.has("owl") and player.unlit() else 1.0
 	_owl_sight = move_toward(_owl_sight, sight, get_process_delta_time() * 0.4)
@@ -5591,7 +5644,8 @@ func _update_camera(delta: float) -> void:
 	# (eased toward what's under the buttons: see _dodge_buttons)
 	target = target.lerp(_dodge_at, _dodge * DODGE_SHIFT)
 	if shake > 0.05:
-		target += Vector3(randf_range(-1, 1), 0, randf_range(-1, 1)) * shake / PX
+		# (up and down too - a big thing landing, a roar: the ground itself shaking)
+		target += Vector3(randf_range(-1, 1), randf_range(-0.7, 0.7), randf_range(-1, 1)) * shake / PX
 	# Back far enough to take in the frame (the traveller and the float,
 	# main.gd's framing), in this camera's own view.
 	var half := frame.abs() / PX

@@ -52,7 +52,7 @@ static func carried() -> Array:
 ## (worn or in the bag - GameState.start_run).
 static func at_camp() -> Array:
 	var out: Array = Profile.pack_fish + Profile.clasp_fish
-	if Profile.has_oxy_box() or Profile.bag_count("oxy_box") > 0:
+	if Profile.box_goes():
 		out += Profile.oxy_stock
 	return out
 

@@ -651,6 +651,14 @@ static func _draw_fish_slot(ci: CanvasItem, r: Rect2, f: Dictionary) -> void:
 	var col: Color = FishVitals.FRESH_COLOR if bar.kind == "fresh" else (FishVitals.ROT_COLOR if bar.kind == "rotten" \
 		else FishVitals.VIT_COLOR.lerp(FishVitals.VIT_LOW, 1.0 - clampf(float(bar.share) * 2.0, 0.0, 1.0)))
 	ci.draw_rect(Rect2(strip.position, Vector2(strip.size.x * clampf(float(bar.share), 0.0, 1.0), strip.size.y)), col)
+	weak_tag(ci, r, f)
+
+
+## User report (the box's fish gave nothing): a weak fish's affixes don't count - said on its tile.
+static func weak_tag(ci: CanvasItem, r: Rect2, f: Dictionary) -> void:
+	if not f.get("weak", false) or FishLife.state(f) != "alive":
+		return
+	UiKit.draw_text(ci, Vector2(r.position.x + 5.0, r.end.y - 11.0), "虛弱", 11, Color(1.0, 0.55, 0.4), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 10.0, true)
 
 
 ## The bag: Inventory's grid with what's packed where it's packed.

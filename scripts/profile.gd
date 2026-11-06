@@ -969,6 +969,22 @@ func has_oxy_box() -> bool:
 	return equipped.get("offhand", "") == "oxy_box"
 
 
+## Does the fish box go along on a run (worn, or in the bag)? Its fish count for the stats only then.
+func box_goes() -> bool:
+	return has_oxy_box() or bag_count("oxy_box") > 0
+
+
+## User report (another character: the box's fish gave nothing): a box bought goes in the warehouse,
+## and its fish counted only when it went along. With fish in it, it's taken into the bag (when
+## there's room) - true if it goes along now.
+func carry_oxy_box() -> bool:
+	if box_goes():
+		return true
+	if stored("oxy_box") > 0 and to_bag("oxy_box", 1) > 0:
+		return true
+	return false
+
+
 ## Is there a box to use - worn, or in the bag?
 func can_use_oxy_box() -> bool:
 	return has_oxy_box() or bag_count("oxy_box") > 0 or stored("oxy_box") > 0

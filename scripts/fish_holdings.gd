@@ -161,9 +161,10 @@ static func box_rotate(fish_list: Array, index: int) -> String:
 
 # ---------------------------------------------------------------- moving fish
 
-## Is there a box to put fish in (worn, in the bag, or - at camp - in the warehouse)?
+## Is there a box to put fish in (worn, in the bag, or - at camp - in the warehouse; in a run only
+## what's been brought: worn or in the bag)?
 func box_usable() -> bool:
-	return Profile.can_use_oxy_box()
+	return Profile.can_use_oxy_box() if home else Profile.box_goes()
 
 
 ## Fish `index` of `from` (a place's list: `list(...)`; in a run only what's carried) into the box
@@ -202,6 +203,9 @@ func put_in_box(from: Array, index: int, cell := Vector2i(-1, -1)) -> String:
 	fish.erase("hook")
 	box.append(fish)
 	if home:
+		# (user report: a box left in the warehouse, its fish gave nothing - with fish in it, it's
+		# taken into the bag, where they count and go along; no room, it stays and says so - hint)
+		Profile.carry_oxy_box()
 		Profile.profile_changed.emit()
 	else:
 		GameState.inventory_updated.emit(GameState.carried_fish)

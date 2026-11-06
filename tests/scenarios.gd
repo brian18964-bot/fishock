@@ -34,6 +34,7 @@ const TESTS := [
 	"test_mythic_traits",
 	"test_tank_moves_and_feeding",
 	"test_oxy_items",
+	"test_box_fish_count",
 	"test_oxy_tree",
 	"test_channels_and_digging",
 	"test_character_abilities",
@@ -8237,6 +8238,52 @@ func test_fear_and_confusion() -> void:
 
 ## User request: at camp the fish box works as in a run - 使用 (or a fish dragged onto it) opens its
 ## cells, the bag's and the warehouse's fish are put in by hand, and what's in it goes on the run.
+## User report (another character: the live fish box's fish in the bag gave none of their affixes):
+## a box bought goes in the warehouse - put fish in it and it's taken into the bag, so they count and
+## go along; in a run what the box's fish do (微光, 鮮美, 腥臭, the angel, the lucky star...) counts
+## as the bag's does; a box left at home can't be used in a run.
+func test_box_fish_count() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 900})
+	Profile.choose_character("dog")
+	check(Profile.buy_oxy_box() and Profile.stored("oxy_box") == 1 and not Profile.box_goes(), "bought: in the warehouse")
+	var f := _alert_fish("壯", 1.0)
+	f["life_traits"] = ["might", "glow"]
+	f["trait_tiers"] = {"might": 3, "glow": 3}
+	var base := Stats.total("might", Stats.at_camp())
+	Profile.pack_fish = [f]
+	check(OxyStore.new(true).put(Profile.pack_fish, 0, Vector2i(-1, -1)) == "", "put in the box")
+	check(Profile.box_goes() and Profile.bag_count("oxy_box") == 1, "the box taken into the bag with it")
+	var counted := Stats.at_camp().filter(func(x): return FishLife.stats_count(x))
+	check(Stats.total("might", counted) > base, "its 力量 counts at camp (%d -> %d)" % [base, Stats.total("might", counted)])
+	FishLife.make_weak(Profile.oxy_stock[0])
+	counted = Stats.at_camp().filter(func(x): return FishLife.stats_count(x))
+	check(Stats.total("might", counted) == base, "a weak one doesn't (its tile says 虛弱)")
+	Profile.oxy_stock[0].erase("weak")
+	Profile.oxy_stock[0]["vit"] = 1.0
+	# the bag full: the box stays in the warehouse - and says so
+	var full := Profile.snapshot()
+	Profile.bag.clear()
+	Profile.oxy_stock.clear()
+	Profile._store("oxy_box", 1)
+	for i in 60:
+		if Profile.bag_free_cell("bait").x < 0:
+			break
+		Profile.bag.append({"id": "bait", "count": Items.stack_of("bait"), "cell": Profile.bag_free_cell("bait")})
+	var g := _alert_fish("餘", 1.0)
+	Profile.stash_fish = [g]
+	OxyStore.new(true).put(Profile.stash_fish, 0, Vector2i(-1, -1))
+	check(not Profile.box_goes() and OxyStore.new(true).hint().begins_with("魚箱在倉庫"), "no room in the bag: it says the box is in the warehouse")
+	check(not FishHoldings.in_run().box_usable(), "a box left at home: not to be used in a run")
+	Profile.load_data(full)
+	# the run: its fish brought, its affixes counting as the bag's
+	GameState.reset_run()
+	GameState.start_run()
+	check(GameState.oxy_fish.size() == 1 and Stats.total("might") > base, "in the run: brought, its 力量 counts")
+	check(player().glow_strength() > 0.0, "its 微光 lights the traveller from the box")
+	Profile.load_data(saved)
+
+
 func test_oxy_at_camp() -> void:
 	var saved := Profile.snapshot()
 	Profile.load_data({"gold": 500})
@@ -8519,7 +8566,7 @@ func test_dragon_lamps_and_sight() -> void:
 	await frames(5)
 	bg = main.get_node("BigGhost")
 	check(not BigGhost.is_red() and is_equal_approx(BigGhost.sight(), 1.0)
-		and is_equal_approx(bg.lamp_light.texture_scale, BigGhost.LAMP_SCALE * 1.5), "the black dragon: its red lamp's light 50%% farther")
+		and is_equal_approx(bg.lamp_light.texture_scale, BigGhost.LAMP_SCALE * 1.5 * 1.2), "the black dragon: its red lamp's light 50%% farther, then 20%% more")
 	# (out on the map, about its business; kept where it is)
 	bg.global_position = player().global_position + Vector2(300, 0)
 	bg.mode = bg.Mode.REST
@@ -8611,6 +8658,8 @@ func test_dragon_comes_at_night() -> void:
 		if bg.descending <= 0.0:
 			break
 	check(bg.global_position.distance_to(where) < 1.0, "coming down it stays where it lands (not after anyone yet)")
+	await frames(1)
+	check(float(main._shake) > 6.0, "its hard landing: a jolt (user request: stronger - %.1f)" % float(main._shake))
 	# User request (the second lot): landed, a hard landing, then it roars where it stands - heard
 	# all over the map, the view trembling, its maw open.
 	for _i in int((BigGhost.ARRIVE_LAND + 0.4) * 60):

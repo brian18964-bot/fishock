@@ -977,7 +977,7 @@ func use_item(id: String) -> bool:
 ## crumbs fall, then on; easing out over its last GLOW_FADE s.
 func glow_strength() -> float:
 	# (and 微光 on a fish carried alive: a faint light of its own)
-	return maxf(mushroom_strength(), FishLife.glow_level(GameState.carried_fish))
+	return maxf(mushroom_strength(), FishLife.glow_level(Stats.carried()))
 
 
 ## The glow mushroom's own (its crumbs and motes follow this).
@@ -1587,7 +1587,7 @@ func animal_attack(attacker: String) -> void:
 	cancel_channel("被%s攻擊" % attacker)
 	# User request: the angel (alive) and the wraith (rotten) carried turn
 	# a pounce aside now and then.
-	if randf() < FishLife.beast_ward(GameState.carried_fish):
+	if randf() < FishLife.beast_ward(Stats.carried()):
 		GameState.push_message("%s撲上來，卻被身上的魚的力量擋開了" % attacker)
 		GameState.report("%s被擋開了" % attacker)
 		return
@@ -3002,7 +3002,7 @@ func _roll_catch_outcome() -> void:
 	# (the deer, the forest's friend - 森林友好)
 	var deer_more := Abilities.DEER_RARE if Abilities.has("deer") else 0.0
 	# (the lucky star carried - 幸運星)
-	deer_more += FishLife.luck_bonus(GameState.carried_fish)
+	deer_more += FishLife.luck_bonus(Stats.carried())
 	# (幸運: each point more rare fish, and rare ones upgraded the likelier)
 	var luck := float(Stats.total(Stats.LUCK))
 	deer_more += luck * Stats.LUCK_RARE

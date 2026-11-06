@@ -76,15 +76,20 @@ const RED_SIGHT := 1.5
 const RED_HASTE := 1.15
 ## User request: the black dragon's red lamp lights BLACK_LAMP_REACH times as far as the red one's
 ## green (its 2D light and so its 3D one); its light on the traveller, they're under stress (Player).
+## (user requests: 50% farther, then 20% farther again - 1.5 x 1.2)
 const LAMP_SCALE := 0.45
-const BLACK_LAMP_REACH := 1.5
+const BLACK_LAMP_REACH := 1.8
 ## User request: night falls, the dragon comes - wherever the traveller is: its roar (ROAR_TIME s:
 ## Sfx "dragon_roar", heard all over the map; its maw open in 3D), the view trembling (main.rumble,
 ## ROAR_SHAKE), and in the feed 進入暗夜，龍鬼來了...; not out yet, it comes now. Every coming onto
 ## the map is down out of the sky: DESCEND_TIME s (`descending`) it flies down and lands (RunView3D),
 ## doing nothing else meanwhile - not after anyone, catching no one.
 const ROAR_TIME := 2.6
-const ROAR_SHAKE := 2.2
+## (user request: the five-minute landing felt too light - the roar's tremble harder, and the hard
+## landing itself a jolt: LAND_JOLT at once, dying off, and LAND_RUMBLE s of tremble after)
+const ROAR_SHAKE := 5.5
+const LAND_JOLT := 11.0
+const LAND_RUMBLE := 0.7
 const DESCEND_TIME := 3.3
 var descending := 0.0
 ## (how many times it's come down: RunView3D sets its flight going afresh each one)
@@ -338,6 +343,14 @@ func hear(at: Vector2) -> void:
 	_set_mode(Mode.SUSPICIOUS)
 
 
+## Its hard landing at its coming: the ground thuds wherever the traveller is (main.jolt).
+func _land_jolt() -> void:
+	var scene := get_tree().current_scene
+	if scene != null and scene.has_method("jolt"):
+		scene.jolt(LAND_JOLT)
+		scene.rumble(LAND_RUMBLE, LAND_JOLT * 0.45)
+
+
 func enter_frenzy(duration: float) -> void:
 	frenzy_timer = maxf(frenzy_timer, duration)
 
@@ -370,6 +383,7 @@ func _physics_process(delta: float) -> void:
 		if descending <= 0.0 and _arrive_after:
 			_arrive_after = false
 			_stand_and_roar(true)
+			_land_jolt()
 		return
 	if arriving > 0.0:
 		# (landed at nightfall: its roar, stood where it is)

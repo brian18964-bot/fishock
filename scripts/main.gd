@@ -39,6 +39,11 @@ var _rumble_len := 1.0
 var _rumble_amp := 0.0
 
 
+## A thud: the view knocked `amount` (as _shake) at once, dying off (SHAKE_DECAY).
+func jolt(amount: float) -> void:
+	_shake = maxf(_shake, amount)
+
+
 ## The view trembling `amount` (as _shake) for `seconds`, swelling and dying away.
 func rumble(seconds: float, amount: float) -> void:
 	_rumble_left = seconds

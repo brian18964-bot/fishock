@@ -173,7 +173,7 @@ func _process(delta: float) -> void:
 		stat_buffs[s][1] = maxf(float(stat_buffs[s][1]) - delta, 0.0)
 	if run_started and not run_over:
 		# (the angel's keep the little ghosts off - the wraith's bring them sooner)
-		_ghost_quiet += delta * FishLife.imp_rate(carried_fish)
+		_ghost_quiet += delta * FishLife.imp_rate(Stats.carried())
 		_age_fish(delta)
 	elif not run_started:
 		# (the bucket, the bag and the warehouse at home)
@@ -256,8 +256,11 @@ func start_run() -> void:
 		fish["clasped"] = true
 		add_carried_fish(fish)
 	Profile.clasp_fish = []
-	# The fish box's (put in at camp): taken along if the box is - worn or in the bag.
-	if Profile.has_oxy_box() or Profile.bag_count("oxy_box") > 0:
+	# The fish box's (put in at camp): taken along if the box is - worn or in the bag (a box with
+	# fish in it, left in the warehouse, into the bag if there's room - Profile.carry_oxy_box).
+	if not Profile.oxy_stock.is_empty():
+		Profile.carry_oxy_box()
+	if Profile.box_goes():
 		for fish in Profile.oxy_stock:
 			fish["brought"] = true
 			oxy_fish.append(fish)
@@ -598,7 +601,7 @@ func _return_brought_weak() -> String:
 	var back := 0
 	# (user request: the live fish box's fish go back in the box - weak, but there they don't run
 	# down, so they won't die: no warning for them)
-	var home_box := Profile.has_oxy_box() or Profile.bag_count("oxy_box") > 0
+	var home_box := Profile.box_goes()
 	for fish in oxy_fish:
 		if not fish.get("brought", false) or not home_box:
 			continue
@@ -647,7 +650,7 @@ func _bring_fish_home() -> String:
 	# home they stay in the box, as the clasp's stay on their hooks; only the bag's are sorted out
 	# (the living to the tank, the dead to the bucket). (The box gone - none home: sorted too.)
 	var boxed := 0
-	var home_box := Profile.has_oxy_box() or Profile.bag_count("oxy_box") > 0
+	var home_box := Profile.box_goes()
 	var sort := carried_fish.duplicate()
 	for fish in oxy_fish:
 		fish.erase("brought")

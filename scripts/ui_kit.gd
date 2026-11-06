@@ -289,10 +289,10 @@ static func page_chrome(page: Control, back: Callable, back_name := "Back", nav 
 	return p
 
 
-## User request: every page has the main ones along its top - 商城, 倉庫, 角色, 背包,
+## User request: every page has the main ones along its top - 商城, 倉庫, 裝備 (user request: 裝備, as the main screen says - not 角色), 背包,
 ## 魚缸, 出發 - to go from one to another without closing and reopening: [key,
 ## its name, the scene it opens].
-const NAV := [["shop", "商城", "shop"], ["warehouse", "倉庫", "warehouse"], ["character", "角色", "equipment"],
+const NAV := [["shop", "商城", "shop"], ["warehouse", "倉庫", "warehouse"], ["character", "裝備", "equipment"],
 	["tank", "魚缸", "fish_tank"]]
 
 
