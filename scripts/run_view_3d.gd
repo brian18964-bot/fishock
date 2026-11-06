@@ -5633,6 +5633,9 @@ func _dodge_buttons(delta: float) -> void:
 		_dodge = move_toward(_dodge, 0.0 if points.is_empty() else _dodge, delta * DODGE_RATE * 0.5)
 
 
+var _shake_rng := RandomNumberGenerator.new()
+
+
 ## Up and behind it at CAMERA_PITCH: as far back as the 2D camera's zoom
 ## says, aimed where it frames (main.gd), and shaken when it is.
 func _update_camera(delta: float) -> void:
@@ -5645,7 +5648,10 @@ func _update_camera(delta: float) -> void:
 	target = target.lerp(_dodge_at, _dodge * DODGE_SHIFT)
 	if shake > 0.05:
 		# (up and down too - a big thing landing, a roar: the ground itself shaking)
-		target += Vector3(randf_range(-1, 1), randf_range(-0.7, 0.7), randf_range(-1, 1)) * shake / PX
+		# (its own dice for the up and down: the game's seeded draws go on as they were)
+		var sx := randf_range(-1, 1)
+		var sz := randf_range(-1, 1)
+		target += Vector3(sx, _shake_rng.randf_range(-0.7, 0.7), sz) * shake / PX
 	# Back far enough to take in the frame (the traveller and the float,
 	# main.gd's framing), in this camera's own view.
 	var half := frame.abs() / PX
