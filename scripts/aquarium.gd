@@ -92,6 +92,9 @@ var _leaves: Array = []
 static var _saved_leaves: Array = []
 ## The page is open (the camp's trough leaves the leaves to it).
 static var page_open := false
+## Made only to have its shaders built while the camp idles (TitleScreen._prewarm_pages): it
+## leaves the camp's tank and its leaves as they are.
+var warm_only := false
 static var _drift: Array = []
 
 
@@ -155,7 +158,7 @@ var _view_tween: Tween
 
 
 func _ready() -> void:
-	page_open = true
+	page_open = page_open or not warm_only
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	clip_contents = true
 	_viewport = SubViewport.new()
@@ -675,6 +678,8 @@ func _pads() -> void:
 
 
 func _exit_tree() -> void:
+	if warm_only:
+		return
 	page_open = false
 	if not _leaves.is_empty():
 		_saved_leaves = _leaves.map(func(l): return [l.pos.x, l.pos.y, l.yaw])

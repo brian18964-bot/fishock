@@ -191,10 +191,12 @@ func _build() -> void:
 		_stage = CampStage.new()
 		_stage.name = "Camp"
 		_viewport.add_child(_stage)
-		# (the tank page's bucket read while the camp idles, not as the page opens - kept after)
+		# (the tank page's bucket read while the camp idles, not as the page opens - kept after;
+		# then the tank's and the equipment page's pictures drawn once off the screen)
 		get_tree().create_timer(3.0).timeout.connect(func():
 			if is_inside_tree() and _page == null:
 				Aquarium.bucket_scene())
+		get_tree().create_timer(5.0).timeout.connect(_prewarm_pages)
 		_stage.life.plan_done.connect(_on_piece_done)
 		var view := TextureRect.new()
 		view.name = "CampView"
@@ -576,6 +578,36 @@ func choose_character(id: String) -> void:
 		_spot_label.visible = true
 		_spot_label.text = Profile.character_name()
 		_name_time = NAME_TIME
+
+
+## User report (the camp's pages hitched the first time): the tank page's water, sand and fish,
+## and the equipment page's lit character, built their shaders as the page first opened (~1.2 s
+## and ~0.6 s on a phone) - drawn once, small and off the screen, while the camp idles instead.
+static var _pages_warmed := false
+
+
+func _prewarm_pages() -> void:
+	if _pages_warmed or not is_inside_tree() or _page != null or _stage == null:
+		return
+	_pages_warmed = true
+	var holder := Control.new()
+	holder.name = "PageWarm"
+	holder.position = Vector2(-4000, -4000)
+	holder.size = Vector2(96, 54)
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(holder)
+	var tank := Aquarium.new()
+	tank.warm_only = true
+	tank.size = Vector2(96, 54)
+	holder.add_child(tank)
+	tank.stock()
+	var viewer := CharacterViewer.new()
+	viewer.size = Vector2(54, 54)
+	holder.add_child(viewer)
+	for _i in 3:
+		await get_tree().process_frame
+	if is_instance_valid(holder):
+		holder.queue_free()
 
 
 ## Opens a menu page over the camp: the list goes, the camera glides to the
