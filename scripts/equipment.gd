@@ -218,9 +218,10 @@ func _on_tent(i: int) -> void:
 		_hint.text = "%s 還沒解鎖：%s（目前 %s）" % [t[1], t[2], TentCard.amount(t, p[0])]
 
 
-## The fish packed in the bag at home that would count on a run (alive, not weak).
+## The fish that would go along on a run - Stats.sources counts each as the run does (a live one's
+## affixes unless weak, a dead salted one's salt): the same list, so the page's numbers are the run's.
 func _packed() -> Array:
-	return Stats.at_camp().filter(func(f): return FishLife.stats_count(f))
+	return Stats.at_camp()
 
 
 ## A stat's card: its number and where it comes from, and what it touches.

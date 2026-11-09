@@ -35,6 +35,7 @@ const TESTS := [
 	"test_tank_moves_and_feeding",
 	"test_oxy_items",
 	"test_box_fish_count",
+	"test_affixes_counted_everywhere",
 	"test_oxy_tree",
 	"test_channels_and_digging",
 	"test_character_abilities",
@@ -8295,6 +8296,106 @@ func test_box_fish_count() -> void:
 	GameState.start_run()
 	check(GameState.oxy_fish.size() == 1 and Stats.total("might") > base, "in the run: brought, its 力量 counts")
 	check(player().glow_strength() > 0.0, "its 微光 lights the traveller from the box")
+	Profile.load_data(saved)
+
+
+## User request: the affixes and the gear's numbers - there for certain, at any time, at camp or on a
+## night. Every place a fish can be carried (the bag, a clasp, the box worn or in the bag), every kind
+## (a stat affix, a dead fish's salt, the carried ones: 微光 鮮美 腥臭 天使 幸運星), checked at camp,
+## on the equipment page, through a run (and a fish moved into the box in it), and home again; what
+## doesn't count (weak, a box left in the warehouse) doesn't, the same everywhere.
+func test_affixes_counted_everywhere() -> void:
+	var saved := Profile.snapshot()
+	Profile.load_data({"gold": 900})
+	Profile.choose_character("deer")
+	await _fresh_game()
+	Profile.load_data({"gold": 900})
+	Profile.choose_character("deer")
+	var base := {}
+	for st in Stats.IDS:
+		base[st] = Stats.total(st, [])
+	var mk := func(name: String, traits: Dictionary) -> Dictionary:
+		var f := _alert_fish(name, 1.0)
+		f["life_traits"] = traits.keys()
+		f["trait_tiers"] = traits
+		return f
+	var bag_fish: Dictionary = mk.call("包", {"might": 3, "glow": 3})
+	var clasp_fish: Dictionary = mk.call("扣", {"react": 2, "smelly": 2})
+	var box_fish: Dictionary = mk.call("箱", {"resil": 4, "savory": 2})
+	var star_fish: Dictionary = mk.call("星", {"luckystar": 5, "angel": 5})
+	var weak_fish: Dictionary = mk.call("弱", {"endure": 5})
+	FishLife.make_weak(weak_fish)
+	var salted: Dictionary = mk.call("醃", {})
+	salted["vit"] = 0.0
+	salted["dead"] = true
+	salted["fresh"] = 0.8
+	salted["salt"] = [{"stat": "endure", "val": 7}]
+	check(FishLife.state(salted) == "dead" and FishLife.is_salted(salted), "(a dead, salted fish)")
+	Profile.pack_fish = [bag_fish, star_fish, weak_fish, salted, clasp_fish]
+	check(Profile.buy_fish_clasp() and Profile.equip("fish_clasp", -1, Profile.CLASP_SLOTS[0]), "(a clasp, worn)")
+	check(Profile.hang_fish("pack", 4) == "" and Profile.clasp_fish.has(clasp_fish), "(a fish hung on it)")
+	check(Profile.buy_oxy_box(), "(a box)")
+	Profile.stash_fish = [box_fish]
+	check(OxyStore.new(true).put(Profile.stash_fish, 0, Vector2i(-1, -1)) == "" and Profile.box_goes(), "(the box fish in, the box to the bag)")
+	var want := base.duplicate()
+	want.might += int(FishLife.val_of(bag_fish, "might"))
+	want.react += int(FishLife.val_of(clasp_fish, "react"))
+	want.resil += int(FishLife.val_of(box_fish, "resil"))
+	want.endure += 7
+	var at_camp := {}
+	for st in Stats.IDS:
+		at_camp[st] = Stats.total(st, Stats.at_camp())
+	check(at_camp == want, "at camp: the bag's, the clasp's, the box's affixes and the salt count, the weak one's not (%s, want %s)" % [at_camp, want])
+	# the equipment page shows the same
+	var page: Control = load("res://scenes/equipment.tscn").instantiate()
+	get_tree().root.add_child(page)
+	await frames(3)
+	var shown := {}
+	for row in page._stat_rows:
+		if row.stat in Stats.IDS:
+			shown[row.stat] = int(row.value)
+	check(shown == want, "the equipment page shows those numbers (%s)" % [shown])
+	# a fish put in the box there: the page follows at once
+	var more: Dictionary = mk.call("加", {"might": 1})
+	Profile.stash_fish = [more]
+	OxyStore.new(true).put(Profile.stash_fish, 0, Vector2i(-1, -1))
+	await frames(2)
+	var after := 0
+	for row in page._stat_rows:
+		if row.stat == "might":
+			after = int(row.value)
+	check(after == want.might + int(FishLife.val_of(more, "might")), "a fish put in the box: the page's 力量 follows (%d)" % after)
+	page.queue_free()
+	await frames(1)
+	want.might += int(FishLife.val_of(more, "might"))
+	# the run: every one of them along, the same numbers
+	GameState.reset_run()
+	GameState.start_run()
+	var in_run := {}
+	for st in Stats.IDS:
+		in_run[st] = Stats.total(st)
+	check(in_run == want, "on the night: the same numbers (%s)" % [in_run])
+	var carried := Stats.carried()
+	check(FishLife.glow_level(carried) > 0.0 and player().glow_strength() > 0.0, "微光 (in the bag) lights the traveller")
+	check(FishLife.beast_attention(carried) > 1.0, "鮮美 (in the box) draws the beasts from further")
+	check(FishLife.imp_rate(carried) < 1.0 + FishLife.val_of(clasp_fish, "smelly") + 0.001 and FishLife.imp_rate(carried) != 1.0, "腥臭 (on the clasp) and 天使 (in the bag) move the little ghosts' coming")
+	check(FishLife.beast_ward(carried) > 0.0, "天使 turns a pounce aside")
+	check(FishLife.luck_bonus(carried) > 0.0, "幸運星 makes rare fish likelier")
+	# moved in the night from the bag into the box: still counted
+	var holdings := FishHoldings.in_run()
+	var i := GameState.carried_fish.find(bag_fish)
+	check(i >= 0 and holdings.put_in_box(GameState.carried_fish, i) == "" and GameState.oxy_fish.has(bag_fish), "(the bag fish moved into the box in the run)")
+	check(Stats.total("might") == want.might and FishLife.glow_level(Stats.carried()) > 0.0, "moved into the box: its 力量 and 微光 still count")
+	# home: the box's and the clasp's stay (and count at camp again); the bag's go to the tank
+	GameState.end_run(true, "")
+	await frames(2)
+	check(Profile.oxy_stock.has(bag_fish) and Profile.oxy_stock.has(box_fish) and Profile.clasp_fish.has(clasp_fish), "home: the box's fish in the box, the clasp's on their hook")
+	check(Stats.total("might", Stats.at_camp()) >= base.might + int(FishLife.val_of(bag_fish, "might")) and Stats.total("resil", Stats.at_camp()) == want.resil,
+		"at camp again: they count")
+	# a box left in the warehouse: its fish neither count nor go - the same at camp and on the night
+	Profile.bag = Profile.bag.filter(func(e): return e.id != "oxy_box")
+	Profile._store("oxy_box", 1)
+	check(not Profile.box_goes() and Stats.total("resil", Stats.at_camp()) == base.resil, "the box in the warehouse: its fish don't count at camp")
 	Profile.load_data(saved)
 
 
