@@ -8389,6 +8389,33 @@ func test_bag_moves_at_camp() -> void:
 	var tgt: Dictionary = grid.target_at(grid.global_position + Vector2(4.5, 3.5) * 54.0)
 	check(tgt.cell == Vector2i(4, 1), "put by the cell it was taken by (%s)" % [tgt.cell])
 	check(Profile.bag_move(0, tgt.cell) and Profile.bag[0].cell == Vector2i(4, 1), "and it goes there")
+	# User report (again): the box wouldn't go where its green outline showed. The whole of it, as a
+	# hand does it: pressed on its lower middle cell, dragged, let go - it lands where it was shown.
+	grid.hover({}, Vector2.ZERO)
+	add_child(board)
+	board.track(grid)
+	for trip in [[Vector2i(0, 2), Vector2i(2, 0)], [Vector2i(1, 1), Vector2i(3, 2)], [Vector2i(0, 0), Vector2i(5, 1)]]:
+		var took: Vector2i = trip[0]
+		var want: Vector2i = trip[1]
+		var from: Vector2i = Profile.bag[0].cell
+		var press := InputEventMouseButton.new()
+		press.button_index = MOUSE_BUTTON_LEFT
+		press.pressed = true
+		press.global_position = grid.global_position + (Vector2(from + took) + Vector2(0.5, 0.5)) * 54.0
+		grid._gui_input(press)
+		var to := grid.global_position + (Vector2(want + took) + Vector2(0.5, 0.5)) * 54.0
+		for k in 4:
+			var mv := InputEventMouseMotion.new()
+			mv.position = press.global_position.lerp(to, (k + 1) / 4.0)
+			board._input(mv)
+		var shown := grid._hover_cell
+		var up := InputEventMouseButton.new()
+		up.button_index = MOUSE_BUTTON_LEFT
+		up.pressed = false
+		up.position = to
+		board._input(up)
+		check(shown == want and Profile.bag[0].cell == want,
+			"taken by its cell %s, let go: where its outline was (%s, shown %s, now %s)" % [took, want, shown, Profile.bag[0].cell])
 	host.queue_free()
 	board.queue_free()
 	# The placer: a tank fish over the box opens its cells.

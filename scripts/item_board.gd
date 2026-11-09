@@ -169,8 +169,12 @@ func _input(event: InputEvent) -> void:
 		var source := _press
 		_press = {}
 		if _dragging:
-			_end_drag()
+			# (user report, again: the fish box wouldn't go where its green outline showed - let go,
+			# the views were told nothing's held before the drop asked them where, so a thing taken by
+			# any cell but its top-left went by the pointer's cell: dropped first now, and the drop
+			# says what's held)
 			drop(source, event.position)
+			_end_drag()
 		else:
 			card(source)
 
@@ -215,7 +219,13 @@ func drop(source: Dictionary, at: Vector2) -> bool:
 			return true
 	for v in _views:
 		if v.is_visible_in_tree() and v.get_global_rect().has_point(at):
-			var target: Dictionary = v.target_for(source) if v.has_method("target_for") else v.target_at(at)
+			var target: Dictionary
+			if v.has_method("target_for"):
+				target = v.target_for(source)
+			elif v is BagGrid:
+				target = (v as BagGrid).target_at(at, source)
+			else:
+				target = v.target_at(at)
 			return move(source, target)
 	return false
 
@@ -680,25 +690,29 @@ class BagGrid extends Control:
 		var p := (global - global_position) / cell
 		return Vector2i(floori(p.x), floori(p.y))
 
-	func target_at(global: Vector2) -> Dictionary:
+	## Where `held` (what's dragged; the one hovering if not given) would go, let go at `global`.
+	func target_at(global: Vector2, held := {}) -> Dictionary:
+		var h: Dictionary = held if not held.is_empty() else _hover
 		var c := cell_at(global)
-		if not _hover.is_empty():
-			if _hover.has("grab"):
+		if not h.is_empty():
+			if h.has("grab"):
 				# Dragged by the cell it was taken by: its top-left is that far off the pointer's.
-				c = c - Vector2i(_hover.grab)
+				c = c - Vector2i(h.grab)
 			else:
 				# (from another view: by its middle)
-				var sz := _hover_size()
+				var sz := _hover_size(h)
 				c = cell_at(global - Vector2(sz - Vector2i.ONE) * cell / 2.0)
 		return {"to": "bag", "cell": c}
 
 	## The cells what's dragged takes (as it's turned in the bag).
-	func _hover_size() -> Vector2i:
-		if _hover.get("from", "") in ["pack_fish", "stash_fish"]:
-			return Inventory.fish_item(ItemBoard.fish_of(_hover)).size
-		if _hover.get("from", "") == "bag" and int(_hover.get("index", -1)) >= 0 and int(_hover.index) < Profile.bag.size():
-			return Profile.bag_size_of(int(_hover.index))
-		return Items.size_of(_hover.id)
+	func _hover_size(h := {}) -> Vector2i:
+		if h.is_empty():
+			h = _hover
+		if h.get("from", "") in ["pack_fish", "stash_fish"]:
+			return Inventory.fish_item(ItemBoard.fish_of(h)).size
+		if h.get("from", "") == "bag" and int(h.get("index", -1)) >= 0 and int(h.index) < Profile.bag.size():
+			return Profile.bag_size_of(int(h.index))
+		return Items.size_of(h.id)
 
 	## The fish box lying in the bag under `at`: its cells' store and its rect.
 	func box_at(global: Vector2) -> Dictionary:
