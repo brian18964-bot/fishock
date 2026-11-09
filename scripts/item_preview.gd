@@ -42,7 +42,8 @@ func _ready() -> void:
 	_viewport = SubViewport.new()
 	_viewport.own_world_3d = true
 	_viewport.transparent_bg = true
-	_viewport.msaa_3d = Viewport.MSAA_4X
+	# (on a phone a lighter picture: its own size and 2x MSAA - user report, the pages slow there)
+	_viewport.msaa_3d = Viewport.MSAA_2X if RunView3D.low_end() else Viewport.MSAA_4X
 	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(_viewport)
 	_view = TextureRect.new()
@@ -63,7 +64,7 @@ func _ready() -> void:
 
 func _fit_viewport() -> void:
 	if _viewport != null:
-		_viewport.size = Vector2i((size * RENDER_SCALE).max(Vector2(8, 8)))
+		_viewport.size = Vector2i((size * (1.0 if RunView3D.low_end() else RENDER_SCALE)).max(Vector2(8, 8)))
 		if _camera != null:
 			_frame()
 

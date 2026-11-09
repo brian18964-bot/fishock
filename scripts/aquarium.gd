@@ -24,7 +24,8 @@ signal bucket_clicked
 ## back to the tank.
 signal tank_clicked
 
-const RENDER_SCALE := 1.5
+## (on a phone its own size, no MSAA - set as it's made: user report, the pages slow there)
+static var RENDER_SCALE := 1.5
 ## The drum: the camp's model made LENGTH long along x, lying on its side
 ## (its axis at AXIS_Y, inside RADIUS round it); the water's surface at
 ## SURFACE, a little under the cut rim.
@@ -159,7 +160,8 @@ func _ready() -> void:
 	clip_contents = true
 	_viewport = SubViewport.new()
 	_viewport.own_world_3d = true
-	_viewport.msaa_3d = Viewport.MSAA_2X
+	RENDER_SCALE = 1.0 if RunView3D.low_end() else 1.5
+	_viewport.msaa_3d = Viewport.MSAA_DISABLED if RunView3D.low_end() else Viewport.MSAA_2X
 	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(_viewport)
 	var view := TextureRect.new()
@@ -809,11 +811,23 @@ func _age_drops(delta: float) -> void:
 
 ## The bucket (a metal pail with its bail) stood left of the drum, with a
 ## floor and a ring of leaning walls for the fish to pile in.
+static var _bucket_kept: PackedScene
+
+
+## The bucket's model, loaded once and kept.
+static func bucket_scene() -> PackedScene:
+	if _bucket_kept == null and ResourceLoader.exists(BUCKET_FILE):
+		_bucket_kept = load(BUCKET_FILE)
+	return _bucket_kept
+
+
 func _bucket() -> void:
 	var body := StaticBody3D.new()
 	body.name = "Bucket"
 	body.position = BUCKET_AT
-	var scene: PackedScene = load(BUCKET_FILE) if ResourceLoader.exists(BUCKET_FILE) else null
+	# (user report, the tank page slow to open: its 1024 px textures were read again each time it
+	# opened, ~80 ms - kept once loaded; CampStage starts it in the camp's idle time)
+	var scene: PackedScene = bucket_scene()
 	if scene != null:
 		var model := scene.instantiate() as Node3D
 		model.scale = Vector3.ONE * BUCKET_SCALE

@@ -27,8 +27,10 @@ extends Control
 ## character on its stone before a dark wall - and the camp's list on the
 ## right stands in for the things.
 
-## The camp's picture is drawn at this many times the screen's own size.
-const RENDER_SCALE := 1.5
+## The camp's picture is drawn at this many times the screen's own size
+## (user report, the camp's pages slow on a phone: there its own size, no MSAA -
+## set when the camp's built).
+static var RENDER_SCALE := 1.5
 const ENTRIES := [
 	["warehouse", "倉庫", "res://assets/sprites/icons/battery.png"],
 	["equipment", "裝備", ""],
@@ -178,15 +180,21 @@ func camp_on() -> bool:
 
 func _build() -> void:
 	if camp_on():
+		var low := RunView3D.low_end()
+		RENDER_SCALE = 1.0 if low else 1.5
 		_viewport = SubViewport.new()
 		_viewport.size = Vector2i(Vector2(960, 540) * RENDER_SCALE)
 		_viewport.own_world_3d = true
-		_viewport.msaa_3d = Viewport.MSAA_2X
+		_viewport.msaa_3d = Viewport.MSAA_DISABLED if low else Viewport.MSAA_2X
 		_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 		add_child(_viewport)
 		_stage = CampStage.new()
 		_stage.name = "Camp"
 		_viewport.add_child(_stage)
+		# (the tank page's bucket read while the camp idles, not as the page opens - kept after)
+		get_tree().create_timer(3.0).timeout.connect(func():
+			if is_inside_tree() and _page == null:
+				Aquarium.bucket_scene())
 		_stage.life.plan_done.connect(_on_piece_done)
 		var view := TextureRect.new()
 		view.name = "CampView"

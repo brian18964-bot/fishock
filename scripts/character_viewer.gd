@@ -49,7 +49,7 @@ func _ready() -> void:
 	_viewport = SubViewport.new()
 	_viewport.own_world_3d = true
 	_viewport.transparent_bg = true
-	_viewport.msaa_3d = Viewport.MSAA_2X
+	_viewport.msaa_3d = Viewport.MSAA_DISABLED if RunView3D.low_end() else Viewport.MSAA_2X
 	add_child(_viewport)
 	_build_stage()
 	resized.connect(func(): _frame())
