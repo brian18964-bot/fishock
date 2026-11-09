@@ -5458,7 +5458,7 @@ func test_run_3d() -> void:
 	await frames(4)
 	check(view._clip == "Walk_Carry" and view._lamp_in < 1.0, "carrying the oil drum: in both arms")
 	player().carrying_oil_drum = false
-	# On a phone: lighter (no glow, one shadow pass, none from the lamp,
+	# On a phone: lighter (no glow, one shadow split, none from the lamp,
 	# the 3D drawn smaller, grass as cards).
 	RunView3D.quality = "low"
 	await _fresh_game()
@@ -5470,6 +5470,20 @@ func test_run_3d() -> void:
 	check(view._low and not view._env.glow_enabled and not view._lamp.shadow_enabled
 		and is_equal_approx(main.get_viewport().scaling_3d_scale, RunView3D.LOW_SCALE)
 		and view._moon.directional_shadow_mode == DirectionalLight3D.SHADOW_ORTHOGONAL, "phone: the lighter settings")
+	# (user report: on a phone only the rod had a shadow - the character and its gear cast one too;
+	# the ground, which costs most and has nothing above it to shade, doesn't)
+	var unshaded := 0
+	var meshes := view.rig.find_children("*", "MeshInstance3D", true, false)
+	for mi in meshes:
+		if (mi as MeshInstance3D).cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF and mi.name != "FootShadow":
+			unshaded += 1
+	check(not meshes.is_empty() and unshaded == 0 and view._moon.shadow_enabled, "phone: the character casts the moon's shadow")
+	var ground_chunks := view.get_node("Ground").get_children()
+	var cast := 0
+	for g in ground_chunks:
+		if (g as MeshInstance3D).cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+			cast += 1
+	check(ground_chunks.size() > 4 and cast == 0, "the ground in %d chunks, none drawn into the shadow" % ground_chunks.size())
 	RunView3D.quality = ""
 
 
@@ -8949,14 +8963,18 @@ func test_snow_theme() -> void:
 		if c.name.begins_with("Water") and c is MeshInstance3D and float((c.material_override as ShaderMaterial).get_shader_parameter("ice")) > 0.5:
 			iced += 1
 	check(iced > 0 and iced == main.get_tree().get_nodes_in_group("water_zones").size(), "ice at the edge of every pond")
-	var ground: MeshInstance3D = null
-	for c in view.get_children():
-		if c is MeshInstance3D and c.material_override is ShaderMaterial and (c.material_override as ShaderMaterial).get_shader_parameter("snow") != null:
-			ground = c
-	check(ground != null and float((ground.material_override as ShaderMaterial).get_shader_parameter("snow")) > 0.5, "the ground is under snow")
+	# (the ground's in chunks now - user report, a laggy night: drawn only where it's seen)
+	var chunks := view.get_node_or_null("Ground")
+	var gm: ShaderMaterial = view._ground_mat as ShaderMaterial
+	var all_snowy := chunks != null and chunks.get_child_count() > 1
+	if chunks != null:
+		for c in chunks.get_children():
+			if not (c is MeshInstance3D and (c as MeshInstance3D).material_override == gm
+					and (c as MeshInstance3D).cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF):
+				all_snowy = false
+	check(gm != null and all_snowy and float(gm.get_shader_parameter("snow")) > 0.5, "the ground is under snow, every piece of it")
 	# (user requests: the snow far too bright, the lamp no use - night snow grey-blue, lit by little;
 	# then: at the start too dark to tell it's snow - light at first, darker as the night goes on)
-	var gm := ground.material_override as ShaderMaterial
 	await frames(5)
 	var early_snow := float(gm.get_shader_parameter("snow_bright"))
 	var early_amb := view._env.ambient_light_energy
@@ -9047,6 +9065,16 @@ func test_snow_theme() -> void:
 	check(beast != null, "(an animal about)")
 	if beast != null:
 		var key := beast.get_instance_id()
+		# (user report, a laggy night: one off the screen isn't animated - its clip held, no prints;
+		# brought by the traveller first, where it's seen)
+		beast.global_position = p.global_position + Vector2(5000, 0)
+		for i in 3:
+			beast._mode = Critter.Mode.WANDER
+			beast._target = beast.global_position + Vector2(200, 30)
+			await frames(1)
+		var bc: Dictionary = view._creatures[beast]
+		check(bc.anim == null or not (bc.anim as AnimationPlayer).active, "far off the screen: its clip held")
+		beast.global_position = p.global_position + Vector2(-160, 40)
 		for i in 240:
 			beast._mode = Critter.Mode.WANDER
 			beast._target = beast.global_position + Vector2(200, 30)

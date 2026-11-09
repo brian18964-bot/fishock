@@ -43,6 +43,8 @@ const LAND_Y := 0.05
 const DECK_Y := 0.32
 ## The ground grid (m) and how far past the map's edge it goes.
 const CELL := 0.5
+## (the ground's chunks: this many cells a side)
+const GROUND_CHUNK := 40
 const MARGIN := 14.0
 ## Walking up to WALK_PACE m/s is the walk clip at its own pace; RUN_PACE
 ## the run's - for a character not measured: each one's own legs' stride
@@ -616,8 +618,12 @@ func _ground() -> void:
 	var floor_spec = MapGenerator.THEMES[MapGenerator.current_theme].get("floor", [])
 	if floor_spec is Array and floor_spec.size() > 2:
 		share = float(floor_spec[2])
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	# (the heights and colours over the whole grid first - each chunk's edge shares its neighbour's,
+	# and its normals come from the heights round it, so the chunks meet without a seam)
+	var heights := PackedFloat32Array()
+	heights.resize(n.x * n.y)
+	var colors := PackedColorArray()
+	colors.resize(n.x * n.y)
 	for j in n.y:
 		for i in n.x:
 			var x := lo.x + i * CELL
@@ -635,19 +641,8 @@ func _ground() -> void:
 			var mud := 1.0 - smoothstep(0.0, 70.0 + wob * 30.0, -d)
 			var forest := clampf(0.5 + (noise.get_noise_2d(x * 0.6 + 40.0, z * 0.6) - (share - 0.5)) * 1.6, 0.0, 1.0)
 			forest = maxf(forest, smoothstep(0.0, 4.0, out))
-			st.set_color(Color(0.0, 0.0, mud, 1.0 - forest))
-			st.set_uv(Vector2(x, z))
-			st.add_vertex(Vector3(x, y, z))
-	for j in n.y - 1:
-		for i in n.x - 1:
-			var a := j * n.x + i
-			for k in [a, a + 1, a + n.x, a + 1, a + n.x + 1, a + n.x]:
-				st.add_index(k)
-	st.generate_normals()
-	st.generate_tangents()
-	var mi := MeshInstance3D.new()
-	mi.name = "Ground"
-	mi.mesh = st.commit()
+			heights[j * n.x + i] = y
+			colors[j * n.x + i] = Color(0.0, 0.0, mud, 1.0 - forest)
 	var sh := Shader.new()
 	sh.code = GROUND_SHADER
 	var mat := ShaderMaterial.new()
@@ -660,8 +655,40 @@ func _ground() -> void:
 	mat.set_shader_parameter("snow", 1.0 if _snow else 0.0)
 	mat.set_shader_parameter("snow_bright", SNOW_GROUND)
 	_ground_mat = mat
-	mi.material_override = mat
-	add_child(mi)
+	# User report (laggy at night, on a phone): the ground was one mesh of the whole map, drawn
+	# whole every frame and drawn again into the moon's shadow - in chunks of GROUND_CHUNK cells now,
+	# those off the screen not drawn, and none casting a shadow (it takes them; it has nothing
+	# above it to shade).
+	var ground := Node3D.new()
+	ground.name = "Ground"
+	add_child(ground)
+	for cj in range(0, n.y - 1, GROUND_CHUNK):
+		for ci in range(0, n.x - 1, GROUND_CHUNK):
+			var st := SurfaceTool.new()
+			st.begin(Mesh.PRIMITIVE_TRIANGLES)
+			var w := mini(GROUND_CHUNK, n.x - 1 - ci) + 1
+			var h := mini(GROUND_CHUNK, n.y - 1 - cj) + 1
+			for j in range(cj, cj + h):
+				for i in range(ci, ci + w):
+					var x := lo.x + i * CELL
+					var z := lo.y + j * CELL
+					var hx := heights[j * n.x + mini(i + 1, n.x - 1)] - heights[j * n.x + maxi(i - 1, 0)]
+					var hz := heights[mini(j + 1, n.y - 1) * n.x + i] - heights[maxi(j - 1, 0) * n.x + i]
+					st.set_normal(Vector3(-hx, 2.0 * CELL, -hz).normalized())
+					st.set_color(colors[j * n.x + i])
+					st.set_uv(Vector2(x, z))
+					st.add_vertex(Vector3(x, heights[j * n.x + i], z))
+			for j in h - 1:
+				for i in w - 1:
+					var a := j * w + i
+					for k in [a, a + 1, a + w, a + 1, a + w + 1, a + w]:
+						st.add_index(k)
+			st.generate_tangents()
+			var mi := MeshInstance3D.new()
+			mi.mesh = st.commit()
+			mi.material_override = mat
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			ground.add_child(mi)
 
 
 ## User request: the water was hard to tell from the land (and to find).
@@ -2831,7 +2858,19 @@ func _sync_creatures(delta: float) -> void:
 		var on := _shown(node)
 		if n is Critter and not (n as Critter).active:
 			on = false
+		if not on and c.kind == "dragon" and _warm_step >= 0 and _warm_step < WARM_POSES * WARM_HOLD:
+			# User report (a hitch at five when it comes): asleep it's never drawn, so its skin's
+			# shaders were built the moment it first came down - shown to the warm-up's camera
+			# behind the loading cover instead, a little in front of the traveller.
+			holder.visible = true
+			holder.position = pivot.global_position + Vector3(0.0, 0.0, -2.5)
+			continue
 		holder.visible = on
+		# User report (laggy at night, on a phone): hidden - the dragon asleep till five, a critter
+		# gone to come back - its clip and its springs (the dragon's tails, wings and skirt) wait too.
+		var run_mode := Node.PROCESS_MODE_INHERIT if on else Node.PROCESS_MODE_DISABLED
+		if holder.process_mode != run_mode:
+			holder.process_mode = run_mode
 		if c.has("lamp"):
 			# (asleep its lantern's out, as the 2D one's)
 			var awake := int(n.get("mode")) != BigGhost.Mode.ASLEEP
@@ -2900,6 +2939,15 @@ func _sync_creatures(delta: float) -> void:
 			# (fading into the edge's trees - Critter.fade: user request, the whole of it fading
 			# away, not shrinking)
 			_fade_creature(c, (n as Critter).fade)
+		# User report (laggy at night, on a phone): an animal off the screen isn't animated - its
+		# clip held till it's back in view (the dragon always is: its gait keeps its own time).
+		if kind != "dragon":
+			var seen := _in_view(holder.global_position)
+			var a0: AnimationPlayer = c.anim
+			if a0 != null and a0.active != seen:
+				a0.active = seen
+			if not seen:
+				continue
 		if _tracks != null and SnowTracks.ANIMALS.has(kind) and float(c.get("air", 0.0)) < 0.3:
 			# (user request: the animals and the big ghost leave prints in the snow too)
 			if not c.has("skel"):
@@ -3055,6 +3103,22 @@ func _sync_creatures(delta: float) -> void:
 			c.clip = clip
 			anim.play(clip, 0.25)
 		anim.speed_scale = rate
+
+
+## Is a point (a creature's feet) on the screen, or near enough its edge that what stands there
+## shows (VIEW_PAD of the screen more, all round)?
+const VIEW_PAD := 0.25
+
+
+func _in_view(p: Vector3) -> bool:
+	if camera == null:
+		return true
+	var up := p + Vector3(0.0, 0.6, 0.0)
+	if camera.is_position_behind(up):
+		return false
+	var at := camera.unproject_position(up)
+	var vp := get_viewport().get_visible_rect().size
+	return Rect2(-vp * VIEW_PAD, vp * (1.0 + 2.0 * VIEW_PAD)).has_point(at)
 
 
 ## A fish dropped or thrown (DroppedFish; user decision: no pictures - its
@@ -3362,12 +3426,9 @@ func _character() -> void:
 	pivot.add_child(rig)
 	_arm_ik()
 	# User report: no shadow under the character. A soft dark patch at its
-	# feet always (sunk in the ground's bumps before - drawn over it now);
-	# on a phone the only one (its 77 000 triangles aren't drawn a second
-	# time into the moon's shadow).
-	if _low:
-		for mi in rig.find_children("*", "MeshInstance3D", true, false):
-			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# feet always (sunk in the ground's bumps before - drawn over it now).
+	# User report (only the rod had a shadow on a phone): the character and what it carries cast
+	# the moon's shadow there too - the ground no longer draws itself into it, which costs far more.
 	var blob := MeshInstance3D.new()
 	blob.name = "FootShadow"
 	var q := QuadMesh.new()
@@ -3378,7 +3439,7 @@ func _character() -> void:
 	bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	bm.render_priority = -1
-	bm.albedo_color = Color(0, 0, 0, 0.7 if _low else 0.5)
+	bm.albedo_color = Color(0, 0, 0, 0.5)
 	var g := GradientTexture2D.new()
 	g.fill = GradientTexture2D.FILL_RADIAL
 	g.fill_from = Vector2(0.5, 0.5)
@@ -3399,6 +3460,8 @@ func _character() -> void:
 	_lamp.omni_attenuation = 0.65
 	# (glinting off the water: how it shows where the water is)
 	_lamp.light_specular = 0.9
+	# (not on a phone: its shadow - every thing in its 11 m drawn twice more - cost a quarter of
+	# the frame there; the moon's shadow is what shows there, the lamp out)
 	_lamp.shadow_enabled = not _low
 	add_child(_lamp)
 	_beam = SpotLight3D.new()
@@ -4427,8 +4490,6 @@ func _sync_offhand() -> void:
 	if id == "oxy_box":
 		# (upright as it was made: placed with OXY_BOX_* below)
 		holder.set_meta("length", 0.4)
-		for mi in model.find_children("*", "MeshInstance3D", true, false):
-			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_offhand = holder
 		return
 	var box := _aabb(model)
@@ -4454,8 +4515,6 @@ func _sync_offhand() -> void:
 	sc[axis] = k
 	model.transform = Transform3D(rot * Basis.from_scale(sc), rot * (-box.get_center() * sc))
 	holder.set_meta("length", length)
-	for mi in model.find_children("*", "MeshInstance3D", true, false):
-		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_offhand = holder
 
 
@@ -5343,6 +5402,27 @@ func _rehearse_fx() -> void:
 		get_tree().create_timer(0.6).timeout.connect(fish.queue_free)
 	_burst(ahead + Vector3(0, 0.5, 0), Color(1.0, 0.85, 0.2), 8, 0.6)
 	_pop_text("!", pivot, Vector3(0, 2.0, 0), Color(1.0, 0.85, 0.2), 140, 0.4)
+	# (the dragon's words in their frame - BigGhost.say: their first wasn't to hitch)
+	var said := Sprite3D.new()
+	said.texture = _say_frame(160.0, 70.0, SAY_RED)
+	said.pixel_size = SAY_PIXEL * 2.0
+	said.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	said.no_depth_test = true
+	said.shaded = false
+	said.position = ahead + Vector3(0.0, 1.6, 0.0)
+	var words := Label3D.new()
+	words.text = "龍"
+	words.font = UiKit.font()
+	words.font_size = SAY_FONT
+	words.outline_size = 10
+	words.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	words.no_depth_test = true
+	words.render_priority = 2
+	words.outline_render_priority = 1
+	words.pixel_size = SAY_PIXEL
+	said.add_child(words)
+	add_child(said)
+	get_tree().create_timer(0.6).timeout.connect(said.queue_free)
 	# (the float: _update_line shows the real one only once it's cast)
 	var bob := _float.duplicate() as Node3D
 	add_child(bob)
