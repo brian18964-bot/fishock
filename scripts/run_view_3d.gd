@@ -70,6 +70,10 @@ const MOON_DIR := Vector3(0.3, 1.2, -0.7)
 ## COVER_REACH m.
 const CHUNK := 12.0
 const LOW_SCALE := 0.7
+## On a phone, the grade pass's colour (shaders/grade.gdshader: saturation 1.22, contrast 1.12 about
+## 0.25) as the 3D picture's adjustments - brightness, contrast (about 0.5), saturation:
+## b*k = 1.12, 0.5 - 0.5k = -0.03.
+const GRADE_LIFT := Vector3(1.057, 1.06, 1.22)
 const COVER_REACH := 34.0
 ## User request: the map's edge a wall of tall pines, the traveller kept
 ## EDGE px in from it (so never seen walking up to it): how many, how
@@ -4978,6 +4982,12 @@ func _environment() -> void:
 	_env.fog_light_color = Color(0.05, 0.07, 0.11)
 	_env.fog_density = 0.018
 	_low = low_end()
+	if _low:
+		# (the 2D grade's saturation and contrast, on a phone done here - Atmosphere)
+		_env.adjustment_enabled = true
+		_env.adjustment_brightness = GRADE_LIFT.x
+		_env.adjustment_contrast = GRADE_LIFT.y
+		_env.adjustment_saturation = GRADE_LIFT.z
 	_env.glow_enabled = not _low
 	_env.glow_intensity = 0.6
 	_env.glow_bloom = 0.08

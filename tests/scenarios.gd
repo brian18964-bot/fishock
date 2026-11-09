@@ -5485,6 +5485,13 @@ func test_run_3d() -> void:
 		if (g as MeshInstance3D).cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
 			cast += 1
 	check(ground_chunks.size() > 4 and cast == 0, "the ground in %d chunks, none drawn into the shadow" % ground_chunks.size())
+	# (no full-screen read back on a phone: the grade's vignette drawn over, its colour in the 3D's adjustments)
+	var reads := 0
+	for n in main.find_children("*", "ColorRect", true, false):
+		if n.is_visible_in_tree() and n.material is ShaderMaterial and str((n.material as ShaderMaterial).shader.code).contains("hint_screen_texture"):
+			reads += 1
+	check(reads == 0 and view._env.adjustment_enabled and is_equal_approx(view._env.adjustment_saturation, RunView3D.GRADE_LIFT.z),
+		"phone: no pass reads the screen back; the grade's colour done in the 3D picture")
 	RunView3D.quality = ""
 
 

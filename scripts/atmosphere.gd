@@ -44,6 +44,11 @@ func _ready() -> void:
 	grade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var grade_mat := ShaderMaterial.new()
 	grade_mat.shader = preload("res://shaders/grade.gdshader")
+	if RunView3D.low_end():
+		# User report (laggy on a phone): the grade read the whole screen back each frame, at the
+		# phone's full pixels (~18 % of the frame) - there the vignette alone, drawn over (no read
+		# back), and the colour's lift done in the 3D picture's own adjustments (RunView3D.GRADE_*).
+		grade_mat.shader = preload("res://shaders/vignette_overlay.gdshader")
 	# (the vignette is drawn in the grade's pass - one full-screen pass
 	# fewer on phones)
 	grade_mat.set_shader_parameter("noise", _noise(5, 0.03))

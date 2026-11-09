@@ -18,13 +18,16 @@ uniform float strength = 0.5;
 uniform float period = 7.0;
 
 void fragment() {
-	vec2 o = SCREEN_PIXEL_SIZE * radius_px;
 	vec3 c = texture(screen_tex, SCREEN_UV).rgb;
-	vec3 blur = (texture(screen_tex, SCREEN_UV + vec2(o.x, 0.0)).rgb
-			+ texture(screen_tex, SCREEN_UV - vec2(o.x, 0.0)).rgb
-			+ texture(screen_tex, SCREEN_UV + vec2(0.0, o.y)).rgb
-			+ texture(screen_tex, SCREEN_UV - vec2(0.0, o.y)).rgb) * 0.25;
-	c += (c - blur) * sharpen;
+	// (on a phone no sharpening - Atmosphere: four reads of the screen a pixel fewer)
+	if (sharpen > 0.001) {
+		vec2 o = SCREEN_PIXEL_SIZE * radius_px;
+		vec3 blur = (texture(screen_tex, SCREEN_UV + vec2(o.x, 0.0)).rgb
+				+ texture(screen_tex, SCREEN_UV - vec2(o.x, 0.0)).rgb
+				+ texture(screen_tex, SCREEN_UV + vec2(0.0, o.y)).rgb
+				+ texture(screen_tex, SCREEN_UV - vec2(0.0, o.y)).rgb) * 0.25;
+		c += (c - blur) * sharpen;
+	}
 	float l = dot(c, vec3(0.299, 0.587, 0.114));
 	c = mix(vec3(l), c, saturation);
 	c = (c - pivot) * contrast + pivot;
