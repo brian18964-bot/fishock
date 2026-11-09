@@ -2872,6 +2872,9 @@ func _sync_creatures(delta: float) -> void:
 		if holder.process_mode != run_mode:
 			holder.process_mode = run_mode
 		if c.has("lamp"):
+			# (user report: a lamp left standing by the traveller - the lantern isn't the dragon's
+			# child, and its skeleton (which hid it with it) waits while it's hidden: hidden here too)
+			(c.lamp as Node3D).visible = on
 			# (asleep its lantern's out, as the 2D one's)
 			var awake := int(n.get("mode")) != BigGhost.Mode.ASLEEP
 			(c.lamp as Node).get_node("Flame").visible = awake

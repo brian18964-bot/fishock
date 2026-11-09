@@ -8636,6 +8636,16 @@ func test_dragon_comes_at_night() -> void:
 		await frames(1)
 	var bg = main.get_node("BigGhost")
 	check(bg.mode == bg.Mode.ASLEEP, "before the night, not out yet (this run's)")
+	# (user report: a lamp left standing by the traveller - the asleep dragon's lantern, shown
+	# to the warm-up's camera with it, stayed: hidden with it, and its holder not working)
+	for _i in 120:
+		if view.warmed():
+			break
+		await frames(1)
+	await frames(3)
+	var asleep: Dictionary = view._creatures.get(bg, {})
+	check(not asleep.is_empty() and not (asleep.lamp as Node3D).visible and not (asleep.node as Node3D).visible
+		and (asleep.node as Node3D).process_mode == Node.PROCESS_MODE_DISABLED, "asleep: no lantern of its, and it waits")
 	# User request (the night's own clock): a free run's seven minutes - the dragon down at five, the
 	# hunt at seven; the day darkening in three stages to the dragon, the darkest its two minutes.
 	check(is_equal_approx(gs.day_duration, 420.0), "a free run's day: seven minutes (%.0f s)" % gs.day_duration)
