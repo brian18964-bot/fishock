@@ -35,6 +35,7 @@ const TESTS := [
 	"test_tank_moves_and_feeding",
 	"test_oxy_items",
 	"test_box_fish_count",
+	"test_bag_gear_and_stats",
 	"test_affixes_counted_everywhere",
 	"test_oxy_tree",
 	"test_channels_and_digging",
@@ -4907,6 +4908,40 @@ func test_bag_card_closes() -> void:
 	await frames(2)
 	check(not bag._card.visible, "a tap just off the ✕ closes the card too")
 	bag.toggle()
+
+
+## User request: in the night's bag, the three equipment slots beside the main hand, off hand and
+## light, and the character's stats under them - live: a fish caught with an affix counts at once.
+func test_bag_gear_and_stats() -> void:
+	var bag: Backpack = null
+	for c in main.get_children():
+		if c is Backpack:
+			bag = c
+	await tap(KEY_I)
+	check(bag.is_open(), "(the bag open)")
+	var slots: Array = bag._gear_slots.map(func(b): return b.slot)
+	check(slots.size() == 6 and slots.has("rod") and slots.has("offhand") and slots.has("light")
+		and slots.has("clasp1") and slots.has("clasp2") and slots.has("clasp3"), "six slots: the three worn and the three equipment slots (%s)" % [slots])
+	await frames(2)
+	var before := int(bag._stats.values.might)
+	check(before == Stats.total("might"), "the stats shown are the night's (力量 %d)" % before)
+	var f := fish("壯", "near")
+	f["id"] = "carp"
+	FishLife.roll(f)
+	f["life_traits"] = ["might"]
+	f["trait_tiers"] = {"might": 4}
+	f["vit"] = 1.0
+	var adds := int(FishLife.val_of(f, "might"))
+	gs.add_carried_fish(f)
+	await seconds(0.4)
+	check(int(bag._stats.values.might) == before + adds and int(bag._stats._delta.get("might", 0)) == adds,
+		"a fish caught with 力量: the number goes up at once, the change shown (+%d)" % adds)
+	bag.select("stat", "might")
+	await frames(2)
+	check(bag._card.visible and bag._detail.text.contains(str(f.name)), "tapped: where its points come from, the fish named")
+	bag.deselect()
+	await tap(KEY_I)
+	gs.carried_fish.erase(f)
 
 
 func test_backpack_grid() -> void:

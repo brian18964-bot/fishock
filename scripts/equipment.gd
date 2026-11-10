@@ -25,10 +25,10 @@ const CELL := 58.0
 const STAT_ORDER := ["react", "might", "resil", "endure", "luck"]
 
 const SLOT_LAYOUT := [
-	# User request (活魚扣): the three that were locked are open - the live-fish clasps go here.
-	["clasp1", "扣魚", Rect2(32, 106, 66, 66), false],
-	["clasp2", "扣魚", Rect2(32, 182, 66, 66), false],
-	["clasp3", "扣魚", Rect2(32, 258, 66, 66), false],
+	# User request: the three equipment slots, open (the live-fish clasp is one thing that goes in one; more to come).
+	["clasp1", "裝備欄", Rect2(32, 106, 66, 66), false],
+	["clasp2", "裝備欄", Rect2(32, 182, 66, 66), false],
+	["clasp3", "裝備欄", Rect2(32, 258, 66, 66), false],
 	["rod", "主手・釣竿", Rect2(28, 442, 164, 66), false],
 	["light", "燈具", Rect2(272, 442, 164, 66), false],
 	# User request: the off hand - a weapon (Profile.WEAPONS) or the

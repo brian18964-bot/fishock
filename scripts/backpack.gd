@@ -30,7 +30,12 @@ const CELL := 72.0
 const PANEL_SIZE := Vector2(820, 470)
 ## The gear slots (EquipSlot): [Profile.equipped slot, its name].
 const GEAR_SLOTS := [["rod", "主手・釣竿"], ["offhand", "副手"], ["light", "燈具"]]
+## User request: beside them, the three equipment slots (open; the live-fish clasp is one thing that
+## goes in one of them - more to come), and under them the character's stats, live.
+const EXTRA_SLOTS := [["clasp1", "裝備欄"], ["clasp2", "裝備欄"], ["clasp3", "裝備欄"]]
 const GEAR_SIDE := 76.0
+## (the slots' squares now - two columns of them)
+const GEAR_SQUARE := 66.0
 const FONT := 16
 ## The tapped thing's card: its width, and its gap from the thing.
 const CARD_WIDTH := 300.0
@@ -54,6 +59,7 @@ var _light_row: HBoxContainer
 var _clasp_label: Label
 var _gear_col: VBoxContainer
 var _gear_slots: Array = []
+var _stats: StatsPanel
 var _mode: Label
 var _grid: GridView
 var _hint: Label
@@ -139,16 +145,29 @@ func _ready() -> void:
 	var middle := HBoxContainer.new()
 	middle.add_theme_constant_override("separation", 14)
 	_gear_col = VBoxContainer.new()
-	_gear_col.add_theme_constant_override("separation", 10)
-	for g in GEAR_SLOTS:
-		var box := EquipSlot.new()
-		box.name = "Gear_" + g[0]
-		box.slot = g[0]
-		box.title = g[1]
-		box.owner_bag = self
-		box.custom_minimum_size = Vector2(GEAR_SIDE + 96.0, GEAR_SIDE)
-		_gear_col.add_child(box)
-		_gear_slots.append(box)
+	_gear_col.add_theme_constant_override("separation", 8)
+	var squares := GridContainer.new()
+	squares.name = "GearSquares"
+	squares.columns = 2
+	squares.add_theme_constant_override("h_separation", 12)
+	squares.add_theme_constant_override("v_separation", 8)
+	for i in GEAR_SLOTS.size():
+		for g in [GEAR_SLOTS[i], EXTRA_SLOTS[i]]:
+			var box := EquipSlot.new()
+			box.name = "Gear_" + g[0]
+			box.slot = g[0]
+			box.title = g[1]
+			box.compact = true
+			box.owner_bag = self
+			box.custom_minimum_size = Vector2.ONE * GEAR_SQUARE
+			squares.add_child(box)
+			_gear_slots.append(box)
+	_gear_col.add_child(squares)
+	_stats = StatsPanel.new()
+	_stats.name = "Stats"
+	_stats.owner_bag = self
+	_stats.custom_minimum_size = Vector2(GEAR_SQUARE * 2.0 + 12.0, 140.0)
+	_gear_col.add_child(_stats)
 	middle.add_child(_gear_col)
 	_grid = GridView.new()
 	_grid.owner_bag = self
@@ -393,6 +412,11 @@ func _show_selected(player: Player, items: Array, placed: Array) -> void:
 	_lock.visible = false
 	_lock_do = Callable()
 	_vitals.visible = false
+	if not _selected.is_empty() and _selected.kind == "stat":
+		_show_stat(_selected.index)
+		_place_card(_stats.get_global_rect())
+		_place_later(_stats.get_global_rect())
+		return
 	if not _selected.is_empty() and _selected.kind == "slot":
 		_show_slot(player, _selected.index)
 		for box in _gear_slots:
@@ -785,7 +809,7 @@ func drag_end(item: Dictionary, at: Vector2) -> void:
 	# Onto a gear slot: put it on; a slot's thing onto the grid: off.
 	for box in _gear_slots:
 		if box.get_global_rect().has_point(at):
-			if item.has("bag") and Items.def(item.get("item", "")).get("slot", "") == box.slot:
+			if item.has("bag") and Items.fits_slot(Items.def(item.get("item", "")).get("slot", ""), box.slot):
 				equip_from_bag(item.bag)
 			_rebuild()
 			return
@@ -911,6 +935,9 @@ func unequip_to_bag(slot: String, cell := Vector2i(-1, -1)) -> bool:
 	if slot == "rod":
 		GameState.push_message("釣竿一定要有一支，把另一支拖上來就能換")
 		return false
+	if _hook_busy(slot):
+		GameState.push_message("扣環上掛著魚，回營地再取下")
+		return false
 	var before := [Profile.bag.duplicate(true), Profile.equipped.duplicate()]
 	var id: String = Profile.equipped.get(slot, "")
 	if not Profile.unequip_to_bag(slot, cell) or Inventory.pack(Inventory.items(_player())).is_empty():
@@ -945,17 +972,27 @@ static func _wear_text(id: String) -> String:
 
 
 ## A gear slot tapped: what's in it, and taking it off.
+## A stat's card: its number and where each point comes from (as the night counts it, now).
+func _show_stat(stat: String) -> void:
+	_card_head({"kind": "gear", "item": "", "label": "%s %d" % [Stats.NAMES[stat], Stats.total(stat)]})
+	_card_sub.text = "角色素質・夜釣中即時計算"
+	var parts := []
+	for src in Stats.sources(stat):
+		parts.append("%s %+d" % [src[0], int(src[1])])
+	_detail.text = ("來源：" + "、".join(parts) if not parts.is_empty() else "來源：無") + "\n" + str(Stats.INFO[stat])
+
+
 func _show_slot(player: Player, slot: String) -> void:
 	var id: String = Profile.equipped.get(slot, "")
 	var title := ""
-	for g in GEAR_SLOTS:
+	for g in GEAR_SLOTS + EXTRA_SLOTS:
 		if g[0] == slot:
 			title = g[1]
 	_card_head({"kind": "gear", "item": id if id != "" else ("lamp" if slot == "light" else ""),
 		"label": Items.name_of(id) if id != "" else ("煤燈" if slot == "light" else title)})
 	_card_sub.text = "穿戴中・" + title
 	if id == "":
-		_detail.text = "%s：空的。把背包裡的%s拖過來就能換上" % [title, {"offhand": "武器或撈網", "light": "手電筒", "rod": "釣竿"}.get(slot, "裝備")]
+		_detail.text = "%s：空的。把背包裡的%s拖過來就能換上" % [title, {"offhand": "武器或撈網", "light": "手電筒", "rod": "釣竿"}.get(slot, "配件（例如活魚扣）")]
 		if slot == "light":
 			_detail.text = "燈具：煤燈（隨身）。把手電筒拖過來就能換上"
 		return
@@ -974,7 +1011,12 @@ func _show_slot(player: Player, slot: String) -> void:
 	if slot != "rod":
 		_actions.add_child(_action("卸下放進背包", func():
 			unequip_to_bag(slot)
-			_rebuild(), player.state != Player.State.IDLE))
+			_rebuild(), player.state != Player.State.IDLE or _hook_busy(slot)))
+
+
+## A clasp with a fish hung on it (in the night: it comes off with the fish at camp, not here).
+func _hook_busy(slot: String) -> bool:
+	return GameState.carried_fish.any(func(f): return f.get("clasped", false) and str(f.get("hook", "")).begins_with(slot + ":"))
 
 
 ## User request: a thing over more than a cell turned (lying <-> standing) in
@@ -1180,6 +1222,7 @@ class EquipSlot extends Control:
 	var owner_bag: Backpack
 	var slot := ""
 	var title := ""
+	var compact := false
 	var selected := false
 	var _press_at := Vector2.ZERO
 	var _pressed := false
@@ -1215,6 +1258,22 @@ class EquipSlot extends Control:
 	func _draw() -> void:
 		var id: String = Profile.equipped.get(slot, "")
 		var sq := Rect2(Vector2.ZERO, Vector2.ONE * minf(size.x, size.y))
+		if compact:
+			# (a square of its own, its name small along its foot)
+			if id == "":
+				UiKit.draw_slot(self, sq, "", selected)
+				if slot == "light":
+					var lamp0: Texture2D = Items.square_icon("lamp")
+					if lamp0 != null:
+						draw_texture_rect(lamp0, sq.grow(-10.0), false, Color(1, 1, 1, 0.75))
+			else:
+				UiKit.draw_slot(self, sq, UiKit.item_rarity(id), selected, Items.square_icon(id))
+				ItemBoard.draw_wear(self, sq, id)
+			var name0: String = title.split("・")[0]
+			draw_rect(Rect2(sq.position.x + 3.0, sq.end.y - 18.0, sq.size.x - 6.0, 15.0), Color(0, 0, 0, 0.55))
+			UiKit.draw_text(self, Vector2(sq.position.x + 3.0, sq.end.y - 6.0), name0, 11, UiKit.GOLD if id != "" or slot == "light" else UiKit.DIM,
+				HORIZONTAL_ALIGNMENT_CENTER, sq.size.x - 6.0)
+			return
 		if id == "":
 			UiKit.draw_slot(self, sq, "", selected)
 			if slot == "light":
@@ -1243,3 +1302,73 @@ static func set_sticks_enabled(tree: SceneTree, enabled: bool) -> void:
 				stick._reset()  # let go of any touch it holds, or it'd stay pushed
 			stick.process_mode = Node.PROCESS_MODE_INHERIT if enabled else Node.PROCESS_MODE_DISABLED
 
+
+
+## User request: the character's five stats under the gear - as the night counts them, this moment
+## (Stats.total: the rod, the fish carried alive, salt, talent, gear, potions); a change shows - its
+## number flashes and a "+8" rises from it, so a fish caught with an affix is seen to count. Tapped,
+## a stat's card: where each point comes from.
+class StatsPanel extends Control:
+	const ORDER := ["react", "might", "resil", "endure", "luck"]
+	const ROW := 26.0
+	const FLASH := 1.4
+	var owner_bag: Backpack
+	var values := {}
+	var _flash := {}
+	var _delta := {}
+	var _tick := 0.0
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_STOP
+		for s in ORDER:
+			values[s] = Stats.total(s)
+
+	func _process(delta: float) -> void:
+		for s in _flash.keys():
+			_flash[s] = float(_flash[s]) - delta
+			if float(_flash[s]) <= 0.0:
+				_flash.erase(s)
+				_delta.erase(s)
+		_tick -= delta
+		if _tick <= 0.0:
+			_tick = 0.2
+			read()
+		queue_redraw()
+
+	## The numbers read again; any that changed flash, with the change.
+	func read() -> void:
+		for s in ORDER:
+			var n := Stats.total(s)
+			if values.has(s) and n != int(values[s]):
+				_delta[s] = n - int(values[s]) + int(_delta.get(s, 0)) if _flash.has(s) else n - int(values[s])
+				_flash[s] = FLASH
+			values[s] = n
+
+	func row_at(p: Vector2) -> String:
+		var i := floori((p.y - 22.0) / ROW)
+		return ORDER[i] if i >= 0 and i < ORDER.size() else ""
+
+	func _gui_input(event: InputEvent) -> void:
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
+			var s := row_at(event.position)
+			if s != "" and owner_bag != null:
+				owner_bag.select("stat", s)
+			accept_event()
+
+	func _draw() -> void:
+		UiKit.draw_text(self, Vector2(2.0, 15.0), "素質", 13, UiKit.GOLD)
+		for i in ORDER.size():
+			var s: String = ORDER[i]
+			var y := 22.0 + i * ROW
+			var lit := clampf(float(_flash.get(s, 0.0)) / FLASH, 0.0, 1.0)
+			var d := int(_delta.get(s, 0))
+			var tint := Color(0.4, 1.0, 0.5) if d > 0 else Color(1.0, 0.45, 0.4)
+			draw_rect(Rect2(0.0, y, size.x, ROW - 3.0), Color(0, 0, 0, 0.35).lerp(Color(tint, 0.35), lit))
+			UiKit.draw_text(self, Vector2(6.0, y + 17.0), Stats.NAMES[s], 13, UiKit.TEXT)
+			UiKit.draw_text(self, Vector2(0.0, y + 17.0), str(values.get(s, 0)), 14, UiKit.GOLD_BRIGHT.lerp(tint, lit),
+				HORIZONTAL_ALIGNMENT_RIGHT, size.x - 6.0)
+			if d != 0 and lit > 0.0:
+				# (the change rising off the number)
+				var rise := (1.0 - lit) * 10.0
+				UiKit.draw_text(self, Vector2(0.0, y + 9.0 - rise), "%+d" % d, 12, Color(tint, lit),
+					HORIZONTAL_ALIGNMENT_RIGHT, size.x - 34.0)
