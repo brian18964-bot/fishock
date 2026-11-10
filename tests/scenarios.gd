@@ -117,6 +117,7 @@ const TESTS := [
 	"test_bag_moves_at_camp",
 	"test_snow_theme",
 	"test_autumn_theme",
+	"test_wind_and_chop",
 	"test_world_integrity",
 	"test_trunks_hold",
 	"test_soak_fishing",
@@ -9424,6 +9425,70 @@ func test_autumn_theme() -> void:
 	var fog := view._env.fog_light_color
 	check(fog.r > fog.b, "a warmer haze (%s)" % fog)
 	check(is_instance_valid(player()) and player().global_position.is_finite(), "and the run goes on")
+	camp().clear()
+
+
+## User request: the trees and plants sway in the wind (Foliage), more in a storm; a chopped tree
+## shakes away from the blow and settles, a few leaves shaken down.
+func test_wind_and_chop() -> void:
+	seed(3)
+	camp().clear()
+	gs.reset_run()
+	gs.last_return = ""
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	await frames(3)
+	main = get_tree().current_scene
+	gs.start_run()
+	var view: RunView3D = null
+	for _i in 200:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	check(view != null and view.built and not view._trees.is_empty(), "(the 3D run, its trees)")
+	if view == null or view._trees.is_empty():
+		camp().clear()
+		return
+	# Every tree's surfaces sway: the bark bends, the boughs bend and flutter.
+	var all_sway := true
+	var fluttering := false
+	for pair in view._trees:
+		var mi := pair[1] as MeshInstance3D
+		for sidx in mi.mesh.get_surface_count():
+			var m := mi.mesh.surface_get_material(sidx) as ShaderMaterial
+			if m == null or float(m.get_shader_parameter("sway")) <= 0.0 or float(m.get_shader_parameter("height")) < 3.0:
+				all_sway = false
+			elif float(m.get_shader_parameter("flutter")) > 0.0:
+				fluttering = true
+	check(all_sway and fluttering, "every tree sways in the wind, its boughs fluttering")
+	var fern: Array = view._model_mesh("fern", true)
+	var fm: ShaderMaterial = (fern[0] as Mesh).surface_get_material(0) as ShaderMaterial if not fern.is_empty() else null
+	check(fm != null and is_equal_approx(float(fm.get_shader_parameter("sway")), Foliage.PLANT[0]), "the plants sway, more for their size")
+	# A storm: the wind rises, and eases back after.
+	check(is_equal_approx(view.wind, Foliage.WIND), "an ordinary night's wind")
+	gs.weather = GameState.Weather.STORM
+	await seconds(2.0)
+	var stormy := view.wind
+	check(stormy > Foliage.WIND + 0.4, "a storm: the wind rising (%.2f)" % stormy)
+	gs.weather = GameState.Weather.CLEAR
+	await seconds(1.0)
+	check(view.wind < stormy, "and easing back after (%.2f)" % view.wind)
+	# A chop: that tree's own materials swing and settle, then it shares again.
+	var pair0: Array = view._trees[0]
+	var tree := pair0[0] as MapTree
+	var tmi := pair0[1] as MeshInstance3D
+	var leaves_before := view.find_children("ShakenLeaves", "CPUParticles3D", true, false).size()
+	tree.chop(tree.global_position + Vector2(40, 0), 1)
+	await frames(6)
+	var own := tmi.get_surface_override_material(0) as ShaderMaterial
+	var swings := own != null and own != tmi.mesh.surface_get_material(0) and absf(float(own.get_shader_parameter("shake"))) > 0.01
+	var away: Vector2 = own.get_shader_parameter("shake_dir") if own != null else Vector2.ZERO
+	check(swings and away.x < -0.9, "chopped (from its east): the tree swings away from the blow (%s)" % away)
+	check(view.find_children("ShakenLeaves", "CPUParticles3D", true, false).size() > leaves_before, "a few leaves shaken down")
+	var other := view._trees[1][1] as MeshInstance3D if view._trees.size() > 1 else null
+	check(other == null or other.get_surface_override_material(0) == null, "only that tree")
+	await seconds(RunView3D.SHAKE_TIME + 0.3)
+	check(tmi.get_surface_override_material(0) == null and view._shakes.is_empty(), "then it settles, the same as the rest again")
 	camp().clear()
 
 

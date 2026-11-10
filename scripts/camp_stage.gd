@@ -207,6 +207,7 @@ var _rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
 	_rng.seed = 11
+	Foliage.set_wind(Foliage.CAMP_WIND)
 	_environment()
 	_ground()
 	_lake()
@@ -1054,7 +1055,8 @@ func _trees(model: String, spots: Array, scale_range: Vector2) -> void:
 		return
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.mesh = CampModel.tree_mesh(model)
+	# (user request: swaying in the wind - Foliage)
+	mm.mesh = Foliage.dress(CampModel.tree_mesh(model))
 	if mm.mesh == null:
 		return
 	mm.instance_count = spots.size()

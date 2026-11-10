@@ -97,8 +97,13 @@ func solids() -> Array:
 
 ## A chop (Player._chop_tree): the tree shudders and says what fell out -
 ## {"spider": true}, {"found": true, "flavor": ...} or {"found": false}.
+## A chop landed (from where - RunView3D shakes the tree's model away from it).
+signal chopped_by(from: Vector2)
+
+
 func chop(_from: Vector2, power: int) -> Dictionary:
 	chopped = true
+	chopped_by.emit(_from)
 	Sfx.play_at("chop", global_position, -2.0)
 	var canopy: Node2D = $Canopy
 	var t := create_tween()

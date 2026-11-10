@@ -478,6 +478,7 @@ func _ready() -> void:
 	active = self
 	_snow = MapGenerator.current_theme.begins_with("snow")
 	_autumn = MapGenerator.current_theme.begins_with("autumn")
+	Foliage.set_wind(Foliage.WIND)
 	_rng.seed = 11
 	player = main.get_node("Player")
 	player.edge = EDGE
@@ -935,6 +936,8 @@ func _trees_and_rocks() -> void:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		add_child(mi)
 		_trees.append([tree, mi])
+		if tree.has_signal("chopped_by"):
+			tree.connect("chopped_by", _shake_tree.bind(mi, kind))
 	# The edge: a wall of tall pines, thick, from a little in over it out
 	# past where the map ends (no shadows: the moon's are only near anyway).
 	var rect := _map_rect()
@@ -1879,27 +1882,29 @@ func _footprint(n: Node) -> float:
 	return PX
 
 
-## A copy of `mesh` whose materials dither away close to the camera.
+## A tree's mesh as the map shows it: swaying in the wind (Foliage - user request), dithered away
+## close to the camera, under snow on the snowy map.
 func _faded(mesh: Mesh) -> Mesh:
 	if mesh == null:
 		return null
-	var m: Mesh = mesh.duplicate()
+	var m := Foliage.dress(mesh)
 	for s in m.get_surface_count():
-		var src := m.surface_get_material(s)
-		if src is StandardMaterial3D:
-			# (snow lies on the boughs far more than on the trunks)
-			var base := src as StandardMaterial3D
-			if _snow:
-				# (snow on the boughs' tops and over them, on the trunks' tops)
-				m.surface_set_material(s, _snowed(base, base.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED, true))
-				continue
-			var mat := base.duplicate() as StandardMaterial3D
-			mat.distance_fade_mode = BaseMaterial3D.DISTANCE_FADE_PIXEL_DITHER
-			mat.distance_fade_min_distance = FADE_NEAR
-			mat.distance_fade_max_distance = FADE_FAR
-			m.surface_set_material(s, mat)
-			_fade_mats.append(mat)
+		var mat := m.surface_get_material(s) as ShaderMaterial
+		if mat == null:
+			continue
+		var boughs := bool(mat.get_shader_parameter("scissor"))
+		if _snow:
+			# (snow on the boughs' tops and over them, on the trunks' tops)
+			mat.set_shader_parameter("cover", 0.95 if boughs else 0.85)
+			mat.set_shader_parameter("dust", 0.3 if boughs else 0.0)
+		mat.set_shader_parameter("fade_min", FADE_NEAR)
+		mat.set_shader_parameter("fade_max", FADE_FAR)
+		_fade_shaders.append(mat)
 	return m
+
+
+## The proto models that sway in the wind (the ferns and bushes, the shore's grass and reeds).
+const SWAYING := ["fern", "grass_wispy", "tall_grass"]
 
 
 func _model_mesh(name: String, wide := false) -> Array:
@@ -1913,7 +1918,13 @@ func _model_mesh(name: String, wide := false) -> Array:
 	var found: Array = []
 	for mi in inst.find_children("*", "MeshInstance3D", true, false):
 		var m: Mesh = (mi as MeshInstance3D).mesh
-		if _snow:
+		if name in SWAYING:
+			# (user request: the plants bend in the wind too - and bear snow on the snowy map)
+			m = Foliage.dress(m, true)
+			if _snow:
+				for s in m.get_surface_count():
+					(m.surface_get_material(s) as ShaderMaterial).set_shader_parameter("cover", 0.85)
+		elif _snow:
 			# (rocks, ferns and grass under snow)
 			m = m.duplicate()
 			for s in m.get_surface_count():
@@ -4986,6 +4997,113 @@ func _snowfall() -> void:
 	_snow_fx = p
 
 
+## User request: the trees and plants in the wind (Foliage) - an ordinary night's, rising to a
+## storm's while it storms (and easing back after), in the wind's own time.
+var wind := Foliage.WIND
+const WIND_EASE := 0.35
+
+
+func _blow(delta: float) -> void:
+	var want := Foliage.STORM_WIND if GameState.weather == GameState.Weather.STORM else Foliage.WIND
+	if not is_equal_approx(wind, want):
+		wind = move_toward(wind, want, delta * WIND_EASE)
+		Foliage.set_wind(wind)
+
+
+## User request: a chopped tree shakes - its top swings away from the blow and settles (a damped
+## swing, SHAKE_TIME long; its own copy of its materials meanwhile), a few leaves shaken down from
+## a tree in leaf.
+const SHAKE_TOP := 0.55
+const SHAKE_TIME := 2.4
+const SHAKE_FREQ := 8.5
+const SHAKE_DAMP := 2.1
+var _shakes := {}
+
+
+func _shake_tree(from: Vector2, mi: MeshInstance3D, kind: String) -> void:
+	if not is_instance_valid(mi) or mi.mesh == null:
+		return
+	var mats := []
+	var leafy := false
+	for s in mi.mesh.get_surface_count():
+		var src := mi.mesh.surface_get_material(s) as ShaderMaterial
+		if src == null:
+			continue
+		var own := src.duplicate() as ShaderMaterial
+		mi.set_surface_override_material(s, own)
+		mats.append(own)
+		leafy = leafy or bool(src.get_shader_parameter("scissor"))
+	var at := mi.global_position
+	var hit := to3(from, 0.0)
+	var away := Vector2(at.x - hit.x, at.z - hit.z)
+	if away.length() < 0.01:
+		away = Vector2.RIGHT
+	var dir := away.normalized()
+	for m in mats:
+		(m as ShaderMaterial).set_shader_parameter("shake_dir", dir)
+	_shakes[mi] = {"t": 0.0, "mats": mats, "scale": mi.scale.y}
+	if leafy:
+		_shake_leaves(mi, kind)
+
+
+func _settle_shakes(delta: float) -> void:
+	for mi in _shakes.keys():
+		var e: Dictionary = _shakes[mi]
+		e.t += delta
+		var done := float(e.t) >= SHAKE_TIME or not is_instance_valid(mi)
+		var swing := SHAKE_TOP * exp(-float(e.t) * SHAKE_DAMP) * sin(float(e.t) * SHAKE_FREQ) * float(e.scale)
+		for m in e.mats:
+			(m as ShaderMaterial).set_shader_parameter("shake", 0.0 if done else swing)
+		if done:
+			if is_instance_valid(mi):
+				for s in (mi as MeshInstance3D).get_surface_override_material_count():
+					(mi as MeshInstance3D).set_surface_override_material(s, null)
+			_shakes.erase(mi)
+
+
+## A handful of leaves shaken down from a chopped tree's crown: the autumn wood's turned ones, a
+## pine's needles dark.
+func _shake_leaves(mi: MeshInstance3D, kind: String) -> void:
+	var p := CPUParticles3D.new()
+	p.name = "ShakenLeaves"
+	p.one_shot = true
+	p.amount = 16
+	p.lifetime = 3.2
+	p.explosiveness = 0.85
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	p.emission_sphere_radius = 2.2 * mi.scale.y
+	p.direction = Vector3(0, -1, 0)
+	p.spread = 60.0
+	p.gravity = Vector3(0.2, -1.4, 0.1)
+	p.initial_velocity_min = 0.3
+	p.initial_velocity_max = 1.2
+	p.angle_max = 360.0
+	p.angular_velocity_min = -200.0
+	p.angular_velocity_max = 200.0
+	var tints := Gradient.new()
+	if kind.begins_with("pine"):
+		tints.colors = PackedColorArray([Color(0.16, 0.24, 0.12), Color(0.24, 0.3, 0.14)])
+	else:
+		tints.colors = PackedColorArray([Color(0.85, 0.35, 0.1), Color(0.72, 0.18, 0.08), Color(0.9, 0.62, 0.15)])
+	p.color_initial_ramp = tints
+	var q := QuadMesh.new()
+	q.size = Vector2(0.12, 0.08)
+	var m := StandardMaterial3D.new()
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	m.vertex_color_use_as_albedo = true
+	m.albedo_texture = _leaf_picture()
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	m.alpha_scissor_threshold = 0.5
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	q.material = m
+	p.mesh = q
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(p)
+	p.global_position = mi.global_position + Vector3(0, 6.0 * mi.scale.y, 0)
+	p.emitting = true
+	get_tree().create_timer(p.lifetime + 0.5).timeout.connect(p.queue_free)
+
+
 ## User request (the autumn map): its turned leaves drifting down round the traveller, spinning as
 ## they go - lit like everything else (dark in the night, bright in the lamp's reach). A few dozen
 ## (fewer on a phone).
@@ -5689,6 +5807,8 @@ func _sync_tool(lantern: Node) -> void:
 # ---------------------------------------------------------------- each frame
 
 func _process(delta: float) -> void:
+	_blow(delta)
+	_settle_shakes(delta)
 	# (the warm-up's fish: a few made each frame - their models and skins in hand)
 	for _i in 4:
 		if _warm_species.is_empty():
