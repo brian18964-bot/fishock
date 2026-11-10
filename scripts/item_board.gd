@@ -512,6 +512,10 @@ static func desc_lines(id: String) -> Array:
 		for part in Items.rod_effects(Profile.ROD_TIERS[rt], rt).split("、"):
 			out.append([part, UiKit.GOLD_BRIGHT if part.begins_with("反應") else UiKit.TEXT])
 		out.append(["裝備：換上後，下一輪釣魚就用這支", UiKit.USE])
+	elif def.get("bone", false):
+		# (the altar's bones: what they are and their price, no "use:" - they're sold, not used)
+		for line in str(def.desc).split("\n"):
+			out.append([line, UiKit.GOLD_BRIGHT if line.begins_with("・") else UiKit.TEXT])
 	elif def.get("desc", "") != "":
 		out.append(["使用：" + def.desc, UiKit.USE])
 	if Profile.max_durability(id) > 0:

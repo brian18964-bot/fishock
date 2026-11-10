@@ -662,6 +662,10 @@ func put_in_pack(f: Dictionary) -> void:
 
 ## The fish hung on the clasps worn (see CLASP_COST): each has `hook` (a hook's id).
 var clasp_fish: Array = []
+## The glowing bones (Bones): each one's own - {id: {rarity, life_traits, trait_tiers, trait_vals}} -
+## and the count that names the next.
+var glow_bones := {}
+var glow_serial := 0
 
 
 ## The hooks there are: [{id ("clasp1:0"), slot}] over the clasps worn.
@@ -1498,8 +1502,33 @@ func shop_cost(id: String) -> int:
 	return 0
 
 
-## Can the merchant buy `id` back at all?
+## User request (the altar's reward): a bone brought home - into the bag if it fits, else the
+## warehouse; neither, it's sold on the spot. Where it went: "bag", "storage" or "sold".
+func give_bone(id: String) -> String:
+	var at := bag_free_cell(id)
+	if at.x < 0:
+		at = bag_free_cell(id, -1, true)
+		if at.x >= 0:
+			bag.append({"id": id, "count": 1, "cell": at, "rot": true})
+			_changed()
+			return "bag"
+	else:
+		bag.append({"id": id, "count": 1, "cell": at})
+		_changed()
+		return "bag"
+	if storage_room(id):
+		_store(id, 1)
+		_changed()
+		return "storage"
+	add_gold(Bones.price(id))
+	glow_bones.erase(id)
+	return "sold"
+
+
+## Can the merchant buy `id` back at all? (the altar's bones: yes, at their own price - Bones)
 func buyback_ok(id: String) -> bool:
+	if Bones.is_bone(id):
+		return Bones.price(id) > 0
 	if id.begins_with("rod_") or id == "lamp" or Items.def(id).is_empty() or bool(Items.def(id).get("fixed", false)):
 		return false
 	return shop_cost(id) > 0
@@ -1510,6 +1539,8 @@ func buyback_ok(id: String) -> bool:
 func buyback_price(id: String) -> int:
 	if not buyback_ok(id):
 		return 0
+	if Bones.is_bone(id):
+		return Bones.price(id)
 	var rate := BUYBACK if not (USABLES.has(id) and not bool(USABLES[id].get("sold", true))) else BUYBACK_FOUND
 	var worn := 1.0
 	var most := max_durability(id)
@@ -1542,9 +1573,10 @@ func sell_item(from: String, id: String, count := 1, index := -1) -> int:
 			bag.remove_at(index)
 	if n <= 0:
 		return 0
-	# (the last of a worn thing sold: its wear goes with it)
+	# (the last of a worn thing sold: its wear goes with it; a glowing bone sold, its own)
 	if owned(id) <= 0:
 		wear.erase(id)
+		glow_bones.erase(id)
 	gold += price * n
 	gold_updated.emit(gold)
 	_changed()
@@ -2298,6 +2330,8 @@ func snapshot() -> Dictionary:
 		"character": character,
 		"talents": talents.duplicate(),
 		"quick_slots": quick_slots,
+		"glow_bones": glow_bones,
+		"glow_serial": glow_serial,
 		"spirit": spirit,
 		"camp_since": camp_since,
 		"stats": stats,
@@ -2349,6 +2383,8 @@ func load_data(data: Dictionary) -> void:
 	fish_box = data.get("fish_box", [])
 	pack_fish = data.get("pack_fish", [])
 	clasp_fish = data.get("clasp_fish", [])
+	glow_bones = data.get("glow_bones", {})
+	glow_serial = int(data.get("glow_serial", 0))
 	oxy_stock = data.get("oxy_stock", [])
 	stash_fish = data.get("stash_fish", [])
 	ensure_fish_life()

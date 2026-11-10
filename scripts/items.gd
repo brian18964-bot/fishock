@@ -47,6 +47,8 @@ static var _icons := {}
 
 
 static func def(id: String) -> Dictionary:
+	if Bones.is_bone(id):
+		return Bones.def(id)
 	if id.begins_with("rod_"):
 		var tier := int(id.substr(4))
 		if tier < 0 or tier >= Profile.ROD_TIERS.size():
@@ -134,6 +136,9 @@ static func stack_of(id: String) -> int:
 
 
 static func icon(id: String) -> Texture2D:
+	if Bones.is_glow(id):
+		# (a glowing bone's picture is its rarity's - kept by that, not by the bone's own id)
+		return texture(Bones.ICONS % Bones.art(id))
 	if not _icons.has(id):
 		var path: String = def(id).get("icon", "")
 		_icons[id] = load(path) if path != "" and ResourceLoader.exists(path) else null
@@ -148,6 +153,8 @@ const LIVE_MODELS := {"worm": "worm", "cricket": "grasshopper", "shrimp": "shrim
 ## A thing's 3D model, for the menus' previews (ItemPreview) - "" when it
 ## has none. "lamp" is the oil lamp every run starts with.
 static func model_path(id: String) -> String:
+	if Bones.is_bone(id):
+		return Bones.model_path(id)
 	if id.begins_with("rod_"):
 		return "res://assets/models/fishing_rod_lvl%d.glb" % (int(id.substr(4)) + 1)
 	match id:
@@ -175,6 +182,8 @@ const SQUARE_ICONS := "res://assets/sprites/icons/%s.png"
 ## its model close up on a dark painted ground) - for square slots; null
 ## when it has none (the long cells keep icon()'s picture).
 static func square_icon(id: String) -> Texture2D:
+	if Bones.is_bone(id):
+		return texture(Bones.square_icon_path(id))
 	var key := ""
 	if id.begins_with("rod_") or id in ["flashlight", "battery", "lamp", "tea", "roll", "loaf", "cheese", "ammo",
 			"knife", "hatchet", "machete", "glock", "potion_vigor", "potion_ward", "eyeball", "eye_altar", "eye_ghost",

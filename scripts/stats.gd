@@ -77,6 +77,10 @@ static func sources(stat: String, fish = null) -> Array:
 			for e in f.salt:
 				if e.stat == stat:
 					out.append([str(f.get("name", "魚")) + "（醃製）", int(e.val)])
+	# (the glowing bones in the bag - Bones: at camp and on the night the same bag)
+	if stat in IDS:
+		for b in Bones.bag_stats(stat):
+			out.append([b[0], int(b[1])])
 	var talent := Abilities.talent_stat(stat)
 	if talent != 0:
 		out.append(["天賦：" + str(Abilities.TALENTS[Profile.talent_of()].name), talent])

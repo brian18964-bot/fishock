@@ -36,6 +36,7 @@ const TESTS := [
 	"test_oxy_items",
 	"test_box_fish_count",
 	"test_bag_gear_and_stats",
+	"test_altar_bones",
 	"test_affixes_counted_everywhere",
 	"test_oxy_tree",
 	"test_channels_and_digging",
@@ -4942,6 +4943,78 @@ func test_bag_gear_and_stats() -> void:
 	bag.deselect()
 	await tap(KEY_I)
 	gs.carried_fish.erase(f)
+
+
+## User request (the altar's reward): sixteen fish bones - whole, spine, skull, broken, four sizes -
+## sold for at least 30 gold, the bigger and more whole the dearer, in cells by their size, the dearer
+## the rarer to draw; the glowing bone its own kind (the rarest), its rarity drawn after, its stat
+## affixes one fewer than a fish's and counting from the bag; an evil offering none; escaping takes
+## one home.
+func test_altar_bones() -> void:
+	var saved := Profile.snapshot()
+	var plain := Bones.all_plain()
+	check(plain.size() == 16 and plain.all(func(id): return Bones.price(id) >= 30 and not Items.def(id).is_empty()),
+		"sixteen bones, each at least 30 gold, each a thing")
+	check(Bones.price("bone_whole_xl") > Bones.price("bone_whole_s") and Bones.price("bone_whole_m") > Bones.price("bone_spine_m")
+		and Bones.price("bone_spine_m") > Bones.price("bone_skull_m") and Bones.price("bone_skull_m") > Bones.price("bone_broken_m"),
+		"bigger and more whole, dearer")
+	check(Items.size_of("bone_whole_xl") == Vector2i(3, 2) and Items.size_of("bone_broken_s") == Vector2i.ONE, "cells by size")
+	check(Items.name_of("bone_whole_s") == "小魚骨" and Items.name_of("bone_skull_xl") == "超大魚頭骨" and Items.name_of("bone_broken_l") == "大不完整的魚骨", "their names")
+	check(Items.icon("bone_whole_l") != null and Items.square_icon("bone_whole_l") != null and ResourceLoader.exists(Items.model_path("bone_whole_l")), "pictures and a model")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	var seen := {}
+	var glow := 0
+	for i in 20000:
+		var d := Bones.draw(false, rng)
+		if d.has("glow"):
+			glow += 1
+		else:
+			seen[d.bone] = int(seen.get(d.bone, 0)) + 1
+	check(seen.size() == 16, "every bone can come")
+	check(int(seen.get("bone_broken_s", 0)) > int(seen.get("bone_whole_xl", 0)) * 8, "the dearer the rarer (%d cheapest, %d dearest)" % [int(seen.get("bone_broken_s", 0)), int(seen.get("bone_whole_xl", 0))])
+	var rarest := 1 << 30
+	for id in seen:
+		rarest = mini(rarest, int(seen[id]))
+	check(glow > 0 and glow < rarest, "the glowing bone the rarest of all (%d of 20000; the rarest bone %d)" % [glow, rarest])
+	# a glowing bone: its affixes, counted from the bag (not the warehouse)
+	Profile.load_data({"gold": 0})
+	var counts := []
+	for r in ["common", "rare", "epic"]:
+		for i in 40:
+			var id := Bones.make_glow(r)
+			var d := Bones.glow_data(id)
+			counts.append(d.life_traits.size())
+			if not d.life_traits.all(func(t): return t in FishLife.STAT_IDS):
+				counts.append(-1)
+	check(counts.min() >= 1 and counts.max() <= FishLife.MAX_AFFIXES - 1, "1 to %d stat affixes (one fewer than a fish's most)" % (FishLife.MAX_AFFIXES - 1))
+	var gid := Bones.make_glow("epic")
+	var stat: String = Bones.glow_data(gid).life_traits[0]
+	var before := Stats.total(stat, [])
+	check(Profile.give_bone(gid) == "bag" and Stats.total(stat, []) == before + int(Bones.glow_data(gid).trait_vals[stat]), "in the bag: its affix counts")
+	Profile.bag = Profile.bag.filter(func(e): return e.id != gid)
+	Profile._store(gid, 1)
+	check(Stats.total(stat, []) == before, "in the warehouse: not")
+	var snap := Profile.snapshot()
+	Profile.load_data(snap)
+	check(not Bones.glow_data(gid).is_empty() and Items.name_of(gid) == Bones.GLOW_NAME, "kept in the save")
+	check(Profile.buyback_price(gid) == Bones.GLOW_PRICES.epic and Profile.sell_item("storage", gid) == Bones.GLOW_PRICES.epic and Bones.glow_data(gid).is_empty(), "sold: its price, and it's gone")
+	check(Profile.buyback_price("bone_whole_m") == 80, "a plain bone sells at its price")
+	# the altar: offerings are bones (evil ones none); escaping takes one home
+	GameState.offering_pool.clear()
+	GameState.evil_count = 0
+	for i in 30:
+		GameState._add_offering(i % 3 == 0)
+	var ok := GameState.offering_pool.all(func(o): return (o.is_evil and not o.has("bone") and not o.has("glow")) or (not o.is_evil and (o.has("bone") or o.has("glow"))))
+	check(ok, "each offering a bone (an evil one none)")
+	GameState.offering_pool = [{"rarity": "rare", "is_evil": false, "value": 80, "taken": false, "bone": "bone_whole_m"}]
+	GameState.evil_count = 0
+	Profile.load_data({"gold": 0})
+	GameState.day_phase = GameState.DayPhase.ESCAPE
+	GameState.run_over = false
+	GameState.escape()
+	check(Profile.bag.any(func(e): return e.id == "bone_whole_m"), "escaped: the offering's bone in the bag")
+	Profile.load_data(saved)
 
 
 func test_backpack_grid() -> void:

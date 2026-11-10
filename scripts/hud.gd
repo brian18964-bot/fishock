@@ -227,7 +227,7 @@ func _on_offering_pool_updated(pool: Array, evil_count: int) -> void:
 		if o.is_evil:
 			text += "[邪惡] "
 		else:
-			text += "[%s] " % _rarity_label(o.rarity)
+			text += "[%s] " % GameState.offering_name(o)
 	offering_label.text = text
 
 

@@ -2339,17 +2339,17 @@ func _talk_to_willow() -> void:
 		return
 	var lines := ["「祭品我都收下了。這次祭壇回應的供品有這些……」", ""]
 	for o in GameState.offering_pool:
-		var label: String = GameState._rarity_label(o.rarity)
+		var label: String = GameState.offering_name(o)
 		if o.is_evil:
-			lines.append("・%s供品（價值 %d）——散發著不祥的氣息，是邪惡的" % [label, o.value])
+			lines.append("・邪惡供品——散發著不祥的氣息，什麼都不會給你")
 		elif o.taken:
-			lines.append("・%s供品（價值 %d）——已經被拿走了" % [label, o.value])
+			lines.append("・%s（%d 金幣）——已經被拿走了" % [label, o.value])
 		else:
-			lines.append("・%s供品（價值 %d）" % [label, o.value])
+			lines.append("・%s（%d 金幣）" % [label, o.value])
 	if GameState.offering_pool.is_empty():
 		lines.append("・（什麼都沒有）")
 	lines.append("")
-	lines.append("「去渡石吧，離開時會帶走其中一個不是邪惡的供品。」")
+	lines.append("「去渡石吧，離開時會帶走其中一份不是邪惡的供品——魚骨可以賣給商人。」")
 	box.say("Willow", "\n".join(lines))
 
 

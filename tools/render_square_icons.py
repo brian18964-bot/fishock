@@ -115,6 +115,13 @@ for _n in range(1, 10):
                                    dim=0.75)
 for _n in range(1, 7):
     THINGS["lure_%d" % _n] = dict(model="items/lure_%d.glb" % _n, turn=(0, -15, 28), fill=1.0, ground=TACKLE)
+# The altar's rewards (user request): the fish bones and the glowing ones (tools/make_fish_bones.py) -
+# laid flat, seen a little from above, turned along the box's diagonal.
+for _k in ("whole", "spine", "skull", "broken"):
+    for _s in ("s", "m", "l", "xl"):
+        THINGS["bone_%s_%s" % (_k, _s)] = dict(model="items/bone_%s_%s.glb" % (_k, _s), turn=(78, -28, 0), fill=1.0, ground=ITEM, dim=0.42)
+for _r, _g in (("common", (0.5, 0.56, 0.66)), ("rare", (0.16, 0.34, 0.7)), ("epic", (0.46, 0.2, 0.66))):
+    THINGS["glow_bone_" + _r] = dict(model="items/glow_bone_%s.glb" % _r, turn=(78, -28, 0), fill=1.0, ground=_g, dim=0.5)
 
 
 def fresh():
@@ -149,6 +156,17 @@ def load(model, dim=1.0):
         for o in meshes:
             o.data.materials.clear()
             o.data.materials.append(m)
+    elif dim < 1.0:
+        # (a pale plain colour - the bones - toned down the same way, and matte)
+        for o in meshes:
+            for m in o.data.materials:
+                if m is None or not m.use_nodes:
+                    continue
+                bsdf = next((n for n in m.node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None)
+                if bsdf is not None and not bsdf.inputs["Base Color"].is_linked:
+                    c = bsdf.inputs["Base Color"].default_value
+                    bsdf.inputs["Base Color"].default_value = (c[0] * dim, c[1] * dim, c[2] * dim, 1.0)
+                    bsdf.inputs["Roughness"].default_value = 0.9
     root = bpy.data.objects.new("root", None)
     bpy.context.scene.collection.objects.link(root)
     for o in bpy.data.objects:

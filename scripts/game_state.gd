@@ -36,6 +36,8 @@ const OFFERING_ADD_THRESHOLD := 15.0
 const RARITY_EVIL_CHANCE := {"common": 0.1, "rare": 0.25, "epic": 0.45}
 const RARITY_VALUE := {"common": 10, "rare": 25, "epic": 60}
 const BASELINE_REWARD := 8
+## (the bone given when the altar's pool is empty at the crossing)
+const BASELINE_BONE := "bone_broken_s"
 const MAX_EVIL := 3
 const MAX_STARTING_EVIL := 2
 ## User request: a five-minute day.
@@ -489,7 +491,8 @@ func escape() -> void:
 	var safe_offerings: Array = offering_pool.filter(func(o): return not o.is_evil and not o.taken)
 	var message: String
 	if safe_offerings.is_empty():
-		message = "成功逃離！供品池已空，領取保底獎勵（價值 %d）" % BASELINE_REWARD
+		# (the pool empty: the smallest of bones, for the crossing)
+		message = "成功逃離！供品池已空，祭壇只留下" + _take_bone(BASELINE_BONE)
 	else:
 		var picked: Dictionary = safe_offerings[randi() % safe_offerings.size()]
 		picked.taken = true
@@ -497,7 +500,9 @@ func escape() -> void:
 			Campaign.stat("offering_rare")
 		if picked.rarity == "epic":
 			Campaign.stat("offering_epic")
-		message = "成功逃離！拿到了一個%s供品（價值 %d）" % [_rarity_label(picked.rarity), picked.value]
+		# User request: the offering's bone, taken home (a glowing one's affixes rolled as it's taken)
+		var id: String = Bones.make_glow(str(picked.glow)) if picked.has("glow") else str(picked.get("bone", BASELINE_BONE))
+		message = "成功逃離！祭壇給了你" + _take_bone(id)
 		offering_pool_updated.emit(offering_pool, evil_count)
 
 	end_run(true, message)
@@ -886,11 +891,14 @@ func _trigger_rotten_sacrifice() -> void:
 
 
 func _add_offering(is_bonus: bool, force_evil: bool = false) -> void:
-	var rarity := "common"
-	if is_bonus:
-		rarity = "epic" if randf() < 0.35 else "rare"
-	elif randf() < 0.4:
-		rarity = "rare"
+	# User request (the altar's reward): each offering is a bone, drawn - the dearer the rarer
+	# (Bones.draw; the extra ones after the quota draw the dear ones likelier); the glowing bone the
+	# rarest of all. Its colour by its price (a glowing one's own rarity); an evil one gives none.
+	var drawn := Bones.draw(is_bonus)
+	var rarity: String = str(drawn.glow) if drawn.has("glow") else Bones.rarity(str(drawn.bone))
+	if drawn.has("glow"):
+		# (a glowing one is never in the commonest band: its evil odds a rare's, an epic one's an epic's)
+		rarity = "epic" if rarity == "epic" else "rare"
 
 	var evil_chance: float = RARITY_EVIL_CHANCE[rarity]
 	var is_evil := force_evil or randf() < evil_chance
@@ -899,7 +907,13 @@ func _add_offering(is_bonus: bool, force_evil: bool = false) -> void:
 	if is_evil and not is_bonus and not force_evil and evil_count >= MAX_STARTING_EVIL:
 		is_evil = false
 
-	var offering := {"rarity": rarity, "is_evil": is_evil, "value": RARITY_VALUE[rarity], "taken": false}
+	var offering := {"rarity": rarity, "is_evil": is_evil, "value": 0 if is_evil else Bones.price(str(drawn.get("bone", ""))), "taken": false}
+	if not is_evil:
+		if drawn.has("glow"):
+			offering["glow"] = str(drawn.glow)
+			offering["value"] = int(Bones.GLOW_PRICES[str(drawn.glow)])
+		else:
+			offering["bone"] = str(drawn.bone)
 	offering_pool.append(offering)
 	if is_evil:
 		evil_count += 1
@@ -912,6 +926,29 @@ func _add_offering(is_bonus: bool, force_evil: bool = false) -> void:
 
 func _fail_run() -> void:
 	end_run(false, "邪惡供品累積到 3 個，你沒能逃出去，一無所獲")
+
+
+## A bone given (Profile.give_bone) - its name, worth and where it went, for the message.
+func _take_bone(id: String) -> String:
+	var name := Items.name_of(id)
+	if Bones.is_glow(id):
+		name += "（%s）" % UiKit.rarity_name(Bones.rarity(id))
+	var gold := Bones.price(id)
+	match Profile.give_bone(id):
+		"bag":
+			return "%s（%d 金幣），放進了背包" % [name, gold]
+		"storage":
+			return "%s（%d 金幣），背包滿了，送回倉庫" % [name, gold]
+	return "%s，背包和倉庫都滿了，直接賣了 %d 金幣" % [name, gold]
+
+
+## An offering's name in the pool (its bone's; a glowing one by its rarity).
+func offering_name(o: Dictionary) -> String:
+	if o.get("is_evil", false):
+		return "邪惡供品"
+	if o.has("glow"):
+		return "%s（%s）" % [Bones.GLOW_NAME, UiKit.rarity_name(str(o.glow))]
+	return Bones.name_of(str(o.get("bone", BASELINE_BONE)))
 
 
 func _rarity_label(rarity: String) -> String:
