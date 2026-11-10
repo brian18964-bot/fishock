@@ -119,6 +119,7 @@ const TESTS := [
 	"test_autumn_theme",
 	"test_wind_and_chop",
 	"test_ground_leaves",
+	"test_grass",
 	"test_world_integrity",
 	"test_trunks_hold",
 	"test_soak_fishing",
@@ -9212,7 +9213,7 @@ func test_snow_theme() -> void:
 	check(main.get_node("MapGenerator").theme_name == "snow_pine" and MapGenerator.current_theme == "snow_pine", "the free run's snowy pick is the map's style")
 	check(FishData.waters == "snow", "its fish are the snow waters'")
 	check(view != null and view.built and view._snow and view._snow_fx != null, "the 3D world is the snowy one, snow falling")
-	check(view == null or view._ground_leaves == null, "no leaves lying on the snow")
+	check(view == null or (view._ground_leaves == null and view._grass == null), "no leaves lying, no grass, on the snow")
 	if view == null or not view.built:
 		camp().clear()
 		return
@@ -9556,6 +9557,7 @@ func test_ground_leaves() -> void:
 		await frames(1)
 	var leaves: GroundLeaves = view._ground_leaves if view != null else null
 	check(leaves != null and leaves.count == GroundLeaves.COUNT, "the autumn wood's leaves on the ground (%d)" % (leaves.count if leaves != null else 0))
+	check(view._grass != null and is_equal_approx(view._grass.density, GrassField.DENSITY * 0.6), "its grass dry and sparser")
 	if leaves != null:
 		var p := player()
 		var c := RunView3D.to3(p.global_position, 0.0)
@@ -9571,6 +9573,73 @@ func test_ground_leaves() -> void:
 			kicked = maxi(kicked, leaves.airborne)
 		p._move_joystick.output = Vector2.ZERO
 		check(kicked > 0, "walking through them kicks some up (%d)" % kicked)
+	camp().clear()
+
+
+## User request (stage three of the wind): real grass where the ground is grass - none in the
+## water, on the shore's mud or the walkways; in chunks about the traveller, following it; pushed
+## aside by it (its last steps too - springing back slowly behind) and the animals near. The autumn
+## wood's sparser; none on the snow (test_snow_theme).
+func test_grass() -> void:
+	seed(3)
+	camp().clear()
+	gs.reset_run()
+	gs.last_return = ""
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	await frames(3)
+	main = get_tree().current_scene
+	gs.start_run()
+	var view: RunView3D = null
+	for _i in 200:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	var g: GrassField = view._grass if view != null else null
+	check(g != null and g.clumps > 300, "grass about the traveller (%d clumps)" % (g.clumps if g != null else 0))
+	if g == null:
+		camp().clear()
+		return
+	# Only where the ground is grass: every clump on a spot with a share of grass, none on a walkway.
+	var bad := 0
+	var seen := 0
+	for key in g.roots:
+		var at: PackedVector3Array = g.roots[key]
+		for i in range(0, at.size(), 7):
+			var o := at[i]
+			seen += 1
+			if view._grass_at(o.x, o.z).x <= 0.0 or view._on_walk(Vector2(o.x, o.z) * RunView3D.PX):
+				bad += 1
+	check(seen > 30 and bad == 0, "only where the ground is grass (%d looked at)" % seen)
+	# Pushed aside: the traveller's reach in the shader's pushers, its last steps fading behind.
+	var p := player()
+	await frames(2)
+	var movers: PackedVector4Array = g.material.get_shader_parameter("movers")
+	var me := RunView3D.to3(p.global_position, 0.0)
+	check(movers.size() == 12 and Vector2(movers[0].x - me.x, movers[0].z - me.z).length() < 0.2
+		and is_equal_approx(movers[0].w, RunView3D.GRASS_REACH), "the traveller pushes the grass aside")
+	var chunks_before := g.made
+	# (walked on - straight through, whatever's in the way: only where it's been matters here)
+	for _i in 90:
+		p.global_position += Vector2(3.0, 0.5)
+		await frames(1)
+	await frames(3)
+	movers = g.material.get_shader_parameter("movers")
+	var trailing := 0
+	for m in movers:
+		if m.w > 0.0 and m.w < RunView3D.GRASS_REACH - 0.01:
+			trailing += 1
+	check(trailing >= 2, "behind it, its last steps still bending the grass (%d)" % trailing)
+	await seconds(RunView3D.TRAIL_LIFE + 0.3)
+	movers = g.material.get_shader_parameter("movers")
+	var still := 0
+	for m in movers:
+		if m.w > 0.0 and m.w < RunView3D.GRASS_REACH - 0.01:
+			still += 1
+	check(still == 0, "then it springs back")
+	check(g.made > chunks_before, "the grass follows: new chunks ahead (%d)" % (g.made - chunks_before))
+	var most := (g.range_chunks * 2 + 3) * (g.range_chunks * 2 + 3)
+	check(g._chunks.size() <= most, "those left behind let go (%d kept)" % g._chunks.size())
 	camp().clear()
 
 

@@ -437,6 +437,9 @@ var _snow := false
 var _autumn := false
 ## (the ground's material: its snow's paleness follows the evening's light - _update_light)
 var _ground_mat: ShaderMaterial
+## The ground grid as made (_ground): [its corner (m), its size (cells), heights, paint (r path, g stone,
+## b mud, a grass)] - where the grass grows (GrassField) and how high the ground is under it.
+var _ground_grid: Array = []
 ## The footprints in the snow (the snowy map's).
 var _tracks: SnowTracks
 const SNOW_WHITE := Color(0.9, 0.94, 1.0)
@@ -534,6 +537,7 @@ func _build() -> void:
 	if _autumn:
 		_leaf_fall()
 	_lay_leaves()
+	_lay_grass()
 	if _snow:
 		_snowfall()
 		_tracks = SnowTracks.new()
@@ -670,6 +674,7 @@ func _ground() -> void:
 	mat.set_shader_parameter("snow", 1.0 if _snow else 0.0)
 	mat.set_shader_parameter("snow_bright", SNOW_GROUND)
 	_ground_mat = mat
+	_ground_grid = [lo, n, heights, colors]
 	# User report (laggy at night, on a phone): the ground was one mesh of the whole map, drawn
 	# whole every frame and drawn again into the moon's shadow - in chunks of GROUND_CHUNK cells now,
 	# those off the screen not drawn, and none casting a shadow (it takes them; it has nothing
@@ -5163,6 +5168,100 @@ func _leaf_movers() -> Array:
 	return out
 
 
+## User request (stage three of the wind): real grass where the ground is grass (GrassField) -
+## the forest's green, the autumn wood's dry straw and sparser, none on the snow; pushed aside by
+## the traveller (its last steps too, fading - the grass springs back slowly behind it) and the
+## animals and ghosts near. Fewer and nearer on a phone.
+const GRASS_COLORS := {
+	"": [Color(0.12, 0.2, 0.07), Color(0.42, 0.56, 0.2)],
+	"autumn": [Color(0.24, 0.2, 0.09), Color(0.66, 0.56, 0.3)],
+}
+const GRASS_DENSITY := {"": 1.0, "autumn": 0.6}
+## The traveller's reach through the grass (m), its trail's (a step every TRAIL_EVERY s, fading
+## over TRAIL_LIFE s), and an animal's or a ghost's.
+const GRASS_REACH := 0.55
+const TRAIL_STEPS := 6
+const TRAIL_EVERY := 0.12
+const TRAIL_LIFE := 1.3
+const BEAST_REACH := 0.6
+const GHOST_REACH := 1.2
+var _grass: GrassField
+var _trail: Array = []
+var _trail_t := 0.0
+
+
+func _lay_grass() -> void:
+	if _snow or _ground_grid.is_empty():
+		return
+	var style := "autumn" if _autumn else ""
+	var g := GrassField.new()
+	g.name = "Grass"
+	g.grows = _grass_at
+	g.density = GrassField.DENSITY * float(GRASS_DENSITY[style]) * (0.5 if low_end() else 1.0)
+	g.range_chunks = GrassField.RANGE_LOW if low_end() else GrassField.RANGE
+	var cols: Array = GRASS_COLORS[style]
+	var reach := g.range_chunks * GrassField.CHUNK
+	g.setup(cols[0], cols[1], Vector2(reach - 2.0, reach + 1.5))
+	add_child(g)
+	g.fill(to3(player.global_position, 0.0))
+	_grass = g
+
+
+## The grass at (x, z) (m): [its share 0..1 - the ground's grass paint, none on the shore's mud,
+## the paths, the walkways or under water - and the ground's height there].
+func _grass_at(x: float, z: float) -> Vector2:
+	var lo: Vector2 = _ground_grid[0]
+	var n: Vector2i = _ground_grid[1]
+	var fx := (x - lo.x) / CELL
+	var fz := (z - lo.y) / CELL
+	var i := floori(fx)
+	var j := floori(fz)
+	if i < 0 or j < 0 or i >= n.x - 1 or j >= n.y - 1:
+		return Vector2.ZERO
+	var heights: PackedFloat32Array = _ground_grid[2]
+	var colors: PackedColorArray = _ground_grid[3]
+	var c: Color = colors[int(roundf(fz)) * n.x + int(roundf(fx))]
+	var tx := fx - i
+	var tz := fz - j
+	var y := lerpf(lerpf(heights[j * n.x + i], heights[j * n.x + i + 1], tx),
+		lerpf(heights[(j + 1) * n.x + i], heights[(j + 1) * n.x + i + 1], tx), tz)
+	if y < LAND_Y - 0.02 or _on_walk(Vector2(x, z) * PX):
+		return Vector2(0.0, y)
+	var share := clampf(c.a * 1.6 - 0.2, 0.0, 1.0) * (1.0 - c.b) * (1.0 - c.r) * (1.0 - c.g)
+	return Vector2(share, y)
+
+
+func _part_grass(delta: float) -> void:
+	if _grass == null:
+		return
+	var at := to3(player.global_position, LAND_Y)
+	_grass.follow(at)
+	_trail_t += delta
+	for step in _trail:
+		step[1] += delta
+	if _trail_t >= TRAIL_EVERY:
+		_trail_t = 0.0
+		if _trail.is_empty() or (_trail.back()[0] as Vector3).distance_to(at) > 0.15:
+			_trail.append([at, 0.0])
+		while _trail.size() > TRAIL_STEPS:
+			_trail.pop_front()
+	var movers := [[at, GRASS_REACH]]
+	for step in _trail:
+		var fade := 1.0 - float(step[1]) / TRAIL_LIFE
+		if fade > 0.0:
+			movers.append([step[0], GRASS_REACH * fade])
+	var near := GrassField.CHUNK * (_grass.range_chunks + 1)
+	for n in _creatures:
+		if movers.size() >= 12:
+			break
+		if not is_instance_valid(n) or not n is Node2D:
+			continue
+		var p := to3((n as Node2D).global_position, 0.0)
+		if p.distance_to(Vector3(at.x, 0.0, at.z)) < near:
+			movers.append([p, GHOST_REACH if n is BigGhost else BEAST_REACH])
+	_grass.push(movers)
+
+
 ## User request (the autumn map): its turned leaves drifting down round the traveller, spinning as
 ## they go - lit like everything else (dark in the night, bright in the lamp's reach). A few dozen
 ## (fewer on a phone).
@@ -5869,6 +5968,7 @@ func _process(delta: float) -> void:
 	_blow(delta)
 	_settle_shakes(delta)
 	_stir_leaves(delta)
+	_part_grass(delta)
 	# (the warm-up's fish: a few made each frame - their models and skins in hand)
 	for _i in 4:
 		if _warm_species.is_empty():
