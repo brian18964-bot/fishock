@@ -118,6 +118,7 @@ const TESTS := [
 	"test_snow_theme",
 	"test_autumn_theme",
 	"test_wind_and_chop",
+	"test_ground_leaves",
 	"test_world_integrity",
 	"test_trunks_hold",
 	"test_soak_fishing",
@@ -9211,6 +9212,7 @@ func test_snow_theme() -> void:
 	check(main.get_node("MapGenerator").theme_name == "snow_pine" and MapGenerator.current_theme == "snow_pine", "the free run's snowy pick is the map's style")
 	check(FishData.waters == "snow", "its fish are the snow waters'")
 	check(view != null and view.built and view._snow and view._snow_fx != null, "the 3D world is the snowy one, snow falling")
+	check(view == null or view._ground_leaves == null, "no leaves lying on the snow")
 	if view == null or not view.built:
 		camp().clear()
 		return
@@ -9489,6 +9491,86 @@ func test_wind_and_chop() -> void:
 	check(other == null or other.get_surface_override_material(0) == null, "only that tree")
 	await seconds(RunView3D.SHAKE_TIME + 0.3)
 	check(tmi.get_surface_override_material(0) == null and view._shakes.is_empty(), "then it settles, the same as the rest again")
+	camp().clear()
+
+
+## User request (stage two of the wind): the leaves on the ground - blown by the wind's gusts,
+## kicked up by whoever walks through them, settling again; as many about the traveller wherever
+## they go. The autumn wood's many, the forest's few (test_snow_theme: none on the snow).
+func test_ground_leaves() -> void:
+	# (on their own first, on flat ground: the rules)
+	var gl := GroundLeaves.new()
+	var kickers := []
+	gl.ground = func(_p: Vector3) -> float: return 0.0
+	gl.movers = func() -> Array: return kickers
+	gl.count = 60
+	add_child(gl)
+	gl.setup(Vector3.ZERO, RunView3D._leaf_picture())
+	var before: PackedVector3Array = gl._pos.duplicate()
+	for _i in 60:
+		gl.step(1.0 / 60.0, 0.0, Vector2(1, 0))
+	var still := true
+	for i in gl.count:
+		still = still and gl._pos[i].distance_to(before[i]) < 0.001
+	check(still, "no wind, no one by: the leaves lie still")
+	var at: Vector3 = gl._pos[0] + Vector3(-0.3, 0, 0)
+	kickers.append([at, Vector3(3.0, 0, 0)])
+	gl.step(1.0 / 60.0, 0.0, Vector2(1, 0))
+	kickers.clear()
+	var peak := 0.0
+	for _i in 20:
+		gl.step(1.0 / 60.0, 0.0, Vector2(1, 0))
+		peak = maxf(peak, gl.lift[0])
+	check(peak > 0.05 and gl._pos[0].x > before[0].x, "walked through: kicked up (%.2f m) and away" % peak)
+	for _i in 180:
+		gl.step(1.0 / 60.0, 0.0, Vector2(1, 0))
+	check(gl.airborne == 0, "then they settle")
+	# (how far each went downwind, its own steps added up - one blown out of the square comes back
+	# in at the far side)
+	var moved := 0.0
+	for _i in 180:
+		gl.step(1.0 / 60.0, Foliage.STORM_WIND, Vector2(1, 0))
+		for i in gl.count:
+			moved += gl._vel[i].x / 60.0
+	var inside := true
+	for i in gl.count:
+		inside = inside and absf(gl._pos[i].x) <= GroundLeaves.HALF + 0.01 and absf(gl._pos[i].z) <= GroundLeaves.HALF + 0.01
+	check(moved / gl.count > 0.3, "a storm's gusts: blown along downwind (%.2f m in 3 s)" % (moved / gl.count))
+	check(inside, "and as many still about (one blown out comes back in at the far side)")
+	gl.queue_free()
+	# In the autumn wood: there, round the traveller.
+	seed(5)
+	camp().clear()
+	gs.reset_run()
+	gs.last_return = ""
+	camp().begin_free([], "autumn")
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	await frames(3)
+	main = get_tree().current_scene
+	gs.start_run()
+	var view: RunView3D = null
+	for _i in 200:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	var leaves: GroundLeaves = view._ground_leaves if view != null else null
+	check(leaves != null and leaves.count == GroundLeaves.COUNT, "the autumn wood's leaves on the ground (%d)" % (leaves.count if leaves != null else 0))
+	if leaves != null:
+		var p := player()
+		var c := RunView3D.to3(p.global_position, 0.0)
+		var round := 0
+		for i in leaves.count:
+			if Vector2(leaves._pos[i].x - c.x, leaves._pos[i].z - c.z).length() < GroundLeaves.HALF * 1.5:
+				round += 1
+		check(round == leaves.count, "all about the traveller")
+		p._move_joystick.output = Vector2(1, 0)
+		var kicked := 0
+		for _i in 90:
+			await frames(1)
+			kicked = maxi(kicked, leaves.airborne)
+		p._move_joystick.output = Vector2.ZERO
+		check(kicked > 0, "walking through them kicks some up (%d)" % kicked)
 	camp().clear()
 
 

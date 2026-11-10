@@ -533,6 +533,7 @@ func _build() -> void:
 	_fireflies()
 	if _autumn:
 		_leaf_fall()
+	_lay_leaves()
 	if _snow:
 		_snowfall()
 		_tracks = SnowTracks.new()
@@ -5013,7 +5014,7 @@ func _blow(delta: float) -> void:
 ## User request: a chopped tree shakes - its top swings away from the blow and settles (a damped
 ## swing, SHAKE_TIME long; its own copy of its materials meanwhile), a few leaves shaken down from
 ## a tree in leaf.
-const SHAKE_TOP := 0.55
+const SHAKE_TOP := 0.8
 const SHAKE_TIME := 2.4
 const SHAKE_FREQ := 8.5
 const SHAKE_DAMP := 2.1
@@ -5102,6 +5103,64 @@ func _shake_leaves(mi: MeshInstance3D, kind: String) -> void:
 	p.global_position = mi.global_position + Vector3(0, 6.0 * mi.scale.y, 0)
 	p.emitting = true
 	get_tree().create_timer(p.lifetime + 0.5).timeout.connect(p.queue_free)
+
+
+## User request (stage two of the wind): leaves on the ground, blown by the wind and kicked up by
+## whoever walks through them (GroundLeaves) - the autumn wood's many, the lakeside forest's few
+## and duller; none on the snow. Half on a phone.
+const FOREST_LEAVES := 90
+const FOREST_LEAF_COLORS := [Color(0.42, 0.3, 0.14), Color(0.5, 0.4, 0.18), Color(0.34, 0.26, 0.12), Color(0.4, 0.42, 0.18)]
+var _ground_leaves: GroundLeaves
+var _mover_last := {}
+
+
+func _lay_leaves() -> void:
+	if _snow:
+		return
+	var gl := GroundLeaves.new()
+	gl.name = "GroundLeaves"
+	gl.count = GroundLeaves.COUNT if _autumn else FOREST_LEAVES
+	if not _autumn:
+		gl.colors = PackedColorArray(FOREST_LEAF_COLORS)
+	if low_end():
+		gl.count = gl.count / 2
+	gl.ground = _ground_at
+	gl.water_y = WATER_Y
+	gl.movers = _leaf_movers
+	add_child(gl)
+	gl.setup(to3(player.global_position, LAND_Y), _leaf_picture())
+	_ground_leaves = gl
+
+
+func _stir_leaves(delta: float) -> void:
+	if _ground_leaves == null or delta <= 0.0:
+		return
+	_ground_leaves.follow(to3(player.global_position, LAND_Y))
+	_ground_leaves.step(delta, wind, Foliage.WIND_DIR)
+
+
+## Who kicks the ground's leaves: the traveller and the animals and ghosts near, each with how
+## fast it's going now (m/s - from where it was last frame).
+func _leaf_movers() -> Array:
+	var out := []
+	var dt := maxf(get_process_delta_time(), 0.001)
+	var centre := to3(player.global_position, 0.0)
+	var near := GroundLeaves.HALF + 2.0
+	var seen := {}
+	var who: Array = [player]
+	for n in _creatures:
+		who.append(n)
+	for n in who:
+		if not is_instance_valid(n) or not n is Node2D:
+			continue
+		var at := to3((n as Node2D).global_position, 0.0)
+		if Vector2(at.x - centre.x, at.z - centre.z).length() > near:
+			continue
+		var was: Vector3 = _mover_last.get(n, at)
+		seen[n] = at
+		out.append([at, (at - was) / dt])
+	_mover_last = seen
+	return out
 
 
 ## User request (the autumn map): its turned leaves drifting down round the traveller, spinning as
@@ -5809,6 +5868,7 @@ func _sync_tool(lantern: Node) -> void:
 func _process(delta: float) -> void:
 	_blow(delta)
 	_settle_shakes(delta)
+	_stir_leaves(delta)
 	# (the warm-up's fish: a few made each frame - their models and skins in hand)
 	for _i in 4:
 		if _warm_species.is_empty():
