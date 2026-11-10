@@ -9392,7 +9392,7 @@ func test_autumn_theme() -> void:
 	for t in trees:
 		if t is MapTree and (t as MapTree).kind in kinds:
 			own += 1
-			if (t as MapTree).kind in ["autumn_a", "autumn_b", "dead_a", "dead_b"]:
+			if (t as MapTree).kind in ["autumn_a", "autumn_b", "dead_a", "dead_b", "dead_c"]:
 				bare += 1
 	check(trees.size() >= 12 and own == trees.size(), "the wood's own trees, every one (%d)" % trees.size())
 	check(bare * 2 > own, "most of them bare (%d of %d)" % [bare, own])

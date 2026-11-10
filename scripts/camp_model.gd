@@ -11,6 +11,9 @@ extends RefCounted
 
 const DIR := "res://assets/models/camp/"
 const TREE_FAMILY := {"pine": "pine", "dead": "dead_tree", "twisted": "twisted_tree", "autumn": "autumn_tree"}
+## Tree families whose leaves are another's picture (user request: the dead trees' variants with
+## the autumn trees' turned leaves - tools/make_dead_variants.py).
+const SHARED_LEAVES := {"dead_tree": "autumn_tree"}
 ## Models made from the same one, sharing its normal picture.
 const SHARED_NORMAL := {"drum_trough": "drum"}
 
@@ -64,7 +67,7 @@ static func _tree_material(family: String, part: String) -> StandardMaterial3D:
 	var key := family + "/" + part
 	if not _materials.has(key):
 		var m := StandardMaterial3D.new()
-		m.albedo_texture = _tex("%s_%s.png" % [family, part])
+		m.albedo_texture = _tex("%s_%s.png" % [SHARED_LEAVES.get(family, family) if part == "leaves" else family, part])
 		m.roughness = 0.95
 		if part == "leaves":
 			m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR

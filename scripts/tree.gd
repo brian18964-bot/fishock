@@ -11,21 +11,26 @@ extends Node2D
 ## The pines (CampModel.tree_mesh) and their trunks' radius at the ground
 ## (m, at scale 1 - the root flare); the size range.
 const KINDS := {"pine_b": 0.8, "pine_c": 0.94,
-	"autumn_a": 0.47, "autumn_b": 0.49, "autumn_c": 0.47, "autumn_d": 0.42, "dead_a": 1.05, "dead_b": 1.41}
+	"autumn_a": 0.47, "autumn_b": 0.49, "autumn_c": 0.47, "autumn_d": 0.42, "dead_a": 1.05, "dead_b": 1.41,
+	"dead_c": 0.57, "dead_d": 0.67, "dead_e": 0.57}
 const SCALE := Vector2(0.78, 1.0)
 ## (pine_b's lowest branches are at 2.87 m: not under 0.9, so they clear
-## the big ghost's 2.3 m; dead_b's at 2.39 m: not under 1.0)
+## the big ghost's 2.3 m; dead_b's at 2.39 m: not under 1.0; dead_d's 2.14 m: not under 1.1)
 const SCALE_OF := {"pine_b": Vector2(0.9, 1.0), "pine_c": Vector2(0.78, 1.0),
 	"autumn_a": Vector2(0.85, 1.05), "autumn_b": Vector2(0.85, 1.05), "autumn_c": Vector2(0.85, 1.0),
-	"autumn_d": Vector2(0.8, 0.95), "dead_a": Vector2(0.85, 1.0), "dead_b": Vector2(1.0, 1.1)}
+	"autumn_d": Vector2(0.8, 0.95), "dead_a": Vector2(0.85, 1.0), "dead_b": Vector2(1.0, 1.1),
+	"dead_c": Vector2(0.85, 1.0), "dead_d": Vector2(1.1, 1.2), "dead_e": Vector2(0.85, 1.05)}
 ## Its branches' reach (m, at scale 1).
 const CANOPY := {"pine_b": 3.44, "pine_c": 3.26,
-	"autumn_a": 4.54, "autumn_b": 3.98, "autumn_c": 4.39, "autumn_d": 5.84, "dead_a": 2.47, "dead_b": 2.85}
+	"autumn_a": 4.54, "autumn_b": 3.98, "autumn_c": 4.39, "autumn_d": 5.84, "dead_a": 2.47, "dead_b": 2.85,
+	"dead_c": 4.1, "dead_d": 4.2, "dead_e": 3.78}
 ## User request (the autumn map - bare, dead trees, few with their last leaves): its own trees
-## (tools/make_autumn_trees.py, and the camp's two dead ones), the bare ones likelier. A map
-## style not here has the pines.
+## (tools/make_autumn_trees.py; the camp's two dead ones and, user request, three more made from
+## them - tools/make_dead_variants.py, two with the autumn trees' leaves), the bare ones likelier.
+## A map style not here has the pines.
 const THEME_KINDS := {
-	"autumn": ["autumn_a", "autumn_a", "autumn_b", "autumn_b", "autumn_c", "autumn_d", "dead_a", "dead_b"],
+	"autumn": ["autumn_a", "autumn_b", "autumn_b", "autumn_c", "autumn_d", "dead_a", "dead_b", "dead_c", "dead_c",
+		"dead_d", "dead_e"],
 }
 const PINES := ["pine_b", "pine_c"]
 const PX := 27.108
