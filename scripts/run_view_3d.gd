@@ -432,6 +432,9 @@ static func attach(to: Node2D) -> RunView3D:
 ## The snowy map (MapGenerator's "snow_pine"): the pines and rocks whitened, the ground white, ice
 ## round the water's edge, snow falling, the night a little paler and colder.
 var _snow := false
+## The autumn wood (MapGenerator's "autumn"): its own trees (MapTree.THEME_KINDS), its leaf litter
+## and dry grass, a warmer haze, leaves falling (_leaf_fall).
+var _autumn := false
 ## (the ground's material: its snow's paleness follows the evening's light - _update_light)
 var _ground_mat: ShaderMaterial
 ## The footprints in the snow (the snowy map's).
@@ -474,6 +477,7 @@ var _fade_shaders: Array[ShaderMaterial] = []
 func _ready() -> void:
 	active = self
 	_snow = MapGenerator.current_theme.begins_with("snow")
+	_autumn = MapGenerator.current_theme.begins_with("autumn")
 	_rng.seed = 11
 	player = main.get_node("Player")
 	player.edge = EDGE
@@ -526,6 +530,8 @@ func _build() -> void:
 	_build_glow()
 	_line_and_float()
 	_fireflies()
+	if _autumn:
+		_leaf_fall()
 	if _snow:
 		_snowfall()
 		_tracks = SnowTracks.new()
@@ -653,9 +659,12 @@ func _ground() -> void:
 	mat.shader = sh
 	# (the theme's two floors: its forest floor under the trees, grass in
 	# the open)
+	# (a style may have its own two - the autumn wood's dry grass and leaf litter: "floor3d")
+	var own: Dictionary = MapGenerator.THEMES[MapGenerator.current_theme].get("floor3d", {})
 	for pair in [["grass", "grass"], ["forest", "forest_floor"], ["path", "dirt"], ["stone", "lp_stone"], ["mud", "mud"]]:
-		mat.set_shader_parameter(pair[0] + "_tex", load("res://assets/sprites/ground/%s_albedo.png" % pair[1]))
-		mat.set_shader_parameter(pair[0] + "_nrm", load("res://assets/sprites/ground/%s_normal.png" % pair[1]))
+		var file: String = own.get(pair[0], pair[1])
+		mat.set_shader_parameter(pair[0] + "_tex", load("res://assets/sprites/ground/%s_albedo.png" % file))
+		mat.set_shader_parameter(pair[0] + "_nrm", load("res://assets/sprites/ground/%s_normal.png" % file))
 	mat.set_shader_parameter("snow", 1.0 if _snow else 0.0)
 	mat.set_shader_parameter("snow_bright", SNOW_GROUND)
 	_ground_mat = mat
@@ -895,20 +904,30 @@ func _docks() -> void:
 ## The map's trees as the camp's pines; its rocks, bushes and turning
 ## stones as the trial's nature models; and a wall of pines round the edge.
 func _trees_and_rocks() -> void:
-	var pines := ["pine_a", "pine_b", "pine_c"]
+	# (the map style's trees - the pines, or its own: MapTree.kinds_for, the autumn wood's bare
+	# ones; the edge's wall the same kinds, the pines' with the tallest, pine_a)
+	var pines: Array = []
+	for k in MapTree.kinds_for(MapGenerator.current_theme):
+		if not k in pines:
+			pines.append(k)
+	if pines == MapTree.PINES:
+		pines = ["pine_a", "pine_b", "pine_c"]
 	var meshes := {}
+	var spots := {}
 	for p in pines:
 		meshes[p] = _faded(CampModel.tree_mesh(p))
-	var spots := {"pine_a": [], "pine_b": [], "pine_c": []}
-	# (each the pine its 2D trunk was sized for - MapTree.kind, tree_scale:
+		spots[p] = []
+	# (each the tree its 2D trunk was sized for - MapTree.kind, tree_scale:
 	# the trunk's base as wide as its solid one, its branches over the head)
 	for t in get_tree().get_nodes_in_group("trees"):
 		var tree := t as Node2D
 		if tree == null:
 			continue
 		var kind: String = str(tree.get("kind")) if tree.get("kind") != null else "pine_b"
+		if not meshes.has(kind):
+			meshes[kind] = _faded(CampModel.tree_mesh(kind))
 		var mi := MeshInstance3D.new()
-		mi.mesh = meshes.get(kind, meshes.pine_b)
+		mi.mesh = meshes[kind]
 		var s: float = float(tree.get("tree_scale")) if tree.get("tree_scale") != null else 0.9
 		mi.scale = Vector3(s, s, s)
 		mi.rotation.y = _rng.randf() * TAU
@@ -929,7 +948,7 @@ func _trees_and_rocks() -> void:
 		made += 1
 		var out := Vector2(maxf(maxf(rect.position.x - p.x, p.x - rect.end.x), 0.0),
 			maxf(maxf(rect.position.y - p.y, p.y - rect.end.y), 0.0)).length() / PX
-		spots[pines[made % 3]].append(to3(p, LAND_Y + 1.4 * smoothstep(0.0, MARGIN, out)))
+		spots[pines[made % pines.size()]].append(to3(p, LAND_Y + 1.4 * smoothstep(0.0, MARGIN, out)))
 	for kind in pines:
 		var xfs := []
 		for at in spots[kind]:
@@ -4967,6 +4986,69 @@ func _snowfall() -> void:
 	_snow_fx = p
 
 
+## User request (the autumn map): its turned leaves drifting down round the traveller, spinning as
+## they go - lit like everything else (dark in the night, bright in the lamp's reach). A few dozen
+## (fewer on a phone).
+const LEAF_FALL := 48
+const LEAF_FALL_LOW := 26
+var _leaf_fx: CPUParticles3D
+
+
+func _leaf_fall() -> void:
+	var p := CPUParticles3D.new()
+	p.name = "LeafFall"
+	p.amount = LEAF_FALL_LOW if low_end() else LEAF_FALL
+	p.lifetime = 8.0
+	p.preprocess = 8.0
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	p.emission_box_extents = Vector3(14.0, 1.0, 14.0)
+	p.direction = Vector3(0.4, -1.0, 0.15)
+	p.spread = 35.0
+	p.gravity = Vector3(0.25, -0.4, 0.1)
+	p.initial_velocity_min = 0.4
+	p.initial_velocity_max = 0.9
+	p.angle_max = 360.0
+	p.angular_velocity_min = -140.0
+	p.angular_velocity_max = 140.0
+	p.scale_amount_min = 0.7
+	p.scale_amount_max = 1.3
+	var tints := Gradient.new()
+	tints.colors = PackedColorArray([Color(0.85, 0.35, 0.1), Color(0.72, 0.18, 0.08), Color(0.9, 0.62, 0.15), Color(0.55, 0.32, 0.12)])
+	tints.offsets = PackedFloat32Array([0.0, 0.35, 0.7, 1.0])
+	p.color_initial_ramp = tints
+	var q := QuadMesh.new()
+	q.size = Vector2(0.12, 0.08)
+	var m := StandardMaterial3D.new()
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	m.vertex_color_use_as_albedo = true
+	m.albedo_texture = _leaf_picture()
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	m.alpha_scissor_threshold = 0.5
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.roughness = 0.9
+	q.material = m
+	p.mesh = q
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	p.top_level = true
+	add_child(p)
+	_leaf_fx = p
+
+
+## One leaf, white (each falling one tinted its own colour): a pointed oval with its vein.
+static func _leaf_picture() -> ImageTexture:
+	var img := Image.create(32, 32, false, Image.FORMAT_RGBA8)
+	for y in 32:
+		for x in 32:
+			var u := (x - 15.5) / 15.5
+			var v := (y - 15.5) / 15.5
+			var w := 0.55 * (1.0 - u * u) * (1.0 - 0.35 * maxf(u, 0.0))
+			var col := Color(1, 1, 1, 0)
+			if absf(v) < w:
+				col = Color(0.72, 0.72, 0.72, 1.0) if absf(v) < 0.07 and absf(u) < 0.9 else Color(1, 1, 1, 1)
+			img.set_pixel(x, y, col)
+	return ImageTexture.create_from_image(img)
+
+
 # ---------------------------------------------------------------- the night
 
 func _environment() -> void:
@@ -5078,6 +5160,12 @@ func _update_light() -> void:
 		_env.fog_density = 0.024
 		if _ground_mat != null:
 			_ground_mat.set_shader_parameter("snow_bright", lerpf(SNOW_GROUND, SNOW_GROUND_DUSK, ks))
+	if _autumn:
+		# (the turned wood's haze and light a little warmer - a brown dusk; the night's dark as
+		# deep as the forest's, only its colour moved)
+		_env.fog_light_color = _env.fog_light_color.lerp(Color(0.24, 0.16, 0.08) * NIGHT_DIM, 0.1 + 0.3 * k)
+		_env.ambient_light_color = _env.ambient_light_color.lerp(Color(0.56, 0.46, 0.36), 0.3 * k)
+		_moon.light_color = _moon.light_color.lerp(Color(1.0, 0.88, 0.74), 0.2 * k)
 	if GameState.dark_fell:
 		# (user request: the camp doused, the whole map black - the lamps all that's left)
 		_env.ambient_light_energy *= DOUSED_DIM
@@ -5613,6 +5701,8 @@ func _process(delta: float) -> void:
 				_warm_skins.append(load(skin))
 	if _snow_fx != null and pivot != null:
 		_snow_fx.global_position = pivot.global_position + Vector3(0.0, 6.5, 0.0)
+	if _leaf_fx != null and pivot != null:
+		_leaf_fx.global_position = pivot.global_position + Vector3(0.0, 5.5, 0.0)
 	if not built:
 		return
 	_time += delta

@@ -10,13 +10,24 @@ extends Node2D
 
 ## The pines (CampModel.tree_mesh) and their trunks' radius at the ground
 ## (m, at scale 1 - the root flare); the size range.
-const KINDS := {"pine_b": 0.8, "pine_c": 0.94}
+const KINDS := {"pine_b": 0.8, "pine_c": 0.94,
+	"autumn_a": 0.47, "autumn_b": 0.49, "autumn_c": 0.47, "autumn_d": 0.42, "dead_a": 1.05, "dead_b": 1.41}
 const SCALE := Vector2(0.78, 1.0)
 ## (pine_b's lowest branches are at 2.87 m: not under 0.9, so they clear
-## the big ghost's 2.3 m)
-const SCALE_OF := {"pine_b": Vector2(0.9, 1.0), "pine_c": Vector2(0.78, 1.0)}
+## the big ghost's 2.3 m; dead_b's at 2.39 m: not under 1.0)
+const SCALE_OF := {"pine_b": Vector2(0.9, 1.0), "pine_c": Vector2(0.78, 1.0),
+	"autumn_a": Vector2(0.85, 1.05), "autumn_b": Vector2(0.85, 1.05), "autumn_c": Vector2(0.85, 1.0),
+	"autumn_d": Vector2(0.8, 0.95), "dead_a": Vector2(0.85, 1.0), "dead_b": Vector2(1.0, 1.1)}
 ## Its branches' reach (m, at scale 1).
-const CANOPY := {"pine_b": 3.44, "pine_c": 3.26}
+const CANOPY := {"pine_b": 3.44, "pine_c": 3.26,
+	"autumn_a": 4.54, "autumn_b": 3.98, "autumn_c": 4.39, "autumn_d": 5.84, "dead_a": 2.47, "dead_b": 2.85}
+## User request (the autumn map - bare, dead trees, few with their last leaves): its own trees
+## (tools/make_autumn_trees.py, and the camp's two dead ones), the bare ones likelier. A map
+## style not here has the pines.
+const THEME_KINDS := {
+	"autumn": ["autumn_a", "autumn_a", "autumn_b", "autumn_b", "autumn_c", "autumn_d", "dead_a", "dead_b"],
+}
+const PINES := ["pine_b", "pine_c"]
 const PX := 27.108
 
 var kind := "pine_b"
@@ -51,9 +62,14 @@ func _ready() -> void:
 		n.queue_free()
 
 
-## Which pine and how big (from `roll`, any number).
+## The trees a map style grows (the pines, but for THEME_KINDS's).
+static func kinds_for(theme: String) -> Array:
+	return THEME_KINDS.get(theme, PINES)
+
+
+## Which tree and how big (from `roll`, any number) - one of this map's (kinds_for).
 func pick(roll: int) -> void:
-	var kinds := KINDS.keys()
+	var kinds := kinds_for(MapGenerator.current_theme)
 	kind = kinds[roll % kinds.size()]
 	var lo: Vector2 = SCALE_OF.get(kind, SCALE)
 	tree_scale = lo.x + (lo.y - lo.x) * float((roll / 7) % 1000) / 999.0

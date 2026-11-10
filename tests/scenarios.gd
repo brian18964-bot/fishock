@@ -116,6 +116,7 @@ const TESTS := [
 	"test_fish_holdings",
 	"test_bag_moves_at_camp",
 	"test_snow_theme",
+	"test_autumn_theme",
 	"test_world_integrity",
 	"test_trunks_hold",
 	"test_soak_fishing",
@@ -9341,12 +9342,97 @@ func test_snow_theme() -> void:
 	camp().clear()
 
 
+## User request: the next look - autumn: the wood's trees bare and dead (a few with their last
+## leaves), very few wild animals. Picked from the depart window; its own trees (2D trunks sized for
+## them, the same in 3D, the edge's wall too), leaf litter and dry grass, leaves falling, a warmer
+## haze; the autumn waters' fish.
+func test_autumn_theme() -> void:
+	# (the window: three maps now, side by side within it, the autumn one picked by its card)
+	var chooser := DepartChooser.open(self)
+	chooser.show_step("maps")
+	await frames(2)
+	var card := chooser.find_child("Map_autumn", true, false) as Button
+	var row_w := 0.0
+	for m in DepartChooser.MAPS:
+		var c := chooser.find_child("Map_" + (str(m[0]) if m[0] != "" else "forest"), true, false) as Control
+		row_w += c.size.x if c != null else 9999.0
+	check(card != null and row_w < 960.0 and load(DepartChooser.ART + "map_autumn.png") != null,
+		"the depart window: the autumn wood's card beside the other two, its picture (%d px wide)" % int(row_w))
+	if card != null:
+		card.pressed.emit()
+		await frames(2)
+		check(chooser.map_theme == "autumn" and (chooser.find_child("GoFree", true, false) as Button).text.contains("秋林"), "the autumn wood picked")
+	chooser.queue_free()
+	seed(5)
+	camp().clear()
+	gs.reset_run()
+	gs.last_return = ""
+	camp().begin_free([], "autumn")
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	await frames(3)
+	main = get_tree().current_scene
+	gs.start_run()
+	var view: RunView3D = null
+	for _i in 200:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	check(MapGenerator.current_theme == "autumn" and FishData.waters == "autumn", "the map's style the autumn wood, its fish the autumn waters'")
+	check(view != null and view.built and view._autumn and not view._snow and view._leaf_fx != null and view._leaf_fx.emitting,
+		"the 3D world the autumn one, leaves falling")
+	if view == null or not view.built:
+		camp().clear()
+		return
+	# Its trees: each 2D trunk one of the wood's kinds, sized for it; the 3D tree that kind's model.
+	var kinds := MapTree.kinds_for("autumn")
+	var trees := main.get_tree().get_nodes_in_group("trees")
+	var own := 0
+	var bare := 0
+	for t in trees:
+		if t is MapTree and (t as MapTree).kind in kinds:
+			own += 1
+			if (t as MapTree).kind in ["autumn_a", "autumn_b", "dead_a", "dead_b"]:
+				bare += 1
+	check(trees.size() >= 12 and own == trees.size(), "the wood's own trees, every one (%d)" % trees.size())
+	check(bare * 2 > own, "most of them bare (%d of %d)" % [bare, own])
+	var models_ok := true
+	for pair in view._trees:
+		var mt := pair[0] as MapTree
+		var mi := pair[1] as MeshInstance3D
+		if mt != null and (mi.mesh == null or mi.mesh.get_surface_count() < 1):
+			models_ok = false
+	check(models_ok and view._trees.size() == trees.size(), "each shown as its model in 3D")
+	var bark := CampModel._tree_material("autumn_tree", "bark")
+	var leaves := CampModel._tree_material("autumn_tree", "leaves")
+	check(bark.albedo_texture != null and leaves.albedo_texture != null and leaves.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR,
+		"its bark and its last leaves (cut out)")
+	# (the ground: dry grass in the open, leaf litter under the trees)
+	var gm := view._ground_mat as ShaderMaterial
+	check(gm != null and str((gm.get_shader_parameter("grass_tex") as Texture2D).resource_path).contains("grass_autumn")
+		and str((gm.get_shader_parameter("forest_tex") as Texture2D).resource_path).contains("leaf_litter")
+		and float(gm.get_shader_parameter("snow")) < 0.5, "the ground dry grass and fallen leaves")
+	# (very few animals about - an eighth of the forest's)
+	var animals := 0
+	for n in main.get_children():
+		if n is Critter and (n as Critter).ambient:
+			animals += 1
+	var forest_has := roundf(MapGenerator.AMBIENT_ANIMAL_COUNT * Campaign.area_share())
+	check(animals > 0 and animals <= maxi(2, int(ceilf(forest_has / 8.0))), "very few wild animals (%d - the forest %d)" % [animals, int(forest_has)])
+	# (the haze warmer than the forest's, the night as dark)
+	await frames(3)
+	var fog := view._env.fog_light_color
+	check(fog.r > fog.b, "a warmer haze (%s)" % fog)
+	check(is_instance_valid(player()) and player().global_position.is_finite(), "and the run goes on")
+	camp().clear()
+
+
 ## System check: for each look of the map, a few seeds - nothing solid overlaps anything else or
 ## stands in the water, the start's clear, and a walker sent about the map is never inside
 ## anything nor stuck on open ground (so nothing's walked through, and nothing traps).
 func test_world_integrity() -> void:
 	var problems := []
-	for look in ["", "snow_pine"]:
+	for look in ["", "snow_pine", "autumn"]:
 		for seed_n in [3, 11]:
 			seed(seed_n)
 			camp().clear()

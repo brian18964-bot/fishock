@@ -12,7 +12,11 @@ extends Control
 
 const ART := "res://assets/ui/depart/"
 const MAPS := [["", "湖畔森林", "map_forest", "森林中的湖泊與池塘，熟悉的夜晚。"],
-	["snow_pine", "雪地森林", "map_snow", "覆雪的松林與結冰的池緣，冷冽的夜。"]]
+	["snow_pine", "雪地森林", "map_snow", "覆雪的松林與結冰的池緣，冷冽的夜。"],
+	["autumn", "秋林", "map_autumn", "枯樹與落葉，林間只剩零星的野獸。"]]
+## The map cards' width: as wide as they fit side by side (at most this).
+const MAP_CARD_MAX := 400.0
+const MAP_ROW := 900.0
 ## A tap that soon after it opened is the opening tap's echo (a phone sends it twice): not a close.
 const OPEN_GUARD_MS := 450
 
@@ -181,13 +185,14 @@ func _build_maps() -> void:
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_theme_constant_override("separation", 16)
 	_body.add_child(row)
+	var wide := minf(MAP_CARD_MAX, (MAP_ROW - 16.0 * (MAPS.size() - 1)) / MAPS.size())
 	for m in MAPS:
 		var key: String = m[0]
 		var card := Button.new()
 		card.name = "Map_" + (key if key != "" else "forest")
 		card.focus_mode = Control.FOCUS_NONE
 		card.flat = true
-		card.custom_minimum_size = Vector2(400, 262)
+		card.custom_minimum_size = Vector2(wide, wide * 0.5 + 62.0)
 		var on := map_theme == key
 		var frame := PanelContainer.new()
 		frame.add_theme_stylebox_override("panel", UiKit.slot_box())
@@ -201,7 +206,7 @@ func _build_maps() -> void:
 		pic.texture = load(ART + str(m[2]) + ".png")
 		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-		pic.custom_minimum_size = Vector2(384, 192)
+		pic.custom_minimum_size = Vector2(wide - 16.0, (wide - 16.0) * 0.5)
 		pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		if not on:
 			pic.modulate = Color(0.62, 0.62, 0.66)
@@ -257,11 +262,19 @@ func _build_maps() -> void:
 	back.custom_minimum_size = Vector2(120, 46)
 	back.pressed.connect(func(): show_step("mode"))
 	foot.add_child(back)
-	var go := UiKit.button("出發：%s" % ("雪地森林" if map_theme == "snow_pine" else "湖畔森林"), 20, "red")
+	var go := UiKit.button("出發：%s" % map_name(map_theme), 20, "red")
 	go.name = "GoFree"
 	go.custom_minimum_size = Vector2(240, 50)
 	go.pressed.connect(depart)
 	foot.add_child(go)
+
+
+## A map's name (MAPS; the lakeside forest's for "").
+static func map_name(theme: String) -> String:
+	for m in MAPS:
+		if m[0] == theme:
+			return m[1]
+	return MAPS[0][1]
 
 
 ## Off on the free run picked.

@@ -109,6 +109,23 @@ const THEMES := {
 		"ground_kinds": {"plant": 0.5},
 		"animals": {"deer": 1.5, "stag": 1.0, "fox": 2.0, "wolf": 0.8},
 		"shore_extras": {"reeds": 0.08, "lilypad": 0.0, "driftwood": 0.12},
+	},
+	# User request: the next look - autumn: the wood's trees bare and dead, a few with their last
+	# turned leaves (MapTree.THEME_KINDS), the ground leaf litter and dry grass ("floor3d", the 3D
+	# ground's two), leaves falling (WeatherFX); very few wild animals about.
+	"autumn": {
+		"look": "detailed",
+		"floor": ["leaf_litter", "grass_autumn", 0.5],
+		"floor3d": {"grass": "grass_autumn", "forest": "leaf_litter"},
+		"trees": 24, "rocks": 4, "bushes": 2, "ground": 0,
+		"tree_families": {"pine": 1.0},
+		"rock_pool": [0, 1, 2],
+		"ground_kinds": {"plant": 0.4},
+		# (the forest's AMBIENT_ANIMAL_COUNT is 8 a base map's area - ~21 on the free run's; here
+		# one - ~3 there)
+		"animal_count": 1,
+		"animals": {"deer": 1.5, "stag": 1.0, "fox": 1.5, "wolf": 0.3},
+		"shore_extras": {"reeds": 0.12, "lilypad": 0.02, "driftwood": 0.14},
 	},}
 ## User feedback: the water's edge is grass, small shrubs, pebbles and
 ## boardwalks (no big trees or boulders there), with bugs and frogs about.

@@ -184,17 +184,41 @@ def grass(rng, light=False):
 
 def leaf_litter(rng):
     n = periodic_noise(rng, 50)
-    col = lerp((0.14, 0.1, 0.06), (0.22, 0.15, 0.08), n)
+    col = lerp((0.13, 0.095, 0.06), (0.2, 0.14, 0.085), n)
     cv = Canvas()
-    leaf = [(0.62, 0.22, 0.08), (0.75, 0.38, 0.1), (0.52, 0.14, 0.08), (0.7, 0.52, 0.16), (0.45, 0.28, 0.12)]
-    for _ in range(750):
+    # (the autumn wood's floor under its trees: old leaves, mostly gone brown - a few still rust or
+    # ochre - lying thick, a few dry blades through them)
+    leaf = [(0.36, 0.22, 0.12), (0.27, 0.17, 0.1), (0.44, 0.32, 0.18), (0.36, 0.22, 0.12), (0.27, 0.17, 0.1),
+            (0.5, 0.24, 0.11), (0.52, 0.38, 0.16)]
+    for _ in range(1300):
         cv.ellipse(rng.random() * TILE, rng.random() * TILE, rng.uniform(4, 8), rng.uniform(2.2, 3.8),
                    rng.random() * math.pi, jitter_color(rng, leaf[rng.integers(len(leaf))]),
-                   int(rng.uniform(120, 255)), 8)
-    blades(rng, cv, 1800, [(0.22, 0.32, 0.12), (0.28, 0.36, 0.14), (0.18, 0.28, 0.1)])
+                   int(rng.uniform(110, 230)), 8)
+    blades(rng, cv, 700, [(0.36, 0.32, 0.14), (0.3, 0.3, 0.13), (0.26, 0.26, 0.11)])
     lc, la, lh = cv.layers()
     col = over(col, lc, la)
     return col, normal_from_height(blur(lh, 0.8), 4.0)
+
+
+def grass_autumn(rng):
+    """The autumn wood's open ground (user request: the autumn map): the grass dried to straw and
+    olive, bare soil between, the turned leaves blown out over it."""
+    n = periodic_noise(rng, 60)
+    col = lerp((0.2, 0.17, 0.08), (0.3, 0.25, 0.11), n)
+    soil = periodic_noise(rng, 14) > 0.66
+    col = np.where(soil[..., None], col * 0.6 + np.array([0.05, 0.03, 0.015]), col)
+    cv = Canvas()
+    straw = [(0.42, 0.36, 0.16), (0.5, 0.42, 0.2), (0.34, 0.3, 0.13), (0.36, 0.36, 0.16), (0.56, 0.46, 0.24)]
+    blades(rng, cv, 5200, straw, length=(4, 12), lean=0.5)
+    leaf = [(0.5, 0.24, 0.11), (0.52, 0.38, 0.16), (0.36, 0.22, 0.12), (0.44, 0.32, 0.18)]
+    for _ in range(140):
+        cv.ellipse(rng.random() * TILE, rng.random() * TILE, rng.uniform(4, 7), rng.uniform(2, 3.4),
+                   rng.random() * math.pi, jitter_color(rng, leaf[rng.integers(len(leaf))]),
+                   int(rng.uniform(140, 255)), 8)
+    lc, la, lh = cv.layers()
+    col = over(col, lc, la)
+    h = blur(n, 3) * 0.3 + lh * 0.7
+    return col, normal_from_height(h, 5.0)
 
 
 def forest_floor(rng):
@@ -505,6 +529,8 @@ MAKERS = {
     "beach_sand": beach_sand,
     "asphalt": asphalt,
     "sidewalk": sidewalk,
+    # (kept last: each maker's seed is its place in this list)
+    "grass_autumn": grass_autumn,
 }
 
 

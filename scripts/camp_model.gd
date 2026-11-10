@@ -10,7 +10,7 @@ extends RefCounted
 ## (the leaves cut out by their alpha).
 
 const DIR := "res://assets/models/camp/"
-const TREE_FAMILY := {"pine": "pine", "dead": "dead_tree", "twisted": "twisted_tree"}
+const TREE_FAMILY := {"pine": "pine", "dead": "dead_tree", "twisted": "twisted_tree", "autumn": "autumn_tree"}
 ## Models made from the same one, sharing its normal picture.
 const SHARED_NORMAL := {"drum_trough": "drum"}
 
