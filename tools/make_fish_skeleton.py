@@ -569,7 +569,7 @@ def drop_crumbs(ob, smallest=100):
     bm.free()
 
 
-def unwrap(ob):
+def unwrap(ob, tex=TEX):
     """`ob` triangulated and unwrapped by xatlas (Godot's own lightmap unwrapper): charts that never
     overlap, packed tight. (Blender's projection unwrap, tried first, folded a holed plate's chart
     over the bone behind its hole - the one's texels painted over the other - and its thousands of
@@ -587,7 +587,7 @@ def unwrap(ob):
     atlas = xatlas.Atlas()
     atlas.add_mesh(verts, faces)
     pack = xatlas.PackOptions()
-    pack.resolution = TEX
+    pack.resolution = tex
     pack.padding = 4
     pack.bilinear = True
     pack.rotate_charts = True
@@ -637,7 +637,7 @@ def apply(ob, kind, **props):
     bpy.ops.object.modifier_apply(modifier=mod.name)
 
 
-def bake_textures(high, low, out):
+def bake_textures(high, low, out, prefix="own_fish", tex=TEX, cage=0.006, reach=0.02):
     """The bone's look baked into two textures on `low`'s UVs, both read off the detailed surface
     (`high`): its colour (the procedural material's - stains, dirt in the crevices, worked out on the
     detailed surface, whose crevices are the true ones) and its normals, so the sharp rims and
@@ -650,8 +650,8 @@ def bake_textures(high, low, out):
     bk.margin = 8
     bk.margin_type = "EXTEND"
     bk.use_selected_to_active = True
-    bk.cage_extrusion = 0.006
-    bk.max_ray_distance = 0.02
+    bk.cage_extrusion = cage
+    bk.max_ray_distance = reach
     mat = bone_material()
     bsdf = next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
     bsdf.inputs["Subsurface Weight"].default_value = 0.0
@@ -666,7 +666,7 @@ def bake_textures(high, low, out):
     low.data.materials.append(target)
     images = {}
     for name, colour in (("color", "sRGB"), ("normal", "Non-Color")):
-        img = bpy.data.images.new("own_fish_" + name, TEX, TEX, alpha=False, float_buffer=False)
+        img = bpy.data.images.new("%s_%s" % (prefix, name), tex, tex, alpha=False, float_buffer=False)
         img.colorspace_settings.name = colour
         node = target.node_tree.nodes.new("ShaderNodeTexImage")
         node.image = img
