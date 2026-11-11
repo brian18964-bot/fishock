@@ -5104,6 +5104,21 @@ func test_willow_talk() -> void:
 			box = c
 	check(box != null and box.is_open(), "the dialog opens")
 	check(box._text.text.contains("供品"), "it lists the offerings")
+	await frames(2)
+	var vp := box.get_viewport().get_visible_rect()
+	check(vp.encloses(box.panel_rect()), "the whole box on the screen (%s in %s)" % [box.panel_rect(), vp])
+	# (user report: a long list ran off the screen's foot - a longer one still: it grows upward, then
+	# its words scroll, the box whole on the screen)
+	var long := []
+	for i in 30:
+		long.append("・小魚身骨（40 金幣）")
+	box.say("Willow", "\n".join(long))
+	await frames(2)
+	check(vp.encloses(box.panel_rect()) and box._scroll.custom_minimum_size.y <= DialogBox.TEXT_MAX + 0.1,
+		"a long list: the box still whole on the screen, its words scrolling (%s)" % box.panel_rect())
+	box.say("Willow", "短")
+	await frames(2)
+	check(box.panel_rect().size.y < 260.0, "and a short one a small box again (%.0f)" % box.panel_rect().size.y)
 	box.close()
 
 
