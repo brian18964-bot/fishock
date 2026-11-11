@@ -4,6 +4,10 @@ Built here from tubes and squashed spheres: a row of vertebrae along +x, the neu
 ribs curving off them, the skull at the front (its jaw and eye socket), the tail's fan of rays.
 Lying flat (the ribs in the ground's plane), 0.3 m long.
 
+Superseded for the models and pictures in the game by tools/make_meshy_bones.py (the user's Meshy
+skeletons), which uses this one's picture() and halo(); running this again would put the old
+procedural bones back.
+
   bpyenv/bin/python tools/make_fish_bones.py       (repo root)
 
 Writes assets/models/items/bone_<kind>_<size>.glb (kind whole / spine / skull / broken, size

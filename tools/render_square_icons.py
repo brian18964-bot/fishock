@@ -120,6 +120,8 @@ for _n in range(1, 7):
 for _k in ("whole", "spine", "skull", "broken"):
     for _s in ("s", "m", "l", "xl"):
         THINGS["bone_%s_%s" % (_k, _s)] = dict(model="items/bone_%s_%s.glb" % (_k, _s), turn=(78, -28, 0), fill=1.0, ground=ITEM, dim=0.42)
+# (the small broken one - a stub of backbone, its long ribs out to the sides - squarer than the rest)
+THINGS["bone_broken_s"]["fill"] = 0.8
 for _r, _g in (("common", (0.5, 0.56, 0.66)), ("rare", (0.16, 0.34, 0.7)), ("epic", (0.46, 0.2, 0.66))):
     THINGS["glow_bone_" + _r] = dict(model="items/glow_bone_%s.glb" % _r, turn=(78, -28, 0), fill=1.0, ground=_g, dim=0.5)
 

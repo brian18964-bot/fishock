@@ -364,8 +364,8 @@ def tint(img_path, rgb, out_path):
         for x in range(w):
             r, g, b = px[x, y]
             lum = (0.3 * r + 0.59 * g + 0.11 * b) / 255.0
-            v = 0.35 + 0.75 * lum
-            px[x, y] = tuple(int(min(255, 255 * v * (0.25 + 0.75 * c))) for c in rgb)
+            v = 0.2 + 0.7 * lum
+            px[x, y] = tuple(int(min(255, 255 * v * (0.3 + 0.7 * c))) for c in rgb)
     im.save(out_path)
 
 
@@ -431,7 +431,8 @@ def make(name, meshy_dir, work):
     if glow:
         bsdf = next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
         bsdf.inputs["Emission Color"].default_value = (*fb.GLOW[glow], 1.0)
-        bsdf.inputs["Emission Strength"].default_value = 0.7
+        # (lit from within, but not so it washes out the bone's own shading)
+        bsdf.inputs["Emission Strength"].default_value = 0.3
     low.data.materials.clear()
     low.data.materials.append(mat)
     lay_flat(low)
