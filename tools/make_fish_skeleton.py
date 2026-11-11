@@ -8,16 +8,20 @@ through, toothed jaws a little open; a backbone of hourglass vertebrae arching t
 above it swept back (the first ones tall, curling back at the tip, a few forked), flared into webs
 where they meet the bone, short spines between the first few; ribs round the belly; spines under the
 tail; a forked tail of rays fused into two lobes; the pectoral and pelvic fins likewise. Each part
-swept along its curve (blades flattened side to side, ribs round), then all of it fused into one
-surface (a voxel remesh) and smoothed, so the joints blend as a sculpt's do; then brought down to
-about the reference's size. Its bone a procedural material - ivory and tan, stained, darker in the
-crevices.
+swept along its curve (blades and bone plates thinned to sharp rims, ribs round), then all of it
+fused into one fine-grained surface (a voxel remesh), so the joints blend as a sculpt's do; that
+detailed surface brought down to about the reference's size for the model itself, unwrapped, and
+the bone's look baked onto it as textures (user request: sharper skull plates, the colour a texture):
+its colour from a procedural material - ivory and tan, stained, darker in the crevices - and the
+detailed surface's normals, so the rims stay sharp in the light.
 
+  bpyenv/bin/pip install xatlas                               (once: the unwrapper)
   bpyenv/bin/python tools/make_fish_skeleton.py OUT_DIR       (repo root)
 
-Writes OUT_DIR/own_fish.blend and renders OUT_DIR/own_<side|q34|top|front>.png with the light and
-the cameras of the reference's renders (the same directions, scaled to the fish's length). Built
-with its head toward +x and turned at the end to lie as the reference does (head toward -y).
+Writes OUT_DIR/own_fish.glb (the model with its textures), own_fish.blend, own_fish_color.png and
+own_fish_normal.png, and renders OUT_DIR/own_<side|q34|top|front>.png with the light and the
+cameras of the reference's renders (the same directions, scaled to the fish's length). Built with
+its head toward +x and turned to lie as the reference does (head toward -y).
 """
 import math
 import os
@@ -28,8 +32,11 @@ import bmesh  # (after bpy: it's bpy's module)
 from mathutils import Vector
 
 N_VERT = 15          # vertebrae
-VOXEL = 0.003        # the fused surface's grain (m; the fish ~2.15 m long, as the reference)
-TARGET_TRIS = 90000  # (the reference: 93k)
+VOXEL = 0.0018       # the detailed surface's grain (m; the fish ~2.15 m long, as the reference)
+LOW_VOXEL = 0.0028   # the model's own grain, before it's brought down: coarse enough to close the
+                     # millimetre gaps (bone lying on bone) that a decimation would cross
+TARGET_TRIS = 90000  # the model's own triangles (the reference: 93k)
+TEX = 2048           # its textures' size (the reference's: 2048)
 
 
 class Builder:
@@ -39,10 +46,12 @@ class Builder:
         self.verts = []
         self.faces = []
 
-    def sweep(self, pts, rn, rb=None, segs=10, cap=True):
+    def sweep(self, pts, rn, rb=None, segs=10, cap=True, edge=0.0):
         """A tube along `pts` (Vectors), its cross-section an ellipse: `rn` across within the
         fish's own plane (front-back for a spine, up-down for a jaw), `rb` side to side (round if
-        not given). `rn`/`rb` one radius a point. Capped (unless `cap` false) with rounded ends."""
+        not given). `rn`/`rb` one radius a point. Capped (unless `cap` false) with rounded ends.
+        `edge` sharpens the rims across `rn`: 0 an ellipse's round rim, 1 a lens's (the thickness
+        thinning straight to an edge) - a bone plate's or a blade's."""
         rb = rb or rn
         n = len(pts)
         side = Vector((0, 1, 0))
@@ -64,7 +73,8 @@ class Builder:
         for p, t, nrm, bin_, a, b_ in rings:
             for k in range(segs):
                 ang = 2 * math.pi * k / segs
-                self.verts.append(p + nrm * math.cos(ang) * a + bin_ * math.sin(ang) * b_)
+                sn = math.sin(ang)
+                self.verts.append(p + nrm * math.cos(ang) * a + bin_ * math.copysign(abs(sn) ** (1.0 + edge), sn) * b_)
         m = len(rings)
         for i in range(m - 1):
             for k in range(segs):
@@ -124,6 +134,15 @@ def ellipsoid(loc, size, segs=48):
     return ob
 
 
+def lens(ob, cy, half, power=1.8):
+    """A thin ellipsoid (thin along y, centred at y `cy`, `half` thick each side) made a lens: its
+    rim thinned to an edge instead of rounded."""
+    for v in ob.data.vertices:
+        f = (v.co.y - cy) / half
+        v.co.y = cy + math.copysign(abs(f) ** power, f) * half
+    return ob
+
+
 def cut(target, cutter):
     mod = target.modifiers.new("cut", "BOOLEAN")
     mod.operation = "DIFFERENCE"
@@ -160,7 +179,7 @@ def neural(b, i, c, r, u):
     pts = bez(base, mid, tip, 12)
     web = 1.8 - 0.5 * u
     b.sweep(pts, profile(12, [r * web, r * 0.9, r * 0.5, r * 0.36, r * 0.28, r * 0.2, r * 0.04]),
-        profile(12, [r * 0.62, r * 0.42, r * 0.3, r * 0.22, r * 0.17, r * 0.12, r * 0.03]), segs=12)
+        profile(12, [r * 0.62, r * 0.42, r * 0.3, r * 0.22, r * 0.17, r * 0.12, r * 0.03]), segs=14, edge=0.8)
     if i in (1, 3, 5):
         # (forked at the tip: a prong off its back, near the top)
         at = pts[9]
@@ -176,7 +195,7 @@ def neural(b, i, c, r, u):
         s0 = c2 + V(0, 0, r * 0.3)
         sh = 0.11 + 0.03 * (4 - i) / 4
         b.sweep(bez(s0, s0 + V(-0.02, 0, sh * 0.6), s0 + V(-0.07, 0, sh), 7),
-            profile(7, [r * 1.3, r * 0.5, r * 0.25, r * 0.04]), profile(7, [r * 0.45, r * 0.28, r * 0.15, r * 0.03]), segs=10)
+            profile(7, [r * 1.3, r * 0.5, r * 0.25, r * 0.04]), profile(7, [r * 0.45, r * 0.28, r * 0.15, r * 0.03]), segs=12, edge=0.8)
 
 
 def rib(b, i, c, r):
@@ -188,7 +207,7 @@ def rib(b, i, c, r):
         p2 = s0 + V(-0.12 - 0.006 * i, side * 0.03, -ln)
         pts = bez(s0, p1, p2, 12)
         b.sweep(pts, profile(12, [r * 0.75, r * 0.42, r * 0.33, r * 0.27, r * 0.18, r * 0.04]),
-            profile(12, [r * 0.5, r * 0.34, r * 0.28, r * 0.22, r * 0.15, r * 0.035]), segs=10)
+            profile(12, [r * 0.5, r * 0.34, r * 0.28, r * 0.22, r * 0.15, r * 0.035]), segs=12, edge=0.3)
 
 
 def haemal(b, c, r, u):
@@ -199,7 +218,7 @@ def haemal(b, c, r, u):
     mid = c + V(-math.sin(lean * 0.6) * low * 0.5, 0, -math.cos(lean * 0.6) * low * 0.6)
     tip = c + V(-math.sin(lean) * low, 0, -math.cos(lean) * low)
     pts = bez(base, mid, tip, 9)
-    b.sweep(pts, profile(9, [r * 1.4, r * 0.7, r * 0.38, r * 0.24, r * 0.04]), profile(9, [r * 0.6, r * 0.36, r * 0.24, r * 0.16, r * 0.03]), segs=10)
+    b.sweep(pts, profile(9, [r * 1.4, r * 0.7, r * 0.38, r * 0.24, r * 0.04]), profile(9, [r * 0.6, r * 0.36, r * 0.24, r * 0.16, r * 0.03]), segs=14, edge=0.8)
 
 
 def body(b):
@@ -238,7 +257,7 @@ def blade(b, root, d, n, reach, width, thick, rays=3, sag=0.0, steps=14):
     tip = root + d * reach
     mid = root + d * reach * 0.5 + n * sag
     pts = bez(root, mid, tip, steps)
-    b.sweep(pts, profile(steps, [width * 0.55, width, width * 0.8, width * 0.45, 0.003]), profile(steps, [thick, thick * 0.85, thick * 0.7, thick * 0.55, 0.0015]), segs=12)
+    b.sweep(pts, profile(steps, [width * 0.55, width, width * 0.8, width * 0.45, 0.003]), profile(steps, [thick, thick * 0.85, thick * 0.7, thick * 0.55, 0.0015]), segs=14, edge=1.0)
     for k in range(rays):
         off = (k / (rays - 1) - 0.5) * 2.0 if rays > 1 else 0.0
         a = root + n * off * width * 0.35
@@ -327,7 +346,7 @@ def head(b):
             ring.append(V(x, y, z))
             rn.append(0.015 + 0.02 * heavy)
             rb.append(0.012 + 0.008 * heavy)
-        b.sweep(ring, rn, rb, segs=12, cap=False)
+        b.sweep(ring, rn, rb, segs=14, cap=False, edge=0.6)
         # (ridges along the crown, front to back - the frontals' edges)
         for deg, thick in ((80, 0.011), (54, 0.014)):
             th = math.radians(deg)
@@ -338,7 +357,8 @@ def head(b):
                 if hit:
                     pts.append(hit[0] + hit[1] * thick * 0.3)
             if len(pts) > 3:
-                b.sweep(pts, profile(len(pts), [thick * 0.5, thick, thick * 1.1, thick * 0.9]), segs=10)
+                rr = profile(len(pts), [thick * 0.5, thick, thick * 1.1, thick * 0.9])
+                b.sweep(pts, [x * 1.3 for x in rr], [x * 0.7 for x in rr], segs=14, edge=0.8)
     # (the crest: a blade standing on the crown, rising behind into the first spine)
     tops = []
     for k in range(14):
@@ -348,53 +368,57 @@ def head(b):
             tops.append(hit[0])
     h = profile(len(tops), [0.006, 0.018, 0.032, 0.05])
     crest = [p + V(0, 0, hh * 0.6) for p, hh in zip(tops, h)]
-    b.sweep(crest, h, profile(len(tops), [0.006, 0.009, 0.012, 0.015]), segs=10)
+    b.sweep(crest, h, profile(len(tops), [0.006, 0.009, 0.012, 0.015]), segs=14, edge=1.0)
     # (the eye socket, deep and big - right through; a thin wall put back inside it)
     cut(cranium, ellipsoid((eye.x, 0, eye.z), (0.088, 0.5, 0.083), segs=40))
     # (smaller windows: one above-behind the socket, one before it)
     cut(cranium, ellipsoid((0.62, 0, 0.5), (0.028, 0.5, 0.022), segs=24))
     cut(cranium, ellipsoid((0.885, 0, 0.385), (0.024, 0.5, 0.02), segs=24))
     parts.append(cranium)
-    septum = ellipsoid((0.76, 0, 0.4), (0.085, 0.012, 0.08), segs=32)
+    septum = lens(ellipsoid((0.76, 0, 0.4), (0.085, 0.012, 0.08), segs=48), 0.0, 0.012)
     cut(septum, ellipsoid((0.75, 0, 0.385), (0.03, 0.2, 0.034), segs=24))
     parts.append(septum)
     for side in (-1, 1):
         # (the preopercle: a crescent behind the eye, down to the jaw's hinge and forward)
         pre = chain([V(0.66, side * 0.125, 0.53), V(0.625, side * 0.135, 0.4), V(0.6, side * 0.138, 0.26),
                      V(0.61, side * 0.13, 0.17), V(0.67, side * 0.12, 0.135)], 6)
-        b.sweep(pre, profile(len(pre), [0.014, 0.03, 0.034, 0.03, 0.016]), profile(len(pre), [0.01, 0.013, 0.014, 0.012, 0.009]), segs=12)
+        b.sweep(pre, profile(len(pre), [0.014, 0.03, 0.034, 0.03, 0.016]), profile(len(pre), [0.01, 0.013, 0.014, 0.012, 0.009]), segs=14, edge=1.0)
         # (the quadrate: the hinge's post up to the skull)
-        b.sweep(bez(V(0.6, side * 0.115, 0.15), V(0.62, side * 0.12, 0.24), V(0.66, side * 0.115, 0.33), 7), profile(7, [0.024, 0.018, 0.022]), segs=10)
+        b.sweep(bez(V(0.6, side * 0.115, 0.15), V(0.62, side * 0.12, 0.24), V(0.66, side * 0.115, 0.33), 7), profile(7, [0.024, 0.018, 0.022]), profile(7, [0.018, 0.013, 0.016]), segs=12, edge=0.4)
         # (the cleithrum: the crescent the gills close on, down to the throat)
         cle = chain([V(0.475, side * 0.12, 0.5), V(0.455, side * 0.135, 0.38), V(0.45, side * 0.135, 0.24), V(0.475, side * 0.11, 0.12), V(0.52, side * 0.07, 0.07)], 6)
-        b.sweep(cle, profile(len(cle), [0.014, 0.034, 0.04, 0.032, 0.014]), profile(len(cle), [0.008, 0.009, 0.01, 0.009, 0.007]), segs=12)
-        # (the gill plate: bowed out, two holes worn through it)
-        plate = ellipsoid((0.525, side * 0.14, 0.36), (0.075, 0.012, 0.16), segs=48)
+        b.sweep(cle, profile(len(cle), [0.014, 0.034, 0.04, 0.032, 0.014]), profile(len(cle), [0.008, 0.009, 0.01, 0.009, 0.007]), segs=14, edge=1.0)
+        # (the gill plate: bowed out well clear of the skull's side - a surface lying within a few
+        # mm of another crosses it to and fro, each crossing a crease the crevices' darkening finds -
+        # its inner face sunk into the skull, all but the rim; two holes worn through it)
+        plate = lens(ellipsoid((0.525, side * 0.145, 0.36), (0.075, 0.012, 0.16), segs=64), side * 0.145, 0.012)
         for v in plate.data.vertices:
-            q = ((v.co.z - 0.36) / 0.16) ** 2 + ((v.co.x - 0.525) / 0.075) ** 2
-            v.co.y += side * 0.025 * max(0.0, 1.0 - q)
-        for c, s in (((0.53, side * 0.15, 0.45), (0.022, 0.1, 0.027)), ((0.51, side * 0.15, 0.3), (0.026, 0.1, 0.021))):
+            q = max(0.0, 1.0 - ((v.co.z - 0.36) / 0.16) ** 2 - ((v.co.x - 0.525) / 0.075) ** 2)
+            if (v.co.y - side * 0.145) * side < 0:
+                v.co.y -= side * 0.035 * q ** 0.3
+            v.co.y += side * 0.04 * q
+        for c, s in (((0.53, side * 0.16, 0.45), (0.022, 0.1, 0.027)), ((0.51, side * 0.16, 0.3), (0.026, 0.1, 0.021))):
             cut(plate, ellipsoid(c, s, segs=24))
         parts.append(plate)
         # (the subopercle beneath it)
-        parts.append(ellipsoid((0.54, side * 0.135, 0.18), (0.06, 0.011, 0.035), segs=32))
+        parts.append(lens(ellipsoid((0.54, side * 0.135, 0.18), (0.06, 0.011, 0.035), segs=48), side * 0.135, 0.011))
     # (the snout's bar, from the brow down to the jaws' tip)
     b.sweep(bez(V(0.9, 0, 0.42), V(0.99, 0, 0.37), V(1.03, 0, 0.29), 8), profile(8, [0.032, 0.024, 0.02]), profile(8, [0.028, 0.02, 0.018]), segs=12)
     for side in (-1, 1):
         # (the cheek: a plate from the snout under the eye, joining the upper jaw to the skull)
-        cheek = chain([V(1.03, side * 0.02, 0.3), V(0.94, side * 0.07, 0.31), V(0.83, side * 0.105, 0.295)], 6)
-        b.sweep(cheek, profile(len(cheek), [0.016, 0.034, 0.036, 0.024]), profile(len(cheek), [0.007, 0.008, 0.008, 0.007]), segs=12)
+        cheek = chain([V(1.03, side * 0.03, 0.3), V(0.94, side * 0.085, 0.31), V(0.83, side * 0.12, 0.295)], 6)
+        b.sweep(cheek, profile(len(cheek), [0.016, 0.034, 0.036, 0.024]), profile(len(cheek), [0.008, 0.009, 0.009, 0.008]), segs=14, edge=1.0)
     # (the jaws: the upper along the mouth's edge, the lower hinged a little open - an underbite -
     # teeth along both, the front ones fangs)
     hinge = V(0.6, 0, 0.15)
     chin = V(1.075, 0, 0.065)
     for side in (-1, 1):
         prem = chain([V(1.05, side * 0.012, 0.25), V(0.96, side * 0.06, 0.235), V(0.84, side * 0.095, 0.22)], 6)
-        b.sweep(prem, profile(len(prem), [0.016, 0.02, 0.018]), profile(len(prem), [0.012, 0.014, 0.012]), segs=10)
+        b.sweep(prem, profile(len(prem), [0.016, 0.02, 0.018]), profile(len(prem), [0.012, 0.014, 0.012]), segs=12, edge=0.5)
         maxi = chain([V(0.92, side * 0.08, 0.27), V(0.8, side * 0.105, 0.23), V(0.67, side * 0.115, 0.19)], 6)
-        b.sweep(maxi, profile(len(maxi), [0.012, 0.026, 0.034, 0.022]), profile(len(maxi), [0.008, 0.01, 0.011, 0.009]), segs=10)
+        b.sweep(maxi, profile(len(maxi), [0.012, 0.026, 0.034, 0.022]), profile(len(maxi), [0.009, 0.011, 0.012, 0.01]), segs=14, edge=1.0)
         low = chain([V(hinge.x, side * 0.115, hinge.z), V(0.78, side * 0.095, 0.12), V(0.95, side * 0.055, 0.085), V(chin.x, side * 0.01, chin.z)], 6)
-        b.sweep(low, profile(len(low), [0.046, 0.042, 0.032, 0.02]), profile(len(low), [0.018, 0.016, 0.013, 0.011]), segs=12)
+        b.sweep(low, profile(len(low), [0.046, 0.042, 0.032, 0.02]), profile(len(low), [0.018, 0.016, 0.013, 0.011]), segs=14, edge=0.7)
         b.sweep(bez(V(hinge.x - 0.02, side * 0.115, hinge.z), V(hinge.x, side * 0.12, hinge.z + 0.005), V(hinge.x + 0.025, side * 0.115, hinge.z + 0.01), 5),
             [0.03, 0.036, 0.038, 0.034, 0.024], segs=12)
         for j in range(8):
@@ -446,10 +470,12 @@ def bone_material():
         return rp.outputs["Color"]
 
     # (ivory to tan, broad; brown stains, patchy; dirt in the crevices - how shut in a point is)
-    base = noise_ramp(3.0, 6.0, (0.4, (0.55, 0.39, 0.22)), (0.6, (0.88, 0.78, 0.58)))
+    base = noise_ramp(3.0, 6.0, (0.4, (0.52, 0.36, 0.19)), (0.6, (0.85, 0.73, 0.52)))
     stain = noise_ramp(7.0, 10.0, (0.5, (1.0, 1.0, 1.0)), (0.7, (0.7, 0.54, 0.36)))
     ao = nodes.new("ShaderNodeAmbientOcclusion")
     ao.inputs["Distance"].default_value = 0.22
+    # (shut in by its own bone only - not by the lighter model lying on it while it's baked)
+    ao.only_local = True
     aor = nodes.new("ShaderNodeValToRGB")
     aor.color_ramp.elements[0].color = (0.16, 0.1, 0.05, 1)
     aor.color_ramp.elements[1].position = 0.95
@@ -518,40 +544,10 @@ def stage_and_render(ob, out, prefix):
         print("made", sc.render.filepath, flush=True)
 
 
-def main():
-    out = sys.argv[-1]
-    os.makedirs(out, exist_ok=True)
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    b = Builder()
-    body(b)
-    tail(b)
-    fins(b)
-    solids = head(b)
-    swept = b.mesh("swept")
-    for o in bpy.context.scene.objects:
-        o.select_set(o in solids or o == swept)
-    bpy.context.view_layer.objects.active = swept
-    bpy.ops.object.join()
-    fish = bpy.context.view_layer.objects.active
-    fish.name = "own_fish"
-    raw = sum(len(p.vertices) - 2 for p in fish.data.polygons)
-    # (all of it one surface: fused, smoothed - the joints blended)
-    rm = fish.modifiers.new("fuse", "REMESH")
-    rm.mode = "VOXEL"
-    rm.voxel_size = VOXEL
-    rm.adaptivity = 0.0
-    bpy.ops.object.modifier_apply(modifier=rm.name)
-    sm = fish.modifiers.new("soft", "SMOOTH")
-    sm.factor = 0.4
-    sm.iterations = 2
-    bpy.ops.object.modifier_apply(modifier=sm.name)
-    fused = len(fish.data.polygons)
-    dec = fish.modifiers.new("down", "DECIMATE")
-    dec.ratio = min(1.0, TARGET_TRIS / max(1, fused * 2))
-    bpy.ops.object.modifier_apply(modifier=dec.name)
-    # (crumbs the decimation left loose, gone)
+def drop_crumbs(ob, smallest=100):
+    """Loose bits (fewer than `smallest` vertices) - what a decimation leaves - gone."""
     bm = bmesh.new()
-    bm.from_mesh(fish.data)
+    bm.from_mesh(ob.data)
     seen, crumbs = set(), []
     for v in bm.verts:
         if v in seen:
@@ -566,20 +562,206 @@ def main():
                     seen.add(o)
                     stack.append(o)
                     piece.append(o)
-        if len(piece) < 100:
+        if len(piece) < smallest:
             crumbs += piece
     bmesh.ops.delete(bm, geom=crumbs, context="VERTS")
-    bm.to_mesh(fish.data)
+    bm.to_mesh(ob.data)
     bm.free()
-    bpy.ops.object.shade_smooth()
-    tris = sum(len(p.vertices) - 2 for p in fish.data.polygons)
-    print("made own_fish: parts %d tris, fused %d faces, final %d tris" % (raw, fused, tris), flush=True)
+
+
+def unwrap(ob):
+    """`ob` triangulated and unwrapped by xatlas (Godot's own lightmap unwrapper): charts that never
+    overlap, packed tight. (Blender's projection unwrap, tried first, folded a holed plate's chart
+    over the bone behind its hole - the one's texels painted over the other - and its thousands of
+    crumbs of islands left most of the texture empty.) Needs `pip install xatlas` in the bpy env."""
+    import numpy as np
+    import xatlas
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    bmesh.ops.triangulate(bm, faces=bm.faces[:])
+    bm.to_mesh(ob.data)
+    bm.free()
+    me = ob.data
+    verts = np.array([v.co[:] for v in me.vertices], dtype=np.float32)
+    faces = np.array([p.vertices[:] for p in me.polygons], dtype=np.uint32)
+    atlas = xatlas.Atlas()
+    atlas.add_mesh(verts, faces)
+    pack = xatlas.PackOptions()
+    pack.resolution = TEX
+    pack.padding = 4
+    pack.bilinear = True
+    pack.rotate_charts = True
+    atlas.generate(xatlas.ChartOptions(), pack)
+    _vmap, idx, uvs = atlas[0]
+    layer = me.uv_layers.new(name="UVMap")
+    me.uv_layers.active = layer
+    loop_uv = np.zeros((len(me.loops), 2), dtype=np.float32)
+    for i, p in enumerate(me.polygons):
+        for k, li in enumerate(p.loop_indices):
+            loop_uv[li] = uvs[idx[i][k]]
+    layer.data.foreach_set("uv", loop_uv.ravel())
+    print("unwrapped: %d charts, %.0f%% of the texture used" % (atlas.chart_count, 100 * float(atlas.utilization)), flush=True)
+
+
+def outer_only(ob):
+    """Only the outer surface kept: the fine grain seals narrow gaps (a gill plate lying close on the
+    skull) into pockets inside the bone, each its own closed shell - unseen, but a bake reading the
+    surface would find their dark walls. Returns how many pieces went."""
+    only(ob)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bm = bmesh.from_edit_mesh(ob.data)
+    for v in bm.verts:
+        v.select = False
+    max(bm.verts, key=lambda v: v.co.z).select = True
+    bm.select_flush(True)
+    bpy.ops.mesh.select_linked()
+    bpy.ops.mesh.select_all(action="INVERT")
+    gone = sum(1 for v in bm.verts if v.select)
+    bpy.ops.mesh.delete(type="VERT")
+    bpy.ops.object.mode_set(mode="OBJECT")
+    return gone
+
+
+def only(ob, *others):
+    """`ob` the active object, it and `others` alone selected."""
+    for o in bpy.context.scene.objects:
+        o.select_set(o == ob or o in others)
+    bpy.context.view_layer.objects.active = ob
+
+
+def apply(ob, kind, **props):
+    only(ob)
+    mod = ob.modifiers.new(kind.lower(), kind)
+    for k, v in props.items():
+        setattr(mod, k, v)
+    bpy.ops.object.modifier_apply(modifier=mod.name)
+
+
+def bake_textures(high, low, out):
+    """The bone's look baked into two textures on `low`'s UVs, both read off the detailed surface
+    (`high`): its colour (the procedural material's - stains, dirt in the crevices, worked out on the
+    detailed surface, whose crevices are the true ones) and its normals, so the sharp rims and
+    creases still catch the light on the lighter model. Saved as OUT/own_fish_color.png and
+    OUT/own_fish_normal.png."""
+    sc = bpy.context.scene
+    sc.render.engine = "CYCLES"
+    sc.cycles.samples = 32
+    bk = sc.render.bake
+    bk.margin = 8
+    bk.margin_type = "EXTEND"
+    bk.use_selected_to_active = True
+    bk.cage_extrusion = 0.006
+    bk.max_ray_distance = 0.02
+    mat = bone_material()
+    bsdf = next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+    bsdf.inputs["Subsurface Weight"].default_value = 0.0
+    high.data.materials.clear()
+    high.data.materials.append(mat)
+    # (the model only receives: out of every ray, so it shadows nothing on the surface it's read from)
+    for flag in ("visible_camera", "visible_diffuse", "visible_glossy", "visible_transmission", "visible_volume_scatter", "visible_shadow"):
+        setattr(low, flag, False)
+    target = bpy.data.materials.new("bake_target")
+    target.use_nodes = True
+    low.data.materials.clear()
+    low.data.materials.append(target)
+    images = {}
+    for name, colour in (("color", "sRGB"), ("normal", "Non-Color")):
+        img = bpy.data.images.new("own_fish_" + name, TEX, TEX, alpha=False, float_buffer=False)
+        img.colorspace_settings.name = colour
+        node = target.node_tree.nodes.new("ShaderNodeTexImage")
+        node.image = img
+        images[name] = (img, node)
+
+    def bake(name, kind):
+        img, node = images[name]
+        for n in target.node_tree.nodes:
+            n.select = n == node
+        target.node_tree.nodes.active = node
+        only(low, high)
+        bpy.ops.object.bake(type=kind)
+        img.filepath_raw = os.path.join(out, img.name + ".png")
+        img.file_format = "PNG"
+        img.save()
+        print("baked", img.filepath_raw, flush=True)
+        return img
+
+    bk.use_pass_direct = False
+    bk.use_pass_indirect = False
+    bk.use_pass_color = True
+    color = bake("color", "DIFFUSE")
+    bk.normal_space = "TANGENT"
+    normal = bake("normal", "NORMAL")
+    for flag in ("visible_camera", "visible_diffuse", "visible_glossy", "visible_transmission", "visible_volume_scatter", "visible_shadow"):
+        setattr(low, flag, True)
+    return color, normal
+
+
+def textured_material(color, normal):
+    """The model's material as a game would have it: the two textures, nothing worked out live."""
+    m = bpy.data.materials.new("own_fish")
+    m.use_nodes = True
+    nodes, links = m.node_tree.nodes, m.node_tree.links
+    bsdf = next(n for n in nodes if n.type == "BSDF_PRINCIPLED")
+    tc = nodes.new("ShaderNodeTexImage")
+    tc.image = color
+    links.new(tc.outputs["Color"], bsdf.inputs["Base Color"])
+    tn = nodes.new("ShaderNodeTexImage")
+    tn.image = normal
+    nm = nodes.new("ShaderNodeNormalMap")
+    links.new(tn.outputs["Color"], nm.inputs["Color"])
+    links.new(nm.outputs["Normal"], bsdf.inputs["Normal"])
+    bsdf.inputs["Roughness"].default_value = 0.6
+    return m
+
+
+def main():
+    out = sys.argv[-1]
+    os.makedirs(out, exist_ok=True)
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    b = Builder()
+    body(b)
+    tail(b)
+    fins(b)
+    solids = head(b)
+    swept = b.mesh("swept")
+    only(swept, *solids)
+    bpy.ops.object.join()
+    high = bpy.context.view_layer.objects.active
+    high.name = "own_fish_detail"
+    raw = sum(len(p.vertices) - 2 for p in high.data.polygons)
     # (turned as the reference lies: its head toward -y, its back up)
-    fish.rotation_euler = (0, 0, math.radians(-90))
+    high.rotation_euler = (0, 0, math.radians(-90))
     bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
-    fish.data.materials.append(bone_material())
+    # (the detailed surface: all of it fused into one, fine-grained, barely smoothed - the joints
+    # blended as a sculpt's are, the plates' rims kept sharp)
+    apply(high, "REMESH", mode="VOXEL", voxel_size=VOXEL, adaptivity=0.0)
+    apply(high, "SMOOTH", factor=0.3, iterations=1)
+    print("inner pockets: %d vertices dropped" % outer_only(high), flush=True)
+    bpy.ops.object.shade_smooth()
+    fused = len(high.data.polygons)
+    # (the model itself: the detailed surface brought down, unwrapped)
+    low = high.copy()
+    low.data = high.data.copy()
+    low.name = "own_fish"
+    bpy.context.collection.objects.link(low)
+    apply(low, "REMESH", mode="VOXEL", voxel_size=LOW_VOXEL, adaptivity=0.0)
+    apply(low, "SMOOTH", factor=0.4, iterations=1)
+    outer_only(low)
+    apply(low, "DECIMATE", ratio=min(1.0, TARGET_TRIS / max(1, len(low.data.polygons) * 2)))
+    drop_crumbs(low)
+    unwrap(low)
+    only(low)
+    bpy.ops.object.shade_smooth()
+    tris = sum(len(p.vertices) - 2 for p in low.data.polygons)
+    print("made own_fish: parts %d tris, detailed %d faces, model %d tris" % (raw, fused, tris), flush=True)
+    color, normal = bake_textures(high, low, out)
+    bpy.data.objects.remove(high)
+    low.data.materials.clear()
+    low.data.materials.append(textured_material(color, normal))
+    only(low)
+    bpy.ops.export_scene.gltf(filepath=os.path.join(out, "own_fish.glb"), export_format="GLB", use_selection=True)
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out, "own_fish.blend"))
-    stage_and_render(fish, out, "own")
+    stage_and_render(low, out, "own")
     os._exit(0)
 
 
