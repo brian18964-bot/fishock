@@ -7,7 +7,11 @@ The thirteen cover thirteen of the sixteen (scripts/bones.gd: whole / spine / sk
 to huge); the other three are cut from them - a small skull off the small whole skeleton's head, a
 small broken piece out of the middle of a backbone (both ends snapped, ribs knocked off), the big
 broken one the back of the huge skeleton (the head snapped off, half its ribs and some spines
-gone). The glowing bones, the medium skeleton arched three ways (a rarity each) in their colours.
+gone). Then eight more broken ones (user request: two a size, the more broken the less they're
+worth - scripts/bones.gd's COMPLETE): the hardly damaged ("cracked": a few ribs and spines knocked
+off, a jaw or the tail's tip broken) and the pieces ("shard": a tail, a stretch of ribcage, the front
+of a skull, a backbone broken in two). The glowing bones, the medium skeleton arched three ways (a
+rarity each) in their colours.
 
 Each: the model (Meshy's, geometry only) cut as above - the breaks jagged, the knocked-off ribs left
 as stubs - fused into one detailed surface; brought down to a game model, unwrapped, the bone's look
@@ -49,7 +53,10 @@ GAME_LENGTH = 0.3
 
 # Each bone: (the Meshy model, how it's cut). Cuts: ("keep", a, b) keeps the length from a to b
 # (0 the head end, 1 the tail's), its ends snapped where they're cut; ("ribs", share, seed) knocks
-# off that share of the ribs, ("spines", share, seed) of the spines above; ("arch", ...) bends it.
+# off that share of the ribs, ("spines", share, seed) of the spines above; ("split", at, gap, tilt)
+# breaks it in two at `at`, the back piece moved `gap` (a share of the length) and turned `tilt`
+# degrees; ("bite", y, z, size, seed) knocks a jagged chunk out at (y, z) (shares of the length and
+# the height; size a share of the length) - a jaw, a fin; ("arch", ...) bends it.
 BONES = {
     "bone_whole_s": ("Fishbone_Fossil", []),
     "bone_whole_m": ("Fish_Skeleton", []),
@@ -67,11 +74,24 @@ BONES = {
     "bone_broken_m": ("Ancient_Fish_Skeleton", []),
     "bone_broken_l": ("Skeletal_Anglerfish", [("keep", 0.3, 1.0), ("ribs", 0.7, 21), ("spines", 0.35, 12)]),
     "bone_broken_xl": ("Bonefin_Leviathan", []),
+    # (user request: more broken ones - two a size: one hardly damaged, one in pieces)
+    "bone_cracked_s": ("Fishbone_Fossil", [("keep", 0.0, 0.93), ("ribs", 0.4, 31), ("spines", 0.3, 32)]),
+    "bone_cracked_m": ("Fish_Skeleton", [("bite", 0.05, 0.22, 0.09, 33), ("ribs", 0.35, 34)]),
+    "bone_cracked_l": ("Fish_Skeleton_1", [("ribs", 0.45, 35), ("spines", 0.45, 36), ("keep", 0.0, 0.95)]),
+    "bone_cracked_xl": ("Skeletal_Anglerfish", [("bite", 0.04, 0.18, 0.1, 37), ("ribs", 0.3, 38), ("spines", 0.3, 39)]),
+    "bone_shard_s": ("Ancient_Spined_Sea_Fossil", [("keep", 0.6, 1.0)]),
+    "bone_shard_m": ("Fish_Skeleton_1", [("keep", 0.3, 0.6), ("ribs", 0.5, 41), ("spines", 0.5, 42)]),
+    "bone_shard_l": ("Ancient_Predator_Skull", [("keep", 0.0, 0.55), ("bite", 0.35, 0.85, 0.12, 43)]),
+    "bone_shard_xl": ("Skeletal_Fish_Remains", [("keep", 0.12, 0.7), ("ribs", 0.55, 44), ("split", 0.45, 0.24, 7.0)]),
     "glow_bone_common": ("Fish_Skeleton", [("arch", 38.0)]),
     "glow_bone_rare": ("Fish_Skeleton", [("arch", -30.0)]),
     "glow_bone_epic": ("Fish_Skeleton", [("arch_s", 30.0)]),
 }
 CELLS = {"bone_%s_%s" % (k, s): fb.CELLS[k][i] for k in fb.CELLS for i, s in enumerate(fb.SIZES)}
+# (the new broken ones, as Bones.CELLS has them: the hardly damaged as the whole, the pieces small)
+for _i, _s in enumerate(fb.SIZES):
+    CELLS["bone_cracked_" + _s] = fb.CELLS["whole"][_i]
+    CELLS["bone_shard_" + _s] = [(1, 1), (1, 1), (2, 1), (2, 1)][_i]
 for r in fb.GLOW:
     CELLS["glow_bone_" + r] = (2, 1)
 
@@ -255,6 +275,68 @@ def knock(ob, share, seed, below):
     subtract(ob, bpy.context.view_layer.objects.active)
 
 
+def split(ob, at, gap, tilt, seed):
+    """Broken in two at `at` (a share of the length from the head end): a thin jagged slice taken
+    out across, then the back piece moved `gap` (a share of the length) further back, turned `tilt`
+    degrees in its own plane and dropped a little - two pieces lying apart."""
+    lo, hi = bounds(ob)
+    y = lo.y + (hi.y - lo.y) * at
+    nx, nz = 48, 48
+    pts = []
+    for i in range(nx):
+        for j in range(nz):
+            x = lo.x - 0.2 + (hi.x - lo.x + 0.4) * i / (nx - 1)
+            z = lo.z - 0.2 + (hi.z - lo.z + 0.4) * j / (nz - 1)
+            p = Vector((x * 9.0, z * 9.0, seed * 2.3))
+            pts.append(Vector((x, y + 0.03 * noise.fractal(p, 0.6, 2.2, 4), z)))
+    subtract(ob, solid(pts, nx, nz, Vector((0, 0.012, 0))))
+    pivot = Vector((0, y, (lo.z + hi.z) / 2))
+    a = math.radians(tilt)
+    shift = Vector((0, gap * (hi.y - lo.y), -0.02 * (hi.z - lo.z)))
+    # (each loose piece moved whole, by which side of the break its middle lies: the break is
+    # jagged, so a piece behind it can reach forward past the line - moved point by point it would
+    # be torn, its faces stretched across the gap)
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    seen = set()
+    for v0 in bm.verts:
+        if v0 in seen:
+            continue
+        piece, stack = [v0], [v0]
+        seen.add(v0)
+        while stack:
+            u = stack.pop()
+            for e in u.link_edges:
+                w = e.other_vert(u)
+                if w not in seen:
+                    seen.add(w)
+                    stack.append(w)
+                    piece.append(w)
+        if sum(v.co.y for v in piece) / len(piece) > y:
+            for v in piece:
+                d = v.co - pivot
+                v.co = pivot + Vector((d.x, d.y * math.cos(a) - d.z * math.sin(a), d.y * math.sin(a) + d.z * math.cos(a))) + shift
+    bm.to_mesh(ob.data)
+    bm.free()
+    ob.data.update()
+
+
+def bite(ob, fy, fz, size, seed):
+    """A jagged chunk knocked out at (fy, fz) - shares of the length and the height - `size` a share
+    of the length across, right through side to side (a jaw broken off, a fin, a corner of skull)."""
+    lo, hi = bounds(ob)
+    c = Vector((0.0, lo.y + (hi.y - lo.y) * fy, lo.z + (hi.z - lo.z) * fz))
+    r = size * (hi.y - lo.y)
+    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=4, radius=1.0, location=(0, 0, 0))
+    cut = bpy.context.active_object
+    for v in cut.data.vertices:
+        n = v.co.normalized()
+        k = 1.0 + 0.35 * noise.fractal(n * 3.0 + Vector((seed, 0, 0)), 0.6, 2.2, 3)
+        v.co = Vector((n.x * (hi.x - lo.x + 0.4), n.y * r * k, n.z * r * k)) + c
+    cut.data.update()
+    subtract(ob, cut)
+
+
 def arch(ob, curve):
     """Bent in its own plane (y-z) along its length: `curve(t)` the turn (radians a unit length) at
     t (0 the head end .. 1 the tail's) - the backbone a smooth bow, each point carried with it."""
@@ -392,13 +474,17 @@ def make(name, meshy_dir, work):
             knock(ob, c[1], c[2], below=True)
         elif c[0] == "spines":
             knock(ob, c[1], c[2], below=False)
+        elif c[0] == "split":
+            split(ob, c[1], c[2], c[3], seed(name) + 3)
+        elif c[0] == "bite":
+            bite(ob, c[1], c[2], c[3], c[4])
         elif c[0] == "arch":
             deg = c[1]
             arch(ob, lambda t: math.radians(deg) / LENGTH)
         elif c[0] == "arch_s":
             deg = c[1]
             arch(ob, lambda t: math.radians(deg) / LENGTH * 2.2 * math.sin(2 * math.pi * t))
-    if any(c[0] in ("keep", "ribs", "spines") for c in cuts):
+    if any(c[0] in ("keep", "ribs", "spines", "split", "bite") for c in cuts):
         keep_main(ob)
     normalise(ob)
     # (the detailed surface: fused, the pockets out)

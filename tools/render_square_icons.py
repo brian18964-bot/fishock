@@ -117,7 +117,7 @@ for _n in range(1, 7):
     THINGS["lure_%d" % _n] = dict(model="items/lure_%d.glb" % _n, turn=(0, -15, 28), fill=1.0, ground=TACKLE)
 # The altar's rewards (user request): the fish bones and the glowing ones (tools/make_fish_bones.py) -
 # laid flat, seen a little from above, turned along the box's diagonal.
-for _k in ("whole", "spine", "skull", "broken"):
+for _k in ("whole", "cracked", "spine", "broken", "skull", "shard"):
     for _s in ("s", "m", "l", "xl"):
         THINGS["bone_%s_%s" % (_k, _s)] = dict(model="items/bone_%s_%s.glb" % (_k, _s), turn=(78, -28, 0), fill=1.0, ground=ITEM, dim=0.42)
 # (the small broken one - a stub of backbone, its long ribs out to the sides - squarer than the rest)

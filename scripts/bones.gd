@@ -10,30 +10,58 @@ extends RefCounted
 ## one of the ways a night ends in death (three of them). Models and pictures:
 ## tools/make_fish_bones.py, tools/render_square_icons.py.
 ##
-## Ids: bone_<kind>_<size> (kind whole / spine / skull / broken, size s / m / l / xl); a glowing
-## bone gbone_<n>, its own (Profile.glow_bones[id]: {rarity, life_traits, trait_tiers, trait_vals}).
+## Ids: bone_<kind>_<size> (kind below, size s / m / l / xl); a glowing bone gbone_<n>, its own
+## (Profile.glow_bones[id]: {rarity, life_traits, trait_tiers, trait_vals}).
+##
+## User request: two groups - the whole skeletons, and the broken ones, which take in the skull and
+## the headless body too, and two more kinds cut from the models: the hardly damaged ("cracked" - a
+## few ribs gone, a jaw or the tail's tip broken) and the pieces ("shard"). The more broken, the less
+## it's worth (COMPLETE); a whole small one about as dear as a large one hardly broken.
 
-const KINDS := ["whole", "spine", "skull", "broken"]
+const KINDS := ["whole", "cracked", "spine", "broken", "skull", "shard"]
 const SIZES := ["s", "m", "l", "xl"]
 const SIZE_NAMES := {"s": "小", "m": "中", "l": "大", "xl": "超大"}
-const KIND_NAMES := {"whole": "魚骨", "spine": "魚身骨", "skull": "魚頭骨", "broken": "不完整的魚骨"}
-## What the merchant pays (user request: at least 30 gold), by size.
-const PRICES := {"whole": [50, 80, 120, 180], "spine": [40, 60, 85, 120], "skull": [35, 50, 70, 100], "broken": [30, 40, 55, 75]}
-## The bag cells each takes, by size (tools/make_fish_bones.py's CELLS the same).
+const KIND_NAMES := {"whole": "魚骨", "cracked": "殘缺的魚骨", "spine": "魚身骨", "broken": "不完整的魚骨",
+	"skull": "魚頭骨", "shard": "魚骨碎片"}
+## How whole each is, by size: how much of the fish is there and how little of it broken (1 the
+## whole skeleton; the body without its head 0.7; a skull alone 0.3; a piece ~0.15).
+const COMPLETE := {
+	"whole": [1.0, 1.0, 1.0, 1.0],
+	"cracked": [0.85, 0.82, 0.85, 0.8],
+	"spine": [0.7, 0.7, 0.7, 0.7],
+	"broken": [0.3, 0.5, 0.5, 0.6],
+	"skull": [0.3, 0.3, 0.3, 0.3],
+	"shard": [0.15, 0.18, 0.15, 0.2],
+}
+## What the merchant pays for a whole one, by size; a broken one at least FLOOR (user request: at
+## least 30 gold) and above it only a share of the rest - BROKEN_SHARE * completeness ^ BROKEN_CURVE
+## (a break costs most of a bone's worth: a large one hardly broken ~ a small whole one).
+const WHOLE_PRICES := [50, 80, 120, 180]
+const FLOOR := 30
+const BROKEN_SHARE := 0.45
+const BROKEN_CURVE := 1.5
+## The bag cells each takes, by size (tools/make_meshy_bones.py's CELLS the same).
 const CELLS := {
 	"whole": [Vector2i(1, 1), Vector2i(2, 1), Vector2i(3, 1), Vector2i(3, 2)],
+	"cracked": [Vector2i(1, 1), Vector2i(2, 1), Vector2i(3, 1), Vector2i(3, 2)],
 	"spine": [Vector2i(1, 1), Vector2i(2, 1), Vector2i(3, 1), Vector2i(3, 1)],
-	"skull": [Vector2i(1, 1), Vector2i(1, 1), Vector2i(2, 1), Vector2i(2, 2)],
 	"broken": [Vector2i(1, 1), Vector2i(1, 1), Vector2i(2, 1), Vector2i(2, 1)],
+	"skull": [Vector2i(1, 1), Vector2i(1, 1), Vector2i(2, 1), Vector2i(2, 2)],
+	"shard": [Vector2i(1, 1), Vector2i(1, 1), Vector2i(2, 1), Vector2i(2, 1)],
 }
-## The draw: each bone's weight is (1 / its price) ^ DRAW_POWER - the dearest about a twentieth as
-## likely as the cheapest; the extra offerings after the quota (bonus) draw flatter, the dear ones
-## likelier (the gamble of staying on).
-const DRAW_POWER := 1.6
-const BONUS_POWER := 0.6
+## The draw: each bone's weight is (1 / its price) ^ DRAW_POWER - the dearest (the huge whole one)
+## about a sixth as likely as the cheapest, ~1 % of the offerings; the extra offerings after the quota
+## (bonus) draw flatter, the dear ones likelier (the gamble of staying on).
+const DRAW_POWER := 1.0
+const BONUS_POWER := 0.2
+## An offering's colour by its bone's price (and with it its odds of turning evil - GameState's
+## RARITY_EVIL_CHANCE): set so the share of each colour is as it was before the broken ones were
+## added (~73 / 22 / 5 %).
+const EPIC_GOLD := 80
+const RARE_GOLD := 45
 ## The glowing bone: the share of offerings that are one - below even the dearest plain bone's
-## (whole_xl: ~0.96 % of the usual draws, ~3.3 % of the extra ones), the rarest thing on the
-## altar; then its rarity (the fish's: common / rare / epic, by weight).
+## (whole_xl: ~1 % of the usual draws, ~3 % of the extra ones), the rarest thing on the altar; then
+## its rarity (the fish's: common / rare / epic, by weight).
 const GLOW_CHANCE := 0.006
 const GLOW_BONUS_CHANCE := 0.02
 const GLOW_RARITY := {"common": 70.0, "rare": 25.0, "epic": 5.0}
@@ -97,7 +125,25 @@ static func price(id: String) -> int:
 		var d := glow_data(id)
 		return int(GLOW_PRICES.get(str(d.get("rarity", "common")), 150)) if not d.is_empty() else 0
 	var p := parts(id)
-	return int(PRICES[p[0]][p[1]]) if not p.is_empty() else 0
+	if p.is_empty():
+		return 0
+	var c: float = completeness(id)
+	var whole: int = WHOLE_PRICES[p[1]]
+	if c >= 1.0:
+		return whole
+	return maxi(FLOOR, roundi(FLOOR + (whole - FLOOR) * BROKEN_SHARE * pow(c, BROKEN_CURVE)))
+
+
+## How whole a plain bone is (0..1; 1 the whole skeleton; 0 not a plain bone).
+static func completeness(id: String) -> float:
+	var p := parts(id)
+	return float(COMPLETE[p[0]][p[1]]) if not p.is_empty() else 0.0
+
+
+## One of the broken ones (everything but the whole skeletons).
+static func is_broken(id: String) -> bool:
+	var p := parts(id)
+	return not p.is_empty() and p[0] != "whole"
 
 
 static func size_of(id: String) -> Vector2i:
@@ -112,7 +158,7 @@ static func rarity(id: String) -> String:
 	if is_glow(id):
 		return str(glow_data(id).get("rarity", "common"))
 	var gold := price(id)
-	return "epic" if gold >= 110 else ("rare" if gold >= 60 else "common")
+	return "epic" if gold >= EPIC_GOLD else ("rare" if gold >= RARE_GOLD else "common")
 
 
 static func desc(id: String) -> String:
@@ -124,7 +170,9 @@ static func desc(id: String) -> String:
 				FishLife.TIER_NAMES[clampi(int(d.get("trait_tiers", {}).get(t, 1)) - 1, 0, 4)]])
 		lines.append("商人收購 %d 金幣" % price(id))
 		return "\n".join(lines)
-	return "獻祭祭壇回應的魚骨，可以賣給商人（%d 金幣）。越大、越完整越值錢。" % price(id)
+	if is_broken(id):
+		return "獻祭祭壇回應的破碎魚骨（完整度約 %d%%），可以賣給商人（%d 金幣）。越大、越完整越值錢，越碎越不值錢。" % [roundi(completeness(id) * 100.0), price(id)]
+	return "獻祭祭壇回應的完整魚骨，可以賣給商人（%d 金幣）。越大越值錢。" % price(id)
 
 
 ## The thing's def for Items (its tab, cells, picture...).

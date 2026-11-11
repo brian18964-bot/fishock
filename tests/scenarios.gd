@@ -4950,21 +4950,30 @@ func test_bag_gear_and_stats() -> void:
 	gs.carried_fish.erase(f)
 
 
-## User request (the altar's reward): sixteen fish bones - whole, spine, skull, broken, four sizes -
-## sold for at least 30 gold, the bigger and more whole the dearer, in cells by their size, the dearer
-## the rarer to draw; the glowing bone its own kind (the rarest), its rarity drawn after, its stat
-## affixes one fewer than a fish's and counting from the bag; an evil offering none; escaping takes
-## one home.
+## User request (the altar's reward): fish bones - the whole skeletons and the broken ones (the
+## hardly damaged, the headless body, the incomplete, the skull, the pieces), four sizes each - sold
+## for at least 30 gold, the bigger and more whole the dearer (a small whole one about as dear as a
+## large one hardly broken), in cells by their size, the dearer the rarer to draw; the glowing bone
+## its own kind (the rarest), its rarity drawn after, its stat affixes one fewer than a fish's and
+## counting from the bag; an evil offering none; escaping takes one home.
 func test_altar_bones() -> void:
 	var saved := Profile.snapshot()
 	var plain := Bones.all_plain()
-	check(plain.size() == 16 and plain.all(func(id): return Bones.price(id) >= 30 and not Items.def(id).is_empty()),
-		"sixteen bones, each at least 30 gold, each a thing")
-	check(Bones.price("bone_whole_xl") > Bones.price("bone_whole_s") and Bones.price("bone_whole_m") > Bones.price("bone_spine_m")
-		and Bones.price("bone_spine_m") > Bones.price("bone_skull_m") and Bones.price("bone_skull_m") > Bones.price("bone_broken_m"),
-		"bigger and more whole, dearer")
+	check(plain.size() == 24 and plain.all(func(id): return Bones.price(id) >= 30 and not Items.def(id).is_empty()),
+		"twenty-four bones, each at least 30 gold, each a thing")
+	var order := ["bone_whole_m", "bone_cracked_m", "bone_spine_m", "bone_broken_m", "bone_skull_m", "bone_shard_m"]
+	var falling := true
+	for i in order.size() - 1:
+		falling = falling and Bones.price(order[i]) > Bones.price(order[i + 1])
+	check(falling and Bones.price("bone_whole_xl") > Bones.price("bone_whole_s") and Bones.price("bone_cracked_xl") > Bones.price("bone_cracked_s"),
+		"bigger and more whole, dearer; the more broken, the cheaper (%s)" % ", ".join(order.map(func(id): return str(Bones.price(id)))))
+	check(absi(Bones.price("bone_whole_s") - Bones.price("bone_cracked_l")) <= 15 and absi(Bones.price("bone_whole_s") - Bones.price("bone_spine_l")) <= 15,
+		"a small whole one about as dear as a large one hardly broken (%d / %d / %d)" % [Bones.price("bone_whole_s"), Bones.price("bone_cracked_l"), Bones.price("bone_spine_l")])
+	check(not Bones.is_broken("bone_whole_l") and Bones.is_broken("bone_skull_l") and Bones.is_broken("bone_spine_l") and Bones.is_broken("bone_shard_s"),
+		"the skull and the body count as broken")
 	check(Items.size_of("bone_whole_xl") == Vector2i(3, 2) and Items.size_of("bone_broken_s") == Vector2i.ONE, "cells by size")
-	check(Items.name_of("bone_whole_s") == "小魚骨" and Items.name_of("bone_skull_xl") == "超大魚頭骨" and Items.name_of("bone_broken_l") == "大不完整的魚骨", "their names")
+	check(Items.name_of("bone_whole_s") == "小魚骨" and Items.name_of("bone_skull_xl") == "超大魚頭骨" and Items.name_of("bone_broken_l") == "大不完整的魚骨"
+		and Items.name_of("bone_shard_m") == "中魚骨碎片" and Items.name_of("bone_cracked_xl") == "超大殘缺的魚骨", "their names")
 	check(Items.icon("bone_whole_l") != null and Items.square_icon("bone_whole_l") != null and ResourceLoader.exists(Items.model_path("bone_whole_l")), "pictures and a model")
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 11
@@ -4976,8 +4985,8 @@ func test_altar_bones() -> void:
 			glow += 1
 		else:
 			seen[d.bone] = int(seen.get(d.bone, 0)) + 1
-	check(seen.size() == 16, "every bone can come")
-	check(int(seen.get("bone_broken_s", 0)) > int(seen.get("bone_whole_xl", 0)) * 8, "the dearer the rarer (%d cheapest, %d dearest)" % [int(seen.get("bone_broken_s", 0)), int(seen.get("bone_whole_xl", 0))])
+	check(seen.size() == 24, "every bone can come")
+	check(int(seen.get("bone_broken_s", 0)) > int(seen.get("bone_whole_xl", 0)) * 4, "the dearer the rarer (%d cheapest, %d dearest)" % [int(seen.get("bone_broken_s", 0)), int(seen.get("bone_whole_xl", 0))])
 	var rarest := 1 << 30
 	for id in seen:
 		rarest = mini(rarest, int(seen[id]))
