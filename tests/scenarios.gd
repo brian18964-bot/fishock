@@ -9,6 +9,7 @@ const TESTS := [
 	"test_campaign_levels_build",
 	"test_campaign_level_one",
 	"test_catch_feedback",
+	"test_fishing_view",
 	"test_campaign_night_ends_safe_level",
 	"test_campaign_curses",
 	"test_campaign_unlocks_and_achievements",
@@ -5241,6 +5242,43 @@ func test_catch_feedback() -> void:
 	lost.free()
 	gs.reset_run()
 	check(gs.run_catches.is_empty() and gs.run_offered == 0 and gs.run_bone == "", "a new run starts clean")
+
+
+## User request (seeing the fishing): the camera comes in while the traveller's held where they
+## stand - not with the dragon after them; the small picture isn't kept up past the fight, is
+## sharper, and the fight's numbers are written neither on it nor on each other.
+func test_fishing_view() -> void:
+	var rv: RunView3D = RunView3D.active
+	if rv != null and rv.built:
+		await put(away_from_water(200.0))
+		await seconds(1.0)
+		check(rv._close_to() == 1.0 and rv._close > 0.97, "walking: the camera at its usual distance")
+		player().state = Player.State.WAITING
+		check(rv._close_to() == RunView3D.CLOSE, "the float out: it comes in")
+		var bg: BigGhost = main.get_node("BigGhost")
+		var was := bg.mode
+		bg.mode = BigGhost.Mode.CHASE
+		check(rv._close_to() == 1.0, "not with the dragon after them")
+		bg.mode = was
+		player().state = Player.State.IDLE
+		check(rv._close_to() == 1.0, "and out again as they walk on")
+	check(FightPanel.SV_SHARP > FightPanel.SV_SCALE, "the small picture drawn sharper on a big screen")
+	var panel: FightPanel = main.find_children("*", "FightPanel", true, false)[0]
+	panel._linger = FightPanel.LINGER
+	panel._move = "dash"
+	panel._update_area(player(), 0.016)
+	check(not panel._area.visible and panel._linger == 0.0, "the small picture isn't kept up once there's no fight")
+	panel._area.visible = true
+	var box := Rect2(panel._area.position, panel._area.size)
+	panel._pops.clear()
+	var inside := panel._clear_spot(box.get_center(), 18.0)
+	check(not box.has_point(inside), "a number's put beside the picture, not on it")
+	panel._pops.append({"text": "-6", "label": "", "pos": inside, "vel": Vector2.ZERO, "age": 0.0, "life": 1.0,
+		"size": 18, "color": Color.WHITE, "kind": "text", "pop": 0.0})
+	var second := panel._clear_spot(box.get_center(), 18.0)
+	check(absf(second.y - inside.y) >= 18.0, "and the next under it, not through it (%.0f)" % absf(second.y - inside.y))
+	panel._pops.clear()
+	panel._area.visible = false
 
 
 ## The first level end to end: the tutorial follows along, the run scores

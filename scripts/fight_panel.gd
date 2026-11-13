@@ -75,6 +75,8 @@ static var pad_active := false
 static var pad_frame := Vector2.UP
 
 const MOVE_SIZE := Vector2(240, 132)
+const SV_SCALE := 1.25
+const SV_SHARP := 2.5
 ## How far a slide goes (px in the area) to be the whole way: the arrow's length.
 const DRAG_FULL := 80.0
 const ARROW_LEN := 78.0
@@ -230,7 +232,13 @@ func _ensure_view() -> void:
 	if _sv != null or DisplayServer.get_name() == "headless":
 		return
 	_sv = SubViewport.new()
-	_sv.size = Vector2i(MOVE_SIZE * 1.25)
+	# (user request: sharper - it was drawn at 1.25x the panel's size whatever the screen's, its
+	# rod jagged on a big one: at the screen's own scale now, up to SV_SHARP; a phone on the low
+	# settings keeps the cheap one)
+	var k := SV_SCALE
+	if not RunView3D.low_end():
+		k = clampf(float(DisplayServer.window_get_size().x) / 960.0, SV_SCALE, SV_SHARP)
+	_sv.size = Vector2i(MOVE_SIZE * k)
 	_sv.world_3d = get_viewport().world_3d
 	_sv.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	_sv.positional_shadow_atlas_size = 256
@@ -323,6 +331,10 @@ func _update_area(player: Player, delta: float) -> void:
 			_warm_frames = 4
 	else:
 		_warmed = false
+		# (user report: the picture stayed up its two seconds after the line broke or the fish was
+		# landed - the float gone, its camera looked off into the trees: it's only kept up between
+		# a fight's moves, not past the fight)
+		_linger = 0.0
 		if player != null and player.state == Player.State.BITE and player.fishing_mode == Player.FishingMode.LURE:
 			key = "bite"
 			var line := (player.cast_target - player.global_position).normalized()
@@ -434,6 +446,17 @@ func _take_hits(player: Player, delta: float) -> void:
 		pop.age += delta
 		pop.pos += pop.vel * delta
 		pop.vel *= maxf(1.0 - 2.2 * delta, 0.0)
+		# (the float's often under the small picture, and they rise: none drifts onto it)
+		pop.pos = _beside_picture(pop.pos)
+	# (nor onto each other, put aside together: the later under the earlier)
+	for i in _pops.size():
+		for j in i:
+			# (a crit's ring belongs round its number)
+			if _pops[i].kind == "ring" or _pops[j].kind == "ring":
+				continue
+			var need := (float(_pops[i].size) + float(_pops[j].size)) * 0.5 + 2.0
+			if absf(_pops[i].pos.x - _pops[j].pos.x) < 64.0 and absf(_pops[i].pos.y - _pops[j].pos.y) < need:
+				_pops[i].pos.y = _pops[j].pos.y + need
 	_pops = _pops.filter(func(pop): return pop.age < pop.life)
 
 
@@ -515,12 +538,46 @@ func _add_pop(hit: Dictionary) -> void:
 			pop.life = 0.8
 			pop.pop = 0.5
 	_feel(hit)
+	pop.pos = _clear_spot(pop.pos, float(pop.size))
 	_pops.append(pop)
 	if _pops.size() > 30:
 		_pops.pop_front()
 
 
 ## Hurts shown close together go one under another, not on top.
+## User report: a number came up across the move's name ("衝刺！" with "-6" through it) and over
+## the small picture: a new one goes beside the picture, not on it, and under any still fresh
+## where it would have been written.
+func _beside_picture(at: Vector2) -> Vector2:
+	# (nor onto the panel's bars over the picture: one risen there goes aside too, or - no picture
+	# up - back under the panel)
+	var panel := Rect2(CENTER_X - SIZE.x * 0.5, TOP, SIZE.x, SIZE.y).grow(4.0)
+	if _area != null and _area.visible:
+		var box := Rect2(_area.position, _area.size).grow(8.0)
+		if box.has_point(at) or panel.has_point(at):
+			at.x = box.end.x + 30.0 if at.x > box.get_center().x else box.position.x - 30.0
+			at.y = maxf(at.y, box.position.y + 14.0)
+	elif panel.has_point(at):
+		at.y = panel.end.y + 14.0
+	return at
+
+
+func _clear_spot(at: Vector2, size: float) -> Vector2:
+	at = _beside_picture(at)
+	for _pass in 4:
+		var moved := false
+		for other in _pops:
+			if other.age > 0.6 or other.kind == "ring":
+				continue
+			var need := (size + float(other.size)) * 0.5 + 2.0
+			if absf(other.pos.x - at.x) < 64.0 and absf(other.pos.y - at.y) < need:
+				at.y = other.pos.y + need
+				moved = true
+		if not moved:
+			break
+	return at
+
+
 func _hurt_stack() -> float:
 	var n := 0
 	for q in _pops:

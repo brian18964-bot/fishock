@@ -793,6 +793,11 @@ uniform float ice = 0.0;
 // (user report: the water's flecks bright on a dark night - the sky in it and the moon's glints as
 // strong as the moon is now: _update_light sets it, 1 the evening's first light)
 uniform float moon = 1.0;
+// (user request: the water's black from the camera - where the float is can't be told from the
+// bank: the traveller's own lamp shows in it. A warm sheen and glints on the waves round where
+// they stand, as strong as the lamp burns - the night away from them as dark as it was.)
+uniform vec3 lamp_at = vec3(0.0);
+uniform float lamp = 0.0;
 varying vec3 wpos;
 void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
@@ -819,6 +824,13 @@ void fragment() {
 	float g = pow(max(dot(r, m), 0.0), 140.0);
 	// (a faint night sky in it, more at a glance; the moon's glints)
 	EMISSION = vec3(0.03, 0.045, 0.07) * fres * moon + vec3(0.6, 0.7, 0.85) * g * 0.35 * moon * moon + edge_tint * line * 0.035 * mix(0.35, 1.0, moon);
+	vec3 to_lamp = lamp_at - wpos;
+	float near = lamp * exp(-dot(to_lamp.xz, to_lamp.xz) / 70.0);
+	if (near > 0.003) {
+		vec3 lv = normalize((VIEW_MATRIX * vec4(normalize(to_lamp), 0.0)).xyz);
+		float lg = pow(max(dot(r, lv), 0.0), 28.0);
+		EMISSION += vec3(1.0, 0.76, 0.42) * near * (0.06 + 0.14 * fres + lg * 0.9) + edge_tint * line * 0.3 * near;
+	}
 	ROUGHNESS = 0.06;
 	SPECULAR = 0.75;
 	METALLIC = 0.15;
@@ -4138,6 +4150,12 @@ func _bendable(rod: Node3D) -> void:
 	rod.set_meta("bend_meshes", meshes)
 
 
+## The body in a fight: leant back this much of BODY_LEAN as a pull's answered, forward this much
+## more as one drags unanswered.
+const BODY_BACK := 1.3
+const BODY_DRAG := 1.6
+
+
 ## How hard the rod's bent this frame (the fish's pull, as the 2D rod).
 func _bend_rod(delta: float) -> void:
 	_bend_time += delta
@@ -4177,6 +4195,13 @@ func _bend_rod(delta: float) -> void:
 		var flat := Vector2(to.x, to.z).normalized()
 		var share := bend / BEND_MAX
 		lean = flat * BODY_LEAN * share
+		# (user request: the fight in the body too - dragged forward as the fish pulls, thrown
+		# back against it as the pull's answered or the fish is hauled in)
+		var fight2: FishFight = player.fight if player.state == Player.State.REELING else null
+		if fight2 != null and (fight2.answering or fight2.haul_left > 0.0):
+			lean = -flat * BODY_LEAN * BODY_BACK * maxf(share, 0.6)
+		elif fight2 != null and fight2.pull_dir != Vector2.ZERO:
+			lean *= BODY_DRAG
 		var sway := BODY_SWAY * (share * 0.5 + (1.0 if run else 0.0) * 0.6 + _visual.yank)
 		lean += Vector2(-flat.y, flat.x) * sin(_bend_time * 5.3) * sway + flat * sin(_bend_time * 8.1) * sway * 0.5
 	_lean = _lean.lerp(lean, 1.0 - exp(-8.0 * delta))
@@ -4659,7 +4684,8 @@ func _line_and_float() -> void:
 	fm.albedo_color = Color(0.95, 0.25, 0.15)
 	fm.emission_enabled = true
 	fm.emission = Color(1.0, 0.35, 0.2)
-	fm.emission_energy_multiplier = 0.5
+	# (user request: the float a point of light on the dark water - it was 0.5)
+	fm.emission_energy_multiplier = 1.6
 	_float_body.material_override = fm
 	_float.add_child(_float_body)
 	var tip := MeshInstance3D.new()
@@ -5546,6 +5572,11 @@ func _update_light() -> void:
 		on = on and (beam or lamp_lit() or warming)
 		_lamp.visible = on and not beam
 		_beam.visible = on and beam
+		# (the lamp in the water round the traveller - WATER_SHADER's `lamp`)
+		var sheen := clampf(lantern.energy, 0.0, 1.2) if on else 0.0
+		for wm in _water_mats:
+			(wm as ShaderMaterial).set_shader_parameter("lamp", sheen)
+			(wm as ShaderMaterial).set_shader_parameter("lamp_at", pivot.global_position + Vector3(0, 1.1, 0))
 		if on:
 			var half := 128.0
 			if lantern.texture != null:
@@ -6167,6 +6198,26 @@ func _dodge_buttons(delta: float) -> void:
 
 var _shake_rng := RandomNumberGenerator.new()
 
+## User request (the traveller's too small to watch): the camera comes in to CLOSE of its usual
+## distance while they're at something that holds them where they stand - the float out, a fish
+## on, gathering or digging - so the fight and the hands show; back out as they walk on. It still
+## draws back as far as the shot needs to hold the float. Not while the dragon's after them (or
+## sniffing about): then they need the ground round them.
+const CLOSE := 0.68
+const CLOSE_EASE := 2.2
+var _close := 1.0
+
+
+func _close_to() -> float:
+	if _intro_t >= 0.0 or GameState.run_over:
+		return 1.0
+	var dragon := main.get_node_or_null("BigGhost") as BigGhost
+	if dragon != null and dragon.mode in [BigGhost.Mode.SUSPICIOUS, BigGhost.Mode.CHASE, BigGhost.Mode.SEARCH, BigGhost.Mode.GRAB]:
+		return 1.0
+	if player.state in [Player.State.WAITING, Player.State.BITE, Player.State.REELING] or player.channeling():
+		return CLOSE
+	return 1.0
+
 
 ## Up and behind it at CAMERA_PITCH: as far back as the 2D camera's zoom
 ## says, aimed where it frames (main.gd), and shaken when it is.
@@ -6190,9 +6241,10 @@ func _update_camera(delta: float) -> void:
 	var vp := get_viewport().get_visible_rect().size
 	var tan_v := tan(deg_to_rad(CAMERA_FOV * 0.5))
 	var tan_h := tan_v * vp.x / maxf(vp.y, 1.0)
-	var need := maxf((half.x + FRAME_ROOM.x) / tan_h,
-		(half.y + FRAME_ROOM.y) * sin(deg_to_rad(CAMERA_PITCH)) / tan_v)
-	var want := clampf(need, CAMERA_DISTANCE, MAX_DISTANCE)
+	_close = lerpf(_close, _close_to(), minf(1.0, delta * CLOSE_EASE))
+	var need := maxf((half.x + FRAME_ROOM.x * _close) / tan_h,
+		(half.y + FRAME_ROOM.y * _close) * sin(deg_to_rad(CAMERA_PITCH)) / tan_v)
+	var want := clampf(need, CAMERA_DISTANCE * _close, MAX_DISTANCE)
 	_dist = lerpf(_dist, want, minf(1.0, delta * FRAME_EASE))
 	var dist := _dist * (1.0 + _dodge * DODGE_BACK)
 	var pitch := deg_to_rad(CAMERA_PITCH)
