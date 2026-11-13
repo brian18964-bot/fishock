@@ -550,6 +550,7 @@ func _build() -> void:
 	player.cast_started.connect(func(at: Vector2, _t): _splash_ring(at))
 	player.ability_triggered.connect(ability_fx)
 	player.fight_event.connect(func(kind: String): if kind == "swipe_hit": _kick = 1.0)
+	player.catch_success.connect(_show_landed)
 	built = true
 	if intro:
 		_intro_t = 0.0
@@ -2030,6 +2031,74 @@ func _splash(fx: SplashFx) -> void:
 				fish.position = from + dir * 0.8 * t + Vector3.UP * 0.55 * sin(t * PI)
 				fish.rotation.z = (t - 0.5) * 1.6, 0.0, 1.0, 0.7)
 		tw.tween_callback(fish.queue_free)
+
+
+## User request (the catch's moment): a fish landed comes out of the water where the float was -
+## a splash, the fish itself (its species' model, its own length) thrown up along the line in an
+## arc and down to the traveller's hands, into the bag. No pose of the traveller's and no wait:
+## they're free to walk off as it flies (there are ghosts about).
+const LAND_TIME := 0.8
+## Its length is shown this much over life size: it's seen from far above.
+const LAND_SHOW := 1.5
+const LAND_LENGTHS := Vector2(0.35, 1.9)
+
+
+func _show_landed(fish: Dictionary) -> void:
+	if not built or str(fish.get("name", "")) == "心臟":
+		return
+	var id := str(fish.get("id", ""))
+	var species := id if FishModel.has_model(id) else "carp"
+	var mesh := FishModel.mesh(species)
+	if mesh == null:
+		return
+	# (built here, not by FishModel.make: that rolls the game's dice, and a picture mustn't)
+	var body := MeshInstance3D.new()
+	body.name = "LandedFish"
+	body.mesh = mesh
+	body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var mat := ShaderMaterial.new()
+	mat.shader = FishModel.SWIM
+	var skin_path: String = FishModel.SKINS % species
+	mat.set_shader_parameter("skin", load(skin_path) if ResourceLoader.exists(skin_path) else null)
+	mat.set_shader_parameter("sway", 0.085)
+	body.material_override = mat
+	add_child(body)
+	var box := mesh.get_aabb()
+	var long := maxf(maxf(box.size.x, box.size.z), 0.01)
+	var length := clampf(float(fish.get("length", 40.0)) / 100.0 * LAND_SHOW, LAND_LENGTHS.x, LAND_LENGTHS.y)
+	var k := length / long
+	var from := Vector3(_float.global_position.x, WATER_Y, _float.global_position.z)
+	var start := pivot.global_position
+	if Vector2(from.x - start.x, from.z - start.z).length() > 30.0:
+		# (no float to speak of - a catch given, not fought for: from just in front)
+		from = start - pivot.global_basis.z * 2.0
+		from.y = WATER_Y
+	var drops := CPUParticles3D.new()
+	_splash_drops(drops, from + Vector3(0, 0.02, 0), 2.6)
+	add_child(drops)
+	get_tree().create_timer(1.2).timeout.connect(drops.queue_free)
+	_ring_at(from + Vector3(0, 0.01, 0))
+	var high := clampf(Vector2(from.x - start.x, from.z - start.z).length() * 0.35, 0.9, 2.2)
+	var tw := create_tween()
+	tw.tween_method(func(t: float):
+		if not is_instance_valid(body) or not is_instance_valid(pivot):
+			return
+		# (to where the traveller is now, not where they were)
+		var to := pivot.global_position + Vector3(0, 1.05, 0)
+		var e := 1.0 - pow(1.0 - t, 1.6)
+		var at := from.lerp(to, e) + Vector3.UP * high * sin(e * PI)
+		var ahead := from.lerp(to, minf(e + 0.05, 1.0)) + Vector3.UP * high * sin(minf(e + 0.05, 1.0) * PI)
+		var dir := ahead - at
+		body.global_position = at
+		if dir.length() > 0.001:
+			# (the models lie along +x: head first up the line, thrashing as it comes)
+			var yaw := atan2(-dir.z, dir.x)
+			var pitch := atan2(dir.y, Vector2(dir.x, dir.z).length())
+			body.global_basis = Basis.from_euler(Vector3(sin(t * 34.0) * 0.5, yaw, pitch))
+		# (shrinking into the bag over the last of the way)
+		body.scale = Vector3.ONE * k * clampf((1.0 - t) / 0.18, 0.0, 1.0)
+		mat.set_shader_parameter("beat", t * 30.0), 0.0, 1.0, LAND_TIME)
+	tw.tween_callback(body.queue_free)
 
 
 ## Stands up the pictures (and lights) under `n` that nothing else shows.

@@ -104,6 +104,7 @@ func _ready() -> void:
 		var done_l := UiKit.label(words, 15, INK, true, 0)
 		done_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		col.add_child(done_l)
+	col.add_child(summary(success))
 	var body := UiKit.label(message.strip_edges(), 14, INK_DIM, false, 0)
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.custom_minimum_size.x = 500
@@ -144,6 +145,94 @@ func _ready() -> void:
 	scroll.grow_vertical = Control.GROW_DIRECTION_BOTH
 	scroll.modulate.a = 0.0
 	create_tween().tween_property(scroll, "modulate:a", 1.0, 0.4)
+
+
+## User request (the run's end): what the run was, for the scroll - a level's or a free run's -
+## the fish landed (the best first, each in its rarity's ring), the biggest of them, how many went
+## to the altar and the quota they made, the bone brought home, and the gold of it all.
+const SUMMARY_SLOT := 42.0
+const SUMMARY_SHOWN := 9
+
+
+static func summary(won: bool) -> Control:
+	var col := VBoxContainer.new()
+	col.name = "RunSummary"
+	col.add_theme_constant_override("separation", 5)
+	var fish: Array = GameState.run_catches.duplicate()
+	fish.sort_custom(func(a, b): return float(a.get("value", 0.0)) > float(b.get("value", 0.0)))
+	var head := UiKit.label("本場漁獲 %d 條　獻祭 %d 條　額度 %d / %d" % [fish.size(), GameState.run_offered,
+		int(GameState.quota_progress), int(GameState.quota_target)], 15, INK, true, 0)
+	head.name = "Counts"
+	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(head)
+	if not fish.is_empty():
+		var row := FishRow.new()
+		row.name = "Fish"
+		row.fish = fish
+		var shown := mini(fish.size(), SUMMARY_SHOWN)
+		row.custom_minimum_size = Vector2(shown * (SUMMARY_SLOT + 4.0) + (40.0 if fish.size() > shown else 0.0), SUMMARY_SLOT)
+		row.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		col.add_child(row)
+		var big: Dictionary = fish[0]
+		for f in fish:
+			if float(f.get("length", 0.0)) > float(big.get("length", 0.0)):
+				big = f
+		var words := "最大的一條：%s" % str(big.get("name", "魚"))
+		if FishData.size_text(big) != "":
+			words += "　" + FishData.size_text(big)
+		var best := UiKit.label(words, 14, INK_DIM, false, 0)
+		best.name = "Biggest"
+		best.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		col.add_child(best)
+	if won and GameState.run_bone != "":
+		var id := GameState.run_bone
+		var bone := HBoxContainer.new()
+		bone.name = "Bone"
+		bone.alignment = BoxContainer.ALIGNMENT_CENTER
+		bone.add_theme_constant_override("separation", 8)
+		var pic := TextureRect.new()
+		pic.texture = Items.square_icon(id)
+		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		pic.custom_minimum_size = Vector2(SUMMARY_SLOT + 6.0, SUMMARY_SLOT + 6.0)
+		bone.add_child(pic)
+		var name := Items.name_of(id)
+		if Bones.is_glow(id):
+			name += "（%s）" % UiKit.rarity_name(Bones.rarity(id))
+		bone.add_child(UiKit.label("帶回：%s（%d 金幣）" % [name, Bones.price(id)], 15, Color(0.45, 0.3, 0.02), true, 0))
+		col.add_child(bone)
+	var res: Dictionary = Campaign.result
+	var gold := int(res.get("gold", 0)) + int(res.get("curse_gold", 0))
+	for a in res.get("achievements", []):
+		gold += int(Campaign.achievement(a)[4])
+	if gold > 0:
+		var g := UiKit.label("本場金幣 +%d" % gold, 16, Color(0.45, 0.3, 0.02), true, 0)
+		g.name = "Gold"
+		g.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		col.add_child(g)
+	return col
+
+
+## The run's fish in a row of slots (summary()).
+class FishRow extends Control:
+	var fish: Array = []
+
+	func _draw() -> void:
+		var shown := mini(fish.size(), CampaignResults.SUMMARY_SHOWN)
+		for i in shown:
+			var f: Dictionary = fish[i]
+			var r := Rect2(Vector2(i * (CampaignResults.SUMMARY_SLOT + 4.0), 0), Vector2.ONE * CampaignResults.SUMMARY_SLOT)
+			UiKit.draw_slot(self, r, UiKit.fish_rarity(f))
+			var tex := FishData.icon(f.get("id", ""), f.get("name", ""))
+			if tex != null:
+				var room := r.grow(-4.0)
+				var k := minf(room.size.x / tex.get_width(), room.size.y / tex.get_height())
+				var sz := Vector2(tex.get_size()) * k
+				draw_texture_rect(tex, Rect2(room.get_center() - sz / 2.0, sz), false)
+		if fish.size() > shown:
+			UiKit.draw_text(self, Vector2(shown * (CampaignResults.SUMMARY_SLOT + 4.0) + 4.0, CampaignResults.SUMMARY_SLOT * 0.5 + 6.0),
+				"+%d" % (fish.size() - shown), 16, CampaignResults.INK, HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 
 
 ## Straight into level `id` (no walk back through the camp).

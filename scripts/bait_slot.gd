@@ -52,6 +52,8 @@ func _ready() -> void:
 	_slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_slot.add_to_group("hud_block")
 	add_child(_slot)
+	# (user request: the bait's slot not in a level that hasn't come to it yet - the rod stays)
+	_slot.visible = not Campaign.hud_hidden("bait")
 	GameState.run_ended.connect(func(_won, _message):
 		close_picker()
 		visible = false)
@@ -59,6 +61,9 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_slot.queue_redraw()
+	# (user report: the catch's card lies over the slot, the bait's count showing through it - the
+	# slot stands back while a card's up)
+	_slot.modulate.a = move_toward(_slot.modulate.a, 0.0 if CatchCard.showing else 1.0, delta * 6.0)
 	if _deco.visible:
 		_deco.queue_redraw()
 	var p := get_tree().get_first_node_in_group("player") as Player
@@ -107,7 +112,7 @@ func _player() -> Player:
 
 
 func _input(event: InputEvent) -> void:
-	if not visible:
+	if not visible or not _slot.visible:
 		return
 	if _picker != null:
 		if event is InputEventScreenTouch or event is InputEventScreenDrag:

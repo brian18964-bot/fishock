@@ -15,6 +15,7 @@ const ALERT_AT := 0.30
 ## readable behind them - and the eye below the cards, not above)
 const AT := Vector2(8, 196)
 const CARD := Vector2(182, 48)
+
 const GAP := 5.0
 const MAX_SHOWN := 4
 const REFRESH := 0.25
@@ -35,13 +36,18 @@ func _init() -> void:
 	layer = 5
 
 
+## Where the cards start: AT, or in a level under its objectives (CampaignHud).
+static func _at() -> Vector2:
+	return Vector2(AT.x, maxf(AT.y, CampaignHud.panel_bottom() + 6.0))
+
+
 func _ready() -> void:
 	_root = Control.new()
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_root)
 	_eye = Eye.new()
-	_eye.position = AT + Vector2(0, 0)
+	_eye.position = _at() + Vector2(0, 0)
 	_eye.size = Vector2(30, 26)
 	_eye.visible = false
 	_eye.pressed.connect(_toggle_hidden)
@@ -114,9 +120,9 @@ func _layout() -> void:
 	for uid in _cards:
 		var card: AlertCard = _cards[uid]
 		card.visible = not _hidden and i < MAX_SHOWN
-		card.position = AT + Vector2(0, i * (CARD.y + GAP))
+		card.position = _at() + Vector2(0, i * (CARD.y + GAP))
 		i += 1
-	_eye.position = AT + Vector2(0, 0.0 if _hidden else minf(i, MAX_SHOWN) * (CARD.y + GAP))
+	_eye.position = _at() + Vector2(0, 0.0 if _hidden else minf(i, MAX_SHOWN) * (CARD.y + GAP))
 	if _detail != null:
 		if _hidden or not _cards.has(_detail_uid) or not (_cards[_detail_uid] as Control).visible:
 			_detail.queue_free()

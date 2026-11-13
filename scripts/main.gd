@@ -257,6 +257,13 @@ func _ready() -> void:
 	var card := CatchCard.new()
 	add_child(card)
 	player.catch_success.connect(func(fish): card.show_catch(fish, player.is_epic_catch))
+	# (the run's end lists them - CampaignResults.summary)
+	player.catch_success.connect(func(fish):
+		if str(fish.get("name", "")) != "心臟":
+			var kept: Dictionary = fish.duplicate()
+			if player.is_epic_catch:
+				kept["legend"] = true
+			GameState.run_catches.append(kept))
 	# User request: a fish run down to 30% pins a small card down the left.
 	add_child(FishAlerts.new())
 	# Covers opening this scene directly (e.g. F6 in the editor) without

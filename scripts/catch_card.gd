@@ -13,6 +13,16 @@ extends CanvasLayer
 
 const HOLD := 1.3
 const LEGEND_GOLD := Color(1.0, 0.82, 0.35)
+## User request: the card's edge in the catch's rarity colour, a glow of it behind - the stronger
+## the rarer (none for a common one).
+const GLOW := {"common": 0.0, "uncommon": 0.22, "rare": 0.34, "epic": 0.46, "legend": 0.6}
+const EDGE_WIDTH := 2
+
+## A card's up (BaitSlot's slot, which it lies over, stands back for it).
+static var showing := false
+
+var _edge := StyleBoxFlat.new()
+var _edge_color := Color(0, 0, 0, 0)
 
 var _panel: PanelContainer
 var _glow: TextureRect
@@ -27,6 +37,7 @@ var _tween: Tween
 
 func _init() -> void:
 	layer = 7
+	showing = false
 
 
 ## Dressed as an MMO's loot toast (user request): a dark frame, the fish in
@@ -42,6 +53,13 @@ func _ready() -> void:
 	_panel.add_theme_stylebox_override("panel", UiKit.frame_box(true))
 	_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_panel.self_modulate = Color(1, 1, 1, 0.9)
+	_edge.draw_center = false
+	_edge.set_border_width_all(EDGE_WIDTH)
+	_edge.set_corner_radius_all(5)
+	_panel.draw.connect(func():
+		if _edge_color.a > 0.0:
+			_edge.border_color = _edge_color
+			_panel.draw_style_box(_edge, Rect2(Vector2.ZERO, _panel.size).grow(-2.0)))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
 	_pic = FishSlot.new()
@@ -120,6 +138,10 @@ func show_catch(fish: Dictionary, legend: bool) -> void:
 		_measure.visible = true
 		for t in fish.get("life_traits", []):
 			_tags.add_child(_tag(("▼" if FishLife.is_bad(t) else "") + FishLife.TRAITS[t].name, FishLife.trait_color(fish, t).darkened(0.25)))
+	_edge_color = Color(UiKit.rarity_color(rarity), 0.95) if rarity != "common" else Color(0, 0, 0, 0)
+	_glow.modulate = Color(UiKit.rarity_color(rarity), 0.0)
+	var glow_a: float = GLOW.get(rarity, 0.0)
+	_panel.queue_redraw()
 	_panel.reset_size()
 	var view := get_viewport().get_visible_rect().size
 	# Right-aligned over the right stick (under the energy panel).
@@ -130,18 +152,21 @@ func show_catch(fish: Dictionary, legend: bool) -> void:
 	_panel.modulate.a = 0.0
 	_panel.visible = true
 	_untouchable(_panel)
-	_glow.size = _panel.size * Vector2(1.4, 2.2)
+	showing = true
+	_glow.size = _panel.size * Vector2(1.5, 2.4)
 	_glow.position = at + _panel.size * 0.5 - _glow.size * 0.5
 	_glow.modulate.a = 0.0
 	_tween = create_tween()
 	_tween.tween_property(_panel, "position", at, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_tween.parallel().tween_property(_panel, "modulate:a", 1.0, 0.2)
-	if rarity == "legend":
-		_tween.parallel().tween_property(_glow, "modulate:a", 0.55, 0.3)
+	if glow_a > 0.0:
+		_tween.parallel().tween_property(_glow, "modulate:a", glow_a, 0.3)
 	_tween.tween_interval(HOLD + (1.2 if rarity == "legend" else 0.0))
 	_tween.tween_property(_panel, "modulate:a", 0.0, 0.3)
 	_tween.parallel().tween_property(_glow, "modulate:a", 0.0, 0.3)
-	_tween.tween_callback(func(): _panel.visible = false)
+	_tween.tween_callback(func():
+		_panel.visible = false
+		showing = false)
 
 
 ## A small plaque (NEW, BIGGER).

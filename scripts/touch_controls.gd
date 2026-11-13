@@ -110,6 +110,9 @@ func _ready() -> void:
 	_skill_view.position = _skill_center
 	_skill_view.radius = SKILL_RADIUS
 	add_child(_skill_view)
+	# (user request: a level shows only the buttons it has come to - Campaign.hud_hidden)
+	_lure_view.visible = not Campaign.hud_hidden("lure")
+	_skill_view.visible = not Campaign.hud_hidden("lamp")
 	_slider = BrightnessSlider.new()
 	_slider.size = SLIDER_SIZE
 	_slider.visible = false
@@ -182,7 +185,7 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	if event is InputEventScreenTouch:
-		if event.pressed and _skill_touch == -1 and event.position.distance_to(_skill_center) <= SKILL_RADIUS:
+		if event.pressed and _skill_touch == -1 and _skill_view.visible and event.position.distance_to(_skill_center) <= SKILL_RADIUS:
 			_skill_touch = event.index
 			var lantern := _lantern()
 			if lantern != null and not lantern.lit:
@@ -250,7 +253,7 @@ func _lure_input(event: InputEventScreenTouch) -> bool:
 		_lure_release(true)
 	if event.pressed and _lure_touch == -2 and event.index == 0:
 		_lure_touch = -1
-	if event.pressed and _lure_touch == -1 and event.position.distance_to(_lure_center) <= LURE_RADIUS + 4.0:
+	if event.pressed and _lure_touch == -1 and _lure_view.visible and event.position.distance_to(_lure_center) <= LURE_RADIUS + 4.0:
 		_lure_touch = event.index
 		if GameState.lure_index() < 0:
 			player.pick_lure_fish()

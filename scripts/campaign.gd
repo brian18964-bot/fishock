@@ -45,7 +45,7 @@ const DEFAULT_RULES := {
 	"ghosts": 1, "meddle": 4, "big_ghost": true, "big_wake": -1, "water_ghost": 1.0, "heart": 1.0,
 	"hunters": true, "beasts": {}, "weather": "random", "rocks": [8, 10], "critters": 6,
 	"hotspot": true, "bait": -1, "escalate": true, "evil": true, "night_fails": false, "safe": false,
-	"tutorial": "", "gift": {},
+	"tutorial": "", "gift": {}, "hide": [],
 }
 
 const CHAPTERS := [
@@ -63,16 +63,18 @@ const LEVELS := [
 	# ---- Chapter 1: 初渡 - the tutorial: small, safe, one thing a level.
 	{"id": "1-1", "chapter": 1, "name": "第一竿", "teach": "走路、拋竿、揚竿、收線、獻祭、離開",
 		"intro": "湖的另一邊很安靜。先釣一條魚，交給祭壇，再從亮起來的渡石回去。",
-		"rules": {"map": "S", "theme": "forest_pine", "ponds": [1, 0], "day": 0.0, "quota": 1.0, "drain": 0.0,
+		"rules": {"hide": ["lure", "quick", "energy", "lamp", "bait"], "map": "S", "theme": "forest_pine", "ponds": [1, 0], "day": 0.0, "quota": 1.0, "drain": 0.0,
 			"ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear",
 			"rocks": [0, 0], "critters": 0, "hotspot": false, "oil": false, "escalate": false, "evil": false,
 			"safe": true, "tutorial": "first_cast"},
-		"stars": [{"stat": "lost_fish", "max": 0, "text": "沒有讓魚跑掉"},
+		# (user request: the first level's ★★ can't be lost in its first minute - a missed strike
+		# took it; a second fish instead)
+		"stars": [{"stat": "catch", "min": 2, "text": "釣到兩條魚"},
 			{"stat": "elapsed", "max": 180, "text": "3 分鐘內離開"}],
 		"reward": {"gold": 40}},
 	{"id": "1-2", "chapter": 1, "name": "遠與近", "teach": "拋得越遠魚越大、張力條",
 		"intro": "近岸的小魚好釣，但遠處的大魚值得多。張力太緊線會斷。",
-		"rules": {"map": "S", "theme": "forest_pine", "ponds": [1, 0], "day": 0.0, "quota": 10.0, "drain": 0.0,
+		"rules": {"hide": ["lure", "quick", "energy", "lamp", "bait"], "map": "S", "theme": "forest_pine", "ponds": [1, 0], "day": 0.0, "quota": 10.0, "drain": 0.0,
 			"ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear",
 			"rocks": [2, 3], "critters": 0, "hotspot": false, "oil": false, "escalate": false, "evil": false,
 			"safe": true, "tutorial": "reach"},
@@ -81,7 +83,7 @@ const LEVELS := [
 		"reward": {"gold": 50}},
 	{"id": "1-3", "chapter": 1, "name": "石下有餌", "teach": "餌會用完；翻石頭、抓小動物當餌",
 		"intro": "餌只剩一點點。石頭底下、草叢裡，到處都有東西可以掛上鉤。",
-		"rules": {"map": "S", "theme": "forest_pine", "ponds": [1, 0], "day": 0.0, "quota": 14.0, "drain": 0.0,
+		"rules": {"hide": ["lure", "quick", "energy", "lamp"], "map": "S", "theme": "forest_pine", "ponds": [1, 0], "day": 0.0, "quota": 14.0, "drain": 0.0,
 			"ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear",
 			"rocks": [7, 8], "critters": 6, "hotspot": false, "oil": false, "escalate": false, "evil": false,
 			"bait": 2, "safe": true, "tutorial": "bait"},
@@ -90,7 +92,7 @@ const LEVELS := [
 		"reward": {"gold": 60, "items": {"live_worm": 3}}},
 	{"id": "1-4", "chapter": 1, "name": "天色將暗", "teach": "時間、天色、燈的亮度、燈油、回營火補油",
 		"intro": "這裡的白天很短。天黑以前沒離開，渡石就再也不會亮了。",
-		"rules": {"map": "S", "theme": "forest_pine", "ponds": [1, 0], "day": 240.0, "quota": 18.0, "drain": 0.5,
+		"rules": {"hide": ["lure", "quick"], "map": "S", "theme": "forest_pine", "ponds": [1, 0], "day": 240.0, "quota": 18.0, "drain": 0.5,
 			"ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear",
 			"rocks": [5, 6], "critters": 4, "hotspot": false, "oil": false, "escalate": false, "evil": false,
 			"night_fails": true, "safe": true, "tutorial": "lamp"},
@@ -99,7 +101,7 @@ const LEVELS := [
 		"reward": {"gold": 70, "items": {"battery": 2}}},
 	{"id": "1-5", "chapter": 1, "name": "飄忽的影子", "teach": "小鬼的搗亂、用強光定住鬼",
 		"intro": "有東西在樹梢間飄。它們不會傷人，只是愛搗蛋。",
-		"rules": {"map": "S", "theme": "forest_pine", "ponds": [1, 0], "day": 270.0, "quota": 22.0, "drain": 0.6,
+		"rules": {"hide": ["lure"], "map": "S", "theme": "forest_pine", "ponds": [1, 0], "day": 270.0, "quota": 22.0, "drain": 0.6,
 			"ghosts": 1, "meddle": 3, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear",
 			"rocks": [5, 6], "critters": 4, "hotspot": false, "oil": false, "escalate": false, "evil": false,
 			"night_fails": true, "safe": true, "tutorial": "ghost"},
@@ -109,7 +111,7 @@ const LEVELS := [
 	# ---- Chapter 2: 秋沼 - a middle-sized map, the real rules.
 	{"id": "2-1", "chapter": 2, "name": "漣漪與暗潭", "teach": "魚群漣漪、暗潭的稀有魚",
 		"intro": "水面一圈圈的漣漪，是魚群在底下翻騰。那個顏色特別深的小潭，藏著不一樣的東西。",
-		"rules": {"map": "M", "theme": "forest_pine", "ponds": [2, 1], "quota": 26.0, "ghosts": 1, "meddle": 3,
+		"rules": {"hide": ["lure"], "map": "M", "theme": "forest_pine", "ponds": [2, 1], "quota": 26.0, "ghosts": 1, "meddle": 3,
 			"big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear", "escalate": false,
 			"evil": false, "night_fails": true, "tutorial": "hotspot"},
 		"stars": [{"stat": "catch_hotspot", "min": 2, "text": "在漣漪裡釣到 2 條"},
@@ -117,7 +119,7 @@ const LEVELS := [
 		"reward": {"gold": 90}},
 	{"id": "2-2", "chapter": 2, "name": "路亞", "teach": "路亞：邊收線魚才會追；假餌會被扯斷",
 		"intro": "青蛙商人塞了幾個假餌給你：「試試看，會動的東西魚比較愛。」",
-		"rules": {"map": "M", "theme": "forest_pine", "ponds": [2, 1], "quota": 28.0, "ghosts": 1, "meddle": 3,
+		"rules": {"hide": ["lure"], "map": "M", "theme": "forest_pine", "ponds": [2, 1], "quota": 28.0, "ghosts": 1, "meddle": 3,
 			"big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear", "escalate": false,
 			"evil": false, "night_fails": true, "gift": {"lure_minnow": 6}, "tutorial": "lure"},
 		"stars": [{"stat": "catch_lure", "min": 3, "text": "用路亞釣到 3 條"},
@@ -125,7 +127,7 @@ const LEVELS := [
 		"reward": {"gold": 100}},
 	{"id": "2-3", "chapter": 2, "name": "霧與魚汛", "teach": "天氣：起霧、魚汛",
 		"intro": "湖邊的天氣說變就變。霧散了以後，魚會一起浮上來。",
-		"rules": {"map": "M", "theme": "forest_pine", "ponds": [2, 1], "quota": 32.0, "ghosts": 1, "meddle": 3,
+		"rules": {"hide": ["lure"], "map": "M", "theme": "forest_pine", "ponds": [2, 1], "quota": 32.0, "ghosts": 1, "meddle": 3,
 			"big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": [["FOG", 55.0], ["FISH_RUN", 55.0], "mild"],
 			"escalate": false, "evil": false, "night_fails": true, "tutorial": "weather"},
 		"stars": [{"stat": "catch_fishrun", "min": 3, "text": "魚汛時釣到 3 條"},
@@ -133,7 +135,7 @@ const LEVELS := [
 		"reward": {"gold": 110}},
 	{"id": "2-4", "chapter": 2, "name": "暴雨", "teach": "暴風雨、水鬼、棧橋",
 		"intro": "雨大到看不清水面。這種天氣，水裡的東西會爬上來。",
-		"rules": {"map": "M", "theme": "forest_pine", "ponds": [2, 1], "quota": 32.0, "ghosts": 1, "meddle": 3,
+		"rules": {"hide": ["lure"], "map": "M", "theme": "forest_pine", "ponds": [2, 1], "quota": 32.0, "ghosts": 1, "meddle": 3,
 			"big_ghost": false, "water_ghost": 1.5, "hunters": false, "weather": [["STORM", 100.0], "random"],
 			"escalate": false, "evil": false, "night_fails": true, "tutorial": "water_ghost"},
 		"stars": [{"stat": "water_ghost_hit", "max": 0, "text": "沒被水鬼抓到"},
@@ -141,7 +143,7 @@ const LEVELS := [
 		"reward": {"gold": 120}},
 	{"id": "2-5", "chapter": 2, "name": "搬油", "teach": "營火的油、提油箱回營地",
 		"intro": "營火的油桶快見底了。地圖上散落著油箱，得自己提回來。",
-		"rules": {"map": "M", "theme": "forest_pine", "ponds": [2, 1], "day": 330.0, "quota": 36.0, "fuel": 260.0,
+		"rules": {"hide": ["lure"], "map": "M", "theme": "forest_pine", "ponds": [2, 1], "day": 330.0, "quota": 36.0, "fuel": 260.0,
 			"drain": 1.0, "ghosts": 1, "meddle": 3, "big_ghost": false, "water_ghost": 0.6, "hunters": false,
 			"weather": "mild", "escalate": false, "evil": false, "night_fails": true, "tutorial": "oil"},
 		"stars": [{"stat": "oil_delivered", "min": 2, "text": "提回 2 桶油"},
@@ -150,14 +152,14 @@ const LEVELS := [
 	# ---- Chapter 3: 鐵鍊聲 - the big ghost.
 	{"id": "3-1", "chapter": 3, "name": "鐵鍊聲", "teach": "大鬼：被燈光吸引、會抓人；營火圈裡安全",
 		"intro": "天色一暗，遠處就傳來鐵鍊拖地的聲音。它看得見光。",
-		"rules": {"map": "M", "theme": "forest_pine", "ponds": [2, 1], "quota": 28.0, "ghosts": 0,
+		"rules": {"hide": ["lure"], "map": "M", "theme": "forest_pine", "ponds": [2, 1], "quota": 28.0, "ghosts": 0,
 			"water_ghost": 0.5, "hunters": false, "weather": "mild", "evil": false, "tutorial": "big_ghost"},
 		"stars": [{"stat": "grabbed", "max": 0, "text": "沒被大鬼抓住"},
 			{"stat": "catch", "min": 8, "text": "釣到 8 條"}],
 		"reward": {"gold": 150}},
 	{"id": "3-2", "chapter": 3, "name": "強光", "teach": "強光定住大鬼；被抓時用強光掙脫",
 		"intro": "光會引來它，也能擋下它。看準時機，用盡全力照過去。",
-		"rules": {"map": "M", "theme": "forest_pine", "ponds": [2, 1], "quota": 32.0, "ghosts": 1, "meddle": 3,
+		"rules": {"hide": ["lure"], "map": "M", "theme": "forest_pine", "ponds": [2, 1], "quota": 32.0, "ghosts": 1, "meddle": 3,
 			"water_ghost": 0.5, "hunters": false, "weather": "mild", "evil": false, "tutorial": "flash_big"},
 		"stars": [{"stat": "big_ghost_stun", "min": 1, "text": "用強光定住大鬼"},
 			{"stat": "grabbed", "max": 0, "text": "沒被大鬼抓住"}],
@@ -589,6 +591,14 @@ func clear() -> void:
 
 func is_level() -> bool:
 	return level_id != ""
+
+
+## User request (the first levels' screen): a level shows only the parts of the HUD it has taught so
+## far - rules.hide names the ones still to come: "lure" (the 誘惑 button), "quick" (the quick
+## slots), "energy" (the light's box), "lamp" (the light's button), "bait" (the bait on the line).
+## A free run hides none.
+func hud_hidden(what: String) -> bool:
+	return is_level() and what in rules.get("hide", [])
 
 
 func _apply_world() -> void:

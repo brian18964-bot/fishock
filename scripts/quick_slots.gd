@@ -55,6 +55,9 @@ func _ready() -> void:
 	GameState.run_ended.connect(func(_won, _message):
 		close_picker()
 		visible = false)
+	# (user request: not in a level that hasn't come to them yet - Campaign.hud_hidden)
+	if Campaign.hud_hidden("quick"):
+		visible = false
 
 
 func _process(delta: float) -> void:

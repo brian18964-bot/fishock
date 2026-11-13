@@ -8,6 +8,7 @@ extends Node
 const TESTS := [
 	"test_campaign_levels_build",
 	"test_campaign_level_one",
+	"test_catch_feedback",
 	"test_campaign_night_ends_safe_level",
 	"test_campaign_curses",
 	"test_campaign_unlocks_and_achievements",
@@ -5192,6 +5193,56 @@ func test_campaign_levels_build() -> void:
 		check(hud != null and (str(r.tutorial) == "" or hud.steps.size() > 0), "%s: objectives and tutorial up" % l.id)
 
 
+## User request (the catch's moment and the run's end): a fish landed is shown coming out of the
+## water (no pose, no wait), its card is edged and lit in its rarity's colour and the bait's slot
+## stands back for it, and the run's end lists what the run was.
+func test_catch_feedback() -> void:
+	var card: CatchCard = main.find_children("*", "CatchCard", true, false)[0]
+	var slot: Control = main.get_node("BaitSlot/BaitButton")
+	check(gs.run_catches.is_empty() and gs.run_offered == 0 and gs.run_bone == "", "a run starts with nothing landed")
+	var small := fish("鯽魚", "near")
+	small.merge({"length": 21.0, "weight": 0.2, "value": 3.0}, true)
+	var big := fish("鯉魚", "near")
+	big.merge({"length": 66.0, "weight": 4.2, "value": 9.0, "rarity": "rare"}, true)
+	player().catch_success.emit(small)
+	await frames(2)
+	check(CatchCard.showing and card._edge_color.a == 0.0, "a common catch: its card, no coloured edge")
+	player().catch_success.emit(big)
+	await frames(2)
+	check(card._edge_color.a > 0.5 and card._edge_color.b > card._edge_color.r, "a rare catch: the card edged in its blue")
+	await seconds(0.5)
+	check(card._glow.modulate.a > 0.2, "and lit behind (%.2f)" % card._glow.modulate.a)
+	check(slot.modulate.a < 0.1, "the bait's slot stands back while the card's up (%.2f)" % slot.modulate.a)
+	var rv: RunView3D = RunView3D.active
+	if rv != null and rv.built:
+		check(rv.find_child("LandedFish", true, false) != null, "the fish itself comes out of the water")
+		await seconds(RunView3D.LAND_TIME + 0.2)
+		check(rv.find_child("LandedFish", true, false) == null, "and is gone into the bag in under a second")
+	check(player().state == Player.State.IDLE, "the traveller free the while")
+	await seconds(CatchCard.HOLD + 1.0)
+	check(not CatchCard.showing and slot.modulate.a > 0.9, "the card gone, the slot back")
+	player().catch_success.emit({"name": "心臟", "value": 0, "tier": "near"})
+	check(gs.run_catches.size() == 2, "the run's catches kept (a heart's no fish)")
+	gs.add_carried_fish(big)
+	gs.add_carried_fish(small)
+	gs.sacrifice_at(0)
+	check(gs.run_offered == 1, "and how many went to the altar")
+	gs.run_bone = "bone_whole_s"
+	var sum: Control = CampaignResults.summary(true)
+	add_child(sum)
+	await frames(2)
+	check((sum.get_node("Counts") as Label).text.contains("漁獲 2 條") and (sum.get_node("Counts") as Label).text.contains("獻祭 1 條"), "the run's end counts them")
+	check((sum.get_node("Fish") as Control).fish[0].name == "鯉魚", "the fish in a row, the best first")
+	check((sum.get_node("Biggest") as Label).text.contains("鯉魚") and (sum.get_node("Biggest") as Label).text.contains("66.0 cm"), "the biggest named with its size")
+	check(sum.get_node_or_null("Bone") != null, "the bone brought home shown")
+	sum.queue_free()
+	var lost: Control = CampaignResults.summary(false)
+	check(lost.get_node_or_null("Bone") == null, "no bone on a lost run")
+	lost.free()
+	gs.reset_run()
+	check(gs.run_catches.is_empty() and gs.run_offered == 0 and gs.run_bone == "", "a new run starts clean")
+
+
 ## The first level end to end: the tutorial follows along, the run scores
 ## its stars and its reward, and the next level opens.
 func test_campaign_level_one() -> void:
@@ -5202,6 +5253,17 @@ func test_campaign_level_one() -> void:
 		if c is CampaignHud:
 			hud = c
 	check(hud != null and hud.step == 0, "the tutorial starts at its first line")
+	# (user request: the first level shows only what it teaches - the rest of the HUD comes with
+	# its lesson - and nothing's written over anything else)
+	check(not main.get_node("QuickSlots").visible and not main.get_node("HUD/Panel/EnergyView").visible
+		and not main.get_node("BaitSlot/BaitButton").visible, "1-1: no quick slots, light box or bait slot yet")
+	check(camp().hud_hidden("lure") and camp().hud_hidden("lamp"), "nor the 誘惑 and light buttons")
+	check(not camp().rules_for("1-4").hide.has("energy") and not camp().rules_for("1-3").hide.has("bait")
+		and not camp().rules_for("3-3").hide.has("lure") and camp().rules_for("5-5").hide.is_empty(), "each comes with its lesson")
+	check(CampaignHud.PANEL_AT.y >= StatusCard.FEED_AT.y + StatusCard.EFFECT_SLOT + 6.0 + StatusCard.FEED_LINES * StatusCard.FEED_GAP,
+		"the objectives under the event feed's lines")
+	check(CampaignHud.BOX_Y >= 92.0, "Willow's line under the light's box")
+	check(FishAlerts._at().y >= CampaignHud.panel_bottom(), "the fish cards under the objectives")
 	check(Player.WORLD_WIDTH < 1400.0 * RunView3D.MAP_SCALE and gs.day_duration == 0.0, "a small map with no clock")
 	await put(get_tree().get_nodes_in_group("water_zones_common")[0].shore_point(Vector2.DOWN) + Vector2(0, 14))
 	await seconds(1.6)
@@ -5213,6 +5275,11 @@ func test_campaign_level_one() -> void:
 	player().catch_success.emit(f)
 	gs.add_carried_fish(f)
 	check(camp().value("catch") == 1.0, "the catch is counted")
+	# (user request: the first level's ★★ is a second fish - not "no fish lost", which a first
+	# missed strike took)
+	check(not camp().condition_met(camp().level("1-1").stars[0]), "one fish: ★★ not yet")
+	player().catch_success.emit(fish())
+	check(camp().condition_met(camp().level("1-1").stars[0]), "a second fish wins ★★")
 	gs.sacrifice_at(0)
 	await frames(2)
 	check(gs.day_phase == gs.DayPhase.ESCAPE, "one fish meets the quota")
@@ -5229,7 +5296,7 @@ func test_campaign_level_one() -> void:
 	# Again, slower and with a fish lost: nothing more to win.
 	await play_level("1-1")
 	player().catch_failed.emit("line_break")
-	check(not camp().condition_met(camp().level("1-1").stars[0]), "a lost fish loses ★★ this time")
+	check(not camp().condition_met(camp().level("1-1").stars[0]), "no second fish: no ★★ this time")
 	gs.add_carried_fish(fish())
 	gs.sacrifice_at(0)
 	gold = Profile.gold

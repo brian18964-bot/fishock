@@ -101,6 +101,11 @@ const WEATHER_FISH_RUN_WEIGHT := 0.2
 var quota_target: float = 30.0
 var quota_progress: float = 0.0
 var carried_fish: Array = []
+## User request (the run's end shows what the run was): the fish landed this run (each as it was
+## caught), how many were offered, and the bone taken home ("" none) - RunEnd / CampaignResults.
+var run_catches: Array = []
+var run_offered := 0
+var run_bone := ""
 ## User request: the fish in the oxygenated fish box (Profile.OXY_SLOTS of
 ## them) - their vitality doesn't run down; the run's, like what's carried.
 var oxy_fish: Array = []
@@ -451,6 +456,7 @@ func sacrifice_at(index: int) -> Dictionary:
 
 	# (its worth - a dead one's by its freshness - and 信仰's share more)
 	var value := FishLife.offer_value(fish)
+	run_offered += 1
 	quota_progress += value
 	quota_updated.emit(quota_progress, quota_target)
 
@@ -514,6 +520,9 @@ func reset_run() -> void:
 	stat_event.clear()
 	quota_progress = 0.0
 	carried_fish.clear()
+	run_catches.clear()
+	run_offered = 0
+	run_bone = ""
 	oxy_fish.clear()
 	lure_uid = -1
 	day_over = false
@@ -934,6 +943,7 @@ func _take_bone(id: String) -> String:
 	if Bones.is_glow(id):
 		name += "（%s）" % UiKit.rarity_name(Bones.rarity(id))
 	var gold := Bones.price(id)
+	run_bone = id
 	match Profile.give_bone(id):
 		"bag":
 			return "%s（%d 金幣），放進了背包" % [name, gold]

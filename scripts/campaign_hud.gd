@@ -12,11 +12,14 @@ extends CanvasLayer
 ##   - the level's name and opening words, big, as it starts.
 ## All drawn on one Node2D: cheap on a phone.
 
-const PANEL_AT := Vector2(10, 150)
+## (user report: at 150 the event feed's lines - StatusCard, down to 187 with a state's icons over
+## them - were written across its title: under them now, the fish cards (FishAlerts) under it)
+const PANEL_AT := Vector2(10, 190)
 const PANEL_W := 236.0
 const ROW := 19.0
 const TEXT_SIZE := 12
-const BOX_Y := 74.0
+## (user report: at 74 its right end ran under the light's box - HUD.EnergyView, down to 92)
+const BOX_Y := 98.0
 const BOX_Y_FIGHT := 164.0
 const BOX_W := 520.0
 const BOX_PAD := 10.0
@@ -30,7 +33,7 @@ const OK := Color(0.72, 0.95, 0.55)
 const BAD := Color(1.0, 0.55, 0.45)
 const ARROW := Color(1.0, 0.86, 0.4)
 ## How far from the player an off-screen target's arrow circles.
-const ORBIT := 62.0
+const ORBIT := 74.0
 
 var steps: Array = []
 var step := -1
@@ -49,6 +52,14 @@ func _ready() -> void:
 	_view.draw.connect(_draw_all)
 	add_child(_view)
 	_next_step()
+
+
+## Where the objectives' panel ends, down the left (0 outside a level): FishAlerts' cards go under it.
+static func panel_bottom() -> float:
+	if not Campaign.is_level():
+		return 0.0
+	var conds: Array = Campaign.level(Campaign.level_id).get("stars", [])
+	return PANEL_AT.y + 26.0 + ROW * (1 + conds.size()) + 4.0
 
 
 func _next_step() -> void:
@@ -191,13 +202,20 @@ func _draw_arrow(world: Vector2) -> void:
 	var size := vp.get_visible_rect().size
 	var bob := sin(_t * 4.0) * 5.0
 	if Rect2(Vector2.ZERO, size).grow(-20.0).has_point(screen):
-		# Over it, pointing down.
-		_chevron(screen + Vector2(0, -38.0 + bob), Vector2.DOWN, 1.0)
+		# Over it, pointing down - and (user request: the way plainer) a ring on the ground there,
+		# widening and fading, again and again.
+		for k in 2:
+			var grow := fmod(_t * 0.7 + k * 0.5, 1.0)
+			var rx := 20.0 + 26.0 * grow
+			_view.draw_set_transform(screen, 0.0, Vector2(1.0, 0.5))
+			_view.draw_arc(Vector2.ZERO, rx, 0.0, TAU, 40, Color(ARROW, 0.75 * (1.0 - grow)), 3.0, true)
+			_view.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		_chevron(screen + Vector2(0, -46.0 + bob), Vector2.DOWN, 1.5)
 		return
 	# Off screen: circling the player, pointing its way.
 	var me: Vector2 = RunView3D.screen_point(vp, Campaign._player.global_position)
 	var dir := (screen - me).normalized()
-	_chevron(me + Vector2(0, -16) + dir * (ORBIT + bob), dir, 1.15)
+	_chevron(me + Vector2(0, -16) + dir * (ORBIT + bob), dir, 1.6)
 
 
 func _chevron(tip_side: Vector2, dir: Vector2, s: float) -> void:

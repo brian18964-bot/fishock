@@ -99,6 +99,8 @@ func _build_top() -> void:
 	_energy_view.name = "EnergyView"
 	_energy_view.lantern = _lantern
 	$Panel.add_child(_energy_view)
+	# (user request: not in a level that hasn't come to the light's oil yet)
+	_energy_view.visible = not Campaign.hud_hidden("energy")
 	# User request: no narrating text lines.
 	message_label.visible = false
 	message_label.position = Vector2(180, 50)
@@ -284,6 +286,9 @@ func _on_run_ended(success: bool, message: String) -> void:
 	body.custom_minimum_size.x = 460
 	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(body)
+	# (user request: what the run was - its fish, the biggest, the bone, the gold)
+	col.add_child(UiKit.divider(360))
+	col.add_child(CampaignResults.summary(success))
 	var home := UiKit.button("回主畫面", 18, "red")
 	home.name = "BackHome"
 	home.custom_minimum_size = Vector2(200, 48)
