@@ -5251,6 +5251,7 @@ func test_catch_feedback() -> void:
 func test_item_faces_and_hands() -> void:
 	check(ItemPreview.lies_flat("bone_broken_l", AABB(Vector3.ZERO, Vector3(0.3, 0.1, 0.19))), "a bone lying flat is tipped up to face us")
 	check(not ItemPreview.lies_flat("knife", AABB(Vector3.ZERO, Vector3(0.32, 0.05, 0.017))), "a thing already broadside on is left")
+	check(ItemPreview.lies_flat("bone_skull_m", AABB(Vector3.ZERO, Vector3(0.3, 0.2, 0.2))), "a skull's shown from its side too, deep as it is")
 	check(not ItemPreview.lies_flat("oxy_box", AABB(Vector3.ZERO, Vector3(0.49, 0.46, 0.3))), "nor a thing that isn't flat")
 	check(not ItemPreview.lies_flat("live_frog", AABB(Vector3.ZERO, Vector3(0.3, 0.05, 0.2)))
 		and not ItemPreview.lies_flat("flashlight", AABB(Vector3.ZERO, Vector3(1.0, 0.28, 0.43))), "nor the live baits and the ones that stand")
@@ -5307,7 +5308,9 @@ func test_fishing_hold() -> void:
 	check(absf(got.side) < 0.5, "held in front of the body's middle, not out past the shoulder (%.2f)" % got.side)
 	check(got.up > 0.07 and got.up < RunView3D.FORE_GRIP + 0.02, "the left hand up the rod from the right (%.2f m)" % got.up)
 	check(rv._left_ik.influence > 0.95, "the left arm all the way onto it (%.2f)" % rv._left_ik.influence)
-	check(got.ext_r < 0.96 and got.ext_l < 0.96, "neither arm locked straight (%.2f, %.2f)" % [got.ext_r, got.ext_l])
+	check(got.deep_r < 0.03 and got.deep_l < 0.03, "neither wrist sunk into the body (%.3f, %.3f m)" % [got.deep_r, got.deep_l])
+	check(rv._hands._curl.r.size() >= 12 and rv._hands._curl.l.size() >= 12, "both hands' fingers closed to a fist (%d, %d joints)" % [rv._hands._curl.r.size(), rv._hands._curl.l.size()])
+	check(got.gap_r < 0.02 and got.gap_l < 0.02, "each wrist where its hold puts it (%.3f, %.3f m off)" % [got.gap_r, got.gap_l])
 	p._cancel_cast("test")
 	await seconds(0.3)
 
@@ -5319,8 +5322,6 @@ func _hold_now(v: RunView3D) -> Dictionary:
 	var g := func(n: String) -> Transform3D: return sk.global_transform * sk.get_bone_global_pose(sk.find_bone(n))
 	var sr: Vector3 = g.call("upperarm_r").origin
 	var sl: Vector3 = g.call("upperarm_l").origin
-	var er: Vector3 = g.call("lowerarm_r").origin
-	var el: Vector3 = g.call("lowerarm_l").origin
 	var hr: Transform3D = g.call("hand_r")
 	var hl: Transform3D = g.call("hand_l")
 	var rod := v._rod()
@@ -5338,8 +5339,9 @@ func _hold_now(v: RunView3D) -> Dictionary:
 		"fist_l": rad_to_deg(acos(clampf((hl.basis.orthonormalized() * (gl.axis as Vector3)).dot(rb.y), -1.0, 1.0))),
 		"side": -(palm_r - (sr + sl) * 0.5).dot(b.x) / maxf((sr - sl).length() * 0.5, 0.01),
 		"up": (palm_l - rod.global_position).dot(rb.y),
-		"ext_r": sr.distance_to(hr.origin) / (sr.distance_to(er) + er.distance_to(hr.origin)),
-		"ext_l": sl.distance_to(hl.origin) / (sl.distance_to(el) + el.distance_to(hl.origin)),
+		"deep_r": v._body_depth(hr.origin, 0.0), "deep_l": v._body_depth(hl.origin, 0.0),
+		"gap_r": hr.origin.distance_to(sk.global_transform * v._hands.right_at),
+		"gap_l": hl.origin.distance_to(sk.global_transform * v._hands.left_at),
 	}
 
 

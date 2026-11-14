@@ -122,6 +122,8 @@ func _measure(id: String) -> void:
 	_pose(rig, "Idle", 0.0)
 	for key in prof:
 		fit[key] = prof[key].map(func(v): return snappedf(v, 0.001))
+	_torso(rig, pts, to_rig, fit)
+	_pose(rig, "Idle", 0.0)
 	_grip(rig, pts, world, fit)
 	fit.walk = snappedf(_pace(rig, "Walk"), 0.01)
 	fit.run = snappedf(_pace(rig, "Run"), 0.01)
@@ -133,6 +135,70 @@ func _measure(id: String) -> void:
 		fit.hand_l, fit.hand_r, fit.walk, fit.run])
 	rig.queue_free()
 	await get_tree().process_frame
+
+
+## The trunk's own front, standing to fish (user report: the hands on the rod went into a round
+## belly - `front` has the head in it and a walk's sway, too much at the chest to hold a rod
+## by): per BIN of height and TORSO_BIN across (from TORSO_X0, its right, leftward), how far
+## forward the body comes (m; -1 where there's none) - the head and what hangs off it left out.
+const TORSO_BIN := 0.05
+const TORSO_X0 := -0.5
+const TORSO_COLS := 20
+
+
+func _torso(rig: CharacterRig, pts: SkinPoints, to_rig: Transform3D, fit: Dictionary) -> void:
+	var sk := rig.skeleton
+	var heads := {}
+	for i in sk.get_bone_count():
+		var b := i
+		while b >= 0:
+			if sk.get_bone_name(b).to_lower() == "head":
+				heads[i] = true
+				break
+			b = sk.get_bone_parent(b)
+	var rows: Array = []
+	var poses := [["Idle", 0.0]]
+	if rig.anim.has_animation("Fish_Wait_Loop"):
+		var n := rig.anim.get_animation("Fish_Wait_Loop").length
+		poses.append_array([["Fish_Wait_Loop", 0.0], ["Fish_Wait_Loop", n * 0.5]])
+	for pose in poses:
+		_pose(rig, pose[0], pose[1])
+		var now := pts.world([SkinPoints.Part.BODY])
+		for i in now.size():
+			if pts.part[i] != SkinPoints.Part.BODY:
+				continue
+			var head := 0.0
+			for k in 4:
+				if heads.has(pts._bind_bone[pts._bones[i * 4 + k]]):
+					head += pts._weights[i * 4 + k]
+			if head > 0.5:
+				continue
+			var p := to_rig * now[i]
+			var r := int(floor(p.y / BIN))
+			var c := int(floor((p.x - TORSO_X0) / TORSO_BIN))
+			if r < 0 or c < 0 or c >= TORSO_COLS:
+				continue
+			while rows.size() <= r:
+				var row := []
+				row.resize(TORSO_COLS)
+				row.fill(-1.0)
+				rows.append(row)
+			rows[r][c] = maxf(rows[r][c], p.z)
+	# (a thin mesh leaves gaps between its points: filled from beside them)
+	var filled := rows.duplicate(true)
+	for r in rows.size():
+		for c in TORSO_COLS:
+			if rows[r][c] > -1.0:
+				continue
+			var near := []
+			for d in [[0, -1], [0, 1], [-1, 0], [1, 0]]:
+				var rr: int = r + d[0]
+				var cc: int = c + d[1]
+				if rr >= 0 and rr < rows.size() and cc >= 0 and cc < TORSO_COLS and rows[rr][cc] > -1.0:
+					near.append(rows[rr][cc])
+			if near.size() >= 2:
+				filled[r][c] = near.reduce(func(m, v): return m + v, 0.0) / near.size()
+	fit.torso = filled.map(func(row): return row.map(func(v): return snappedf(v, 0.01)))
 
 
 func _pose(rig: CharacterRig, clip: String, t: float) -> void:

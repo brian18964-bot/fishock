@@ -3861,6 +3861,7 @@ func _arm_ik() -> void:
 	_hands = GripHands.new()
 	_hands.name = "GripHands"
 	sk.add_child(_hands)
+	_hands.fingers(rig)
 	sk.skeleton_updated.connect(_hold_rod)
 
 
@@ -4268,10 +4269,22 @@ const FORE_SHARE := 0.55
 const FORE_MIN := 0.11
 const REEL_SHARE := 0.8
 const REACH_MAX := 0.93
-## The hold may come this far past the body's middle toward the left (in half shoulder-widths,
-## negative: left of it) before the left hand closes up on the right.
-const CENTRE_PAST := 0.0
+## How far an arm may be let out to get its hand to the rod (of its length at REACH_MAX), and
+## what that's counted as against a place for the hold (m of further off, per length over).
+const ARM_STRETCH := 1.6
+const STRETCH_COST := 1.2
+## What a hand or forearm sunk into the body's counted as against a place (per m of it).
+const SUNK_COST := 6.0
 var _left_len := 0.4
+## The hold's place from where the arm alone would put it (the character's own frame and
+## metres: x its left, y up, z ahead), found and eased to; the left hand's way up the rod.
+var _hold_off := Vector3.ZERO
+var _hold_to := Vector3.ZERO
+var _hold_set := false
+var _hold_tick := 0
+var _hold_key := ""
+var _fore := 0.2
+var _fore_to := 0.2
 var _grip_at := Vector3.ZERO
 var _hands: GripHands
 var _grips := {}
@@ -4337,6 +4350,109 @@ func _hand_hold(which: String, at: Vector3, dir: Vector3, shoulder: Vector3) -> 
 	var world := Basis(dir, u, dir.cross(u))
 	var turn := (world * local.inverse()).orthonormalized()
 	return Transform3D(turn, at - turn * (g.at as Vector3) * _rig_scale())
+
+
+## Is `at` in the body - within `margin` (character metres) of the trunk's own measured front
+## (CharacterArt.torso_front), or behind it?
+func _in_body(at: Vector3, margin: float) -> bool:
+	var k := _rig_scale()
+	var rel := at - pivot.global_position
+	var front := CharacterArt.torso_front(rig.character, rel.y / k, rel.dot(pivot.global_basis.x.normalized()) / k, margin)
+	return front > -0.5 and rel.dot(pivot.global_basis.z.normalized()) / k < front + margin
+
+
+## How far into the body `at` is (m; 0 out of it), `margin` (character metres) kept of it.
+func _body_depth(at: Vector3, margin: float) -> float:
+	var k := _rig_scale()
+	var rel := at - pivot.global_position
+	var front := CharacterArt.torso_front(rig.character, rel.y / k, rel.dot(pivot.global_basis.x.normalized()) / k, margin)
+	if front <= -0.5:
+		return 0.0
+	return maxf((front + margin) * k - rel.dot(pivot.global_basis.z.normalized()), 0.0)
+
+
+## How far into the body an arm is, from `shoulder` to a wrist at `wrist` with its elbow
+## toward `pole`: its wrist, and its forearm's middle (the elbow where a two-bone arm puts it).
+func _arm_depth(shoulder: Vector3, wrist: Vector3, pole: Vector3, arm: float) -> float:
+	var deep := _body_depth(wrist, HAND_CLEAR * 0.5)
+	var d := shoulder.distance_to(wrist)
+	var upper := arm * 0.5
+	var out := (pole - shoulder) - (wrist - shoulder) * ((pole - shoulder).dot(wrist - shoulder) / maxf(d * d, 0.0001))
+	if d < 0.01 or out.length() < 0.001:
+		return deep
+	var along := clampf(d * 0.5, 0.0, upper)
+	var elbow := shoulder + (wrist - shoulder) / d * along + out.normalized() * sqrt(maxf(upper * upper - along * along, 0.0))
+	return deep + _body_depth(wrist.lerp(elbow, 0.45), 0.02) * 0.6
+
+
+## Where the rod's hold goes: the nearest place to `from` (where the arm alone would put it)
+## that's a hold - both wrists and forearms out of the body, the rod and its butt out of it,
+## under the shoulders, each hand within its arm's reach (the left's whole crank circle,
+## reeling). Places are tried nearest first: up toward the chest, out ahead, a little to
+## either side. A round one's arms don't meet in front of it at all (the bear's: 0.41 m of
+## arm, 0.73 m across the shoulders, a chest 0.2 m thick): an arm may be let out up to
+## ARM_STRETCH of its length (GripHands lengthens it), counted against the place as so much
+## further off. {off, fore}: the place (as _hold_off) and the left hand's way up the rod.
+func _find_hold(from: Vector3, dir: Vector3, b: Basis, shoulder: Vector3, shoulder_l: Vector3,
+		arm_r: float, arm_l: float, fore_most: float, two_handed: bool, reeling: bool) -> Dictionary:
+	var k := _rig_scale()
+	var pole_r := shoulder - b.x * 0.6 + Vector3.DOWN * 0.35 - b.z * 0.25
+	var pole_l := shoulder_l + b.x * 0.6 + Vector3.DOWN * 0.35 - b.z * 0.25
+	var room_r := arm_r * REACH_MAX
+	var room_l := arm_l * REACH_MAX - (CRANK_R * k if reeling else 0.0)
+	var share := REEL_SHARE if reeling else 1.0
+	var top := minf(shoulder.y, shoulder_l.y) - 0.03 * k
+	var best := {"off": Vector3.ZERO, "fore": fore_most}
+	var least := INF
+	# (the places: across the body's middle and to either side of it, from a little under
+	# where the arm would hold it up to the shoulders, from just clear of the trunk out)
+	var mid := pivot.global_position
+	var rel := from - mid
+	var from_x := rel.dot(b.x) / k
+	var from_y := rel.y / k
+	var from_z := rel.dot(b.z) / k
+	for side_at in [0.0, -0.07, 0.07, -0.14]:
+		var side: float = side_at
+		for step in 8:
+			var y := from_y - 0.06 + step * 0.06
+			if y * k + mid.y > top:
+				break
+			var front := CharacterArt.torso_front(rig.character, y, side, 0.04)
+			var z0 := maxf(front + 0.04, 0.0) if front > -0.5 else from_z
+			for out in range(-2, 5):
+				var z := z0 + out * 0.04
+				var place := absf(y - from_y) * 0.8 + absf(side) * 1.2 + absf(z - maxf(from_z, z0)) * 1.3
+				if place >= least:
+					continue
+				var at := mid + (b.x * side + Vector3.UP * y + b.z * z) * k
+				var wrist_r := _hand_hold("r", at, dir, shoulder).origin
+				var let_r := wrist_r.distance_to(shoulder) / room_r
+				if let_r > ARM_STRETCH:
+					continue
+				var cost := place + maxf(let_r - 1.0, 0.0) * STRETCH_COST + _body_depth(at, 0.02) * SUNK_COST \
+					+ _arm_depth(shoulder, wrist_r, pole_r, arm_r * maxf(let_r, 1.0)) * SUNK_COST
+				if cost >= least:
+					continue
+				var fore := fore_most
+				if two_handed:
+					var left := INF
+					for f in [fore_most, fore_most * 0.75, maxf(fore_most * 0.55, FORE_MIN * k)]:
+						var wrist_l := _hand_hold("l", at + dir * f * share, dir, shoulder_l).origin
+						var let_l := wrist_l.distance_to(shoulder_l) / room_l
+						if let_l > ARM_STRETCH or wrist_l.y > top + 0.14 * k:
+							continue
+						var c: float = maxf(let_l - 1.0, 0.0) * STRETCH_COST + (fore_most - float(f)) * 0.5 \
+							+ _arm_depth(shoulder_l, wrist_l, pole_l, arm_l * maxf(let_l, 1.0)) * SUNK_COST
+						if c < left:
+							left = c
+							fore = f
+						if c <= 0.0:
+							break
+					cost += left
+				if cost < least:
+					least = cost
+					best = {"off": Vector3(side - from_x, y - from_y, z - from_z), "fore": fore}
+	return best
 
 
 ## A hand's wrist kept this far (character metres) out in front of the body's own front.
@@ -4415,9 +4531,6 @@ func _aim_rod(delta: float) -> void:
 	var tuck := smoothstep(0.0, 1.0, _centred)
 	var k := _rig_scale()
 	var grip := _ik_target.global_position
-	var out_r := _out_of_body(grip, HAND_CLEAR)
-	var belly := (out_r - grip).length() * tuck
-	grip = grip.lerp(out_r, tuck)
 	var dir := _rod_dir(b)
 	var arm_r := _arm_len * k
 	var arm_l := _left_len * k
@@ -4425,44 +4538,48 @@ func _aim_rod(delta: float) -> void:
 	var reeling := _visual.clip in [PlayerVisual.CLIP_REEL, PlayerVisual.CLIP_FIGHT] or player.state == Player.State.REELING
 	if reeling:
 		_crank += delta * TAU * CRANK_TURNS
-	var fore := clampf(arm_l * FORE_SHARE, FORE_MIN * k, FORE_GRIP)
-	var hold_r := Transform3D()
-	var hold_l := Transform3D()
-	var left_at := grip
-	for attempt in 24:
-		# (the right hand: within reach)
+	var fore_most := clampf(arm_l * FORE_SHARE, FORE_MIN * k, FORE_GRIP)
+	# (where the hold's to be, from where the arm would have put it - worked out a few times a
+	# second, and eased to: see _find_hold)
+	if tuck > 0.0:
+		# (worked out afresh as the hold changes - another clip, the rod tipped, reeling - and
+		# now and then as the body shifts: it's a search, not for every frame)
+		_hold_tick -= 1
+		var key := "%s %s %d %s" % [_visual.clip, reeling, roundi(rad_to_deg(_rod_up) / 6.0), two > 0.0]
+		if _hold_tick <= 0 or not _hold_set or key != _hold_key:
+			_hold_tick = 24
+			_hold_key = key
+			var found := _find_hold(grip, dir, b, shoulder, shoulder_l, arm_r, arm_l, fore_most, two > 0.0, reeling)
+			_hold_to = found.off
+			_fore_to = found.fore
+			if not _hold_set:
+				_hold_off = _hold_to
+				_fore = _fore_to
+				_hold_set = true
+		var ease := minf(1.0, delta * 9.0)
+		_hold_off = _hold_off.lerp(_hold_to, ease)
+		_fore = lerpf(_fore, _fore_to, ease)
+	else:
+		_hold_set = false
+		_fore = fore_most
+	var moved := (b.x * _hold_off.x + Vector3.UP * _hold_off.y + b.z * _hold_off.z) * k * tuck
+	var belly := moved.length()
+	grip += moved
+	var fore := lerpf(fore_most, _fore, tuck)
+	# (the right hand: within reach, whatever)
+	var hold_r := _hand_hold("r", grip, dir, shoulder)
+	var far := hold_r.origin.distance_to(shoulder)
+	var most_r := arm_r * REACH_MAX * lerpf(1.0, ARM_STRETCH, tuck)
+	if far > most_r:
+		grip = shoulder + (grip - shoulder) * (most_r / far)
 		hold_r = _hand_hold("r", grip, dir, shoulder)
-		var far := hold_r.origin.distance_to(shoulder)
-		if far > arm_r * REACH_MAX:
-			grip = shoulder + (grip - shoulder) * (arm_r * REACH_MAX / far)
-			hold_r = _hand_hold("r", grip, dir, shoulder)
-		# (the left: up the rod from it - on the reel's crank, going round, as it reels)
-		left_at = grip + dir * fore
-		if reeling:
-			var across := dir.cross(Vector3.UP).normalized()
-			var over := across.cross(dir).normalized()
-			left_at = grip + dir * fore * REEL_SHARE + (across * cos(_crank) + over * sin(_crank)) * CRANK_R * k
-		hold_l = _hand_hold("l", left_at, dir, shoulder_l)
-		# (reeling, it's the crank's whole circle that's to be in reach - the hold's not to shift
-		# with every turn of it)
-		var room := arm_l * REACH_MAX
-		var far_l := hold_l.origin.distance_to(shoulder_l)
-		if reeling:
-			room -= CRANK_R * k
-			far_l = _hand_hold("l", grip + dir * fore * REEL_SHARE, dir, shoulder_l).origin.distance_to(shoulder_l)
-		if two <= 0.0 or far_l <= room:
-			break
-		# (out of reach: the hold brought across to the middle and a little past it first, then
-		# the left hand nearer the right, then the hold on across toward the left arm)
-		var right_of := -(grip - middle).dot(b.x) / maxf(shoulder.distance_to(middle), 0.01)
-		if tuck > 0.0 and right_of > CENTRE_PAST:
-			grip += b.x * 0.025 * k * tuck
-		elif fore > FORE_MIN * k + 0.005:
-			fore = maxf(fore * 0.85, FORE_MIN * k)
-		elif tuck > 0.0:
-			grip += (shoulder_l - grip).normalized() * 0.04 * k * tuck
-		else:
-			break
+	# (the left: up the rod from it - on the reel's crank, going round, as it reels)
+	var left_at := grip + dir * fore
+	if reeling:
+		var across := dir.cross(Vector3.UP).normalized()
+		var over := across.cross(dir).normalized()
+		left_at = grip + dir * fore * REEL_SHARE + (across * cos(_crank) + over * sin(_crank)) * CRANK_R * k
+	var hold_l := _hand_hold("l", left_at, dir, shoulder_l)
 	_ik_target.global_position = hold_r.origin
 	_grip_at = grip
 	# (the elbow out to the side and down; tucked in, down by the ribs, while
@@ -4471,7 +4588,7 @@ func _aim_rod(delta: float) -> void:
 	_ik_pole.global_position = shoulder - b.x * lerpf(0.5, lerpf(0.2, 0.6, round_k), tuck) + Vector3.DOWN * lerpf(0.35, lerpf(0.6, 0.35, round_k), tuck) - b.z * lerpf(0.15, 0.25, tuck)
 	# (the left arm let go of the rod as far as it can't get to it - the cast's backswing - and
 	# left to the clip's own)
-	var short := hold_l.origin.distance_to(shoulder_l) - arm_l * REACH_MAX
+	var short := hold_l.origin.distance_to(shoulder_l) - arm_l * REACH_MAX * lerpf(1.0, ARM_STRETCH, tuck)
 	var can := 1.0 - clampf(short / (0.25 * arm_l), 0.0, 1.0)
 	_left_ik.influence = two * can
 	_left_target.global_position = hold_l.origin
@@ -4482,6 +4599,10 @@ func _aim_rod(delta: float) -> void:
 		_hands.left = to_sk * hold_l.basis
 		_hands.right_w = _rod_on * (1.0 - _stow)
 		_hands.left_w = _left_ik.influence * _rod_on
+		var into := sk.global_transform.affine_inverse()
+		_hands.right_at = into * hold_r.origin
+		_hands.left_at = into * hold_l.origin
+		_hands.let_out = tuck
 	# (the opening: the left hand onto the lamp's bail on the drum, as
 	# PickUp_Table reaches out - and off again as it lifts it)
 	var take := _intro_take()
@@ -6491,8 +6612,32 @@ class GripHands extends SkeletonModifier3D:
 	var left := Basis.IDENTITY
 	var right_w := 0.0
 	var left_w := 0.0
+	## Where each wrist's to be (the skeleton's space), and how far an arm that doesn't get
+	## there is let out to it (0..1).
+	var right_at := Vector3.ZERO
+	var left_at := Vector3.ZERO
+	var let_out := 0.0
 	var _r := -1
 	var _l := -1
+	## Each hand's finger joints as Idle holds them - the loose fist the hold was measured in
+	## (CharacterArt's grip: the hole it leaves is where the rod goes): [bone, its turn].
+	var _curl := {"r": [], "l": []}
+
+	func fingers(rig: CharacterRig) -> void:
+		if rig.anim == null or not rig.anim.has_animation("Idle"):
+			return
+		var a := rig.anim.get_animation("Idle")
+		var sk := rig.skeleton
+		for ti in a.get_track_count():
+			if a.track_get_type(ti) != Animation.TYPE_ROTATION_3D:
+				continue
+			var n := str(a.track_get_path(ti)).get_slice(":", 1)
+			if not (n.begins_with("index") or n.begins_with("middle") or n.begins_with("ring")
+					or n.begins_with("pinky") or n.begins_with("thumb")):
+				continue
+			var bone := sk.find_bone(n)
+			if bone >= 0 and (n.ends_with("_r") or n.ends_with("_l")):
+				_curl[n.right(1)].append([bone, a.rotation_track_interpolate(ti, 0.0)])
 
 	func _process_modification() -> void:
 		var sk := get_skeleton()
@@ -6501,11 +6646,27 @@ class GripHands extends SkeletonModifier3D:
 		if _r < 0:
 			_r = sk.find_bone("hand_r")
 			_l = sk.find_bone("hand_l")
-		for hand in [[_r, right, right_w], [_l, left, left_w]]:
+		for side in [["r", right_w], ["l", left_w]]:
+			var cw := clampf(side[1], 0.0, 1.0)
+			if cw <= 0.001:
+				continue
+			for c in _curl[side[0]]:
+				var closed: Quaternion = c[1]
+				sk.set_bone_pose_rotation(c[0], closed if cw >= 0.999 else sk.get_bone_pose_rotation(c[0]).slerp(closed, cw))
+		for hand in [[_r, right, right_w, right_at], [_l, left, left_w, left_at]]:
 			var bone: int = hand[0]
 			var w: float = hand[2]
 			if bone < 0 or w <= 0.001:
 				continue
+			# (an arm too short to get there let out: the forearm half the way, the hand all)
+			var gap: Vector3 = (hand[3] as Vector3) - sk.get_bone_global_pose(bone).origin
+			if let_out > 0.0 and gap.length() > 0.004:
+				gap *= clampf(w, 0.0, 1.0) * let_out
+				var fore_bone := sk.get_bone_parent(bone)
+				var f := sk.get_bone_global_pose(fore_bone)
+				sk.set_bone_global_pose(fore_bone, Transform3D(f.basis, f.origin + gap * 0.5))
+				var h := sk.get_bone_global_pose(bone)
+				sk.set_bone_global_pose(bone, Transform3D(h.basis, h.origin + gap * 0.5))
 			var now := sk.get_bone_global_pose(bone)
 			var size := now.basis.get_scale()
 			var turned := now.basis.orthonormalized().slerp((hand[1] as Basis).orthonormalized(), clampf(w, 0.0, 1.0))

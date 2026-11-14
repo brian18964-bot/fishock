@@ -154,6 +154,10 @@ func show_item(id: String) -> bool:
 static func lies_flat(id: String, box: AABB) -> bool:
 	if id.begins_with("live_") or id.begins_with("lure_") or id.begins_with("rod_") or id in STANDS:
 		return false
+	# (the bones are all cut from skeletons laid on their side - a skull's as deep as it's
+	# wide, and was shown from on top, not its face's side)
+	if id.begins_with("bone_"):
+		return true
 	return box.get_shortest_axis_index() == Vector3.AXIS_Y \
 		and box.get_shortest_axis_size() < FLAT * box.get_longest_axis_size()
 
