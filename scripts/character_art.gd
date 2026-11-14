@@ -179,24 +179,6 @@ static func side_between(id: String, low: float, high: float, fallback := 0.2) -
 	return _band(fit(id).get("side", []), low, high, fallback)
 
 
-## (tools/measure_bodies.gd's torso grid: its columns, m)
-const TORSO_BIN := 0.05
-const TORSO_X0 := -0.5
-
-
-## How far forward (m, from its feet) its trunk comes at height `h`, `x` out to its left -
-## the most within `reach` of there; -1 where there's no body (or it's not been measured).
-## The trunk alone, standing to fish: not the head, nor a walk's sway (front_between's).
-static func torso_front(id: String, h: float, x: float, reach := 0.0) -> float:
-	var rows: Array = fit(id).get("torso", [])
-	var most := -1.0
-	for r in range(maxi(int(floor((h - reach) / FIT_BIN)), 0), mini(int(floor((h + reach) / FIT_BIN)) + 1, rows.size())):
-		var row: Array = rows[r]
-		for c in range(maxi(int(floor((x - reach - TORSO_X0) / TORSO_BIN)), 0), mini(int(floor((x + reach - TORSO_X0) / TORSO_BIN)) + 1, row.size())):
-			most = maxf(most, float(row[c]))
-	return most
-
-
 static func _band(bins: Array, low: float, high: float, fallback: float) -> float:
 	if bins.is_empty():
 		return fallback

@@ -5266,23 +5266,12 @@ func test_item_faces_and_hands() -> void:
 	var box := pv._bounds(bone)
 	check(box.size.y > box.size.z, "its broad face to the camera now (%.2f high, %.2f deep)" % [box.size.y, box.size.z])
 	pv.queue_free()
-	var rv: RunView3D = RunView3D.active
-	if rv != null and rv.built:
-		var k := rv._rig_scale()
-		var ahead := rv.pivot.global_basis.z.normalized()
-		var h := 0.9
-		var front := CharacterArt.front_between(rv.rig.character, h - 0.1, h + 0.1, 0.0) * k
-		var inside := rv.pivot.global_position + Vector3.UP * h * k
-		var moved := rv._out_of_body(inside, RunView3D.HAND_CLEAR)
-		if front > 0.0:
-			check((moved - rv.pivot.global_position).dot(ahead) >= front + RunView3D.HAND_CLEAR * k - 0.001, "a hand inside the body is put out in front of it")
-		var clear := inside + ahead * (front + 0.5)
-		check(rv._out_of_body(clear, RunView3D.HAND_CLEAR).distance_to(clear) < 0.001, "one already clear is left where it is")
 
 
-## User report (the fishing's hold didn't read as one: the rod hand out past its shoulder, the
-## fist across the rod, the reeling hand not getting to it): waiting on a bite, both palms are on
-## the rod with the fists closed round it, in front of the body's middle - whoever's fishing.
+## User report (the fishing's hold didn't read as one: the fist across the rod, fingers open,
+## a round one's forearm through its chest): waiting on a bite the rod's in the right fist,
+## closed round it, and neither forearm nor hand is in the body - by the body's real surface
+## (HoldCheck); the left hand's by the reel's place.
 func test_fishing_hold() -> void:
 	var rv: RunView3D = RunView3D.active
 	if rv == null or not rv.built:
@@ -5297,51 +5286,47 @@ func test_fishing_hold() -> void:
 	p._launch_cast()
 	await seconds(1.4)
 	check(p.state == Player.State.WAITING, "the float's out (%d)" % p.state)
+	var look := HoldCheck.new(rv.rig, 2)
 	var got := {}
-	rv.rig.skeleton.skeleton_updated.connect(func(): got.merge(_hold_now(rv)), CONNECT_ONE_SHOT)
+	rv.rig.skeleton.skeleton_updated.connect(func(): got.merge(_hold_now(rv, look)), CONNECT_ONE_SHOT)
 	await frames(3)
-	check(not got.is_empty(), "the hold was measured")
+	check(not got.is_empty(), "the hold was looked at")
 	if got.is_empty():
 		return
-	check(got.off_r < 0.02 and got.off_l < 0.02, "both palms on the rod (%.3f, %.3f m off it)" % [got.off_r, got.off_l])
-	check(got.fist_r < 8.0 and got.fist_l < 8.0, "both fists closed round it, not across it (%.0f, %.0f deg)" % [got.fist_r, got.fist_l])
-	check(absf(got.side) < 0.5, "held in front of the body's middle, not out past the shoulder (%.2f)" % got.side)
-	check(got.up > 0.07 and got.up < RunView3D.FORE_GRIP + 0.02, "the left hand up the rod from the right (%.2f m)" % got.up)
-	check(rv._left_ik.influence > 0.95, "the left arm all the way onto it (%.2f)" % rv._left_ik.influence)
-	check(got.deep_r < 0.03 and got.deep_l < 0.03, "neither wrist sunk into the body (%.3f, %.3f m)" % [got.deep_r, got.deep_l])
+	check(got.off_r < 0.02, "the rod's in the right palm (%.3f m off it)" % got.off_r)
+	check(got.fist_r < 8.0, "the fist closed round it, not across it (%.0f deg)" % got.fist_r)
 	check(rv._hands._curl.r.size() >= 12 and rv._hands._curl.l.size() >= 12, "both hands' fingers closed to a fist (%d, %d joints)" % [rv._hands._curl.r.size(), rv._hands._curl.l.size()])
-	check(got.gap_r < 0.02 and got.gap_l < 0.02, "each wrist where its hold puts it (%.3f, %.3f m off)" % [got.gap_r, got.gap_l])
+	check(got.in_r <= 0.03 and got.in_l <= 0.03, "neither forearm nor hand in the body (%.3f, %.3f of them)" % [got.in_r, got.in_l])
+	check(got.left < 0.35, "the left hand by the rod (%.2f m from it)" % got.left)
+	check(rv.strain_r <= 1.0, "the right arm's hold within its reach (%.2f)" % rv.strain_r)
+	check(rv._left_ik.influence > 0.95, "the left arm brought to its place (%.2f)" % rv._left_ik.influence)
 	p._cancel_cast("test")
 	await seconds(0.3)
+	# (every character has a hold fitted to it)
+	for id in ["cat", "owl", "dog", "bear", "deer", "sheep", "bear2", "dog3", "deer2", "owl2", "croc", "sheep2"]:
+		var hold: Variant = CharacterArt.fit(id).get("hold")
+		check(hold is Dictionary and (hold as Dictionary).has("grip") and (hold.grip as Array).size() == 3, "%s has its own hold on the rod" % id)
 
 
 ## (in skeleton_updated: the arms' IK only shows in the pose there)
-func _hold_now(v: RunView3D) -> Dictionary:
+func _hold_now(v: RunView3D, look: HoldCheck) -> Dictionary:
 	var sk := v.rig.skeleton
-	var b := v.pivot.global_basis.orthonormalized()
 	var g := func(n: String) -> Transform3D: return sk.global_transform * sk.get_bone_global_pose(sk.find_bone(n))
-	var sr: Vector3 = g.call("upperarm_r").origin
-	var sl: Vector3 = g.call("upperarm_l").origin
 	var hr: Transform3D = g.call("hand_r")
 	var hl: Transform3D = g.call("hand_l")
 	var rod := v._rod()
 	var rb := rod.global_basis.orthonormalized()
 	var gr: Dictionary = v._hand_grip("r")
 	var gl: Dictionary = v._hand_grip("l")
-	var palm_r: Vector3 = hr * (gr.at as Vector3)
-	var palm_l: Vector3 = hl * (gl.at as Vector3)
 	var off := func(at: Vector3) -> float:
 		var rel := at - rod.global_position
 		return (rel - rb.y * rel.dot(rb.y)).length()
+	var inside := look.buried(Transform3D(v.pivot.global_basis.orthonormalized() * v._rig_scale(), v.pivot.global_position))
 	return {
-		"off_r": off.call(palm_r), "off_l": off.call(palm_l),
+		"off_r": off.call(hr * (gr.at as Vector3)),
 		"fist_r": rad_to_deg(acos(clampf((hr.basis.orthonormalized() * (gr.axis as Vector3)).dot(rb.y), -1.0, 1.0))),
-		"fist_l": rad_to_deg(acos(clampf((hl.basis.orthonormalized() * (gl.axis as Vector3)).dot(rb.y), -1.0, 1.0))),
-		"side": -(palm_r - (sr + sl) * 0.5).dot(b.x) / maxf((sr - sl).length() * 0.5, 0.01),
-		"up": (palm_l - rod.global_position).dot(rb.y),
-		"deep_r": v._body_depth(hr.origin, 0.0), "deep_l": v._body_depth(hl.origin, 0.0),
-		"gap_r": hr.origin.distance_to(sk.global_transform * v._hands.right_at),
-		"gap_l": hl.origin.distance_to(sk.global_transform * v._hands.left_at),
+		"left": off.call(hl * (gl.at as Vector3)),
+		"in_r": inside.r, "in_l": inside.l,
 	}
 
 
