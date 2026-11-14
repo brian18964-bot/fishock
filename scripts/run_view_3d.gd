@@ -829,7 +829,7 @@ void fragment() {
 	if (near > 0.003) {
 		vec3 lv = normalize((VIEW_MATRIX * vec4(normalize(to_lamp), 0.0)).xyz);
 		float lg = pow(max(dot(r, lv), 0.0), 28.0);
-		EMISSION += vec3(1.0, 0.76, 0.42) * near * (0.06 + 0.14 * fres + lg * 0.9) + edge_tint * line * 0.3 * near;
+		EMISSION += vec3(1.0, 0.76, 0.42) * near * (0.06 + 0.14 * fres + lg * 0.9) + edge_tint * line * 0.16 * near;
 	}
 	ROUGHNESS = 0.06;
 	SPECULAR = 0.75;
@@ -4252,6 +4252,27 @@ func _bent(mi: MeshInstance3D, z: float) -> Vector3:
 	return Vector3(dir.x * off, dir.y * off, z - back - over * (1.0 - cos(bend)))
 
 
+## A hand's wrist kept this far (character metres) out in front of the body's own front.
+const HAND_CLEAR := 0.09
+
+
+## `at` moved straight ahead till it's `clear` out in front of the body at its height
+## (CharacterArt's measured front - a belly, a chest): where it is, if it's clear already or
+## out to the side of the body.
+func _out_of_body(at: Vector3, clear: float) -> Vector3:
+	var k := _rig_scale()
+	var ahead := pivot.global_basis.z.normalized()
+	var rel := at - pivot.global_position
+	var h := rel.y / k
+	var front := CharacterArt.front_between(rig.character, h - 0.1, h + 0.1, 0.0)
+	if front <= 0.0:
+		return at
+	var side := absf(rel.dot(pivot.global_basis.x.normalized())) / k
+	if side > maxf(CharacterArt.side_between(rig.character, h - 0.1, h + 0.1, 0.0), front) + clear:
+		return at
+	return at + ahead * maxf((front + clear) * k - rel.dot(ahead), 0.0)
+
+
 ## How the rod's to be held this frame (ROD_ANGLES eased toward), and
 ## where the arm's to reach for it.
 func _aim_rod(delta: float) -> void:
@@ -4294,11 +4315,16 @@ func _aim_rod(delta: float) -> void:
 	# (reaching less far out while fishing: the elbow bent, the hands in
 	# close in front of the waist)
 	_ik_target.global_position = from + reach * _arm_len * lerpf(0.8, 0.58 + (_arm_follow - 0.4) * 0.2, smoothstep(0.0, 1.0, _centred))
-	# (the elbow out to the side and down)
-	# (the elbow out to the side and down; tucked in, down by the ribs, while
-	# fishing with the hands in front)
+	# (user report: a round one's hands - the bear's - went into its belly as it fished, the left
+	# gone altogether: the grip's kept out in front of the body's own front at its height)
 	var tuck := smoothstep(0.0, 1.0, _centred)
-	_ik_pole.global_position = shoulder - b.x * lerpf(0.5, 0.2, tuck) + Vector3.DOWN * lerpf(0.35, 0.6, tuck) - b.z * lerpf(0.15, 0.25, tuck)
+	var out_r := _out_of_body(_ik_target.global_position, HAND_CLEAR)
+	var belly := (out_r - _ik_target.global_position).length() * tuck
+	_ik_target.global_position = _ik_target.global_position.lerp(out_r, tuck)
+	# (the elbow out to the side and down; tucked in, down by the ribs, while
+	# fishing with the hands in front - out round the belly on one that has one)
+	var round_k := clampf(belly / (0.12 * _rig_scale()), 0.0, 1.0)
+	_ik_pole.global_position = shoulder - b.x * lerpf(0.5, lerpf(0.2, 0.6, round_k), tuck) + Vector3.DOWN * lerpf(0.35, lerpf(0.6, 0.35, round_k), tuck) - b.z * lerpf(0.15, 0.25, tuck)
 	# The left hand up the rod from the right (as it was placed last frame),
 	# going round the reel's crank while it reels.
 	var rod := _rod()
@@ -4310,9 +4336,17 @@ func _aim_rod(delta: float) -> void:
 		if _visual.clip in [PlayerVisual.CLIP_REEL, PlayerVisual.CLIP_FIGHT] or player.state == Player.State.REELING:
 			_crank += delta * TAU * CRANK_TURNS
 			at = rod.global_position + rb.y * REEL_AT + (rb.x * cos(_crank) + rb.z * sin(_crank)) * CRANK_R + b.x * 0.06
-		_left_target.global_position = at
+		# (out of the belly too: further up the rod till it's clear, then straight out)
 		var tuck_l := smoothstep(0.0, 1.0, _centred)
-		_left_pole.global_position = shoulder_l + b.x * lerpf(0.5, 0.22, tuck_l) + Vector3.DOWN * lerpf(0.4, 0.6, tuck_l) - b.z * lerpf(0.1, 0.25, tuck_l)
+		if tuck_l > 0.0:
+			var want := at
+			for step in 10:
+				if _out_of_body(at, HAND_CLEAR).distance_to(at) < 0.005:
+					break
+				at += rb.y * 0.05 * _rig_scale()
+			at = want.lerp(_out_of_body(at, HAND_CLEAR), tuck_l)
+		_left_target.global_position = at
+		_left_pole.global_position = shoulder_l + b.x * lerpf(0.5, lerpf(0.22, 0.6, round_k), tuck_l) + Vector3.DOWN * lerpf(0.4, lerpf(0.6, 0.35, round_k), tuck_l) - b.z * lerpf(0.1, 0.25, tuck_l)
 	# (the opening: the left hand onto the lamp's bail on the drum, as
 	# PickUp_Table reaches out - and off again as it lifts it)
 	var take := _intro_take()

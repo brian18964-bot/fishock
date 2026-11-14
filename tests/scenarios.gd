@@ -10,6 +10,7 @@ const TESTS := [
 	"test_campaign_level_one",
 	"test_catch_feedback",
 	"test_fishing_view",
+	"test_item_faces_and_hands",
 	"test_campaign_night_ends_safe_level",
 	"test_campaign_curses",
 	"test_campaign_unlocks_and_achievements",
@@ -5242,6 +5243,39 @@ func test_catch_feedback() -> void:
 	lost.free()
 	gs.reset_run()
 	check(gs.run_catches.is_empty() and gs.run_offered == 0 and gs.run_bone == "", "a new run starts clean")
+
+
+## User report: a thing made lying flat showed its thin edge in its card (a fish bone a sliver),
+## the binoculars end-on; a round traveller's hands went into its belly as it fished.
+func test_item_faces_and_hands() -> void:
+	check(ItemPreview.lies_flat("bone_broken_l", AABB(Vector3.ZERO, Vector3(0.3, 0.1, 0.19))), "a bone lying flat is tipped up to face us")
+	check(not ItemPreview.lies_flat("knife", AABB(Vector3.ZERO, Vector3(0.32, 0.05, 0.017))), "a thing already broadside on is left")
+	check(not ItemPreview.lies_flat("oxy_box", AABB(Vector3.ZERO, Vector3(0.49, 0.46, 0.3))), "nor a thing that isn't flat")
+	check(not ItemPreview.lies_flat("live_frog", AABB(Vector3.ZERO, Vector3(0.3, 0.05, 0.2)))
+		and not ItemPreview.lies_flat("flashlight", AABB(Vector3.ZERO, Vector3(1.0, 0.28, 0.43))), "nor the live baits and the ones that stand")
+	check(ItemPreview.PRESENT.has("binoculars") and ItemPreview.PRESENT.binoculars.has("tilt"), "the binoculars stood up, lenses to us")
+	var pv := ItemPreview.new()
+	pv.size = Vector2(120, 90)
+	add_child(pv)
+	await frames(2)
+	pv.show_item("bone_whole_m")
+	var bone: Node3D = pv._holder.get_child(0)
+	check(absf(bone.rotation_degrees.x - ItemPreview.FLAT_TILT) < 0.5 and pv._swaying, "a bone shown tipped up, swinging not turning round")
+	var box := pv._bounds(bone)
+	check(box.size.y > box.size.z, "its broad face to the camera now (%.2f high, %.2f deep)" % [box.size.y, box.size.z])
+	pv.queue_free()
+	var rv: RunView3D = RunView3D.active
+	if rv != null and rv.built:
+		var k := rv._rig_scale()
+		var ahead := rv.pivot.global_basis.z.normalized()
+		var h := 0.9
+		var front := CharacterArt.front_between(rv.rig.character, h - 0.1, h + 0.1, 0.0) * k
+		var inside := rv.pivot.global_position + Vector3.UP * h * k
+		var moved := rv._out_of_body(inside, RunView3D.HAND_CLEAR)
+		if front > 0.0:
+			check((moved - rv.pivot.global_position).dot(ahead) >= front + RunView3D.HAND_CLEAR * k - 0.001, "a hand inside the body is put out in front of it")
+		var clear := inside + ahead * (front + 0.5)
+		check(rv._out_of_body(clear, RunView3D.HAND_CLEAR).distance_to(clear) < 0.001, "one already clear is left where it is")
 
 
 ## User request (seeing the fishing): the camera comes in while the traveller's held where they

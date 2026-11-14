@@ -60,7 +60,9 @@ THINGS = {
     "potion_vigor": dict(model="items/potion_vigor.glb", turn=(12, 0, 20), fill=0.86, ground=ABILITY),
     "potion_ward": dict(model="items/potion_ward.glb", turn=(12, 0, 20), fill=0.86, ground=TACKLE),
     "eyeball": dict(model="items/eyeball.glb", turn=(10, 0, -105), fill=0.8, ground=ITEM),
-    "binoculars": dict(model="items/binoculars.glb", turn=(15, 0, 30), fill=0.92, ground=GEAR),
+    # (user report: seen end-on it was a dark lump - stood up, the big lenses to us, as the
+    # card's preview shows it: ItemPreview.PRESENT. Turned about Y then X - "order".)
+    "binoculars": dict(model="items/binoculars.glb", turn=(-50, 90, 0), order="ZYX", fill=0.9, ground=GEAR),
     # Round 8: the eye that shows the altar, the one that sees the ghosts;
     # the net; and the live baits only caught on the map (their own
     # critter models, posed - tools/prep_shop_models.py).
@@ -293,6 +295,7 @@ def icon(name):
         # Made thicker across its length (the model's own up axis).
         k = spec["thick"]
         root.scale = (k, k, 1.0)
+    root.rotation_mode = spec.get("order", "XYZ")
     root.rotation_euler = tuple(math.radians(a) for a in spec["turn"])
     bpy.context.view_layer.update()
     stage(meshes, spec["fill"], spec.get("aim"))

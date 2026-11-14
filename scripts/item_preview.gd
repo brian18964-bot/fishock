@@ -32,7 +32,26 @@ const PRESENT := {
 	"eyeball": {"spin": PI},
 	"eye_altar": {"spin": PI},
 	"eye_ghost": {"spin": PI},
+	# (user report: the binoculars shown end-on, a dark lump - stood up, the big lenses to us)
+	"binoculars": {"tilt": Vector3(-50, 0, -90)},
+	# (long thin things lying flat that FLAT's rule leaves alone - the live baits: from above)
+	"live_snake": {"tilt": Vector3(72, 0, 0)},
+	"live_worm": {"tilt": Vector3(72, 0, 0)},
+	"bait": {"tilt": Vector3(72, 0, 0)},
+	"live_spider": {"tilt": Vector3(60, 0, 0)},
 }
+## User report (a fish bone's card showed its thin edge): a thing made lying flat - its thinnest
+## side up, under FLAT of its longest - is tipped up FLAT_TILT degrees so its broad face is to
+## us (the bones, the cheese, the net, the clasp, the shovel...). Not the live baits and lures
+## (little creatures, best seen from the side - PRESENT turns the few that aren't), nor the
+## ones in STANDS (round enough to read as they stand).
+const FLAT := 0.42
+const FLAT_TILT := 72.0
+const STANDS := ["flashlight", "loaf", "cheese", "salt"]
+## Everything swings from one three-quarter view to the other, as the fish do, and isn't turned
+## right round (user report: turned round, a flat thing's a sliver half the time). A drag still
+## turns it by hand.
+const SWING := 0.7
 var _swaying := false
 
 
@@ -121,11 +140,22 @@ func show_item(id: String) -> bool:
 	if how.has("tilt"):
 		var deg: Vector3 = how.tilt
 		inst.rotation = Vector3(deg_to_rad(deg.x), deg_to_rad(deg.y), deg_to_rad(deg.z))
-	_fit(inst, not how.has("tilt"), float(how.get("reach", 0.0)))
+	elif lies_flat(id, _bounds(inst)):
+		inst.rotation.x = deg_to_rad(FLAT_TILT)
+	# (the bones all level, head to the right: some leant across the frame and some not)
+	_fit(inst, not how.has("tilt") and not Bones.is_bone(id), float(how.get("reach", 0.0)))
 	_spin = float(how.get("spin", 0.0))
-	_swaying = how.get("sway", false)
+	_swaying = true
 	_sway = 0.0
 	return true
+
+
+## Whether `id`'s model (its bounds `box`) is one made lying flat, to be tipped up (FLAT).
+static func lies_flat(id: String, box: AABB) -> bool:
+	if id.begins_with("live_") or id.begins_with("lure_") or id.begins_with("rod_") or id in STANDS:
+		return false
+	return box.get_shortest_axis_index() == Vector3.AXIS_Y \
+		and box.get_shortest_axis_size() < FLAT * box.get_longest_axis_size()
 
 
 ## Shows species `id` as its 3D fish (FishModel), swimming where it is;
@@ -209,7 +239,7 @@ func _process(delta: float) -> void:
 	if _swaying:
 		if not _drag:
 			_sway += delta * 0.5
-		_pivot.rotation.y = _spin + sin(_sway) * 0.75
+		_pivot.rotation.y = _spin + sin(_sway) * SWING
 		return
 	if not _drag:
 		_spin += delta * 0.7
