@@ -122,8 +122,8 @@ const PULL_RATE := Vector2(0.7, 1.3)
 ## this share of the way out to the shoulder kept; the rod's side angle
 ## then. User report: in to the middle, the camera behind saw no hand on
 ## the rod at all - it's kept out by the hip, where the arm shows.)
-const CENTRE_KEEP := 1.25
-const ROD_SIDE_CENTRED := 22.0
+const CENTRE_KEEP := 0.45
+const ROD_SIDE_CENTRED := 10.0
 const CENTRED_CLIPS := [PlayerVisual.CLIP_HOLD, PlayerVisual.CLIP_BITE, PlayerVisual.CLIP_TUG,
 	PlayerVisual.CLIP_REEL, PlayerVisual.CLIP_FIGHT]
 ## How fast the rod follows its angle (1/s), the arm comes in to hold it
@@ -3852,6 +3852,15 @@ func _arm_ik() -> void:
 	_left_ik.set_target_node(0, _left_ik.get_path_to(_left_target))
 	_left_ik.set_pole_node(0, _left_ik.get_path_to(_left_pole))
 	_left_ik.influence = 0.0
+	var la := sk.find_bone("upperarm_l")
+	var lb := sk.find_bone("lowerarm_l")
+	var lc := sk.find_bone("hand_l")
+	_left_len = sk.get_bone_global_rest(la).origin.distance_to(sk.get_bone_global_rest(lb).origin) \
+		+ sk.get_bone_global_rest(lb).origin.distance_to(sk.get_bone_global_rest(lc).origin)
+	# (after the arms': the hands turned to close on the rod)
+	_hands = GripHands.new()
+	_hands.name = "GripHands"
+	sk.add_child(_hands)
 	sk.skeleton_updated.connect(_hold_rod)
 
 
@@ -4252,6 +4261,84 @@ func _bent(mi: MeshInstance3D, z: float) -> Vector3:
 	return Vector3(dir.x * off, dir.y * off, z - back - over * (1.0 - cos(bend)))
 
 
+## The hold on the rod (user report - see _aim_rod): the left hand this share of its arm's length
+## up the rod from the right (FORE_GRIP m at most, FORE_MIN at least), the reel this share of
+## that; a wrist no further from its shoulder than REACH_MAX of the arm.
+const FORE_SHARE := 0.55
+const FORE_MIN := 0.11
+const REEL_SHARE := 0.8
+const REACH_MAX := 0.93
+## The hold may come this far past the body's middle toward the left (in half shoulder-widths,
+## negative: left of it) before the left hand closes up on the right.
+const CENTRE_PAST := 0.0
+var _left_len := 0.4
+var _grip_at := Vector3.ZERO
+var _hands: GripHands
+var _grips := {}
+
+
+## The way the rod points this frame: out ahead, a little to the rod hand's side, up by _rod_up.
+func _rod_dir(b: Basis) -> Vector3:
+	var side := deg_to_rad(lerpf(ROD_SIDE, ROD_SIDE_CENTRED, smoothstep(0.0, 1.0, _centred)))
+	# (the model faces +z; its right hand's side is -x)
+	return (b.z * cos(side) * cos(_rod_up) - b.x * sin(side) * cos(_rod_up) + Vector3.UP * sin(_rod_up)).normalized()
+
+
+## A hand's own grip ("r" / "l"), in its bone's frame: where a thing held sits in the fist (`at`),
+## the fist's axis (`axis`, toward the thumb), and the way from the wrist across to the thing
+## (`across`, square to the axis). The left's is measured on each character (CharacterArt.fit:
+## grip, grip_axis); the right's is that, mirrored through the body's middle.
+func _hand_grip(which: String) -> Dictionary:
+	if _grips.has(which):
+		return _grips[which]
+	var sk := rig.skeleton
+	var fit := CharacterArt.fit(rig.character)
+	var hl := sk.find_bone("hand_l")
+	var hand := sk.find_bone("hand_" + which)
+	var g: Array = fit.get("grip", [0.0, float(fit.get("hand_l", 0.07)) * 0.6, 0.0])
+	var ax: Array = fit.get("grip_axis", [0.0, 0.0, -1.0])
+	var rest_l := sk.get_bone_global_rest(hl)
+	var at := rest_l * Vector3(g[0], g[1], g[2])
+	var axis := rest_l.basis.orthonormalized() * Vector3(ax[0], ax[1], ax[2]).normalized()
+	if which == "r":
+		at.x = -at.x
+		axis.x = -axis.x
+	var rest := sk.get_bone_global_rest(hand)
+	var local_at := rest.affine_inverse() * at
+	var local_axis := (rest.basis.orthonormalized().inverse() * axis).normalized()
+	# (toward the thumb: the thumb lies along the rod, toward its tip)
+	var thumb := sk.find_bone("thumb_01_" + which)
+	if thumb >= 0:
+		var t := rest.affine_inverse() * sk.get_bone_global_rest(thumb).origin
+		if t.dot(local_axis) < 0.0:
+			local_axis = -local_axis
+	var across := local_at - local_axis * local_at.dot(local_axis)
+	if across.length() < 0.005:
+		# (the grip on the wrist's own line: any way square to the fist will do - the palm's)
+		across = local_axis.cross(Vector3.RIGHT)
+		if across.length() < 0.1:
+			across = local_axis.cross(Vector3.UP)
+	_grips[which] = {"at": local_at, "axis": local_axis, "across": across.normalized()}
+	return _grips[which]
+
+
+## A hand closed on the rod at `at` (the rod along `dir`): the wrist's place and the hand's turn
+## (world) - its fist's axis along the rod, the palm to the rod from `shoulder`'s side.
+func _hand_hold(which: String, at: Vector3, dir: Vector3, shoulder: Vector3) -> Transform3D:
+	var g := _hand_grip(which)
+	var axis: Vector3 = g.axis
+	var across: Vector3 = g.across
+	var from := at - shoulder
+	var u := from - dir * from.dot(dir)
+	if u.length() < 0.01:
+		u = Vector3.DOWN - dir * Vector3.DOWN.dot(dir)
+	u = u.normalized()
+	var local := Basis(axis, across, axis.cross(across))
+	var world := Basis(dir, u, dir.cross(u))
+	var turn := (world * local.inverse()).orthonormalized()
+	return Transform3D(turn, at - turn * (g.at as Vector3) * _rig_scale())
+
+
 ## A hand's wrist kept this far (character metres) out in front of the body's own front.
 const HAND_CLEAR := 0.09
 
@@ -4315,38 +4402,86 @@ func _aim_rod(delta: float) -> void:
 	# (reaching less far out while fishing: the elbow bent, the hands in
 	# close in front of the waist)
 	_ik_target.global_position = from + reach * _arm_len * lerpf(0.8, 0.58 + (_arm_follow - 0.4) * 0.2, smoothstep(0.0, 1.0, _centred))
-	# (user report: a round one's hands - the bear's - went into its belly as it fished, the left
-	# gone altogether: the grip's kept out in front of the body's own front at its height)
+	# User report (the fishing's hold didn't read as one: the rod went through the wrist, the fist
+	# lay across it, the rod hand sat out past its shoulder and the reeling hand couldn't get to
+	# the rod at all): the hold's worked out from the body each frame -
+	#   - where the rod's grip goes (`grip`): in toward the middle, out in front of the body's
+	#     own front (a belly), no further than the arm reaches;
+	#   - each hand turned to close round the rod (the fist's own axis along it, thumb to the
+	#     tip, the palm to it from the shoulder's side - _grip_basis), its wrist set back from
+	#     the rod by the palm (CharacterArt's measured grip) - so the rod's in the fist;
+	#   - the left hand's hold up the rod no further than its arm reaches: nearer the right
+	#     hand on a short-armed one, and the whole hold brought across toward it if it must.
 	var tuck := smoothstep(0.0, 1.0, _centred)
-	var out_r := _out_of_body(_ik_target.global_position, HAND_CLEAR)
-	var belly := (out_r - _ik_target.global_position).length() * tuck
-	_ik_target.global_position = _ik_target.global_position.lerp(out_r, tuck)
+	var k := _rig_scale()
+	var grip := _ik_target.global_position
+	var out_r := _out_of_body(grip, HAND_CLEAR)
+	var belly := (out_r - grip).length() * tuck
+	grip = grip.lerp(out_r, tuck)
+	var dir := _rod_dir(b)
+	var arm_r := _arm_len * k
+	var arm_l := _left_len * k
+	var two := (1.0 - _stow) * (1.0 - _left_free)
+	var reeling := _visual.clip in [PlayerVisual.CLIP_REEL, PlayerVisual.CLIP_FIGHT] or player.state == Player.State.REELING
+	if reeling:
+		_crank += delta * TAU * CRANK_TURNS
+	var fore := clampf(arm_l * FORE_SHARE, FORE_MIN * k, FORE_GRIP)
+	var hold_r := Transform3D()
+	var hold_l := Transform3D()
+	var left_at := grip
+	for attempt in 24:
+		# (the right hand: within reach)
+		hold_r = _hand_hold("r", grip, dir, shoulder)
+		var far := hold_r.origin.distance_to(shoulder)
+		if far > arm_r * REACH_MAX:
+			grip = shoulder + (grip - shoulder) * (arm_r * REACH_MAX / far)
+			hold_r = _hand_hold("r", grip, dir, shoulder)
+		# (the left: up the rod from it - on the reel's crank, going round, as it reels)
+		left_at = grip + dir * fore
+		if reeling:
+			var across := dir.cross(Vector3.UP).normalized()
+			var over := across.cross(dir).normalized()
+			left_at = grip + dir * fore * REEL_SHARE + (across * cos(_crank) + over * sin(_crank)) * CRANK_R * k
+		hold_l = _hand_hold("l", left_at, dir, shoulder_l)
+		# (reeling, it's the crank's whole circle that's to be in reach - the hold's not to shift
+		# with every turn of it)
+		var room := arm_l * REACH_MAX
+		var far_l := hold_l.origin.distance_to(shoulder_l)
+		if reeling:
+			room -= CRANK_R * k
+			far_l = _hand_hold("l", grip + dir * fore * REEL_SHARE, dir, shoulder_l).origin.distance_to(shoulder_l)
+		if two <= 0.0 or far_l <= room:
+			break
+		# (out of reach: the hold brought across to the middle and a little past it first, then
+		# the left hand nearer the right, then the hold on across toward the left arm)
+		var right_of := -(grip - middle).dot(b.x) / maxf(shoulder.distance_to(middle), 0.01)
+		if tuck > 0.0 and right_of > CENTRE_PAST:
+			grip += b.x * 0.025 * k * tuck
+		elif fore > FORE_MIN * k + 0.005:
+			fore = maxf(fore * 0.85, FORE_MIN * k)
+		elif tuck > 0.0:
+			grip += (shoulder_l - grip).normalized() * 0.04 * k * tuck
+		else:
+			break
+	_ik_target.global_position = hold_r.origin
+	_grip_at = grip
 	# (the elbow out to the side and down; tucked in, down by the ribs, while
 	# fishing with the hands in front - out round the belly on one that has one)
-	var round_k := clampf(belly / (0.12 * _rig_scale()), 0.0, 1.0)
+	var round_k := clampf(belly / (0.12 * k), 0.0, 1.0)
 	_ik_pole.global_position = shoulder - b.x * lerpf(0.5, lerpf(0.2, 0.6, round_k), tuck) + Vector3.DOWN * lerpf(0.35, lerpf(0.6, 0.35, round_k), tuck) - b.z * lerpf(0.15, 0.25, tuck)
-	# The left hand up the rod from the right (as it was placed last frame),
-	# going round the reel's crank while it reels.
-	var rod := _rod()
-	var two := (1.0 - _stow) * (1.0 - _left_free)
-	_left_ik.influence = two
-	if rod != null and two > 0.0:
-		var rb := rod.global_basis.orthonormalized()
-		var at := rod.global_position + rb.y * FORE_GRIP
-		if _visual.clip in [PlayerVisual.CLIP_REEL, PlayerVisual.CLIP_FIGHT] or player.state == Player.State.REELING:
-			_crank += delta * TAU * CRANK_TURNS
-			at = rod.global_position + rb.y * REEL_AT + (rb.x * cos(_crank) + rb.z * sin(_crank)) * CRANK_R + b.x * 0.06
-		# (out of the belly too: further up the rod till it's clear, then straight out)
-		var tuck_l := smoothstep(0.0, 1.0, _centred)
-		if tuck_l > 0.0:
-			var want := at
-			for step in 10:
-				if _out_of_body(at, HAND_CLEAR).distance_to(at) < 0.005:
-					break
-				at += rb.y * 0.05 * _rig_scale()
-			at = want.lerp(_out_of_body(at, HAND_CLEAR), tuck_l)
-		_left_target.global_position = at
-		_left_pole.global_position = shoulder_l + b.x * lerpf(0.5, lerpf(0.22, 0.6, round_k), tuck_l) + Vector3.DOWN * lerpf(0.4, lerpf(0.6, 0.35, round_k), tuck_l) - b.z * lerpf(0.1, 0.25, tuck_l)
+	# (the left arm let go of the rod as far as it can't get to it - the cast's backswing - and
+	# left to the clip's own)
+	var short := hold_l.origin.distance_to(shoulder_l) - arm_l * REACH_MAX
+	var can := 1.0 - clampf(short / (0.25 * arm_l), 0.0, 1.0)
+	_left_ik.influence = two * can
+	_left_target.global_position = hold_l.origin
+	_left_pole.global_position = shoulder_l + b.x * lerpf(0.5, lerpf(0.22, 0.6, round_k), tuck) + Vector3.DOWN * lerpf(0.4, lerpf(0.6, 0.35, round_k), tuck) - b.z * lerpf(0.1, 0.25, tuck)
+	if _hands != null:
+		var to_sk := sk.global_basis.orthonormalized().inverse()
+		_hands.right = to_sk * hold_r.basis
+		_hands.left = to_sk * hold_l.basis
+		_hands.right_w = _rod_on * (1.0 - _stow)
+		_hands.left_w = _left_ik.influence * _rod_on
 	# (the opening: the left hand onto the lamp's bail on the drum, as
 	# PickUp_Table reaches out - and off again as it lifts it)
 	var take := _intro_take()
@@ -4381,7 +4516,6 @@ func _aim_rod(delta: float) -> void:
 			var lsc := held_l.global_basis.get_scale().x
 			hold += Vector3.UP * (CharacterRig.LAMP_BAIL.y - LAMP_KNOB) * lsc
 			# (out past a round belly at the lamp's height - its own front)
-			var k := _rig_scale()
 			var low := (hold.y - pivot.global_position.y) / k - CharacterRig.LAMP_BAIL.y * lsc / k
 			var front := CharacterArt.front_between(rig.character, low, low + 0.3 * lsc / k, 0.0) * k
 			hold += ahead * maxf(front + (CharacterRig.LAMP_R + 0.03) * lsc - INTRO_HOLD.z, 0.0)
@@ -4456,9 +4590,9 @@ func _hold_rod() -> void:
 		var rest: Transform3D = rod.get_meta("rest")
 		var held := hand * rest
 		if _rod_on > 0.0:
-			var side := deg_to_rad(lerpf(ROD_SIDE, ROD_SIDE_CENTRED, smoothstep(0.0, 1.0, _centred)))
-			# (the model faces +z; its right hand's side is -x)
-			var dir := (b.z * cos(side) * cos(_rod_up) - b.x * sin(side) * cos(_rod_up) + Vector3.UP * sin(_rod_up)).normalized()
+			var dir := _rod_dir(b)
+			# (in the fist - the hand's own grip - not through the wrist)
+			held.origin = hand * ((_hand_grip("r").at as Vector3))
 			# (turned on its length so its guides - the rod's -z - hang under
 			# it, toward the water; user report: they stood out to the side)
 			var z := (Vector3.UP - dir * Vector3.UP.dot(dir))
@@ -6350,6 +6484,34 @@ void fragment() {
 
 ## The left hand set straight on along the forearm, as it lies at rest
 ## (blended by `influence`).
+## The hands turned to close on the rod (RunView3D._aim_rod works out how - `right`, `left`, in
+## the skeleton's space - by `right_w`, `left_w`): after the arms have brought the wrists to it.
+class GripHands extends SkeletonModifier3D:
+	var right := Basis.IDENTITY
+	var left := Basis.IDENTITY
+	var right_w := 0.0
+	var left_w := 0.0
+	var _r := -1
+	var _l := -1
+
+	func _process_modification() -> void:
+		var sk := get_skeleton()
+		if sk == null:
+			return
+		if _r < 0:
+			_r = sk.find_bone("hand_r")
+			_l = sk.find_bone("hand_l")
+		for hand in [[_r, right, right_w], [_l, left, left_w]]:
+			var bone: int = hand[0]
+			var w: float = hand[2]
+			if bone < 0 or w <= 0.001:
+				continue
+			var now := sk.get_bone_global_pose(bone)
+			var size := now.basis.get_scale()
+			var turned := now.basis.orthonormalized().slerp((hand[1] as Basis).orthonormalized(), clampf(w, 0.0, 1.0))
+			sk.set_bone_global_pose(bone, Transform3D(turned.scaled(size), now.origin))
+
+
 class StraightWrist extends SkeletonModifier3D:
 	var _bone := -1
 

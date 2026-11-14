@@ -11,6 +11,7 @@ const TESTS := [
 	"test_catch_feedback",
 	"test_fishing_view",
 	"test_item_faces_and_hands",
+	"test_fishing_hold",
 	"test_campaign_night_ends_safe_level",
 	"test_campaign_curses",
 	"test_campaign_unlocks_and_achievements",
@@ -5276,6 +5277,70 @@ func test_item_faces_and_hands() -> void:
 			check((moved - rv.pivot.global_position).dot(ahead) >= front + RunView3D.HAND_CLEAR * k - 0.001, "a hand inside the body is put out in front of it")
 		var clear := inside + ahead * (front + 0.5)
 		check(rv._out_of_body(clear, RunView3D.HAND_CLEAR).distance_to(clear) < 0.001, "one already clear is left where it is")
+
+
+## User report (the fishing's hold didn't read as one: the rod hand out past its shoulder, the
+## fist across the rod, the reeling hand not getting to it): waiting on a bite, both palms are on
+## the rod with the fists closed round it, in front of the body's middle - whoever's fishing.
+func test_fishing_hold() -> void:
+	var rv: RunView3D = RunView3D.active
+	if rv == null or not rv.built:
+		return
+	var p := player()
+	p.bait_count = 20
+	var zone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
+	await put(zone.shore_point(Vector2.DOWN) + Vector2(0, 60))
+	p.aim_dir = Vector2.UP
+	await frames(6)
+	p.charge_time = p.MAX_CHARGE_TIME * 0.5
+	p._launch_cast()
+	await seconds(1.4)
+	check(p.state == Player.State.WAITING, "the float's out (%d)" % p.state)
+	var got := {}
+	rv.rig.skeleton.skeleton_updated.connect(func(): got.merge(_hold_now(rv)), CONNECT_ONE_SHOT)
+	await frames(3)
+	check(not got.is_empty(), "the hold was measured")
+	if got.is_empty():
+		return
+	check(got.off_r < 0.02 and got.off_l < 0.02, "both palms on the rod (%.3f, %.3f m off it)" % [got.off_r, got.off_l])
+	check(got.fist_r < 8.0 and got.fist_l < 8.0, "both fists closed round it, not across it (%.0f, %.0f deg)" % [got.fist_r, got.fist_l])
+	check(absf(got.side) < 0.5, "held in front of the body's middle, not out past the shoulder (%.2f)" % got.side)
+	check(got.up > 0.07 and got.up < RunView3D.FORE_GRIP + 0.02, "the left hand up the rod from the right (%.2f m)" % got.up)
+	check(rv._left_ik.influence > 0.95, "the left arm all the way onto it (%.2f)" % rv._left_ik.influence)
+	check(got.ext_r < 0.96 and got.ext_l < 0.96, "neither arm locked straight (%.2f, %.2f)" % [got.ext_r, got.ext_l])
+	p._cancel_cast("test")
+	await seconds(0.3)
+
+
+## (in skeleton_updated: the arms' IK only shows in the pose there)
+func _hold_now(v: RunView3D) -> Dictionary:
+	var sk := v.rig.skeleton
+	var b := v.pivot.global_basis.orthonormalized()
+	var g := func(n: String) -> Transform3D: return sk.global_transform * sk.get_bone_global_pose(sk.find_bone(n))
+	var sr: Vector3 = g.call("upperarm_r").origin
+	var sl: Vector3 = g.call("upperarm_l").origin
+	var er: Vector3 = g.call("lowerarm_r").origin
+	var el: Vector3 = g.call("lowerarm_l").origin
+	var hr: Transform3D = g.call("hand_r")
+	var hl: Transform3D = g.call("hand_l")
+	var rod := v._rod()
+	var rb := rod.global_basis.orthonormalized()
+	var gr: Dictionary = v._hand_grip("r")
+	var gl: Dictionary = v._hand_grip("l")
+	var palm_r: Vector3 = hr * (gr.at as Vector3)
+	var palm_l: Vector3 = hl * (gl.at as Vector3)
+	var off := func(at: Vector3) -> float:
+		var rel := at - rod.global_position
+		return (rel - rb.y * rel.dot(rb.y)).length()
+	return {
+		"off_r": off.call(palm_r), "off_l": off.call(palm_l),
+		"fist_r": rad_to_deg(acos(clampf((hr.basis.orthonormalized() * (gr.axis as Vector3)).dot(rb.y), -1.0, 1.0))),
+		"fist_l": rad_to_deg(acos(clampf((hl.basis.orthonormalized() * (gl.axis as Vector3)).dot(rb.y), -1.0, 1.0))),
+		"side": -(palm_r - (sr + sl) * 0.5).dot(b.x) / maxf((sr - sl).length() * 0.5, 0.01),
+		"up": (palm_l - rod.global_position).dot(rb.y),
+		"ext_r": sr.distance_to(hr.origin) / (sr.distance_to(er) + er.distance_to(hr.origin)),
+		"ext_l": sl.distance_to(hl.origin) / (sl.distance_to(el) + el.distance_to(hl.origin)),
+	}
 
 
 ## User request (seeing the fishing): the camera comes in while the traveller's held where they
