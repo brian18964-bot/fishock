@@ -5624,8 +5624,10 @@ func test_run_3d() -> void:
 	key(KEY_SPACE, true)
 	await seconds(0.5)
 	check(view._clip == "Fish_Throw" and view._guide_label.visible, "winding a cast: the cast clip, how far it'll go")
-	check(view._stow < 0.01 and view._lamp_in < 0.01 and view._left_ik.influence > 0.9,
-		"fishing: the rod drawn, both hands on it, the lamp at the hip")
+	# (the left hand's on the rod as far as its arm gets to it: let go of it through the
+	# wind-up's backswing - test_fishing_hold has both on it, waiting)
+	check(view._stow < 0.01 and view._lamp_in < 0.01 and view._hands.right_w > 0.9,
+		"fishing: the rod drawn and in the hand, the lamp at the hip (left arm %.2f)" % view._left_ik.influence)
 	key(KEY_SPACE, false)
 	for _i in 60:
 		await frames(1)
