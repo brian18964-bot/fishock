@@ -882,7 +882,11 @@ class StorageGrid extends Control:
 				if Locks.stored(e.id):
 					Locks.draw(self, box(i))
 		if _entries.is_empty():
-			UiKit.draw_text(self, Vector2(0, cell * 0.6), "這裡還沒有東西", 15, UiKit.DIM, HORIZONTAL_ALIGNMENT_CENTER, size.x)
+			# (on its own plate, mid-way down: the words lay across the grid's lines)
+			var plate := Rect2(size.x * 0.5 - 96.0, minf(size.y * 0.5, cell * 2.0) - 18.0, 192.0, 34.0)
+			draw_rect(plate, Color(0.06, 0.05, 0.04, 0.88))
+			draw_rect(plate, Color(0.42, 0.36, 0.26, 0.7), false, 1.0)
+			UiKit.draw_text(self, Vector2(plate.position.x, plate.position.y + 23.0), "這裡還沒有東西", 15, UiKit.DIM, HORIZONTAL_ALIGNMENT_CENTER, plate.size.x)
 
 
 ## An equipment slot: what's worn there, or its name greyed.

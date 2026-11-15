@@ -310,7 +310,11 @@ func _build() -> void:
 	multi.pressed.connect(_on_multiplayer)
 	_home.add_child(multi)
 	var soon := UiKit.label("即將開放", 11, Color(0.6, 0.85, 1.0))
-	soon.position = Vector2(88, -8)
+	# (under the button, clear of its words and of the button over it - it sat on them)
+	soon.name = "Soon"
+	soon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	soon.custom_minimum_size = Vector2(140, 0)
+	soon.position = Vector2(0, 43)
 	multi.add_child(soon)
 
 	_skip_hint = UiKit.label("點一下畫面跳過", 15, UiKit.DIM)

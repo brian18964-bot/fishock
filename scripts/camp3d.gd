@@ -82,6 +82,11 @@ func _build() -> void:
 		multi.position = Vector2(764, 94)
 		multi.custom_minimum_size = Vector2(126, 34)
 		multi.size = Vector2(126, 34)
+		var soon := multi.get_node_or_null("Soon") as Control
+		if soon != null:
+			soon.custom_minimum_size = Vector2(126, 0)
+			soon.size = Vector2(126, 16)
+			soon.position = Vector2(0, 35)
 	# (user request: folded into one button, bottom right - tapped, the
 	# five open up above it)
 	var bar := VBoxContainer.new()

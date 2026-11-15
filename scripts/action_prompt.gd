@@ -107,6 +107,16 @@ func _draw_prompt() -> void:
 	var size := Vector2(maxf(verb_size.x + PAD.x * 2.0, 84.0), 44.0)
 	_rect = Rect2(at - Vector2(size.x * 0.5, size.y), size)
 	var down := _touch != -1 or _mouse or Input.is_key_pressed(KEY_E)
+	# (something that can't be done as things are - no shovel for the frost flower: a dull
+	# plate with what's wanting on it, no glow, not the lit button of a thing to press)
+	if _offer.get("locked", false):
+		_view.draw_style_box(_locked_box(), _rect)
+		UiKit.draw_text(_view, Vector2(_rect.position.x, _rect.position.y + 29), _offer.verb, FONT_VERB, UiKit.DIM,
+			HORIZONTAL_ALIGNMENT_CENTER, _rect.size.x, true)
+		if str(_offer.name) != "":
+			UiKit.draw_text(_view, Vector2(at.x - 150, _rect.position.y - GAP - 4), _offer.name, FONT_NAME, UiKit.TEXT,
+				HORIZONTAL_ALIGNMENT_CENTER, 300)
+		return
 	var pulse := 0.45 + 0.3 * sin(Time.get_ticks_msec() / 1000.0 * 5.0)
 	_view.draw_texture_rect(UiKit.tex("action_glow"), _rect.grow(14.0), false, Color(1.0, 0.82, 0.3, pulse))
 	UiKit.button_box("red", "pressed" if down else "normal").draw(_view.get_canvas_item(), _rect)
@@ -121,6 +131,19 @@ func _draw_prompt() -> void:
 	if title != "":
 		UiKit.draw_text(_view, Vector2(at.x - 150, _rect.position.y - GAP - 4), title, FONT_NAME, UiKit.TEXT,
 			HORIZONTAL_ALIGNMENT_CENTER, 300)
+
+
+static var _locked: StyleBoxFlat
+
+
+static func _locked_box() -> StyleBoxFlat:
+	if _locked == null:
+		_locked = StyleBoxFlat.new()
+		_locked.bg_color = Color(0.1, 0.09, 0.08, 0.82)
+		_locked.border_color = Color(0.42, 0.38, 0.32, 0.9)
+		_locked.set_border_width_all(2)
+		_locked.set_corner_radius_all(8)
+	return _locked
 
 
 ## User request: gathering and digging run a progress ring over the head

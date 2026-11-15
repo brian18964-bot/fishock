@@ -2300,7 +2300,10 @@ func interaction() -> Dictionary:
 	var frost_bloom := frost_flower_here()
 	if frost_bloom != null:
 		# (the cold soil: dug with the shovel in the off hand)
-		return _offer(frost_bloom, "冷凍花", "挖掘" if Profile.has_shovel() else "需要鏟子", false, -34.0)
+		var dig_offer := _offer(frost_bloom, "冷凍花", "挖掘" if Profile.has_shovel() else "需要鏟子", false, -34.0)
+		# (not to be done as things are: shown greyed, not as a button to press - ActionPrompt)
+		dig_offer["locked"] = not Profile.has_shovel()
+		return dig_offer
 	if in_rock_zone and _rock != null and _rock.active:
 		return {"at": _rock.prompt_anchor(), "name": "石頭", "verb": "翻開", "hold": false}
 	var tree := choppable_tree()
