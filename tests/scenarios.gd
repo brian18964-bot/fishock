@@ -5559,11 +5559,13 @@ func test_shore_slide_and_unstuck() -> void:
 	check(got.unreached.is_empty(), "the altar, the escape stone, the fuel station and every shore can be walked to (%s)" % str(got.unreached))
 
 
-## The three free maps gone over step by step (tests/map_audit.gd's walk_traps): nowhere the
-## traveller's steps take it into and never back out of.
+## A free map gone over step by step (tests/map_audit.gd's walk_traps): nowhere the
+## traveller's steps take it into and never back out of. (Seed 31's: it has a dry speck past a
+## sliver of deep water at the shore - see Player._crosses_deep. The seed lays the map out, the
+## theme only dresses it, so one theme's enough here; tools/map_audit.gd goes over many.)
 func test_no_stuck_spots() -> void:
 	var audit := preload("res://tests/map_audit.gd")
-	for theme in ["forest_pine", "snow_pine", "autumn"]:
+	for theme in ["autumn"]:
 		seed(31)
 		camp().clear()
 		gs.reset_run()
