@@ -9,6 +9,9 @@ const TESTS := [
 	"test_campaign_levels_build",
 	"test_campaign_level_one",
 	"test_catch_feedback",
+	"test_landed_fish_size",
+	"test_shore_slide_and_unstuck",
+	"test_no_stuck_spots",
 	"test_fishing_view",
 	"test_item_faces_and_hands",
 	"test_fishing_hold",
@@ -180,7 +183,7 @@ var checks := 0
 var _current := ""
 var _catcher := ErrorCatcher.new()
 ## The long system checks (tests/NOTES: `group=fast` leaves them out, `group=slow` runs only them).
-const SLOW := ["test_world_integrity", "test_trunks_hold", "test_soak_fishing"]
+const SLOW := ["test_world_integrity", "test_trunks_hold", "test_soak_fishing", "test_no_stuck_spots"]
 
 
 func _ready() -> void:
@@ -5328,6 +5331,155 @@ func _hold_now(v: RunView3D, look: HoldCheck) -> Dictionary:
 		"left": off.call(hl * (gl.at as Vector3)),
 		"in_r": inside.r, "in_l": inside.l,
 	}
+
+
+## User report: every fish landed came out the same size - a floor took in every catch under
+## 23 cm. Now it's shown by its own length: a 10 cm fish and a 30 cm one plainly apart.
+func test_landed_fish_size() -> void:
+	check(RunView3D.landed_length(10.0) < RunView3D.landed_length(20.0) and RunView3D.landed_length(20.0) < RunView3D.landed_length(40.0)
+		and RunView3D.landed_length(40.0) < RunView3D.landed_length(120.0), "the longer the fish, the bigger it's shown")
+	check(RunView3D.landed_length(30.0) - RunView3D.landed_length(10.0) > 0.2, "a 10 cm fish and a 30 cm one plainly apart (%.2f, %.2f m)" % [RunView3D.landed_length(10.0), RunView3D.landed_length(30.0)])
+	check(RunView3D.landed_length(5.0) >= 0.15, "the smallest still to be seen (%.2f m)" % RunView3D.landed_length(5.0))
+	var rv: RunView3D = RunView3D.active
+	if rv == null or not rv.built:
+		return
+	var small := fish("鯉魚", "near")
+	small.merge({"id": "carp", "length": 21.0, "weight": 0.2, "value": 3.0}, true)
+	player().catch_success.emit(small)
+	await frames(2)
+	var k_small := rv._landed_k
+	await seconds(RunView3D.LAND_TIME + 0.3)
+	var big := fish("鯉魚", "far")
+	big.merge({"id": "carp", "length": 80.0, "weight": 6.0, "value": 9.0}, true)
+	player().catch_success.emit(big)
+	await frames(2)
+	var k_big := rv._landed_k
+	check(k_big > k_small * 2.5, "in the run: an 80 cm carp shown well over twice a 21 cm one (%.2f vs %.2f)" % [k_big, k_small])
+	await seconds(RunView3D.LAND_TIME + CatchCard.HOLD + 0.5)
+
+
+## User report: stuck on a strip of shore, the stick doing nothing. Pushed mostly into the water
+## where the shore runs aslant, the traveller slides along it (the old way tried only straight
+## across or straight down the map - both into the water - and stood); shut in on every side, it's
+## set down on open ground. And this run's map: the altar, the escape stone, the fuel station and
+## every water's shore can be walked to (tests/map_audit.gd).
+func test_shore_slide_and_unstuck() -> void:
+	var p := player()
+	var home := p.position
+	var zone: WaterZone = null
+	var spot := Vector2.ZERO
+	var normal := Vector2.ZERO
+	for z in get_tree().get_nodes_in_group("water_zones_common"):
+		for sample in (z as WaterZone).shore_samples(12.0):
+			var sp: Vector2 = sample[0]
+			var way: Vector2 = sample[1]  # (out of the water)
+			# (a stretch of shore running aslant: its way out from the water about 45 degrees off the map's)
+			if absf(absf(way.x) - absf(way.y)) > 0.25:
+				continue
+			var at := sp + way * 16.0 - Player.FEET
+			p.position = at
+			if not p._too_deep(at) and not p.test_move(p.global_transform, Vector2.ZERO) \
+					and not p.test_move(p.global_transform, way.orthogonal() * 30.0) \
+					and not p.test_move(p.global_transform, -way.orthogonal() * 30.0):
+				zone = z
+				spot = at
+				normal = way
+				break
+		if zone != null:
+			break
+	check(zone != null, "a stretch of shore running aslant to try")
+	if zone == null:
+		return
+	# Up to the water's edge, then pushed mostly into it, a little along it.
+	var stick: TouchJoystick = p._move_joystick
+	p.position = spot
+	stick.output = -normal
+	stick.is_pressed = true
+	await seconds(0.6)
+	var edge_at := p.position
+	stick.output = (-normal * 0.85 + normal.orthogonal() * 0.5).normalized()
+	await seconds(0.8)
+	var slid := p.position.distance_to(edge_at)
+	stick.output = Vector2.ZERO
+	stick.is_pressed = false
+	check(not p._too_deep(p.position), "kept out of the water")
+	check(slid > 25.0, "pushed mostly into the water where the shore runs aslant: it slides along it (%.0f px)" % slid)
+	# Inside something solid: set down on open ground near it.
+	var rock: Node2D = null
+	for o in get_tree().get_nodes_in_group("solids"):
+		if o is Obstacle:
+			rock = o
+			break
+	if rock != null:
+		var free := p.open_ground_near(rock.global_position)
+		p.position = free
+		check(free != rock.global_position and not p.test_move(p.global_transform, Vector2.ZERO) and not p._too_deep(free),
+			"from inside a rock: the nearest open ground is clear (%.0f px off)" % free.distance_to(rock.global_position))
+		p.position = rock.global_position
+		check(p.shut_in(rock.global_position) or p.test_move(p.global_transform, Vector2.ZERO), "inside it, every way's shut")
+	# Ringed in (room to shuffle about, no way out - a stone rolled into a gap, say): pushed a
+	# while, set down outside the ring.
+	var ring_at := p.open_ground_near(home + Vector2(120, 0))
+	var ring := StaticBody2D.new()
+	for i in 14:
+		var shape := CollisionShape2D.new()
+		var circle := CircleShape2D.new()
+		circle.radius = 8.0
+		shape.shape = circle
+		shape.position = ring_at + Vector2.from_angle(TAU * i / 14.0) * 30.0
+		ring.add_child(shape)
+	main.add_child(ring)
+	await frames(2)
+	p.position = ring_at
+	var t0 := Time.get_ticks_usec()
+	var pocket := p.pocket_cells(ring_at)
+	var took := (Time.get_ticks_usec() - t0) / 1000.0
+	print("   pocket_cells: ringed in %d cells, %.1f ms" % [pocket.size(), took])
+	check(not pocket.is_empty() and not p.shut_in(ring_at), "ringed in: a pocket, not shut in (%d cells, %.1f ms to find)" % [pocket.size(), took])
+	t0 = Time.get_ticks_usec()
+	var open := p.pocket_cells(home)
+	var took_open := (Time.get_ticks_usec() - t0) / 1000.0
+	print("   pocket_cells: open ground %.1f ms" % took_open)
+	check(open.is_empty(), "out on open ground: no pocket (%.1f ms to find)" % took_open)
+	stick.output = Vector2.RIGHT
+	stick.is_pressed = true
+	await seconds(Player.POCKET_TIME + 0.6)
+	stick.output = Vector2.ZERO
+	stick.is_pressed = false
+	check(p.position.distance_to(ring_at) > 38.0 and p.pocket_cells(p.position).is_empty(),
+		"pushed a while in the ring: set down outside it (%.0f px off)" % p.position.distance_to(ring_at))
+	ring.queue_free()
+	await frames(2)
+	# The map: every place that must be got to can be.
+	p.position = home
+	await frames(2)
+	var got: Dictionary = preload("res://tests/map_audit.gd").audit(p, main)
+	check(got.unreached.is_empty(), "the altar, the escape stone, the fuel station and every shore can be walked to (%s)" % str(got.unreached))
+
+
+## The three free maps gone over step by step (tests/map_audit.gd's walk_traps): nowhere the
+## traveller's steps take it into and never back out of.
+func test_no_stuck_spots() -> void:
+	var audit := preload("res://tests/map_audit.gd")
+	for theme in ["forest_pine", "snow_pine", "autumn"]:
+		seed(31)
+		camp().clear()
+		gs.reset_run()
+		gs.last_return = ""
+		camp().begin_free([], theme)
+		get_tree().change_scene_to_file("res://scenes/main.tscn")
+		await frames(3)
+		main = get_tree().current_scene
+		gs.start_run()
+		for _i in 300:
+			if RunView3D.active != null and RunView3D.active.built:
+				break
+			await frames(1)
+		await frames(4)
+		var got: Dictionary = audit.audit(player(), main)
+		var walk: Dictionary = audit.walk_traps(player())
+		check(got.unreached.is_empty(), "%s: every place that must be got to can be (%s)" % [theme, str(got.unreached)])
+		check(walk.traps.is_empty(), "%s: no place walked into and not out of (%d; first %s)" % [theme, walk.traps.size(), str(walk.traps.slice(0, 3))])
 
 
 ## User request (seeing the fishing): the camera comes in while the traveller's held where they

@@ -2050,9 +2050,19 @@ func _splash(fx: SplashFx) -> void:
 ## arc and down to the traveller's hands, into the bag. No pose of the traveller's and no wait:
 ## they're free to walk off as it flies (there are ghosts about).
 const LAND_TIME := 0.8
-## Its length is shown this much over life size: it's seen from far above.
-const LAND_SHOW := 1.5
-const LAND_LENGTHS := Vector2(0.35, 1.9)
+## (the last landed fish's scale, for the tests)
+var _landed_k := 0.0
+## Its length as shown (m), from its own (user report: every catch came out the same size - a
+## floor of 0.35 m took in every fish under 23 cm, most of what the near water gives): a little
+## over life size - it's seen from far above - kept in step with the real length, the smallest
+## still to be seen (LAND_BASE + its length x LAND_SHOW, LAND_MAX at most).
+const LAND_BASE := 0.1
+const LAND_SHOW := 1.35
+const LAND_MAX := 2.6
+
+
+static func landed_length(cm: float) -> float:
+	return minf(LAND_BASE + maxf(cm, 0.0) / 100.0 * LAND_SHOW, LAND_MAX)
 
 
 func _show_landed(fish: Dictionary) -> void:
@@ -2077,7 +2087,8 @@ func _show_landed(fish: Dictionary) -> void:
 	add_child(body)
 	var box := mesh.get_aabb()
 	var long := maxf(maxf(box.size.x, box.size.z), 0.01)
-	var length := clampf(float(fish.get("length", 40.0)) / 100.0 * LAND_SHOW, LAND_LENGTHS.x, LAND_LENGTHS.y)
+	var length := landed_length(float(fish.get("length", 40.0)))
+	_landed_k = length / long
 	var k := length / long
 	var from := Vector3(_float.global_position.x, WATER_Y, _float.global_position.z)
 	var start := pivot.global_position

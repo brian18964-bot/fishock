@@ -2004,10 +2004,15 @@ func _physics_process(delta: float) -> void:
 	_watch_abilities(delta)
 	binoculars_cooldown = maxf(binoculars_cooldown - delta, 0.0)
 	if _knock_time > 0.0:
-		# Staggering back, free.
+		# Staggering back, free. (Not into deep water, though - out there anywhere's walkable,
+		# and the shore can lead somewhere the land doesn't.)
 		_knock_time = maxf(_knock_time - delta, 0.0)
 		velocity = _knock_dir * KNOCK_SPEED * (_knock_time / KNOCK_TIME)
+		var from := position
 		move_and_slide()
+		if _too_deep(position) and not _too_deep(from):
+			position = from
+			_knock_time = 0.0
 		return
 	if held:
 		velocity = Vector2.ZERO
@@ -2179,13 +2184,211 @@ func _update_movement() -> void:
 				sniff()
 	# Keep out of deep water, sliding along the shallows' edge. (Only
 	# blocks stepping deeper - never traps someone already out there.)
+	# User report (stuck on a strip of shore): the step that went too deep was tried again only
+	# straight across or straight down the map - on a shore running aslant both go into the
+	# water, and the traveller couldn't move at all. Now the nearest way to the one asked that's
+	# neither deep nor into anything is taken (SHORE_TURNS), slower the further it's turned.
 	if _too_deep(position) and not _too_deep(before):
-		var moved := position - before
+		var want := velocity * get_physics_process_delta_time()
 		position = before
-		if not _too_deep(before + Vector2(moved.x, 0.0)):
-			position = before + Vector2(moved.x, 0.0)
-		elif not _too_deep(before + Vector2(0.0, moved.y)):
-			position = before + Vector2(0.0, moved.y)
+		_step_along(want)
+	_watch_stuck(input_dir, position - before)
+
+
+## The ways tried, turned from the one asked (degrees, nearest first), when it's blocked.
+const SHORE_TURNS := [20.0, -20.0, 40.0, -40.0, 60.0, -60.0, 80.0, -80.0]
+## A step turned this far still goes at least this share of the way.
+const SHORE_SLOW := 0.35
+
+
+## `want` (a step) taken the nearest way to it that's neither into deep water nor into
+## anything solid; false if every way's shut.
+func _step_along(want: Vector2) -> bool:
+	if want.length() < 0.01:
+		return false
+	for turn in SHORE_TURNS:
+		var a := deg_to_rad(float(turn))
+		var step := want.rotated(a) * maxf(cos(a), SHORE_SLOW)
+		if _too_deep(position + step) or test_move(global_transform, step):
+			continue
+		position += step
+		return true
+	return false
+
+
+## User report: stuck where the stick did nothing. A safety net under the movement: pushed
+## STUCK_TIME s without getting anywhere, and every way shut (not just the one pushed - a wall
+## or the map's edge stays a wall), the traveller's set down on the nearest open ground.
+const STUCK_TIME := 1.2
+const STUCK_MOVE := 3.0
+const STUCK_REACH := 260.0
+var _stuck_for := 0.0
+var _stuck_moved := 0.0
+
+
+func _watch_stuck(input_dir: Vector2, moved: Vector2) -> void:
+	var pushing := input_dir.length() > 0.3 and fear_timer <= 0.0 and not rod_mode and swing_left <= 0.0 \
+		and not held and not struggling and SPEED > 0.0
+	if not pushing:
+		_stuck_for = 0.0
+		_stuck_moved = 0.0
+		_pocket_for = 0.0
+		_pocket_from = position
+		return
+	var dt := get_physics_process_delta_time()
+	_watch_pocket(dt)
+	_stuck_for += dt
+	_stuck_moved += moved.length()
+	if _stuck_for < STUCK_TIME:
+		return
+	var went := _stuck_moved
+	_stuck_for = 0.0
+	_stuck_moved = 0.0
+	if went >= STUCK_MOVE or not shut_in(position):
+		return
+	_set_down_outside(pocket_cells(position))
+
+
+## Moved to open ground near by - not in `pocket` (see pocket_cells), nor in another one (an
+## island across the water, say) - and told so.
+func _set_down_outside(pocket: Dictionary) -> void:
+	var avoid := pocket.duplicate()
+	for _try in 4:
+		var free := open_ground_near(position, avoid)
+		if free == position:
+			return
+		var more := pocket_cells(free)
+		if more.is_empty():
+			position = free
+			_pocket_from = free
+			_pocket_for = 0.0
+			GameState.push_message("被卡住了，幫你移到旁邊的空地")
+			return
+		avoid.merge(more)
+
+
+## User report (stuck by the water - not every way shut, just none that led anywhere): a
+## second net, for a pocket. Pushed POCKET_TIME s without once getting POCKET_SPAN from where
+## it began, the ground about is gone over (pocket_cells); if nothing in POCKET_REACH leads on
+## out, the traveller's set down on open ground outside it.
+const POCKET_TIME := 3.0
+const POCKET_SPAN := 40.0
+const POCKET_CELL := 8.0
+const POCKET_REACH := 160.0
+var _pocket_from := Vector2.ZERO
+var _pocket_for := 0.0
+
+
+func _watch_pocket(dt: float) -> void:
+	if position.distance_to(_pocket_from) > POCKET_SPAN:
+		_pocket_from = position
+		_pocket_for = 0.0
+		return
+	_pocket_for += dt
+	if _pocket_for < POCKET_TIME:
+		return
+	_pocket_for = 0.0
+	var pocket := pocket_cells(position)
+	if not pocket.is_empty():
+		_set_down_outside(pocket)
+
+
+## Where the traveller can get to from `at`, walking (cells POCKET_CELL apart, 4 ways, each
+## step tried as it'd be walked: not into deep water, not into anything solid) - if it's all
+## within POCKET_REACH of `at`: {Vector2i cell (the map's, POCKET_CELL square): true}. Empty if
+## it leads further - or `at` is out in deep water, where every way's open.
+func pocket_cells(at: Vector2) -> Dictionary:
+	if _too_deep(at):
+		return {}
+	var was := position
+	var seen := {Vector2i.ZERO: true}
+	var queue: Array[Vector2i] = [Vector2i.ZERO]
+	var reach_cells := POCKET_REACH / POCKET_CELL
+	var ways: Array[Vector2i] = [Vector2i.RIGHT, Vector2i.LEFT, Vector2i.DOWN, Vector2i.UP]
+	var out := false
+	while not queue.is_empty() and not out:
+		var c: Vector2i = queue.pop_front()
+		position = at + Vector2(c) * POCKET_CELL
+		for w in ways:
+			var n: Vector2i = c + w
+			if seen.has(n):
+				continue
+			var step := Vector2(w) * POCKET_CELL
+			var p := position + step
+			if p.x < edge or p.y < edge or p.x > WORLD_WIDTH - edge or p.y > WORLD_HEIGHT - edge \
+					or _too_deep(p) or test_move(global_transform, step):
+				continue
+			if Vector2(n).length() > reach_cells:
+				out = true
+				break
+			seen[n] = true
+			queue.append(n)
+	position = was
+	if out:
+		return {}
+	var cells := {}
+	for c in seen:
+		cells[_pocket_key(at + Vector2(c) * POCKET_CELL)] = true
+	return cells
+
+
+static func _pocket_key(p: Vector2) -> Vector2i:
+	return Vector2i((p / POCKET_CELL).round())
+
+
+## Is there no way at all out of `at` (each of 16 ways, a step long: deep water or something solid)?
+func shut_in(at: Vector2) -> bool:
+	var was := position
+	position = at
+	var shut := true
+	for i in 16:
+		var step := Vector2.from_angle(TAU * i / 16.0) * 6.0
+		if not _too_deep(at + step) and not test_move(global_transform, step):
+			shut = false
+			break
+	position = was
+	return shut
+
+
+## The nearest place to `at` the traveller stands clear on, out of deep water, with room to walk
+## off it every way (spiralling out to STUCK_REACH) - and, given a pocket (pocket_cells), not in
+## it or right by it; `at` itself if there's none.
+func open_ground_near(at: Vector2, pocket := {}) -> Vector2:
+	var was := position
+	var found := at
+	var r := 8.0
+	while r <= STUCK_REACH and found == at:
+		var n := maxi(int(TAU * r / 8.0), 8)
+		for i in n:
+			var p := at + Vector2.from_angle(TAU * i / n) * r
+			if p.x < edge or p.y < edge or p.x > WORLD_WIDTH - edge or p.y > WORLD_HEIGHT - edge or _too_deep(p):
+				continue
+			if not pocket.is_empty() and _in_pocket(pocket, p):
+				continue
+			position = p
+			if test_move(global_transform, Vector2.ZERO):
+				continue
+			var open := 0
+			for j in 8:
+				var step := Vector2.from_angle(TAU * j / 8.0) * 10.0
+				if not _too_deep(p + step) and not test_move(global_transform, step):
+					open += 1
+			if open == 8:
+				found = p
+				break
+		r += 8.0
+	position = was
+	return found
+
+
+## Whether `p` is in a pocket (pocket_cells) or right by it.
+static func _in_pocket(pocket: Dictionary, p: Vector2) -> bool:
+	var c := _pocket_key(p)
+	for dx in range(-1, 2):
+		for dy in range(-1, 2):
+			if pocket.has(c + Vector2i(dx, dy)):
+				return true
+	return false
 
 
 func _too_deep(pos: Vector2) -> bool:
