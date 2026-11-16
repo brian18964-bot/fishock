@@ -233,19 +233,22 @@ static func walk_traps(p: Player) -> Dictionary:
 	var node_at := func(at: Vector2) -> int:
 		var c := clampi(int(at.x / LATTICE), 0, cols - 1)
 		var r := clampi(int(at.y / LATTICE), 0, rows - 1)
-		var best := -1
-		var bd := INF
+		var near := []
 		for dr in range(-1, 2):
 			for dc in range(-1, 2):
 				var cc := c + dc
 				var rr := r + dr
 				if cc < 0 or rr < 0 or cc >= cols or rr >= rows or ok[rr * cols + cc] == 0:
 					continue
-				var d := Vector2((cc + 0.5) * LATTICE, (rr + 0.5) * LATTICE).distance_to(at)
-				if d < bd:
-					bd = d
-					best = rr * cols + cc
-		return best
+				var node := Vector2((cc + 0.5) * LATTICE, (rr + 0.5) * LATTICE)
+				near.append([node.distance_to(at), rr * cols + cc, node])
+		near.sort_custom(func(a, b): return a[0] < b[0])
+		# The nearest - but not one across a sliver of deep water from it: a place on the shore
+		# isn't the dry speck past the sliver, however near.
+		for n in near:
+			if not (p.has_method("_crosses_deep") and p._crosses_deep(at, n[2])):
+				return n[1]
+		return -1
 	# The ways from each place.
 	var out_ways := {}
 	var stick: TouchJoystick = p._move_joystick
@@ -272,9 +275,13 @@ static func walk_traps(p: Player) -> Dictionary:
 			for w in WAYS:
 				p.position = at
 				p.velocity = Vector2.ZERO
+				# (the movement's own way, not the safety nets': they're the last resort, not the map)
 				if "_stuck_for" in p:
 					p._stuck_for = 0.0
 					p._stuck_moved = 0.0
+				if "_pocket_for" in p:
+					p._pocket_for = 0.0
+					p._pocket_from = at
 				stick.output = Vector2.from_angle(TAU * w / WAYS)
 				stick.is_pressed = true
 				for _s in steps:

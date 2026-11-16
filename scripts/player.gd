@@ -2010,7 +2010,7 @@ func _physics_process(delta: float) -> void:
 		velocity = _knock_dir * KNOCK_SPEED * (_knock_time / KNOCK_TIME)
 		var from := position
 		move_and_slide()
-		if _too_deep(position) and not _too_deep(from):
+		if not _too_deep(from) and _crosses_deep(from, position):
 			position = from
 			_knock_time = 0.0
 		return
@@ -2188,7 +2188,11 @@ func _update_movement() -> void:
 	# straight across or straight down the map - on a shore running aslant both go into the
 	# water, and the traveller couldn't move at all. Now the nearest way to the one asked that's
 	# neither deep nor into anything is taken (SHORE_TURNS), slower the further it's turned.
-	if _too_deep(position) and not _too_deep(before):
+	# User report (stuck by the water, every way refused): the step was judged by where it
+	# ended - walking the shore it could hop a sliver of deep water a step wide onto a dry speck
+	# past it, and from there every step went into the sliver. The whole step's looked along now
+	# (_crosses_deep), so a sliver's never hopped.
+	if not _too_deep(before) and _crosses_deep(before, position):
 		var want := velocity * get_physics_process_delta_time()
 		position = before
 		_step_along(want)
@@ -2209,10 +2213,23 @@ func _step_along(want: Vector2) -> bool:
 	for turn in SHORE_TURNS:
 		var a := deg_to_rad(float(turn))
 		var step := want.rotated(a) * maxf(cos(a), SHORE_SLOW)
-		if _too_deep(position + step) or test_move(global_transform, step):
+		if _crosses_deep(position, position + step) or test_move(global_transform, step):
 			continue
 		position += step
 		return true
+	return false
+
+
+## Whether the way from `a` to `b` goes into deep water anywhere along it (looked at every
+## DEEP_LOOK px - finer than a step, so no sliver of it is stepped over).
+const DEEP_LOOK := 1.0
+
+
+func _crosses_deep(a: Vector2, b: Vector2, look := DEEP_LOOK) -> bool:
+	var n := maxi(ceili(a.distance_to(b) / look), 1)
+	for i in range(1, n + 1):
+		if _too_deep(a.lerp(b, float(i) / n)):
+			return true
 	return false
 
 
@@ -2316,7 +2333,7 @@ func pocket_cells(at: Vector2) -> Dictionary:
 			var step := Vector2(w) * POCKET_CELL
 			var p := position + step
 			if p.x < edge or p.y < edge or p.x > WORLD_WIDTH - edge or p.y > WORLD_HEIGHT - edge \
-					or _too_deep(p) or test_move(global_transform, step):
+					or _crosses_deep(position, p, 2.0) or test_move(global_transform, step):
 				continue
 			if Vector2(n).length() > reach_cells:
 				out = true
@@ -2343,7 +2360,7 @@ func shut_in(at: Vector2) -> bool:
 	var shut := true
 	for i in 16:
 		var step := Vector2.from_angle(TAU * i / 16.0) * 6.0
-		if not _too_deep(at + step) and not test_move(global_transform, step):
+		if not _crosses_deep(at, at + step) and not test_move(global_transform, step):
 			shut = false
 			break
 	position = was
@@ -2371,7 +2388,7 @@ func open_ground_near(at: Vector2, pocket := {}) -> Vector2:
 			var open := 0
 			for j in 8:
 				var step := Vector2.from_angle(TAU * j / 8.0) * 10.0
-				if not _too_deep(p + step) and not test_move(global_transform, step):
+				if not _crosses_deep(p, p + step) and not test_move(global_transform, step):
 					open += 1
 			if open == 8:
 				found = p
