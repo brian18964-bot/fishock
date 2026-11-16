@@ -5,7 +5,7 @@ const Audit := preload("res://tests/map_audit.gd")
 
 
 func _run() -> void:
-	var seeds := 8
+	var seeds := 24
 	var levels := true
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("seeds="):
@@ -16,15 +16,18 @@ func _run() -> void:
 	RunView3D.intro = false
 	var bad := 0
 	var maps := 0
-	for theme in ["forest_pine", "snow_pine", "autumn"]:
-		for s in seeds:
-			seed(100 + s * 13)
-			camp().clear()
-			gs.reset_run()
-			gs.last_return = ""
-			camp().begin_free([], theme)
-			bad += await _check("%s/%d" % [theme, 100 + s * 13])
-			maps += 1
+	# (the seed lays the map out, the theme only dresses it: each seed its own layout, the
+	# themes taken in turn)
+	var themes := ["forest_pine", "snow_pine", "autumn"]
+	for s in seeds:
+		var theme: String = themes[s % themes.size()]
+		seed(100 + s * 13)
+		camp().clear()
+		gs.reset_run()
+		gs.last_return = ""
+		camp().begin_free([], theme)
+		bad += await _check("%s/%d" % [theme, 100 + s * 13])
+		maps += 1
 	if levels:
 		for lv in Campaign.LEVELS:
 			reset_progress()

@@ -93,3 +93,60 @@ func buried(frame: Transform3D) -> Dictionary:
 	out.r = float(inside[1]) / maxi(total[1], 1)
 	out.l = float(inside[2]) / maxi(total[2], 1)
 	return out
+
+
+## User report: holding the rod, the bear's left hand vanished - not into its body, but behind
+## it: seen from the game's camera (CAMERA_PITCH down, from behind the traveller as it faces the
+## water), a hand in front of a round belly is hidden by it. The share (0..1) of each forearm
+## and hand that can be seen, the camera behind and a quarter round to either side: {r, l}.
+const SEEN_CELL := 0.025
+const SEEN_AROUND := [0.0, 45.0, -45.0, 90.0, -90.0]
+
+
+func seen(frame: Transform3D, pitch_deg: float) -> Dictionary:
+	var out := {"r": 1.0, "l": 1.0}
+	if _pts == null or _pts.skeleton == null:
+		return out
+	var inv := Transform3D(frame.basis.orthonormalized(), frame.origin).affine_inverse()
+	var k := maxf(frame.basis.get_scale().x, 0.001)
+	var world := _pts.world()
+	var local := PackedVector3Array()
+	local.resize(world.size())
+	for i in world.size():
+		local[i] = inv * world[i] / k
+	var pitch := deg_to_rad(pitch_deg)
+	var share := {1: 0.0, 2: 0.0}
+	for around in SEEN_AROUND:
+		var yaw := deg_to_rad(float(around))
+		# (the way the camera looks, in the character's frame: from behind it, down, turned `around`)
+		var look := Vector3(sin(yaw) * cos(pitch), -sin(pitch), cos(yaw) * cos(pitch)).normalized()
+		var right := look.cross(Vector3.UP).normalized()
+		var up := right.cross(look).normalized()
+		for hand in [1, 2]:
+			# (what's nearer the camera than the hand: the rest of the body, the other arm too)
+			var near := {}
+			for i in local.size():
+				if _kind[i] == hand:
+					continue
+				var p := local[i]
+				var cell := Vector2i(int(floor(p.dot(right) / SEEN_CELL)), int(floor(p.dot(up) / SEEN_CELL)))
+				var d := p.dot(look)
+				for dx in range(-1, 2):
+					for dy in range(-1, 2):
+						var c := cell + Vector2i(dx, dy)
+						if d < float(near.get(c, INF)):
+							near[c] = d
+			var total := 0
+			var shown := 0
+			for i in local.size():
+				if _kind[i] != hand:
+					continue
+				var p := local[i]
+				total += 1
+				var cell := Vector2i(int(floor(p.dot(right) / SEEN_CELL)), int(floor(p.dot(up) / SEEN_CELL)))
+				if p.dot(look) <= float(near.get(cell, INF)) + 0.01:
+					shown += 1
+			share[hand] += float(shown) / maxi(total, 1) / SEEN_AROUND.size()
+	out.r = share[1]
+	out.l = share[2]
+	return out

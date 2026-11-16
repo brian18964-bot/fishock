@@ -14,7 +14,7 @@ const TESTS := [
 	"test_no_stuck_spots",
 	"test_fishing_view",
 	"test_item_faces_and_hands",
-	"test_fishing_hold",
+	"test_fishing_hold", "test_fishing_hold_every_character",
 	"test_campaign_night_ends_safe_level",
 	"test_campaign_curses",
 	"test_campaign_unlocks_and_achievements",
@@ -183,7 +183,8 @@ var checks := 0
 var _current := ""
 var _catcher := ErrorCatcher.new()
 ## The long system checks (tests/NOTES: `group=fast` leaves them out, `group=slow` runs only them).
-const SLOW := ["test_world_integrity", "test_trunks_hold", "test_soak_fishing", "test_no_stuck_spots"]
+const SLOW := ["test_world_integrity", "test_trunks_hold", "test_soak_fishing", "test_no_stuck_spots",
+	"test_fishing_hold_every_character"]
 
 
 func _ready() -> void:
@@ -5309,6 +5310,107 @@ func test_fishing_hold() -> void:
 	for id in ["cat", "owl", "dog", "bear", "deer", "sheep", "bear2", "dog3", "deer2", "owl2", "croc", "sheep2"]:
 		var hold: Variant = CharacterArt.fit(id).get("hold")
 		check(hold is Dictionary and (hold as Dictionary).has("grip") and (hold.grip as Array).size() == 3, "%s has its own hold on the rod" % id)
+
+
+## User report (the bear's left hand gone into its belly once the float was out - every
+## look the hold had been fitted on taken after a bite had come and gone, the rod slung): every
+## character's hold as it is in play - waiting on a bite, then reeling a fish in - neither
+## forearm nor hand in the body.
+func test_fishing_hold_every_character() -> void:
+	var was: String = Profile.character
+	for id in ["cat", "owl", "dog", "bear", "deer", "sheep", "bear2", "dog3", "deer2", "owl2", "croc", "sheep2"]:
+		Profile.choose_character(id)
+		await _fresh_game()
+		for _i in 600:
+			if RunView3D.active != null and RunView3D.active.built:
+				break
+			await frames(1)
+		var rv: RunView3D = RunView3D.active
+		check(rv != null and rv.built, "%s: the 3D view's up" % id)
+		if rv == null or not rv.built:
+			continue
+		await frames(30)
+		still_ghosts()
+		var p := player()
+		p.bait_count = 20
+		var zone: WaterZone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
+		await put(zone.shore_point(Vector2.DOWN) + Vector2(0, 60))
+		p.aim_dir = Vector2.UP
+		await frames(6)
+		p.charge_time = p.MAX_CHARGE_TIME * 0.5
+		p._launch_cast()
+		for _i in 240:
+			if p.state == Player.State.WAITING:
+				break
+			await frames(1)
+		# (no bite while it's looked at)
+		p.wait_timer = 1000.0
+		await seconds(1.0)
+		var look := HoldCheck.new(rv.rig, 2)
+		var worst := {"r": 0.0, "l": 0.0}
+		for _i in 3:
+			var got := await _buried_now(rv, look)
+			worst.r = maxf(worst.r, got.r)
+			worst.l = maxf(worst.l, got.l)
+			await frames(15)
+		check(p.state == Player.State.WAITING, "%s: the float's out (%d)" % [id, p.state])
+		check(worst.r <= HOLD_IN_MAX and worst.l <= HOLD_IN_MAX, "%s waiting on a bite: neither forearm nor hand in the body (%.3f, %.3f of them)" % [id, worst.r, worst.l])
+		# A fish on, reeled in (kept on: the tension held steady), the reeling hand going round.
+		p.cast_target = p.global_position + Vector2(0, -150)
+		p.cast_water_zone = zone
+		p.tier_data = FishData.get_tier_data("near").duplicate()
+		p.difficulty_key = "advanced"
+		p.fish_id = ""
+		p.fish_habit = ""
+		p.is_heart_catch = false
+		p.is_epic_catch = false
+		p.is_rare_catch = false
+		p._hook_fish()
+		p.fish_id = "carp"
+		p.fight.plan("medium", "normal")
+		var line: float = p.fight.distance
+		worst = {"r": 0.0, "l": 0.0}
+		for i in 90:
+			if p.state != Player.State.REELING or p.fight == null:
+				break
+			p.fight.tension = 0.4
+			p.fight.progress = minf(p.fight.progress, 0.3)
+			p.fight.distance = line
+			p._snap_at = -1.0
+			key(KEY_SPACE, true)
+			key(KEY_SHIFT, p.fight.opening_left <= 0.0)
+			if i >= 40 and i % 10 == 0:
+				var got := await _buried_now(rv, look)
+				worst.r = maxf(worst.r, got.r)
+				worst.l = maxf(worst.l, got.l)
+			else:
+				await frames(1)
+		key(KEY_SPACE, false)
+		key(KEY_SHIFT, false)
+		check(p.state == Player.State.REELING, "%s: the fish kept on (%d)" % [id, p.state])
+		check(worst.r <= HOLD_IN_MAX and worst.l <= HOLD_IN_MAX, "%s reeling: neither forearm nor hand in the body (%.3f, %.3f of them)" % [id, worst.r, worst.l])
+	Profile.choose_character(was)
+
+
+## (a forearm and hand this much in the body at most: the cuff's own folds, a sleeve's edge)
+const HOLD_IN_MAX := 0.05
+
+
+## The ghosts held still where they are - for a look at something that takes a while (a hold
+## looked at on a float left out: a ghost reaching it takes the bait, the line comes in).
+func still_ghosts() -> void:
+	for g in get_tree().get_nodes_in_group("ghosts") + get_tree().get_nodes_in_group("water_ghosts"):
+		(g as Node).process_mode = Node.PROCESS_MODE_DISABLED
+
+
+## How much of each forearm and hand is in the body, posed as it is now: {r, l}.
+func _buried_now(rv: RunView3D, look: HoldCheck) -> Dictionary:
+	var got := {}
+	rv.rig.skeleton.skeleton_updated.connect(func():
+		got.merge(look.buried(Transform3D(rv.pivot.global_basis.orthonormalized() * rv._rig_scale(), rv.pivot.global_position))),
+		CONNECT_ONE_SHOT)
+	await frames(2)
+	return got if got.has("r") else {"r": 1.0, "l": 1.0}
 
 
 ## (in skeleton_updated: the arms' IK only shows in the pose there)
