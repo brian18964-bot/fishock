@@ -1448,6 +1448,7 @@ func sell_fish(place: String, i: int) -> int:
 	var price := FishLife.sale_value(list[i])
 	if price <= 0:
 		return 0
+	_note_sale({"kind": "fish", "fish": (list[i] as Dictionary).duplicate(true), "place": place, "gold": price})
 	list.remove_at(i)
 	gold += price
 	gold_updated.emit(gold)
@@ -1525,6 +1526,53 @@ func give_bone(id: String) -> String:
 	return "sold"
 
 
+## User request (收購: sold the wrong thing, buy it back): what's been sold
+## this session, newest first, at what it fetched - {kind: "item", id, count,
+## gold, from ("storage" / "bag"), wear (-1: none), glow} or {kind: "fish",
+## fish (the record as it was), place, gold}. Not saved.
+const SOLD_KEEP := 12
+var sold_back: Array = []
+
+
+func _note_sale(entry: Dictionary) -> void:
+	sold_back.push_front(entry)
+	if sold_back.size() > SOLD_KEEP:
+		sold_back.pop_back()
+
+
+## Buys back sold thing `i` (sold_back) for what it fetched: put back where it
+## was (a thing sold from the bag back in the bag, what doesn't fit in the
+## warehouse; a fish in its list). "" done, else why not.
+func buy_back(i: int) -> String:
+	if i < 0 or i >= sold_back.size():
+		return "已經不在了"
+	var e: Dictionary = sold_back[i]
+	var cost := int(e.gold)
+	if gold < cost:
+		return "金幣不夠（要 %d）" % cost
+	if e.kind == "item":
+		var id: String = e.id
+		var had := owned(id)
+		var left := int(e.count)
+		if e.get("from", "") == "bag":
+			left -= bag_put(id, left)
+		if left > 0:
+			storage[id] = stored(id) + left
+		# (its wear and glow back with it, unless more of it was got meanwhile)
+		if had <= 0:
+			if int(e.get("wear", -1)) >= 0:
+				wear[id] = int(e.wear)
+			if e.get("glow") != null:
+				glow_bones[id] = e.glow
+	else:
+		fish_list(String(e.place)).append((e.fish as Dictionary).duplicate(true))
+	gold -= cost
+	sold_back.remove_at(i)
+	gold_updated.emit(gold)
+	_changed()
+	return ""
+
+
 ## Can the merchant buy `id` back at all? (the altar's bones: yes, at their own price - Bones)
 func buyback_ok(id: String) -> bool:
 	if Bones.is_bone(id):
@@ -1573,6 +1621,8 @@ func sell_item(from: String, id: String, count := 1, index := -1) -> int:
 			bag.remove_at(index)
 	if n <= 0:
 		return 0
+	_note_sale({"kind": "item", "id": id, "count": n, "gold": price * n, "from": from,
+		"wear": wear.get(id, -1), "glow": glow_bones.get(id, null)})
 	# (the last of a worn thing sold: its wear goes with it; a glowing bone sold, its own)
 	if owned(id) <= 0:
 		wear.erase(id)
@@ -2356,6 +2406,7 @@ func _load() -> void:
 ## the flashlight, worn).
 func load_data(data: Dictionary) -> void:
 	gold = data.get("gold", 0)
+	sold_back = []
 	upgrade_levels = data.get("upgrade_levels", upgrade_levels)
 	fish_log = data.get("fish_log", {})
 	shadows = data.get("shadows", [])

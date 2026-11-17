@@ -6016,8 +6016,9 @@ func test_run_3d() -> void:
 	check(view._crank > turned_from + 0.5, "reeling: the hand turns the crank")
 	key(KEY_SHIFT, false)
 	key(KEY_SPACE, false)
-	# (user report: the hand went on cranking with the stick let go)
-	for _i in 10:
+	# (user report: the hand went on cranking with the stick let go - stopped once
+	# Player.TURN_HOLD's past)
+	for _i in 16:
 		player().fight.tension = minf(player().fight.tension, 0.5)
 		await frames(1)
 	var stopped: float = view._crank
@@ -6025,6 +6026,23 @@ func test_run_3d() -> void:
 		player().fight.tension = minf(player().fight.tension, 0.5)
 		await frames(1)
 	check(is_equal_approx(view._crank, stopped), "let go: the crank stays still (%.2f -> %.2f)" % [stopped, view._crank])
+	# (user report, a phone: turning the stick showed no reeling - its touch events come every
+	# other frame or so, and the frames between saw the stick still: the reel on throughout)
+	var stick: TouchJoystick = player()._aim_joystick
+	var ang := 0.0
+	var reeled := 0
+	for i in 40:
+		if i % 2 == 0:
+			ang += 0.6
+			stick.is_pressed = true
+			stick.output = Vector2.RIGHT.rotated(ang)
+		player().fight.tension = minf(player().fight.tension, 0.5)
+		await frames(1)
+		if i >= 10 and view._clip == "Fish_Reel":
+			reeled += 1
+	stick.is_pressed = false
+	stick.output = Vector2.ZERO
+	check(reeled == 30, "the stick turned in touch-event steps: reeling all through (%d of 30)" % reeled)
 	# (the fish kept from pulling the line to breaking meanwhile - whether this one would is down to
 	# its luck; these are the traveller's clips for a fish still on)
 	for _i in 30:
@@ -8153,6 +8171,35 @@ func test_shop_buyback() -> void:
 	(page.find_child("SaleGo", true, false) as Button).pressed.emit()
 	await frames(2)
 	check(Profile.fish_box.is_empty() and Profile.gold == gold + 12 + worth, "the bucket's fish sold at its worth (%d)" % worth)
+	# User request: what's been sold shown by its pictures, and bought back at what it fetched.
+	page.find_child("Tab_sell", true, false).pressed.emit()
+	await frames(2)
+	check(page.find_child("Card_sold_0", true, false) != null and page.find_child("Card_sold_1", true, false) != null,
+		"sold things shown as cards (the fish, the batteries)")
+	var had := Profile.gold
+	page.find_child("Card_sold_0", true, false).pressed.emit()
+	await frames(2)
+	check(Profile.fish_box.size() == 1 and Profile.gold == had - worth, "the fish bought back into the bucket, for what it fetched")
+	page.find_child("Card_sold_0", true, false).pressed.emit()
+	await frames(2)
+	check(Profile.bag_count("battery") == 3 and Profile.gold == had - worth - 12, "the two batteries back in the bag (%d)" % Profile.bag_count("battery"))
+	Profile.gold = 0
+	var left := Profile.sold_back.size()
+	check(Profile.buy_back(0) != "" and Profile.sold_back.size() == left, "no gold: not bought back")
+	# User request: what's locked isn't offered for sale at all.
+	Locks.set_stored("shovel", true)
+	Locks.set_fish(Profile.fish_box[0], true)
+	page.find_child("SellTab_stash", true, false).pressed.emit()
+	await frames(2)
+	check(page.find_child("Card_sell_shovel", true, false) == null, "a locked thing isn't listed")
+	page.find_child("SellTab_box", true, false).pressed.emit()
+	await frames(2)
+	check(page.find_child("Card_fish_box_0", true, false) == null, "nor a locked fish")
+	Locks.set_bag(0, true)
+	var bag_grid: ItemBoard.BagGrid = page.find_child("SellBag", true, false)
+	check(bag_grid.hide_locked, "the bag's locked things hidden there")
+	Locks.set_stored("shovel", false)
+	Locks.set_bag(0, false)
 	# One price: the tank page's 販售 and the merchant's are the same.
 	var alive := FishLife.roll({"name": "鯉魚", "id": "carp", "value": 6.0, "size": "small", "rarity": "common"})
 	alive.life_traits = ["plump"]

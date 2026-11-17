@@ -505,30 +505,47 @@ func _sell_cards() -> void:
 	how.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	how.custom_minimum_size = Vector2(360, 0)
 	_grid.add_child(how)
-	if not _sold_log.is_empty():
-		_grid.add_child(UiKit.label("這次賣出的", 15, UiKit.TEXT))
-		for line in _sold_log:
-			var l := UiKit.label(line, 14, UiKit.GOLD)
-			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			l.custom_minimum_size = Vector2(360, 0)
-			_grid.add_child(l)
+	# User request: what's been sold shown as itself (its picture), not words -
+	# and sold by mistake, bought back at what it fetched (Profile.sold_back).
+	if not Profile.sold_back.is_empty():
+		var head := UiKit.label("賣出的東西（點一下，用賣出的價錢買回）", 15, UiKit.TEXT)
+		head.name = "SoldHead"
+		_grid.add_child(head)
+		for i in Profile.sold_back.size():
+			var e: Dictionary = Profile.sold_back[i]
+			var idx := i
+			if e.kind == "item":
+				var id: String = e.id
+				_card("sold_%d" % i, Items.icon(id), Items.name_of(id), "×%d　買回" % int(e.count), int(e.gold),
+					func(): _buy_back(idx), _grid)
+			else:
+				var f: Dictionary = e.fish
+				_card("sold_%d" % i, FishData.icon(f.get("id", ""), f.get("name", "")), f.get("name", "魚"), "買回",
+					int(e.gold), func(): _buy_back(idx), _grid)
 	_fill_sell_pane()
 
 
-## What's been sold (newest first).
-var _sold_log: Array = []
+## Buys sold thing `i` back (Profile.buy_back).
+func _buy_back(i: int) -> void:
+	if i < 0 or i >= Profile.sold_back.size():
+		return
+	var e: Dictionary = Profile.sold_back[i]
+	var name: String = Items.name_of(e.id) if e.kind == "item" else (e.fish as Dictionary).get("name", "魚")
+	var why := Profile.buy_back(i)
+	if why != "":
+		_show_toast(why)
+		return
+	Sfx.play("coins", -4.0)
+	_show_toast("買回 %s" % name)
+	_refresh()
+
+
 ## Which place the right pane lists.
 var _sell_src := "pack"
 var _sell_tabs := {}
 var _sell_body: VBoxContainer
 var _sell_bag: ItemBoard.BagGrid
 const SELL_PLACES := [["pack", "包包"], ["stash", "倉庫"], ["tank", "魚缸"], ["box", "魚桶"]]
-
-
-func _log_sale(text: String) -> void:
-	_sold_log.push_front(text)
-	if _sold_log.size() > 8:
-		_sold_log.pop_back()
 
 
 ## The right pane's list for the place chosen: the bag's grid, or cards of
@@ -558,7 +575,8 @@ func _fill_sell_pane() -> void:
 	var any := false
 	if _sell_src == "stash":
 		for id in Profile.storage_ids(""):
-			if not Profile.buyback_ok(id):
+			# (user request: what's locked isn't offered for sale at all)
+			if not Profile.buyback_ok(id) or Locks.stored(id):
 				continue
 			any = true
 			var sid: String = id
@@ -571,8 +589,10 @@ func _fill_sell_pane() -> void:
 	var place: String = _sell_src if _sell_src != "pack" else "tank"
 	var fish_here := Profile.fish_list(place) if _sell_src != "pack" else []
 	for i in fish_here.size():
-		any = true
 		var f: Dictionary = fish_here[i]
+		if Locks.fish(f):
+			continue
+		any = true
 		var idx := i
 		var fb := FishLife.bar(f)
 		var sub := "腐敗了" if FishLife.state(f) == "rotten" else "%s %d%%" % [fb.label, roundi(float(fb.share) * 100.0)]
@@ -609,6 +629,7 @@ func _build_sell_pane(vendor: Control) -> void:
 	inner.add_child(tabs)
 	_sell_bag = ItemBoard.BagGrid.new(SELL_CELL)
 	_sell_bag.name = "SellBag"
+	_sell_bag.hide_locked = true
 	var holder := Control.new()
 	holder.custom_minimum_size = _sell_bag.custom_minimum_size
 	holder.add_child(_sell_bag)
@@ -760,8 +781,8 @@ func _item_sale(source: Dictionary, col: VBoxContainer, buttons: HBoxContainer) 
 		_close_sale()
 		if got > 0:
 			Sfx.play("coins", -4.0)
-			_log_sale("%s ×%d +%d" % [def.get("name", id), amount[0], got])
-			_show_toast("賣出 %s +%d" % [def.get("name", id), got]))
+			_show_toast("賣出 %s +%d" % [def.get("name", id), got])
+			_refresh())
 	buttons.add_child(sell)
 
 
@@ -816,7 +837,6 @@ func _fish_sale(source: Dictionary, col: VBoxContainer, buttons: HBoxContainer) 
 		var got := Profile.sell_from_tank(i) if place == "tank" else Profile.sell_fish(place, i)
 		Sfx.play("coins", -4.0)
 		_close_sale()
-		_log_sale("%s +%d" % [f.get("name", "魚"), got])
 		_show_toast("賣出 %s +%d" % [f.get("name", "魚"), got])
 		_refresh())
 	buttons.add_child(sell)
@@ -828,7 +848,6 @@ func _fish_sale(source: Dictionary, col: VBoxContainer, buttons: HBoxContainer) 
 			var got := Profile.sell_box_all()
 			Sfx.play("coins", -4.0)
 			_close_sale()
-			_log_sale("魚桶的魚 +%d" % got)
 			_show_toast("全部賣出 +%d" % got)
 			_refresh())
 		buttons.add_child(all)

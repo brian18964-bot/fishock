@@ -679,6 +679,8 @@ static func weak_tag(ci: CanvasItem, r: Rect2, f: Dictionary) -> void:
 class BagGrid extends Control:
 	var board: ItemBoard
 	var cell := 54.0
+	## User request (收購): what's locked isn't shown there at all - nor picked up.
+	var hide_locked := false
 	var _hover := {}
 	var _hover_cell := Vector2i.ZERO
 	var _inside := false
@@ -739,11 +741,13 @@ class BagGrid extends Control:
 			var places := Profile.pack_places()
 			for k in places.size():
 				if (places[k] as Rect2i).has_point(cell_at(event.global_position)):
+					if hide_locked and Locks.fish(Profile.pack_fish[k]):
+						return
 					board.pressed({"from": "pack_fish", "id": "", "index": k, "grab": cell_at(event.global_position) - (places[k] as Rect2i).position}, event.global_position)
 					accept_event()
 					return
 			var i := Profile.bag_at(cell_at(event.global_position))
-			if i >= 0:
+			if i >= 0 and not (hide_locked and Locks.bag(i)):
 				board.pressed({"from": "bag", "id": Profile.bag[i].id, "index": i,
 					"grab": cell_at(event.global_position) - Vector2i(Profile.bag[i].cell)}, event.global_position)
 				accept_event()
@@ -758,6 +762,8 @@ class BagGrid extends Control:
 			var e: Dictionary = Profile.bag[i]
 			var r := Rect2(Vector2(e.cell) * cell, Vector2(Profile.bag_size_of(i)) * cell).grow(-3.0)
 			var dragged: bool = _hover.get("from", "") == "bag" and _hover.get("index", -1) == i
+			if hide_locked and Locks.bag(i):
+				continue
 			ItemBoard.draw_item(self, r, e.id, int(e.count), font)
 			if Locks.bag(i):
 				Locks.draw(self, r)
@@ -768,6 +774,8 @@ class BagGrid extends Control:
 		var places := Profile.pack_places()
 		for k in places.size():
 			var f: Dictionary = Profile.pack_fish[k]
+			if hide_locked and Locks.fish(f):
+				continue
 			var fr := Rect2(Vector2((places[k] as Rect2i).position) * cell, Vector2((places[k] as Rect2i).size) * cell).grow(-3.0)
 			ItemBoard.draw_fish_slot(self, fr, f)
 			if _hover.get("from", "") == "pack_fish" and _hover.get("index", -1) == k:

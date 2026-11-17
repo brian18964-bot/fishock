@@ -349,6 +349,12 @@ const CRANK_FULL := 1.6
 const CRANK_EASE := 7.0
 ## The crank asked for this frame, before its easing (turning_reel).
 var crank_input := 0.0
+## User report (a phone: turning the stick, the character didn't reel at
+## all): the stick only moves when a touch event comes, not every frame -
+## frames between showed it still and the reel stopped and started each
+## frame. The hand goes on turning this long after the stick last turned.
+const TURN_HOLD := 0.2
+var _turn_left := 0.0
 const CRANK_REACH := 0.35
 var crank := 0.0
 var _crank_angle := 0.0
@@ -3081,6 +3087,7 @@ func _update_crank(delta: float) -> void:
 			if fight != null and fight.opening_left > 0.0 and not Input.is_key_pressed(KEY_SHIFT):
 				want = 0.0
 	crank_input = want
+	_turn_left = TURN_HOLD if want >= FishFight.HELD_AT else maxf(_turn_left - delta, 0.0)
 	crank = lerpf(crank, want, 1.0 - exp(-CRANK_EASE * delta)) if want < crank else want
 	if crank < 0.01:
 		crank = 0.0
@@ -3104,7 +3111,7 @@ func is_cranking() -> bool:
 ## down, CRANK_EASE, is the fight's, not the hand's).
 func turning_reel() -> bool:
 	if state == State.REELING:
-		return crank_input >= FishFight.HELD_AT
+		return _turn_left > 0.0
 	return _is_action_pressed()
 
 
