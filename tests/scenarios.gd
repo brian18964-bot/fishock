@@ -7191,6 +7191,17 @@ func test_run_intro_and_eye_guide() -> void:
 	var kept := _keep_profile()
 	RunView3D.intro = true
 	await _fresh_game()
+	# (user request: the loading screen one of the loading cards - every one there - with the
+	# game's own bar on it, and not the same card twice running)
+	var mains: Script = main.get_script()
+	var missing: Array = mains.LOADING_CARDS.filter(func(c): return not ResourceLoader.exists(mains.LOADING_DIR % c))
+	check(missing.is_empty(), "every loading card there (%s missing)" % str(missing))
+	var art := main.get_node_or_null("Loading/Cover/Card") as Control
+	var pic: TextureRect = art.find_child("Art", true, false) if art != null else null
+	check(pic != null and pic.texture != null and pic.texture.resource_path.begins_with("res://assets/loading/")
+		and main.find_child("Bar", true, false) != null, "the loading screen: a loading card and its bar")
+	var a: String = mains.pick_loading_card()
+	check(mains.pick_loading_card() != a, "not the same loading card twice running")
 	var view: RunView3D = null
 	for _i in 120:
 		view = RunView3D.active

@@ -97,6 +97,28 @@ const LOAD_SMOOTH_MS := 70
 var _loading: CanvasLayer
 
 
+## User request: loading pictures in the game's own look - its night as it draws it, its gold
+## frame, a word about something in it (play, the dragon, the altar, the lamp, each character...):
+## assets/loading/*.jpg, made by tools/loading_cards.py from the game's own renders. One at random
+## (not the one shown last), kept 16:9 in the middle (a phone's wider screen gets dark sides, not
+## the picture cut), the bar the game's own where the card leaves room for it.
+const LOADING_DIR := "res://assets/loading/%s.jpg"
+const LOADING_CARDS := ["cast", "dragon", "catch", "altar", "ghost", "lamp", "frost", "oxy", "snow",
+	"autumn", "merchant", "char_cat", "char_owl", "char_owl2", "char_dog", "char_dog3", "char_bear",
+	"char_bear2", "char_deer", "char_deer2", "char_sheep", "char_sheep2", "char_croc"]
+## Where the bar sits on a card (its share of the card: left, top, right, bottom - the frame round
+## it), as tools/loading_cards.py leaves room.
+const LOADING_BAR := [470.0 / 1920.0, 966.0 / 1080.0, 1450.0 / 1920.0, 1010.0 / 1080.0]
+static var _last_card := ""
+
+
+## The card to show: any but the last one.
+static func pick_loading_card() -> String:
+	var pool := LOADING_CARDS.filter(func(c): return c != _last_card)
+	_last_card = pool[randi() % pool.size()]
+	return _last_card
+
+
 func _show_loading() -> void:
 	_loading = CanvasLayer.new()
 	_loading.name = "Loading"
@@ -108,30 +130,75 @@ func _show_loading() -> void:
 	cover.color = ProjectSettings.get_setting("application/boot_splash/bg_color", Color(0.02, 0.027, 0.043))
 	cover.mouse_filter = Control.MOUSE_FILTER_STOP
 	_loading.add_child(cover)
-	var splash := TextureRect.new()
-	splash.texture = load(ProjectSettings.get_setting("application/boot_splash/image", "res://assets/boot_splash.png"))
-	splash.set_anchors_preset(Control.PRESET_FULL_RECT)
-	splash.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	splash.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	splash.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	cover.add_child(splash)
-	# The bar where the web page's was (11% up from the bottom).
+	var box := AspectRatioContainer.new()
+	box.name = "Card"
+	box.ratio = 16.0 / 9.0
+	box.stretch_mode = AspectRatioContainer.STRETCH_FIT
+	box.set_anchors_preset(Control.PRESET_FULL_RECT)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cover.add_child(box)
+	var card := Control.new()
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(card)
+	var art := TextureRect.new()
+	art.name = "Art"
+	var path := LOADING_DIR % pick_loading_card()
+	art.texture = load(path) if ResourceLoader.exists(path) else load(ProjectSettings.get_setting("application/boot_splash/image", "res://assets/boot_splash.png"))
+	art.set_anchors_preset(Control.PRESET_FULL_RECT)
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode = TextureRect.STRETCH_SCALE
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(art)
+	# The bar: dark in its gold frame, filling gold (the game's bar_frame round it).
 	var track := ColorRect.new()
-	track.color = Color(0.91, 0.76, 0.35, 0.18)
-	track.anchor_left = 0.3
-	track.anchor_right = 0.7
-	track.anchor_top = 0.89
-	track.anchor_bottom = 0.89
-	track.offset_bottom = 5.0
+	track.name = "Track"
+	track.color = Color(0.024, 0.02, 0.016, 0.86)
+	track.anchor_left = LOADING_BAR[0]
+	track.anchor_top = LOADING_BAR[1]
+	track.anchor_right = LOADING_BAR[2]
+	track.anchor_bottom = LOADING_BAR[3]
 	track.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	cover.add_child(track)
-	var bar := ColorRect.new()
+	card.add_child(track)
+	var bar := TextureRect.new()
 	bar.name = "Bar"
-	bar.color = Color(0.91, 0.76, 0.35)
+	var g := GradientTexture2D.new()
+	g.fill_from = Vector2(0, 0)
+	g.fill_to = Vector2(0, 1)
+	var grad := Gradient.new()
+	grad.colors = PackedColorArray([Color(1.0, 0.84, 0.47), Color(0.69, 0.44, 0.12)])
+	g.gradient = grad
+	bar.texture = g
+	bar.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bar.stretch_mode = TextureRect.STRETCH_SCALE
 	bar.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bar.offset_left = 4.0
+	bar.offset_top = 4.0
+	bar.offset_bottom = -4.0
 	bar.anchor_right = 0.0
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	track.add_child(bar)
+	var rim := NinePatchRect.new()
+	rim.texture = load("res://assets/ui/bar_frame.png")
+	rim.patch_margin_left = 14
+	rim.patch_margin_right = 14
+	rim.patch_margin_top = 10
+	rim.patch_margin_bottom = 10
+	rim.draw_center = false
+	rim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	rim.offset_left = -6.0
+	rim.offset_top = -5.0
+	rim.offset_right = 6.0
+	rim.offset_bottom = 5.0
+	rim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	track.add_child(rim)
+	var words := UiKit.label("載入中…", 16, UiKit.DIM, true, 3)
+	words.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	words.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	words.anchor_left = 0.0
+	words.anchor_right = 1.0
+	words.offset_top = -30.0
+	words.offset_bottom = -6.0
+	track.add_child(words)
 	# (most of the way while it's built - the rest once it's ready)
 	create_tween().tween_property(bar, "anchor_right", 0.85, 1.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
@@ -158,7 +225,7 @@ func _open_when_ready(clear_fog: Callable) -> void:
 			break
 	if not is_inside_tree():
 		return
-	var bar := _loading.find_child("Bar", true, false) as ColorRect
+	var bar := _loading.find_child("Bar", true, false) as Control
 	if bar != null:
 		bar.anchor_right = 1.0
 	var t := create_tween()
