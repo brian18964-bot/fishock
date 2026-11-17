@@ -8281,6 +8281,17 @@ func test_shop_buyback() -> void:
 	Profile.gold = 0
 	var left := Profile.sold_back.size()
 	check(Profile.buy_back(0) != "" and Profile.sold_back.size() == left, "no gold: not bought back")
+	# (its place full meanwhile: another with room - the bucket full, the warehouse)
+	Profile.gold = 1000
+	check(Profile.sell_fish("box", 0) > 0, "(the fish sold again)")
+	var filler := dead.duplicate(true)
+	Profile.fish_box = []
+	for _i in Profile.FISH_BOX_SIZE:
+		Profile.fish_box.append(filler.duplicate(true))
+	var stashed := Profile.stash_fish.size()
+	check(Profile.buy_back(0) == "" and Profile.fish_box.size() == Profile.FISH_BOX_SIZE and Profile.stash_fish.size() == stashed + 1,
+		"the bucket full: bought back into the warehouse")
+	Profile.fish_box = [dead.duplicate(true)]
 	# User request: what's locked isn't offered for sale at all.
 	Locks.set_stored("shovel", true)
 	Locks.set_fish(Profile.fish_box[0], true)

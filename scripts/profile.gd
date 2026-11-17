@@ -1550,12 +1550,20 @@ func buy_back(i: int) -> String:
 	var cost := int(e.gold)
 	if gold < cost:
 		return "金幣不夠（要 %d）" % cost
+	var place := ""
 	if e.kind == "item":
 		var id: String = e.id
 		var had := owned(id)
 		var left := int(e.count)
+		var bagged := 0
 		if e.get("from", "") == "bag":
-			left -= bag_put(id, left)
+			bagged = bag_put(id, left)
+			left -= bagged
+		if left > 0 and not storage_room(id, left):
+			# (no room for the rest: none of it bought back)
+			if bagged > 0:
+				bag_take(id, bagged)
+			return "放不下了（背包和倉庫都滿了）"
 		if left > 0:
 			storage[id] = stored(id) + left
 		# (its wear and glow back with it, unless more of it was got meanwhile)
@@ -1565,7 +1573,23 @@ func buy_back(i: int) -> String:
 			if e.get("glow") != null:
 				glow_bones[id] = e.glow
 	else:
-		fish_list(String(e.place)).append((e.fish as Dictionary).duplicate(true))
+		# (back where it was if there's room - else the first place that has some; where
+		# it lay before may be taken now, so it's set down afresh)
+		var f: Dictionary = (e.fish as Dictionary).duplicate(true)
+		f.erase("cell")
+		f.erase("slot")
+		f.erase("hook")
+		for to in [String(e.place), "stash", "box", "pack", "tank"]:
+			if to == "clasp" and clasp_free_hook() == "":
+				continue
+			if fish_refusal(f, to) == "":
+				place = to
+				break
+		if place == "":
+			return "放不下了（魚缸、倉庫、魚桶都滿了）"
+		if place == "clasp":
+			f["hook"] = clasp_free_hook()
+		fish_list(place).append(f)
 	gold -= cost
 	sold_back.remove_at(i)
 	gold_updated.emit(gold)
