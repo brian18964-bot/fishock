@@ -5999,12 +5999,32 @@ func test_run_3d() -> void:
 	check(light_bend > 0.02 and most > light_bend + 0.4 and most <= RunView3D.BEND_MAX,
 		"the rod bent with the pull: %.2f held, %.2f running hard" % [light_bend, most])
 	check(tip_off > 0.1 and lean > 0.03, "its tip bowed (%.2f m), the line from it; the body swaying (%.2f rad)" % [tip_off, lean])
+	check(view.rig.body_layer.pull > 0.3, "running hard: the body drawn after it (%.2f)" % view.rig.body_layer.pull)
 	player().fight.run_left = 0.0
+	# (user request: the fish's other hard moves draw the body forward too - not stood idle)
+	player().fight.jump_left = 1.0
+	for _i in 20:
+		player().fight.tension = minf(player().fight.tension, 0.5)
+		await frames(1)
+	check(view.rig.body_layer.pull > 0.5, "the fish leaping: drawn after it (%.2f)" % view.rig.body_layer.pull)
+	player().fight.jump_left = 0.0
 	key(KEY_SHIFT, true)
 	await frames(8)
 	check(view._clip == "Fish_Reel", "reeling it in: the reel's sway (%s)" % view._clip)
+	var turned_from: float = view._crank
+	await frames(10)
+	check(view._crank > turned_from + 0.5, "reeling: the hand turns the crank")
 	key(KEY_SHIFT, false)
 	key(KEY_SPACE, false)
+	# (user report: the hand went on cranking with the stick let go)
+	for _i in 10:
+		player().fight.tension = minf(player().fight.tension, 0.5)
+		await frames(1)
+	var stopped: float = view._crank
+	for _i in 15:
+		player().fight.tension = minf(player().fight.tension, 0.5)
+		await frames(1)
+	check(is_equal_approx(view._crank, stopped), "let go: the crank stays still (%.2f -> %.2f)" % [stopped, view._crank])
 	# (the fish kept from pulling the line to breaking meanwhile - whether this one would is down to
 	# its luck; these are the traveller's clips for a fish still on)
 	for _i in 30:
@@ -6041,6 +6061,22 @@ func test_run_3d() -> void:
 		check(view._clip == pair[2], "%s %s: the %s clip (%s)" % [pair[0], pair[1], pair[2], view._clip])
 		player().move_left = 0.0
 		await seconds(0.3)
+	# User report: a live bait grabbed on the run froze the whole body a moment - the legs go on.
+	for _i in 20:
+		player()._move_joystick.output = Vector2.RIGHT
+		await frames(1)
+	player().grab_left = Player.GRAB_TIME
+	var snatched := 0.0
+	var legs := true
+	for _i in 12:
+		player()._move_joystick.output = Vector2.RIGHT
+		await frames(1)
+		snatched = maxf(snatched, view.rig.body_layer.snatch)
+		legs = legs and view._clip in ["Walk", "Run"]
+	player()._move_joystick.output = Vector2.ZERO
+	player().grab_left = 0.0
+	check(legs and snatched > 0.5, "grabbed on the run: still running, the body snatching (%.2f)" % snatched)
+	await frames(10)
 	player().carrying_oil_drum = true
 	await frames(4)
 	check(view._clip == "Walk_Carry" and view._lamp_in < 1.0, "carrying the oil drum: in both arms")
@@ -8839,6 +8875,16 @@ func test_fear_and_confusion() -> void:
 	await frames(5)
 	check(p.velocity.length() < 1.0, "afraid: the stick does nothing")
 	check(StatusCard.conditions(p).any(func(c): return str(c[0]).begins_with("害怕")), "the status card says afraid")
+	# User report (the fright looked like sitting down): stood cowering, shaking on the spot.
+	var view := RunView3D.active
+	if view != null and view.rig != null:
+		await frames(30)
+		var sk: Skeleton3D = view.rig.skeleton
+		var hips := sk.get_bone_global_pose(sk.find_bone("pelvis")).origin.y
+		var stood := sk.get_bone_global_rest(sk.find_bone("pelvis")).origin.y
+		check(view._clip == "Terrified" and view.rig.body_layer.shiver > 0.9,
+			"afraid: cowering, shaking (%s, %.2f)" % [view._clip, view.rig.body_layer.shiver])
+		check(hips > stood * 0.75, "afraid: still on its feet, not sat down (hips %.2f of %.2f)" % [hips, stood])
 	# Confused as well: after the fear it carries on, the way picked at random.
 	p.afflict(12.0, "亂", "怕", "confuse")
 	await seconds(2.2)

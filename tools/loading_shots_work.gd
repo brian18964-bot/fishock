@@ -5,6 +5,7 @@ extends "res://tests/scenarios.gd"
 ##   z   WHAT=altar|ghost|lamp|frost|oxy|shore  (THEME=snow_pine|autumn for the shore)
 ##   c2  CHAR=<id>                  a character from the front by the water (THEME as wished)
 ##   npc                            the camp's frog merchant
+##   camp                           the camp at night, wide (the game's opening card)
 ## Each writes PNGs to OUT; tools/loading_cards.py makes the cards from them.
 var OUT := OS.get_environment("OUT")
 var STAGE := OS.get_environment("STAGE")
@@ -18,6 +19,7 @@ func _run() -> void:
 		"z": await stage_z()
 		"c2": await stage_c2()
 		"npc": await stage_npc()
+		"camp": await stage_camp()
 	get_tree().quit()
 
 
@@ -266,3 +268,30 @@ func stage_npc() -> void:
 		cam.make_current()
 		await RenderingServer.frame_post_draw
 		vp.get_texture().get_image().save_png(OUT + "/npc_%d.png" % i)
+
+
+## The whole camp at night, from the title screen's own camera and pulled
+## back from it (the game's opening card: the boot splash).
+func stage_camp() -> void:
+	get_tree().change_scene_to_file("res://scenes/title_screen.tscn")
+	await frames(240)
+	var ts := get_tree().current_scene
+	var stage: CampStage = ts.find_children("*", "CampStage", true, false)[0]
+	var vp: SubViewport = stage.get_parent() as SubViewport
+	vp.size = Vector2i(1920, 1080)
+	var own := vp.get_camera_3d()
+	var base := own.global_transform
+	var cam := Camera3D.new()
+	stage.add_child(cam)
+	cam.fov = own.fov
+	# [back m, up m, turn deg]
+	var backs := [[0.0, 0.0, 0.0], [1.5, 0.4, 0.0], [3.0, 0.8, 0.0], [2.0, 0.5, 6.0], [2.0, 0.5, -6.0]]
+	for i in backs.size():
+		var b: Array = backs[i]
+		cam.global_transform = base.rotated_local(Vector3.UP, deg_to_rad(b[2]))
+		cam.global_position = base.origin + base.basis.z * b[0] + Vector3.UP * b[1]
+		cam.make_current()
+		await frames(20)
+		await RenderingServer.frame_post_draw
+		vp.get_texture().get_image().save_png(OUT + "/camp_%d.png" % i)
+		print("MARK camp_%d" % i)

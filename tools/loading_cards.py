@@ -184,10 +184,15 @@ def loading_bar(img, frac):
 def card(out, shot, crop, where, title, body, frac=None, lift=0.72, preview=None, glow_k=2.0):
     img = grade(f'{RENDERS}/{shot}.png', crop, lift, glow_k=glow_k)
     logo(img)
-    panel(img, where, title, body)
+    if where:
+        panel(img, where, title, body)
     img.alpha_composite(nine('frame.png', (W, H), (18, 16, 18, 16), 1.0, center=False))
     # (the game's own bar goes where loading_bar draws it - the card keeps that room clear)
-    img.convert('RGB').resize((1280, 720), Image.LANCZOS).save(out, quality=86)
+    small = img.convert('RGB').resize((1280, 720), Image.LANCZOS)
+    if out.endswith('.png'):
+        small.save(out, optimize=True)
+    else:
+        small.save(out, quality=86)
     if preview:
         loading_bar(img, 0.62)
         img.convert('RGB').save(preview)
@@ -242,3 +247,7 @@ for name, shot, crop, where, title, body in CARDS:
     else:
         dark = name in ('dragon', 'autumn', 'snow')
         card(f'{OUT}/{name}.jpg', shot, crop, where, title, body, lift=0.62 if dark else 0.72, preview=f'{PRE}/{name}.png' if PRE else None)
+# The game's opening card (project.godot's boot splash, and the web page's while it downloads - its
+# own bar and tips go over the dark ground): the camp at night, no words.
+if not only or 'boot' in only:
+    card(ROOT + '/assets/boot_splash.png', 'camp_3', None, None, '', '', lift=0.66, preview=f'{PRE}/boot.png' if PRE else None)

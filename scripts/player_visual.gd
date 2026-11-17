@@ -547,7 +547,7 @@ func _pick_frame(delta: float) -> void:
 		_wound = -1
 		_once = -1
 		var fishing := state != Player.State.IDLE
-		var cranking := _player.is_cranking()
+		var cranking := _player.turning_reel()
 		var was := clip
 		if moving:
 			clip = CLIP_HOLD_RUN if fishing else CLIP_RUN

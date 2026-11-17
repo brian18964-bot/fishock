@@ -347,6 +347,8 @@ var fight: FishFight
 ## at FishFight.CRANK_NORMAL (with Shift, flat out).
 const CRANK_FULL := 1.6
 const CRANK_EASE := 7.0
+## The crank asked for this frame, before its easing (turning_reel).
+var crank_input := 0.0
 const CRANK_REACH := 0.35
 var crank := 0.0
 var _crank_angle := 0.0
@@ -3078,6 +3080,7 @@ func _update_crank(delta: float) -> void:
 			# through the fish's first pull (Shift cranks).
 			if fight != null and fight.opening_left > 0.0 and not Input.is_key_pressed(KEY_SHIFT):
 				want = 0.0
+	crank_input = want
 	crank = lerpf(crank, want, 1.0 - exp(-CRANK_EASE * delta)) if want < crank else want
 	if crank < 0.01:
 		crank = 0.0
@@ -3093,6 +3096,15 @@ func lure_reel_pace() -> float:
 func is_cranking() -> bool:
 	if state == State.REELING:
 		return crank >= FishFight.HELD_AT
+	return _is_action_pressed()
+
+
+## The hand on the reel turning it this very frame (user report: the
+## character went on reeling with the stick let go - the crank's own easing
+## down, CRANK_EASE, is the fight's, not the hand's).
+func turning_reel() -> bool:
+	if state == State.REELING:
+		return crank_input >= FishFight.HELD_AT
 	return _is_action_pressed()
 
 

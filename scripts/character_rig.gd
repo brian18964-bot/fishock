@@ -50,6 +50,9 @@ var anim: AnimationPlayer
 var skeleton: Skeleton3D
 ## Sat on something its own height (SeatFit; the camp's logs - CampLife).
 var seat_fit: SeatFit
+## Moves over the clips - scared shaking, the fish's pull, a snatch on the
+## run (BodyLayer; the 3D run sets them).
+var body_layer: BodyLayer
 ## Who's wearing it (Profile.character when built; set_character()).
 var character := ""
 var _body: Node3D
@@ -101,6 +104,7 @@ func set_character(id: String) -> void:
 	anim = null
 	skeleton = null
 	seat_fit = null
+	body_layer = null
 	_grip_mod = null
 	_hang = null
 	attachments = {}
@@ -122,6 +126,10 @@ func _build(id: String) -> void:
 		seat_fit.stand = float(fit.get("pelvis", 1.0))
 		seat_fit.seat = float(seat[1]) if seat.size() > 1 else seat_fit.stand
 		skeleton.add_child(seat_fit)
+		# (the shiver, the fish's pull and the snatch on the run, over the clips)
+		body_layer = BodyLayer.new()
+		body_layer.name = "BodyLayer"
+		skeleton.add_child(body_layer)
 		var guard := GroundGuard.new()
 		guard.name = "GroundGuard"
 		guard.ground = self

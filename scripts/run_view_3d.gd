@@ -3664,8 +3664,11 @@ func _pick_clip() -> Array:
 		var reach := (_intro_t - float(INTRO.reach_at)) / float(INTRO.reach)
 		if reach >= 0.0 and reach < 1.0:
 			return ["PickUp_Table", 1.0, reach]
-	if player.grab_left > 0.0:
-		# (a critter grabbed bare-handed: a quick reach and snatch)
+	if player.grab_left > 0.0 and speed * PX < GRAB_STILL:
+		# (a critter grabbed bare-handed: a quick reach and snatch - stood
+		# still; user report: grabbed on the run, the whole body froze in it
+		# and slid along - on the run the legs go on and only the body dips
+		# for it: BodyLayer.snatch)
 		return ["Interact", 1.0, (1.0 - player.grab_left / Player.GRAB_TIME) * 0.5]
 	if player.swing_kind == "shoo" and player.swing_left > 0.0:
 		# (a beast waved off - user request: no weapon needed)
@@ -3711,6 +3714,17 @@ func _pick_clip() -> Array:
 			"pray":
 				return ["Pray", 1.0, -1.0]
 		var t: float = 1.0 - player.move_left / maxf(player.move_time, 0.01) if player.move_left > 0.0 else -1.0
+		if v.move == "scared" and rig.anim.has_animation("Terrified"):
+			# (user report: the fright looked like sitting down - Scared ends in
+			# a squat; stood cowering instead, shaking on the spot: BodyLayer)
+			var since := player.move_time - player.move_left
+			if player.move_note == "stolen":
+				# (the water ghost's grab: knocked staggering first)
+				var knock := player.move_time * 0.4
+				if since < knock:
+					return ["Hit_Knockback", 1.0, since / knock * 0.3]
+				since -= knock
+			return ["Terrified", 1.0, _cower(since) / rig.anim.get_animation("Terrified").length]
 		var name: String = MOVE_CLIPS.get(v.move, "Idle")
 		t = clampf(t, 0.0, 1.0) if t >= 0.0 else -1.0
 		if name == "Kick" and t >= 0.0:
@@ -3774,6 +3788,62 @@ func _pick_clip() -> Array:
 		PlayerVisual.CLIP_BUSY:
 			return ["Fixing_Kneeling", 1.0, -1.0]
 	return ["Idle", 1.0, -1.0]
+
+
+## A critter grabbed slower than this (px/s): the standing reach; faster, the
+## legs go on and only the body snatches for it (BodyLayer.snatch).
+const GRAB_STILL := 30.0
+## The fright (user report: Scared sank into a squat - it looked like sitting
+## down): Terrified's cower instead - from COWER_FROM s into it to COWER_AT
+## over COWER_IN s, then held there swaying a little, shaking on top.
+const COWER_FROM := 0.6
+const COWER_AT := 2.0
+const COWER_IN := 0.5
+## User request: the fish pulling hard draws the body after it (BodyLayer.pull)
+## - how hard each of its moves pulls (FishFight.mood()); a tension past
+## PULL_TENSION pulls too. How fast it's drawn in, and let go.
+const PULL_MOODS := {"run": 1.0, "side_run": 0.9, "surge": 1.0, "dive": 0.9, "rally": 1.0, "jump": 0.7,
+	"enraged": 0.6, "swim_out": 0.55}
+const PULL_TENSION := 0.75
+const PULL_IN := 0.12
+const PULL_OUT := 0.45
+var _shiver := 0.0
+var _pull := 0.0
+var _snatch := 0.0
+
+
+## Terrified's time (s) `since` s into a fright.
+static func _cower(since: float) -> float:
+	if since < COWER_IN:
+		return lerpf(COWER_FROM, COWER_AT, smoothstep(0.0, 1.0, since / COWER_IN))
+	return COWER_AT + 0.25 * sin((since - COWER_IN) * 1.3)
+
+
+## The moves over the clips (BodyLayer): shaking while scared, drawn after
+## the fish as it pulls, a snatch for a critter on the run.
+func _layer(delta: float) -> void:
+	if rig == null or rig.body_layer == null:
+		return
+	var scared := _visual.move == "scared" and player.move_left > 0.0
+	if scared and player.move_note == "stolen" and player.move_time - player.move_left < player.move_time * 0.4:
+		scared = false  # (still staggering from the grab)
+	_shiver = move_toward(_shiver, 1.0 if scared else 0.0, delta / (0.15 if scared else 0.35))
+	var want := 0.0
+	var fight: FishFight = player.fight
+	if player.state == Player.State.REELING and fight != null:
+		want = float(PULL_MOODS.get(fight.mood(), 0.0))
+		want = maxf(want, smoothstep(PULL_TENSION, 1.0, player.tension) * 0.7)
+		if _clip == "Fish_Pull":
+			want *= 0.5  # (the clip leans into a run of its own)
+	_pull = move_toward(_pull, want, delta / (PULL_IN if want > _pull else PULL_OUT))
+	var moving := player.velocity.length() >= GRAB_STILL
+	if player.grab_left > 0.0 and moving:
+		_snatch = sin(PI * (1.0 - player.grab_left / Player.GRAB_TIME))
+	else:
+		_snatch = move_toward(_snatch, 0.0, delta / 0.15)
+	rig.body_layer.shiver = _shiver
+	rig.body_layer.pull = _pull
+	rig.body_layer.snatch = _snatch
 
 
 func _animate() -> void:
@@ -4424,8 +4494,13 @@ func _aim_rod(delta: float) -> void:
 	var arm_l := _left_len * k
 	var two := (1.0 - _stow) * (1.0 - _left_free)
 	var reeling := _visual.clip in [PlayerVisual.CLIP_REEL, PlayerVisual.CLIP_FIGHT] or player.state == Player.State.REELING
-	if reeling:
-		_crank += delta * TAU * CRANK_TURNS
+	# User report: the hand went on cranking with the stick let go - the left
+	# hand waits at the reel the whole fight, but turns it only as the stick's
+	# turned (Player.is_cranking), as fast as it's turned.
+	var turning := reeling and player.turning_reel()
+	if turning:
+		var pace := clampf(player.crank / FishFight.CRANK_NORMAL, 0.4, 1.5) if player.state == Player.State.REELING else 1.0
+		_crank += delta * TAU * CRANK_TURNS * pace
 	# User report (the hold worked out as it went put a round one's forearm through its
 	# chest): where each one holds the rod is its own, fitted to its body beforehand against
 	# its real surface (tools/fit_holds.gd -> fit.json's `hold`), and set against its chest -
@@ -4465,6 +4540,7 @@ func _aim_rod(delta: float) -> void:
 	var left_at := chest_at + chest_x * float(lf[0]) * half + (chest_y * float(lf[1]) + chest_z * float(lf[2])) * arm_l
 	left_at += lift
 	if reeling and _arm_follow < 0.6:
+		# (round the crank's circle while it turns; let go, it rests where it stopped)
 		left_at += (across * cos(_crank) + over * sin(_crank)) * CRANK_R * 0.7 * k
 	var elbow_l := shoulder_l - chest_y * arm_l * 0.5 * (1.0 - wide * 0.6) + chest_x * (0.04 * k + wide * 0.3 * arm_l)
 	var hold_l := _hand_hold("l", left_at, dir, elbow_l)
@@ -6309,6 +6385,7 @@ func _process(delta: float) -> void:
 		# stone or the water's edge)
 		_tracks.feel(rig.skeleton, _ground_at, _open_snow, player.velocity.length() / PX)
 	_animate()
+	_layer(delta)
 	_aim_rod(delta)
 	if _drum != null:
 		# (user decision: no pictures - the can lying about is the model too)
