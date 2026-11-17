@@ -3827,7 +3827,9 @@ func _layer(delta: float) -> void:
 	var scared := _visual.move == "scared" and player.move_left > 0.0
 	if scared and player.move_note == "stolen" and player.move_time - player.move_left < player.move_time * 0.4:
 		scared = false  # (still staggering from the grab)
-	_shiver = move_toward(_shiver, 1.0 if scared else 0.0, delta / (0.15 if scared else 0.35))
+	# (the arms tiring - a fish asking more endurance than there is - shake too)
+	var shake := 1.0 if scared else player.arms_tired() * 0.7
+	_shiver = move_toward(_shiver, shake, delta / (0.15 if shake > _shiver else 0.35))
 	var want := 0.0
 	var fight: FishFight = player.fight
 	if player.state == Player.State.REELING and fight != null:
@@ -4498,7 +4500,10 @@ func _aim_rod(delta: float) -> void:
 	# hand waits at the reel the whole fight, but turns it only as the stick's
 	# turned (Player.is_cranking), as fast as it's turned.
 	var turning := reeling and player.turning_reel()
-	if turning:
+	if player.line_running_out():
+		# (user request: a fish too strong runs the line out - the reel spins back, fast)
+		_crank -= delta * TAU * CRANK_TURNS * 2.6
+	elif turning:
 		var pace := clampf(player.crank / FishFight.CRANK_NORMAL, 0.4, 1.5) if player.state == Player.State.REELING else 1.0
 		_crank += delta * TAU * CRANK_TURNS * pace
 	# User report (the hold worked out as it went put a round one's forearm through its

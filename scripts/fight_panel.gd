@@ -160,6 +160,8 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_pulse += delta
 	var player := _player()
+	if player != null and not player.bite_missed.is_connected(miss):
+		player.bite_missed.connect(miss)
 	var busy := player != null and (player.state == Player.State.REELING \
 		or player.state == Player.State.BITE or player.light_lure > 0.0)
 	# (what was on the canvas going into this frame: the frame the last number or edge flash runs
@@ -620,6 +622,21 @@ func _draw_edge() -> void:
 		_view.draw_rect(Rect2(0, vp.y - (i + 1) * t, vp.x, t), col)
 		_view.draw_rect(Rect2(i * t, 0, t, vp.y), col)
 		_view.draw_rect(Rect2(vp.x - (i + 1) * t, 0, t, vp.y), col)
+
+
+## User request: a bite let go by - too slow for a quick fish, or not watching -
+## shows MISS at the float, big, whatever the damage numbers setting.
+func miss() -> void:
+	var at := _float_pos() + Vector2(0, -30)
+	_pops.append({"text": "MISS", "label": "反應不及", "pos": at, "vel": Vector2(0, -26), "age": 0.0, "life": 1.5,
+		"size": 40, "color": Color(1.0, 0.42, 0.36), "kind": "text", "pop": 0.8})
+	_edge = 0.35
+	_edge_color = RAGE
+	missed += 1
+
+
+## (how many MISSes shown - tests)
+var missed := 0
 
 
 func _add_ring(at: Vector2, color: Color) -> void:

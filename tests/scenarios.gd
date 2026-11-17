@@ -88,6 +88,7 @@ const TESTS := [
 	"test_fight_sweet_spot", "test_fight_line_distance", "test_fight_fish_keeps_its_water", "test_fight_line_out", "test_fight_leap_far_out",
 	"test_fight_swim_out_by_fish", "test_fight_spent_reeled_in", "test_fight_opening", "test_fight_fish_swims", "test_fight_leap_close_in", "test_crank_by_turning_the_stick", "test_offhand_swing_and_wear",
 	"test_perfect_hook",
+	"test_gate_played",
 	"test_light_lure",
 	"test_lure_retrieve",
 	"test_lure_strike_direction",
@@ -2345,6 +2346,100 @@ func test_perfect_hook() -> void:
 		player()._set_state(Player.State.IDLE)
 		player().fight = null
 		await frames(2)
+
+
+## User request: a fish too strong for the stats played out, not only told -
+## 反應 a shorter strike and MISS (any bite let go by shows MISS), 力量 the line
+## run out with the reel turning back, 韌性 the tension topping out on the first
+## turn, 耐力 the arms tiring and giving out.
+func test_gate_played() -> void:
+	var zone = main.get_tree().get_nodes_in_group("water_zones_common")[0]
+	await put(zone.shore_point(Vector2.DOWN) + Vector2(0, 60))
+	var p := player()
+	var panel: FightPanel = main.get_node("FightPanel")
+	var view := RunView3D.active
+	var setup := func(id: String, big: bool) -> void:
+		p.tier_data = FishData.get_tier_data("mid").duplicate()
+		p.tier_data.bite_window = 1.0
+		p.difficulty_key = "normal"
+		p.fish_habit = ""
+		p.is_heart_catch = false
+		p.fish_id = id
+		p.is_rare_catch = big
+		p.is_epic_catch = big
+		p._plan = {}
+		p.cast_target = p.global_position + Vector2(0, -120)
+	# 反應: the window to strike shrinks; let go by, MISS.
+	setup.call("ayu", true)
+	p._start_bite()
+	var need: Dictionary = p._gate_need()
+	check(need.has("react") and float(int(need.react) - Stats.total("react")) / float(need.react) > Stats.CHALLENGE,
+		"(the epic ayu asks more react than there is: %s)" % str(need))
+	check(p.bite_timer < 0.6, "short of react: less time to strike (%.2f s)" % p.bite_timer)
+	var missed: int = panel.missed
+	await seconds(p.bite_timer + 0.25)
+	check(p.state == Player.State.IDLE and panel.missed == missed + 1, "let go by: MISS")
+	setup.call("carp", false)
+	p._start_bite()
+	check(p.bite_timer > 0.95, "a fish within reach: the whole window (%.2f s)" % p.bite_timer)
+	await seconds(1.25)
+	check(panel.missed == missed + 2, "an ordinary bite let go by: MISS too")
+	# 力量: it runs the line out, the reel turning back, reeling doing nothing - till it snaps.
+	setup.call("carp", false)
+	p._hook_fish()
+	p._gate_stat = "might"
+	p.fight.opening_left = 0.0
+	var turned: float = view._crank if view != null else 0.0
+	var out: float = p.fight.distance
+	key(KEY_SPACE, true)
+	key(KEY_SHIFT, true)
+	await frames(30)
+	check(p.state == Player.State.REELING and p.line_running_out() and p.fight.distance > out + 2.0,
+		"力量 short: the line runs out, reeling or not (%.1f -> %.1f m)" % [out, p.fight.distance])
+	if view != null:
+		check(view._crank < turned - 1.0, "the reel turns back (%.2f -> %.2f)" % [turned, view._crank])
+	key(KEY_SHIFT, false)
+	key(KEY_SPACE, false)
+	for _i in 900:
+		await frames(1)
+		if p.state != Player.State.REELING:
+			break
+	check(p.state == Player.State.IDLE, "the line all out: snapped")
+	# 韌性: the first turn of the reel tops the tension out.
+	setup.call("carp", false)
+	p._hook_fish()
+	p._gate_stat = "resil"
+	p.fight.opening_left = 0.0
+	p.fight.tension = 0.2
+	await frames(5)
+	check(p.state == Player.State.REELING and p.fight.tension < 1.0, "韌性 short: on, the tension climbing (%.2f)" % p.fight.tension)
+	key(KEY_SPACE, true)
+	key(KEY_SHIFT, true)
+	var snapped_in := -1
+	for i in 6:
+		await frames(1)
+		if p.state != Player.State.REELING and snapped_in < 0:
+			snapped_in = i
+	key(KEY_SHIFT, false)
+	key(KEY_SPACE, false)
+	await frames(2)
+	p._set_state(Player.State.IDLE)
+	check(snapped_in >= 0 and snapped_in <= 2, "a turn of the reel: the tension tops out, the line snaps (frame %d)" % snapped_in)
+	# 耐力: the arms tire - the pull fades, the body shakes - then give out.
+	setup.call("carp", false)
+	p._hook_fish()
+	p._gate_stat = "endure"
+	p._gate_left = Player.GATE_TIRE * 0.5
+	p.fight.opening_left = 0.0
+	p.fight._run_timer = 99.0
+	p.fight._jump_cooldown = 99.0
+	check(absf(p.arms_tired() - 0.5) < 0.05, "耐力 short: half tired (%.2f)" % p.arms_tired())
+	await frames(25)
+	if view != null:
+		check(view.rig.body_layer.shiver > 0.2, "the tired arms shake (%.2f)" % view.rig.body_layer.shiver)
+	await seconds(Player.GATE_TIRE * 0.5)
+	check(p.state == Player.State.IDLE, "the arms give out: it's off")
+	p.fight = null
 
 
 ## Holding a charged light on the float brings a bite sooner.

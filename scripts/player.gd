@@ -3004,7 +3004,15 @@ func _update_fishing(delta: float) -> void:
 		State.BITE:
 			bite_timer -= delta
 			if bite_timer <= 0.0:
-				_fail_catch("missed_bite")
+				# (user request: MISS shown - too slow, or not watching - and, short of the
+				# react this fish asks, told so)
+				bite_missed.emit()
+				if _react_short > 0.0:
+					_gate_stat = "react"
+					Profile.note_shadow(fish_id, tier_data.label)
+					_fail_catch("gate")
+				else:
+					_fail_catch("missed_bite")
 		State.REELING:
 			# The fight itself lives in FishFight (see its rules).
 			_update_crank(delta)
@@ -3013,8 +3021,33 @@ func _update_fishing(delta: float) -> void:
 			var line_dir := (cast_target - global_position).normalized()
 			fight.strain = (VIGOR_STRAIN if vigor_timer > 0.0 else 1.0) * (1.0 + _gate_soft * 4.0) * fight.stat_strain()
 			fight.hold = _is_action_pressed()
-			for ev in fight.update(delta, crank, _counter_dir(), line_dir, reel_mult):
+			# (the fish too strong: reeling does nothing while it runs the line out;
+			# the arms tiring, the reel's pull fades)
+			var reel_in := crank
+			if _gate_stat == "might":
+				reel_in = 0.0
+			elif arms_tired() > 0.0:
+				reel_in = crank * (1.0 - arms_tired())
+			for ev in fight.update(delta, reel_in, _counter_dir(), line_dir, reel_mult):
 				_on_fight_event(ev)
+			if _gate_stat == "might" and fight.result in ["", "line_out", "line_break"]:
+				# (it runs straight out, the line paying off the reel, till it's all gone)
+				fight.distance += GATE_RUN * delta
+				fight.run_left = maxf(fight.run_left, 0.5)
+				fight.tension = clampf(fight.tension, 0.75, 0.95)
+				if fight.distance >= fight.line_max or fight.result != "":
+					_fail_catch("gate")
+					return
+			elif _gate_stat == "resil" and fight.result in ["", "line_break"]:
+				# (the tension climbs by itself; the first turn of the reel, to the top)
+				fight.tension = minf(fight.tension + GATE_RESIL_RISE * delta, 1.0)
+				if turning_reel():
+					fight.tension = 1.0
+				if fight.tension >= 1.0 or fight.result != "":
+					fight.tension = 1.0
+					tension = 1.0
+					_fail_catch("gate")
+					return
 			progress = fight.progress
 			tension = fight.tension
 			fish_run_active_time = fight.run_left
@@ -3040,6 +3073,9 @@ func _update_fishing(delta: float) -> void:
 				_turned_for = maxf(_turned_for - delta, 0.0)
 			if _gate_left >= 0.0:
 				_gate_left -= delta
+				if _gate_left < GATE_TIRE and not _tire_said:
+					_tire_said = true
+					GameState.push_message("手臂開始發酸，越捲越沒力……")
 				if _gate_left <= 0.0 and fight.result == "":
 					_gate_left = -1.0
 					_fail_catch("gate")
@@ -3345,6 +3381,8 @@ func _start_bite() -> void:
 		# (keys already down don't count as pressed for the strike)
 		for k in [KEY_W, KEY_A, KEY_S, KEY_D, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT]:
 			_key_just_pressed(k)
+	# (short of the react this fish asks: less time to strike)
+	_react_gate()
 	_set_state(State.BITE)
 	bite_started.emit()
 	GameState.report("咬鉤了！快揚竿", "good")
@@ -3499,22 +3537,82 @@ var _gate_gap := 0.0
 ## Short of the gate but within the challenge range: how far (the fight's harder).
 var _gate_soft := 0.0
 var _gate_left := -1.0
-const GATE_AT := {"might": 1.2, "resil": 0.7, "endure": 10.0}
+## User request (a fish too strong was only words - it's played out now), short
+## of the stat a fish asks:
+##   react   the strike's window shrinks by how far short (REACT_WINDOW, from the
+##           challenge range's edge to past it; no less than REACT_WINDOW_MIN) -
+##           struck in time, it's on; too slow, MISS (as any bite let go by -
+##           FightPanel.miss) and it's gone
+##   might   hooked, it runs straight out: the line pays out GATE_RUN m/s, the
+##           reel turning back (RunView3D), reeling doing nothing - till the line's
+##           all out and snaps
+##   resil   the tension climbs by itself (GATE_RESIL_RISE /s) and the first turn
+##           of the reel sends it to the top - the line snaps
+##   endure  a fight like any other at first; from GATE_TIRE_AT s the arms tire:
+##           the reel's pull fades to nothing over GATE_TIRE s, the body shaking
+##           (arms_tired, BodyLayer) - then the hand gives and it's off
+const REACT_WINDOW := Vector2(0.55, 0.2)
+const REACT_WINDOW_MIN := 0.2
+const GATE_RUN := 7.0
+const GATE_RESIL_RISE := 0.4
+const GATE_TIRE_AT := 5.0
+const GATE_TIRE := 5.0
+## Short of the react a biting fish asks (0 none .. 1 far), and by what share.
+var _react_short := 0.0
+var _react_gap := 0.0
+var _tire_said := false
+signal bite_missed
 
 
-## True if the fish on the line is too much for the stats carried and it's
-## over at once (反應); else a later failure is set for the fight.
+## What the fish on the line asks of the stats ({stat: number}) - measured once
+## (at the bite, kept for the catch).
+func _gate_need() -> Dictionary:
+	if _plan.is_empty():
+		_plan = FishData.measure(fish_id, Inventory.size_for_catch(current_tier, is_epic_catch))
+	var rarity := UiKit.fish_rarity({"id": fish_id, "rarity": "epic" if is_epic_catch else ("rare" if is_rare_catch else "common")})
+	return FishData.gate_for(fish_id, rarity, float(_plan.length))
+
+
+## At the bite: short of the react it asks, the window to strike in shrinks.
+func _react_gate() -> void:
+	_react_short = 0.0
+	_react_gap = 0.0
+	if fish_id == "" or is_heart_catch:
+		return
+	var need := _gate_need()
+	if not need.has("react"):
+		return
+	var gap := float(int(need.react) - Stats.total("react")) / float(need.react)
+	if gap <= Stats.CHALLENGE:
+		return
+	_react_gap = gap
+	_react_short = clampf((gap - Stats.CHALLENGE) / 0.5, 0.0, 1.0)
+	bite_timer = maxf(bite_timer * lerpf(REACT_WINDOW.x, REACT_WINDOW.y, _react_short), REACT_WINDOW_MIN)
+
+
+## The fish too strong (力量) running the line out, the reel turning back.
+func line_running_out() -> bool:
+	return state == State.REELING and _gate_stat == "might"
+
+
+## How tired the arms are (耐力 short: 0 .. 1 given out).
+func arms_tired() -> float:
+	if state != State.REELING or _gate_stat != "endure" or _gate_left < 0.0:
+		return 0.0
+	return clampf(1.0 - _gate_left / GATE_TIRE, 0.0, 1.0)
+
+
+## Sets the fight's failing for the stats carried (react was the strike's: met
+## by striking in time); false always - the failing's played out in the fight.
 func _gate_check() -> bool:
 	_gate_stat = ""
 	_gate_left = -1.0
 	_gate_soft = 0.0
-	_plan = {}
+	_tire_said = false
 	if fish_id == "" or is_heart_catch:
 		return false
-	var size_key := Inventory.size_for_catch(current_tier, is_epic_catch)
-	_plan = FishData.measure(fish_id, size_key)
-	var rarity := UiKit.fish_rarity({"id": fish_id, "rarity": "epic" if is_epic_catch else ("rare" if is_rare_catch else "common")})
-	var need := FishData.gate_for(fish_id, rarity, float(_plan.length))
+	var need := _gate_need()
+	need.erase("react")
 	var short := Stats.shortfall(need)
 	if short.is_empty():
 		_gate_soft = Stats.soft_gap(need)
@@ -3523,10 +3621,8 @@ func _gate_check() -> bool:
 	_gate_gap = float(short.gap)
 	# (a kind never landed: seen, a shadow in the fish log)
 	Profile.note_shadow(fish_id, tier_data.label)
-	if _gate_stat == "react":
-		_fail_catch("gate")
-		return true
-	_gate_left = float(GATE_AT[_gate_stat])
+	if _gate_stat == "endure":
+		_gate_left = GATE_TIRE_AT + GATE_TIRE
 	return false
 
 
@@ -3739,16 +3835,17 @@ const FAIL_REPORTS := {
 ## short (not the number) and how far: a few words, so the player knows what
 ## to look for (the affixes and gear say the same words).
 const GATE_LINES := {
-	"react": ["這條魚盜餌太快，差一點就來得及了", "這條魚盜餌也太快，根本來不及反應，餌就沒了"],
-	"might": ["差一點就拉住了，這條魚的力氣真大", "根本拉不住這條魚！力量也太大了"],
-	"resil": ["線繃得緊緊的，隨即就斷了", "一咬餌就被扯斷……看來魚線太不耐扯了"],
+	"react": ["MISS！這條魚盜餌太快，差一點就來得及了", "MISS！這條魚盜餌也太快，根本來不及反應，餌就沒了"],
+	"might": ["魚一路往外衝，線被拉光了——差一點就拉住了", "魚一咬就往外狂衝，根本拉不住，線全被拉光了"],
+	"resil": ["一收線張力就爆表，線斷了——魚線差一點就撐住", "一收線張力瞬間爆表，線一下就被扯斷了"],
 	"endure": ["手快撐不住了，魚趁機掙脫了", "手臂酸得抬不起來，魚輕易就掙脫了"],
 }
 
 
 func _gate_text() -> String:
 	var lines: Array = GATE_LINES.get(_gate_stat, ["這條魚太強了"])
-	return str(lines[0] if _gate_gap < 0.3 else lines[1])
+	var gap := _react_gap if _gate_stat == "react" else _gate_gap
+	return str(lines[0] if gap < 0.3 else lines[1])
 
 
 func _fail_catch(reason: String) -> void:
@@ -3783,6 +3880,8 @@ func _fail_catch(reason: String) -> void:
 		_snap_note = ""
 	elif reason == "gate":
 		msg = _gate_text()
+	elif reason == "missed_bite":
+		msg = "MISS！沒來得及揚竿，魚跑走了"
 	elif reason == "line_cut":
 		msg = "線被鬼剪斷了！"
 	elif reason == "lure_knocked":
