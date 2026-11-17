@@ -113,9 +113,13 @@ static var _last_card := ""
 
 
 ## The card to show: any but the last one.
+## Its own dice: the global one stays where a seeded run left it.
+static var _card_rng := RandomNumberGenerator.new()
+
+
 static func pick_loading_card() -> String:
 	var pool := LOADING_CARDS.filter(func(c): return c != _last_card)
-	_last_card = pool[randi() % pool.size()]
+	_last_card = pool[_card_rng.randi() % pool.size()]
 	return _last_card
 
 
