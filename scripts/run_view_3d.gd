@@ -507,7 +507,10 @@ func _ready() -> void:
 		await get_tree().process_frame
 		if not is_inside_tree():
 			return
-	_build()
+	await _build()
+	# (the map left before it was all built - its next level already on its way)
+	if not is_inside_tree() or not built:
+		return
 	get_tree().node_added.connect(_on_node_added)
 
 
@@ -540,11 +543,21 @@ func _build() -> void:
 	_water()
 	_docks()
 	var t1 := Time.get_ticks_msec()
+	# (user report: the desert stalled as it came up - built in three goes, not one long frame, so
+	# the loading screen's bar keeps moving between them)
+	await get_tree().process_frame
+	if not is_inside_tree():
+		return
+	var t1b := Time.get_ticks_msec()
 	_trees_and_rocks()
 	_start_camp()
 	_landmarks()
 	_cover()
 	var t2 := Time.get_ticks_msec()
+	await get_tree().process_frame
+	if not is_inside_tree():
+		return
+	var t2b := Time.get_ticks_msec()
 	_character()
 	_build_glow()
 	_line_and_float()
@@ -579,7 +592,7 @@ func _build() -> void:
 	_rest_2d_only(main)
 	for n in main.get_children():
 		_scan(n)
-	print_verbose("RunView3D: land %d ms, props %d ms, the rest %d ms" % [t1 - t0, t2 - t1, Time.get_ticks_msec() - t2])
+	print_verbose("RunView3D: land %d ms, props %d ms, the rest %d ms" % [t1 - t0, t2 - t1b, Time.get_ticks_msec() - t2b])
 	player.cast_started.connect(func(at: Vector2, _t): _splash_ring(at))
 	player.ability_triggered.connect(ability_fx)
 	player.fight_event.connect(func(kind: String): if kind == "swipe_hit": _kick = 1.0)
@@ -711,6 +724,25 @@ func _dune(p: Vector2, depth: float, out: float) -> float:
 			var f := bones as Fossil
 			if f.big():
 				_dune_clear.append([f.global_position, maxf(Fossil.reach_px(f.kind), f.sand_reach_px()) + 30.0])
+	# (how much of a dune it may have here first: none by the water, round the clear places and on
+	# the decks - and then nothing more to work out, inside the map; the load's dearest part)
+	var k := smoothstep(DUNE_CLEAR.x, DUNE_CLEAR.y, -depth / PX)
+	if k > 0.0:
+		for c in _dune_clear:
+			var r: float = c[1]
+			k *= smoothstep(r, r + 8.0 * PX, (c[0] as Vector2).distance_to(p))
+			if k <= 0.0:
+				break
+	if k > 0.0:
+		for wk in _walk:
+			var box: Rect2 = (wk[0] as Rect2).grow(4.0 * PX)
+			if box.has_point(p):
+				k = 0.0
+				break
+	# (past the map's edge the dunes tall, a wall of sand)
+	var edge := smoothstep(0.0, MARGIN * 0.6, out)
+	if k <= 0.0 and edge <= 0.0:
+		return 0.0
 	var nz := _dune_noise
 	var m := p / PX
 	var w := Foliage.WIND_DIR.normalized()
@@ -721,16 +753,6 @@ func _dune(p: Vector2, depth: float, out: float) -> float:
 	var prof := smoothstep(0.0, 0.76, t) if t < 0.76 else 1.0 - smoothstep(0.76, 1.0, t)
 	var amp := clampf(0.55 + nz.get_noise_2d(v * 0.45, u * 0.12 + 50.0) * 0.9, 0.15, 1.0)
 	var h := prof * amp * DUNE_H
-	var k := smoothstep(DUNE_CLEAR.x, DUNE_CLEAR.y, -depth / PX)
-	for c in _dune_clear:
-		var r: float = c[1]
-		k *= smoothstep(r, r + 8.0 * PX, (c[0] as Vector2).distance_to(p))
-	for wk in _walk:
-		var box: Rect2 = (wk[0] as Rect2).grow(4.0 * PX)
-		if box.has_point(p):
-			k = 0.0
-	# (past the map's edge the dunes tall, a wall of sand)
-	var edge := smoothstep(0.0, MARGIN * 0.6, out)
 	return lerpf(h * k, (0.35 + 0.65 * prof) * DUNE_EDGE_H * (0.7 + 0.3 * amp), edge)
 
 
@@ -743,7 +765,17 @@ const OASIS_WET := 44.0
 const OASIS_GREEN := Vector2(50.0, 230.0)
 
 
+## (this far up from the water (px) neither the damp nor the green reaches, however the noise
+## falls - only the green's stray patches: their share there)
+const OASIS_FAR := 320.0
+const OASIS_STRAY := 0.2417
+
+
 func _oasis_paint(shore: float, x: float, z: float, noise: FastNoiseLite) -> Color:
+	if shore > OASIS_FAR:
+		# (the same sums as below with the damp and the near green at nothing - one noise, not five)
+		var stray := noise.get_noise_2d(x * 2.6 + 11.0, z * 2.6) * 0.5 + 0.5
+		return Color(0.5, 0.0, 0.0, smoothstep(0.62, 0.72, stray) * OASIS_STRAY)
 	var wob := noise.get_noise_2d(x, z)
 	var wob2 := noise.get_noise_2d(x * 0.35 + 70.0, z * 0.35)
 	var wet := 1.0 - smoothstep(0.0, OASIS_WET + wob * 24.0, shore)
@@ -824,6 +856,10 @@ func _shore_depth(p: Vector2, zones: Array) -> float:
 
 ## (past this far from a pond (px) its shore makes no difference to the desert's ground)
 const SHORE_FAR := DUNE_CLEAR.y * 27.108 + 40.0
+## (_ground: the shore's distance worked out every this many cells, read between; within this
+## far of the water (px) worked out at each)
+const SHORE_STEP := 2
+const SHORE_EXACT := OASIS_FAR + 40.0
 
 
 func _ground() -> void:
@@ -854,6 +890,16 @@ func _ground() -> void:
 	heights.resize(n.x * n.y)
 	var colors := PackedColorArray()
 	colors.resize(n.x * n.y)
+	# (user report: the desert stalled as it came up - its ground the dearest part. How far up
+	# from the water each spot is, worked out every SHORE_STEP cells and read between them; near
+	# the water (SHORE_EXACT px) exactly, where the damp and the green's edge are)
+	var shore_n := Vector2i(n.x / SHORE_STEP + 2, n.y / SHORE_STEP + 2)
+	var shores := PackedFloat32Array()
+	if _desert:
+		shores.resize(shore_n.x * shore_n.y)
+		for sj in shore_n.y:
+			for si in shore_n.x:
+				shores[sj * shore_n.x + si] = _shore_depth(Vector2(lo.x + si * SHORE_STEP * CELL, lo.y + sj * SHORE_STEP * CELL) * PX, zones)
 	for j in n.y:
 		for i in n.x:
 			var x := lo.x + i * CELL
@@ -864,9 +910,15 @@ func _ground() -> void:
 			# Past the map's edge the forest rises a little: a frame.
 			var out := Vector2(maxf(maxf(rect.position.x - p2.x, p2.x - rect.end.x), 0.0),
 				maxf(maxf(rect.position.y - p2.y, p2.y - rect.end.y), 0.0)).length() / PX
-			var wob := noise.get_noise_2d(x, z)
 			if _desert:
-				var far := _shore_depth(p2, zones)
+				var si := i / SHORE_STEP
+				var sj := j / SHORE_STEP
+				var tx := float(i % SHORE_STEP) / SHORE_STEP
+				var tz := float(j % SHORE_STEP) / SHORE_STEP
+				var far := lerpf(lerpf(shores[sj * shore_n.x + si], shores[sj * shore_n.x + si + 1], tx),
+					lerpf(shores[(sj + 1) * shore_n.x + si], shores[(sj + 1) * shore_n.x + si + 1], tx), tz)
+				if far > -SHORE_EXACT:
+					far = _shore_depth(p2, zones)
 				y += _dune(p2, far, out)
 				heights[j * n.x + i] = y
 				var paint := _oasis_paint(-far, x, z, noise)
@@ -874,10 +926,11 @@ func _ground() -> void:
 				# slot, cracked_mud - never near the water)
 				var hollow := 1.0 - smoothstep(0.08, 0.4, y - LAND_Y)
 				var dry := smoothstep(14.0, 22.0, -far / PX) * (1.0 - smoothstep(0.0, 2.0, out))
-				paint.g = smoothstep(0.3, 0.55, noise.get_noise_2d(x * 0.11 + 300.0, z * 0.11)) * hollow * dry
+				paint.g = smoothstep(0.3, 0.55, noise.get_noise_2d(x * 0.11 + 300.0, z * 0.11)) * hollow * dry if hollow * dry > 0.0 else 0.0
 				colors[j * n.x + i] = paint
 				continue
 			y += 1.4 * smoothstep(0.0, MARGIN, out)
+			var wob := noise.get_noise_2d(x, z)
 			# r: (no paths here) g: (no stone) b: the mud shore, a: the
 			# forest floor (else grass)
 			var mud := 1.0 - smoothstep(0.0, 70.0 + wob * 30.0, -d)
@@ -3368,12 +3421,14 @@ func _sync_creatures(delta: float) -> void:
 		var on := _shown(node)
 		if n is Critter and not (n as Critter).active:
 			on = false
-		if not on and c.kind == "dragon" and _warm_step >= 0 and _warm_step < WARM_POSES * WARM_HOLD:
+		if not on and _warm_step >= 0 and _warm_step < WARM_POSES * WARM_HOLD:
 			# User report (a hitch at five when it comes): asleep it's never drawn, so its skin's
 			# shaders were built the moment it first came down - shown to the warm-up's camera
-			# behind the loading cover instead, a little in front of the traveller.
+			# behind the loading cover instead, a little in front of the traveller. User report (the
+			# desert stalled as it came up): so is every animal not yet in sight - the camel, the
+			# hyena, the iguana... - each built the moment it first walked into view.
 			holder.visible = true
-			holder.position = pivot.global_position + Vector3(0.0, 0.0, -2.5)
+			holder.position = pivot.global_position + (Vector3(0.0, 0.0, -2.5) if c.kind == "dragon" else Vector3(0.0, 0.0, -1.6))
 			continue
 		holder.visible = on
 		# User report (laggy at night, on a phone): hidden - the dragon asleep till five, a critter
@@ -5965,6 +6020,10 @@ func _circle_vultures(delta: float) -> void:
 				if anim != null:
 					anim.play("Flap", 0.4)
 		_circle_vulture(v, delta, me)
+		if _warm_step >= 0 and _warm_step < WARM_POSES * WARM_HOLD:
+			# (high over the traveller, out of the warm-up's sight: shown it in front, behind the
+			# loading cover, so its shaders aren't built the moment it first sails into view)
+			(v.node as Node3D).position = pivot.global_position + Vector3(0.0, 1.4, -2.2)
 
 
 func _circle_vulture(v: Dictionary, delta: float, _me: Vector3) -> void:
