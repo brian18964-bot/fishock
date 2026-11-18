@@ -153,7 +153,7 @@ const TESTS := [
 	"test_locks",
 	"test_locks_everywhere",
 	"test_altar_fish_detail",
-	"test_critters_leave_edge_trees",
+	"test_critters_leave_edge_trees", "test_animals_go_round",
 	"test_water_ghost",
 	"test_willow_talk",
 	"test_altar_corrosion",
@@ -4703,6 +4703,70 @@ func test_critters_leave_edge_trees() -> void:
 	d.global_position = Vector2(Player.WORLD_WIDTH * 0.5, Player.WORLD_HEIGHT * 0.5)
 	await seconds(1.5)
 	check(d.fade == 0.0, "in the open: no fading")
+
+
+## User report: a camel walked into a tree and kept walking into it, stuck there - checked on every
+## map. Whatever an animal's doing it goes round what it bumps into: a camel sent to the far side
+## of a tree gets there; one running from the traveller with a tree behind it gets away; nowhere it
+## picks to wander to is inside anything.
+func test_animals_go_round() -> void:
+	var tree_node: MapTree = null
+	for t in get_tree().get_nodes_in_group("trees"):
+		if t is MapTree and (t as Node2D).global_position.distance_to(player().global_position) > 300.0:
+			var at := (t as Node2D).global_position
+			if at.x > 300 and at.y > 300 and at.x < Player.WORLD_WIDTH - 300 and at.y < Player.WORLD_HEIGHT - 300:
+				tree_node = t
+				break
+	check(tree_node != null, "(a tree to walk at)")
+	if tree_node == null:
+		return
+	var at := tree_node.global_position
+	var r := float(tree_node.trunk_radius)
+	var camel: Critter = load("res://scenes/critter.tscn").instantiate()
+	camel.species = "camel"
+	camel.ambient = true
+	main.add_child(camel)
+	var body := float(Critter.SPECIES["camel"]["body"])
+	var from := at + Vector2(-(r + body + 30.0), 0)
+	var goal := at + Vector2(r + body + 30.0, 0)
+	camel.global_position = from
+	await frames(2)
+	camel._mode = Critter.Mode.WANDER
+	camel._mode_timer = 99.0
+	camel._target = goal
+	var reached := false
+	for _i in 60:
+		await seconds(0.1)
+		if camel._mode != Critter.Mode.WANDER:
+			break
+		camel._mode_timer = 99.0
+	reached = camel.global_position.distance_to(goal) < 30.0 or camel._mode == Critter.Mode.IDLE
+	check(reached and camel.global_position.distance_to(at) > r + body - 4.0,
+		"a camel sent to the far side of a tree went round it - not into it (%.0f px off)" % camel.global_position.distance_to(goal))
+	# (running from the traveller with the trunk straight behind it)
+	var fox: Critter = load("res://scenes/critter.tscn").instantiate()
+	fox.species = "fox"
+	fox.ambient = true
+	main.add_child(fox)
+	var fb := float(Critter.SPECIES["fox"]["body"])
+	fox.global_position = at + Vector2(0, -(r + fb + 6.0))
+	var p := player()
+	p.global_position = at + Vector2(0, -(r + fb + 6.0) - 45.0)
+	await frames(2)
+	var start := fox.global_position
+	await seconds(2.5)
+	check(fox.global_position.distance_to(start) > 60.0, "one running from the traveller with a tree behind it got away (%.0f px)" % fox.global_position.distance_to(start))
+	p.global_position = at + Vector2(0, 600)
+	# (where they pick to go: never inside anything)
+	var inside := 0
+	for _i in 200:
+		camel.global_position = at + Vector2.RIGHT.rotated(randf() * TAU) * (r + body + 4.0)
+		camel._pick_target(false)
+		if not Solids.is_free(get_tree(), camel._target, body + 1.0) and camel._target != camel.global_position:
+			inside += 1
+	check(inside == 0, "nowhere picked to wander to is inside anything (%d)" % inside)
+	camel.queue_free()
+	fox.queue_free()
 
 
 ## User request: a fish or a thing can be locked (a padlock on it): not offered, sold, thrown away,

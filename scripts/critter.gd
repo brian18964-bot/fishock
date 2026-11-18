@@ -230,6 +230,15 @@ func set_species(name: String) -> void:
 
 ## (Solids.detour: the way round something, kept)
 var _detour := {}
+## User report: a camel walked into a tree and kept walking into it, stuck there - so whatever it's
+## doing, once it bumps into something it goes round it (Solids.detour) for BUMP_STEER s, and if it
+## still hardly moves for STUCK_TIME s while it means to, it gives up on that way: another place to
+## wander to, another way to run, the other side round. And it never picks a place inside something.
+const BUMP_STEER := 2.0
+const STUCK_TIME := 0.8
+var _bumped := 0.0
+var _stuck_t := 0.0
+var _stuck_from := Vector2.ZERO
 ## (frozen still this many seconds more - a net coming down over it)
 var _pinned := 0.0
 
@@ -262,9 +271,10 @@ func _physics_process(delta: float) -> void:
 	_update_mode(delta)
 	var speed := _speed()
 	var to_target := _target - global_position
-	if _mode == Mode.CHASE or _mode == Mode.FOLLOW:
+	if _mode == Mode.CHASE or _mode == Mode.FOLLOW or (_bumped > 0.0 and _mode != Mode.IDLE):
 		# (user report: a wolf after you on the far side of the camp pressed
-		# into it and stuck there - round it instead)
+		# into it and stuck there - round it instead; and anything that's
+		# bumped into something, the same)
 		var goal := Solids.detour(get_tree(), global_position, _target, float(_data.get("body", 6.0)) + 4.0, _detour)
 		if goal != _target:
 			to_target = (goal - global_position).normalized() * to_target.length()
@@ -278,9 +288,12 @@ func _physics_process(delta: float) -> void:
 		_enter_idle()
 	var accel := maxf(speed, _data.wander_speed * PACE) * ACCEL_RATE
 	velocity = velocity.move_toward(desired, accel * delta)
+	_bumped = maxf(_bumped - delta, 0.0)
 	if velocity.length() > 1.0:
 		var before := global_position
 		move_and_slide()
+		if get_slide_collision_count() > 0:
+			_bumped = BUMP_STEER
 		if _in_water(global_position):
 			global_position = before
 			if not _skirt_water(delta):
@@ -291,7 +304,39 @@ func _physics_process(delta: float) -> void:
 		if velocity.length() > MOVING_SPEED:
 			# A crab faces across the way it goes (it walks side-on).
 			_dir = Art.facing8(-velocity.orthogonal() if _data.get("sideways", false) else velocity, _dir)
+	_check_stuck(delta, desired)
 	_animate(delta)
+
+
+## Meaning to move but hardly moving (STUCK_TIME s at under a quarter of the way it wanted): that
+## way's given up - see _detour.
+func _check_stuck(delta: float, desired: Vector2) -> void:
+	if desired.length() < MOVING_SPEED:
+		_stuck_t = 0.0
+		_stuck_from = global_position
+		return
+	_stuck_t += delta
+	if _stuck_t < STUCK_TIME:
+		return
+	var moved := global_position.distance_to(_stuck_from)
+	var meant := desired.length() * _stuck_t
+	_stuck_t = 0.0
+	_stuck_from = global_position
+	if moved >= meant * 0.25:
+		return
+	_bumped = BUMP_STEER
+	match _mode:
+		Mode.WANDER:
+			_pick_target(false)
+		Mode.FLEE:
+			# (another way out: turned off the blocked one)
+			_flee_turn = (1.0 if randf() < 0.5 else -1.0) * randf_range(0.9, 1.6)
+			_flee_turn_time = 1.2
+			_pick_target(true)
+		_:
+			# (going round the other side)
+			if _detour.has("side"):
+				_detour.side = 1 - int(_detour.side)
 
 
 ## Blocked by water: step along the bank instead (sideways to the way it
@@ -504,21 +549,31 @@ func _keep_off_edge(p: Vector2) -> Vector2:
 	return Vector2(clampf(p.x, m, Player.WORLD_WIDTH - m), clampf(p.y, m, Player.WORLD_HEIGHT - m))
 
 
+## (fleeing: turned this far off straight away from the traveller for a while - its way that way
+## was blocked: _check_stuck)
+var _flee_turn := 0.0
+var _flee_turn_time := 0.0
+
+
 func _pick_target(fleeing: bool) -> void:
+	var pad := float(_data.get("body", 6.0)) + 2.0
 	if fleeing and _player != null:
 		var away := (global_position - _player.global_position).normalized()
 		if away == Vector2.ZERO:
 			away = Vector2.RIGHT.rotated(randf() * TAU)
+		_flee_turn_time = maxf(_flee_turn_time - get_physics_process_delta_time(), 0.0)
+		if _flee_turn_time > 0.0:
+			away = away.rotated(_flee_turn)
 		for angle in [0.0, 0.6, -0.6, 1.2, -1.2, PI / 2.0, -PI / 2.0]:
 			var candidate: Vector2 = global_position + away.rotated(angle) * 60.0
-			if not _in_water(candidate):
+			if not _in_water(candidate) and Solids.is_free(get_tree(), candidate, pad):
 				_target = candidate
 				return
 		_target = global_position + away * 60.0
 		return
-	for _try in range(8):
+	for _try in range(10):
 		var candidate := _keep_off_edge(global_position + Vector2.RIGHT.rotated(randf() * TAU) * randf_range(30.0, WANDER_RADIUS))
-		if not _in_water(candidate):
+		if not _in_water(candidate) and Solids.is_free(get_tree(), candidate, pad):
 			_target = candidate
 			return
 	_target = global_position
