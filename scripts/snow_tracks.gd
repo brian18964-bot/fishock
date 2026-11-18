@@ -58,6 +58,9 @@ const ANIMALS := {
 	"fox": {"row": "@paw", "size": 0.13, "bones": ["FF.L", "FF.R", "FFB.L", "FFB.R"]},
 	"wolf": {"row": "@paw", "size": 0.19, "bones": ["FF.L", "FF.R", "FFB.L", "FFB.R"]},
 	"dragon": {"row": "@claw", "size": 0.55, "bones": ["ball_l", "ball_r"]},
+	"hyena": {"row": "@paw", "size": 0.17, "bones": ["bip01_l_finger0", "bip01_r_finger0", "bip01_l_toe0", "bip01_r_toe0"]},
+	"camel": {"row": "@hoof", "size": 0.27, "bones": ["HoofFront.L", "HoofFront.R", "HoofBack.L", "HoofBack.R"]},
+	"iguana": {"row": "@claw", "size": 0.07, "bones": ["Hand_L", "Hand_R", "Foot_L", "Foot_R"]},
 }
 ## An animal's foot swinging less than this (m) isn't stepping.
 const SWING_M := 0.02

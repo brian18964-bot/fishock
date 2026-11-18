@@ -145,9 +145,13 @@ const THEMES := {
 		"oasis_trees": 0.85,
 		"oasis_band": [24.0, 230.0],
 		"fossils": {"dino": 1, "mammoth": 1, "saguaro": 3, "cholla": 3, "skull": 3},
-		# (one a base map's area - ~3 on the free run's; the user's own desert animals to come)
+		# (one a base map's area - ~3 on the free run's; the user's own desert animals - made ours by
+		# tools/make_desert_animals.py: a camel about the oasis, an iguana basking, the hyena hunting
+		# as the wolf does elsewhere, now and then the sandy fox)
 		"animal_count": 1,
-		"animals": {"fox": 1.0},
+		"animals": {"camel": 0.35, "iguana": 0.3, "hyena": 0.25, "fox": 0.1},
+		# (a level's own beasts, the desert's kin of them)
+		"beast_kin": {"wolf": "hyena"},
 		"shore": {"grass": 0.32, "shrub": 0.1, "pebbles": 0.0},
 		"shore_extras": {"reeds": 0.16, "lilypad": 0.0, "driftwood": 0.0},
 		"shore_critters": ["frog", "spider", "snake"],
@@ -244,8 +248,10 @@ func _fit_theme() -> void:
 			if Critter.SPECIES.get(kind, {}).has("chase_speed"):
 				animals.erase(kind)
 	var beasts: Dictionary = Campaign.rules.beasts
+	var kin: Dictionary = theme.get("beast_kin", {})
 	for kind in beasts:
-		animals[kind] = float(beasts[kind]) * BEAST_SHARE
+		var own: String = kin.get(kind, kind)
+		animals[own] = float(animals.get(own, 0.0)) + float(beasts[kind]) * BEAST_SHARE
 	if animals.is_empty():
 		animals = {"fox": 1.0, "deer": 1.0}
 	theme["animals"] = animals

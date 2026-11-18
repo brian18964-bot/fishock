@@ -102,6 +102,22 @@ const SPECIES := {
 		"flee_fps": 29.54, "flee_clip": 2,
 		"chase_radius": 150.0, "chase_speed": 118.0,
 		"wander_speed": 32.0, "flee_speed": 160.0, "idle_time": Vector2(2, 6)},
+	# User request (the desert's animals, from the user's second "Des" batch - made ours by
+	# tools/make_desert_animals.py): the hyena, the sands' hunter - the wolf's ways.
+	"hyena": {"body": 24.0, "label": "鬣狗", "ambient": true, "frames": 16, "cols": 56,
+		"clips": 3, "offset": Vector2(0, -10.74), "move_fps": 15.36, "idle_fps": 4.8,
+		"flee_fps": 29.54, "flee_clip": 2,
+		"chase_radius": 150.0, "chase_speed": 118.0,
+		"wander_speed": 32.0, "flee_speed": 160.0, "idle_time": Vector2(2, 6)},
+	# The camel (the user's, rigged as our alpaca, pacing): calm, it pays the traveller no mind.
+	"camel": {"body": 32.0, "label": "駱駝", "ambient": true, "frames": 16, "cols": 42,
+		"clips": 3, "offset": Vector2(0, -19.1), "move_fps": 13.71, "idle_fps": 2.67,
+		"wander_speed": 40.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
+	# The iguana (the user's, in a desert hide): basks, and darts off when you come near.
+	"iguana": {"body": 9.0, "label": "鬣蜥", "ambient": true, "frames": 16, "cols": 73,
+		"clips": 3, "offset": Vector2(0, -7.87), "move_fps": 15.36, "idle_fps": 4.8,
+		"flee_fps": 29.54, "flee_clip": 2, "flee_radius": 80.0, "calm_radius": 180.0,
+		"wander_speed": 18.0, "flee_speed": 120.0, "idle_time": Vector2(4, 12)},
 }
 
 enum Mode { IDLE, WANDER, FLEE, FOLLOW, CHASE }

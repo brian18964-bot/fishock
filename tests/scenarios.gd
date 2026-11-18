@@ -10328,6 +10328,24 @@ func test_desert_theme() -> void:
 			animals += 1
 	var forest_has := roundf(MapGenerator.AMBIENT_ANIMAL_COUNT * Campaign.area_share())
 	check(animals > 0 and animals <= maxi(2, int(ceilf(forest_has / 8.0))), "very few animals (%d - the forest %d)" % [animals, int(forest_has)])
+	# (the user's second batch, made ours: tools/make_desert_animals.py)
+	var own_kinds := true
+	for n in main.get_children():
+		if n is Critter and (n as Critter).ambient and not (n as Critter).species in ["camel", "iguana", "hyena", "fox"]:
+			own_kinds = false
+	check(own_kinds, "the desert's own animals only (camel, iguana, hyena, fox)")
+	var moves := true
+	for kind in ["camel", "hyena", "iguana"]:
+		var model: Node = (load(RunView3D.CREATURE_DIR + kind + ".glb") as PackedScene).instantiate()
+		var aps := model.find_children("*", "AnimationPlayer", true, false)
+		var ap: AnimationPlayer = aps[0] if not aps.is_empty() else null
+		moves = moves and ap != null and ap.has_animation("Idle") and ap.has_animation("Walk") and ap.has_animation("Run") \
+			and RunView3D.CREATURES.has(kind) and SnowTracks.ANIMALS.has(kind)
+		model.free()
+	check(moves, "the camel, the hyena, the iguana: each its model, standing, walking, running, its prints in the sand")
+	check(Critter.SPECIES.hyena.has("chase_speed") and float(Critter.SPECIES.camel.flee_speed) == 0.0
+		and float(Critter.SPECIES.iguana.flee_speed) > 0.0 and MapGenerator.THEMES.desert.beast_kin.wolf == "hyena",
+		"the hyena hunts (a level's wolves are hyenas here), the camel pays you no mind, the iguana darts off")
 	await frames(3)
 	var fog := view._env.fog_light_color
 	check(fog.r > fog.b, "a warm, sandy haze (%s)" % fog)
