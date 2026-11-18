@@ -39,8 +39,9 @@ const THEME_KINDS := {
 	# lowest fronds over the big ghost's head: palm_d's at 2.79 m, not under 0.9) by the water.
 	"desert": ["palm_a", "palm_a", "palm_b", "palm_c", "palm_d"],
 }
-## The desert's trees out on the dunes, away from the water (MapGenerator._place_tree): dead ones.
-const DESERT_OPEN := ["dead_c", "dead_d", "dead_e", "dead_a"]
+## The desert's trees out on the dunes, away from the water (MapGenerator._place_tree): dead ones,
+## bare (dead_d and dead_e keep a few autumn leaves - the autumn wood's, not the sand's).
+const DESERT_OPEN := ["dead_c", "dead_a"]
 const PINES := ["pine_b", "pine_c"]
 const PX := 27.108
 

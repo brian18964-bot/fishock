@@ -237,20 +237,49 @@ def rocks(pack):
 
 
 def cracked(pack):
+    """The cracked ground, made ours: its colour map is soft (the cracks only smudges), so the
+    pattern comes from its second displacement map - clean crack lines round plates - drawn in
+    the dunes' clay: pale plates whose rims curl up a touch paler, dark dry cracks; its colour
+    map kept only as a faint mottle; the normal map worked out from the same heights so the
+    light falls into the same cracks."""
     from PIL import Image, ImageFilter
-    col = Image.open(os.path.join(pack, "2K/x/2K/CrackedGroundCOL_2K.png")).convert("RGB").resize((1024, 1024), Image.LANCZOS)
-    a = np.asarray(col).astype(np.float32) / 255.0
-    # (recoloured: its light the dunes' pale clay, its cracks a dark dry brown)
-    lum = a.mean(-1, keepdims=True)
-    lum = (lum - lum.min()) / max(float(lum.max() - lum.min()), 1e-6)
-    clay = np.array([0.64, 0.52, 0.37], np.float32)
-    crack = np.array([0.3, 0.23, 0.16], np.float32)
-    out = crack + (clay - crack) * np.clip(lum * 1.15, 0, 1)
-    blurred = np.asarray(Image.fromarray((out * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(1.2))).astype(np.float32) / 255.0
-    out = out * 0.6 + blurred * 0.4
+    src = os.path.join(pack, "2K/x/2K/")
+
+    def grey(name, size):
+        im = Image.open(src + name).convert("L").resize((size, size), Image.LANCZOS)
+        return np.asarray(im).astype(np.float32) / 255.0
+
+    def blur(a, r):
+        # (wrapped round, so the tile still meets itself)
+        m = int(r * 3) + 2
+        im = Image.fromarray((np.clip(np.pad(a, m, mode="wrap"), 0, 1) * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(r))
+        return (np.asarray(im).astype(np.float32) / 255.0)[m:-m, m:-m]
+
+    def smooth(e0, e1, x):
+        t = np.clip((x - e0) / (e1 - e0), 0, 1)
+        return t * t * (3 - 2 * t)
+
+    h = grey("CrackedGroundDISPVar2_2K.png", 1024)
+    tone = grey("CrackedGroundCOL_2K.png", 1024)
+    tone = np.clip((tone - tone.mean()) / max(float(tone.std()), 1e-6), -2, 2)
+    crack = 1.0 - smooth(0.2, 0.7, h)
+    # (a plate's rim: near a crack, but not in it - curled up, catching more light)
+    rim = np.clip(blur(crack, 5.0) * 2.2, 0, 1) * (1.0 - crack)
+    clay = np.array([0.66, 0.54, 0.39], np.float32)
+    dark = np.array([0.25, 0.19, 0.13], np.float32)
+    plate = clay * (1.0 + 0.035 * tone[..., None]) * (1.0 + 0.1 * rim[..., None])
+    out = plate * (1.0 - crack[..., None]) + dark * crack[..., None]
     Image.fromarray((np.clip(out, 0, 1) * 255).astype(np.uint8)).save(os.path.join(GROUND, "cracked_mud_albedo.png"), optimize=True)
-    nrm = Image.open(os.path.join(pack, "2K/x/2K/CrackedGroundNRM_2K.png")).convert("RGB").resize((512, 512), Image.LANCZOS)
-    nrm.save(os.path.join(GROUND, "cracked_mud_normal.png"), optimize=True)
+    # the normal map (OpenGL's: green up) from the heights - the plates' rims lifted as well
+    hn = grey("CrackedGroundDISPVar2_2K.png", 512)
+    lift = blur(1.0 - smooth(0.2, 0.7, hn), 3.0) * (smooth(0.2, 0.7, hn))
+    height = blur(hn * 0.8 + lift * 0.5, 0.8)
+    wrapped = np.pad(height, 1, mode="wrap")
+    dy, dx = (g[1:-1, 1:-1] for g in np.gradient(wrapped))
+    s = 6.0
+    nrm = np.stack([-dx * s, dy * s, np.ones_like(height)], -1)
+    nrm /= np.linalg.norm(nrm, axis=-1, keepdims=True)
+    Image.fromarray(((nrm * 0.5 + 0.5) * 255).astype(np.uint8)).save(os.path.join(GROUND, "cracked_mud_normal.png"), optimize=True)
     print("made cracked_mud", flush=True)
 
 
