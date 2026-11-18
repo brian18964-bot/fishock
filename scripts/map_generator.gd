@@ -137,14 +137,14 @@ const THEMES := {
 	"desert": {
 		"look": "detailed",
 		"floor": ["dune_sand", "oasis_grass", 0.12],
-		"floor3d": {"grass": "dune_sand", "forest": "oasis_grass", "mud": "wet_sand"},
+		"floor3d": {"grass": "dune_sand", "forest": "oasis_grass", "mud": "wet_sand", "stone": "cracked_mud"},
 		"trees": 22, "rocks": 3, "bushes": 3, "ground": 6,
 		"tree_families": {"pine": 1.0},
 		"rock_pool": [0, 1, 2],
 		"ground_kinds": {"plant": 1.0},
 		"oasis_trees": 0.85,
 		"oasis_band": [24.0, 230.0],
-		"fossils": 1,
+		"fossils": {"dino": 1, "mammoth": 1, "saguaro": 3, "cholla": 3, "skull": 3},
 		# (one a base map's area - ~3 on the free run's; the user's own desert animals to come)
 		"animal_count": 1,
 		"animals": {"fox": 1.0},
@@ -711,28 +711,39 @@ func _theme_prop(prop: Node) -> void:
 		prop.families = theme.get("bush_families", [])
 
 
-## The desert's dinosaur bones (a style's "fossils" - Fossil): out on the open sand, well away
-## from the water, the start and the camp, turned any way; before anything else is placed, so they
-## get their room.
+## The desert's bones, cacti and skulls (a style's "fossils" - Fossil kinds and how many a base
+## map's area holds; the big bones one each): out on the open sand, kept from the water (the bones
+## and the cacti well away - they're the dry desert's; a skull anywhere off the shore), the start
+## and the camp, turned any way; before anything else is placed, so they get their room.
+const FOSSIL_SHORE := {"dino": 90.0, "mammoth": 90.0, "saguaro": 260.0, "cholla": 220.0, "skull": 80.0}
+
+
 func _place_fossils() -> void:
-	for _i in int(theme.get("fossils", 0)):
-		var reach := Fossil.reach_px()
-		for _try in 120:
-			var pos := Vector2(randf_range(reach + 60.0, Player.WORLD_WIDTH - reach - 60.0),
-				randf_range(reach + 60.0, Player.WORLD_HEIGHT - reach - 60.0))
-			if pos.distance_to(SPAWN_POS) < reach + PROP_AVOID_SPAWN_RADIUS + 60.0:
-				continue
-			if _shore_distance(pos) < reach + 90.0 or _near_walkway(pos, reach + 30.0):
-				continue
-			if not _fits(pos, reach, 0.0):
-				continue
-			var bones := Fossil.new()
-			bones.name = "Fossil%d" % _i
-			bones.yaw = randf() * TAU
-			bones.position = pos
-			_taken.append([pos, reach * 0.9, 0.0])
-			get_parent().add_child.call_deferred(bones)
-			break
+	var want: Dictionary = theme.get("fossils", {})
+	var share := Campaign.area_share()
+	var made := 0
+	for kind in want:
+		var count := int(want[kind]) if kind in Fossil.BIG else maxi(1, int(roundf(float(want[kind]) * share)))
+		var reach := Fossil.reach_px(kind)
+		for _i in count:
+			for _try in 120:
+				var pos := Vector2(randf_range(reach + 60.0, Player.WORLD_WIDTH - reach - 60.0),
+					randf_range(reach + 60.0, Player.WORLD_HEIGHT - reach - 60.0))
+				if pos.distance_to(SPAWN_POS) < reach + PROP_AVOID_SPAWN_RADIUS + 60.0:
+					continue
+				if _shore_distance(pos) < reach + float(FOSSIL_SHORE.get(kind, 90.0)) or _near_walkway(pos, reach + 30.0):
+					continue
+				if not _fits(pos, reach, 0.0):
+					continue
+				var bones := Fossil.new()
+				bones.name = "Fossil%d" % made
+				bones.kind = kind
+				bones.yaw = randf() * TAU
+				bones.position = pos
+				made += 1
+				_taken.append([pos, reach * (0.9 if kind in Fossil.BIG else 1.0), 0.0])
+				get_parent().add_child.call_deferred(bones)
+				break
 
 
 ## The desert's trees (a style with "oasis_trees"): most a palm by the water - in its "oasis_band"

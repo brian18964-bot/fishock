@@ -2,19 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bit03ojjvom7l"
-path="res://.godot/imported/desert_shrub_desert_shrub_twigs.png-057ecb1aa16366b702345bbd6804c262.ctex"
+uid="uid://bfcldjs2yntet"
+path="res://.godot/imported/desert_rock_a_desert_rock.jpg-56fdb9e98236e58afda722eabaa596d9.ctex"
 metadata={
 "vram_texture": false
 }
 generator_parameters={
-"md5": "44d13219f8da47a8cc7ac09ac855efff"
+"md5": "4280a47803139cf0c09feae9dde7ff15"
 }
 
 [deps]
 
-source_file="res://assets/models/proto3d/desert_shrub_desert_shrub_twigs.png"
-dest_files=["res://.godot/imported/desert_shrub_desert_shrub_twigs.png-057ecb1aa16366b702345bbd6804c262.ctex"]
+source_file="res://assets/models/proto3d/desert_rock_a_desert_rock.jpg"
+dest_files=["res://.godot/imported/desert_rock_a_desert_rock.jpg-56fdb9e98236e58afda722eabaa596d9.ctex"]
 
 [params]
 

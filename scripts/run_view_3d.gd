@@ -706,7 +706,8 @@ func _dune(p: Vector2, depth: float, out: float) -> float:
 				_dune_clear.append([spot.global_position, 260.0 if name == "FuelStation" else 160.0])
 		# (the dinosaur's bones lie on flat sand)
 		for bones in get_tree().get_nodes_in_group("fossils"):
-			_dune_clear.append([(bones as Node2D).global_position, Fossil.reach_px() + 30.0])
+			if (bones as Fossil).big():
+				_dune_clear.append([(bones as Node2D).global_position, Fossil.reach_px((bones as Fossil).kind) + 30.0])
 	var nz := _dune_noise
 	var m := p / PX
 	var w := Foliage.WIND_DIR.normalized()
@@ -839,7 +840,13 @@ func _ground() -> void:
 				var far := _shore_depth(p2, zones)
 				y += _dune(p2, far, out)
 				heights[j * n.x + i] = y
-				colors[j * n.x + i] = _oasis_paint(-far, x, z, noise)
+				var paint := _oasis_paint(-far, x, z, noise)
+				# (a crust of cracked clay in some of the dry hollows between the dunes - the "stone"
+				# slot, cracked_mud - never near the water)
+				var hollow := 1.0 - smoothstep(0.08, 0.4, y - LAND_Y)
+				var dry := smoothstep(14.0, 22.0, -far / PX) * (1.0 - smoothstep(0.0, 2.0, out))
+				paint.g = smoothstep(0.3, 0.55, noise.get_noise_2d(x * 0.11 + 300.0, z * 0.11)) * hollow * dry
+				colors[j * n.x + i] = paint
 				continue
 			y += 1.4 * smoothstep(0.0, MARGIN, out)
 			# r: (no paths here) g: (no stone) b: the mud shore, a: the
@@ -1173,9 +1180,10 @@ func _trees_and_rocks() -> void:
 			var s := _rng.randf_range(0.9, 1.3) if _desert else _rng.randf_range(BORDER_SCALE.x, BORDER_SCALE.y)
 			xfs.append(Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(s, s, s)), at))
 		_scatter(meshes[kind], xfs, false)
-	# The desert's dinosaur bones (Fossil), as the 2D one lies.
+	# The desert's bones, cacti and skulls (Fossil), as the 2D one lies.
 	for bones in get_tree().get_nodes_in_group("fossils"):
-		var scene: PackedScene = load(Fossil.MODEL) if ResourceLoader.exists(Fossil.MODEL) else null
+		var model_path := Fossil.model_of((bones as Fossil).kind)
+		var scene: PackedScene = load(model_path) if ResourceLoader.exists(model_path) else null
 		if scene == null:
 			continue
 		var model := scene.instantiate() as Node3D
@@ -1194,13 +1202,13 @@ func _trees_and_rocks() -> void:
 		var at: Vector2 = (n as Node2D).global_position if n is Node2D else Vector2.ZERO
 		if path == "obstacle.gd":
 			var r: Vector2 = n.get("radii")
-			_fitted(str(n.get("model")), to3(at, land_y(at) - 0.05), r * 2.0 / PX, 0.0, true)
+			_fitted(_rock(str(n.get("model")), false), to3(at, land_y(at) - 0.05), r * 2.0 / PX, 0.0, true)
 		elif path == "bush.gd":
 			var d: float = float(n.get("radius")) * 2.0 / PX
 			_fitted("palm_young" if _desert else "fern", to3(at, land_y(at)), Vector2(d, d), _rng.randf() * TAU, false)
 		elif path == "flip_rock.gd":
 			var d: float = float(n.get("radius")) * 2.0 / PX
-			var rock := _fitted(str(n.get("model")), to3(at, land_y(at) - 0.03), Vector2(d, d), _rng.randf() * TAU, true)
+			var rock := _fitted(_rock(str(n.get("model")), true), to3(at, land_y(at) - 0.03), Vector2(d, d), _rng.randf() * TAU, true)
 			if rock != null:
 				_flip_rocks[n] = rock
 		elif path == "glow_mushroom.gd" and not _mushrooms.has(n):
@@ -2031,7 +2039,7 @@ func _cover() -> void:
 				if _desert:
 					# (the desert's: a dry bush out on the sand, a young palm by the water)
 					var dry := str(n.get("kind")) == "plant"
-					var grown_d: Array = _model_mesh("desert_shrub" if dry else "palm_young")
+					var grown_d: Array = _model_mesh("desert_rhazya" if dry else "palm_young")
 					if grown_d.is_empty():
 						continue
 					var tall_d: float = _rng.randf_range(0.6, 1.0) if dry else _rng.randf_range(0.7, 1.1)
@@ -2072,7 +2080,7 @@ func _desert_cover(tufts: Array) -> void:
 	var k := rect.size.x * rect.size.y / (PX * PX) / DESERT_COVER_AREA
 	var grass: Array = []
 	var dry_grass := _model_mesh("desert_grass")
-	var dry_bush := _model_mesh("desert_shrub")
+	var dry_bush := _model_mesh("desert_rhazya")
 	var young := _model_mesh("palm_young")
 	var tuft := _model_mesh("grass_wispy")
 	var colors: PackedColorArray = _ground_grid[3]
@@ -2215,14 +2223,24 @@ func _faded(mesh: Mesh) -> Mesh:
 	return m
 
 
+## The desert's rocks: its own sandstone (tools/make_desert_props.py) - the boulders round or
+## stacked, the stones you turn over the flat slab.
+func _rock(model: String, turning: bool) -> String:
+	if not _desert:
+		return model
+	if turning:
+		return "desert_rock_b"
+	return "desert_rock_c" if model == "rock_medium_2" else "desert_rock_a"
+
+
 ## The desert's rocks' tint (their grey picture warmed to sandstone).
 const SANDSTONE := Color(1.45, 1.08, 0.72)
 
 
 ## The proto models that sway in the wind (the ferns and bushes, the shore's grass and reeds).
-const SWAYING := ["fern", "grass_wispy", "tall_grass", "palm_young", "desert_shrub", "desert_grass"]
-## Of those, the desert's: flat cards, their leaves only their picture's (tools/make_desert_plants.py).
-const CUT_OUT := ["palm_young", "desert_shrub", "desert_grass"]
+const SWAYING := ["fern", "grass_wispy", "tall_grass", "palm_young", "desert_rhazya", "desert_grass"]
+## Of those, the desert's flat cards, their leaves only their picture's (tools/make_desert_plants.py).
+const CUT_OUT := ["palm_young", "desert_grass"]
 
 
 func _model_mesh(name: String, wide := false) -> Array:
@@ -6914,7 +6932,7 @@ void fragment() {
 	c = mix(c, texture(path_tex, uv * 1.2).rgb, paint.r * (1.0 - dunes));
 	n = mix(n, texture(path_nrm, uv * 1.2).rgb, paint.r * (1.0 - dunes));
 	c *= mix(1.0, mix(0.6, 1.14, paint.r), dunes);
-	c = mix(c, texture(stone_tex, uv * 0.8).rgb * 0.6, paint.g);
+	c = mix(c, texture(stone_tex, uv * 0.8).rgb * mix(0.6, 1.0, dunes), paint.g);
 	n = mix(n, texture(stone_nrm, uv * 0.8).rgb, paint.g);
 	// snow: the earth's detail kept faintly under it; the shore's mud and the stone paths icy
 	float shade = dot(c, vec3(0.3, 0.5, 0.2));

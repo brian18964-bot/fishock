@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://dm54uh3vrssue"
-path="res://.godot/imported/desert_shrub.glb-7e88d3113743fff7ea2fb9146142bf65.scn"
+uid="uid://bui55hieu8pl4"
+path="res://.godot/imported/desert_rock_c.glb-c57201f0116abcfece34f96ef498ed6a.scn"
 
 [deps]
 
-source_file="res://assets/models/proto3d/desert_shrub.glb"
-dest_files=["res://.godot/imported/desert_shrub.glb-7e88d3113743fff7ea2fb9146142bf65.scn"]
+source_file="res://assets/models/proto3d/desert_rock_c.glb"
+dest_files=["res://.godot/imported/desert_rock_c.glb-c57201f0116abcfece34f96ef498ed6a.scn"]
 
 [params]
 

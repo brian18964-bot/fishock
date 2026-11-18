@@ -14,7 +14,6 @@ Date palms (CampModel's "palm" family - assets/models/camp/palm_<a..d>.glb, two 
   palm_d: two trunks from one foot.
 The proto plants (assets/models/proto3d, their pictures inside - RunView3D sways them):
   - palm_young: a young palm, its fronds straight from the sand (the bush you can hide in);
-  - desert_shrub: a dry, twiggy round bush with a few grey-green leaves;
   - desert_grass: a tuft of tall straw-coloured grass.
 Prints each one's size (trunk radius at the foot, crown reach, lowest frond) for MapTree.
 """
@@ -151,31 +150,6 @@ def leaves_picture(path):
         for y in range(top_h, LEAF_H):
             k = rng.uniform(0.85, 1.1)
             im.putpixel((x, y), (int(132 * k), int(66 * k), int(26 * k), 255))
-    im.save(path)
-
-
-def shrub_picture(path):
-    """A dry bush's twigs, criss-crossing grey-brown, a few small grey-green leaves at their ends."""
-    from PIL import Image, ImageDraw
-    rng = random.Random(21)
-    s = 512
-    im = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-    d = ImageDraw.Draw(im)
-
-    def twig(x, y, a, ln, wdt, depth):
-        x2, y2 = x + math.cos(a) * ln, y - math.sin(a) * ln
-        d.line([(x, y), (x2, y2)], fill=(rng.randint(88, 120), rng.randint(76, 96), rng.randint(60, 76), 255), width=max(1, int(wdt)))
-        if depth == 0:
-            for _ in range(3):
-                lx, ly = x2 + rng.uniform(-8, 8), y2 + rng.uniform(-8, 8)
-                c = (rng.randint(100, 130), rng.randint(112, 138), rng.randint(80, 100), 255)
-                d.ellipse([lx - 4, ly - 2.5, lx + 4, ly + 2.5], fill=c)
-            return
-        for _ in range(2 if depth > 1 else 3):
-            twig(x2, y2, a + math.radians(rng.uniform(-38, 38)), ln * rng.uniform(0.55, 0.75), wdt * 0.7, depth - 1)
-
-    for _ in range(9):
-        twig(s / 2 + rng.uniform(-40, 40), s - 4, math.radians(rng.uniform(55, 125)), rng.uniform(130, 190), 5, 4)
     im.save(path)
 
 
@@ -439,13 +413,11 @@ def main():
     # (the young palm's own copy of the fronds - a proto model carries its picture inside)
     import shutil
     shutil.copy(os.path.join(CAMP, "palm_leaves.png"), os.path.join(TMP, "palm_young_fronds.png"))
-    shrub_picture(os.path.join(TMP, "desert_shrub_twigs.png"))
     grass_picture(os.path.join(TMP, "desert_grass_blades.png"))
     for name, seed, height, lean, tiers, dead, bunches in PALMS:
         make_palm(name, seed, height, lean, tiers, dead, bunches)
     make_palm("palm_d", 29, 8.2, 0.16, (6, 9, 9), 6, 3, double=True)
     make_young_palm()
-    make_cards("desert_shrub", os.path.join(TMP, "desert_shrub_twigs.png"), 5, (1.3, 1.1), 0.12, 0.25, 51, "Twigs")
     make_cards("desert_grass", os.path.join(TMP, "desert_grass_blades.png"), 4, (0.55, 0.85), 0.06, 0.15, 61, "Blades")
     os._exit(0)
 

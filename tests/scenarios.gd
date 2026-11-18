@@ -10252,11 +10252,27 @@ func test_desert_theme() -> void:
 	check(absf(camp_y - RunView3D.LAND_Y) < 0.06, "flat at the camp (%.2f m)" % camp_y)
 	check(n_near > 0 and green_near / n_near > 0.45, "green round the water (%.2f)" % (green_near / maxf(n_near, 1)))
 	check(n_far > 0 and green_far / n_far < 0.03, "and none out in the dunes - it thins into the sand (%.3f)" % (green_far / maxf(n_far, 1)))
-	# The dinosaur's bones: out on the open sand, its model shown, solid.
+	# The bones, the cacti and the skulls: out on the open sand, each its model, solid.
 	var bones := get_tree().get_nodes_in_group("fossils")
-	check(bones.size() == 1 and not view._fossil_models.is_empty(), "the dinosaur's bones, shown (%d)" % bones.size())
-	if bones.size() > 0:
-		var f := bones[0] as Fossil
+	var kinds := {}
+	var dino: Fossil = null
+	var dry_ok := true
+	for o in bones:
+		var fo := o as Fossil
+		kinds[fo.kind] = int(kinds.get(fo.kind, 0)) + 1
+		if fo.kind == "dino":
+			dino = fo
+		if fo.kind != "skull" and float(shore_of.call(fo.global_position)) < Fossil.reach_px(fo.kind) + 80.0:
+			dry_ok = false
+	check(int(kinds.get("dino", 0)) == 1 and int(kinds.get("mammoth", 0)) == 1 and int(kinds.get("saguaro", 0)) >= 1
+		and int(kinds.get("cholla", 0)) >= 1 and int(kinds.get("skull", 0)) >= 1 and view._fossil_models.size() == bones.size(),
+		"the dinosaur and the mammoth, cacti and skulls, each shown (%s)" % str(kinds))
+	check(dry_ok, "the bones and the cacti out in the dry, away from the water")
+	check(not view._model_mesh("desert_rock_a").is_empty() and not view._model_mesh("desert_rhazya").is_empty()
+		and view._rock("rock_medium", false).begins_with("desert_rock"), "the desert's own rocks and dry bushes")
+	check(str((gm.get_shader_parameter("stone_tex") as Texture2D).resource_path).contains("cracked_mud"), "cracked clay for the dry hollows")
+	if dino != null:
+		var f := dino
 		check(float(shore_of.call(f.global_position)) > Fossil.reach_px(), "well away from the water")
 		var p := player()
 		await put(f.global_position + Vector2(0, 320))
