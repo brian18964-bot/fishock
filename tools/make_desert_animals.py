@@ -734,7 +734,152 @@ def iguana(pack):
     export("iguana")
 
 
-MAKERS = {"hyena": hyena, "camel": camel, "iguana": iguana}
+# ------------------------------------------------------------------ the scorpion
+
+SCORPION_TRIS = 2600
+# Its walk, our own (the model came with only an idle): the eight legs in two sets of four - the
+# first and third legs of one side with the second and fourth of the other - taking turns, each leg
+# swung forward at its hip (yaw, SCORPION_SWING rad) and lifted as it goes forward (SCORPION_LIFT),
+# pushed back along the ground the rest of the time; a little rise and fall, the tail swaying, the
+# claws held out; SCORPION_CYCLE frames a step pair (at its own 30 fps).
+SCORPION_CYCLE = 20
+SCORPION_SWING = math.radians(15.0)
+SCORPION_LIFT = math.radians(13.0)
+SCORPION_LEGS = [("Leg0%d.%s" % (n, side), (n + (0 if side == "L" else 1)) % 2 * 0.5)
+                 for n in (1, 2, 3, 4) for side in ("L", "R")]
+
+
+def scorpion_shell(a):
+    """Its dark brown shell and olive legs made a desert scorpion's - straw yellow, darker at the
+    joints and plates' edges - its stinger left dark amber."""
+    lum = a.mean(-1)
+    lit = np.clip(lum / 0.42, 0, 1) ** 0.8
+    dark = np.array([0.30, 0.21, 0.09], np.float32)
+    pale = np.array([0.93, 0.79, 0.44], np.float32)
+    out = dark + (pale - dark) * lit[..., None]
+    h, s, v = hsv(a)
+    sting = (s > 0.55) & ((h < 0.06) | (h > 0.9))
+    out[sting] = a[sting] * 0.7
+    out[lum < 0.015] = 0.0
+    return out
+
+
+def scorpion_walk(arm):
+    """Its walk (see SCORPION_*), keyed: each moving bone's turn worked out in the world and set in
+    its own frame."""
+    from mathutils import Matrix, Quaternion
+    act = bpy.data.actions.new("Walk")
+    act.use_fake_user = True
+    arm.animation_data_create()
+    arm.animation_data.action = act
+    up = Vector((0, 0, 1))
+    ahead = Vector((0, 1, 0))  # (it faces +Y in its file)
+
+    def local(name, world_rot):
+        b = arm.data.bones[name]
+        rest = b.matrix_local.to_quaternion()
+        return rest.inverted() @ world_rot @ rest
+
+    legs = []
+    for name, phase in SCORPION_LEGS:
+        hip = arm.data.bones[name + ".001"]
+        tip = arm.data.bones[name + ".005"]
+        out = (tip.tail_local - hip.head_local)
+        out.z = 0.0
+        out.normalize()
+        fwd = 1.0 if up.cross(out).dot(ahead) > 0 else -1.0
+        legs.append((name + ".001", phase, out, fwd))
+    for pb in arm.pose.bones:
+        pb.rotation_mode = "QUATERNION"
+    for fr in range(SCORPION_CYCLE + 1):
+        t = fr / SCORPION_CYCLE
+        for bone, phase, out, fwd in legs:
+            th = 2.0 * math.pi * (t + phase)
+            yaw = Quaternion(up, fwd * SCORPION_SWING * math.sin(th))
+            lift = Quaternion(out.cross(up), SCORPION_LIFT * max(0.0, math.cos(th)))
+            pb = arm.pose.bones[bone]
+            pb.rotation_quaternion = local(bone, yaw @ lift)
+            pb.keyframe_insert("rotation_quaternion", frame=fr)
+        root = arm.pose.bones["Root"]
+        root.location = Vector((0, 0, 0.03 * math.sin(4.0 * math.pi * t)))
+        root.keyframe_insert("location", frame=fr)
+        for k, name in enumerate(("Tail.002", "Tail.003", "Tail.004")):
+            pb = arm.pose.bones[name]
+            pb.rotation_quaternion = local(name, Quaternion(up, math.radians(4.0) * math.sin(2.0 * math.pi * t - k * 0.7)))
+            pb.keyframe_insert("rotation_quaternion", frame=fr)
+        for side, sx in (("L", -1.0), ("R", 1.0)):
+            name = "Arm.%s.001" % side
+            pb = arm.pose.bones[name]
+            pb.rotation_quaternion = local(name, Quaternion(up, sx * math.radians(5.0) * math.sin(2.0 * math.pi * t)))
+            pb.keyframe_insert("rotation_quaternion", frame=fr)
+    arm.animation_data.action = None
+    return act
+
+
+def scorpion(pack):
+    fresh()
+    bpy.ops.wm.open_mainfile(filepath=find(pack, "Transvaal_Scorpion_FreeDownload.blend"), load_ui=False)
+    bpy.context.preferences.filepaths.use_scripts_auto_execute = False
+    arm = bpy.data.objects["Transvaal_Scorpion-rig"]
+    body = bpy.data.objects["Transvaal_Scorpion"]
+    # (only the animal: not the file's camera, lights, ground, nor its maker's name in letters)
+    for o in list(bpy.data.objects):
+        if o not in (arm, body):
+            bpy.data.objects.remove(o, do_unlink=True)
+    for md in list(body.modifiers):
+        if md.type == "SUBSURF":
+            body.modifiers.remove(md)
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.mode_set(mode="EDIT")
+    stray = arm.data.edit_bones.get("Bone")
+    if stray is not None:
+        arm.data.edit_bones.remove(stray)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    if body.vertex_groups.get("Bone") is not None:
+        body.vertex_groups.remove(body.vertex_groups["Bone"])
+    body.data.materials.clear()
+    bring_down(body, SCORPION_TRIS)
+    idle = [a for a in bpy.data.actions if a.name == "Scorpion-idle"][0]
+    for a in list(bpy.data.actions):
+        if a != idle:
+            bpy.data.actions.remove(a)
+    idle.name = "Idle"
+    idle.use_fake_user = True
+    if arm.animation_data is not None:
+        arm.animation_data.action = None
+    walk = scorpion_walk(arm)
+    run = walk.copy()
+    run.name = "Run"
+    run.use_fake_user = True
+    for a in (idle, walk, run):
+        a.id_root = "OBJECT"
+    # (its feet: the tips of its legs)
+    tips = [(name + ".005", arm.data.bones[name + ".005"].tail_local.copy()) for name, _ in SCORPION_LEGS]
+    long = max((body.matrix_world @ v.co).y for v in body.data.vertices) - min((body.matrix_world @ v.co).y for v in body.data.vertices)
+    # (a small thing scuttling fast for its size: its feet kept to the ground only so far - past
+    # these its legs would flicker faster than the eye, so they slide a little instead)
+    for act, pace, least in ((walk, 0.9, 0.55), (run, 2.6, 0.4)):
+        v = ground_speed(arm, act, tips, 0.04)
+        k = max(v / (pace * long), least) if v > 0 else 1.0
+        retime(act, k)
+        print("scorpion %s: %.2f u/s at its own time, %.2f wanted - x%.2f" % (act.name, v, pace * long, k), flush=True)
+    # (turned to face -Y, as the game's animals do)
+    arm.rotation_euler.z = math.pi
+    os.makedirs(TMP, exist_ok=True)
+    from PIL import Image
+    src = Image.open(find(pack, "Transvaal_Scorpion-Diff.png")).convert("RGB")
+    # (the maker's name and address written in its picture's empty corner: painted out)
+    w, h = src.size
+    src.paste((0, 0, 0), (0, int(h * 0.91), int(w * 0.32), h))
+    clean = os.path.join(TMP, "scorpion_src.png")
+    src.save(clean)
+    shell = picture(clean, os.path.join(TMP, "scorpion_shell.jpg"), 512, scorpion_shell)
+    nrm = picture(find(pack, "Transvaal_Scorpion-Norm2.png"), os.path.join(TMP, "scorpion_normal.jpg"), 512)
+    textured(body, "scorpion_shell", shell, nrm)
+    export("scorpion")
+
+
+MAKERS = {"hyena": hyena, "camel": camel, "iguana": iguana, "scorpion": scorpion}
 
 
 def main():

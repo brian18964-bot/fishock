@@ -41,6 +41,7 @@ const LIVE_ICONS := {
 	"crab": "res://assets/sprites/icons/crab.png",
 	"bee": "res://assets/sprites/icons/bee.png",
 	"black_spider": "res://assets/sprites/icons/black_spider.png",
+	"scorpion": "res://assets/sprites/icons/scorpion.png",
 }
 
 static var _icons := {}
@@ -147,7 +148,8 @@ static func icon(id: String) -> Texture2D:
 
 const MODELS := "res://assets/models/items/%s.glb"
 const LIVE_MODELS := {"worm": "worm", "cricket": "grasshopper", "shrimp": "shrimp", "minnow": "minnow", "spider": "spider", "frog": "frog",
-	"rat": "rat", "snake": "snake", "crab": "crab", "bee": "bee", "black_spider": "black_spider"}
+	"rat": "rat", "snake": "snake", "crab": "crab", "bee": "bee", "black_spider": "black_spider",
+	"scorpion": "res://assets/models/run3d/scorpion.glb"}
 
 
 ## A thing's 3D model, for the menus' previews (ItemPreview) - "" when it
@@ -171,7 +173,8 @@ static func model_path(id: String) -> String:
 	if id.begins_with("lure_") and Profile.LURES.has(id.substr(5)):
 		return MODELS % ("lure_%d" % (int(Profile.LURES[id.substr(5)].sprite) + 1))
 	if id.begins_with("live_") and LIVE_MODELS.has(id.substr(5)):
-		return MODELS % LIVE_MODELS[id.substr(5)]
+		var live: String = LIVE_MODELS[id.substr(5)]
+		return live if live.begins_with("res://") else MODELS % live
 	return ""
 
 

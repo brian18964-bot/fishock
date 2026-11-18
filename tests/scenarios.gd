@@ -1541,7 +1541,7 @@ func test_live_bait_and_net() -> void:
 		"snakes and bees may poison")
 	for key in ["shrimp", "minnow"]:
 		check(Critter.SPECIES.values().all(func(d): return d.get("bait", "") != key), "%s: only bought" % key)
-	for key in ["rat", "snake", "crab", "bee", "black_spider"]:
+	for key in ["rat", "snake", "crab", "bee", "black_spider", "scorpion"]:
 		var id: String = "live_" + key
 		check(not Profile.LIVE_BAITS[key].get("shop", true), "%s isn't sold" % key)
 		check(ResourceLoader.exists(Items.model_path(id)) and Items.square_icon(id) != null and Items.icon(id) != null,
@@ -10343,6 +10343,17 @@ func test_desert_theme() -> void:
 			and RunView3D.CREATURES.has(kind) and SnowTracks.ANIMALS.has(kind)
 		model.free()
 	check(moves, "the camel, the hyena, the iguana: each its model, standing, walking, running, its prints in the sand")
+	# (the desert's black spider: the scorpion - from the stones, wandering, as bait; it stings)
+	var sc := Critter.spawn_black_spider(main, away_from_water(200.0), away_from_water(200.0) + Vector2(40, 0))
+	await frames(2)
+	check(Critter.here("black_spider") == "scorpion" and sc.species == "scorpion" and sc.bait_key() == "scorpion"
+		and sc.stings() and sc.venom() > 0.0 and view._creatures.has(sc), "a scorpion under the stones here, not a black spider: bait that stings, its own model")
+	var wandering := true
+	for n in main.get_children():
+		if n is Critter and not (n as Critter).ambient and (n as Critter).species == "black_spider":
+			wandering = false
+	check(wandering, "no black spiders about the sand")
+	sc.queue_free()
 	check(Critter.SPECIES.hyena.has("chase_speed") and float(Critter.SPECIES.camel.flee_speed) == 0.0
 		and float(Critter.SPECIES.iguana.flee_speed) > 0.0 and MapGenerator.THEMES.desert.beast_kin.wolf == "hyena",
 		"the hyena hunts (a level's wolves are hyenas here), the camel pays you no mind, the iguana darts off")

@@ -89,8 +89,11 @@ const LIVE_BAITS := {
 		"desc": "活餌（只能在地圖上抓到）：空竿的機率減半"},
 	"black_spider": {"name": "黑蜘蛛", "cost": 10, "flavor": "蜘蛛", "shop": false,
 		"desc": "活餌（只能在地圖上抓到）：空竿的機率減半，假咬也減半"},
+	# (the desert's black spider: the user's scorpion, made ours)
+	"scorpion": {"name": "蠍子", "cost": 10, "flavor": "蜘蛛", "shop": false,
+		"desc": "活餌（只能在沙漠地圖上抓到）：空竿的機率減半，假咬也減半"},
 }
-const LIVE_ORDER := ["worm", "cricket", "spider", "shrimp", "minnow", "frog", "rat", "snake", "crab", "bee", "black_spider"]
+const LIVE_ORDER := ["worm", "cricket", "spider", "shrimp", "minnow", "frog", "rat", "snake", "crab", "bee", "black_spider", "scorpion"]
 ## Round 8 (user request): the landing net - worn in the off hand
 ## (equipped.offhand) and held in a run between casts (Player.net_in_hand):
 ## critters are caught from further off and bite less.

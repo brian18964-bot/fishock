@@ -2490,7 +2490,7 @@ const CREATURES := {
 	"black_spider": [0.6, "l", 0.0], "wasp": [0.45, "l", 0.55], "grasshopper": [0.45, "l", 0.0],
 	"ghost": [1.1, "h", 0.9], "dragon": [2.76, "h", 0.0], "water_ghost": [1.6, "h", 0.0], "willow": [1.2, "h", 0.0],
 	# (the desert's: tools/make_desert_animals.py)
-	"hyena": [1.05, "h", 0.0], "camel": [2.4, "h", 0.0], "iguana": [0.85, "l", 0.0],
+	"hyena": [1.05, "h", 0.0], "camel": [2.4, "h", 0.0], "iguana": [0.85, "l", 0.0], "scorpion": [0.5, "l", 0.0],
 }
 const CREATURE_DIR := "res://assets/models/run3d/"
 const BY_SCRIPT := {"ghost.gd": "ghost", "big_ghost.gd": "dragon", "water_ghost.gd": "water_ghost", "willow.gd": "willow"}

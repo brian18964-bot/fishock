@@ -74,6 +74,13 @@ const SPECIES := {
 	"black_spider": {"body": 8.0, "skinned": true, "label": "黑蜘蛛", "bait": "black_spider", "venom": 0.35,
 		"frames": 12, "cols": 56, "clips": 2, "offset": Vector2(0, -5.79), "move_fps": 10.0, "idle_fps": 6.0,
 		"size": 1.3, "wander_speed": 38.0, "flee_speed": 105.0},
+	# User request (the desert's animals, from the user's second batch - made ours by
+	# tools/make_desert_animals.py: a straw-yellow desert scorpion, its walk our own): the
+	# desert's black spider - under the stones you turn, out of the trees you chop, about the
+	# sand; good bait (two of it), but it may sting. Only in the desert ("theme"; Critter.here).
+	"scorpion": {"body": 8.0, "label": "蠍子", "bait": "scorpion", "venom": 0.35, "sting": true, "theme": "desert",
+		"frames": 12, "cols": 56, "clips": 2, "offset": Vector2(0, -5.79), "move_fps": 10.0, "idle_fps": 6.0,
+		"size": 1.3, "wander_speed": 34.0, "flee_speed": 100.0},
 
 	# Ambient animals: not catchable. Grazers and dogs ignore the player
 	# (flee_speed 0); deer, stag, fox and wolf bolt at a gallop, faster than the
@@ -571,9 +578,16 @@ func bait_key() -> String:
 ## User request: a black spider out from under a turned rock or a chopped
 ## tree, at `at`, scuttling off away from `from` (the player) - catchable,
 ## gone once caught (one_shot).
+## What a kind is on this map: the desert's black spider is a scorpion.
+static func here(kind: String) -> String:
+	if kind == "black_spider" and MapGenerator.current_theme.begins_with("desert"):
+		return "scorpion"
+	return kind
+
+
 static func spawn_black_spider(parent: Node, at: Vector2, from: Vector2) -> Critter:
 	var c: Critter = load("res://scenes/critter.tscn").instantiate()
-	c.species = "black_spider"
+	c.species = here("black_spider")
 	c.one_shot = true
 	parent.add_child(c)
 	c.global_position = at
@@ -619,9 +633,10 @@ func _respawn() -> void:
 func _pick_species() -> String:
 	var pool := []
 	for key in SPECIES:
-		if SPECIES[key].get("ambient", false) == ambient and not SPECIES[key].get("shore_only", false):
+		if SPECIES[key].get("ambient", false) == ambient and not SPECIES[key].get("shore_only", false) \
+				and not SPECIES[key].has("theme"):
 			pool.append(key)
-	return pool.pick_random()
+	return here(pool.pick_random())
 
 
 ## A shore creature comes back as itself, somewhere along a pond's edge

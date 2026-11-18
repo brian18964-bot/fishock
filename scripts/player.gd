@@ -2856,7 +2856,7 @@ func _catch_critter(critter: Critter = null) -> void:
 	var label: String = critter.get_label()
 	var venom: float = critter.venom() * (NET_VENOM_MULT if net_in_hand() else 1.0)
 	var stings: bool = critter.stings()
-	var many := BLACK_SPIDER_BAIT if critter.species == "black_spider" else 1
+	var many := BLACK_SPIDER_BAIT if critter.species in ["black_spider", "scorpion"] else 1
 	critter.catch()
 	if critter == _critter:
 		_critter = null
@@ -2892,8 +2892,8 @@ func _turn_rock() -> void:
 	perform("lift", ROCK_HEAVE_TIME)
 	Campaign.stat("flip_rock")
 	if result.get("spider", false):
-		Critter.spawn_black_spider(get_parent(), _rock.global_position + Vector2(0, -4), global_position)
-		GameState.push_message("石頭底下爬出一隻黑蜘蛛！抓不抓？牠可能會咬人")
+		var out := Critter.spawn_black_spider(get_parent(), _rock.global_position + Vector2(0, -4), global_position)
+		GameState.push_message("石頭底下爬出一隻%s！抓不抓？牠可能會%s" % [out.get_label(), "螫人" if out.stings() else "咬人"])
 	var key: String = FOUND_BAIT.get(result.get("flavor", ""), "worm")
 	if result.get("found", false) and not _room_for_live(key):
 		GameState.push_message("石頭底下有%s，但背包滿了放不下" % Profile.LIVE_BAITS[key].name)
@@ -2912,8 +2912,8 @@ func _chop_tree(tree: MapTree) -> void:
 	var result: Dictionary = tree.chop(global_position, int(held_weapon().get("chop", 1)))
 	Campaign.stat("chop_tree")
 	if result.get("spider", false):
-		Critter.spawn_black_spider(get_parent(), tree.global_position + Vector2(randf_range(-10, 10), 6), global_position)
-		GameState.push_message("樹上掉下一隻黑蜘蛛！")
+		var out := Critter.spawn_black_spider(get_parent(), tree.global_position + Vector2(randf_range(-10, 10), 6), global_position)
+		GameState.push_message("樹上掉下一隻%s！" % out.get_label())
 	elif result.get("found", false) and not _room_for_live(FOUND_BAIT.get(result.get("flavor", ""), "cricket")):
 		GameState.push_message("樹上掉下了%s，但背包滿了放不下" % Profile.LIVE_BAITS[FOUND_BAIT.get(result.get("flavor", ""), "cricket")].name)
 	elif result.get("found", false):
