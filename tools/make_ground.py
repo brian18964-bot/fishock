@@ -327,6 +327,82 @@ def beach_sand(rng):
     return col, normal_from_height(h, 2.6)
 
 
+def _wind_ripples(rng, waves, warp_amp, sharp):
+    """Wind ripples across the tile, their crests square to the map's wind (Foliage.WIND_DIR,
+    (0.8, 0.6) - x and z, the 3D ground's u and v): a wave vector along it with whole numbers of
+    waves a tile (`waves` x (4, 3)/5), so it tiles; each crest wandering (`warp_amp` waves), the
+    windward side long and the lee short and steep (`sharp`). 0..1, the crests 1."""
+    ys, xs = np.mgrid[0:N, 0:N].astype(np.float32) / DENSITY
+    kx, ky = 4 * waves // 5, 3 * waves // 5
+    warp = (periodic_noise(rng, 60) - 0.5) * warp_amp + (periodic_noise(rng, 18) - 0.5) * warp_amp * 0.25
+    t = ((kx * xs + ky * ys) / TILE + warp) % 1.0
+    up = np.clip(t / sharp, 0.0, 1.0)
+    down = np.clip((1.0 - t) / (1.0 - sharp), 0.0, 1.0)
+    return np.where(t < sharp, up * up * (3 - 2 * up), down * down * (3 - 2 * down))
+
+
+def dune_sand(rng):
+    """User request (the desert map): the open dunes' dry sand - warm, fine, combed into wind
+    ripples, a few darker grains and pebbles in their troughs."""
+    n = periodic_noise(rng, 120)
+    n2 = periodic_noise(rng, 30)
+    grit = periodic_noise(rng, 1.4)
+    col = lerp((0.6, 0.47, 0.3), (0.72, 0.58, 0.38), n * 0.7 + n2 * 0.3)
+    ripple = _wind_ripples(rng, 40, 2.2, 0.72)
+    # (the crests a shade paler and the troughs, where the coarse grains lie, darker)
+    col = col * (0.9 + ripple[..., None] * 0.14) * (0.93 + grit[..., None] * 0.12)
+    trough = np.clip(1.0 - ripple * 2.2, 0.0, 1.0) * (periodic_noise(rng, 40) > 0.45)
+    col = col * (1.0 - trough[..., None] * 0.12) + np.array([0.3, 0.22, 0.14]) * trough[..., None] * 0.06
+    cv = Canvas()
+    for _ in range(90):  # pebbles and dark grains
+        c = [(0.38, 0.3, 0.22), (0.5, 0.42, 0.32), (0.3, 0.26, 0.22), (0.62, 0.5, 0.36)][rng.integers(4)]
+        r = rng.uniform(0.8, 2.2)
+        cv.ellipse(rng.random() * TILE, rng.random() * TILE, r, r * rng.uniform(0.6, 0.9), rng.random() * 3,
+                   jitter_color(rng, c, 0.08), 210, 7)
+    lc, la, lh = cv.layers()
+    col = over(col, lc, la)
+    h = ripple * 0.42 + blur(n2, 3) * 0.2 + grit * 0.05 + lh * 0.4
+    return col, normal_from_height(h, 3.2)
+
+
+def wet_sand(rng):
+    """The desert pool's edge: the sand dark and damp from the water, smooth (no ripples - packed),
+    a crust of salt drying white in places, a few pebbles."""
+    n = periodic_noise(rng, 90)
+    damp = periodic_noise(rng, 40)
+    grit = periodic_noise(rng, 1.4)
+    col = lerp((0.3, 0.24, 0.16), (0.4, 0.32, 0.21), n * 0.6 + damp * 0.4)
+    col = col * (0.95 + grit[..., None] * 0.1)
+    salt = np.clip((periodic_noise(rng, 22) - 0.72) * 6.0, 0, 1) * (damp > 0.5)
+    col = col * (1 - salt[..., None] * 0.35) + np.array([0.62, 0.58, 0.5]) * salt[..., None] * 0.35
+    cv = Canvas()
+    for _ in range(140):
+        c = [(0.26, 0.22, 0.18), (0.42, 0.36, 0.28), (0.2, 0.17, 0.13)][rng.integers(3)]
+        r = rng.uniform(1.0, 2.8)
+        cv.ellipse(rng.random() * TILE, rng.random() * TILE, r, r * rng.uniform(0.6, 0.9), rng.random() * 3,
+                   jitter_color(rng, c, 0.1), 200, 8)
+    lc, la, lh = cv.layers()
+    col = over(col, lc, la)
+    h = blur(damp, 4) * 0.25 + grit * 0.04 + lh * 0.45
+    return col, normal_from_height(h, 3.0)
+
+
+def oasis_grass(rng):
+    """The green round the desert pool: short grass and sedge, thick in places and thinning to the
+    damp sand between, a few blades gone straw in the heat."""
+    n = periodic_noise(rng, 70)
+    col = lerp((0.32, 0.26, 0.17), (0.4, 0.33, 0.21), n)
+    thick = np.clip((periodic_noise(rng, 26) - 0.3) * 2.2, 0, 1)
+    col = col * (1 - thick[..., None] * 0.5) + np.array([0.16, 0.24, 0.09]) * thick[..., None] * 0.5
+    cv = Canvas()
+    greens = [(0.26, 0.4, 0.13), (0.34, 0.46, 0.16), (0.2, 0.32, 0.1), (0.4, 0.5, 0.2), (0.52, 0.48, 0.24)]
+    blades(rng, cv, 5200, greens, length=(3, 10), lean=0.45)
+    lc, la, lh = cv.layers()
+    col = over(col, lc, la)
+    h = blur(n, 3) * 0.3 + lh * 0.7
+    return col, normal_from_height(h, 5.0)
+
+
 def asphalt(rng):
     """User request (a ruined town): old asphalt - grey aggregate, worn
     lighter where the wheels ran, cracked into slabs, patched here and
@@ -531,6 +607,10 @@ MAKERS = {
     "sidewalk": sidewalk,
     # (kept last: each maker's seed is its place in this list)
     "grass_autumn": grass_autumn,
+    # (the desert's: the dunes' dry sand, the damp sand at the pool, the oasis's green)
+    "dune_sand": dune_sand,
+    "wet_sand": wet_sand,
+    "oasis_grass": oasis_grass,
 }
 
 

@@ -126,6 +126,31 @@ const THEMES := {
 		"animal_count": 1,
 		"animals": {"deer": 1.5, "stag": 1.0, "fox": 1.5, "wolf": 0.3},
 		"shore_extras": {"reeds": 0.12, "lilypad": 0.02, "driftwood": 0.14},
+	},
+	# User request: the desert - the water an oasis (the picture: a pool in a hollow of the dunes,
+	# ringed with green, palms thick along one side), the oasis meeting the desert well, very few
+	# animals. RunView3D's _desert: the dunes, the damp sand and the green round the pools
+	# ("floor3d"), the blown sand, prints in the sand. The palms grow by the water ("oasis_trees"
+	# of them in the "oasis_band", px up from the shore, most in a grove or two a pool -
+	# _place_tree), the rest dead trees out on the dunes (MapTree.DESERT_OPEN); the dinosaur's bones
+	# ("fossils") out in the open.
+	"desert": {
+		"look": "detailed",
+		"floor": ["dune_sand", "oasis_grass", 0.12],
+		"floor3d": {"grass": "dune_sand", "forest": "oasis_grass", "mud": "wet_sand"},
+		"trees": 22, "rocks": 3, "bushes": 3, "ground": 6,
+		"tree_families": {"pine": 1.0},
+		"rock_pool": [0, 1, 2],
+		"ground_kinds": {"plant": 1.0},
+		"oasis_trees": 0.85,
+		"oasis_band": [24.0, 230.0],
+		"fossils": 1,
+		# (one a base map's area - ~3 on the free run's; the user's own desert animals to come)
+		"animal_count": 1,
+		"animals": {"fox": 1.0},
+		"shore": {"grass": 0.32, "shrub": 0.1, "pebbles": 0.0},
+		"shore_extras": {"reeds": 0.16, "lilypad": 0.0, "driftwood": 0.0},
+		"shore_critters": ["frog", "spider", "snake"],
 	},}
 ## User feedback: the water's edge is grass, small shrubs, pebbles and
 ## boardwalks (no big trees or boulders there), with bugs and frogs about.
@@ -190,6 +215,7 @@ func _ready() -> void:
 	_place_docks()
 	_place_altar_and_escape()
 	_take_fixed_points()
+	_place_fossils()
 	# Docks and shores before the trees and rocks, so those can keep clear
 	# of every walkway entrance.
 	_dress_shores()
@@ -496,11 +522,13 @@ func _scatter_props() -> void:
 		# child), so the theme still decides what they become.
 		_theme_prop(prop)
 		var size := _footprint(prop)
-		var pos := _pick_prop_position(size[0], size[1])
+		var pos := _place_tree(prop) if prop is MapTree and theme.has("oasis_trees") \
+			else _pick_prop_position(size[0], size[1])
 		if pos.x < 0.0:
 			# (no room left that keeps clear of everything: not placed)
 			prop.queue_free()
 			continue
+		size = _footprint(prop)
 		prop.global_position = pos
 		_taken.append([pos, size[0], size[1]])
 	# The fuel can lying about (picked up and carried home).
@@ -683,6 +711,86 @@ func _theme_prop(prop: Node) -> void:
 		prop.families = theme.get("bush_families", [])
 
 
+## The desert's dinosaur bones (a style's "fossils" - Fossil): out on the open sand, well away
+## from the water, the start and the camp, turned any way; before anything else is placed, so they
+## get their room.
+func _place_fossils() -> void:
+	for _i in int(theme.get("fossils", 0)):
+		var reach := Fossil.reach_px()
+		for _try in 120:
+			var pos := Vector2(randf_range(reach + 60.0, Player.WORLD_WIDTH - reach - 60.0),
+				randf_range(reach + 60.0, Player.WORLD_HEIGHT - reach - 60.0))
+			if pos.distance_to(SPAWN_POS) < reach + PROP_AVOID_SPAWN_RADIUS + 60.0:
+				continue
+			if _shore_distance(pos) < reach + 90.0 or _near_walkway(pos, reach + 30.0):
+				continue
+			if not _fits(pos, reach, 0.0):
+				continue
+			var bones := Fossil.new()
+			bones.name = "Fossil%d" % _i
+			bones.yaw = randf() * TAU
+			bones.position = pos
+			_taken.append([pos, reach * 0.9, 0.0])
+			get_parent().add_child.call_deferred(bones)
+			break
+
+
+## The desert's trees (a style with "oasis_trees"): most a palm by the water - in its "oasis_band"
+## (px up from the shore), nearer likelier, most of a pool's in a grove or two (the picture: the
+## palms thick along one side of the pool) - the rest a dead tree out on the dunes. Picks the
+## tree's kind and where it goes ((-1, -1): nowhere). The palms' crowns are high over the rod, so
+## they may stand nearer the bank than the pines' branches.
+var _groves := {}
+
+
+func _place_tree(tree: MapTree) -> Vector2:
+	var roll := randi()
+	if randf() >= float(theme.oasis_trees):
+		tree.pick_from(roll, MapTree.DESERT_OPEN)
+		var size := _footprint(tree)
+		return _pick_prop_position(size[0], size[1])
+	tree.pick_from(roll, MapTree.kinds_for(theme_name))
+	var size := _footprint(tree)
+	var base: float = size[0]
+	# (the crowns of a grove may meet)
+	var reach: float = size[1] * 0.55
+	var band: Array = theme.oasis_band
+	var zones := water_zones.filter(func(z): return not z.is_rare())
+	if zones.is_empty():
+		zones = water_zones
+	if zones.is_empty():
+		return _pick_prop_position(base, size[1])
+	for _try in 90:
+		var zone: WaterZone = zones.pick_random()
+		if not _groves.has(zone):
+			var samples: Array = zone.shore_samples(30.0)
+			var anchors := []
+			for _g in randi_range(1, 2):
+				anchors.append(randi() % maxi(samples.size(), 1))
+			_groves[zone] = [samples, anchors]
+		var samples: Array = _groves[zone][0]
+		if samples.is_empty():
+			continue
+		var i := randi() % samples.size()
+		if randf() < 0.7:
+			# (in a grove: near one of its anchors along the shore)
+			var anchors: Array = _groves[zone][1]
+			i = posmod(int(anchors.pick_random()) + randi_range(-5, 5), samples.size())
+		var s: Array = samples[i]
+		var n: Vector2 = s[1]
+		var out := lerpf(float(band[0]) + base, float(band[1]), pow(randf(), 1.7))
+		var pos: Vector2 = s[0] + n * out + n.orthogonal() * randf_range(-14.0, 14.0)
+		if not _inside_map(pos, PROP_MARGIN) or pos.distance_to(SPAWN_POS) < PROP_AVOID_SPAWN_RADIUS:
+			continue
+		if _shore_distance(pos) < base + 16.0 or _in_any_water(pos):
+			continue
+		if _near_entrance(pos, ENTRANCE_CLEARANCE) or _near_walkway(pos, 30.0):
+			continue
+		if _fits(pos, base, reach):
+			return pos
+	return Vector2(-1, -1)
+
+
 ## The theme's extra trees, rocks and bushes, spaced like the scene props.
 func _scatter_themed_props() -> void:
 	for spec in [[TREE_SCENE, theme.trees], [OBSTACLE_SCENE, theme.rocks], [BUSH_SCENE, theme.bushes]]:
@@ -690,10 +798,12 @@ func _scatter_themed_props() -> void:
 			var prop: Node2D = spec[0].instantiate()
 			_theme_prop(prop)
 			var size := _footprint(prop)
-			var at := _pick_prop_position(size[0], size[1])
+			var at := _place_tree(prop) if prop is MapTree and theme.has("oasis_trees") \
+				else _pick_prop_position(size[0], size[1])
 			if at.x < 0.0:
 				prop.free()
 				continue
+			size = _footprint(prop)
 			prop.position = at
 			_taken.append([at, size[0], size[1]])
 			get_parent().add_child.call_deferred(prop)

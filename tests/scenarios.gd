@@ -125,6 +125,7 @@ const TESTS := [
 	"test_bag_moves_at_camp",
 	"test_snow_theme",
 	"test_autumn_theme",
+	"test_desert_theme",
 	"test_wind_and_chop",
 	"test_ground_leaves",
 	"test_grass",
@@ -10141,6 +10142,183 @@ func test_autumn_theme() -> void:
 	camp().clear()
 
 
+## User request: the desert map - the water an oasis, the oasis meeting the desert well (damp sand,
+## green thinning into the dunes), our own palms and dry plants, a dinosaur's bones half buried,
+## prints in the sand not like the snow's, blown sand, very few animals; picked in the depart window.
+func test_desert_theme() -> void:
+	var chooser := DepartChooser.open(self)
+	chooser.show_step("maps")
+	await frames(2)
+	var card := chooser.find_child("Map_desert", true, false) as Button
+	var row_w := 0.0
+	for m in DepartChooser.MAPS:
+		var c := chooser.find_child("Map_" + (str(m[0]) if m[0] != "" else "forest"), true, false) as Control
+		row_w += c.size.x if c != null else 9999.0
+	check(card != null and row_w < 900.0 and load(DepartChooser.ART + "map_desert.png") != null,
+		"the depart window: the desert's card beside the other three, its picture (%d px of cards)" % int(row_w))
+	if card != null:
+		card.pressed.emit()
+		await frames(2)
+		check(chooser.map_theme == "desert" and (chooser.find_child("GoFree", true, false) as Button).text.contains("沙漠綠洲"), "the desert picked")
+	chooser.queue_free()
+	seed(7)
+	camp().clear()
+	gs.reset_run()
+	gs.last_return = ""
+	camp().begin_free([], "desert")
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	await frames(3)
+	main = get_tree().current_scene
+	gs.start_run()
+	var view: RunView3D = null
+	for _i in 300:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	check(MapGenerator.current_theme == "desert" and FishData.waters == "desert", "the map's style the desert, its fish the oasis's")
+	check(view != null and view.built and view._desert and not view._snow and not view._autumn, "the 3D world the desert")
+	if view == null or not view.built:
+		camp().clear()
+		return
+	var zones := get_tree().get_nodes_in_group("water_zones")
+	var shore_of := func(p: Vector2) -> float:
+		var best := INF
+		for z in zones:
+			best = minf(best, (z as WaterZone).distance_to_edge(p))
+		return best
+	# Its trees: palms by the water (most within the oasis's band), dead trees out on the dunes.
+	var palms := 0
+	var palms_near := 0
+	var dead := 0
+	var own := true
+	for t in get_tree().get_nodes_in_group("trees"):
+		var mt := t as MapTree
+		if mt == null:
+			continue
+		if mt.kind.begins_with("palm"):
+			palms += 1
+			if shore_of.call(mt.global_position) < 300.0:
+				palms_near += 1
+		elif mt.kind in MapTree.DESERT_OPEN:
+			dead += 1
+		else:
+			own = false
+	check(own and palms >= 10 and palms > dead * 2, "palms and a few dead trees, nothing else (%d palms, %d dead)" % [palms, dead])
+	check(palms_near >= palms * 0.75, "the palms by the water (%d of %d within the oasis)" % [palms_near, palms])
+	var palm_mat := CampModel._tree_material("palm", "leaves")
+	check(palm_mat.albedo_texture != null and palm_mat.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR, "the palms' fronds (cut out)")
+	var young: Array = view._model_mesh("palm_young")
+	var cut := not young.is_empty() and bool(((young[0] as Mesh).surface_get_material(0) as ShaderMaterial).get_shader_parameter("scissor"))
+	check(cut, "the young palms and dry bushes cut out by their pictures, swaying")
+	# The ground: dune sand, damp sand at the water, the oasis's green; dunes away from the water,
+	# flat round the camp and by the water.
+	var gm := view._ground_mat as ShaderMaterial
+	check(str((gm.get_shader_parameter("grass_tex") as Texture2D).resource_path).contains("dune_sand")
+		and str((gm.get_shader_parameter("forest_tex") as Texture2D).resource_path).contains("oasis_grass")
+		and str((gm.get_shader_parameter("mud_tex") as Texture2D).resource_path).contains("wet_sand")
+		and float(gm.get_shader_parameter("dunes")) > 0.5, "the ground: dune sand, the oasis's green, damp sand")
+	var rect: Rect2 = view._map_rect()
+	var tall := 0.0
+	var green_near := 0.0
+	var n_near := 0
+	var green_far := 0.0
+	var n_far := 0
+	var flat_shore := 0.0
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	for _i in 3000:
+		var p := Vector2(rng.randf_range(rect.position.x + 40.0, rect.end.x - 40.0), rng.randf_range(rect.position.y + 40.0, rect.end.y - 40.0))
+		var d: float = shore_of.call(p)
+		if d <= 0.0:
+			continue
+		var y := view.ground_y(p)
+		tall = maxf(tall, y - RunView3D.LAND_Y)
+		var lo: Vector2 = view._ground_grid[0]
+		var n: Vector2i = view._ground_grid[1]
+		var i := clampi(int(roundf((p.x / RunView3D.PX - lo.x) / RunView3D.CELL)), 0, n.x - 1)
+		var j := clampi(int(roundf((p.y / RunView3D.PX - lo.y) / RunView3D.CELL)), 0, n.y - 1)
+		var c: Color = view._ground_grid[3][j * n.x + i]
+		if d > 30.0 and d < 110.0:
+			green_near += c.a
+			n_near += 1
+			flat_shore = maxf(flat_shore, y - RunView3D.LAND_Y)
+		elif d > 520.0:
+			green_far += c.a
+			n_far += 1
+	check(tall > 0.8, "dunes rise out in the desert (%.2f m)" % tall)
+	check(flat_shore < 0.1, "flat by the water - the oasis in its hollow (%.2f m)" % flat_shore)
+	var camp_y := view.ground_y(main.get_node("FuelStation").global_position)
+	check(absf(camp_y - RunView3D.LAND_Y) < 0.06, "flat at the camp (%.2f m)" % camp_y)
+	check(n_near > 0 and green_near / n_near > 0.45, "green round the water (%.2f)" % (green_near / maxf(n_near, 1)))
+	check(n_far > 0 and green_far / n_far < 0.03, "and none out in the dunes - it thins into the sand (%.3f)" % (green_far / maxf(n_far, 1)))
+	# The dinosaur's bones: out on the open sand, its model shown, solid.
+	var bones := get_tree().get_nodes_in_group("fossils")
+	check(bones.size() == 1 and not view._fossil_models.is_empty(), "the dinosaur's bones, shown (%d)" % bones.size())
+	if bones.size() > 0:
+		var f := bones[0] as Fossil
+		check(float(shore_of.call(f.global_position)) > Fossil.reach_px(), "well away from the water")
+		var p := player()
+		await put(f.global_position + Vector2(0, 320))
+		p._move_joystick.output = Vector2.UP
+		await frames(200)
+		p._move_joystick.output = Vector2.ZERO
+		var inside := false
+		for b in f.solids():
+			if p.global_position.distance_to(b[0]) < (b[1] as Vector2).x - 2.0:
+				inside = true
+		check(not inside and p.global_position.distance_to(f.global_position) > 20.0, "walked at it: stopped by its bones, not through them")
+		await put(f.global_position + Vector2(0, 600))
+	# Prints in the sand: the sand's (soon filled in), damp ones by the water lasting longer.
+	var t: SnowTracks = view._tracks
+	check(t != null and t.sand and t.hold == SnowTracks.SAND_HOLD and t.hold < SnowTracks.HOLD, "prints in the sand - the sand's, not the snow's")
+	var p := player()
+	await put(away_from_water(300.0))
+	var made0 := t.made
+	for i in 120:
+		p._move_joystick.output = Vector2.RIGHT
+		await frames(1)
+	p._move_joystick.output = Vector2.ZERO
+	await frames(5)
+	check(t.made > made0 + 2, "walking the sand leaves prints (%d)" % (t.made - made0))
+	var zone: WaterZone = get_tree().get_nodes_in_group("water_zones_common")[0]
+	var wet_spot: Vector2 = zone.shore_point(Vector2.DOWN) + Vector2(0, 14)
+	check(view._wet_sand(RunView3D.to3(wet_spot, 0.0)) and not view._wet_sand(RunView3D.to3(away_from_water(300.0), 0.0)),
+		"the damp sand at the water's edge told from the dry")
+	# Up a dune: the traveller's feet on it.
+	var hill := Vector2.ZERO
+	var best := 0.0
+	for _i in 600:
+		var q := Vector2(rng.randf_range(rect.position.x + 80.0, rect.end.x - 80.0), rng.randf_range(rect.position.y + 80.0, rect.end.y - 80.0))
+		var h := view.ground_y(q)
+		if h > best and float(shore_of.call(q)) > 200.0:
+			best = h
+			hill = q
+	if best > 0.5:
+		await put(hill)
+		await frames(20)
+		check(absf(view.pivot.global_position.y - view.ground_y(p.global_position)) < 0.35,
+			"up on a dune the traveller stands on it (%.2f m up)" % view.ground_y(p.global_position))
+	# Blown sand: with the gusts, faster prints' filling-in.
+	var drift: SandDrift = view._sand
+	view.wind = Foliage.STORM_WIND
+	await frames(30)
+	check(drift != null and drift.blowing > 0.4 and t.fill > 1.5, "a gust: sand blowing (%.2f), the prints filling in faster" % (drift.blowing if drift else 0.0))
+	view.wind = Foliage.WIND
+	# Very few animals.
+	var animals := 0
+	for n in main.get_children():
+		if n is Critter and (n as Critter).ambient:
+			animals += 1
+	var forest_has := roundf(MapGenerator.AMBIENT_ANIMAL_COUNT * Campaign.area_share())
+	check(animals > 0 and animals <= maxi(2, int(ceilf(forest_has / 8.0))), "very few animals (%d - the forest %d)" % [animals, int(forest_has)])
+	await frames(3)
+	var fog := view._env.fog_light_color
+	check(fog.r > fog.b, "a warm, sandy haze (%s)" % fog)
+	check(is_instance_valid(player()) and player().global_position.is_finite(), "and the run goes on")
+	camp().clear()
+
+
 ## User request: the trees and plants sway in the wind (Foliage), more in a storm; a chopped tree
 ## shakes away from the blow and settles, a few leaves shaken down.
 func test_wind_and_chop() -> void:
@@ -10358,8 +10536,10 @@ func test_grass() -> void:
 ## anything nor stuck on open ground (so nothing's walked through, and nothing traps).
 func test_world_integrity() -> void:
 	var problems := []
-	for look in ["", "snow_pine", "autumn"]:
+	for look in ["", "snow_pine", "autumn", "desert"]:
 		for seed_n in [3, 11]:
+			if look == "desert" and seed_n == 11:
+				continue
 			seed(seed_n)
 			camp().clear()
 			gs.reset_run()
@@ -10384,11 +10564,15 @@ func test_world_integrity() -> void:
 			for o in get_tree().get_nodes_in_group("solids"):
 				if "radii" in o and o.radii is Vector2:
 					solids.append([o.global_position, (o.radii.x + o.radii.y) * 0.5, "rock"])
+				elif o is Fossil:
+					# (the dinosaur's bones: each of its circles, not checked against each other)
+					for b in o.solids():
+						solids.append([b[0], (b[1] as Vector2).x, "fossil#%d" % o.get_instance_id()])
 			var zones := get_tree().get_nodes_in_group("water_zones")
 			for i in solids.size():
 				for j in range(i + 1, solids.size()):
 					var gap: float = (solids[i][0] as Vector2).distance_to(solids[j][0]) - float(solids[i][1]) - float(solids[j][1])
-					if gap < -2.0:
+					if gap < -2.0 and not (solids[i][2] == solids[j][2] and str(solids[i][2]).begins_with("fossil")):
 						problems.append("%s: %s and %s overlap by %.0f px at %s" % [tag, solids[i][2], solids[j][2], -gap, solids[i][0]])
 				for z in zones:
 					if (z as WaterZone).depth(solids[i][0]) > -float(solids[i][1]) * 0.5:

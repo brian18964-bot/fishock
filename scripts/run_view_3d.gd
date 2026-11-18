@@ -87,6 +87,7 @@ const COVER_REACH := 34.0
 ## tall (their scale), how deep a band out from the edge (m) - and a
 ## little in over it.
 const BORDER_TREES := 520
+const BORDER_TREES_DESERT := 18
 const BORDER_SCALE := Vector2(1.7, 2.6)
 const BORDER_DEPTH := 9.0
 const BORDER_IN := 1.2
@@ -442,6 +443,11 @@ var _snow := false
 ## The autumn wood (MapGenerator's "autumn"): its own trees (MapTree.THEME_KINDS), its leaf litter
 ## and dry grass, a warmer haze, leaves falling (_leaf_fall).
 var _autumn := false
+## The desert (MapGenerator's "desert" - user request: water like an oasis, the oasis meeting the
+## desert well, few animals, prints in the sand, blown sand): dunes rising away from the water
+## (_dune), the pool ringed with damp sand and green that thins out into the dunes (_ground's
+## paint), its own palms and dry shrubs, a dinosaur's bones half buried.
+var _desert := false
 ## (the ground's material: its snow's paleness follows the evening's light - _update_light)
 var _ground_mat: ShaderMaterial
 ## The ground grid as made (_ground): [its corner (m), its size (cells), heights, paint (r path, g stone,
@@ -488,6 +494,7 @@ func _ready() -> void:
 	active = self
 	_snow = MapGenerator.current_theme.begins_with("snow")
 	_autumn = MapGenerator.current_theme.begins_with("autumn")
+	_desert = MapGenerator.current_theme.begins_with("desert")
 	Foliage.set_wind(Foliage.WIND)
 	_rng.seed = 11
 	player = main.get_node("Player")
@@ -550,6 +557,23 @@ func _build() -> void:
 		_tracks = SnowTracks.new()
 		_tracks.character = rig.character if rig != null else Profile.character
 		add_child(_tracks)
+	if _desert:
+		# (prints in the sand - the sand's own: SnowTracks.sand - and the blown sand)
+		_sand = SandDrift.new()
+		_sand.name = "SandDrift"
+		_sand.ground = _ground_at
+		_sand.water_y = WATER_Y
+		if low_end():
+			_sand.count = SandDrift.STREAKS / 2
+			_sand.puffs = SandDrift.PUFFS / 2
+		add_child(_sand)
+		_sand.setup(to3(player.global_position, ground_y(player.global_position)))
+		_tracks = SnowTracks.new()
+		_tracks.sand = true
+		_tracks.wet = _wet_sand
+		_tracks.character = rig.character if rig != null else Profile.character
+		_tracks.printed.connect(_sand.kick)
+		add_child(_tracks)
 	_rest_2d_only(main)
 	for n in main.get_children():
 		_scan(n)
@@ -604,6 +628,14 @@ func _ground_at(at: Vector3) -> float:
 
 
 func _open_snow(at: Vector3) -> bool:
+	if _desert:
+		# (the dunes stand above LAND_Y: open sand anywhere off the decks and the altar's stone, up
+		# from the water)
+		var p := to2(at)
+		for r in _raised:
+			if (r[0] as Vector2).distance_to(p) < float(r[1]):
+				return false
+		return not _on_walk(p) and ground_y(p) > WATER_Y + 0.07
 	var gy := ground_y(to2(at))
 	return gy < LAND_Y + 0.01 and gy > WATER_Y + 0.07
 
@@ -617,7 +649,151 @@ func ground_y(p: Vector2) -> float:
 	for w in _walk:
 		if (w[0] as Rect2).has_point(p):
 			return float(w[1])
+	if _desert and not _ground_grid.is_empty():
+		# (the dunes: the ground as it was made - its grid - so who walks them walks on them)
+		return maxf(_grid_y(p.x / PX, p.y / PX), WATER_Y)
 	return maxf(_height_at(_depth(p, _zones())), WATER_Y)
+
+
+## Where a thing standing on the land at `p` (2D) stands: the land's height - up on a dune in the
+## desert; LAND_Y everywhere else.
+func land_y(p: Vector2) -> float:
+	if _desert and not _ground_grid.is_empty():
+		return maxf(_grid_y(p.x / PX, p.y / PX), LAND_Y)
+	return LAND_Y
+
+
+## The ground grid's height at (x, z) (m), between its corners.
+func _grid_y(x: float, z: float) -> float:
+	var lo: Vector2 = _ground_grid[0]
+	var n: Vector2i = _ground_grid[1]
+	var heights: PackedFloat32Array = _ground_grid[2]
+	var fx := clampf((x - lo.x) / CELL, 0.0, n.x - 1.001)
+	var fz := clampf((z - lo.y) / CELL, 0.0, n.y - 1.001)
+	var i := floori(fx)
+	var j := floori(fz)
+	var tx := fx - i
+	var tz := fz - j
+	return lerpf(lerpf(heights[j * n.x + i], heights[j * n.x + i + 1], tx),
+		lerpf(heights[(j + 1) * n.x + i], heights[(j + 1) * n.x + i + 1], tx), tz)
+
+
+## The desert's dunes. User request (the desert: like the picture - dunes, the oasis in a hollow
+## among them): ridges square to the wind (Foliage.WIND_DIR), each crest wandering and rising and
+## falling along its length, so they read as crescents; the windward slope long and gentle, the lee
+## short and steep, DUNE_LEN m crest to crest. Flat by the water (DUNE_CLEAR, m from the shore -
+## the oasis sits in the hollow) and round the camp, the altar, the way out and the big ghost's
+## cage (_dune_clear); past the map's edge they rise taller (DUNE_EDGE_H), its frame.
+const DUNE_H := 1.6
+const DUNE_EDGE_H := 4.5
+const DUNE_LEN := 17.0
+const DUNE_CLEAR := Vector2(7.0, 17.0)
+## (round each of these - [2D centre, px] - the ground flat, easing into the dunes over 8 m)
+var _dune_clear: Array = []
+## The dinosaur bones' 3D models (_trees_and_rocks).
+var _fossil_models: Array = []
+var _dune_noise: FastNoiseLite
+
+
+func _dune(p: Vector2, depth: float, out: float) -> float:
+	if _dune_noise == null:
+		_dune_noise = FastNoiseLite.new()
+		_dune_noise.seed = 17
+		_dune_noise.frequency = 0.05
+		for name in ["FuelStation", "Altar", "EscapePoint", "GhostCage"]:
+			var spot := main.get_node_or_null(name) as Node2D
+			if spot != null:
+				_dune_clear.append([spot.global_position, 260.0 if name == "FuelStation" else 160.0])
+		# (the dinosaur's bones lie on flat sand)
+		for bones in get_tree().get_nodes_in_group("fossils"):
+			_dune_clear.append([(bones as Node2D).global_position, Fossil.reach_px() + 30.0])
+	var nz := _dune_noise
+	var m := p / PX
+	var w := Foliage.WIND_DIR.normalized()
+	var u := m.dot(w)
+	var v := m.dot(w.orthogonal())
+	u += nz.get_noise_2d(v * 1.2, u * 0.3) * 6.0
+	var t := fposmod(u / DUNE_LEN + nz.get_noise_2d(v * 0.5 + 100.0, 3.0) * 0.7, 1.0)
+	var prof := smoothstep(0.0, 0.76, t) if t < 0.76 else 1.0 - smoothstep(0.76, 1.0, t)
+	var amp := clampf(0.55 + nz.get_noise_2d(v * 0.45, u * 0.12 + 50.0) * 0.9, 0.15, 1.0)
+	var h := prof * amp * DUNE_H
+	var k := smoothstep(DUNE_CLEAR.x, DUNE_CLEAR.y, -depth / PX)
+	for c in _dune_clear:
+		var r: float = c[1]
+		k *= smoothstep(r, r + 8.0 * PX, (c[0] as Vector2).distance_to(p))
+	for wk in _walk:
+		var box: Rect2 = (wk[0] as Rect2).grow(4.0 * PX)
+		if box.has_point(p):
+			k = 0.0
+	# (past the map's edge the dunes tall, a wall of sand)
+	var edge := smoothstep(0.0, MARGIN * 0.6, out)
+	return lerpf(h * k, (0.35 + 0.65 * prof) * DUNE_EDGE_H * (0.7 + 0.3 * amp), edge)
+
+
+## The desert's ground paint `shore` px up from the water at (x, z) m: user request - the oasis
+## meeting the desert well. From the water out: damp dark sand (b - the "mud" slot, wet_sand), the
+## oasis's green on it (a - the "forest" slot, oasis_grass) thick near the water, then broken into
+## patches and tongues that thin out into the dry dune sand (the "grass" slot, dune_sand) - its edge
+## wandering, never a ring drawn round the pool.
+const OASIS_WET := 44.0
+const OASIS_GREEN := Vector2(50.0, 230.0)
+
+
+func _oasis_paint(shore: float, x: float, z: float, noise: FastNoiseLite) -> Color:
+	var wob := noise.get_noise_2d(x, z)
+	var wob2 := noise.get_noise_2d(x * 0.35 + 70.0, z * 0.35)
+	var wet := 1.0 - smoothstep(0.0, OASIS_WET + wob * 24.0, shore)
+	# (how far the green reaches here: further in some directions than others)
+	var reach := OASIS_GREEN.y * (0.7 + 0.5 * wob2)
+	var near := 1.0 - smoothstep(OASIS_GREEN.x, reach, shore + noise.get_noise_2d(x * 2.3, z * 2.3 + 9.0) * 40.0)
+	# (patches - clumps of green with sand between, more sand toward the edge: a clump stands out on
+	# the sand past where the green has thinned, rather than one ring drawn round the pool)
+	var patch := noise.get_noise_2d(x * 2.6 + 11.0, z * 2.6) * 0.5 + 0.5
+	var green := smoothstep(0.62 - 0.5 * near, 0.72 - 0.5 * near, patch) * smoothstep(0.0, 0.25, near + 0.08)
+	green = maxf(green, smoothstep(0.55, 0.9, near))
+	# (the very edge of the water bare and wet, the green from a step or so up the bank)
+	green *= smoothstep(4.0, 22.0, shore)
+	return Color(0.5, 0.0, wet * (1.0 - green * 0.6), green)
+
+
+## The dunes' faces in the ground's paint (its r - no paths in the desert; GROUND_SHADER's
+## `dunes`): the steep lee slopes, falling away downwind, darker; the long windward slopes up to the
+## crests a little lighter - so the dunes read even in the night's faint light.
+func _dune_shade(heights: PackedFloat32Array, colors: PackedColorArray, n: Vector2i) -> void:
+	var w := Foliage.WIND_DIR.normalized()
+	for j in n.y:
+		for i in n.x:
+			var ia := clampi(i + roundi(w.x), 0, n.x - 1)
+			var ja := clampi(j + roundi(w.y), 0, n.y - 1)
+			var ib := clampi(i - roundi(w.x), 0, n.x - 1)
+			var jb := clampi(j - roundi(w.y), 0, n.y - 1)
+			var rise := (heights[ja * n.x + ia] - heights[jb * n.x + ib]) / (2.0 * CELL)
+			var c := colors[j * n.x + i]
+			c.r = clampf(0.5 + rise * 1.6, 0.0, 1.0)
+			colors[j * n.x + i] = c
+
+
+## How deep under the shore `p` is (2D px, + in the water) - the nearest pond's, however far (the
+## desert's oasis ring and dunes reach further out than _depth's bounds).
+func _shore_depth(p: Vector2, zones: Array) -> float:
+	var best := -1e6
+	for z in zones:
+		var zone := z as WaterZone
+		# (a pond whose every lobe is far: past what the dunes and the green care about - skipped,
+		# the dear part being its shore's wander)
+		if not zone.has_meta("reach"):
+			var reach := 0.0
+			for l in zone.world_lobes():
+				reach = maxf(reach, (Vector2(l.x, l.y) - zone.global_position).length() + l.z)
+			zone.set_meta("reach", reach + WaterZone.WARP_AMP_A + WaterZone.WARP_AMP_B)
+		if p.distance_to(zone.global_position) - float(zone.get_meta("reach")) > SHORE_FAR:
+			continue
+		best = maxf(best, zone.depth(p))
+	return best
+
+
+## (past this far from a pond (px) its shore makes no difference to the desert's ground)
+const SHORE_FAR := DUNE_CLEAR.y * 27.108 + 40.0
 
 
 func _ground() -> void:
@@ -658,8 +834,14 @@ func _ground() -> void:
 			# Past the map's edge the forest rises a little: a frame.
 			var out := Vector2(maxf(maxf(rect.position.x - p2.x, p2.x - rect.end.x), 0.0),
 				maxf(maxf(rect.position.y - p2.y, p2.y - rect.end.y), 0.0)).length() / PX
-			y += 1.4 * smoothstep(0.0, MARGIN, out)
 			var wob := noise.get_noise_2d(x, z)
+			if _desert:
+				var far := _shore_depth(p2, zones)
+				y += _dune(p2, far, out)
+				heights[j * n.x + i] = y
+				colors[j * n.x + i] = _oasis_paint(-far, x, z, noise)
+				continue
+			y += 1.4 * smoothstep(0.0, MARGIN, out)
 			# r: (no paths here) g: (no stone) b: the mud shore, a: the
 			# forest floor (else grass)
 			var mud := 1.0 - smoothstep(0.0, 70.0 + wob * 30.0, -d)
@@ -667,6 +849,8 @@ func _ground() -> void:
 			forest = maxf(forest, smoothstep(0.0, 4.0, out))
 			heights[j * n.x + i] = y
 			colors[j * n.x + i] = Color(0.0, 0.0, mud, 1.0 - forest)
+	if _desert:
+		_dune_shade(heights, colors, n)
 	var sh := Shader.new()
 	sh.code = GROUND_SHADER
 	var mat := ShaderMaterial.new()
@@ -681,6 +865,7 @@ func _ground() -> void:
 		mat.set_shader_parameter(pair[0] + "_nrm", load("res://assets/sprites/ground/%s_normal.png" % file))
 	mat.set_shader_parameter("snow", 1.0 if _snow else 0.0)
 	mat.set_shader_parameter("snow_bright", SNOW_GROUND)
+	mat.set_shader_parameter("dunes", 1.0 if _desert else 0.0)
 	_ground_mat = mat
 	_ground_grid = [lo, n, heights, colors]
 	# User report (laggy at night, on a phone): the ground was one mesh of the whole map, drawn
@@ -939,6 +1124,9 @@ func _trees_and_rocks() -> void:
 			pines.append(k)
 	if pines == MapTree.PINES:
 		pines = ["pine_a", "pine_b", "pine_c"]
+	if _desert:
+		# (out on the desert's edge, dead trees - its palms by the water)
+		pines = MapTree.DESERT_OPEN.duplicate()
 	var meshes := {}
 	var spots := {}
 	for p in pines:
@@ -958,7 +1146,7 @@ func _trees_and_rocks() -> void:
 		var s: float = float(tree.get("tree_scale")) if tree.get("tree_scale") != null else 0.9
 		mi.scale = Vector3(s, s, s)
 		mi.rotation.y = _rng.randf() * TAU
-		mi.position = to3(tree.global_position, LAND_Y)
+		mi.position = to3(tree.global_position, land_y(tree.global_position) - (0.08 if _desert else 0.0))
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		add_child(mi)
 		_trees.append([tree, mi])
@@ -969,7 +1157,8 @@ func _trees_and_rocks() -> void:
 	var rect := _map_rect()
 	var inner := rect.grow(-BORDER_IN * PX)
 	var made := 0
-	while made < BORDER_TREES:
+	# (the desert's edge is its tall dunes (_dune): only a few trees out on them)
+	while made < (BORDER_TREES_DESERT if _desert else BORDER_TREES):
 		var p := Vector2(_rng.randf_range(rect.position.x - BORDER_DEPTH * PX, rect.end.x + BORDER_DEPTH * PX),
 			_rng.randf_range(rect.position.y - BORDER_DEPTH * PX, rect.end.y + BORDER_DEPTH * PX))
 		if inner.has_point(p):
@@ -977,13 +1166,27 @@ func _trees_and_rocks() -> void:
 		made += 1
 		var out := Vector2(maxf(maxf(rect.position.x - p.x, p.x - rect.end.x), 0.0),
 			maxf(maxf(rect.position.y - p.y, p.y - rect.end.y), 0.0)).length() / PX
-		spots[pines[made % pines.size()]].append(to3(p, LAND_Y + 1.4 * smoothstep(0.0, MARGIN, out)))
+		spots[pines[made % pines.size()]].append(to3(p, _grid_y(p.x / PX, p.y / PX) - 0.1 if _desert else LAND_Y + 1.4 * smoothstep(0.0, MARGIN, out)))
 	for kind in pines:
 		var xfs := []
 		for at in spots[kind]:
-			var s := _rng.randf_range(BORDER_SCALE.x, BORDER_SCALE.y)
+			var s := _rng.randf_range(0.9, 1.3) if _desert else _rng.randf_range(BORDER_SCALE.x, BORDER_SCALE.y)
 			xfs.append(Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(s, s, s)), at))
 		_scatter(meshes[kind], xfs, false)
+	# The desert's dinosaur bones (Fossil), as the 2D one lies.
+	for bones in get_tree().get_nodes_in_group("fossils"):
+		var scene: PackedScene = load(Fossil.MODEL) if ResourceLoader.exists(Fossil.MODEL) else null
+		if scene == null:
+			continue
+		var model := scene.instantiate() as Node3D
+		model.name = "FossilModel"
+		var at := (bones as Node2D).global_position
+		model.position = to3(at, land_y(at))
+		model.rotation.y = float(bones.get("yaw"))
+		for mi in model.find_children("*", "MeshInstance3D", true, false):
+			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if _low else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		add_child(model)
+		_fossil_models.append(model)
 	# The rocks, bushes and turning stones: each exactly as big as its 2D
 	# base (user request: nothing walks into anything).
 	for n in main.get_children():
@@ -991,13 +1194,13 @@ func _trees_and_rocks() -> void:
 		var at: Vector2 = (n as Node2D).global_position if n is Node2D else Vector2.ZERO
 		if path == "obstacle.gd":
 			var r: Vector2 = n.get("radii")
-			_fitted(str(n.get("model")), to3(at, LAND_Y - 0.05), r * 2.0 / PX, 0.0, true)
+			_fitted(str(n.get("model")), to3(at, land_y(at) - 0.05), r * 2.0 / PX, 0.0, true)
 		elif path == "bush.gd":
 			var d: float = float(n.get("radius")) * 2.0 / PX
-			_fitted("fern", to3(at, LAND_Y), Vector2(d, d), _rng.randf() * TAU, false)
+			_fitted("palm_young" if _desert else "fern", to3(at, land_y(at)), Vector2(d, d), _rng.randf() * TAU, false)
 		elif path == "flip_rock.gd":
 			var d: float = float(n.get("radius")) * 2.0 / PX
-			var rock := _fitted(str(n.get("model")), to3(at, LAND_Y - 0.03), Vector2(d, d), _rng.randf() * TAU, true)
+			var rock := _fitted(str(n.get("model")), to3(at, land_y(at) - 0.03), Vector2(d, d), _rng.randf() * TAU, true)
 			if rock != null:
 				_flip_rocks[n] = rock
 		elif path == "glow_mushroom.gd" and not _mushrooms.has(n):
@@ -1071,7 +1274,7 @@ const FROST_FLOWER_SCALE := 0.9
 func _frost_flower(n: Node, at: Vector2) -> void:
 	var holder := Node3D.new()
 	holder.name = "FrostFlower"
-	holder.position = to3(at, LAND_Y)
+	holder.position = to3(at, land_y(at))
 	holder.rotation.y = _rng.randf() * TAU
 	add_child(holder)
 	# The cold haze on the ground.
@@ -1203,7 +1406,7 @@ func _mushroom(n: Node, at: Vector2) -> void:
 		return
 	var holder := Node3D.new()
 	holder.name = "GlowMushroom"
-	holder.position = to3(at, LAND_Y)
+	holder.position = to3(at, land_y(at))
 	holder.rotation.y = _rng.randf() * TAU
 	holder.scale = Vector3.ONE * MUSHROOM_SCALE
 	add_child(holder)
@@ -1279,11 +1482,11 @@ func ability_fx(kind: String, at: Vector2, note: String) -> void:
 	match kind:
 		"dog":
 			_pop_text("!", pivot, Vector3(0, head + 0.15, 0), Color(1.0, 0.85, 0.2), 140, 1.2)
-			_burst(to3(at, LAND_Y + 0.2), color, 18, 0.6)
+			_burst(to3(at, land_y(at) + 0.2), color, 18, 0.6)
 			_name_tag(at, note)
 		"sheep":
-			_pop_text(note, self, to3(at, LAND_Y + 0.7), Color(1.0, 0.9, 0.3), 72, 1.6)
-			_burst(to3(at, LAND_Y + 0.3), color, 22, 0.8)
+			_pop_text(note, self, to3(at, land_y(at) + 0.7), Color(1.0, 0.9, 0.3), 72, 1.6)
+			_burst(to3(at, land_y(at) + 0.3), color, 22, 0.8)
 		"bear":
 			_burst(to3(at, WATER_Y + 0.2), color, 34, 1.2)
 		"croc":
@@ -1476,7 +1679,7 @@ func _name_tag(at: Vector2, text: String) -> void:
 	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	l.no_depth_test = true
 	l.pixel_size = 0.004
-	l.position = to3(at, LAND_Y + 0.75)
+	l.position = to3(at, land_y(at) + 0.75)
 	add_child(l)
 	var thing: Node2D = null
 	var best := 6.0
@@ -1825,17 +2028,100 @@ func _cover() -> void:
 				(tufts if str(n.get("kind")) == "grass" else reeds).append(Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(k, k, k)),
 					to3(p, maxf(_height_at(_depth(p, _zones())), WATER_Y))))
 			"plant", "shrub":
+				if _desert:
+					# (the desert's: a dry bush out on the sand, a young palm by the water)
+					var dry := str(n.get("kind")) == "plant"
+					var grown_d: Array = _model_mesh("desert_shrub" if dry else "palm_young")
+					if grown_d.is_empty():
+						continue
+					var tall_d: float = _rng.randf_range(0.6, 1.0) if dry else _rng.randf_range(0.7, 1.1)
+					var kd: float = tall_d / maxf(grown_d[1], 0.01)
+					(_dry_bushes if dry else _young_palms).append(Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(kd, kd, kd)),
+						to3(p, land_y(p))))
+					continue
 				if mesh.is_empty():
 					continue
 				var s: float = _rng.randf_range(0.55, 0.8) / maxf(mesh[1], 0.01)
 				ferns.append(Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(s, s, s)),
 					to3(p, maxf(_height_at(_depth(p, _zones())), WATER_Y))))
+	if _desert:
+		_desert_cover(tufts)
 	if not mesh.is_empty():
 		_scatter(mesh[0], ferns, false, COVER_REACH)
 	if not tuft_mesh.is_empty():
 		_scatter(tuft_mesh[0], tufts, false, COVER_REACH)
 	if not reed_mesh.is_empty():
 		_scatter(reed_mesh[0], reeds, false, COVER_REACH)
+
+
+## User request (the desert: the oasis meeting the desert well; plants of our own): what the 3D
+## view adds on its own - nothing to walk into, only to see. Out on the dunes, tufts of dry grass and
+## dry bushes, few and scattered; in the oasis's green (the ground's paint) green tufts, thick where
+## it's thick, and young palms; more of each toward the water, so the green thins out into the sand
+## rather than stopping. Per DESERT_COVER_AREA m2 of map.
+const DESERT_COVER_AREA := 2400.0
+const DESERT_COVER := {"dry_grass": 26, "dry_bush": 4, "green_tuft": 60, "young_palm": 3}
+var _dry_bushes: Array = []
+var _young_palms: Array = []
+
+
+func _desert_cover(tufts: Array) -> void:
+	if _ground_grid.is_empty():
+		return
+	var rect := _map_rect()
+	var k := rect.size.x * rect.size.y / (PX * PX) / DESERT_COVER_AREA
+	var grass: Array = []
+	var dry_grass := _model_mesh("desert_grass")
+	var dry_bush := _model_mesh("desert_shrub")
+	var young := _model_mesh("palm_young")
+	var tuft := _model_mesh("grass_wispy")
+	var colors: PackedColorArray = _ground_grid[3]
+	var lo: Vector2 = _ground_grid[0]
+	var n: Vector2i = _ground_grid[1]
+	var want := {}
+	for key in DESERT_COVER:
+		want[key] = int(DESERT_COVER[key] * k)
+	var tries := 0
+	while tries < 20000 and (want.dry_grass > 0 or want.dry_bush > 0 or want.green_tuft > 0 or want.young_palm > 0):
+		tries += 1
+		var p := Vector2(_rng.randf_range(rect.position.x + 20.0, rect.end.x - 20.0), _rng.randf_range(rect.position.y + 20.0, rect.end.y - 20.0))
+		if _on_walk(p) or _depth(p, _zones()) > -20.0:
+			continue
+		var m := p / PX
+		var i := clampi(int(roundf((m.x - lo.x) / CELL)), 0, n.x - 1)
+		var j := clampi(int(roundf((m.y - lo.y) / CELL)), 0, n.y - 1)
+		var c: Color = colors[j * n.x + i]
+		var y := land_y(p)
+		var yaw := Basis(Vector3.UP, _rng.randf() * TAU)
+		if c.a > 0.3:
+			# (in the green: tufts, as thick as it is; a young palm now and then)
+			if want.green_tuft > 0 and _rng.randf() < c.a and not tuft.is_empty():
+				var s := _rng.randf_range(0.3, 0.48) / maxf(tuft[1], 0.01)
+				tufts.append(Transform3D(yaw.scaled(Vector3(s, s, s)), to3(p, y)))
+				want.green_tuft -= 1
+			elif want.young_palm > 0 and _rng.randf() < 0.08 and not young.is_empty():
+				var s := _rng.randf_range(0.8, 1.2) / maxf(young[1], 0.01)
+				_young_palms.append(Transform3D(yaw.scaled(Vector3(s, s, s)), to3(p, y)))
+				want.young_palm -= 1
+		elif c.a < 0.05:
+			# (out on the sand: dry grass, a dry bush - sparser up on the dunes than in their hollows)
+			var crest := clampf((y - LAND_Y) / DUNE_H, 0.0, 1.0)
+			if _rng.randf() < crest * 0.7:
+				continue
+			if want.dry_bush > 0 and _rng.randf() < 0.14 and not dry_bush.is_empty():
+				var s := _rng.randf_range(0.55, 1.0) / maxf(dry_bush[1], 0.01)
+				_dry_bushes.append(Transform3D(yaw.scaled(Vector3(s, s, s)), to3(p, y)))
+				want.dry_bush -= 1
+			elif want.dry_grass > 0 and not dry_grass.is_empty():
+				var s := _rng.randf_range(0.35, 0.7) / maxf(dry_grass[1], 0.01)
+				grass.append(Transform3D(yaw.scaled(Vector3(s, s, s)), to3(p, y)))
+				want.dry_grass -= 1
+	if not dry_grass.is_empty():
+		_scatter(dry_grass[0], grass, false, COVER_REACH)
+	if not dry_bush.is_empty():
+		_scatter(dry_bush[0], _dry_bushes, false, COVER_REACH)
+	if not young.is_empty():
+		_scatter(young[0], _young_palms, false, COVER_REACH)
 
 
 var _leaf_mat: StandardMaterial3D
@@ -1929,8 +2215,14 @@ func _faded(mesh: Mesh) -> Mesh:
 	return m
 
 
+## The desert's rocks' tint (their grey picture warmed to sandstone).
+const SANDSTONE := Color(1.45, 1.08, 0.72)
+
+
 ## The proto models that sway in the wind (the ferns and bushes, the shore's grass and reeds).
-const SWAYING := ["fern", "grass_wispy", "tall_grass"]
+const SWAYING := ["fern", "grass_wispy", "tall_grass", "palm_young", "desert_shrub", "desert_grass"]
+## Of those, the desert's: flat cards, their leaves only their picture's (tools/make_desert_plants.py).
+const CUT_OUT := ["palm_young", "desert_shrub", "desert_grass"]
 
 
 func _model_mesh(name: String, wide := false) -> Array:
@@ -1947,6 +2239,13 @@ func _model_mesh(name: String, wide := false) -> Array:
 		if name in SWAYING:
 			# (user request: the plants bend in the wind too - and bear snow on the snowy map)
 			m = Foliage.dress(m, true)
+			if name in CUT_OUT:
+				# (cards cut out by their picture's alpha - imported as blended, which the sway
+				# shader draws whole)
+				for s in m.get_surface_count():
+					var cut := m.surface_get_material(s) as ShaderMaterial
+					cut.set_shader_parameter("scissor", true)
+					cut.set_shader_parameter("scissor_cut", 0.5)
 			if _snow:
 				for s in m.get_surface_count():
 					(m.surface_get_material(s) as ShaderMaterial).set_shader_parameter("cover", 0.85)
@@ -1957,6 +2256,15 @@ func _model_mesh(name: String, wide := false) -> Array:
 				var src := m.surface_get_material(s)
 				if src is StandardMaterial3D:
 					m.surface_set_material(s, _snowed(src as StandardMaterial3D, false))
+		elif _desert and name.begins_with("rock"):
+			# (the desert's rocks sandstone: warm, pale, a little sand settled on them)
+			m = m.duplicate()
+			for s in m.get_surface_count():
+				var src := m.surface_get_material(s)
+				if src is StandardMaterial3D:
+					var warm := (src as StandardMaterial3D).duplicate() as StandardMaterial3D
+					warm.albedo_color = warm.albedo_color * SANDSTONE
+					m.surface_set_material(s, warm)
 		var box := m.get_aabb()
 		found = [m, maxf(box.size.x, box.size.z) if wide else box.size.y]
 		break
@@ -2271,6 +2579,9 @@ func _add_creature(n: Node) -> void:
 	_weather(model, kind)
 	if _snow and WINTER_COAT.has(kind):
 		_winter_coat(model, float(WINTER_COAT[kind]))
+	elif _desert and DESERT_COAT.has(kind):
+		# (the desert's: a pale, sandy coat - a fox of the sands)
+		_winter_coat(model, float(DESERT_COAT[kind]), SAND_COAT)
 	var anim: AnimationPlayer = null
 	var aps := model.find_children("*", "AnimationPlayer", true, false)
 	if not aps.is_empty():
@@ -2607,9 +2918,11 @@ func _fade_creature(c: Dictionary, f: float) -> void:
 ## The snowy map's animals in their winter coats: how white each goes (the fox an arctic fox,
 ## the wolf a white one, the deer only paler).
 const WINTER_COAT := {"fox": 0.88, "wolf": 0.8, "husky": 0.6, "deer": 0.4, "stag": 0.4}
+const DESERT_COAT := {"fox": 0.6, "wolf": 0.45, "deer": 0.3, "stag": 0.3}
+const SAND_COAT := Color(0.86, 0.72, 0.52)
 
 
-func _winter_coat(model: Node3D, share: float) -> void:
+func _winter_coat(model: Node3D, share: float, coat := Color(0.9, 0.92, 0.96)) -> void:
 	for mi in model.find_children("*", "MeshInstance3D", true, false):
 		var m := mi as MeshInstance3D
 		if m.mesh == null:
@@ -2620,7 +2933,7 @@ func _winter_coat(model: Node3D, share: float) -> void:
 				var mat := _snowed(src as StandardMaterial3D, false)
 				mat.set_shader_parameter("cover", 0.0)
 				mat.set_shader_parameter("whiten", share)
-				mat.set_shader_parameter("snow_color", Color(0.9, 0.92, 0.96))
+				mat.set_shader_parameter("snow_color", coat)
 				m.set_surface_override_material(s, mat)
 
 
@@ -3293,7 +3606,7 @@ func _dropped_item(n: Node2D) -> Node3D:
 	var holder := Node3D.new()
 	holder.name = "Item_" + id
 	add_child(holder)
-	holder.position = to3(n.global_position, LAND_Y)
+	holder.position = to3(n.global_position, land_y(n.global_position))
 	holder.rotation.y = _rng.randf() * TAU
 	var path := Items.model_path(id)
 	var scene: PackedScene = load(path) if path != "" and ResourceLoader.exists(path) else null
@@ -5476,7 +5789,8 @@ var _mover_last := {}
 
 
 func _lay_leaves() -> void:
-	if _snow:
+	# (no leaves on the snow or the sand - the desert's blown sand instead: _sand_drift)
+	if _snow or _desert:
 		return
 	var gl := GroundLeaves.new()
 	gl.name = "GroundLeaves"
@@ -5491,6 +5805,26 @@ func _lay_leaves() -> void:
 	add_child(gl)
 	gl.setup(to3(player.global_position, LAND_Y), _leaf_picture())
 	_ground_leaves = gl
+
+
+## The desert's blown sand (SandDrift) round the traveller, in the night's wind; the prints in the
+## sand filled in faster while it blows.
+var _sand: SandDrift
+
+
+func _drift_sand(delta: float) -> void:
+	if _sand == null or delta <= 0.0:
+		return
+	_sand.follow(to3(player.global_position, 0.0))
+	_sand.step(delta, wind, Foliage.WIND_DIR)
+	if _tracks != null:
+		_tracks.fill = 1.0 + 2.5 * _sand.blowing
+
+
+## (the desert's) whether `at` is in the damp sand by the water - a print there crisp and lasting.
+func _wet_sand(at: Vector3) -> bool:
+	var d := _depth(to2(at), _zones())
+	return d < 0.0 and -d < OASIS_WET
 
 
 func _stir_leaves(delta: float) -> void:
@@ -5531,8 +5865,10 @@ func _leaf_movers() -> Array:
 const GRASS_COLORS := {
 	"": [Color(0.12, 0.2, 0.07), Color(0.42, 0.56, 0.2)],
 	"autumn": [Color(0.24, 0.2, 0.09), Color(0.66, 0.56, 0.3)],
+	# (the oasis's: green by the water - only where the ground's green is, its ring)
+	"desert": [Color(0.22, 0.27, 0.11), Color(0.52, 0.56, 0.26)],
 }
-const GRASS_DENSITY := {"": 1.0, "autumn": 0.6}
+const GRASS_DENSITY := {"": 1.0, "autumn": 0.6, "desert": 0.6}
 ## The traveller's reach through the grass (m), its trail's (a step every TRAIL_EVERY s, fading
 ## over TRAIL_LIFE s), and an animal's or a ghost's.
 const GRASS_REACH := 0.55
@@ -5549,7 +5885,7 @@ var _trail_t := 0.0
 func _lay_grass() -> void:
 	if _snow or _ground_grid.is_empty():
 		return
-	var style := "autumn" if _autumn else ""
+	var style := "autumn" if _autumn else ("desert" if _desert else "")
 	var g := GrassField.new()
 	g.name = "Grass"
 	g.grows = _grass_at
@@ -5583,7 +5919,8 @@ func _grass_at(x: float, z: float) -> Vector2:
 		lerpf(heights[(j + 1) * n.x + i], heights[(j + 1) * n.x + i + 1], tx), tz)
 	if y < LAND_Y - 0.02 or _on_walk(Vector2(x, z) * PX):
 		return Vector2(0.0, y)
-	var share := clampf(c.a * 1.6 - 0.2, 0.0, 1.0) * (1.0 - c.b) * (1.0 - c.r) * (1.0 - c.g)
+	# (the desert's r is its dunes' shading, not a path)
+	var share := clampf(c.a * 1.6 - 0.2, 0.0, 1.0) * (1.0 - c.b) * (1.0 if _desert else 1.0 - c.r) * (1.0 - c.g)
 	return Vector2(share, y)
 
 
@@ -5733,6 +6070,11 @@ func _environment() -> void:
 	camera.current = true
 
 
+## (the desert's dusk: its haze's colour and the low sun's)
+const DESERT_HAZE := Color(0.34, 0.24, 0.13)
+const DESERT_DUSK_SUN := Color(1.0, 0.8, 0.56)
+
+
 ## (the snowy map's light: its white ground lit by this much of the forest's ambient and moon, its
 ## haze's light this much - user request: the snow too bright, the lamp no use - at night; then
 ## (user request: at the start too dark to tell it's snow - it should get darker as the night
@@ -5798,6 +6140,14 @@ func _update_light() -> void:
 		_env.fog_light_color = _env.fog_light_color.lerp(Color(0.24, 0.16, 0.08) * NIGHT_DIM, 0.1 + 0.3 * k)
 		_env.ambient_light_color = _env.ambient_light_color.lerp(Color(0.56, 0.46, 0.36), 0.3 * k)
 		_moon.light_color = _moon.light_color.lerp(Color(1.0, 0.88, 0.74), 0.2 * k)
+	if _desert:
+		# (the desert's air: a warm, sandy haze at dusk, the low sun's light gold on the dunes; the
+		# night clear - the haze thinner, so the dunes show further off - and the moon silver-blue
+		# on the sand; the night as dark as the forest's, so the lamp's still what shows the way)
+		_env.fog_light_color = _env.fog_light_color.lerp(DESERT_HAZE * NIGHT_DIM, 0.15 + 0.4 * k)
+		_env.fog_density = lerpf(0.012, 0.016, k)
+		_env.ambient_light_color = _env.ambient_light_color.lerp(Color(0.6, 0.52, 0.42), 0.35 * k)
+		_moon.light_color = _moon.light_color.lerp(DESERT_DUSK_SUN, 0.45 * k)
 	if GameState.dark_fell:
 		# (user request: the camp doused, the whole map black - the lamps all that's left)
 		_env.ambient_light_energy *= DOUSED_DIM
@@ -6330,6 +6680,7 @@ func _process(delta: float) -> void:
 	_settle_shakes(delta)
 	_stir_leaves(delta)
 	_part_grass(delta)
+	_drift_sand(delta)
 	# (the warm-up's fish: a few made each frame - their models and skins in hand)
 	for _i in 4:
 		if _warm_species.is_empty():
@@ -6550,6 +6901,8 @@ uniform sampler2D mud_tex : source_color, filter_linear_mipmap, repeat_enable;
 uniform sampler2D mud_nrm : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform float snow = 0.0;
 uniform float snow_bright = 1.1;
+// (the desert: paint.r the dunes' faces - 0 a lee slope's shade, 1 a windward slope's light - not paths)
+uniform float dunes = 0.0;
 varying vec4 paint;
 void vertex() { paint = COLOR; }
 void fragment() {
@@ -6558,8 +6911,9 @@ void fragment() {
 	vec3 n = mix(texture(grass_nrm, uv).rgb, texture(forest_nrm, uv * 0.9).rgb, paint.a);
 	c = mix(c, texture(mud_tex, uv).rgb * 0.8, paint.b);
 	n = mix(n, texture(mud_nrm, uv).rgb, paint.b);
-	c = mix(c, texture(path_tex, uv * 1.2).rgb, paint.r);
-	n = mix(n, texture(path_nrm, uv * 1.2).rgb, paint.r);
+	c = mix(c, texture(path_tex, uv * 1.2).rgb, paint.r * (1.0 - dunes));
+	n = mix(n, texture(path_nrm, uv * 1.2).rgb, paint.r * (1.0 - dunes));
+	c *= mix(1.0, mix(0.6, 1.14, paint.r), dunes);
 	c = mix(c, texture(stone_tex, uv * 0.8).rgb * 0.6, paint.g);
 	n = mix(n, texture(stone_nrm, uv * 0.8).rgb, paint.g);
 	// snow: the earth's detail kept faintly under it; the shore's mud and the stone paths icy

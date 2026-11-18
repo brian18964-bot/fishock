@@ -17,6 +17,14 @@ const MAX := 256
 ## Seconds a print stays whole, then how long it takes to fade away.
 const HOLD := 14.0
 const FADE := 26.0
+## User request (the desert): prints in the sand too, but not as in the snow - dry sand holds a
+## print loosely and the wind fills it in: shallower, softer-edged, the sand pushed up round it in
+## a loose rim; whole SAND_HOLD s, filled in over SAND_FADE s - sooner when a gust blows (`fill`),
+## its shape blurring as it goes. Down by the water, in the damp sand (`wet`), a print is crisp
+## and dark and lasts WET_HOLD times as long. On a dune's slope it lies along the slope.
+const SAND_HOLD := 6.0
+const SAND_FADE := 12.0
+const WET_HOLD := 2.5
 const LIFT_Y := 0.012
 ## A step: each heel's height (foot lengths over the ground) is kept for the last HISTORY frames;
 ## the foot comes down when its heel falls to within DOWN of the way from its lowest to its
@@ -57,6 +65,18 @@ const SWING_M := 0.02
 static var _soles: Dictionary = {}
 
 var character := ""
+## The sand's prints rather than the snow's (set before it enters the tree), how fast the wind's
+## filling them in now (1 a still night; RunView3D sets it from the gusts), and where the sand is
+## damp (Callable: Vector3 -> bool).
+var sand := false
+var fill := 1.0
+var wet: Callable
+var hold := HOLD
+var fade := FADE
+## A print made: where, and how fast its maker was going (m/s) - the desert kicks up a little sand.
+signal printed(at: Vector3, speed: float)
+## Each print's own pace of ageing (a damp one's slower).
+var _rate := PackedFloat32Array()
 var _mm: MultiMesh
 var _mat: ShaderMaterial
 var _age := PackedFloat32Array()
@@ -89,6 +109,9 @@ var _animal_feet := {}
 func _ready() -> void:
 	name = "SnowTracks"
 	top_level = true
+	if sand:
+		hold = SAND_HOLD
+		fade = SAND_FADE
 	_mm = MultiMesh.new()
 	_mm.transform_format = MultiMesh.TRANSFORM_3D
 	_mm.use_custom_data = true
@@ -98,10 +121,13 @@ func _ready() -> void:
 	_mat.shader = load("res://shaders/footprint.gdshader")
 	_mat.set_shader_parameter("soles", load(SOLES_PNG))
 	_mat.set_shader_parameter("rows", float(ROWS))
+	_mat.set_shader_parameter("sand", sand)
 	quad.material = _mat
 	_mm.mesh = quad
 	_mm.instance_count = MAX
 	_age.resize(MAX)
+	_rate.resize(MAX)
+	_rate.fill(1.0)
 	_deep.resize(MAX)
 	_cell.resize(MAX)
 	spot.resize(MAX)
@@ -178,7 +204,7 @@ func feel(skel: Skeleton3D, ground: Callable, open: Callable, speed: float) -> v
 				if open.call(ankle):
 					var along := Vector2(toe.x - ankle.x, toe.z - ankle.z)
 					if along.length() > 0.0001:
-						_print_foot(sole, side, Vector3(ankle.x, floor_y + LIFT_Y, ankle.z), along.normalized(), length, speed)
+						_print_foot(sole, side, Vector3(ankle.x, floor_y + LIFT_Y, ankle.z), along.normalized(), length, speed, ground)
 		elif h < lo + DOWN * swing:
 			_down[side] = true
 			_landing[side] = true
@@ -186,7 +212,7 @@ func feel(skel: Skeleton3D, ground: Callable, open: Callable, speed: float) -> v
 
 
 ## A print of foot `side` (its ankle at `at`, pointing `fwd` - x, z) `length` long.
-func _print_foot(sole: Dictionary, side: String, at: Vector3, fwd: Vector2, length: float, speed: float) -> void:
+func _print_foot(sole: Dictionary, side: String, at: Vector3, fwd: Vector2, length: float, speed: float, ground := Callable()) -> void:
 	var box: Array = sole.get(side.substr(1), [])
 	if box.size() < 4:
 		return
@@ -205,15 +231,45 @@ func _print_foot(sole: Dictionary, side: String, at: Vector3, fwd: Vector2, leng
 	var i := _next
 	_next = (_next + 1) % MAX
 	_age[i] = 0.0
-	_deep[i] = deep
+	_deep[i] = _sand_depth(i, centre, deep)
 	_cell[i] = Vector2(0.0 if side == "_l" else 1.0, float(sole.row))
 	spot[i] = at
 	toe[i] = fwd
-	_mm.set_instance_transform(i, Transform3D(basis, centre))
-	_mm.set_instance_custom_data(i, Color(1.0, _cell[i].x, _cell[i].y, deep))
+	if sand:
+		# (a print in dry sand spreads wider than the foot - the sand slides in round it)
+		basis = basis.scaled_local(Vector3(1.3, 1.0, 1.15))
+	_mm.set_instance_transform(i, Transform3D(_on_slope(basis, centre, ground), centre))
+	_mm.set_instance_custom_data(i, Color(1.0, _cell[i].x, _cell[i].y, _deep[i]))
 	_claim(i, "player")
 	made += 1
 	steps[side] += 1
+	printed.emit(centre, speed)
+
+
+## (the sand's) print `i`'s depth as stored: a damp one's as minus (the shader draws it crisp and
+## dark), and it ages slower.
+func _sand_depth(i: int, at: Vector3, deep: float) -> float:
+	_rate[i] = 1.0
+	if not sand:
+		return deep
+	if wet.is_valid() and bool(wet.call(at)):
+		_rate[i] = 1.0 / WET_HOLD
+		return -maxf(deep, 0.05)
+	return deep * 0.8
+
+
+## (the sand's) a print's flat quad laid along the ground's slope under it - a dune's side.
+func _on_slope(basis: Basis, at: Vector3, ground: Callable) -> Basis:
+	if not sand or not ground.is_valid():
+		return basis
+	var e := 0.25
+	var hx: float = float(ground.call(at + Vector3(e, 0, 0))) - float(ground.call(at - Vector3(e, 0, 0)))
+	var hz: float = float(ground.call(at + Vector3(0, 0, e))) - float(ground.call(at - Vector3(0, 0, e)))
+	var n := Vector3(-hx, 2.0 * e, -hz).normalized()
+	if n.y > 0.999:
+		return basis
+	var q := Quaternion(Vector3.UP, n)
+	return Basis(q) * basis
 
 
 ## Print `i` is `key`'s now: the walker's oldest past PER_WALKER fades out.
@@ -230,7 +286,7 @@ func _claim(i: int, key) -> void:
 		var old: int = mine.pop_front()
 		_owner_of[old] = null
 		if _age[old] >= 0.0:
-			_age[old] = maxf(_age[old], HOLD + FADE - RETIRE)
+			_age[old] = maxf(_age[old], hold + fade - RETIRE / maxf(_rate[old], 0.01))
 			_tick = 1.0
 
 
@@ -238,7 +294,7 @@ func _claim(i: int, key) -> void:
 func count_of(key) -> int:
 	var n := 0
 	for i in _owned.get(key, []):
-		if left_of(_age[i]) > 0.0:
+		if left(_age[i]) > 0.0:
 			n += 1
 	return n
 
@@ -293,24 +349,24 @@ func feel_animal(key: int, kind: String, skel: Skeleton3D, yaw: float, ground: C
 			elif f.landing and h >= was:
 				f.landing = false
 				if open.call(at):
-					_print_animal(key, Vector3(at.x, floor_y + LIFT_Y, at.z), fwd, float(spec.size), int(row.row), k % 2)
+					_print_animal(key, Vector3(at.x, floor_y + LIFT_Y, at.z), fwd, float(spec.size), int(row.row), k % 2, ground)
 		elif h < lo + DOWN * swing:
 			f.down = true
 			f.landing = true
 
 
-func _print_animal(key: int, at: Vector3, fwd: Vector2, size: float, row: int, col: int) -> void:
+func _print_animal(key: int, at: Vector3, fwd: Vector2, size: float, row: int, col: int, ground := Callable()) -> void:
 	var fwd3 := Vector3(fwd.x, 0.0, fwd.y)
 	var right3 := Vector3(-fwd.y, 0.0, fwd.x)
 	var basis := Basis(right3, Vector3.UP, -fwd3).scaled_local(Vector3(size, 1.0, size))
 	var i := _next
 	_next = (_next + 1) % MAX
 	_age[i] = 0.0
-	_deep[i] = 0.6
+	_deep[i] = _sand_depth(i, at, 0.6)
 	_cell[i] = Vector2(float(col), float(row))
 	spot[i] = at
 	toe[i] = fwd
-	_mm.set_instance_transform(i, Transform3D(basis, at))
+	_mm.set_instance_transform(i, Transform3D(_on_slope(basis, at, ground), at))
 	_mm.set_instance_custom_data(i, Color(1.0, _cell[i].x, _cell[i].y, _deep[i]))
 	_claim(i, key)
 
@@ -327,19 +383,28 @@ static func left_of(age: float) -> float:
 	return clampf(1.0 - (age - HOLD) / FADE, 0.0, 1.0)
 
 
+## How much of a print `age` s old is left, by this ground's hold and fade (the snow's, the sand's).
+func left(age: float) -> float:
+	if age < 0.0:
+		return 0.0
+	return clampf(1.0 - (age - hold) / fade, 0.0, 1.0)
+
+
 ## How many prints are showing.
 func count() -> int:
 	var n := 0
 	for a in _age:
-		if left_of(a) > 0.0:
+		if left(a) > 0.0:
 			n += 1
 	return n
 
 
 func _process(delta: float) -> void:
+	# (the sand's: filled in faster in a gust; a damp print slower)
+	var pace := fill if sand else 1.0
 	for i in MAX:
 		if _age[i] >= 0.0:
-			_age[i] += delta
+			_age[i] += delta * pace * _rate[i]
 	_tick += delta
 	if _tick < 0.25 and delta < 1.0:
 		return
@@ -347,7 +412,7 @@ func _process(delta: float) -> void:
 	for i in MAX:
 		if _age[i] < 0.0:
 			continue
-		var k := left_of(_age[i])
+		var k := left(_age[i])
 		if k <= 0.0:
 			_age[i] = -1.0
 			_mm.set_instance_transform(i, Transform3D(Basis(), Vector3(0, -50.0, 0)))
