@@ -142,7 +142,10 @@ const THEMES := {
 		"tree_families": {"pine": 1.0},
 		"rock_pool": [0, 1, 2],
 		"ground_kinds": {"plant": 1.0},
-		"oasis_trees": 0.85,
+		# (user request: no dead trees in the desert - every tree a palm by the water - and what grows
+		# only near the water: the hide bushes and the ground's plants in "plant_band" round the pools)
+		"oasis_trees": 1.0,
+		"plant_band": [30.0, 420.0],
 		"oasis_band": [24.0, 230.0],
 		"fossils": {"dino": 1, "mammoth": 1, "saguaro": 3, "cholla": 3, "skull": 3},
 		# (one a base map's area - ~3 on the free run's; the user's own desert animals - made ours by
@@ -721,7 +724,10 @@ func _theme_prop(prop: Node) -> void:
 ## map's area holds; the big bones one each): out on the open sand, kept from the water (the bones
 ## and the cacti well away - they're the dry desert's; a skull anywhere off the shore), the start
 ## and the camp, turned any way; before anything else is placed, so they get their room.
-const FOSSIL_SHORE := {"dino": 90.0, "mammoth": 90.0, "saguaro": 260.0, "cholla": 220.0, "skull": 80.0}
+const FOSSIL_SHORE := {"dino": 90.0, "mammoth": 90.0, "saguaro": 120.0, "cholla": 90.0, "skull": 80.0}
+## The cacti are plants: (user request) only near the water - in the oasis's margin, no further out
+## from a shore than this (px).
+const FOSSIL_SHORE_MAX := {"saguaro": 480.0, "cholla": 420.0}
 
 
 func _place_fossils() -> void:
@@ -738,6 +744,8 @@ func _place_fossils() -> void:
 				if pos.distance_to(SPAWN_POS) < reach + PROP_AVOID_SPAWN_RADIUS + 60.0:
 					continue
 				if _shore_distance(pos) < reach + float(FOSSIL_SHORE.get(kind, 90.0)) or _near_walkway(pos, reach + 30.0):
+					continue
+				if FOSSIL_SHORE_MAX.has(kind) and _shore_distance(pos) > float(FOSSIL_SHORE_MAX[kind]):
 					continue
 				if not _fits(pos, reach, 0.0):
 					continue
@@ -758,6 +766,35 @@ func _place_fossils() -> void:
 ## tree's kind and where it goes ((-1, -1): nowhere). The palms' crowns are high over the rod, so
 ## they may stand nearer the bank than the pines' branches.
 var _groves := {}
+
+
+## (a style with "plant_band") a spot near some pool for a plant: out from its shore within the band
+## (px), nearer likelier, clear of what's there ((-1, -1): none found).
+func _by_water(base: float, reach: float) -> Vector2:
+	var band: Array = theme.plant_band
+	var zones := water_zones.filter(func(z): return not z.is_rare())
+	if zones.is_empty():
+		zones = water_zones
+	if zones.is_empty():
+		return _pick_prop_position(base, reach)
+	for _try in 80:
+		var zone: WaterZone = zones.pick_random()
+		var samples: Array = zone.shore_samples(30.0)
+		if samples.is_empty():
+			continue
+		var s: Array = samples.pick_random()
+		var n: Vector2 = s[1]
+		var pos: Vector2 = s[0] + n * lerpf(float(band[0]) + base, float(band[1]), pow(randf(), 1.4)) \
+			+ n.orthogonal() * randf_range(-14.0, 14.0)
+		if not _inside_map(pos, PROP_MARGIN) or pos.distance_to(SPAWN_POS) < PROP_AVOID_SPAWN_RADIUS:
+			continue
+		if _shore_distance(pos) < base + 10.0 or _in_any_water(pos):
+			continue
+		if _near_entrance(pos, ENTRANCE_CLEARANCE) or _near_walkway(pos, 30.0):
+			continue
+		if _fits(pos, base, reach):
+			return pos
+	return Vector2(-1, -1)
 
 
 func _place_tree(tree: MapTree) -> Vector2:
@@ -816,7 +853,8 @@ func _scatter_themed_props() -> void:
 			_theme_prop(prop)
 			var size := _footprint(prop)
 			var at := _place_tree(prop) if prop is MapTree and theme.has("oasis_trees") \
-				else _pick_prop_position(size[0], size[1])
+				else (_by_water(size[0], size[1]) if spec[0] == BUSH_SCENE and theme.has("plant_band")
+				else _pick_prop_position(size[0], size[1]))
 			if at.x < 0.0:
 				prop.free()
 				continue
@@ -920,6 +958,15 @@ func _near_walkway(pos: Vector2, margin: float) -> bool:
 func _scatter_ground_cover() -> void:
 	for _i in range(theme.ground):
 		var pos := Vector2.ZERO
+		if theme.has("plant_band"):
+			pos = _by_water(10.0, 0.0)
+			if pos.x < 0.0:
+				continue
+			var near: Node2D = GROUND_COVER_SCENE.instantiate()
+			near.position = pos
+			near.kind_weights = theme.ground_kinds
+			get_parent().add_child.call_deferred(near)
+			continue
 		for _try in range(15):
 			pos = Vector2(
 				randf_range(PROP_MARGIN, Player.WORLD_WIDTH - PROP_MARGIN),

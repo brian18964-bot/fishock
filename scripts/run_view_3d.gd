@@ -87,7 +87,8 @@ const COVER_REACH := 34.0
 ## tall (their scale), how deep a band out from the edge (m) - and a
 ## little in over it.
 const BORDER_TREES := 520
-const BORDER_TREES_DESERT := 18
+## (user request: no dead trees in the desert - its edge only its tall dunes)
+const BORDER_TREES_DESERT := 0
 const BORDER_SCALE := Vector2(1.7, 2.6)
 const BORDER_DEPTH := 9.0
 const BORDER_IN := 1.2
@@ -2074,6 +2075,10 @@ var _dry_bushes: Array = []
 var _young_palms: Array = []
 
 
+## How far out from the water (px) the desert's dry grass and bushes grow - its oasis's margin.
+const DESERT_PLANT_REACH := 520.0
+
+
 func _desert_cover(tufts: Array) -> void:
 	if _ground_grid.is_empty():
 		return
@@ -2095,6 +2100,9 @@ func _desert_cover(tufts: Array) -> void:
 		tries += 1
 		var p := Vector2(_rng.randf_range(rect.position.x + 20.0, rect.end.x - 20.0), _rng.randf_range(rect.position.y + 20.0, rect.end.y - 20.0))
 		if _on_walk(p) or _depth(p, _zones()) > -20.0:
+			continue
+		# (user request: plants only near the water - none out on the open dunes)
+		if -_depth(p, _zones()) > DESERT_PLANT_REACH:
 			continue
 		var m := p / PX
 		var i := clampi(int(roundf((m.x - lo.x) / CELL)), 0, n.x - 1)

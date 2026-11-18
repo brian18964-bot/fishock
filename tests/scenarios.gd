@@ -10204,7 +10204,7 @@ func test_desert_theme() -> void:
 			dead += 1
 		else:
 			own = false
-	check(own and palms >= 10 and palms > dead * 2, "palms and a few dead trees, nothing else (%d palms, %d dead)" % [palms, dead])
+	check(own and palms >= 10 and dead == 0, "palms only - no dead trees (%d palms, %d dead)" % [palms, dead])
 	check(palms_near >= palms * 0.75, "the palms by the water (%d of %d within the oasis)" % [palms_near, palms])
 	var palm_mat := CampModel._tree_material("palm", "leaves")
 	check(palm_mat.albedo_texture != null and palm_mat.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR, "the palms' fronds (cut out)")
@@ -10268,6 +10268,16 @@ func test_desert_theme() -> void:
 		and int(kinds.get("cholla", 0)) >= 1 and int(kinds.get("skull", 0)) >= 1 and view._fossil_models.size() == bones.size(),
 		"the dinosaur and the mammoth, cacti and skulls, each shown (%s)" % str(kinds))
 	check(dry_ok, "the bones and the cacti out in the dry, away from the water")
+	# (user request: what grows, only near the water - no plants out on the open dunes)
+	var plants_near := true
+	for o in bones:
+		var fo := o as Fossil
+		if MapGenerator.FOSSIL_SHORE_MAX.has(fo.kind) and float(shore_of.call(fo.global_position)) > float(MapGenerator.FOSSIL_SHORE_MAX[fo.kind]) + 1.0:
+			plants_near = false
+	for t in view._dry_bushes:
+		if float(shore_of.call(RunView3D.to2((t as Transform3D).origin))) > RunView3D.DESERT_PLANT_REACH + 30.0:
+			plants_near = false
+	check(plants_near and not view._dry_bushes.is_empty(), "the cacti, the dry bushes and grass all near the water (%d bushes)" % view._dry_bushes.size())
 	check(not view._model_mesh("desert_rock_a").is_empty() and not view._model_mesh("desert_rhazya").is_empty()
 		and view._rock("rock_medium", false).begins_with("desert_rock"), "the desert's own rocks and dry bushes")
 	check(str((gm.get_shader_parameter("stone_tex") as Texture2D).resource_path).contains("cracked_mud"), "cracked clay for the dry hollows")
