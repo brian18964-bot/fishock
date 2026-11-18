@@ -10354,6 +10354,19 @@ func test_desert_theme() -> void:
 			wandering = false
 	check(wandering, "no black spiders about the sand")
 	sc.queue_free()
+	# (vultures circling high over it - their shadows wheeling over the sand round you)
+	var birds: Array = view._vultures
+	var bird_ok := not birds.is_empty()
+	var was := Vector3.ZERO
+	if bird_ok:
+		var bn: Node3D = birds[0].node
+		var ap: AnimationPlayer = birds[0].anim
+		was = bn.global_position
+		bird_ok = ap != null and ap.has_animation("Soar") and ap.has_animation("Flap") \
+			and bn.global_position.y - view.ground_y(RunView3D.to2(bn.global_position)) > RunView3D.VULTURE_HEIGHT.x - 1.0
+		await seconds(0.5)
+		bird_ok = bird_ok and bn.global_position.distance_to(was) > 1.0
+	check(bird_ok, "vultures circling high over the desert, soaring and beating their wings")
 	check(Critter.SPECIES.hyena.has("chase_speed") and float(Critter.SPECIES.camel.flee_speed) == 0.0
 		and float(Critter.SPECIES.iguana.flee_speed) > 0.0 and MapGenerator.THEMES.desert.beast_kin.wolf == "hyena",
 		"the hyena hunts (a level's wolves are hyenas here), the camel pays you no mind, the iguana darts off")

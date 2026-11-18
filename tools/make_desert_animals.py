@@ -879,7 +879,176 @@ def scorpion(pack):
     export("scorpion")
 
 
-MAKERS = {"hyena": hyena, "camel": camel, "iguana": iguana, "scorpion": scorpion}
+# ------------------------------------------------------------------ the vulture
+
+VULTURE_TRIS = 5000
+# The condor of the bird figures (a still figure, wings spread), stood at the origin facing -Y: a rig
+# of our own - its body, head, tail, each wing three bones (to the elbow, the wrist, the tip) - its
+# weights by where along the wing each part is; two clips: soaring (wings held, the hands and the tail
+# trimming the air, VULTURE_SOAR frames) and beating (VULTURE_FLAP frames: the arm sweeping down and
+# up, the hand a beat behind it).
+VULTURE_SOAR = 90
+VULTURE_FLAP = 24
+VULTURE_WING = [("Arm", 0.10, 0.45), ("Forearm", 0.45, 0.85), ("Hand", 0.85, 1.38)]
+
+
+def vulture_plumage(a):
+    """The condor's black made a desert vulture's dusty umber, its pale wing bars buff - its bare head
+    left as it is."""
+    h, s, v = hsv(a)
+    head = (s > 0.35) & ((h < 0.08) | (h > 0.9)) & (v > 0.3)
+    umber = np.array([0.33, 0.24, 0.16], np.float32)
+    buff = np.array([0.82, 0.72, 0.56], np.float32)
+    lit = np.clip(v / 0.75, 0, 1)
+    out = umber * (0.55 + 0.9 * lit[..., None]) * (1.0 - lit[..., None] ** 3) + buff * (lit[..., None] ** 3)
+    out[head] = a[head]
+    return out
+
+
+def vulture(pack):
+    from mathutils import Quaternion
+    fresh()
+    bpy.ops.import_scene.fbx(filepath=find(pack, "bird+collection.fbx"))
+    body = [o for o in bpy.data.objects if o.name.startswith("condor")][0]
+    for o in list(bpy.data.objects):
+        if o != body:
+            bpy.data.objects.remove(o, do_unlink=True)
+    bpy.context.view_layer.objects.active = body
+    body.select_set(True)
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    # (centred on its body, turned to face -Y: the figure faced +Y)
+    vs = [v.co for v in body.data.vertices]
+    cx = (min(v.x for v in vs) + max(v.x for v in vs)) / 2
+    cy = (min(v.y for v in vs) + max(v.y for v in vs)) / 2
+    low = min(v.z for v in vs if abs(v.x - cx) < 0.12)
+    for v in body.data.vertices:
+        v.co = Vector((-(v.co.x - cx), -(v.co.y - cy), v.co.z - low - 0.12))
+    body.data.update()
+    bring_down(body, VULTURE_TRIS)
+    span = max(abs(v.co.x) for v in body.data.vertices)
+    # the rig
+    arm_data = bpy.data.armatures.new("VultureRig")
+    arm = bpy.data.objects.new("VultureRig", arm_data)
+    bpy.context.collection.objects.link(arm)
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.mode_set(mode="EDIT")
+    eb = arm_data.edit_bones
+    root = eb.new("Body")
+    root.head, root.tail = Vector((0, 0.15, 0.1)), Vector((0, -0.2, 0.1))
+    head = eb.new("Head")
+    head.head, head.tail, head.parent = Vector((0, -0.2, 0.12)), Vector((0, -0.42, 0.1)), root
+    tail = eb.new("Tail")
+    tail.head, tail.tail, tail.parent = Vector((0, 0.15, 0.08)), Vector((0, 0.42, 0.06)), root
+
+    def wing_z(f):
+        # (the wings' dihedral: the figure's own, from its vertices near that far out)
+        near = [v.co for v in body.data.vertices if abs(abs(v.co.x) - f * span) < 0.04 and abs(v.co.y) < 0.35]
+        return sum(c.z for c in near) / len(near) if near else 0.1
+
+    for side, sx in (("L", 1.0), ("R", -1.0)):
+        parent = root
+        for name, a, b in VULTURE_WING:
+            bone = eb.new("%s.%s" % (name, side))
+            fa, fb = a / VULTURE_WING[-1][2], b / VULTURE_WING[-1][2]
+            bone.head = Vector((sx * fa * span, 0.0, wing_z(fa)))
+            bone.tail = Vector((sx * fb * span, 0.0, wing_z(min(fb, 0.97))))
+            bone.parent = parent
+            bone.roll = 0.0
+            parent = bone
+    bpy.ops.object.mode_set(mode="OBJECT")
+    # (weights by where each part is: along a wing by how far out, blended over the joints; the body
+    # the middle, the head forward, the tail behind)
+    groups = {b.name: body.vertex_groups.new(name=b.name) for b in arm_data.bones}
+    joints = [0.0] + [b / VULTURE_WING[-1][2] for _n, _a, b in VULTURE_WING]
+    for v in body.data.vertices:
+        x, y = v.co.x, v.co.y
+        f = abs(x) / span
+        side = "L" if x > 0 else "R"
+        w = {}
+        if f < 0.1:
+            k = 1.0 - min(f / 0.1, 1.0)
+            core = "Head" if y < -0.2 else ("Tail" if y > 0.17 else "Body")
+            w[core] = k
+            w["Arm." + side] = 1.0 - k
+        else:
+            for i, (name, a, b) in enumerate(VULTURE_WING):
+                lo_f, hi_f = joints[i] if i else 0.1, joints[i + 1]
+                if lo_f <= f <= hi_f or (i == len(VULTURE_WING) - 1 and f > hi_f):
+                    t = (f - lo_f) / max(hi_f - lo_f, 1e-6)
+                    w["%s.%s" % (name, side)] = 1.0
+                    # (blended into the next bone over the last fifth, and from the one before over the first)
+                    if t > 0.8 and i + 1 < len(VULTURE_WING):
+                        k = (t - 0.8) / 0.4
+                        w["%s.%s" % (name, side)] = 1.0 - k
+                        w["%s.%s" % (VULTURE_WING[i + 1][0], side)] = k
+                    elif t < 0.2 and i > 0:
+                        k = (0.2 - t) / 0.4
+                        w["%s.%s" % (name, side)] = 1.0 - k
+                        w["%s.%s" % (VULTURE_WING[i - 1][0], side)] = k
+                    break
+        for name, wt in w.items():
+            if wt > 0.0:
+                groups[name].add([v.index], wt, "REPLACE")
+    attach(body, arm)
+    # the clips
+    arm.animation_data_create()
+    fwd = Vector((0, -1, 0))
+    for pb in arm.pose.bones:
+        pb.rotation_mode = "QUATERNION"
+
+    def local(name, rot):
+        rest = arm.data.bones[name].matrix_local.to_quaternion()
+        return rest.inverted() @ rot @ rest
+
+    def key_clip(clip, frames, pose):
+        act = bpy.data.actions.new(clip)
+        act.use_fake_user = True
+        act.id_root = "OBJECT"
+        arm.animation_data.action = act
+        for fr in range(frames + 1):
+            t = (fr % frames) / frames
+            for name, rot in pose(t).items():
+                pb = arm.pose.bones[name]
+                pb.rotation_quaternion = local(name, rot)
+                pb.keyframe_insert("rotation_quaternion", frame=fr)
+        arm.animation_data.action = None
+
+    def soar(t):
+        th = 2.0 * math.pi * t
+        out = {"Tail": Quaternion(Vector((0, 0, 1)), math.radians(5.0) * math.sin(th)),
+               "Head": Quaternion(Vector((0, 0, 1)), math.radians(8.0) * math.sin(th + 1.0))}
+        for side, sx in (("L", 1.0), ("R", -1.0)):
+            # (rolled about the body's line: + raises the left wing, lowers the right - so sx)
+            out["Arm." + side] = Quaternion(fwd, sx * math.radians(3.0) * math.sin(th))
+            out["Forearm." + side] = Quaternion(fwd, sx * math.radians(2.0) * math.sin(th - 0.6))
+            out["Hand." + side] = Quaternion(fwd, sx * math.radians(5.0) * math.sin(th - 1.2))
+        return out
+
+    def flap(t):
+        th = 2.0 * math.pi * t
+        out = {"Tail": Quaternion(Vector((1, 0, 0)), math.radians(6.0) * math.sin(th + 0.5)),
+               "Head": Quaternion(Vector((1, 0, 0)), math.radians(4.0) * math.sin(th + 2.0))}
+        for side, sx in (("L", 1.0), ("R", -1.0)):
+            # (deeper down than up - the downstroke does the work)
+            out["Arm." + side] = Quaternion(fwd, sx * math.radians(22.0) * (math.sin(th) - 0.25))
+            out["Forearm." + side] = Quaternion(fwd, sx * math.radians(9.0) * (math.sin(th - 0.7) - 0.2))
+            out["Hand." + side] = Quaternion(fwd, sx * math.radians(12.0) * (math.sin(th - 1.3) - 0.2))
+        return out
+
+    key_clip("Soar", VULTURE_SOAR, soar)
+    key_clip("Flap", VULTURE_FLAP, flap)
+    os.makedirs(TMP, exist_ok=True)
+    tex = None
+    for n in [m_ for m_ in bpy.data.images if m_.name.startswith("condor")]:
+        tex = n
+        break
+    src = find(pack, "condor.tif")
+    feathers = picture(src, os.path.join(TMP, "vulture_plumage.jpg"), 512, vulture_plumage)
+    textured(body, "vulture_plumage", feathers)
+    export("vulture")
+
+
+MAKERS = {"hyena": hyena, "camel": camel, "iguana": iguana, "scorpion": scorpion, "vulture": vulture}
 
 
 def main():

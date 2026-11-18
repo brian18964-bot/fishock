@@ -574,6 +574,7 @@ func _build() -> void:
 		_tracks.character = rig.character if rig != null else Profile.character
 		_tracks.printed.connect(_sand.kick)
 		add_child(_tracks)
+		_sky_birds()
 	_rest_2d_only(main)
 	for n in main.get_children():
 		_scan(n)
@@ -5841,6 +5842,110 @@ func _drift_sand(delta: float) -> void:
 		_tracks.fill = 1.0 + 2.5 * _sand.blowing
 
 
+## User request (the desert's animals, from the user's second batch): vultures - the bird figures'
+## condor, rigged, given its moves and coloured a desert vulture's by tools/make_desert_animals.py -
+## circling high over the desert on the night's air, soaring, now and then beating their wings to
+## climb. Up there they're above the camera's view; what you see is their shadows wheeling over the
+## sand round you - so each circle is set towards the moon from where you are, by its height, and
+## drifts after you, slowly. VULTURE_SPAN wingtip to wingtip; VULTURE_HEIGHT above the ground,
+## VULTURE_RADIUS its circle, VULTURE_SPEED along it (m, m/s), banked VULTURE_BANK into the turn;
+## a few wingbeats (VULTURE_FLAP_FOR s) every VULTURE_FLAP_EVERY s.
+const VULTURES := 2
+const VULTURE_SPAN := 2.6
+const VULTURE_HEIGHT := Vector2(13.0, 19.0)
+const VULTURE_RADIUS := Vector2(6.0, 11.0)
+const VULTURE_SPEED := 7.0
+const VULTURE_BANK := 0.32
+const VULTURE_FLAP_EVERY := Vector2(9.0, 20.0)
+const VULTURE_FLAP_FOR := Vector2(1.6, 3.0)
+## How far from you each circle's middle may wander (m), and how slowly it follows you (/s).
+const VULTURE_ROAM := 3.0
+const VULTURE_FOLLOW := 0.08
+var _vultures: Array = []
+
+
+func _sky_birds() -> void:
+	var path := CREATURE_DIR + "vulture.glb"
+	if not ResourceLoader.exists(path):
+		return
+	var me := to3(player.global_position, 0.0)
+	for i in (1 if low_end() else VULTURES):
+		var holder := Node3D.new()
+		holder.name = "Vulture%d" % i
+		add_child(holder)
+		var model: Node3D = (load(path) as PackedScene).instantiate()
+		holder.add_child(model)
+		var box := _aabb(model)
+		var k := VULTURE_SPAN / maxf(box.size.x, 0.001)
+		model.scale = Vector3.ONE * k
+		model.position = -box.get_center() * k
+		for mi in model.find_children("*", "MeshInstance3D", true, false):
+			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		var anim: AnimationPlayer = null
+		var aps := model.find_children("*", "AnimationPlayer", true, false)
+		if not aps.is_empty():
+			anim = aps[0]
+			for a in anim.get_animation_list():
+				anim.get_animation(a).loop_mode = Animation.LOOP_LINEAR
+			anim.play("Soar")
+			anim.seek(_rng.randf() * 3.0, true)
+		var v := {"node": holder, "anim": anim, "angle": _rng.randf() * TAU, "turn": 1.0 if i % 2 == 0 else -1.0,
+			"radius": _rng.randf_range(VULTURE_RADIUS.x, VULTURE_RADIUS.y),
+			"height": _rng.randf_range(VULTURE_HEIGHT.x, VULTURE_HEIGHT.y),
+			"roam": Vector3(_rng.randf_range(-1.0, 1.0), 0.0, _rng.randf_range(-1.0, 1.0)) * VULTURE_ROAM,
+			"flap": 0.0, "next": _rng.randf_range(VULTURE_FLAP_EVERY.x, VULTURE_FLAP_EVERY.y), "phase": _rng.randf() * TAU}
+		v.centre = _vulture_centre(v, me)
+		_vultures.append(v)
+		_circle_vulture(v, 0.0, me)
+
+
+## Where a vulture's circle centres for its shadow to fall round `me`: towards the moon, by its height.
+func _vulture_centre(v: Dictionary, me: Vector3) -> Vector3:
+	var dir := MOON_DIR.normalized()
+	var reach := float(v.height) / maxf(dir.y, 0.25)
+	return Vector3(me.x + dir.x * reach, 0.0, me.z + dir.z * reach) + (v.roam as Vector3)
+
+
+func _circle_vultures(delta: float) -> void:
+	if _vultures.is_empty() or delta <= 0.0:
+		return
+	var me := to3(player.global_position, 0.0)
+	for v in _vultures:
+		v.centre = (v.centre as Vector3).lerp(_vulture_centre(v, me), 1.0 - exp(-delta * VULTURE_FOLLOW))
+		# (a few wingbeats now and then, climbing a little on them, gliding down slowly after)
+		var anim: AnimationPlayer = v.anim
+		if float(v.flap) > 0.0:
+			v.flap = float(v.flap) - delta
+			v.height = minf(float(v.height) + 0.7 * delta, VULTURE_HEIGHT.y + 3.0)
+			if float(v.flap) <= 0.0 and anim != null:
+				anim.play("Soar", 0.6)
+		else:
+			v.next = float(v.next) - delta
+			v.height = maxf(float(v.height) - 0.15 * delta, VULTURE_HEIGHT.x)
+			if float(v.next) <= 0.0:
+				v.flap = _rng.randf_range(VULTURE_FLAP_FOR.x, VULTURE_FLAP_FOR.y)
+				v.next = _rng.randf_range(VULTURE_FLAP_EVERY.x, VULTURE_FLAP_EVERY.y)
+				if anim != null:
+					anim.play("Flap", 0.4)
+		_circle_vulture(v, delta, me)
+
+
+func _circle_vulture(v: Dictionary, delta: float, _me: Vector3) -> void:
+	var speed := VULTURE_SPEED * (1.15 if float(v.flap) > 0.0 else 1.0)
+	v.angle = float(v.angle) + float(v.turn) * speed / float(v.radius) * delta
+	var a := float(v.angle)
+	var c: Vector3 = v.centre
+	var at := c + Vector3(cos(a), 0.0, sin(a)) * float(v.radius)
+	v.phase = float(v.phase) + delta * 0.5
+	at.y = ground_y(to2(at)) + float(v.height) + 0.5 * sin(float(v.phase))
+	var ahead := Vector3(-sin(a), 0.0, cos(a)) * float(v.turn)
+	var holder: Node3D = v.node
+	holder.position = at
+	# (the model faces +Z: turned to the way it's flying, banked - the inner wing down - into the turn)
+	var b := Basis.looking_at(-ahead, Vector3.UP)
+	holder.basis = b * Basis(Vector3(0, 0, 1), -float(v.turn) * VULTURE_BANK)
+
+
 ## (the desert's) whether `at` is in the damp sand by the water - a print there crisp and lasting.
 func _wet_sand(at: Vector3) -> bool:
 	var d := _depth(to2(at), _zones())
@@ -6701,6 +6806,7 @@ func _process(delta: float) -> void:
 	_stir_leaves(delta)
 	_part_grass(delta)
 	_drift_sand(delta)
+	_circle_vultures(delta)
 	# (the warm-up's fish: a few made each frame - their models and skins in hand)
 	for _i in 4:
 		if _warm_species.is_empty():
