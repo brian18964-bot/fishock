@@ -45,7 +45,7 @@ func hud(on: bool) -> void:
 func begin(intro: bool) -> void:
 	gs = get_tree().root.get_node("GameState")
 	RunView3D.intro = intro
-	seed(5)
+	seed(int(OS.get_environment("SEED")) if OS.get_environment("SEED") != "" else 5)
 	camp().clear()
 	gs.reset_run()
 	gs.last_return = ""

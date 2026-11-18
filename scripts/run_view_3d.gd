@@ -706,10 +706,11 @@ func _dune(p: Vector2, depth: float, out: float) -> float:
 			var spot := main.get_node_or_null(name) as Node2D
 			if spot != null:
 				_dune_clear.append([spot.global_position, 260.0 if name == "FuelStation" else 160.0])
-		# (the dinosaur's bones lie on flat sand)
+		# (the big skeletons lie on flat sand - their drifts too)
 		for bones in get_tree().get_nodes_in_group("fossils"):
-			if (bones as Fossil).big():
-				_dune_clear.append([(bones as Node2D).global_position, Fossil.reach_px((bones as Fossil).kind) + 30.0])
+			var f := bones as Fossil
+			if f.big():
+				_dune_clear.append([f.global_position, maxf(Fossil.reach_px(f.kind), f.sand_reach_px()) + 30.0])
 	var nz := _dune_noise
 	var m := p / PX
 	var w := Foliage.WIND_DIR.normalized()
@@ -774,6 +775,32 @@ func _dune_shade(heights: PackedFloat32Array, colors: PackedColorArray, n: Vecto
 			var c := colors[j * n.x + i]
 			c.r = clampf(0.5 + rise * 1.6, 0.0, 1.0)
 			colors[j * n.x + i] = c
+
+
+## The sand drifted over the bones (user request: each skeleton covered by the sand to its own depth
+## each game - Fossil.drift): each drift's heap added to the ground round it, sand there (no cracked
+## clay on it).
+func _drifts(lo: Vector2, n: Vector2i, heights: PackedFloat32Array, colors: PackedColorArray) -> void:
+	for bones in get_tree().get_nodes_in_group("fossils"):
+		var f := bones as Fossil
+		var reach := f.sand_reach_px()
+		if reach <= 0.0:
+			continue
+		var c := f.drift_centre()
+		var r := (reach - c.distance_to(f.global_position)) / PX
+		var i0 := clampi(floori((c.x / PX - r - lo.x) / CELL), 0, n.x - 1)
+		var i1 := clampi(ceili((c.x / PX + r - lo.x) / CELL), 0, n.x - 1)
+		var j0 := clampi(floori((c.y / PX - r - lo.y) / CELL), 0, n.y - 1)
+		var j1 := clampi(ceili((c.y / PX + r - lo.y) / CELL), 0, n.y - 1)
+		for j in range(j0, j1 + 1):
+			for i in range(i0, i1 + 1):
+				var heap := f.sand_at(Vector2(lo.x + i * CELL, lo.y + j * CELL) * PX)
+				if heap <= 0.0:
+					continue
+				heights[j * n.x + i] += heap
+				var paint := colors[j * n.x + i]
+				paint.g *= 1.0 - smoothstep(0.02, 0.12, heap)
+				colors[j * n.x + i] = paint
 
 
 ## How deep under the shore `p` is (2D px, + in the water) - the nearest pond's, however far (the
@@ -859,6 +886,7 @@ func _ground() -> void:
 			heights[j * n.x + i] = y
 			colors[j * n.x + i] = Color(0.0, 0.0, mud, 1.0 - forest)
 	if _desert:
+		_drifts(lo, n, heights, colors)
 		_dune_shade(heights, colors, n)
 	var sh := Shader.new()
 	sh.code = GROUND_SHADER
@@ -1191,7 +1219,8 @@ func _trees_and_rocks() -> void:
 		var model := scene.instantiate() as Node3D
 		model.name = "FossilModel"
 		var at := (bones as Node2D).global_position
-		model.position = to3(at, land_y(at))
+		# (as deep in the sand as this game has it: the ground under it less its drift, less its sink)
+		model.position = to3(at, land_y(at) - (bones as Fossil).sand_at(at) - (bones as Fossil).sink())
 		model.rotation.y = float(bones.get("yaw"))
 		for mi in model.find_children("*", "MeshInstance3D", true, false):
 			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if _low else GeometryInstance3D.SHADOW_CASTING_SETTING_ON

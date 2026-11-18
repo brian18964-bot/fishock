@@ -10255,19 +10255,63 @@ func test_desert_theme() -> void:
 	# The bones, the cacti and the skulls: out on the open sand, each its model, solid.
 	var bones := get_tree().get_nodes_in_group("fossils")
 	var kinds := {}
-	var dino: Fossil = null
 	var dry_ok := true
 	for o in bones:
 		var fo := o as Fossil
 		kinds[fo.kind] = int(kinds.get(fo.kind, 0)) + 1
-		if fo.kind == "dino":
-			dino = fo
 		if fo.kind != "skull" and float(shore_of.call(fo.global_position)) < Fossil.reach_px(fo.kind) + 80.0:
 			dry_ok = false
-	check(int(kinds.get("dino", 0)) == 1 and int(kinds.get("mammoth", 0)) == 1 and int(kinds.get("saguaro", 0)) >= 1
+	# (the big skeletons - the dinosaur, the mammoth, the user's elephant, crocodile and big cat - a
+	# few of them each game, one of a kind at most)
+	var bigs := 0
+	var one_each := true
+	for k in Fossil.BIG:
+		bigs += int(kinds.get(k, 0))
+		one_each = one_each and int(kinds.get(k, 0)) <= 1
+	var want_bigs := clampi(roundi(float(MapGenerator.THEMES["desert"]["big_fossils"]) * Campaign.area_share()), 1, Fossil.BIG.size())
+	check(bigs == want_bigs and one_each and int(kinds.get("saguaro", 0)) >= 1
 		and int(kinds.get("cholla", 0)) >= 1 and int(kinds.get("skull", 0)) >= 1 and view._fossil_models.size() == bones.size(),
-		"the dinosaur and the mammoth, cacti and skulls, each shown (%s)" % str(kinds))
+		"%d of the big skeletons, cacti and skulls, each shown (%s)" % [want_bigs, str(kinds)])
 	check(dry_ok, "the bones and the cacti out in the dry, away from the water")
+	for k in ["elephant", "crocodile", "wildcat"]:
+		check(ResourceLoader.exists(Fossil.model_of(k)) and (Fossil.info(k).get("circles", []) as Array).size() > 5
+			and ((Fossil.info(k)["circles"] as Array)[0] as Array).size() == 4, "the user's %s bones made ours - its model, its ground and how high it reaches" % k)
+	# (user request: the bones lie in the sand, each game covered to its own depth) - lying: low for
+	# their length; sunk as deep as this game has them, the drift heaped over them in the ground, and
+	# what the sand hides walked over, not in the way
+	var lying := true
+	for k in ["mammoth", "elephant", "crocodile", "wildcat", "dino"]:
+		var size: Array = Fossil.info(k)["size"]
+		lying = lying and float(size[2]) < float(size[1]) * 0.4
+	check(lying, "the skeletons lie on the sand, none standing")
+	var buries := {}
+	var sunk_ok := true
+	var hidden_ok := true
+	var drift_ok := true
+	var drifts := 0
+	for i in bones.size():
+		var fo := bones[i] as Fossil
+		var model := view._fossil_models[i] as Node3D
+		if fo.kind in Fossil.BONES:
+			buries[snappedf(fo.bury, 0.01)] = true
+		else:
+			sunk_ok = sunk_ok and fo.bury == 0.0 and fo.drift.w == 0.0
+		var base := view.land_y(fo.global_position) - fo.sand_at(fo.global_position)
+		sunk_ok = sunk_ok and absf(model.position.y - (base - fo.sink())) < 0.01 and fo.sink() <= Fossil.SINK * float(Fossil.info(fo.kind)["size"][2]) + 0.001
+		var shown := 0
+		for c in Fossil.info(fo.kind).get("circles", []):
+			var at: Vector2 = fo.global_position + Fossil.offset(float(c[0]), float(c[1]), fo.yaw)
+			if (c as Array).size() < 4 or float(c[3]) - fo.sink() - fo.sand_at(at) >= Fossil.CLEAR:
+				shown += 1
+		hidden_ok = hidden_ok and fo.solids().size() == shown
+		if fo.drift.w > 0.0:
+			drifts += 1
+			var top := view.ground_y(fo.drift_centre())
+			drift_ok = drift_ok and absf(top - (base + fo.drift.w)) < 0.06
+	check(sunk_ok, "each skeleton sunk in the sand as deep as this game has it (the cacti standing on it)")
+	check(buries.size() >= mini(3, bones.size() - int(kinds.get("saguaro", 0)) - int(kinds.get("cholla", 0))), "each covered to its own depth (%d depths)" % buries.size())
+	check(drifts > 0 and drift_ok, "the sand drifted over some of them - the ground heaped there (%d)" % drifts)
+	check(hidden_ok, "what the sand hides isn't in the way; what stands out of it is")
 	# (user request: what grows, only near the water - no plants out on the open dunes)
 	var plants_near := true
 	for o in bones:
@@ -10281,20 +10325,31 @@ func test_desert_theme() -> void:
 	check(not view._model_mesh("desert_rock_a").is_empty() and not view._model_mesh("desert_rhazya").is_empty()
 		and view._rock("rock_medium", false).begins_with("desert_rock"), "the desert's own rocks and dry bushes")
 	check(str((gm.get_shader_parameter("stone_tex") as Texture2D).resource_path).contains("cracked_mud"), "cracked clay for the dry hollows")
-	if dino != null:
-		var f := dino
-		check(float(shore_of.call(f.global_position)) > Fossil.reach_px(), "well away from the water")
+	# (walked at the bones that stand out of the sand the most: stopped by them)
+	var most: Fossil = null
+	for o in bones:
+		var fo := o as Fossil
+		if fo.big() and (most == null or fo.solids().size() > most.solids().size()):
+			most = fo
+	if most != null and not most.solids().is_empty():
+		var f := most
+		var aim: Vector2 = f.solids()[0][0]
+		for b in f.solids():
+			if (b[0] as Vector2).distance_to(f.global_position) < aim.distance_to(f.global_position):
+				aim = b[0]
+		check(float(shore_of.call(f.global_position)) > Fossil.reach_px(f.kind), "well away from the water")
 		var p := player()
-		await put(f.global_position + Vector2(0, 320))
-		p._move_joystick.output = Vector2.UP
+		var from := aim + Vector2(0, Fossil.reach_px(f.kind) + 120.0)
+		await put(from)
+		p._move_joystick.output = (aim - from).normalized()
 		await frames(200)
 		p._move_joystick.output = Vector2.ZERO
 		var inside := false
 		for b in f.solids():
 			if p.global_position.distance_to(b[0]) < (b[1] as Vector2).x - 2.0:
 				inside = true
-		check(not inside and p.global_position.distance_to(f.global_position) > 20.0, "walked at it: stopped by its bones, not through them")
-		await put(f.global_position + Vector2(0, 600))
+		check(not inside and p.global_position.distance_to(aim) > 8.0, "walked at it: stopped by its bones, not through them (%s)" % f.kind)
+		await put(f.global_position + Vector2(0, Fossil.reach_px(f.kind) + 400.0))
 	# Prints in the sand: the sand's (soon filled in), damp ones by the water lasting longer.
 	var t: SnowTracks = view._tracks
 	check(t != null and t.sand and t.hold == SnowTracks.SAND_HOLD and t.hold < SnowTracks.HOLD, "prints in the sand - the sand's, not the snow's")

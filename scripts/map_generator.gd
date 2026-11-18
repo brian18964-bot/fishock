@@ -147,7 +147,11 @@ const THEMES := {
 		"oasis_trees": 1.0,
 		"plant_band": [30.0, 420.0],
 		"oasis_band": [24.0, 230.0],
-		"fossils": {"dino": 1, "mammoth": 1, "saguaro": 3, "cholla": 3, "skull": 3},
+		# (the big skeletons - the dinosaur, the mammoth and the user's second batch's elephant, crocodile
+		# and big cat - "big_fossils" of them a base map's area, which drawn anew each game; each
+		# covered by the sand to its own depth: Fossil.cover)
+		"fossils": {"dino": 1, "mammoth": 1, "elephant": 1, "crocodile": 1, "wildcat": 1, "saguaro": 3, "cholla": 3, "skull": 3},
+		"big_fossils": 3,
 		# (one a base map's area - ~3 on the free run's; the user's own desert animals - made ours by
 		# tools/make_desert_animals.py: a camel about the oasis, an iguana basking, the hyena hunting
 		# as the wolf does elsewhere, now and then the sandy fox)
@@ -724,7 +728,8 @@ func _theme_prop(prop: Node) -> void:
 ## map's area holds; the big bones one each): out on the open sand, kept from the water (the bones
 ## and the cacti well away - they're the dry desert's; a skull anywhere off the shore), the start
 ## and the camp, turned any way; before anything else is placed, so they get their room.
-const FOSSIL_SHORE := {"dino": 90.0, "mammoth": 90.0, "saguaro": 120.0, "cholla": 90.0, "skull": 80.0}
+const FOSSIL_SHORE := {"dino": 90.0, "mammoth": 90.0, "elephant": 90.0, "crocodile": 70.0, "wildcat": 80.0,
+	"saguaro": 120.0, "cholla": 90.0, "skull": 80.0}
 ## The cacti are plants: (user request) only near the water - in the oasis's margin, no further out
 ## from a shore than this (px).
 const FOSSIL_SHORE_MAX := {"saguaro": 480.0, "cholla": 420.0}
@@ -734,7 +739,16 @@ func _place_fossils() -> void:
 	var want: Dictionary = theme.get("fossils", {})
 	var share := Campaign.area_share()
 	var made := 0
+	# (which of the big skeletons this game: "big_fossils" of them a base map's area, drawn anew)
+	var bigs := []
 	for kind in want:
+		if kind in Fossil.BIG:
+			bigs.append(kind)
+	bigs.shuffle()
+	bigs = bigs.slice(0, clampi(roundi(float(theme.get("big_fossils", bigs.size())) * share), mini(1, bigs.size()), bigs.size()))
+	for kind in want:
+		if kind in Fossil.BIG and not kind in bigs:
+			continue
 		var count := int(want[kind]) if kind in Fossil.BIG else maxi(1, int(roundf(float(want[kind]) * share)))
 		var reach := Fossil.reach_px(kind)
 		for _i in count:
@@ -754,6 +768,7 @@ func _place_fossils() -> void:
 				bones.kind = kind
 				bones.yaw = randf() * TAU
 				bones.position = pos
+				bones.cover()
 				made += 1
 				_taken.append([pos, reach * (0.9 if kind in Fossil.BIG else 1.0), 0.0])
 				get_parent().add_child.call_deferred(bones)
