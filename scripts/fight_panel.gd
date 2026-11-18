@@ -821,7 +821,10 @@ func _draw_over() -> void:
 			words = "放手！"
 		"bite":
 			var player := _player()
-			if player != null:
+			if player != null and player.state != Player.State.BITE:
+				# (the picture's lingering after the strike: it's set - not still asking for it)
+				words = "上鉤了！" if player.state == Player.State.REELING else ""
+			elif player != null:
 				answer = to_frame(player.strike_dir.normalized())
 				var total: float = float(player.tier_data.get("bite_window", 1.0)) * Player.LURE_STRIKE_TIME
 				left = clampf(player.bite_timer / maxf(total, 0.01), 0.0, 1.0)

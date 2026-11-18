@@ -1942,6 +1942,11 @@ var rod_vec := Vector2.ZERO
 var _rod_serial := -1
 var _rod_wrong := 0.0
 var _rod_released := false
+## User request (the lure's strike, smooth): the stick already pushed when a lure's bite
+## comes (walking, retrieving on the move) doesn't strike the way it happened to point -
+## it counts once let go of or turned off that way (ROD_FRESH_DOT); stood still meanwhile.
+const ROD_FRESH_DOT := 0.9
+var _rod_stale := Vector2.ZERO
 
 
 ## The left stick's push, or the keys' (full), whichever is held.
@@ -1970,15 +1975,24 @@ func _update_rod(delta: float) -> void:
 	elif state == State.BITE and fishing_mode == FishingMode.LURE and strike_dir != Vector2.ZERO:
 		asked = FightPanel.to_frame(strike_dir.normalized())
 		serial = -2
+	var stick := _rod_input()
 	if serial != _rod_serial:
 		_rod_serial = serial
 		_rod_wrong = 0.0
 		_rod_released = false
+		_rod_stale = stick if serial == -2 and stick.length() >= 0.5 else Vector2.ZERO
 	if asked == Vector2.ZERO:
 		rod_mode = false
 		rod_vec = Vector2.ZERO
 		return
-	var stick := _rod_input()
+	if _rod_stale != Vector2.ZERO:
+		# (held on from before the bite: not a strike till it's let go or turned)
+		if stick.length() < 0.3 or stick.normalized().dot(_rod_stale.normalized()) < ROD_FRESH_DOT:
+			_rod_stale = Vector2.ZERO
+		else:
+			rod_mode = true
+			rod_vec = Vector2.ZERO
+			return
 	if not _rod_released:
 		if stick.length() >= 0.5 and stick.normalized().dot(asked.normalized()) < ROD_WRONG_DOT:
 			_rod_wrong += delta

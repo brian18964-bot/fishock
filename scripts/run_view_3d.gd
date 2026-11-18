@@ -52,6 +52,13 @@ const MARGIN := 14.0
 ## stepping quicker.
 const WALK_PACE := 0.8
 const RUN_PACE := 3.0
+## User report (the bear, the stick pushed right over: its arms and legs went
+## far too quick - stiff): the run played no faster than this. The short-legged
+## ones (the bears, the cat, the owl, the chihuahua: strides 0.6~0.7 m) had it
+## at 1.6~1.8 at full speed, 2.4~2.75 steps a second; the sheep's 1.38 (2.1
+## steps a second) is the one that looked right - the rest keep that, their
+## feet a touch behind the ground going by rather than scrabbling.
+const RUN_RATE_MAX := 1.4
 const TURN_RATE := 14.0
 ## Trees between the camera and the traveller: dithered out this close to
 ## the camera (m).
@@ -3753,7 +3760,7 @@ func _pick_clip() -> Array:
 				return ["Fish_Back", clampf(speed / _walk_pace() * 0.7, 0.4, 1.4), -1.0]
 			if speed * PX < PlayerVisual.WALK_MAX:
 				return ["Walk", clampf(speed / _walk_pace(), 0.4, 2.4), -1.0]
-			return ["Run", clampf(speed / (RUN_PACE * _walk_pace() / WALK_PACE), 0.6, 2.0), -1.0]
+			return ["Run", clampf(speed / (RUN_PACE * _walk_pace() / WALK_PACE), 0.6, RUN_RATE_MAX), -1.0]
 		PlayerVisual.CLIP_CAST, PlayerVisual.CLIP_CAST_SHORT:
 			# Wound back with the charge (frames 0-3), the whip (4-7).
 			# (smoothly between the sheet's frames - v.cast_f)

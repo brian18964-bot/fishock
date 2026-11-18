@@ -2578,6 +2578,33 @@ func test_lure_strike_direction() -> void:
 	check(player().state == Player.State.REELING and player().fight.stamina() <= 0.9 + 0.001,
 		"struck true: on, %.0f%% stamina" % (player().fight.stamina() * 100.0))
 	player()._set_state(Player.State.IDLE)
+	player().fight = null
+	# (user request, a smooth strike: the left stick already pushed when the bite comes - walking -
+	# doesn't strike the way it happened to point; let go and pushed the way shown, it does)
+	var walk_stick: TouchJoystick = player()._move_joystick
+	player().cast_target = player().global_position + Vector2(0, -150)
+	player()._start_bite()
+	var way := FightPanel.to_frame(player().strike_dir.normalized())
+	walk_stick.output = -way
+	walk_stick.is_pressed = true
+	player()._rod_serial = -1
+	for _i in 20:
+		walk_stick.output = -way
+		await frames(1)
+	check(player().state == Player.State.BITE, "the stick held on from before the bite: no strike yet (%d)" % player().state)
+	walk_stick.output = Vector2.ZERO
+	walk_stick.is_pressed = false
+	await frames(2)
+	walk_stick.is_pressed = true
+	for _i in 14:
+		walk_stick.output = way
+		await frames(1)
+	walk_stick.output = Vector2.ZERO
+	walk_stick.is_pressed = false
+	check(player().state == Player.State.REELING and player().strike_off >= 0.0 and player().strike_off < 20.0,
+		"let go, then pushed the way shown: struck true (%d, %.0f deg)" % [player().state, player().strike_off])
+	player()._set_state(Player.State.IDLE)
+	player().fight = null
 	# Off by more: the chance it's on, each tier.
 	for case in [[30.0, 0.8], [60.0, 0.7], [150.0, 0.6]]:
 		var on := 0
