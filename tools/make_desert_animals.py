@@ -258,6 +258,41 @@ def bake_down(hi, lo, out_color, out_normal, size, normal_size, grade=None):
     return results
 
 
+def smooth_weights(body, factor, repeat):
+    """Each vertex's weights eased toward its neighbours' (`repeat` times, by `factor`), then summed
+    to one again."""
+    me = body.data
+    n = len(me.vertices)
+    near = [[] for _ in range(n)]
+    for e in me.edges:
+        a, b = e.vertices
+        near[a].append(b)
+        near[b].append(a)
+    names = [g.name for g in body.vertex_groups]
+    w = [{g.group: g.weight for g in v.groups} for v in me.vertices]
+    for _ in range(repeat):
+        out = []
+        for i in range(n):
+            if not near[i]:
+                out.append(w[i])
+                continue
+            avg = {}
+            for j in near[i]:
+                for k, x in w[j].items():
+                    avg[k] = avg.get(k, 0.0) + x / len(near[i])
+            mix = {}
+            for k in set(w[i]) | set(avg):
+                mix[k] = w[i].get(k, 0.0) * (1.0 - factor) + avg.get(k, 0.0) * factor
+            total = sum(mix.values())
+            out.append({k: x / total for k, x in mix.items() if x / max(total, 1e-9) > 0.002} if total > 0 else w[i])
+        w = out
+    for g in body.vertex_groups:
+        g.remove(list(range(n)))
+    for i in range(n):
+        for k, x in w[i].items():
+            body.vertex_groups[names[k]].add([i], x, "REPLACE")
+
+
 def keep_actions(names):
     """Only these actions (source name -> game clip), renamed; nothing left playing, so each is
     exported as a clip of its own."""
@@ -497,10 +532,85 @@ CAMEL_REACH = {
 CAMEL_HOOVES = [("HoofFront", "FrontLowerLeg", (0.16, -0.21, 0.04)), ("HoofBack", "BackLowerLeg", (0.28, 0.94, 0.04))]
 
 
+# The shaggy fur on a Bactrian camel's upper forelegs hangs a hand's breadth off the bone: below the
+# elbow (CAMEL_FUR_Z m up) and within CAMEL_FUR_REACH of the upper leg, all of it goes with its leg -
+# shared with the body it stretched into flat slabs as the leg swung (user report: "two pieces on its
+# forelegs") - blended back into the body over CAMEL_FUR_BLEND above that.
+CAMEL_FUR_Z = 1.28
+CAMEL_FUR_BLEND = 0.12
+CAMEL_FUR_REACH = 0.55
+CAMEL_FUR_KNEE = 0.8
+
+
+def fur_with_leg(body, rig):
+    from mathutils.geometry import intersect_point_line
+    groups = {g.index: g.name for g in body.vertex_groups}
+    mw = body.matrix_world
+    for side in ("L", "R"):
+        up_name, low_name = "FrontUpperLeg." + side, "FrontLowerLeg." + side
+        b = rig.data.bones[up_name]
+        a, c = rig.matrix_world @ b.head_local, rig.matrix_world @ b.tail_local
+        g_up = body.vertex_groups[up_name]
+        for v in body.data.vertices:
+            p = mw @ v.co
+            if (p.x > 0.0) != (side == "L") or abs(p.x) < 0.02 or p.z > CAMEL_FUR_Z + CAMEL_FUR_BLEND:
+                continue
+            q, t = intersect_point_line(p, a, c)
+            t = min(max(t, 0.0), 1.0)
+            if (p - (a + (c - a) * t)).length > CAMEL_FUR_REACH:
+                continue
+            low = 0.0
+            others = {}
+            for g in v.groups:
+                name = groups[g.group]
+                if name == low_name:
+                    low = g.weight
+                elif name != up_name:
+                    others[name] = g.weight
+            k = 1.0 - min(max((p.z - CAMEL_FUR_Z) / CAMEL_FUR_BLEND, 0.0), 1.0)
+            if k <= 0.0:
+                continue
+            # (the fur hangs well above the knee: none of it goes with the lower leg - a folding knee
+            # pulled its foot out to a point)
+            low *= min(max((CAMEL_FUR_KNEE - p.z) / 0.12, 0.0), 1.0)
+            body.vertex_groups[low_name].add([v.index], low, "REPLACE")
+            keep = 1.0 - k
+            for name, w in others.items():
+                body.vertex_groups[name].add([v.index], w * keep, "REPLACE")
+            leg_share = 1.0 - low - sum(w * keep for w in others.values())
+            g_up.add([v.index], max(leg_share, 0.0), "REPLACE")
+
+
 def camel_coat(a):
     """Its coat a touch paler and drier - sun on the sands."""
     h, s, v = hsv(a)
     return from_hsv(h, s * 0.88, np.clip(v * 1.07 + 0.015, 0, 1))
+
+
+CAMEL_FORELEG_SWING = 0.6
+
+
+def calm_forelegs(act, factor):
+    """A camel's forelegs swing less than the alpaca's from the shoulder and elbow (the alpaca's swing
+    flung the heavy fur on its forearms out): those bones' turns each frame eased toward rest."""
+    from mathutils import Quaternion
+    bones = ["FrontShoulder.L", "FrontShoulder.R", "FrontUpperLeg.L", "FrontUpperLeg.R"]
+    for b in bones:
+        path = 'pose.bones["%s"].rotation_quaternion' % b
+        fcs = [fc for fc in act.fcurves if fc.data_path == path]
+        if len(fcs) != 4:
+            continue
+        fcs.sort(key=lambda fc: fc.array_index)
+        frames = sorted({round(kp.co.x, 3) for fc in fcs for kp in fc.keyframe_points})
+        values = []
+        for f in frames:
+            q = Quaternion([fc.evaluate(f) for fc in fcs])
+            values.append(Quaternion((1, 0, 0, 0)).slerp(q.normalized(), factor))
+        for i, fc in enumerate(fcs):
+            fc.keyframe_points.clear()
+            for f, q in zip(frames, values):
+                fc.keyframe_points.insert(f, q[i], options={"FAST"})
+            fc.update()
 
 
 def camel_pace(arm, act):
@@ -610,6 +720,7 @@ def camel(pack):
     bpy.ops.object.mode_set(mode="OBJECT")
     for b in arm.data.bones:
         b.use_deform = not b.name.startswith(CAMEL_NO_DEFORM)
+    calm_forelegs(clips["Walk"], CAMEL_FORELEG_SWING)
     camel_pace(arm, clips["Walk"])
     # (skinned to it by the bones' reach - its deforming bones only, worked out on bones that reach
     # from joint to joint, each leg its own side's)
@@ -622,6 +733,11 @@ def camel(pack):
     own_side(body, ("Front", "Back", "Ear"))
     keep_near(body, rig, ("Front", "BackLeg", "BackUpper", "BackLower"), 0.24,
               ["Back", "Torso", "Torso2", "Torso3", "Neck1"])
+    fur_with_leg(body, rig)
+    # (no hard edges between one bone's skin and the next: the weights smoothed a little)
+    bpy.ops.object.select_all(action="DESELECT")
+    body.select_set(True)
+    smooth_weights(body, 0.5, 3)
     attach(body, arm)
     bpy.data.objects.remove(rig, do_unlink=True)
     tall = height([body])
