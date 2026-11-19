@@ -153,7 +153,7 @@ const TESTS := [
 	"test_locks",
 	"test_locks_everywhere",
 	"test_altar_fish_detail",
-	"test_critters_leave_edge_trees", "test_animals_go_round",
+	"test_critters_leave_edge_trees", "test_animals_go_round", "test_birds",
 	"test_water_ghost",
 	"test_willow_talk",
 	"test_altar_corrosion",
@@ -4767,6 +4767,78 @@ func test_animals_go_round() -> void:
 	check(inside == 0, "nowhere picked to wander to is inside anything (%d)" % inside)
 	camel.queue_free()
 	fox.queue_free()
+
+
+## User request: small birds that really fly - up out of a tree when it's chopped, out of a bush as
+## someone goes by, in flocks across what the traveller sees when the dragon comes; and a bird of
+## prey circling high over each map, its shadow wheeling (the desert's vultures, a hawk or an eagle).
+func test_birds() -> void:
+	var view: RunView3D = null
+	for _i in 300:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	check(view != null and view._flock != null and not view._flock._idle.is_empty(), "small birds ready, made once")
+	if view == null or view._flock == null:
+		return
+	var f: Flock = view._flock
+	var pool := f._idle.size()
+	check(ResourceLoader.exists(Flock.MODEL) and pool >= Flock.POOL_LOW, "the songbird made ours, %d of them" % pool)
+	var sky: Array = RunView3D.SKY_BIRDS[view.map_style()]
+	var circling := "-"
+	if not view._vultures.is_empty():
+		circling = str((view._vultures[0].node as Node3D).get_child(0).scene_file_path)
+	check(circling.ends_with(str(sky[0]) + ".glb"), "a %s circling over this map (%s)" % [sky[0], circling])
+	# a tree chopped: its birds fly, away from the blow, and come back down nowhere - gone off
+	var tree_pair = null
+	for pair in view._trees:
+		if f.has_birds(pair[0], Flock.PERCH_TREES):
+			tree_pair = pair
+			break
+	check(tree_pair != null, "(a tree with birds in it)")
+	if tree_pair != null:
+		var tree: MapTree = tree_pair[0]
+		var before := f._live.size()
+		tree.chopped_by.emit(tree.global_position + Vector2(40, 0))
+		await frames(30)
+		check(f._live.size() > before and not f.has_birds(tree, Flock.PERCH_TREES), "chopped: its birds up (%d)" % (f._live.size() - before))
+		var hi := 0.0
+		for b in f._live:
+			hi = maxf(hi, (b.node as Node3D).global_position.y)
+		var away := true
+		for b in f._live:
+			away = away and (b.node as Node3D).global_position.x > (tree_pair[1] as Node3D).global_position.x - 2.0
+		check(away, "flown away from the blow")
+		await seconds(Flock.LIFE + 0.5)
+		check(f._live.is_empty() and f._idle.size() == pool, "gone off, and ready again")
+	# the dragon comes: flocks across what the traveller sees
+	f.dragon_came()
+	await seconds(1.8)
+	var seen := 0
+	for b in f._live:
+		if (b.node as Node3D).visible and view.camera.is_position_in_frustum((b.node as Node3D).global_position):
+			seen += 1
+	check(f._live.size() >= 8 and seen >= 1, "the dragon comes: %d birds up, %d crossing what you see" % [f._live.size(), seen])
+	await seconds(Flock.LIFE + 0.5)
+	# going past a bush with birds in it
+	var bush: Node2D = null
+	for n in main.get_children():
+		if RunView3D._script_name(n) == "bush.gd" and f.has_birds(n, Flock.PERCH_BUSHES):
+			bush = n
+			break
+	if bush != null:
+		var p := player()
+		await put(bush.global_position + Vector2(0, 90))
+		p._move_joystick.output = Vector2.UP
+		p._move_joystick.is_pressed = true
+		for _i in 90:
+			await frames(1)
+			if not f._live.is_empty():
+				break
+		p._move_joystick.output = Vector2.ZERO
+		p._move_joystick.is_pressed = false
+		check(not f._live.is_empty() and not f.has_birds(bush, Flock.PERCH_BUSHES), "going past a bush: its birds up")
 
 
 ## User request: a fish or a thing can be locked (a padlock on it): not offered, sold, thrown away,

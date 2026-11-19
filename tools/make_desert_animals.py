@@ -1164,7 +1164,188 @@ def vulture(pack):
     export("vulture")
 
 
-MAKERS = {"hyena": hyena, "camel": camel, "iguana": iguana, "scorpion": scorpion, "vulture": vulture}
+# ------------------------------------------------------------------ the other maps' birds
+# User request: the vulture's way - circling, its shadow on the ground - suits the birds of prey: a
+# hawk over the forest and the autumn wood (the falcon in flight of the bird figures), an eagle over
+# the snow (the bald eagle in flight); and small birds that really fly up - out of a tree when the
+# dragon comes, a tree's chopped or someone goes past a bush (the dove in flight, brought down to a
+# sparrow's size; its picture left pale, to be coloured for each map in the game: brown songbirds,
+# pale snow birds, black crows, sandy desert birds).
+# The rig as the vulture's, sized to the figure (the condor's half span CONDOR_HALF): its body, head
+# and tail, each wing three bones; clips: gliding ("Soar") and beating ("Flap").
+CONDOR_HALF = 1.325
+
+
+def hawk_plumage(a):
+    """The falcon's slate made a buzzard's warm brown, its pale parts buff."""
+    h, s_, v = hsv(a)
+    lit = np.clip(v / 0.8, 0, 1)
+    brown = np.array([0.36, 0.24, 0.15], np.float32)
+    buff = np.array([0.86, 0.76, 0.6], np.float32)
+    return brown * (0.6 + 0.8 * lit[..., None]) * (1.0 - lit[..., None] ** 3) + buff * (lit[..., None] ** 3)
+
+
+def eagle_plumage(a):
+    """The eagle's own browns warmed a little, its white head and tail a touch cream."""
+    return np.clip(a * np.array([1.06, 1.0, 0.92], np.float32) + 0.02, 0, 1)
+
+
+def songbird_plumage(a):
+    """The dove's white made a pale grey-buff with its feathers' lines kept: coloured in the game."""
+    lum = a.mean(-1, keepdims=True)
+    return np.clip(np.array([0.92, 0.9, 0.86], np.float32) * (0.45 + 0.6 * lum), 0, 1)
+
+
+def flier(pack, prefix, name, budget, tif, plumage, tex_size=512, soar=VULTURE_SOAR, flap=VULTURE_FLAP,
+          flap_amp=(22.0, 9.0, 12.0), flap_bias=0.25):
+    from mathutils import Quaternion
+    fresh()
+    bpy.ops.import_scene.fbx(filepath=find(pack, "bird+collection.fbx"))
+    body = [o for o in bpy.data.objects if o.name.startswith(prefix)][0]
+    for o in list(bpy.data.objects):
+        if o != body:
+            bpy.data.objects.remove(o, do_unlink=True)
+    bpy.context.view_layer.objects.active = body
+    body.select_set(True)
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    vs = [v.co for v in body.data.vertices]
+    cx = (min(v.x for v in vs) + max(v.x for v in vs)) / 2
+    cy = (min(v.y for v in vs) + max(v.y for v in vs)) / 2
+    k = (max(v.x for v in vs) - min(v.x for v in vs)) / 2 / CONDOR_HALF
+    low = min(v.z for v in vs if abs(v.x - cx) < 0.12 * k)
+    # (centred on its body, turned as the vulture is: its head now +Y)
+    for v in body.data.vertices:
+        v.co = Vector((-(v.co.x - cx), -(v.co.y - cy), v.co.z - low - 0.12 * k))
+    body.data.update()
+    bring_down(body, budget)
+    span = max(abs(v.co.x) for v in body.data.vertices)
+    arm_data = bpy.data.armatures.new(name + "Rig")
+    arm = bpy.data.objects.new(name + "Rig", arm_data)
+    bpy.context.collection.objects.link(arm)
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.mode_set(mode="EDIT")
+    eb = arm_data.edit_bones
+    root = eb.new("Body")
+    root.head, root.tail = Vector((0, -0.15 * k, 0.1 * k)), Vector((0, 0.2 * k, 0.1 * k))
+    head = eb.new("Head")
+    head.head, head.tail, head.parent = Vector((0, 0.2 * k, 0.12 * k)), Vector((0, 0.42 * k, 0.1 * k)), root
+    tail = eb.new("Tail")
+    tail.head, tail.tail, tail.parent = Vector((0, -0.15 * k, 0.08 * k)), Vector((0, -0.42 * k, 0.06 * k)), root
+
+    def wing_z(f):
+        near = [v.co for v in body.data.vertices if abs(abs(v.co.x) - f * span) < 0.04 * k and abs(v.co.y) < 0.35 * k]
+        return sum(c.z for c in near) / len(near) if near else 0.1 * k
+
+    for side, sx in (("L", 1.0), ("R", -1.0)):
+        parent = root
+        for bname, a, b in VULTURE_WING:
+            bone = eb.new("%s.%s" % (bname, side))
+            fa, fb = a / VULTURE_WING[-1][2], b / VULTURE_WING[-1][2]
+            bone.head = Vector((sx * fa * span, 0.0, wing_z(fa)))
+            bone.tail = Vector((sx * fb * span, 0.0, wing_z(min(fb, 0.97))))
+            bone.parent = parent
+            bone.roll = 0.0
+            parent = bone
+    bpy.ops.object.mode_set(mode="OBJECT")
+    groups = {b.name: body.vertex_groups.new(name=b.name) for b in arm_data.bones}
+    joints = [0.0] + [b / VULTURE_WING[-1][2] for _n, _a, b in VULTURE_WING]
+    for v in body.data.vertices:
+        x, y = v.co.x, v.co.y
+        f = abs(x) / span
+        side = "L" if x > 0 else "R"
+        w = {}
+        if f < 0.1:
+            kk = 1.0 - min(f / 0.1, 1.0)
+            core = "Head" if y > 0.2 * k else ("Tail" if y < -0.17 * k else "Body")
+            w[core] = kk
+            w["Arm." + side] = 1.0 - kk
+        else:
+            for i, (bname, a, b) in enumerate(VULTURE_WING):
+                lo_f, hi_f = joints[i] if i else 0.1, joints[i + 1]
+                if lo_f <= f <= hi_f or (i == len(VULTURE_WING) - 1 and f > hi_f):
+                    t = (f - lo_f) / max(hi_f - lo_f, 1e-6)
+                    w["%s.%s" % (bname, side)] = 1.0
+                    if t > 0.8 and i + 1 < len(VULTURE_WING):
+                        kk = (t - 0.8) / 0.4
+                        w["%s.%s" % (bname, side)] = 1.0 - kk
+                        w["%s.%s" % (VULTURE_WING[i + 1][0], side)] = kk
+                    elif t < 0.2 and i > 0:
+                        kk = (0.2 - t) / 0.4
+                        w["%s.%s" % (bname, side)] = 1.0 - kk
+                        w["%s.%s" % (VULTURE_WING[i - 1][0], side)] = kk
+                    break
+        for gname, wt in w.items():
+            if wt > 0.0:
+                groups[gname].add([v.index], wt, "REPLACE")
+    attach(body, arm)
+    arm.animation_data_create()
+    fwd = Vector((0, 1, 0))
+    for pb in arm.pose.bones:
+        pb.rotation_mode = "QUATERNION"
+
+    def local(bname, rot):
+        rest = arm.data.bones[bname].matrix_local.to_quaternion()
+        return rest.inverted() @ rot @ rest
+
+    def key_clip(clip, frames, pose):
+        act = bpy.data.actions.new(clip)
+        act.use_fake_user = True
+        act.id_root = "OBJECT"
+        arm.animation_data.action = act
+        for fr in range(frames + 1):
+            t = (fr % frames) / frames
+            for bname, rot in pose(t).items():
+                pb = arm.pose.bones[bname]
+                pb.rotation_quaternion = local(bname, rot)
+                pb.keyframe_insert("rotation_quaternion", frame=fr)
+        arm.animation_data.action = None
+
+    def soar_pose(t):
+        th = 2.0 * math.pi * t
+        out = {"Tail": Quaternion(Vector((0, 0, 1)), math.radians(5.0) * math.sin(th)),
+               "Head": Quaternion(Vector((0, 0, 1)), math.radians(8.0) * math.sin(th + 1.0))}
+        for side, sx in (("L", 1.0), ("R", -1.0)):
+            out["Arm." + side] = Quaternion(fwd, -sx * math.radians(3.0) * math.sin(th))
+            out["Forearm." + side] = Quaternion(fwd, -sx * math.radians(2.0) * math.sin(th - 0.6))
+            out["Hand." + side] = Quaternion(fwd, -sx * math.radians(5.0) * math.sin(th - 1.2))
+        return out
+
+    def flap_pose(t):
+        th = 2.0 * math.pi * t
+        out = {"Tail": Quaternion(Vector((1, 0, 0)), math.radians(6.0) * math.sin(th + 0.5)),
+               "Head": Quaternion(Vector((1, 0, 0)), math.radians(4.0) * math.sin(th + 2.0))}
+        for side, sx in (("L", 1.0), ("R", -1.0)):
+            # (deeper down than up - the downstroke does the work; + about the forward line raises
+            # the left wing)
+            out["Arm." + side] = Quaternion(fwd, -sx * math.radians(flap_amp[0]) * (math.sin(th) - flap_bias))
+            out["Forearm." + side] = Quaternion(fwd, -sx * math.radians(flap_amp[1]) * (math.sin(th - 0.7) - flap_bias * 0.8))
+            out["Hand." + side] = Quaternion(fwd, -sx * math.radians(flap_amp[2]) * (math.sin(th - 1.3) - flap_bias * 0.8))
+        return out
+
+    key_clip("Soar", soar, soar_pose)
+    key_clip("Flap", flap, flap_pose)
+    os.makedirs(TMP, exist_ok=True)
+    feathers = picture(find(pack, tif), os.path.join(TMP, name + "_plumage.jpg"), tex_size, plumage)
+    textured(body, name + "_plumage", feathers)
+    export(name)
+
+
+def hawk(pack):
+    flier(pack, "falcon_2", "hawk", 3500, "falcon2.tif", hawk_plumage)
+
+
+def eagle(pack):
+    flier(pack, "bald_eagle", "eagle", 4000, "eagle2.tif", eagle_plumage)
+
+
+def songbird(pack):
+    # (a sparrow's quick wingbeat: deep, a short clip the game plays fast)
+    flier(pack, "dove", "songbird", 900, "dove.tif", songbird_plumage, tex_size=256, soar=48, flap=8,
+          flap_amp=(42.0, 18.0, 24.0), flap_bias=0.1)
+
+
+MAKERS = {"hyena": hyena, "camel": camel, "iguana": iguana, "scorpion": scorpion, "vulture": vulture,
+          "hawk": hawk, "eagle": eagle, "songbird": songbird}
 
 
 def main():

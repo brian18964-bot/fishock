@@ -549,6 +549,11 @@ func _build() -> void:
 	if not is_inside_tree():
 		return
 	var t1b := Time.get_ticks_msec()
+	# (the small birds: in the trees and bushes, up when startled - Flock)
+	_flock = Flock.new()
+	_flock.name = "Flock"
+	add_child(_flock)
+	_flock.setup(self, map_style())
 	_trees_and_rocks()
 	_start_camp()
 	_landmarks()
@@ -588,7 +593,9 @@ func _build() -> void:
 		_tracks.character = rig.character if rig != null else Profile.character
 		_tracks.printed.connect(_sand.kick)
 		add_child(_tracks)
-		_sky_birds()
+	# (birds of prey circling high, their shadows wheeling: the desert's vultures, the others' hawk
+	# or eagle)
+	_sky_birds()
 	_rest_2d_only(main)
 	for n in main.get_children():
 		_scan(n)
@@ -1242,6 +1249,8 @@ func _trees_and_rocks() -> void:
 		_trees.append([tree, mi])
 		if tree.has_signal("chopped_by"):
 			tree.connect("chopped_by", _shake_tree.bind(mi, kind))
+			if _flock != null:
+				tree.connect("chopped_by", _flock.chopped.bind(mi, tree))
 	# The edge: a wall of tall pines, thick, from a little in over it out
 	# past where the map ends (no shadows: the moon's are only near anyway).
 	var rect := _map_rect()
@@ -5956,19 +5965,40 @@ const VULTURE_FOLLOW := 0.08
 var _vultures: Array = []
 
 
+## User request: the vulture's way - circling, its shadow wheeling on the ground - suits the birds
+## of prey: each map style's [model, wingspan (m), how many] (tools/make_desert_animals.py: hawk,
+## eagle, from the user's bird figures).
+const SKY_BIRDS := {"desert": ["vulture", VULTURE_SPAN, VULTURES], "snow": ["eagle", 2.1, 1], "autumn": ["hawk", 1.3, 2],
+	"": ["hawk", 1.3, 1]}
+var _flock: Flock
+var _flock_warm := false
+
+
+## The map's style, as the birds know it: "desert", "snow", "autumn" or "" (the forest).
+func map_style() -> String:
+	if _desert:
+		return "desert"
+	if _snow:
+		return "snow"
+	if _autumn:
+		return "autumn"
+	return ""
+
+
 func _sky_birds() -> void:
-	var path := CREATURE_DIR + "vulture.glb"
+	var kind: Array = SKY_BIRDS.get(map_style(), SKY_BIRDS[""])
+	var path := CREATURE_DIR + str(kind[0]) + ".glb"
 	if not ResourceLoader.exists(path):
 		return
 	var me := to3(player.global_position, 0.0)
-	for i in (1 if low_end() else VULTURES):
+	for i in (1 if low_end() else int(kind[2])):
 		var holder := Node3D.new()
 		holder.name = "Vulture%d" % i
 		add_child(holder)
 		var model: Node3D = (load(path) as PackedScene).instantiate()
 		holder.add_child(model)
 		var box := _aabb(model)
-		var k := VULTURE_SPAN / maxf(box.size.x, 0.001)
+		var k := float(kind[1]) / maxf(box.size.x, 0.001)
 		model.scale = Vector3.ONE * k
 		model.position = -box.get_center() * k
 		for mi in model.find_children("*", "MeshInstance3D", true, false):
@@ -5999,6 +6029,14 @@ func _vulture_centre(v: Dictionary, me: Vector3) -> Vector3:
 
 
 func _circle_vultures(delta: float) -> void:
+	if _flock != null and pivot != null:
+		# (a small bird shown to the warm-up's camera behind the loading cover, then put away)
+		if _warm_step >= 0 and _warm_step < WARM_POSES * WARM_HOLD:
+			_flock.warm(pivot.global_position + Vector3(0.4, 1.2, -1.8))
+			_flock_warm = true
+		elif _flock_warm:
+			_flock.cool()
+			_flock_warm = false
 	if _vultures.is_empty() or delta <= 0.0:
 		return
 	var me := to3(player.global_position, 0.0)

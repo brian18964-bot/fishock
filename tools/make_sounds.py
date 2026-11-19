@@ -470,6 +470,25 @@ def escape_sparkle():
 
 # --- the menus (user request: the MMO look - and its sound) --------------------
 
+def flutter():
+    """User request (small birds flying up out of the trees and bushes): a handful of birds taking
+    off - each a quick run of soft wingbeats (filtered noise pulsed ~16-22 times a second), fading as
+    it climbs away, the birds a few hundredths of a second apart."""
+    d = 1.1
+    n = int(d * SR)
+    x = np.zeros(n)
+    for b in range(4):
+        rate = RNG.uniform(15.0, 22.0)
+        start = RNG.uniform(0.0, 0.18)
+        k = int((d - start) * SR)
+        t = np.arange(k) / SR
+        beats = np.clip(np.sin(2 * np.pi * rate * t + RNG.uniform(0, 6.28)), 0, 1) ** 3
+        wing = bandpass(white(d - start), RNG.uniform(1100, 1700), 1400)[:k] * beats
+        wing *= np.exp(-t / RNG.uniform(0.25, 0.4)) * (1.0 - np.exp(-t / 0.01))
+        place(x, wing * RNG.uniform(0.6, 1.0), start)
+    return norm(fade(x), 0.5)
+
+
 def ui_click():
     """A button: a soft wooden tock with a little click on top."""
     d = 0.09
@@ -769,7 +788,7 @@ SOUNDS = {
     "step_soft": lambda: step("soft"), "step_hard": lambda: step("hard"), "step_wood": lambda: step("wood"),
     "step_snow": lambda: step("snow"), "chain_loop": chain_loop, "whisper": whisper, "moan": moan,
     "emerge": emerge, "cage": cage, "heartbeat_loop": heartbeat_loop, "offering": offering,
-    "rock_flip": rock_flip, "chop": chop, "gunshot": gunshot, "tap": tap, "swipe_hit": whoosh_hit, "flop": flop, "thunder": thunder, "dragon_roar": dragon_roar,
+    "rock_flip": rock_flip, "flutter": flutter, "chop": chop, "gunshot": gunshot, "tap": tap, "swipe_hit": whoosh_hit, "flop": flop, "thunder": thunder, "dragon_roar": dragon_roar,
     "dragon_growl": dragon_growl,
     "escape": escape_sparkle,
     "amb_night": amb_night, "amb_day": amb_day, "amb_water": amb_water, "amb_rain": amb_rain,
