@@ -150,7 +150,8 @@ const THEMES := {
 		# (the big skeletons - the dinosaur, the mammoth and the user's second batch's elephant, crocodile
 		# and big cat - "big_fossils" of them a base map's area, which drawn anew each game; each
 		# covered by the sand to its own depth: Fossil.cover)
-		"fossils": {"dino": 1, "mammoth": 1, "elephant": 1, "crocodile": 1, "wildcat": 1, "saguaro": 3, "cholla": 3, "skull": 3},
+		# ("bones": what came off them, lying alone out on the sand - a leg, a skull)
+		"fossils": {"dino": 1, "mammoth": 1, "elephant": 1, "crocodile": 1, "wildcat": 1, "saguaro": 3, "cholla": 3, "skull": 3, "bones": 3},
 		"big_fossils": 3,
 		# (one a base map's area - ~3 on the free run's; the user's own desert animals - made ours by
 		# tools/make_desert_animals.py: a camel about the oasis, an iguana basking, the hyena hunting
@@ -729,7 +730,7 @@ func _theme_prop(prop: Node) -> void:
 ## and the cacti well away - they're the dry desert's; a skull anywhere off the shore), the start
 ## and the camp, turned any way; before anything else is placed, so they get their room.
 const FOSSIL_SHORE := {"dino": 90.0, "mammoth": 90.0, "elephant": 90.0, "crocodile": 70.0, "wildcat": 80.0,
-	"saguaro": 120.0, "cholla": 90.0, "skull": 80.0}
+	"saguaro": 120.0, "cholla": 90.0, "skull": 80.0, "bones": 80.0}
 ## The cacti are plants: (user request) only near the water - in the oasis's margin, no further out
 ## from a shore than this (px).
 const FOSSIL_SHORE_MAX := {"saguaro": 480.0, "cholla": 420.0}
@@ -750,29 +751,50 @@ func _place_fossils() -> void:
 		if kind in Fossil.BIG and not kind in bigs:
 			continue
 		var count := int(want[kind]) if kind in Fossil.BIG else maxi(1, int(roundf(float(want[kind]) * share)))
-		var reach := Fossil.reach_px(kind)
 		for _i in count:
-			for _try in 120:
-				var pos := Vector2(randf_range(reach + 60.0, Player.WORLD_WIDTH - reach - 60.0),
-					randf_range(reach + 60.0, Player.WORLD_HEIGHT - reach - 60.0))
-				if pos.distance_to(SPAWN_POS) < reach + PROP_AVOID_SPAWN_RADIUS + 60.0:
-					continue
-				if _shore_distance(pos) < reach + float(FOSSIL_SHORE.get(kind, 90.0)) or _near_walkway(pos, reach + 30.0):
-					continue
-				if FOSSIL_SHORE_MAX.has(kind) and _shore_distance(pos) > float(FOSSIL_SHORE_MAX[kind]):
-					continue
-				if not _fits(pos, reach, 0.0):
-					continue
-				var bones := Fossil.new()
-				bones.name = "Fossil%d" % made
-				bones.kind = kind
-				bones.yaw = randf() * TAU
-				bones.position = pos
-				bones.cover()
-				made += 1
-				_taken.append([pos, reach * (0.9 if kind in Fossil.BIG else 1.0), 0.0])
-				get_parent().add_child.call_deferred(bones)
-				break
+			# (one of its ways, drawn each time: its legs or its skull here or there, some gone off)
+			var form := Fossil.pick(kind)
+			var bones := _place_fossil(kind, form, made, Rect2(0, 0, Player.WORLD_WIDTH, Player.WORLD_HEIGHT))
+			if bones == null:
+				continue
+			made += 1
+			# (what's gone off it lies near it, on the sand round it)
+			for piece in Fossil.SCATTER.get(form, []):
+				var around := Rect2(bones.position - Vector2.ONE * (bones.reach() + 6.0 * Fossil.PX), Vector2.ONE * 2.0 * (bones.reach() + 6.0 * Fossil.PX))
+				if _place_fossil("bones", str(piece), made, around) != null:
+					made += 1
+
+
+## One of the desert's bones, cacti or skulls - `kind`, its way `form` - somewhere in `within` (and
+## the map) it fits: out on the open sand, kept from the water, the start and the camp; turned any
+## way, the sand over it as this game has it (Fossil.cover). Null if nowhere would do.
+func _place_fossil(kind: String, form: String, n: int, within: Rect2) -> Fossil:
+	var reach := Fossil.reach_px(form)
+	var lo := Vector2(maxf(within.position.x, reach + 60.0), maxf(within.position.y, reach + 60.0))
+	var hi := Vector2(minf(within.end.x, Player.WORLD_WIDTH - reach - 60.0), minf(within.end.y, Player.WORLD_HEIGHT - reach - 60.0))
+	if hi.x <= lo.x or hi.y <= lo.y:
+		return null
+	for _try in 120:
+		var pos := Vector2(randf_range(lo.x, hi.x), randf_range(lo.y, hi.y))
+		if pos.distance_to(SPAWN_POS) < reach + PROP_AVOID_SPAWN_RADIUS + 60.0:
+			continue
+		if _shore_distance(pos) < reach + float(FOSSIL_SHORE.get(kind, 90.0)) or _near_walkway(pos, reach + 30.0):
+			continue
+		if FOSSIL_SHORE_MAX.has(kind) and _shore_distance(pos) > float(FOSSIL_SHORE_MAX[kind]):
+			continue
+		if not _fits(pos, reach, 0.0):
+			continue
+		var bones := Fossil.new()
+		bones.name = "Fossil%d" % n
+		bones.kind = kind
+		bones.form = form
+		bones.yaw = randf() * TAU
+		bones.position = pos
+		bones.cover()
+		_taken.append([pos, reach * (0.9 if kind in Fossil.BIG else 1.0), 0.0])
+		get_parent().add_child.call_deferred(bones)
+		return bones
+	return null
 
 
 ## The desert's trees (a style with "oasis_trees"): most a palm by the water - in its "oasis_band"

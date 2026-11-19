@@ -2,13 +2,19 @@
 whether any can be used; before use each goes through our own changes and becomes our asset").
 The pack itself stays out of the repo; each one here is changed into ours:
 
-  - mammoth_fossil: the mammoth skeleton fallen on its side, sun-bleached (user request: the bones
-    lie in the sand, not standing);
+  - mammoth_fossil(_b): the mammoth skeleton fallen on its side, sun-bleached (user request: the
+    bones lie in the sand, not standing), its legs - held out level in the air as they were set on
+    the standing animal - cut off and laid flat on the sand by it (all four; or two, the other two
+    mammoth_leg_a/b, bones of their own) (user report: the legs floating; request: the skeletons
+    cut into several kinds);
+  - dino_a/b, dino_leg: the dinosaur (make_dino_fossil.py's dino_fossil.glb, the source here) the
+    same way - its two upper legs laid on the sand by it, or one of them gone off;
   - elephant_bones, crocodile_bones, wildcat_bones: from the user's second "Des" batch (the
     skeletons pack: an elephant, a crocodile, a big cat), each fallen where it died - brought
     down to a few thousand triangles from a third of a million, sized as the animal is (the
     elephant ~6 m with its tusks, the cat a lion's ~2.4 m), their five pictures each baked into
-    one of ours: regraded to sun-bleached bone, sand-stained low down and mottled;
+    one of ours: regraded to sun-bleached bone, sand-stained low down and mottled; each again with
+    its skull come off and lying a little way off (_b), and the skull alone (_skull);
   - skull: the antlered deer skull, small, resting tipped in the sand, bleached;
   - saguaro, cholla: the two cacti, brought down to a few thousand triangles, dusted with sand
     (the cholla's spines left off - too fine to see), the saguaro half again as tall;
@@ -22,7 +28,7 @@ Each a .glb (its picture inside, 1024 px) - the bones, the cacti and the skull w
 the ground they stand on (circles x, z, r in m, the model's Godot frame), for Fossil; the bones'
 circles with a fourth, the height (m) the bones reach in that spot - how deep the sand must be to
 hide them (Fossil buries each a different depth each game). The dinosaur's (make_dino_fossil.py)
-is given its heights here too, from its model.
+is cut up here too, from its model.
 
   bpyenv/bin/python tools/make_desert_props.py -- <the pack's folder> [<the second batch's folder>] [only=a,b]
     (repo root; the second batch: Crocodile.fbx, Elephant.fbx, WildCat.fbx and, in the first pack's
@@ -165,6 +171,157 @@ def export(o, path, info=None):
     print("made %s tris %d %s" % (os.path.basename(path), tris, ("reach %.2f circles %d size %s" % (info["reach"], len(info["circles"]), info["size"])) if info else ""), flush=True)
 
 
+# User report (a skeleton's legs held out in the air - "floating"; the bones lie in the sand) and
+# request (cut the skeletons into several kinds, for more chance in it): what stuck out in the air is
+# cut off and laid flat on the sand beside it, as bones lie scattered; each skeleton made several
+# ways (its legs or its skull here or there, some gone), and the pieces cut off made bones of their
+# own, scattered over the sand (Fossil "bones").
+
+
+def duplicate(o):
+    c = o.copy()
+    c.data = o.data.copy()
+    bpy.context.scene.collection.objects.link(c)
+    return c
+
+
+def tag_faces(o, tags):
+    """A face attribute "part": tags[i] for face i."""
+    me = o.data
+    if "part" in me.attributes:
+        me.attributes.remove(me.attributes["part"])
+    a = me.attributes.new("part", "INT", "FACE")
+    a.data.foreach_set("value", [int(t) for t in tags])
+
+
+def split_part(o, part):
+    """The faces tagged `part` moved out of `o` into an object of their own (None if there are none)."""
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    layer = bm.faces.layers.int.get("part")
+    if not any(f[layer] == part for f in bm.faces):
+        bm.free()
+        return None
+    piece = bm.copy()
+    pl = piece.faces.layers.int.get("part")
+    bmesh.ops.delete(piece, geom=[f for f in piece.faces if f[pl] != part], context="FACES")
+    bmesh.ops.delete(piece, geom=[v for v in piece.verts if not v.link_faces], context="VERTS")
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if f[layer] == part], context="FACES")
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+    bm.to_mesh(o.data)
+    bm.free()
+    me = bpy.data.meshes.new(o.data.name + "_part%d" % part)
+    piece.to_mesh(me)
+    piece.free()
+    for m in o.data.materials:
+        me.materials.append(m)
+    x = bpy.data.objects.new(o.name + "_part%d" % part, me)
+    bpy.context.scene.collection.objects.link(x)
+    return x
+
+
+def lie_flat(o, rng, sink=0.15):
+    """`o` laid down as a bone lies: its longest way along x, its thinnest up, on either face, its
+    middle over the origin, a little (`sink` of its thickness) in the sand."""
+    me = o.data
+    co = np.array([list(v.co) for v in me.vertices])
+    c = co.mean(0)
+    w, vec = np.linalg.eigh(np.cov((co - c).T))
+    axes = vec[:, np.argsort(w)[::-1]].T
+    if np.linalg.det(axes) < 0:
+        axes[2] = -axes[2]
+    if rng.random() < 0.5:
+        axes[1] = -axes[1]
+        axes[2] = -axes[2]
+    m = Matrix([list(axes[0]) + [0.0], list(axes[1]) + [0.0], list(axes[2]) + [0.0], [0, 0, 0, 1]])
+    me.transform(m @ Matrix.Translation(Vector((-c).tolist())))
+    co = np.array([list(v.co) for v in me.vertices])
+    lo, hi = co.min(0), co.max(0)
+    me.transform(Matrix.Translation(Vector((-(lo[0] + hi[0]) / 2, -(lo[1] + hi[1]) / 2, -lo[2] - sink * (hi[2] - lo[2])))))
+
+
+def place(o, x, y, yaw, dz=0.0):
+    o.data.transform(Matrix.Translation(Vector((x, y, dz))) @ Matrix.Rotation(yaw, 4, "Z"))
+
+
+def join(objs):
+    bpy.ops.object.select_all(action="DESELECT")
+    for x in objs:
+        x.select_set(True)
+    bpy.context.view_layer.objects.active = objs[0]
+    bpy.ops.object.join()
+    return objs[0]
+
+
+def recentre(o):
+    """Its middle over the origin (its height left as it is)."""
+    co = np.array([list(v.co) for v in o.data.vertices])
+    lo, hi = co.min(0), co.max(0)
+    o.data.transform(Matrix.Translation(Vector((-(lo[0] + hi[0]) / 2, -(lo[1] + hi[1]) / 2, 0.0))))
+
+
+def cluster(points, k, iters=12):
+    """k-means: each point's cluster (farthest-point start, so it comes out the same every time)."""
+    cen = [points[int(np.argmin(points[:, 0]))]]
+    while len(cen) < k:
+        d = np.min([np.linalg.norm(points - c, axis=1) for c in cen], axis=0)
+        cen.append(points[int(np.argmax(d))])
+    cen = np.array(cen)
+    for _ in range(iters):
+        lab = np.argmin(np.stack([np.linalg.norm(points - c, axis=1) for c in cen]), axis=0)
+        cen = np.array([points[lab == i].mean(0) if np.any(lab == i) else cen[i] for i in range(k)])
+    return lab
+
+
+def tag_held_out(o, x_cut, above, legs, ys=(-1e9, 1e9), stub=0.0, near=0.45):
+    """The legs held out in the air: faces past `x_cut` (toward -x) more than `above` up (and within
+    `ys` along the body), sorted into `legs` by where across the body and how high each is - parts
+    1..legs, numbered along the body; with the stub of each up to `stub` m inside x_cut (those
+    within `near` m of its line); the rest part 0."""
+    me = o.data
+    cen = np.array([list(poly.center) for poly in me.polygons])
+    out = (cen[:, 0] < x_cut) & (cen[:, 2] > above) & (cen[:, 1] > ys[0]) & (cen[:, 1] < ys[1])
+    tags = np.zeros(len(cen), int)
+    lab = cluster(cen[out][:, 1:3], legs)
+    order = np.argsort([cen[out][lab == i][:, 1].mean() for i in range(legs)])
+    rank = {int(i): r + 1 for r, i in enumerate(order)}
+    tags[np.nonzero(out)[0]] = [rank[int(v)] for v in lab]
+    lines = [cen[out][lab == i][:, 1:3].mean(0) for i in order]
+    if stub > 0.0:
+        inner = np.nonzero((cen[:, 0] >= x_cut) & (cen[:, 0] < x_cut + stub) & (cen[:, 2] > above))[0]
+        for f in inner:
+            d = [np.linalg.norm(cen[f, 1:3] - c) for c in lines]
+            if min(d) < near:
+                tags[f] = int(np.argmin(d)) + 1
+    tag_faces(o, tags)
+    return [float(c[0]) for c in lines]
+
+
+def scatter_legs(base, legs_y, keep, seed, side_x):
+    """A copy of `base` (its legs tagged 1..n) with legs `keep` laid flat on the sand on its -x side
+    (`side_x` where the body ends), each near where it was along the body; the others gone. Returns
+    the skeleton and the legs left out (each laid flat at the origin)."""
+    rng = random.Random(seed)
+    body = duplicate(base)
+    near, gone = [], []
+    for i in range(1, len(legs_y) + 1):
+        leg = split_part(body, i)
+        if leg is None:
+            continue
+        lie_flat(leg, rng)
+        if i in keep:
+            co = np.array([list(v.co) for v in leg.data.vertices])
+            half = (co[:, 0].max() - co[:, 0].min()) / 2
+            yaw = rng.uniform(-0.7, 0.7)
+            place(leg, side_x - 0.15 - abs(math.cos(yaw)) * half - rng.uniform(0.0, 0.7), legs_y[i - 1] + rng.uniform(-0.4, 0.4), yaw)
+            near.append(leg)
+        else:
+            gone.append(leg)
+    body = join([body] + near)
+    recentre(body)
+    return body, gone
+
+
 def mammoth(pack, _batch=None):
     o = fresh(os.path.join(pack, "fbx.1/fbx.1.fbx"))
     decimate(o, 9000)
@@ -173,7 +330,15 @@ def mammoth(pack, _batch=None):
     turn = Matrix.Rotation(math.radians(-4), 4, "X") @ Matrix.Rotation(math.radians(96), 4, "Y")
     settle(o, turn, 1.0, 0.04)
     dress(o, {"*": picture(os.path.join(pack, "textures.to1/x/textures/_gh0a76ve0mrj.png"), "mammoth_bones", (1.06, 1.0, 0.9), 0.12, 0.8)})
-    export(o, os.path.join(DESERT, "mammoth_fossil.glb"), footprint(o, 0.5, 0.12, tops=True))
+    # (its four legs stood out level from its side, a metre and two up: cut off where they leave the
+    # body and laid on the sand - all four by it; or two by it, the other two gone off as bones)
+    legs_y = tag_held_out(o, -0.3, 0.5, 4, stub=0.75)
+    a, _ = scatter_legs(o, legs_y, (1, 2, 3, 4), 11, -0.3)
+    export(a, os.path.join(DESERT, "mammoth_fossil.glb"), footprint(a, 0.5, 0.12, tops=True))
+    b, gone = scatter_legs(o, legs_y, (1, 3), 23, -0.3)
+    export(b, os.path.join(DESERT, "mammoth_fossil_b.glb"), footprint(b, 0.5, 0.12, tops=True))
+    for leg, name in zip(gone, ("mammoth_leg_a", "mammoth_leg_b")):
+        export(leg, os.path.join(DESERT, name + ".glb"), footprint(leg, 0.25, 0.05, tops=True))
 
 
 # The second batch's skeletons: sun-bleached bone, and the sand's stain on what lies low.
@@ -299,8 +464,32 @@ def batch_skeleton(pack, batch, animal, length, turn, tris, cell):
     for slot in o.material_slots:
         part = slot.material.name.split(".")[0]
         parts[part] = bone_picture(os.path.join(src, part + "_BaseColor.png"), animal.lower() + "_" + part.lower(), 512)
+    # (its skull - the pack's skull, jaw and teeth - marked before the bake, to be moved after)
+    head = [i for i, slot in enumerate(o.material_slots) if any(k in slot.material.name for k in ("Skull", "Jaw", "Teeth"))]
+    tag_faces(o, [1 if poly.material_index in head else 0 for poly in o.data.polygons])
     one_picture(o, parts, animal.lower() + "_bones")
-    export(o, os.path.join(DESERT, animal.lower() + "_bones.glb"), footprint(o, cell, 0.12, tops=True))
+    name = animal.lower()
+    export(o, os.path.join(DESERT, name + "_bones.glb"), footprint(o, cell, 0.12, tops=True))
+    # (another way: the skull come off and lying a little way off from the neck, turned; and the
+    # skull alone, a bone of its own)
+    rng = random.Random(len(name))
+    b = duplicate(o)
+    skull_b = split_part(b, 1)
+    co = np.array([list(v.co) for v in skull_b.data.vertices])
+    c = co.mean(0)
+    skull_b.data.transform(Matrix.Translation(Vector((c[0], c[1], 0.0))) @ Matrix.Rotation(rng.uniform(0.8, 2.4) * rng.choice((-1, 1)), 4, "Z")
+                           @ Matrix.Translation(Vector((-c[0], -c[1], -co[:, 2].min() - 0.02))))
+    away = (Vector((c[0], c[1], 0.0)) - Vector((0.0, 0.0, 0.0))).normalized()
+    reach = length * rng.uniform(0.18, 0.3)
+    place(skull_b, away.x * reach + rng.uniform(-0.3, 0.3) * length * 0.2, away.y * reach, 0.0)
+    b = join([b, skull_b])
+    recentre(b)
+    export(b, os.path.join(DESERT, name + "_bones_b.glb"), footprint(b, cell, 0.12, tops=True))
+    alone = split_part(duplicate(o), 1)
+    lie = alone.data
+    co = np.array([list(v.co) for v in lie.vertices])
+    lie.transform(Matrix.Translation(Vector((-co[:, 0].mean(), -co[:, 1].mean(), -co[:, 2].min() - 0.02))))
+    export(alone, os.path.join(DESERT, name + "_skull.glb"), footprint(alone, 0.25, 0.05, tops=True))
 
 
 def elephant(pack, batch):
@@ -318,21 +507,27 @@ def wildcat(pack, batch):
     batch_skeleton(pack, batch, "WildCat", 2.4, Matrix.Rotation(math.radians(5), 4, "Y"), 5000, 0.3)
 
 
-def dino_heights(_pack, _batch=None):
-    """The dinosaur's circles (make_dino_fossil.py's) given their heights, from its model."""
+def dino(_pack, _batch=None):
+    """The dinosaur (make_dino_fossil.py's dino_fossil.glb, on its side - the source here; the game
+    shows these): its two upper legs, held out level a metre and more up, cut off and laid on the
+    sand - both by it (dino_a), or one by it and the other gone off as a bone (dino_b, dino_leg)."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=os.path.join(DESERT, "dino_fossil.glb"))
-    pts = np.concatenate([np.array([list(o.matrix_world @ v.co) for v in o.data.vertices])
-                          for o in bpy.context.scene.objects if o.type == "MESH"])
-    path = os.path.join(DESERT, "dino_fossil.json")
-    info = json.load(open(path))
-    for c in info["circles"]:
-        half = c[2] / 0.72 / 2.0
-        near = pts[(np.abs(pts[:, 0] - c[0]) <= half) & (np.abs(-pts[:, 1] - c[1]) <= half)]
-        c[3:] = [round(float(near[:, 2].max()) if len(near) else 0.3, 2)]
-    with open(path, "w") as f:
-        json.dump(info, f)
-    print("dino heights: %d circles, highest %.2f" % (len(info["circles"]), max(c[3] for c in info["circles"])), flush=True)
+    o = next(x for x in bpy.context.scene.objects if x.type == "MESH")
+    for x in list(bpy.context.scene.objects):
+        if x != o:
+            bpy.data.objects.remove(x, do_unlink=True)
+    o.parent = None
+    bpy.context.view_layer.objects.active = o
+    o.select_set(True)
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    legs_y = tag_held_out(o, -0.3, 0.75, 2, ys=(0.9, 1e9), stub=1.0, near=0.4)
+    a, _ = scatter_legs(o, legs_y, (1, 2), 5, -0.3)
+    export(a, os.path.join(DESERT, "dino_a.glb"), footprint(a, 0.55, 0.12, tops=True))
+    b, gone = scatter_legs(o, legs_y, (1,), 17, -0.3)
+    export(b, os.path.join(DESERT, "dino_b.glb"), footprint(b, 0.55, 0.12, tops=True))
+    if gone:
+        export(gone[0], os.path.join(DESERT, "dino_leg.glb"), footprint(gone[0], 0.25, 0.05, tops=True))
 
 
 def skull(pack):
@@ -458,7 +653,7 @@ def cracked(pack):
 
 
 MAKERS = {"mammoth": mammoth, "skull": skull, "saguaro": saguaro, "cholla": cholla, "rhazya": rhazya, "rocks": rocks,
-          "cracked": cracked, "elephant": elephant, "crocodile": crocodile, "wildcat": wildcat, "dino_heights": dino_heights}
+          "cracked": cracked, "elephant": elephant, "crocodile": crocodile, "wildcat": wildcat, "dino": dino}
 # (what needs the second batch's folder)
 SECOND = ("elephant", "crocodile", "wildcat")
 

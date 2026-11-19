@@ -723,7 +723,7 @@ func _dune(p: Vector2, depth: float, out: float) -> float:
 		for bones in get_tree().get_nodes_in_group("fossils"):
 			var f := bones as Fossil
 			if f.big():
-				_dune_clear.append([f.global_position, maxf(Fossil.reach_px(f.kind), f.sand_reach_px()) + 30.0])
+				_dune_clear.append([f.global_position, maxf(f.reach(), f.sand_reach_px()) + 30.0])
 	# (how much of a dune it may have here first: none by the water, round the clear places and on
 	# the decks - and then nothing more to work out, inside the map; the load's dearest part)
 	var k := smoothstep(DUNE_CLEAR.x, DUNE_CLEAR.y, -depth / PX)
@@ -1265,7 +1265,7 @@ func _trees_and_rocks() -> void:
 		_scatter(meshes[kind], xfs, false)
 	# The desert's bones, cacti and skulls (Fossil), as the 2D one lies.
 	for bones in get_tree().get_nodes_in_group("fossils"):
-		var model_path := Fossil.model_of((bones as Fossil).kind)
+		var model_path := (bones as Fossil).model_path()
 		var scene: PackedScene = load(model_path) if ResourceLoader.exists(model_path) else null
 		if scene == null:
 			continue
