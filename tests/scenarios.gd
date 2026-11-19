@@ -4800,26 +4800,27 @@ func test_birds() -> void:
 	if tree_pair != null:
 		var tree: MapTree = tree_pair[0]
 		var before := f._live.size()
+		# (the one chopping beside it, as the game's camera has them)
+		await put(tree.global_position + Vector2(40, 0))
+		await seconds(1.0)
 		tree.chopped_by.emit(tree.global_position + Vector2(40, 0))
 		await frames(30)
 		check(f._live.size() > before and not f.has_birds(tree, Flock.PERCH_TREES), "chopped: its birds up (%d)" % (f._live.size() - before))
-		var hi := 0.0
-		for b in f._live:
-			hi = maxf(hi, (b.node as Node3D).global_position.y)
 		var away := true
 		for b in f._live:
 			away = away and (b.node as Node3D).global_position.x > (tree_pair[1] as Node3D).global_position.x - 2.0
 		check(away, "flown away from the blow")
+		await seconds(0.3)
+		check(_birds_seen(view) >= 2, "seen flying off, across the picture (%d of %d)" % [_birds_seen(view), f._live.size()])
 		await seconds(Flock.LIFE + 0.5)
 		check(f._live.is_empty() and f._idle.size() == pool, "gone off, and ready again")
 	# the dragon comes: flocks across what the traveller sees
 	f.dragon_came()
-	await seconds(1.8)
 	var seen := 0
-	for b in f._live:
-		if (b.node as Node3D).visible and view.camera.is_position_in_frustum((b.node as Node3D).global_position):
-			seen += 1
-	check(f._live.size() >= 8 and seen >= 1, "the dragon comes: %d birds up, %d crossing what you see" % [f._live.size(), seen])
+	for _i in 4:
+		await seconds(0.5)
+		seen = maxi(seen, _birds_seen(view))
+	check(f._live.size() >= 8 and seen >= 5, "the dragon comes: %d birds up, %d crossing what you see" % [f._live.size(), seen])
 	await seconds(Flock.LIFE + 0.5)
 	# going past a bush with birds in it
 	var bush: Node2D = null
@@ -4839,6 +4840,21 @@ func test_birds() -> void:
 		p._move_joystick.output = Vector2.ZERO
 		p._move_joystick.is_pressed = false
 		check(not f._live.is_empty() and not f.has_birds(bush, Flock.PERCH_BUSHES), "going past a bush: its birds up")
+		var seen_bush := 0
+		for _i in 6:
+			await seconds(0.2)
+			seen_bush = maxi(seen_bush, _birds_seen(view))
+		check(seen_bush >= 1, "and seen going")
+
+
+## How many of the small birds up are in what the game's camera shows.
+func _birds_seen(view: RunView3D) -> int:
+	var n := 0
+	for b in view._flock._live:
+		var at: Vector3 = (b.node as Node3D).global_position
+		if (b.node as Node3D).visible and view.camera.is_position_in_frustum(at):
+			n += 1
+	return n
 
 
 ## User request: a fish or a thing can be locked (a padlock on it): not offered, sold, thrown away,

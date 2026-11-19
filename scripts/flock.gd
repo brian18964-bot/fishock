@@ -106,9 +106,9 @@ func fly(at: Vector3, from: Vector2, count: int) -> int:
 	return fly_toward(at, Vector2(at.x - f3.x, at.z - f3.z), count, CLIMB_TO)
 
 
-## Birds up out of a perch at 3D `at`, off along `way` (x, z; spread about it), climbing to within
-## `climb` m over the ground.
-func fly_toward(at: Vector3, way: Vector2, count: int, climb: Vector2, low_for := 0.0) -> int:
+## Birds up out of a perch at 3D `at`, off along `way` (x, z; each within `spread` rad of it),
+## climbing to within `climb` m over the ground.
+func fly_toward(at: Vector3, way: Vector2, count: int, climb: Vector2, low_for := 0.0, spread := 0.6) -> int:
 	var away := way
 	if away.length() < 0.01:
 		away = Vector2.RIGHT.rotated(_rng.randf() * TAU)
@@ -118,7 +118,7 @@ func fly_toward(at: Vector3, way: Vector2, count: int, climb: Vector2, low_for :
 		if _idle.is_empty():
 			break
 		var b: Dictionary = _idle.pop_back()
-		var dir := away.rotated(_rng.randf_range(-0.6, 0.6))
+		var dir := away.rotated(_rng.randf_range(-spread, spread))
 		var holder: Node3D = b.node
 		holder.position = at + Vector3(_rng.randf_range(-0.6, 0.6), _rng.randf_range(-0.3, 0.4), _rng.randf_range(-0.6, 0.6))
 		holder.process_mode = Node.PROCESS_MODE_INHERIT
@@ -143,23 +143,28 @@ func fly_toward(at: Vector3, way: Vector2, count: int, climb: Vector2, low_for :
 	return n
 
 
-## A tree chopped (MapTree's chopped_by): what's in it flies, away from the blow.
+## What the game's camera sees round the traveller is not much: some 12 m across, a few metres
+## ahead and behind, and over the ground little more than a man's height near the far edge (it
+## looks down from 7.6 m up, 6.6 m behind). So a startled bird comes out of the lowest of the leaves
+## in sight (_in_sight) and flies first across the picture (_across), low - SKIM m over the ground,
+## for some seconds - then up and away.
+const SKIM := Vector2(1.6, 2.4)
+## (how far a bird keeps to its way across - rad)
+const SPREAD_ACROSS := 0.18
+
+
+## A tree chopped (MapTree's chopped_by): what's in it flies out, away from the blow - across.
 func chopped(from: Vector2, mi: MeshInstance3D, tree: Node2D) -> void:
 	if not has_birds(tree, PERCH_TREES) or not is_instance_valid(mi):
 		return
 	_emptied[tree.get_instance_id()] = _time
-	var f3 := RunView3D.to3(from, 0.0)
-	var at := _crown(mi, 0.35, 0.55)
-	fly_toward(at, Vector2(at.x - f3.x, at.z - f3.z), _rng.randi_range(3, 6), LOW_CLIMB, 1.2)
+	var at := _in_sight(_crown(mi, 0.35, 0.55))
+	fly_toward(at, _across(at, RunView3D.to3(from, 0.0)), _rng.randi_range(3, 6), SKIM, 2.2, SPREAD_ACROSS)
 
 
 ## The dragon comes (GameState.dragon_came): flocks up out of the trees and across what the
 ## traveller sees - from the trees in sight and from just past each side of the picture, low across
-## it (under the game's camera, which looks down from not far over the traveller), then up and away.
-## (a startled bird's first height, m over the ground; the dragon's flocks skimming lower still,
-## through what the camera sees - it shows little more than a man's height over the ground)
-const LOW_CLIMB := Vector2(2.5, 4.0)
-const SKIM := Vector2(1.6, 2.6)
+## it, then up and away.
 
 
 func dragon_came() -> void:
@@ -178,25 +183,55 @@ func dragon_came() -> void:
 		var tree: Node2D = pair[0]
 		if not is_instance_valid(tree) or not is_instance_valid(pair[1]):
 			continue
-		var crown := _crown(pair[1], 0.35, 0.55)
+		var crown := _in_sight(_crown(pair[1], 0.35, 0.55))
 		if not cam.is_position_in_frustum(crown):
 			continue
 		_emptied[tree.get_instance_id()] = _time
 		var way := side * (1.0 if _rng.randf() < 0.5 else -1.0)
-		_later(_rng.randf_range(0.0, 0.8), crown, way, _rng.randi_range(3, 5), SKIM)
+		_later(_rng.randf_range(0.0, 0.8), crown, way, _rng.randi_range(3, 5))
 		made += 1
 	# (and from just past each side of the picture, crossing it the other way)
 	var m3 := RunView3D.to3(me, view.land_y(me))
 	for k in [-1.0, 1.0]:
-		var off: Vector2 = side * k * 13.0 + ahead * _rng.randf_range(-3.5, 1.0)
+		var off: Vector2 = side * k * 9.0 + ahead * _rng.randf_range(-1.5, 2.5)
 		var at := m3 + Vector3(off.x, 2.0, off.y)
-		_later(_rng.randf_range(0.0, 1.0), at, -side * k + ahead * _rng.randf_range(-0.15, 0.15), _rng.randi_range(5, 7), SKIM)
+		_later(_rng.randf_range(0.0, 1.0), at, -side * k + ahead * _rng.randf_range(-0.06, 0.06), _rng.randi_range(5, 7))
 
 
-func _later(wait: float, at: Vector3, way: Vector2, count: int, climb: Vector2) -> void:
+func _later(wait: float, at: Vector3, way: Vector2, count: int) -> void:
 	get_tree().create_timer(wait).timeout.connect(func():
 		if is_inside_tree():
-			fly_toward(at, way, count, climb, 2.6))
+			fly_toward(at, way, count, SKIM, 2.8, SPREAD_ACROSS))
+
+
+## Under `at`, a little below the highest point the game's camera sees (not right at the picture's
+## edge; down to a little over the ground) - where a bird comes out of a tree for the traveller to
+## see it go; `at` itself if none is in sight.
+func _in_sight(at: Vector3) -> Vector3:
+	var cam := view.camera if view != null else null
+	if cam == null:
+		return at
+	var floor_y := view.ground_y(RunView3D.to2(at)) + 1.0
+	var p := at
+	while p.y > floor_y:
+		if cam.is_position_in_frustum(p):
+			return Vector3(p.x, maxf(p.y - 0.8, floor_y), p.z)
+		p.y -= 0.25
+	return at
+
+
+## Away from `from` (3D) - but across the picture, to the camera's side away from it (or either,
+## when it's straight behind or ahead): a bird flown off up or down the picture is out of it at once.
+func _across(at: Vector3, from: Vector3) -> Vector2:
+	var away := Vector2(at.x - from.x, at.z - from.z)
+	if view == null or view.camera == null:
+		return away
+	var r := view.camera.global_basis.x
+	var side := Vector2(r.x, r.z).normalized()
+	var s := away.dot(side)
+	if absf(s) < 0.25 * away.length() or away.length() < 0.01:
+		s = 1.0 if _rng.randf() < 0.5 else -1.0
+	return side * signf(s)
 
 
 func _crown(mi: MeshInstance3D, lo := 0.55, hi := 0.85) -> Vector3:
@@ -225,9 +260,9 @@ func _process(delta: float) -> void:
 		if float(b.rise_at) >= 0.0 and float(b.t) > float(b.rise_at):
 			b.rise_at = -1.0
 			b.top = _rng.randf_range(CLIMB_TO.x, CLIMB_TO.y)
-		# (steep up at first, then level off at its height - or down to it)
-		var climb := 3.2 if over < float(b.top) else (0.15 if over < float(b.top) + 1.0 else -2.2)
-		v.y = lerpf(v.y, climb, 1.0 - exp(-delta * 1.6))
+		# (up to its height - steep while far under it - and level off there)
+		var climb := clampf((float(b.top) - over) * 1.8, -2.2, 3.2)
+		v.y = lerpf(v.y, climb, 1.0 - exp(-delta * 3.0))
 		var flat := Vector2(v.x, v.z)
 		var speed := move_toward(flat.length(), CRUISE, delta * 3.5)
 		flat = flat.normalized().rotated(sin(float(b.t) * 2.3 + float(b.phase)) * 0.35 * delta) * speed
@@ -279,8 +314,7 @@ func _check_bushes(delta: float) -> void:
 			continue
 		_emptied[bush.get_instance_id()] = _time
 		var at := RunView3D.to3((bush as Node2D).global_position, view.land_y((bush as Node2D).global_position) + 0.6)
-		var m3 := RunView3D.to3(me, 0.0)
-		fly_toward(at, Vector2(at.x - m3.x, at.z - m3.z), _rng.randi_range(1, 3), LOW_CLIMB, 1.0)
+		fly_toward(at, _across(at, RunView3D.to3(me, 0.0)), _rng.randi_range(1, 3), SKIM, 1.8, SPREAD_ACROSS + 0.1)
 
 
 ## (the warm-up behind the loading cover: one shown in front of its camera, so its skin's built)
