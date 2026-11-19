@@ -145,7 +145,9 @@ const THEMES := {
 		# (user request: no dead trees in the desert - every tree a palm by the water - and what grows
 		# only near the water: the hide bushes and the ground's plants in "plant_band" round the pools)
 		"oasis_trees": 1.0,
-		"plant_band": [30.0, 420.0],
+		# (user request: green only near the water - the oasis's ring; out on the open sand only the
+		# dry plants RunView3D adds)
+		"plant_band": [30.0, 230.0],
 		"oasis_band": [24.0, 230.0],
 		# (the big skeletons - the dinosaur, the mammoth and the user's second batch's elephant, crocodile
 		# and big cat - "big_fossils" of them a base map's area, which drawn anew each game; each
@@ -732,8 +734,8 @@ func _theme_prop(prop: Node) -> void:
 const FOSSIL_SHORE := {"dino": 90.0, "mammoth": 90.0, "elephant": 90.0, "crocodile": 70.0, "wildcat": 80.0,
 	"saguaro": 120.0, "cholla": 90.0, "skull": 80.0, "bones": 80.0}
 ## The cacti are plants: (user request) only near the water - in the oasis's margin, no further out
-## from a shore than this (px).
-const FOSSIL_SHORE_MAX := {"saguaro": 480.0, "cholla": 420.0}
+## from a shore than this (px; the green reaches some 160-280) - nothing green out in the desert.
+const FOSSIL_SHORE_MAX := {"saguaro": 300.0, "cholla": 270.0}
 
 
 func _place_fossils() -> void:
@@ -774,7 +776,7 @@ func _place_fossil(kind: String, form: String, n: int, within: Rect2) -> Fossil:
 	var hi := Vector2(minf(within.end.x, Player.WORLD_WIDTH - reach - 60.0), minf(within.end.y, Player.WORLD_HEIGHT - reach - 60.0))
 	if hi.x <= lo.x or hi.y <= lo.y:
 		return null
-	for _try in 120:
+	for _try in (360 if FOSSIL_SHORE_MAX.has(kind) else 120):
 		var pos := Vector2(randf_range(lo.x, hi.x), randf_range(lo.y, hi.y))
 		if pos.distance_to(SPAWN_POS) < reach + PROP_AVOID_SPAWN_RADIUS + 60.0:
 			continue

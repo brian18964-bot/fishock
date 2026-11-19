@@ -1005,6 +1005,10 @@ VULTURE_TRIS = 5000
 # up, the hand a beat behind it).
 VULTURE_SOAR = 90
 VULTURE_FLAP = 24
+# (user report: the birds' wings don't seem to beat - seen from the game's camera, high over them,
+# only the wings' spread shows it: a deep stroke, the arm well down and up, the hand following)
+VULTURE_FLAP_AMP = (44.0, 16.0, 22.0)
+VULTURE_FLAP_BIAS = 0.2
 VULTURE_WING = [("Arm", 0.10, 0.45), ("Forearm", 0.45, 0.85), ("Hand", 0.85, 1.38)]
 
 
@@ -1146,9 +1150,9 @@ def vulture(pack):
                "Head": Quaternion(Vector((1, 0, 0)), math.radians(4.0) * math.sin(th + 2.0))}
         for side, sx in (("L", 1.0), ("R", -1.0)):
             # (deeper down than up - the downstroke does the work)
-            out["Arm." + side] = Quaternion(fwd, sx * math.radians(22.0) * (math.sin(th) - 0.25))
-            out["Forearm." + side] = Quaternion(fwd, sx * math.radians(9.0) * (math.sin(th - 0.7) - 0.2))
-            out["Hand." + side] = Quaternion(fwd, sx * math.radians(12.0) * (math.sin(th - 1.3) - 0.2))
+            out["Arm." + side] = Quaternion(fwd, sx * math.radians(VULTURE_FLAP_AMP[0]) * (math.sin(th) - VULTURE_FLAP_BIAS))
+            out["Forearm." + side] = Quaternion(fwd, sx * math.radians(VULTURE_FLAP_AMP[1]) * (math.sin(th - 0.7) - VULTURE_FLAP_BIAS * 0.8))
+            out["Hand." + side] = Quaternion(fwd, sx * math.radians(VULTURE_FLAP_AMP[2]) * (math.sin(th - 1.3) - VULTURE_FLAP_BIAS * 0.8))
         return out
 
     key_clip("Soar", VULTURE_SOAR, soar)
@@ -1197,7 +1201,7 @@ def songbird_plumage(a):
 
 
 def flier(pack, prefix, name, budget, tif, plumage, tex_size=512, soar=VULTURE_SOAR, flap=VULTURE_FLAP,
-          flap_amp=(22.0, 9.0, 12.0), flap_bias=0.25):
+          flap_amp=VULTURE_FLAP_AMP, flap_bias=VULTURE_FLAP_BIAS):
     from mathutils import Quaternion
     fresh()
     bpy.ops.import_scene.fbx(filepath=find(pack, "bird+collection.fbx"))

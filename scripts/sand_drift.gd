@@ -19,6 +19,15 @@ const PUFF := 2.6
 ## A gust (the trees' formula, times the wind) under CALM hardly blows sand; at STRONG it's full.
 const CALM := 0.35
 const STRONG := 0.95
+## User request: the sand blown now and then, not all the time - a gust at random: still air
+## between (GUST_CALM s, any of it), a gust GUST_LONG s long, as hard as it happens to be
+## (GUST_PEAK of full), rising over GUST_RISE s and dying away over GUST_FALL s. In a storm (the
+## wind over Foliage's ordinary) it blows all the while, the harder the stronger the storm.
+const GUST_CALM := Vector2(12.0, 35.0)
+const GUST_LONG := Vector2(4.0, 10.0)
+const GUST_PEAK := Vector2(0.6, 1.0)
+const GUST_RISE := 1.6
+const GUST_FALL := 3.0
 ## A wisp's speed (m/s) in a lull and in a full gust, and its height over the sand (m).
 const SPEED := Vector2(0.6, 5.5)
 const RISE := Vector2(0.02, 0.4)
@@ -45,11 +54,19 @@ var _heights := {}
 ## How hard the wind's blowing sand round the traveller now (0..1, for the prints' filling-in and
 ## the tests).
 var blowing := 0.0
+## The gust now: how much of full (eased up and down), how long it's still to blow (s), how long
+## till the next, and how hard this one is.
+var _env := 0.0
+var _gust_left := 0.0
+var _calm_left := 0.0
+var _peak := 1.0
 
 
 func setup(centre: Vector3) -> void:
 	_rng.seed = 31
 	_centre = centre
+	# (the first gust a little while in)
+	_calm_left = _rng.randf_range(4.0, GUST_CALM.x)
 	top_level = true
 	_streaks = _layer(count, _streak_mesh())
 	_clouds = _layer(puffs, _puff_mesh())
@@ -184,12 +201,33 @@ func _floor(p: Vector3) -> float:
 
 
 ## The wind's gust at `p` now (Foliage's formula), times its strength.
+## How hard the wind's blowing at `p` now, on the CALM..STRONG scale: the gust (or the storm),
+## stronger here and weaker there within it.
 func gust(p: Vector3, wind: float) -> float:
-	return (0.55 + 0.45 * sin(_time * 0.5 + p.x * 0.05) * sin(_time * 0.31 + p.z * 0.07 + 1.3)) * wind
+	var storm := clampf((wind - Foliage.WIND) / (Foliage.STORM_WIND - Foliage.WIND), 0.0, 1.0)
+	var level := maxf(_env * _peak, storm)
+	var here := 0.8 + 0.2 * sin(_time * 0.5 + p.x * 0.05) * sin(_time * 0.31 + p.z * 0.07 + 1.3)
+	return lerpf(CALM * 0.5, STRONG, clampf(level * here, 0.0, 1.0))
+
+
+## The gusts coming and going (at random: GUST_CALM, GUST_LONG).
+func _gusts(delta: float) -> void:
+	if _gust_left > 0.0:
+		_gust_left -= delta
+		_env = move_toward(_env, 1.0, delta / GUST_RISE)
+		if _gust_left <= 0.0:
+			_calm_left = _rng.randf_range(GUST_CALM.x, GUST_CALM.y)
+	else:
+		_env = move_toward(_env, 0.0, delta / GUST_FALL)
+		_calm_left -= delta
+		if _calm_left <= 0.0:
+			_gust_left = _rng.randf_range(GUST_LONG.x, GUST_LONG.y)
+			_peak = _rng.randf_range(GUST_PEAK.x, GUST_PEAK.y)
 
 
 func step(delta: float, wind: float, wind_dir: Vector2) -> void:
 	_time += delta
+	_gusts(delta)
 	var d := Vector3(wind_dir.x, 0.0, wind_dir.y).normalized()
 	var side := Vector3(-d.z, 0.0, d.x)
 	var mm := _streaks.multimesh

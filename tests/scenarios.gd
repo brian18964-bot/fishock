@@ -10490,16 +10490,26 @@ func test_desert_theme() -> void:
 	check(buries.size() >= mini(3, bones.size() - int(kinds.get("saguaro", 0)) - int(kinds.get("cholla", 0))), "each covered to its own depth (%d depths)" % buries.size())
 	check(drifts > 0 and drift_ok, "the sand drifted over some of them - the ground heaped there (%d)" % drifts)
 	check(hidden_ok, "what the sand hides isn't in the way; what stands out of it is")
-	# (user request: what grows, only near the water - no plants out on the open dunes)
-	var plants_near := true
+	# (user request: what's green grows only near the water - the cacti, the young palms, the
+	# bushes; out on the open dunes only the hardiest dry plants, withered in colour)
+	var plants_by_water := true
 	for o in bones:
 		var fo := o as Fossil
 		if MapGenerator.FOSSIL_SHORE_MAX.has(fo.kind) and float(shore_of.call(fo.global_position)) > float(MapGenerator.FOSSIL_SHORE_MAX[fo.kind]) + 1.0:
-			plants_near = false
+			plants_by_water = false
+	for t in view._young_palms:
+		if float(shore_of.call(RunView3D.to2((t as Transform3D).origin))) > RunView3D.OASIS_FAR + 40.0:
+			plants_by_water = false
+	var band: Array = MapGenerator.THEMES.desert.plant_band
+	for n in main.get_children():
+		if RunView3D._script_name(n) == "bush.gd" and float(shore_of.call((n as Node2D).global_position)) > float(band[1]) + 40.0:
+			plants_by_water = false
+	var far_dry := 0
 	for t in view._dry_bushes:
-		if float(shore_of.call(RunView3D.to2((t as Transform3D).origin))) > RunView3D.DESERT_PLANT_REACH + 30.0:
-			plants_near = false
-	check(plants_near and not view._dry_bushes.is_empty(), "the cacti, the dry bushes and grass all near the water (%d bushes)" % view._dry_bushes.size())
+		if float(shore_of.call(RunView3D.to2((t as Transform3D).origin))) > RunView3D.DESERT_PLANT_REACH:
+			far_dry += 1
+	check(plants_by_water and not view._dry_bushes.is_empty(), "the cacti, the young palms and the bushes all near the water; dry bushes about (%d, %d out on the open sand)" % [view._dry_bushes.size(), far_dry])
+	check(RunView3D.OASIS_STRAY == 0.0, "no green ground out in the desert")
 	check(not view._model_mesh("desert_rock_a").is_empty() and not view._model_mesh("desert_rhazya").is_empty()
 		and view._rock("rock_medium", false).begins_with("desert_rock"), "the desert's own rocks and dry bushes")
 	check(str((gm.get_shader_parameter("stone_tex") as Texture2D).resource_path).contains("cracked_mud"), "cracked clay for the dry hollows")
@@ -10602,8 +10612,17 @@ func test_desert_theme() -> void:
 	var bird_ok := not birds.is_empty()
 	var was := Vector3.ZERO
 	if bird_ok:
-		var bn: Node3D = birds[0].node
-		var ap: AnimationPlayer = birds[0].anim
+		# (one that's over the traveller now - each comes and goes: user request)
+		var bird: Dictionary = birds[0]
+		for b in birds:
+			if str(b.state) != "away":
+				bird = b
+				break
+		if str(bird.state) == "away":
+			bird.state_t = 0.0
+			await frames(3)
+		var bn: Node3D = bird.node
+		var ap: AnimationPlayer = bird.anim
 		was = bn.global_position
 		bird_ok = ap != null and ap.has_animation("Soar") and ap.has_animation("Flap") \
 			and bn.global_position.y - view.ground_y(RunView3D.to2(bn.global_position)) > RunView3D.VULTURE_HEIGHT.x - 1.0

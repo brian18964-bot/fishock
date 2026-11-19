@@ -19,8 +19,10 @@ const TINT := {"": Color(0.8, 0.68, 0.52), "snow": Color(0.9, 0.92, 0.96), "autu
 	"desert": Color(0.94, 0.82, 0.62)}
 ## (a little bigger than life - seen from the game's camera at night, a sparrow's own size is a speck)
 const SPAN := {"": 0.44, "snow": 0.42, "autumn": 0.75, "desert": 0.42}
-## How fast the wings beat (the clip's rate) - the crows' slower.
-const BEAT := {"": 2.6, "snow": 2.6, "autumn": 1.5, "desert": 2.6}
+## How fast the wings beat (the clip's rate: the clip one beat in 0.27 s) - the crows' slower. (user
+## request: the wings seen beating - a sparrow's own ten a second only flickers at the game's frame
+## rate; some six a second reads as beating)
+const BEAT := {"": 1.6, "snow": 1.6, "autumn": 1.0, "desert": 1.6}
 const POOL := 30
 const POOL_LOW := 12
 const PERCH_TREES := 0.5

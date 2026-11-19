@@ -773,9 +773,10 @@ const OASIS_GREEN := Vector2(50.0, 230.0)
 
 
 ## (this far up from the water (px) neither the damp nor the green reaches, however the noise
-## falls - only the green's stray patches: their share there)
+## falls; user request - no green out in the desert: none of the green's stray patches there, only
+## sand)
 const OASIS_FAR := 320.0
-const OASIS_STRAY := 0.2417
+const OASIS_STRAY := 0.0
 
 
 func _oasis_paint(shore: float, x: float, z: float, noise: FastNoiseLite) -> Color:
@@ -1113,13 +1114,12 @@ void fragment() {
 	float g = pow(max(dot(r, m), 0.0), 140.0);
 	// (a faint night sky in it, more at a glance; the moon's glints)
 	EMISSION = vec3(0.03, 0.045, 0.07) * fres * moon + vec3(0.6, 0.7, 0.85) * g * 0.35 * moon * moon + edge_tint * line * 0.035 * mix(0.35, 1.0, moon);
+	// (user report: two reflections of the lamp, one spread and one sharp - this glint of its own
+	// and the light's own highlight: only the light's highlight now, sharp where a reflection is,
+	// and here just the lamp's warm light on the water round it, no spot of its own)
 	vec3 to_lamp = lamp_at - wpos;
 	float near = lamp * exp(-dot(to_lamp.xz, to_lamp.xz) / 70.0);
-	if (near > 0.003) {
-		vec3 lv = normalize((VIEW_MATRIX * vec4(normalize(to_lamp), 0.0)).xyz);
-		float lg = pow(max(dot(r, lv), 0.0), 28.0);
-		EMISSION += vec3(1.0, 0.76, 0.42) * near * (0.06 + 0.14 * fres + lg * 0.9) + edge_tint * line * 0.16 * near;
-	}
+	EMISSION += vec3(1.0, 0.76, 0.42) * near * (0.05 + 0.12 * fres) + edge_tint * line * 0.16 * near;
 	ROUGHNESS = 0.06;
 	SPECULAR = 0.75;
 	METALLIC = 0.15;
@@ -2166,8 +2166,12 @@ var _dry_bushes: Array = []
 var _young_palms: Array = []
 
 
-## How far out from the water (px) the desert's dry grass and bushes grow - its oasis's margin.
+## How far out from the water (px) the desert's dry grass and bushes grow thickest - its oasis's
+## margin; (user request: a real desert has, away from the water, only the hardiest dry low plants,
+## withered in colour - nothing green) out past it, on the open sand, the dry ones only, a
+## DESERT_OPEN_SHARE as thick.
 const DESERT_PLANT_REACH := 520.0
+const DESERT_OPEN_SHARE := 0.35
 
 
 func _desert_cover(tufts: Array) -> void:
@@ -2192,8 +2196,9 @@ func _desert_cover(tufts: Array) -> void:
 		var p := Vector2(_rng.randf_range(rect.position.x + 20.0, rect.end.x - 20.0), _rng.randf_range(rect.position.y + 20.0, rect.end.y - 20.0))
 		if _on_walk(p) or _depth(p, _zones()) > -20.0:
 			continue
-		# (user request: plants only near the water - none out on the open dunes)
-		if -_depth(p, _zones()) > DESERT_PLANT_REACH:
+		# (user request: green only near the water; out on the open dunes the dry ones, few)
+		var open_sand := -_depth(p, _zones()) > DESERT_PLANT_REACH
+		if open_sand and _rng.randf() > DESERT_OPEN_SHARE:
 			continue
 		var m := p / PX
 		var i := clampi(int(roundf((m.x - lo.x) / CELL)), 0, n.x - 1)
@@ -2201,7 +2206,7 @@ func _desert_cover(tufts: Array) -> void:
 		var c: Color = colors[j * n.x + i]
 		var y := land_y(p)
 		var yaw := Basis(Vector3.UP, _rng.randf() * TAU)
-		if c.a > 0.3:
+		if c.a > 0.3 and not open_sand:
 			# (in the green: tufts, as thick as it is; a young palm now and then)
 			if want.green_tuft > 0 and _rng.randf() < c.a and not tuft.is_empty():
 				var s := _rng.randf_range(0.3, 0.48) / maxf(tuft[1], 0.01)
@@ -5957,8 +5962,17 @@ const VULTURE_HEIGHT := Vector2(13.0, 19.0)
 const VULTURE_RADIUS := Vector2(6.0, 11.0)
 const VULTURE_SPEED := 7.0
 const VULTURE_BANK := 0.32
-const VULTURE_FLAP_EVERY := Vector2(9.0, 20.0)
+## (user request: a few wingbeats now and then while it circles, then on soaring - more often
+## than it was, and the beats deeper: tools/make_desert_animals.py)
+const VULTURE_FLAP_EVERY := Vector2(4.0, 9.0)
 const VULTURE_FLAP_FOR := Vector2(1.6, 3.0)
+## User request: not circling for ever over you - "deliberate". Each bird circles a while
+## (SKY_CIRCLE_FOR s), then goes off on its way, a few wingbeats to get going, out of sight
+## (SKY_GONE m off, its shadow too), and is gone a while (SKY_AWAY_FOR s) before one comes in
+## from far off to circle again.
+const SKY_CIRCLE_FOR := Vector2(14.0, 28.0)
+const SKY_AWAY_FOR := Vector2(25.0, 60.0)
+const SKY_GONE := 46.0
 ## How far from you each circle's middle may wander (m), and how slowly it follows you (/s).
 const VULTURE_ROAM := 3.0
 const VULTURE_FOLLOW := 0.08
@@ -6030,8 +6044,15 @@ func _sky_birds() -> void:
 		v.centre = _vulture_centre(v, me)
 		if bool(kind[4]):
 			v.shadow = _sky_shadow(path, model)
+		# (the first circling as you come, the others off and coming in their own time)
+		v.state = "circle" if i == 0 else "away"
+		v.state_t = _rng.randf_range(8.0, SKY_CIRCLE_FOR.y) if i == 0 else _rng.randf_range(6.0, SKY_AWAY_FOR.x)
+		v.pos = Vector3.ZERO
+		v.vel = Vector3.ZERO
 		_vultures.append(v)
 		_circle_vulture(v, 0.0, me)
+		if v.state == "away":
+			_sky_show(v, false)
 
 
 ## A bird's drawn shadow (SKY_BIRDS): the same model again, sized and set as `like` is, dark and
@@ -6081,6 +6102,75 @@ func _lay_sky_shadow(v: Dictionary) -> void:
 		copy.seek(anim.current_animation_position, true)
 
 
+## A bird of prey not circling (SKY_*): off on its way ("leave") till it's out of sight, gone a
+## while ("away"), then coming in from far off ("come") to its circle round the traveller.
+func _sky_travel(v: Dictionary, delta: float, me: Vector3) -> void:
+	var holder: Node3D = v.node
+	var anim: AnimationPlayer = v.anim
+	if float(v.flap) > 0.0:
+		v.flap = float(v.flap) - delta
+		if float(v.flap) <= 0.0 and anim != null:
+			anim.play("Soar", 0.6)
+	match str(v.state):
+		"leave":
+			var vel: Vector3 = v.vel
+			vel = vel.normalized() * move_toward(vel.length(), VULTURE_SPEED * 1.5, delta * 2.0)
+			v.vel = vel
+			var pos: Vector3 = v.pos + vel * delta
+			pos.y += 0.6 * delta
+			v.pos = pos
+			_sky_fly(holder, pos, vel)
+			if Vector2(pos.x - me.x, pos.z - me.z).length() > SKY_GONE:
+				v.state = "away"
+				v.state_t = _rng.randf_range(SKY_AWAY_FOR.x, SKY_AWAY_FOR.y)
+				_sky_show(v, false)
+		"away":
+			if float(v.state_t) <= 0.0:
+				# (another comes: from far off, any way, towards its circle round the traveller)
+				var from := Vector2.RIGHT.rotated(_rng.randf() * TAU) * SKY_GONE
+				v.height = _rng.randf_range(VULTURE_HEIGHT.x, VULTURE_HEIGHT.y)
+				v.centre = _vulture_centre(v, me)
+				v.pos = Vector3(me.x + from.x, ground_y(to2(me)) + float(v.height) + 2.0, me.z + from.y)
+				v.state = "come"
+				_sky_show(v, true)
+				if anim != null:
+					anim.play("Soar", 0.0)
+		"come":
+			var c: Vector3 = v.centre
+			var pos: Vector3 = v.pos
+			var flat := Vector2(c.x - pos.x, c.z - pos.z)
+			# (into its circle at the side it meets first, the way round it turns)
+			var reach := flat.length() - float(v.radius)
+			var vel := Vector3(flat.x, 0.0, flat.y).normalized() * VULTURE_SPEED * 1.2
+			pos += vel * delta
+			var want_y := ground_y(to2(pos)) + float(v.height)
+			pos.y = move_toward(pos.y, want_y, delta * 0.5)
+			v.pos = pos
+			v.vel = vel
+			_sky_fly(holder, pos, vel)
+			if reach <= 0.5:
+				v.state = "circle"
+				v.state_t = _rng.randf_range(SKY_CIRCLE_FOR.x, SKY_CIRCLE_FOR.y)
+				v.angle = atan2(pos.z - c.z, pos.x - c.x)
+				v.next = _rng.randf_range(1.0, 3.0)
+	if _warm_step >= 0 and _warm_step < WARM_POSES * WARM_HOLD:
+		holder.position = pivot.global_position + Vector3(0.0, 1.4, -2.2)
+
+
+## A bird flying straight: at `pos`, along `vel`, level (the model faces +Z).
+func _sky_fly(holder: Node3D, pos: Vector3, vel: Vector3) -> void:
+	holder.position = pos
+	if vel.length() > 0.01:
+		holder.basis = Basis.looking_at(-vel.normalized(), Vector3.UP)
+
+
+## A bird of prey (and its drawn shadow) shown or put away.
+func _sky_show(v: Dictionary, on: bool) -> void:
+	(v.node as Node3D).visible = on
+	if v.has("shadow"):
+		((v.shadow as Array)[0] as Node3D).visible = on
+
+
 ## Where a vulture's circle centres for its shadow to fall round `me`: towards the moon, by its height.
 func _vulture_centre(v: Dictionary, me: Vector3) -> Vector3:
 	var dir := MOON_DIR.normalized()
@@ -6102,8 +6192,24 @@ func _circle_vultures(delta: float) -> void:
 	var me := to3(player.global_position, 0.0)
 	for v in _vultures:
 		v.centre = (v.centre as Vector3).lerp(_vulture_centre(v, me), 1.0 - exp(-delta * VULTURE_FOLLOW))
-		# (a few wingbeats now and then, climbing a little on them, gliding down slowly after)
 		var anim: AnimationPlayer = v.anim
+		v.state_t = float(v.state_t) - delta
+		if v.state != "circle":
+			_sky_travel(v, delta, me)
+			if v.has("shadow"):
+				_lay_sky_shadow(v)
+			continue
+		if float(v.state_t) <= 0.0:
+			# (off on its way: straight on from where its circle had it, beating its wings to go)
+			var a := float(v.angle)
+			v.state = "leave"
+			v.pos = (v.node as Node3D).position
+			v.vel = Vector3(-sin(a), 0.0, cos(a)) * float(v.turn) * VULTURE_SPEED
+			v.flap = _rng.randf_range(VULTURE_FLAP_FOR.x, VULTURE_FLAP_FOR.y)
+			if anim != null:
+				anim.play("Flap", 0.4)
+			continue
+		# (a few wingbeats now and then, climbing a little on them, gliding down slowly after)
 		if float(v.flap) > 0.0:
 			v.flap = float(v.flap) - delta
 			v.height = minf(float(v.height) + 0.7 * delta, VULTURE_HEIGHT.y + 3.0)
@@ -6506,9 +6612,14 @@ func _update_light() -> void:
 		_beam.visible = on and beam
 		# (the lamp in the water round the traveller - WATER_SHADER's `lamp`)
 		var sheen := clampf(lantern.energy, 0.0, 1.2) if on else 0.0
+		var lamp_at := pivot.global_position + Vector3(0, 1.1, 0)
+		if _lamp.visible:
+			lamp_at = _lamp.global_position
+		elif _beam.visible:
+			lamp_at = _beam.global_position
 		for wm in _water_mats:
 			(wm as ShaderMaterial).set_shader_parameter("lamp", sheen)
-			(wm as ShaderMaterial).set_shader_parameter("lamp_at", pivot.global_position + Vector3(0, 1.1, 0))
+			(wm as ShaderMaterial).set_shader_parameter("lamp_at", lamp_at)
 		if on:
 			var half := 128.0
 			if lantern.texture != null:
