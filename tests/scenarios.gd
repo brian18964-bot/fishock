@@ -4790,6 +4790,18 @@ func test_birds() -> void:
 	if not view._vultures.is_empty():
 		circling = str((view._vultures[0].node as Node3D).get_child(0).scene_file_path)
 	check(circling.ends_with(str(sky[0]) + ".glb"), "a %s circling over this map (%s)" % [sky[0], circling])
+	if bool(sky[4]) and not view._vultures.is_empty():
+		# (on the dark grounds its shadow drawn too: the bird pressed flat on the ground, under it
+		# along the moon's light)
+		await frames(2)
+		var v0: Dictionary = view._vultures[0]
+		var flat_ok := false
+		if v0.has("shadow"):
+			var sh: Node3D = v0.shadow[0]
+			var g := view.ground_y(RunView3D.to2(sh.global_position))
+			var on_ground := (sh.global_transform * Vector3(0.0, 2.0, 0.0)).y - g
+			flat_ok = absf(sh.global_basis.y.y) < 0.01 and on_ground > -0.02 and on_ground < 0.3
+		check(flat_ok, "its shadow drawn on the dark ground")
 	# a tree chopped: its birds fly, away from the blow, and come back down nowhere - gone off
 	var tree_pair = null
 	for pair in view._trees:

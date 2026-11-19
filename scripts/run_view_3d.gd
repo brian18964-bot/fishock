@@ -5966,10 +5966,19 @@ var _vultures: Array = []
 
 
 ## User request: the vulture's way - circling, its shadow wheeling on the ground - suits the birds
-## of prey: each map style's [model, wingspan (m), how many] (tools/make_desert_animals.py: hawk,
-## eagle, from the user's bird figures).
-const SKY_BIRDS := {"desert": ["vulture", VULTURE_SPAN, VULTURES], "snow": ["eagle", 2.1, 1], "autumn": ["hawk", 1.3, 2],
-	"": ["hawk", 1.3, 1]}
+## of prey: each map style's [model, wingspan (m), how many, its circle's radius (m), its shadow
+## drawn] (tools/make_desert_animals.py: hawk, eagle, from the user's bird figures). The game's
+## camera sees only some 12 m across round the traveller: the smaller birds' circles kept small
+## and a little ahead (SKY_AHEAD), so the shadow sweeps through the picture each time round, not
+## just past its edge. On the dark grounds - the forest's grass, the autumn's leaves - the moon's
+## own shadow of a bird is too faint to see (little moonlight there to take away): there it's
+## drawn as well (_sky_shadow: the bird pressed flat onto the ground along the moon's light, dark
+## and see-through, beating its wings as the bird does).
+const SKY_BIRDS := {"desert": ["vulture", VULTURE_SPAN, VULTURES, VULTURE_RADIUS, false],
+	"snow": ["eagle", 2.1, 1, Vector2(4.0, 6.0), false], "autumn": ["hawk", 1.3, 2, Vector2(3.5, 5.5), true],
+	"": ["hawk", 1.3, 1, Vector2(3.5, 5.5), true]}
+const SKY_AHEAD := 2.5
+const SKY_SHADOW_DARK := 0.55
 var _flock: Flock
 var _flock_warm := false
 
@@ -6011,21 +6020,72 @@ func _sky_birds() -> void:
 				anim.get_animation(a).loop_mode = Animation.LOOP_LINEAR
 			anim.play("Soar")
 			anim.seek(_rng.randf() * 3.0, true)
+		var radius: Vector2 = kind[3]
 		var v := {"node": holder, "anim": anim, "angle": _rng.randf() * TAU, "turn": 1.0 if i % 2 == 0 else -1.0,
-			"radius": _rng.randf_range(VULTURE_RADIUS.x, VULTURE_RADIUS.y),
+			"radius": _rng.randf_range(radius.x, radius.y),
 			"height": _rng.randf_range(VULTURE_HEIGHT.x, VULTURE_HEIGHT.y),
-			"roam": Vector3(_rng.randf_range(-1.0, 1.0), 0.0, _rng.randf_range(-1.0, 1.0)) * VULTURE_ROAM,
+			"roam": Vector3(_rng.randf_range(-1.0, 1.0), 0.0, _rng.randf_range(-1.0, 1.0)) * VULTURE_ROAM * radius.x / VULTURE_RADIUS.x,
+			"ahead": 0.0 if _desert else SKY_AHEAD,
 			"flap": 0.0, "next": _rng.randf_range(VULTURE_FLAP_EVERY.x, VULTURE_FLAP_EVERY.y), "phase": _rng.randf() * TAU}
 		v.centre = _vulture_centre(v, me)
+		if bool(kind[4]):
+			v.shadow = _sky_shadow(path, model)
 		_vultures.append(v)
 		_circle_vulture(v, 0.0, me)
+
+
+## A bird's drawn shadow (SKY_BIRDS): the same model again, sized and set as `like` is, dark and
+## see-through, unlit; pressed flat onto the ground each frame (_lay_sky_shadow). [its holder, its
+## AnimationPlayer].
+func _sky_shadow(path: String, like: Node3D) -> Array:
+	var holder := Node3D.new()
+	holder.name = "SkyShadow"
+	add_child(holder)
+	var model: Node3D = (load(path) as PackedScene).instantiate()
+	holder.add_child(model)
+	model.scale = like.scale
+	model.position = like.position
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = Color(0.0, 0.0, 0.0, SKY_SHADOW_DARK)
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		(mi as MeshInstance3D).material_override = mat
+		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var anim: AnimationPlayer = null
+	var aps := model.find_children("*", "AnimationPlayer", true, false)
+	if not aps.is_empty():
+		anim = aps[0]
+		anim.speed_scale = 0.0
+	return [holder, anim]
+
+
+## The drawn shadow under its bird: the bird's own pose, its wings where they are, pressed along
+## the moon's light onto the ground there.
+func _lay_sky_shadow(v: Dictionary) -> void:
+	var sh: Array = v.shadow
+	var bird: Node3D = v.node
+	var light := -_moon.global_basis.z if _moon != null else -MOON_DIR.normalized()
+	if light.y > -0.2:
+		light = Vector3(light.x, -0.2, light.z)
+	var at := bird.global_position
+	var g := ground_y(to2(at - light * ((at.y - LAND_Y) / -light.y))) + 0.05
+	var m := Basis(Vector3(1.0, 0.0, 0.0), Vector3(-light.x / light.y, 0.001, -light.z / light.y), Vector3(0.0, 0.0, 1.0))
+	(sh[0] as Node3D).global_transform = Transform3D(m, Vector3(0.0, g, 0.0) - m * Vector3(0.0, g, 0.0)) * bird.global_transform
+	var anim: AnimationPlayer = v.anim
+	var copy: AnimationPlayer = sh[1]
+	if anim != null and copy != null and anim.current_animation != "":
+		if copy.current_animation != anim.current_animation:
+			copy.play(anim.current_animation)
+		copy.seek(anim.current_animation_position, true)
 
 
 ## Where a vulture's circle centres for its shadow to fall round `me`: towards the moon, by its height.
 func _vulture_centre(v: Dictionary, me: Vector3) -> Vector3:
 	var dir := MOON_DIR.normalized()
 	var reach := float(v.height) / maxf(dir.y, 0.25)
-	return Vector3(me.x + dir.x * reach, 0.0, me.z + dir.z * reach) + (v.roam as Vector3)
+	return Vector3(me.x + dir.x * reach, 0.0, me.z + dir.z * reach - float(v.get("ahead", 0.0))) + (v.roam as Vector3)
 
 
 func _circle_vultures(delta: float) -> void:
@@ -6062,6 +6122,8 @@ func _circle_vultures(delta: float) -> void:
 			# (high over the traveller, out of the warm-up's sight: shown it in front, behind the
 			# loading cover, so its shaders aren't built the moment it first sails into view)
 			(v.node as Node3D).position = pivot.global_position + Vector3(0.0, 1.4, -2.2)
+		if v.has("shadow"):
+			_lay_sky_shadow(v)
 
 
 func _circle_vulture(v: Dictionary, delta: float, _me: Vector3) -> void:
