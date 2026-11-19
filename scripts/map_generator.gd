@@ -538,8 +538,10 @@ func _scatter_props() -> void:
 		# child), so the theme still decides what they become.
 		_theme_prop(prop)
 		var size := _footprint(prop)
+		# (a style with "plant_band": the scene's bushes too only near the water - user request)
 		var pos := _place_tree(prop) if prop is MapTree and theme.has("oasis_trees") \
-			else _pick_prop_position(size[0], size[1])
+			else (_by_water(size[0], size[1]) if str(prop.name).begins_with("Bush") and theme.has("plant_band")
+			else _pick_prop_position(size[0], size[1]))
 		if pos.x < 0.0:
 			# (no room left that keeps clear of everything: not placed)
 			prop.queue_free()
