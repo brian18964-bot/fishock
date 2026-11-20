@@ -1603,8 +1603,19 @@ func _trees_and_rocks() -> void:
 		# (as deep in the sand as this game has it: the ground under it less its drift, less its sink)
 		model.position = to3(at, land_y(at) - (bones as Fossil).sand_at(at) - (bones as Fossil).sink())
 		model.rotation.y = float(bones.get("yaw"))
+		var coastal := (bones as Fossil).coastal()
+		if coastal and not _ground_grid.is_empty():
+			# (the seaside's rocks on the ground as it is - out in the shallows, on the seabed - their
+			# lowest part under it)
+			var low := INF
+			for c in (bones as Fossil).data().get("circles", []):
+				var q: Vector2 = at + Fossil.offset(float(c[0]), float(c[1]), (bones as Fossil).yaw)
+				low = minf(low, _grid_y(q.x / PX, q.y / PX))
+			model.position.y = minf(low, _grid_y(at.x / PX, at.y / PX)) - 0.05
 		for mi in model.find_children("*", "MeshInstance3D", true, false):
 			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if _low else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			if coastal:
+				_coast_rock_look(mi as MeshInstance3D, (bones as Fossil).kind == "cliff")
 		add_child(model)
 		_fossil_models.append(model)
 	# The rocks, bushes and turning stones: each exactly as big as its 2D
@@ -1629,6 +1640,30 @@ func _trees_and_rocks() -> void:
 			_oxy_tree(n, at)
 		elif path == "frost_flower.gd" and not _frosts.has(n):
 			_frost_flower(n, at)
+
+
+## The seaside's rocks' look: their wet feet and weed (the model's vertex colours) on their picture,
+## laid on triplanar;
+## the cliffs, tall, see-through near the camera as the trees are (FADE_NEAR..FADE_FAR m), so the
+## traveller is never lost behind one.
+func _coast_rock_look(mi: MeshInstance3D, tall: bool) -> void:
+	for s in mi.mesh.get_surface_count():
+		var src := mi.mesh.surface_get_material(s) as StandardMaterial3D
+		if src == null:
+			continue
+		var m := src.duplicate() as StandardMaterial3D
+		m.vertex_color_use_as_albedo = true
+		m.roughness = 0.9
+		# (its picture laid on from all sides evenly - no stretching up the steep faces)
+		m.uv1_triplanar = true
+		m.uv1_world_triplanar = false
+		m.uv1_scale = Vector3.ONE * (0.42 if tall else 0.6)
+		m.uv1_triplanar_sharpness = 2.0
+		if tall:
+			m.distance_fade_mode = BaseMaterial3D.DISTANCE_FADE_PIXEL_DITHER
+			m.distance_fade_min_distance = FADE_NEAR - 1.0
+			m.distance_fade_max_distance = FADE_FAR
+		mi.set_surface_override_material(s, m)
 
 
 ## The oxygen tree (OxyTree, our own model after the user's mushroom tree) at
@@ -2650,6 +2685,9 @@ func _faded(mesh: Mesh) -> Mesh:
 ## The desert's rocks: its own sandstone (tools/make_desert_props.py) - the boulders round or
 ## stacked, the stones you turn over the flat slab.
 func _rock(model: String, turning: bool) -> String:
+	if _coast:
+		# (by the sea its own rocks - dark, worn, wet at the foot: the shore's)
+		return "coast_reef_b" if turning else ("coast_reef_c" if model == "rock_medium_2" else "coast_reef_a")
 	if not _desert:
 		return model
 	if turning:
@@ -2671,14 +2709,23 @@ func _model_mesh(name: String, wide := false) -> Array:
 	var key := name + ("#wide" if wide else "")
 	if _models.has(key):
 		return _models[key]
-	var path := PROTO_MODELS + name + ".glb"
+	var path := (Fossil.COAST_DIR if name.begins_with("coast_") else PROTO_MODELS) + name + ".glb"
 	if not ResourceLoader.exists(path):
 		return []
 	var inst: Node = (load(path) as PackedScene).instantiate()
 	var found: Array = []
 	for mi in inst.find_children("*", "MeshInstance3D", true, false):
 		var m: Mesh = (mi as MeshInstance3D).mesh
-		if name in SWAYING:
+		if name.begins_with("coast_"):
+			# (the seaside's rocks: their wet feet on them, their picture even - _coast_rock_look's)
+			m = m.duplicate()
+			var tmp := MeshInstance3D.new()
+			tmp.mesh = m
+			_coast_rock_look(tmp, false)
+			for s in m.get_surface_count():
+				m.surface_set_material(s, tmp.get_surface_override_material(s))
+			tmp.free()
+		elif name in SWAYING:
 			# (user request: the plants bend in the wind too - and bear snow on the snowy map)
 			m = Foliage.dress(m, true)
 			if name in CUT_OUT:
@@ -7680,6 +7727,13 @@ uniform float lamp = 0.0;
 varying vec4 paint;
 varying vec3 gpos;
 """ + SEA_WAVE_FN + """
+float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vnoise(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y);
+}
 void vertex() { paint = COLOR; gpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
 	vec2 uv = UV * 0.25;
@@ -7701,6 +7755,15 @@ void fragment() {
 	if (coast > 0.5) {
 		float sd = mix(sea_range.x, sea_range.y, texture(sea_tex, (UV - sea_box.xy) / sea_box.zw).r);
 		float shore = -sd;
+		// (the tide's line: weed and bits of shell left along the sand above where the waves reach -
+		// broken, in clumps and strands)
+		float tide = smoothstep(run_up.y + 4.0, run_up.y + 12.0, shore) * (1.0 - smoothstep(run_up.y + 22.0, run_up.y + 36.0, shore + 10.0 * sin(UV.x * 0.21 + UV.y * 0.17)));
+		if (tide > 0.0) {
+			float clump = smoothstep(0.5, 0.72, vnoise(UV * 0.9)) * smoothstep(0.35, 0.65, vnoise(UV * 3.7 + vec2(7.3, 2.1)));
+			c = mix(c, vec3(0.12, 0.11, 0.06), tide * clump * 0.7);
+			float bits = step(0.93, vnoise(UV * 11.0 + vec2(1.7, 9.2))) * tide * (0.35 + 0.65 * clump);
+			c = mix(c, vec3(0.8, 0.77, 0.7), bits * 0.55);
+		}
 		if (shore > -12.0 && shore < run_up.y + 20.0) {
 			// this wave's time since its crest reached the shore here (0..1), how far up it runs
 			float t = TIME * wave_rate + sea_wave_off(UV) - 0.15;

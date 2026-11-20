@@ -265,6 +265,8 @@ func _ready() -> void:
 	_place_altar_and_escape()
 	_take_fixed_points()
 	_place_fossils()
+	if theme.get("sea", false):
+		_place_coast_rocks()
 	# Docks and shores before the trees and rocks, so those can keep clear
 	# of every walkway entrance.
 	_dress_shores()
@@ -861,6 +863,115 @@ func _place_fossils() -> void:
 				var around := Rect2(bones.position - Vector2.ONE * (bones.reach() + 6.0 * Fossil.PX), Vector2.ONE * 2.0 * (bones.reach() + 6.0 * Fossil.PX))
 				if _place_fossil("bones", str(piece), made, around) != null:
 					made += 1
+
+
+## User request (the seaside: its cliffs, the rocks of the shore - tools/make_coast_props.py, Fossil
+## "cliff" and "reef"): a headland of cliff near each end of the coast, from the beach out into
+## the sea (COAST_HEADLAND px in from the map's end); a stretch of cliff along the back of the
+## beach (COAST_BLUFF pieces) somewhere well away from the camp; rocks at the water's edge and in
+## the shallows in twos and threes (COAST_REEFS clusters a base map's area).
+const COAST_HEADLAND := Vector2(140.0, 300.0)
+const COAST_BLUFF := 3
+const COAST_BLUFF_UP := 300.0
+const COAST_REEFS := Vector2i(2, 3)
+const COAST_CLEAR_OF_CAMP := 420.0
+
+
+func _place_coast_rocks() -> void:
+	var across := sea_side.y != 0.0
+	var length := Player.WORLD_WIDTH if across else Player.WORLD_HEIGHT
+	var along := Vector2.RIGHT if across else Vector2.DOWN
+	var made := 0
+	for end in 2:
+		var t := randf_range(COAST_HEADLAND.x, COAST_HEADLAND.y)
+		if end == 1:
+			t = length - t
+		var base := _coast_point(t, 30.0)
+		if not base.is_finite():
+			continue
+		var yaw := atan2(-sea_side.y, sea_side.x)
+		for k in 2:
+			if _put_coast_rock("cliff", base + sea_side * (k * 175.0 - 30.0) + along * randf_range(-25.0, 25.0), yaw + randf_range(-0.3, 0.3), made):
+				made += 1
+		# (a rock or two off its end)
+		for k in randi_range(1, 2):
+			if _put_coast_rock("reef", base + sea_side * randf_range(330.0, 420.0) + along * randf_range(-90.0, 90.0), randf() * TAU, made):
+				made += 1
+	# The cliff along the beach's back, its pieces end to end along the shore (as many of them as
+	# fit, two at least).
+	for _try in 40:
+		var t0 := randf_range(length * 0.06, length * 0.94 - COAST_BLUFF * 170.0)
+		var spots := []
+		for k in COAST_BLUFF:
+			var p := _coast_point(t0 + k * 170.0, COAST_BLUFF_UP)
+			if not p.is_finite() or p.distance_to(SPAWN_POS) < COAST_CLEAR_OF_CAMP or _near_walkway(p, 200.0):
+				break
+			spots.append([p, t0 + k * 170.0])
+		if spots.size() < 2:
+			continue
+		for sp in spots:
+			var a := _coast_point(float(sp[1]) - 30.0, COAST_BLUFF_UP)
+			var b := _coast_point(float(sp[1]) + 30.0, COAST_BLUFF_UP)
+			var way := (b - a).normalized() if a.is_finite() and b.is_finite() else along
+			if _put_coast_rock("cliff", sp[0], atan2(-way.y, way.x) + randf_range(-0.12, 0.12), made):
+				made += 1
+		break
+	# Rocks at the water's edge and in the shallows.
+	var clusters := maxi(1, roundi(randi_range(COAST_REEFS.x, COAST_REEFS.y) * Campaign.area_share()))
+	for _c in clusters:
+		var t := randf_range(length * 0.08, length * 0.92)
+		for k in randi_range(2, 3):
+			var p := _coast_point(t + randf_range(-110.0, 110.0), randf_range(-80.0, 15.0))
+			if p.is_finite() and _put_coast_rock("reef", p, randf() * TAU, made):
+				made += 1
+
+
+## The coast `t` px along it (from the map's top or left), `up` px up from the sea's edge (into
+## the sea if less than 0); INF if the coast isn't there.
+func _coast_point(t: float, up: float) -> Vector2:
+	var w := Player.WORLD_WIDTH
+	var h := Player.WORLD_HEIGHT
+	var from: Vector2
+	match sea_side:
+		Vector2.DOWN: from = Vector2(t, 0.0)
+		Vector2.UP: from = Vector2(t, h)
+		Vector2.LEFT: from = Vector2(w, t)
+		_: from = Vector2(0.0, t)
+	var steps := int((h if sea_side.y != 0.0 else w) / 8.0) + 40
+	for k in steps:
+		var p := from + sea_side * float(k) * 8.0
+		if _sea_depth(p) > -up:
+			return p
+	return Vector2.INF
+
+
+func _sea_depth(p: Vector2) -> float:
+	var best := -INF
+	for zone in water_zones:
+		if zone.sea:
+			best = maxf(best, zone.depth(p))
+	return best
+
+
+## One of the seaside's rocks (`kind`: "cliff" or "reef", one of its ways) at `pos`, turned `yaw`,
+## if it may stand there: on the map, clear of the camp, the decks and what's placed.
+func _put_coast_rock(kind: String, pos: Vector2, yaw: float, n: int) -> bool:
+	var form := Fossil.pick(kind)
+	var reach := Fossil.reach_px(form)
+	var room := reach * (0.45 if kind == "cliff" else 0.55)
+	if not _inside_map(pos, room * 0.5) or pos.distance_to(SPAWN_POS) < reach + PROP_AVOID_SPAWN_RADIUS + 80.0:
+		return false
+	if _near_walkway(pos, reach + 30.0) or _near_entrance(pos, reach + 20.0) or not _fits(pos, room, 0.0):
+		return false
+	var rock := Fossil.new()
+	rock.name = "CoastRock%d" % n
+	rock.kind = kind
+	rock.form = form
+	rock.yaw = yaw
+	rock.position = pos
+	_taken.append([pos, room, 0.0])
+	get_parent().add_child.call_deferred(rock)
+	return true
 
 
 ## One of the desert's bones, cacti or skulls - `kind`, its way `form` - somewhere in `within` (and

@@ -17,6 +17,9 @@ extends StaticBody2D
 ## less than CLEAR above the sand there (its circles' heights - the .json's fourth) is walked over.
 
 const DIR := "res://assets/models/desert/"
+## (the seaside's rocks - its cliffs and the rocks of the water's edge, tools/make_coast_props.py:
+## the same, a place and its solid ground, none of the sand's covering)
+const COAST_DIR := "res://assets/models/coast/"
 ## User report (a skeleton's legs held out in the air, "floating") and request (cut the skeletons
 ## into several kinds, for more chance): each kind's ways (files: DIR + name + .glb / .json; one
 ## drawn each time it's placed) - the mammoth and the dinosaur with their legs laid on the sand,
@@ -25,7 +28,8 @@ const DIR := "res://assets/models/desert/"
 const KINDS := {"dino": ["dino_a", "dino_b"], "mammoth": ["mammoth_fossil", "mammoth_fossil_b"],
 	"elephant": ["elephant_bones", "elephant_bones_b"], "crocodile": ["crocodile_bones", "crocodile_bones_b"],
 	"wildcat": ["wildcat_bones", "wildcat_bones_b"], "saguaro": ["saguaro"], "cholla": ["cholla"], "skull": ["skull"],
-	"bones": ["mammoth_leg_a", "mammoth_leg_b", "dino_leg", "elephant_skull", "crocodile_skull", "wildcat_skull"]}
+	"bones": ["mammoth_leg_a", "mammoth_leg_b", "dino_leg", "elephant_skull", "crocodile_skull", "wildcat_skull"],
+	"cliff": ["coast_cliff_a", "coast_cliff_b", "coast_cliff_c"], "reef": ["coast_reef_a", "coast_reef_b", "coast_reef_c"]}
 ## A skeleton that's lost some of itself: where those pieces went (laid near it - MapGenerator).
 const SCATTER := {"mammoth_fossil_b": ["mammoth_leg_a", "mammoth_leg_b"], "dino_b": ["dino_leg"]}
 ## The big ones: on flat sand (RunView3D keeps the dunes off them).
@@ -74,14 +78,23 @@ static func file_of(which: String) -> String:
 static func info(which := "dino") -> Dictionary:
 	var file := file_of(which)
 	if not _infos.has(file):
-		var path: String = DIR + file + ".json"
+		var path: String = dir_of(file) + file + ".json"
 		var got = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null
 		_infos[file] = got if got is Dictionary else {}
 	return _infos[file]
 
 
 static func model_of(which: String) -> String:
-	return DIR + file_of(which) + ".glb"
+	return dir_of(file_of(which)) + file_of(which) + ".glb"
+
+
+static func dir_of(file: String) -> String:
+	return COAST_DIR if file.begins_with("coast_") else DIR
+
+
+## The seaside's rocks (not the desert's bones): they stand on the ground as it is, the seabed too.
+func coastal() -> bool:
+	return way().begins_with("coast_")
 
 
 ## How far its bones (or arms) reach from its middle (px) - kept clear by what's placed round it.

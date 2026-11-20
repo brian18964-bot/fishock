@@ -10775,6 +10775,29 @@ func test_coast_theme() -> void:
 	check(seabed_ok, "the seabed shelving away under the sea")
 	var camp_y := view.ground_y(main.get_node("FuelStation").global_position)
 	check(absf(camp_y - RunView3D.LAND_Y) < 0.06, "flat at the camp (%.2f m)" % camp_y)
+	# Its cliffs and rocks (the user's cliff rock made ours): cliffs - a headland near an end, a
+	# stretch along the back of the beach; rocks at the water's edge and out in the shallows; each
+	# solid, each shown on the ground as it is, its wet foot and weed on it, its picture even.
+	var cliffs := 0
+	var reefs := 0
+	var reef_in_sea := 0
+	var rocks_ok := true
+	for r in get_tree().get_nodes_in_group("fossils"):
+		var f := r as Fossil
+		if f.kind == "cliff":
+			cliffs += 1
+		elif f.kind == "reef":
+			reefs += 1
+			if in_sea.call(f.global_position):
+				reef_in_sea += 1
+		rocks_ok = rocks_ok and f.coastal() and not f.solids().is_empty() and ResourceLoader.exists(f.model_path())
+	var look_ok := view._fossil_models.size() == cliffs + reefs
+	for model in view._fossil_models:
+		for mi in (model as Node3D).find_children("*", "MeshInstance3D", true, false):
+			var m := (mi as MeshInstance3D).get_surface_override_material(0) as StandardMaterial3D
+			look_ok = look_ok and m != null and m.vertex_color_use_as_albedo and m.uv1_triplanar
+	check(rocks_ok and cliffs >= 2 and reefs >= 2 and reef_in_sea >= 1, "cliffs and the shore's rocks, solid (%d cliffs, %d rocks, %d out in the water)" % [cliffs, reefs, reef_in_sea])
+	check(look_ok, "each shown, wet at its foot, its picture laid on evenly")
 	# The trees back from the beach; none of the forest's animals or birds.
 	var inland: float = MapGenerator.THEMES.coast.inland
 	var trees_back := true
@@ -11032,9 +11055,9 @@ func test_grass() -> void:
 ## anything nor stuck on open ground (so nothing's walked through, and nothing traps).
 func test_world_integrity() -> void:
 	var problems := []
-	for look in ["", "snow_pine", "autumn", "desert"]:
+	for look in ["", "snow_pine", "autumn", "desert", "coast"]:
 		for seed_n in [3, 11]:
-			if look == "desert" and seed_n == 11:
+			if (look == "desert" or look == "coast") and seed_n == 11:
 				continue
 			seed(seed_n)
 			camp().clear()
@@ -11061,16 +11084,21 @@ func test_world_integrity() -> void:
 				if "radii" in o and o.radii is Vector2:
 					solids.append([o.global_position, (o.radii.x + o.radii.y) * 0.5, "rock"])
 				elif o is Fossil:
-					# (the dinosaur's bones: each of its circles, not checked against each other)
+					# (the dinosaur's bones: each of its circles, not checked against each other; the
+					# seaside's cliffs and rocks the same - their pieces meeting in one wall, some out
+					# in the sea)
 					for b in o.solids():
-						solids.append([b[0], (b[1] as Vector2).x, "fossil#%d" % o.get_instance_id()])
+						solids.append([b[0], (b[1] as Vector2).x, ("coast#%d" if (o as Fossil).coastal() else "fossil#%d") % o.get_instance_id()])
 			var zones := get_tree().get_nodes_in_group("water_zones")
 			for i in solids.size():
 				for j in range(i + 1, solids.size()):
 					var gap: float = (solids[i][0] as Vector2).distance_to(solids[j][0]) - float(solids[i][1]) - float(solids[j][1])
-					if gap < -2.0 and not (solids[i][2] == solids[j][2] and str(solids[i][2]).begins_with("fossil")):
+					if gap < -2.0 and not (solids[i][2] == solids[j][2] and str(solids[i][2]).begins_with("fossil")) \
+							and not (str(solids[i][2]).begins_with("coast") and str(solids[j][2]).begins_with("coast")):
 						problems.append("%s: %s and %s overlap by %.0f px at %s" % [tag, solids[i][2], solids[j][2], -gap, solids[i][0]])
 				for z in zones:
+					if str(solids[i][2]).begins_with("coast"):
+						break
 					if (z as WaterZone).depth(solids[i][0]) > -float(solids[i][1]) * 0.5:
 						problems.append("%s: a %s stands in the water at %s" % [tag, solids[i][2], solids[i][0]])
 			var p := player()
