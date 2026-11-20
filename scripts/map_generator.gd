@@ -178,19 +178,21 @@ const THEMES := {
 	},
 	# User request: the seaside - the sea along one side of the map (any side: up, down, left or right
 	# on the screen; "sea", MapGenerator._generate_sea), a sand beach along it, its wet edge where the
-	# waves run up, cliffs, the waves; crabs and gulls - none of the forest's animals. RunView3D's
-	# _coast: the beach and the dunes behind it (its "floor3d": the pale sea sand, the wet sand, the
-	# grass back from the beach, the pebbles), the sea out to the horizon; the trees a windbreak back
-	# from the beach ("inland", px from the shore).
+	# waves run up, the waves; crabs and gulls - none of the forest's animals. RunView3D's _coast: the
+	# beach and the dunes behind it (its "floor3d": the pale sea sand, the wet sand, the grass back
+	# from the beach, the pebbles), the sea out to the horizon. User feedback: a beach and a sea cliff
+	# are two kinds of coast that don't meet - no rocks walling the beach off: the cliffs are a map of
+	# their own ("coast_cliff"). Here coconut palms (MapTree's "coast") along the top of the beach and
+	# inland ("inland", px from the shore), a few rocks.
 	"coast": {
 		"look": "detailed",
 		"sea": true,
 		"floor": ["grass", "grass", 0.3],
 		"floor3d": {"grass": "sea_sand", "forest": "grass", "mud": "wet_sand", "stone": "sea_pebbles"},
-		"trees": 10, "rocks": 5, "bushes": 3, "ground": 0,
+		"trees": 14, "rocks": 2, "bushes": 3, "ground": 0,
 		"tree_families": {"pine": 1.0},
 		"rock_pool": [0, 1, 2],
-		"inland": 420.0,
+		"inland": 200.0,
 		"animal_count": 0,
 		"animals": {},
 		"shore": {"grass": 0.0, "shrub": 0.0, "pebbles": 0.03},
@@ -198,6 +200,34 @@ const THEMES := {
 		"shore_critter_count": 0,
 		"shore_critters": ["crab"],
 		"water": {"base": Color(0.07, 0.36, 0.46), "deep": Color(0.02, 0.12, 0.24)},
+	},
+	# User request (the coast's other kind - a beach and a sea cliff don't meet): the sea cliff - the
+	# land high over the sea along its side (RunView3D's _cliff: a grassy top falling sheer into the
+	# water, rock at its face, the surf breaking at its foot), fished from the edge; no beach, no dock
+	# ("docks"). The sea narrower than the beach's and further from the camp ("sea_reach", share of the
+	# map across it; "sea_clear", px - the camp, the altar, the way out and the cage down off the
+	# cliff's rise, "fixed_inland"); windswept pines on the top; rocks at the cliff's foot in the sea.
+	"coast_cliff": {
+		"look": "detailed",
+		"sea": true,
+		"cliff": true,
+		"docks": false,
+		"sea_reach": Vector2(0.12, 0.16),
+		"sea_clear": 760.0,
+		"fixed_inland": 800.0,
+		"floor": ["grass", "grass", 0.3],
+		"floor3d": {"grass": "dirt", "forest": "grass", "mud": "mud", "stone": "lp_stone"},
+		"trees": 12, "rocks": 4, "bushes": 3, "ground": 0,
+		"tree_families": {"pine": 1.0},
+		"rock_pool": [0, 1, 2],
+		"inland": 140.0,
+		"animal_count": 0,
+		"animals": {},
+		"shore": {"grass": 0.0, "shrub": 0.0, "pebbles": 0.0},
+		"shore_extras": {"reeds": 0.0, "lilypad": 0.0, "driftwood": 0.0},
+		"shore_critter_count": 0,
+		"shore_critters": ["crab"],
+		"water": {"base": Color(0.06, 0.3, 0.42), "deep": Color(0.02, 0.1, 0.22)},
 	},}
 ## User feedback: the water's edge is grass, small shrubs, pebbles and
 ## boardwalks (no big trees or boulders there), with bugs and frogs about.
@@ -265,7 +295,7 @@ func _ready() -> void:
 	_place_altar_and_escape()
 	_take_fixed_points()
 	_place_fossils()
-	if theme.get("sea", false):
+	if theme.get("cliff", false):
 		_place_coast_rocks()
 	# Docks and shores before the trees and rocks, so those can keep clear
 	# of every walkway entrance.
@@ -374,8 +404,11 @@ func _generate_sea() -> void:
 	sea_side = [Vector2.DOWN, Vector2.UP, Vector2.LEFT, Vector2.RIGHT].pick_random()
 	var across := sea_side.y != 0.0  # the coast runs across the map
 	var length := w if across else h
-	# How far in from the edge the water comes.
-	var reach := randf_range(SEA_REACH.x, SEA_REACH.y) * (h if across else w)
+	# How far in from the edge the water comes (the cliff's sea narrower: "sea_reach"), and how far it
+	# keeps from the camp ("sea_clear").
+	var share: Vector2 = theme.get("sea_reach", SEA_REACH)
+	var clear: float = theme.get("sea_clear", SPAWN_CLEAR_RADIUS)
+	var reach := randf_range(share.x, share.y) * (h if across else w)
 	var r := maxf(SEA_RADIUS, reach * 0.62)
 	var n := int(ceil(length / (r * 1.3))) + 1
 	# The open sea behind the coast: one huge circle whose edge runs along the band every zone's
@@ -393,14 +426,14 @@ func _generate_sea() -> void:
 			Vector2.LEFT: pos = Vector2(inland, t)
 			_: pos = Vector2(w - inland, t)
 		# Near the spawn point the sea draws back (a bay) rather than leave a gap in the coast.
-		for _step in 12:
-			if pos.distance_to(SPAWN_POS) - r >= SPAWN_CLEAR_RADIUS:
+		for _step in 40:
+			if pos.distance_to(SPAWN_POS) - r >= clear:
 				break
 			pos += sea_side * 40.0
 		# Lobes for a ragged coast - none reaching up to the spawn point.
 		var lobes: Array[Vector3] = []
 		for lobe in _make_lobes(r, SEA_LOBES):
-			if (pos + Vector2(lobe.x, lobe.y)).distance_to(SPAWN_POS) - lobe.z >= SPAWN_CLEAR_RADIUS:
+			if (pos + Vector2(lobe.x, lobe.y)).distance_to(SPAWN_POS) - lobe.z >= clear:
 				lobes.append(lobe)
 		var zone: WaterZone = WATER_ZONE_SCENE.instantiate()
 		zone.field_texel = SEA_FIELD_TEXEL
@@ -468,6 +501,9 @@ static func _zone_area(zone: WaterZone) -> float:
 
 
 func _place_docks() -> void:
+	# (none off a sea cliff)
+	if not theme.get("docks", true):
+		return
 	var commons: Array = water_zones.filter(func(z): return not z.is_rare())
 	# User request: one dock, on the biggest water - not one on every pond.
 	commons.sort_custom(func(a, b): return _zone_area(a) > _zone_area(b))
@@ -583,9 +619,11 @@ func _pick_fixed_point_position(avoid: Array) -> Vector2:
 		for p in avoid:
 			spread = minf(spread, pos.distance_to(p))
 		var shore := _shore_distance(pos)
-		if spread >= separation and shore > 50.0:
+		# (on the sea cliff, down off its rise: "fixed_inland")
+		var inland: float = theme.get("fixed_inland", 50.0)
+		if spread >= separation and shore > inland:
 			return pos
-		var score := minf(spread / separation, 1.0) + (1.0 if shore > 50.0 else -2.0)
+		var score := minf(spread / separation, 1.0) + (1.0 if shore > inland else -2.0)
 		if score > best_score:
 			best_score = score
 			best = pos
@@ -865,63 +903,25 @@ func _place_fossils() -> void:
 					made += 1
 
 
-## User request (the seaside: its cliffs, the rocks of the shore - tools/make_coast_props.py, Fossil
-## "cliff" and "reef"): a headland of cliff near each end of the coast, from the beach out into
-## the sea (COAST_HEADLAND px in from the map's end); a stretch of cliff along the back of the
-## beach (COAST_BLUFF pieces) somewhere well away from the camp; rocks at the water's edge and in
-## the shallows in twos and threes (COAST_REEFS clusters a base map's area).
-const COAST_HEADLAND := Vector2(140.0, 300.0)
-const COAST_BLUFF := 3
-const COAST_BLUFF_UP := 300.0
-const COAST_REEFS := Vector2i(2, 3)
-const COAST_CLEAR_OF_CAMP := 420.0
+## User request (the sea cliff - tools/make_coast_props.py, Fossil "reef"): rocks fallen from the
+## cliff out in the surf at its foot (COAST_FOOT px out from it), in twos and threes (COAST_REEFS
+## clusters a base map's area). (User feedback: no cliffs or rocks walling the sandy beach off - a
+## beach and a sea cliff are kinds of coast of their own.)
+const COAST_REEFS := Vector2i(3, 4)
+const COAST_FOOT := Vector2(30.0, 110.0)
 
 
 func _place_coast_rocks() -> void:
 	var across := sea_side.y != 0.0
 	var length := Player.WORLD_WIDTH if across else Player.WORLD_HEIGHT
-	var along := Vector2.RIGHT if across else Vector2.DOWN
 	var made := 0
-	for end in 2:
-		var t := randf_range(COAST_HEADLAND.x, COAST_HEADLAND.y)
-		if end == 1:
-			t = length - t
-		var base := _coast_point(t, 30.0)
-		if not base.is_finite():
-			continue
-		var yaw := atan2(-sea_side.y, sea_side.x)
-		for k in 2:
-			if _put_coast_rock("cliff", base + sea_side * (k * 175.0 - 30.0) + along * randf_range(-25.0, 25.0), yaw + randf_range(-0.3, 0.3), made):
-				made += 1
-		# (a rock or two off its end)
-		for k in randi_range(1, 2):
-			if _put_coast_rock("reef", base + sea_side * randf_range(330.0, 420.0) + along * randf_range(-90.0, 90.0), randf() * TAU, made):
-				made += 1
-	# The cliff along the beach's back, its pieces end to end along the shore (as many of them as
-	# fit, two at least).
-	for _try in 40:
-		var t0 := randf_range(length * 0.06, length * 0.94 - COAST_BLUFF * 170.0)
-		var spots := []
-		for k in COAST_BLUFF:
-			var p := _coast_point(t0 + k * 170.0, COAST_BLUFF_UP)
-			if not p.is_finite() or p.distance_to(SPAWN_POS) < COAST_CLEAR_OF_CAMP or _near_walkway(p, 200.0):
-				break
-			spots.append([p, t0 + k * 170.0])
-		if spots.size() < 2:
-			continue
-		for sp in spots:
-			var a := _coast_point(float(sp[1]) - 30.0, COAST_BLUFF_UP)
-			var b := _coast_point(float(sp[1]) + 30.0, COAST_BLUFF_UP)
-			var way := (b - a).normalized() if a.is_finite() and b.is_finite() else along
-			if _put_coast_rock("cliff", sp[0], atan2(-way.y, way.x) + randf_range(-0.12, 0.12), made):
-				made += 1
-		break
-	# Rocks at the water's edge and in the shallows.
+	# (the sea cliff: its face is RunView3D's, all along the coast; here the rocks fallen from it,
+	# out in the surf at its foot, in twos and threes)
 	var clusters := maxi(1, roundi(randi_range(COAST_REEFS.x, COAST_REEFS.y) * Campaign.area_share()))
 	for _c in clusters:
-		var t := randf_range(length * 0.08, length * 0.92)
+		var t := randf_range(length * 0.06, length * 0.94)
 		for k in randi_range(2, 3):
-			var p := _coast_point(t + randf_range(-110.0, 110.0), randf_range(-80.0, 15.0))
+			var p := _coast_point(t + randf_range(-120.0, 120.0), -randf_range(COAST_FOOT.x, COAST_FOOT.y))
 			if p.is_finite() and _put_coast_rock("reef", p, randf() * TAU, made):
 				made += 1
 

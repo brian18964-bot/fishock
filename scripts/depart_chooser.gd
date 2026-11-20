@@ -14,13 +14,19 @@ const ART := "res://assets/ui/depart/"
 const MAPS := [["", "湖畔森林", "map_forest", "森林中的湖泊與池塘，熟悉的夜晚。"],
 	["snow_pine", "雪地森林", "map_snow", "覆雪的松林與結冰的池緣，冷冽的夜。"],
 	["autumn", "秋林", "map_autumn", "枯樹與落葉，林間只剩零星的野獸。"],
-	["desert", "沙漠綠洲", "map_desert", "沙丘間的綠洲與椰棗樹，風吹沙，遠古的白骨半埋沙中。"],
-	["coast", "海岸", "map_coast", "一側是大海，沙灘與浪花，海風吹過沙丘上的草。"]]
+	["desert", "沙漠綠洲", "map_desert", "沙丘間的綠洲與椰棗樹，遠古白骨半埋沙中。"],
+	["coast", "沙灘海岸", "map_coast", "一側是大海，椰子樹下的沙灘與浪花。"],
+	["coast_cliff", "海崖", "map_coast_cliff", "草原台地的盡頭是斷崖，崖下浪花拍打礁石。"]]
 ## The map cards' width: as wide as they fit side by side (at most this).
 const MAP_CARD_MAX := 400.0
 ## (user request: a fourth map, the desert - the four side by side within the window's inside; a
-## fifth, the seaside, beside them)
+## fifth, the seaside, beside them; then the seaside two of its own (the sandy beach, the sea
+## cliff) - the six in rows of MAP_PER_ROW)
 const MAP_ROW := 868.0
+const MAP_PER_ROW := 3
+## (in more than one row, the cards' pictures flatter - this share of their width - so the rows and
+## the window's buttons fit its height)
+const MAP_PIC_FLAT := 0.34
 ## A tap that soon after it opened is the opening tap's echo (a phone sends it twice): not a close.
 const OPEN_GUARD_MS := 450
 
@@ -185,18 +191,23 @@ func _build_maps() -> void:
 	var head := UiKit.label("自由模式・單人：選擇地圖", 18, UiKit.GOLD, true)
 	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_body.add_child(head)
-	var row := HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", 16)
-	_body.add_child(row)
-	var wide := minf(MAP_CARD_MAX, (MAP_ROW - 16.0 * (MAPS.size() - 1)) / MAPS.size())
+	var per := mini(MAPS.size(), MAP_PER_ROW)
+	var wide := minf(MAP_CARD_MAX, (MAP_ROW - 16.0 * (per - 1)) / per)
+	var flat := 0.5 if MAPS.size() <= per else MAP_PIC_FLAT
+	var row: HBoxContainer = null
 	for m in MAPS:
+		if row == null or row.get_child_count() >= per:
+			row = HBoxContainer.new()
+			row.name = "MapRow%d" % _body.get_child_count()
+			row.alignment = BoxContainer.ALIGNMENT_CENTER
+			row.add_theme_constant_override("separation", 16)
+			_body.add_child(row)
 		var key: String = m[0]
 		var card := Button.new()
 		card.name = "Map_" + (key if key != "" else "forest")
 		card.focus_mode = Control.FOCUS_NONE
 		card.flat = true
-		card.custom_minimum_size = Vector2(wide, wide * 0.5 + 80.0)
+		card.custom_minimum_size = Vector2(wide, wide * flat + (80.0 if flat >= 0.5 else 62.0))
 		var on := map_theme == key
 		var frame := PanelContainer.new()
 		frame.add_theme_stylebox_override("panel", UiKit.slot_box())
@@ -210,16 +221,16 @@ func _build_maps() -> void:
 		pic.texture = load(ART + str(m[2]) + ".png")
 		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-		pic.custom_minimum_size = Vector2(wide - 16.0, (wide - 16.0) * 0.5)
+		pic.custom_minimum_size = Vector2(wide - 16.0, (wide - 16.0) * flat)
 		pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		if not on:
 			pic.modulate = Color(0.62, 0.62, 0.66)
 		col.add_child(pic)
-		var name_l := UiKit.label(("✓ " if on else "") + str(m[1]), 18, UiKit.GOLD_BRIGHT if on else UiKit.TEXT, true)
+		var name_l := UiKit.label(("✓ " if on else "") + str(m[1]), 18 if flat >= 0.5 else 16, UiKit.GOLD_BRIGHT if on else UiKit.TEXT, true)
 		name_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		name_l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		col.add_child(name_l)
-		var about := UiKit.label(str(m[3]).trim_suffix("。"), 13, UiKit.DIM)
+		var about := UiKit.label(str(m[3]).trim_suffix("。"), 13 if flat >= 0.5 else 12, UiKit.DIM)
 		about.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		# (wrapped within the card - two lines at most - so a longer line doesn't push it wider)
 		about.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY

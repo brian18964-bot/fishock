@@ -3189,7 +3189,7 @@ func landing_point(ratio: float) -> Vector2:
 	var dist: float = lerp(MIN_CAST_DIST, max_cast_dist, ratio)
 	var target := global_position + aim_dir * dist
 	if _find_water_zone(target) != null:
-		return target
+		return _past_cliff(target)
 	var step := 6.0
 	var d := dist - step
 	while d > MIN_CAST_DIST * 0.5:
@@ -3197,9 +3197,27 @@ func landing_point(ratio: float) -> Vector2:
 		var zone := _find_water_zone(p)
 		if zone != null:
 			# A little way in from that far bank.
-			return global_position + aim_dir * maxf(d - 6.0, MIN_CAST_DIST * 0.5)
+			return _past_cliff(global_position + aim_dir * maxf(d - 6.0, MIN_CAST_DIST * 0.5))
 		d -= step
 	return target
+
+
+## The sea cliff (a theme with "cliff"): its rock face stands a little out over the water at its
+## foot - a cast from the top comes down past it, CLIFF_CAST_CLEAR px out from the sea's edge at
+## least (on along the cast's line), never into the rock.
+const CLIFF_CAST_CLEAR := 48.0
+
+
+func _past_cliff(p: Vector2) -> Vector2:
+	if not MapGenerator.THEMES.get(MapGenerator.current_theme, {}).get("cliff", false):
+		return p
+	var q := p
+	for i in 24:
+		var zone := _find_water_zone(q)
+		if zone == null or not zone.sea or zone.depth(q) >= CLIFF_CAST_CLEAR:
+			return q
+		q += aim_dir * 4.0
+	return q
 
 
 func _launch_cast() -> void:

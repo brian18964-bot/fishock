@@ -19,7 +19,7 @@ const HEART_RANGE := 280.0
 const WATER_HEAR := 160.0
 const THUNDER_GAP := Vector2(9.0, 22.0)
 const THEME_AMBIENCE := {"snow": "amb_wind", "snow_pine": "amb_wind", "snow_lowpoly": "amb_wind", "beach_rocky": "amb_surf", "beach_sandy": "amb_surf", "swamp": "amb_swamp", "jungle": "amb_jungle",
-	"prehistoric": "amb_jungle", "tropical": "amb_jungle", "desert": "amb_wind", "coast": "amb_wind"}
+	"prehistoric": "amb_jungle", "tropical": "amb_jungle", "desert": "amb_wind", "coast": "amb_wind", "coast_cliff": "amb_wind"}
 ## By the sea (the "coast" style): the surf louder the nearer the sea - SURF_DB from at its edge to
 ## SURF_HEAR px off, day and night, the sea breeze's bed under it.
 const SURF_HEAR := 1600.0

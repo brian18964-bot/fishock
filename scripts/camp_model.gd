@@ -11,7 +11,7 @@ extends RefCounted
 
 const DIR := "res://assets/models/camp/"
 const TREE_FAMILY := {"pine": "pine", "dead": "dead_tree", "twisted": "twisted_tree", "autumn": "autumn_tree",
-	"palm": "palm"}
+	"palm": "palm", "coco": "coco_palm"}
 ## Tree families whose leaves are another's picture (user request: the dead trees' variants with
 ## the autumn trees' turned leaves - tools/make_dead_variants.py).
 const SHARED_LEAVES := {"dead_tree": "autumn_tree"}

@@ -127,6 +127,7 @@ const TESTS := [
 	"test_autumn_theme",
 	"test_desert_theme",
 	"test_coast_theme",
+	"test_cliff_coast_theme",
 	"test_wind_and_chop",
 	"test_ground_leaves",
 	"test_grass",
@@ -10232,12 +10233,9 @@ func test_autumn_theme() -> void:
 	chooser.show_step("maps")
 	await frames(2)
 	var card := chooser.find_child("Map_autumn", true, false) as Button
-	var row_w := 0.0
-	for m in DepartChooser.MAPS:
-		var c := chooser.find_child("Map_" + (str(m[0]) if m[0] != "" else "forest"), true, false) as Control
-		row_w += c.size.x if c != null else 9999.0
-	check(card != null and row_w < 960.0 and load(DepartChooser.ART + "map_autumn.png") != null,
-		"the depart window: the autumn wood's card beside the other two, its picture (%d px wide)" % int(row_w))
+	var row_w := _map_rows_width(chooser)
+	check(card != null and row_w < 900.0 and load(DepartChooser.ART + "map_autumn.png") != null,
+		"the depart window: the autumn wood's card among the maps, in rows within the window, its picture (rows %d px)" % int(row_w))
 	if card != null:
 		card.pressed.emit()
 		await frames(2)
@@ -10315,12 +10313,9 @@ func test_desert_theme() -> void:
 	chooser.show_step("maps")
 	await frames(2)
 	var card := chooser.find_child("Map_desert", true, false) as Button
-	var row_w := 0.0
-	for m in DepartChooser.MAPS:
-		var c := chooser.find_child("Map_" + (str(m[0]) if m[0] != "" else "forest"), true, false) as Control
-		row_w += c.size.x if c != null else 9999.0
+	var row_w := _map_rows_width(chooser)
 	check(card != null and row_w < 900.0 and load(DepartChooser.ART + "map_desert.png") != null,
-		"the depart window: the desert's card beside the other three, its picture (%d px of cards)" % int(row_w))
+		"the depart window: the desert's card among the maps, in rows within the window, its picture (rows %d px)" % int(row_w))
 	if card != null:
 		card.pressed.emit()
 		await frames(2)
@@ -10640,6 +10635,20 @@ func test_desert_theme() -> void:
 	camp().clear()
 
 
+## The depart window's map cards: the widest of their rows (px) - 9999 if a map has no card.
+func _map_rows_width(chooser: DepartChooser) -> float:
+	var widest := 0.0
+	for row in chooser.find_children("MapRow*", "HBoxContainer", true, false):
+		var w := 0.0
+		for c in (row as HBoxContainer).get_children():
+			w += (c as Control).size.x
+		widest = maxf(widest, w)
+	for m in DepartChooser.MAPS:
+		if chooser.find_child("Map_" + (str(m[0]) if m[0] != "" else "forest"), true, false) == null:
+			return 9999.0
+	return widest
+
+
 ## User request: the seaside - the sea along one side of the map (any side), a sand beach, its wet
 ## edge, the dune's grass behind; none of the forest's animals. Its card in the depart window; the
 ## sea one surface in 3D out past the map, as the game has the water; the trees back from the beach.
@@ -10648,16 +10657,19 @@ func test_coast_theme() -> void:
 	chooser.show_step("maps")
 	await frames(2)
 	var card := chooser.find_child("Map_coast", true, false) as Button
-	var row_w := 0.0
-	for m in DepartChooser.MAPS:
-		var c := chooser.find_child("Map_" + (str(m[0]) if m[0] != "" else "forest"), true, false) as Control
-		row_w += c.size.x if c != null else 9999.0
-	check(card != null and row_w < 900.0 and load(DepartChooser.ART + "map_coast.png") != null,
-		"the depart window: the seaside's card beside the other four, its picture (%d px of cards)" % int(row_w))
+	# (the six cards in rows of three, each row within the window, its buttons below them on screen)
+	var found := 0
+	for row in chooser.find_children("MapRow*", "HBoxContainer", true, false):
+		found += (row as HBoxContainer).get_child_count()
+	var row_w := _map_rows_width(chooser)
+	var go := chooser.find_child("GoFree", true, false) as Button
+	var fits := go != null and go.get_global_rect().end.y <= chooser.get_viewport_rect().size.y + 0.5
+	check(card != null and found == DepartChooser.MAPS.size() and row_w < 900.0 and fits and load(DepartChooser.ART + "map_coast.png") != null,
+		"the depart window: the sandy beach's card among the six, in rows, all on screen, its picture (%d cards, rows %d px)" % [found, int(row_w)])
 	if card != null:
 		card.pressed.emit()
 		await frames(2)
-		check(chooser.map_theme == "coast" and (chooser.find_child("GoFree", true, false) as Button).text.contains("海岸"), "the seaside picked")
+		check(chooser.map_theme == "coast" and (chooser.find_child("GoFree", true, false) as Button).text.contains("沙灘海岸"), "the sandy beach picked")
 	chooser.queue_free()
 	seed(7)
 	camp().clear()
@@ -10775,29 +10787,34 @@ func test_coast_theme() -> void:
 	check(seabed_ok, "the seabed shelving away under the sea")
 	var camp_y := view.ground_y(main.get_node("FuelStation").global_position)
 	check(absf(camp_y - RunView3D.LAND_Y) < 0.06, "flat at the camp (%.2f m)" % camp_y)
-	# Its cliffs and rocks (the user's cliff rock made ours): cliffs - a headland near an end, a
-	# stretch along the back of the beach; rocks at the water's edge and out in the shallows; each
-	# solid, each shown on the ground as it is, its wet foot and weed on it, its picture even.
+	# (user request: a sand beach and a sea cliff are two coasts that don't meet - none of the cliff's
+	# rock here, no stones walling the beach off)
 	var cliffs := 0
 	var reefs := 0
-	var reef_in_sea := 0
-	var rocks_ok := true
 	for r in get_tree().get_nodes_in_group("fossils"):
-		var f := r as Fossil
-		if f.kind == "cliff":
+		if (r as Fossil).kind == "cliff":
 			cliffs += 1
-		elif f.kind == "reef":
+		elif (r as Fossil).kind == "reef":
 			reefs += 1
-			if in_sea.call(f.global_position):
-				reef_in_sea += 1
-		rocks_ok = rocks_ok and f.coastal() and not f.solids().is_empty() and ResourceLoader.exists(f.model_path())
-	var look_ok := view._fossil_models.size() == cliffs + reefs
-	for model in view._fossil_models:
-		for mi in (model as Node3D).find_children("*", "MeshInstance3D", true, false):
-			var m := (mi as MeshInstance3D).get_surface_override_material(0) as StandardMaterial3D
-			look_ok = look_ok and m != null and m.vertex_color_use_as_albedo and m.uv1_triplanar
-	check(rocks_ok and cliffs >= 2 and reefs >= 2 and reef_in_sea >= 1, "cliffs and the shore's rocks, solid (%d cliffs, %d rocks, %d out in the water)" % [cliffs, reefs, reef_in_sea])
-	check(look_ok, "each shown, wet at its foot, its picture laid on evenly")
+	check(cliffs == 0 and reefs == 0 and view._fossil_models.is_empty() and view._cliff_wall.is_empty() and not view._cliff,
+		"a sand beach, open: no cliffs or rocks walling it (%d cliffs, %d rocks)" % [cliffs, reefs])
+	# Its plants (the user's uploads made ours, tools/make_coast_plants.py): coconut palms, beach
+	# grass on the dune and out on the sand, the hiding bushes squat palms.
+	var palms := 0
+	var other_trees := 0
+	for t in get_tree().get_nodes_in_group("trees"):
+		if t is MapTree:
+			if str(t.get("kind")).begins_with("coco_"):
+				palms += 1
+			else:
+				other_trees += 1
+	var bushes := 0
+	for c in main.get_children():
+		if RunView3D._script_name(c) == "bush.gd":
+			bushes += 1
+	check(palms > 0 and other_trees == 0 and CampModel.tree_mesh("coco_a") != null, "coconut palms along the beach (%d, %d others)" % [palms, other_trees])
+	check(view._beach_grass.size() > 20 and (bushes == 0 or view._models.has("beach_palm#wide")),
+		"beach grass on the dune and the sand (%d clumps), the bushes squat palms" % view._beach_grass.size())
 	# The trees back from the beach; none of the forest's animals or birds.
 	var inland: float = MapGenerator.THEMES.coast.inland
 	var trees_back := true
@@ -10835,6 +10852,136 @@ func test_coast_theme() -> void:
 	var surf: AudioStreamPlayer = Sfx._loops.get("amb_surf")
 	check(surf != null and surf.playing and float(Sfx._loop_target.get("amb_surf", -60.0)) > AudioDirector.SURF_DB.y - 0.5, "the surf's sound, louder by the sea")
 	await frames(3)
+	check(is_instance_valid(player()) and player().global_position.is_finite(), "and the run goes on")
+	camp().clear()
+
+
+## User request: the sandy beach and the sea cliff are two kinds of coast - the sea cliff its own map:
+## a high grassy top falling sheer into the sea along one side, its rock face all along the edge, the
+## waves at its foot, rocks fallen there; no beach, no docks; you can't go down into the sea, and a
+## cast from the top comes down past the rock into the water.
+func test_cliff_coast_theme() -> void:
+	var chooser := DepartChooser.open(self)
+	chooser.show_step("maps")
+	await frames(2)
+	var card := chooser.find_child("Map_coast_cliff", true, false) as Button
+	check(card != null and load(DepartChooser.ART + "map_coast_cliff.png") != null, "the depart window: the sea cliff's card, its picture")
+	if card != null:
+		card.pressed.emit()
+		await frames(2)
+		check(chooser.map_theme == "coast_cliff" and (chooser.find_child("GoFree", true, false) as Button).text.contains("海崖"), "the sea cliff picked")
+	chooser.queue_free()
+	seed(5)
+	camp().clear()
+	gs.reset_run()
+	gs.last_return = ""
+	camp().begin_free([], "coast_cliff")
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	await frames(3)
+	main = get_tree().current_scene
+	gs.start_run()
+	var view: RunView3D = null
+	for _i in 300:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	check(MapGenerator.current_theme == "coast_cliff" and FishData.waters == "sea", "the map's style the sea cliff, its fish the sea's")
+	check(view != null and view.built and view._coast and view._cliff, "the 3D world the sea cliff")
+	if view == null or not view.built:
+		camp().clear()
+		return
+	var zones := get_tree().get_nodes_in_group("water_zones")
+	var sea_zones := zones.filter(func(z): return (z as WaterZone).sea)
+	var side := MapGenerator.sea_side
+	check(side in [Vector2.DOWN, Vector2.UP, Vector2.LEFT, Vector2.RIGHT] and sea_zones.size() >= 2, "the sea along one side (%s)" % side)
+	# The ground: high at the edge, down to the camp's level inland; the sea deep at the cliff's foot.
+	var rect: Rect2 = view._map_rect()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var top_low := INF
+	var foot_high := -INF
+	for _i in 4000:
+		var p := Vector2(rng.randf_range(rect.position.x + 30.0, rect.end.x - 30.0), rng.randf_range(rect.position.y + 30.0, rect.end.y - 30.0))
+		if zones.any(func(z): return (z as WaterZone).is_rare() and (z as WaterZone).distance_to_edge(p) < 120.0):
+			continue
+		var d3 := view._sea_at(p)
+		if d3 < -30.0 and d3 > -250.0:
+			top_low = minf(top_low, view.ground_y(p))
+		elif d3 > 60.0 and d3 < 400.0:
+			foot_high = maxf(foot_high, view._grid_y(p.x / RunView3D.PX, p.y / RunView3D.PX))
+	check(top_low > 2.0, "the cliff's top high over the sea all along (at least %.2f m)" % top_low)
+	check(foot_high < RunView3D.WATER_Y - 1.0, "deep water at its foot (the seabed at most %.2f m)" % foot_high)
+	var camp_y := view.ground_y(main.get_node("FuelStation").global_position)
+	check(absf(camp_y - RunView3D.LAND_Y) < 0.06, "the camp down on the level ground inland (%.2f m)" % camp_y)
+	# Its rock face: all along the coast, end to end of the map; rocks fallen at its foot and the
+	# sea's rocks out in the water (the user's cliff rock made ours), each shown, wet at its foot.
+	var lines := view._coast_lines()
+	var length := 0.0
+	for l in lines:
+		length += (l[0] as Array).size() * RunView3D.CLIFF_STEP
+	var coast_m := (Player.WORLD_WIDTH if side.y != 0.0 else Player.WORLD_HEIGHT) / RunView3D.PX
+	var wall_ok := not view._cliff_wall.is_empty() and length > coast_m
+	for mi in view._cliff_wall:
+		var m := (mi as MeshInstance3D).material_override as StandardMaterial3D
+		wall_ok = wall_ok and m != null and m.vertex_color_use_as_albedo and m.uv1_triplanar
+	check(wall_ok, "a face of rock all along the edge (%.0f m of it for %.0f m of coast)" % [length, coast_m])
+	var reefs := 0
+	var cliffs := 0
+	for r in get_tree().get_nodes_in_group("fossils"):
+		if (r as Fossil).kind == "reef":
+			reefs += 1
+		elif (r as Fossil).kind == "cliff":
+			cliffs += 1
+	check(reefs >= 1 and cliffs == 0 and not view._cliff_rocks.is_empty() and view._fossil_models.size() == reefs,
+		"rocks at its foot (%d fallen, %d out in the water), none on the top" % [view._cliff_rocks.size(), reefs])
+	# No beach: no wet sand, no swash, no docks, no beach plants; pines on the top.
+	var gmat := view._ground_mat as ShaderMaterial
+	var docks := main.get_children().filter(func(c): return c is Dock)
+	var swash = gmat.get_shader_parameter("coast")
+	check((swash == null or float(swash) < 0.5) and docks.is_empty() and view._beach_grass.is_empty(), "no beach, no swash, no docks")
+	var pines := true
+	for t in get_tree().get_nodes_in_group("trees"):
+		if t is MapTree:
+			pines = pines and str(t.get("kind")).begins_with("pine")
+	check(pines, "pines on the top")
+	# Down into the sea there's no way: and a cast from the top comes down past the rock.
+	for _i in 400:
+		if view._intro_t < 0.0:
+			break
+		await frames(5)
+	var p := player()
+	var edge := Vector2.INF
+	var mid := Vector2(Player.WORLD_WIDTH, Player.WORLD_HEIGHT) * 0.5
+	for k in 3000:
+		var q := mid + side * float(k) * 2.0
+		if view._sea_at(q) > -12.0:
+			edge = q - side * 14.0
+			break
+	if edge.is_finite():
+		p.global_position = edge
+		p.velocity = Vector2.ZERO
+		p.aim_dir = side
+		await frames(2)
+		var land := p.landing_point(0.0)
+		var deep := -INF
+		for z in sea_zones:
+			deep = maxf(deep, (z as WaterZone).depth(land))
+		check(deep >= Player.CLIFF_CAST_CLEAR - 1.0, "the shortest cast from the edge comes down clear of the rock (%.0f px out)" % deep)
+		var stick: TouchJoystick = p._move_joystick
+		if stick != null:
+			stick.output = side
+		for _k in 90:
+			await frames(1)
+		if stick != null:
+			stick.output = Vector2.ZERO
+		var feet := p.global_position + Player.FEET
+		var in_sea := -INF
+		for z in sea_zones:
+			in_sea = maxf(in_sea, (z as WaterZone).depth(feet))
+		check(in_sea <= 1.0 and view._sea_at(feet) < RunView3D.CLIFF_AT, "walking on at the edge, never off it, never past the rock's face (%.0f px)" % view._sea_at(feet))
+	var surf: AudioStreamPlayer = Sfx._loops.get("amb_surf")
+	check(surf != null and surf.playing, "the surf's sound below")
 	check(is_instance_valid(player()) and player().global_position.is_finite(), "and the run goes on")
 	camp().clear()
 
@@ -11056,9 +11203,9 @@ func test_grass() -> void:
 ## anything nor stuck on open ground (so nothing's walked through, and nothing traps).
 func test_world_integrity() -> void:
 	var problems := []
-	for look in ["", "snow_pine", "autumn", "desert", "coast"]:
+	for look in ["", "snow_pine", "autumn", "desert", "coast", "coast_cliff"]:
 		for seed_n in [3, 11]:
-			if (look == "desert" or look == "coast") and seed_n == 11:
+			if (look == "desert" or look.begins_with("coast")) and seed_n == 11:
 				continue
 			seed(seed_n)
 			camp().clear()

@@ -455,6 +455,11 @@ var _desert := false
 ## sea_backing behind them), the seabed shelving away under it; the beach - its wet edge, the dry sand,
 ## a low dune with the grass on it and the grass behind (_coast_ground).
 var _coast := false
+## The sea cliff (MapGenerator's "coast_cliff" - user feedback: a beach and a sea cliff are two
+## kinds of coast that don't meet, made apart): the land high over the sea, a grassy top falling
+## sheer into the water (_cliff_ground), the cliff's rock face all along it (_cliff_face), the
+## surf at its foot; no beach, no waves running up.
+var _cliff := false
 ## (the coast: the sea's depth (px, + out in the water) at each of the ground grid's points - the sea
 ## surface's depth texture and where the edge's pines may stand)
 var _sea_grid := PackedFloat32Array()
@@ -508,6 +513,7 @@ func _ready() -> void:
 	_autumn = MapGenerator.current_theme.begins_with("autumn")
 	_desert = MapGenerator.current_theme.begins_with("desert")
 	_coast = MapGenerator.current_theme.begins_with("coast")
+	_cliff = MapGenerator.current_theme.begins_with("coast_cliff")
 	Foliage.set_wind(Foliage.WIND)
 	_rng.seed = 11
 	player = main.get_node("Player")
@@ -569,6 +575,8 @@ func _build() -> void:
 		add_child(_flock)
 		_flock.setup(self, map_style())
 	_trees_and_rocks()
+	if _cliff:
+		_cliff_face()
 	_start_camp()
 	_landmarks()
 	_cover()
@@ -972,6 +980,338 @@ func _coast_ground(p: Vector2, shore: float, x: float, z: float, out: float, noi
 	return [y, Color(0.0, stones * 0.85, wet * (1.0 - stones * 0.5), grass * (1.0 - wet))]
 
 
+## The sea cliff (user request: a coast of its own, the cliff - not the beach): `shore` px up from the
+## sea at (x, z) m - [the ground's height (m), its paint]. Its top CLIFF_TOP m over the sea (higher
+## and lower along it), flat for CLIFF_FLAT px back from the edge, easing down to the land's height
+## over CLIFF_SLOPE px; at the edge it falls sheer, a little out under the water, to the deep water
+## at its foot. Paint: the grass of the top (a - the "forest" slot), bare earth in patches (the
+## "grass" slot), rock at the edge and outcrops near it (g - the stone slot), rock under the sea.
+const CLIFF_TOP := 2.7
+const CLIFF_FLAT := 300.0
+const CLIFF_SLOPE := 420.0
+## (the drop: from this far out under the water (px) to this)
+const CLIFF_DROP := Vector2(12.0, 20.0)
+
+
+func _cliff_top(x: float, z: float, noise: FastNoiseLite) -> float:
+	return CLIFF_TOP + 0.45 * noise.get_noise_2d(x * 0.11 + 400.0, z * 0.11)
+
+
+func _cliff_ground(p: Vector2, shore: float, x: float, z: float, out: float, noise: FastNoiseLite) -> Array:
+	var top := _cliff_top(x, z, noise)
+	var y := 0.0
+	if shore < 0.0:
+		var d := -shore
+		var deep := WATER_Y - 1.5 - 1.0 * smoothstep(0.0, 260.0, d)
+		y = lerpf(top, deep, smoothstep(CLIFF_DROP.x, CLIFF_DROP.y, d))
+	else:
+		var rise := 1.0 - smoothstep(CLIFF_FLAT, CLIFF_FLAT + CLIFF_SLOPE, shore)
+		y = LAND_Y + (top - LAND_Y) * rise
+	var wob := noise.get_noise_2d(x * 0.9, z * 0.9)
+	var rock := 1.0 - smoothstep(8.0, 46.0 + wob * 26.0, shore)
+	var crop := smoothstep(0.62, 0.78, noise.get_noise_2d(x * 0.5 + 900.0, z * 0.5) * 0.5 + 0.5) * (1.0 - smoothstep(80.0, 220.0, shore))
+	rock = maxf(rock, crop * 0.85)
+	var bare := smoothstep(0.55, 0.75, noise.get_noise_2d(x * 0.8 + 300.0, z * 0.8) * 0.5 + 0.5) * 0.8
+	var grass := (1.0 - bare) * (1.0 - rock)
+	return [y, Color(0.0, rock, 0.0, grass)]
+
+
+## The sea cliff's face: one wall of rock all along the coast at its edge - out past the map's ends
+## as far as the ground goes - from a lip of rock over the top's grass sheer down under the sea: rough
+## (CLIFF_ROUGH m in and out), its strata standing out, leaning out a little toward its foot (so the
+## ground's own drop is always behind it), dark and wet where the waves wash it; the cliff rock's
+## picture on it (tools/make_coast_props.py's). Before it, every so often, a block fallen from it
+## (the cliff pieces) at its foot. Only to see: the edge is the water's (the player stops at it).
+const CLIFF_FACE := ["coast_cliff_a", "coast_cliff_b", "coast_cliff_c"]
+## (how far out past the water's edge the wall stands (px), its columns' spacing along (m); its lip's
+## reach in over the grass (m); how far it leans out per m down; its roughness (m))
+const CLIFF_AT := 12.0
+const CLIFF_STEP := 0.5
+const CLIFF_LIP := 0.75
+const CLIFF_LEAN := 0.26
+const CLIFF_ROUGH := 0.32
+## (its rows, top to foot, as shares of its height - from the top's grass to CLIFF_FOOT under the sea)
+const CLIFF_ROWS := [0.0, 0.025, 0.08, 0.16, 0.26, 0.37, 0.48, 0.6, 0.72, 0.84, 1.0]
+const CLIFF_FOOT := WATER_Y - 2.2
+## (a fallen block every this many m along, give or take)
+const CLIFF_BLOCKS := 9.0
+const CLIFF_SHADE := Color(0.58, 0.6, 0.64)
+var _cliff_rocks: Array = []
+var _cliff_wall: Array = []
+
+
+func _cliff_face() -> void:
+	if _sea_grid.is_empty():
+		return
+	var found := _model_mesh(CLIFF_FACE[0])
+	if found.is_empty():
+		return
+	var mat := ((found[0] as Mesh).surface_get_material(0) as StandardMaterial3D).duplicate() as StandardMaterial3D
+	mat.albedo_color = mat.albedo_color * CLIFF_SHADE
+	mat.uv1_scale = Vector3.ONE * 0.42
+	var noise := FastNoiseLite.new()
+	noise.seed = _rng.randi()
+	noise.frequency = 0.35
+	# (the sea's edge, every CLIFF_STEP m along; its way out to sea at each point)
+	for line in _coast_lines():
+		_cliff_line(line[0], line[1], noise, mat)
+
+
+## The cliff along one line of the sea's edge (`cols`, its ways out to sea `outs`).
+func _cliff_line(cols: Array[Vector2], outs: Array[Vector2], noise: FastNoiseLite, mat: Material) -> void:
+	if cols.size() < 2:
+		return
+	var grid := _cliff_grid(cols, outs, noise)
+	# (in pieces of up to 40 columns, each its own mesh - drawn only where seen; its normals from
+	# the whole wall's, so no seam between them)
+	var start := 0
+	while start < cols.size() - 1:
+		var stop := mini(start + 40, cols.size() - 1)
+		var mesh := _cliff_piece(grid, start, stop, outs)
+		if mesh != null:
+			var mi := MeshInstance3D.new()
+			mi.mesh = mesh
+			mi.material_override = mat
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if _low else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			add_child(mi)
+			_cliff_wall.append(mi)
+		start = stop
+	# (the blocks fallen from it, at its foot)
+	var along := 0.0
+	var next := _rng.randf_range(0.4, 1.4) * CLIFF_BLOCKS
+	for i in cols.size():
+		along += CLIFF_STEP
+		if along < next:
+			continue
+		along = 0.0
+		next = _rng.randf_range(0.5, 1.5) * CLIFF_BLOCKS
+		var piece := _model_mesh(CLIFF_FACE[_rng.randi() % CLIFF_FACE.size()])
+		var side := outs[i]
+		var top := _cliff_top_at(cols[i], side)
+		var k := _rng.randf_range(0.45, 0.7)
+		var mi := MeshInstance3D.new()
+		mi.mesh = piece[0]
+		mi.scale = Vector3(k, k * _rng.randf_range(0.8, 1.1), k)
+		mi.rotation.y = _rng.randf() * TAU
+		var drop := _rng.randf_range(1.3, 2.0)
+		mi.position = to3(cols[i] + side * (CLIFF_AT + _rng.randf_range(0.9, 1.5) * PX), minf(top - drop, WATER_Y + 0.7) - float(piece[1]) * mi.scale.y)
+		for sf in (piece[0] as Mesh).get_surface_count():
+			mi.set_surface_override_material(sf, mat)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if _low else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		add_child(mi)
+		_cliff_rocks.append(mi)
+
+
+## The top's height (m) just in from the edge at `edge` (2D).
+func _cliff_top_at(edge: Vector2, side: Vector2) -> float:
+	var q := edge - side * 14.0
+	return _grid_y(q.x / PX, q.y / PX)
+
+
+## The wall's points (3D), a column (top to foot) for each of `cols` (the edge's points; `outs`
+## their ways out to sea).
+func _cliff_grid(cols: Array[Vector2], outs: Array[Vector2], noise: FastNoiseLite) -> Array:
+	var grid := []
+	# (the top's height along it, smoothed - no steps in its lip)
+	var tops: Array[float] = []
+	for i in cols.size():
+		tops.append(_cliff_top_at(cols[i], outs[i]))
+	for i in cols.size():
+		var col: Array[Vector3] = []
+		var side := outs[i]
+		if cols[i].is_finite():
+			var base: Vector2 = cols[i] + side * CLIFF_AT
+			var top := 0.0
+			var count := 0
+			for k in range(maxi(i - 2, 0), mini(i + 3, cols.size())):
+				top += tops[k]
+				count += 1
+			top /= count
+			var u_along := float(i) * CLIFF_STEP
+			# (the lip: in over the grass, then flat at the top's height over where the ground
+			# begins to fall, rounding over the edge)
+			var lip_in: Vector2 = base - side * CLIFF_LIP * PX * (0.85 + 0.3 * noise.get_noise_2d(u_along * 0.6, 40.0))
+			col.append(to3(lip_in, _grid_y(lip_in.x / PX, lip_in.y / PX) + 0.015))
+			var lip_mid: Vector2 = base - side * 0.12 * PX
+			col.append(to3(lip_mid, top + 0.025))
+			for r in CLIFF_ROWS:
+				var y := lerpf(top + 0.015, CLIFF_FOOT, float(r))
+				var down := top - y
+				var rough := (0.5 + 0.5 * noise.get_noise_2d(u_along, y * 1.3)) * CLIFF_ROUGH
+				var strata := 0.08 * sin(y * 5.0 + noise.get_noise_2d(u_along * 0.3, 90.0) * 3.0)
+				var out := CLIFF_LEAN * down + (rough + strata) * smoothstep(0.0, 0.35, down)
+				col.append(to3(base + side * out * PX, y))
+		grid.append(col)
+	return grid
+
+
+## One piece of the cliff's wall, columns `a`..`b` of `grid` (_cliff_grid's).
+func _cliff_piece(grid: Array, a: int, b: int, outs: Array[Vector2]) -> ArrayMesh:
+	var rows := CLIFF_ROWS.size() + 2
+	var verts := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var colors := PackedColorArray()
+	var uvs := PackedVector2Array()
+	var index := PackedInt32Array()
+	var at := {}
+	for c in range(a, b + 1):
+		var col: Array[Vector3] = grid[c]
+		if col.is_empty():
+			continue
+		for r in rows:
+			at[Vector2i(c, r)] = verts.size()
+			verts.append(col[r])
+			# (smooth: from its neighbours along and down, the whole wall's)
+			var l: Array[Vector3] = grid[c - 1] if c > 0 and not (grid[c - 1] as Array).is_empty() else col
+			var rt: Array[Vector3] = grid[c + 1] if c + 1 < grid.size() and not (grid[c + 1] as Array).is_empty() else col
+			var dc: Vector3 = rt[r] - l[r]
+			var dr: Vector3 = col[mini(r + 1, rows - 1)] - col[maxi(r - 1, 0)]
+			var nrm := dc.cross(dr).normalized()
+			var s3 := Vector3(outs[c].x, 0.0, outs[c].y)
+			if nrm.dot(s3) + nrm.y * 0.5 < 0.0:
+				nrm = -nrm
+			normals.append(nrm)
+			# (the lip over the grass a little darker - earth in its cracks, not a kerb)
+			colors.append(_cliff_wet(col[r].y) * (0.72 if r < 2 else 1.0))
+			uvs.append(Vector2(float(c) * CLIFF_STEP, col[r].y) * 0.4)
+	for c in range(a, b):
+		for r in rows - 1:
+			var k := [Vector2i(c, r), Vector2i(c + 1, r), Vector2i(c + 1, r + 1), Vector2i(c, r + 1)]
+			if not (at.has(k[0]) and at.has(k[1])):
+				continue
+			var q := [at[k[0]], at[k[1]], at[k[2]], at[k[3]]]
+			# (each face turned out the way its normals are - Godot's front faces wound clockwise as
+			# seen, their (b - a) x (c - a) away from the eye)
+			for tri in [[q[0], q[1], q[2]], [q[0], q[2], q[3]]]:
+				var wound := (verts[tri[1]] - verts[tri[0]]).cross(verts[tri[2]] - verts[tri[0]])
+				if wound.dot(normals[tri[0]] + normals[tri[1]] + normals[tri[2]]) > 0.0:
+					tri = [tri[0], tri[2], tri[1]]
+				index.append_array(PackedInt32Array(tri))
+	if index.is_empty():
+		return null
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_INDEX] = index
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+
+## The wall's colour (on its picture) at `y` m: the dry rock; darker where the waves wash it; darker
+## still and green-black under the sea.
+func _cliff_wet(y: float) -> Color:
+	var wet := 1.0 - smoothstep(WATER_Y + 0.25, WATER_Y + 1.1, y)
+	var under := 1.0 - smoothstep(WATER_Y - 0.6, WATER_Y + 0.1, y)
+	return Color(0.92, 0.92, 0.9).lerp(Color(0.52, 0.5, 0.47), wet).lerp(Color(0.3, 0.34, 0.28), under)
+
+
+## The sea's edge on the ground's grid (where its sea depth crosses 0 - marching squares), as
+## lines of points every CLIFF_STEP m along, each with the way out to sea at each point (smoothed):
+## [[points, ways], ...] - the coast's long run and any other stretch of it CLIFF_MIN_LINE m long.
+const CLIFF_MIN_LINE := 6.0
+
+
+func _coast_lines() -> Array:
+	var lo: Vector2 = _ground_grid[0]
+	var n: Vector2i = _ground_grid[1]
+	var links := {}
+	var where := {}
+	for j in n.y - 1:
+		for i in n.x - 1:
+			var va: float = _sea_grid[j * n.x + i]
+			var vb: float = _sea_grid[j * n.x + i + 1]
+			var vc: float = _sea_grid[(j + 1) * n.x + i + 1]
+			var vd: float = _sea_grid[(j + 1) * n.x + i]
+			var sa := va > 0.0
+			if sa == (vb > 0.0) and sa == (vc > 0.0) and sa == (vd > 0.0):
+				continue
+			# (its sides that the edge crosses: top, right, bottom, left)
+			var keys := [Vector3i(0, i, j), Vector3i(1, i + 1, j), Vector3i(0, i, j + 1), Vector3i(1, i, j)]
+			var ends := [[va, vb, Vector2(i, j), Vector2(i + 1, j)], [vb, vc, Vector2(i + 1, j), Vector2(i + 1, j + 1)],
+				[vd, vc, Vector2(i, j + 1), Vector2(i + 1, j + 1)], [va, vd, Vector2(i, j), Vector2(i, j + 1)]]
+			var cut: Array[int] = []
+			for e in 4:
+				var e0: float = ends[e][0]
+				var e1: float = ends[e][1]
+				if (e0 > 0.0) != (e1 > 0.0):
+					cut.append(e)
+					if not where.has(keys[e]):
+						var f := e0 / (e0 - e1)
+						where[keys[e]] = (lo + (ends[e][2] as Vector2).lerp(ends[e][3], f) * CELL) * PX
+			var pairs := []
+			if cut.size() == 2:
+				pairs.append([cut[0], cut[1]])
+			elif cut.size() == 4:
+				# (a saddle: which way round by the cell's middle)
+				if ((va + vb + vc + vd) > 0.0) == sa:
+					pairs = [[0, 1], [2, 3]]
+				else:
+					pairs = [[3, 0], [1, 2]]
+			for pr in pairs:
+				links.get_or_add(keys[pr[0]], []).append(keys[pr[1]])
+				links.get_or_add(keys[pr[1]], []).append(keys[pr[0]])
+	# (chained into lines - from their open ends first, then the closed ones)
+	var used := {}
+	var chains := []
+	var starts: Array = links.keys().filter(func(k): return (links[k] as Array).size() == 1)
+	starts.append_array(links.keys())
+	for k0 in starts:
+		if used.has(k0):
+			continue
+		var chain: Array[Vector2] = []
+		var k = k0
+		var prev = null
+		while k != null and not used.has(k):
+			used[k] = true
+			chain.append(where[k])
+			var next = null
+			for m in links[k]:
+				if m != prev and not used.has(m):
+					next = m
+					break
+			prev = k
+			k = next
+		chains.append(chain)
+	var lines := []
+	var step := CLIFF_STEP * PX
+	for chain in chains:
+		var length := 0.0
+		for i in range(1, chain.size()):
+			length += (chain[i] as Vector2).distance_to(chain[i - 1])
+		if length < CLIFF_MIN_LINE * PX:
+			continue
+		# (every CLIFF_STEP m along it)
+		var pts: Array[Vector2] = [chain[0]]
+		var carry := 0.0
+		for i in range(1, chain.size()):
+			var a2: Vector2 = chain[i - 1]
+			var b2: Vector2 = chain[i]
+			var d := a2.distance_to(b2)
+			var t := step - carry
+			while t <= d:
+				pts.append(a2.lerp(b2, t / d))
+				t += step
+			carry = d - (t - step)
+		var outs: Array[Vector2] = []
+		for i in pts.size():
+			var sum := Vector2.ZERO
+			for k2 in range(maxi(i - 3, 0), mini(i + 4, pts.size())):
+				sum += _sea_grad(pts[k2]).normalized()
+			outs.append(sum.normalized() if sum.length_squared() > 1e-6 else MapGenerator.sea_side)
+		lines.append([pts, outs])
+	return lines
+
+
+## The sea's depth's slope at `p` (2D) - toward the sea, about 1 a px.
+func _sea_grad(p: Vector2) -> Vector2:
+	var h := 4.0
+	return Vector2(_sea_at(p + Vector2(h, 0)) - _sea_at(p - Vector2(h, 0)), _sea_at(p + Vector2(0, h)) - _sea_at(p - Vector2(0, h))) / (2.0 * h)
+
+
 ## How much of a rise the ground may have at `p` (2D): none round the camp, the altar, the way out
 ## and the big ghost's cage, nor on or by the decks - easing back over 8 m.
 func _flat_k(p: Vector2) -> float:
@@ -1089,7 +1429,7 @@ func _ground() -> void:
 				if absf(ds) < COAST_EXACT:
 					ds = _sea_depth(p2)
 				_sea_grid[j * n.x + i] = ds
-				var made := _coast_ground(p2, -ds, x, z, out, noise)
+				var made := _cliff_ground(p2, -ds, x, z, out, noise) if _cliff else _coast_ground(p2, -ds, x, z, out, noise)
 				var cy: float = made[0] + 0.02 * noise.get_noise_2d(x * 3.0, z * 3.0) * smoothstep(50.0, 160.0, absf(ds))
 				var paint: Color = made[1]
 				# (the rare pool in its own hollow, as anywhere; the land's frame past the map's edge
@@ -1276,8 +1616,8 @@ func _sea_surface(sh: Shader, waves: Texture2D) -> void:
 	# (the texture's texels on the grid's points)
 	var box := Vector4(lo.x - CELL * 0.5, lo.y - CELL * 0.5, n.x * CELL, n.y * CELL)
 	mat.set_shader_parameter("box", box)
-	# (the ground's the same depth: the waves running up the sand)
-	if _ground_mat != null:
+	# (the ground's the same depth: the waves running up the sand - not up a cliff)
+	if _ground_mat != null and not _cliff:
 		_ground_mat.set_shader_parameter("coast", 1.0)
 		_ground_mat.set_shader_parameter("sea_tex", depth)
 		_ground_mat.set_shader_parameter("sea_box", box)
@@ -1577,8 +1917,8 @@ func _trees_and_rocks() -> void:
 			_rng.randf_range(rect.position.y - BORDER_DEPTH * PX, rect.end.y + BORDER_DEPTH * PX))
 		if inner.has_point(p):
 			continue
-		# (by the sea: none on the beach or in the water)
-		if _coast and _sea_at(p) > -(COAST_BEACH.y + 80.0):
+		# (by the sea: none on the beach or in the water; on the cliff right to its edge)
+		if _coast and _sea_at(p) > (-60.0 if _cliff else -(COAST_BEACH.y + 80.0)):
 			continue
 		made += 1
 		var out := Vector2(maxf(maxf(rect.position.x - p.x, p.x - rect.end.x), 0.0),
@@ -1588,7 +1928,7 @@ func _trees_and_rocks() -> void:
 	for kind in pines:
 		var xfs := []
 		for at in spots[kind]:
-			var s := _rng.randf_range(0.9, 1.3) if _desert else _rng.randf_range(BORDER_SCALE.x, BORDER_SCALE.y)
+			var s := _rng.randf_range(0.9, 1.3) if _desert or (_coast and not _cliff) else _rng.randf_range(BORDER_SCALE.x, BORDER_SCALE.y)
 			xfs.append(Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(s, s, s)), at))
 		_scatter(meshes[kind], xfs, false)
 	# The desert's bones, cacti and skulls (Fossil), as the 2D one lies.
@@ -1628,7 +1968,7 @@ func _trees_and_rocks() -> void:
 			_fitted(_rock(str(n.get("model")), false), to3(at, land_y(at) - 0.05), r * 2.0 / PX, 0.0, true)
 		elif path == "bush.gd":
 			var d: float = float(n.get("radius")) * 2.0 / PX
-			_fitted("palm_young" if _desert or _coast else "fern", to3(at, land_y(at)), Vector2(d, d), _rng.randf() * TAU, false)
+			_fitted("palm_young" if _desert else ("beach_palm" if _coast and not _cliff else "fern"), to3(at, land_y(at)), Vector2(d, d), _rng.randf() * TAU, false)
 		elif path == "flip_rock.gd":
 			var d: float = float(n.get("radius")) * 2.0 / PX
 			var rock := _fitted(_rock(str(n.get("model")), true), to3(at, land_y(at) - 0.03), Vector2(d, d), _rng.randf() * TAU, true)
@@ -2501,6 +2841,8 @@ func _cover() -> void:
 					to3(p, maxf(_height_at(_depth(p, _zones())), WATER_Y))))
 	if _desert:
 		_desert_cover(tufts)
+	if _coast and not _cliff:
+		_beach_cover()
 	if not mesh.is_empty():
 		_scatter(mesh[0], ferns, false, COVER_REACH)
 	if not tuft_mesh.is_empty():
@@ -2589,6 +2931,58 @@ func _desert_cover(tufts: Array) -> void:
 		_scatter(dry_bush[0], _dry_bushes, false, COVER_REACH)
 	if not young.is_empty():
 		_scatter(young[0], _young_palms, false, COVER_REACH)
+
+
+## User request (the sandy beach - its plants from the user's uploads, tools/make_coast_plants.py):
+## clumps of beach grass on the dune and running down onto the sand before it, thickest where the
+## dune's grass is, a few out on the bare sand; fallen coconuts under the palms (BEACH_COCONUTS each
+## at most). Per BEACH_COVER_AREA m2 of map; only to see.
+const BEACH_COVER_AREA := 2400.0
+const BEACH_GRASS := 70
+const BEACH_COCONUTS := 2
+var _beach_grass: Array = []
+
+
+func _beach_cover() -> void:
+	if _ground_grid.is_empty():
+		return
+	var rect := _map_rect()
+	var want := int(BEACH_GRASS * rect.size.x * rect.size.y / (PX * PX) / BEACH_COVER_AREA)
+	var clump := _model_mesh("beach_grass")
+	var nut := _model_mesh("coconut")
+	var colors: PackedColorArray = _ground_grid[3]
+	var lo: Vector2 = _ground_grid[0]
+	var n: Vector2i = _ground_grid[1]
+	var tries := 0
+	while not clump.is_empty() and want > 0 and tries < 30000:
+		tries += 1
+		var p := Vector2(_rng.randf_range(rect.position.x + 20.0, rect.end.x - 20.0), _rng.randf_range(rect.position.y + 20.0, rect.end.y - 20.0))
+		var shore := -_sea_at(p)
+		# (from up the beach - clear of where the waves reach - back over the dune)
+		if shore < COAST_WET + SEA_RUN_UP.y + 40.0 or shore > COAST_BEACH.y + 420.0 or _on_walk(p):
+			continue
+		var m := p / PX
+		var c: Color = colors[clampi(int(roundf((m.y - lo.y) / CELL)), 0, n.y - 1) * n.x + clampi(int(roundf((m.x - lo.x) / CELL)), 0, n.x - 1)]
+		if _rng.randf() > 0.12 + 0.88 * c.a:
+			continue
+		var s := _rng.randf_range(0.5, 0.9) / maxf(clump[1], 0.01)
+		_beach_grass.append(Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(s, s, s)), to3(p, land_y(p))))
+		want -= 1
+	if not clump.is_empty():
+		_scatter(clump[0], _beach_grass, false, COVER_REACH)
+	if nut.is_empty():
+		return
+	var nuts := []
+	for pair in _trees:
+		var t := pair[0] as Node2D
+		for k in _rng.randi_range(0, BEACH_COCONUTS):
+			var at: Vector2 = t.global_position + Vector2.from_angle(_rng.randf() * TAU) * _rng.randf_range(0.7, 1.8) * PX
+			if _sea_at(at) > -30.0:
+				continue
+			var s := _rng.randf_range(0.8, 1.1) * 0.24 / maxf(nut[1], 0.01)
+			nuts.append(Transform3D(Basis(Vector3(_rng.randf(), 1.0, _rng.randf()).normalized(), _rng.randf() * TAU).scaled(Vector3(s, s, s)),
+				to3(at, land_y(at) + 0.08)))
+	_scatter(nut[0], nuts, false, COVER_REACH)
 
 
 var _leaf_mat: StandardMaterial3D
@@ -2700,9 +3094,9 @@ const SANDSTONE := Color(1.45, 1.08, 0.72)
 
 
 ## The proto models that sway in the wind (the ferns and bushes, the shore's grass and reeds).
-const SWAYING := ["fern", "grass_wispy", "tall_grass", "palm_young", "desert_rhazya", "desert_grass"]
+const SWAYING := ["fern", "grass_wispy", "tall_grass", "palm_young", "desert_rhazya", "desert_grass", "beach_palm", "beach_grass"]
 ## Of those, the desert's flat cards, their leaves only their picture's (tools/make_desert_plants.py).
-const CUT_OUT := ["palm_young", "desert_grass"]
+const CUT_OUT := ["palm_young", "desert_grass", "beach_palm", "beach_grass"]
 
 
 func _model_mesh(name: String, wide := false) -> Array:
