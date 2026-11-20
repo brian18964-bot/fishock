@@ -1243,12 +1243,12 @@ func _water() -> void:
 
 ## User request (the seaside): the sea - one surface for all of it, out past the map's edge on its
 ## side as far as can be seen (SEA_OUT m; SEA_ALONG m on along the coast past the map's ends), its
-## depth the ground's (_sea_grid: in SEA_RANGE px, clamped past the grid - the open sea deep, the
-## coast running on straight). Shallow and clear a long way out over the sand (its seabed shelves
+## depth the ground's (_sea_grid: in SEA_RANGE px - out onto the sand as far as the waves run up
+## (GROUND_SHADER), clamped past the grid - the open sea deep, the coast running on straight). Shallow and clear a long way out over the sand (its seabed shelves
 ## gently: COAST_SHELF), turning to the deep sea's blue (SEA_DEEP_AT px out).
 const SEA_OUT := 70.0
 const SEA_ALONG := 50.0
-const SEA_RANGE := Vector2(-20.0, 620.0)
+const SEA_RANGE := Vector2(-120.0, 620.0)
 const SEA_DEEP_AT := 480.0
 const SEA_SHALLOW := Color(0.07, 0.19, 0.2)
 const SEA_DEEP := Color(0.008, 0.03, 0.06)
@@ -1271,13 +1271,26 @@ func _sea_surface(sh: Shader, waves: Texture2D) -> void:
 	_water_mats.append(mat)
 	mat.set_shader_parameter("wave_tex", waves)
 	mat.set_shader_parameter("moon_dir", MOON_DIR)
-	mat.set_shader_parameter("depth_tex", ImageTexture.create_from_image(img))
+	var depth := ImageTexture.create_from_image(img)
+	mat.set_shader_parameter("depth_tex", depth)
 	# (the texture's texels on the grid's points)
-	mat.set_shader_parameter("box", Vector4(lo.x - CELL * 0.5, lo.y - CELL * 0.5, n.x * CELL, n.y * CELL))
+	var box := Vector4(lo.x - CELL * 0.5, lo.y - CELL * 0.5, n.x * CELL, n.y * CELL)
+	mat.set_shader_parameter("box", box)
+	# (the ground's the same depth: the waves running up the sand)
+	if _ground_mat != null:
+		_ground_mat.set_shader_parameter("coast", 1.0)
+		_ground_mat.set_shader_parameter("sea_tex", depth)
+		_ground_mat.set_shader_parameter("sea_box", box)
+		_ground_mat.set_shader_parameter("sea_range", SEA_RANGE)
+		_ground_mat.set_shader_parameter("wave_rate", 1.0 / SEA_WAVE_EVERY)
+		_ground_mat.set_shader_parameter("run_up", SEA_RUN_UP)
 	mat.set_shader_parameter("depth_range", SEA_RANGE)
 	mat.set_shader_parameter("deep_at", SEA_DEEP_AT)
 	mat.set_shader_parameter("alpha_edge", 0.42)
 	mat.set_shader_parameter("clear", 0.0032)
+	mat.set_shader_parameter("sea", 1.0)
+	mat.set_shader_parameter("wave_len", SEA_WAVE_LEN)
+	mat.set_shader_parameter("wave_rate", 1.0 / SEA_WAVE_EVERY)
 	mat.set_shader_parameter("deep", SEA_DEEP)
 	mat.set_shader_parameter("shallow", SEA_SHALLOW)
 	mat.set_shader_parameter("edge_tint", SEA_EDGE)
@@ -1319,6 +1332,21 @@ func _depth_texture(zone: WaterZone, box: Rect2) -> Texture2D:
 	return ImageTexture.create_from_image(img)
 
 
+## The sea's waves along the shore (WATER_SHADER's and GROUND_SHADER's alike, so the wave that
+## breaks in the water is the one that runs up the sand): how far on in its time each stretch of
+## the coast is - the waves come in at a slant, not all along the shore at once (w: world x, z m).
+const SEA_WAVE_FN := """
+float sea_wave_off(vec2 w) {
+	return 0.3 * sin(w.x * 0.11 + w.y * 0.07) + 0.22 * sin(w.x * 0.047 - w.y * 0.093 + 1.7);
+}
+"""
+## (the sea's waves: a wave to the shore every SEA_WAVE_EVERY s, SEA_WAVE_LEN px apart out at sea;
+## how far up the sand each runs (px, each its own between these))
+const SEA_WAVE_EVERY := 6.5
+const SEA_WAVE_LEN := 260.0
+const SEA_RUN_UP := Vector2(24.0, 62.0)
+
+
 const WATER_SHADER := """
 shader_type spatial;
 render_mode specular_schlick_ggx, depth_draw_always;
@@ -1344,7 +1372,14 @@ uniform float moon = 1.0;
 // they stand, as strong as the lamp burns - the night away from them as dark as it was.)
 uniform vec3 lamp_at = vec3(0.0);
 uniform float lamp = 0.0;
+// (the sea's waves: rolling in toward the shore - wave_len px apart, one reaching the shore every
+// 1 / wave_rate s - the swell lifting the surface as they come, breaking white in the shallows)
+uniform float sea = 0.0;
+uniform float wave_len = 260.0;
+uniform float wave_rate = 0.15;
+uniform vec3 foam_tint : source_color = vec3(0.8, 0.88, 0.9);
 varying vec3 wpos;
+""" + SEA_WAVE_FN + """
 void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
 	vec2 buv = (wpos.xz - box.xy) / box.zw;
@@ -1362,8 +1397,31 @@ void fragment() {
 	vec3 col = mix(shallow, deep, deepness);
 	// the wet line along the shore, breathing a little
 	float line = (1.0 - smoothstep(0.0, 7.0, abs(d - 3.0))) * (0.75 + 0.25 * sin(TIME * 1.3 + wpos.x * 0.7 + wpos.z * 0.5));
+	vec3 swell = vec3(0.0);
+	float foam = 0.0;
+	if (sea > 0.5) {
+		// where in its wave this spot is (0..1 a wave: its crest at 0.15, the steep face toward the
+		// shore, the long back behind), the seaward way here (the depth's slope), the swell's tilt
+		float s = fract(d / wave_len + TIME * wave_rate + sea_wave_off(wpos.xz));
+		float h = smoothstep(0.0, 0.15, s) * (1.0 - smoothstep(0.15, 1.0, s));
+		float dh = s < 0.15 ? 6.7 * (1.0 - abs(s / 0.075 - 1.0)) : -1.2;
+		vec2 e = vec2(0.6, 0.0);
+		float dx = mix(depth_range.x, depth_range.y, texture(depth_tex, (wpos.xz + e.xy - box.xy) / box.zw).r) - d;
+		float dz = mix(depth_range.x, depth_range.y, texture(depth_tex, (wpos.xz + e.yx - box.xy) / box.zw).r) - d;
+		vec2 out_dir = vec2(dx, dz) / 0.6;
+		float amp = 0.1 * smoothstep(15.0, 140.0, d) * (1.0 - 0.6 * smoothstep(300.0, 600.0, d));
+		swell = vec3(-out_dir.x, 0.0, -out_dir.y) * dh * amp / wave_len;
+		// breaking white in the shallows: at the crest and trailing behind it, broken up
+		float brk = 1.0 - smoothstep(30.0, 170.0, d);
+		float bits = smoothstep(0.35, 0.75, texture(wave_tex, uv * 3.1 + vec2(s * 0.7, 0.0)).r);
+		foam = smoothstep(0.03, 0.13, s) * (1.0 - smoothstep(0.13, 0.42, s)) * brk * mix(0.45, 1.0, bits);
+		// (and the edge's line bright as a wave comes in)
+		line *= 0.55 + 1.1 * (1.0 - smoothstep(0.0, 0.3, fract(TIME * wave_rate + sea_wave_off(wpos.xz) - 0.15)));
+		col = mix(col, col * 1.6 + vec3(0.0, 0.02, 0.02), h * (1.0 - deepness) * 0.6);
+	}
 	ALBEDO = mix(col, edge_tint * 0.35, line * 0.6);
-	vec3 wn = normalize(vec3((nm.x - 0.5) * 0.5, 1.0, (nm.y - 0.5) * 0.5));
+	ALBEDO = mix(ALBEDO, foam_tint * 0.42, foam * 0.75);
+	vec3 wn = normalize(vec3((nm.x - 0.5) * 0.5, 1.0, (nm.y - 0.5) * 0.5) + swell);
 	vec3 vn = normalize((VIEW_MATRIX * vec4(wn, 0.0)).xyz);
 	vec3 r = reflect(-VIEW, vn);
 	vec3 m = normalize((VIEW_MATRIX * vec4(normalize(moon_dir), 0.0)).xyz);
@@ -1376,10 +1434,11 @@ void fragment() {
 	vec3 to_lamp = lamp_at - wpos;
 	float near = lamp * exp(-dot(to_lamp.xz, to_lamp.xz) / 70.0);
 	EMISSION += vec3(1.0, 0.76, 0.42) * near * (0.05 + 0.12 * fres) + edge_tint * line * 0.16 * near;
-	ROUGHNESS = 0.06;
+	EMISSION += foam_tint * foam * (0.02 * mix(0.35, 1.0, moon) + 0.22 * near);
+	ROUGHNESS = mix(0.06, 0.5, foam);
 	SPECULAR = 0.75;
 	METALLIC = 0.15;
-	ALPHA = clamp(alpha_edge + d * clear, 0.0, 0.97);
+	ALPHA = clamp(alpha_edge + d * clear + foam * 0.5, 0.0, 0.97);
 	// ice: a frozen fringe round the shore, its edge broken by the waves' pattern
 	float fringe = (1.0 - smoothstep(14.0, 38.0 + nm.x * 24.0, d)) * ice;
 	ALBEDO = mix(ALBEDO, vec3(0.74, 0.86, 0.94), fringe * 0.9);
@@ -6888,6 +6947,10 @@ func _update_light() -> void:
 		for wm in _water_mats:
 			(wm as ShaderMaterial).set_shader_parameter("lamp", sheen)
 			(wm as ShaderMaterial).set_shader_parameter("lamp_at", lamp_at)
+		# (the waves' wet sand gleaming in it too)
+		if _coast and _ground_mat != null:
+			_ground_mat.set_shader_parameter("lamp", sheen)
+			_ground_mat.set_shader_parameter("lamp_at", lamp_at)
 		if on:
 			var half := 128.0
 			if lantern.texture != null:
@@ -7604,8 +7667,20 @@ uniform float snow = 0.0;
 uniform float snow_bright = 1.1;
 // (the desert: paint.r the dunes' faces - 0 a lee slope's shade, 1 a windward slope's light - not paths)
 uniform float dunes = 0.0;
+// (the coast: the sea's depth (sea_tex - the sea surface's own) - each wave running up the sand
+// and back, a thin sheet of water with its edge of foam, the sand dark and gleaming where it was)
+uniform float coast = 0.0;
+uniform sampler2D sea_tex : filter_linear, repeat_disable;
+uniform vec4 sea_box;
+uniform vec2 sea_range = vec2(-20.0, 620.0);
+uniform float wave_rate = 0.15;
+uniform vec2 run_up = vec2(24.0, 62.0);
+uniform vec3 lamp_at = vec3(0.0);
+uniform float lamp = 0.0;
 varying vec4 paint;
-void vertex() { paint = COLOR; }
+varying vec3 gpos;
+""" + SEA_WAVE_FN + """
+void vertex() { paint = COLOR; gpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
 	vec2 uv = UV * 0.25;
 	vec3 c = mix(texture(grass_tex, uv).rgb, texture(forest_tex, uv * 0.9).rgb, paint.a);
@@ -7623,6 +7698,32 @@ void fragment() {
 	vec3 icy = vec3(0.55, 0.66, 0.76) * (0.8 + 0.4 * shade);
 	vec3 sn = mix(white, icy, clamp(paint.b * 0.8 + paint.g * 0.5, 0.0, 1.0));
 	c = mix(c, sn, snow * 0.92);
+	if (coast > 0.5) {
+		float sd = mix(sea_range.x, sea_range.y, texture(sea_tex, (UV - sea_box.xy) / sea_box.zw).r);
+		float shore = -sd;
+		if (shore > -12.0 && shore < run_up.y + 20.0) {
+			// this wave's time since its crest reached the shore here (0..1), how far up it runs
+			float t = TIME * wave_rate + sea_wave_off(UV) - 0.15;
+			float u = fract(t);
+			float n = floor(t);
+			// (each wave its own reach, wandering smoothly along the shore)
+			float pick = clamp(0.5 + 0.3 * sin(UV.x * 0.13 + UV.y * 0.09 + n * 2.1) + 0.2 * sin(UV.x * 0.29 - UV.y * 0.23 + n * 1.3), 0.0, 1.0);
+			float most = mix(run_up.x, run_up.y, pick);
+			float up = u < 0.2 ? sin(u / 0.2 * 1.5708) : 1.0 - smoothstep(0.2, 0.92, u);
+			float reach = most * up;
+			float sheet = 1.0 - smoothstep(reach - 4.0, reach + 1.0, shore);
+			float rim = (1.0 - smoothstep(0.0, 4.5, abs(shore - reach))) * step(2.0, reach) * (u < 0.45 ? 1.0 : 0.45);
+			rim *= 0.55 + 0.45 * smoothstep(0.3, 0.7, texture(mud_nrm, UV * 0.9 + vec2(u * 0.4, 0.0)).g);
+			// (the sand it ran over still dark, drying as the next comes)
+			float been = (1.0 - smoothstep(most * 0.92, most * 1.04, shore)) * (1.0 - 0.75 * smoothstep(0.2, 1.0, u));
+			c = mix(c, c * 0.6, max(sheet, been * 0.55));
+			c = mix(c, vec3(0.05, 0.11, 0.12), sheet * 0.4);
+			c = mix(c, vec3(0.78, 0.85, 0.87), rim * 0.75);
+			vec3 tl = lamp_at - gpos;
+			float near = lamp * exp(-dot(tl.xz, tl.xz) / 70.0);
+			EMISSION = vec3(1.0, 0.76, 0.42) * near * (sheet * 0.07 + been * 0.025) + vec3(0.7, 0.8, 0.85) * rim * (0.012 + 0.1 * near);
+		}
+	}
 	ALBEDO = c * mix(0.85, snow_bright, snow);
 	NORMAL_MAP = n;
 	NORMAL_MAP_DEPTH = mix(1.2, 0.5, snow);

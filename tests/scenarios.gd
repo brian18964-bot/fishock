@@ -10715,6 +10715,14 @@ func test_coast_theme() -> void:
 		sea_ok = sea_ok and dt != null and dt.get_format() == Image.FORMAT_RH \
 			and reach > (w if side.x != 0.0 else h) * 0.5 / RunView3D.PX + RunView3D.MARGIN + 30.0
 	check(sea_ok, "the sea one surface, out past the map's edge (%d other water)" % planes)
+	# (its waves: rolling in and breaking in the water, running up the sand and back - the ground
+	# knows the sea's depth out onto the sand as far as they run)
+	var gmat := view._ground_mat as ShaderMaterial
+	var waves_ok := sea != null and float((sea.material_override as ShaderMaterial).get_shader_parameter("sea")) > 0.5 \
+		and float(gmat.get_shader_parameter("coast")) > 0.5 and gmat.get_shader_parameter("sea_tex") != null \
+		and RunView3D.SEA_RANGE.x <= -(RunView3D.SEA_RUN_UP.y + 20.0) and RunView3D.GROUND_SHADER.contains("sea_wave_off") \
+		and RunView3D.WATER_SHADER.contains("sea_wave_off")
+	check(waves_ok, "the waves: breaking in the water and running up the sand, one and the same")
 	var rect: Rect2 = view._map_rect()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 5
@@ -10799,7 +10807,9 @@ func test_coast_theme() -> void:
 			worst = maxf(worst, deep)
 			spot_ok = spot_ok and (deep < 0.0 or (rect.grow(-Hotspot.SEA_MARGIN + 1.0).has_point(spot.global_position) and deep <= Hotspot.SEA_REACH + 1.0))
 		check(spot_ok, "the fish's bubbles out in reach of the beach, on the map (at most %.0f px out)" % worst)
-	check(AudioDirector.THEME_AMBIENCE.get("coast", "") == "amb_surf", "the surf's sound")
+	# (the surf: louder the nearer the sea)
+	var surf: AudioStreamPlayer = Sfx._loops.get("amb_surf")
+	check(surf != null and surf.playing and float(Sfx._loop_target.get("amb_surf", -60.0)) > AudioDirector.SURF_DB.y - 0.5, "the surf's sound, louder by the sea")
 	await frames(3)
 	check(is_instance_valid(player()) and player().global_position.is_finite(), "and the run goes on")
 	camp().clear()

@@ -19,7 +19,11 @@ const HEART_RANGE := 280.0
 const WATER_HEAR := 160.0
 const THUNDER_GAP := Vector2(9.0, 22.0)
 const THEME_AMBIENCE := {"snow": "amb_wind", "snow_pine": "amb_wind", "snow_lowpoly": "amb_wind", "beach_rocky": "amb_surf", "beach_sandy": "amb_surf", "swamp": "amb_swamp", "jungle": "amb_jungle",
-	"prehistoric": "amb_jungle", "tropical": "amb_jungle", "desert": "amb_wind", "coast": "amb_surf"}
+	"prehistoric": "amb_jungle", "tropical": "amb_jungle", "desert": "amb_wind", "coast": "amb_wind"}
+## By the sea (the "coast" style): the surf louder the nearer the sea - SURF_DB from at its edge to
+## SURF_HEAR px off, day and night, the sea breeze's bed under it.
+const SURF_HEAR := 1600.0
+const SURF_DB := Vector2(-3.0, -26.0)
 
 var _player: Player
 var _lantern: Lantern
@@ -98,6 +102,8 @@ func _process(delta: float) -> void:
 	_update_ghost_whispers()
 	var near := _player._nearest_water_edge_distance()
 	Sfx.loop("amb_water", near < WATER_HEAR, lerpf(-6.0, -24.0, clampf(near / WATER_HEAR, 0.0, 1.0)))
+	if _theme.begins_with("coast"):
+		Sfx.loop("amb_surf", true, lerpf(SURF_DB.x, SURF_DB.y, clampf(_sea_distance() / SURF_HEAR, 0.0, 1.0)))
 	if _plop_timer >= 0.0:
 		_plop_timer -= delta
 		if _plop_timer < 0.0:
@@ -107,6 +113,15 @@ func _process(delta: float) -> void:
 		if _thunder_timer <= 0.0:
 			_thunder_timer = randf_range(THUNDER_GAP.x, THUNDER_GAP.y)
 			Sfx.play("thunder", -6.0, 0.1)
+
+
+## How far the traveller is from the sea's edge (px; INF with no sea).
+func _sea_distance() -> float:
+	var best := INF
+	for zone in get_tree().get_nodes_in_group("water_zones_common"):
+		if (zone as WaterZone).sea:
+			best = minf(best, (zone as WaterZone).distance_to_edge(_player.global_position))
+	return best
 
 
 func _update_fishing_loops() -> void:
@@ -250,5 +265,5 @@ func _on_run_ended(success: bool, _message: String) -> void:
 
 func _exit_tree() -> void:
 	# A new run (scene reload) starts its own beds.
-	for name in ["reel_loop", "creak_loop", "heartbeat_loop", "amb_water", "amb_rain"]:
+	for name in ["reel_loop", "creak_loop", "heartbeat_loop", "amb_water", "amb_rain", "amb_surf"]:
 		Sfx.loop(name, false)
