@@ -14,10 +14,12 @@ const ART := "res://assets/ui/depart/"
 const MAPS := [["", "湖畔森林", "map_forest", "森林中的湖泊與池塘，熟悉的夜晚。"],
 	["snow_pine", "雪地森林", "map_snow", "覆雪的松林與結冰的池緣，冷冽的夜。"],
 	["autumn", "秋林", "map_autumn", "枯樹與落葉，林間只剩零星的野獸。"],
-	["desert", "沙漠綠洲", "map_desert", "沙丘間的綠洲與椰棗樹，風吹沙，遠古的白骨半埋沙中。"]]
+	["desert", "沙漠綠洲", "map_desert", "沙丘間的綠洲與椰棗樹，風吹沙，遠古的白骨半埋沙中。"],
+	["coast", "海岸", "map_coast", "一側是大海，沙灘與浪花，海風吹過沙丘上的草。"]]
 ## The map cards' width: as wide as they fit side by side (at most this).
 const MAP_CARD_MAX := 400.0
-## (user request: a fourth map, the desert - the four side by side within the window's inside)
+## (user request: a fourth map, the desert - the four side by side within the window's inside; a
+## fifth, the seaside, beside them)
 const MAP_ROW := 868.0
 ## A tap that soon after it opened is the opening tap's echo (a phone sends it twice): not a close.
 const OPEN_GUARD_MS := 450

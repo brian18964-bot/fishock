@@ -126,6 +126,7 @@ const TESTS := [
 	"test_snow_theme",
 	"test_autumn_theme",
 	"test_desert_theme",
+	"test_coast_theme",
 	"test_wind_and_chop",
 	"test_ground_leaves",
 	"test_grass",
@@ -10635,6 +10636,171 @@ func test_desert_theme() -> void:
 	await frames(3)
 	var fog := view._env.fog_light_color
 	check(fog.r > fog.b, "a warm, sandy haze (%s)" % fog)
+	check(is_instance_valid(player()) and player().global_position.is_finite(), "and the run goes on")
+	camp().clear()
+
+
+## User request: the seaside - the sea along one side of the map (any side), a sand beach, its wet
+## edge, the dune's grass behind; none of the forest's animals. Its card in the depart window; the
+## sea one surface in 3D out past the map, as the game has the water; the trees back from the beach.
+func test_coast_theme() -> void:
+	var chooser := DepartChooser.open(self)
+	chooser.show_step("maps")
+	await frames(2)
+	var card := chooser.find_child("Map_coast", true, false) as Button
+	var row_w := 0.0
+	for m in DepartChooser.MAPS:
+		var c := chooser.find_child("Map_" + (str(m[0]) if m[0] != "" else "forest"), true, false) as Control
+		row_w += c.size.x if c != null else 9999.0
+	check(card != null and row_w < 900.0 and load(DepartChooser.ART + "map_coast.png") != null,
+		"the depart window: the seaside's card beside the other four, its picture (%d px of cards)" % int(row_w))
+	if card != null:
+		card.pressed.emit()
+		await frames(2)
+		check(chooser.map_theme == "coast" and (chooser.find_child("GoFree", true, false) as Button).text.contains("海岸"), "the seaside picked")
+	chooser.queue_free()
+	seed(7)
+	camp().clear()
+	gs.reset_run()
+	gs.last_return = ""
+	camp().begin_free([], "coast")
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	await frames(3)
+	main = get_tree().current_scene
+	gs.start_run()
+	var view: RunView3D = null
+	for _i in 300:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	check(MapGenerator.current_theme == "coast" and FishData.waters == "sea", "the map's style the seaside, its fish the sea's")
+	check(view != null and view.built and view._coast and not view._desert and not view._snow, "the 3D world the seaside")
+	if view == null or not view.built:
+		camp().clear()
+		return
+	var zones := get_tree().get_nodes_in_group("water_zones")
+	var sea_zones := zones.filter(func(z): return (z as WaterZone).sea)
+	var others_rare := zones.all(func(z): return (z as WaterZone).sea or (z as WaterZone).is_rare())
+	var side := MapGenerator.sea_side
+	check(side in [Vector2.DOWN, Vector2.UP, Vector2.LEFT, Vector2.RIGHT] and sea_zones.size() >= 2 and others_rare, "the sea along one side (%s, %d zones), no ponds besides the rare pool" % [side, sea_zones.size()])
+	var in_sea := func(p: Vector2) -> bool:
+		return sea_zones.any(func(z): return (z as WaterZone).contains(p))
+	var w := Player.WORLD_WIDTH
+	var h := Player.WORLD_HEIGHT
+	var edge_wet := 0
+	var far_dry := 0
+	for k in 20:
+		var t := (k + 0.5) / 20.0
+		var on_edge := Vector2(t * w, h - 20.0) if side == Vector2.DOWN else (Vector2(t * w, 20.0) if side == Vector2.UP
+			else (Vector2(20.0, t * h) if side == Vector2.LEFT else Vector2(w - 20.0, t * h)))
+		var across := Vector2(on_edge.x, h - on_edge.y) if side.y != 0.0 else Vector2(w - on_edge.x, on_edge.y)
+		if in_sea.call(on_edge):
+			edge_wet += 1
+		if not in_sea.call(across):
+			far_dry += 1
+	check(edge_wet == 20 and far_dry == 20, "the sea all along its edge of the map, none at the far side (%d, %d of 20)" % [edge_wet, far_dry])
+	# The 3D sea: one surface (not each zone's), out past the map; its depth the game's water.
+	var sea := view.get_node_or_null("Sea") as MeshInstance3D
+	var planes := 0
+	for c in view.get_children():
+		if c is MeshInstance3D and str(c.name).begins_with("Water"):
+			planes += 1
+	var sea_ok := sea != null and planes == zones.size() - sea_zones.size()
+	if sea != null:
+		var mat := sea.material_override as ShaderMaterial
+		var dt := mat.get_shader_parameter("depth_tex") as ImageTexture
+		var size := (sea.mesh as PlaneMesh).size
+		var reach := (size.x if side.x != 0.0 else size.y) * 0.5 + absf((sea.position.x if side.x != 0.0 else sea.position.z) - (w if side.x != 0.0 else h) * 0.5 / RunView3D.PX)
+		sea_ok = sea_ok and dt != null and dt.get_format() == Image.FORMAT_RH \
+			and reach > (w if side.x != 0.0 else h) * 0.5 / RunView3D.PX + RunView3D.MARGIN + 30.0
+	check(sea_ok, "the sea one surface, out past the map's edge (%d other water)" % planes)
+	var rect: Rect2 = view._map_rect()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var wrong := 0
+	var beach_grass := 0.0
+	var n_beach := 0
+	var wet := 0.0
+	var n_wet := 0
+	var inland_grass := 0.0
+	var n_inland := 0
+	var seabed_ok := true
+	var beach_flat := 0.0
+	var lo: Vector2 = view._ground_grid[0]
+	var n: Vector2i = view._ground_grid[1]
+	for _i in 4000:
+		var p := Vector2(rng.randf_range(rect.position.x + 30.0, rect.end.x - 30.0), rng.randf_range(rect.position.y + 30.0, rect.end.y - 30.0))
+		var d3 := view._sea_at(p)
+		var wet_here: bool = in_sea.call(p)
+		if (d3 > 8.0 and not wet_here) or (d3 < -8.0 and wet_here):
+			wrong += 1
+		var i := clampi(int(roundf((p.x / RunView3D.PX - lo.x) / RunView3D.CELL)), 0, n.x - 1)
+		var j := clampi(int(roundf((p.y / RunView3D.PX - lo.y) / RunView3D.CELL)), 0, n.y - 1)
+		var c: Color = view._ground_grid[3][j * n.x + i]
+		var y: float = view._ground_grid[2][j * n.x + i]
+		var rare_near := zones.any(func(z): return (z as WaterZone).is_rare() and (z as WaterZone).distance_to_edge(p) < 120.0)
+		if rare_near:
+			continue
+		var shore := -d3
+		if shore > 4.0 and shore < 30.0:
+			wet += c.b
+			n_wet += 1
+		elif shore > 70.0 and shore < 190.0:
+			beach_grass += c.a
+			n_beach += 1
+			beach_flat = maxf(beach_flat, absf(y - RunView3D.LAND_Y))
+		elif shore > RunView3D.COAST_BEACH.y + 260.0:
+			inland_grass += c.a
+			n_inland += 1
+		elif shore < -150.0 and y > RunView3D.WATER_Y - 0.25:
+			seabed_ok = false
+	check(wrong == 0, "the 3D sea where the game's sea is, and only there (%d of 4000 points wrong)" % wrong)
+	var gm := view._ground_mat as ShaderMaterial
+	check(str((gm.get_shader_parameter("grass_tex") as Texture2D).resource_path).contains("sea_sand")
+		and str((gm.get_shader_parameter("mud_tex") as Texture2D).resource_path).contains("wet_sand")
+		and str((gm.get_shader_parameter("forest_tex") as Texture2D).resource_path).contains("/grass_")
+		and str((gm.get_shader_parameter("stone_tex") as Texture2D).resource_path).contains("sea_pebbles"), "the ground: sea sand, wet sand, grass, pebbles")
+	check(n_wet > 0 and wet / n_wet > 0.5, "the sand wet at the sea's edge (%.2f)" % (wet / maxf(n_wet, 1)))
+	check(n_beach > 0 and beach_grass / n_beach < 0.12 and beach_flat < 0.1, "a sand beach up from the water - bare, low (%.2f grass, %.2f m)" % [beach_grass / maxf(n_beach, 1), beach_flat])
+	check(n_inland > 0 and inland_grass / n_inland > 0.8, "grass back from the beach (%.2f)" % (inland_grass / maxf(n_inland, 1)))
+	check(seabed_ok, "the seabed shelving away under the sea")
+	var camp_y := view.ground_y(main.get_node("FuelStation").global_position)
+	check(absf(camp_y - RunView3D.LAND_Y) < 0.06, "flat at the camp (%.2f m)" % camp_y)
+	# The trees back from the beach; none of the forest's animals or birds.
+	var inland: float = MapGenerator.THEMES.coast.inland
+	var trees_back := true
+	var trees := 0
+	for t in get_tree().get_nodes_in_group("trees"):
+		var mt := t as MapTree
+		if mt == null:
+			continue
+		trees += 1
+		var best := INF
+		for z in zones:
+			best = minf(best, (z as WaterZone).distance_to_edge(mt.global_position))
+		trees_back = trees_back and best >= inland - 1.0
+	check(trees > 0 and trees_back, "the trees a windbreak back from the beach (%d, all %d px or more from the water)" % [trees, int(inland)])
+	var animals := 0
+	for c in main.get_children():
+		if c is Critter and (c as Critter).ambient:
+			animals += 1
+	check(animals == 0 and view._vultures.is_empty() and view._flock == null, "none of the forest's animals, birds or hawk (%d animals)" % animals)
+	# (the fish's bubbles, where a level has them: out in reach of the beach, on the map)
+	var spot := main.get_node_or_null("Hotspot") as Hotspot
+	if spot != null:
+		var spot_ok := true
+		var worst := 0.0
+		for _k in 8:
+			spot._relocate()
+			var deep := -INF
+			for z in sea_zones:
+				deep = maxf(deep, (z as WaterZone).depth(spot.global_position))
+			worst = maxf(worst, deep)
+			spot_ok = spot_ok and (deep < 0.0 or (rect.grow(-Hotspot.SEA_MARGIN + 1.0).has_point(spot.global_position) and deep <= Hotspot.SEA_REACH + 1.0))
+		check(spot_ok, "the fish's bubbles out in reach of the beach, on the map (at most %.0f px out)" % worst)
+	check(AudioDirector.THEME_AMBIENCE.get("coast", "") == "amb_surf", "the surf's sound")
+	await frames(3)
 	check(is_instance_valid(player()) and player().global_position.is_finite(), "and the run goes on")
 	camp().clear()
 

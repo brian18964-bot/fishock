@@ -449,6 +449,17 @@ var _autumn := false
 ## (_dune), the pool ringed with damp sand and green that thins out into the dunes (_ground's
 ## paint), its own palms and dry shrubs, a dinosaur's bones half buried.
 var _desert := false
+## The seaside (MapGenerator's "coast" - user request: the sea along one side of the map, any side;
+## a sand beach, cliffs, the sea, the waves; crabs and gulls, none of the forest's animals): one sea
+## surface out past the map's edge (_sea_surface - the sea zones' depth all in one, WaterZone's
+## sea_backing behind them), the seabed shelving away under it; the beach - its wet edge, the dry sand,
+## a low dune with the grass on it and the grass behind (_coast_ground).
+var _coast := false
+## (the coast: the sea's depth (px, + out in the water) at each of the ground grid's points - the sea
+## surface's depth texture and where the edge's pines may stand)
+var _sea_grid := PackedFloat32Array()
+var _sea_zones: Array = []
+var _sea_rect := Rect2()
 ## (the ground's material: its snow's paleness follows the evening's light - _update_light)
 var _ground_mat: ShaderMaterial
 ## The ground grid as made (_ground): [its corner (m), its size (cells), heights, paint (r path, g stone,
@@ -496,6 +507,7 @@ func _ready() -> void:
 	_snow = MapGenerator.current_theme.begins_with("snow")
 	_autumn = MapGenerator.current_theme.begins_with("autumn")
 	_desert = MapGenerator.current_theme.begins_with("desert")
+	_coast = MapGenerator.current_theme.begins_with("coast")
 	Foliage.set_wind(Foliage.WIND)
 	_rng.seed = 11
 	player = main.get_node("Player")
@@ -550,10 +562,12 @@ func _build() -> void:
 		return
 	var t1b := Time.get_ticks_msec()
 	# (the small birds: in the trees and bushes, up when startled - Flock)
-	_flock = Flock.new()
-	_flock.name = "Flock"
-	add_child(_flock)
-	_flock.setup(self, map_style())
+	# (none of the forest's birds by the sea - its gulls to come)
+	if not _coast:
+		_flock = Flock.new()
+		_flock.name = "Flock"
+		add_child(_flock)
+		_flock.setup(self, map_style())
 	_trees_and_rocks()
 	_start_camp()
 	_landmarks()
@@ -671,8 +685,9 @@ func ground_y(p: Vector2) -> float:
 	for w in _walk:
 		if (w[0] as Rect2).has_point(p):
 			return float(w[1])
-	if _desert and not _ground_grid.is_empty():
-		# (the dunes: the ground as it was made - its grid - so who walks them walks on them)
+	if (_desert or _coast) and not _ground_grid.is_empty():
+		# (the dunes - the desert's, the beach's: the ground as it was made - its grid - so who walks
+		# them walks on them)
 		return maxf(_grid_y(p.x / PX, p.y / PX), WATER_Y)
 	return maxf(_height_at(_depth(p, _zones())), WATER_Y)
 
@@ -680,7 +695,7 @@ func ground_y(p: Vector2) -> float:
 ## Where a thing standing on the land at `p` (2D) stands: the land's height - up on a dune in the
 ## desert; LAND_Y everywhere else.
 func land_y(p: Vector2) -> float:
-	if _desert and not _ground_grid.is_empty():
+	if (_desert or _coast) and not _ground_grid.is_empty():
 		return maxf(_grid_y(p.x / PX, p.y / PX), LAND_Y)
 	return LAND_Y
 
@@ -870,6 +885,140 @@ const SHORE_STEP := 2
 const SHORE_EXACT := OASIS_FAR + 40.0
 
 
+## The coast's sea: how deep (px, + out in the water) at `p` (2D) - the deepest of its zones' (each
+## its lobes' smooth union, as WaterZone.depth works it out) and the open sea's behind them
+## (WaterZone.sea_backing), the shore's wander added once; zones further than COAST_FAR off
+## skipped (so a long way inland it says only that it's far).
+const COAST_FAR := 700.0
+
+
+func _sea_depth(p: Vector2) -> float:
+	var best := -1e6
+	# (the open sea only past the map's edge - on the map the zones are the sea, as the game has it:
+	# near the camp they draw back, a bay, where the open sea's circle doesn't)
+	if not WaterZone.sea_backing.is_empty():
+		var side := MapGenerator.sea_side
+		var rect := _sea_rect
+		var past := (p.x - rect.end.x if side.x > 0.0 else rect.position.x - p.x) if side.x != 0.0 \
+			else (p.y - rect.end.y if side.y > 0.0 else rect.position.y - p.y)
+		for b in WaterZone.sea_backing:
+			best = maxf(best, minf(b.z - p.distance_to(Vector2(b.x, b.y)), past * 4.0))
+	for z in _sea_zones:
+		var zone := z as WaterZone
+		var c := zone.global_position
+		if p.distance_to(c) - zone.radius > COAST_FAR:
+			continue
+		var d := -1e6
+		for l in zone.lobes:
+			d = WaterZone._smax(d, l.z - (c + Vector2(l.x, l.y)).distance_to(p), WaterZone.SHORE_BLEND)
+		best = maxf(best, d)
+	return best + WaterZone.shore_warp(p)
+
+
+## The beach, from the water up (user request: the seaside - its sand beach): the seabed shelving
+## away under the sea (COAST_SHELF: m down over px out - shallow a long way, so the sea's edge is
+## pale over the sand); up out of the water the sand's face to the land's height (COAST_FACE px);
+## the dry sand on up to a low dune with the grass on it - the beach COAST_BEACH px wide, wider and
+## narrower along the shore; the dune COAST_DUNE m at its crest, and behind it the land.
+const COAST_SHELF := Vector2(1.6, 340.0)
+const COAST_FACE := 70.0
+const COAST_BEACH := Vector2(250.0, 380.0)
+const COAST_DUNE := 0.42
+## (the wet sand's reach up from the water (px) - where the waves run up; the pebbles' band)
+const COAST_WET := 52.0
+const COAST_PEBBLES := Vector2(8.0, 110.0)
+## (_ground: the sea's depth worked out exactly at each point this near the water's edge (px))
+const COAST_EXACT := 140.0
+
+
+## [the ground's height (m), its paint] `shore` px up from the sea at (x, z) m (2D `p`); `out` m past
+## the map's edge. Paint: b the wet sand (the "mud" slot), a the grass (the "forest" slot - the
+## dry sand the "grass" slot under it), g the pebbles.
+func _coast_ground(p: Vector2, shore: float, x: float, z: float, out: float, noise: FastNoiseLite) -> Array:
+	var wob := noise.get_noise_2d(x * 0.9, z * 0.9)
+	var wide := noise.get_noise_2d(x * 0.12 + 200.0, z * 0.12) * 0.5 + 0.5
+	var beach := lerpf(COAST_BEACH.x, COAST_BEACH.y, wide) + wob * 30.0
+	var y := 0.0
+	# (through the water's surface at a slant, not along it - a ground near level with the water
+	# there meets it in a ragged line)
+	if shore < 0.0:
+		var d := -shore
+		var t := 1.0 - clampf(d / 40.0, 0.0, 1.0)
+		y = WATER_Y - 0.2 * (1.0 - t * t) - (COAST_SHELF.x - 0.2) * smoothstep(20.0, COAST_SHELF.y, d)
+	else:
+		var t := 1.0 - clampf(shore / COAST_FACE, 0.0, 1.0)
+		y = WATER_Y + (LAND_Y - WATER_Y) * (1.0 - t * t)
+		# (the dune: up over the beach's last stretch to its crest, down behind it to the land;
+		# lower and higher along the shore; flat round the camp, the altar, the way out, the cage)
+		var amp := clampf(0.6 + noise.get_noise_2d(x * 0.2 + 90.0, z * 0.2) * 0.8, 0.2, 1.0)
+		var rise := smoothstep(beach - 130.0, beach + 10.0, shore) * (1.0 - smoothstep(beach + 30.0, beach + 230.0, shore))
+		if rise > 0.0:
+			rise *= _flat_k(p)
+		y += COAST_DUNE * amp * rise
+	# (the paint: wet below the waves' reach; the grass from the dune back - its edge wandering in
+	# and out, and before it clumps of grass out on the sand, more of them nearer the edge)
+	var wet := 1.0 - smoothstep(0.0, COAST_WET + wob * 22.0, shore)
+	var edge := beach + noise.get_noise_2d(x * 0.3 + 60.0, z * 0.3) * 90.0 + noise.get_noise_2d(x * 1.1, z * 1.1 + 9.0) * 35.0
+	var grass := smoothstep(edge - 20.0, edge + 60.0, shore)
+	var before := smoothstep(edge - 170.0, edge, shore)
+	if before > 0.0 and grass < 1.0:
+		var patch := noise.get_noise_2d(x * 3.2 + 31.0, z * 3.2) * 0.5 + 0.5
+		var cut := lerpf(0.82, 0.5, before)
+		grass = maxf(grass, smoothstep(cut, cut + 0.1, patch) * smoothstep(0.0, 0.2, before))
+	# (past the map's edge inland the grass, where the edge's pines stand)
+	grass = maxf(grass, smoothstep(0.0, 4.0, out) * smoothstep(beach, beach + 120.0, shore))
+	var stones := smoothstep(0.58, 0.74, noise.get_noise_2d(x * 0.7 + 500.0, z * 0.7) * 0.5 + 0.5) \
+		* smoothstep(COAST_PEBBLES.x, COAST_PEBBLES.x + 20.0, shore) * (1.0 - smoothstep(COAST_PEBBLES.y - 40.0, COAST_PEBBLES.y, shore))
+	return [y, Color(0.0, stones * 0.85, wet * (1.0 - stones * 0.5), grass * (1.0 - wet))]
+
+
+## How much of a rise the ground may have at `p` (2D): none round the camp, the altar, the way out
+## and the big ghost's cage, nor on or by the decks - easing back over 8 m.
+func _flat_k(p: Vector2) -> float:
+	if _dune_noise == null:
+		_dune_noise = FastNoiseLite.new()
+		_dune_noise.seed = 17
+		_dune_noise.frequency = 0.05
+		for name in ["FuelStation", "Altar", "EscapePoint", "GhostCage"]:
+			var spot := main.get_node_or_null(name) as Node2D
+			if spot != null:
+				_dune_clear.append([spot.global_position, 260.0 if name == "FuelStation" else 160.0])
+		# (the decks - the 3D ones not made yet: the map's own)
+		for w in get_tree().get_nodes_in_group("walkways"):
+			var r: Rect2 = w.get("walk_rect") if w.get("walk_rect") != null else Rect2()
+			if r.size != Vector2.ZERO:
+				_flat_rects.append(r.grow(4.0 * PX))
+	var k := 1.0
+	for c in _dune_clear:
+		var r: float = c[1]
+		k *= smoothstep(r, r + 8.0 * PX, (c[0] as Vector2).distance_to(p))
+		if k <= 0.0:
+			return 0.0
+	for r in _flat_rects:
+		if (r as Rect2).has_point(p):
+			return 0.0
+	return k
+
+
+var _flat_rects: Array = []
+
+
+## The coast's sea depth (px) at `p` (2D) as the ground was made (its grid's, between its points).
+func _sea_at(p: Vector2) -> float:
+	if _sea_grid.is_empty():
+		return -1e6
+	var lo: Vector2 = _ground_grid[0]
+	var n: Vector2i = _ground_grid[1]
+	var fx := clampf((p.x / PX - lo.x) / CELL, 0.0, n.x - 1.001)
+	var fz := clampf((p.y / PX - lo.y) / CELL, 0.0, n.y - 1.001)
+	var i := floori(fx)
+	var j := floori(fz)
+	var tx := fx - i
+	var tz := fz - j
+	return lerpf(lerpf(_sea_grid[j * n.x + i], _sea_grid[j * n.x + i + 1], tx),
+		lerpf(_sea_grid[(j + 1) * n.x + i], _sea_grid[(j + 1) * n.x + i + 1], tx), tz)
+
+
 func _ground() -> void:
 	var zones := _zones()
 	for z in zones:
@@ -903,6 +1052,18 @@ func _ground() -> void:
 	# the water (SHORE_EXACT px) exactly, where the damp and the green's edge are)
 	var shore_n := Vector2i(n.x / SHORE_STEP + 2, n.y / SHORE_STEP + 2)
 	var shores := PackedFloat32Array()
+	# (the coast: the sea's depth the same way - every SHORE_STEP cells, exact near the water's edge;
+	# the ponds besides it (the rare pool) as everywhere)
+	var pools := zones
+	if _coast:
+		_sea_rect = rect
+		_sea_zones = zones.filter(func(z): return (z as WaterZone).sea)
+		pools = zones.filter(func(z): return not (z as WaterZone).sea)
+		_sea_grid.resize(n.x * n.y)
+		shores.resize(shore_n.x * shore_n.y)
+		for sj in shore_n.y:
+			for si in shore_n.x:
+				shores[sj * shore_n.x + si] = _sea_depth(Vector2(lo.x + si * SHORE_STEP * CELL, lo.y + sj * SHORE_STEP * CELL) * PX)
 	if _desert:
 		shores.resize(shore_n.x * shore_n.y)
 		for sj in shore_n.y:
@@ -913,11 +1074,35 @@ func _ground() -> void:
 			var x := lo.x + i * CELL
 			var z := lo.y + j * CELL
 			var p2 := Vector2(x, z) * PX
-			var d := _depth(p2, zones)
+			var d := _depth(p2, pools)
 			var y := _height_at(d) + 0.025 * noise.get_noise_2d(x * 3.0, z * 3.0)
 			# Past the map's edge the forest rises a little: a frame.
 			var out := Vector2(maxf(maxf(rect.position.x - p2.x, p2.x - rect.end.x), 0.0),
 				maxf(maxf(rect.position.y - p2.y, p2.y - rect.end.y), 0.0)).length() / PX
+			if _coast:
+				var si := i / SHORE_STEP
+				var sj := j / SHORE_STEP
+				var tx := float(i % SHORE_STEP) / SHORE_STEP
+				var tz := float(j % SHORE_STEP) / SHORE_STEP
+				var ds := lerpf(lerpf(shores[sj * shore_n.x + si], shores[sj * shore_n.x + si + 1], tx),
+					lerpf(shores[(sj + 1) * shore_n.x + si], shores[(sj + 1) * shore_n.x + si + 1], tx), tz)
+				if absf(ds) < COAST_EXACT:
+					ds = _sea_depth(p2)
+				_sea_grid[j * n.x + i] = ds
+				var made := _coast_ground(p2, -ds, x, z, out, noise)
+				var cy: float = made[0] + 0.02 * noise.get_noise_2d(x * 3.0, z * 3.0) * smoothstep(50.0, 160.0, absf(ds))
+				var paint: Color = made[1]
+				# (the rare pool in its own hollow, as anywhere; the land's frame past the map's edge
+				# only well back from the beach)
+				var pool_k := 1.0 - smoothstep(20.0, 60.0, -d)
+				if pool_k > 0.0:
+					cy = lerpf(cy, minf(cy, y), pool_k)
+					paint.b = maxf(paint.b, 1.0 - smoothstep(0.0, 70.0, -d))
+					paint.a *= 1.0 - paint.b
+				cy += 1.4 * smoothstep(0.0, MARGIN, out) * smoothstep(COAST_BEACH.y + 60.0, COAST_BEACH.y + 300.0, -ds)
+				heights[j * n.x + i] = cy
+				colors[j * n.x + i] = paint
+				continue
 			if _desert:
 				var si := i / SHORE_STEP
 				var sj := j / SHORE_STEP
@@ -1024,8 +1209,13 @@ func _water() -> void:
 	t.noise = noise
 	t.as_normal_map = true
 	t.bump_strength = 6.0
+	if _coast:
+		_sea_surface(sh, t)
 	for z in _zones():
 		var zone: WaterZone = z
+		# (the sea's zones drawn as one: _sea_surface)
+		if _coast and zone.sea:
+			continue
 		var box: Rect2 = zone.get_meta("bounds")
 		var mat := ShaderMaterial.new()
 		mat.shader = sh
@@ -1049,6 +1239,66 @@ func _water() -> void:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(mi)
 		i += 1
+
+
+## User request (the seaside): the sea - one surface for all of it, out past the map's edge on its
+## side as far as can be seen (SEA_OUT m; SEA_ALONG m on along the coast past the map's ends), its
+## depth the ground's (_sea_grid: in SEA_RANGE px, clamped past the grid - the open sea deep, the
+## coast running on straight). Shallow and clear a long way out over the sand (its seabed shelves
+## gently: COAST_SHELF), turning to the deep sea's blue (SEA_DEEP_AT px out).
+const SEA_OUT := 70.0
+const SEA_ALONG := 50.0
+const SEA_RANGE := Vector2(-20.0, 620.0)
+const SEA_DEEP_AT := 480.0
+const SEA_SHALLOW := Color(0.07, 0.19, 0.2)
+const SEA_DEEP := Color(0.008, 0.03, 0.06)
+const SEA_EDGE := Color(0.7, 0.85, 0.88)
+
+
+func _sea_surface(sh: Shader, waves: Texture2D) -> void:
+	if _sea_grid.is_empty():
+		return
+	var lo: Vector2 = _ground_grid[0]
+	var n: Vector2i = _ground_grid[1]
+	var vals := PackedFloat32Array()
+	vals.resize(n.x * n.y)
+	for k in n.x * n.y:
+		vals[k] = clampf((_sea_grid[k] - SEA_RANGE.x) / (SEA_RANGE.y - SEA_RANGE.x), 0.0, 1.0)
+	var img := Image.create_from_data(n.x, n.y, false, Image.FORMAT_RF, vals.to_byte_array())
+	img.convert(Image.FORMAT_RH)
+	var mat := ShaderMaterial.new()
+	mat.shader = sh
+	_water_mats.append(mat)
+	mat.set_shader_parameter("wave_tex", waves)
+	mat.set_shader_parameter("moon_dir", MOON_DIR)
+	mat.set_shader_parameter("depth_tex", ImageTexture.create_from_image(img))
+	# (the texture's texels on the grid's points)
+	mat.set_shader_parameter("box", Vector4(lo.x - CELL * 0.5, lo.y - CELL * 0.5, n.x * CELL, n.y * CELL))
+	mat.set_shader_parameter("depth_range", SEA_RANGE)
+	mat.set_shader_parameter("deep_at", SEA_DEEP_AT)
+	mat.set_shader_parameter("alpha_edge", 0.42)
+	mat.set_shader_parameter("clear", 0.0032)
+	mat.set_shader_parameter("deep", SEA_DEEP)
+	mat.set_shader_parameter("shallow", SEA_SHALLOW)
+	mat.set_shader_parameter("edge_tint", SEA_EDGE)
+	# (the plane: the grid's area, out past it on the sea's side and along the coast)
+	var side := MapGenerator.sea_side
+	var area := Rect2(lo, Vector2(n) * CELL)
+	var along := Vector2(absf(side.y), absf(side.x)) * SEA_ALONG
+	area = area.grow_individual(along.x, along.y, along.x, along.y)
+	area = area.grow_individual(SEA_OUT if side.x < 0.0 else 0.0, SEA_OUT if side.y < 0.0 else 0.0,
+		SEA_OUT if side.x > 0.0 else 0.0, SEA_OUT if side.y > 0.0 else 0.0)
+	var q := PlaneMesh.new()
+	q.size = area.size
+	q.subdivide_width = int(area.size.x / 6.0)
+	q.subdivide_depth = int(area.size.y / 6.0)
+	var mi := MeshInstance3D.new()
+	mi.name = "Sea"
+	mi.mesh = q
+	mi.material_override = mat
+	mi.position = Vector3(area.get_center().x, WATER_Y, area.get_center().y)
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
 
 
 ## How deep the pond is across its box (r: 0 at DEPTH_RANGE.x px out of the
@@ -1075,6 +1325,12 @@ render_mode specular_schlick_ggx, depth_draw_always;
 uniform sampler2D wave_tex : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform sampler2D depth_tex : filter_linear, repeat_disable;
 uniform vec4 box;
+// (px in from the shore the depth texture spans; how far out it's deep; how fast it turns from
+// see-through at the edge - the sea's: further, clearer)
+uniform vec2 depth_range = vec2(-20.0, 120.0);
+uniform float deep_at = 90.0;
+uniform float alpha_edge = 0.55;
+uniform float clear = 0.06;
 uniform vec3 deep : source_color = vec3(0.012, 0.03, 0.05);
 uniform vec3 shallow : source_color = vec3(0.07, 0.13, 0.16);
 uniform vec3 edge_tint : source_color = vec3(0.62, 0.78, 0.85);
@@ -1093,7 +1349,7 @@ void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
 	vec2 buv = (wpos.xz - box.xy) / box.zw;
 	// px in from the shore (DEPTH_RANGE)
-	float d = mix(-20.0, 120.0, texture(depth_tex, buv).r);
+	float d = mix(depth_range.x, depth_range.y, texture(depth_tex, buv).r);
 	if (d < -2.0) { discard; }
 	vec2 uv = wpos.xz * 0.05;
 	vec3 a = texture(wave_tex, uv + vec2(TIME * 0.012, TIME * 0.006)).rgb;
@@ -1102,7 +1358,7 @@ void fragment() {
 	NORMAL_MAP = nm;
 	NORMAL_MAP_DEPTH = 0.3;
 	float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
-	float deepness = smoothstep(4.0, 90.0, d);
+	float deepness = smoothstep(4.0, deep_at, d);
 	vec3 col = mix(shallow, deep, deepness);
 	// the wet line along the shore, breathing a little
 	float line = (1.0 - smoothstep(0.0, 7.0, abs(d - 3.0))) * (0.75 + 0.25 * sin(TIME * 1.3 + wpos.x * 0.7 + wpos.z * 0.5));
@@ -1123,7 +1379,7 @@ void fragment() {
 	ROUGHNESS = 0.06;
 	SPECULAR = 0.75;
 	METALLIC = 0.15;
-	ALPHA = clamp(0.55 + d * 0.06, 0.0, 0.97);
+	ALPHA = clamp(alpha_edge + d * clear, 0.0, 0.97);
 	// ice: a frozen fringe round the shore, its edge broken by the waves' pattern
 	float fringe = (1.0 - smoothstep(14.0, 38.0 + nm.x * 24.0, d)) * ice;
 	ALBEDO = mix(ALBEDO, vec3(0.74, 0.86, 0.94), fringe * 0.9);
@@ -1257,15 +1513,19 @@ func _trees_and_rocks() -> void:
 	var inner := rect.grow(-BORDER_IN * PX)
 	var made := 0
 	# (the desert's edge is its tall dunes (_dune): only a few trees out on them)
-	while made < (BORDER_TREES_DESERT if _desert else BORDER_TREES):
+	while made < (BORDER_TREES_DESERT if _desert else (BORDER_TREES * 7 / 10 if _coast else BORDER_TREES)):
 		var p := Vector2(_rng.randf_range(rect.position.x - BORDER_DEPTH * PX, rect.end.x + BORDER_DEPTH * PX),
 			_rng.randf_range(rect.position.y - BORDER_DEPTH * PX, rect.end.y + BORDER_DEPTH * PX))
 		if inner.has_point(p):
 			continue
+		# (by the sea: none on the beach or in the water)
+		if _coast and _sea_at(p) > -(COAST_BEACH.y + 80.0):
+			continue
 		made += 1
 		var out := Vector2(maxf(maxf(rect.position.x - p.x, p.x - rect.end.x), 0.0),
 			maxf(maxf(rect.position.y - p.y, p.y - rect.end.y), 0.0)).length() / PX
-		spots[pines[made % pines.size()]].append(to3(p, _grid_y(p.x / PX, p.y / PX) - 0.1 if _desert else LAND_Y + 1.4 * smoothstep(0.0, MARGIN, out)))
+		spots[pines[made % pines.size()]].append(to3(p, _grid_y(p.x / PX, p.y / PX) - 0.1 if _desert
+			else (_grid_y(p.x / PX, p.y / PX) if _coast else LAND_Y + 1.4 * smoothstep(0.0, MARGIN, out))))
 	for kind in pines:
 		var xfs := []
 		for at in spots[kind]:
@@ -1298,7 +1558,7 @@ func _trees_and_rocks() -> void:
 			_fitted(_rock(str(n.get("model")), false), to3(at, land_y(at) - 0.05), r * 2.0 / PX, 0.0, true)
 		elif path == "bush.gd":
 			var d: float = float(n.get("radius")) * 2.0 / PX
-			_fitted("palm_young" if _desert else "fern", to3(at, land_y(at)), Vector2(d, d), _rng.randf() * TAU, false)
+			_fitted("palm_young" if _desert or _coast else "fern", to3(at, land_y(at)), Vector2(d, d), _rng.randf() * TAU, false)
 		elif path == "flip_rock.gd":
 			var d: float = float(n.get("radius")) * 2.0 / PX
 			var rock := _fitted(_rock(str(n.get("model")), true), to3(at, land_y(at) - 0.03), Vector2(d, d), _rng.randf() * TAU, true)
@@ -5916,8 +6176,9 @@ var _mover_last := {}
 
 
 func _lay_leaves() -> void:
-	# (no leaves on the snow or the sand - the desert's blown sand instead: _sand_drift)
-	if _snow or _desert:
+	# (no leaves on the snow or the sand - the desert's blown sand instead: _sand_drift; nor on the
+	# beach)
+	if _snow or _desert or _coast:
 		return
 	var gl := GroundLeaves.new()
 	gl.name = "GroundLeaves"
@@ -6001,6 +6262,8 @@ var _flock_warm := false
 func map_style() -> String:
 	if _desert:
 		return "desert"
+	if _coast:
+		return "coast"
 	if _snow:
 		return "snow"
 	if _autumn:
@@ -6009,7 +6272,10 @@ func map_style() -> String:
 
 
 func _sky_birds() -> void:
-	var kind: Array = SKY_BIRDS.get(map_style(), SKY_BIRDS[""])
+	# (no hawk over the sea - its gulls to come)
+	if not SKY_BIRDS.has(map_style()):
+		return
+	var kind: Array = SKY_BIRDS[map_style()]
 	var path := CREATURE_DIR + str(kind[0]) + ".glb"
 	if not ResourceLoader.exists(path):
 		return
@@ -6294,8 +6560,10 @@ const GRASS_COLORS := {
 	"autumn": [Color(0.24, 0.2, 0.09), Color(0.66, 0.56, 0.3)],
 	# (the oasis's: green by the water - only where the ground's green is, its ring)
 	"desert": [Color(0.22, 0.27, 0.11), Color(0.52, 0.56, 0.26)],
+	# (the coast's: the dune's tough grass, paler and greyer)
+	"coast": [Color(0.16, 0.2, 0.1), Color(0.52, 0.56, 0.3)],
 }
-const GRASS_DENSITY := {"": 1.0, "autumn": 0.6, "desert": 0.6}
+const GRASS_DENSITY := {"": 1.0, "autumn": 0.6, "desert": 0.6, "coast": 0.75}
 ## The traveller's reach through the grass (m), its trail's (a step every TRAIL_EVERY s, fading
 ## over TRAIL_LIFE s), and an animal's or a ghost's.
 const GRASS_REACH := 0.55
@@ -6312,7 +6580,7 @@ var _trail_t := 0.0
 func _lay_grass() -> void:
 	if _snow or _ground_grid.is_empty():
 		return
-	var style := "autumn" if _autumn else ("desert" if _desert else "")
+	var style := "autumn" if _autumn else ("desert" if _desert else ("coast" if _coast else ""))
 	var g := GrassField.new()
 	g.name = "Grass"
 	g.grows = _grass_at

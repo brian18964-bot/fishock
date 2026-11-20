@@ -16,6 +16,16 @@ const WATER_ZONE_SCENE := preload("res://scenes/water_zone.tscn")
 ## WaterZone) - kept apart so each is its own lake with a shore to dress.
 const COMMON_ZONE_COUNT := Vector2i(3, 4)
 const RARE_ZONE_COUNT := 1
+## A "sea" theme (user request: the seaside - the water along one side of the map, any side, as the
+## old beach maps had it): how far in the sea reaches (share of the map across it), the zones' least
+## radius, how much the coast wanders, lobes a zone, the baked shore's coarseness, the open sea's
+## backing circle.
+const SEA_REACH := Vector2(0.3, 0.38)
+const SEA_RADIUS := 320.0
+const SEA_WOBBLE := 50.0
+const SEA_LOBES := Vector2i(2, 3)
+const SEA_FIELD_TEXEL := 2.0
+const SEA_BACKING_RADIUS := 20000.0
 const COMMON_RADIUS_MIN := 130.0
 const COMMON_RADIUS_MAX := 175.0
 const COMMON_EXTRA_LOBES := Vector2i(2, 4)
@@ -165,6 +175,29 @@ const THEMES := {
 		"shore": {"grass": 0.32, "shrub": 0.1, "pebbles": 0.0},
 		"shore_extras": {"reeds": 0.16, "lilypad": 0.0, "driftwood": 0.0},
 		"shore_critters": ["frog", "spider", "snake"],
+	},
+	# User request: the seaside - the sea along one side of the map (any side: up, down, left or right
+	# on the screen; "sea", MapGenerator._generate_sea), a sand beach along it, its wet edge where the
+	# waves run up, cliffs, the waves; crabs and gulls - none of the forest's animals. RunView3D's
+	# _coast: the beach and the dunes behind it (its "floor3d": the pale sea sand, the wet sand, the
+	# grass back from the beach, the pebbles), the sea out to the horizon; the trees a windbreak back
+	# from the beach ("inland", px from the shore).
+	"coast": {
+		"look": "detailed",
+		"sea": true,
+		"floor": ["grass", "grass", 0.3],
+		"floor3d": {"grass": "sea_sand", "forest": "grass", "mud": "wet_sand", "stone": "sea_pebbles"},
+		"trees": 10, "rocks": 5, "bushes": 3, "ground": 0,
+		"tree_families": {"pine": 1.0},
+		"rock_pool": [0, 1, 2],
+		"inland": 420.0,
+		"animal_count": 0,
+		"animals": {},
+		"shore": {"grass": 0.0, "shrub": 0.0, "pebbles": 0.03},
+		"shore_extras": {"reeds": 0.0, "lilypad": 0.0, "driftwood": 0.05},
+		"shore_critter_count": 0,
+		"shore_critters": ["crab"],
+		"water": {"base": Color(0.07, 0.36, 0.46), "deep": Color(0.02, 0.12, 0.24)},
 	},}
 ## User feedback: the water's edge is grass, small shrubs, pebbles and
 ## boardwalks (no big trees or boulders there), with bugs and frogs about.
@@ -184,6 +217,8 @@ const SHORE_CLEAR_OF_SPAWN := 160.0
 
 var theme_name := ""
 var theme: Dictionary = {}
+## Which map edge a "sea" theme's sea lies along (and the 3D view's: its open water beyond it).
+static var sea_side := Vector2.ZERO
 var _walk_rects: Array[Rect2] = []
 ## Just outside each walkway's way on - kept clear of trees and rocks.
 var _entrances: Array[Vector2] = []
@@ -252,6 +287,11 @@ func _fit_theme() -> void:
 	for key in ["trees", "rocks", "bushes", "ground"]:
 		theme[key] = int(roundf(float(theme.get(key, 0)) * share))
 	theme["animal_count"] = maxi(2, int(roundf(float(theme.get("animal_count", AMBIENT_ANIMAL_COUNT)) * share)))
+	# (a style with no animals of its own - the seaside: none of the forest's - only a level's own
+	# beasts)
+	if theme.animals.is_empty() and Campaign.rules.beasts.is_empty():
+		theme["animal_count"] = 0
+		return
 	var animals: Dictionary = theme.animals.duplicate()
 	if not Campaign.rules.hunters:
 		for kind in animals.keys():
@@ -294,11 +334,18 @@ func _ground_material() -> ShaderMaterial:
 
 func _generate_water_zones() -> void:
 	WaterZone.sea_backing = []
+	sea_side = Vector2.ZERO
+	if theme.get("sea", false):
+		_generate_sea()
 	# The rare one first: it's smaller and solid, so it gets its pick.
 	var ponds: Array = Campaign.rules.ponds
 	var k := _pond_scale()
 	for _i in range(int(ponds[1])):
 		_spawn_zone(WaterZone.ZoneType.RARE, randf_range(RARE_RADIUS_MIN, RARE_RADIUS_MAX) * k, RARE_EXTRA_LOBES)
+	# (by the sea: the sea is the common water - no ponds besides the rare one, a pool among the
+	# rocks)
+	if theme.get("sea", false):
+		return
 	var commons := int(ponds[0])
 	if commons < 0:
 		commons = randi_range(COMMON_ZONE_COUNT.x, COMMON_ZONE_COUNT.y)
@@ -312,6 +359,53 @@ static func _pond_scale() -> float:
 	var k := sqrt(Campaign.area_share())
 	# (the 3D run's bigger map: its ponds bigger with it)
 	return k if k > 1.0 else clampf(k, 0.72, 1.0)
+
+
+## User request (the seaside): the water is the sea - one great sweep of it along one side of the
+## map, any side (up, down, left or right on the screen), a good third of the view, its coast one
+## long wavy line. Made of big common zones in a row along that edge, reaching off the map,
+## overlapping so their shores merge (and baked coarser); the open sea beyond them one huge circle
+## (WaterZone.sea_backing - the 3D view's sea reaches the horizon). (From the old 2D beach maps.)
+func _generate_sea() -> void:
+	var w := Player.WORLD_WIDTH
+	var h := Player.WORLD_HEIGHT
+	sea_side = [Vector2.DOWN, Vector2.UP, Vector2.LEFT, Vector2.RIGHT].pick_random()
+	var across := sea_side.y != 0.0  # the coast runs across the map
+	var length := w if across else h
+	# How far in from the edge the water comes.
+	var reach := randf_range(SEA_REACH.x, SEA_REACH.y) * (h if across else w)
+	var r := maxf(SEA_RADIUS, reach * 0.62)
+	var n := int(ceil(length / (r * 1.3))) + 1
+	# The open sea behind the coast: one huge circle whose edge runs along the band every zone's
+	# water surely covers.
+	var edge_mid := Vector2(w, h) / 2.0 + sea_side * ((h if across else w) / 2.0)
+	var backing := edge_mid - sea_side * (reach - 0.45 * r) + sea_side * SEA_BACKING_RADIUS
+	WaterZone.sea_backing = [Vector3(backing.x, backing.y, SEA_BACKING_RADIUS)]
+	for i in n:
+		var t := (float(i) + randf_range(-0.15, 0.15)) * length / float(n - 1)
+		var inland := reach - r + randf_range(-SEA_WOBBLE, SEA_WOBBLE)
+		var pos: Vector2
+		match sea_side:
+			Vector2.DOWN: pos = Vector2(t, h - inland)
+			Vector2.UP: pos = Vector2(t, inland)
+			Vector2.LEFT: pos = Vector2(inland, t)
+			_: pos = Vector2(w - inland, t)
+		# Near the spawn point the sea draws back (a bay) rather than leave a gap in the coast.
+		for _step in 12:
+			if pos.distance_to(SPAWN_POS) - r >= SPAWN_CLEAR_RADIUS:
+				break
+			pos += sea_side * 40.0
+		# Lobes for a ragged coast - none reaching up to the spawn point.
+		var lobes: Array[Vector3] = []
+		for lobe in _make_lobes(r, SEA_LOBES):
+			if (pos + Vector2(lobe.x, lobe.y)).distance_to(SPAWN_POS) - lobe.z >= SPAWN_CLEAR_RADIUS:
+				lobes.append(lobe)
+		var zone: WaterZone = WATER_ZONE_SCENE.instantiate()
+		zone.field_texel = SEA_FIELD_TEXEL
+		zone.sea = true
+		zone.setup(WaterZone.ZoneType.COMMON, r, pos, lobes)
+		get_parent().add_child.call_deferred(zone)
+		water_zones.append(zone)
 
 
 ## Lobes spread around the main circle, overlapping it, for a wobbly shore.
@@ -1090,6 +1184,9 @@ func _pick_prop_position(base: float, reach: float) -> Vector2:
 		# clear of the bank, where the rod swings.
 		var shore := _shore_distance(pos)
 		if shore < maxf(30.0, base + 8.0) or (reach > 0.0 and shore < reach + BANK_CLEAR):
+			continue
+		# (by the sea: the trees back from the beach - "inland")
+		if reach > 0.0 and shore < float(theme.get("inland", 0.0)):
 			continue
 		# User bug report: rocks were landing across a boardwalk's way on.
 		if _near_entrance(pos, ENTRANCE_CLEARANCE) or _near_walkway(pos, maxf(30.0, reach)):

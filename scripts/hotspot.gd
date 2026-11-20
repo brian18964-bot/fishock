@@ -11,6 +11,9 @@ extends Node2D
 
 const RADIUS := 70.0
 const RESPAWN_DELAY := 1.5
+## (by the sea: on the map, at most this far out from the beach (px) - in a long cast's reach)
+const SEA_MARGIN := 60.0
+const SEA_REACH := 220.0
 const RING_GAP := 0.8
 const RING_RADIUS := 64.0
 const RING_LIFE := 2.4
@@ -72,4 +75,17 @@ func _relocate() -> void:
 
 	var zone: WaterZone = common_zones[randi() % common_zones.size()]
 	global_position = zone.random_point(40.0)
+	if zone.sea:
+		# (the sea: its zones reach off the map and a long way out - somewhere a cast from the
+		# beach reaches, on the map)
+		for _try in 60:
+			var p := zone.random_point(40.0)
+			var deep := -INF
+			for z in common_zones:
+				if (z as WaterZone).sea:
+					deep = maxf(deep, (z as WaterZone).depth(p))
+			if p.x > SEA_MARGIN and p.y > SEA_MARGIN and p.x < Player.WORLD_WIDTH - SEA_MARGIN \
+					and p.y < Player.WORLD_HEIGHT - SEA_MARGIN and deep < SEA_REACH:
+				global_position = p
+				break
 	active = true

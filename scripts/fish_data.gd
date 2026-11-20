@@ -271,7 +271,7 @@ const THEME_WATERS := {
 	"deadwood": "deadwood", "rocky": "rocky", "stone_forest": "rocky", "savanna": "rocky",
 	"tropical": "tropical", "jungle": "tropical", "prehistoric": "prehistoric", "swamp": "swamp",
 	"snow": "snow", "snow_pine": "snow", "snow_lowpoly": "snow", "autumn": "autumn", "autumn_lowpoly": "autumn",
-	"ruins": "ruins", "beach_rocky": "sea", "beach_sandy": "sea", "desert": "desert",
+	"ruins": "ruins", "beach_rocky": "sea", "beach_sandy": "sea", "desert": "desert", "coast": "sea",
 }
 ## This map's waters (MapGenerator sets it from the theme).
 static var waters := "forest"
