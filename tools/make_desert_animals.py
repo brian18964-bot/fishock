@@ -1342,6 +1342,20 @@ def eagle(pack):
     flier(pack, "bald_eagle", "eagle", 4000, "eagle2.tif", eagle_plumage)
 
 
+def gull_plumage(a):
+    """The gull's white and grey kept, a touch brighter and cooler - the sea's bird at night."""
+    lum = a.mean(-1, keepdims=True)
+    grey = np.clip(a * np.array([0.98, 1.0, 1.04], np.float32) * 1.06 + 0.02, 0, 1)
+    return np.clip(grey * 0.85 + lum * 0.15, 0, 1)
+
+
+def gull(pack):
+    # (user request: the seaside's gulls - the gull in flight of the bird figures, wheeling over the
+    # beach; a gull's quicker beat than the big birds', its glide shorter)
+    flier(pack, "gull_Figur", "gull", 2600, "gull.tif", gull_plumage, soar=120, flap=26,
+          flap_amp=(40.0, 16.0, 20.0), flap_bias=0.15)
+
+
 def songbird(pack):
     # (a sparrow's quick wingbeat: deep, a short clip the game plays fast)
     flier(pack, "dove", "songbird", 900, "dove.tif", songbird_plumage, tex_size=256, soar=48, flap=8,
@@ -1349,7 +1363,7 @@ def songbird(pack):
 
 
 MAKERS = {"hyena": hyena, "camel": camel, "iguana": iguana, "scorpion": scorpion, "vulture": vulture,
-          "hawk": hawk, "eagle": eagle, "songbird": songbird}
+          "hawk": hawk, "eagle": eagle, "songbird": songbird, "gull": gull}
 
 
 def main():

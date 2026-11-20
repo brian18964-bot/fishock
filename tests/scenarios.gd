@@ -10816,7 +10816,8 @@ func test_coast_theme() -> void:
 	for c in main.get_children():
 		if c is Critter and (c as Critter).ambient:
 			animals += 1
-	check(animals == 0 and view._vultures.is_empty() and view._flock == null, "none of the forest's animals, birds or hawk (%d animals)" % animals)
+	check(animals == 0 and view._flock == null and str(RunView3D.SKY_BIRDS.coast[0]) == "gull"
+		and view._vultures.size() == int(RunView3D.SKY_BIRDS.coast[2]), "none of the forest's animals or birds - gulls wheeling over the beach (%d animals, %d gulls)" % [animals, view._vultures.size()])
 	# (the fish's bubbles, where a level has them: out in reach of the beach, on the map)
 	var spot := main.get_node_or_null("Hotspot") as Hotspot
 	if spot != null:

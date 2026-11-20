@@ -6357,7 +6357,10 @@ var _vultures: Array = []
 ## and see-through, beating its wings as the bird does).
 const SKY_BIRDS := {"desert": ["vulture", VULTURE_SPAN, VULTURES, VULTURE_RADIUS, false],
 	"snow": ["eagle", 2.1, 1, Vector2(4.0, 6.0), false], "autumn": ["hawk", 1.3, 2, Vector2(3.5, 5.5), true],
-	"": ["hawk", 1.3, 1, Vector2(3.5, 5.5), true]}
+	"": ["hawk", 1.3, 1, Vector2(3.5, 5.5), true],
+	# (user request: the seaside's gulls - wheeling over the beach, three of them, low: through the
+	# picture now and then, not only their shadows - [5] how high (m))
+	"coast": ["gull", 1.15, 3, Vector2(4.0, 7.0), true, Vector2(2.6, 4.0)]}
 const SKY_AHEAD := 2.5
 const SKY_SHADOW_DARK := 0.55
 var _flock: Flock
@@ -6378,7 +6381,6 @@ func map_style() -> String:
 
 
 func _sky_birds() -> void:
-	# (no hawk over the sea - its gulls to come)
 	if not SKY_BIRDS.has(map_style()):
 		return
 	var kind: Array = SKY_BIRDS[map_style()]
@@ -6407,9 +6409,11 @@ func _sky_birds() -> void:
 			anim.play("Soar")
 			anim.seek(_rng.randf() * 3.0, true)
 		var radius: Vector2 = kind[3]
+		var band: Vector2 = kind[5] if kind.size() > 5 else VULTURE_HEIGHT
 		var v := {"node": holder, "anim": anim, "angle": _rng.randf() * TAU, "turn": 1.0 if i % 2 == 0 else -1.0,
 			"radius": _rng.randf_range(radius.x, radius.y),
-			"height": _rng.randf_range(VULTURE_HEIGHT.x, VULTURE_HEIGHT.y),
+			"band": band,
+			"height": _rng.randf_range(band.x, band.y),
 			"roam": Vector3(_rng.randf_range(-1.0, 1.0), 0.0, _rng.randf_range(-1.0, 1.0)) * VULTURE_ROAM * radius.x / VULTURE_RADIUS.x,
 			"ahead": 0.0 if _desert else SKY_AHEAD,
 			"flap": 0.0, "next": _rng.randf_range(VULTURE_FLAP_EVERY.x, VULTURE_FLAP_EVERY.y), "phase": _rng.randf() * TAU}
@@ -6500,7 +6504,7 @@ func _sky_travel(v: Dictionary, delta: float, me: Vector3) -> void:
 			if float(v.state_t) <= 0.0:
 				# (another comes: from far off, any way, towards its circle round the traveller)
 				var from := Vector2.RIGHT.rotated(_rng.randf() * TAU) * SKY_GONE
-				v.height = _rng.randf_range(VULTURE_HEIGHT.x, VULTURE_HEIGHT.y)
+				v.height = _rng.randf_range((v.band as Vector2).x, (v.band as Vector2).y)
 				v.centre = _vulture_centre(v, me)
 				v.pos = Vector3(me.x + from.x, ground_y(to2(me)) + float(v.height) + 2.0, me.z + from.y)
 				v.state = "come"
@@ -6584,12 +6588,12 @@ func _circle_vultures(delta: float) -> void:
 		# (a few wingbeats now and then, climbing a little on them, gliding down slowly after)
 		if float(v.flap) > 0.0:
 			v.flap = float(v.flap) - delta
-			v.height = minf(float(v.height) + 0.7 * delta, VULTURE_HEIGHT.y + 3.0)
+			v.height = minf(float(v.height) + 0.7 * delta, (v.band as Vector2).y + 3.0 * (v.band as Vector2).y / VULTURE_HEIGHT.y)
 			if float(v.flap) <= 0.0 and anim != null:
 				anim.play("Soar", 0.6)
 		else:
 			v.next = float(v.next) - delta
-			v.height = maxf(float(v.height) - 0.15 * delta, VULTURE_HEIGHT.x)
+			v.height = maxf(float(v.height) - 0.15 * delta, (v.band as Vector2).x)
 			if float(v.next) <= 0.0:
 				v.flap = _rng.randf_range(VULTURE_FLAP_FOR.x, VULTURE_FLAP_FOR.y)
 				v.next = _rng.randf_range(VULTURE_FLAP_EVERY.x, VULTURE_FLAP_EVERY.y)
@@ -6871,6 +6875,8 @@ func _environment() -> void:
 	camera.current = true
 
 
+## (the seaside's dusk: its sea mist's colour)
+const COAST_HAZE := Color(0.17, 0.23, 0.3)
 ## (the desert's dusk: its haze's colour and the low sun's)
 const DESERT_HAZE := Color(0.34, 0.24, 0.13)
 const DESERT_DUSK_SUN := Color(1.0, 0.8, 0.56)
@@ -6949,6 +6955,13 @@ func _update_light() -> void:
 		_env.fog_density = lerpf(0.012, 0.016, k)
 		_env.ambient_light_color = _env.ambient_light_color.lerp(Color(0.6, 0.52, 0.42), 0.35 * k)
 		_moon.light_color = _moon.light_color.lerp(DESERT_DUSK_SUN, 0.45 * k)
+	if _coast:
+		# (the sea's air: a cool blue-grey sea mist at dusk, the moon silver on the water and the wet
+		# sand; the night as dark as the forest's - the lamp still what shows the way)
+		_env.fog_light_color = _env.fog_light_color.lerp(COAST_HAZE * NIGHT_DIM, 0.15 + 0.35 * k)
+		_env.fog_density = lerpf(0.014, 0.019, k)
+		_env.ambient_light_color = _env.ambient_light_color.lerp(Color(0.5, 0.6, 0.72), 0.3 * k)
+		_moon.light_color = _moon.light_color.lerp(Color(0.85, 0.9, 1.0), 0.25 * k)
 	if GameState.dark_fell:
 		# (user request: the camp doused, the whole map black - the lamps all that's left)
 		_env.ambient_light_energy *= DOUSED_DIM
