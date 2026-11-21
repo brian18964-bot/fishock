@@ -784,10 +784,14 @@ func _scatter_mushrooms() -> void:
 
 
 ## User request: the oxygen algae (OxyTree), in the shallows along the
-## shores - a few to a map, off the docks' and walkways' way.
+## shores - a few to a map, off the docks' and walkways' way; never in the sea.
 func _scatter_oxy_trees() -> void:
 	var spots := []
 	for z in water_zones:
+		# (user report: none out in the sea - the sea's surface only its waves, and rocks here and
+		# there; by the sea, in the rare pool)
+		if (z as WaterZone).sea:
+			continue
 		for s in (z as WaterZone).shore_samples(60.0):
 			spots.append([z, s[0], s[1]])
 	spots.shuffle()

@@ -128,6 +128,7 @@ const TESTS := [
 	"test_desert_theme",
 	"test_coast_theme",
 	"test_cliff_coast_theme",
+	"test_surf",
 	"test_wind_and_chop",
 	"test_ground_leaves",
 	"test_grass",
@@ -10730,10 +10731,10 @@ func test_coast_theme() -> void:
 	# (its waves: rolling in and breaking in the water, running up the sand and back - the ground
 	# knows the sea's depth out onto the sand as far as they run)
 	var gmat := view._ground_mat as ShaderMaterial
-	var waves_ok := sea != null and float((sea.material_override as ShaderMaterial).get_shader_parameter("sea")) > 0.5 \
+	var waves_ok: bool = sea != null and float((sea.material_override as ShaderMaterial).get_shader_parameter("sea")) > 0.5 \
 		and float(gmat.get_shader_parameter("coast")) > 0.5 and gmat.get_shader_parameter("sea_tex") != null \
-		and RunView3D.SEA_RANGE.x <= -(RunView3D.SEA_RUN_UP.y + 20.0) and RunView3D.GROUND_SHADER.contains("sea_wave_off") \
-		and RunView3D.WATER_SHADER.contains("sea_wave_off")
+		and RunView3D.SEA_RANGE.x <= -(Surf.RUN_UP.y * 1.3 + 30.0) and RunView3D.GROUND_SHADER.contains("surf_at(") \
+		and RunView3D.WATER_SHADER.contains("surf_swell(") and SurfWetness.SIM_SHADER.contains("surf_at(")
 	check(waves_ok, "the waves: breaking in the water and running up the sand, one and the same")
 	var rect: Rect2 = view._map_rect()
 	var rng := RandomNumberGenerator.new()
@@ -10764,6 +10765,7 @@ func test_coast_theme() -> void:
 			continue
 		var shore := -d3
 		if shore > 4.0 and shore < 30.0:
+			# (up the sand the paint's dry: the waves wet it - SurfWetness)
 			wet += c.b
 			n_wet += 1
 		elif shore > 70.0 and shore < 190.0:
@@ -10781,7 +10783,7 @@ func test_coast_theme() -> void:
 		and str((gm.get_shader_parameter("mud_tex") as Texture2D).resource_path).contains("wet_sand")
 		and str((gm.get_shader_parameter("forest_tex") as Texture2D).resource_path).contains("/grass_")
 		and str((gm.get_shader_parameter("stone_tex") as Texture2D).resource_path).contains("sea_pebbles"), "the ground: sea sand, wet sand, grass, pebbles")
-	check(n_wet > 0 and wet / n_wet > 0.5, "the sand wet at the sea's edge (%.2f)" % (wet / maxf(n_wet, 1)))
+	check(n_wet > 0 and wet / n_wet < 0.1, "the sand up from the water not painted wet - the waves wet it as they reach (%.2f)" % (wet / maxf(n_wet, 1)))
 	check(n_beach > 0 and beach_grass / n_beach < 0.12 and beach_flat < 0.1, "a sand beach up from the water - bare, low (%.2f grass, %.2f m)" % [beach_grass / maxf(n_beach, 1), beach_flat])
 	check(n_inland > 0 and inland_grass / n_inland > 0.8, "grass back from the beach (%.2f)" % (inland_grass / maxf(n_inland, 1)))
 	check(seabed_ok, "the seabed shelving away under the sea")
@@ -10939,7 +10941,13 @@ func test_cliff_coast_theme() -> void:
 	var gmat := view._ground_mat as ShaderMaterial
 	var docks := main.get_children().filter(func(c): return c is Dock)
 	var swash = gmat.get_shader_parameter("coast")
-	check((swash == null or float(swash) < 0.5) and docks.is_empty() and view._beach_grass.is_empty(), "no beach, no swash, no docks")
+	check((swash == null or float(swash) < 0.5) and docks.is_empty() and view._beach_grass.is_empty() and view._wetness == null and view._tracks == null,
+		"no beach, no swash, no docks")
+	var oxy_in_sea := 0
+	for n in main.get_children():
+		if n is OxyTree and sea_zones.any(func(z): return (z as WaterZone).contains(n.global_position)):
+			oxy_in_sea += 1
+	check(oxy_in_sea == 0, "the sea only its waves and its rocks - no oxygen trees in it (%d)" % oxy_in_sea)
 	var pines := true
 	for t in get_tree().get_nodes_in_group("trees"):
 		if t is MapTree:
@@ -10983,6 +10991,137 @@ func test_cliff_coast_theme() -> void:
 	var surf: AudioStreamPlayer = Sfx._loops.get("amb_surf")
 	check(surf != null and surf.playing, "the surf's sound below")
 	check(is_instance_valid(player()) and player().global_position.is_finite(), "and the run goes on")
+	camp().clear()
+
+
+## User request (the sandy beach): waves rolling in, each its own size and a little off the beat,
+## breaking, running up the sand - fast, slowing at the top - and draining back; along the shore not
+## all at once; the sand wet where the water actually reached (kept apart from the water: a picture
+## of the sand's wetness, drying over Surf.DRY_TIME), the water, its foam and the wet sand all from
+## one model (Surf); prints in the sand, washed away by the waves; no oxygen trees out in the sea.
+func test_surf() -> void:
+	# The waves' beat: loose, never backwards; a wave every EVERY s on average.
+	var w0 := Vector2(40.0, 60.0)
+	var arrivals := []
+	var last := Surf.phase(w0, 0.0)
+	var forward := true
+	var t := 0.0
+	while t < Surf.EVERY * 30.0:
+		t += 0.05
+		var ph := Surf.phase(w0, t)
+		forward = forward and ph >= last
+		if floorf(ph) > floorf(last):
+			arrivals.append(t)
+		last = ph
+	var gaps := []
+	for i in range(1, arrivals.size()):
+		gaps.append(float(arrivals[i]) - float(arrivals[i - 1]))
+	var mean := 0.0
+	for g in gaps:
+		mean += float(g)
+	mean /= maxf(gaps.size(), 1)
+	check(forward and gaps.size() >= 25 and absf(mean - Surf.EVERY) < Surf.EVERY * 0.15 and float(gaps.max()) > float(gaps.min()) * 1.2,
+		"the waves come a little off the beat (%d waves, %.1f s on average, %.1f..%.1f s apart)" % [gaps.size() + 1, mean, float(gaps.min()), float(gaps.max())])
+	var sizes := []
+	for n in 40:
+		sizes.append(Surf.size_of(n))
+	check(float(sizes.max()) - float(sizes.min()) > 0.35, "each wave its own size (%.2f..%.2f)" % [float(sizes.min()), float(sizes.max())])
+	# One wave's run: quick up, slowing to a stop at its highest, then draining back - slower.
+	var r := Surf.reach(w0, 7)
+	var first := Surf.front(0.02, r) - Surf.front(0.0, r)
+	var top := Surf.front(Surf.UP, r) - Surf.front(Surf.UP - 0.02, r)
+	check(first > top * 5.0 and absf(Surf.front(Surf.UP, r) - r) < 0.01 and absf(Surf.front(Surf.UP + Surf.BACK, r) + Surf.LOW) < 0.01 and Surf.BACK > Surf.UP
+		and r > Surf.RUN_UP.x * 0.7 and r < Surf.RUN_UP.y * 1.35,
+		"a wave runs up fast, slows at the top (%.0f px), drains back slower" % r)
+	# Along the shore the waves arrive one after another, each reaching its own way.
+	var at_once := []
+	for x in range(0, 160, 8):
+		at_once.append(fposmod(Surf.phase(Vector2(float(x), 60.0), 100.0), 1.0))
+	check(float(at_once.max()) - float(at_once.min()) > 0.3, "along the shore not all at once (%.2f of a wave between)" % (float(at_once.max()) - float(at_once.min())))
+	# (the water over a spot: under the water always, high up the beach never)
+	check(Surf.cover(w0, -Surf.LOW - 8.0) > 0.99 and Surf.cover(w0, Surf.RUN_UP.y * 1.4 + 20.0) < 0.01, "the water's cover: always below its low edge, never past the furthest a wave runs")
+	# The game: the sand's wetness on the sandy beach.
+	seed(3)
+	camp().clear()
+	gs.reset_run()
+	gs.last_return = ""
+	camp().begin_free([], "coast")
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	await frames(3)
+	main = get_tree().current_scene
+	gs.start_run()
+	var view: RunView3D = null
+	for _i in 300:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	if view == null or not view.built:
+		check(false, "(the beach built)")
+		camp().clear()
+		return
+	var wet := view._wetness
+	var gmat := view._ground_mat as ShaderMaterial
+	var band_ok := wet != null
+	if wet != null:
+		var rect: Rect2 = view._map_rect()
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 2
+		var tried := 0
+		for _i in 20000:
+			var p := Vector2(rng.randf_range(rect.position.x, rect.end.x), rng.randf_range(rect.position.y, rect.end.y))
+			var up := -view._sea_at(p)
+			if up < -Surf.LOW or up > Surf.RUN_UP.y:
+				continue
+			tried += 1
+			band_ok = band_ok and wet.rect.has_point(Vector2(p.x, p.y) / RunView3D.PX)
+		band_ok = band_ok and tried > 50 and wet.size.x <= 2048 and wet.size.y <= 2048 \
+			and gmat.get_shader_parameter("wet_rect") == wet.rect4() and gmat.get_shader_parameter("wet_tex") == wet.texture()
+	check(band_ok, "the sand's wetness: a picture over all the beach the waves reach, the ground reading it (%s texels)" % [wet.size if wet != null else Vector2i.ZERO])
+	var t0 := Surf.time
+	var s0 := wet.steps if wet != null else 0
+	await seconds(1.0)
+	var per_s := float((wet.steps if wet != null else 0) - s0)
+	check(Surf.time - t0 > 0.9 and Surf.time - t0 < 1.2 and per_s > 255.0 / Surf.DRY_TIME * 0.6,
+		"the surf's clock running, the wetness drawn on as the sand dries (%.0f steps a second)" % per_s)
+	check(RunView3D.GROUND_SHADER.contains("float surf_phase(") and RunView3D.WATER_SHADER.contains("float surf_phase(") and SurfWetness.SIM_SHADER.contains("float surf_phase(")
+		and float(gmat.get_shader_parameter("surf_every")) == Surf.EVERY, "the water, its foam and the wet sand one model")
+	# The prints in the sand: the beach's, washed away where a wave runs over them.
+	var tracks := view._tracks
+	var prints_ok := tracks != null and tracks.sand and tracks.washed.is_valid()
+	if prints_ok:
+		var side := MapGenerator.sea_side
+		var mid := Vector2(Player.WORLD_WIDTH, Player.WORLD_HEIGHT) * 0.5
+		var low := Vector2.INF
+		var high := Vector2.INF
+		for k in 3000:
+			var q := mid + side * float(k) * 2.0
+			if not high.is_finite() and view._sea_at(q) > -260.0:
+				high = q
+			if view._sea_at(q) > Surf.LOW + 10.0:
+				low = q
+				break
+		var in_water := RunView3D.to3(low, view.ground_y(low))
+		var dry := RunView3D.to3(high, view.ground_y(high))
+		for pair in [[0, in_water], [1, dry]]:
+			var i: int = pair[0]
+			tracks.spot[i] = pair[1]
+			tracks._age[i] = 0.0
+			tracks._rate[i] = 1.0
+			tracks._washing[i] = 0
+		for _k in 12:
+			tracks._tick = 1.0
+			tracks._process(0.2)
+		prints_ok = tracks.left(tracks._age[0]) <= 0.0 and tracks.left(tracks._age[1]) > 0.5 and view._open_snow(dry)
+	check(prints_ok, "prints in the beach's sand - washed away under the water, kept up the beach")
+	# No oxygen trees out in the sea.
+	var in_sea := 0
+	for n in main.get_children():
+		if n is OxyTree:
+			for z in get_tree().get_nodes_in_group("water_zones"):
+				if (z as WaterZone).sea and (z as WaterZone).contains(n.global_position):
+					in_sea += 1
+	check(in_sea == 0, "no oxygen trees out in the sea (%d)" % in_sea)
 	camp().clear()
 
 

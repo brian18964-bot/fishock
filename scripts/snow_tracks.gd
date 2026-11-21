@@ -26,6 +26,7 @@ const SAND_HOLD := 6.0
 const SAND_FADE := 12.0
 const WET_HOLD := 2.5
 const LIFT_Y := 0.012
+const WASH := 1.2
 ## A step: each heel's height (foot lengths over the ground) is kept for the last HISTORY frames;
 ## the foot comes down when its heel falls to within DOWN of the way from its lowest to its
 ## highest there, and is up again past UP. (Each character's own legs, gait and pace: its own
@@ -74,12 +75,17 @@ var character := ""
 var sand := false
 var fill := 1.0
 var wet: Callable
+## (the beach's) whether the sea's water is over a spot now (Callable: Vector3 -> bool): a print the
+## waves run over is washed away (in WASH s).
+var washed: Callable
 var hold := HOLD
 var fade := FADE
 ## A print made: where, and how fast its maker was going (m/s) - the desert kicks up a little sand.
 signal printed(at: Vector3, speed: float)
 ## Each print's own pace of ageing (a damp one's slower).
 var _rate := PackedFloat32Array()
+## Each print the waves have run over (washing away).
+var _washing := PackedByteArray()
 var _mm: MultiMesh
 var _mat: ShaderMaterial
 var _age := PackedFloat32Array()
@@ -131,6 +137,7 @@ func _ready() -> void:
 	_age.resize(MAX)
 	_rate.resize(MAX)
 	_rate.fill(1.0)
+	_washing.resize(MAX)
 	_deep.resize(MAX)
 	_cell.resize(MAX)
 	spot.resize(MAX)
@@ -253,6 +260,7 @@ func _print_foot(sole: Dictionary, side: String, at: Vector3, fwd: Vector2, leng
 ## dark), and it ages slower.
 func _sand_depth(i: int, at: Vector3, deep: float) -> float:
 	_rate[i] = 1.0
+	_washing[i] = 0
 	if not sand:
 		return deep
 	if wet.is_valid() and bool(wet.call(at)):
@@ -415,6 +423,11 @@ func _process(delta: float) -> void:
 	for i in MAX:
 		if _age[i] < 0.0:
 			continue
+		if washed.is_valid() and _washing[i] == 0 and washed.call(spot[i]):
+			# (gone with the wave: on to its last moments, quickly)
+			_washing[i] = 1
+			_age[i] = maxf(_age[i], hold + fade * 0.5)
+			_rate[i] = fade * 0.5 / WASH / maxf(fill, 0.01)
 		var k := left(_age[i])
 		if k <= 0.0:
 			_age[i] = -1.0
