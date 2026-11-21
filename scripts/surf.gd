@@ -51,7 +51,7 @@ const WET_DARK := 0.7
 const WET_TINT := Color(0.93, 0.97, 1.04)
 ## 濕沙反光強度 (0 none .. 1 glassy): the wet sand's quiet gleam; and the sheet of water's own.
 const SHEEN := 0.35
-const SHEET_SHEEN := 0.35
+const SHEET_SHEEN := 0.28
 ## (the thin sheet of water: how far behind its front it's as deep as it gets (px), and the sea's
 ## colour in it at its deepest)
 const SHEET_DEEP := 46.0
@@ -147,7 +147,7 @@ float surf_lace(vec2 q, float age) {
 	// (finer threads between them - holes of many sizes - going first as it ages)
 	float g = surf_froth(q * 2.7 + vec2(2.2, 6.1));
 	float fibres = smoothstep(0.8, 0.97, 1.0 - abs(2.0 * g - 1.0)) * (1.0 - 0.8 * age);
-	float clumps = smoothstep(0.56 + 0.22 * age, 0.86, surf_froth(q * 0.55 + vec2(5.3, 1.1)));
+	float clumps = smoothstep(0.6 + 0.22 * age, 0.9, surf_froth(q * 0.55 + vec2(5.3, 1.1)));
 	// (bubbly, not flat: a fine grain all through it)
 	float speck = 0.6 + 0.4 * surf_noise(q * 6.3 + vec2(1.3, 9.4));
 	float gaps = smoothstep(0.22 + 0.3 * age, 0.58 + 0.2 * age, surf_noise(q * 0.33 + vec2(9.1, 4.4)));

@@ -25,34 +25,60 @@ const RING_LIFE := 0.9
 const DROPS := 18
 const THROW := 2.1
 const FEET_DRY := 9.0
-const TINT := Color(0.62, 0.68, 0.72)
+const TINT := Color(0.5, 0.56, 0.6)
 const SAND_TINT := Color(0.55, 0.48, 0.36)
 ## (a foot moving through the water: an arc ahead of it every this many s, at least this fast (m/s))
-const PUSH_EVERY := 0.11
+const PUSH_EVERY := 0.2
 const PUSH_SPEED := 0.35
 ## (stood still: the water parting round the feet as it flows faster than this (px/s))
 const FLOW_MIN := 8.0
 
+## (a ripple: not a drawn white ring but the water itself rising a little and falling as it spreads -
+## a low crest and the trough just inside it, its slope lighting and darkening the surface as the
+## moon and the lamp catch it; lower and fainter as it widens, gone where the water's too thin to
+## hold it - the sheet's own depth, pixel by pixel. One MultiMesh: each ripple's age, arc and
+## strength its instance's custom data)
 const RING_SHADER := """
 shader_type spatial;
-render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabled;
-uniform float age = 0.0;
-// (1 a whole ring; less: an arc of it, its middle ahead - local -z)
-uniform float arc = 1.0;
-uniform float strength = 1.0;
-uniform vec3 tint : source_color = vec3(0.62, 0.68, 0.72);
+render_mode blend_mix, depth_draw_never, cull_disabled, shadows_disabled, specular_schlick_ggx;
+uniform sampler2D sea_tex : filter_linear, repeat_disable;
+uniform vec4 sea_box = vec4(0.0, 0.0, 1.0, 1.0);
+uniform vec2 sea_range = vec2(-140.0, 620.0);
+uniform vec3 tint : source_color = vec3(0.1, 0.15, 0.17);
+""" + Surf.GLSL + """
+varying vec4 cust;
+varying vec3 wpos;
+void vertex() {
+	cust = INSTANCE_CUSTOM;
+	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+}
 void fragment() {
 	vec2 p = UV * 2.0 - 1.0;
-	float r = length(p) + 0.025 * sin(atan(p.x, p.y) * 5.0 + age * 4.0);
+	float r = length(p);
+	float age = cust.x;
 	float t = 1.0 - (1.0 - age) * (1.0 - age);
-	float radius = 0.2 + 0.72 * t;
-	float w = mix(0.07, 0.16, age);
-	float ring = 1.0 - smoothstep(0.0, w, abs(r - radius));
-	float inner = (1.0 - smoothstep(0.0, w * 0.8, abs(r - radius * 0.62))) * 0.25 * (1.0 - age);
+	float radius = 0.12 + 0.76 * t;
+	float wdt = mix(0.06, 0.2, t);
+	float x = (r - radius) / wdt;
+	float g0 = exp(-x * x);
+	float g1 = exp(-(x + 1.4) * (x + 1.4));
+	float h = g0 - 0.55 * g1;
+	float dh = (-2.0 * x * g0 + 1.1 * (x + 1.4) * g1) / wdt;
 	float ang = abs(atan(p.x, -p.y));
-	float sector = arc > 0.99 ? 1.0 : 1.0 - smoothstep(arc * 2.6, arc * 3.14159, ang);
+	float sector = cust.y > 0.99 ? 1.0 : 1.0 - smoothstep(cust.y * 2.4, cust.y * 3.14159, ang);
+	float k = cust.z * (1.0 - age) * (1.0 - age) * sector * (1.0 - smoothstep(0.82, 1.0, r));
+	// (only on the water - fading out where it runs onto sand the water's left)
+	float shore = -mix(sea_range.x, sea_range.y, surf_smooth(sea_tex, (wpos.xz - sea_box.xy) / sea_box.zw));
+	float e; float u; float n; float rr;
+	float cover = surf_at(wpos.xz, shore, e, u, n, rr);
+	k *= cover * smoothstep(0.5, 8.0, e - shore);
+	vec2 dir = r > 0.0001 ? p / r : vec2(0.0);
+	vec3 nl = normalize(vec3(-dir.x * dh * k * 0.06, 1.0, -dir.y * dh * k * 0.06));
+	NORMAL = normalize((VIEW_MATRIX * vec4(normalize(mat3(MODEL_MATRIX) * nl), 0.0)).xyz);
 	ALBEDO = tint;
-	ALPHA = clamp(max(ring, inner) * sector * (1.0 - age) * strength * (1.0 - smoothstep(0.92, 1.0, r)), 0.0, 1.0) * 0.75;
+	ROUGHNESS = 0.18;
+	SPECULAR = 0.55;
+	ALPHA = clamp((abs(h) * 0.22 + abs(dh) * wdt * 0.12) * k, 0.0, 0.35);
 }
 """
 
@@ -94,7 +120,11 @@ var feet := 0.0
 ## (for tests) the last step: the water's depth there (m), px up the sand, how fast (m/s).
 var last_step := Vector3.ZERO
 
-var _rings: Array[MeshInstance3D] = []
+var _mm: MultiMesh
+var _ring_mat: ShaderMaterial
+var _ring_xf: Array[Transform3D] = []
+var _ring_vel: Array[Vector3] = []
+var _ring_cust: Array[Color] = []
 var _ring_age: PackedFloat32Array = []
 var _ring_life: PackedFloat32Array = []
 var _next_ring := 0
@@ -113,20 +143,31 @@ var _pending: Array = []
 func setup(low: bool) -> void:
 	_ring_shader = Shader.new()
 	_ring_shader.code = RING_SHADER
+	_ring_mat = ShaderMaterial.new()
+	_ring_mat.shader = _ring_shader
+	Surf.uniforms(_ring_mat)
 	var quad := PlaneMesh.new()
 	quad.size = Vector2.ONE
-	for k in (16 if low else 28):
-		var mi := MeshInstance3D.new()
-		mi.mesh = quad
-		var m := ShaderMaterial.new()
-		m.shader = _ring_shader
-		mi.material_override = m
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		mi.visible = false
-		add_child(mi)
-		_rings.append(mi)
+	quad.material = _ring_mat
+	var n := 20 if low else 32
+	_mm = MultiMesh.new()
+	_mm.transform_format = MultiMesh.TRANSFORM_3D
+	_mm.use_custom_data = true
+	_mm.instance_count = n
+	_mm.mesh = quad
+	for k in n:
+		_ring_xf.append(Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
+		_ring_vel.append(Vector3.ZERO)
+		_ring_cust.append(Color(1, 1, 0, 0))
 		_ring_age.append(1.0)
 		_ring_life.append(RING_LIFE)
+		_mm.set_instance_transform(k, _ring_xf[k])
+		_mm.set_instance_custom_data(k, _ring_cust[k])
+	var mmi := MultiMeshInstance3D.new()
+	mmi.name = "Ripples"
+	mmi.multimesh = _mm
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mmi)
 	var dot := GradientTexture2D.new()
 	dot.width = 16
 	dot.height = 16
@@ -150,6 +191,13 @@ func water_at(at: Vector3) -> Vector2:
 	var shore: float = shore_at.call(at)
 	var d := Surf.depth(Vector2(at.x, at.z), shore)
 	return Vector2(d, float(ground_at.call(at)) + d)
+
+
+## The sea's depth as the shaders have it (the ripples fade where the water's too thin, pixel by pixel).
+func set_sea(tex: Texture2D, box: Vector4, span: Vector2) -> void:
+	_ring_mat.set_shader_parameter("sea_tex", tex)
+	_ring_mat.set_shader_parameter("sea_box", box)
+	_ring_mat.set_shader_parameter("sea_range", span)
 
 
 ## A foot has come down (SnowTracks.landed).
@@ -202,18 +250,24 @@ func lifted(side: String, at: Vector3, speed: float) -> void:
 ## A ring spreading on the water at `at` (`size` m across at its widest; `arc` 1 whole, less an
 ## arc ahead along `yaw`; `stretch` drawn out along it).
 func ring(at: Vector3, size: float, arc: float, strength: float, yaw := 0.0, life := RING_LIFE, stretch := 1.0) -> void:
-	var mi := _rings[_next_ring]
 	var i := _next_ring
-	_next_ring = (_next_ring + 1) % _rings.size()
-	mi.position = at
-	mi.basis = Basis(Vector3.UP, yaw).scaled(Vector3(size, 1.0, size * stretch))
-	var m := mi.material_override as ShaderMaterial
-	m.set_shader_parameter("arc", arc)
-	m.set_shader_parameter("strength", strength)
-	m.set_shader_parameter("age", 0.0)
-	mi.visible = true
+	_next_ring = (_next_ring + 1) % _ring_age.size()
+	# (drawn out a little and carried along by the water flowing there)
+	var fl := Surf.flow(Vector2(at.x, at.z))
+	var up := -(MapGenerator.sea_side if MapGenerator.sea_side != Vector2.ZERO else Vector2(0, 1))
+	var goes := Vector3(up.x, 0.0, up.y) * signf(fl)
+	var pull := clampf(absf(fl) / 60.0, 0.0, 1.0)
+	var basis := Basis(Vector3.UP, yaw).scaled(Vector3(size, 1.0, size * stretch))
+	if pull > 0.05:
+		var along := atan2(goes.x, goes.z)
+		basis = Basis(Vector3.UP, along) * Basis().scaled(Vector3(1.0, 1.0, 1.0 + 0.35 * pull)) * Basis(Vector3.UP, -along) * basis
+	_ring_xf[i] = Transform3D(basis, at)
+	_ring_vel[i] = goes * absf(fl) / 27.108 * 0.3
+	_ring_cust[i] = Color(0.0, arc, strength, 0.0)
 	_ring_age[i] = 0.0
 	_ring_life[i] = life
+	_mm.set_instance_transform(i, _ring_xf[i])
+	_mm.set_instance_custom_data(i, _ring_cust[i])
 	rings += 1
 
 
@@ -223,16 +277,19 @@ func wet() -> float:
 
 
 func _process(delta: float) -> void:
-	for i in _rings.size():
+	_ring_mat.set_shader_parameter("surf_time", Surf.time)
+	for i in _ring_age.size():
 		if _ring_age[i] >= 1.0:
 			continue
-		# (gone quickly where the water's drained from under it - no rings on the bare sand)
-		var dry := water_at(_rings[i].position).x <= 0.002
-		_ring_age[i] = minf(_ring_age[i] + delta / _ring_life[i] * (5.0 if dry else 1.0), 1.0)
-		var m := _rings[i].material_override as ShaderMaterial
-		m.set_shader_parameter("age", _ring_age[i])
+		# (aging quicker where the water's drained from under it)
+		var dry := water_at(_ring_xf[i].origin).x <= 0.002
+		_ring_age[i] = minf(_ring_age[i] + delta / _ring_life[i] * (4.0 if dry else 1.0), 1.0)
+		_ring_xf[i].origin += _ring_vel[i] * delta
+		_ring_cust[i].r = _ring_age[i]
 		if _ring_age[i] >= 1.0:
-			_rings[i].visible = false
+			_ring_xf[i] = Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
+		_mm.set_instance_transform(i, _ring_xf[i])
+		_mm.set_instance_custom_data(i, _ring_cust[i])
 	for k in range(_pending.size() - 1, -1, -1):
 		_pending[k][0] -= delta
 		if _pending[k][0] <= 0.0:
@@ -271,7 +328,9 @@ func _process(delta: float) -> void:
 			var on := Vector3(ankle.x, w.y + 0.01, ankle.z)
 			var ahead := Vector3(go.x, 0.0, go.y).normalized()
 			ring(on + ahead * 0.06, 0.45 + 0.35 * k, 0.32, 0.55 + 0.4 * k, yaw, 0.55)
-			ring(on - ahead * 0.12, 0.3 + 0.25 * k, 0.28, 0.35 + 0.3 * k, yaw + PI, 0.7, 2.2)
+			# (going quickly: a short drag of water behind)
+			if go.length() > 1.5:
+				ring(on - ahead * 0.12, 0.3 + 0.25 * k, 0.28, 0.35 + 0.3 * k, yaw + PI, 0.6, 2.2)
 	# (the water over the feet: its surface's height where they are - none out of it; the overlay on
 	# the character only while they're in it)
 	_line_mat.set_shader_parameter("water_y", deepest)
@@ -297,8 +356,7 @@ func _process(delta: float) -> void:
 			for side in _ankle:
 				var a: Vector3 = _ankle[side]
 				var on := Vector3(a.x, deepest + 0.01, a.z)
-				ring(on - Vector3(goes.x, 0.0, goes.y) * 0.05, 0.35 + 0.2 * k, 0.35, 0.5 * k, yaw + PI, 0.5)
-				ring(on + Vector3(goes.x, 0.0, goes.y) * 0.12, 0.25 + 0.2 * k, 0.25, 0.4 * k, yaw, 0.65, 2.4)
+				ring(on - Vector3(goes.x, 0.0, goes.y) * 0.05, 0.35 + 0.2 * k, 0.35, 0.6 * k, yaw + PI, 0.6)
 
 
 ## The water over the character's feet: the overlay on its meshes while in the water (checked
@@ -340,7 +398,7 @@ func _emitter(dot: Texture2D) -> CPUParticles3D:
 	p.emitting = false
 	# (all at once - a drop not yet thrown would sit at the emitter, drawn dark)
 	p.explosiveness = 1.0
-	p.lifetime = 0.5
+	p.lifetime = 0.38
 	p.lifetime_randomness = 0.4
 	p.amount = DROPS
 	p.local_coords = false
@@ -348,11 +406,11 @@ func _emitter(dot: Texture2D) -> CPUParticles3D:
 	p.damping_min = 0.5
 	p.damping_max = 1.5
 	var fade := Gradient.new()
-	fade.set_color(0, Color(1, 1, 1, 0.9))
+	fade.set_color(0, Color(1, 1, 1, 0.55))
 	fade.set_color(1, Color(1, 1, 1, 0.0))
 	p.color_ramp = fade
 	var quad := QuadMesh.new()
-	quad.size = Vector2.ONE * 0.07
+	quad.size = Vector2.ONE * 0.04
 	var mat := StandardMaterial3D.new()
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES

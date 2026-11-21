@@ -639,6 +639,8 @@ func _build() -> void:
 		_wade.body = pivot
 		add_child(_wade)
 		_wade.setup(_low)
+		if _ground_mat != null:
+			_wade.set_sea(_ground_mat.get_shader_parameter("sea_tex"), _ground_mat.get_shader_parameter("sea_box"), _ground_mat.get_shader_parameter("sea_range"))
 		_tracks.landed.connect(_wade.landed)
 		_tracks.lifted.connect(_wade.lifted)
 	# (birds of prey circling high, their shadows wheeling: the desert's vultures, the others' hawk
@@ -1672,7 +1674,7 @@ func _sea_surface(sh: Shader, waves: Texture2D) -> void:
 		_ground_mat.set_shader_parameter("sheet_deep", Surf.SHEET_DEEP)
 		_ground_mat.set_shader_parameter("sheet_tint", Surf.SHEET_TINT)
 		Surf.uniforms(_ground_mat)
-		mat.set_shader_parameter("edge_fade", 22.0)
+		mat.set_shader_parameter("edge_fade", 46.0)
 		_wetness = SurfWetness.new()
 		_wetness.name = "SurfWetness"
 		add_child(_wetness)
@@ -1952,7 +1954,7 @@ float sea_ds(vec2 xz) { return mix(depth_range.x, depth_range.y, surf_smooth(dep
 // The swell at `w` `d` px out: where in its wave (s: 0 its crest, the long back behind it, the face
 // before it toward 1), that wave's size, how far out it breaks (px) - and how high it lifts the
 // water here (m).
-float surf_swell(vec2 w, float d, out float s, out float size, out float brk) {
+float surf_swell(vec2 w, float d, out float s, out float size, out float brk, out float dhds, out float amp) {
 	float x = d / surf_len + surf_phase(w);
 	s = fract(x);
 	// (this wave's size behind its crest, the next one's on its face - eased between in the trough)
@@ -1960,19 +1962,28 @@ float surf_swell(vec2 w, float d, out float s, out float size, out float brk) {
 	brk = mix(55.0, 165.0, size);
 	// (its face - shoreward of the crest - steepening as it comes into the shallows: a quarter of it
 	// out at sea, a tenth as it's about to break)
-	float face = mix(0.1, 0.26, smoothstep(brk * 0.8, brk * 2.6, d));
-	float h = s > 1.0 - face ? smoothstep(1.0 - face, 1.0, s) : pow(1.0 - s / (1.0 - face), 1.7);
+	float face = mix(0.16, 0.32, smoothstep(brk * 0.8, brk * 2.6, d));
+	// (one smooth swell: a cosine, its face squeezed short and its back drawn long - the crest
+	// peaked a little but rounded, no crease at the crest or in the trough (where a sharp profile
+	// lit as hard lines and corners))
+	float q = s > 1.0 - face ? 0.5 + 0.5 * (s - (1.0 - face)) / face : 0.5 * s / (1.0 - face);
+	float dq = s > 1.0 - face ? 0.5 / face : 0.5 / (1.0 - face);
+	float c = 0.5 + 0.5 * cos(6.2832 * q);
+	float h = pow(c, 1.5);
+	float dh = -1.5 * pow(c, 0.5) * 3.1416 * sin(6.2832 * q) * dq;
 	// (higher as the water shallows, then down once broken - and none at the very edge, where it
 	// runs up the sand instead)
 	float shoal = smoothstep(22.0, 70.0, d) * (1.0 + 0.7 * (1.0 - smoothstep(brk, brk + 140.0, d))) * (1.0 - 0.6 * smoothstep(320.0, 620.0, d));
 	shoal *= mix(0.4, 1.0, smoothstep(brk * 0.45, brk, d));
-	return surf_height * (0.45 + 0.75 * size) * (h - 0.3) * shoal;
+	amp = surf_height * (0.45 + 0.75 * size) * shoal;
+	dhds = amp * dh;
+	return amp * (h - 0.3);
 }
 void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	if (sea > 0.5) {
-		float s; float size; float brk;
-		float lift = surf_swell(wpos.xz, sea_d(wpos.xz), s, size, brk);
+		float s; float size; float brk; float dh; float amp;
+		float lift = surf_swell(wpos.xz, sea_ds(wpos.xz), s, size, brk, dh, amp);
 		VERTEX.y += lift;
 		wpos.y += lift;
 	}
@@ -1992,7 +2003,7 @@ void fragment() {
 		vec3 m3 = texture(wave_tex, mat2(vec2(0.28, 0.96), vec2(-0.96, 0.28)) * wpos.xz * 0.26 + vec2(TIME * 0.031, TIME * 0.019)).rgb * 2.0 - 1.0;
 		nm = normalize(vec3(m1.xy * 0.55 + m2.xy * 0.3 + m3.xy * 0.15, 1.0)) * 0.5 + 0.5;
 		NORMAL_MAP = nm;
-		NORMAL_MAP_DEPTH = 0.16;
+		NORMAL_MAP_DEPTH = 0.2;
 	} else {
 		vec3 a = texture(wave_tex, uv + vec2(TIME * 0.012, TIME * 0.006)).rgb;
 		vec3 b = texture(wave_tex, uv * 1.7 - vec2(TIME * 0.009, -TIME * 0.011)).rgb;
@@ -2010,27 +2021,25 @@ void fragment() {
 	float fade = 1.0;
 	if (sea > 0.5) {
 		float s; float size; float brk;
-		float lift = surf_swell(wpos.xz, d, s, size, brk);
-		// (the surface's tilt from the swell: its lift a step seaward - along the depth's smooth slope)
+		float dhds; float amp;
+		float lift = surf_swell(wpos.xz, d, s, size, brk, dhds, amp);
+		// (the surface's tilt from the swell: its own slope (no step across a crest into the next wave),
+		// along the depth's smooth slope - its way out eased onto the map's where the depth is flat, not
+		// flipped there)
 		vec2 e = vec2(0.5, 0.0);
 		vec2 grad = vec2(sea_ds(wpos.xz + e.xy) - d, sea_ds(wpos.xz + e.yx) - d) / 0.5;
-		vec2 out_dir = length(grad) > 0.01 ? grad / length(grad) : surf_out;
-		float s2; float z2; float b2;
-		float ahead = surf_swell(wpos.xz + out_dir * 0.25, d + length(grad) * 0.25, s2, z2, b2);
-		float slope = (ahead - lift) / 0.25;
-		swell = vec3(-out_dir.x, 0.0, -out_dir.y) * slope * 3.0;
+		vec2 out_dir = normalize(grad + surf_out * 0.6);
+		float slope = dhds * max(dot(grad, out_dir), 0.0) / surf_len;
+		swell = vec3(-out_dir.x, 0.0, -out_dir.y) * slope * 2.0;
 		// (lit as the surface leans: the moon and the lamp on the swell's own slopes)
-		NORMAL = normalize((VIEW_MATRIX * vec4(normalize(vec3(-out_dir.x * slope * 2.5, 1.0, -out_dir.y * slope * 2.5)), 0.0)).xyz);
-		// its shape seen from above, as the night's light falls on a low swell: the crest's ridge
-		// catching the light and the back behind it a little, the face before it darker and glassy,
-		// the trough behind dark - out to sea too, fainter
-		float hn = lift / max(surf_height * (0.45 + 0.75 * size), 0.001);
-		float ridge = smoothstep(0.08, 0.55, hn);
-		float trough = smoothstep(-0.06, -0.3, hn);
-		float facing = smoothstep(0.01, 0.09, slope);
-		float backing = smoothstep(0.004, 0.04, -slope);
+		NORMAL = normalize((VIEW_MATRIX * vec4(normalize(vec3(-out_dir.x * slope * 1.6, 1.0, -out_dir.y * slope * 1.6)), 0.0)).xyz);
+		// its shape seen from above, gently: the crest's top catching a little light, the trough a
+		// little darker - its slopes lit by the light itself (no painted dark band before the crest)
+		float hn = lift / max(amp, 0.001);
+		float ridge = smoothstep(0.35, 0.66, hn);
+		float trough = smoothstep(-0.12, -0.3, hn);
 		float vis = mix(1.0, 0.55, deepness);
-		col *= 1.0 + (0.85 * ridge + 0.2 * backing - 0.3 * trough - 0.3 * facing) * vis;
+		col *= 1.0 + (0.32 * ridge - 0.12 * trough) * vis;
 		// breaking: past its breaking depth the crest turns white - the top of its face, thick and thin
 		// with holes in it; behind it a lace of froth, drawn out and breaking up as the wave goes on,
 		// thinning to nothing; on to the edge as the bore that runs up the sand
@@ -2051,7 +2060,9 @@ void fragment() {
 			broke *= 1.0 - smoothstep(16.0, 44.0, d);
 		}
 		// (thicker the shallower it's broken - the main wave in the surf)
-		foam = broke * max(body, lace * 0.6) * (1.0 - 0.45 * smoothstep(0.0, max(brk, 1.0), d));
+		// (where it starts to break, thickest - the crest tumbling over)
+		float onset = smoothstep(brk * 1.05, brk * 0.8, d) * (1.0 - smoothstep(brk * 0.5, brk * 0.8, d));
+		foam = broke * max(body * (1.0 + 0.6 * onset), lace * 0.6) * (1.0 - 0.45 * smoothstep(0.0, max(brk, 1.0), d));
 		// (the cliff's foot: each crest breaking white on the rock, the froth drawn back out after,
 		// thinning and breaking up)
 		if (wall > 0.5) {
@@ -2078,10 +2089,11 @@ void fragment() {
 		foam = clamp(foam * surf_foam, 0.0, 1.0);
 		col += vec3(0.0, 0.012, 0.014) * ridge * vis;
 		// (the edge: the water thinning onto the sand - the sand's own sheet takes it from there)
-		fade = edge_fade > 0.0 ? smoothstep(-1.0, edge_fade, d) : 1.0;
+		// (over a long way, softly - the sea's green and the sheet's clear water meeting with no line)
+		fade = edge_fade > 0.0 ? smoothstep(-1.0, edge_fade, d) * smoothstep(-1.0, edge_fade * 0.5, d) : 1.0;
 	}
 	ALBEDO = mix(col, edge_tint * 0.35, line * 0.6);
-	ALBEDO = mix(ALBEDO, foam_tint * 0.42, foam * 0.75);
+	ALBEDO = mix(ALBEDO, foam_tint * mix(0.42, 0.36, sea), foam * 0.75);
 	vec3 wn = normalize(vec3((nm.x - 0.5) * mix(0.5, 0.22, sea), 1.0, (nm.y - 0.5) * mix(0.5, 0.22, sea)) + swell);
 	vec3 vn = normalize((VIEW_MATRIX * vec4(wn, 0.0)).xyz);
 	vec3 r = reflect(-VIEW, vn);
@@ -2095,13 +2107,14 @@ void fragment() {
 	// and here just the lamp's warm light on the water round it, no spot of its own)
 	vec3 to_lamp = lamp_at - wpos;
 	float near = lamp * exp(-dot(to_lamp.xz, to_lamp.xz) / 70.0);
-	EMISSION += vec3(1.0, 0.76, 0.42) * near * (0.05 + 0.12 * fres) + edge_tint * line * 0.16 * near;
+	EMISSION += vec3(1.0, 0.76, 0.42) * near * mix(0.05 + 0.12 * fres, 0.025 + 0.05 * fres, sea) + edge_tint * line * 0.16 * near;
 	// (its foam the brightest thing on the night sea - its breaking crests seen away from the lamp too)
-	EMISSION += foam_tint * foam * (mix(0.02, 0.06, sea) * mix(0.35, 1.0, moon) + 0.22 * near);
+	EMISSION += foam_tint * foam * (mix(0.02, 0.06, sea) * mix(0.35, 1.0, moon) + mix(0.22, 0.1, sea) * near);
 	// (the sea's a little less glassy than the ponds - the lamp a soft gleam on it, not a scatter of
 	// sparks)
-	ROUGHNESS = mix(mix(0.06, 0.16, sea), 0.5, foam);
-	SPECULAR = 0.75;
+	ROUGHNESS = mix(mix(0.06, 0.26, sea), 0.5, foam);
+	// (the lamp's gleam on the sea softer at its peak - warm, the water's own detail seen through it)
+	SPECULAR = mix(0.75, 0.5, sea);
 	METALLIC = 0.15;
 	// (its foam faded with it at the beach's edge too - the sand's own foam takes over there: never
 	// two layers of it)
@@ -8569,7 +8582,7 @@ void fragment() {
 			float sheet = cover * smoothstep(0.0, 16.0, in_px) * (1.0 - 0.35 * back);
 			float film = max(sheet, kept2.y * 0.85);
 			c = mix(c, c * sheet_tint, (film - sheet) * 0.25);
-			rough = mix(rough, 0.28, film);
+			rough = mix(rough, 0.42, film);
 			gloss = mix(gloss, sheet_sheen, film);
 			// (its surface the water's - smooth over the sand's grain, only its own ripples on it)
 			smooth_k = max(smooth_k, film);
@@ -8609,7 +8622,7 @@ void fragment() {
 			float lip = (1.0 - smoothstep(0.0, mix(3.5, 1.5, run), in_px)) * smoothstep(-1.0, 0.4, in_px)
 				* smoothstep(0.3 + 0.3 * run, 0.6 + 0.25 * run, surf_noise(vec2(along * 2.3, wn * 1.9)));
 			float body_f = (1.0 - smoothstep(0.0, thick_f, in_px)) * smoothstep(-1.0, 0.6, in_px) * lace_f;
-			float front = max(lip * (1.0 - 0.5 * run), body_f) * (1.0 - smoothstep(0.0, 0.15, back));
+			float front = max(lip * 0.6 * (1.0 - 0.5 * run), body_f) * (1.0 - smoothstep(0.0, 0.15, back));
 			// (behind it: threads of it carried up with the water; as it drains, a little drawn back down
 			// with it, longer and thinner, melting away)
 			float band = u < surf_up ? cover * (1.0 - smoothstep(3.0, 16.0 + 14.0 * run, in_px))
@@ -8617,12 +8630,12 @@ void fragment() {
 			float lace = u < surf_up ? surf_lace(q + vec2(3.3, 0.0), 0.35 + 0.5 * run) : surf_lace(q_back, 0.5 + 0.5 * back);
 			float trail = band * lace * (u < surf_up ? smoothstep(0.0, 0.3, run) : (1.0 - smoothstep(0.05, 0.6, back)) * 0.6);
 			float foam = clamp(max(front, trail * 0.8) * surf_foam, 0.0, 1.0);
-			c = mix(c, vec3(0.74, 0.79, 0.8), foam * 0.85);
+			c = mix(c, vec3(0.72, 0.77, 0.78), foam * 0.75);
 			rough = mix(rough, 0.6, foam);
 			gloss = mix(gloss, 0.1, foam);
 			vec3 tl = lamp_at - gpos;
 			float near = lamp * exp(-dot(tl.xz, tl.xz) / 70.0);
-			glow = vec3(1.0, 0.76, 0.42) * near * film * 0.04 + vec3(0.7, 0.8, 0.85) * foam * (0.01 + 0.07 * near);
+			glow = vec3(1.0, 0.76, 0.42) * near * film * 0.04 + vec3(0.7, 0.8, 0.85) * foam * (0.01 + 0.04 * near);
 		}
 	}
 	ALBEDO = c * mix(0.85, snow_bright, snow);
