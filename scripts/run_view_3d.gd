@@ -59,6 +59,10 @@ const RUN_PACE := 3.0
 ## steps a second) is the one that looked right - the rest keep that, their
 ## feet a touch behind the ground going by rather than scrabbling.
 const RUN_RATE_MAX := 1.4
+## User request (the feet sliding on the beach): the walk played as fast as the stride needs at the
+## top of a walk (a short-legged one's ~2.9 times) - at 2.4 its planted foot slid about an eighth
+## of the way.
+const WALK_RATE_MAX := 3.0
 const TURN_RATE := 14.0
 ## Trees between the camera and the traveller: dithered out this close to
 ## the camera (m).
@@ -625,6 +629,18 @@ func _build() -> void:
 		_tracks.washed = _beach_washed
 		_tracks.character = rig.character if rig != null else Profile.character
 		add_child(_tracks)
+		# (user request: the feet and the sea's water as they really meet - each foot's step by how
+		# deep the water is there and how fast it goes; the water over the feet)
+		_wade = SurfWade.new()
+		_wade.name = "SurfWade"
+		_wade.ground_at = _ground_at
+		_wade.shore_at = func(at: Vector3) -> float: return -_sea_at(to2(at))
+		_wade.rig = rig
+		_wade.body = pivot
+		add_child(_wade)
+		_wade.setup(_low)
+		_tracks.landed.connect(_wade.landed)
+		_tracks.lifted.connect(_wade.lifted)
 	# (birds of prey circling high, their shadows wheeling: the desert's vultures, the others' hawk
 	# or eagle)
 	_sky_birds()
@@ -1716,6 +1732,7 @@ func _depth_texture(zone: WaterZone, box: Rect2) -> Texture2D:
 const WET_TEXEL := 0.125
 var _wetness: SurfWetness
 var _sea_mat: ShaderMaterial
+var _wade: SurfWade
 
 
 ## The band of the beach the waves reach and a little more (3D x, z m): where the sea's depth is
@@ -1930,15 +1947,20 @@ uniform int rock_count = 0;
 varying vec3 wpos;
 """ + Surf.GLSL + """
 float sea_d(vec2 xz) { return mix(depth_range.x, depth_range.y, textureLod(depth_tex, (xz - box.xy) / box.zw, 0.0).r); }
+// (smoothly - its slope with no steps at the texels)
+float sea_ds(vec2 xz) { return mix(depth_range.x, depth_range.y, surf_smooth(depth_tex, (xz - box.xy) / box.zw)); }
 // The swell at `w` `d` px out: where in its wave (s: 0 its crest, the long back behind it, the face
 // before it toward 1), that wave's size, how far out it breaks (px) - and how high it lifts the
 // water here (m).
 float surf_swell(vec2 w, float d, out float s, out float size, out float brk) {
 	float x = d / surf_len + surf_phase(w);
 	s = fract(x);
-	size = surf_size(floor(x + 0.5));
+	// (this wave's size behind its crest, the next one's on its face - eased between in the trough)
+	size = mix(surf_size(floor(x)), surf_size(floor(x) + 1.0), smoothstep(0.35, 0.75, s));
 	brk = mix(55.0, 165.0, size);
-	float face = 0.22;
+	// (its face - shoreward of the crest - steepening as it comes into the shallows: a quarter of it
+	// out at sea, a tenth as it's about to break)
+	float face = mix(0.1, 0.26, smoothstep(brk * 0.8, brk * 2.6, d));
 	float h = s > 1.0 - face ? smoothstep(1.0 - face, 1.0, s) : pow(1.0 - s / (1.0 - face), 1.7);
 	// (higher as the water shallows, then down once broken - and none at the very edge, where it
 	// runs up the sand instead)
@@ -1989,19 +2011,33 @@ void fragment() {
 	if (sea > 0.5) {
 		float s; float size; float brk;
 		float lift = surf_swell(wpos.xz, d, s, size, brk);
-		// (the surface's tilt from the swell: its lift a step seaward - the depth's slope)
+		// (the surface's tilt from the swell: its lift a step seaward - along the depth's smooth slope)
 		vec2 e = vec2(0.5, 0.0);
-		vec2 grad = vec2(sea_d(wpos.xz + e.xy) - d, sea_d(wpos.xz + e.yx) - d) / 0.5;
-		vec2 out_dir = grad / max(length(grad), 0.001);
+		vec2 grad = vec2(sea_ds(wpos.xz + e.xy) - d, sea_ds(wpos.xz + e.yx) - d) / 0.5;
+		vec2 out_dir = length(grad) > 0.01 ? grad / length(grad) : surf_out;
 		float s2; float z2; float b2;
-		float ahead = surf_swell(wpos.xz + out_dir * 0.4, d + length(grad) * 0.4, s2, z2, b2);
-		float slope = (ahead - lift) / 0.4;
-		swell = vec3(-out_dir.x, 0.0, -out_dir.y) * slope * 2.2;
+		float ahead = surf_swell(wpos.xz + out_dir * 0.25, d + length(grad) * 0.25, s2, z2, b2);
+		float slope = (ahead - lift) / 0.25;
+		swell = vec3(-out_dir.x, 0.0, -out_dir.y) * slope * 3.0;
+		// (lit as the surface leans: the moon and the lamp on the swell's own slopes)
+		NORMAL = normalize((VIEW_MATRIX * vec4(normalize(vec3(-out_dir.x * slope * 2.5, 1.0, -out_dir.y * slope * 2.5)), 0.0)).xyz);
+		// its shape seen from above, as the night's light falls on a low swell: the crest's ridge
+		// catching the light and the back behind it a little, the face before it darker and glassy,
+		// the trough behind dark - out to sea too, fainter
+		float hn = lift / max(surf_height * (0.45 + 0.75 * size), 0.001);
+		float ridge = smoothstep(0.08, 0.55, hn);
+		float trough = smoothstep(-0.06, -0.3, hn);
+		float facing = smoothstep(0.01, 0.09, slope);
+		float backing = smoothstep(0.004, 0.04, -slope);
+		float vis = mix(1.0, 0.55, deepness);
+		col *= 1.0 + (0.85 * ridge + 0.2 * backing - 0.3 * trough - 0.3 * facing) * vis;
 		// breaking: past its breaking depth the crest turns white - the top of its face, thick and thin
 		// with holes in it; behind it a lace of froth, drawn out and breaking up as the wave goes on,
 		// thinning to nothing; on to the edge as the bore that runs up the sand
 		float broke = 1.0 - smoothstep(brk * 0.85, brk * 1.05, d);
-		float behind = s < 0.5 ? 1.0 - smoothstep(0.04, 0.4, s) : 0.0;
+		// (the froth left behind the crest: a short way back, thinning fast - the water clear behind it,
+		// the swell's own shape showing there; nothing on a wave that hasn't broken yet)
+		float behind = s < 0.5 ? 1.0 - smoothstep(0.02, 0.22, s) : 0.0;
 		float age = s < 0.5 ? s : 0.0;
 		vec2 across = vec2(-surf_out.y, surf_out.x);
 		// (its pattern on the water's own place, each wave's its own - the moving crest shows it)
@@ -2009,12 +2045,13 @@ void fragment() {
 		float froth = surf_froth(fq);
 		float crest = smoothstep(0.95, 1.0, s) + (1.0 - smoothstep(0.0, 0.035 + 0.07 * (1.0 - d / max(brk, 1.0)), s));
 		float body = crest * surf_lace(fq * 1.6, 0.0);
-		float lace = behind * surf_lace(fq * 1.6 + vec2(2.1, 0.0), 0.3 + 1.2 * age);
+		float lace = behind * surf_lace(fq * 1.6 + vec2(2.1, 0.0), 0.3 + 2.5 * age);
 		// (against a cliff the water's deep to its foot: the waves break on the rock, not before it)
 		if (wall > 0.5) {
 			broke *= 1.0 - smoothstep(16.0, 44.0, d);
 		}
-		foam = broke * max(body, lace * 0.75);
+		// (thicker the shallower it's broken - the main wave in the surf)
+		foam = broke * max(body, lace * 0.6) * (1.0 - 0.45 * smoothstep(0.0, max(brk, 1.0), d));
 		// (the cliff's foot: each crest breaking white on the rock, the froth drawn back out after,
 		// thinning and breaking up)
 		if (wall > 0.5) {
@@ -2039,7 +2076,7 @@ void fragment() {
 			}
 		}
 		foam = clamp(foam * surf_foam, 0.0, 1.0);
-		col = mix(col, col * 1.45 + vec3(0.0, 0.015, 0.015), clamp(lift / max(surf_height, 0.01), 0.0, 1.0) * (1.0 - deepness) * 0.5);
+		col += vec3(0.0, 0.012, 0.014) * ridge * vis;
 		// (the edge: the water thinning onto the sand - the sand's own sheet takes it from there)
 		fade = edge_fade > 0.0 ? smoothstep(-1.0, edge_fade, d) : 1.0;
 	}
@@ -2059,11 +2096,16 @@ void fragment() {
 	vec3 to_lamp = lamp_at - wpos;
 	float near = lamp * exp(-dot(to_lamp.xz, to_lamp.xz) / 70.0);
 	EMISSION += vec3(1.0, 0.76, 0.42) * near * (0.05 + 0.12 * fres) + edge_tint * line * 0.16 * near;
-	EMISSION += foam_tint * foam * (0.02 * mix(0.35, 1.0, moon) + 0.22 * near);
-	ROUGHNESS = mix(0.06, 0.5, foam);
+	// (its foam the brightest thing on the night sea - its breaking crests seen away from the lamp too)
+	EMISSION += foam_tint * foam * (mix(0.02, 0.06, sea) * mix(0.35, 1.0, moon) + 0.22 * near);
+	// (the sea's a little less glassy than the ponds - the lamp a soft gleam on it, not a scatter of
+	// sparks)
+	ROUGHNESS = mix(mix(0.06, 0.16, sea), 0.5, foam);
 	SPECULAR = 0.75;
 	METALLIC = 0.15;
-	ALPHA = max(clamp(alpha_edge + d * clear, 0.0, 0.97) * fade, clamp(foam * 0.75, 0.0, 0.97));
+	// (its foam faded with it at the beach's edge too - the sand's own foam takes over there: never
+	// two layers of it)
+	ALPHA = max(clamp(alpha_edge + d * clear, 0.0, 0.97), clamp(foam * 0.75, 0.0, 0.97)) * fade;
 	// ice: a frozen fringe round the shore, its edge broken by the waves' pattern
 	float fringe = (1.0 - smoothstep(14.0, 38.0 + nm.x * 24.0, d)) * ice;
 	ALBEDO = mix(ALBEDO, vec3(0.74, 0.86, 0.94), fringe * 0.9);
@@ -5200,7 +5242,7 @@ func _pick_clip() -> Array:
 	if v.move != "":
 		match v.move:
 			"walk":
-				return ["Walk", clampf(speed / _walk_pace(), 0.4, 2.4), -1.0]
+				return ["Walk", clampf(speed / _walk_pace(), 0.4, WALK_RATE_MAX), -1.0]
 			"sad_walk":
 				return ["Walk", clampf(speed / _walk_pace() * 0.8, 0.3, 1.5), -1.0]
 			"sad_idle":
@@ -5249,7 +5291,7 @@ func _pick_clip() -> Array:
 					and not player.turned_away():
 				return ["Fish_Back", clampf(speed / _walk_pace() * 0.7, 0.4, 1.4), -1.0]
 			if speed * PX < PlayerVisual.WALK_MAX:
-				return ["Walk", clampf(speed / _walk_pace(), 0.4, 2.4), -1.0]
+				return ["Walk", clampf(speed / _walk_pace(), 0.4, WALK_RATE_MAX), -1.0]
 			return ["Run", clampf(speed / (RUN_PACE * _walk_pace() / WALK_PACE), 0.6, RUN_RATE_MAX), -1.0]
 		PlayerVisual.CLIP_CAST, PlayerVisual.CLIP_CAST_SHORT:
 			# Wound back with the charge (frames 0-3), the whip (4-7).
@@ -7309,9 +7351,12 @@ func _circle_vulture(v: Dictionary, delta: float, _me: Vector3) -> void:
 
 
 ## (the desert's) whether `at` is in the damp sand by the water - a print there crisp and lasting.
-## (the beach's footprints) the sand damp here: up the beach as far as the waves run, and a little.
+## (the beach's footprints) the sand damp here: where the waves have been and it's not dried yet
+## (Surf.wetness), or the feet just out of the water.
 func _beach_damp(at: Vector3) -> bool:
-	return _sea_at(to2(at)) > -(Surf.RUN_UP.y + 12.0)
+	if _wade != null and _wade.wet() > 0.3:
+		return true
+	return Surf.wetness(Vector2(at.x, at.z), -_sea_at(to2(at))) > 0.2
 
 
 ## (the beach's footprints) a wave's water over here now.
@@ -8487,10 +8532,9 @@ void fragment() {
 		// broken, in clumps and strands)
 		float tide = smoothstep(run_up.y + 4.0, run_up.y + 12.0, shore) * (1.0 - smoothstep(run_up.y + 22.0, run_up.y + 36.0, shore + 10.0 * sin(UV.x * 0.21 + UV.y * 0.17)));
 		if (tide > 0.0) {
-			float clump = smoothstep(0.5, 0.72, vnoise(UV * 0.9)) * smoothstep(0.35, 0.65, vnoise(UV * 3.7 + vec2(7.3, 2.1)));
-			c = mix(c, vec3(0.12, 0.11, 0.06), tide * clump * 0.7);
-			float bits = step(0.93, vnoise(UV * 11.0 + vec2(1.7, 9.2))) * tide * (0.35 + 0.65 * clump);
-			c = mix(c, vec3(0.8, 0.77, 0.7), bits * 0.4);
+			float clump = smoothstep(0.5, 0.72, vnoise(UV * 0.9)) * smoothstep(0.35, 0.65, vnoise(UV * 1.9 + vec2(7.3, 2.1)));
+			// (the wrack line: a few soft drifts of it, not a band of dark specks)
+			c = mix(c, vec3(0.2, 0.18, 0.11), tide * clump * 0.4);
 		}
 		c *= sand_dry;
 		if (shore < run_up.y * 1.3 + 30.0) {
@@ -8502,27 +8546,33 @@ void fragment() {
 			float run = u < surf_up ? u / surf_up : 1.0;
 			// --- the wet sand: the same sand, its grain and ripples kept - darker, a little cooler, less
 			// rough, a quiet gleam; wet as far as the water has been (kept, drying), at once where it is
+			// (the wetness picture read smoothly - no texel steps, no shimmer as it's redrawn: red the
+			// sand's own wetness, slow to dry; green the film of water left on it, quick to run off)
 			vec2 wuv = (UV - wet_rect.xy) / wet_rect.zw;
-			float kept = (wuv.x > 0.0 && wuv.y > 0.0 && wuv.x < 1.0 && wuv.y < 1.0) ? texture(wet_tex, wuv).r : (shore < -surf_low ? 1.0 : 0.0);
-			float wet = max(kept, cover);
-			// (its edge soft and a little ragged; drying first on the ripples' crests)
-			float lum = dot(c, vec3(0.3, 0.5, 0.2));
-			float rag = (vnoise(UV * 1.3) - 0.5) * 0.2 + (vnoise(UV * 4.7 + vec2(3.1, 7.7)) - 0.5) * 0.08 - (lum - 0.35) * 0.25;
+			vec2 kept2 = (wuv.x > 0.0 && wuv.y > 0.0 && wuv.x < 1.0 && wuv.y < 1.0) ? surf_smooth4(wet_tex, wuv).rg : vec2(shore < -surf_low ? 1.0 : 0.0, 0.0);
+			float wet = max(kept2.x, cover);
+			// (its edge soft and a little ragged - broad patches, no fine speckle)
+			float rag = (vnoise(UV * 1.3) - 0.5) * 0.2 + (vnoise(UV * 3.1 + vec2(3.1, 7.7)) - 0.5) * 0.06;
 			float damp = smoothstep(0.03, 0.8, wet + rag * (1.0 - cover));
 			c = mix(c, c * wet_dark * wet_tint, damp);
-			// (a broad, faint gleam - wet, not glazed: its grain mustn't catch the light in streaks)
-			rough = mix(0.92, mix(0.92, 0.5, sheen), damp);
-			gloss = sheen * damp * 0.35;
+			// (a broad, faint gleam - wet, not glazed: its grain mustn't catch the light in specks)
+			rough = mix(0.92, mix(0.92, 0.6, sheen), damp);
+			gloss = sheen * damp * 0.3;
+			smooth_k = 0.3 * damp;
 			// --- the sheet of water: clear - the sand seen through it, the sea's colour deepening behind
 			// its front; thinner as it drains, the wet sand showing through again
 			float deep = clamp(in_px / sheet_deep, 0.0, 1.0);
 			float thick = cover * sqrt(deep) * (1.0 - 0.6 * back);
 			c = mix(c, c * sheet_tint, thick * 0.8);
-			float film = cover * smoothstep(0.0, 16.0, in_px) * (1.0 - 0.35 * back);
-			rough = mix(rough, 0.2, film);
+			// (the film of water: the sheet's over it now, or what it left as it drained - glassy, running
+			// off over Surf.FILM_TIME: the gleam goes first, the dark of the wet sand much later)
+			float sheet = cover * smoothstep(0.0, 16.0, in_px) * (1.0 - 0.35 * back);
+			float film = max(sheet, kept2.y * 0.85);
+			c = mix(c, c * sheet_tint, (film - sheet) * 0.25);
+			rough = mix(rough, 0.28, film);
 			gloss = mix(gloss, sheet_sheen, film);
 			// (its surface the water's - smooth over the sand's grain, only its own ripples on it)
-			smooth_k = film;
+			smooth_k = max(smooth_k, film);
 			// (its flow: up the beach as it runs up, down it as it drains - the sea's slope; fine
 			// ripples carried with it, drawn out down the beach as it drains)
 			// (laid along the map's way out to sea - the same everywhere, so no seams or shearing)
@@ -8543,7 +8593,9 @@ void fragment() {
 			float rx = mix(vnoise(rp1 + vec2(0.25, 0.0)), vnoise(rp2 + vec2(0.25, 0.0)), drain);
 			float rz = mix(vnoise(rp1 + vec2(0.0, 0.25)), vnoise(rp2 + vec2(0.0, 0.25)), drain);
 			vec2 slope = (rx - r0) * across + (rz - r0) * upward;
-			n = mix(n, vec3(0.5 - slope.x * 0.45, 0.5 - slope.y * 0.45, 1.0), film * 0.85);
+			n = mix(n, vec3(0.5 - slope.x * 0.45, 0.5 - slope.y * 0.45, 1.0), sheet * 0.85);
+			// (the film it leaves still and glassy - the sand's grain smoothed under it)
+			n = mix(n, vec3(0.5, 0.5, 1.0), (film - sheet) * 0.6);
 			// --- its foam: the bore's front as it runs up - thick here and thin there, gaps in it, threads
 			// trailing back from it; carried up with the water, stretching and breaking up as it slows;
 			// as the water drains a little of it is drawn back down with it, thinning and melting away

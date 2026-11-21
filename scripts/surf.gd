@@ -58,6 +58,10 @@ const SHEET_DEEP := 46.0
 const SHEET_TINT := Color(0.8, 0.9, 0.93)
 ## 乾燥時間 (s): from soaked to dry again after the water's gone - several waves' time.
 const DRY_TIME := 32.0
+## 水膜流走時間 (s): the film of water left on the sand as a wave drains - glassy at first - running
+## off and sinking in over this long (well before the sand dries: the gleam goes first, then, much
+## later, the dark).
+const FILM_TIME := 3.0
 
 ## The surf's clock (s): RunView3D moves it on each frame and gives it to the shaders as surf_time
 ## (the shaders' own TIME isn't the game's: the game can ask where the water is - cover). Wraps
@@ -151,7 +155,7 @@ float surf_lace(vec2 q, float age) {
 }
 // (a texture's red sampled smoothly - a cubic B-spline from four bilinear taps: its contours with
 // no corners at the texels)
-float surf_smooth(sampler2D tex, vec2 uv) {
+vec4 surf_smooth4(sampler2D tex, vec2 uv) {
 	vec2 size = vec2(textureSize(tex, 0));
 	vec2 p = uv * size - 0.5;
 	vec2 i = floor(p);
@@ -166,9 +170,10 @@ float surf_smooth(sampler2D tex, vec2 uv) {
 	vec2 g1 = w2 + w3;
 	vec2 h0 = (i - 0.5 + w1 / g0) / size;
 	vec2 h1 = (i + 1.5 + w3 / g1) / size;
-	return g0.y * (g0.x * texture(tex, h0).r + g1.x * texture(tex, vec2(h1.x, h0.y)).r)
-		+ g1.y * (g0.x * texture(tex, vec2(h0.x, h1.y)).r + g1.x * texture(tex, h1).r);
+	return g0.y * (g0.x * texture(tex, h0) + g1.x * texture(tex, vec2(h1.x, h0.y)))
+		+ g1.y * (g0.x * texture(tex, vec2(h0.x, h1.y)) + g1.x * texture(tex, h1));
 }
+float surf_smooth(sampler2D tex, vec2 uv) { return surf_smooth4(tex, uv).r; }
 // (the waves so far here: its whole part the wave, its fraction how far through it - the crest at
 // the water's edge at 0; the beat loosened, never backwards)
 float surf_phase(vec2 w) {
@@ -282,3 +287,50 @@ static func edge(w: Vector2, at := -1.0) -> float:
 static func cover(w: Vector2, shore: float, at := -1.0) -> float:
 	var e := edge(w, at)
 	return 1.0 - smoothstep(e - 1.5, e + 1.5, shore)
+
+
+# ---------------------------------------------------------------- the water for the game
+
+## 水膜深度: how deep the sheet of water running up the sand is (m) - none at its very front, about
+## SHEET_M a px behind it, never deeper than SHEET_MAX; thinner as it drains. (The wading's, the
+## driftwood's: what the ground's shader draws as the sheet.)
+const SHEET_M := 0.003
+const SHEET_MAX := 0.14
+
+
+## The water over a spot `shore` px up the sand at `w` now (m deep; 0 when it's bare) - out past the
+## waves' lowest, the sea's (SHEET_MAX and more, by `shore`).
+static func depth(w: Vector2, shore: float, at := -1.0) -> float:
+	var ph := phase(w, at)
+	var u := ph - floorf(ph)
+	var over := edge(w, at) - shore
+	if over <= 0.0:
+		return 0.0
+	var thin := 1.0 - 0.5 * clampf((u - UP) / BACK, 0.0, 1.0)
+	return minf(over * SHEET_M * thin, SHEET_MAX) + maxf(-shore - LOW, 0.0) * 0.004
+
+
+## Which way the water's going at `w` (px/s up the sand - minus: draining back): as fast as its edge
+## near the front, slowing deeper in.
+static func flow(w: Vector2, at := -1.0) -> float:
+	var t := time if at < 0.0 else at
+	return (edge(w, t + 0.05) - edge(w, t - 0.05)) / 0.1
+
+
+## How wet the sand `shore` px up the beach at `w` still is (0 dry .. 1 soaked): from the last waves
+## that reached it, drying over DRY_TIME after each topped out there - near enough as the wetness
+## picture (SurfWetness) has it, for the game's own questions (a print dark or loose, sand kicked up).
+static func wetness(w: Vector2, shore: float, at := -1.0) -> float:
+	if cover(w, shore, at) > 0.5:
+		return 1.0
+	var ph := phase(w, at)
+	var n := floori(ph)
+	for j in 8:
+		var k := n - j
+		# (this wave still coming up the sand - not yet as far as it'll go)
+		if j == 0 and ph - k < UP:
+			continue
+		if reach(w, k) + absf(wiggle(w, k)) * 0.5 >= shore:
+			var since := maxf((ph - k - UP) * EVERY, 0.0)
+			return clampf(1.0 - since / DRY_TIME, 0.0, 1.0)
+	return 0.0

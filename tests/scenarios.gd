@@ -11163,6 +11163,59 @@ func test_surf() -> void:
 		Surf.time = t_keep
 	check(not floats.is_empty() and moved > 2.0 and lifted > 0.01 and far <= RunView3D.FLOAT_ROAM + 0.01,
 		"the driftwood in the waves' way moved by them (%d of it; carried %.0f px, lifted %.2f m)" % [floats.size(), moved, lifted])
+	# One water for all of it: how deep it is over a spot now, which way it's going, how wet the sand
+	# still is - the film of water on it running off long before the sand dries.
+	var wv := Vector2(40.0, 60.0)
+	var t_w := Surf.time
+	var ups := 0
+	var downs := 0
+	var deep_ok := true
+	for k in roundi(Surf.EVERY * 2.0 * 10.0):
+		var at_t := t_w + k * 0.1
+		var fl := Surf.flow(wv, at_t)
+		var u := fposmod(Surf.phase(wv, at_t), 1.0)
+		if u > 0.02 and u < Surf.UP - 0.02 and fl > 0.0:
+			ups += 1
+		elif u > Surf.UP + 0.05 and u < Surf.UP + Surf.BACK - 0.05 and fl < 0.0:
+			downs += 1
+		var e := Surf.edge(wv, at_t)
+		deep_ok = deep_ok and Surf.depth(wv, e + 2.0, at_t) == 0.0 and Surf.depth(wv, e - 20.0, at_t) > 0.02 and Surf.depth(wv, e - 20.0, at_t) <= Surf.SHEET_MAX + 0.001
+	check(ups > 5 and downs > 5 and deep_ok, "the water's depth over the sand and its flow - up as it runs up, back as it drains (%d, %d)" % [ups, downs])
+	check(Surf.wetness(wv, -Surf.LOW - 5.0) == 1.0 and Surf.wetness(wv, Surf.RUN_UP.y * 1.5 + 30.0) == 0.0 and Surf.FILM_TIME * 4.0 < Surf.DRY_TIME
+		and SurfWetness.SIM_SHADER.contains("film_step") and RunView3D.GROUND_SHADER.contains("kept2.y"),
+		"the sand's wetness kept apart from the film of water on it, the film gone long before the sand's dry")
+	# The feet in the water (SurfWade): each step by the water there - a splash and a ring in it, a
+	# little sand kicked up on the dry, drops off a foot lifting out; the water over the feet.
+	var wade := view._wade
+	var wade_ok := wade != null and view._tracks.landed.is_connected(wade.landed) and view._tracks.lifted.is_connected(wade.lifted)
+	if wade_ok:
+		var side2 := MapGenerator.sea_side
+		var mid2 := Vector2(Player.WORLD_WIDTH, Player.WORLD_HEIGHT) * 0.5
+		var wet_q := Vector2.INF
+		var dry_q := Vector2.INF
+		for k in 3000:
+			var q := mid2 + side2 * float(k) * 2.0
+			if not dry_q.is_finite() and view._sea_at(q) > -(Surf.RUN_UP.y * 1.6 + 60.0) and view._sea_at(q) < -(Surf.RUN_UP.y * 1.5 + 40.0):
+				dry_q = q
+			if view._sea_at(q) > Surf.LOW + 8.0:
+				wet_q = q
+				break
+		var in_w := RunView3D.to3(wet_q, view.ground_y(wet_q))
+		var on_dry := RunView3D.to3(dry_q, view.ground_y(dry_q))
+		var ws0 := wade.splashes
+		var wr0 := wade.rings
+		var wk0 := wade.kicks
+		var wd0 := wade.drips
+		wade.feet = 0.0
+		wade.landed("_l", in_w, Vector2(side2.x, side2.y), SnowTracks.RUN_SPEED)
+		var in_ok := wade.splashes == ws0 + 1 and wade.rings > wr0 and wade.feet == 1.0
+		wade.lifted("_l", in_w, SnowTracks.RUN_SPEED)
+		in_ok = in_ok and wade.drips == wd0 + 1
+		wade.feet = 0.0
+		wade.landed("_r", on_dry, Vector2(side2.x, side2.y), SnowTracks.WALK_SPEED)
+		wade_ok = in_ok and wade.kicks == wk0 + 1 and wade.splashes == ws0 + 1 and wade.water_at(in_w).x > 0.02 and wade.water_at(on_dry).x == 0.0 \
+			and SurfWade.LINE_SHADER.contains("water_y")
+	check(wade_ok, "the feet in the water: a splash and a ring stepping in it, drops lifting out, sand kicked up on the dry")
 	# No oxygen trees out in the sea.
 	var in_sea := 0
 	for n in main.get_children():

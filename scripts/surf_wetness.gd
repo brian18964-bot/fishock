@@ -11,7 +11,9 @@ extends Node
 ## never less than the water covering it now (max(last - step, cover)). Two pictures turn about
 ## (each drawn from the other - a picture can't be drawn from itself), the ground's shader reading
 ## the newest (texture()). A step is one level of the picture's 255, so the steps come every
-## DRY_TIME / 255 s and the sand dries over DRY_TIME s.
+## DRY_TIME / 255 s and the sand dries over DRY_TIME s. (Its green: the film of water left lying on
+## the sand as a wave drains - the sheet's depth where it is now, running off over Surf.FILM_TIME s:
+## the gleam gone long before the dark.)
 
 const SIM_SHADER := """
 shader_type canvas_item;
@@ -23,6 +25,8 @@ uniform vec2 sea_range;
 // (the picture's patch of the world: x, z, width, depth m)
 uniform vec4 rect;
 uniform float dry_step = 0.0045;
+// (the film of water left on it: how much less each step - it runs off far quicker than the sand dries)
+uniform float film_step = 0.04;
 // (the first: the sand as the last few waves would have left it)
 uniform float init = 0.0;
 """ + Surf.GLSL + """
@@ -31,8 +35,11 @@ void fragment() {
 	float shore = -mix(sea_range.x, sea_range.y, surf_smooth(sea_tex, (w - sea_box.xy) / sea_box.zw));
 	float edge; float u; float n; float reach;
 	float cover = surf_at(w, shore, edge, u, n, reach);
-	float last = init > 0.5 ? (1.0 - smoothstep(surf_run_up.x * 0.4, surf_run_up.y * 0.9, shore)) * 0.85 : texture(prev, UV).r;
-	COLOR = vec4(max(last - dry_step, cover), 0.0, 0.0, 1.0);
+	vec2 last = init > 0.5 ? vec2((1.0 - smoothstep(surf_run_up.x * 0.4, surf_run_up.y * 0.9, shore)) * 0.85, 0.0) : texture(prev, UV).rg;
+	// (red: the sand's own wetness - soaked where the water is, drying slowly after; green: the film
+	// of water on it - as deep as the sheet over it now, running off quickly once it's gone)
+	float film = cover * smoothstep(0.0, 16.0, edge - shore);
+	COLOR = vec4(max(last.x - dry_step, cover), max(last.y - film_step, film), 0.0, 1.0);
 }
 """
 
@@ -106,6 +113,7 @@ func step(delta: float) -> bool:
 	var mat := _mats[next]
 	mat.set_shader_parameter("surf_time", Surf.time)
 	mat.set_shader_parameter("dry_step", (levels + 0.1) / 255.0)
+	mat.set_shader_parameter("film_step", levels * every / Surf.FILM_TIME + 0.1 / 255.0)
 	mat.set_shader_parameter("init", 1.0 if _first else 0.0)
 	_first = false
 	_vp[next].render_target_update_mode = SubViewport.UPDATE_ONCE

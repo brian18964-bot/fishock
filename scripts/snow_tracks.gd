@@ -82,6 +82,10 @@ var hold := HOLD
 var fade := FADE
 ## A print made: where, and how fast its maker was going (m/s) - the desert kicks up a little sand.
 signal printed(at: Vector3, speed: float)
+## (the player's feet, wherever they are - open ground or not: the wading's, SurfWade) a foot has
+## just come down (its ankle at `at`, pointing `fwd`) / just lifted, going `speed` m/s.
+signal landed(side: String, at: Vector3, fwd: Vector2, speed: float)
+signal lifted(side: String, at: Vector3, speed: float)
 ## Each print's own pace of ageing (a damp one's slower).
 var _rate := PackedFloat32Array()
 ## Each print the waves have run over (washing away).
@@ -208,12 +212,14 @@ func feel(skel: Skeleton3D, ground: Callable, open: Callable, speed: float) -> v
 			if h > lo + UP * swing:
 				_down[side] = false
 				_landing[side] = false
+				lifted.emit(side, ankle, speed)
 			elif _landing[side] and h >= was:
 				# (the heel's lowest: the foot's down - its print where it is now)
 				_landing[side] = false
-				if open.call(ankle):
-					var along := Vector2(toe.x - ankle.x, toe.z - ankle.z)
-					if along.length() > 0.0001:
+				var along := Vector2(toe.x - ankle.x, toe.z - ankle.z)
+				if along.length() > 0.0001:
+					landed.emit(side, Vector3(ankle.x, floor_y, ankle.z), along.normalized(), speed)
+					if open.call(ankle):
 						_print_foot(sole, side, Vector3(ankle.x, floor_y + LIFT_Y, ankle.z), along.normalized(), length, speed, ground)
 		elif h < lo + DOWN * swing:
 			_down[side] = true
