@@ -226,7 +226,9 @@ func _process(delta: float) -> void:
 	for i in _rings.size():
 		if _ring_age[i] >= 1.0:
 			continue
-		_ring_age[i] = minf(_ring_age[i] + delta / _ring_life[i], 1.0)
+		# (gone quickly where the water's drained from under it - no rings on the bare sand)
+		var dry := water_at(_rings[i].position).x <= 0.002
+		_ring_age[i] = minf(_ring_age[i] + delta / _ring_life[i] * (5.0 if dry else 1.0), 1.0)
 		var m := _rings[i].material_override as ShaderMaterial
 		m.set_shader_parameter("age", _ring_age[i])
 		if _ring_age[i] >= 1.0:
