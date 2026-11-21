@@ -28,7 +28,7 @@ uniform float init = 0.0;
 """ + Surf.GLSL + """
 void fragment() {
 	vec2 w = rect.xy + UV * rect.zw;
-	float shore = -mix(sea_range.x, sea_range.y, texture(sea_tex, (w - sea_box.xy) / sea_box.zw).r);
+	float shore = -mix(sea_range.x, sea_range.y, surf_smooth(sea_tex, (w - sea_box.xy) / sea_box.zw));
 	float edge; float u; float n; float reach;
 	float cover = surf_at(w, shore, edge, u, n, reach);
 	float last = init > 0.5 ? (1.0 - smoothstep(surf_run_up.x * 0.4, surf_run_up.y * 0.9, shore)) * 0.85 : texture(prev, UV).r;

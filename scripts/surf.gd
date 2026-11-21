@@ -24,29 +24,40 @@ extends RefCounted
 
 ## 浪高 (m): how high the swell lifts the sea out in the water.
 const HEIGHT := 0.12
-## 推進速度 (px/s): how fast the waves come in across the water (their spacing = SPEED x EVERY).
+## 浪速 (px/s): how fast the waves come in across the water (their spacing = SPEED x EVERY).
 const SPEED := 40.0
 ## 波浪間隔 (s): a wave reaching the shore every this many seconds, on average.
-const EVERY := 7.0
+const EVERY := 7.5
 ## (0 every wave the same, on the beat .. 1 each its own size, the beat loose by about a quarter)
 const IRREGULAR := 1.0
 ## 上沖距離 (px up the sand from the water's edge): the smallest wave's reach, the biggest's.
-const RUN_UP := Vector2(26.0, 70.0)
+const RUN_UP := Vector2(26.0, 64.0)
+## 沿岸時間差 (waves): how much sooner or later a wave reaches one stretch of the beach than the
+## next - smoothly along it, some metres a little ahead, then a little behind (0: all at once;
+## at this, about half a second a metre at most).
+const ALONG_LAG := 0.22
 ## (how far below its mean line the water's edge falls between waves, px)
 const LOW := 10.0
 ## 上沖時間: the share of a wave's time it takes to run up (smaller: quicker).
-const UP := 0.2
+const UP := 0.22
 ## 回流速度: the share of a wave's time it takes to drain back down (smaller: quicker).
-const BACK := 0.46
+const BACK := 0.5
 ## 泡沫量 (0 none .. 1 as made .. more).
 const FOAM := 1.0
-## 乾沙 / 濕沙: the sand's colour dry (on its picture) and soaked (the wet sand's picture, tinted).
+## 乾沙 (on its picture) / 濕沙深淺 (how much darker soaked sand is: 1 no darker) / 濕沙色調
+## (soaked sand's cast - a little cooler).
 const SAND_DRY := Color(1.0, 1.0, 1.0)
-const SAND_WET := Color(0.58, 0.6, 0.66)
-## 濕沙反光強度 (0 none .. 1 glassy): how much the wet sand gleams.
-const SHEEN := 0.4
-## 乾燥時間 (s): from soaked to dry again after the water's gone.
-const DRY_TIME := 16.0
+const WET_DARK := 0.7
+const WET_TINT := Color(0.93, 0.97, 1.04)
+## 濕沙反光強度 (0 none .. 1 glassy): the wet sand's quiet gleam; and the sheet of water's own.
+const SHEEN := 0.35
+const SHEET_SHEEN := 0.35
+## (the thin sheet of water: how far behind its front it's as deep as it gets (px), and the sea's
+## colour in it at its deepest)
+const SHEET_DEEP := 46.0
+const SHEET_TINT := Color(0.8, 0.9, 0.93)
+## 乾燥時間 (s): from soaked to dry again after the water's gone - several waves' time.
+const DRY_TIME := 32.0
 
 ## The surf's clock (s): RunView3D moves it on each frame and gives it to the shaders as surf_time
 ## (the shaders' own TIME isn't the game's: the game can ask where the water is - cover). Wraps
@@ -71,6 +82,8 @@ static func uniforms(mat: ShaderMaterial) -> void:
 	mat.set_shader_parameter("surf_up", UP)
 	mat.set_shader_parameter("surf_back", BACK)
 	mat.set_shader_parameter("surf_foam", FOAM)
+	mat.set_shader_parameter("surf_along", ALONG_LAG)
+	mat.set_shader_parameter("surf_out", MapGenerator.sea_side if MapGenerator.sea_side != Vector2.ZERO else Vector2(0, 1))
 
 
 # ---------------------------------------------------------------- the model (GLSL)
@@ -88,9 +101,73 @@ uniform float surf_low = 10.0;
 uniform float surf_up = 0.2;
 uniform float surf_back = 0.46;
 uniform float surf_foam = 1.0;
-// (how much later the waves reach this stretch of the shore, in waves - a slant along the coast)
+uniform float surf_along = 0.22;
+// (the way out to sea, the map's: the waves' patterns laid along and across it)
+uniform vec2 surf_out = vec2(0.0, 1.0);
+// (how much later the waves reach this stretch of the shore, in waves: a slant along the coast,
+// and nearer, a stretch a little ahead, the next a little behind - smoothly)
 float surf_lag(vec2 w) {
-	return 0.3 * sin(w.x * 0.11 + w.y * 0.07) + 0.22 * sin(w.x * 0.047 - w.y * 0.093 + 1.7);
+	return 0.18 * sin(w.x * 0.11 + w.y * 0.07) + 0.14 * sin(w.x * 0.047 - w.y * 0.093 + 1.7)
+		+ surf_along * (0.6 * sin(w.x * 0.16 + w.y * 0.13) + 0.4 * sin(w.x * 0.083 - w.y * 0.1 + 2.0));
+}
+// (value noise, and the foam's own pattern from it: three octaves turned against each other, no grid)
+// (an integer hash - exact however far from the world's origin (the sine one goes to patterns
+// there), well mixed (PCG): no lines or grids in the noise made from it)
+float surf_h21(vec2 p) {
+	uvec2 v = uvec2(ivec2(floor(p)) + 1048576);
+	v = v * 1664525u + 1013904223u;
+	v.x += v.y * 1664525u;
+	v.y += v.x * 1664525u;
+	v = v ^ (v >> 16u);
+	v.x += v.y * 1664525u;
+	v.y += v.x * 1664525u;
+	v = v ^ (v >> 16u);
+	return float(v.x) * (1.0 / 4294967296.0);
+}
+float surf_noise(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(surf_h21(i), surf_h21(i + vec2(1.0, 0.0)), f.x), mix(surf_h21(i + vec2(0.0, 1.0)), surf_h21(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+float surf_froth(vec2 q) {
+	return surf_noise(mat2(vec2(0.8, 0.6), vec2(-0.6, 0.8)) * q) * 0.55 + surf_noise(mat2(vec2(0.28, -0.96), vec2(0.96, 0.28)) * q * 2.1 + vec2(4.1, 1.3)) * 0.3 + surf_noise(q * 4.3 + vec2(1.7, 8.2)) * 0.15;
+}
+// (foam's look, 0..1 at `q`, `age` 0 fresh .. 1 old: threads round holes, a few softer clumps, broken
+// by gaps - thinning, the gaps widening, as it ages)
+float surf_lace(vec2 q, float age) {
+	// (warped first, so its holes aren't round cells all of a size)
+	q += (vec2(surf_noise(q * 0.7 + vec2(3.1, 7.7)), surf_noise(q * 0.7 + vec2(8.3, 2.9))) - 0.5) * 1.8;
+	float f = surf_froth(q);
+	float threads = smoothstep(0.7 + 0.2 * age, 0.95, 1.0 - abs(2.0 * f - 1.0));
+	// (finer threads between them - holes of many sizes - going first as it ages)
+	float g = surf_froth(q * 2.7 + vec2(2.2, 6.1));
+	float fibres = smoothstep(0.8, 0.97, 1.0 - abs(2.0 * g - 1.0)) * (1.0 - 0.8 * age);
+	float clumps = smoothstep(0.56 + 0.22 * age, 0.86, surf_froth(q * 0.55 + vec2(5.3, 1.1)));
+	// (bubbly, not flat: a fine grain all through it)
+	float speck = 0.6 + 0.4 * surf_noise(q * 6.3 + vec2(1.3, 9.4));
+	float gaps = smoothstep(0.22 + 0.3 * age, 0.58 + 0.2 * age, surf_noise(q * 0.33 + vec2(9.1, 4.4)));
+	return clamp(max(max(threads * 0.85, fibres * 0.6), clumps * speck) * speck * gaps, 0.0, 1.0);
+}
+// (a texture's red sampled smoothly - a cubic B-spline from four bilinear taps: its contours with
+// no corners at the texels)
+float surf_smooth(sampler2D tex, vec2 uv) {
+	vec2 size = vec2(textureSize(tex, 0));
+	vec2 p = uv * size - 0.5;
+	vec2 i = floor(p);
+	vec2 f = p - i;
+	vec2 f2 = f * f;
+	vec2 f3 = f2 * f;
+	vec2 w0 = (-f3 + 3.0 * f2 - 3.0 * f + 1.0) / 6.0;
+	vec2 w1 = (3.0 * f3 - 6.0 * f2 + 4.0) / 6.0;
+	vec2 w2 = (-3.0 * f3 + 3.0 * f2 + 3.0 * f + 1.0) / 6.0;
+	vec2 w3 = f3 / 6.0;
+	vec2 g0 = w0 + w1;
+	vec2 g1 = w2 + w3;
+	vec2 h0 = (i - 0.5 + w1 / g0) / size;
+	vec2 h1 = (i + 1.5 + w3 / g1) / size;
+	return g0.y * (g0.x * texture(tex, h0).r + g1.x * texture(tex, vec2(h1.x, h0.y)).r)
+		+ g1.y * (g0.x * texture(tex, vec2(h0.x, h1.y)).r + g1.x * texture(tex, h1).r);
 }
 // (the waves so far here: its whole part the wave, its fraction how far through it - the crest at
 // the water's edge at 0; the beat loosened, never backwards)
@@ -126,7 +203,7 @@ float surf_front(float u, float r) {
 }
 // (the edge's own wiggle along the shore, px - fingers and scallops, its own each wave)
 float surf_wiggle(vec2 w, float n) {
-	return 6.0 * sin(w.x * 0.93 + w.y * 0.77 + n * 0.9) + 3.5 * sin(w.x * 2.11 - w.y * 1.79 - n * 1.7) + 1.8 * sin(w.x * 4.3 + w.y * 3.7 + n * 2.3);
+	return 4.5 * sin(w.x * 0.83 + w.y * 0.67 + n * 0.9) + 2.2 * sin(w.x * 1.9 - w.y * 1.6 - n * 1.7);
 }
 // The water here now: its edge (px up the sand), how far through its wave (u), which wave (n),
 // that wave's reach (px) - and how much of here it covers (0..1, the edge soft over a px or two).
@@ -146,7 +223,8 @@ float surf_at(vec2 w, float shore, out float edge, out float u, out float n, out
 
 ## The lag along the shore (waves) at `w` (3D x, z m).
 static func lag(w: Vector2) -> float:
-	return 0.3 * sin(w.x * 0.11 + w.y * 0.07) + 0.22 * sin(w.x * 0.047 - w.y * 0.093 + 1.7)
+	return 0.18 * sin(w.x * 0.11 + w.y * 0.07) + 0.14 * sin(w.x * 0.047 - w.y * 0.093 + 1.7) \
+		+ ALONG_LAG * (0.6 * sin(w.x * 0.16 + w.y * 0.13) + 0.4 * sin(w.x * 0.083 - w.y * 0.1 + 2.0))
 
 
 static func phase(w: Vector2, at := -1.0) -> float:
@@ -181,7 +259,13 @@ static func front(u: float, r: float) -> float:
 
 
 static func wiggle(w: Vector2, n: int) -> float:
-	return 6.0 * sin(w.x * 0.93 + w.y * 0.77 + n * 0.9) + 3.5 * sin(w.x * 2.11 - w.y * 1.79 - n * 1.7) + 1.8 * sin(w.x * 4.3 + w.y * 3.7 + n * 2.3)
+	return 4.5 * sin(w.x * 0.83 + w.y * 0.67 + n * 0.9) + 2.2 * sin(w.x * 1.9 - w.y * 1.6 - n * 1.7)
+
+
+## Out in the water, `d` px from the shore at `w`: the waves' count there so far (its whole part the
+## wave whose crest last went by, its fraction how far since) - as the sea's shader has the swell.
+static func crest(w: Vector2, d: float, at := -1.0) -> float:
+	return d / (SPEED * EVERY) + phase(w, at)
 
 
 ## Where the water's edge is at `w` (px up the sand) now (or at the surf's time `at`).

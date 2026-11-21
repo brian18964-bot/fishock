@@ -580,6 +580,7 @@ func _build() -> void:
 	_start_camp()
 	_landmarks()
 	_cover()
+	_surf_things()
 	var t2 := Time.get_ticks_msec()
 	await get_tree().process_frame
 	if not is_inside_tree():
@@ -1054,6 +1055,8 @@ const CLIFF_BLOCKS := 9.0
 const CLIFF_SHADE := Color(0.58, 0.6, 0.64)
 var _cliff_rocks: Array = []
 var _cliff_wall: Array = []
+## (the sea's edge along the cliff: [its points (2D), their ways out to sea] a line)
+var _cliff_edges: Array = []
 
 
 func _cliff_face() -> void:
@@ -1069,7 +1072,8 @@ func _cliff_face() -> void:
 	noise.seed = _rng.randi()
 	noise.frequency = 0.35
 	# (the sea's edge, every CLIFF_STEP m along; its way out to sea at each point)
-	for line in _coast_lines():
+	_cliff_edges = _coast_lines()
+	for line in _cliff_edges:
 		_cliff_line(line[0], line[1], noise, mat)
 
 
@@ -1645,8 +1649,12 @@ func _sea_surface(sh: Shader, waves: Texture2D) -> void:
 		_ground_mat.set_shader_parameter("sea_box", box)
 		_ground_mat.set_shader_parameter("sea_range", SEA_RANGE)
 		_ground_mat.set_shader_parameter("sand_dry", Surf.SAND_DRY)
-		_ground_mat.set_shader_parameter("sand_wet", Surf.SAND_WET)
+		_ground_mat.set_shader_parameter("wet_dark", Surf.WET_DARK)
+		_ground_mat.set_shader_parameter("wet_tint", Surf.WET_TINT)
 		_ground_mat.set_shader_parameter("sheen", Surf.SHEEN)
+		_ground_mat.set_shader_parameter("sheet_sheen", Surf.SHEET_SHEEN)
+		_ground_mat.set_shader_parameter("sheet_deep", Surf.SHEET_DEEP)
+		_ground_mat.set_shader_parameter("sheet_tint", Surf.SHEET_TINT)
 		Surf.uniforms(_ground_mat)
 		mat.set_shader_parameter("edge_fade", 22.0)
 		_wetness = SurfWetness.new()
@@ -1731,7 +1739,8 @@ func _beach_band() -> Rect2:
 	return band.grow(1.5) if any else Rect2(lo, Vector2(n) * CELL)
 
 
-## The surf's clock on, into the sea's and the sand's shaders; the sand's wetness drawn on.
+## The surf's clock on, into the sea's and the sand's shaders; the sand's wetness drawn on; the
+## things in the waves' way moved by them, the spray off the cliff's rocks.
 func _surf(delta: float) -> void:
 	if _sea_mat == null:
 		return
@@ -1741,6 +1750,142 @@ func _surf(delta: float) -> void:
 		_ground_mat.set_shader_parameter("surf_time", Surf.time)
 		if _wetness.step(delta):
 			_ground_mat.set_shader_parameter("wet_tex", _wetness.texture())
+	if not _floaters.is_empty():
+		_float_things(delta)
+	if _spray != null and is_instance_valid(player):
+		var near := to3(player.global_position)
+		_spray.update(near)
+		_rocks_since += delta
+		if _rocks_since > 0.5:
+			_rocks_since = 0.0
+			_near_rocks(near)
+
+
+## User request (the sea cliff): the waves breaking on the rocks out in the sea and on the cliff's
+## foot, their water flung up white (SurfSplash) - the rocks also given to the sea's shader (the
+## foam about each, the wave broken up behind it: the nearest SEA_ROCKS, `rocks`) and its foot
+## (`wall`). (The sandy beach's driftwood: _floaters, from _cover.)
+const SEA_ROCKS := 24
+## (the cliff's foot: a place the waves strike every this many m along)
+const SPLASH_STEP := 4.0
+var _spray: SurfSplash
+## (Vector4: x, z, radius m, how much it stands up to the waves)
+var _sea_rocks: Array = []
+var _rocks_since := 0.0
+
+
+func _surf_things() -> void:
+	if not _cliff or _sea_mat == null or _sea_grid.is_empty():
+		return
+	var out := MapGenerator.sea_side if MapGenerator.sea_side != Vector2.ZERO else Vector2(0, 1)
+	_spray = SurfSplash.new()
+	_spray.name = "SurfSplash"
+	add_child(_spray)
+	_spray.setup(_low)
+	# (the rocks fallen out into the sea, and the blocks at the cliff's foot)
+	for model in _fossil_models:
+		var at := to2(model.position)
+		var d := _sea_at(at)
+		if d < 2.0:
+			continue
+		var aabb := _model_box(model as Node3D)
+		var r := clampf(maxf(aabb.size.x, aabb.size.z) * 0.42, 0.4, 3.5)
+		_sea_rocks.append(Vector4(model.position.x, model.position.z, r, 1.0))
+		_spray.add_rock(Vector3(model.position.x, WATER_Y, model.position.z), r, out, d)
+	for mi in _cliff_rocks:
+		var at := to2((mi as Node3D).position)
+		var d := _sea_at(at)
+		if d < 2.0:
+			continue
+		var aabb := (mi as MeshInstance3D).get_aabb()
+		var r := clampf(maxf(aabb.size.x * (mi as Node3D).scale.x, aabb.size.z * (mi as Node3D).scale.z) * 0.42, 0.3, 2.5)
+		_sea_rocks.append(Vector4((mi as Node3D).position.x, (mi as Node3D).position.z, r, 0.8))
+		_spray.add_rock(Vector3((mi as Node3D).position.x, WATER_Y, (mi as Node3D).position.z), r, out, d)
+	# (the foot of the cliff all along, facing out to sea)
+	for line in _cliff_edges:
+		var cols: Array[Vector2] = line[0]
+		var outs: Array[Vector2] = line[1]
+		var along := SPLASH_STEP * 0.5
+		for i in cols.size():
+			along += CLIFF_STEP
+			if along < SPLASH_STEP:
+				continue
+			along = 0.0
+			var foot := cols[i] + outs[i] * (CLIFF_AT + 4.0)
+			_spray.add_wall(to3(foot, WATER_Y), outs[i], maxf(_sea_at(foot), 4.0))
+	_sea_mat.set_shader_parameter("wall", 1.0)
+	_near_rocks(to3(player.global_position) if is_instance_valid(player) else Vector3.ZERO)
+
+
+## (the sea cliff) the nearest SEA_ROCKS of the rocks out in the sea, to the sea's shader.
+func _near_rocks(near: Vector3) -> void:
+	var by := _sea_rocks.duplicate()
+	if by.size() > SEA_ROCKS:
+		by.sort_custom(func(a: Vector4, b: Vector4) -> bool:
+			return Vector2(a.x - near.x, a.y - near.z).length_squared() < Vector2(b.x - near.x, b.y - near.z).length_squared())
+		by.resize(SEA_ROCKS)
+	var packed := PackedVector4Array()
+	for v in by:
+		packed.append(v)
+	while packed.size() < SEA_ROCKS:
+		packed.append(Vector4(0, 0, 0, 0))
+	_sea_mat.set_shader_parameter("rocks", packed)
+	_sea_mat.set_shader_parameter("rock_count", mini(by.size(), SEA_ROCKS))
+
+
+## A model's box (its meshes', in the world - scaled and turned as it stands).
+func _model_box(model: Node3D) -> AABB:
+	var box := AABB(model.global_position, Vector3.ZERO)
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		box = box.merge((mi as MeshInstance3D).global_transform * (mi as MeshInstance3D).get_aabb())
+	return box
+
+
+## User request (the sandy beach): what lies where the waves run (the driftwood) moves with them -
+## lifted a little and rocked as the water runs over it, carried up the sand as the water runs up
+## and drawn back as it drains, left where the water leaves it; never far from where it lay
+## (FLOAT_ROAM px). Out past the waves' lowest, it rides the swell.
+const FLOAT_ROAM := 22.0
+const FLOAT_LIFT := 0.07
+## (each: {node, home: 2D, off: px from home, edge: the water's edge last frame (px), lift: m,
+## yaw, y: over the ground (m), ph: its own rocking's})
+var _floaters: Array = []
+
+
+func _float_things(delta: float) -> void:
+	if delta <= 0.0:
+		return
+	var up2 := -(MapGenerator.sea_side if MapGenerator.sea_side != Vector2.ZERO else Vector2(0, 1))
+	for f in _floaters:
+		var node := f.node as Node3D
+		if not is_instance_valid(node):
+			continue
+		var p2: Vector2 = f.home + f.off
+		var w := p2 / PX
+		var shore := -_sea_at(p2)
+		var e := Surf.edge(w)
+		var de := e - float(f.edge)
+		f.edge = e
+		# (how much the water holds it: none at the very edge, all a hand's depth in)
+		var over := e - shore
+		var held := clampf((over - 2.0) / 14.0, 0.0, 1.0)
+		if shore < -Surf.LOW:
+			held = 1.0
+		# (carried as the water goes - as fast as its edge near it, slower deeper in; a jump in the
+		# edge (a new wave's count) isn't a flow)
+		if absf(de) < 300.0 * delta + 2.0 and shore >= -Surf.LOW:
+			var flow := de * held * 0.7 * (1.0 - 0.6 * clampf(over / 50.0, 0.0, 1.0))
+			f.off = (f.off + up2 * flow).limit_length(FLOAT_ROAM)
+			f.yaw = float(f.yaw) + flow * 0.006 * (1.0 if sin(float(f.ph)) > 0.0 else -1.0)
+		# (drifting back a little toward where it lay while afloat - it doesn't wander off)
+		f.off = (f.off as Vector2) * (1.0 - minf(0.05 * delta * held, 1.0))
+		f.lift = move_toward(float(f.lift), held * FLOAT_LIFT, delta * (0.3 if held > float(f.lift) / FLOAT_LIFT else 0.12))
+		var t := Surf.time + float(f.ph)
+		var bob := held * (0.012 * sin(t * 2.3) + (Surf.HEIGHT * 0.4 * sin(TAU * Surf.crest(w, -shore)) if shore < -Surf.LOW else 0.0))
+		var at2: Vector2 = f.home + f.off
+		node.position = to3(at2, ground_y(at2) + float(f.y) + float(f.lift) + bob)
+		var rock := held * 0.06
+		node.rotation = Vector3(rock * sin(t * 1.7), float(f.yaw), rock * 0.7 * sin(t * 1.3 + 0.8))
 
 
 const WATER_SHADER := """
@@ -1776,6 +1921,12 @@ uniform vec3 foam_tint : source_color = vec3(0.8, 0.88, 0.9);
 // (the beach's: the water thinning to nothing over this many px at its edge, where the sand's own
 // sheet of water takes over - none against a cliff)
 uniform float edge_fade = 0.0;
+// (the sea cliff's: the waves breaking white on its foot - `wall`; and the rocks out in the water
+// (x, z, radius m, how much they stand up to the waves): foam about each, flung wide as a crest
+// breaks on it)
+uniform float wall = 0.0;
+uniform vec4 rocks[24];
+uniform int rock_count = 0;
 varying vec3 wpos;
 """ + Surf.GLSL + """
 float sea_d(vec2 xz) { return mix(depth_range.x, depth_range.y, textureLod(depth_tex, (xz - box.xy) / box.zw, 0.0).r); }
@@ -1806,15 +1957,27 @@ void vertex() {
 }
 void fragment() {
 	vec2 buv = (wpos.xz - box.xy) / box.zw;
-	// px in from the shore (DEPTH_RANGE)
-	float d = mix(depth_range.x, depth_range.y, texture(depth_tex, buv).r);
+	// px in from the shore (DEPTH_RANGE) - the sea's smoothly: its edge with no corners
+	float d = mix(depth_range.x, depth_range.y, sea > 0.5 ? surf_smooth(depth_tex, buv) : texture(depth_tex, buv).r);
 	if (d < -2.0) { discard; }
 	vec2 uv = wpos.xz * 0.05;
-	vec3 a = texture(wave_tex, uv + vec2(TIME * 0.012, TIME * 0.006)).rgb;
-	vec3 b = texture(wave_tex, uv * 1.7 - vec2(TIME * 0.009, -TIME * 0.011)).rgb;
-	vec3 nm = normalize(mix(a, b, 0.5));
-	NORMAL_MAP = nm;
-	NORMAL_MAP_DEPTH = 0.3;
+	vec3 nm;
+	if (sea > 0.5) {
+		// (the sea's surface: the swell's long tilt above all (below), then a weak middling ripple and a
+		// weaker small one, each its own size, way and pace - no close, bright repeating streaks)
+		vec3 m1 = texture(wave_tex, wpos.xz * 0.026 + vec2(TIME * 0.004, TIME * 0.0025)).rgb * 2.0 - 1.0;
+		vec3 m2 = texture(wave_tex, mat2(vec2(0.8, -0.6), vec2(0.6, 0.8)) * wpos.xz * 0.083 - vec2(TIME * 0.012, -TIME * 0.008)).rgb * 2.0 - 1.0;
+		vec3 m3 = texture(wave_tex, mat2(vec2(0.28, 0.96), vec2(-0.96, 0.28)) * wpos.xz * 0.26 + vec2(TIME * 0.031, TIME * 0.019)).rgb * 2.0 - 1.0;
+		nm = normalize(vec3(m1.xy * 0.55 + m2.xy * 0.3 + m3.xy * 0.15, 1.0)) * 0.5 + 0.5;
+		NORMAL_MAP = nm;
+		NORMAL_MAP_DEPTH = 0.16;
+	} else {
+		vec3 a = texture(wave_tex, uv + vec2(TIME * 0.012, TIME * 0.006)).rgb;
+		vec3 b = texture(wave_tex, uv * 1.7 - vec2(TIME * 0.009, -TIME * 0.011)).rgb;
+		nm = normalize(mix(a, b, 0.5));
+		NORMAL_MAP = nm;
+		NORMAL_MAP_DEPTH = 0.3;
+	}
 	float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
 	float deepness = smoothstep(4.0, deep_at, d);
 	vec3 col = mix(shallow, deep, deepness);
@@ -1834,34 +1997,62 @@ void fragment() {
 		float ahead = surf_swell(wpos.xz + out_dir * 0.4, d + length(grad) * 0.4, s2, z2, b2);
 		float slope = (ahead - lift) / 0.4;
 		swell = vec3(-out_dir.x, 0.0, -out_dir.y) * slope * 2.2;
-		// breaking: past its breaking depth the crest turns white - the top of its face and the
-		// bore behind it, running on to the edge; the froth it leaves pulled out behind, breaking up
+		// breaking: past its breaking depth the crest turns white - the top of its face, thick and thin
+		// with holes in it; behind it a lace of froth, drawn out and breaking up as the wave goes on,
+		// thinning to nothing; on to the edge as the bore that runs up the sand
 		float broke = 1.0 - smoothstep(brk * 0.85, brk * 1.05, d);
-		float behind = s < 0.5 ? 1.0 - smoothstep(0.05, 0.42, s) : 0.0;
+		float behind = s < 0.5 ? 1.0 - smoothstep(0.04, 0.4, s) : 0.0;
 		float age = s < 0.5 ? s : 0.0;
-		vec2 fq = vec2(wpos.x * 0.21 + wpos.z * 0.17, s * surf_len * 0.012);
-		float bits = texture(wave_tex, fq * vec2(1.0, 2.2) + vec2(floor(d / surf_len + surf_phase(wpos.xz) + 0.5) * 0.37, 0.0)).r;
-		float bits2 = texture(wave_tex, fq * 3.3 + vec2(0.5, s)).g;
-		float froth = bits * 0.65 + bits2 * 0.35;
-		float crest = smoothstep(0.93, 1.0, s) + (1.0 - smoothstep(0.0, 0.05 + 0.22 * (1.0 - d / max(brk, 1.0)), s));
-		float trail = behind * smoothstep(0.42 + 0.45 * age, 0.8, froth);
-		foam = broke * max(crest * mix(0.55, 1.0, froth), trail * 0.85);
-		// (and where the water meets the sand, a lace of it all the while)
-		foam = max(foam, (1.0 - smoothstep(0.0, 16.0, d)) * smoothstep(0.5, 0.8, froth) * 0.7);
+		vec2 across = vec2(-surf_out.y, surf_out.x);
+		// (its pattern on the water's own place, each wave's its own - the moving crest shows it)
+		vec2 fq = vec2(dot(wpos.xz, across) * 1.1, -dot(wpos.xz, surf_out) * 1.1) + vec2(floor(d / surf_len + surf_phase(wpos.xz) + 0.5) * 3.7, 0.0);
+		float froth = surf_froth(fq);
+		float crest = smoothstep(0.95, 1.0, s) + (1.0 - smoothstep(0.0, 0.035 + 0.07 * (1.0 - d / max(brk, 1.0)), s));
+		float body = crest * surf_lace(fq * 1.6, 0.0);
+		float lace = behind * surf_lace(fq * 1.6 + vec2(2.1, 0.0), 0.3 + 1.2 * age);
+		// (against a cliff the water's deep to its foot: the waves break on the rock, not before it)
+		if (wall > 0.5) {
+			broke *= 1.0 - smoothstep(16.0, 44.0, d);
+		}
+		foam = broke * max(body, lace * 0.75);
+		// (the cliff's foot: each crest breaking white on the rock, the froth drawn back out after,
+		// thinning and breaking up)
+		if (wall > 0.5) {
+			float hit = (1.0 - smoothstep(6.0, 20.0 + 34.0 * age, d)) * (smoothstep(0.9, 1.0, s) + behind);
+			foam = max(foam, hit * surf_lace(fq * 1.6 + vec2(7.7, 3.1), 0.15 + 0.9 * age));
+		}
+		// (the rocks out in it: foam about each, flung wide as a crest breaks on it, settling back)
+		// (and in its lee the crest broken up: white water trailing in behind it as the wave passes,
+		// spreading and thinning)
+		for (int i = 0; i < rock_count; i++) {
+			vec4 rk = rocks[i];
+			vec2 rel = wpos.xz - rk.xy;
+			float dist = length(rel) - rk.z;
+			float ahead = -dot(rel, surf_out);
+			float lee = step(0.0, ahead) * (1.0 - smoothstep(rk.z * 0.6, rk.z * 1.3 + ahead * 0.3, abs(dot(rel, across))))
+				* (1.0 - smoothstep(0.0, 3.0 + rk.z * 3.0, ahead));
+			if (dist < 3.5 || lee > 0.0) {
+				float pulse = (smoothstep(0.92, 1.0, s) * 0.6 + behind) * rk.w;
+				float collar = 1.0 - smoothstep(0.0, 0.45 + 2.2 * pulse, dist);
+				foam = max(foam, collar * smoothstep(0.62 - 0.3 * pulse, 0.9 - 0.2 * pulse, froth + 0.25 * collar) * (0.5 + 0.5 * pulse));
+				foam = max(foam, lee * rk.w * (smoothstep(0.88, 1.0, s) + behind) * surf_lace(fq * 1.6 + vec2(5.3, 1.7), 0.25 + 0.8 * age));
+			}
+		}
 		foam = clamp(foam * surf_foam, 0.0, 1.0);
-		col = mix(col, col * 1.6 + vec3(0.0, 0.02, 0.02), clamp(lift / max(surf_height, 0.01), 0.0, 1.0) * (1.0 - deepness) * 0.6);
+		col = mix(col, col * 1.45 + vec3(0.0, 0.015, 0.015), clamp(lift / max(surf_height, 0.01), 0.0, 1.0) * (1.0 - deepness) * 0.5);
 		// (the edge: the water thinning onto the sand - the sand's own sheet takes it from there)
 		fade = edge_fade > 0.0 ? smoothstep(-1.0, edge_fade, d) : 1.0;
 	}
 	ALBEDO = mix(col, edge_tint * 0.35, line * 0.6);
 	ALBEDO = mix(ALBEDO, foam_tint * 0.42, foam * 0.75);
-	vec3 wn = normalize(vec3((nm.x - 0.5) * 0.5, 1.0, (nm.y - 0.5) * 0.5) + swell);
+	vec3 wn = normalize(vec3((nm.x - 0.5) * mix(0.5, 0.22, sea), 1.0, (nm.y - 0.5) * mix(0.5, 0.22, sea)) + swell);
 	vec3 vn = normalize((VIEW_MATRIX * vec4(wn, 0.0)).xyz);
 	vec3 r = reflect(-VIEW, vn);
 	vec3 m = normalize((VIEW_MATRIX * vec4(normalize(moon_dir), 0.0)).xyz);
-	float g = pow(max(dot(r, m), 0.0), 140.0);
-	// (a faint night sky in it, more at a glance; the moon's glints)
-	EMISSION = vec3(0.03, 0.045, 0.07) * fres * moon + vec3(0.6, 0.7, 0.85) * g * 0.35 * moon * moon + edge_tint * line * 0.035 * mix(0.35, 1.0, moon);
+	// (the moon's glints - softer and fewer on the sea)
+	float g = pow(max(dot(r, m), 0.0), mix(140.0, 60.0, sea)) * mix(0.35, 0.12, sea);
+	// (a faint night sky in it, more at a glance)
+	EMISSION = vec3(0.03, 0.045, 0.07) * fres * moon + vec3(0.6, 0.7, 0.85) * g * moon * moon + edge_tint * line * 0.035 * mix(0.35, 1.0, moon);
 	// (user report: two reflections of the lamp, one spread and one sharp - this glint of its own
 	// and the light's own highlight: only the light's highlight now, sharp where a reflection is,
 	// and here just the lamp's warm light on the water round it, no spot of its own)
@@ -1872,7 +2063,7 @@ void fragment() {
 	ROUGHNESS = mix(0.06, 0.5, foam);
 	SPECULAR = 0.75;
 	METALLIC = 0.15;
-	ALPHA = max(clamp(alpha_edge + d * clear, 0.0, 0.97) * fade, clamp(foam * 0.9, 0.0, 0.97));
+	ALPHA = max(clamp(alpha_edge + d * clear, 0.0, 0.97) * fade, clamp(foam * 0.75, 0.0, 0.97));
 	// ice: a frozen fringe round the shore, its edge broken by the waves' pattern
 	float fringe = (1.0 - smoothstep(14.0, 38.0 + nm.x * 24.0, d)) * ice;
 	ALBEDO = mix(ALBEDO, vec3(0.74, 0.86, 0.94), fringe * 0.9);
@@ -2908,6 +3099,11 @@ func _cover() -> void:
 					log.rotation.y = _rng.randf() * TAU
 					log.scale = Vector3.ONE * 0.6
 					add_child(log)
+					if _coast and not _cliff and not _sea_grid.is_empty():
+						# (the beach's: where the waves run - moved by them (_float_things))
+						log.position.y = ground_y(p) - 0.02
+						_floaters.append({"node": log, "home": p, "off": Vector2.ZERO, "edge": Surf.edge(Vector2(p.x, p.y) / PX),
+							"lift": 0.0, "yaw": log.rotation.y, "y": log.position.y - ground_y(p), "ph": _rng.randf() * TAU})
 			"grass", "reeds":
 				var grown: Array = tuft_mesh if str(n.get("kind")) == "grass" else reed_mesh
 				if grown.is_empty():
@@ -8248,20 +8444,18 @@ uniform vec2 sea_range = vec2(-20.0, 620.0);
 uniform sampler2D wet_tex : filter_linear, repeat_disable;
 uniform vec4 wet_rect = vec4(0.0, 0.0, 1.0, 1.0);
 uniform vec3 sand_dry : source_color = vec3(1.0);
-uniform vec3 sand_wet : source_color = vec3(0.58, 0.6, 0.66);
-uniform float sheen = 0.4;
+uniform float wet_dark = 0.7;
+uniform vec3 wet_tint : source_color = vec3(0.93, 0.97, 1.04);
+uniform float sheen = 0.35;
+uniform float sheet_sheen = 0.6;
+uniform float sheet_deep = 46.0;
+uniform vec3 sheet_tint : source_color = vec3(0.7, 0.85, 0.9);
 uniform vec3 lamp_at = vec3(0.0);
 uniform float lamp = 0.0;
 varying vec4 paint;
 varying vec3 gpos;
 """ + Surf.GLSL + """
-float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float vnoise(vec2 p) {
-	vec2 i = floor(p);
-	vec2 f = fract(p);
-	f = f * f * (3.0 - 2.0 * f);
-	return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y);
-}
+float vnoise(vec2 p) { return surf_noise(p); }
 void vertex() { paint = COLOR; gpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
 	vec2 uv = UV * 0.25;
@@ -8282,10 +8476,12 @@ void fragment() {
 	c = mix(c, sn, snow * 0.92);
 	float rough = mix(0.92, 0.8, snow);
 	float gloss = 0.0;
+	float smooth_k = 0.0;
 	vec3 glow = vec3(0.0);
 	if (coast > 0.5) {
-		float sd = mix(sea_range.x, sea_range.y, texture(sea_tex, (UV - sea_box.xy) / sea_box.zw).r);
-		float shore = -sd;
+		vec2 suv = (UV - sea_box.xy) / sea_box.zw;
+		// (the sea's depth sampled smoothly - the water's edge with no corners)
+		float shore = -mix(sea_range.x, sea_range.y, surf_smooth(sea_tex, suv));
 		vec2 run_up = surf_run_up;
 		// (the tide's line: weed and bits of shell left along the sand above where the waves reach -
 		// broken, in clumps and strands)
@@ -8294,64 +8490,92 @@ void fragment() {
 			float clump = smoothstep(0.5, 0.72, vnoise(UV * 0.9)) * smoothstep(0.35, 0.65, vnoise(UV * 3.7 + vec2(7.3, 2.1)));
 			c = mix(c, vec3(0.12, 0.11, 0.06), tide * clump * 0.7);
 			float bits = step(0.93, vnoise(UV * 11.0 + vec2(1.7, 9.2))) * tide * (0.35 + 0.65 * clump);
-			c = mix(c, vec3(0.8, 0.77, 0.7), bits * 0.55);
+			c = mix(c, vec3(0.8, 0.77, 0.7), bits * 0.4);
 		}
 		c *= sand_dry;
 		if (shore < run_up.y * 1.3 + 30.0) {
 			// the water here now (Surf's - the sea's and the wetness's own)
 			float edge; float u; float wn; float reach;
 			float cover = surf_at(UV, shore, edge, u, wn, reach);
-			// the sand's wetness: as the water left it (kept, drying) - and wet at once where it is now
-			vec2 wuv = (UV - wet_rect.xy) / wet_rect.zw;
-			float kept = (wuv.x > 0.0 && wuv.y > 0.0 && wuv.x < 1.0 && wuv.y < 1.0) ? texture(wet_tex, wuv).r : (shore < -surf_low ? 1.0 : 0.0);
-			float wet = max(kept, cover);
-			// (its edge soft and ragged, never a band)
-			float rag = (vnoise(UV * 1.7) - 0.5) * 0.22 + (vnoise(UV * 6.3 + vec2(3.1, 7.7)) - 0.5) * 0.08;
-			float damp = smoothstep(0.04, 0.62, wet + rag * (1.0 - cover));
-			vec3 soaked = mix(c, texture(mud_tex, uv).rgb * 0.82, 0.45) * sand_wet;
-			c = mix(c, soaked, damp);
-			rough = mix(0.95, mix(0.95, 0.3, sheen), damp);
-			gloss = sheen * damp * 0.55;
 			float in_px = edge - shore;
 			float back = u < surf_up ? 0.0 : clamp((u - surf_up) / surf_back, 0.0, 1.0);
 			float run = u < surf_up ? u / surf_up : 1.0;
-			// the sheet of water over it: thin, clear, the sea's colour in it, thinner as it drains
-			float sheet = cover * smoothstep(-1.0, 9.0, in_px) * (1.0 - 0.45 * back);
-			c = mix(c, c * vec3(0.55, 0.68, 0.7) + vec3(0.0, 0.015, 0.02), sheet * 0.7);
-			rough = mix(rough, 0.08, sheet);
-			gloss = mix(gloss, 0.5, sheet);
-			// its foam: the bore's ragged front running up - thick at first, thinner and broken as it
-			// slows - and the froth behind it, carried up with the water and pulled out a little; at
-			// the top the froth is left lying on the sand as the water drains from under it,
-			// breaking into lace and melting away
-			float along = UV.x * 0.83 + UV.y * 0.61;
-			float ragged = vnoise(vec2(along * 2.6, wn * 5.3)) * 0.6 + vnoise(vec2(along * 7.9, wn * 2.1 + 3.0)) * 0.4;
-			float thick = mix(9.0, 2.0, run) * (0.35 + 1.1 * ragged);
-			float rim = (1.0 - smoothstep(0.0, thick, in_px)) * smoothstep(-1.5, 0.3, in_px);
-			rim *= smoothstep(0.18 + 0.4 * run, 0.55 + 0.3 * run, ragged + 0.25) * (1.0 - smoothstep(0.0, 0.15, back));
-			float carried = u < surf_up ? edge : reach;
-			vec2 q = vec2(along * 4.6, (shore - carried * 0.85) * 0.17 / (1.0 + 0.6 * run)) + vec2(wn * 3.7, 0.0);
-			// (two octaves turned against each other - no grid in it)
-			float froth = vnoise(mat2(vec2(0.8, 0.6), vec2(-0.6, 0.8)) * q) * 0.55 + vnoise(mat2(vec2(0.28, -0.96), vec2(0.96, 0.28)) * q * 2.1 + vec2(4.1, 1.3)) * 0.3 + vnoise(q * 4.3 + vec2(1.7, 8.2)) * 0.15;
-			// (lace: thin threads of it round holes, broken here and there - thinner as it goes)
-			float ridge = 1.0 - abs(2.0 * froth - 1.0);
-			float lace = smoothstep(0.74 + 0.12 * back, 0.92, ridge) * smoothstep(0.3, 0.62, vnoise(mat2(vec2(0.6, -0.8), vec2(0.8, 0.6)) * q * 0.7 + vec2(9.1, 2.7)));
-			// (running up: behind the front, in the water; draining: left lying below the top)
-			float band = u < surf_up ? cover * (1.0 - smoothstep(4.0, 16.0 + 14.0 * run, in_px))
-				: smoothstep(reach - 30.0, reach - 12.0, shore) * (1.0 - smoothstep(reach - 3.0, reach + 2.0, shore));
-			float trail = band * lace * (1.0 - smoothstep(0.1, 0.9, back)) * smoothstep(0.0, 0.35, run);
-			float foam = clamp(max(rim * mix(0.6, 1.0, froth), trail * 0.75) * surf_foam, 0.0, 1.0);
-			c = mix(c, vec3(0.72, 0.78, 0.8), foam * 0.7);
+			// --- the wet sand: the same sand, its grain and ripples kept - darker, a little cooler, less
+			// rough, a quiet gleam; wet as far as the water has been (kept, drying), at once where it is
+			vec2 wuv = (UV - wet_rect.xy) / wet_rect.zw;
+			float kept = (wuv.x > 0.0 && wuv.y > 0.0 && wuv.x < 1.0 && wuv.y < 1.0) ? texture(wet_tex, wuv).r : (shore < -surf_low ? 1.0 : 0.0);
+			float wet = max(kept, cover);
+			// (its edge soft and a little ragged; drying first on the ripples' crests)
+			float lum = dot(c, vec3(0.3, 0.5, 0.2));
+			float rag = (vnoise(UV * 1.3) - 0.5) * 0.2 + (vnoise(UV * 4.7 + vec2(3.1, 7.7)) - 0.5) * 0.08 - (lum - 0.35) * 0.25;
+			float damp = smoothstep(0.03, 0.8, wet + rag * (1.0 - cover));
+			c = mix(c, c * wet_dark * wet_tint, damp);
+			// (a broad, faint gleam - wet, not glazed: its grain mustn't catch the light in streaks)
+			rough = mix(0.92, mix(0.92, 0.5, sheen), damp);
+			gloss = sheen * damp * 0.35;
+			// --- the sheet of water: clear - the sand seen through it, the sea's colour deepening behind
+			// its front; thinner as it drains, the wet sand showing through again
+			float deep = clamp(in_px / sheet_deep, 0.0, 1.0);
+			float thick = cover * sqrt(deep) * (1.0 - 0.6 * back);
+			c = mix(c, c * sheet_tint, thick * 0.8);
+			float film = cover * smoothstep(0.0, 16.0, in_px) * (1.0 - 0.35 * back);
+			rough = mix(rough, 0.2, film);
+			gloss = mix(gloss, sheet_sheen, film);
+			// (its surface the water's - smooth over the sand's grain, only its own ripples on it)
+			smooth_k = film;
+			// (its flow: up the beach as it runs up, down it as it drains - the sea's slope; fine
+			// ripples carried with it, drawn out down the beach as it drains)
+			// (laid along the map's way out to sea - the same everywhere, so no seams or shearing)
+			vec2 upward = -surf_out;
+			vec2 across = vec2(-upward.y, upward.x);
+			// (how far up it the water has carried things this wave, 0..1 - as its edge goes, but the same
+			// all through it: tied to the edge's own place, the patterns would smear where the next
+			// stretch of the beach is a moment ahead or behind)
+			// (patterns only ever at fixed scales of the world's place - a scale that changed from spot to
+			// spot would smear them into streaks; the drawn-out look of the draining water is a second,
+			// longer pattern blended in)
+			float carried = u < surf_up ? 1.0 - (1.0 - run) * (1.0 - run) : max(1.0 - back * back, 0.0);
+			float drain = smoothstep(0.0, 0.35, back);
+			vec2 at = vec2(dot(UV, across), dot(UV, upward));
+			vec2 rp1 = vec2(at.x * 1.5, at.y * 1.3 - carried * 0.6);
+			vec2 rp2 = vec2(at.x * 1.5, at.y * 0.7 - carried * 0.35) + vec2(7.3, 2.9);
+			float r0 = mix(vnoise(rp1), vnoise(rp2), drain);
+			float rx = mix(vnoise(rp1 + vec2(0.25, 0.0)), vnoise(rp2 + vec2(0.25, 0.0)), drain);
+			float rz = mix(vnoise(rp1 + vec2(0.0, 0.25)), vnoise(rp2 + vec2(0.0, 0.25)), drain);
+			vec2 slope = (rx - r0) * across + (rz - r0) * upward;
+			n = mix(n, vec3(0.5 - slope.x * 0.45, 0.5 - slope.y * 0.45, 1.0), film * 0.85);
+			// --- its foam: the bore's front as it runs up - thick here and thin there, gaps in it, threads
+			// trailing back from it; carried up with the water, stretching and breaking up as it slows;
+			// as the water drains a little of it is drawn back down with it, thinning and melting away
+			float along = at.x;
+			vec2 q = vec2(along * 3.6, at.y * 6.0 - carried * 2.4) + vec2(wn * 3.7, 0.0);
+			vec2 q_back = vec2(along * 3.6, at.y * 2.6 - carried * 1.2) + vec2(wn * 3.7 + 11.0, 0.0);
+			// (the bore's front: a broken line of it right at the edge, thicker and thinner along it,
+			// lace behind - fresh as it comes, older and thinner as it slows; none once it turns back)
+			float thick_f = mix(13.0, 4.0, run) * (0.5 + 0.9 * vnoise(vec2(along * 1.2, wn * 5.3)));
+			float lace_f = surf_lace(q, run * 0.6);
+			float lip = (1.0 - smoothstep(0.0, mix(3.5, 1.5, run), in_px)) * smoothstep(-1.0, 0.4, in_px)
+				* smoothstep(0.3 + 0.3 * run, 0.6 + 0.25 * run, surf_noise(vec2(along * 2.3, wn * 1.9)));
+			float body_f = (1.0 - smoothstep(0.0, thick_f, in_px)) * smoothstep(-1.0, 0.6, in_px) * lace_f;
+			float front = max(lip * (1.0 - 0.5 * run), body_f) * (1.0 - smoothstep(0.0, 0.15, back));
+			// (behind it: threads of it carried up with the water; as it drains, a little drawn back down
+			// with it, longer and thinner, melting away)
+			float band = u < surf_up ? cover * (1.0 - smoothstep(3.0, 16.0 + 14.0 * run, in_px))
+				: cover * smoothstep(-2.0, 4.0, in_px) * (1.0 - smoothstep(6.0, 28.0, in_px));
+			float lace = u < surf_up ? surf_lace(q + vec2(3.3, 0.0), 0.35 + 0.5 * run) : surf_lace(q_back, 0.5 + 0.5 * back);
+			float trail = band * lace * (u < surf_up ? smoothstep(0.0, 0.3, run) : (1.0 - smoothstep(0.05, 0.6, back)) * 0.6);
+			float foam = clamp(max(front, trail * 0.8) * surf_foam, 0.0, 1.0);
+			c = mix(c, vec3(0.74, 0.79, 0.8), foam * 0.85);
 			rough = mix(rough, 0.6, foam);
 			gloss = mix(gloss, 0.1, foam);
 			vec3 tl = lamp_at - gpos;
 			float near = lamp * exp(-dot(tl.xz, tl.xz) / 70.0);
-			glow = vec3(1.0, 0.76, 0.42) * near * (sheet * 0.05 + damp * 0.012) + vec3(0.7, 0.8, 0.85) * foam * (0.012 + 0.08 * near);
+			glow = vec3(1.0, 0.76, 0.42) * near * film * 0.04 + vec3(0.7, 0.8, 0.85) * foam * (0.01 + 0.07 * near);
 		}
 	}
 	ALBEDO = c * mix(0.85, snow_bright, snow);
 	NORMAL_MAP = n;
-	NORMAL_MAP_DEPTH = mix(1.2, 0.5, snow) * (1.0 - gloss);
+	NORMAL_MAP_DEPTH = mix(1.2, 0.5, snow) * (1.0 - 0.6 * smooth_k);
 	ROUGHNESS = rough;
 	SPECULAR = gloss;
 	EMISSION = glow;

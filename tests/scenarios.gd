@@ -10953,6 +10953,37 @@ func test_cliff_coast_theme() -> void:
 		if t is MapTree:
 			pines = pines and str(t.get("kind")).begins_with("pine")
 	check(pines, "pines on the top")
+	# The waves breaking on its rocks and its foot: the sea's foam about them, and their water flung
+	# up as each crest comes - up and falling back under its own weight.
+	var spray := view._spray
+	var sea_mat := view._sea_mat
+	var rock_spots := spray.spots.filter(func(sp): return not bool(sp.wall)) if spray != null else []
+	var wall_spots := spray.spots.filter(func(sp): return bool(sp.wall)) if spray != null else []
+	check(spray != null and rock_spots.size() >= reefs and wall_spots.size() * RunView3D.SPLASH_STEP > coast_m * 0.7
+		and float(sea_mat.get_shader_parameter("wall")) == 1.0 and int(sea_mat.get_shader_parameter("rock_count")) == mini(view._sea_rocks.size(), RunView3D.SEA_ROCKS)
+		and int(sea_mat.get_shader_parameter("rock_count")) > 0,
+		"where the waves strike: %d rocks out in the sea, the cliff's foot all along (%d places), the sea's foam about them" % [rock_spots.size(), wall_spots.size()])
+	var splashed := false
+	if not rock_spots.is_empty():
+		var spot: Dictionary = rock_spots[0]
+		var near: Vector3 = spot.at
+		var b0 := spray.bursts
+		var crest0 := floori(Surf.crest(Vector2(near.x, near.z), float(spot.d)))
+		var t_keep := Surf.time
+		for _k in roundi(Surf.EVERY * 2.5 * 30.0):
+			Surf.advance(1.0 / 30.0)
+			spray.update(near)
+		var came := floori(Surf.crest(Vector2(near.x, near.z), float(spot.d))) - crest0
+		var drops := spray._spray[0]
+		splashed = came >= 1 and spray.bursts - b0 >= came - 1 and spray.bursts > b0 and drops.direction.y > 0.5 and drops.gravity.y < -9.0 and drops.one_shot
+		# (far off, none)
+		var b1 := spray.bursts
+		for _k in roundi(Surf.EVERY * 1.5 * 30.0):
+			Surf.advance(1.0 / 30.0)
+			spray.update(near + Vector3(SurfSplash.NEAR * 3.0, 0, 0))
+		splashed = splashed and spray.bursts == b1
+		Surf.time = t_keep
+	check(splashed, "a rock's spray as each crest reaches it, thrown up and falling back; none far from the player")
 	# Down into the sea there's no way: and a cast from the top comes down past the rock.
 	for _i in 400:
 		if view._intro_t < 0.0:
@@ -11114,6 +11145,24 @@ func test_surf() -> void:
 			tracks._process(0.2)
 		prints_ok = tracks.left(tracks._age[0]) <= 0.0 and tracks.left(tracks._age[1]) > 0.5 and view._open_snow(dry)
 	check(prints_ok, "prints in the beach's sand - washed away under the water, kept up the beach")
+	# What lies where the waves run (the driftwood): moved by them - lifted, carried up the sand and
+	# drawn back - never far from where it lay.
+	var floats := view._floaters
+	var moved := 0.0
+	var lifted := 0.0
+	var far := 0.0
+	if not floats.is_empty():
+		var t_keep := Surf.time
+		for _k in roundi(Surf.EVERY * 3.0 * 30.0):
+			Surf.advance(1.0 / 30.0)
+			view._float_things(1.0 / 30.0)
+			for f in floats:
+				moved = maxf(moved, (f.off as Vector2).length())
+				lifted = maxf(lifted, float(f.lift))
+				far = maxf(far, (f.off as Vector2).length())
+		Surf.time = t_keep
+	check(not floats.is_empty() and moved > 2.0 and lifted > 0.01 and far <= RunView3D.FLOAT_ROAM + 0.01,
+		"the driftwood in the waves' way moved by them (%d of it; carried %.0f px, lifted %.2f m)" % [floats.size(), moved, lifted])
 	# No oxygen trees out in the sea.
 	var in_sea := 0
 	for n in main.get_children():
