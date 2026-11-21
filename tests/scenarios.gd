@@ -10972,7 +10972,7 @@ func test_cliff_coast_theme() -> void:
 		var t_keep := Surf.time
 		for _k in roundi(Surf.EVERY * 2.5 * 30.0):
 			Surf.advance(1.0 / 30.0)
-			spray.update(near)
+			spray.update(near, 1.0 / 30.0)
 		var came := floori(Surf.crest(Vector2(near.x, near.z), float(spot.d))) - crest0
 		var drops := spray._spray[0]
 		splashed = came >= 1 and spray.bursts - b0 >= came - 1 and spray.bursts > b0 and drops.direction.y > 0.5 and drops.gravity.y < -9.0 and drops.one_shot
@@ -10980,10 +10980,22 @@ func test_cliff_coast_theme() -> void:
 		var b1 := spray.bursts
 		for _k in roundi(Surf.EVERY * 1.5 * 30.0):
 			Surf.advance(1.0 / 30.0)
-			spray.update(near + Vector3(SurfSplash.NEAR * 3.0, 0, 0))
+			spray.update(near + Vector3(SurfSplash.NEAR * 3.0, 0, 0), 1.0 / 30.0)
 		splashed = splashed and spray.bursts == b1
 		Surf.time = t_keep
 	check(splashed, "a rock's spray as each crest reaches it, thrown up and falling back; none far from the player")
+	# The way out to the cliff's tip: worn into the ground from the camp, clear to walk, ending at the
+	# fishing platform (its rack, rope and crate) with the sea stack off it to steer by.
+	var route := view._cliff_route_pts
+	var route_ok := view._cliff_tip.is_finite() and route.size() > 10 and view.get_node_or_null("FishingPlatform") != null \
+		and view.get_node_or_null("SeaStack") != null and view._sea_at(view._cliff_tip) < 0.0 and view._sea_at(view._cliff_tip) > -RunView3D.PLATFORM_R * 1.5 * RunView3D.PX
+	if route_ok:
+		var worn := 0
+		for k in range(0, route.size(), 4):
+			if view._paint_at(route[k]).r > 0.5:
+				worn += 1
+		route_ok = worn * 4 >= route.size() * 0.7
+	check(route_ok, "a worn way from the camp out to the cliff's tip, its fishing platform and the sea stack (%d points)" % route.size())
 	# Down into the sea there's no way: and a cast from the top comes down past the rock.
 	for _i in 400:
 		if view._intro_t < 0.0:
