@@ -1043,7 +1043,9 @@ func _cliff_ground(p: Vector2, shore: float, x: float, z: float, out: float, noi
 		var rise := 1.0 - smoothstep(CLIFF_FLAT, CLIFF_FLAT + CLIFF_SLOPE, shore)
 		y = LAND_Y + (top - LAND_Y) * rise
 	var wob := noise.get_noise_2d(x * 0.9, z * 0.9)
-	var rock := 1.0 - smoothstep(8.0, 46.0 + wob * 26.0, shore)
+	# (the bare rock at the edge: a wide shelf of it here, a narrow rim there)
+	var rim := 0.5 + 0.5 * noise.get_noise_2d(x * 0.12 + 520.0, z * 0.12)
+	var rock := 1.0 - smoothstep(8.0, 22.0 + 75.0 * rim + wob * 22.0, shore)
 	var crop := smoothstep(0.62, 0.78, noise.get_noise_2d(x * 0.5 + 900.0, z * 0.5) * 0.5 + 0.5) * (1.0 - smoothstep(80.0, 220.0, shore))
 	rock = maxf(rock, crop * 0.85)
 	var bare := smoothstep(0.55, 0.75, noise.get_noise_2d(x * 0.8 + 300.0, z * 0.8) * 0.5 + 0.5) * 0.8
@@ -1090,6 +1092,8 @@ const CLIFF_NOTCH := 0.32
 const CLIFF_BEDS := 1.8
 const CLIFF_DIP := 0.06
 const CLIFF_BED_OUT := 0.11
+## (where a stretch of wall ends - not a closed loop - it sinks into the ground over this many m)
+const CLIFF_END := 3.0
 const CLIFF_FOOT := WATER_Y - 2.2
 ## (a fallen block every this many m along, give or take)
 const CLIFF_BLOCKS := 9.0
@@ -1122,16 +1126,16 @@ func _cliff_face() -> void:
 	mat.rim = 0.25
 	mat.rim_tint = 0.4
 	for line in _cliff_edges:
-		_cliff_line(line[0], line[1], noise, mat)
+		_cliff_line(line[0], line[1], noise, mat, line[2])
 	_cliff_fill()
 	_cliff_platform(mat)
 
 
 ## The cliff along one line of the sea's edge (`cols`, its ways out to sea `outs`).
-func _cliff_line(cols: Array[Vector2], outs: Array[Vector2], noise: FastNoiseLite, mat: Material) -> void:
+func _cliff_line(cols: Array[Vector2], outs: Array[Vector2], noise: FastNoiseLite, mat: Material, closed := false) -> void:
 	if cols.size() < 2:
 		return
-	var grid := _cliff_grid(cols, outs, noise)
+	var grid := _cliff_grid(cols, outs, noise, closed)
 	# (in pieces of up to 40 columns, each its own mesh - drawn only where seen; its normals from
 	# the whole wall's, so no seam between them)
 	var start := 0
@@ -1256,65 +1260,14 @@ func _cliff_route(colors: PackedColorArray) -> PackedColorArray:
 	if _cliff_tip_out.dot(side) < 0.0:
 		_cliff_tip_out = -_cliff_tip_out
 	_cliff_tip = _cliff_tip_edge - _cliff_tip_out * PLATFORM_R * 0.75 * PX
-	# (the way: from the camp, out to the edge some way along, then along it to the tip)
-	var camp := main.get_node_or_null("FuelStation") as Node2D
-	var bend := maxi(bi - 9, 0) if bi > edges.size() / 2 else mini(bi + 9, edges.size() - 1)
-	var near_edge: Vector2 = (edges[bend] if edges[bend].is_finite() else _cliff_tip_edge) - side * 2.2 * PX
-	# (it starts at the camp's edge, where the way to the cliff is clear of the camp's things - each
-	# stretch of it checked against what the traveller bumps into)
-	var start: Vector2 = _cliff_tip - side * 30.0 * PX
-	if camp != null:
-		var dir := (near_edge - camp.global_position).normalized()
-		start = camp.global_position + dir * 10.0 * PX
-		for k in [4.0, 5.5, 7.0, 8.5, 10.0]:
-			var cand: Vector2 = camp.global_position + dir * k * PX
-			if _clear_way(cand, near_edge) and _clear_way(near_edge, _cliff_tip):
-				start = cand
-				break
-	var ctrl := [start, start.lerp(near_edge, 0.55) - side * 2.0 * PX, near_edge, near_edge.lerp(_cliff_tip, 0.5) - side * 0.6 * PX, _cliff_tip]
+	# (user request: no trodden way laid out to it - the land left for the player to find it; only
+	# where they stand at the tip worn a little)
 	_cliff_route_pts.clear()
-	for k in ctrl.size() - 1:
-		var p0: Vector2 = ctrl[maxi(k - 1, 0)]
-		var p1: Vector2 = ctrl[k]
-		var p2: Vector2 = ctrl[k + 1]
-		var p3: Vector2 = ctrl[mini(k + 2, ctrl.size() - 1)]
-		var steps := maxi(2, ceili(p1.distance_to(p2) / (0.4 * PX)))
-		for st in steps:
-			var u := float(st) / steps
-			_cliff_route_pts.append(0.5 * ((2.0 * p1) + (-p0 + p2) * u + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * u * u + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * u * u * u))
-	_cliff_route_pts.append(_cliff_tip)
-	# (worn into the ground: each grid point's nearest of the way's points)
 	var lo: Vector2 = _ground_grid[0]
 	var n: Vector2i = _ground_grid[1]
-	var near := {}
-	var reach := ceili((ROUTE_W * 1.8) / CELL)
-	for q in _cliff_route_pts:
-		var c := Vector2i(roundi((q.x / PX - lo.x) / CELL), roundi((q.y / PX - lo.y) / CELL))
-		for dj in range(-reach, reach + 1):
-			for di in range(-reach, reach + 1):
-				var gi := c.x + di
-				var gj := c.y + dj
-				if gi < 0 or gj < 0 or gi >= n.x or gj >= n.y:
-					continue
-				var gp := (lo + Vector2(gi, gj) * CELL) * PX
-				var dd := gp.distance_to(q) / PX
-				var key := gj * n.x + gi
-				if dd < float(near.get(key, INF)):
-					near[key] = dd
 	var noise := FastNoiseLite.new()
 	noise.seed = _rng.randi()
 	noise.frequency = 0.9
-	for key in near:
-		var dd: float = near[key]
-		var gp := lo + Vector2(key % n.x, key / n.x) * CELL
-		var wob := noise.get_noise_2d(gp.x, gp.y)
-		var trod := 1.0 - smoothstep(ROUTE_W * 0.55, ROUTE_W * (1.15 + 0.25 * wob), dd)
-		var margin := smoothstep(ROUTE_W * 0.5, ROUTE_W * 0.95, dd) * (1.0 - smoothstep(ROUTE_W * 1.1, ROUTE_W * 1.7, dd)) * (0.5 + 0.5 * wob)
-		var c: Color = colors[key]
-		c.r = maxf(c.r, trod * 0.9)
-		c.g = maxf(c.g, margin * 0.55)
-		c.a *= 1.0 - maxf(trod, margin * 0.5)
-		colors[key] = c
 	# (the platform: worn bare round where they stand, gravel and broken rock about its edge)
 	var pc := Vector2i(roundi((_cliff_tip.x / PX - lo.x) / CELL), roundi((_cliff_tip.y / PX - lo.y) / CELL))
 	var pr := ceili(PLATFORM_R * 1.6 / CELL)
@@ -1327,10 +1280,10 @@ func _cliff_route(colors: PackedColorArray) -> PackedColorArray:
 			var gp := lo + Vector2(gi, gj) * CELL
 			var dd := gp.distance_to(_cliff_tip / PX)
 			var wob := noise.get_noise_2d(gp.x + 40.0, gp.y)
-			var worn := 1.0 - smoothstep(PLATFORM_R * 0.6, PLATFORM_R * (1.0 + 0.2 * wob), dd)
+			var worn := (1.0 - smoothstep(PLATFORM_R * 0.3, PLATFORM_R * (0.75 + 0.3 * wob), dd)) * (0.6 + 0.4 * wob)
 			var key := gj * n.x + gi
 			var c: Color = colors[key]
-			c.r = maxf(c.r, worn * 0.75)
+			c.r = maxf(c.r, worn * 0.5)
 			c.g = maxf(c.g, (1.0 - smoothstep(PLATFORM_R * 0.4, PLATFORM_R * 1.4, dd)) * (0.35 + 0.35 * wob))
 			c.a *= 1.0 - smoothstep(PLATFORM_R * 1.5, PLATFORM_R * 0.8, dd)
 			colors[key] = c
@@ -1426,6 +1379,30 @@ func _cliff_platform(rock_mat: Material) -> void:
 		crate.rotation.y = atan2(out.x, out.y) + 0.4
 		crate.scale = Vector3.ONE * 0.55
 		prop.add_child(crate)
+	# (each set down on the ground: a soft dark patch under it, the grass worn round it)
+	for at2 in [rack_at, coil_at, base - across * 1.25 * PX - out * 0.9 * PX]:
+		var blot := MeshInstance3D.new()
+		var sq := QuadMesh.new()
+		sq.size = Vector2(0.9, 0.9)
+		sq.orientation = PlaneMesh.FACE_Y
+		blot.mesh = sq
+		var sm := StandardMaterial3D.new()
+		sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		sm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		sm.render_priority = -1
+		sm.albedo_color = Color(0, 0, 0, 0.45)
+		var sg := GradientTexture2D.new()
+		sg.fill = GradientTexture2D.FILL_RADIAL
+		sg.fill_from = Vector2(0.5, 0.5)
+		sg.fill_to = Vector2(1.0, 0.5)
+		var grad := Gradient.new()
+		grad.colors = PackedColorArray([Color(1, 1, 1, 1), Color(1, 1, 1, 0)])
+		sg.gradient = grad
+		sm.albedo_texture = sg
+		blot.material_override = sm
+		blot.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		blot.position = to3(at2, ground_y(at2) + 0.012)
+		prop.add_child(blot)
 	# (the stack out in the sea: one of the cliff's pieces stood up tall, from the seabed)
 	var found := _model_mesh(CLIFF_FACE[1])
 	if found.is_empty():
@@ -1456,7 +1433,7 @@ func _cliff_top_at(edge: Vector2, side: Vector2) -> float:
 
 ## The wall's points (3D), a column (top to foot) for each of `cols` (the edge's points; `outs`
 ## their ways out to sea).
-func _cliff_grid(cols: Array[Vector2], outs: Array[Vector2], noise: FastNoiseLite) -> Array:
+func _cliff_grid(cols: Array[Vector2], outs: Array[Vector2], noise: FastNoiseLite, closed := false) -> Array:
 	var grid := []
 	# (the top's height along it, smoothed - no steps in its lip)
 	var tops: Array[float] = []
@@ -1481,9 +1458,17 @@ func _cliff_grid(cols: Array[Vector2], outs: Array[Vector2], noise: FastNoiseLit
 			var shelf := smoothstep(0.35, 0.7, noise.get_noise_2d(u_along * CLIFF_BIG * 1.6, 820.0) * 1.6)
 			var lean := CLIFF_LEAN * (0.55 + 0.9 * (0.5 + 0.5 * noise.get_noise_2d(u_along * 0.12, 700.0)))
 			var jag := 0.35 + 1.1 * (0.5 + 0.5 * noise.get_noise_2d(u_along * 0.25, 730.0))
+			# (user report - a black, square opening at the end of a stretch of wall: the wall is one
+			# skin with nothing behind it; where its line ends (not a closed loop) it now sinks into the
+			# ground over its last CLIFF_END m - its foot rising to its lip, standing out less - so
+			# there's no open side to see into)
+			var endk := 1.0 if closed else clampf(minf(float(i), float(cols.size() - 1 - i)) * CLIFF_STEP / CLIFF_END, 0.0, 1.0)
+			endk = endk * endk * (3.0 - 2.0 * endk)
+			# (its lip's width over the grass, wide here and narrow there - no even kerb)
+			var lip_w := CLIFF_LIP * (0.4 + 1.2 * (0.5 + 0.5 * noise.get_noise_2d(u_along * 0.15, 760.0)))
 			# (the lip: in over the grass, then flat at the top's height over where the ground
 			# begins to fall, rounding over the edge)
-			var lip_in: Vector2 = base - side * CLIFF_LIP * PX * (0.85 + 0.3 * jag * noise.get_noise_2d(u_along * 0.6, 40.0))
+			var lip_in: Vector2 = base - side * lip_w * PX * (0.85 + 0.3 * jag * noise.get_noise_2d(u_along * 0.6, 40.0))
 			col.append(to3(lip_in, _grid_y(lip_in.x / PX, lip_in.y / PX) + 0.015))
 			var lip_mid: Vector2 = base - side * 0.12 * PX
 			col.append(to3(lip_mid, top + 0.025))
@@ -1508,6 +1493,9 @@ func _cliff_grid(cols: Array[Vector2], outs: Array[Vector2], noise: FastNoiseLit
 					out += shelf * CLIFF_SHELF_OUT * smoothstep(CLIFF_SHELF.x, CLIFF_SHELF.y, f)
 				# (worn back at the waterline by the sea)
 				out -= CLIFF_NOTCH * (1.0 - smoothstep(0.0, 0.6, absf(y - (WATER_Y + 0.15))))
+				if endk < 1.0:
+					y = lerpf(top + 0.015, y, endk)
+					out *= endk
 				col.append(to3(base + side * out * PX, y))
 				if col.size() >= 3 and (col[col.size() - 2] as Vector3).y >= WATER_Y and y < WATER_Y:
 					var above: Vector3 = col[col.size() - 2]
@@ -1661,6 +1649,10 @@ func _coast_lines() -> Array:
 			length += (chain[i] as Vector2).distance_to(chain[i - 1])
 		if length < CLIFF_MIN_LINE * PX:
 			continue
+		# (a loop of it closed - its two ends met, no gap left open in the wall there)
+		var closed: bool = chain.size() > 3 and (chain[chain.size() - 1] as Vector2).distance_to(chain[0]) < 2.5 * CELL * PX
+		if closed:
+			chain.append(chain[0])
 		# (every CLIFF_STEP m along it)
 		var pts: Array[Vector2] = [chain[0]]
 		var carry := 0.0
@@ -1679,7 +1671,7 @@ func _coast_lines() -> Array:
 			for k2 in range(maxi(i - 3, 0), mini(i + 4, pts.size())):
 				sum += _sea_grad(pts[k2]).normalized()
 			outs.append(sum.normalized() if sum.length_squared() > 1e-6 else MapGenerator.sea_side)
-		lines.append([pts, outs])
+		lines.append([pts, outs, closed])
 	return lines
 
 
@@ -2155,7 +2147,7 @@ func _surf_things() -> void:
 		_sea_rocks.append(Vector4(model.position.x, model.position.z, r, 1.0))
 		for mi in (model as Node3D).find_children("*", "MeshInstance3D", true, false):
 			(mi as MeshInstance3D).layers = 1 | CLIFF_LAYER
-		_spray.add_rock(Vector3(model.position.x, WATER_Y, model.position.z), r, out, d)
+		_spray.add_rock(Vector3(model.position.x, WATER_Y, model.position.z), r, out, d, aabb.end.y - WATER_Y)
 	for mi in _cliff_rocks:
 		var at := to2((mi as Node3D).position)
 		var d := _sea_at(at)
@@ -2164,7 +2156,8 @@ func _surf_things() -> void:
 		var aabb := (mi as MeshInstance3D).get_aabb()
 		var r := clampf(maxf(aabb.size.x * (mi as Node3D).scale.x, aabb.size.z * (mi as Node3D).scale.z) * 0.42, 0.3, 2.5)
 		_sea_rocks.append(Vector4((mi as Node3D).position.x, (mi as Node3D).position.z, r, 0.8))
-		_spray.add_rock(Vector3((mi as Node3D).position.x, WATER_Y, (mi as Node3D).position.z), r, out, d)
+		var top := ((mi as Node3D).global_transform * (mi as MeshInstance3D).get_aabb()).end.y
+		_spray.add_rock(Vector3((mi as Node3D).position.x, WATER_Y, (mi as Node3D).position.z), r, out, d, top - WATER_Y)
 	# (the foot of the cliff all along, where the sea meets the wall as it's built - its shoulders,
 	# gullies and notch - facing out to sea)
 	var every := maxi(1, roundi(SPLASH_STEP / CLIFF_STEP))

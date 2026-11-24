@@ -10984,18 +10984,11 @@ func test_cliff_coast_theme() -> void:
 		splashed = splashed and spray.bursts == b1
 		Surf.time = t_keep
 	check(splashed, "a rock's spray as each crest reaches it, thrown up and falling back; none far from the player")
-	# The way out to the cliff's tip: worn into the ground from the camp, clear to walk, ending at the
-	# fishing platform (its rack, rope and crate) with the sea stack off it to steer by.
-	var route := view._cliff_route_pts
-	var route_ok := view._cliff_tip.is_finite() and route.size() > 10 and view.get_node_or_null("FishingPlatform") != null \
+	# The cliff's tip: a fishing platform (its rack, rope and crate) and the sea stack off it to steer by
+	# - and no trodden way laid out to it (the player finds it); the wall with no open end.
+	var tip_ok := view._cliff_tip.is_finite() and view._cliff_route_pts.is_empty() and view.get_node_or_null("FishingPlatform") != null \
 		and view.get_node_or_null("SeaStack") != null and view._sea_at(view._cliff_tip) < 0.0 and view._sea_at(view._cliff_tip) > -RunView3D.PLATFORM_R * 1.5 * RunView3D.PX
-	if route_ok:
-		var worn := 0
-		for k in range(0, route.size(), 4):
-			if view._paint_at(route[k]).r > 0.5:
-				worn += 1
-		route_ok = worn * 4 >= route.size() * 0.7
-	check(route_ok, "a worn way from the camp out to the cliff's tip, its fishing platform and the sea stack (%d points)" % route.size())
+	check(tip_ok, "the cliff's tip: its fishing platform and the sea stack, no path laid to it")
 	# Down into the sea there's no way: and a cast from the top comes down past the rock.
 	for _i in 400:
 		if view._intro_t < 0.0:

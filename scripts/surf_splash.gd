@@ -26,6 +26,54 @@ const LAUNCH := 4.6
 const GRAVITY := 9.8
 const CLIMB_LEAD := 0.12
 const SPRAY_TINT := Color(0.78, 0.83, 0.86)
+## 浪擊強度 (x the wave's own size and how square it meets the rock); 水花高度 (m, a wave at its
+## biggest striking a wall); how long the sheet of water stands (s). (The rock's wet band is the
+## wall's own colour - RunView3D._cliff_wet - as high as the spray reaches.)
+const STRIKE := 1.0
+const SHEET_HIGH := 1.7
+const SHEET_LIFE := 0.95
+
+## (the sheet of water a wave throws up against the rock: a ring of it (or the part of one facing
+## the sea, against the wall) rising and opening out, thinning and tearing into drops from its top
+## edge, slumping back - lit as the night is)
+const SHEET_SHADER := """
+shader_type spatial;
+render_mode blend_mix, depth_draw_never, cull_disabled, shadows_disabled;
+uniform float age = 1.0;
+uniform float rise = 1.0;
+uniform float flare = 0.6;
+uniform float arc = 1.0;
+uniform vec3 tint : source_color = vec3(0.72, 0.78, 0.82);
+varying float vv;
+varying vec2 dir;
+void vertex() {
+	float v = VERTEX.y + 0.5;
+	dir = normalize(VERTEX.xz + vec2(0.00001));
+	float up = sin(clamp(age * 1.7, 0.0, 1.0) * 1.5708) * (1.0 - 0.75 * smoothstep(0.5, 1.0, age));
+	float r = 0.5 + flare * v * (0.35 + 0.9 * age);
+	VERTEX = vec3(dir.x * r, v * rise * up, dir.y * r);
+	vv = v;
+}
+float h21(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+float vn(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+void fragment() {
+	float a0 = atan(dir.x, -dir.y);
+	float sector = arc > 0.99 ? 1.0 : 1.0 - smoothstep(arc * 2.6, arc * 3.14159, abs(a0));
+	float n = vn(vec2(a0 * 6.0, vv * 5.0 - age * 3.0)) * 0.6 + vn(vec2(a0 * 15.0, vv * 12.0 + 3.0)) * 0.4;
+	float edge = 0.22 + 0.62 * age + 0.3 * vv;
+	float torn = smoothstep(edge, edge + 0.16, n);
+	float a = sector * torn * (1.0 - smoothstep(0.72, 1.0, vv)) * smoothstep(0.0, 0.06, vv) * (1.0 - smoothstep(0.55, 1.0, age));
+	ALBEDO = tint;
+	ROUGHNESS = 0.25;
+	SPECULAR = 0.5;
+	ALPHA = clamp(a * 0.5, 0.0, 0.6);
+}
+"""
 
 ## The places the waves strike (each: {at: Vector3 at the water, out: Vector2 its way out to sea
 ## (x, z), size: m, d: px out in the sea, wall: bool, last: int the last crest seen}).
@@ -38,6 +86,8 @@ var _mist: Array[CPUParticles3D] = []
 var _next := 0
 var _pending: Array = []
 var _layers := 1
+var _sheets: Array[MeshInstance3D] = []
+var _sheet_age: PackedFloat32Array = []
 
 
 func setup(low: bool, layers := 1) -> void:
@@ -57,21 +107,50 @@ func setup(low: bool, layers := 1) -> void:
 		_climb.append(_emitter(dot, "climb"))
 		_spray.append(_emitter(dot, "spray"))
 		_mist.append(_emitter(dot, "mist"))
+	var sh := Shader.new()
+	sh.code = SHEET_SHADER
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 0.5
+	cyl.bottom_radius = 0.5
+	cyl.height = 1.0
+	cyl.radial_segments = 28
+	cyl.rings = 6
+	cyl.cap_top = false
+	cyl.cap_bottom = false
+	for k in (POOL_LOW if low else POOL):
+		var mi := MeshInstance3D.new()
+		mi.mesh = cyl
+		var m := ShaderMaterial.new()
+		m.shader = sh
+		mi.material_override = m
+		mi.visible = false
+		mi.layers = _layers
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mi)
+		_sheets.append(mi)
+		_sheet_age.append(1.0)
 
 
-## A place a rock stands in the sea (`at` its foot at the water, `size` its radius m, `d` px out).
-func add_rock(at: Vector3, size: float, out: Vector2, d: float) -> void:
-	spots.append({"at": at, "out": out.normalized(), "size": size, "d": d, "wall": false, "last": -1})
+
+## A place a rock stands in the sea (`at` its foot at the water, `size` its radius m, `d` px out,
+## `high` how far it stands up out of the water m - a low one the waves wash over).
+func add_rock(at: Vector3, size: float, out: Vector2, d: float, high := 1.0) -> void:
+	spots.append({"at": at, "out": out.normalized(), "size": size, "d": d, "wall": false, "last": -1, "high": high})
 
 
 ## A stretch of the cliff's foot (`at` at the water, facing `out`, `d` px out in the sea).
 func add_wall(at: Vector3, out: Vector2, d: float) -> void:
-	spots.append({"at": at, "out": out.normalized(), "size": 2.0, "d": d, "wall": true, "last": -1})
+	spots.append({"at": at, "out": out.normalized(), "size": 2.0, "d": d, "wall": true, "last": -1, "high": 3.0})
 
 
 ## Watch the swell at the places near `near` (3D): the water climbing a rock where a crest has just
 ## come, its spray a moment after.
 func update(near: Vector3, delta := 0.0) -> void:
+	for k in _sheets.size():
+		if _sheet_age[k] < 1.0:
+			_sheet_age[k] = minf(_sheet_age[k] + delta / SHEET_LIFE, 1.0)
+			(_sheets[k].material_override as ShaderMaterial).set_shader_parameter("age", _sheet_age[k])
+			_sheets[k].visible = _sheet_age[k] < 1.0
 	for k in range(_pending.size() - 1, -1, -1):
 		_pending[k][0] -= delta
 		if _pending[k][0] <= 0.0:
@@ -95,7 +174,12 @@ func update(near: Vector3, delta := 0.0) -> void:
 func _burst(s: Dictionary, size: float) -> void:
 	var i := _next
 	_next = (_next + 1) % _spray.size()
-	var strong := 0.45 + 0.75 * size
+	# (how hard it strikes: the wave's size, how square it meets the face - a wall facing along the
+	# coast takes it glancing)
+	var sea := MapGenerator.sea_side if MapGenerator.sea_side != Vector2.ZERO else Vector2(0, 1)
+	var facing := clampf((s.out as Vector2).dot(sea), 0.25, 1.0) if bool(s.wall) else 1.0
+	var strong := (0.45 + 0.75 * size) * facing * STRIKE
+	_sheet(i, s, size, strong)
 	var out: Vector2 = s.out
 	var at: Vector3 = s.at
 	var r := float(s.size)
@@ -110,6 +194,40 @@ func _burst(s: Dictionary, size: float) -> void:
 	climb.emitting = true
 	_pending.append([CLIMB_LEAD, s, size, i])
 	bursts += 1
+
+
+## The sheet of water thrown up first where it struck, and the rock wet as high as it went.
+func _sheet(i: int, s: Dictionary, size: float, strong: float) -> void:
+	var out: Vector2 = s.out
+	var at: Vector3 = s.at
+	var high := float(s.get("high", 1.0))
+	var r := float(s.size)
+	var mi := _sheets[i]
+	var m := mi.material_override as ShaderMaterial
+	var rise: float
+	if bool(s.wall):
+		# (against the wall: straight up it and out, the part facing the sea)
+		rise = SHEET_HIGH * (0.55 + 0.45 * size) * strong
+		m.set_shader_parameter("arc", 0.42)
+		m.set_shader_parameter("flare", 0.5)
+		mi.basis = Basis(Vector3.UP, atan2(-out.x, -out.y)).scaled(Vector3(r * 1.3, 1.0, 1.1))
+	elif high < 0.45:
+		# (a low rock: washed over - a low, wide spill of it all round)
+		rise = (0.35 + 0.35 * size) * strong
+		m.set_shader_parameter("arc", 1.0)
+		m.set_shader_parameter("flare", 1.5)
+		mi.basis = Basis.IDENTITY.scaled(Vector3(r * 2.2, 1.0, r * 2.2))
+	else:
+		# (a rock standing up: thrown up its seaward face and round it, as high as it is and more)
+		rise = clampf(0.5 + 0.55 * high, 0.5, SHEET_HIGH * 1.2) * (0.55 + 0.45 * size) * strong
+		m.set_shader_parameter("arc", 0.62)
+		m.set_shader_parameter("flare", 0.8)
+		mi.basis = Basis(Vector3.UP, atan2(-out.x, -out.y)).scaled(Vector3(r * 2.1, 1.0, r * 2.1))
+	m.set_shader_parameter("rise", rise)
+	m.set_shader_parameter("age", 0.0)
+	mi.position = at + Vector3(0.0, -0.05, 0.0)
+	mi.visible = true
+	_sheet_age[i] = 0.0
 
 
 ## The spray bursting from where the water climbed, and its mist.
