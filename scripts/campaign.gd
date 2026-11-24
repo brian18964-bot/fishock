@@ -22,8 +22,9 @@ signal stat_changed(key: String, value: float)
 signal achievement_unlocked(id: String)
 
 ## The map sizes (world px). L is the full map the free run has always had.
-const MAP_SIZES := {"S": Vector2(1300, 760), "M": Vector2(1850, 1050), "L": Vector2(2400, 1350)}
-const MAP_NAMES := {"S": "小", "M": "中", "L": "大"}
+## (user request - the maps' branches, the later the bigger: an extra-large one too, "XL")
+const MAP_SIZES := {"S": Vector2(1300, 760), "M": Vector2(1850, 1050), "L": Vector2(2400, 1350), "XL": Vector2(2900, 1630)}
+const MAP_NAMES := {"S": "小", "M": "中", "L": "大", "XL": "特大"}
 
 ## The free run as it has always been. A level changes some of these.
 ## ponds: [common (-1: 3-4 at random), rare]; day: seconds (0: no clock, no
@@ -635,7 +636,7 @@ func attach(main: Node) -> void:
 	_species = {}
 	_first_cast_pending = true
 	_brightness0 = -1.0
-	if rules.map == "L":
+	if rules.map in ["L", "XL"]:
 		run["big_map"] = 1.0
 	if float(rules.day) > 0.0:
 		run["timed"] = 1.0
