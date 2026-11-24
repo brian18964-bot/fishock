@@ -27,6 +27,7 @@ const MEDAL := 40.0
 ## A step that's already done still shows this long before the next.
 const MIN_SHOW := 1.4
 const BANNER_TIME := 4.0
+const CH_NUM := ["一", "二", "三", "四", "五", "六"]
 const STAR_ON := Color(1.0, 0.82, 0.3)
 const STAR_OFF := Color(0.42, 0.4, 0.36)
 const OK := Color(0.72, 0.95, 0.55)
@@ -234,7 +235,8 @@ func _chevron(tip_side: Vector2, dir: Vector2, s: float) -> void:
 func _draw_banner() -> void:
 	var a := clampf(minf(_t / 0.5, (BANNER_TIME - _t) / 0.8), 0.0, 1.0)
 	var ch: Dictionary = Campaign.chapter(int(_level.get("chapter", 1)))
-	var top := "第%s章　%s" % [["一", "二", "三", "四", "五"][clampi(int(_level.chapter) - 1, 0, 4)], ch.get("name", "")]
+	# (six maps, six chapters - the sixth, 海崖, was shown as the fifth)
+	var top := "第%s章　%s" % [CH_NUM[clampi(int(_level.chapter) - 1, 0, CH_NUM.size() - 1)], ch.get("name", "")]
 	var r := Rect2(190, 146, 580, 122)
 	_view.draw_rect(r, Color(0, 0, 0, 0.6 * a))
 	_view.draw_rect(r, Color(0.62, 0.46, 0.17, 0.8 * a), false, 1.5)

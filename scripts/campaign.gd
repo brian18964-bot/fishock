@@ -222,13 +222,15 @@ const RUN_ONLY := ["elapsed", "time_left", "evil", "species", "species_both", "b
 ## {"chapter": n} (cleared), {"level": id}, {"log": percent},
 ## {"all": [checks]}.
 const ACHIEVEMENTS := [
-	["first_crossing", "旅程", "初渡", "通過 1-1「第一竿」", 30, {"level": "1-1"}],
+	["first_crossing", "旅程", "初渡", "通過 1-1「林間淺池」", 30, {"level": "1-1"}],
 	["chapter_2", "旅程", "秋沼行者", "通過第二章", 100, {"chapter": 2}],
 	["chapter_3", "旅程", "鐵鍊聽者", "通過第三章", 150, {"chapter": 3}],
 	["chapter_4", "旅程", "荒野旅人", "通過第四章", 200, {"chapter": 4}],
-	["chapter_5", "旅程", "邪祭見證", "通過第五章，渡湖紀行完結", 300, {"chapter": 5}],
+	["chapter_5", "旅程", "邪祭見證", "通過第五章", 300, {"chapter": 5}],
+	# (six maps, six chapters: the story ends with the sixth, 海崖)
+	["chapter_6", "旅程", "崖頂夜釣客", "通過第六章，渡湖紀行完結", 300, {"chapter": 6}],
 	["stars_45", "旅程", "滿天星", "收集 45 顆星", 200, {"stars": 45}],
-	["stars_75", "旅程", "渡湖紀行", "收集全部 75 顆星", 500, {"stars": 75}],
+	["stars_75", "旅程", "渡湖紀行", "收集全部 78 顆星", 500, {"stars": 78}],
 	["catch_100", "釣技", "百尾", "總共釣到 100 條魚", 100, {"life": "catch", "min": 100}],
 	["catch_1000", "釣技", "千尾", "總共釣到 1000 條魚", 500, {"life": "catch", "min": 1000}],
 	["far_50", "釣技", "遠方的回應", "釣到 50 條遠海大魚", 120, {"life": "catch_far", "min": 50}],

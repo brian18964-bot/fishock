@@ -133,7 +133,7 @@ func _build_modes() -> void:
 			"規劃：和朋友組隊夜釣、一起湊獻祭額度、互相照亮躲避鬼魂。"]))
 	acts.add_child(multi)
 	if not open:
-		var lock := UiKit.label("通過劇情第一章「初渡」後開放", 14, UiKit.DANGER, true)
+		var lock := UiKit.label("通過劇情第一章「%s」後開放" % Campaign.chapter(1).name, 14, UiKit.DANGER, true)
 		lock.name = "FreeLocked"
 		lock.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		free.get_meta("words").add_child(lock)

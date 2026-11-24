@@ -6041,6 +6041,12 @@ func test_campaign_unlocks_and_achievements() -> void:
 	# (user decision - the maps' branches: one after another in a map, the next map once the whole of
 	# this one's done; six maps, 26 levels)
 	check(camp().CHAPTERS.size() == 6 and camp().LEVELS.size() == 26, "six maps, 26 branches")
+	# (the achievements brought to the six chapters: each after the first its own; "all the stars" all of them)
+	var journey_ids: Array = camp().ACHIEVEMENTS.map(func(a): return str(a[0]))
+	var all_stars: Array = camp().ACHIEVEMENTS.filter(func(a): return str(a[0]) == "stars_75")
+	check(range(2, camp().CHAPTERS.size() + 1).all(func(n): return ("chapter_%d" % n) in journey_ids)
+		and int(all_stars[0][5].stars) == camp().LEVELS.size() * 3, "an achievement for each chapter; all the stars are %d" % (camp().LEVELS.size() * 3))
+	check(CampaignHud.CH_NUM.size() >= camp().CHAPTERS.size(), "the level's opening card names every chapter (第六章 too)")
 	check(camp().level_open("1-1") and not camp().level_open("1-2") and not camp().chapter_open(2), "only 1-1 to begin with")
 	for id in ["1-1", "1-2", "1-3", "1-4"]:
 		Profile.record_level(id, [true, true, false], 100.0)
@@ -11140,8 +11146,9 @@ func test_branch_fish() -> void:
 	var fresh := FishData.pool_for("forest", "", "rare")
 	var epic := FishData.pool_for("forest", "", "epic")
 	var everyday := 0
+	# (as Player rolls an everyday catch: its water "common", its rarity "common")
 	for _i in 400:
-		if FishData.pool_for("forest", "", "") == FishData.branch_fish:
+		if FishData.pool_for("forest", "common", "common") == FishData.branch_fish:
 			everyday += 1
 	check(fresh.has("minnow") and fresh.has("goby") and epic.has("alligator_gar") and everyday > 20 and everyday < 100
 		and FishData.species_in("forest").has("alligator_gar"), "a freshwater branch's own: with the rare, the rarest, now and then any catch (%d/400)" % everyday)

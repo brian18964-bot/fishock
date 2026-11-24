@@ -292,7 +292,8 @@ static func pool_for(water_key: String, zone_key: String, rarity_key: String) ->
 	# (user request - the maps' branches: each its own fish - branch_fish with the rare ones and now and
 	# then an everyday catch, branch_epic with the rarest - and a fish that's some branch's own found
 	# only in that branch)
-	if not branch_fish.is_empty() and rarity_key == "" and zone_key != "rare" and randf() < BRANCH_EVERYDAY:
+	# (an everyday catch is rarity "common" as Player rolls it - "" as some callers name it)
+	if not branch_fish.is_empty() and rarity_key in ["", "common"] and zone_key != "rare" and randf() < BRANCH_EVERYDAY:
 		return branch_fish
 	if water_key == "sea":
 		match rarity_key:
