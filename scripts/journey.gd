@@ -93,15 +93,19 @@ func _show_tab(key: String) -> void:
 
 func _build_story() -> void:
 	var chapters := HBoxContainer.new()
-	chapters.add_theme_constant_override("separation", 6)
+	chapters.name = "Chapters"
+	chapters.add_theme_constant_override("separation", 4)
 	for c in Campaign.CHAPTERS:
 		var n: int = c.id
 		var open := Campaign.chapter_open(n)
-		var words := "第%s章 %s" % [CH_NUM[n - 1], c.name]
-		words += "  ★%d/%d" % [Campaign.chapter_stars(n), Campaign.levels_of(n).size() * 3] if open else "  ★%d 解鎖" % int(c.stars)
-		var b := UiKit.button(words, 14)
+		# (six maps, six chapters: the tab its number and name, short enough for all six across - the
+		# chapter's 第X章 in the card's line below)
+		var words := "%d %s" % [n, c.name]
+		words += " ★%d/%d" % [Campaign.chapter_stars(n), Campaign.levels_of(n).size() * 3] if open else " ★%d 解鎖" % int(c.stars)
+		var b := UiKit.button(words, 13)
 		b.name = "Chapter%d" % n
-		b.custom_minimum_size = Vector2(146, 34)
+		b.tooltip_text = "第%s章 %s" % [CH_NUM[n - 1], c.name]
+		b.custom_minimum_size = Vector2(0, 34)
 		UiKit.style_tab(b, n == chapter)
 		if not open:
 			b.modulate = Color(0.6, 0.6, 0.6)
@@ -116,7 +120,7 @@ func _build_story() -> void:
 			_show_tab("story"))
 		chapters.add_child(b)
 	_body.add_child(chapters)
-	var blurb := UiKit.label(str(Campaign.chapter(chapter).blurb), 13, UiKit.DIM)
+	var blurb := UiKit.label("第%s章 %s　%s" % [CH_NUM[chapter - 1], Campaign.chapter(chapter).name, Campaign.chapter(chapter).blurb], 13, UiKit.DIM)
 	blurb.position = Vector2(4, 40)
 	blurb.custom_minimum_size = Vector2(880, 0)
 	_body.add_child(blurb)

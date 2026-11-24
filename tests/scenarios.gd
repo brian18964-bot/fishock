@@ -6475,6 +6475,10 @@ func test_journey_page() -> void:
 	check(page.find_child("PageNav", true, false) == null and page.find_child("Tab_free", true, false) == null,
 		"no page row on it, no free run tab (that's 自由模式's)")
 	check(page.selected == "1-1", "the first level picked to begin with")
+	# (six chapters: their tabs all on the page, none past its edge)
+	var row: Control = page.find_child("Chapters", true, false)
+	check(row != null and row.get_child_count() == Campaign.CHAPTERS.size() and row.get_combined_minimum_size().x <= page._body.size.x,
+		"every chapter's tab across the page (%.0f of %.0f px)" % [row.get_combined_minimum_size().x if row else -1.0, page._body.size.x])
 	page.select("1-3")
 	await frames(2)
 	check(page.find_child("Go", true, false) == null, "a locked level has no 出發")
