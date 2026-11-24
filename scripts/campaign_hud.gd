@@ -49,7 +49,7 @@ var step := -1
 var _step_time := 0.0
 var _box_alpha := 0.0
 var _t := 0.0
-## Willow's word on a lesson, showing (Campaign.aside_text), and how long it has been.
+## Willow's word on a lesson, showing (from Campaign.aside_queue), and how long it has been.
 var _aside := ""
 var _aside_time := 0.0
 var _level: Dictionary
@@ -94,10 +94,10 @@ func _process(delta: float) -> void:
 		_box_alpha = minf(1.0, _box_alpha + delta * 3.0)
 		if _step_time >= MIN_SHOW and _step_done(steps[step]):
 			_next_step()
-	if Campaign.aside_text != "":
-		_aside = Campaign.aside_text
+	# (not over the level's opening card: after it)
+	if _aside == "" and not Campaign.aside_queue.is_empty() and _t >= BANNER_TIME:
+		_aside = str(Campaign.aside_queue.pop_front())
 		_aside_time = 0.0
-		Campaign.aside_text = ""
 	if _aside != "":
 		_aside_time += delta
 		if _aside_time >= ASIDE_HOLD + BOX_FADE:
@@ -197,8 +197,11 @@ func _draw_box(s: Array, a := 1.0, counted := true) -> void:
 		return
 	var text := Campaign.say(str(s[0]))
 	var font := UiKit.font()
-	var lines := 1 if font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x <= BOX_W - MEDAL - 30.0 else 2
-	var h := maxf(MEDAL + 8.0, 16.0 + lines * 20.0)
+	var width := BOX_W - BOX_PAD * 2.0 - MEDAL - 10.0
+	# (as many lines as it wraps to - a longer word of Willow's three or four - the box as tall)
+	var lh := font.get_height(15)
+	var lines := clampi(roundi(font.get_multiline_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, width, 15).y / lh), 1, 4)
+	var h := maxf(MEDAL + 8.0, 16.0 + lines * lh)
 	# Under the fight panel while a fish is on (it takes the top middle).
 	var y := BOX_Y
 	if Campaign._player != null and Campaign._player.state == Player.State.REELING:
@@ -211,11 +214,11 @@ func _draw_box(s: Array, a := 1.0, counted := true) -> void:
 	_view.draw_texture_rect(UiKit.tex("medallion"), Rect2(medal_c - Vector2.ONE * MEDAL / 2.0, Vector2.ONE * MEDAL), false, Color(1, 1, 1, a))
 	UiKit.draw_text(_view, medal_c + Vector2(-8, 6), "柳", 16, Color(UiKit.GOLD_BRIGHT, a), HORIZONTAL_ALIGNMENT_LEFT, -1, true)
 	var tx := r.position.x + BOX_PAD + MEDAL + 10.0
-	var width := r.end.x - tx - BOX_PAD
-	_view.draw_multiline_string_outline(font, Vector2(tx, r.position.y + 22.0 + (h - 16.0 - lines * 20.0) / 2.0), text,
-		HORIZONTAL_ALIGNMENT_LEFT, width, 15, 2, 4, Color(0, 0, 0, 0.85 * a))
-	_view.draw_multiline_string(font, Vector2(tx, r.position.y + 22.0 + (h - 16.0 - lines * 20.0) / 2.0), text,
-		HORIZONTAL_ALIGNMENT_LEFT, width, 15, 2, Color(UiKit.TEXT, a))
+	var top := r.position.y + (h - lines * lh) / 2.0 + font.get_ascent(15)
+	_view.draw_multiline_string_outline(font, Vector2(tx, top), text,
+		HORIZONTAL_ALIGNMENT_LEFT, width, 15, lines, 4, Color(0, 0, 0, 0.85 * a))
+	_view.draw_multiline_string(font, Vector2(tx, top), text,
+		HORIZONTAL_ALIGNMENT_LEFT, width, 15, lines, Color(UiKit.TEXT, a))
 	# Which line of how many.
 	if counted:
 		UiKit.draw_text(_view, Vector2(r.position.x, r.end.y + 13.0), "%d / %d" % [step + 1, steps.size()], 11,

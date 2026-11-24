@@ -67,7 +67,7 @@ const LEVELS := [
 		"rules": {"theme": "forest_pine", "map": "S", "ponds": [2, 0], "day": 0.0, "quota": 3.0, "drain": 0.0, "ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear", "rocks": [0, 0], "critters": 8, "hotspot": false, "oil": false, "escalate": false, "evil": false, "safe": true, "tutorial": "first_cast", "hide": ["lure", "quick", "energy", "lamp", "bait"], "mods": {"animal_count": 2, "animals": {"deer": 1.0}}, "fish": ["minnow", "goby"], "fish_epic": []},
 		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到鱥魚或鰕虎"}, {"stat": "elapsed", "text": "3 分鐘內離開", "max": 180}],
 		"reward": {"gold": 40}},
-	{"id": "1-2", "chapter": 1, "name": "苔石溪潭", "teach": "活餌：翻石頭找蟲",
+	{"id": "1-2", "chapter": 1, "name": "苔石溪潭", "teach": "活餌：翻石頭找蟲、發光蘑菇",
 		"intro": "石頭多、樹少的溪邊，一串小潭。翻開石頭，底下有蟲可以當餌。",
 		"rules": {"bait": 2, "night_fails": true, "safe": true, "theme": "forest_pine", "map": "M", "ponds": [4, 0], "day": 240.0, "quota": 10.0, "drain": 0.5, "ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": [["CLEAR", 90.0], ["FOG", 60.0], "mild"], "rocks": [14, 18], "critters": 4, "hotspot": false, "escalate": false, "evil": false, "tutorial": "bait", "hide": ["lure", "quick", "energy", "lamp"], "mods": {"rocks": 6, "trees": 16, "animals": {"fox": 1.0, "deer": 1.0}}, "fish": ["char"], "fish_epic": []},
 		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到紅點鮭"}, {"stat": "flip_rock", "text": "翻開 3 塊石頭找活餌", "min": 3}],
@@ -77,13 +77,14 @@ const LEVELS := [
 		"rules": {"night_fails": true, "safe": true, "theme": "forest_pine", "map": "L", "ponds": [6, 1], "day": 300.0, "quota": 18.0, "ghosts": 1, "meddle": 2, "big_ghost": false, "water_ghost": 1.6, "hunters": false, "weather": "foggy", "critters": 10, "escalate": false, "evil": false, "tutorial": "lamp", "hide": ["lure", "quick"], "mods": {"shore_extras": {"reeds": 0.3, "lilypad": 0.12, "driftwood": 0.05}, "trees": 22}, "fish": ["swamp_eel", "betta"], "fish_epic": []},
 		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到黃鱔或鬥魚"}, {"stat": "water_ghost_hit", "text": "不被水鬼拉到", "max": 0}],
 		"reward": {"gold": 130, "items": {"battery": 2}}},
-	{"id": "1-4", "chapter": 1, "name": "雙子湖", "teach": "小鬼、發光蘑菇",
+	{"id": "1-4", "chapter": 1, "name": "雙子湖", "teach": "小鬼、狼、額度滿後的供品",
 		"intro": "兩座深湖之間的林地。鹿群在湖邊，狼在林子裡。魚群湧現時要把握。",
 		"rules": {"night_fails": true, "theme": "forest_pine", "map": "L", "ponds": [2, 1], "day": 300.0, "quota": 26.0, "ghosts": 1, "meddle": 3, "big_ghost": false, "weather": {"FISH_RUN": 0.35, "FOG": 0.12, "DRIZZLE": 0.12}, "critters": 6, "escalate": false, "tutorial": "ghost", "hide": ["lure"], "mods": {"animals": {"deer": 2.5, "stag": 1.5, "wolf": 0.8}}, "fish": [], "fish_epic": ["wels"]},
 		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到巨型鯰魚"}, {"stat": "catch_rare", "text": "一晚釣到 2 條稀有魚", "min": 2}],
 		"reward": {"gold": 170}},
 	{"id": "1-5", "chapter": 1, "name": "深林大湖", "teach": "路亞與大鬼、魚氧樹",
 		"intro": "森林最深處的一座巨湖，四周散著小池。暴雨、狼群，還有醒過來的大鬼。",
+		"tip": "這裡狼很多：營地青蛙商人賣的獵刀、開山刀拿在副手上，能擋開撲擊、揮刀把狼趕走；強光也能嚇跑牠。",
 		"rules": {"theme": "forest_pine", "map": "XL", "ponds": [4, 1], "day": 360.0, "quota": 35.0, "ghosts": 2, "meddle": 4, "big_ghost": true, "weather": "stormy", "critters": 4, "tutorial": "lure", "hide": [], "mods": {"animals": {"deer": 1.5, "wolf": 1.6, "fox": 1.0}}, "fish": [], "fish_epic": ["alligator_gar"]},
 		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到鱷雀鱔"}, {"stat": "evil", "text": "達標後留下來獻祭一次", "min": 1}],
 		"reward": {"gold": 260, "items": {"lure_redhead": 3}}},
@@ -119,11 +120,13 @@ const LEVELS := [
 		"reward": {"gold": 180}},
 	{"id": "3-3", "chapter": 3, "name": "凍原深湖", "teach": "",
 		"intro": "凍原上的一座大湖，霧和雪交替。狼比平常多。",
+		"tip": "這裡狼很多：營地青蛙商人賣的獵刀、開山刀拿在副手上，能擋開撲擊、揮刀把狼趕走；強光也能嚇跑牠。",
 		"rules": {"theme": "snow_pine", "map": "L", "ponds": [1, 1], "day": 330.0, "quota": 26.0, "ghosts": 1, "meddle": 3, "big_ghost": true, "weather": "foggy", "critters": 1, "mods": {"animals": {"wolf": 1.5, "deer": 1.0, "stag": 1.0}}, "fish": ["sturgeon"], "fish_epic": []},
 		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到鱘魚"}, {"stat": "swipe_hit", "text": "沒被野獸撲到", "max": 0}],
 		"reward": {"gold": 230}},
 	{"id": "3-4", "chapter": 3, "name": "暴雪冰洞", "teach": "",
 		"intro": "冰面上鑿開的一個個小冰洞。暴風雪不停，燈油燒得特別快。",
+		"tip": "這裡狼很多：營地青蛙商人賣的獵刀、開山刀拿在副手上，能擋開撲擊、揮刀把狼趕走；強光也能嚇跑牠。",
 		"rules": {"theme": "snow_pine", "map": "XL", "ponds": [7, 1], "day": 360.0, "quota": 32.0, "drain": 1.4, "ghosts": 2, "meddle": 4, "big_ghost": true, "weather": [["STORM", 120.0], "stormy"], "critters": 1, "mods": {"animals": {"wolf": 2.0, "fox": 1.0}}, "fish": [], "fish_epic": ["cavefish"]},
 		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到洞穴盲魚"}, {"stat": "quota_met", "text": "暴風雪中達標", "min": 1}],
 		"reward": {"gold": 300, "items": {"battery": 3}}},
@@ -270,7 +273,7 @@ const TUTORIALS := {
 		["上鉤了！{reel}收線；張力條變紅就先放手。", {"stat": "catch", "min": 1}, ""],
 		["釣到了！魚放進背包裡了。把牠帶去祭壇。", {"stat": "near_altar", "min": 1}, "altar"],
 		["在祭壇旁{act}「獻祭」，選魚交出去。", {"stat": "quota_met", "min": 1}, "altar"],
-		["額度滿了，渡石亮了！走進光裡就能回營地。", {"stat": "escaped", "min": 1}, "escape"],
+		["額度滿了，渡石亮了！走進光裡就能回營地，祭壇還會送你一塊魚骨，回營地能換錢。", {"stat": "escaped", "min": 1}, "escape"],
 	],
 	"reach": [
 		["{far}，拋得越遠。遠處的魚比較大，也值得比較多。", {"after": 7.0}, ""],
@@ -385,7 +388,8 @@ const TUTORIALS := {
 ## tutorial); fight - the arrow and the flick in a fight (反甩, its 刺！; FishFight.prompts); mushroom -
 ## picking the glow mushrooms; oxy - picking 魚氧樹; frost - digging under a frost flower. Before
 ## its level, a level has it not; the free run (after the story's first map) has them all.
-const LESSONS := {"bait": "1-2", "fight": "1-3", "mushroom": "1-4", "oxy": "1-5", "frost": "3-1"}
+const LESSONS := {"bait": "1-2", "mushroom": "1-2", "fight": "1-3", "hunters": "1-4", "offerings": "1-4", "oxy": "1-5",
+	"frost": "3-1"}
 ## What Willow says of each, the first time it comes up in its lesson's level (aside()): a fight's
 ## first arrow; one of the things near enough (ASIDE_NEAR px) to see.
 const ASIDES := {
@@ -393,9 +397,15 @@ const ASIDES := {
 	"mushroom": "樹下發藍光的是發光蘑菇，走過去{act}「採集」。撒在身上會發光一陣子，照亮身邊。",
 	"oxy": "水邊冒著小氣泡的是魚氧樹，走過去{act}「採集」。塗在背包裡魚的鰓上，魚能活得久一點。",
 	"frost": "冷凍花根部的土很冰。帶著鏟子{act}「挖掘」，用在背包裡的魚身上，能保鮮更久。",
+	# (user request: wolves are many in places - say a blade keeps them off)
+	"hunters": "狼靠太近就會盯上你，被撲倒時身上的魚會掉在地上。用強光照牠會嚇跑；營地商店的獵刀、開山刀拿在副手上，能擋開撲擊、揮刀把牠趕走。",
+	# (user request: what the altar gives once the quota's met, and the evil in it, told)
+	"offerings": "額度滿了！還能繼續獻祭：每多獻一些，供品池就多一份更好的魚骨，逃離時祭壇從裡面挑一塊給你。但供品裡可能藏著邪惡的東西，湊滿三個就全部泡湯，見好就收。",
 }
-const ASIDE_GROUP := {"mushroom": "glow_mushrooms", "oxy": "oxy_tree", "frost": "frost_flowers"}
+const ASIDE_GROUP := {"mushroom": "glow_mushrooms", "oxy": "oxy_tree", "frost": "frost_flowers", "hunters": "hunters"}
 const ASIDE_NEAR := 150.0
+## (a beast is spoken of from further off: seen coming)
+const ASIDE_NEAR_BEAST := 320.0
 
 ## User request (free mode's nights, "you can dream them up"): a free run on a map made at random is
 ## now and then (FREE_EVENT_CHANCE) a night of its own, by weight - a storm of one everyday kind (most
@@ -444,9 +454,9 @@ var _first_cast_pending := false
 var _species := {}
 var _weather_plan: Array = []
 var _brightness0 := -1.0
-## Willow's word on a lesson just come up (ASIDES; CampaignHud shows it a while), and the lessons
-## spoken of this run.
-var aside_text := ""
+## Willow's words on lessons just come up (ASIDES) and the level's advice, in turn (CampaignHud shows
+## each a while), and the lessons spoken of this run.
+var aside_queue: Array = []
 var _asides_said := {}
 var _aside_poll := 0.0
 
@@ -458,7 +468,9 @@ func _ready() -> void:
 	GameState.quota_updated.connect(func(_p, _t): _poll_quota())
 	GameState.day_phase_changed.connect(func(phase):
 		if phase == "ESCAPE":
-			stat("quota_met"))
+			stat("quota_met")
+			# (the lesson's level: what more offerings bring, and the evil among them)
+			aside("offerings"))
 
 
 # ---------------------------------------------------------------- data
@@ -676,7 +688,7 @@ func aside(lesson: String) -> void:
 		return
 	_asides_said[lesson] = true
 	if Profile.settings.get("hints", true):
-		aside_text = str(ASIDES[lesson])
+		aside_queue.append(str(ASIDES[lesson]))
 
 
 ## User request (the first levels' screen): a level shows only the parts of the HUD it has taught so
@@ -721,11 +733,15 @@ func attach(main: Node) -> void:
 	_species = {}
 	_first_cast_pending = true
 	_brightness0 = -1.0
-	aside_text = ""
+	aside_queue = []
 	_asides_said = {}
 	if not free_event.is_empty():
 		GameState.push_message(str(free_event.say))
 		GameState.report(str(free_event.name), "good")
+	# (user request: a level's word of advice - the wolves many, a blade to keep them off - on its card
+	# and from Willow as it starts)
+	if is_level() and str(level(level_id).get("tip", "")) != "" and Profile.settings.get("hints", true):
+		aside_queue.append(str(level(level_id).tip))
 	if rules.map in ["L", "XL"]:
 		run["big_map"] = 1.0
 	if float(rules.day) > 0.0:
@@ -851,8 +867,9 @@ func _process(delta: float) -> void:
 		for lesson in ASIDE_GROUP:
 			if str(LESSONS[lesson]) != level_id or _asides_said.has(lesson):
 				continue
+			var near := ASIDE_NEAR_BEAST if lesson == "hunters" else ASIDE_NEAR
 			for n in _main.get_tree().get_nodes_in_group(ASIDE_GROUP[lesson]):
-				if (n as Node2D).global_position.distance_to(_player.global_position) < ASIDE_NEAR:
+				if (n as Node2D).global_position.distance_to(_player.global_position) < near:
 					aside(lesson)
 					break
 	set_stat("light_stage", float(GameState.light_stage()))

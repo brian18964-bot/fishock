@@ -11170,10 +11170,18 @@ func test_story_lessons() -> void:
 	camp().begin_level("1-1")
 	check(not camp().taught("fight") and not camp().taught("bait") and not camp().taught("mushroom") and not camp().taught("oxy"),
 		"1-1: none of them taught yet")
+	camp().begin_level("1-2")
+	check(camp().taught("bait") and camp().taught("mushroom") and not camp().taught("fight"), "1-2: live bait and the mushrooms; not the flick yet")
 	camp().begin_level("1-3")
-	check(camp().taught("fight") and camp().taught("bait") and not camp().taught("mushroom"), "1-3: the flick taught there; not the mushrooms")
+	check(camp().taught("fight") and not camp().taught("oxy"), "1-3: the flick taught there")
 	camp().begin_level("1-5")
-	check(camp().taught("mushroom") and camp().taught("oxy") and not camp().taught("frost"), "1-5: the mushrooms (1-4), 魚氧樹; not the frost flower")
+	check(camp().taught("hunters") and camp().taught("offerings") and camp().taught("oxy") and not camp().taught("frost"),
+		"1-5: the wolves and the offerings (1-4), 魚氧樹; not the frost flower")
+	# (user request: the altar's bone once the quota's met, the evil among more offerings - told; the
+	# wolves many in places - a blade to keep them off, said)
+	check(str(camp().TUTORIALS.first_cast[6][0]).contains("魚骨") and str(camp().ASIDES.offerings).contains("邪惡")
+		and str(camp().ASIDES.hunters).contains("獵刀"), "the bone, the evil offerings and the blades told")
+	check(["1-5", "3-3", "3-4"].all(func(id): return str(camp().level(id).get("tip", "")).contains("獵刀")), "the levels thick with wolves: a blade advised")
 	camp().begin_free([], "")
 	check(camp().taught("fight") and camp().taught("frost"), "the free run: all of them")
 	# A fight with nothing to ask: in a long one, no sideways dash, no dive, no snag, never an arrow.
@@ -11200,8 +11208,8 @@ func test_story_lessons() -> void:
 			check(asked > 0 and sides > 0, "taught: the fish's ways asked (%d frames, %d dashes and dives)" % [asked, sides])
 		else:
 			check(asked == 0 and sides == 0, "not taught: nothing asked, no sideways dash or dive (%d, %d)" % [asked, sides])
-	# In 1-1, a mushroom by the player isn't picked (seen, nothing offered); in 1-4 it is - and Willow says so.
-	for lid in ["1-1", "1-4"]:
+	# In 1-1, a mushroom by the player isn't picked (seen, nothing offered); in 1-2 it is - and Willow says so.
+	for lid in ["1-1", "1-2"]:
 		await play_level(lid)
 		var shrooms := get_tree().get_nodes_in_group("glow_mushrooms")
 		var critters := get_tree().get_nodes_in_group("critters")
@@ -11209,7 +11217,8 @@ func test_story_lessons() -> void:
 			check(false, "%s: a glow mushroom to try" % lid)
 			continue
 		await put((shrooms[0] as Node2D).global_position + Vector2(6, 0))
-		await seconds(0.8)
+		# (Willow's word comes after the level's opening card)
+		await seconds(CampaignHud.BANNER_TIME + 0.6)
 		var offer := player().interaction()
 		var hud: CampaignHud = null
 		for c in main.get_children():
@@ -11219,8 +11228,18 @@ func test_story_lessons() -> void:
 			check(str(offer.get("verb", "")) != "採集" and player().reachable_mushroom() == null, "1-1: the mushroom seen, not picked (%s)" % str(offer.get("verb", "")))
 			check(critters.is_empty() or player().reachable_critter() == null, "1-1: the critters not caught for bait yet")
 		else:
-			check(str(offer.get("verb", "")) == "採集", "1-4: the mushroom picked")
-			check(hud != null and hud._aside.contains("發光蘑菇"), "1-4: Willow says what it is (%s)" % (hud._aside if hud else "-"))
+			check(str(offer.get("verb", "")) == "採集", "1-2: the mushroom picked")
+			check(hud != null and hud._aside.contains("發光蘑菇"), "1-2: Willow says what it is (%s)" % (hud._aside if hud else "-"))
+	# 1-4: the quota met, Willow on the offerings to come.
+	await play_level("1-4")
+	var f := fish()
+	f["value"] = float(camp().rules.quota) + 1.0
+	gs.add_carried_fish(f)
+	gs.sacrifice_at(0)
+	await frames(2)
+	check(camp().aside_queue.any(func(t): return str(t).contains("邪惡")), "1-4: the quota met, the offerings and their evil told")
+	await play_level("3-3")
+	check(camp().aside_queue.any(func(t): return str(t).contains("獵刀")), "3-3: the blade advised as it starts")
 
 
 ## User report (the first level): after the offering, the guide to the stones pointed at the forest's edge

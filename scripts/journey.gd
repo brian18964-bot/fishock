@@ -239,6 +239,9 @@ func _fill_card() -> void:
 	_line("%s　%s" % [l.id, l.name], 19, Color(0.36, 0.1, 0.04), true)
 	_line("新東西：" + str(l.teach), 13, Color(0.2, 0.3, 0.1), true)
 	_line(str(l.intro), 12, Color(0.4, 0.3, 0.2))
+	# (user request: a word of advice before setting off - the wolves many: a blade from the shop)
+	if str(l.get("tip", "")) != "":
+		_line("提醒：" + str(l.tip), 12, Color(0.55, 0.25, 0.05))
 	var clock := "不限時" if float(r.day) <= 0.0 else "%d:%02d" % [int(r.day) / 60, int(r.day) % 60]
 	var skulls := Campaign.danger(r)
 	var danger := "☠".repeat(skulls) if skulls > 0 else "無"
