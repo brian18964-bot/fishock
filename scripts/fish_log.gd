@@ -69,6 +69,13 @@ func _rebuild_rows() -> void:
 		_section("淡水・" + WATER_NAMES.get(key, key), own)
 	_section("海水", FishData.SEA_COMMON)
 	var rare: Array = FishData.SEA_RARE + FishData.SEA_LEGEND
+	# (a fish in none of those - a branch's own new one, 月光鰺 - with the sea's rare)
+	var shown: Array = FishData.COMMON_FRESH + FishData.SEA_COMMON + rare
+	for key in FishData.STYLE_FISH:
+		shown += FishData.STYLE_FISH[key][0] + [FishData.STYLE_FISH[key][1]]
+	for id in FishData.FISH:
+		if not id in shown:
+			rare.append(id)
 	_section("海水・稀有", rare)
 
 

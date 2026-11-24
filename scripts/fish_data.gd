@@ -314,8 +314,11 @@ static func pool_for(water_key: String, zone_key: String, rarity_key: String) ->
 
 
 ## (the sea's: its pool less the fish that are some other branch's own, with this branch's; the
-## `fallback` (less those too) if none are left)
+## `fallback` (less those too) if none are left. The free run, in no branch, has its pools as
+## they always were)
 static func _branch_pool(base: Array, own: Array, fallback: Array) -> Array:
+	if branch_fish.is_empty() and branch_epic.is_empty():
+		return base
 	var pool := base.filter(func(id): return not id in BRANCH_ONLY) + own
 	if pool.is_empty():
 		pool = fallback.filter(func(id): return not id in BRANCH_ONLY) + branch_fish
@@ -338,7 +341,8 @@ const STYLE_OWN_CHANCE := 0.3
 static var branch_fish: Array = []
 static var branch_epic: Array = []
 const BRANCH_EVERYDAY := 0.12
-## The sea's fish that are a branch's own - not caught in the open sea elsewhere.
+## The sea's fish that are a branch's own - not caught in another branch's sea (the free run has
+## the sea's rare and rarest as always).
 const BRANCH_ONLY := ["moon_jack", "trevally", "napoleon", "sunfish", "sailfish", "hammerhead", "swordfish", "bluefin"]
 
 

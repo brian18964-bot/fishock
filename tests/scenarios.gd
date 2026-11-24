@@ -5767,6 +5767,7 @@ func test_shore_slide_and_unstuck() -> void:
 	var zone: WaterZone = null
 	var spot := Vector2.ZERO
 	var normal := Vector2.ZERO
+	var tries := []
 	for z in get_tree().get_nodes_in_group("water_zones_common"):
 		for sample in (z as WaterZone).shore_samples(12.0):
 			var sp: Vector2 = sample[0]
@@ -5775,26 +5776,39 @@ func test_shore_slide_and_unstuck() -> void:
 			if absf(absf(way.x) - absf(way.y)) > 0.25:
 				continue
 			var at := sp + way * 16.0 - Player.FEET
+			if not tries.is_empty() and tries.back()[1].distance_to(at) < 60.0:
+				continue
 			p.position = at
 			if not p._too_deep(at) and not p.test_move(p.global_transform, Vector2.ZERO) \
 					and not p.test_move(p.global_transform, way.orthogonal() * 30.0) \
 					and not p.test_move(p.global_transform, -way.orthogonal() * 30.0):
-				zone = z
-				spot = at
-				normal = way
+				tries.append([z, at, way])
+			if tries.size() >= 8:
 				break
-		if zone != null:
+		if tries.size() >= 8:
+			break
+	# Up to the water's edge - the first of these the walk meets squarely (not one where the shore
+	# turns a corner just there: the generated shores are ragged in places, a notch with water to
+	# both sides of it standing them still, as it should) - then pushed mostly into it, a little along it.
+	var stick: TouchJoystick = p._move_joystick
+	var edge_at := Vector2.ZERO
+	for t in tries:
+		p.position = t[1]
+		stick.output = -t[2]
+		stick.is_pressed = true
+		await seconds(0.6)
+		var went: Vector2 = p.position - t[1]
+		if went.length() > 4.0 and went.normalized().dot(-t[2]) > 0.95:
+			zone = t[0]
+			spot = t[1]
+			normal = t[2]
+			edge_at = p.position
 			break
 	check(zone != null, "a stretch of shore running aslant to try")
 	if zone == null:
+		stick.output = Vector2.ZERO
+		stick.is_pressed = false
 		return
-	# Up to the water's edge, then pushed mostly into it, a little along it.
-	var stick: TouchJoystick = p._move_joystick
-	p.position = spot
-	stick.output = -normal
-	stick.is_pressed = true
-	await seconds(0.6)
-	var edge_at := p.position
 	stick.output = (-normal * 0.85 + normal.orthogonal() * 0.5).normalized()
 	await seconds(0.8)
 	var slid := p.position.distance_to(edge_at)
@@ -6294,8 +6308,11 @@ func test_run_3d() -> void:
 	var most := 0.0
 	var lean := 0.0
 	var tip_off := 0.0
+	# (the fish kept from pulling the line to breaking meanwhile, as below - whether this one
+	# would is down to its luck)
 	for _i in 40:
 		player().tension = 0.9
+		player().fight.tension = minf(player().fight.tension, 0.9)
 		await frames(1)
 		most = maxf(most, view.bend)
 		lean = maxf(lean, view._lean.length())
@@ -11104,10 +11121,16 @@ func test_branch_fish() -> void:
 	FishData.branch_fish = []
 	FishData.branch_epic = []
 	var open_sea := FishData.pool_for("sea", "rare", "rare")
-	check(not open_sea.has("trevally") and not open_sea.has("moon_jack"), "the open sea: no branch's own fish (%s)" % [open_sea])
+	check(open_sea == FishData.SEA_RARE and FishData.pool_for("sea", "", "epic") == FishData.SEA_LEGEND,
+		"the free run's sea: its rare and rarest as always (%s)" % [open_sea])
 	FishData.branch_fish = ["trevally"]
 	var rare := FishData.pool_for("sea", "rare", "rare")
-	check(rare.has("trevally") and not rare.has("napoleon"), "its branch: its own sea fish, not another branch's (%s)" % [rare])
+	check(rare.has("trevally") and not rare.has("napoleon") and not rare.has("moon_jack"),
+		"its branch: its own sea fish, not another branch's (%s)" % [rare])
+	FishData.branch_fish = ["moon_jack"]
+	var legend := FishData.pool_for("sea", "", "epic")
+	check(not legend.has("swordfish") and not legend.has("bluefin") and not legend.is_empty(),
+		"a branch with no rarest of its own: not another branch's (%s)" % [legend])
 	FishData.branch_fish = ["minnow", "goby"]
 	FishData.branch_epic = ["alligator_gar"]
 	var fresh := FishData.pool_for("forest", "", "rare")
