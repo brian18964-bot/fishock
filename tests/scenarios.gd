@@ -131,6 +131,9 @@ const TESTS := [
 	"test_surf",
 	"test_weathers",
 	"test_branch_fish",
+	"test_story_lessons",
+	"test_level_guide_and_results",
+	"test_free_branches_and_nights",
 	"test_wind_and_chop",
 	"test_ground_leaves",
 	"test_grass",
@@ -253,7 +256,8 @@ func seconds(s: float) -> void:
 
 func _fresh_game(rng_seed := 7) -> void:
 	seed(rng_seed)
-	# The plain free run unless a test plays a level.
+	# The plain free run unless a test plays a level (and no free night of its own rolled for it).
+	Campaign.free_events = false
 	camp().clear()
 	gs.reset_run()
 	# A run an earlier test ended isn't one to come home from.
@@ -11156,6 +11160,162 @@ func test_branch_fish() -> void:
 	FishData.branch_epic = []
 	check(FishData.FISH.has("moon_jack") and str(FishData.FISH.moon_jack.name) == "月光鰺" and FishModel.has_model("moon_jack")
 		and ResourceLoader.exists("res://assets/sprites/fish/moon_jack.png") and FishData.LENGTH_CM.has("moon_jack"), "the new sea fish 月光鰺, whole")
+
+
+## User report (the first two levels played): the fish's arrow and flick (反甩, 刺！) came before its
+## lesson; the glow mushrooms and 魚氧樹 could be picked before they're taught. Now each is the story's
+## to teach (Campaign.LESSONS) - before its level seen, not used; in its level Willow says what it is.
+func test_story_lessons() -> void:
+	reset_progress()
+	camp().begin_level("1-1")
+	check(not camp().taught("fight") and not camp().taught("bait") and not camp().taught("mushroom") and not camp().taught("oxy"),
+		"1-1: none of them taught yet")
+	camp().begin_level("1-3")
+	check(camp().taught("fight") and camp().taught("bait") and not camp().taught("mushroom"), "1-3: the flick taught there; not the mushrooms")
+	camp().begin_level("1-5")
+	check(camp().taught("mushroom") and camp().taught("oxy") and not camp().taught("frost"), "1-5: the mushrooms (1-4), 魚氧樹; not the frost flower")
+	camp().begin_free([], "")
+	check(camp().taught("fight") and camp().taught("frost"), "the free run: all of them")
+	# A fight with nothing to ask: in a long one, no sideways dash, no dive, no snag, never an arrow.
+	var tier: Dictionary = FishData.TIERS.values()[0]
+	for prompts in [false, true]:
+		var asked := 0
+		var sides := 0
+		for _k in 6:
+			var f := FishFight.new("master", "cover", tier, 1.0)
+			f.prompts = prompts
+			f.field = true
+			f.plan("big", "wild")
+			f.moves_left = 30
+			for _i in 900:
+				f.tension = minf(f.tension, 0.5)
+				var ev: Array = f.update(0.05, 0.3, Vector2.ZERO, Vector2.UP)
+				if f.prompt_active():
+					asked += 1
+				if "side_run" in ev or "dive" in ev:
+					sides += 1
+				if f.result != "":
+					break
+		if prompts:
+			check(asked > 0 and sides > 0, "taught: the fish's ways asked (%d frames, %d dashes and dives)" % [asked, sides])
+		else:
+			check(asked == 0 and sides == 0, "not taught: nothing asked, no sideways dash or dive (%d, %d)" % [asked, sides])
+	# In 1-1, a mushroom by the player isn't picked (seen, nothing offered); in 1-4 it is - and Willow says so.
+	for lid in ["1-1", "1-4"]:
+		await play_level(lid)
+		var shrooms := get_tree().get_nodes_in_group("glow_mushrooms")
+		var critters := get_tree().get_nodes_in_group("critters")
+		if shrooms.is_empty():
+			check(false, "%s: a glow mushroom to try" % lid)
+			continue
+		await put((shrooms[0] as Node2D).global_position + Vector2(6, 0))
+		await seconds(0.8)
+		var offer := player().interaction()
+		var hud: CampaignHud = null
+		for c in main.get_children():
+			if c is CampaignHud:
+				hud = c
+		if lid == "1-1":
+			check(str(offer.get("verb", "")) != "採集" and player().reachable_mushroom() == null, "1-1: the mushroom seen, not picked (%s)" % str(offer.get("verb", "")))
+			check(critters.is_empty() or player().reachable_critter() == null, "1-1: the critters not caught for bait yet")
+		else:
+			check(str(offer.get("verb", "")) == "採集", "1-4: the mushroom picked")
+			check(hud != null and hud._aside.contains("發光蘑菇"), "1-4: Willow says what it is (%s)" % (hud._aside if hud else "-"))
+
+
+## User report (the first level): after the offering, the guide to the stones pointed at the forest's edge
+## until walked back - the stones behind the tilted camera; the escape's window ran off the screen's foot;
+## Willow's line stayed in the middle of the screen.
+func test_level_guide_and_results() -> void:
+	reset_progress()
+	check(CampaignHud.hold_alpha(2.0, CampaignHud.BOX_HOLD) > 0.99 and CampaignHud.hold_alpha(CampaignHud.BOX_HOLD + CampaignHud.BOX_FADE + 0.1, CampaignHud.BOX_HOLD) <= 0.0,
+		"Willow's line held a while, then gone (the arrow stays)")
+	await play_level("1-1")
+	for _i in 300:
+		if RunView3D.active != null and RunView3D.active.built:
+			break
+		await frames(1)
+	var esc: Vector2 = main.get_node("EscapePoint").global_position
+	var vp := get_viewport()
+	for off in [Vector2(0, -500), Vector2(0, -900), Vector2(600, -500)]:
+		var at: Vector2 = esc + off
+		at = at.clamp(Vector2(80, 80), Vector2(Player.WORLD_WIDTH - 80.0, Player.WORLD_HEIGHT - 80.0))
+		await put(at)
+		# (the camera caught up with the traveller set down there)
+		await seconds(1.0)
+		var way := CampaignHud.way_on_screen(vp, player().global_position, esc)
+		var truth := (esc - player().global_position).normalized()
+		check(way.dot(truth) > 0.5, "the guide from %s: toward the stones (%s for %s)" % [str(off), str(way), str(truth)])
+	var f := fish()
+	f["id"] = "minnow"
+	f["value"] = 9.0
+	gs.add_carried_fish(f)
+	gs.sacrifice_at(0)
+	gs.escape()
+	await frames(4)
+	var res: Control = main.find_child("CampaignResults", true, false)
+	var panel: Control = null
+	if res != null:
+		for c in res.get_children():
+			if c is PanelContainer:
+				panel = c
+	check(panel != null and panel.get_combined_minimum_size().y * panel.scale.y <= vp.get_visible_rect().size.y,
+		"the window within the screen (%.0f of %.0f px)" % [panel.get_combined_minimum_size().y * panel.scale.y if panel else -1.0, vp.get_visible_rect().size.y])
+	var said_twice := false
+	if panel != null:
+		for l in panel.find_children("*", "Label", true, false):
+			if (l as Label).text.begins_with("成功逃離！"):
+				said_twice = true
+	check(not said_twice and panel != null and panel.find_child("Biggest", true, false) == null, "no line said over again, no note of the biggest")
+
+
+## User request (free mode): each branch's own fish to collect - fish freely in a branch cleared in the
+## story; and on a map made at random, now and then a night of its own: a storm of one kind (a golden one
+## now and then), the rare ones likelier, everything bigger.
+func test_free_branches_and_nights() -> void:
+	reset_progress()
+	check(camp().branches_of("coast").map(func(l): return l.id) == ["5-1", "5-2", "5-3", "5-4"]
+		and camp().branches_of("").size() == 5, "each map's branches")
+	check(DepartChooser.branch_open("") and not DepartChooser.branch_open("5-1"), "a branch open once cleared in the story")
+	Profile.record_level("5-1", [true, false, false], 100.0)
+	check(DepartChooser.branch_open("5-1"), "5-1 cleared: open")
+	camp().begin_free([], "coast", "5-1")
+	check(camp().free_branch == "5-1" and camp().rules.map == "S" and FishData.branch_fish == ["moon_jack"]
+		and str(camp().rules.tutorial) == "" and not camp().rules.safe and not camp().is_level() and camp().free_event.is_empty(),
+		"fishing 5-1 freely: its map and own fish, no lesson, no stars, no night of its own")
+	# The nights.
+	camp().set_event("storm", "", "carp")
+	check(FishData.storm_fish == "carp" and str(camp().free_event.name) == "鯉魚風暴", "鯉魚風暴")
+	var carp := 0
+	for _i in 400:
+		if FishData.pool_for("forest", "common", "common") == ["carp"]:
+			carp += 1
+	check(carp > 180 and carp < 300, "most everyday catches the storm's (%d/400)" % carp)
+	var gold := FishData.icon_of({"id": "carp", "name": "鯉魚", "golden": true})
+	check(gold != null and gold != FishData.icon("carp"), "a golden one's picture in gold")
+	camp().set_event("big", "")
+	var big := 0.0
+	var plain := 0.0
+	for _i in 200:
+		big += float(FishData.measure("carp", "small").length)
+	FishData.size_mult = 1.0
+	for _i in 200:
+		plain += float(FishData.measure("carp", "small").length)
+	check(big > plain * 1.15, "巨物之夜: bigger (%.0f vs %.0f)" % [big / 200.0, plain / 200.0])
+	camp().set_event("rare", "")
+	check(is_equal_approx(FishData.rare_mult, 2.0) and FishData.storm_fish == "", "暗潮之夜: the rare ones twice as likely")
+	camp().begin_level("1-1")
+	check(camp().free_event.is_empty() and FishData.rare_mult == 1.0 and FishData.storm_fish == "", "a level: no night of its own")
+	# Rolled on the free run when they're on (off for the tests' own runs).
+	Campaign.free_events = true
+	var nights := 0
+	for _i in 200:
+		camp().begin_free([], "")
+		if not camp().free_event.is_empty():
+			nights += 1
+	Campaign.free_events = false
+	camp().clear()
+	check(nights > 30 and nights < 95, "now and then a night of its own (%d/200)" % nights)
 
 
 func test_surf() -> void:

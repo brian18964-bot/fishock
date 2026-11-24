@@ -103,7 +103,7 @@ static func _untouchable(n: Node) -> void:
 
 
 func show_catch(fish: Dictionary, legend: bool) -> void:
-	var tex := FishData.icon(fish.get("id", ""), fish.get("name", ""))
+	var tex := FishData.icon_of(fish)
 	if tex == null:
 		return
 	var shown := fish.duplicate()
@@ -116,6 +116,13 @@ func show_catch(fish: Dictionary, legend: bool) -> void:
 	_name.add_theme_color_override("font_color", UiKit.rarity_color(rarity))
 	_kicker.text = "傳說漁獲！" if rarity == "legend" else ("%s漁獲" % UiKit.rarity_name(rarity))
 	_kicker.add_theme_color_override("font_color", UiKit.rarity_color(rarity) if rarity != "common" else UiKit.DIM)
+	var golden: bool = fish.get("golden", false)
+	if golden:
+		# (user request - free mode's storms: a golden one, called out in gold)
+		_name.text = "金色" + _name.text
+		_name.add_theme_color_override("font_color", FishData.GOLD)
+		_kicker.text = "金色漁獲！"
+		_kicker.add_theme_color_override("font_color", FishData.GOLD)
 	var size: String = Inventory.SIZE_NAMES.get(fish.get("size", "small"), "")
 	_info.text = "%s型・價值 %.0f" % [size, float(fish.get("value", 0.0))]
 	var extra := FishData.size_text(fish)
@@ -141,6 +148,10 @@ func show_catch(fish: Dictionary, legend: bool) -> void:
 	_edge_color = Color(UiKit.rarity_color(rarity), 0.95) if rarity != "common" else Color(0, 0, 0, 0)
 	_glow.modulate = Color(UiKit.rarity_color(rarity), 0.0)
 	var glow_a: float = GLOW.get(rarity, 0.0)
+	if golden:
+		_edge_color = Color(FishData.GOLD, 0.95)
+		_glow.modulate = Color(FishData.GOLD, 0.0)
+		glow_a = maxf(glow_a, float(GLOW.get("epic", 0.5)))
 	_panel.queue_redraw()
 	_panel.reset_size()
 	var view := get_viewport().get_visible_rect().size
@@ -194,7 +205,7 @@ class FishSlot extends Control:
 	func _draw() -> void:
 		var r := Rect2(Vector2.ZERO, size)
 		UiKit.draw_slot(self, r, UiKit.fish_rarity(fish))
-		var tex := FishData.icon(fish.get("id", ""), fish.get("name", ""))
+		var tex := FishData.icon_of(fish)
 		if tex == null:
 			return
 		var room := r.grow(-5.0)

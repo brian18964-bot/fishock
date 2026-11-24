@@ -53,7 +53,7 @@ static func items(player: Node) -> Array:
 		out.append({"kind": "fish", "label": fish.get("name", "魚"), "count": 0,
 			"size": rotated(SIZES[size], bool(fish.get("rot", false))), "rot": bool(fish.get("rot", false)), "index": i, "rotten": fish.get("rotten", false),
 			"dead": fish.get("dead", false), "grade": SIZE_NAMES[size],
-			"id": fish.get("id", "")})
+			"id": fish.get("id", ""), "golden": fish.get("golden", false)})
 		# (set down where the player put it at home: kept there if it fits)
 		var c = fish.get("cell")
 		if c is Array and c.size() == 2:

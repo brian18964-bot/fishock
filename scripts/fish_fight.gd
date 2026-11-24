@@ -485,6 +485,11 @@ var _run_dir := Vector2.ZERO
 var _dive_dir := Vector2.ZERO
 var _snag_dir := Vector2.ZERO
 var _rally_dir := Vector2.ZERO
+## User request (the story's lessons): whether the fish's moves ask a way of the angler - the arrow,
+## the flick against it (反甩, its 刺！). Off before the story's lesson for it (Campaign.taught("fight")):
+## the fish only runs and leaps - no sideways dash, no dash for cover or into the weed, nothing asked,
+## nothing missed.
+var prompts := true
 ## The field (see above): on, where the snag is (if there is one), the line's fray.
 var field := false
 var snag_on := false
@@ -549,6 +554,8 @@ func line_way() -> Vector2:
 
 ## Is a way being asked now (the move on has a window still to answer in)?
 func prompt_active() -> bool:
+	if not prompts:
+		return false
 	if cur_move == "side":
 		return swipe_left > 0.0 and run_side != Vector2.ZERO
 	return cur_move != "" and not move_done and answer_left > 0.0 and pull_dir != Vector2.ZERO
@@ -887,7 +894,7 @@ func update(delta: float, reel: Variant, counter: Vector2, line_dir: Vector2, re
 ## The window of the move on (see above): a push the whole way against the pull, fresh -
 ## the move's broken; the window out, it's let go.
 func _resolve_prompt(delta: float, counter: Vector2, events: Array) -> void:
-	if cur_move == "" or cur_move == "side" or move_done or pull_dir == Vector2.ZERO:
+	if not prompts or cur_move == "" or cur_move == "side" or move_done or pull_dir == Vector2.ZERO:
 		return
 	answer_left -= delta
 	var against := counter.length() >= SWIPE_FULL and counter.normalized().dot(-pull_dir) > SWIPE_THRESHOLD
@@ -1206,7 +1213,7 @@ func _schedule(delta: float, line_dir: Vector2) -> Array:
 	var events := []
 	if planned:
 		return _schedule_planned(delta, line_dir)
-	if habit == "cover":
+	if habit == "cover" and prompts:
 		_dive_timer -= delta
 		if _dive_timer <= 0.0:
 			dive_active = true
@@ -1228,7 +1235,7 @@ func _schedule(delta: float, line_dir: Vector2) -> Array:
 		var interval: Vector2 = diff.run_interval * (ENRAGE_INTERVAL if enraged else 1.0)
 		_run_timer = randf_range(interval.x, interval.y)
 		run_left = maxf(maxf(float(diff.run_time), RUN_MIN_TIME), swipe_window() + 0.2)
-		if randf() < diff.side and line_dir != Vector2.ZERO:
+		if prompts and randf() < diff.side and line_dir != Vector2.ZERO:
 			_run_sign = 1.0 if randf() < 0.5 else -1.0
 			run_side = line_dir.rotated(_run_sign * (PI * 0.5 + randf_range(-SIDE_ARC, SIDE_ARC)))
 			# Long enough to answer with a flick.
@@ -1252,11 +1259,11 @@ func _schedule_planned(delta: float, line_dir: Vector2) -> Array:
 	if moves_left <= 0 or _move_timer > 0.0:
 		return events
 	var weights := {"dash": 1.0}
-	if line_dir != Vector2.ZERO:
+	if line_dir != Vector2.ZERO and prompts:
 		weights["side"] = float(diff.side) * 1.5
 	if _jump_cooldown <= 0.0:
 		weights["leap"] = (0.2 + float(diff.jump) * 3.0) * (JUMPER_JUMP_MULT if habit == "jumper" else 1.0)
-	if habit == "cover":
+	if habit == "cover" and prompts:
 		weights["dive"] = 1.4
 	var total := 0.0
 	for k in weights:
@@ -1405,7 +1412,7 @@ func in_snag() -> bool:
 
 ## Where the snag is, picked at the strike: beyond or short of where it took the bait.
 func _place_snag() -> void:
-	snag_on = field and (habit == "cover" or randf() < SNAG_CHANCE)
+	snag_on = field and prompts and (habit == "cover" or randf() < SNAG_CHANCE)
 	if not snag_on:
 		return
 	var centre := clampf(home + randf_range(3.0, 8.0) * (1.0 if randf() < 0.7 else -1.0), 6.0, line_max * 0.62)

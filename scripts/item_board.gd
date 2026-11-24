@@ -188,7 +188,7 @@ func _start_drag() -> void:
 	_ghost.texture = square if square != null else Items.icon(_press.id)
 	if _press.get("from", "") in ["pack_fish", "stash_fish"]:
 		var fish := ItemBoard.fish_of(_press)
-		_ghost.texture = FishData.icon(fish.get("id", ""), fish.get("name", ""))
+		_ghost.texture = FishData.icon_of(fish)
 	_ghost.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_ghost.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_ghost.size = Vector2.ONE * 64.0
@@ -443,7 +443,7 @@ func fish_card(source: Dictionary) -> void:
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 12)
 	var pic := TextureRect.new()
-	pic.texture = FishData.icon(f.get("id", ""), f.get("name", ""))
+	pic.texture = FishData.icon_of(f)
 	pic.custom_minimum_size = Vector2(110, 60)
 	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
@@ -658,7 +658,7 @@ static func draw_fish_slot(ci: CanvasItem, r: Rect2, f: Dictionary) -> void:
 static func _draw_fish_slot(ci: CanvasItem, r: Rect2, f: Dictionary) -> void:
 	UiKit.draw_slot(ci, r, UiKit.fish_rarity(f))
 	var tint := Color(0.55, 0.5, 0.35) if FishLife.state(f) == "rotten" else (Color(0.75, 0.78, 0.8) if FishLife.state(f) == "dead" else Color.WHITE)
-	UiKit.draw_fish_fit(ci, r.grow(-4.0), FishData.icon(f.get("id", ""), f.get("name", "")), tint)
+	UiKit.draw_fish_fit(ci, r.grow(-4.0), FishData.icon_of(f), tint)
 	var bar := FishLife.bar(f)
 	var strip := Rect2(Vector2(r.position.x + 4.0, r.end.y - 8.0), Vector2(r.size.x - 8.0, 4.0))
 	ci.draw_rect(strip, Color(0, 0, 0, 0.65))

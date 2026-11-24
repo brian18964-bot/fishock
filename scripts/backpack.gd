@@ -570,7 +570,7 @@ func _card_head(item: Dictionary) -> void:
 	var id: String = item.get("item", "")
 	var tex: Texture2D = null
 	if item.kind == "fish":
-		tex = FishData.icon(item.get("id", ""), item.label)
+		tex = FishData.icon_of({"id": item.get("id", ""), "name": item.label, "golden": item.get("golden", false)})
 	elif id != "":
 		tex = Items.square_icon(id)
 		if tex == null:
@@ -639,7 +639,7 @@ func drag_start(item: Dictionary, grab := Vector2i.ZERO) -> void:
 	var id: String = item.get("item", "")
 	var square := Items.square_icon(id) if id != "" else null
 	if item.kind == "fish":
-		_ghost.texture = FishData.icon(item.get("id", ""), item.label)
+		_ghost.texture = FishData.icon_of({"id": item.get("id", ""), "name": item.label, "golden": item.get("golden", false)})
 	else:
 		_ghost.texture = square if square != null else Items.icon(id)
 	_ghost.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -1166,7 +1166,7 @@ class GridView extends Control:
 				draw_texture_rect(UiKit.glow(), inner, false, Color(col.lightened(0.3), 0.4))
 			if item.kind == "fish":
 				# Its picture, filling the cells it takes (turned up in a standing one).
-				var tex := FishData.icon(item.get("id", ""), item.label)
+				var tex := FishData.icon_of({"id": item.get("id", ""), "name": item.label, "golden": item.get("golden", false)})
 				if tex != null:
 					UiKit.draw_fish_fit(self, inner.grow(-2.0), tex, Color(0.55, 0.5, 0.35) if item.get("rotten", false) \
 						else (Color(0.75, 0.78, 0.8) if item.get("dead", false) else Color.WHITE))

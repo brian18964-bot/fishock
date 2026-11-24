@@ -422,6 +422,13 @@ static func screen_point(vp: Viewport, world: Vector2, lift := 0.0) -> Vector2:
 	return active.camera.unproject_position(to3(world, active.ground_y(world) + lift))
 
 
+## Is the 2D world point `world` behind the 3D camera (its screen point then meaningless)?
+static func behind_camera(world: Vector2) -> bool:
+	if active == null or not is_instance_valid(active) or active.camera == null:
+		return false
+	return active.camera.is_position_behind(to3(world, active.ground_y(world)))
+
+
 ## The 2D world point under the mouse (the ground it points at).
 static func mouse_world(vp: Viewport, fallback: Vector2) -> Vector2:
 	if active == null or not is_instance_valid(active) or active.camera == null:
@@ -3972,6 +3979,8 @@ func _show_landed(fish: Dictionary) -> void:
 	var skin_path: String = FishModel.SKINS % species
 	mat.set_shader_parameter("skin", load(skin_path) if ResourceLoader.exists(skin_path) else null)
 	mat.set_shader_parameter("sway", 0.085)
+	# (a golden one - free mode's storms - comes up in gold)
+	mat.set_shader_parameter("gold", 1.0 if fish.get("golden", false) else 0.0)
 	body.material_override = mat
 	add_child(body)
 	var box := mesh.get_aabb()

@@ -679,9 +679,9 @@ func depart_level(id: String) -> void:
 	_on_solo()
 
 
-func depart_free(curses: Array = [], theme := "") -> void:
+func depart_free(curses: Array = [], theme := "", branch := "") -> void:
 	close_page()
-	Campaign.begin_free(curses, theme)
+	Campaign.begin_free(curses, theme, branch)
 	_on_solo()
 
 
@@ -894,7 +894,7 @@ class EntryIcon extends Control:
 			"fish_tank":
 				var fish: Dictionary = Profile.tank[0] if not Profile.tank.is_empty() else {"id": "carp", "name": "鯉魚"}
 				UiKit.draw_slot(self, r, UiKit.fish_rarity(fish))
-				var ft := FishData.icon(fish.get("id", ""), fish.get("name", ""))
+				var ft := FishData.icon_of(fish)
 				_pic(r, ft)
 				return
 		if _tex == null and icon_path != "":

@@ -520,7 +520,7 @@ func _sell_cards() -> void:
 					func(): _buy_back(idx), _grid)
 			else:
 				var f: Dictionary = e.fish
-				_card("sold_%d" % i, FishData.icon(f.get("id", ""), f.get("name", "")), f.get("name", "魚"), "買回",
+				_card("sold_%d" % i, FishData.icon_of(f), f.get("name", "魚"), "買回",
 					int(e.gold), func(): _buy_back(idx), _grid)
 	_fill_sell_pane()
 
@@ -596,7 +596,7 @@ func _fill_sell_pane() -> void:
 		var idx := i
 		var fb := FishLife.bar(f)
 		var sub := "腐敗了" if FishLife.state(f) == "rotten" else "%s %d%%" % [fb.label, roundi(float(fb.share) * 100.0)]
-		_card("fish_%s_%d" % [place, i], FishData.icon(f.get("id", ""), f.get("name", "")), f.get("name", "魚"), sub,
+		_card("fish_%s_%d" % [place, i], FishData.icon_of(f), f.get("name", "魚"), sub,
 			FishLife.sale_value(f), func(): _sell_modal({"from": "fish", "list": place, "index": idx}), cards)
 	if not any:
 		var none := UiKit.label("這裡沒有可以賣的東西。", 16, UiKit.DIM)
@@ -799,7 +799,7 @@ func _fish_sale(source: Dictionary, col: VBoxContainer, buttons: HBoxContainer) 
 	head.add_theme_constant_override("separation", 12)
 	var pic := WareIcon.new()
 	pic.rarity = UiKit.fish_rarity(f)
-	pic.texture = FishData.icon(f.get("id", ""), f.get("name", ""))
+	pic.texture = FishData.icon_of(f)
 	pic.custom_minimum_size = Vector2(76, 76)
 	head.add_child(pic)
 	var words := VBoxContainer.new()

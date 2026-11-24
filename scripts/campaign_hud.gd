@@ -26,6 +26,12 @@ const BOX_PAD := 10.0
 const MEDAL := 40.0
 ## A step that's already done still shows this long before the next.
 const MIN_SHOW := 1.4
+## User request: Willow's line in the middle of the screen fades after a while - the guide arrow
+## stays. Shown BOX_HOLD s, then gone over BOX_FADE s (a new line shows again). Her word on a lesson
+## come up (Campaign.aside) the same, ASIDE_HOLD s.
+const BOX_HOLD := 8.0
+const BOX_FADE := 1.0
+const ASIDE_HOLD := 9.0
 const BANNER_TIME := 4.0
 const CH_NUM := ["一", "二", "三", "四", "五", "六"]
 const STAR_ON := Color(1.0, 0.82, 0.3)
@@ -35,12 +41,17 @@ const BAD := Color(1.0, 0.55, 0.45)
 const ARROW := Color(1.0, 0.86, 0.4)
 ## How far from the player an off-screen target's arrow circles.
 const ORBIT := 74.0
+## How far toward an off-screen target (px in the world) its way is read at.
+const ARROW_STEP := 90.0
 
 var steps: Array = []
 var step := -1
 var _step_time := 0.0
 var _box_alpha := 0.0
 var _t := 0.0
+## Willow's word on a lesson, showing (Campaign.aside_text), and how long it has been.
+var _aside := ""
+var _aside_time := 0.0
 var _level: Dictionary
 var _view: Node2D
 
@@ -83,15 +94,31 @@ func _process(delta: float) -> void:
 		_box_alpha = minf(1.0, _box_alpha + delta * 3.0)
 		if _step_time >= MIN_SHOW and _step_done(steps[step]):
 			_next_step()
+	if Campaign.aside_text != "":
+		_aside = Campaign.aside_text
+		_aside_time = 0.0
+		Campaign.aside_text = ""
+	if _aside != "":
+		_aside_time += delta
+		if _aside_time >= ASIDE_HOLD + BOX_FADE:
+			_aside = ""
 	_view.queue_redraw()
+
+
+## How much of Willow's line shows now: in, held BOX_HOLD s, out.
+static func hold_alpha(shown: float, hold: float) -> float:
+	return clampf(minf(shown * 3.0, (hold + BOX_FADE - shown) / BOX_FADE), 0.0, 1.0)
 
 
 func _draw_all() -> void:
 	if GameState.run_over:
 		return
 	_draw_panel()
+	if _aside != "":
+		_draw_box([_aside, {}, ""], hold_alpha(_aside_time, ASIDE_HOLD), false)
 	if step < steps.size():
-		_draw_box(steps[step])
+		if _aside == "":
+			_draw_box(steps[step], hold_alpha(_step_time, BOX_HOLD) * _box_alpha)
 		var where := str(steps[step][2])
 		if where != "":
 			_draw_arrow(Campaign.target(where))
@@ -165,7 +192,9 @@ func _star(c: Vector2, r: float, color: Color) -> void:
 
 # ---------------------------------------------------------------- Willow's line
 
-func _draw_box(s: Array) -> void:
+func _draw_box(s: Array, a := 1.0, counted := true) -> void:
+	if a <= 0.0:
+		return
 	var text := Campaign.say(str(s[0]))
 	var font := UiKit.font()
 	var lines := 1 if font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x <= BOX_W - MEDAL - 30.0 else 2
@@ -175,7 +204,6 @@ func _draw_box(s: Array) -> void:
 	if Campaign._player != null and Campaign._player.state == Player.State.REELING:
 		y = BOX_Y_FIGHT
 	var r := Rect2(480.0 - BOX_W / 2.0, y, BOX_W, h)
-	var a := _box_alpha
 	_view.draw_rect(r, Color(0.05, 0.04, 0.03, 0.82 * a))
 	_view.draw_rect(r, Color(0.62, 0.46, 0.17, 0.9 * a), false, 1.5)
 	var medal_c := r.position + Vector2(BOX_PAD + MEDAL / 2.0, h / 2.0)
@@ -189,8 +217,9 @@ func _draw_box(s: Array) -> void:
 	_view.draw_multiline_string(font, Vector2(tx, r.position.y + 22.0 + (h - 16.0 - lines * 20.0) / 2.0), text,
 		HORIZONTAL_ALIGNMENT_LEFT, width, 15, 2, Color(UiKit.TEXT, a))
 	# Which line of how many.
-	UiKit.draw_text(_view, Vector2(r.position.x, r.end.y + 13.0), "%d / %d" % [step + 1, steps.size()], 11,
-		Color(UiKit.DIM, a), HORIZONTAL_ALIGNMENT_RIGHT, BOX_W - 6.0)
+	if counted:
+		UiKit.draw_text(_view, Vector2(r.position.x, r.end.y + 13.0), "%d / %d" % [step + 1, steps.size()], 11,
+			Color(UiKit.DIM, a), HORIZONTAL_ALIGNMENT_RIGHT, BOX_W - 6.0)
 
 
 # ---------------------------------------------------------------- the arrow
@@ -202,7 +231,7 @@ func _draw_arrow(world: Vector2) -> void:
 	var screen: Vector2 = RunView3D.screen_point(vp, world)
 	var size := vp.get_visible_rect().size
 	var bob := sin(_t * 4.0) * 5.0
-	if Rect2(Vector2.ZERO, size).grow(-20.0).has_point(screen):
+	if not RunView3D.behind_camera(world) and Rect2(Vector2.ZERO, size).grow(-20.0).has_point(screen):
 		# Over it, pointing down - and (user request: the way plainer) a ring on the ground there,
 		# widening and fading, again and again.
 		for k in 2:
@@ -213,10 +242,21 @@ func _draw_arrow(world: Vector2) -> void:
 			_view.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		_chevron(screen + Vector2(0, -46.0 + bob), Vector2.DOWN, 1.5)
 		return
-	# Off screen: circling the player, pointing its way.
-	var me: Vector2 = RunView3D.screen_point(vp, Campaign._player.global_position)
-	var dir := (screen - me).normalized()
+	# Off screen: circling the player, pointing its way. (user report: after the offering, the way to
+	# the stones pointed off at the forest's edge until walked back a little - the stones far down
+	# the screen were behind the tilted camera, and a point behind it comes out mirrored: the way is
+	# read off a point a short step from the player toward it, always in front)
+	var from: Vector2 = Campaign._player.global_position
+	var me: Vector2 = RunView3D.screen_point(vp, from)
+	var dir := way_on_screen(vp, from, world)
 	_chevron(me + Vector2(0, -16) + dir * (ORBIT + bob), dir, 1.6)
+
+
+## The way on screen from `from` toward `to` (2D world points), read a short step toward it.
+static func way_on_screen(vp: Viewport, from: Vector2, to: Vector2) -> Vector2:
+	var me: Vector2 = RunView3D.screen_point(vp, from)
+	var step_to := from + (to - from).limit_length(ARROW_STEP)
+	return (RunView3D.screen_point(vp, step_to) - me).normalized()
 
 
 func _chevron(tip_side: Vector2, dir: Vector2, s: float) -> void:

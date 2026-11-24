@@ -72,17 +72,17 @@ const LEVELS := [
 		"rules": {"bait": 2, "night_fails": true, "safe": true, "theme": "forest_pine", "map": "M", "ponds": [4, 0], "day": 240.0, "quota": 10.0, "drain": 0.5, "ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": [["CLEAR", 90.0], ["FOG", 60.0], "mild"], "rocks": [14, 18], "critters": 4, "hotspot": false, "escalate": false, "evil": false, "tutorial": "bait", "hide": ["lure", "quick", "energy", "lamp"], "mods": {"rocks": 6, "trees": 16, "animals": {"fox": 1.0, "deer": 1.0}}, "fish": ["char"], "fish_epic": []},
 		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到紅點鮭"}, {"stat": "flip_rock", "text": "翻開 3 塊石頭找活餌", "min": 3}],
 		"reward": {"gold": 100}},
-	{"id": "1-3", "chapter": 1, "name": "霧沼林緣", "teach": "煤燈與夜晚",
+	{"id": "1-3", "chapter": 1, "name": "霧沼林緣", "teach": "煤燈與夜晚、反甩（搏魚時往箭頭方向甩）",
 		"intro": "林緣的沼澤，水窪一個接一個，蘆葦和睡蓮長滿水面。霧常常湧上來。",
 		"rules": {"night_fails": true, "safe": true, "theme": "forest_pine", "map": "L", "ponds": [6, 1], "day": 300.0, "quota": 18.0, "ghosts": 1, "meddle": 2, "big_ghost": false, "water_ghost": 1.6, "hunters": false, "weather": "foggy", "critters": 10, "escalate": false, "evil": false, "tutorial": "lamp", "hide": ["lure", "quick"], "mods": {"shore_extras": {"reeds": 0.3, "lilypad": 0.12, "driftwood": 0.05}, "trees": 22}, "fish": ["swamp_eel", "betta"], "fish_epic": []},
 		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到黃鱔或鬥魚"}, {"stat": "water_ghost_hit", "text": "不被水鬼拉到", "max": 0}],
 		"reward": {"gold": 130, "items": {"battery": 2}}},
-	{"id": "1-4", "chapter": 1, "name": "雙子湖", "teach": "小鬼",
+	{"id": "1-4", "chapter": 1, "name": "雙子湖", "teach": "小鬼、發光蘑菇",
 		"intro": "兩座深湖之間的林地。鹿群在湖邊，狼在林子裡。魚群湧現時要把握。",
 		"rules": {"night_fails": true, "theme": "forest_pine", "map": "L", "ponds": [2, 1], "day": 300.0, "quota": 26.0, "ghosts": 1, "meddle": 3, "big_ghost": false, "weather": {"FISH_RUN": 0.35, "FOG": 0.12, "DRIZZLE": 0.12}, "critters": 6, "escalate": false, "tutorial": "ghost", "hide": ["lure"], "mods": {"animals": {"deer": 2.5, "stag": 1.5, "wolf": 0.8}}, "fish": [], "fish_epic": ["wels"]},
 		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到巨型鯰魚"}, {"stat": "catch_rare", "text": "一晚釣到 2 條稀有魚", "min": 2}],
 		"reward": {"gold": 170}},
-	{"id": "1-5", "chapter": 1, "name": "深林大湖", "teach": "路亞與大鬼",
+	{"id": "1-5", "chapter": 1, "name": "深林大湖", "teach": "路亞與大鬼、魚氧樹",
 		"intro": "森林最深處的一座巨湖，四周散著小池。暴雨、狼群，還有醒過來的大鬼。",
 		"rules": {"theme": "forest_pine", "map": "XL", "ponds": [4, 1], "day": 360.0, "quota": 35.0, "ghosts": 2, "meddle": 4, "big_ghost": true, "weather": "stormy", "critters": 4, "tutorial": "lure", "hide": [], "mods": {"animals": {"deer": 1.5, "wolf": 1.6, "fox": 1.0}}, "fish": [], "fish_epic": ["alligator_gar"]},
 		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到鱷雀鱔"}, {"stat": "evil", "text": "達標後留下來獻祭一次", "min": 1}],
@@ -107,7 +107,7 @@ const LEVELS := [
 		"rules": {"theme": "autumn", "map": "XL", "ponds": [5, 1], "day": 360.0, "quota": 34.0, "ghosts": 3, "meddle": 5, "big_ghost": true, "big_wake": 1, "weather": "stormy", "critters": 4, "tutorial": "big_ghost", "fish": ["bowfin"], "fish_epic": ["ghost_fish"]},
 		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到弓鰭魚或幽靈魚"}, {"stat": "species_both", "text": "兩種獨有魚都釣到", "min": 2}],
 		"reward": {"gold": 280, "items": {"lure_rainbow": 2}}},
-	{"id": "3-1", "chapter": 3, "name": "冰緣小潭", "teach": "營火的燈油",
+	{"id": "3-1", "chapter": 3, "name": "冰緣小潭", "teach": "營火的燈油、冷凍花",
 		"intro": "兩個小池，冰緣很寬，能下竿的水面不多。冷，但很安靜。",
 		"rules": {"night_fails": true, "theme": "snow_pine", "map": "S", "ponds": [2, 0], "day": 240.0, "quota": 12.0, "ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear", "critters": 2, "rocks": [10, 12], "escalate": false, "evil": false, "tutorial": "oil", "fish": ["sculpin"], "fish_epic": []},
 		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到杜父魚"}, {"stat": "oil_delivered", "text": "幫營火加過燈油", "min": 1}],
@@ -380,6 +380,41 @@ const TUTORIALS := {
 	],
 }
 
+## User request (the story's lessons): what the story teaches isn't there to use before its lesson -
+## seen, not used. The level each is taught in: bait - catching critters, turning rocks (the bait
+## tutorial); fight - the arrow and the flick in a fight (反甩, its 刺！; FishFight.prompts); mushroom -
+## picking the glow mushrooms; oxy - picking 魚氧樹; frost - digging under a frost flower. Before
+## its level, a level has it not; the free run (after the story's first map) has them all.
+const LESSONS := {"bait": "1-2", "fight": "1-3", "mushroom": "1-4", "oxy": "1-5", "frost": "3-1"}
+## What Willow says of each, the first time it comes up in its lesson's level (aside()): a fight's
+## first arrow; one of the things near enough (ASIDE_NEAR px) to see.
+const ASIDES := {
+	"fight": "魚猛衝時會出現箭頭：{swipe}，就能刺中牠，扣牠一大截體力！來不及也沒關係，先放手讓牠跑。",
+	"mushroom": "樹下發藍光的是發光蘑菇，走過去{act}「採集」。撒在身上會發光一陣子，照亮身邊。",
+	"oxy": "水邊冒著小氣泡的是魚氧樹，走過去{act}「採集」。塗在背包裡魚的鰓上，魚能活得久一點。",
+	"frost": "冷凍花根部的土很冰。帶著鏟子{act}「挖掘」，用在背包裡的魚身上，能保鮮更久。",
+}
+const ASIDE_GROUP := {"mushroom": "glow_mushrooms", "oxy": "oxy_tree", "frost": "frost_flowers"}
+const ASIDE_NEAR := 150.0
+
+## User request (free mode's nights, "you can dream them up"): a free run on a map made at random is
+## now and then (FREE_EVENT_CHANCE) a night of its own, by weight - a storm of one everyday kind (most
+## of what bites is it, now and then a golden one: FishData.storm_fish), 暗潮之夜 (the rare ones twice
+## as likely: FishData.rare_mult), 巨物之夜 (everything bigger: FishData.size_mult). Said as the run
+## starts and kept under the clock.
+const FREE_EVENT_CHANCE := 0.3
+## (off, no night of its own is rolled - the tests, whose runs are their own)
+static var free_events := true
+const FREE_EVENTS := {
+	"storm": {"weight": 0.5, "say": "今晚是「%s」：到處都是%s，運氣好還會釣到金色的！"},
+	"rare": {"weight": 0.25, "name": "暗潮之夜", "rare": 2.0, "say": "今晚暗潮湧動：稀有的魚上鉤的機會加倍！"},
+	"big": {"weight": 0.25, "name": "巨物之夜", "size": 1.25, "say": "今晚水裡的魚都特別大！"},
+}
+## This free run's branch (a level's id; "" a map made at random) and its night (FREE_EVENTS: kind,
+## name, what's said, the storm's fish; {} none).
+var free_branch := ""
+var free_event: Dictionary = {}
+
 ## The controls' words: [touchscreen, keyboard].
 const CONTROLS := {
 	"move": ["左搖桿", "WASD"],
@@ -392,7 +427,7 @@ const CONTROLS := {
 	"flash": ["按住燈的按鈕蓄力、放開", "按住 F 蓄力、放開"],
 	"mode": ["點左上角的人物卡打開背包，在背包裡切換", "按 Tab"],
 	"lure": ["點「誘惑」選魚，再按住往遠處拖、放開", "按 G 選魚，再按住 G、放開"],
-	"swipe": ["右搖桿往反方向一甩", "往反方向按方向鍵（WASD）"],
+	"swipe": ["往箭頭的方向甩一下右搖桿", "往箭頭的方向按方向鍵（WASD）"],
 }
 
 ## What's being played: a level's id, or "" (the free run).
@@ -409,6 +444,11 @@ var _first_cast_pending := false
 var _species := {}
 var _weather_plan: Array = []
 var _brightness0 := -1.0
+## Willow's word on a lesson just come up (ASIDES; CampaignHud shows it a while), and the lessons
+## spoken of this run.
+var aside_text := ""
+var _asides_said := {}
+var _aside_poll := 0.0
 
 
 func _ready() -> void:
@@ -487,6 +527,8 @@ static func danger(r: Dictionary) -> int:
 func begin_level(id: String) -> void:
 	level_id = id
 	curses = []
+	free_branch = ""
+	_clear_event()
 	rules = rules_for(id)
 	# (no bait comes free with the bag any more: a level without its own count hands out a
 	# full bait box, so the first rod of the tutorial can be cast)
@@ -498,14 +540,28 @@ func begin_level(id: String) -> void:
 	GameState.reset_run()
 
 
-## Plays the free run next, with these curses (CURSES keys).
-func begin_free(chosen: Array = [], theme := "") -> void:
+## Plays the free run next, with these curses (CURSES keys) - on a map of style `theme` made at random
+## (now and then a night of its own: FREE_EVENTS), or (user request: the branches' own fish to be
+## collected) in the story's branch `branch`: its map, its waters, its weather, its dangers and its own
+## fish, but no stars, no lesson, nothing kept back.
+func begin_free(chosen: Array = [], theme := "", branch := "") -> void:
 	level_id = ""
 	curses = chosen.duplicate()
 	rules = DEFAULT_RULES.duplicate(true)
 	rules.theme = theme
 	FishData.branch_fish = []
 	FishData.branch_epic = []
+	_clear_event()
+	free_branch = branch if not level(branch).is_empty() else ""
+	if free_branch != "":
+		var own := rules_for(free_branch)
+		for k in own:
+			if not k in ["tutorial", "hide", "safe", "gift", "bait"]:
+				rules[k] = own[k]
+		FishData.branch_fish = own.get("fish", []).duplicate()
+		FishData.branch_epic = own.get("fish_epic", []).duplicate()
+	elif free_events and randf() < FREE_EVENT_CHANCE:
+		_roll_event(theme)
 	for c in curses:
 		match c:
 			"fog":
@@ -530,6 +586,8 @@ func begin_free(chosen: Array = [], theme := "") -> void:
 func clear() -> void:
 	level_id = ""
 	curses = []
+	free_branch = ""
+	_clear_event()
 	FishData.branch_fish = []
 	FishData.branch_epic = []
 	rules = DEFAULT_RULES.duplicate(true)
@@ -538,6 +596,87 @@ func clear() -> void:
 
 func is_level() -> bool:
 	return level_id != ""
+
+
+## A night of its own for this free run (FREE_EVENTS), by weight; a storm's kind from the map's
+## everyday fish.
+func _roll_event(theme: String) -> void:
+	var total := 0.0
+	for k in FREE_EVENTS:
+		total += float(FREE_EVENTS[k].weight)
+	var roll := randf() * total
+	var kind := "storm"
+	for k in FREE_EVENTS:
+		roll -= float(FREE_EVENTS[k].weight)
+		if roll <= 0.0:
+			kind = k
+			break
+	set_event(kind, theme)
+
+
+## Sets this run's night to `kind` (FREE_EVENTS) on a map of style `theme`; `fish` the storm's kind
+## (else one picked from the map's everyday fish).
+func set_event(kind: String, theme: String, fish := "") -> void:
+	_clear_event()
+	var e: Dictionary = FREE_EVENTS.get(kind, {})
+	if e.is_empty():
+		return
+	free_event = {"kind": kind}
+	match kind:
+		"storm":
+			var waters := FishData.waters_for_theme(theme if theme != "" else MapGenerator.THEME)
+			var pool: Array = FishData.SEA_COMMON if waters == "sea" else FishData.COMMON_FRESH + FishData.STYLE_FISH.get(waters, FishData.STYLE_FISH.forest)[0]
+			if fish == "":
+				fish = str(pool.pick_random())
+			var fish_name: String = FishData.FISH[fish].name
+			FishData.storm_fish = fish
+			free_event["fish"] = fish
+			free_event["name"] = "%s風暴" % fish_name
+			free_event["say"] = str(e.say) % [free_event.name, fish_name]
+		_:
+			free_event["name"] = e.name
+			free_event["say"] = e.say
+			FishData.rare_mult = float(e.get("rare", 1.0))
+			FishData.size_mult = float(e.get("size", 1.0))
+
+
+func _clear_event() -> void:
+	free_event = {}
+	FishData.storm_fish = ""
+	FishData.rare_mult = 1.0
+	FishData.size_mult = 1.0
+
+
+## Has the story taught `lesson` (LESSONS) by now: in a level, at its level or after; the free run, yes.
+func taught(lesson: String) -> bool:
+	var at := str(LESSONS.get(lesson, ""))
+	if at == "" or not is_level():
+		return true
+	return level_index(level_id) >= level_index(at)
+
+
+## The story's branches on maps of style `theme` ("" the lakeside forest's): its levels, in order.
+func branches_of(theme: String) -> Array:
+	var t := theme if theme != "" else MapGenerator.THEME
+	return LEVELS.filter(func(l): return str(l.rules.get("theme", "")) == t)
+
+
+## A level's place in the story (LEVELS), -1 if it's none.
+func level_index(id: String) -> int:
+	for i in LEVELS.size():
+		if LEVELS[i].id == id:
+			return i
+	return -1
+
+
+## The lesson `lesson` has come up: in the level that teaches it, the first time, Willow says what it
+## is (ASIDES - with the tutorial's lines off, nothing).
+func aside(lesson: String) -> void:
+	if not is_level() or str(LESSONS.get(lesson, "")) != level_id or _asides_said.has(lesson) or not ASIDES.has(lesson):
+		return
+	_asides_said[lesson] = true
+	if Profile.settings.get("hints", true):
+		aside_text = str(ASIDES[lesson])
 
 
 ## User request (the first levels' screen): a level shows only the parts of the HUD it has taught so
@@ -582,6 +721,11 @@ func attach(main: Node) -> void:
 	_species = {}
 	_first_cast_pending = true
 	_brightness0 = -1.0
+	aside_text = ""
+	_asides_said = {}
+	if not free_event.is_empty():
+		GameState.push_message(str(free_event.say))
+		GameState.report(str(free_event.name), "good")
 	if rules.map in ["L", "XL"]:
 		run["big_map"] = 1.0
 	if float(rules.day) > 0.0:
@@ -700,6 +844,17 @@ func _process(delta: float) -> void:
 	var altar: Node2D = _main.get_node_or_null("Altar")
 	if altar != null and _player.global_position.distance_to(altar.global_position) < 90.0:
 		set_stat("near_altar", 1.0)
+	# (this level's lessons of things on the map: one near enough to see, Willow speaks of it)
+	_aside_poll -= delta
+	if _aside_poll <= 0.0 and is_level():
+		_aside_poll = 0.4
+		for lesson in ASIDE_GROUP:
+			if str(LESSONS[lesson]) != level_id or _asides_said.has(lesson):
+				continue
+			for n in _main.get_tree().get_nodes_in_group(ASIDE_GROUP[lesson]):
+				if (n as Node2D).global_position.distance_to(_player.global_position) < ASIDE_NEAR:
+					aside(lesson)
+					break
 	set_stat("light_stage", float(GameState.light_stage()))
 	if GameState.is_night:
 		set_stat("night", 1.0)

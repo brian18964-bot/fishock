@@ -304,6 +304,8 @@ func _on_run_ended(success: bool, message: String) -> void:
 	scroll.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
 	scroll.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	scroll.grow_vertical = Control.GROW_DIRECTION_BOTH
+	# (within the screen however much it says - CampaignResults.fit)
+	CampaignResults.fit.call_deferred(scroll)
 	if GameState.last_cause == "caught":
 		# Taken by the big ghost: it all goes black, then the scroll.
 		shade.color = Color(0, 0, 0, 1)
@@ -435,6 +437,10 @@ class QuotaView extends Control:
 			under = clock
 			if GameState.dragon_out:
 				col = PATROL
+		# (user request - free mode's nights: tonight's, kept under the clock)
+		var night := str(Campaign.free_event.get("name", ""))
+		if night != "" and GameState.day_phase == GameState.DayPhase.FISHING and not GameState.is_night:
+			under = (under + "　" if under != "" else "") + night
 		if under != "":
 			UiKit.draw_text(self, Vector2(0, 42), under, 18, col, HORIZONTAL_ALIGNMENT_CENTER, W, true)
 

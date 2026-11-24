@@ -104,7 +104,7 @@ class Card extends Button:
 		# (a short card leaves out its last line)
 		var compact := size.y < 112.0
 		var low := 24.0 if compact else 38.0
-		var tex := FishData.icon(fish.get("id", ""), fish.get("name", ""))
+		var tex := FishData.icon_of(fish)
 		var pic := Rect2(Vector2(14, 26), Vector2(size.x - 28.0, minf((size.x - 28.0) * 0.5, size.y - 26.0 - low - 14.0)))
 		if tex != null:
 			var k := minf(pic.size.x / tex.get_width(), pic.size.y / tex.get_height())

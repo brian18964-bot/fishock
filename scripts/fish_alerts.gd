@@ -297,7 +297,7 @@ class AlertCard extends Control:
 	func _draw() -> void:
 		draw_style_box(UiKit.frame_box(true), Rect2(Vector2.ZERO, size))
 		var st := FishLife.state(fish)
-		var tex := FishData.icon(fish.get("id", ""), fish.get("name", ""))
+		var tex := FishData.icon_of(fish)
 		var slot := Rect2(Vector2(5, 7), Vector2(34, 34))
 		UiKit.draw_slot(self, slot, UiKit.fish_rarity(fish), false, tex)
 		var name_col := Color.WHITE if st == "alive" else Color(0.75, 0.75, 0.8)

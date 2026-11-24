@@ -198,7 +198,7 @@ func drag_start(fish: Dictionary) -> void:
 	_ghost.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ghost.size = Vector2.ONE * 52.0
 	_ghost.z_index = 70
-	var tex := FishData.icon(fish.get("id", ""), fish.get("name", ""))
+	var tex := FishData.icon_of(fish)
 	_ghost.draw.connect(func():
 		if tex != null:
 			UiKit.draw_fish_fit(_ghost, Rect2(Vector2.ZERO, _ghost.size), tex, Color(1, 1, 1, 0.85)))
@@ -383,7 +383,7 @@ class Tiles extends Control:
 			var f: Dictionary = fish[i]
 			var r: Rect2 = (rects[i] as Rect2).grow(-2.0)
 			UiKit.draw_slot(self, r, UiKit.fish_rarity(f), false, null)
-			var tex := FishData.icon(f.get("id", ""), f.get("name", ""))
+			var tex := FishData.icon_of(f)
 			var inner := r.grow(-4.0)
 			if tex != null:
 				UiKit.draw_fish_fit(self, inner.grow(-2.0), tex, Color(0.75, 0.78, 0.8) if f.get("dead", false) else Color.WHITE)

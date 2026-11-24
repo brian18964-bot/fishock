@@ -15,6 +15,9 @@ uniform vec3 glow_color : source_color = vec3(1.0, 0.8, 0.4);
 // the colours dulled and the sheen gone; rotten: the body going purple or
 // green (`rot` 0..1, `rot_color`), in blotches.
 uniform float dead = 0.0;
+// Golden (user request - free mode's storms: a golden one now and then): the skin turned to gold,
+// its pattern still in it, with a metal's shine.
+uniform float gold = 0.0;
 uniform float rot = 0.0;
 uniform vec3 rot_color : source_color = vec3(0.45, 0.5, 0.2);
 
@@ -48,12 +51,17 @@ void fragment() {
 		float n = 0.55 * blotch(UV * 26.0) + 0.45 * blotch(UV * 70.0);
 		c = mix(c, rot_color * (0.7 + 0.5 * n), clamp(rot * (0.5 + 0.5 * n), 0.0, 0.92));
 	}
+	if (gold > 0.0) {
+		float lum = dot(c, vec3(0.3, 0.59, 0.11));
+		c = mix(c, vec3(1.0, 0.76, 0.24) * (0.4 + 0.9 * lum), gold);
+	}
 	ALBEDO = c;
-	ROUGHNESS = mix(0.42, 0.7, dead);
-	SPECULAR = mix(0.6, 0.3, dead);
+	ROUGHNESS = mix(mix(0.42, 0.7, dead), 0.25, gold);
+	SPECULAR = mix(mix(0.6, 0.3, dead), 0.9, gold);
+	METALLIC = 0.6 * gold;
 	// A wet sheen at grazing angles, and the picked glow.
 	float rim = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
-	EMISSION = c * rim * 0.25 * (1.0 - dead) + glow_color * glow * (0.25 + rim);
+	EMISSION = c * rim * 0.25 * (1.0 - dead) + glow_color * glow * (0.25 + rim) + vec3(1.0, 0.7, 0.2) * gold * (0.12 + rim * 0.5);
 	if (dead > 0.5 && COLOR.r > 0.5) {
 		// the eyes: plain white, nothing in them
 		ALBEDO = vec3(0.93, 0.93, 0.9);

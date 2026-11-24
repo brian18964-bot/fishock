@@ -569,7 +569,7 @@ class LureButtonView extends Node2D:
 			UiKit.draw_text(self, Vector2(-radius, radius - 3.0), "誘惑", 11, UiKit.GOLD_BRIGHT, HORIZONTAL_ALIGNMENT_CENTER, radius * 2.0, true)
 			return
 		TouchControls.draw_round(self, radius, _pressed, true, null)
-		var tex := FishData.icon(_fish.get("id", ""), _fish.get("name", ""))
+		var tex := FishData.icon_of(_fish)
 		if tex != null:
 			var w := radius * 1.6
 			draw_texture_rect(tex, Rect2(Vector2(-w / 2.0, -w / 4.0 - 5.0), Vector2(w, w / 2.0)), false)

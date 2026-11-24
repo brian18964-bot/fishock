@@ -45,7 +45,7 @@ func _ready() -> void:
 	scroll.add_theme_stylebox_override("panel", UiKit.parchment_box())
 	scroll.custom_minimum_size = Vector2(560, 0)
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 6)
+	col.add_theme_constant_override("separation", 4)
 	var head := UiKit.label("%s　%s" % [lv.get("id", ""), lv.get("name", "")], 15, INK_DIM, false, 0)
 	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(head)
@@ -54,7 +54,7 @@ func _ready() -> void:
 	col.add_child(title)
 	_stars = Control.new()
 	_stars.name = "Stars"
-	_stars.custom_minimum_size = Vector2(500, 64)
+	_stars.custom_minimum_size = Vector2(500, 58)
 	_stars.draw.connect(_draw_stars)
 	col.add_child(_stars)
 	# Each star's condition, done or not.
@@ -104,12 +104,15 @@ func _ready() -> void:
 		var done_l := UiKit.label(words, 15, INK, true, 0)
 		done_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		col.add_child(done_l)
-	col.add_child(summary(success))
-	var body := UiKit.label(message.strip_edges(), 14, INK_DIM, false, 0)
-	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.custom_minimum_size.x = 500
-	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	col.add_child(body)
+	# (user report: the window ran off the screen's foot - the bone's line said twice, the escape's
+	# words over again: on a win, only what the summary shows; a loss still says what happened)
+	col.add_child(summary(success, true))
+	if not success:
+		var body := UiKit.label(message.strip_edges(), 14, INK_DIM, false, 0)
+		body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		body.custom_minimum_size.x = 500
+		body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		col.add_child(body)
 	if not success:
 		var tip := UiKit.label("這一關教的是：" + str(lv.get("teach", "")), 14, INK, false, 0)
 		tip.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -145,6 +148,22 @@ func _ready() -> void:
 	scroll.grow_vertical = Control.GROW_DIRECTION_BOTH
 	scroll.modulate.a = 0.0
 	create_tween().tween_property(scroll, "modulate:a", 1.0, 0.4)
+	fit.call_deferred(scroll)
+
+
+## Kept within the screen (a small one, a long list of what was earned): scaled down about its middle
+## to leave FIT_MARGIN px above and below.
+const FIT_MARGIN := 14.0
+
+
+static func fit(panel: Control) -> void:
+	if not is_instance_valid(panel) or not panel.is_inside_tree():
+		return
+	var room := panel.get_viewport_rect().size.y - FIT_MARGIN * 2.0
+	var h := panel.get_combined_minimum_size().y
+	if h > room and h > 0.0:
+		panel.pivot_offset = panel.size * 0.5
+		panel.scale = Vector2.ONE * (room / h)
 
 
 ## User request (the run's end): what the run was, for the scroll - a level's or a free run's -
@@ -154,7 +173,7 @@ const SUMMARY_SLOT := 42.0
 const SUMMARY_SHOWN := 9
 
 
-static func summary(won: bool) -> Control:
+static func summary(won: bool, short := false) -> Control:
 	var col := VBoxContainer.new()
 	col.name = "RunSummary"
 	col.add_theme_constant_override("separation", 5)
@@ -181,10 +200,12 @@ static func summary(won: bool) -> Control:
 		var words := "最大的一條：%s" % str(big.get("name", "魚"))
 		if FishData.size_text(big) != "":
 			words += "　" + FishData.size_text(big)
-		var best := UiKit.label(words, 14, INK_DIM, false, 0)
-		best.name = "Biggest"
-		best.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		col.add_child(best)
+		# (a level's window, short: the fish themselves are shown just above)
+		if not short:
+			var best := UiKit.label(words, 14, INK_DIM, false, 0)
+			best.name = "Biggest"
+			best.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			col.add_child(best)
 	if won and GameState.run_bone != "":
 		var id := GameState.run_bone
 		var bone := HBoxContainer.new()
@@ -224,7 +245,7 @@ class FishRow extends Control:
 			var f: Dictionary = fish[i]
 			var r := Rect2(Vector2(i * (CampaignResults.SUMMARY_SLOT + 4.0), 0), Vector2.ONE * CampaignResults.SUMMARY_SLOT)
 			UiKit.draw_slot(self, r, UiKit.fish_rarity(f))
-			var tex := FishData.icon(f.get("id", ""), f.get("name", ""))
+			var tex := FishData.icon_of(f)
 			if tex != null:
 				var room := r.grow(-4.0)
 				var k := minf(room.size.x / tex.get_width(), room.size.y / tex.get_height())

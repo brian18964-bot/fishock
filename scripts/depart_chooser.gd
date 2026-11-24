@@ -26,13 +26,16 @@ const MAP_ROW := 868.0
 const MAP_PER_ROW := 3
 ## (in more than one row, the cards' pictures flatter - this share of their width - so the rows and
 ## the window's buttons fit its height)
-const MAP_PIC_FLAT := 0.34
+const MAP_PIC_FLAT := 0.22
+const MAP_PIC_FLAT_CURSES := 0.14
 ## A tap that soon after it opened is the opening tap's echo (a phone sends it twice): not a close.
 const OPEN_GUARD_MS := 450
 
 var camp: Object
 var step := "mode"
 var map_theme := ""
+## The story's branch picked to fish in (a level's id), "" a map made at random.
+var branch := ""
 var picked_curses: Array = []
 var _panel: PanelContainer
 var _body: VBoxContainer
@@ -194,6 +197,9 @@ func _build_maps() -> void:
 	var per := mini(MAPS.size(), MAP_PER_ROW)
 	var wide := minf(MAP_CARD_MAX, (MAP_ROW - 16.0 * (per - 1)) / per)
 	var flat := 0.5 if MAPS.size() <= per else MAP_PIC_FLAT
+	# (the curses under them too: flatter still, so the window's buttons stay in it)
+	if Campaign.curses_open():
+		flat = MAP_PIC_FLAT_CURSES
 	var row: HBoxContainer = null
 	for m in MAPS:
 		if row == null or row.get_child_count() >= per:
@@ -246,14 +252,17 @@ func _build_maps() -> void:
 			ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			card.add_child(ring)
 		card.pressed.connect(func():
+			if map_theme != key:
+				branch = ""
 			map_theme = key
 			show_step("maps"))
 		row.add_child(card)
+	_branch_row()
 	# After the last chapter: curses, for more gold.
 	if Campaign.curses_open():
 		var grid := GridContainer.new()
 		grid.name = "Curses"
-		grid.columns = 3
+		grid.columns = Campaign.CURSE_ORDER.size()
 		grid.add_theme_constant_override("h_separation", 12)
 		for key in Campaign.CURSE_ORDER:
 			var c: Dictionary = Campaign.CURSES[key]
@@ -280,11 +289,59 @@ func _build_maps() -> void:
 	back.custom_minimum_size = Vector2(120, 46)
 	back.pressed.connect(func(): show_step("mode"))
 	foot.add_child(back)
-	var go := UiKit.button("出發：%s" % map_name(map_theme), 20, "red")
+	var where := map_name(map_theme)
+	if branch != "":
+		where = str(Campaign.level(branch).get("name", where))
+	var go := UiKit.button("出發：%s" % where, 20, "red")
 	go.name = "GoFree"
 	go.custom_minimum_size = Vector2(240, 50)
 	go.pressed.connect(depart)
 	foot.add_child(go)
+
+
+## User request (free mode: each branch its own fish, there to be collected): under the maps, the picked
+## map's ways to go - 隨機地圖 (made at random; now and then a night of its own, Campaign.FREE_EVENTS)
+## or one of its branches in the story, open once cleared there (all, for the developer); and a line
+## on what the one picked holds.
+func _branch_row() -> void:
+	var row := HBoxContainer.new()
+	row.name = "Branches"
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 6)
+	var options := [["", "隨機地圖"]]
+	for l in Campaign.branches_of(map_theme):
+		options.append([str(l.id), "%s %s" % [l.id, l.name]])
+	for o in options:
+		var id: String = o[0]
+		var open := branch_open(id)
+		var on := branch == id
+		var b := UiKit.button(("✓ " if on else "") + str(o[1]), 13, "red" if on else "gray")
+		b.name = "Branch_" + (id if id != "" else "random")
+		b.custom_minimum_size = Vector2(0, 34)
+		b.disabled = not open
+		b.pressed.connect(func():
+			branch = id
+			show_step("maps"))
+		row.add_child(b)
+	_body.add_child(row)
+	var words := "隨機生成這種風格的地圖，偶爾會遇上特別的夜晚：魚種風暴、暗潮之夜、巨物之夜"
+	if branch != "":
+		var r := Campaign.rules_for(branch)
+		var own: Array = []
+		for f in r.get("fish", []) + r.get("fish_epic", []):
+			own.append(FishData.FISH[f].name)
+		words = "%s的地圖與天氣・獨有魚：%s（不計星數）" % [Campaign.level(branch).name, "、".join(own)]
+	elif options.size() > 1 and not branch_open(str(options[1][0])):
+		words += "　・分支要先在劇情模式通過才能選"
+	var about := UiKit.label(words, 12, UiKit.DIM)
+	about.name = "BranchAbout"
+	about.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_body.add_child(about)
+
+
+## Whether the branch `id` can be fished in freely ("" - a map made at random - always): cleared in the story.
+static func branch_open(id: String) -> bool:
+	return id == "" or Campaign.level_done(id) or Campaign.dev_all_open
 
 
 ## A map's name (MAPS; the lakeside forest's for "").
@@ -299,8 +356,8 @@ static func map_name(theme: String) -> String:
 func depart() -> void:
 	queue_free()
 	if camp != null and is_instance_valid(camp) and camp.has_method("depart_free"):
-		camp.call("depart_free", picked_curses, map_theme)
+		camp.call("depart_free", picked_curses, map_theme, branch)
 		return
-	Campaign.begin_free(picked_curses, map_theme)
+	Campaign.begin_free(picked_curses, map_theme, branch)
 	GameState.start_run()
 	get_tree().change_scene_to_file("res://scenes/main.tscn")

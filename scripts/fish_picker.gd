@@ -313,7 +313,7 @@ class FishCard extends Control:
 		var r := Rect2(Vector2.ZERO, size)
 		UiKit.draw_slot(self, r, rarity, picked)
 		var rotten: bool = fish.get("rotten", false)
-		var tex := FishData.icon(fish.get("id", ""), fish.get("name", ""))
+		var tex := FishData.icon_of(fish)
 		var pic := Rect2(Vector2(14, 22), Vector2(size.x - 28.0, (size.x - 28.0) * 0.5))
 		if tex != null:
 			draw_texture_rect(tex, pic, false, Color(0.55, 0.5, 0.35) if rotten else Color.WHITE)

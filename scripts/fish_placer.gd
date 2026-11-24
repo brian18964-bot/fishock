@@ -332,7 +332,7 @@ class Grid extends Control:
 
 	func _draw_fish(f: Dictionary, r: Rect2, fresh: bool) -> void:
 		UiKit.draw_slot(self, r, UiKit.fish_rarity(f), fresh)
-		var tex := FishData.icon(f.get("id", ""), f.get("name", ""))
+		var tex := FishData.icon_of(f)
 		var tint := Color(0.55, 0.5, 0.35) if FishLife.state(f) == "rotten" else (Color(0.75, 0.75, 0.8) if FishLife.state(f) == "dead" else Color.WHITE)
 		# (filling the cells it takes)
 		UiKit.draw_fish_fit(self, r.grow(-3.0), tex, tint)

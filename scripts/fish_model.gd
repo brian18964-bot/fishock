@@ -105,6 +105,7 @@ static func dress(fish: MeshInstance3D, f: Dictionary) -> void:
 	mat.set_shader_parameter("rot", rot)
 	var green: bool = (int(f.get("uid", int(float(f.get("value", 0.0)) * 1000.0))) + str(f.get("name", "")).hash()) % 2 == 0
 	mat.set_shader_parameter("rot_color", Color(0.4, 0.5, 0.16) if green else Color(0.38, 0.2, 0.45))
+	mat.set_shader_parameter("gold", 1.0 if f.get("golden", false) else 0.0)
 
 
 ## A new fish of species `id` (null if it has no model). Swim it with

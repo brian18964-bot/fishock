@@ -1100,7 +1100,13 @@ func sniff() -> bool:
 func reachable_mushroom() -> GlowMushroom:
 	var best: GlowMushroom = null
 	var best_d := GlowMushroom.PICK_RANGE
-	for n in get_tree().get_nodes_in_group("glow_mushrooms") + get_tree().get_nodes_in_group("oxy_tree"):
+	# (user request: each seen before its lesson, not picked - Campaign.taught)
+	var groups: Array = []
+	if Campaign.taught("mushroom"):
+		groups += get_tree().get_nodes_in_group("glow_mushrooms")
+	if Campaign.taught("oxy"):
+		groups += get_tree().get_nodes_in_group("oxy_tree")
+	for n in groups:
 		var d := global_position.distance_to((n as Node2D).global_position)
 		if d < best_d:
 			best = n
@@ -1273,6 +1279,9 @@ func fish_for(id: String) -> int:
 ## off hand's: Profile.has_shovel()). The flower whose cold ground the
 ## traveller stands on, or null.
 func frost_flower_here() -> FrostFlower:
+	# (user request: seen before its lesson, not dug - Campaign.taught)
+	if not Campaign.taught("frost"):
+		return null
 	for n in get_tree().get_nodes_in_group("frost_flowers"):
 		if (n as FrostFlower).reaches(global_position):
 			return n
@@ -1972,6 +1981,8 @@ func _update_rod(delta: float) -> void:
 	if state == State.REELING and fight != null and fight.prompt_active():
 		asked = FightPanel.to_frame(fight.prompt_dir())
 		serial = fight.move_serial
+		# (the lesson's level: the first way asked, Willow says what it is)
+		Campaign.aside("fight")
 	elif state == State.BITE and fishing_mode == FishingMode.LURE and strike_dir != Vector2.ZERO:
 		asked = FightPanel.to_frame(strike_dir.normalized())
 		serial = -2
@@ -2546,7 +2557,7 @@ func interaction() -> Dictionary:
 		# (not to be done as things are: shown greyed, not as a button to press - ActionPrompt)
 		dig_offer["locked"] = not Profile.has_shovel()
 		return dig_offer
-	if in_rock_zone and _rock != null and _rock.active:
+	if in_rock_zone and _rock != null and _rock.active and Campaign.taught("bait"):
 		return {"at": _rock.prompt_anchor(), "name": "石頭", "verb": "翻開", "hold": false}
 	var tree := choppable_tree()
 	if tree != null:
@@ -2794,6 +2805,9 @@ func _pick_up_dropped_fish() -> void:
 ## The critter a catch would take: the one stood on, or with the net in
 ## hand the nearest within NET_REACH; null if none.
 func reachable_critter() -> Critter:
+	# (user request: the critters seen before the lesson on live bait, not caught - Campaign.taught)
+	if not Campaign.taught("bait"):
+		return null
 	if in_critter_zone and _critter != null and is_instance_valid(_critter) and _critter.active:
 		return _critter
 	if not net_in_hand():
@@ -3309,6 +3323,8 @@ func _roll_catch_outcome() -> void:
 	if flavor == BAIT_FLAVOR_FROG or flavor == BAIT_FLAVOR_LIVE_FROG:
 		rare_chance *= 2.0
 	rare_chance *= float(lure.get("rare", 1.0))
+	# (free mode's 暗潮之夜: the rare ones the likelier - Campaign.FREE_EVENTS)
+	rare_chance *= FishData.rare_mult
 	# (the deer, the forest's friend - 森林友好)
 	var deer_more := Abilities.DEER_RARE if Abilities.has("deer") else 0.0
 	# (the lucky star carried - 幸運星)
@@ -3662,6 +3678,9 @@ func _hook_fish(perfect := false) -> void:
 	if _gate_check():
 		return
 	fight = FishFight.new(difficulty_key, fish_habit, tier_data, reel_power_mult, Profile.rod())
+	# (user request: the fish's ways asked of the angler - the arrow, the flick - only from the story's
+	# lesson for them on)
+	fight.prompts = Campaign.taught("fight")
 	# (the damage numbers' scale: its health, by rarity and size)
 	fight.max_hp = FishFight.hp_for(UiKit.fish_rarity({"id": fish_id, "rarity": "epic" if is_epic_catch else ("rare" if is_rare_catch else "common")}),
 		Inventory.size_for_catch(current_tier, is_epic_catch))
@@ -3828,6 +3847,11 @@ func _succeed_catch() -> void:
 		fish.value = FishData.value_for_length(fish_id, float(fish.value), fish.length)
 		fish["tank_trait"] = FishData.roll_tank_trait(fish_id)
 		fish["rarity"] = "epic" if is_epic_catch else ("rare" if is_rare_catch else "common")
+		# (user request - free mode's storms: of tonight's kind, now and then a golden one)
+		if fish_id != "" and fish_id == FishData.storm_fish and randf() < FishData.GOLDEN_CHANCE:
+			fish["golden"] = true
+			fish.value = float(fish.value) * FishData.GOLDEN_VALUE
+			GameState.report("釣到金色的%s！" % fish.name, "good")
 		# User request: its vitality and freshness, and what traits bend
 		# them (FishLife).
 		FishLife.roll(fish)

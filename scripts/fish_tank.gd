@@ -288,7 +288,7 @@ func _card_for(i: int, src := "tank") -> void:
 		turn.show_fish(f.get("id", ""), f)
 	else:
 		var pic := TextureRect.new()
-		pic.texture = FishData.icon(f.get("id", ""), f.get("name", ""))
+		pic.texture = FishData.icon_of(f)
 		pic.custom_minimum_size = Vector2(0, 90)
 		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
@@ -517,7 +517,7 @@ class FishIcon extends Control:
 	func _draw() -> void:
 		var r := Rect2(Vector2.ZERO, size)
 		UiKit.draw_slot(self, r, UiKit.fish_rarity(fish))
-		var tex := FishData.icon(fish.get("id", ""), fish.get("name", ""))
+		var tex := FishData.icon_of(fish)
 		if tex == null:
 			return
 		var room := r.grow(-5.0)
@@ -699,7 +699,7 @@ class Swimmer extends Sprite2D:
 	func setup(f: Dictionary, i: int, tank) -> void:
 		index = i
 		trait_key = f.get("tank_trait", "active")
-		texture = FishData.icon(f.get("id", ""), f.get("name", ""))
+		texture = FishData.icon_of(f)
 		var length := float(f.get("length", 30.0))
 		width = lerpf(30.0, 130.0, clampf(log(length / 5.0) / log(60.0), 0.0, 1.0))
 		if texture != null:

@@ -295,6 +295,9 @@ static func pool_for(water_key: String, zone_key: String, rarity_key: String) ->
 	# (an everyday catch is rarity "common" as Player rolls it - "" as some callers name it)
 	if not branch_fish.is_empty() and rarity_key in ["", "common"] and zone_key != "rare" and randf() < BRANCH_EVERYDAY:
 		return branch_fish
+	# (user request - free mode's nights: a storm of one kind, most of the everyday catches it)
+	if storm_fish != "" and rarity_key in ["", "common"] and zone_key != "rare" and randf() < STORM_SHARE:
+		return [storm_fish]
 	if water_key == "sea":
 		match rarity_key:
 			"epic":
@@ -342,6 +345,19 @@ const STYLE_OWN_CHANCE := 0.3
 static var branch_fish: Array = []
 static var branch_epic: Array = []
 const BRANCH_EVERYDAY := 0.12
+
+## User request (free mode's nights - Campaign.FREE_EVENTS): tonight's storm of one kind (its id, ""
+## none): STORM_SHARE of the everyday catches it, GOLDEN_CHANCE of those golden - worth GOLDEN_VALUE
+## times as much; the night's odds of a rare one (rare_mult, x Player's) and the size of what bites
+## (size_mult, x its length). Set by Campaign.begin_free, put back for a level.
+static var storm_fish := ""
+static var rare_mult := 1.0
+static var size_mult := 1.0
+const STORM_SHARE := 0.6
+const GOLDEN_CHANCE := 0.05
+const GOLDEN_VALUE := 5.0
+const GOLD := Color(1.0, 0.78, 0.24)
+static var _gold_icons := {}
 ## The sea's fish that are a branch's own - not caught in another branch's sea (the free run has
 ## the sea's rare and rarest as always).
 const BRANCH_ONLY := ["moon_jack", "trevally", "napoleon", "sunfish", "sailfish", "hammerhead", "swordfish", "bluefin"]
@@ -531,7 +547,7 @@ const INDIVIDUAL_CHANCE := 0.2
 static func measure(id: String, size_key: String) -> Dictionary:
 	var span: Array = LENGTH_CM.get(id, [20, 50])
 	var at: Array = SIZE_SPAN.get(size_key, SIZE_SPAN.small)
-	var length: float = lerpf(span[0], span[1], randf_range(at[0], at[1]))
+	var length: float = lerpf(span[0], span[1], randf_range(at[0], at[1])) * size_mult
 	var body: String = FISH.get(id, {}).get("body", "carp")
 	var k: float = 0.0035 if id == "sailfish" else WEIGHT_K.get(body, 0.012)
 	var kg: float = k * pow(length, 3) / 1000.0 * randf_range(0.9, 1.1)
@@ -670,6 +686,29 @@ static var _icons := {}
 
 ## A species' picture (tools/render_fish.py, or the photo-built one): by id
 ## or, failing that, by name. Null for what isn't a fish (the heart).
+## A fish's picture as the fish dict `f` is: a golden one's in gold (made once a kind).
+static func icon_of(f: Dictionary) -> Texture2D:
+	var id := str(f.get("id", ""))
+	var tex := icon(id, str(f.get("name", "")))
+	if tex == null or not f.get("golden", false):
+		return tex
+	if not _gold_icons.has(id):
+		var img := tex.get_image()
+		if img.is_compressed():
+			img.decompress()
+		img.convert(Image.FORMAT_RGBA8)
+		for y in img.get_height():
+			for x in img.get_width():
+				var c := img.get_pixel(x, y)
+				if c.a <= 0.01:
+					continue
+				var lum := c.r * 0.3 + c.g * 0.59 + c.b * 0.11
+				var g := GOLD * (0.35 + lum * 0.95)
+				img.set_pixel(x, y, Color(minf(g.r, 1.0), minf(g.g, 1.0), minf(g.b, 1.0), c.a))
+		_gold_icons[id] = ImageTexture.create_from_image(img)
+	return _gold_icons[id]
+
+
 static func icon(id: String, species_name: String = "") -> Texture2D:
 	if id == "" and species_name != "":
 		id = id_for(species_name)
