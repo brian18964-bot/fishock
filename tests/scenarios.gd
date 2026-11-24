@@ -134,6 +134,7 @@ const TESTS := [
 	"test_story_lessons",
 	"test_level_guide_and_results",
 	"test_free_branches_and_nights",
+	"test_tutorials_completable",
 	"test_wind_and_chop",
 	"test_ground_leaves",
 	"test_grass",
@@ -11335,6 +11336,54 @@ func test_free_branches_and_nights() -> void:
 	Campaign.free_events = false
 	camp().clear()
 	check(nights > 30 and nights < 95, "now and then a night of its own (%d/200)" % nights)
+
+
+## Each level's tutorial can be done in it (an audit: the lure lesson with no lure given, the 暗潭 with no
+## dark pond, the fog and the fish run left to chance, the storm's water ghost in a fog, the camp's oil
+## "running low" when full): what each lesson's lines need, the level has.
+func test_tutorials_completable() -> void:
+	for l in camp().LEVELS:
+		var r: Dictionary = camp().rules_for(l.id)
+		var tut := str(r.tutorial)
+		var plan: Array = r.weather if r.weather is Array else []
+		var first := str(plan[0][0]) if not plan.is_empty() and plan[0] is Array else ""
+		var second := str(plan[1][0]) if plan.size() > 1 and plan[1] is Array else ""
+		match tut:
+			"bait":
+				check(int(r.bait) > 0 and int(r.bait) <= 3 and int(r.rocks[0]) > 0 and int(r.critters) > 0, "%s: a little bait, rocks to turn, critters" % l.id)
+			"lamp":
+				check(float(r.day) > 0.0, "%s: a clock to the night" % l.id)
+			"ghost":
+				check(int(r.ghosts) >= 1, "%s: a floating ghost" % l.id)
+			"lure":
+				check(r.gift.keys().any(func(k): return str(k).begins_with("lure_")) and not "lure" in r.hide, "%s: a lure given, its button shown" % l.id)
+			"hotspot":
+				check(r.hotspot and int(r.ponds[1]) >= 1, "%s: the ripples and a dark pond" % l.id)
+			"weather":
+				check(first == "FOG" and second == "FISH_RUN", "%s: the fog, then the fish run (%s, %s)" % [l.id, first, second])
+			"water_ghost":
+				check(first == "STORM" and float(r.water_ghost) > 0.0, "%s: the storm first, the water ghost about (%s)" % [l.id, first])
+			"oil":
+				check(r.oil and float(r.fuel) >= 0.0 and float(r.fuel) < FuelStation.BASE_TOTAL_FUEL, "%s: an oil drum, the camp's oil low" % l.id)
+			"big_ghost":
+				check(r.big_ghost and float(r.day) > 0.0, "%s: the big ghost, and night to wake it" % l.id)
+	# (an audit of the stars: each asks what its words say - "not pounced on" the beasts' pounces, not the
+	# flicks; "the water ghost" its own; "stay on and offer" an offering after the quota, not an evil one;
+	# "in the blizzard" the quota made in a storm)
+	var by: Dictionary = {}
+	for l in camp().LEVELS:
+		by[l.id] = l.stars[1]
+	check(by["3-3"].stat == "animal_hit" and by["4-3"].stat == "animal_hit" and by["2-3"].stat == "water_ghost_hit"
+		and by["1-5"].stat == "offer_after_quota" and by["3-4"].stat == "quota_storm", "each star asks what it says")
+	await play_level("1-5")
+	var f := fish()
+	f["value"] = float(camp().rules.quota) + 1.0
+	gs.add_carried_fish(f)
+	gs.add_carried_fish(fish())
+	gs.sacrifice_at(0)
+	check(not camp().condition_met(by["1-5"]), "1-5: the quota made, nothing more offered - not yet")
+	gs.sacrifice_at(0)
+	check(camp().condition_met(by["1-5"]), "1-5: one more offered after the quota - the star")
 
 
 func test_surf() -> void:

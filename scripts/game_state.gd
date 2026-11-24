@@ -471,6 +471,8 @@ func sacrifice_at(index: int) -> Dictionary:
 	if quota_progress >= quota_target and day_phase == DayPhase.FISHING:
 		_enter_escape_phase()
 	elif day_phase == DayPhase.ESCAPE:
+		# (offered with the quota already made - staying on to gamble: a level's star)
+		Campaign.stat("offer_after_quota")
 		_quota_since_offering += value
 		if _quota_since_offering >= OFFERING_ADD_THRESHOLD:
 			_quota_since_offering -= OFFERING_ADD_THRESHOLD
