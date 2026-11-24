@@ -290,7 +290,8 @@ func start_run() -> void:
 ## level's fog then fish run...), then "random", "mild" (no storms),
 ## "stormy" or "clear".
 var _weather_plan: Array = []
-var _weather_mode := "random"
+## ("random", "mild", "stormy", "foggy", "clear" - or its own odds {KIND: share})
+var _weather_mode: Variant = "random"
 
 
 func _start_weather() -> void:
@@ -300,12 +301,12 @@ func _start_weather() -> void:
 
 
 func _next_weather(first := false) -> void:
-	while not _weather_plan.is_empty() and _weather_plan[0] is String:
+	while not _weather_plan.is_empty() and (_weather_plan[0] is String or _weather_plan[0] is Dictionary):
 		_weather_mode = _weather_plan.pop_front()
 	if not _weather_plan.is_empty():
 		var step: Array = _weather_plan.pop_front()
 		_set_weather(Weather[step[0]], float(step[1]), first)
-	elif _weather_mode == "clear":
+	elif _weather_mode is String and _weather_mode == "clear":
 		_set_weather(Weather.CLEAR, INF, first)
 	elif first:
 		_set_weather(Weather.CLEAR, randf_range(WEATHER_MIN_DURATION, WEATHER_MAX_DURATION), true)

@@ -272,6 +272,9 @@ func _ready() -> void:
 	theme_name = pick if THEMES.has(pick) else THEME
 	current_theme = theme_name
 	theme = THEMES[theme_name].duplicate(true)
+	# (user request - the maps' branches: a level's own changes to its map - its trees, animals,
+	# shore life and the like - over the style's)
+	theme.merge((Campaign.rules.get("mods", {}) as Dictionary).duplicate(true), true)
 	_fit_theme()
 	# User request (the campaign): maps of three sizes - the floor, the
 	# camp and the player's start go where this one's middle is.

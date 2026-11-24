@@ -50,212 +50,150 @@ const DEFAULT_RULES := {
 }
 
 const CHAPTERS := [
-	{"id": 1, "name": "初渡", "stars": 0, "blurb": "柳靈帶你走第一趟。小小的池塘，沒有危險，失敗也不會失去任何東西。"},
-	{"id": 2, "name": "秋沼", "stars": 0, "blurb": "楓紅與沼澤。漣漪、暗潭、路亞、霧與暴雨，還有水裡的東西。"},
-	{"id": 3, "name": "鐵鍊聲", "stars": 10, "blurb": "枯木林裡傳來鐵鍊拖地的聲音。燈光會引來它。"},
-	{"id": 4, "name": "荒野", "stars": 20, "blurb": "森林深處，狼群出沒。野獸會撲人，魚也更難纏。"},
-	{"id": 5, "name": "邪祭", "stars": 30, "blurb": "額度滿了，才是真正的抉擇：走，還是留下來賭供品？"},
+	{"id": 1, "name": "湖畔森林", "stars": 0, "blurb": "森林中的湖泊與池塘，熟悉的夜晚。從小池開始，走進深林的大湖。"},
+	{"id": 2, "name": "秋林", "stars": 0, "blurb": "枯樹與落葉，荒田、舊水庫、枯沼，林間只剩零星的野獸——和越來越多的鬼火。"},
+	{"id": 3, "name": "雪地森林", "stars": 0, "blurb": "覆雪的松林與結冰的池緣，冷冽的夜，最後是暴風雪裡的冰洞。"},
+	{"id": 4, "name": "沙漠綠洲", "stars": 0, "blurb": "沙丘間的綠洲與泉眼，遠古白骨半埋沙中，沙塵暴說來就來。"},
+	{"id": 5, "name": "沙灘海岸", "stars": 0, "blurb": "一側是大海，椰子樹下的沙灘與浪花，越往後浪越大。"},
+	{"id": 6, "name": "海崖", "stars": 0, "blurb": "草原台地的盡頭是斷崖，崖下浪花拍打礁石，霧與風暴守著深海的大魚。"},
+]
+## The levels: each map's branches, in order (user request - one level a branch; a map's
+## branches open one after another, the next map once the whole of this one's done). stars:
+## the ★★ (one of the branch's own fish - its rules' fish / fish_epic) and ★★★ conditions (★ is
+## getting out). reward: the first clear's gold and items (into the warehouse).
+const LEVELS := [
+	{"id": "1-1", "chapter": 1, "name": "林間淺池", "teach": "走路、拋竿、收線、獻祭、離開",
+		"intro": "林間有兩個小池，魚很多。先釣一條交給祭壇，再從亮起來的渡石回去。",
+		"rules": {"theme": "forest_pine", "map": "S", "ponds": [2, 0], "day": 0.0, "quota": 3.0, "drain": 0.0, "ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear", "rocks": [0, 0], "critters": 8, "hotspot": false, "oil": false, "escalate": false, "evil": false, "safe": true, "tutorial": "first_cast", "hide": ["lure", "quick", "energy", "lamp", "bait"], "mods": {"animal_count": 2, "animals": {"deer": 1.0}}, "fish": ["minnow", "goby"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到鱥魚或鰕虎"}, {"stat": "elapsed", "text": "3 分鐘內離開", "max": 180}],
+		"reward": {"gold": 40}},
+	{"id": "1-2", "chapter": 1, "name": "苔石溪潭", "teach": "活餌：翻石頭找蟲",
+		"intro": "石頭多、樹少的溪邊，一串小潭。翻開石頭，底下有蟲可以當餌。",
+		"rules": {"bait": 2, "night_fails": true, "safe": true, "theme": "forest_pine", "map": "M", "ponds": [4, 0], "day": 240.0, "quota": 10.0, "drain": 0.5, "ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": [["CLEAR", 90.0], ["FOG", 60.0], "mild"], "rocks": [14, 18], "critters": 4, "hotspot": false, "escalate": false, "evil": false, "tutorial": "bait", "hide": ["lure", "quick", "energy", "lamp"], "mods": {"rocks": 6, "trees": 16, "animals": {"fox": 1.0, "deer": 1.0}}, "fish": ["char"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到紅點鮭"}, {"stat": "flip_rock", "text": "翻開 3 塊石頭找活餌", "min": 3}],
+		"reward": {"gold": 100}},
+	{"id": "1-3", "chapter": 1, "name": "霧沼林緣", "teach": "煤燈與夜晚",
+		"intro": "林緣的沼澤，水窪一個接一個，蘆葦和睡蓮長滿水面。霧常常湧上來。",
+		"rules": {"night_fails": true, "safe": true, "theme": "forest_pine", "map": "L", "ponds": [6, 1], "day": 300.0, "quota": 18.0, "ghosts": 1, "meddle": 2, "big_ghost": false, "water_ghost": 1.6, "hunters": false, "weather": "foggy", "critters": 10, "escalate": false, "evil": false, "tutorial": "lamp", "hide": ["lure", "quick"], "mods": {"shore_extras": {"reeds": 0.3, "lilypad": 0.12, "driftwood": 0.05}, "trees": 22}, "fish": ["swamp_eel", "betta"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到黃鱔或鬥魚"}, {"stat": "water_ghost_hit", "text": "不被水鬼拉到", "max": 0}],
+		"reward": {"gold": 130, "items": {"battery": 2}}},
+	{"id": "1-4", "chapter": 1, "name": "雙子湖", "teach": "小鬼",
+		"intro": "兩座深湖之間的林地。鹿群在湖邊，狼在林子裡。魚群湧現時要把握。",
+		"rules": {"night_fails": true, "theme": "forest_pine", "map": "L", "ponds": [2, 1], "day": 300.0, "quota": 26.0, "ghosts": 1, "meddle": 3, "big_ghost": false, "weather": {"FISH_RUN": 0.35, "FOG": 0.12, "DRIZZLE": 0.12}, "critters": 6, "escalate": false, "tutorial": "ghost", "hide": ["lure"], "mods": {"animals": {"deer": 2.5, "stag": 1.5, "wolf": 0.8}}, "fish": [], "fish_epic": ["wels"]},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到巨型鯰魚"}, {"stat": "catch_rare", "text": "一晚釣到 2 條稀有魚", "min": 2}],
+		"reward": {"gold": 170}},
+	{"id": "1-5", "chapter": 1, "name": "深林大湖", "teach": "路亞與大鬼",
+		"intro": "森林最深處的一座巨湖，四周散著小池。暴雨、狼群，還有醒過來的大鬼。",
+		"rules": {"theme": "forest_pine", "map": "XL", "ponds": [4, 1], "day": 360.0, "quota": 35.0, "ghosts": 2, "meddle": 4, "big_ghost": true, "weather": "stormy", "critters": 4, "tutorial": "lure", "hide": [], "mods": {"animals": {"deer": 1.5, "wolf": 1.6, "fox": 1.0}}, "fish": [], "fish_epic": ["alligator_gar"]},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到鱷雀鱔"}, {"stat": "evil", "text": "達標後留下來獻祭一次", "min": 1}],
+		"reward": {"gold": 260, "items": {"lure_redhead": 3}}},
+	{"id": "2-1", "chapter": 2, "name": "荒田魚塭", "teach": "熱點",
+		"intro": "荒廢田地裡的方正小塘，水淺魚多，田埂上蟲很多。",
+		"rules": {"night_fails": true, "theme": "autumn", "map": "S", "ponds": [3, 0], "day": 240.0, "quota": 12.0, "ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear", "critters": 10, "escalate": false, "evil": false, "tutorial": "hotspot", "mods": {"trees": 10, "animal_count": 1}, "fish": ["crayfish", "giant_goldfish"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到螯蝦或巨型金魚"}, {"stat": "stolen", "text": "魚獲沒被偷走", "max": 0}],
+		"reward": {"gold": 120}},
+	{"id": "2-2", "chapter": 2, "name": "舊水庫", "teach": "天氣",
+		"intro": "廢棄的水庫，一大片水面加一個小池。水邊有東西會跳出來。",
+		"rules": {"night_fails": true, "theme": "autumn", "map": "M", "ponds": [2, 0], "day": 300.0, "quota": 18.0, "ghosts": 1, "meddle": 3, "big_ghost": false, "weather": {"FOG": 0.25, "DRIZZLE": 0.2, "FISH_RUN": 0.15}, "critters": 6, "escalate": false, "tutorial": "weather", "fish": ["silver_carp", "pleco"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到飛躍鯉或清道夫"}, {"stat": "oil_left", "text": "燈油剩一半以上離開", "min": 0.5}],
+		"reward": {"gold": 160}},
+	{"id": "2-3", "chapter": 2, "name": "枯沼", "teach": "水鬼",
+		"intro": "枯樹圍著的暗色水窪，霧散不掉。水鬼就在水邊等著。",
+		"rules": {"night_fails": true, "theme": "autumn", "map": "L", "ponds": [6, 1], "day": 300.0, "quota": 26.0, "ghosts": 2, "meddle": 3, "big_ghost": false, "water_ghost": 1.8, "weather": "foggy", "critters": 6, "tutorial": "water_ghost", "mods": {"shore_critters": ["snake", "snake", "frog", "spider"]}, "fish": ["snakehead", "black_catfish"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到烏鱧或黑鯰"}, {"stat": "grabbed", "text": "沒被大鬼或水鬼抓到", "max": 0}],
+		"reward": {"gold": 220, "items": {"battery": 3}}},
+	{"id": "2-4", "chapter": 2, "name": "鬼火林", "teach": "大鬼",
+		"intro": "鬼火飄在分散的深潭之間。小鬼很多，大鬼很早就醒。",
+		"rules": {"theme": "autumn", "map": "XL", "ponds": [5, 1], "day": 360.0, "quota": 34.0, "ghosts": 3, "meddle": 5, "big_ghost": true, "big_wake": 1, "weather": "stormy", "critters": 4, "tutorial": "big_ghost", "fish": ["bowfin"], "fish_epic": ["ghost_fish"]},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到弓鰭魚或幽靈魚"}, {"stat": "species_both", "text": "兩種獨有魚都釣到", "min": 2}],
+		"reward": {"gold": 280, "items": {"lure_rainbow": 2}}},
+	{"id": "3-1", "chapter": 3, "name": "冰緣小潭", "teach": "營火的燈油",
+		"intro": "兩個小池，冰緣很寬，能下竿的水面不多。冷，但很安靜。",
+		"rules": {"night_fails": true, "theme": "snow_pine", "map": "S", "ponds": [2, 0], "day": 240.0, "quota": 12.0, "ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear", "critters": 2, "rocks": [10, 12], "escalate": false, "evil": false, "tutorial": "oil", "fish": ["sculpin"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到杜父魚"}, {"stat": "oil_delivered", "text": "幫營火加過燈油", "min": 1}],
+		"reward": {"gold": 140}},
+	{"id": "3-2", "chapter": 3, "name": "雪松河灣", "teach": "",
+		"intro": "細長的河灣穿過雪松林，偶爾飄雪，狐狸在岸邊。",
+		"rules": {"night_fails": true, "theme": "snow_pine", "map": "M", "ponds": [3, 0], "day": 300.0, "quota": 18.0, "ghosts": 1, "meddle": 3, "big_ghost": false, "weather": "mild", "critters": 2, "escalate": false, "mods": {"animals": {"fox": 2.0, "deer": 1.0}}, "fish": ["paddlefish"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到匙吻鱘"}, {"stat": "flip_rock", "text": "不翻石頭也完成", "max": 0}],
+		"reward": {"gold": 180}},
+	{"id": "3-3", "chapter": 3, "name": "凍原深湖", "teach": "",
+		"intro": "凍原上的一座大湖，霧和雪交替。狼比平常多。",
+		"rules": {"theme": "snow_pine", "map": "L", "ponds": [1, 1], "day": 330.0, "quota": 26.0, "ghosts": 1, "meddle": 3, "big_ghost": true, "weather": "foggy", "critters": 1, "mods": {"animals": {"wolf": 1.5, "deer": 1.0, "stag": 1.0}}, "fish": ["sturgeon"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到鱘魚"}, {"stat": "swipe_hit", "text": "沒被野獸撲到", "max": 0}],
+		"reward": {"gold": 230}},
+	{"id": "3-4", "chapter": 3, "name": "暴雪冰洞", "teach": "",
+		"intro": "冰面上鑿開的一個個小冰洞。暴風雪不停，燈油燒得特別快。",
+		"rules": {"theme": "snow_pine", "map": "XL", "ponds": [7, 1], "day": 360.0, "quota": 32.0, "drain": 1.4, "ghosts": 2, "meddle": 4, "big_ghost": true, "weather": [["STORM", 120.0], "stormy"], "critters": 1, "mods": {"animals": {"wolf": 2.0, "fox": 1.0}}, "fish": [], "fish_epic": ["cavefish"]},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到洞穴盲魚"}, {"stat": "quota_met", "text": "暴風雪中達標", "min": 1}],
+		"reward": {"gold": 300, "items": {"battery": 3}}},
+	{"id": "4-1", "chapter": 4, "name": "旱季水窪", "teach": "",
+		"intro": "兩個快乾掉的小水窪，魚擠在一起。天氣晴，很熱。",
+		"rules": {"night_fails": true, "theme": "desert", "map": "S", "ponds": [2, 0], "day": 210.0, "quota": 12.0, "ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear", "critters": 6, "escalate": false, "evil": false, "fish": ["climbing_perch", "walking_catfish"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到攀鱸或胡子鯰"}, {"stat": "time_left", "text": "還剩 60 秒以上就達標離開", "min": 60}],
+		"reward": {"gold": 150}},
+	{"id": "4-2", "chapter": 4, "name": "椰棗泉", "teach": "",
+		"intro": "椰棗樹下的綠洲泉，旁邊一個小池。駱駝在泉邊喝水。",
+		"rules": {"night_fails": true, "theme": "desert", "map": "M", "ponds": [2, 1], "day": 300.0, "quota": 18.0, "ghosts": 1, "meddle": 3, "big_ghost": false, "weather": "mild", "critters": 6, "escalate": false, "mods": {"animals": {"camel": 1.0, "iguana": 0.5}}, "fish": ["angelfish", "oscar"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到神仙魚或地圖魚"}, {"stat": "catch_far", "text": "釣到一條遠處的魚", "min": 1}],
+		"reward": {"gold": 190}},
+	{"id": "4-3", "chapter": 4, "name": "白骨乾湖", "teach": "",
+		"intro": "乾掉的湖床上只剩幾個水潭，化石半埋在沙裡。沙塵偶爾捲起。",
+		"rules": {"theme": "desert", "map": "L", "ponds": [4, 1], "day": 330.0, "quota": 26.0, "ghosts": 1, "meddle": 3, "big_ghost": true, "weather": {"SANDSTORM": 0.25, "FISH_RUN": 0.12}, "critters": 3, "mods": {"big_fossils": 5, "animals": {"hyena": 1.0, "camel": 0.3}}, "fish": ["lungfish", "bichir"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到肺魚或恐龍魚"}, {"stat": "swipe_hit", "text": "沒被鬣狗撲到", "max": 0}],
+		"reward": {"gold": 240}},
+	{"id": "4-4", "chapter": 4, "name": "大綠洲湖", "teach": "",
+		"intro": "沙漠中央的大湖，魚群會湧現，鬣狗在暗處。",
+		"rules": {"theme": "desert", "map": "L", "ponds": [1, 1], "day": 330.0, "quota": 30.0, "ghosts": 2, "meddle": 3, "big_ghost": true, "weather": {"FISH_RUN": 0.3, "SANDSTORM": 0.15}, "critters": 4, "mods": {"animals": {"hyena": 1.5, "camel": 0.5}}, "fish": ["arowana", "piranha"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到銀龍魚或食人魚"}, {"stat": "catch_rare", "text": "一晚釣到 3 條稀有魚", "min": 3}],
+		"reward": {"gold": 270}},
+	{"id": "4-5", "chapter": 4, "name": "地底湧泉", "teach": "",
+		"intro": "沙丘之間散著深泉眼，地底的水裡住著遠古的魚。沙塵暴一次比一次大。",
+		"rules": {"theme": "desert", "map": "XL", "ponds": [5, 1], "day": 360.0, "quota": 38.0, "ghosts": 2, "meddle": 4, "big_ghost": true, "weather": [["SANDSTORM", 90.0], {"SANDSTORM": 0.35, "FISH_RUN": 0.1}], "critters": 2, "fish": ["arapaima"], "fish_epic": ["coelacanth"]},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到巨骨舌魚或腔棘魚"}, {"stat": "catch_legend", "text": "釣到傳說魚", "min": 1}],
+		"reward": {"gold": 320, "items": {"lure_rainbow": 2}}},
+	{"id": "5-1", "chapter": 5, "name": "椰林小灣", "teach": "",
+		"intro": "椰林圍著的小海灣，海面窄、浪小，沙灘上螃蟹很多。",
+		"rules": {"night_fails": true, "theme": "coast", "map": "S", "day": 270.0, "quota": 14.0, "ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear", "critters": 8, "escalate": false, "evil": false, "fish": ["moon_jack"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到月光鰺"}, {"stat": "catch_far", "text": "釣到一條遠海的魚", "min": 1}],
+		"reward": {"gold": 170}},
+	{"id": "5-2", "chapter": 5, "name": "長灘", "teach": "",
+		"intro": "長長的沙灘，海面開闊，偶爾起霧。",
+		"rules": {"night_fails": true, "theme": "coast", "map": "M", "day": 300.0, "quota": 20.0, "ghosts": 1, "meddle": 3, "big_ghost": false, "weather": "mild", "critters": 5, "escalate": false, "fish": ["trevally"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到浪人鰺"}, {"stat": "catch_rare", "text": "一晚釣到 2 條稀有魚", "min": 2}],
+		"reward": {"gold": 210}},
+	{"id": "5-3", "chapter": 5, "name": "潟湖灘", "teach": "",
+		"intro": "沙灘後方多了一座鹹水潟湖，海霧常從海上漫過來。",
+		"rules": {"theme": "coast", "map": "L", "ponds": [1, 1], "day": 330.0, "quota": 28.0, "ghosts": 2, "meddle": 3, "big_ghost": true, "weather": "foggy", "critters": 4, "fish": ["napoleon"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到蘇眉"}, {"stat": "grabbed", "text": "沒被大鬼抓到", "max": 0}],
+		"reward": {"gold": 260}},
+	{"id": "5-4", "chapter": 5, "name": "大浪灘", "teach": "",
+		"intro": "海面最寬、浪最大的沙灘。暴雨一來，浪沖得很遠。",
+		"rules": {"theme": "coast", "map": "XL", "day": 360.0, "quota": 36.0, "ghosts": 2, "meddle": 4, "big_ghost": true, "weather": "stormy", "critters": 3, "fish": ["sunfish"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到翻車魚"}, {"stat": "storm", "text": "在暴風雨中撐過去", "min": 1}],
+		"reward": {"gold": 300, "items": {"battery": 3}}},
+	{"id": "6-1", "chapter": 6, "name": "低崖灣", "teach": "",
+		"intro": "崖比較矮、礁石少的海灣，從崖邊往下拋竿。",
+		"rules": {"night_fails": true, "theme": "coast_cliff", "map": "S", "day": 270.0, "quota": 14.0, "ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear", "critters": 3, "escalate": false, "evil": false, "fish": ["sailfish"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到雨傘旗魚"}, {"stat": "catch_far", "text": "釣到一條遠海的魚", "min": 1}],
+		"reward": {"gold": 190}},
+	{"id": "6-2", "chapter": 6, "name": "礁柱群", "teach": "",
+		"intro": "海裡立著許多礁石，浪一波波拍上去。",
+		"rules": {"night_fails": true, "theme": "coast_cliff", "map": "M", "day": 300.0, "quota": 22.0, "ghosts": 1, "meddle": 3, "big_ghost": false, "weather": "mild", "critters": 2, "escalate": false, "fish": ["hammerhead"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到鎚頭鯊"}, {"stat": "catch_rare", "text": "一晚釣到 2 條稀有魚", "min": 2}],
+		"reward": {"gold": 230}},
+	{"id": "6-3", "chapter": 6, "name": "霧崖", "teach": "",
+		"intro": "海霧終年籠罩的高崖，看不清的海面下有大魚。",
+		"rules": {"theme": "coast_cliff", "map": "L", "day": 330.0, "quota": 30.0, "ghosts": 2, "meddle": 3, "big_ghost": true, "weather": {"SEA_FOG": 0.45, "FOG": 0.15, "FISH_RUN": 0.1}, "critters": 1, "fish": [], "fish_epic": ["swordfish"]},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到劍旗魚"}, {"stat": "fog", "text": "在霧中撐過去", "min": 1}],
+		"reward": {"gold": 280}},
+	{"id": "6-4", "chapter": 6, "name": "暴風岬角", "teach": "終章",
+		"intro": "風暴最大的岬角，浪擊最強。深海之王在這裡。",
+		"rules": {"theme": "coast_cliff", "map": "XL", "day": 360.0, "quota": 40.0, "ghosts": 3, "meddle": 5, "big_ghost": true, "weather": "stormy", "critters": 1, "fish": [], "fish_epic": ["bluefin"]},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到藍鰭鮪"}, {"stat": "catch_legend", "text": "釣到傳說魚", "min": 1}],
+		"reward": {"gold": 500, "items": {"lure_rainbow": 3}}},
 ]
 
-## The 25 levels, in order. stars: the ★★ and ★★★ conditions (★ is getting
-## out): a run stat (see stat()) with "min" or "max". reward: the first
-## clear's gold and items (into the warehouse).
-const LEVELS := [
-	# ---- Chapter 1: 初渡 - the tutorial: small, safe, one thing a level.
-	{"id": "1-1", "chapter": 1, "name": "第一竿", "teach": "走路、拋竿、揚竿、收線、獻祭、離開",
-		"intro": "湖的另一邊很安靜。先釣一條魚，交給祭壇，再從亮起來的渡石回去。",
-		"rules": {"hide": ["lure", "quick", "energy", "lamp", "bait"], "map": "S", "theme": "forest_pine", "ponds": [1, 0], "day": 0.0, "quota": 1.0, "drain": 0.0,
-			"ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear",
-			"rocks": [0, 0], "critters": 0, "hotspot": false, "oil": false, "escalate": false, "evil": false,
-			"safe": true, "tutorial": "first_cast"},
-		# (user request: the first level's ★★ can't be lost in its first minute - a missed strike
-		# took it; a second fish instead)
-		"stars": [{"stat": "catch", "min": 2, "text": "釣到兩條魚"},
-			{"stat": "elapsed", "max": 180, "text": "3 分鐘內離開"}],
-		"reward": {"gold": 40}},
-	{"id": "1-2", "chapter": 1, "name": "遠與近", "teach": "拋得越遠魚越大、張力條",
-		"intro": "近岸的小魚好釣，但遠處的大魚值得多。張力太緊線會斷。",
-		"rules": {"hide": ["lure", "quick", "energy", "lamp", "bait"], "map": "S", "theme": "forest_pine", "ponds": [1, 0], "day": 0.0, "quota": 10.0, "drain": 0.0,
-			"ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear",
-			"rocks": [2, 3], "critters": 0, "hotspot": false, "oil": false, "escalate": false, "evil": false,
-			"safe": true, "tutorial": "reach"},
-		"stars": [{"stat": "catch_far", "min": 1, "text": "釣到一條遠海大魚"},
-			{"stat": "line_break", "max": 0, "text": "沒有斷線"}],
-		"reward": {"gold": 50}},
-	{"id": "1-3", "chapter": 1, "name": "石下有餌", "teach": "餌會用完；翻石頭、抓小動物當餌",
-		"intro": "餌只剩一點點。石頭底下、草叢裡，到處都有東西可以掛上鉤。",
-		"rules": {"hide": ["lure", "quick", "energy", "lamp"], "map": "S", "theme": "forest_pine", "ponds": [1, 0], "day": 0.0, "quota": 14.0, "drain": 0.0,
-			"ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear",
-			"rocks": [7, 8], "critters": 6, "hotspot": false, "oil": false, "escalate": false, "evil": false,
-			"bait": 2, "safe": true, "tutorial": "bait"},
-		"stars": [{"stat": "flip_rock", "min": 4, "text": "翻開 4 塊石頭"},
-			{"stat": "grab_bait", "min": 1, "text": "抓到 1 隻活餌"}],
-		"reward": {"gold": 60, "items": {"live_worm": 3}}},
-	{"id": "1-4", "chapter": 1, "name": "天色將暗", "teach": "時間、天色、燈的亮度、燈油、回營火補油",
-		"intro": "這裡的白天很短。天黑以前沒離開，渡石就再也不會亮了。",
-		"rules": {"hide": ["lure", "quick"], "map": "S", "theme": "forest_pine", "ponds": [1, 0], "day": 240.0, "quota": 18.0, "drain": 0.5,
-			"ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear",
-			"rocks": [5, 6], "critters": 4, "hotspot": false, "oil": false, "escalate": false, "evil": false,
-			"night_fails": true, "safe": true, "tutorial": "lamp"},
-		"stars": [{"stat": "refuel", "min": 1, "text": "回營火補 1 次燈油"},
-			{"stat": "time_left", "min": 60, "text": "剩 60 秒以上離開"}],
-		"reward": {"gold": 70, "items": {"battery": 2}}},
-	{"id": "1-5", "chapter": 1, "name": "飄忽的影子", "teach": "小鬼的搗亂、用強光定住鬼",
-		"intro": "有東西在樹梢間飄。它們不會傷人，只是愛搗蛋。",
-		"rules": {"hide": ["lure"], "map": "S", "theme": "forest_pine", "ponds": [1, 0], "day": 270.0, "quota": 22.0, "drain": 0.6,
-			"ghosts": 1, "meddle": 3, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear",
-			"rocks": [5, 6], "critters": 4, "hotspot": false, "oil": false, "escalate": false, "evil": false,
-			"night_fails": true, "safe": true, "tutorial": "ghost"},
-		"stars": [{"stat": "ghost_stun", "min": 1, "text": "用強光定住小鬼"},
-			{"stat": "stolen", "max": 0, "text": "沒有魚被偷"}],
-		"reward": {"gold": 80}},
-	# ---- Chapter 2: 秋沼 - a middle-sized map, the real rules.
-	{"id": "2-1", "chapter": 2, "name": "漣漪與暗潭", "teach": "魚群漣漪、暗潭的稀有魚",
-		"intro": "水面一圈圈的漣漪，是魚群在底下翻騰。那個顏色特別深的小潭，藏著不一樣的東西。",
-		"rules": {"hide": ["lure"], "map": "M", "theme": "forest_pine", "ponds": [2, 1], "quota": 26.0, "ghosts": 1, "meddle": 3,
-			"big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear", "escalate": false,
-			"evil": false, "night_fails": true, "tutorial": "hotspot"},
-		"stars": [{"stat": "catch_hotspot", "min": 2, "text": "在漣漪裡釣到 2 條"},
-			{"stat": "catch_rare", "min": 1, "text": "釣到 1 條稀有魚"}],
-		"reward": {"gold": 90}},
-	{"id": "2-2", "chapter": 2, "name": "路亞", "teach": "路亞：邊收線魚才會追；假餌會被扯斷",
-		"intro": "青蛙商人塞了幾個假餌給你：「試試看，會動的東西魚比較愛。」",
-		"rules": {"hide": ["lure"], "map": "M", "theme": "forest_pine", "ponds": [2, 1], "quota": 28.0, "ghosts": 1, "meddle": 3,
-			"big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear", "escalate": false,
-			"evil": false, "night_fails": true, "gift": {"lure_minnow": 6}, "tutorial": "lure"},
-		"stars": [{"stat": "catch_lure", "min": 3, "text": "用路亞釣到 3 條"},
-			{"stat": "lure_lost", "max": 0, "text": "沒弄丟假餌"}],
-		"reward": {"gold": 100}},
-	{"id": "2-3", "chapter": 2, "name": "霧與魚汛", "teach": "天氣：起霧、魚汛",
-		"intro": "湖邊的天氣說變就變。霧散了以後，魚會一起浮上來。",
-		"rules": {"hide": ["lure"], "map": "M", "theme": "forest_pine", "ponds": [2, 1], "quota": 32.0, "ghosts": 1, "meddle": 3,
-			"big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": [["FOG", 55.0], ["FISH_RUN", 55.0], "mild"],
-			"escalate": false, "evil": false, "night_fails": true, "tutorial": "weather"},
-		"stars": [{"stat": "catch_fishrun", "min": 3, "text": "魚汛時釣到 3 條"},
-			{"stat": "time_left", "min": 45, "text": "剩 45 秒以上離開"}],
-		"reward": {"gold": 110}},
-	{"id": "2-4", "chapter": 2, "name": "暴雨", "teach": "暴風雨、水鬼、棧橋",
-		"intro": "雨大到看不清水面。這種天氣，水裡的東西會爬上來。",
-		"rules": {"hide": ["lure"], "map": "M", "theme": "forest_pine", "ponds": [2, 1], "quota": 32.0, "ghosts": 1, "meddle": 3,
-			"big_ghost": false, "water_ghost": 1.5, "hunters": false, "weather": [["STORM", 100.0], "random"],
-			"escalate": false, "evil": false, "night_fails": true, "tutorial": "water_ghost"},
-		"stars": [{"stat": "water_ghost_hit", "max": 0, "text": "沒被水鬼抓到"},
-			{"stat": "catch_dock", "min": 3, "text": "在棧橋上釣到 3 條"}],
-		"reward": {"gold": 120}},
-	{"id": "2-5", "chapter": 2, "name": "搬油", "teach": "營火的油、提油箱回營地",
-		"intro": "營火的油桶快見底了。地圖上散落著油箱，得自己提回來。",
-		"rules": {"hide": ["lure"], "map": "M", "theme": "forest_pine", "ponds": [2, 1], "day": 330.0, "quota": 36.0, "fuel": 260.0,
-			"drain": 1.0, "ghosts": 1, "meddle": 3, "big_ghost": false, "water_ghost": 0.6, "hunters": false,
-			"weather": "mild", "escalate": false, "evil": false, "night_fails": true, "tutorial": "oil"},
-		"stars": [{"stat": "oil_delivered", "min": 2, "text": "提回 2 桶油"},
-			{"stat": "fire_out", "max": 0, "text": "營火從沒熄滅"}],
-		"reward": {"gold": 130, "items": {"battery": 2}}},
-	# ---- Chapter 3: 鐵鍊聲 - the big ghost.
-	{"id": "3-1", "chapter": 3, "name": "鐵鍊聲", "teach": "大鬼：被燈光吸引、會抓人；營火圈裡安全",
-		"intro": "天色一暗，遠處就傳來鐵鍊拖地的聲音。它看得見光。",
-		"rules": {"hide": ["lure"], "map": "M", "theme": "forest_pine", "ponds": [2, 1], "quota": 28.0, "ghosts": 0,
-			"water_ghost": 0.5, "hunters": false, "weather": "mild", "evil": false, "tutorial": "big_ghost"},
-		"stars": [{"stat": "grabbed", "max": 0, "text": "沒被大鬼抓住"},
-			{"stat": "catch", "min": 8, "text": "釣到 8 條"}],
-		"reward": {"gold": 150}},
-	{"id": "3-2", "chapter": 3, "name": "強光", "teach": "強光定住大鬼；被抓時用強光掙脫",
-		"intro": "光會引來它，也能擋下它。看準時機，用盡全力照過去。",
-		"rules": {"hide": ["lure"], "map": "M", "theme": "forest_pine", "ponds": [2, 1], "quota": 32.0, "ghosts": 1, "meddle": 3,
-			"water_ghost": 0.5, "hunters": false, "weather": "mild", "evil": false, "tutorial": "flash_big"},
-		"stars": [{"stat": "big_ghost_stun", "min": 1, "text": "用強光定住大鬼"},
-			{"stat": "grabbed", "max": 0, "text": "沒被大鬼抓住"}],
-		"reward": {"gold": 160, "items": {"battery": 3}}},
-	{"id": "3-3", "chapter": 3, "name": "誘惑", "teach": "丟一條魚引開大鬼",
-		"intro": "它餓了。餓的東西，都會被吃的引走。",
-		"rules": {"map": "M", "theme": "forest_pine", "ponds": [2, 1], "quota": 36.0, "ghosts": 1, "meddle": 3,
-			"water_ghost": 0.5, "hunters": false, "weather": "mild", "evil": false, "tutorial": "lure_throw"},
-		"stars": [{"stat": "big_ghost_lured", "min": 1, "text": "用魚引開大鬼"},
-			{"stat": "time_left", "min": 30, "text": "剩 30 秒以上離開"}],
-		"reward": {"gold": 170}},
-	{"id": "3-4", "chapter": 3, "name": "心臟", "teach": "心臟（被抓時救命）；入夜",
-		"intro": "這一趟時間不夠，夜一定會來。漣漪裡偶爾會釣到一顆還在跳的心臟。",
-		"rules": {"map": "M", "theme": "forest_pine", "ponds": [2, 1], "day": 210.0, "quota": 42.0, "ghosts": 1,
-			"meddle": 3, "water_ghost": 0.5, "heart": 4.0, "hunters": false, "weather": "mild", "evil": false,
-			"tutorial": "heart"},
-		"stars": [{"stat": "heart_got", "min": 1, "text": "拿到心臟"},
-			{"stat": "escaped_night", "min": 1, "text": "入夜後才成功離開"}],
-		"reward": {"gold": 180}},
-	{"id": "3-5", "chapter": 3, "name": "鬼門關", "teach": "綜合考驗：第一次到大地圖",
-		"intro": "湖面一下子變得好寬。小鬼、大鬼、水鬼，全都在。",
-		"rules": {"map": "L", "theme": "forest_pine", "ponds": [3, 1], "quota": 45.0, "ghosts": 2, "meddle": 4,
-			"hunters": false, "evil": false},
-		"stars": [{"stat": "stolen", "max": 0, "text": "沒有魚被偷"},
-			{"stat": "grabbed", "max": 0, "text": "沒被大鬼抓住"}],
-		"reward": {"gold": 220}},
-	# ---- Chapter 4: 荒野 - beasts, and fish that fight back.
-	{"id": "4-1", "chapter": 4, "name": "狼嚎", "teach": "野獸：盯上、撲倒、魚掉地上；強光嚇跑",
-		"intro": "泥地上有一串腳印，一直延伸到樹林裡。",
-		"rules": {"map": "L", "theme": "forest_pine", "ponds": [3, 1], "quota": 40.0, "ghosts": 1, "big_ghost": false,
-			"night_fails": true, "evil": false, "beasts": {"wolf": 2.0}, "tutorial": "hunters"},
-		"stars": [{"stat": "animal_hit", "max": 0, "text": "沒被野獸撲倒"},
-			{"stat": "beast_scare", "min": 1, "text": "用強光嚇跑野獸"}],
-		"reward": {"gold": 220, "items": {"lure_redhead": 3}}},
-	{"id": "4-2", "chapter": 4, "name": "掙扎的魚", "teach": "魚往外衝、往旁邊衝、跳出水面",
-		"intro": "深潭的魚個性很烈。上鉤以後，才是真正的開始。",
-		"rules": {"map": "L", "theme": "forest_pine", "ponds": [3, 1], "quota": 45.0, "ghosts": 1,
-			"evil": false, "tutorial": "fight"},
-		"stars": [{"stat": "swipe_hit", "min": 3, "text": "反甩成功 3 次"},
-			{"stat": "catch_jumper", "min": 1, "text": "釣到 1 條會跳的魚"}],
-		"reward": {"gold": 230}},
-	{"id": "4-3", "chapter": 4, "name": "長夜遠路", "teach": "綜合：油少、大鬼、野獸",
-		"intro": "營火燒不久，池塘又離得遠。每一趟來回都要算好。",
-		"rules": {"map": "L", "theme": "forest_pine", "ponds": [3, 1], "day": 330.0, "quota": 48.0, "fuel": 300.0,
-			"drain": 1.1, "ghosts": 1, "evil": false, "beasts": {"wolf": 1.5}},
-		"stars": [{"stat": "oil_delivered", "min": 1, "text": "提回 1 桶油"},
-			{"stat": "grabbed", "max": 0, "text": "沒被大鬼抓住"}],
-		"reward": {"gold": 240}},
-	{"id": "4-4", "chapter": 4, "name": "狼王之地", "teach": "狼群：更多、更快的獵食者",
-		"intro": "林子裡的狼嚎此起彼落，這裡是牠們的地盤。",
-		"rules": {"map": "L", "theme": "forest_pine", "ponds": [3, 1], "quota": 50.0, "ghosts": 1, "evil": false,
-			"beasts": {"wolf": 3.0}},
-		"stars": [{"stat": "animal_hit", "max": 0, "text": "沒被野獸撲倒"},
-			{"stat": "catch", "min": 10, "text": "釣到 10 條"}],
-		"reward": {"gold": 250, "items": {"battery": 3}}},
-	{"id": "4-5", "chapter": 4, "name": "黑松林", "teach": "暴雨、水鬼、野獸、大鬼一起來",
-		"intro": "松林深處終年不見天日，雨總是下個不停。",
-		"rules": {"map": "L", "theme": "forest_pine", "ponds": [3, 1], "quota": 55.0, "ghosts": 1,
-			"water_ghost": 1.3, "weather": "stormy", "evil": false, "beasts": {"wolf": 2.0}},
-		"stars": [{"stat": "water_ghost_hit", "max": 0, "text": "沒被水鬼抓到"},
-			{"stat": "time_left", "min": 30, "text": "剩 30 秒以上離開"}],
-		"reward": {"gold": 260}},
-	# ---- Chapter 5: 邪祭 - offerings and the evil in them; the full rules.
-	{"id": "5-1", "chapter": 5, "name": "供品", "teach": "供品池、留下來賭、邪惡供品",
-		"intro": "額度滿了，祭壇卻還在發光。再多獻一點，也許會有更好的東西……也許不會。",
-		"rules": {"map": "L", "theme": "forest_pine", "quota": 40.0, "ghosts": 1, "tutorial": "offerings"},
-		"stars": [{"stat": "offering_rare", "min": 1, "text": "帶回稀有以上的供品"},
-			{"stat": "evil", "max": 0, "text": "沒有邪惡供品"}],
-		"reward": {"gold": 280, "items": {"lure_rainbow": 2}}},
-	{"id": "5-2", "chapter": 5, "name": "腐魚", "teach": "放在地上的魚會腐敗；腐魚獻祭是賭博",
-		"intro": "岸邊到處是被丟下的魚。有人說，腐敗的東西，鬼最喜歡。",
-		"rules": {"map": "L", "theme": "forest_pine", "quota": 45.0, "ghosts": 1, "tutorial": "rotten"},
-		"stars": [{"stat": "rotten_sacrifice", "min": 1, "text": "獻祭 1 條腐魚"},
-			{"stat": "evil", "max": 0, "text": "沒有邪惡供品"}],
-		"reward": {"gold": 290}},
-	{"id": "5-3", "chapter": 5, "name": "大湖", "teach": "開闊的大湖、更大的魚",
-		"intro": "湖的盡頭水面開闊，風很大，魚也大。",
-		"rules": {"map": "L", "theme": "forest_pine", "quota": 60.0, "ghosts": 1},
-		"stars": [{"stat": "species", "min": 6, "text": "釣到 6 種不同的魚"},
-			{"stat": "catch_rare", "min": 1, "text": "釣到 1 條稀有魚"}],
-		"reward": {"gold": 300}},
-	{"id": "5-4", "chapter": 5, "name": "無光林", "teach": "大鬼一開始就醒著",
-		"intro": "這片林子沒有白天。它早就醒著，在樹後等你。",
-		"rules": {"map": "L", "theme": "forest_pine", "quota": 60.0, "ghosts": 1, "big_wake": 0},
-		"stars": [{"stat": "grabbed", "max": 0, "text": "沒被大鬼抓住"},
-			{"stat": "evil", "max": 0, "text": "沒有邪惡供品"}],
-		"reward": {"gold": 320}},
-	{"id": "5-5", "chapter": 5, "name": "深淵之夜", "teach": "終章：全部的威脅",
-		"intro": "柳靈說，這裡是湖最深的地方。從來沒有人在這裡等到天亮。",
-		"rules": {"map": "L", "theme": "forest_pine", "day": 360.0, "quota": 80.0, "ghosts": 2, "meddle": 5,
-			"big_wake": 0, "water_ghost": 1.3, "weather": "stormy", "beasts": {"wolf": 1.0}},
-		"stars": [{"stat": "evil", "max": 0, "text": "沒有邪惡供品"},
-			{"stat": "catch_legend", "min": 1, "text": "釣到 1 條傳說魚"}],
-		"reward": {"gold": 500}},
-]
 
 ## User design (post-game): the free run with curses, each paying a share
 ## more gold on the way out.
@@ -274,7 +212,7 @@ const STAR_GOLD := 15
 const CHAPTER_GOLD := 200
 
 ## The run stats that are a run's own (not added up into Profile.records).
-const RUN_ONLY := ["elapsed", "time_left", "evil", "species", "streak", "streak_best", "near_water",
+const RUN_ONLY := ["elapsed", "time_left", "evil", "species", "species_both", "branch_fish", "oil_left", "streak", "streak_best", "near_water",
 	"light_stage", "quota_met", "big_awake", "mode_lure", "brightness_changed", "carrying_oil",
 	"first_cast_far", "casts", "night", "fish_run", "storm", "fog", "escape_phase"]
 
@@ -552,6 +490,8 @@ func begin_level(id: String) -> void:
 	# full bait box, so the first rod of the tutorial can be cast)
 	if int(rules.bait) < 0:
 		rules.bait = 20
+	FishData.branch_fish = rules.get("fish", []).duplicate()
+	FishData.branch_epic = rules.get("fish_epic", []).duplicate()
 	_apply_world()
 	GameState.reset_run()
 
@@ -562,6 +502,8 @@ func begin_free(chosen: Array = [], theme := "") -> void:
 	curses = chosen.duplicate()
 	rules = DEFAULT_RULES.duplicate(true)
 	rules.theme = theme
+	FishData.branch_fish = []
+	FishData.branch_epic = []
 	for c in curses:
 		match c:
 			"fog":
@@ -586,6 +528,8 @@ func begin_free(chosen: Array = [], theme := "") -> void:
 func clear() -> void:
 	level_id = ""
 	curses = []
+	FishData.branch_fish = []
+	FishData.branch_epic = []
 	rules = DEFAULT_RULES.duplicate(true)
 	_apply_world()
 
@@ -732,6 +676,10 @@ func value(key: String) -> float:
 			return float(GameState.evil_count)
 		"species":
 			return float(_species.size())
+		"oil_left":
+			# (the lamp's oil left, of a full one)
+			var lamp: Lantern = _player.get_node_or_null("Lantern") as Lantern if _player != null else null
+			return lamp.fuel / Lantern.MAX_FUEL if lamp != null else 1.0
 	return float(run.get(key, 0.0))
 
 
@@ -809,6 +757,16 @@ func _on_catch(fish: Dictionary) -> void:
 	var id := str(fish.get("id", ""))
 	if id != "":
 		_species[id] = true
+		# (the branch's own fish, each counted - the ★★; and how many of them caught at all)
+		stat("caught_" + id)
+		var own: Array = rules.get("fish", []) + rules.get("fish_epic", [])
+		if id in own:
+			stat("branch_fish")
+			var kinds := 0
+			for f in own:
+				if value("caught_" + str(f)) > 0.0:
+					kinds += 1
+			set_stat("species_both", float(kinds))
 		if FishData.habit_for(str(fish.get("name", ""))) == "jumper":
 			stat("catch_jumper")
 
@@ -929,6 +887,12 @@ func stars_earned(success: bool) -> Array:
 
 ## Whether a star's condition holds now.
 func condition_met(c: Dictionary) -> bool:
+	if c.has("any"):
+		# (one of several: the branch's own fish - any of them caught)
+		for k in c.any:
+			if value(str(k)) >= float(c.get("min", 1)):
+				return true
+		return false
 	var v := value(str(c.stat))
 	if c.has("min") and v < float(c.min):
 		return false
@@ -968,7 +932,7 @@ func finish(success: bool) -> Dictionary:
 		if gold > 0:
 			Profile.add_gold(gold)
 			result.curse_gold = gold
-		if level_done("5-5"):
+		if level_done(LEVELS.back().id):
 			Profile.record_curse_clear(curses)
 	elif is_level():
 		Profile.record_level_try(level_id)
@@ -1050,8 +1014,14 @@ func chapter_stars(ch: int) -> int:
 
 
 ## A chapter opens once the one before is through and enough stars are in.
+## User request (the developer testing every map): every chapter and level open. Set false for the
+## players' release - then a map's branches open one after another, the next map once the whole of
+## this one's done.
+static var dev_all_open := true
+
+
 func chapter_open(ch: int) -> bool:
-	if ch <= 1:
+	if ch <= 1 or dev_all_open:
 		return true
 	var before := levels_of(ch - 1)
 	return level_done(before.back().id) and stars_total() >= int(chapter(ch).stars)
@@ -1065,6 +1035,8 @@ func level_open(id: String) -> bool:
 	var l := level(id)
 	if l.is_empty() or not chapter_open(l.chapter):
 		return false
+	if dev_all_open:
+		return true
 	var mine := levels_of(l.chapter)
 	var i := mine.find(l)
 	return i <= 0 or level_done(mine[i - 1].id)
@@ -1077,7 +1049,7 @@ func free_open() -> bool:
 
 
 func curses_open() -> bool:
-	return chapter_done(5)
+	return chapter_done(CHAPTERS.size())
 
 
 ## The level to suggest: the first not yet cleared that's open.

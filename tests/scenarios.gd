@@ -130,6 +130,7 @@ const TESTS := [
 	"test_cliff_coast_theme",
 	"test_surf",
 	"test_weathers",
+	"test_branch_fish",
 	"test_wind_and_chop",
 	"test_ground_leaves",
 	"test_grass",
@@ -291,7 +292,8 @@ func play_level(id: String) -> void:
 
 ## A clean slate of campaign progress (the profile is the real one).
 func reset_progress() -> void:
-	Profile.campaign = {"levels": {}, "chapter_bonus": [], "curse_clears": 0, "best_curses": 0}
+	Campaign.dev_all_open = false
+	Profile.campaign = {"levels": {}, "chapter_bonus": [], "curse_clears": 0, "best_curses": 0, "branches": 1}
 	Profile.achievements = {}
 	Profile.records = {}
 
@@ -2748,8 +2750,8 @@ func test_warehouse_and_bag() -> void:
 	# No free bait with the bag: the tutorial's levels hand out their own, so the first rod can be cast.
 	camp().begin_level("1-1")
 	check(int(camp().rules.bait) == 20, "level 1-1 starts with a bait box (%d)" % int(camp().rules.bait))
-	camp().begin_level("1-3")
-	check(int(camp().rules.bait) == 2, "level 1-3 keeps its own count")
+	camp().begin_level("1-2")
+	check(int(camp().rules.bait) == 2, "level 1-2 keeps its own count")
 	camp().clear()
 	check(Profile.bag.is_empty(), "no free bait in the bag at the start: nothing to guard, the bag is empty")
 	check(Profile.to_bag("lure_minnow", 12) == 12 and Profile.bag.filter(func(e): return e.id == "lure_minnow").size() == 2,
@@ -5466,7 +5468,10 @@ func test_campaign_levels_build() -> void:
 		check(is_equal_approx(Player.WORLD_WIDTH, size.x) and is_equal_approx(Player.WORLD_HEIGHT, size.y),
 			"%s: the %s map" % [l.id, r.map])
 		var gen: MapGenerator = main.get_node("MapGenerator")
-		check(gen.theme_name == MapGenerator.THEME, "%s: the forest (%s)" % [l.id, gen.theme_name])
+		# (user request - the maps' branches: each level its map's own look, and its branch's own fish)
+		check(gen.theme_name == (str(r.theme) if str(r.theme) != "" else MapGenerator.THEME), "%s: its map's look (%s)" % [l.id, gen.theme_name])
+		check(FishData.branch_fish == r.get("fish", []) and FishData.branch_epic == r.get("fish_epic", [])
+			and (r.get("fish", []) + r.get("fish_epic", [])).size() >= 1, "%s: its own fish %s" % [l.id, r.get("fish", []) + r.get("fish_epic", [])])
 		var rare := get_tree().get_nodes_in_group("water_zones_rare").size()
 		var common := get_tree().get_nodes_in_group("water_zones_common").size()
 		check(rare == int(r.ponds[1]), "%s: %d dark pond(s), got %d" % [l.id, int(r.ponds[1]), rare])
@@ -5930,7 +5935,7 @@ func test_campaign_level_one() -> void:
 		and not main.get_node("BaitSlot/BaitButton").visible, "1-1: no quick slots, light box or bait slot yet")
 	check(camp().hud_hidden("lure") and camp().hud_hidden("lamp"), "nor the 誘惑 and light buttons")
 	check(not camp().rules_for("1-4").hide.has("energy") and not camp().rules_for("1-3").hide.has("bait")
-		and not camp().rules_for("3-3").hide.has("lure") and camp().rules_for("5-5").hide.is_empty(), "each comes with its lesson")
+		and not camp().rules_for("3-3").hide.has("lure") and camp().rules_for("6-4").hide.is_empty(), "each comes with its lesson")
 	check(CampaignHud.PANEL_AT.y >= StatusCard.FEED_AT.y + StatusCard.EFFECT_SLOT + 6.0 + StatusCard.FEED_LINES * StatusCard.FEED_GAP,
 		"the objectives under the event feed's lines")
 	check(CampaignHud.BOX_Y >= 92.0, "Willow's line under the light's box")
@@ -5946,11 +5951,12 @@ func test_campaign_level_one() -> void:
 	player().catch_success.emit(f)
 	gs.add_carried_fish(f)
 	check(camp().value("catch") == 1.0, "the catch is counted")
-	# (user request: the first level's ★★ is a second fish - not "no fish lost", which a first
-	# missed strike took)
-	check(not camp().condition_met(camp().level("1-1").stars[0]), "one fish: ★★ not yet")
-	player().catch_success.emit(fish())
-	check(camp().condition_met(camp().level("1-1").stars[0]), "a second fish wins ★★")
+	# (user request - the maps' branches: each level's ★★ one of its branch's own fish)
+	check(not camp().condition_met(camp().level("1-1").stars[0]), "an everyday fish: ★★ not yet")
+	var own := fish()
+	own["id"] = "minnow"
+	player().catch_success.emit(own)
+	check(camp().condition_met(camp().level("1-1").stars[0]), "one of the branch's own fish (鱥魚) wins ★★")
 	gs.sacrifice_at(0)
 	await frames(2)
 	check(gs.day_phase == gs.DayPhase.ESCAPE, "one fish meets the quota")
@@ -5967,7 +5973,7 @@ func test_campaign_level_one() -> void:
 	# Again, slower and with a fish lost: nothing more to win.
 	await play_level("1-1")
 	player().catch_failed.emit("line_break")
-	check(not camp().condition_met(camp().level("1-1").stars[0]), "no second fish: no ★★ this time")
+	check(not camp().condition_met(camp().level("1-1").stars[0]), "none of its own fish: no ★★ this time")
 	gs.add_carried_fish(fish())
 	gs.sacrifice_at(0)
 	gold = Profile.gold
@@ -5980,7 +5986,7 @@ func test_campaign_level_one() -> void:
 ## chapter's are safe: nothing found is lost.
 func test_campaign_night_ends_safe_level() -> void:
 	reset_progress()
-	await play_level("1-4")
+	await play_level("1-2")
 	var found := {"id": "battery", "count": 1, "cell": Vector2i(-9, -9), "found": true}
 	Profile.bag.append(found)
 	gs.time_remaining = 0.5
@@ -6018,18 +6024,25 @@ func test_campaign_curses() -> void:
 ## Chapters open in order and on stars; achievements count across runs.
 func test_campaign_unlocks_and_achievements() -> void:
 	reset_progress()
+	# (user decision - the maps' branches: one after another in a map, the next map once the whole of
+	# this one's done; six maps, 26 levels)
+	check(camp().CHAPTERS.size() == 6 and camp().LEVELS.size() == 26, "six maps, 26 branches")
 	check(camp().level_open("1-1") and not camp().level_open("1-2") and not camp().chapter_open(2), "only 1-1 to begin with")
-	for id in ["1-1", "1-2", "1-3", "1-4", "1-5"]:
+	for id in ["1-1", "1-2", "1-3", "1-4"]:
 		Profile.record_level(id, [true, true, false], 100.0)
-	check(camp().chapter_open(2) and camp().level_open("2-1") and not camp().level_open("2-2"), "chapter 2 after 1-5")
+	check(camp().level_open("1-5") and not camp().chapter_open(2), "chapter 2 waits for the whole of chapter 1")
+	Profile.record_level("1-5", [true, false, false], 100.0)
+	check(camp().chapter_open(2) and camp().level_open("2-1") and not camp().level_open("2-2"), "chapter 2 after the whole of chapter 1")
 	check(camp().free_open(), "the free run after chapter 1")
-	for id in ["2-1", "2-2", "2-3", "2-4"]:
+	for id in ["2-1", "2-2", "2-3"]:
 		Profile.record_level(id, [true, false, false], 100.0)
-	check(not camp().chapter_open(3), "chapter 3 waits for 2-5")
-	Profile.record_level("2-5", [true, false, false], 100.0)
-	check(camp().stars_total() == 15 and camp().chapter_open(3), "chapter 3 at 10 stars or more (15)")
-	check(not camp().chapter_open(4), "chapter 4 needs chapter 3")
-	check(camp().danger(camp().rules_for("1-1")) == 0 and camp().danger(camp().rules_for("5-5")) == 5, "danger from none to the most")
+	check(not camp().chapter_open(3), "chapter 3 waits for 2-4")
+	Profile.record_level("2-4", [true, false, false], 100.0)
+	check(camp().chapter_open(3) and not camp().chapter_open(4), "chapter 3 then, chapter 4 not yet")
+	Campaign.dev_all_open = true
+	check(camp().level_open("6-4") and camp().chapter_open(6), "the developer: every map and branch open")
+	Campaign.dev_all_open = false
+	check(camp().danger(camp().rules_for("1-1")) == 0 and camp().danger(camp().rules_for("6-4")) == 5, "danger from none to the most")
 	Profile.add_records({"catch": 99.0})
 	check(not camp().achievement_done(camp().achievement("catch_100")), "99 fish isn't 百尾")
 	Profile.add_records({"catch": 1.0})
@@ -11082,6 +11095,33 @@ func test_weathers() -> void:
 	check(gs.foggy() and not gs.rainy(), "a sea fog closes the view in like a fog")
 	gs._set_weather(GameState.Weather.CLEAR, INF, true)
 	camp().clear()
+
+
+## User request (the maps' branches): each branch its own fish - with the rare ones (and now and then
+## an everyday catch), its rarest with the rarest; a sea fish that's some branch's own caught only in
+## that branch; the new sea fish (月光鰺, made from the 浪人鰺) whole - its data, picture and model.
+func test_branch_fish() -> void:
+	FishData.branch_fish = []
+	FishData.branch_epic = []
+	var open_sea := FishData.pool_for("sea", "rare", "rare")
+	check(not open_sea.has("trevally") and not open_sea.has("moon_jack"), "the open sea: no branch's own fish (%s)" % [open_sea])
+	FishData.branch_fish = ["trevally"]
+	var rare := FishData.pool_for("sea", "rare", "rare")
+	check(rare.has("trevally") and not rare.has("napoleon"), "its branch: its own sea fish, not another branch's (%s)" % [rare])
+	FishData.branch_fish = ["minnow", "goby"]
+	FishData.branch_epic = ["alligator_gar"]
+	var fresh := FishData.pool_for("forest", "", "rare")
+	var epic := FishData.pool_for("forest", "", "epic")
+	var everyday := 0
+	for _i in 400:
+		if FishData.pool_for("forest", "", "") == FishData.branch_fish:
+			everyday += 1
+	check(fresh.has("minnow") and fresh.has("goby") and epic.has("alligator_gar") and everyday > 20 and everyday < 100
+		and FishData.species_in("forest").has("alligator_gar"), "a freshwater branch's own: with the rare, the rarest, now and then any catch (%d/400)" % everyday)
+	FishData.branch_fish = []
+	FishData.branch_epic = []
+	check(FishData.FISH.has("moon_jack") and str(FishData.FISH.moon_jack.name) == "月光鰺" and FishModel.has_model("moon_jack")
+		and ResourceLoader.exists("res://assets/sprites/fish/moon_jack.png") and FishData.LENGTH_CM.has("moon_jack"), "the new sea fish 月光鰺, whole")
 
 
 func test_surf() -> void:

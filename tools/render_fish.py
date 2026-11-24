@@ -63,6 +63,7 @@ BODIES = {
     "shark": dict(h=0.2, w=0.16, peak=0.6, blunt=0.3, stalk=0.2, belly=0.02, tail="shark", dorsal=(0.5, 0.64, 0.2), anal=(0.25, 0.3, 0.06), pect=0.2, extras=["hammer", "gills"]),
     "mahi": dict(h=0.3, w=0.1, peak=0.78, blunt=0.95, stalk=0.2, belly=0.0, tail="fork", dorsal=(0.12, 0.95, 0.12), anal=(0.12, 0.5, 0.08), pect=0.1, extras=[]),
     "trevally": dict(h=0.38, w=0.14, peak=0.55, blunt=0.7, stalk=0.12, belly=0.03, tail="crescent", dorsal=(0.3, 0.55, 0.14), anal=(0.25, 0.45, 0.12), pect=0.16, extras=["scutes"]),
+    "moon_jack": dict(h=0.33, w=0.14, peak=0.55, blunt=0.7, stalk=0.12, belly=0.03, tail="crescent", dorsal=(0.3, 0.55, 0.14), anal=(0.25, 0.45, 0.12), pect=0.16, extras=["scutes"]),
 }
 
 

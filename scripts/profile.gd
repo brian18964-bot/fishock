@@ -2486,6 +2486,12 @@ func load_data(data: Dictionary) -> void:
 	stats.merge(data.get("stats", {}), true)
 	campaign = {"levels": {}, "chapter_bonus": [], "curse_clears": 0, "best_curses": 0}
 	campaign.merge(data.get("campaign", {}), true)
+	# (user decision - the old 25 levels gone, the maps' branches in their place: the old levels'
+	# stars and the chapters' bonuses start again)
+	if int(campaign.get("branches", 0)) < 1:
+		campaign.levels = {}
+		campaign.chapter_bonus = []
+	campaign["branches"] = 1
 	records = data.get("records", {})
 	achievements = data.get("achievements", {})
 	if not data.has("equipped"):

@@ -11,7 +11,7 @@ extends Control
 ## (The free run is DepartChooser's 自由模式.) Setting off goes back to the camp (TitleScreen.depart_level)
 ## for the walk out to the stone.
 
-const CH_NUM := ["一", "二", "三", "四", "五"]
+const CH_NUM := ["一", "二", "三", "四", "五", "六"]
 const MAP_SIZE := Vector2(500, 318)
 ## The five stops along the path (in the map's box), left to right.
 const STOPS := [Vector2(70, 230), Vector2(170, 110), Vector2(270, 220), Vector2(370, 100), Vector2(460, 210)]
@@ -98,10 +98,10 @@ func _build_story() -> void:
 		var n: int = c.id
 		var open := Campaign.chapter_open(n)
 		var words := "第%s章 %s" % [CH_NUM[n - 1], c.name]
-		words += "  ★%d/15" % Campaign.chapter_stars(n) if open else "  ★%d 解鎖" % int(c.stars)
+		words += "  ★%d/%d" % [Campaign.chapter_stars(n), Campaign.levels_of(n).size() * 3] if open else "  ★%d 解鎖" % int(c.stars)
 		var b := UiKit.button(words, 14)
 		b.name = "Chapter%d" % n
-		b.custom_minimum_size = Vector2(172, 34)
+		b.custom_minimum_size = Vector2(146, 34)
 		UiKit.style_tab(b, n == chapter)
 		if not open:
 			b.modulate = Color(0.6, 0.6, 0.6)

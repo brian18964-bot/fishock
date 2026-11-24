@@ -229,6 +229,10 @@ const FISH := {
 	# Sea rarities (the last two its legends).
 	"trevally": {"name": "浪人鰺", "value": 2.6, "trait": "wild", "habit": "", "reach": ["mid", "far"],
 		"colors": [Color(0.4, 0.45, 0.5), Color(0.85, 0.87, 0.88), Color(0.25, 0.28, 0.3)], "pattern": "gradient", "body": "trevally"},
+	# (user request - the beach's first branch's own: made from the trevally - slimmer, silver-blue as
+	# moonlight, its fins yellow)
+	"moon_jack": {"name": "月光鰺", "value": 2.2, "trait": "normal", "habit": "", "reach": ["near", "mid"],
+		"colors": [Color(0.55, 0.63, 0.74), Color(0.93, 0.95, 0.98), Color(0.88, 0.75, 0.3)], "pattern": "gradient", "body": "trevally"},
 	"napoleon": {"name": "蘇眉", "value": 2.8, "trait": "normal", "habit": "cover", "reach": ["mid"],
 		"colors": [Color(0.25, 0.6, 0.55), Color(0.4, 0.7, 0.75), Color(0.15, 0.35, 0.5)], "pattern": "speckle", "body": "grouper"},
 	"sunfish": {"name": "翻車魚", "value": 3.0, "trait": "calm", "habit": "", "reach": ["far"],
@@ -285,36 +289,57 @@ static func waters_for_theme(theme_name: String) -> String:
 ## rolled ("common" / "rare" / "epic") and the water it's cast into (the
 ## purple rare pools hold only the style's own fish and better).
 static func pool_for(water_key: String, zone_key: String, rarity_key: String) -> Array:
+	# (user request - the maps' branches: each its own fish - branch_fish with the rare ones and now and
+	# then an everyday catch, branch_epic with the rarest - and a fish that's some branch's own found
+	# only in that branch)
+	if not branch_fish.is_empty() and rarity_key == "" and zone_key != "rare" and randf() < BRANCH_EVERYDAY:
+		return branch_fish
 	if water_key == "sea":
 		match rarity_key:
 			"epic":
-				return SEA_LEGEND
+				return _branch_pool(SEA_LEGEND, branch_epic, SEA_RARE)
 			"rare":
-				return SEA_RARE
-		return SEA_RARE if zone_key == "rare" else SEA_COMMON
+				return _branch_pool(SEA_RARE, branch_fish, SEA_COMMON)
+		return _branch_pool(SEA_RARE, branch_fish, SEA_COMMON) if zone_key == "rare" else SEA_COMMON
 	var style: Array = STYLE_FISH.get(water_key, STYLE_FISH.forest)
 	match rarity_key:
 		"epic":
-			return [style[1]]
+			return [style[1]] + branch_epic
 		"rare":
-			return style[0]
+			return style[0] + branch_fish
 	if zone_key == "rare":
-		return style[0]
+		return style[0] + branch_fish
 	# Everyday fish: the shared ones mostly, the style's own now and then.
 	return COMMON_FRESH + style[0] if randf() < STYLE_OWN_CHANCE else COMMON_FRESH
+
+
+## (the sea's: its pool less the fish that are some other branch's own, with this branch's; the
+## `fallback` (less those too) if none are left)
+static func _branch_pool(base: Array, own: Array, fallback: Array) -> Array:
+	var pool := base.filter(func(id): return not id in BRANCH_ONLY) + own
+	if pool.is_empty():
+		pool = fallback.filter(func(id): return not id in BRANCH_ONLY) + branch_fish
+	return pool if not pool.is_empty() else SEA_COMMON
 
 
 ## Every species a cast into these waters can bring up (for warming their models up before the
 ## run's first bite: RunView3D.start_warm).
 static func species_in(water_key: String) -> Array:
 	if water_key == "sea":
-		return SEA_COMMON + SEA_RARE + SEA_LEGEND
+		return SEA_COMMON + SEA_RARE + SEA_LEGEND + branch_fish + branch_epic
 	var style: Array = STYLE_FISH.get(water_key, STYLE_FISH.forest)
-	return COMMON_FRESH + style[0] + [style[1]]
+	return COMMON_FRESH + style[0] + [style[1]] + branch_fish + branch_epic
 
 
 ## How often an everyday freshwater catch may be one of the style's own.
 const STYLE_OWN_CHANCE := 0.3
+## (user request - the maps' branches) this run's branch's own fish: with the rare ones (and, BRANCH_EVERYDAY
+## of the time, an everyday catch); its rarest, with the rarest. Set by Campaign as a level starts.
+static var branch_fish: Array = []
+static var branch_epic: Array = []
+const BRANCH_EVERYDAY := 0.12
+## The sea's fish that are a branch's own - not caught in the open sea elsewhere.
+const BRANCH_ONLY := ["moon_jack", "trevally", "napoleon", "sunfish", "sailfish", "hammerhead", "swordfish", "bluefin"]
 
 
 ## A species by id, with its id and the float tint ("color") filled in.
@@ -456,7 +481,7 @@ const LENGTH_CM := {
 	"saury": [25, 35], "herring": [20, 40], "sea_bream": [25, 80], "sea_bass": [35, 90], "flounder": [25, 70],
 	"cod": [45, 120], "puffer": [15, 40], "cutlassfish": [70, 150], "grouper": [35, 120], "mullet": [35, 70],
 	"croaker": [25, 60], "yellowtail": [50, 120], "mahi": [60, 150], "conger": [60, 150], "scorpionfish": [12, 30],
-	"trevally": [60, 150], "napoleon": [80, 200], "sunfish": [120, 300], "sailfish": [170, 300],
+	"trevally": [60, 150], "moon_jack": [30, 70], "napoleon": [80, 200], "sunfish": [120, 300], "sailfish": [170, 300],
 	"hammerhead": [180, 400], "swordfish": [150, 350], "bluefin": [120, 280],
 }
 const WEIGHT_K := {
@@ -485,7 +510,7 @@ const TANK_TRAITS := {
 const TRAIT_OF := {
 	"fierce": ["bass", "snakehead", "bowfin", "pike", "piranha", "arowana", "arapaima", "alligator_gar", "taimen", "wels",
 		"betta", "oscar", "grouper", "hammerhead", "trevally", "cutlassfish", "conger", "ghost_fish", "two_headed_carp"],
-	"school": ["sardine", "herring", "horse_mackerel", "saury", "mackerel", "smelt", "minnow", "ayu", "whitefish",
+	"school": ["moon_jack", "sardine", "herring", "horse_mackerel", "saury", "mackerel", "smelt", "minnow", "ayu", "whitefish",
 		"bluegill", "crucian", "perch", "croaker"],
 	"bottom": ["catfish", "black_catfish", "channel_cat", "walking_catfish", "loach", "goby", "sculpin", "flounder",
 		"sturgeon", "pleco", "burbot", "crayfish", "scorpionfish", "cod"],
@@ -533,7 +558,7 @@ const GIANT_FROM := 0.85
 const GATE_MAIN := {
 	"react": ["brown_trout", "brook_trout", "grayling", "ayu", "golden_trout", "char", "minnow", "crucian",
 		"smelt", "sardine", "saury", "pupfish", "devils_pupfish", "angelfish", "cavefish", "loach",
-		"tilapia", "mahi", "mullet", "croaker", "rainbow_trout", "sea_bream", "silver_carp"],
+		"tilapia", "mahi", "mullet", "croaker", "rainbow_trout", "sea_bream", "silver_carp", "moon_jack"],
 	"might": ["carp", "wels", "paddlefish", "lungfish", "golden_koi", "giant_goldfish", "coelacanth", "arapaima",
 		"napoleon", "sunfish", "bichir", "catfish", "cod", "bonytail"],
 	"resil": ["horse_mackerel", "bluegill", "sculpin", "goby", "crayfish", "puffer", "garra", "betta", "bass",
