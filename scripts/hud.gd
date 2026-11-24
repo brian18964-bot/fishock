@@ -32,6 +32,10 @@ const WEATHER_TEXT := {
 	"FOG": "🌫 起霧了（視野變差）",
 	"STORM": "⛈ 暴風雨（鬼更活躍、水鬼更常出沒）",
 	"FISH_RUN": "🐟 魚汛（上魚率提升）",
+	"DRIZZLE": "🌦 小雨",
+	"DENSE_FOG": "🌫 濃霧（視野很差）",
+	"SANDSTORM": "🌪 沙塵暴（視野變差）",
+	"SEA_FOG": "🌫 海霧（靠海處看不清）",
 }
 
 const PHASE_TEXT := {

@@ -26,5 +26,5 @@ const STAGE_ENERGY := [0.35, 0.22, 0.12, 0.05]
 
 func _process(delta: float) -> void:
 	visible = not GameState.is_night
-	texture_scale = FOG_RADIUS_SCALE if GameState.weather == GameState.Weather.FOG else RADIUS_SCALE
+	texture_scale = FOG_RADIUS_SCALE if GameState.foggy() else RADIUS_SCALE
 	energy = lerpf(energy, STAGE_ENERGY[GameState.light_stage()], minf(1.0, delta))

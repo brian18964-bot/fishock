@@ -598,8 +598,14 @@ func _build() -> void:
 		_leaf_fall()
 	_lay_leaves()
 	_lay_grass()
+	# (user request: the weathers seen - rain, thick fog, sandstorm, sea fog: Weather3D)
+	_weather3d = Weather3D.new()
+	_weather3d.name = "Weather3D"
+	add_child(_weather3d)
+	_weather3d.setup(MapGenerator.current_theme, low_end())
 	if _snow:
 		_snowfall()
+		_weather3d.snow = _snow_fx
 		_tracks = SnowTracks.new()
 		_tracks.character = rig.character if rig != null else Profile.character
 		add_child(_tracks)
@@ -2067,6 +2073,7 @@ func _depth_texture(zone: WaterZone, box: Rect2) -> Texture2D:
 ## The sand's wetness (SurfWetness): a texel every WET_TEXEL m (twice that on a phone), over the
 ## band of the beach the waves reach (_beach_band).
 const WET_TEXEL := 0.125
+var _weather3d: Weather3D
 var _wetness: SurfWetness
 var _sea_mat: ShaderMaterial
 var _wade: SurfWade
@@ -7250,7 +7257,7 @@ const WIND_EASE := 0.35
 
 
 func _blow(delta: float) -> void:
-	var want := Foliage.STORM_WIND if GameState.weather == GameState.Weather.STORM else Foliage.WIND
+	var want := Foliage.STORM_WIND if GameState.weather in [GameState.Weather.STORM, GameState.Weather.SANDSTORM] else Foliage.WIND
 	if not is_equal_approx(wind, want):
 		wind = move_toward(wind, want, delta * WIND_EASE)
 		Foliage.set_wind(wind)
@@ -8031,6 +8038,7 @@ func _update_light() -> void:
 	_moon.light_specular = 0.2 * k * k * (0.0 if GameState.dark_fell else 1.0)
 	_moon.light_color = Color(0.62, 0.72, 0.95).lerp(Color(0.9, 0.88, 0.85), k)
 	_env.fog_light_color = (Color(0.05, 0.07, 0.11).lerp(Color(0.2, 0.22, 0.25), k) * NIGHT_DIM)
+	_env.fog_density = 0.018
 	if _snow:
 		# (a colder dark, a thicker haze. User request: the snow far too bright - it gave the night
 		# back so much light the lamp did nothing (its ground ~30x the forest's at night): the
@@ -8068,6 +8076,14 @@ func _update_light() -> void:
 		_env.fog_density = lerpf(0.014, 0.019, k)
 		_env.ambient_light_color = _env.ambient_light_color.lerp(Color(0.5, 0.6, 0.72), 0.3 * k)
 		_moon.light_color = _moon.light_color.lerp(Color(0.85, 0.9, 1.0), 0.25 * k)
+	if _weather3d != null:
+		# (the weather's haze over the map's own: thicker in fog, a dust-brown in a sandstorm, a fog
+		# lying low on the sea)
+		_env.fog_density *= _weather3d.fog_mult
+		var tint := _weather3d.fog_tint
+		_env.fog_light_color = _env.fog_light_color.lerp(Color(tint.r, tint.g, tint.b) * lerpf(NIGHT_DIM, 1.0, k * 0.5), tint.a)
+		_env.fog_height = WATER_Y + 1.4
+		_env.fog_height_density = 0.9 * _weather3d.sea_fog
 	if GameState.dark_fell:
 		# (user request: the camp doused, the whole map black - the lamps all that's left)
 		_env.ambient_light_energy *= DOUSED_DIM
@@ -8697,6 +8713,8 @@ func _process(delta: float) -> void:
 	_update_fight_fish(delta)
 	_update_guide()
 	_sync_true_eye()
+	if _weather3d != null and is_instance_valid(player):
+		_weather3d.update(delta, to3(player.global_position, 0.0))
 	_update_light()
 	_update_flash_aim(delta)
 	_update_intro(delta)

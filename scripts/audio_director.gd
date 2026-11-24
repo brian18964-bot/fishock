@@ -245,7 +245,9 @@ func _on_night() -> void:
 
 func _on_weather(weather: String) -> void:
 	var storm := weather == "STORM"
-	Sfx.loop("amb_rain", storm, -8.0)
+	# (a drizzle's rain quieter; a sandstorm's the wind)
+	Sfx.loop("amb_rain", storm or weather == "DRIZZLE", -8.0 if storm else -16.0)
+	Sfx.loop("amb_wind", weather == "SANDSTORM", -6.0)
 	if storm:
 		_thunder_timer = randf_range(2.0, 6.0)
 

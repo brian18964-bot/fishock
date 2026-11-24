@@ -63,7 +63,7 @@ func _process(delta: float) -> void:
 	var mood := "day"
 	if GameState.is_night:
 		mood = "night"
-	elif GameState.weather == GameState.Weather.FOG:
+	elif GameState.foggy():
 		mood = "fog"
 	_ease("density", _fog_mat, FOG_DENSITY[mood], delta)
 	_ease("strength", _vignette_mat, VIGNETTE[mood], delta)

@@ -38,7 +38,7 @@ func _process(delta: float) -> void:
 	var target: Color = STAGE_COLORS[GameState.light_stage()]
 	if GameState.is_night:
 		target = DOUSED_COLOR if GameState.dark_fell else NIGHT_COLOR
-	elif GameState.weather == GameState.Weather.FOG:
+	elif GameState.foggy():
 		target = target * FOG_MULT
 	if not GameState.is_night:
 		target = Color(target.r * tint.r, target.g * tint.g, target.b * tint.b, 1.0)

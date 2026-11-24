@@ -129,6 +129,7 @@ const TESTS := [
 	"test_coast_theme",
 	"test_cliff_coast_theme",
 	"test_surf",
+	"test_weathers",
 	"test_wind_and_chop",
 	"test_ground_leaves",
 	"test_grass",
@@ -11035,6 +11036,54 @@ func test_cliff_coast_theme() -> void:
 ## all at once; the sand wet where the water actually reached (kept apart from the water: a picture
 ## of the sand's wetness, drying over Surf.DRY_TIME), the water, its foam and the wet sand all from
 ## one model (Surf); prints in the sand, washed away by the waves; no oxygen trees out in the sea.
+## User request (the maps' branches - their weathers): a drizzle, a thick fog, the desert's sandstorm,
+## the coasts' sea fog beside the clear, the fog, the storm and the fish run; each map's own odds; and
+## each seen in the 3D run - what falls, how thick and what colour the air.
+func test_weathers() -> void:
+	var desert := GameState.weather_odds("random", "desert")
+	var coast := GameState.weather_odds("random", "coast_cliff")
+	var snow := GameState.weather_odds("random", "snow_pine")
+	var foggy := GameState.weather_odds("foggy", "")
+	var own := GameState.weather_odds({"SANDSTORM": 1.0}, "desert")
+	check(desert.has("SANDSTORM") and not coast.has("SANDSTORM") and coast.has("SEA_FOG") and not snow.has("DRIZZLE")
+		and foggy.has("DENSE_FOG") and float(GameState.weather_odds("mild", "desert").get("SANDSTORM", 1.0)) == 0.0 and own == {"SANDSTORM": 1.0},
+		"each map's own weathers: the desert's sandstorm, the coasts' sea fog, no rain on the snow, a thick fog when it's foggy")
+	seed(4)
+	camp().clear()
+	gs.reset_run()
+	gs.last_return = ""
+	camp().begin_free([], "desert")
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	await frames(3)
+	main = get_tree().current_scene
+	gs.start_run()
+	var view: RunView3D = null
+	for _i in 300:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	if view == null or not view.built or view._weather3d == null:
+		check(false, "(the desert built, its weather)")
+		camp().clear()
+		return
+	var w3 := view._weather3d
+	var seen := {}
+	for kind in ["SANDSTORM", "DRIZZLE", "STORM", "DENSE_FOG", "CLEAR"]:
+		gs._set_weather(GameState.Weather[kind], INF, true)
+		await seconds(2.5)
+		seen[kind] = [w3.fog_mult, w3._dust.emitting, w3._drizzle.emitting, w3._rain.emitting, view._env.fog_density, w3.fog_tint.a]
+	check(seen.SANDSTORM[1] and not seen.SANDSTORM[2] and seen.SANDSTORM[0] > 1.3 and seen.SANDSTORM[5] > 0.2
+		and seen.DRIZZLE[2] and not seen.DRIZZLE[3] and seen.STORM[3] and not seen.STORM[2]
+		and seen.DENSE_FOG[0] > seen.SANDSTORM[0] * 0.8 and seen.DENSE_FOG[4] > 0.02 and not seen.CLEAR[1] and not seen.CLEAR[3],
+		"the weathers in the 3D run: sand blown in a sandstorm, a drizzle's and a storm's rain, the air thicker in a fog (%s)" % [seen])
+	check(GameState.Weather.keys().has("SEA_FOG") and not gs.foggy(), "the sea fog among the weathers; a clear night not foggy")
+	gs._set_weather(GameState.Weather.SEA_FOG, INF, true)
+	check(gs.foggy() and not gs.rainy(), "a sea fog closes the view in like a fog")
+	gs._set_weather(GameState.Weather.CLEAR, INF, true)
+	camp().clear()
+
+
 func test_surf() -> void:
 	# The waves' beat: loose, never backwards; a wave every EVERY s on average.
 	var w0 := Vector2(40.0, 60.0)

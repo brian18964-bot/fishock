@@ -30,7 +30,9 @@ signal light_stage_changed(stage: int)
 signal weather_changed(weather: String)
 
 enum DayPhase { FISHING, ESCAPE, DONE }
-enum Weather { CLEAR, FOG, STORM, FISH_RUN }
+## (user request - the maps' branches: more weathers - a drizzle; a thick fog; the desert's sandstorm;
+## a sea fog lying on the coasts' water)
+enum Weather { CLEAR, FOG, STORM, FISH_RUN, DRIZZLE, DENSE_FOG, SANDSTORM, SEA_FOG }
 
 const OFFERING_ADD_THRESHOLD := 15.0
 const RARITY_EVIL_CHANCE := {"common": 0.1, "rare": 0.25, "epic": 0.45}
@@ -97,6 +99,11 @@ const WEATHER_MAX_DURATION := 75.0
 const WEATHER_FOG_WEIGHT := 0.2
 const WEATHER_STORM_WEIGHT := 0.2
 const WEATHER_FISH_RUN_WEIGHT := 0.2
+## (a drizzle's turn - out of the clear's; the desert's sandstorm and the coasts' sea fog taking part
+## of the fog's there)
+const WEATHER_DRIZZLE_WEIGHT := 0.12
+const WEATHER_SANDSTORM_WEIGHT := 0.14
+const WEATHER_SEA_FOG_WEIGHT := 0.12
 
 var quota_target: float = 30.0
 var quota_progress: float = 0.0
@@ -720,23 +727,15 @@ func _bring_fish_home() -> String:
 ## visibility), storms (ghosts more dangerous, water ghost more likely) and
 ## fish runs (better odds map-wide) each take a turn for a while.
 func _roll_weather() -> void:
-	var fog := WEATHER_FOG_WEIGHT
-	var storm := WEATHER_STORM_WEIGHT
-	var fish := WEATHER_FISH_RUN_WEIGHT
-	if _weather_mode == "mild":
-		storm = 0.0
-	elif _weather_mode == "stormy":
-		fog = 0.12
-		storm = 0.45
-		fish = 0.13
+	var odds := weather_odds(_weather_mode, MapGenerator.current_theme)
 	var roll := randf()
 	var new_weather := Weather.CLEAR
-	if roll < fog:
-		new_weather = Weather.FOG
-	elif roll < fog + storm:
-		new_weather = Weather.STORM
-	elif roll < fog + storm + fish:
-		new_weather = Weather.FISH_RUN
+	var acc := 0.0
+	for kind in odds:
+		acc += float(odds[kind])
+		if roll < acc:
+			new_weather = Weather[kind]
+			break
 
 	weather = new_weather
 	weather_timer = randf_range(WEATHER_MIN_DURATION, WEATHER_MAX_DURATION)
@@ -744,8 +743,55 @@ func _roll_weather() -> void:
 	_announce_weather()
 
 
+## Each weather's odds of being the next (the rest clear) - by the run's weather mode ("random",
+## "mild" no storms, "stormy", "foggy", or its own odds {KIND: share}) and the map's style (the
+## desert's sandstorms, the coasts' sea fog; no rain on the snow - its storm's a blizzard).
+static func weather_odds(mode: Variant, theme: String) -> Dictionary:
+	if mode is Dictionary:
+		return mode
+	var odds := {"FOG": WEATHER_FOG_WEIGHT, "STORM": WEATHER_STORM_WEIGHT, "FISH_RUN": WEATHER_FISH_RUN_WEIGHT,
+		"DRIZZLE": WEATHER_DRIZZLE_WEIGHT}
+	if mode == "mild":
+		odds.STORM = 0.0
+	elif mode == "stormy":
+		odds = {"FOG": 0.12, "STORM": 0.45, "FISH_RUN": 0.13, "DRIZZLE": 0.1}
+	elif mode == "foggy":
+		odds = {"FOG": 0.3, "DENSE_FOG": 0.18, "STORM": 0.08, "FISH_RUN": 0.12, "DRIZZLE": 0.1}
+	if theme == "desert":
+		odds.FOG = float(odds.get("FOG", 0.0)) * 0.4
+		odds.DRIZZLE = float(odds.get("DRIZZLE", 0.0)) * 0.3
+		odds.SANDSTORM = WEATHER_SANDSTORM_WEIGHT * (1.6 if mode == "stormy" else (0.0 if mode == "mild" else 1.0))
+	elif theme.begins_with("coast"):
+		odds.FOG = float(odds.get("FOG", 0.0)) * 0.5
+		odds.SEA_FOG = WEATHER_SEA_FOG_WEIGHT * (1.8 if mode == "foggy" else 1.0)
+	if theme.begins_with("snow"):
+		odds.erase("DRIZZLE")
+	return odds
+
+
+## Fog of one kind or another (the view closes in); rain falling (a drizzle or a storm).
+func foggy() -> bool:
+	return weather in [Weather.FOG, Weather.DENSE_FOG, Weather.SEA_FOG]
+
+
+func rainy() -> bool:
+	return weather in [Weather.STORM, Weather.DRIZZLE]
+
+
 func _announce_weather() -> void:
 	match weather:
+		Weather.DRIZZLE:
+			push_message("下起了小雨...")
+			report("小雨", "info")
+		Weather.DENSE_FOG:
+			push_message("濃霧湧來，幾乎看不見前方...")
+			report("濃霧，視野很差", "info")
+		Weather.SANDSTORM:
+			push_message("沙塵暴來了！風沙遮住了視線")
+			report("沙塵暴，視野變差")
+		Weather.SEA_FOG:
+			push_message("海霧從海面漫上來...")
+			report("海霧，靠海處看不清", "info")
 		Weather.FOG:
 			push_message("起霧了，視野變差...")
 			report("起霧了，視野變差", "info")

@@ -88,7 +88,7 @@ func _process(_delta: float) -> void:
 		if e != null:
 			e.global_position = center
 	var storm := GameState.weather == GameState.Weather.STORM
-	_rain.emitting = storm and not _theme.begins_with("snow")
+	_rain.emitting = GameState.rainy() and not _theme.begins_with("snow")
 	if _snow != null:
 		_snow.emitting = not storm
 		_blizzard.emitting = storm

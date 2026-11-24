@@ -843,8 +843,12 @@ func _on_weather_changed(kind: String) -> void:
 			stat("fish_run")
 		"STORM":
 			stat("storm")
-		"FOG":
+		"FOG", "DENSE_FOG", "SEA_FOG":
 			stat("fog")
+		"SANDSTORM":
+			stat("sandstorm")
+		"DRIZZLE":
+			stat("drizzle")
 
 
 # ---------------------------------------------------------------- guiding
