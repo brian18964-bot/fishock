@@ -612,12 +612,17 @@ func act_on(kind: String, part := 0, done := Callable()) -> bool:
 			activity = "merchant"
 		"croc":
 			# (user request: Mr. Croc by the water - over to him, a word, his errand up)
+			# (he stops where he's got to along the shore and turns to them; he stays till the talk's
+			# closed - TitleScreen._croc_talk lets him go)
 			var c := stage.croc
 			if c == null:
 				plan = [{"do": "call", "fn": opens}]
 			else:
-				plan = _get_up() + _go("croc") + [{"do": "face", "at": CampStage.CROC_AT},
-					{"do": "call", "fn": func(): c.wave()},
+				plan = _get_up() + [{"do": "call", "fn": func():
+						c.visit(pivot)
+						stage.spots["croc"] = {"at": c.visit_spot(pivot.position), "face": c.global_position}},
+					{"do": "walk", "spot": "croc"}, {"do": "face", "spot": "croc", "node": c},
+					{"do": "call", "fn": func(): c.talk()},
 					{"do": "loop", "clip": "Idle_Talking", "time": 1.4, "at": 0.45, "fn": opens}]
 			activity = "croc"
 		"equipment":

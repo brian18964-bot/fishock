@@ -5486,16 +5486,39 @@ func test_croc_quests() -> void:
 	get_tree().root.add_child(title)
 	await frames(3)
 	var camp: CampStage = title.find_child("Camp", true, false)
-	check(camp.croc != null and camp.croc.character == "croc" and camp.hotspots.has("croc") and camp.spots.has("croc"),
-		"Mr. Croc on the shore, to be tapped")
+	check(camp.croc != null and camp.croc.rig.character == "croc" and camp.hotspots.has("croc"), "Mr. Croc on the shore, to be tapped")
+	# User request: his own outfit (not the travellers') - the knit dyed, a straw hat
+	var dyed := false
+	for mi in camp.croc.rig.find_children("*", "MeshInstance3D", true, false):
+		for i in (mi as MeshInstance3D).get_surface_override_material_count():
+			if (mi as MeshInstance3D).get_surface_override_material(i) is ShaderMaterial:
+				dyed = true
+	check(dyed and camp.croc.rig.find_child("StrawHat", true, false) != null, "his own outfit: the knit dyed, a straw hat")
+	# User request: a short line as he turns up, then about the shore - the list's sign over him (what
+	# the errand is only told when he's talked to)
+	await seconds(CampCroc.FIRST_AT + 0.6)
+	check(camp.croc.line in CampCroc.OPENING, "his first words a short opening line (%s)" % camp.croc.line)
+	var mark: Control = title.find_child("CrocMark", true, false)
+	var bubble: Control = title.find_child("CrocBubble", true, false)
+	check(mark != null and mark.visible and bubble != null and bubble.visible
+		and not (bubble.get_node("Said") as Label).text.contains("金幣"), "over him: his words, and the list's sign (an errand to talk about)")
+	var was: Vector3 = camp.croc.position
+	camp.croc._wait = 0.0
+	await seconds(1.5)
+	check(camp.croc.position.distance_to(was) > 0.3 and absf(camp.croc.position.z - CampCroc.shore_point(camp.croc.position.x).z) < 0.4,
+		"he ambles along the shore (%.2f m)" % camp.croc.position.distance_to(was))
 	var at: Vector2 = camp.camera.unproject_position(camp.hotspots.croc.parts[0][1]) / TitleScreen.RENDER_SCALE
-	check(title.spot_at(at) == "croc", "tapped where he stands")
+	check(title.spot_at(at) == "croc", "tapped where he is now")
+	camp.croc.visit(camp.character_pivot)
 	var talk: Control = title._croc_talk()
 	await frames(2)
 	var act: Button = talk.find_child("CrocAct", true, false)
-	check(act != null and act.text == "接下委託", "his next errand offered")
+	check(act != null and act.text == "接下委託" and not mark.visible, "talked to: his next errand offered (the sign down while he talks)")
 	act.pressed.emit()
-	check(CrocQuests.quest().get("taken", false), "taken")
+	await frames(2)
+	check(CrocQuests.quest().get("taken", false) and camp.croc.visitor == null, "taken - and he's off along the shore again")
+	await frames(2)
+	check(not mark.visible, "an errand under way: no sign over him")
 	title.queue_free()
 	await frames(2)
 	# Thirty done: his own errand - the dream fish - and he joins.
@@ -7303,6 +7326,15 @@ func test_oxy_tree() -> void:
 	get_tree().root.add_child(panel)
 	await frames(2)
 	check(panel.find_child("Fish_0", true, false) != null and (panel.find_child("Fish_0", true, false) as Button).disabled == false, "the picker lists the fish")
+	# (one it can't help: still tapped for its card - 使用 off, and why)
+	GameState.carried_fish[0]["life_traits"] = ["immortal"]
+	panel.show_fish(0)
+	await frames(2)
+	var used := [false]
+	panel.picked.connect(func(_i): used[0] = true)
+	var use_b: Button = panel.find_child("Use", true, false)
+	check(use_b != null and use_b.disabled and (panel.find_child("Why", true, false) as Label).text != "可以用在這條魚" and not used[0],
+		"a fish it can't help: its card, 使用 off, why (%s)" % (panel.find_child("Why", true, false) as Label).text)
 	panel.queue_free()
 	GameState.carried_fish.clear()
 	Profile.load_data(saved)
@@ -8688,6 +8720,44 @@ func test_shop_buyback() -> void:
 	(page.find_child("SaleGo", true, false) as Button).pressed.emit()
 	await frames(2)
 	check(Profile.fish_box.is_empty() and Profile.gold == gold + 12 + worth, "the bucket's fish sold at its worth (%d)" % worth)
+	# User request: the tank's and the warehouse's dragged onto the merchant too, as the bag's are -
+	# pressed on its card, moved past the drag's start, let go on the vendor's window.
+	Profile.tank.append(dead.duplicate(true))
+	page.find_child("SellTab_tank", true, false).pressed.emit()
+	await frames(2)
+	for which in ["Card_fish_tank_0", "Card_sell_shovel"]:
+		if which == "Card_sell_shovel":
+			page.find_child("SellTab_stash", true, false).pressed.emit()
+			await frames(2)
+		var card_b: Control = page.find_child(which, true, false)
+		var zone: Control = page.find_child("SellZone", true, false)
+		check(card_b != null, "%s listed" % which)
+		if card_b == null:
+			continue
+		var from: Vector2 = card_b.get_global_rect().get_center()
+		var down := InputEventMouseButton.new()
+		down.button_index = MOUSE_BUTTON_LEFT
+		down.pressed = true
+		down.position = card_b.get_global_transform().affine_inverse() * from
+		down.global_position = from
+		card_b.gui_input.emit(down)
+		var to: Vector2 = zone.get_global_rect().get_center()
+		var motion := InputEventMouseMotion.new()
+		motion.position = from.lerp(to, 0.5)
+		page._board._input(motion)
+		motion = InputEventMouseMotion.new()
+		motion.position = to
+		page._board._input(motion)
+		var up := InputEventMouseButton.new()
+		up.button_index = MOUSE_BUTTON_LEFT
+		up.pressed = false
+		up.position = to
+		page._board._input(up)
+		await frames(2)
+		var sale_up := page.find_child("Sale", true, false) != null
+		check(sale_up, "%s dragged onto the merchant: its sale" % which)
+		page._close_sale()
+		await frames(1)
 	# User request: what's been sold shown by its pictures, and bought back at what it fetched.
 	page.find_child("Tab_sell", true, false).pressed.emit()
 	await frames(2)
@@ -12571,6 +12641,13 @@ func test_camp_pages_nav() -> void:
 	var pick: Node = bp.find_child("FishPickPanel", true, false)
 	check(pick != null and pick.find_child("Fish_0", true, false) != null, "使用 asks which fish at camp")
 	pick.find_child("Fish_0", true, false).pressed.emit()
+	await frames(2)
+	# User request: a fish tapped shows what it is first - then 使用
+	var detail: Node = pick.find_child("FishDetail", true, false)
+	check(detail != null and detail.find_child("Use", true, false) != null and not (detail.find_child("Use", true, false) as Button).disabled
+		and detail.find_children("*", "FishVitals", true, false).size() == 1 and Profile.bag_count("salt") == before,
+		"a fish tapped: its card first (what it is, whether it helps), nothing used yet")
+	detail.find_child("Use", true, false).pressed.emit()
 	await frames(2)
 	check(Profile.bag_count("salt") == before - 1, "the salt is spent")
 	check(bp.find_child("Toast", true, false) != null, "and says what happened")

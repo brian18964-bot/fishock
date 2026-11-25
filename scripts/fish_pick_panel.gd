@@ -5,6 +5,9 @@ extends Control
 ## 冷凍土 - Player.use_on_fish). Like the altar's (FishPicker): each fish a
 ## card with its picture, name, how it is (its bar), and - one the thing can't
 ## help greyed, with why.
+## User request (the potions used on a fish): a fish tapped shows what it is first - its card
+## (FishVitals: rarity, size and worth, its life and its time, its affixes) and whether the thing
+## can help it - with 使用 to go ahead or 返回 to pick another; one it can't help shows too, 使用 off.
 
 signal picked(index: int)
 
@@ -66,11 +69,9 @@ func _ready() -> void:
 		card.note = ("%s・" % _places[i] if i < _places.size() else "") + (why if why != "" else "可以用")
 		card.note_color = Color(0.9, 0.55, 0.4) if why != "" else UiKit.USE
 		card.custom_minimum_size = CARD
-		card.disabled = why != ""
+		card.blocked = why != ""
 		var idx := i
-		card.pressed.connect(func():
-			picked.emit(idx)
-			queue_free())
+		card.pressed.connect(func(): show_fish(idx))
 		grid.add_child(card)
 	var cancel := UiKit.button("取消", 16)
 	cancel.name = "Cancel"
@@ -83,6 +84,80 @@ func _ready() -> void:
 	add_child(center)
 
 
+var _detail: Control
+
+
+## Fish `i`'s card over the list: what it is, whether the thing helps it, 使用 / 返回.
+func show_fish(i: int) -> void:
+	if _detail != null and is_instance_valid(_detail):
+		_detail.queue_free()
+	var f: Dictionary = _fish[i]
+	var why := "" if _item == "clasp" else FishLife.can_use(_item, f)
+	FishLife.ensure(f)
+	var shade := ColorRect.new()
+	shade.name = "FishDetail"
+	shade.color = Color(0, 0, 0, 0.45)
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	shade.gui_input.connect(func(e):
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			shade.queue_free())
+	add_child(shade)
+	_detail = shade
+	var panel := UiKit.tooltip_panel()
+	panel.custom_minimum_size = Vector2(400, 0)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 12)
+	var pic := TextureRect.new()
+	pic.texture = FishData.icon_of(f)
+	pic.custom_minimum_size = Vector2(110, 60)
+	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	head.add_child(pic)
+	var words := VBoxContainer.new()
+	words.add_theme_constant_override("separation", 0)
+	words.add_child(FishVitals.name_row(f, 21))
+	if i < _places.size():
+		words.add_child(UiKit.label("在%s" % _places[i], 14, UiKit.DIM))
+	head.add_child(words)
+	col.add_child(head)
+	var vitals := FishVitals.new()
+	vitals.custom_minimum_size.x = 370
+	col.add_child(vitals)
+	# (at camp: its length, weight and times, as the bag's card; in a run, as the run's)
+	vitals.show_fish(f, false, "camp" if not _places.is_empty() else "field")
+	var can := UiKit.label("可以用在這條魚" if why == "" else why, 15, UiKit.USE if why == "" else Color(0.9, 0.55, 0.4), true)
+	can.name = "Why"
+	can.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	can.custom_minimum_size.x = 370
+	col.add_child(can)
+	var acts := HBoxContainer.new()
+	acts.alignment = BoxContainer.ALIGNMENT_END
+	acts.add_theme_constant_override("separation", 8)
+	var go := UiKit.button("使用", 16, "red")
+	go.name = "Use"
+	go.custom_minimum_size = Vector2(110, 44)
+	go.disabled = why != ""
+	go.pressed.connect(func():
+		picked.emit(i)
+		queue_free())
+	acts.add_child(go)
+	var back := UiKit.button("返回", 16)
+	back.name = "Back"
+	back.custom_minimum_size = Vector2(90, 44)
+	back.pressed.connect(shade.queue_free)
+	acts.add_child(back)
+	col.add_child(acts)
+	panel.add_child(col)
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	center.add_child(panel)
+	shade.add_child(center)
+
+
 ## One fish: its picture in a slot ringed by its rarity, its name, its life bar
 ## and a line (what a tap does, or why the thing can't help it). (A flat
 ## button: the card is the tap.) Also the oxygen box's (OxyPanel).
@@ -91,6 +166,8 @@ class Card extends Button:
 	## A line at its foot, and its colour.
 	var note := ""
 	var note_color := UiKit.USE
+	## (the thing can't help it: greyed - still tapped for its card)
+	var blocked := false
 
 	func _init() -> void:
 		focus_mode = Control.FOCUS_NONE
@@ -100,7 +177,7 @@ class Card extends Button:
 		var r := Rect2(Vector2.ZERO, size)
 		var rarity := UiKit.fish_rarity(fish)
 		UiKit.draw_slot(self, r, rarity, is_hovered() and not disabled)
-		var dim := Color(1, 1, 1, 0.45) if disabled else Color.WHITE
+		var dim := Color(1, 1, 1, 0.45) if disabled or blocked else Color.WHITE
 		# (a short card leaves out its last line)
 		var compact := size.y < 112.0
 		var low := 24.0 if compact else 38.0

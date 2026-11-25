@@ -189,6 +189,11 @@ func _start_drag() -> void:
 	if _press.get("from", "") in ["pack_fish", "stash_fish"]:
 		var fish := ItemBoard.fish_of(_press)
 		_ghost.texture = FishData.icon_of(fish)
+	elif _press.get("from", "") == "fish":
+		# (a fish of a list of its own - the shop's 收購: the tank's, the bucket's, the warehouse's)
+		var list := Profile.fish_list(str(_press.list))
+		if int(_press.index) < list.size():
+			_ghost.texture = FishData.icon_of(list[int(_press.index)])
 	_ghost.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_ghost.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_ghost.size = Vector2.ONE * 64.0

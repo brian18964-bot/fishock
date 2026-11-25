@@ -73,6 +73,13 @@ static func progress(q: Dictionary = quest()) -> int:
 	return maxi(int(Profile.record("caught_" + str(q.fish)) - float(q.get("base", 0.0))), 0)
 
 
+## Whether there's something to talk to him about - an errand on offer, or one done to hand in
+## (the list's sign over his head at camp). (An errand not yet made counts as one on offer.)
+static func has_news() -> bool:
+	var q := quest()
+	return q.is_empty() or not q.get("taken", false) or ready_to_hand_in()
+
+
 static func ready_to_hand_in() -> bool:
 	var q := quest()
 	return not q.is_empty() and q.get("taken", false) and progress(q) >= int(q.need)
@@ -180,7 +187,7 @@ static func words() -> Array:
 		return [lines, "give_up"]
 	var lines: Array = []
 	if done() == 0:
-		lines.append("我是鱷魚先生，在這片水邊住很久了。年紀大了，不太下水了……")
+		lines.append("喔，是你啊。我常在這水邊晃。")
 	if q.get("dream", false):
 		lines += ["你幫了我這麼多次……老實說，我一直在等一條魚。",
 			"深林大湖裡的鱷雀鱔。我年輕時見過牠一次，就再也忘不了。你願意替我去看看嗎？"]

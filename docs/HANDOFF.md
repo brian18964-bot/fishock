@@ -4,7 +4,7 @@
 
 ## 一、目前狀態
 - 所有工作都在 `claude/focused-fermi-96pp3r` 分支，它也是這個 repo 的預設分支；最後一次推送的 CI（Web build）通過並已部署。
-- 本機全套測試：5592 項、0 失敗（`tests/run_tests.gd`）。
+- 本機全套測試：5603 項、0 失敗（`tests/run_tests.gd`）。
 - 遊戲：Godot 4.7.2，3D 夜釣（俯視鏡頭、夜間、煤燈），手機觸控為主，也支援鍵盤。
 
 ## 二、這段期間做了什麼（依時間）
@@ -33,6 +33,13 @@
   加入時通關結算寫「新夥伴加入」，回營地也會跳通知。`dev_all_open = true` 時全部角色都開（開發者測試用）。
 - 鱷魚先生（營地湖邊、碼頭左邊）：`scripts/croc_quests.gd`。委託「釣 N 條某魚」，完成給金幣；
   完成 30 次後出現專屬委託（釣到 1-5 深林大湖的鱷雀鱔），完成後鱷魚加入角色、不再出現在湖邊。
+  第二輪（使用者要求）：他在岸邊來回散步（`scripts/camp_croc.gd`），出現時頭上冒一句短話（「這裡挺溫暖的……」等），
+  之後每隔一陣子說一句；有委託可接或可交時頭上有清單圖示（可交時多一個綠勾）；委託內容和獎勵只在走過去對話時才看得到。
+  他穿自己的衣服：白色針織染成磚紅色、戴草帽（`scripts/croc_look.gd`，只套在營地的鱷魚先生身上）。
+### 9. 商城收購的拖曳、藥劑選魚看資訊
+- 商城「收購」：倉庫、魚缸、魚桶的卡片也能拖到商人視窗賣（原本只有包包能拖），點一下照舊跳出販賣視窗。
+- 用在魚身上的道具（恢復活性的藥劑等）：選魚時點魚會先跳出這條魚的資訊卡（稀有度、大小、價值、活性、時間、詞綴），
+  並說明能不能用；按「使用」才真的用，「返回」可以換一條。不能用的魚也能點開看原因。
 
 ## 三、已定案（使用者決定的，不用再問）
 ### 劇情與分支
@@ -78,6 +85,8 @@
 | 鱷魚先生：出現 | 通過 1-1 後，每次回營地 60% 在湖邊（有委託完成待交時一定在） | `CrocQuests.FROM_LEVEL`、`CHANCE` |
 | 鱷魚先生：委託數量與金幣 | 一般魚 12–20 條 每條 8 金幣；水域特有魚 5–8 條 每條 25；稀有 1–2 條 每條 150；只選玩家釣過的魚 | `CrocQuests.NEED`、`GOLD_EACH`、`KIND_WEIGHT` |
 | 鱷魚先生：專屬委託 | 完成 30 次後，釣到鱷雀鱔（1-5），500 金幣＋鱷魚加入 | `CrocQuests.JOIN_AFTER`、`DREAM_FISH`、`DREAM_GOLD` |
+| 鱷魚先生：散步與說話 | 散步速度＝走路步速×0.7、每處停 5–11 秒；開場白 1.5 秒後、之後每 14–26 秒一句、每句 4.5 秒；台詞都在 `OPENING`、`IDLE_LINES`、`OFFER_LINES`、`DONE_LINES` | `scripts/camp_croc.gd` |
+| 鱷魚先生：衣服顏色 | 毛衣磚紅、草帽、帽帶深棕 | `CrocLook.SHIRT`、`STRAW`、`BAND` |
 
 ## 五、待辦與需要使用者決定的事
 1. **鱷魚先生**已做（規則都是我先訂的，見第四節）：一次一個委託；算「接下委託後累計釣到」的數量，不用交出實魚。
@@ -123,4 +132,6 @@
 | 地圖生成（主題、水域、碼頭、動物、蘑菇、魚氧樹） | `scripts/map_generator.gd` |
 | 3D 場景（海、崖、湖、天氣、燈光） | `scripts/run_view_3d.gd` |
 | 角色解鎖條件 | `scripts/campaign.gd`：`CHARACTER_JOIN`、`character_open()`、`check_characters()`；畫面：`scripts/character_page.gd` |
-| 鱷魚先生（委託、出現、專屬委託） | `scripts/croc_quests.gd`；營地模型與點擊：`scripts/camp_stage.gd` 的 `_croc()`、`scripts/title_screen.gd` 的 `_croc_talk()` |
+| 鱷魚先生（委託、出現、專屬委託） | `scripts/croc_quests.gd`；營地散步與台詞：`scripts/camp_croc.gd`；衣服：`scripts/croc_look.gd`；對話框、頭上泡泡與圖示：`scripts/title_screen.gd` 的 `_croc_talk()`、`_croc_over()` |
+| 商城收購 | `scripts/shop.gd`：`_fill_sell_pane()`、`_sell_drag()`、`SellBoard` |
+| 用在魚身上的道具的選魚視窗 | `scripts/fish_pick_panel.gd`：`show_fish()` |

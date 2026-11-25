@@ -263,7 +263,7 @@ func _refresh() -> void:
 
 ## A ware: its picture in a slot, its name in its rarity's colour, and its
 ## price (or state) under it. Picking it shows it on the right.
-func _card(id: String, tex: Texture2D, title: String, sub: String, price: int, open: Callable, into: Control = null) -> void:
+func _card(id: String, tex: Texture2D, title: String, sub: String, price: int, open: Callable, into: Control = null) -> Button:
 	var b := Button.new()
 	b.name = "Card_" + id
 	b.focus_mode = Control.FOCUS_NONE
@@ -317,6 +317,7 @@ func _card(id: String, tex: Texture2D, title: String, sub: String, price: int, o
 	row.add_child(words)
 	b.add_child(row)
 	(into if into != null else _grid).add_child(b)
+	return b
 
 
 func _rarity(id: String) -> String:
@@ -564,6 +565,8 @@ func _fill_sell_pane() -> void:
 	var scroll := DragScroll.new()
 	scroll.name = "SellScroll"
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	# (a sideways drag takes the thing out of the list, toward the merchant on the left)
+	scroll.sideways_free = true
 	scroll.custom_minimum_size = Vector2(470, 330)
 	var cards := GridContainer.new()
 	cards.name = "SellCards"
@@ -584,8 +587,8 @@ func _fill_sell_pane() -> void:
 			var sub := "×%d" % Profile.stored(sid)
 			if most > 0:
 				sub += "　耐久 %d/%d" % [Profile.durability(sid), most]
-			_card("sell_" + sid, Items.icon(sid), Items.name_of(sid), sub, Profile.buyback_price(sid),
-				func(): _sell_modal({"from": "storage", "id": sid}), cards)
+			_sell_drag(_card("sell_" + sid, Items.icon(sid), Items.name_of(sid), sub, Profile.buyback_price(sid),
+				func(): _sell_modal({"from": "storage", "id": sid}), cards), {"from": "storage", "id": sid})
 	var place: String = _sell_src if _sell_src != "pack" else "tank"
 	var fish_here := Profile.fish_list(place) if _sell_src != "pack" else []
 	for i in fish_here.size():
@@ -596,11 +599,28 @@ func _fill_sell_pane() -> void:
 		var idx := i
 		var fb := FishLife.bar(f)
 		var sub := "腐敗了" if FishLife.state(f) == "rotten" else "%s %d%%" % [fb.label, roundi(float(fb.share) * 100.0)]
-		_card("fish_%s_%d" % [place, i], FishData.icon_of(f), f.get("name", "魚"), sub,
-			FishLife.sale_value(f), func(): _sell_modal({"from": "fish", "list": place, "index": idx}), cards)
+		_sell_drag(_card("fish_%s_%d" % [place, i], FishData.icon_of(f), f.get("name", "魚"), sub,
+			FishLife.sale_value(f), func(): _sell_modal({"from": "fish", "list": place, "index": idx}), cards),
+			{"from": "fish", "id": "", "list": place, "index": idx})
 	if not any:
 		var none := UiKit.label("這裡沒有可以賣的東西。", 16, UiKit.DIM)
 		cards.add_child(none)
+
+
+## User request: the warehouse's, the tank's and the bucket's things dragged onto the merchant's
+## window to sell, as the bag's are - a card pressed is a press on the drag board too (SellBoard):
+## let go on the merchant, its sale comes up (tapped, the card's own button brings it up).
+func _sell_drag(card: Button, source: Dictionary) -> void:
+	card.gui_input.connect(func(e: InputEvent):
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			_board.pressed(source, e.global_position))
+
+
+## (a list scrolled under the finger: what was pressed in it is neither dragged nor tapped -
+## DragScroll asks its ancestors)
+func cancel_press() -> void:
+	if _board != null:
+		_board.cancel_press()
 
 
 ## The right pane of 收購: where the things are, by tabs, and the list or
@@ -1066,24 +1086,35 @@ class SellBoard extends ItemBoard:
 	var shop
 
 	func card(source: Dictionary) -> void:
-		if source.get("from", "") == "bag":
-			shop._sell_modal(source)
-		elif source.get("from", "") == "pack_fish":
-			# (a fish in the bag: its sale)
-			shop._sell_modal({"from": "fish", "list": "pack", "index": source.index})
+		# (the lists' cards are buttons: a tap on one is its own - _fill_sell_pane)
+		if source.get("from", "") in ["storage", "fish"]:
+			return
+		var sale := _sale_of(source)
+		if not sale.is_empty():
+			shop._sell_modal(sale)
 		else:
 			super.card(source)
 
 	func move(source: Dictionary, target: Dictionary, count := -1) -> bool:
 		if target.get("to", "") == "sell":
-			if source.get("from", "") == "bag":
-				shop._sell_modal(source)
-				return true
-			if source.get("from", "") == "pack_fish":
-				shop._sell_modal({"from": "fish", "list": "pack", "index": source.index})
-				return true
-			return false
+			var sale := _sale_of(source)
+			if sale.is_empty():
+				return false
+			shop._sell_modal(sale)
+			return true
 		return super.move(source, target, count)
+
+	## What's held, as a sale (_sell_modal's source): the bag's things and fish, the warehouse's
+	## things, the tank's, the bucket's and the warehouse's fish - {} for anything else.
+	static func _sale_of(source: Dictionary) -> Dictionary:
+		match source.get("from", ""):
+			"bag", "storage":
+				return source
+			"pack_fish":
+				return {"from": "fish", "list": "pack", "index": source.index}
+			"fish":
+				return {"from": "fish", "list": source.list, "index": source.index}
+		return {}
 
 
 ## The vendor's window as a place to drop on (a green frame when a thing's
@@ -1098,7 +1129,7 @@ class SellZone extends Control:
 		return {"to": "sell"}
 
 	func hover(source: Dictionary, at: Vector2) -> void:
-		var lit: bool = not source.is_empty() and source.get("from", "") in ["bag", "pack_fish"] and get_global_rect().has_point(at)
+		var lit: bool = not source.is_empty() and source.get("from", "") in ["bag", "pack_fish", "storage", "fish"] and get_global_rect().has_point(at)
 		if lit != _lit:
 			_lit = lit
 			queue_redraw()
