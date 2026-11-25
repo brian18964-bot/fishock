@@ -141,6 +141,33 @@ func _build_modes() -> void:
 		lock.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		free.get_meta("words").add_child(lock)
 	row.add_child(free)
+	_bag_warning()
+
+
+## User request (塞滿要提醒): a bag too full for a big fish (2 x 2) said so before setting off -
+## the bones brought home fill it a little each night - with a way straight to it to make room.
+func _bag_warning() -> void:
+	if Profile.bag_room_for(Inventory.SIZES.large):
+		return
+	var strip := HBoxContainer.new()
+	strip.name = "BagWarning"
+	strip.alignment = BoxContainer.ALIGNMENT_CENTER
+	strip.add_theme_constant_override("separation", 12)
+	var free := Profile.bag_free_cells()
+	var words := "背包快滿了（剩 %d 格），大魚會放不下，釣到的魚只能放在地上。出發前先賣掉或收進倉庫吧。" % free
+	if free == 0:
+		words = "背包滿了！釣到的魚會放不下，只能放在地上。出發前先賣掉或收進倉庫吧。"
+	var note := UiKit.label(words, 14, UiKit.DANGER, true)
+	strip.add_child(note)
+	if camp != null and is_instance_valid(camp) and camp.has_method("open_page"):
+		var go := UiKit.button("整理背包", 14)
+		go.name = "SortBag"
+		go.custom_minimum_size = Vector2(96, 30)
+		go.pressed.connect(func():
+			queue_free()
+			camp.call("open_page", "equipment", "bag"))
+		strip.add_child(go)
+	_body.add_child(strip)
 
 
 ## A half of the window: its picture, its name, what it is, a row for its buttons

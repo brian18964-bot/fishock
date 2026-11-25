@@ -224,6 +224,12 @@ const CHARACTERS := [["cat", "黑貓"], ["owl", "雪鴞"], ["owl2", "角鴞"], [
 	["bear", "棕熊"], ["bear2", "台灣黑熊"], ["deer", "紅鹿"], ["deer2", "梅花鹿"], ["sheep", "綿羊"],
 	["sheep2", "黑面羊"], ["croc", "鱷魚"]]
 var character: String = "cat"
+## User request (characters joining as the game goes - at first only the black cat): the others
+## that have joined (Campaign.CHARACTER_JOIN; the crocodile through Mr. Croc's errands).
+var characters_joined: Array = []
+## User request (Mr. Croc by the camp's water): his errands - how many done, the one offered or
+## taken (CrocQuests).
+var croc := {"done": 0, "quest": {}}
 ## User request: the run's three quick slots (QuickSlots, over the right
 ## stick) - the item each is set to (one of USABLES), or "".
 const QUICK_SLOTS := 3
@@ -569,6 +575,14 @@ func character_name(id: String = character) -> String:
 ## `id` travels from now on.
 func choose_character(id: String) -> void:
 	character = id
+	_changed()
+
+
+## `id` has joined: it can be chosen from now on (Campaign.character_open).
+func join_character(id: String) -> void:
+	if characters_joined.has(id):
+		return
+	characters_joined.append(id)
 	_changed()
 
 
@@ -1804,6 +1818,43 @@ func bag_fits(id: String, cell: Vector2i, ignore := -1, rot := false) -> bool:
 	return true
 
 
+## User request (塞滿要提醒): the bag at camp - whether something `size` cells (either way round)
+## still fits in it anywhere, among what's packed and the fish set in it.
+func bag_room_for(size: Vector2i) -> bool:
+	var taken := _bag_taken()
+	for s in [size, Vector2i(size.y, size.x)]:
+		for x in Inventory.COLS - s.x + 1:
+			for y in bag_rows() - s.y + 1:
+				if _rect_free(taken, Rect2i(Vector2i(x, y), s)):
+					return true
+	return false
+
+
+## (the bag's cells still empty at camp)
+func bag_free_cells() -> int:
+	var taken := _bag_taken()
+	var n := 0
+	for x in Inventory.COLS:
+		for y in bag_rows():
+			if _rect_free(taken, Rect2i(Vector2i(x, y), Vector2i.ONE)):
+				n += 1
+	return n
+
+
+func _bag_taken() -> Array:
+	var taken: Array = pack_places()
+	for i in bag.size():
+		taken.append(Rect2i(bag[i].cell, bag_size_of(i)))
+	return taken
+
+
+static func _rect_free(taken: Array, r: Rect2i) -> bool:
+	for t in taken:
+		if (t as Rect2i).intersects(r):
+			return false
+	return true
+
+
 ## The cells the bag stack at `i` takes (turned if it is).
 func bag_size_of(i: int) -> Vector2i:
 	return Items.size_rot(bag[i].id, bool(bag[i].get("rot", false)))
@@ -2405,6 +2456,8 @@ func snapshot() -> Dictionary:
 		"settings": settings,
 		"camp_tent": camp_tent,
 		"character": character,
+		"characters_joined": characters_joined.duplicate(),
+		"croc": croc.duplicate(true),
 		"talents": talents.duplicate(),
 		"quick_slots": quick_slots,
 		"glow_bones": glow_bones,
@@ -2472,6 +2525,9 @@ func load_data(data: Dictionary) -> void:
 	settings.merge(data.get("settings", {}), true)
 	camp_tent = int(data.get("camp_tent", 8))
 	character = str(data.get("character", "cat"))
+	characters_joined = (data.get("characters_joined", []) as Array).duplicate()
+	croc = {"done": 0, "quest": {}}
+	croc.merge((data.get("croc", {}) as Dictionary).duplicate(true), true)
 	talents = data.get("talents", {}).duplicate()
 	quick_slots = ["", "", ""]
 	var saved_slots: Array = data.get("quick_slots", [])

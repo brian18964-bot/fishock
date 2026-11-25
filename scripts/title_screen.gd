@@ -97,6 +97,10 @@ func _ready() -> void:
 	_crickets = CampCrickets.new()
 	_crickets.name = "Crickets"
 	add_child(_crickets)
+	# User request (the characters join as the game goes): one not joined (a save from before)
+	# travels no more - the black cat does.
+	if not Campaign.character_open(Profile.character):
+		Profile.choose_character(Campaign.FIRST_CHARACTER)
 	# User request (the web build's size): the one travelling may be a
 	# character whose pack isn't fetched yet (CharacterPacks) - that first,
 	# behind a cover saying so; failing that (offline), the first character.
@@ -130,6 +134,96 @@ func _ready() -> void:
 	if sent > 0:
 		var note := MenuStyle.notice(self, "財神送來金幣", ["魚缸裡的財神魚送來了 %d 金幣" % sent])
 		note.name = "FortuneNews"
+	# (anyone who's earned their place since - joined, and said so)
+	var joined := Campaign.check_characters()
+	if not joined.is_empty():
+		_joined_news(joined)
+
+
+## User request: Mr. Croc by the water - what he says (CrocQuests.words()), and what can be done
+## about it: take his errand, hand it in, give it up - or leave it for now.
+func _croc_talk() -> Control:
+	var said: Array = CrocQuests.words()
+	var shade := ColorRect.new()
+	shade.name = "CrocTalk"
+	shade.color = Color(0, 0, 0, 0.55)
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(shade)
+	var made := UiKit.window("鱷魚先生")
+	var p: PanelContainer = made[0]
+	var col: VBoxContainer = made[1]
+	p.custom_minimum_size = Vector2(460, 0)
+	col.add_theme_constant_override("separation", 10)
+	for line in said[0]:
+		var l := UiKit.label(str(line), 17, UiKit.TEXT)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.custom_minimum_size.x = 420
+		col.add_child(l)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 14)
+	col.add_child(row)
+	var act := str(said[1])
+	var titles := {"take": "接下委託", "hand_in": "交給他", "give_up": "放棄委託"}
+	if titles.has(act):
+		var go := UiKit.button(titles[act], 16, "gray" if act == "give_up" else "red")
+		go.name = "CrocAct"
+		go.custom_minimum_size = Vector2(150, 42)
+		go.pressed.connect(func():
+			shade.queue_free()
+			_croc_act(act))
+		row.add_child(go)
+	var later := UiKit.button("下次吧" if act == "take" else "好", 16)
+	later.name = "CrocLater"
+	later.custom_minimum_size = Vector2(120, 42)
+	later.pressed.connect(shade.queue_free)
+	row.add_child(later)
+	shade.add_child(p)
+	p.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
+	p.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	p.grow_vertical = Control.GROW_DIRECTION_BOTH
+	Sfx.play("ui_open", -6.0)
+	return shade
+
+
+func _croc_act(act: String) -> void:
+	match act:
+		"take":
+			CrocQuests.take()
+			Sfx.play("ui_open", -6.0)
+		"give_up":
+			CrocQuests.give_up()
+		"hand_in":
+			var got := CrocQuests.hand_in()
+			if got.is_empty():
+				return
+			Sfx.play("coins", -4.0)
+			if got.joined:
+				# (his own errand done: he comes along from now on - and he's gone from the shore, to the fire)
+				var note := MenuStyle.notice(self, "鱷魚先生", ["欸，釣客。下一趟夜釣……帶我一起去吧？",
+					"鱷魚先生加入了！在營火旁就能換成牠。（+%d 金幣）" % int(got.gold)])
+				note.name = "CrocJoined"
+				if _stage != null and _stage.croc != null:
+					_stage.croc.get_parent().visible = false
+					_stage.hotspots.erase("croc")
+			else:
+				var note := MenuStyle.notice(self, "鱷魚先生", ["收下了 %d 金幣。" % int(got.gold)])
+				note.name = "CrocPaid"
+
+
+## User request (the characters join as the game goes): who's joined, and the way to them.
+func _joined_news(ids: Array) -> void:
+	var names := ids.map(func(c): return Profile.character_name(str(c)))
+	var note := MenuStyle.notice(self, "新夥伴加入", ["%s 加入了營地！在營火旁就能換成牠。" % "、".join(names)])
+	note.name = "JoinedNews"
+	var go := UiKit.button("去看看", 16, "red")
+	go.custom_minimum_size = Vector2(140, 42)
+	go.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	go.pressed.connect(func():
+		note.queue_free()
+		open_page("character"))
+	note.get_child(0).get_child(0).add_child(go)
 
 
 ## User request (fish tank): back from a run with fish, the main screen
@@ -492,6 +586,9 @@ func _open_asked() -> void:
 	if page == "journey" and _page == null and _home.visible:
 		# (the 渡石: the way out - the chooser, as 出發)
 		_on_play()
+		return
+	if page == "croc" and _page == null and _home.visible:
+		_croc_talk()
 		return
 	if page != "" and _page == null and _home.visible:
 		open_page(page, _asked_tab)

@@ -1921,6 +1921,8 @@ func _ground() -> void:
 ## along the shore, darker out deep; glossy, so the lamp's light (and the
 ## moon's) shines off it: walk near with the light up and it gleams.
 var _water_mats: Array = []
+## (a phone's water: only so many grids of rain drops - a storm's a little sparser on it)
+const RAIN_LAYERS_LOW := 2
 
 
 func _water() -> void:
@@ -1951,6 +1953,7 @@ func _water() -> void:
 		mat.set_shader_parameter("wave_tex", t)
 		mat.set_shader_parameter("moon_dir", MOON_DIR)
 		mat.set_shader_parameter("ice", 1.0 if _snow else 0.0)
+		mat.set_shader_parameter("rain_layers", RAIN_LAYERS_LOW if low_end() else 4)
 		mat.set_shader_parameter("depth_tex", _depth_texture(zone, box))
 		mat.set_shader_parameter("box", Vector4(box.position.x / PX, box.position.y / PX, box.size.x / PX, box.size.y / PX))
 		if zone.is_rare():
@@ -2006,6 +2009,7 @@ func _sea_surface(sh: Shader, waves: Texture2D) -> void:
 	var box := Vector4(lo.x - CELL * 0.5, lo.y - CELL * 0.5, n.x * CELL, n.y * CELL)
 	mat.set_shader_parameter("box", box)
 	_sea_mat = mat
+	mat.set_shader_parameter("rain_layers", RAIN_LAYERS_LOW if low_end() else 4)
 	Surf.uniforms(mat)
 	# (the ground's the same depth: the waves running up the sand - not up a cliff - and the sand
 	# wet where they've been: SurfWetness)
@@ -2294,8 +2298,62 @@ uniform float edge_fade = 0.0;
 uniform float wall = 0.0;
 uniform vec4 rocks[24];
 uniform int rock_count = 0;
+// (user request: in the rain the water's struck by it, as real water is - each drop a fleck where it
+// lands and a ring spreading out from it and fading; a drizzle's few and far between, a storm's
+// crowding the whole surface and roughening it: `rain` 0 dry .. 1 a storm, eased in and out with the
+// weather - Weather3D.rain; `rain_layers` how many grids of drops there are at most, fewer on a phone)
+uniform float rain = 0.0;
+uniform int rain_layers = 4;
 varying vec3 wpos;
 """ + Surf.GLSL + """
+// (a drop's cell, m; how often a drop falls in each, s; how far its ring spreads, m; the ring's
+// ripples - their spacing (rad per m) and how wide the band of them is, m)
+const float RAIN_CELL = 1.0;
+const float RAIN_PERIOD = 1.05;
+const float RAIN_SPREAD = 0.24;
+const float RAIN_K = 105.0;
+const float RAIN_W = 0.04;
+vec3 rain_hash(vec2 p) {
+	vec3 q = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
+	q += dot(q, q.yxz + 33.33);
+	return fract((q.xxy + q.yzz) * q.zyx);
+}
+// The rain on the water at `xz` (m): its rings' slope (x, z - the way the surface leans) and how
+// brightly their crests and the drops' flecks catch the light.
+vec3 rain_rings(vec2 xz) {
+	vec3 acc = vec3(0.0);
+	// (as many drops as the rain's heavy: whole grids of them in a storm, a scatter in a drizzle)
+	float dens = rain * 3.4;
+	for (int l = 0; l < rain_layers; l++) {
+		float fl = float(l);
+		float on = clamp(dens - fl, 0.0, 1.0);
+		if (on <= 0.0) { break; }
+		// (each grid its own, turned and shifted - no rows of rings)
+		float a = fl * 2.39996 + 0.4;
+		mat2 rot = mat2(vec2(cos(a), sin(a)), vec2(-sin(a), cos(a)));
+		vec2 p = rot * xz / RAIN_CELL + vec2(fl * 0.37, fl * 0.61);
+		vec2 id = floor(p);
+		float ph = TIME / RAIN_PERIOD + rain_hash(id + fl * 19.7).z;
+		float n = floor(ph);
+		float t = ph - n;
+		// (each fall its own drop somewhere new in the cell, or none)
+		vec3 k = rain_hash(id * 1.7 + vec2(n * 0.613, n * 1.37) + fl * 3.1);
+		if (k.z > on) { continue; }
+		vec2 rel = (fract(p) - (0.3 + 0.4 * k.xy)) * RAIN_CELL;
+		float dist = length(rel);
+		float x = dist - RAIN_SPREAD * sqrt(t);
+		float fade = (1.0 - t) * (1.0 - t);
+		float env = exp(-x * x / (RAIN_W * RAIN_W)) * fade;
+		// (the ring's slope across it - a ripple or two in a soft band, out from where it struck)
+		float sl = (-sin(x * RAIN_K) - 2.0 * x / (RAIN_W * RAIN_W * RAIN_K) * cos(x * RAIN_K)) * env;
+		vec2 dir = dist > 0.0001 ? rel / dist : vec2(0.0);
+		acc.xy += (dir * sl) * rot;
+		acc.z += max(cos(x * RAIN_K), 0.0) * env;
+		// (the drop itself: a bright fleck where it struck, there and gone)
+		acc.z += (1.0 - smoothstep(0.0, 0.03 + 0.03 * t, dist)) * (1.0 - smoothstep(0.0, 0.12, t)) * 1.6;
+	}
+	return acc;
+}
 float sea_d(vec2 xz) { return mix(depth_range.x, depth_range.y, textureLod(depth_tex, (xz - box.xy) / box.zw, 0.0).r); }
 // (smoothly - its slope with no steps at the texels)
 float sea_ds(vec2 xz) { return mix(depth_range.x, depth_range.y, surf_smooth(depth_tex, (xz - box.xy) / box.zw)); }
@@ -2343,6 +2401,8 @@ void fragment() {
 	if (d < -2.0) { discard; }
 	vec2 uv = wpos.xz * 0.05;
 	vec3 nm;
+	// (the rain's rings, frozen over where the ice is - none on it)
+	vec3 rr = rain > 0.001 ? rain_rings(wpos.xz) * (1.0 - ice * (1.0 - smoothstep(14.0, 44.0, d))) : vec3(0.0);
 	if (sea > 0.5) {
 		// (the sea's surface: the swell's long tilt above all (below), then a weak middling ripple and a
 		// weaker small one, each its own size, way and pace - no close, bright repeating streaks)
@@ -2350,12 +2410,14 @@ void fragment() {
 		vec3 m2 = texture(wave_tex, mat2(vec2(0.8, -0.6), vec2(0.6, 0.8)) * wpos.xz * 0.083 - vec2(TIME * 0.012, -TIME * 0.008)).rgb * 2.0 - 1.0;
 		vec3 m3 = texture(wave_tex, mat2(vec2(0.28, 0.96), vec2(-0.96, 0.28)) * wpos.xz * 0.26 + vec2(TIME * 0.031, TIME * 0.019)).rgb * 2.0 - 1.0;
 		nm = normalize(vec3(m1.xy * 0.55 + m2.xy * 0.3 + m3.xy * 0.15, 1.0)) * 0.5 + 0.5;
+		nm.xy -= rr.xy * 0.22;
 		NORMAL_MAP = nm;
 		NORMAL_MAP_DEPTH = 0.2;
 	} else {
 		vec3 a = texture(wave_tex, uv + vec2(TIME * 0.012, TIME * 0.006)).rgb;
 		vec3 b = texture(wave_tex, uv * 1.7 - vec2(TIME * 0.009, -TIME * 0.011)).rgb;
 		nm = normalize(mix(a, b, 0.5));
+		nm.xy -= rr.xy * 0.16;
 		NORMAL_MAP = nm;
 		NORMAL_MAP_DEPTH = 0.3;
 	}
@@ -2447,7 +2509,7 @@ void fragment() {
 	}
 	ALBEDO = mix(col, edge_tint * 0.35, line * 0.6);
 	ALBEDO = mix(ALBEDO, foam_tint * mix(0.42, 0.36, sea), foam * 0.75);
-	vec3 wn = normalize(vec3((nm.x - 0.5) * mix(0.5, 0.22, sea), 1.0, (nm.y - 0.5) * mix(0.5, 0.22, sea)) + swell);
+	vec3 wn = normalize(vec3((nm.x - 0.5) * mix(0.5, 0.22, sea), 1.0, (nm.y - 0.5) * mix(0.5, 0.22, sea)) + swell - vec3(rr.x, 0.0, rr.y) * 0.25);
 	vec3 vn = normalize((VIEW_MATRIX * vec4(wn, 0.0)).xyz);
 	vec3 r = reflect(-VIEW, vn);
 	vec3 m = normalize((VIEW_MATRIX * vec4(normalize(moon_dir), 0.0)).xyz);
@@ -2478,6 +2540,11 @@ void fragment() {
 	ALPHA = mix(ALPHA, 0.98, fringe);
 	ROUGHNESS = mix(ROUGHNESS, 0.12, fringe);
 	EMISSION += vec3(0.08, 0.1, 0.14) * fringe * mix(0.3, 1.0, moon);
+	// (the rain: its rings' crests and the drops' flecks catching the sky's faint light and the lamp's,
+	// the surface roughened by it - a storm's greyed, a drizzle's still glassy between the drops)
+	float struck = clamp(rr.z, 0.0, 2.0) * (1.0 - foam) * (1.0 - fringe);
+	EMISSION += vec3(0.52, 0.62, 0.78) * struck * (0.01 + 0.018 * moon + 0.14 * near);
+	ROUGHNESS = mix(ROUGHNESS, 0.16, rain * 0.5 * (1.0 - fringe));
 }
 """
 
@@ -8101,8 +8168,11 @@ func _update_light() -> void:
 	_env.background_color = _env.fog_light_color * 0.5
 	# (the water's sky and moon glints as bright as the moon is now - WATER_SHADER's `moon`)
 	var moon_k := clampf(_moon.light_energy / (0.34 * MOON_DIM * NIGHT_DIM), 0.0, 1.0)
+	# (and struck by the rain as hard as it's falling - WATER_SHADER's `rain`)
+	var rain_k := _weather3d.rain if _weather3d != null else 0.0
 	for wm in _water_mats:
 		(wm as ShaderMaterial).set_shader_parameter("moon", moon_k)
+		(wm as ShaderMaterial).set_shader_parameter("rain", rain_k)
 	# (the owl in the dark: the whole view brighter - Abilities 夜視)
 	var sight := Abilities.OWL_DARK_SIGHT if Abilities.has("owl") and player.unlit() else 1.0
 	_owl_sight = move_toward(_owl_sight, sight, get_process_delta_time() * 0.4)

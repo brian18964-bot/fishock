@@ -255,6 +255,8 @@ func ticking() -> bool:
 
 func start_run() -> void:
 	run_started = true
+	# (Mr. Croc by the camp's water, or not, rolled afresh for the next time back)
+	CrocQuests.here_roll = -1
 	run_id = "%d:%d" % [int(Time.get_unix_time_from_system()), Time.get_ticks_usec()]
 	Profile.found_this_run.clear()
 	# User request: the fish packed in the bag at home (taken out of the tank)

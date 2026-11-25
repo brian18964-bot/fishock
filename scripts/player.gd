@@ -1041,6 +1041,29 @@ func night_ratio() -> float:
 	return Abilities.CAT_NIGHT_SPEED if GameState.is_night and Abilities.has("cat") else 1.0
 
 
+## User request (塞滿要提醒): the bag watched as it fills - told once when a big fish (2 x 2) no
+## longer fits in it, and again when nothing more does (the next fish caught left on the ground);
+## told afresh if it fills again after room's been made. How often it's looked at, s.
+const BAG_WATCH := 0.75
+## (0 room for anything; 1 no room for a big fish; 2 no room at all - Inventory.fullness)
+var bag_level := 0
+var _bag_watch := 0.0
+
+
+func _watch_bag(delta: float) -> void:
+	_bag_watch -= delta
+	if _bag_watch > 0.0:
+		return
+	_bag_watch = BAG_WATCH
+	var now := Inventory.fullness(self)
+	if now > bag_level:
+		if now == 2:
+			GameState.report("背包滿了！再釣到的魚只能放在地上——把用不到的東西丟掉，或先去獻祭", "warn")
+		else:
+			GameState.report("背包快滿了：大魚已經放不下，整理一下背包吧", "warn")
+	bag_level = now
+
+
 ## The abilities that turn on with the run's state: shown going off as
 ## they do - the cat as night falls, the owl as its light goes out.
 func _watch_abilities(_delta: float) -> void:
@@ -2035,6 +2058,7 @@ func _physics_process(delta: float) -> void:
 	glow_timer = maxf(glow_timer - delta, 0.0)
 	_sync_glow_light()
 	_watch_abilities(delta)
+	_watch_bag(delta)
 	binoculars_cooldown = maxf(binoculars_cooldown - delta, 0.0)
 	if _knock_time > 0.0:
 		# Staggering back, free. (Not into deep water, though - out there anywhere's walkable,

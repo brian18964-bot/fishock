@@ -19,11 +19,18 @@ const DUST_TINT := Color(0.42, 0.31, 0.18)
 const SEA_FOG_TINT := Color(0.32, 0.38, 0.44)
 ## (a fog's own pale grey - the night's mist seen, not only its dark)
 const FOG_TINT := Color(0.22, 0.24, 0.28)
+## User request (the water struck by the rain, a storm's more than a drizzle's): how hard each
+## weather's rain strikes the water - WATER_SHADER's `rain` (1 a storm's whole surface of rings,
+## a drizzle's a scatter of them); how fast it comes and goes as the weather turns, per s.
+const RAIN_ON_WATER := {"STORM": 1.0, "DRIZZLE": 0.26}
+const RAIN_EASE := 0.4
 
 ## (x the map's haze; the haze's colour pulled toward rgb by a; a fog lying low on the water 0..1)
 var fog_mult := 1.0
 var fog_tint := Color(0, 0, 0, 0)
 var sea_fog := 0.0
+## (how hard the rain's striking the water now, 0..1: RAIN_ON_WATER, eased - none where it snows)
+var rain := 0.0
 ## The snow map's snowfall (thicker in a blizzard), if any.
 var snow: CPUParticles3D
 var theme := ""
@@ -81,6 +88,8 @@ func update(delta: float, at: Vector3) -> void:
 		"DENSE_FOG": tint = Color(FOG_TINT, 0.6)
 	fog_tint = Color(tint.r, tint.g, tint.b, move_toward(fog_tint.a, tint.a, delta * EASE))
 	sea_fog = move_toward(sea_fog, 1.0 if kind == "SEA_FOG" else 0.0, delta * EASE)
+	var pour := 0.0 if theme.begins_with("snow") else float(RAIN_ON_WATER.get(kind, 0.0))
+	rain = move_toward(rain, pour, delta * RAIN_EASE)
 	if _rain != null:
 		_rain.emitting = kind == "STORM"
 		_rain.global_position = at + Vector3(-1.0, 7.5, 0.0)

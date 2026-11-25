@@ -86,8 +86,12 @@ var gait_push := Vector2.ZERO
 var _grip_mod: Grip
 
 
+## (someone of its own, not whoever travels - the camp's Mr. Croc: CampStage)
+var fixed := ""
+
+
 func _ready() -> void:
-	_build(Profile.character)
+	_build(fixed if fixed != "" else Profile.character)
 	Profile.profile_changed.connect(_on_profile_changed)
 
 

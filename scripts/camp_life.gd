@@ -610,6 +610,16 @@ func act_on(kind: String, part := 0, done := Callable()) -> bool:
 					{"do": "loop", "clip": "Idle_Talking", "time": 1.6, "at": 0.55, "fn": opens},
 					{"do": "play", "clip": "Yes"}, {"do": "call", "fn": func(): m.release()}]
 			activity = "merchant"
+		"croc":
+			# (user request: Mr. Croc by the water - over to him, a word, his errand up)
+			var c := stage.croc
+			if c == null:
+				plan = [{"do": "call", "fn": opens}]
+			else:
+				plan = _get_up() + _go("croc") + [{"do": "face", "at": CampStage.CROC_AT},
+					{"do": "call", "fn": func(): c.wave()},
+					{"do": "loop", "clip": "Idle_Talking", "time": 1.4, "at": 0.45, "fn": opens}]
+			activity = "croc"
 		"equipment":
 			# (user request: not in under it - too deep, too long: at its
 			# mouth, a hand to the flap, the page open)

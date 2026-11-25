@@ -64,7 +64,11 @@ func _build() -> void:
 	grid.add_theme_constant_override("h_separation", 6)
 	grid.add_theme_constant_override("v_separation", 6)
 	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# (user request: the characters join as the game goes - those not yet joined shown locked, with
+	# how they join; the crocodile not shown at all till it has: Campaign.character_shown)
 	for c in Profile.CHARACTERS:
+		if not Campaign.character_shown(c[0]):
+			continue
 		var cell := _cell(c[0], c[1])
 		grid.add_child(cell)
 		_cells[c[0]] = cell
@@ -299,7 +303,23 @@ func _cell(id: String, name_text: String) -> Button:
 	using.position = Vector2(4, 2)
 	using.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	b.add_child(using)
+	# (not joined yet: its portrait in shadow, a lock over it)
+	if not Campaign.character_open(id):
+		face.modulate = Color(0.22, 0.22, 0.26)
+		label.add_theme_color_override("font_color", UiKit.DIM)
+		var lock := LockMark.new()
+		lock.name = "Locked"
+		lock.position = Vector2(CELL.x * 0.5 - 14.0, FACE * 0.5 - 12.0)
+		lock.size = Vector2(28, 30)
+		lock.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b.add_child(lock)
 	return b
+
+
+## A lock drawn over a character not joined yet.
+class LockMark extends Control:
+	func _draw() -> void:
+		UiKit.draw_lock(self, size * 0.5, Color(0.95, 0.85, 0.6), 1.4)
 
 
 ## Shows `id` on the right (fetched first, on the web, if it isn't here).
@@ -312,10 +332,15 @@ func pick(id: String) -> void:
 		UiKit.style_tab(cell, k == id)
 		cell.get_node("InUse").visible = k == Profile.character
 		(cell.find_child("Name", true, false) as Label).add_theme_color_override("font_color",
-			UiKit.GOLD_BRIGHT if k == Profile.character else UiKit.TEXT)
+			UiKit.GOLD_BRIGHT if k == Profile.character else (UiKit.TEXT if Campaign.character_open(k) else UiKit.DIM))
 	_title.text = Profile.character_name(id)
 	_show_info(id)
-	if CharacterPacks.has(id):
+	if not Campaign.character_open(id):
+		# (not joined yet: how it joins, where it'll stand - nothing fetched for it)
+		_viewer.visible = false
+		_cover.visible = true
+		_cover_text.text = "尚未加入\n%s" % Campaign.character_join_text(id)
+	elif CharacterPacks.has(id):
 		_show(id)
 	else:
 		_viewer.visible = false
@@ -347,13 +372,14 @@ func _on_progress(id: String, ratio: float) -> void:
 func _refresh_choose() -> void:
 	var here := CharacterPacks.has(_picked)
 	var same := _picked == Profile.character
-	_choose.disabled = same or not here
-	_choose.text = "使用中" if same else ("選擇" if here else "下載中")
+	var open := Campaign.character_open(_picked)
+	_choose.disabled = same or not here or not open
+	_choose.text = "使用中" if same else ("未加入" if not open else ("選擇" if here else "下載中"))
 
 
 ## Travels as the one picked: it takes over at the fire, the page closes.
 func choose() -> void:
-	if _picked == "" or _picked == Profile.character or not CharacterPacks.has(_picked):
+	if _picked == "" or _picked == Profile.character or not CharacterPacks.has(_picked) or not Campaign.character_open(_picked):
 		return
 	var camp: Object = get_meta("camp", null)
 	if camp != null and is_instance_valid(camp) and camp.has_method("choose_character"):

@@ -157,6 +157,9 @@ const TESTS := [
 	"test_status_card_opens_bag",
 	"test_floating_ghost_budget",
 	"test_backpack_grid",
+	"test_bag_full_reminders",
+	"test_character_unlocks",
+	"test_croc_quests",
 	"test_bag_card_closes",
 	"test_altar_this_run_only",
 	"test_locks",
@@ -193,6 +196,9 @@ var failures: Array[String] = []
 var checks := 0
 var _current := ""
 var _catcher := ErrorCatcher.new()
+## (the developer's all-open as the game starts - each test starts with it as it was: many tests
+## turn it off to try the players' unlocks, and the characters follow it now)
+var _dev_open: bool = Campaign.dev_all_open
 ## The long system checks (tests/NOTES: `group=fast` leaves them out, `group=slow` runs only them).
 const SLOW := ["test_world_integrity", "test_trunks_hold", "test_soak_fishing", "test_no_stuck_spots",
 	"test_fishing_hold_every_character"]
@@ -257,6 +263,7 @@ func seconds(s: float) -> void:
 
 func _fresh_game(rng_seed := 7) -> void:
 	seed(rng_seed)
+	Campaign.dev_all_open = _dev_open
 	# The plain free run unless a test plays a level (and no free night of its own rolled for it).
 	Campaign.free_events = false
 	camp().clear()
@@ -1082,6 +1089,9 @@ const CAMP_MIXAMO := ["Lie_Down", "Lying", "Sleep_B", "Ground_Sit", "Ground_Stan
 func test_characters() -> void:
 	var saved := Profile.snapshot()
 	Profile.load_data({"gold": 100, "spirit": 95.0})
+	# (every character's own model, ability and place at camp: all of them open to choose - the
+	# joining's own test is test_character_unlocks)
+	Campaign.dev_all_open = true
 	for c in Profile.CHARACTERS:
 		var id: String = c[0]
 		var data := CharacterArt.rod_data(id)
@@ -1201,6 +1211,7 @@ func test_characters() -> void:
 ## `missing` makes them look not fetched, a fetch only pretending.)
 func test_character_packs() -> void:
 	var saved := Profile.snapshot()
+	Campaign.dev_all_open = true
 	check(Profile.CHARACTERS.all(func(c): return CharacterPacks.has(c[0])), "off the web every character's there")
 	Profile.load_data({"gold": 100, "spirit": 95.0, "character": "dog"})
 	CharacterPacks.missing = {"dog": true, "owl": true}
@@ -5335,6 +5346,176 @@ func test_altar_bones() -> void:
 	GameState.escape()
 	check(Profile.bag.any(func(e): return e.id == "bone_whole_m"), "escaped: the offering's bone in the bag")
 	Profile.load_data(saved)
+
+
+## User request (塞滿要提醒): the bag watched as it fills in a run - told once when a big fish no
+## longer fits, once more when nothing does, afresh after room's been made; and before setting off,
+## the departure window saying so (with the way to the bag), not when there's room.
+func test_bag_full_reminders() -> void:
+	var p := player()
+	var feed := []
+	var heard := func(t, _tone): feed.append(str(t))
+	GameState.event_reported.connect(heard)
+	await seconds(1.0)
+	check(p.bag_level == 0 and not feed.any(func(t): return t.contains("背包")), "room in the bag: nothing said (%s)" % [feed])
+	var n := 0
+	while Inventory.fits_with(p, [{"kind": "fish", "size": Vector2i(2, 2)}]) and n < 20:
+		gs.add_carried_fish(fish("大", "far"))
+		n += 1
+	await seconds(1.0)
+	check(p.bag_level == 1 and feed.any(func(t): return t.contains("背包快滿")), "no room for a big fish: told so (%s)" % [feed])
+	n = 0
+	while Inventory.fits_with(p, [{"kind": "fish", "size": Vector2i(1, 1)}]) and n < 40:
+		gs.add_carried_fish(fish("小", "near"))
+		n += 1
+	await seconds(1.0)
+	check(p.bag_level == 2 and feed.any(func(t): return t.contains("背包滿了")), "no room at all: told so (%s)" % [feed])
+	var said := feed.size()
+	await seconds(2.0)
+	check(feed.size() == said, "told once, not over and over (%s)" % [feed])
+	gs.carried_fish.clear()
+	gs.inventory_updated.emit(gs.carried_fish)
+	await seconds(1.0)
+	check(p.bag_level == 0, "room made: watched afresh")
+	GameState.event_reported.disconnect(heard)
+	# Before setting off: the bag at camp, its fish set in it.
+	var keep: Array = Profile.pack_fish.duplicate(true)
+	Profile.pack_fish = []
+	var roomy := DepartChooser.open(main)
+	await frames(2)
+	check(roomy.find_child("BagWarning", true, false) == null, "room in the bag at camp: no warning on the way out")
+	roomy.queue_free()
+	n = 0
+	while Profile.bag_room_for(Inventory.SIZES.large) and n < 20:
+		var f := fish("大", "far")
+		if Profile.pack_first_fit(f).x < 0:
+			break
+		Profile.pack_fish.append(f)
+		n += 1
+	var full := DepartChooser.open(main)
+	await frames(2)
+	var warn := full.find_child("BagWarning", true, false)
+	check(not Profile.bag_room_for(Inventory.SIZES.large) and warn != null and Profile.bag_free_cells() < Inventory.COLS * Inventory.ROWS,
+		"a bag too full for a big fish: said so before setting off (%d free)" % Profile.bag_free_cells())
+	full.queue_free()
+	Profile.pack_fish = keep
+
+
+## User request (characters): at first only the black cat; the rest join as the game goes - four
+## through the story, the others by other means - shown locked till then with how they join; the
+## crocodile not shown at all till Mr. Croc's own errand; one not joined can't be chosen, and a save
+## travelling as one goes back to the black cat.
+func test_character_unlocks() -> void:
+	var keep := [Profile.campaign.duplicate(true), Profile.records.duplicate(true), Profile.achievements.duplicate(true),
+		Profile.characters_joined.duplicate(), Profile.character]
+	reset_progress()
+	Profile.characters_joined = []
+	check(Campaign.character_open("cat") and not Campaign.character_open("dog3") and not Campaign.character_open("croc")
+		and not Campaign.character_shown("croc") and Campaign.character_shown("dog3"),
+		"at first only the black cat; the others shown locked, the crocodile not at all")
+	check(Profile.CHARACTERS.all(func(c): return c[0] in ["cat", "croc"] or Campaign.CHARACTER_JOIN.has(c[0])),
+		"every other character has a way to join")
+	var page: CharacterPage = load("res://scenes/character.tscn").instantiate()
+	get_tree().root.add_child(page)
+	await frames(3)
+	check(not page._cells.has("croc") and page._cells.size() == Profile.CHARACTERS.size() - 1,
+		"the character page: no crocodile (%d shown)" % page._cells.size())
+	check((page._cells["dog3"] as Node).find_child("Locked", true, false) != null
+		and (page._cells["cat"] as Node).find_child("Locked", true, false) == null, "the locked ones under a lock")
+	page.pick("dog3")
+	await frames(2)
+	check(page._choose.disabled and page._choose.text == "未加入" and page._cover.visible
+		and page._cover_text.text.contains("通過第一章"), "a locked one: how it joins, not to be chosen (%s)" % page._cover_text.text)
+	page.choose()
+	check(Profile.character == keep[4], "choosing a locked one does nothing")
+	page.queue_free()
+	# The story's first map cleared: the shepherd dog joins - said so on the night's results.
+	for l in Campaign.levels_of(1):
+		Profile.record_level(str(l.id), [true, false, false], 100.0)
+	var joined := Campaign.check_characters()
+	check(joined == ["dog3"] and Campaign.character_open("dog3") and not Campaign.character_open("deer"),
+		"the first chapter through: the shepherd dog joins (%s)" % [joined])
+	check(Campaign.check_characters().is_empty(), "joined once")
+	Profile.records["escaped"] = 30.0
+	check(Campaign.check_characters() == ["dog"], "the chihuahua by its own way: 30 escapes")
+	# A save travelling as one not joined: at camp, the black cat again.
+	Profile.character = "bear2"
+	var title: Control = load("res://scenes/title_screen.tscn").instantiate()
+	get_tree().root.add_child(title)
+	await frames(3)
+	check(Profile.character == "cat", "travelling as one not joined: back to the black cat")
+	title.queue_free()
+	await frames(2)
+	Campaign.dev_all_open = true
+	Profile.campaign = keep[0]
+	Profile.records = keep[1]
+	Profile.achievements = keep[2]
+	Profile.characters_joined = keep[3]
+	Profile.character = keep[4]
+
+
+## User request: Mr. Croc by the camp's water - our crocodile - with errands (catch so many of a
+## kind, paid for); after 30 of them one of his own (the dream fish - the alligator gar), and that
+## done he joins the characters, gone from the shore. At camp: there, tapped, his errand up.
+func test_croc_quests() -> void:
+	var keep := [Profile.campaign.duplicate(true), Profile.records.duplicate(true), Profile.achievements.duplicate(true),
+		Profile.characters_joined.duplicate(), Profile.croc.duplicate(true), Profile.gold, CrocQuests.here_roll]
+	reset_progress()
+	Profile.characters_joined = []
+	Profile.croc = {"done": 0, "quest": {}}
+	check(not CrocQuests.met() and not CrocQuests.here(), "not met before the first crossing")
+	Profile.record_level("1-1", [true, false, false], 100.0)
+	Profile.records["caught_crucian"] = 3.0
+	check(CrocQuests.met(), "met after the first crossing")
+	var q := CrocQuests.offer()
+	check(str(q.fish) == "crucian" and int(q.need) >= 12 and int(q.need) <= 20 and int(q.gold) == int(q.need) * 8 and not q.taken,
+		"his errand: a fish caught before, so many of it, paid for each (%s)" % [q])
+	check(CrocQuests.offer() == q, "the same errand offered till it's taken")
+	CrocQuests.take()
+	check(CrocQuests.progress() == 0 and not CrocQuests.ready_to_hand_in(), "taken: counted from now")
+	Profile.records["caught_crucian"] = 3.0 + float(q.need)
+	CrocQuests.here_roll = 0
+	check(CrocQuests.ready_to_hand_in() and CrocQuests.here(), "caught them all: he's by the water to be paid")
+	var gold := Profile.gold
+	var paid := CrocQuests.hand_in()
+	check(int(paid.gold) == int(q.gold) and Profile.gold == gold + int(q.gold) and CrocQuests.done() == 1
+		and CrocQuests.quest().is_empty() and not paid.joined, "handed in: paid, one done")
+	# At camp: by the water, tapped, his errand up.
+	CrocQuests.here_roll = 1
+	var title: Control = load("res://scenes/title_screen.tscn").instantiate()
+	get_tree().root.add_child(title)
+	await frames(3)
+	var camp: CampStage = title.find_child("Camp", true, false)
+	check(camp.croc != null and camp.croc.character == "croc" and camp.hotspots.has("croc") and camp.spots.has("croc"),
+		"Mr. Croc on the shore, to be tapped")
+	var at: Vector2 = camp.camera.unproject_position(camp.hotspots.croc.parts[0][1]) / TitleScreen.RENDER_SCALE
+	check(title.spot_at(at) == "croc", "tapped where he stands")
+	var talk: Control = title._croc_talk()
+	await frames(2)
+	var act: Button = talk.find_child("CrocAct", true, false)
+	check(act != null and act.text == "接下委託", "his next errand offered")
+	act.pressed.emit()
+	check(CrocQuests.quest().get("taken", false), "taken")
+	title.queue_free()
+	await frames(2)
+	# Thirty done: his own errand - the dream fish - and he joins.
+	Profile.croc = {"done": CrocQuests.JOIN_AFTER, "quest": {}}
+	q = CrocQuests.offer()
+	check(q.get("dream", false) and str(q.fish) == CrocQuests.DREAM_FISH and str(CrocQuests.words()[0]).contains("鱷雀鱔")
+		and not str(CrocQuests.words()[0]).contains("加入"), "after 30: his own errand, the alligator gar - nothing said of joining")
+	CrocQuests.take()
+	Profile.records["caught_" + CrocQuests.DREAM_FISH] = float(Profile.records.get("caught_" + CrocQuests.DREAM_FISH, 0.0)) + 1.0
+	paid = CrocQuests.hand_in()
+	check(paid.joined and Campaign.character_open("croc") and Campaign.character_shown("croc") and not CrocQuests.met()
+		and not CrocQuests.here(), "the dream fish caught: he joins the characters, gone from the shore")
+	Campaign.dev_all_open = true
+	Profile.campaign = keep[0]
+	Profile.records = keep[1]
+	Profile.achievements = keep[2]
+	Profile.characters_joined = keep[3]
+	Profile.croc = keep[4]
+	Profile.gold = keep[5]
+	CrocQuests.here_roll = keep[6]
 
 
 func test_backpack_grid() -> void:
@@ -11117,11 +11298,17 @@ func test_weathers() -> void:
 	for kind in ["SANDSTORM", "DRIZZLE", "STORM", "DENSE_FOG", "CLEAR"]:
 		gs._set_weather(GameState.Weather[kind], INF, true)
 		await seconds(2.5)
-		seen[kind] = [w3.fog_mult, w3._dust.emitting, w3._drizzle.emitting, w3._rain.emitting, view._env.fog_density, w3.fog_tint.a]
+		seen[kind] = [w3.fog_mult, w3._dust.emitting, w3._drizzle.emitting, w3._rain.emitting, view._env.fog_density, w3.fog_tint.a,
+			w3.rain, float((view._water_mats[0] as ShaderMaterial).get_shader_parameter("rain")) if not view._water_mats.is_empty() else -1.0]
 	check(seen.SANDSTORM[1] and not seen.SANDSTORM[2] and seen.SANDSTORM[0] > 1.3 and seen.SANDSTORM[5] > 0.2
 		and seen.DRIZZLE[2] and not seen.DRIZZLE[3] and seen.STORM[3] and not seen.STORM[2]
 		and seen.DENSE_FOG[0] > seen.SANDSTORM[0] * 0.8 and seen.DENSE_FOG[4] > 0.02 and not seen.CLEAR[1] and not seen.CLEAR[3],
 		"the weathers in the 3D run: sand blown in a sandstorm, a drizzle's and a storm's rain, the air thicker in a fog (%s)" % [seen])
+	# User request: the water struck by the rain - a storm's hard, a drizzle's lightly, none when it's dry
+	check(seen.STORM[6] > 0.9 and seen.DRIZZLE[6] > 0.15 and seen.DRIZZLE[6] < seen.STORM[6] * 0.5
+		and seen.SANDSTORM[6] == 0.0 and seen.CLEAR[6] < 0.01 and absf(seen.STORM[7] - seen.STORM[6]) < 0.05
+		and absf(seen.DRIZZLE[7] - seen.DRIZZLE[6]) < 0.05,
+		"the rain striking the water: a storm's hard, a drizzle's lightly, none when it's dry - on the water itself (%s)" % [seen])
 	check(GameState.Weather.keys().has("SEA_FOG") and not gs.foggy(), "the sea fog among the weathers; a clear night not foggy")
 	gs._set_weather(GameState.Weather.SEA_FOG, INF, true)
 	check(gs.foggy() and not gs.rainy(), "a sea fog closes the view in like a fog")

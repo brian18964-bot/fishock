@@ -159,6 +159,14 @@ static func fits_with(player: Node, extra: Array) -> bool:
 	return not pack(items(player) + extra).is_empty()
 
 
+## User request (塞滿要提醒): how full the bag is in a run - 0 room for anything still, 1 no room
+## for a big fish (2 x 2, either way round), 2 no room for anything at all.
+static func fullness(player: Node) -> int:
+	if not fits_with(player, [{"kind": "fish", "size": SIZES.large}]):
+		return 2 if not fits_with(player, [{"kind": "fish", "size": SIZES.small}]) else 1
+	return 0
+
+
 static func fish_item(fish: Dictionary) -> Dictionary:
 	var out := {"kind": "fish", "size": rotated(SIZES[fish_size(fish)], bool(fish.get("rot", false)))}
 	var c = fish.get("cell")

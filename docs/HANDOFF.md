@@ -4,7 +4,7 @@
 
 ## 一、目前狀態
 - 所有工作都在 `claude/focused-fermi-96pp3r` 分支，它也是這個 repo 的預設分支；最後一次推送的 CI（Web build）通過並已部署。
-- 本機全套測試：5561 項、0 失敗（`tests/run_tests.gd`）。
+- 本機全套測試：5592 項、0 失敗（`tests/run_tests.gd`）。
 - 遊戲：Godot 4.7.2，3D 夜釣（俯視鏡頭、夜間、煤燈），手機觸控為主，也支援鍵盤。
 
 ## 二、這段期間做了什麼（依時間）
@@ -24,6 +24,15 @@
 ### 5. 新海魚：月光鰺（moon_jack），由浪人鰺重新配色（使用者：「依現有去改」）
 ### 6. 使用者試玩前兩關後的修正（教學順序、指引箭頭、通關視窗、柳的提示、自由夜釣）
 ### 7. 狼的刀具提示、供品教學，以及一輪自主驗證與審查修正
+### 8. 雨打水面、背包快滿提醒、角色解鎖、營地的鱷魚先生
+- 雨打在水面：每滴雨一個落點亮點加向外擴散、漸淡的漣漪；小雨稀疏、大雨整片密集並讓水面變粗（燈光反光碎成一片）。
+  池塘、湖、海都有，下雪的地圖沒有。`WATER_SHADER` 的 `rain`（`Weather3D.rain` 依天氣漸變）。
+- 背包快滿提醒：夜釣中大魚（2×2）放不下時提醒一次、完全放不下再提醒一次（`Player._watch_bag`）；
+  出發視窗在背包放不下大魚時顯示警告與「整理背包」按鈕（`DepartChooser._bag_warning`）。
+- 角色解鎖：一開始只有黑貓；其他角色依 `Campaign.CHARACTER_JOIN` 加入；鱷魚在加入前完全不顯示。
+  加入時通關結算寫「新夥伴加入」，回營地也會跳通知。`dev_all_open = true` 時全部角色都開（開發者測試用）。
+- 鱷魚先生（營地湖邊、碼頭左邊）：`scripts/croc_quests.gd`。委託「釣 N 條某魚」，完成給金幣；
+  完成 30 次後出現專屬委託（釣到 1-5 深林大湖的鱷雀鱔），完成後鱷魚加入角色、不再出現在湖邊。
 
 ## 三、已定案（使用者決定的，不用再問）
 ### 劇情與分支
@@ -61,15 +70,23 @@
 | 各教學的關卡 | 活餌、蘑菇 1-2；反甩 1-3；狼、供品 1-4；魚氧樹 1-5；冷凍花 3-1 | `Campaign.LESSONS` |
 | 柳的提示停留／淡出 | 8 秒／1 秒 | `CampaignHud.BOX_HOLD`、`BOX_FADE` |
 | 自由模式的海水魚池 | 維持原樣（稀有、傳說海魚照舊出現；只有劇情關卡才限制他支的獨有魚） | `FishData._branch_pool` |
+| 雨打水面的強度（大雨／小雨）、漸變速度 | 1.0／0.26、每秒 0.4 | `Weather3D.RAIN_ON_WATER`、`RAIN_EASE` |
+| 雨滴密度、漣漪大小 | 大雨約每平方公尺每秒 3 滴、小雨約 0.8 滴；漣漪半徑 0.24 m | `WATER_SHADER` 的 `RAIN_*`、`rain_rings()` |
+| 背包提醒的門檻 | 放不下大魚（2×2）就提醒 | `Inventory.fullness`、`Profile.bag_room_for` |
+| 劇情解鎖角色 | 牧羊犬＝第一章、紅鹿（棕鹿）＝第二章、棕熊＝第三章、綿羊＝第四章 | `Campaign.CHARACTER_JOIN` |
+| 其他方式解鎖角色 | 吉娃娃＝逃離 30 次、黑面羊＝圖鑑 30%、梅花鹿＝45 顆星、台灣黑熊＝傳說魚 3 條、雪鴞＝入夜後離開 10 次、角鴞＝強光定住大鬼 20 次 | `Campaign.CHARACTER_JOIN` |
+| 鱷魚先生：出現 | 通過 1-1 後，每次回營地 60% 在湖邊（有委託完成待交時一定在） | `CrocQuests.FROM_LEVEL`、`CHANCE` |
+| 鱷魚先生：委託數量與金幣 | 一般魚 12–20 條 每條 8 金幣；水域特有魚 5–8 條 每條 25；稀有 1–2 條 每條 150；只選玩家釣過的魚 | `CrocQuests.NEED`、`GOLD_EACH`、`KIND_WEIGHT` |
+| 鱷魚先生：專屬委託 | 完成 30 次後，釣到鱷雀鱔（1-5），500 金幣＋鱷魚加入 | `CrocQuests.JOIN_AFTER`、`DREAM_FISH`、`DREAM_GOLD` |
 
 ## 五、待辦與需要使用者決定的事
-1. **營地水邊的任務 NPC**（使用者交代先記下，**尚未設計**）：隨機出現在營地水邊，依進度給收集任務（例：某魚種 20 隻），完成給獎勵。
-   待決定：出現頻率／條件、任務池怎麼隨進度變化（可對應各分支獨有魚）、獎勵、同時可接幾個、計算方式（累計捕獲或交付實魚）。
-   **動手前先跟使用者確認這些規則。**
-2. **發佈前**把 `Campaign.dev_all_open` 改成 `false`。
+1. **鱷魚先生**已做（規則都是我先訂的，見第四節）：一次一個委託；算「接下委託後累計釣到」的數量，不用交出實魚。
+   使用者說過「先暫定」專屬委託是某張地圖的夢幻魚，目前用 1-5 的鱷雀鱔（鱷魚找鱷雀鱔）。
+2. **發佈前**把 `Campaign.dev_all_open` 改成 `false`（它也讓所有角色都能選）。
 3. 月光鰺目前和浪人鰺同一個模型形狀；更細長的版本已寫好算圖設定（`tools/render_fish.py` 的 moon_jack），要有 Blender（bpy）才能重算。
-4. 沙灘海岸的地形設定裡列了「螃蟹」，但遊戲沒有螃蟹這個物種（`shore_critter_count` 為 0，所以不會生成）。如果要螃蟹，需要美術。
-5. 背包會被帶回來的魚骨慢慢塞滿；背包滿了，釣到的魚會放在地上。真人回營地會賣掉或收進倉庫，不算 bug，但可以考慮提醒。
+4. 沙灘海岸的地形設定裡列了「螃蟹」，但遊戲沒有螃蟹這個物種（`shore_critter_count` 為 0，所以不會生成）。**使用者之後會給螃蟹美術。**
+5. 背包會被帶回來的魚骨慢慢塞滿——已加提醒（見第二節 8）。
+8. 之後的多人模式：使用者構想在某張地圖裡突然遇到角色、一起逃出，進而開啟多人玩法並解鎖該角色（尚未做）。
 6. 屬性門檻（使用者已接受「卡關」）：海水稀有魚（浪人鰺、蘇眉、翻車魚、雨傘旗魚、鎚頭鯊）和 1-4 巨型鯰魚、1-5 鱷雀鱔算史詩，
    要兩項屬性約 49–57；傳說（劍旗魚、藍鰭鮪）三項約 81–95；新角色只有力量 6、韌性 7、反應 10、耐力 8。
    用基本裝備時，5-3、5-4、6-1 的時間偏緊（很多上鉤的魚拉不起來）。如果使用者之後想調，改 `FishData.GATE_BANDS` 或關卡的額度、時間。
@@ -78,7 +95,8 @@
 ## 六、怎麼驗證（工具都在 repo 裡）
 - 測試：見 CLAUDE.md。跟這段工作最相關的測試：`test_campaign_levels_build`（26 關的地圖、水域、鬼、額度）、
   `test_campaign_unlocks_and_achievements`、`test_story_lessons`、`test_tutorials_completable`、`test_branch_fish`、
-  `test_free_branches_and_nights`、`test_level_guide_and_results`、`test_weathers`、`test_journey_page`。
+  `test_free_branches_and_nights`、`test_level_guide_and_results`、`test_weathers`（含雨打水面）、`test_journey_page`、
+  `test_bag_full_reminders`、`test_character_unlocks`、`test_croc_quests`。
 - `tools/verify/verify.gd`（用法寫在檔案開頭）：
   - `tool=bot`：機器人用真實操作（拋竿、揚竿、搏魚、獻祭、逃離）逐關玩，輸出每關用時、額度、漁獲、獨有魚、教學進度、失敗原因。
   - `tool=play`：關掉開發者全開，依序通關 26 關，檢查解鎖順序、星數、首次通關獎勵。
@@ -104,3 +122,5 @@
 | 採集與互動的限制（教到才能用） | `scripts/player.gd`：`interaction()`、`reachable_*()` |
 | 地圖生成（主題、水域、碼頭、動物、蘑菇、魚氧樹） | `scripts/map_generator.gd` |
 | 3D 場景（海、崖、湖、天氣、燈光） | `scripts/run_view_3d.gd` |
+| 角色解鎖條件 | `scripts/campaign.gd`：`CHARACTER_JOIN`、`character_open()`、`check_characters()`；畫面：`scripts/character_page.gd` |
+| 鱷魚先生（委託、出現、專屬委託） | `scripts/croc_quests.gd`；營地模型與點擊：`scripts/camp_stage.gd` 的 `_croc()`、`scripts/title_screen.gd` 的 `_croc_talk()` |

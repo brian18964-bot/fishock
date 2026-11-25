@@ -20,6 +20,8 @@ extends Node
 
 signal stat_changed(key: String, value: float)
 signal achievement_unlocked(id: String)
+## (user request: the characters joining as the game goes - Profile.characters_joined)
+signal character_joined(id: String)
 
 ## The map sizes (world px). L is the full map the free run has always had.
 ## (user request - the maps' branches, the later the bigger: an extra-large one too, "XL")
@@ -1098,7 +1100,7 @@ func finish(success: bool) -> Dictionary:
 		stat("escaped")
 	var stars := stars_earned(success)
 	result = {"success": success, "level": level_id, "stars": stars, "new_stars": [], "gold": 0,
-		"items": {}, "achievements": [], "first_clear": false, "chapter_done": false, "curse_gold": 0}
+		"items": {}, "achievements": [], "characters": [], "first_clear": false, "chapter_done": false, "curse_gold": 0}
 	if is_level() and success:
 		_score_level(stars)
 	elif success and not curses.is_empty():
@@ -1115,6 +1117,7 @@ func finish(success: bool) -> Dictionary:
 		Profile.record_level_try(level_id)
 	_record_life()
 	result.achievements = check_achievements()
+	result.characters = check_characters()
 	return result
 
 
@@ -1271,6 +1274,62 @@ func _check(c: Dictionary) -> bool:
 			return false
 		return true
 	return false
+
+
+# ---------------------------------------------------------------- characters
+
+## User request (characters): at first only the black cat travels; the others join as the game
+## goes - four through the story (the shepherd dog, the red deer - the user's 棕鹿 - the brown bear
+## and the sheep: a map cleared each), the rest by other means - {id: [how it's told on its locked
+## card, the check (an achievement's: _check)]}. The crocodile isn't among them: it's the camp's
+## Mr. Croc, and joins only through his own errand (CrocQuests) - not shown at all till then, so
+## no one knows it might. (Which character joins how, and the numbers: mine for now - the user's
+## to change. Later, user request: a character met in a map, getting out together, joining that
+## way in a game with others.)
+const CHARACTER_JOIN := {
+	"dog3": ["通過第一章「湖畔森林」", {"chapter": 1}],
+	"deer": ["通過第二章「秋林」", {"chapter": 2}],
+	"bear": ["通過第三章「雪地森林」", {"chapter": 3}],
+	"sheep": ["通過第四章「沙漠綠洲」", {"chapter": 4}],
+	"dog": ["成功逃離 30 次", {"life": "escaped", "min": 30}],
+	"sheep2": ["圖鑑收集 30%", {"log": 30}],
+	"deer2": ["收集 45 顆星", {"stars": 45}],
+	"bear2": ["釣到 3 條傳說魚", {"life": "catch_legend", "min": 3}],
+	"owl": ["入夜後成功離開 10 次", {"life": "escaped_night", "min": 10}],
+	"owl2": ["用強光定住大鬼 20 次", {"life": "big_ghost_stun", "min": 20}],
+}
+## (the one there from the start; the one only Mr. Croc's errand brings)
+const FIRST_CHARACTER := "cat"
+const HIDDEN_CHARACTER := "croc"
+
+
+## Whether `id` can travel: the black cat always; the others once joined (the developer's all-open:
+## everyone).
+func character_open(id: String) -> bool:
+	return id == FIRST_CHARACTER or dev_all_open or Profile.characters_joined.has(id)
+
+
+## Whether `id` is shown in the character list at all - the crocodile only once it's joined.
+func character_shown(id: String) -> bool:
+	return id != HIDDEN_CHARACTER or character_open(id)
+
+
+## How `id` joins, for its locked card ("" - none told).
+static func character_join_text(id: String) -> String:
+	return str(CHARACTER_JOIN[id][0]) if CHARACTER_JOIN.has(id) else ""
+
+
+## Whoever's newly earned their place joins; returns their ids.
+func check_characters() -> Array:
+	var got := []
+	for id in CHARACTER_JOIN:
+		if Profile.characters_joined.has(id):
+			continue
+		if _check(CHARACTER_JOIN[id][1]):
+			Profile.join_character(id)
+			got.append(id)
+			character_joined.emit(id)
+	return got
 
 
 ## Unlocks what's newly done and pays for it; returns their ids.

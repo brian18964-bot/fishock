@@ -130,6 +130,11 @@ const MERCHANT_LINKS := {
 }
 ## The frog's size (the model is 1.25 m): small enough to stand inside.
 const MERCHANT_SCALE := 0.85
+## Mr. Croc (CrocQuests): on the lake's shore left of the dock, by the water's edge, turned toward
+## the camp; where one stands to talk to him (in front of him, camp side).
+const CROC_AT := Vector3(-1.7, 0.0, -6.75)
+const CROC_YAW := 0.7
+const CROC_VISIT := Vector3(-1.35, 0.0, -5.6)
 const DOCK_AT := Vector3(2.9, 0.0, -7.05)
 ## The dock's planks: how far out (m), half their width (walked on), how
 ## high; its lamp post (from DOCK_AT), on the side away from the boat.
@@ -189,6 +194,8 @@ var _embers_mat: StandardMaterial3D
 var _stone_mat: StandardMaterial3D
 var _boat: Node3D
 var merchant: CampMerchant
+## User request: Mr. Croc on the lake's shore, when he's there (CrocQuests.here()) - null when not.
+var croc: CharacterRig
 var _tent_holder: Node3D
 var _rod_holder: Node3D
 var _water_mat: ShaderMaterial
@@ -222,6 +229,7 @@ func _ready() -> void:
 	_stall()
 	_dock()
 	_wildlife()
+	_croc()
 	_places()
 	_character()
 	_fit_body()
@@ -392,6 +400,8 @@ func _places() -> void:
 	# (a bigger one's belly and head went into the drum any nearer)
 	_spot("lean", DRUM_AT + Vector3(0, 0, 0.38), DRUM_AT + Vector3(0, 0, -3.0))
 	_spot("lake", Vector3(1.3, 0, -6.35), Vector3(1.7, 0, -10.0))
+	if croc != null:
+		_spot("croc", CROC_VISIT, CROC_AT)
 	_spot("gather_0", spread(Vector3(-2.3, 0, 1.6)), spread(Vector3(-2.6, 0, 2.6)))
 	_spot("gather_1", spread(Vector3(1.9, 0, 1.6)), spread(Vector3(2.2, 0, 2.6)))
 	_spot("gather_2", spread(Vector3(-0.7, 0, 1.95)), spread(Vector3(-0.9, 0, 3.0)))
@@ -421,6 +431,9 @@ func _places() -> void:
 		obstacles.append(_capsule(_footprint(_sided[name])))
 	for p in _edge_trees:
 		obstacles.append(_round(p, 0.42))
+	# (Mr. Croc, when he's there - his tail out behind him)
+	if croc != null:
+		obstacles.append(_round(CROC_AT, 0.55))
 	for i in SEATS.size():
 		var f := seat_facing(i)
 		var along := Vector3(-f.z, 0, f.x)
@@ -1500,6 +1513,28 @@ static func _short_mast(mesh: Mesh) -> Mesh:
 		out.add_surface_from_arrays(mesh.surface_get_primitive_type(i), arrays)
 		out.surface_set_material(i, mesh.surface_get_material(i))
 	return out
+
+
+## User request: Mr. Croc - our crocodile, by the lake - there when CrocQuests says he is (his model
+## fetched, on the web; if it isn't yet, fetched for next time). Tapped, the traveller goes over to
+## him and his errand comes up (TitleScreen._croc_talk).
+func _croc() -> void:
+	if not CrocQuests.here():
+		return
+	if not CharacterPacks.has(CrocQuests.ID):
+		CharacterPacks.fetch(CrocQuests.ID)
+		return
+	var pivot := Node3D.new()
+	pivot.name = "Croc"
+	pivot.position = CROC_AT
+	pivot.rotation.y = CROC_YAW
+	add_child(pivot)
+	croc = CharacterRig.new()
+	croc.fixed = CrocQuests.ID
+	croc.hold_gear = false
+	pivot.add_child(croc)
+	croc.play_idle()
+	_hotspot("croc", pivot, "鱷魚先生", CROC_AT + Vector3(0, 0.9, 0), 0.75, 0.012)
 
 
 ## Now and then an animal's dark shape walks the far bank, at the foot of

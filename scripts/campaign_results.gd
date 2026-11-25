@@ -92,6 +92,14 @@ func _ready() -> void:
 		var ach := UiKit.label("成就達成：%s（+%d 金幣）" % [a[2], int(a[4])], 15, Color(0.3, 0.2, 0.5), true, 0)
 		ach.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		col.add_child(ach)
+	# (user request: the characters joining as the game goes - who joined with this night)
+	var joined: Array = res.get("characters", [])
+	if not joined.is_empty():
+		var names := joined.map(func(c): return Profile.character_name(str(c)))
+		var mate := UiKit.label("新夥伴加入：%s（回營地在營火旁換角色）" % "、".join(names), 15, Color(0.12, 0.35, 0.18), true, 0)
+		mate.name = "Joined"
+		mate.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		col.add_child(mate)
 	if res.get("chapter_done", false):
 		var nxt := Campaign.next_level(str(lv.id))
 		var words := "第%d章完成！" % int(lv.chapter)
