@@ -243,11 +243,15 @@ const THEMES := {
 		"trees": 10, "rocks": 2, "bushes": 3, "ground": 0,
 		"tree_families": {"pine": 1.0},
 		"rock_pool": [0, 1, 2],
-		"ruins": {"road": 180.0, "block_min": Vector2(380, 340), "block_max": Vector2(600, 520), "lots": Vector2i(2, 3),
-			"alley": 60.0, "setback": 20.0, "vacant": 0.1, "fallen": 0.15, "water_gap": 60.0, "towers": 1},
+		"ruins": {"road": 180.0, "block_min": Vector2(380, 340), "block_max": Vector2(760, 600), "lots": Vector2i(2, 3),
+			"alley": 60.0, "setback": 20.0, "vacant": 0.1, "fallen": 0.15, "water_gap": 60.0, "towers": 1,
+			# (the user's low buildings, made ours - a whole block one of them, this share of the blocks
+			# they fit; the skyline's towers outside the map's top and sides - Ruin, CityBuild)
+			"models": ["city_house_1", "city_house_2", "city_house_3", "city_house_4"], "model_share": 0.55,
+			"skyline": ["city_tower_1", "city_tower_2", "city_tower_3", "city_tower_4", "city_tower_5"]},
 		# (what's left in the streets - StreetProp: cars and street lamps a base map's area, the share of
 		# the cars slewed across the road rather than by the kerb, the lamps still lit (at most so many))
-		"street": {"cars": 9, "lamps": 10, "slewed": 0.3, "lit": 0.3, "lit_most": 3},
+		"street": {"cars": 9, "lamps": 10, "drums": 7, "crates": 5, "benches": 3, "slewed": 0.3, "lit": 0.3, "lit_most": 3},
 		"animal_count": 0,
 		"animals": {},
 		"shore": {"grass": 0.04, "shrub": 0.03, "pebbles": 0.06},
@@ -935,11 +939,16 @@ func _place_ruins() -> void:
 			break
 	var towers := int(spec.get("towers", 0))
 	var made := 0
-	for fitted in best:
-		var rect: Rect2 = fitted
+	for entry in best:
+		var rect: Rect2 = entry.rect
 		var ruin := Ruin.new()
 		ruin.name = "Ruin%d" % made
-		if towers > 0 and rect.get_center().distance_to(SPAWN_POS) > RUIN_TOWER_AWAY and rect.get_area() > RUIN_TOWER_AREA:
+		if str(entry.get("model", "")) != "":
+			ruin.kind = "model"
+			ruin.model = entry.model
+			ruin.model_yaw = entry.yaw
+			ruin.model_scale = entry.scale
+		elif towers > 0 and rect.get_center().distance_to(SPAWN_POS) > RUIN_TOWER_AWAY and rect.get_area() > RUIN_TOWER_AREA:
 			ruin.kind = "tower"
 			towers -= 1
 		elif randf() < float(spec.fallen):
@@ -959,17 +968,24 @@ func _place_ruins() -> void:
 		made += 1
 
 
-## One layout of the streets: the lots that are clear (biggest first - the tower's pick).
+## One layout of the streets: the buildings that fit, each {rect, model, yaw, scale} (model "" for
+## a building of our own shapes) - a whole block one of the models now and then, else its lots
+## (biggest first - the tower's pick).
 func _ruin_layout(spec: Dictionary) -> Array:
 	var road := float(spec.road)
 	var lo: Vector2 = spec.block_min
 	var hi: Vector2 = spec.block_max
 	var lots := []
+	var models := []
 	for bx in _street_cuts(Player.WORLD_WIDTH, road, lo.x, hi.x):
 		for by in _street_cuts(Player.WORLD_HEIGHT, road, lo.y, hi.y):
 			if randf() < float(spec.vacant):
 				continue
 			var block := Rect2(bx.x, by.x, bx.y - bx.x, by.y - by.x)
+			var whole := _model_on(block, spec)
+			if not whole.is_empty():
+				models.append(whole)
+				continue
 			var along_x := block.size.x >= block.size.y
 			var length := block.size.x if along_x else block.size.y
 			var alley := float(spec.alley)
@@ -992,12 +1008,43 @@ func _ruin_layout(spec: Dictionary) -> Array:
 				if at >= length - RUIN_LEAST:
 					break
 	lots.sort_custom(func(a, b): return (a as Rect2).get_area() > (b as Rect2).get_area())
-	var out := []
+	var out := models.duplicate()
 	for lot in lots:
 		var fitted := _ruin_room(lot, float(spec.water_gap))
 		if fitted.size != Vector2.ZERO:
-			out.append(fitted)
+			out.append({"rect": fitted, "model": ""})
 	return out
+
+
+## One of the models for a whole block (`spec` "models", "model_share" of the blocks): the one that
+## fits it best (each turned either way, scaled to the block within Ruin.MODEL_SCALE), set somewhere
+## in it, if it's clear there (as _ruin_room asks); {} if none.
+func _model_on(block: Rect2, spec: Dictionary) -> Dictionary:
+	var names: Array = spec.get("models", [])
+	if names.is_empty() or randf() >= float(spec.get("model_share", 0.0)):
+		return {}
+	var room := block.grow(-float(spec.setback) * 0.5)
+	var picks := []
+	for name in names:
+		if Ruin.info(str(name)).is_empty():
+			continue
+		for quarter in [0, 1]:
+			var unit := Ruin.model_footprint(str(name), quarter * PI * 0.5, 1.0)
+			var k := minf(room.size.x / unit.x, room.size.y / unit.y)
+			k = minf(k, Ruin.MODEL_SCALE.y)
+			if k >= Ruin.MODEL_SCALE.x:
+				picks.append([str(name), quarter, k])
+	picks.shuffle()
+	for p in picks:
+		# (turned its way, or the other way round - its back to the street sometimes)
+		var yaw := float(p[1]) * PI * 0.5 + (PI if randf() < 0.5 else 0.0)
+		var k := float(p[2])
+		var size := Ruin.model_footprint(str(p[0]), yaw, k)
+		var slack := room.size - size
+		var rect := Rect2(room.position + Vector2(randf() * slack.x, randf() * slack.y), size)
+		if _ruin_clear(rect, float(spec.water_gap)):
+			return {"rect": rect, "model": p[0], "yaw": yaw, "scale": k}
+	return {}
 
 
 ## User request (the city, a style with "street"): its cars and street lamps. A car by the kerb of
@@ -1012,13 +1059,16 @@ func _place_street_props() -> void:
 	var walk := CityBuild.WALK * Fossil.PX
 	var lit_left := int(spec.get("lit_most", 3))
 	var made := 0
-	for kind in ["car", "lamp"]:
-		var count := maxi(1, roundi(float(spec.get(kind + "s", 0)) * share))
+	for kind: String in ["car", "lamp", "drum", "crate", "bench"]:
+		var key := "benches" if kind == "bench" else kind + "s"
+		if float(spec.get(key, 0)) <= 0.0:
+			continue
+		var count := maxi(1, roundi(float(spec.get(key, 0)) * share))
 		for _i in count:
 			for _try in 30:
 				var at := Vector2.INF
 				var yaw := 0.0
-				if kind == "car" and randf() < float(spec.slewed):
+				if (kind == "car" and randf() < float(spec.slewed)) or (kind != "car" and kind != "lamp" and randf() < 0.4):
 					at = Vector2(randf_range(PROP_MARGIN, Player.WORLD_WIDTH - PROP_MARGIN), randf_range(PROP_MARGIN, Player.WORLD_HEIGHT - PROP_MARGIN))
 					yaw = randf() * TAU
 				else:
@@ -1026,14 +1076,14 @@ func _place_street_props() -> void:
 					var rect: Rect2 = _ruins.pick_random()
 					var side := randi() % 4
 					var t := randf_range(0.1, 0.9)
-					var out := walk + (StreetProp.CAR.y * 0.5 + 8.0 if kind == "car" else 6.0)
+					var out := walk + (StreetProp.CAR.y * 0.5 + 8.0 if kind == "car" else (6.0 if kind == "lamp" else randf_range(-walk * 0.6, 10.0)))
 					match side:
 						0: at = Vector2(rect.position.x + rect.size.x * t, rect.position.y - out)
 						1: at = Vector2(rect.end.x + out, rect.position.y + rect.size.y * t)
 						2: at = Vector2(rect.position.x + rect.size.x * t, rect.end.y + out)
 						_: at = Vector2(rect.position.x - out, rect.position.y + rect.size.y * t)
 					yaw = (0.0 if side % 2 == 0 else PI * 0.5) + randf_range(-0.12, 0.12) + (PI if randf() < 0.5 else 0.0)
-				var reach := StreetProp.CAR.x * 0.5 if kind == "car" else StreetProp.LAMP_R + 10.0
+				var reach := StreetProp.reach_of(kind) + (0.0 if kind == "car" else 10.0)
 				if at.x < PROP_MARGIN or at.y < PROP_MARGIN or at.x > Player.WORLD_WIDTH - PROP_MARGIN or at.y > Player.WORLD_HEIGHT - PROP_MARGIN:
 					continue
 				if at.distance_to(SPAWN_POS) < PROP_AVOID_SPAWN_RADIUS or _shore_distance(at) < reach + 30.0 or _in_any_water(at):

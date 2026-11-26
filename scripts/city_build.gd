@@ -13,6 +13,11 @@ extends RefCounted
 ## The traveller is never lost behind one: what's between the camera and them, round the line to
 ## them, is seen through (screen-door), and what's very near the camera too, as the trees fade
 ## (RunView3D.FADE_NEAR..FAR) - SHADER's `hero`, set each frame (update).
+##
+## User request (the user's models, made ours - tools/make_city_assets.py): a whole block's building
+## may be one of the low buildings (Ruin.model); tall towers stand outside the map's top and sides,
+## the skyline (skyline); the cars are the remade jeeps, with oil drums, crates and benches about
+## (props) - all of them seen through the same way (TEX_SHADER).
 
 ## (the pavement round a building: this wide, m; fading out over the last FADE)
 const WALK := 2.0
@@ -145,6 +150,66 @@ void fragment() {
 """
 
 static var _shader: Shader
+static var _tex_shader: Shader
+## Every see-through material made this map (update keeps their `hero`).
+static var _seen: Array = []
+
+## The see-through for the models: their own pictures (and normal maps), their vertex colour
+## (the cars' dirt and rust) if asked - the same hiding as SHADER's.
+const TEX_SHADER := """
+shader_type spatial;
+render_mode cull_back;
+uniform sampler2D albedo_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap, repeat_enable;
+uniform bool has_normal = false;
+uniform bool use_colour = false;
+uniform float roughness = 0.88;
+uniform vec3 hero = vec3(0.0, -100.0, 0.0);
+uniform float cut = 2.8;
+uniform float fade_min = 5.5;
+uniform float fade_max = 8.6;
+varying vec3 wp;
+varying vec4 vcol;
+void vertex() {
+	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	vcol = COLOR;
+}
+float bayer4(vec2 p) {
+	ivec2 q = ivec2(mod(p, 4.0));
+	int i = q.x + q.y * 4;
+	float m[16] = float[](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+	return (m[i] + 0.5) / 16.0;
+}
+void fragment() {
+	vec3 cam = CAMERA_POSITION_WORLD;
+	vec3 to_hero = hero - cam;
+	float len = length(to_hero);
+	vec3 dir = to_hero / max(len, 0.001);
+	vec3 rel = wp - cam;
+	float t = dot(rel, dir);
+	float off = length(rel - dir * t);
+	float hide = t < len - 0.4 ? 1.0 - smoothstep(cut * 0.55, cut, off) : 0.0;
+	hide = max(hide, 1.0 - smoothstep(fade_min, fade_max, length(rel)));
+	if (hide > 0.0 && hide >= bayer4(FRAGCOORD.xy)) {
+		discard;
+	}
+	vec3 c = texture(albedo_tex, UV).rgb;
+	if (use_colour) {
+		c *= vcol.rgb;
+	}
+	ALBEDO = c;
+	ROUGHNESS = roughness;
+	if (has_normal) {
+		NORMAL_MAP = texture(normal_tex, UV).rgb;
+	}
+}
+"""
+## (the skyline: how far out from the map's edge the towers stand (m), how far apart (m), how big
+## against their own size; how much of the map's sides, from the top, they line)
+const SKY_OUT := Vector2(6.0, 12.0)
+const SKY_GAP := Vector2(16.0, 30.0)
+const SKY_SCALE := Vector2(0.4, 0.58)
+const SKY_SIDES := 0.75
 
 
 ## The pavement round the buildings, over the ground's grid (`lo` its corner, m; `n` its size;
@@ -184,14 +249,22 @@ static func build(holder: Node3D, ruins: Array, land_y: Callable) -> ShaderMater
 		_shader.code = SHADER
 	var mat := ShaderMaterial.new()
 	mat.shader = _shader
+	_seen = [mat]
 	var shade := StandardMaterial3D.new()
 	shade.albedo_color = Color(0.3, 0.3, 0.3)
 	for k in ruins.size():
 		var ruin := ruins[k] as Ruin
 		var rng := RandomNumberGenerator.new()
 		rng.seed = ruin.seed_value
-		var mesh := _rubble(ruin, rng) if ruin.kind == "rubble" else _shell(ruin, rng)
 		var at: Vector2 = ruin.global_position
+		if ruin.model != "":
+			var built := _model(ruin.model_path(), "RuinModel%d" % k, shade)
+			built.position = Vector3(at.x / PX, float(land_y.call(at)), at.y / PX)
+			built.rotation.y = ruin.model_yaw
+			built.scale = Vector3.ONE * ruin.model_scale
+			holder.add_child(built)
+			continue
+		var mesh := _rubble(ruin, rng) if ruin.kind == "rubble" else _shell(ruin, rng)
 		var mi := MeshInstance3D.new()
 		mi.name = "RuinModel%d" % k
 		mi.mesh = mesh
@@ -214,6 +287,79 @@ static func build(holder: Node3D, ruins: Array, land_y: Callable) -> ShaderMater
 static func update(mat: ShaderMaterial, hero: Vector3) -> void:
 	if mat != null:
 		mat.set_shader_parameter("hero", hero)
+	for m in _seen:
+		if m != mat:
+			(m as ShaderMaterial).set_shader_parameter("hero", hero)
+
+
+## One of the user's models, made ours (`path`, a .glb): its own pictures, seen through as the rest
+## (TEX_SHADER); its shadow cast by a plain twin of each part (`shade`). Named `name`.
+static func _model(path: String, name: String, shade: Material, colour := false) -> Node3D:
+	if _tex_shader == null:
+		_tex_shader = Shader.new()
+		_tex_shader.code = TEX_SHADER
+	var node: Node3D = (load(path) as PackedScene).instantiate()
+	node.name = name
+	for mi in node.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		for i in m.mesh.get_surface_count():
+			var src := m.mesh.surface_get_material(i) as BaseMaterial3D
+			var own := ShaderMaterial.new()
+			own.shader = _tex_shader
+			if src != null:
+				own.set_shader_parameter("albedo_tex", src.albedo_texture)
+				own.set_shader_parameter("roughness", src.roughness)
+				if src.normal_enabled and src.normal_texture != null:
+					own.set_shader_parameter("normal_tex", src.normal_texture)
+					own.set_shader_parameter("has_normal", true)
+			own.set_shader_parameter("use_colour", colour)
+			m.set_surface_override_material(i, own)
+			_seen.append(own)
+		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var caster := MeshInstance3D.new()
+		caster.mesh = m.mesh
+		caster.material_override = shade
+		caster.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+		caster.transform = m.transform
+		m.get_parent().add_child(caster)
+	return node
+
+
+## The skyline: the towers (`names`, the remade high-rises) outside the map (`rect`, px) along its
+## top and the upper part of its sides - not its foot, where they'd stand between the camera and
+## the traveller - SKY_GAP apart, SKY_OUT out from the edge, each its own size and turn.
+static func skyline(holder: Node3D, names: Array, rect: Rect2, land_y: Callable, rng: RandomNumberGenerator) -> int:
+	if names.is_empty():
+		return 0
+	var shade := StandardMaterial3D.new()
+	shade.albedo_color = Color(0.3, 0.3, 0.3)
+	var spots := []
+	var w := rect.size.x / PX
+	var h := rect.size.y / PX
+	var x0 := rect.position.x / PX
+	var z0 := rect.position.y / PX
+	var at := rng.randf_range(0.0, SKY_GAP.x)
+	while at < w:
+		spots.append(Vector2(x0 + at, z0 - rng.randf_range(SKY_OUT.x, SKY_OUT.y)))
+		at += rng.randf_range(SKY_GAP.x, SKY_GAP.y)
+	for side in [-1.0, 1.0]:
+		at = rng.randf_range(SKY_GAP.x * 0.5, SKY_GAP.y)
+		while at < h * SKY_SIDES:
+			var x := x0 - rng.randf_range(SKY_OUT.x, SKY_OUT.y) if side < 0.0 else x0 + w + rng.randf_range(SKY_OUT.x, SKY_OUT.y)
+			spots.append(Vector2(x, z0 + at))
+			at += rng.randf_range(SKY_GAP.x, SKY_GAP.y)
+	var made := 0
+	for p in spots:
+		var name: String = names[rng.randi() % names.size()]
+		var tower := _model(Ruin.MODELS_DIR + name + ".glb", "SkylineTower%d" % made, shade)
+		# (its foot where the map's edge is - the ground rises out there; sunk a little)
+		var edge := Vector2(clampf(p.x, x0, x0 + w), clampf(p.y, z0, z0 + h)) * PX
+		tower.position = Vector3(p.x, float(land_y.call(edge)) - 0.5, p.y)
+		tower.rotation.y = float(rng.randi() % 4) * PI * 0.5
+		tower.scale = Vector3.ONE * rng.randf_range(SKY_SCALE.x, SKY_SCALE.y)
+		holder.add_child(tower)
+		made += 1
+	return made
 
 
 ## A building's shell: four walls round its footprint, its storeys high, a parapet over a flat
@@ -402,7 +548,12 @@ static func props(holder: Node3D, list: Array, land_y: Callable) -> void:
 		var sp := list[k] as StreetProp
 		var rng := RandomNumberGenerator.new()
 		rng.seed = sp.seed_value
-		var node := _car(rng) if sp.kind == "car" else _lamp(sp, rng)
+		var node: Node3D
+		match sp.kind:
+			"lamp":
+				node = _lamp(sp, rng)
+			_:
+				node = _prop_model(sp, rng)
 		node.name = "StreetPropModel%d" % k
 		var at: Vector2 = sp.global_position
 		node.position = Vector3(at.x / PX, float(land_y.call(at)), at.y / PX)
@@ -410,6 +561,29 @@ static func props(holder: Node3D, list: Array, land_y: Callable) -> void:
 		holder.add_child(node)
 
 
+## A car (one of the remade jeeps, at random), an oil drum, a crate, a bench - the user's models,
+## made ours - their dirt and rust in their vertex colour; a car leant a little on a flat tyre.
+static func _prop_model(sp: StreetProp, rng: RandomNumberGenerator) -> Node3D:
+	var name := "city_" + sp.kind
+	if sp.kind == "car":
+		name = "city_car_%d" % (rng.randi() % 4 + 1)
+	elif sp.kind == "bench":
+		name = "city_bench_%d" % (rng.randi() % 2 + 1)
+	var shade := StandardMaterial3D.new()
+	shade.albedo_color = Color(0.3, 0.3, 0.3)
+	var holder := Node3D.new()
+	var model := _model(Ruin.MODELS_DIR + name + ".glb", "Model", shade, true)
+	holder.add_child(model)
+	if sp.kind == "car":
+		model.rotation = Vector3(rng.randf_range(-0.04, 0.04), 0.0, rng.randf_range(-0.03, 0.03))
+	elif sp.kind == "drum" and rng.randf() < 0.3:
+		# (one knocked over)
+		model.rotation.z = PI * 0.5
+		model.position.y = 0.28
+	return holder
+
+
+## (the old box car - kept for a map without the models)
 ## A car left where it stopped: body, cabin, dark windows, wheels (one flat, so it leans), its
 ## paint faded and dirtied.
 static func _car(rng: RandomNumberGenerator) -> Node3D:

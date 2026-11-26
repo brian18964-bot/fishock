@@ -93,6 +93,10 @@
 ### 介面
 - 柳的提示不要一直卡在畫面中間：一段時間後淡出，只留指引箭頭。
 - 渡石逃離後的通關視窗不能貼底，拿掉不必要的備註。
+### 人類世界（第 7 章起）
+1. 人類世界的六種主題：城市、鄉村、部落、日式、中國風、英式，各自再分支；先做都市。
+2. **只有都市是荒廢的主題**，其他人類世界的地圖照正常的樣子做（11/26）。
+3. 沙漠圓頂屋（TATOOINE 那包）不用；西部小鎮的模型使用者會再找。
 ### 自由夜釣
 - 除了隨機生成的風格地圖，要能**自由選擇去哪一支分支釣**（收集各分支的獨有魚）。
 - 隨機地圖可以有主題夜晚（使用者舉例「鯉魚風暴」：整張圖都是鯉魚、有機會出現金色鯉魚；其餘自由發想）。
@@ -128,7 +132,8 @@
 | 第 7 章荒廢都市 | 五個分支的大小、額度、時間、小鬼、天氣、獨有魚、首通獎勵（220～500 金幣） | `Campaign.LEVELS` 的 7-1～7-5 |
 | 都市的街道與建築 | 街道寬 180 px、街廓 380～600 × 340～520 px、每街廓 2～3 塊地、空地 10%、倒塌 15%、離水 60 px、每張圖 1 棟大樓；7-2 公園空地 45% | `MapGenerator.THEMES.city.ruins`、7-2 的 `mods` |
 | 都市的樓層 | 店面 1～2 層、公寓 2～3 層、大樓 5～7 層，每層 3 m | `Ruin.STOREYS`、`STOREY` |
-| 都市的街道物件 | 每個基準面積 9 輛車、10 盞路燈；30% 的車橫在路中間；路燈 30% 會亮、最多 3 盞 | `MapGenerator.THEMES.city.street` |
+| 都市的街道物件 | 每個基準面積 9 輛車、10 盞路燈、7 個油桶、5 個木箱、3 張長椅；30% 的車橫在路中間；路燈 30% 會亮、最多 3 盞 | `MapGenerator.THEMES.city.street` |
+| 都市的模型建築與天際線 | 55% 的街廓（放得下時）整塊放一棟平房／長條店，縮放 0.6～0.85 倍；天際線高樓離邊緣 6～12 m、間隔 16～30 m、縮放 0.4～0.58 倍、只在上方和兩側（兩側到 75% 高） | `THEMES.city.ruins` 的 `model_share`、`Ruin.MODEL_SCALE`、`CityBuild.SKY_OUT`、`SKY_GAP`、`SKY_SCALE`、`SKY_SIDES` |
 | 都市的魚 | 主題魚 4 種＋金龍魚；各分支獨有魚見 `docs/RUINED_WORLD.md`；價值、大小在魚的資料表 | `FishData.FISH`、`STYLE_FISH.city`、`LENGTH_CM` |
 
 ## 五、待辦與需要使用者決定的事
@@ -180,7 +185,7 @@
 | 3D 場景（海、崖、湖、天氣、燈光） | `scripts/run_view_3d.gd` |
 | 角色解鎖條件 | `scripts/campaign.gd`：`CHARACTER_JOIN`、`character_open()`、`check_characters()`；畫面：`scripts/character_page.gd` |
 | 鱷魚先生（委託、出現、專屬委託） | `scripts/croc_quests.gd`；營地散步與台詞：`scripts/camp_croc.gd`；衣服與帽子：`scripts/croc_look.gd`；頭上 3D 卷軸：`scripts/camp_croc.gd` 的 `_make_scroll()`；模型轉換：`tools/make_croc_props.py`；對話視窗：`scripts/croc_talk.gd`；卷軸圖示：`scripts/quest_scroll.gd`；左側委託清單：`scripts/quest_tracker.gd`；頭上泡泡：`scripts/title_screen.gd` 的 `_croc_over()` |
-| 荒廢都市（第 7 章） | 主題：`scripts/map_generator.gd` 的 `THEMES.city`、`_place_ruins()`、`_place_street_props()`；建築：`scripts/ruin.gd`；街道物件：`scripts/street_prop.gd`；3D 外觀與透明：`scripts/city_build.gd`；設計與素材清單：`docs/RUINED_WORLD.md` |
+| 荒廢都市（第 7 章） | 主題：`scripts/map_generator.gd` 的 `THEMES.city`、`_place_ruins()`、`_place_street_props()`；建築：`scripts/ruin.gd`；街道物件：`scripts/street_prop.gd`；3D 外觀與透明、模型建築、天際線：`scripts/city_build.gd`；使用者素材再製：`tools/make_city_assets.py`（輸出 `assets/models/city/`）；設計與素材清單：`docs/RUINED_WORLD.md` |
 | 十二星座硬幣 | `scripts/zodiac.gd`（`CHANCE`、`PRICE`、`roll()`）；給予：`scripts/game_state.gd` 的 `escape()`；轉換工具：`tools/make_zodiac_coins.py` |
 | 商城收購 | `scripts/shop.gd`：`_fill_sell_pane()`、`_sell_drag()`、`SellBoard` |
 | 用在魚身上的道具的選魚視窗 | `scripts/fish_pick_panel.gd`：`show_fish()` |

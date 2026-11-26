@@ -594,6 +594,8 @@ func _build() -> void:
 	if _city:
 		_ruin_mat = CityBuild.build(self, get_tree().get_nodes_in_group("ruins"), land_y)
 		CityBuild.props(self, get_tree().get_nodes_in_group("street_props"), land_y)
+		var sky: Array = MapGenerator.THEMES[MapGenerator.current_theme].get("ruins", {}).get("skyline", [])
+		CityBuild.skyline(self, sky, _map_rect(), land_y, _rng)
 		_ruin_mat.set_shader_parameter("fade_min", FADE_NEAR)
 		_ruin_mat.set_shader_parameter("fade_max", FADE_FAR)
 	if _cliff:

@@ -13772,6 +13772,33 @@ func test_city_map() -> void:
 	await frames(5)
 	var hero: Vector3 = view._ruin_mat.get_shader_parameter("hero")
 	check(hero.distance_to(view.pivot.global_position) < 1.5, "the buildings seen through round the traveller")
+	# (user request - the user's models, made ours: the skyline's towers outside the map's top and
+	# sides, never its foot (between the camera and the traveller); seen through like the rest)
+	var towers := view.find_children("SkylineTower*", "Node3D", true, false)
+	var foot := view._map_rect().end.y / RunView3D.PX
+	var outside := towers.filter(func(t): return not view._map_rect().has_point(Vector2((t as Node3D).position.x, (t as Node3D).position.z) * RunView3D.PX))
+	check(towers.size() >= 3 and towers.all(func(t): return (t as Node3D).position.z < foot - 2.0) and outside.size() == towers.size()
+		and CityBuild._seen.size() > towers.size(), "the skyline: %d towers outside the map's top and sides, none at its foot" % towers.size())
 	var pool: Array = FishData.pool_for("city", "rare", "rare")
 	check(pool.has("flowerhorn") and pool.has("koi") and pool.has("guppy") and FishData.pool_for("city", "common", "epic").has("asian_arowana"),
 		"the city's own fish and 7-1's guppy in its water, the golden arowana its rarest")
+	# A big map: some of its blocks one of the user's low buildings (made ours), each fitted to its
+	# block; drums, crates and benches in its streets.
+	var made_models := 0
+	var fitted := true
+	for sd in [3, 4, 5]:
+		seed(sd)
+		await play_level("7-5")
+		await frames(4)
+		for r in get_tree().get_nodes_in_group("ruins"):
+			var ruin := r as Ruin
+			if ruin.model != "":
+				made_models += 1
+				var foot_px := Ruin.model_footprint(ruin.model, ruin.model_yaw, ruin.model_scale)
+				fitted = fitted and foot_px.distance_to(ruin.size) < 1.0 and ruin.model_scale >= Ruin.MODEL_SCALE.x - 0.001 \
+					and ruin.model_scale <= Ruin.MODEL_SCALE.y + 0.001 and ResourceLoader.exists(ruin.model_path())
+	var kinds := {}
+	for q in get_tree().get_nodes_in_group("street_props"):
+		kinds[(q as StreetProp).kind] = true
+	check(made_models >= 1 and fitted, "the low buildings on whole blocks (%d over three maps), each its footprint, scaled within %s" % [made_models, str(Ruin.MODEL_SCALE)])
+	check(kinds.has("car") and kinds.has("drum") and kinds.has("crate"), "cars, oil drums and crates in the streets %s" % str(kinds.keys()))
