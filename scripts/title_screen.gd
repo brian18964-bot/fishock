@@ -142,81 +142,26 @@ func _ready() -> void:
 		_joined_news(joined)
 
 
-## User request: Mr. Croc by the water - what he says (CrocQuests.words()), and what can be done
-## about it: take his errand, hand it in, give it up - or leave it for now.
+## User request: Mr. Croc by the water talked to, as a game's quest giver is - his window (CrocTalk:
+## his errands, each one's story, what it asks and pays; take it, hand over the fish, give it up).
+## Closed, he's on his way along the shore again; his own errand done, he joins the characters.
 func _croc_talk() -> Control:
-	var said: Array = CrocQuests.words()
-	var shade := ColorRect.new()
-	shade.name = "CrocTalk"
-	shade.color = Color(0, 0, 0, 0.55)
-	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
-	shade.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(shade)
-	var made := UiKit.window("鱷魚先生")
-	var p: PanelContainer = made[0]
-	var col: VBoxContainer = made[1]
-	p.custom_minimum_size = Vector2(460, 0)
-	col.add_theme_constant_override("separation", 10)
-	for line in said[0]:
-		var l := UiKit.label(str(line), 17, UiKit.TEXT)
-		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		l.custom_minimum_size.x = 420
-		col.add_child(l)
-	var row := HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", 14)
-	col.add_child(row)
-	var act := str(said[1])
-	var titles := {"take": "接下委託", "hand_in": "交給他", "give_up": "放棄委託"}
-	if titles.has(act):
-		var go := UiKit.button(titles[act], 16, "gray" if act == "give_up" else "red")
-		go.name = "CrocAct"
-		go.custom_minimum_size = Vector2(150, 42)
-		go.pressed.connect(func():
-			shade.queue_free()
-			_croc_act(act))
-		row.add_child(go)
-	var later := UiKit.button("下次吧" if act == "take" else "好", 16)
-	later.name = "CrocLater"
-	later.custom_minimum_size = Vector2(120, 42)
-	later.pressed.connect(shade.queue_free)
-	row.add_child(later)
-	shade.add_child(p)
-	p.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
-	p.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	p.grow_vertical = Control.GROW_DIRECTION_BOTH
+	var talk := CrocTalk.new()
+	add_child(talk)
 	Sfx.play("ui_open", -6.0)
-	# (the talk closed: he's on his way along the shore again)
-	shade.tree_exiting.connect(func():
+	talk.tree_exiting.connect(func():
 		if _stage != null and is_instance_valid(_stage.croc):
 			_stage.croc.release())
-	return shade
-
-
-func _croc_act(act: String) -> void:
-	match act:
-		"take":
-			CrocQuests.take()
-			Sfx.play("ui_open", -6.0)
-		"give_up":
-			CrocQuests.give_up()
-		"hand_in":
-			var got := CrocQuests.hand_in()
-			if got.is_empty():
-				return
-			Sfx.play("coins", -4.0)
-			if got.joined:
-				# (his own errand done: he comes along from now on - and he's gone from the shore, to the fire)
-				var note := MenuStyle.notice(self, "鱷魚先生", ["欸，釣客。下一趟夜釣……帶我一起去吧？",
-					"鱷魚先生加入了！在營火旁就能換成牠。（+%d 金幣）" % int(got.gold)])
-				note.name = "CrocJoined"
-				if _stage != null and _stage.croc != null:
-					_stage.croc.visible = false
-					_stage.croc.set_process(false)
-					_stage.hotspots.erase("croc")
-			else:
-				var note := MenuStyle.notice(self, "鱷魚先生", ["收下了 %d 金幣。" % int(got.gold)])
-				note.name = "CrocPaid"
+	talk.joined.connect(func(gold: int):
+		# (he comes along from now on - and he's gone from the shore, to the fire)
+		var note := MenuStyle.notice(self, "鱷魚先生", ["欸，釣客。下一趟夜釣……帶我一起去吧？",
+			"鱷魚先生加入了！在營火旁就能換成牠。（+%d 金幣）" % gold])
+		note.name = "CrocJoined"
+		if _stage != null and _stage.croc != null:
+			_stage.croc.visible = false
+			_stage.croc.set_process(false)
+			_stage.hotspots.erase("croc"))
+	return talk
 
 
 ## User request (the characters join as the game goes): who's joined, and the way to them.
@@ -406,6 +351,10 @@ func _build() -> void:
 	_croc_mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_croc_mark.visible = false
 	_home.add_child(_croc_mark)
+	# User request: the errands taken listed down the left (QuestTracker), under the traveller's card.
+	var errands := QuestTracker.new(false)
+	errands.position = Vector2(12, 74)
+	_home.add_child(errands)
 
 	# Bottom: play, and multiplayer (not yet).
 	var play := UiKit.button("出發夜釣", 24, "red")
@@ -574,26 +523,14 @@ func _croc_over() -> void:
 		_croc_bubble.position = Vector2(head.x - _croc_bubble.size.x * 0.5, top - _croc_bubble.size.y - 2.0)
 
 
-## Over Mr. Croc's head while he's something to talk about: a list on a sheet of paper (an errand on
-## offer) - with a tick in a green ring once it's done, to hand in.
+## Over Mr. Croc's head while he's something to talk about: a rolled scroll (QuestScroll - user
+## request, after a picture of one) - with a tick in a green ring when there are fish to hand him.
 class CrocMark extends Control:
-	const SIZE := Vector2(30, 36)
+	const SIZE := Vector2(34, 40)
 	var done := false
 
 	func _draw() -> void:
-		var paper := Rect2(Vector2(3, 3), SIZE - Vector2(6, 6))
-		draw_rect(paper.grow(2.0), Color(0.12, 0.08, 0.04, 0.85))
-		draw_rect(paper, Color(0.95, 0.88, 0.66))
-		draw_rect(Rect2(paper.position, Vector2(paper.size.x, 5)), Color(0.72, 0.2, 0.12))
-		for k in 3:
-			var y := paper.position.y + 11.0 + k * 6.0
-			draw_rect(Rect2(paper.position.x + 4.0, y, 3, 3), Color(0.3, 0.22, 0.12))
-			draw_line(Vector2(paper.position.x + 9.0, y + 1.5), Vector2(paper.end.x - 4.0, y + 1.5), Color(0.3, 0.22, 0.12), 1.6)
-		if done:
-			var c := Vector2(paper.end.x - 2.0, paper.end.y - 3.0)
-			draw_circle(c, 8.0, Color(0.12, 0.08, 0.04, 0.9))
-			draw_circle(c, 6.5, Color(0.3, 0.72, 0.36))
-			draw_polyline(PackedVector2Array([c + Vector2(-3.5, 0), c + Vector2(-1, 2.8), c + Vector2(3.8, -2.6)]), Color.WHITE, 2.0, true)
+		QuestScroll.draw(self, Rect2(Vector2.ZERO, SIZE), Color.WHITE, done)
 
 
 ## What the character's near (NEAR_REACH): its name popped up over it,

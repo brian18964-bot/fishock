@@ -33,7 +33,7 @@ const IDLE_LINES := ["火光映在水面上，真好看。", "年輕時，我能
 	"夜裡的東西可不講道理，別太晚回來。", "腳底的泥巴軟軟的，舒服。", "那隻青蛙又在跟人討價還價了。",
 	"月亮今天特別亮。", "年紀大了，水還是一樣冷。", "你又帶著竿子出門啦？", "風從湖那邊吹過來了。",
 	"這湖裡的魚，一天比一天精。", "呼……打個盹也不錯。"]
-## (with an errand on offer - not saying what; with one done - noticing)
+## (with an errand on offer - not saying what; with fish to hand him - noticing)
 const OFFER_LINES := ["嗯……有件事，想找個人幫忙。", "要是有空，過來聊兩句吧。"]
 const DONE_LINES := ["喔？看你的樣子，事情辦好了？", "過來過來，讓我瞧瞧。"]
 
@@ -191,7 +191,7 @@ func next_line() -> String:
 		return OPENING[_rng.randi() % OPENING.size()]
 	if CrocQuests.ready_to_hand_in() and _rng.randf() < 0.6:
 		return DONE_LINES[_rng.randi() % DONE_LINES.size()]
-	if not CrocQuests.quest().get("taken", false) and _rng.randf() < 0.35:
+	if not CrocQuests.offered().is_empty() and _rng.randf() < 0.35:
 		return OFFER_LINES[_rng.randi() % OFFER_LINES.size()]
 	return IDLE_LINES[_rng.randi() % IDLE_LINES.size()]
 

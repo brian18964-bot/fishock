@@ -1518,6 +1518,8 @@ func _croc() -> void:
 	croc.name = "Croc"
 	croc.stage = self
 	add_child(croc)
+	# (back at camp: one more errand on offer, a few at a time)
+	CrocQuests.come_by()
 	_hotspot("croc", croc, "鱷魚先生", croc.global_position + Vector3(0, 0.9, 0), 0.75, 0.012)
 
 

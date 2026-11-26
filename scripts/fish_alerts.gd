@@ -36,9 +36,10 @@ func _init() -> void:
 	layer = 5
 
 
-## Where the cards start: AT, or in a level under its objectives (CampaignHud).
+## Where the cards start: AT, or in a level under its objectives (CampaignHud) - and under Mr. Croc's
+## errands (QuestTracker), when any are taken.
 static func _at() -> Vector2:
-	return Vector2(AT.x, maxf(AT.y, CampaignHud.panel_bottom() + 6.0))
+	return Vector2(AT.x, maxf(AT.y, maxf(CampaignHud.panel_bottom(), QuestTracker.run_bottom()) + 6.0))
 
 
 func _ready() -> void:

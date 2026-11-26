@@ -229,7 +229,7 @@ var character: String = "cat"
 var characters_joined: Array = []
 ## User request (Mr. Croc by the camp's water): his errands - how many done, the one offered or
 ## taken (CrocQuests).
-var croc := {"done": 0, "quest": {}}
+var croc := {"done": 0, "quests": [], "serial": 0}
 ## User request: the run's three quick slots (QuickSlots, over the right
 ## stick) - the item each is set to (one of USABLES), or "".
 const QUICK_SLOTS := 3
@@ -2526,7 +2526,7 @@ func load_data(data: Dictionary) -> void:
 	camp_tent = int(data.get("camp_tent", 8))
 	character = str(data.get("character", "cat"))
 	characters_joined = (data.get("characters_joined", []) as Array).duplicate()
-	croc = {"done": 0, "quest": {}}
+	croc = {"done": 0, "quests": [], "serial": 0}
 	croc.merge((data.get("croc", {}) as Dictionary).duplicate(true), true)
 	talents = data.get("talents", {}).duplicate()
 	quick_slots = ["", "", ""]

@@ -160,6 +160,7 @@ const TESTS := [
 	"test_bag_full_reminders",
 	"test_character_unlocks",
 	"test_croc_quests",
+	"test_croc_errands_on_run",
 	"test_bag_card_closes",
 	"test_altar_this_run_only",
 	"test_locks",
@@ -5454,54 +5455,82 @@ func test_character_unlocks() -> void:
 	Profile.character = keep[4]
 
 
-## User request: Mr. Croc by the camp's water - our crocodile - with errands (catch so many of a
-## kind, paid for); after 30 of them one of his own (the dream fish - the alligator gar), and that
-## done he joins the characters, gone from the shore. At camp: there, tapped, his errand up.
+## User request: Mr. Croc by the camp's water - our crocodile - with errands, a few at a time, each
+## its own little story; the fish really handed over, some now and the rest later (2/5); after 30 of
+## them one of his own (the dream fish - the alligator gar), and that done he joins the characters,
+## gone from the shore. At camp: there, ambling, a scroll over him; tapped, his window - his errands
+## listed, one opened, taken; the errands taken listed down the left (2/5).
 func test_croc_quests() -> void:
 	var keep := [Profile.campaign.duplicate(true), Profile.records.duplicate(true), Profile.achievements.duplicate(true),
-		Profile.characters_joined.duplicate(), Profile.croc.duplicate(true), Profile.gold, CrocQuests.here_roll]
+		Profile.characters_joined.duplicate(), Profile.croc.duplicate(true), Profile.gold, CrocQuests.here_roll,
+		Profile.tank.duplicate(true), Profile.pack_fish.duplicate(true), Profile.stash_fish.duplicate(true), Profile.fish_box.duplicate(true)]
 	reset_progress()
 	Profile.characters_joined = []
-	Profile.croc = {"done": 0, "quest": {}}
+	Profile.croc = {"done": 0, "quests": [], "serial": 0}
+	Profile.tank = []
+	Profile.pack_fish = []
+	Profile.stash_fish = []
+	Profile.fish_box = []
 	check(not CrocQuests.met() and not CrocQuests.here(), "not met before the first crossing")
 	Profile.record_level("1-1", [true, false, false], 100.0)
-	Profile.records["caught_crucian"] = 3.0
+	Profile.records["caught_carp"] = 3.0
 	check(CrocQuests.met(), "met after the first crossing")
-	var q := CrocQuests.offer()
-	check(str(q.fish) == "crucian" and int(q.need) >= 12 and int(q.need) <= 20 and int(q.gold) == int(q.need) * 8 and not q.taken,
-		"his errand: a fish caught before, so many of it, paid for each (%s)" % [q])
-	check(CrocQuests.offer() == q, "the same errand offered till it's taken")
-	CrocQuests.take()
-	check(CrocQuests.progress() == 0 and not CrocQuests.ready_to_hand_in(), "taken: counted from now")
-	Profile.records["caught_crucian"] = 3.0 + float(q.need)
-	CrocQuests.here_roll = 0
-	check(CrocQuests.ready_to_hand_in() and CrocQuests.here(), "caught them all: he's by the water to be paid")
+	# A few at a time: one more each time back at camp, up to OFFER_MAX on offer.
+	var first: Array = CrocQuests.come_by()
+	check(first.size() == 1, "met: one errand on offer")
+	var q: Dictionary = first[0]
+	check(str(q.fish) == "carp" and str(q.title) == "大肚子的魚" and str(q.text).contains("肚子大大的")
+		and int(q.need) >= 4 and int(q.need) <= 8 and int(q.gold) == int(q.need) * 30 and not q.taken,
+		"its story, its fish (one caught before), so many of it, paid for each (%s)" % [q])
+	check(CrocQuests.come_by().size() == 2 and CrocQuests.come_by().size() == CrocQuests.OFFER_MAX, "one more each visit, up to %d" % CrocQuests.OFFER_MAX)
+	check(CrocQuests.take(int(q.id)) and CrocQuests.active().size() == 1 and CrocQuests.offered().size() == 1, "one taken")
+	# The fish really handed over - a couple now, the rest later; locked and golden ones kept back.
+	var carp := func(golden := false) -> Dictionary:
+		var f := FishLife.roll({"name": "鯉魚", "id": "carp", "value": 6.0, "size": "small", "rarity": "common"})
+		f["golden"] = golden
+		return f
+	Profile.tank = [carp.call(), carp.call(true)]
+	Profile.pack_fish = [carp.call()]
+	check(CrocQuests.fish_for(q).size() == 2 and CrocQuests.ready_to_hand_in() and CrocQuests.here(),
+		"two carp at camp to hand him (the golden one kept back): he's by the water")
 	var gold := Profile.gold
-	var paid := CrocQuests.hand_in()
-	check(int(paid.gold) == int(q.gold) and Profile.gold == gold + int(q.gold) and CrocQuests.done() == 1
-		and CrocQuests.quest().is_empty() and not paid.joined, "handed in: paid, one done")
-	# At camp: by the water, tapped, his errand up.
+	var part := CrocQuests.give(int(q.id))
+	check(int(part.given) == 2 and not part.done and int(q.given) == 2 and Profile.tank.size() == 1 and Profile.tank[0].golden
+		and Profile.pack_fish.is_empty() and CrocQuests.count_text(q) == "2/%d" % int(q.need) and Profile.gold == gold,
+		"two handed over (%s): taken from the tank and the bag, nothing paid yet" % CrocQuests.count_text(q))
+	for _i in int(q.need) - 2:
+		Profile.stash_fish.append(carp.call())
+	var rest := CrocQuests.give(int(q.id))
+	check(rest.done and Profile.gold == gold + int(q.gold) and CrocQuests.done() == 1 and CrocQuests.quest_by_id(int(q.id)).is_empty()
+		and Profile.stash_fish.is_empty(), "the rest handed over: done, paid %d" % int(q.gold))
+	# At camp: ambling by the water, a scroll over him; the errands taken down the left.
+	var other: Dictionary = CrocQuests.offered()[0]
+	CrocQuests.take(int(other.id))
+	other.given = 1
 	CrocQuests.here_roll = 1
 	var title: Control = load("res://scenes/title_screen.tscn").instantiate()
 	get_tree().root.add_child(title)
 	await frames(3)
 	var camp: CampStage = title.find_child("Camp", true, false)
 	check(camp.croc != null and camp.croc.rig.character == "croc" and camp.hotspots.has("croc"), "Mr. Croc on the shore, to be tapped")
-	# User request: his own outfit (not the travellers') - the knit dyed, a straw hat
 	var dyed := false
 	for mi in camp.croc.rig.find_children("*", "MeshInstance3D", true, false):
 		for i in (mi as MeshInstance3D).get_surface_override_material_count():
 			if (mi as MeshInstance3D).get_surface_override_material(i) is ShaderMaterial:
 				dyed = true
 	check(dyed and camp.croc.rig.find_child("StrawHat", true, false) != null, "his own outfit: the knit dyed, a straw hat")
-	# User request: a short line as he turns up, then about the shore - the list's sign over him (what
-	# the errand is only told when he's talked to)
+	var tracker: Control = null
+	for t in title.find_children("QuestTracker", "", true, false):
+		tracker = t
+	await frames(2)
+	check(tracker != null and tracker.visible and CrocQuests.count_text(other) == "1/%d" % int(other.need),
+		"the errand taken listed down the left (%s)" % CrocQuests.count_text(other))
 	await seconds(CampCroc.FIRST_AT + 0.6)
 	check(camp.croc.line in CampCroc.OPENING, "his first words a short opening line (%s)" % camp.croc.line)
 	var mark: Control = title.find_child("CrocMark", true, false)
 	var bubble: Control = title.find_child("CrocBubble", true, false)
 	check(mark != null and mark.visible and bubble != null and bubble.visible
-		and not (bubble.get_node("Said") as Label).text.contains("金幣"), "over him: his words, and the list's sign (an errand to talk about)")
+		and not (bubble.get_node("Said") as Label).text.contains("金幣"), "over him: his words, and the scroll (an errand on offer)")
 	var was: Vector3 = camp.croc.position
 	camp.croc._wait = 0.0
 	await seconds(1.5)
@@ -5509,28 +5538,37 @@ func test_croc_quests() -> void:
 		"he ambles along the shore (%.2f m)" % camp.croc.position.distance_to(was))
 	var at: Vector2 = camp.camera.unproject_position(camp.hotspots.croc.parts[0][1]) / TitleScreen.RENDER_SCALE
 	check(title.spot_at(at) == "croc", "tapped where he is now")
+	# His window: his errands listed - the one under way with its count, the new one; one opened, taken.
 	camp.croc.visit(camp.character_pivot)
-	var talk: Control = title._croc_talk()
+	var talk: CrocTalk = title._croc_talk()
 	await frames(2)
-	var act: Button = talk.find_child("CrocAct", true, false)
-	check(act != null and act.text == "接下委託" and not mark.visible, "talked to: his next errand offered (the sign down while he talks)")
-	act.pressed.emit()
+	var offered: Array = CrocQuests.offered()
+	check(talk.find_child("Quest_%d" % int(other.id), true, false) != null and not offered.is_empty()
+		and talk.find_child("Quest_%d" % int(offered[0].id), true, false) != null and not mark.visible,
+		"his window lists his errands (the scroll down while he talks)")
+	talk.show_quest(int(offered[0].id))
 	await frames(2)
-	check(CrocQuests.quest().get("taken", false) and camp.croc.visitor == null, "taken - and he's off along the shore again")
+	var take: Button = talk.find_child("Take", true, false)
+	check(take != null and not take.disabled and (talk.find_child("Goal", true, false) as Label).text.begins_with("交給鱷魚先生"),
+		"an errand opened: its story, what it asks, the reward, 接受委託")
+	take.pressed.emit()
 	await frames(2)
-	check(not mark.visible, "an errand under way: no sign over him")
+	check(CrocQuests.active().size() == 2, "taken")
+	talk.queue_free()
+	await frames(2)
+	check(camp.croc.visitor == null, "the talk closed: he's off along the shore again")
 	title.queue_free()
 	await frames(2)
 	# Thirty done: his own errand - the dream fish - and he joins.
-	Profile.croc = {"done": CrocQuests.JOIN_AFTER, "quest": {}}
-	q = CrocQuests.offer()
-	check(q.get("dream", false) and str(q.fish) == CrocQuests.DREAM_FISH and str(CrocQuests.words()[0]).contains("鱷雀鱔")
-		and not str(CrocQuests.words()[0]).contains("加入"), "after 30: his own errand, the alligator gar - nothing said of joining")
-	CrocQuests.take()
-	Profile.records["caught_" + CrocQuests.DREAM_FISH] = float(Profile.records.get("caught_" + CrocQuests.DREAM_FISH, 0.0)) + 1.0
-	paid = CrocQuests.hand_in()
+	Profile.croc = {"done": CrocQuests.JOIN_AFTER, "quests": [], "serial": 9}
+	var dream: Dictionary = CrocQuests.come_by().filter(func(e): return e.get("dream", false))[0]
+	check(str(dream.fish) == CrocQuests.DREAM_FISH and str(dream.text).contains("鱷雀鱔") and not str(dream.text).contains("加入"),
+		"after 30: his own errand, the alligator gar - nothing said of joining")
+	CrocQuests.take(int(dream.id))
+	Profile.tank = [FishLife.roll({"name": "鱷雀鱔", "id": CrocQuests.DREAM_FISH, "value": 60.0, "size": "huge", "rarity": "epic"})]
+	var paid := CrocQuests.give(int(dream.id))
 	check(paid.joined and Campaign.character_open("croc") and Campaign.character_shown("croc") and not CrocQuests.met()
-		and not CrocQuests.here(), "the dream fish caught: he joins the characters, gone from the shore")
+		and not CrocQuests.here(), "the dream fish handed over: he joins the characters, gone from the shore")
 	Campaign.dev_all_open = true
 	Profile.campaign = keep[0]
 	Profile.records = keep[1]
@@ -5539,6 +5577,29 @@ func test_croc_quests() -> void:
 	Profile.croc = keep[4]
 	Profile.gold = keep[5]
 	CrocQuests.here_roll = keep[6]
+	Profile.tank = keep[7]
+	Profile.pack_fish = keep[8]
+	Profile.stash_fish = keep[9]
+	Profile.fish_box = keep[10]
+
+
+## User request: Mr. Croc's errands taken listed down the left on a run too - how many handed over,
+## how many being carried - the fish alerts' cards under them.
+func test_croc_errands_on_run() -> void:
+	var keep: Dictionary = Profile.croc.duplicate(true)
+	Profile.croc = {"done": 0, "serial": 1, "quests": [{"id": 1, "fish": "carp", "need": 5, "given": 2, "gold": 150, "taken": true,
+		"dream": false, "title": "大肚子的魚", "text": "今天特別想吃那種肚子大大的、頭小小的魚。"}]}
+	gs.add_carried_fish(fish("鯉魚", "near").merged({"id": "carp"}))
+	await seconds(0.8)
+	var tracker: QuestTracker = main.find_child("QuestTracker", true, false)
+	check(tracker != null and tracker.visible and tracker.in_run and QuestTracker.carried(CrocQuests.active()[0]) == 1,
+		"on the run: the errand listed (2/5), one carp being carried")
+	check(FishAlerts._at().y >= QuestTracker.run_bottom() and QuestTracker.run_bottom() > QuestTracker.run_at().y,
+		"the fish alerts' cards under the errands")
+	Profile.croc = {"done": 0, "quests": [], "serial": 0}
+	await seconds(0.8)
+	check(not tracker.visible and QuestTracker.run_bottom() == 0.0, "no errands: nothing listed")
+	Profile.croc = keep
 
 
 func test_backpack_grid() -> void:

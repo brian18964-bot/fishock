@@ -4,7 +4,7 @@
 
 ## 一、目前狀態
 - 所有工作都在 `claude/focused-fermi-96pp3r` 分支，它也是這個 repo 的預設分支；最後一次推送的 CI（Web build）通過並已部署。
-- 本機全套測試：5603 項、0 失敗（`tests/run_tests.gd`）。
+- 本機全套測試：5610 項、0 失敗（`tests/run_tests.gd`）。
 - 遊戲：Godot 4.7.2，3D 夜釣（俯視鏡頭、夜間、煤燈），手機觸控為主，也支援鍵盤。
 
 ## 二、這段期間做了什麼（依時間）
@@ -36,6 +36,11 @@
   第二輪（使用者要求）：他在岸邊來回散步（`scripts/camp_croc.gd`），出現時頭上冒一句短話（「這裡挺溫暖的……」等），
   之後每隔一陣子說一句；有委託可接或可交時頭上有清單圖示（可交時多一個綠勾）；委託內容和獎勵只在走過去對話時才看得到。
   他穿自己的衣服：白色針織染成磚紅色、戴草帽（`scripts/croc_look.gd`，只套在營地的鱷魚先生身上）。
+  第三輪（使用者要求）：頭上圖示改成卷軸（`scripts/quest_scroll.gd`，自己畫的，參考使用者給的圖）；
+  可以同時有多個委託、每次回營地多給一個（分批給）；每個委託有自己的情境（例：「今天特別想吃那種肚子大大的、頭小小的魚」
+  → 交給鱷魚先生 5 條鯉魚 → 150 金幣），魚要真的交出去、可以分批交（2/5）；對話視窗像 MMO 任務 NPC：
+  先列出委託（可交付／新的／進行中），點進去看情境、目標、獎勵，再接受、交出或放棄（`scripts/croc_talk.gd`）。
+  接了委託後，營地和夜釣畫面左邊會列出委託清單與進度，夜釣中另外顯示身上帶了幾條（`scripts/quest_tracker.gd`）。
 ### 9. 商城收購的拖曳、藥劑選魚看資訊
 - 商城「收購」：倉庫、魚缸、魚桶的卡片也能拖到商人視窗賣（原本只有包包能拖），點一下照舊跳出販賣視窗。
 - 用在魚身上的道具（恢復活性的藥劑等）：選魚時點魚會先跳出這條魚的資訊卡（稀有度、大小、價值、活性、時間、詞綴），
@@ -83,7 +88,10 @@
 | 劇情解鎖角色 | 牧羊犬＝第一章、紅鹿（棕鹿）＝第二章、棕熊＝第三章、綿羊＝第四章 | `Campaign.CHARACTER_JOIN` |
 | 其他方式解鎖角色 | 吉娃娃＝逃離 30 次、黑面羊＝圖鑑 30%、梅花鹿＝45 顆星、台灣黑熊＝傳說魚 3 條、雪鴞＝入夜後離開 10 次、角鴞＝強光定住大鬼 20 次 | `Campaign.CHARACTER_JOIN` |
 | 鱷魚先生：出現 | 通過 1-1 後，每次回營地 60% 在湖邊（有委託完成待交時一定在） | `CrocQuests.FROM_LEVEL`、`CHANCE` |
-| 鱷魚先生：委託數量與金幣 | 一般魚 12–20 條 每條 8 金幣；水域特有魚 5–8 條 每條 25；稀有 1–2 條 每條 150；只選玩家釣過的魚 | `CrocQuests.NEED`、`GOLD_EACH`、`KIND_WEIGHT` |
+| 鱷魚先生：委託數量與金幣 | 一般魚 4–8 條 每條 30 金幣（5 條鯉魚＝150，照使用者的例子）；水域特有魚 2–4 條 每條 70；稀有 1 條 300；只選玩家釣過、還沒被委託的魚 | `CrocQuests.NEED`、`GOLD_EACH`、`KIND_WEIGHT` |
+| 鱷魚先生：同時的委託數 | 最多 2 個可接、3 個進行中；每次回營地（他在時）多給 1 個 | `CrocQuests.OFFER_MAX`、`ACTIVE_MAX`、`come_by()` |
+| 鱷魚先生：交魚 | 從背包、活魚扣、魚缸、倉庫、魚桶找；不交上鎖、金色、腐敗的魚；先交最便宜的 | `CrocQuests.fish_for()`、`give()` |
+| 鱷魚先生：情境文字 | 各魚種專屬 28 則、通用 6 則、專屬委託 1 則 | `CrocQuests.STORY`、`ANY_STORY`、`DREAM_STORY` |
 | 鱷魚先生：專屬委託 | 完成 30 次後，釣到鱷雀鱔（1-5），500 金幣＋鱷魚加入 | `CrocQuests.JOIN_AFTER`、`DREAM_FISH`、`DREAM_GOLD` |
 | 鱷魚先生：散步與說話 | 散步速度＝走路步速×0.7、每處停 5–11 秒；開場白 1.5 秒後、之後每 14–26 秒一句、每句 4.5 秒；台詞都在 `OPENING`、`IDLE_LINES`、`OFFER_LINES`、`DONE_LINES` | `scripts/camp_croc.gd` |
 | 鱷魚先生：衣服顏色 | 毛衣磚紅、草帽、帽帶深棕 | `CrocLook.SHIRT`、`STRAW`、`BAND` |
@@ -95,6 +103,9 @@
 3. 月光鰺目前和浪人鰺同一個模型形狀；更細長的版本已寫好算圖設定（`tools/render_fish.py` 的 moon_jack），要有 Blender（bpy）才能重算。
 4. 沙灘海岸的地形設定裡列了「螃蟹」，但遊戲沒有螃蟹這個物種（`shore_critter_count` 為 0，所以不會生成）。**使用者之後會給螃蟹美術。**
 5. 背包會被帶回來的魚骨慢慢塞滿——已加提醒（見第二節 8）。
+9. **帽子模型與 12 星座硬幣**：使用者說放在「des」，但雲端容器和 repo 裡都找不到，需要使用者上傳或分享資料夾。
+   硬幣的要求：祭品會出現的極稀有獎品（能力先不寫）、外形不要那麼圓（不規則）、厚度 ×1.5、拿掉類似星星的圖案；
+   要用我們自己的工具轉成我們的資產，原檔不進版控。
 8. 之後的多人模式：使用者構想在某張地圖裡突然遇到角色、一起逃出，進而開啟多人玩法並解鎖該角色（尚未做）。
 6. 屬性門檻（使用者已接受「卡關」）：海水稀有魚（浪人鰺、蘇眉、翻車魚、雨傘旗魚、鎚頭鯊）和 1-4 巨型鯰魚、1-5 鱷雀鱔算史詩，
    要兩項屬性約 49–57；傳說（劍旗魚、藍鰭鮪）三項約 81–95；新角色只有力量 6、韌性 7、反應 10、耐力 8。
@@ -105,7 +116,7 @@
 - 測試：見 CLAUDE.md。跟這段工作最相關的測試：`test_campaign_levels_build`（26 關的地圖、水域、鬼、額度）、
   `test_campaign_unlocks_and_achievements`、`test_story_lessons`、`test_tutorials_completable`、`test_branch_fish`、
   `test_free_branches_and_nights`、`test_level_guide_and_results`、`test_weathers`（含雨打水面）、`test_journey_page`、
-  `test_bag_full_reminders`、`test_character_unlocks`、`test_croc_quests`。
+  `test_bag_full_reminders`、`test_character_unlocks`、`test_croc_quests`、`test_croc_errands_on_run`。
 - `tools/verify/verify.gd`（用法寫在檔案開頭）：
   - `tool=bot`：機器人用真實操作（拋竿、揚竿、搏魚、獻祭、逃離）逐關玩，輸出每關用時、額度、漁獲、獨有魚、教學進度、失敗原因。
   - `tool=play`：關掉開發者全開，依序通關 26 關，檢查解鎖順序、星數、首次通關獎勵。
@@ -132,6 +143,6 @@
 | 地圖生成（主題、水域、碼頭、動物、蘑菇、魚氧樹） | `scripts/map_generator.gd` |
 | 3D 場景（海、崖、湖、天氣、燈光） | `scripts/run_view_3d.gd` |
 | 角色解鎖條件 | `scripts/campaign.gd`：`CHARACTER_JOIN`、`character_open()`、`check_characters()`；畫面：`scripts/character_page.gd` |
-| 鱷魚先生（委託、出現、專屬委託） | `scripts/croc_quests.gd`；營地散步與台詞：`scripts/camp_croc.gd`；衣服：`scripts/croc_look.gd`；對話框、頭上泡泡與圖示：`scripts/title_screen.gd` 的 `_croc_talk()`、`_croc_over()` |
+| 鱷魚先生（委託、出現、專屬委託） | `scripts/croc_quests.gd`；營地散步與台詞：`scripts/camp_croc.gd`；衣服：`scripts/croc_look.gd`；對話視窗：`scripts/croc_talk.gd`；卷軸圖示：`scripts/quest_scroll.gd`；左側委託清單：`scripts/quest_tracker.gd`；頭上泡泡與圖示：`scripts/title_screen.gd` 的 `_croc_over()` |
 | 商城收購 | `scripts/shop.gd`：`_fill_sell_pane()`、`_sell_drag()`、`SellBoard` |
 | 用在魚身上的道具的選魚視窗 | `scripts/fish_pick_panel.gd`：`show_fish()` |

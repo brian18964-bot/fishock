@@ -337,6 +337,12 @@ func _ready() -> void:
 			GameState.run_catches.append(kept))
 	# User request: a fish run down to 30% pins a small card down the left.
 	add_child(FishAlerts.new())
+	# User request: Mr. Croc's errands taken, listed down the left on the run too (QuestTracker).
+	var errands := CanvasLayer.new()
+	errands.name = "Errands"
+	errands.layer = 4
+	add_child(errands)
+	errands.add_child(QuestTracker.new(true))
 	# Covers opening this scene directly (e.g. F6 in the editor) without
 	# going through the title screen's Start button.
 	GameState.start_run()
