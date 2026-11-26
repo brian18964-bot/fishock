@@ -58,6 +58,9 @@ const CHAPTERS := [
 	{"id": 4, "name": "沙漠綠洲", "stars": 0, "blurb": "沙丘間的綠洲與泉眼，遠古白骨半埋沙中，沙塵暴說來就來。"},
 	{"id": 5, "name": "沙灘海岸", "stars": 0, "blurb": "一側是大海，椰子樹下的沙灘與浪花，越往後浪越大。"},
 	{"id": 6, "name": "海崖", "stars": 0, "blurb": "草原台地的盡頭是斷崖，崖下浪花拍打礁石，霧與風暴守著深海的大魚。"},
+	# User request (the ruined human world - docs/RUINED_WORLD.md): the human world fallen empty, the
+	# travellers going on through the ferry stones to what's left of it; its first map the city.
+	{"id": 7, "name": "荒廢都市", "stars": 0, "blurb": "人類的城市空了。龜裂的街道、空蕩的大樓，積水裡游著人類留下的魚。"},
 ]
 ## The levels: each map's branches, in order (user request - one level a branch; a map's
 ## branches open one after another, the next map once the whole of this one's done). stars:
@@ -197,6 +200,37 @@ const LEVELS := [
 		"rules": {"theme": "coast_cliff", "map": "XL", "day": 360.0, "quota": 40.0, "ghosts": 3, "meddle": 5, "big_ghost": true, "weather": "stormy", "critters": 1, "fish": [], "fish_epic": ["bluefin"]},
 		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到藍鰭鮪"}, {"stat": "catch_legend", "text": "釣到傳說魚", "min": 1}],
 		"reward": {"gold": 500, "items": {"lure_rainbow": 3}}},
+	# User request (the ruined human world - its first map, the city; docs/RUINED_WORLD.md): five
+	# branches, small to extra large - the flooded crossing, the overgrown park, the old canals, the
+	# sunken metro, the river mouth's harbour - each with its own fish (the fish people kept, living
+	# on). All of the numbers mine for now, the user's to change.
+	{"id": "7-1", "chapter": 7, "name": "積水街口", "teach": "第一次進城：建築擋路、繞路找水",
+		"intro": "渡石第一次把你帶到人類的城市。路口塌陷積了水，水裡有人類留下的魚。",
+		"rules": {"night_fails": true, "theme": "city", "map": "S", "ponds": [2, 0], "day": 270.0, "quota": 14.0, "ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear", "critters": 6, "escalate": false, "evil": false, "fish": ["guppy"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到孔雀魚"}, {"stat": "time_left", "text": "還剩 60 秒以上就達標離開", "min": 60}],
+		"reward": {"gold": 220}},
+	{"id": "7-2", "chapter": 7, "name": "荒廢公園", "teach": "長滿雜草的公園與人工湖",
+		"intro": "長滿雜草的公園，人工湖還在。以前的人在這裡餵錦鯉。",
+		"rules": {"night_fails": true, "theme": "city", "map": "M", "ponds": [2, 1], "day": 300.0, "quota": 22.0, "ghosts": 1, "meddle": 3, "big_ghost": false, "weather": "mild", "critters": 6, "escalate": false,
+			"mods": {"trees": 18, "ruins": {"road": 180.0, "block_min": Vector2(380, 340), "block_max": Vector2(600, 520), "lots": Vector2i(1, 3), "alley": 60.0, "setback": 20.0, "vacant": 0.45, "fallen": 0.1, "water_gap": 60.0, "towers": 0, "few": 3.0}},
+			"fish": ["clown_knifefish"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到小丑刀"}, {"stat": "catch_rare", "text": "一晚釣到 2 條稀有魚", "min": 2}],
+		"reward": {"gold": 260}},
+	{"id": "7-3", "chapter": 7, "name": "舊運河區", "teach": "霧裡的運河與水鬼",
+		"intro": "運河兩岸的樓都空了。起霧的晚上，水裡有東西在動。",
+		"rules": {"theme": "city", "map": "L", "ponds": [5, 1], "day": 330.0, "quota": 28.0, "ghosts": 2, "meddle": 3, "big_ghost": true, "water_ghost": 1.6, "weather": "foggy", "critters": 4, "fish": ["redtail_catfish", "two_headed_carp"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到紅尾鯰或雙頭變異鯉"}, {"stat": "species_both", "text": "兩種獨有魚都釣到", "min": 2}],
+		"reward": {"gold": 300}},
+	{"id": "7-4", "chapter": 7, "name": "塌陷地鐵坑", "teach": "野狗出沒",
+		"intro": "路面整片塌下去，露出淹水的地鐵隧道。野狗在附近遊蕩。",
+		"rules": {"theme": "city", "map": "L", "ponds": [2, 1], "day": 330.0, "quota": 30.0, "ghosts": 2, "meddle": 4, "big_ghost": true, "weather": {"FOG": 0.25, "DRIZZLE": 0.2}, "critters": 3, "mods": {"animals": {"wolf": 1.5}}, "fish": [], "fish_epic": ["electric_eel"]},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到電鰻"}, {"stat": "animal_hit", "text": "沒被野獸撲到", "max": 0}],
+		"reward": {"gold": 340}},
+	{"id": "7-5", "chapter": 7, "name": "河口港區", "teach": "城市的終點",
+		"intro": "河流出海的地方，碼頭和倉庫都荒了。暴風雨中，大魚從海裡游上來。",
+		"rules": {"theme": "city", "map": "XL", "ponds": [5, 1], "day": 360.0, "quota": 38.0, "ghosts": 3, "meddle": 5, "big_ghost": true, "weather": "stormy", "critters": 3, "fish": [], "fish_epic": ["tarpon"]},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到大海鰱"}, {"stat": "storm", "text": "在暴風雨中撐過去", "min": 1}],
+		"reward": {"gold": 500, "items": {"lure_rainbow": 2}}},
 ]
 
 
@@ -234,6 +268,8 @@ const ACHIEVEMENTS := [
 	["chapter_5", "旅程", "邪祭見證", "通過第五章", 300, {"chapter": 5}],
 	# (six maps, six chapters: the story ends with the sixth, 海崖)
 	["chapter_6", "旅程", "崖頂夜釣客", "通過第六章，渡湖紀行完結", 300, {"chapter": 6}],
+	# (user request - the ruined human world: its maps' chapters, each its own)
+	["chapter_7", "旅程", "城市拾荒者", "通過第七章「荒廢都市」", 300, {"chapter": 7}],
 	["stars_45", "旅程", "滿天星", "收集 45 顆星", 200, {"stars": 45}],
 	["stars_75", "旅程", "渡湖紀行", "收集全部 78 顆星", 500, {"stars": 78}],
 	["catch_100", "釣技", "百尾", "總共釣到 100 條魚", 100, {"life": "catch", "min": 100}],
@@ -1229,7 +1265,12 @@ func free_open() -> bool:
 
 
 func curses_open() -> bool:
-	return chapter_done(CHAPTERS.size())
+	return chapter_done(NATURE_LAST)
+
+
+## The journey across the lake ends with this chapter (海崖) - the curses open after it, as always;
+## the ruined human world's chapters come after (user request).
+const NATURE_LAST := 6
 
 
 ## The level to suggest: the first not yet cleared that's open.

@@ -162,6 +162,7 @@ const TESTS := [
 	"test_croc_quests",
 	"test_croc_errands_on_run",
 	"test_zodiac_coins",
+	"test_city_map",
 	"test_bag_card_closes",
 	"test_altar_this_run_only",
 	"test_locks",
@@ -6398,14 +6399,18 @@ func test_campaign_curses() -> void:
 func test_campaign_unlocks_and_achievements() -> void:
 	reset_progress()
 	# (user decision - the maps' branches: one after another in a map, the next map once the whole of
-	# this one's done; six maps, 26 levels)
-	check(camp().CHAPTERS.size() == 6 and camp().LEVELS.size() == 26, "six maps, 26 branches")
-	# (the achievements brought to the six chapters: each after the first its own; "all the stars" all of them)
+	# this one's done; six maps, 26 levels - and, user request, the ruined human world's city after
+	# them: seven maps, 31 levels)
+	check(camp().CHAPTERS.size() == 7 and camp().LEVELS.size() == 31, "seven maps, 31 branches")
+	# (the achievements brought to the chapters: each after the first its own; "all the stars" of the
+	# journey across the lake - its six chapters' - and the curses after its last)
 	var journey_ids: Array = camp().ACHIEVEMENTS.map(func(a): return str(a[0]))
 	var all_stars: Array = camp().ACHIEVEMENTS.filter(func(a): return str(a[0]) == "stars_75")
+	var lake_levels: int = camp().LEVELS.filter(func(l): return int(l.chapter) <= camp().NATURE_LAST).size()
 	check(range(2, camp().CHAPTERS.size() + 1).all(func(n): return ("chapter_%d" % n) in journey_ids)
-		and int(all_stars[0][5].stars) == camp().LEVELS.size() * 3, "an achievement for each chapter; all the stars are %d" % (camp().LEVELS.size() * 3))
-	check(CampaignHud.CH_NUM.size() >= camp().CHAPTERS.size(), "the level's opening card names every chapter (第六章 too)")
+		and int(all_stars[0][5].stars) == lake_levels * 3, "an achievement for each chapter; the lake's stars are %d" % (lake_levels * 3))
+	check(CampaignHud.CH_NUM.size() >= camp().CHAPTERS.size() and (load("res://scripts/journey.gd").CH_NUM as Array).size() >= camp().CHAPTERS.size(),
+		"the level's opening card and the journey page name every chapter (第七章 too)")
 	check(camp().level_open("1-1") and not camp().level_open("1-2") and not camp().chapter_open(2), "only 1-1 to begin with")
 	for id in ["1-1", "1-2", "1-3", "1-4"]:
 		Profile.record_level(id, [true, true, false], 100.0)
@@ -13688,3 +13693,85 @@ func test_slide_amounts() -> void:
 	r.progress = 0.55
 	r.update(0.05, 0.0, Vector2.ZERO, Vector2.UP)
 	check(r.enraged and r.run_left >= 2.5, "the berserk run lasts (%.1f s)" % r.run_left)
+
+
+## User request (the ruined human world - its first map, the city; docs/RUINED_WORLD.md): chapter 7's
+## five branches on the city map; its buildings (Ruin) standing along streets, solid, clear of the
+## water, the camp, the altar and the way out, each with its model (CityBuild) - seen through
+## round the traveller; the pavement and asphalt; the city's own fish in its water, each with its
+## picture and model.
+func test_city_map() -> void:
+	var city: Array = camp().LEVELS.filter(func(l): return int(l.chapter) == 7)
+	check(city.size() == 5 and city.all(func(l): return str(l.rules.theme) == "city")
+		and city.map(func(l): return str(l.rules.map)) == ["S", "M", "L", "L", "XL"]
+		and camp().chapter(7).name == "荒廢都市", "chapter 7, 荒廢都市: five branches on the city map, small to extra large")
+	var new_fish := ["flowerhorn", "koi", "blood_parrot", "discus", "asian_arowana", "guppy", "clown_knifefish",
+		"redtail_catfish", "electric_eel", "tarpon"]
+	var fish_ok := true
+	for id in new_fish:
+		fish_ok = fish_ok and FishData.FISH.has(id) and FishData.LENGTH_CM.has(id) and FishModel.has_model(id) \
+			and ResourceLoader.exists("res://assets/sprites/fish/%s.png" % id) and not FishData.gate_stats(id).is_empty()
+	check(fish_ok, "the city's ten fish: their data, lengths, stats, pictures and models")
+	Campaign.dev_all_open = true
+	seed(11)
+	await play_level("7-1")
+	var view: RunView3D = null
+	for _i in 600:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	check(view != null and view.built and MapGenerator.current_theme == "city" and FishData.waters == "city",
+		"7-1 opens on the city map, its water the city's")
+	var ruins := get_tree().get_nodes_in_group("ruins")
+	var fixed := []
+	for name in ["Altar", "EscapePoint", "FuelStation", "GhostCage"]:
+		var n := main.get_node_or_null(name) as Node2D
+		if n != null:
+			fixed.append(n.global_position)
+	var bad := []
+	for r in ruins:
+		var ruin := r as Ruin
+		var rect := ruin.rect()
+		var solid := ruin.get_child(0) is CollisionShape2D and ((ruin.get_child(0) as CollisionShape2D).shape as RectangleShape2D).size == ruin.size
+		var dry := true
+		for i in 5:
+			for j in 5:
+				var p := rect.position + rect.size * Vector2(i / 4.0, j / 4.0)
+				for z in get_tree().get_nodes_in_group("water_zones"):
+					if (z as WaterZone).contains(p):
+						dry = false
+		var clear := fixed.all(func(f): return MapGenerator._rect_distance(rect, f) > 40.0)
+		if not (solid and dry and clear and ruin.is_in_group("solids")):
+			bad.append([ruin.name, solid, dry, clear])
+	check(ruins.size() >= 3 and bad.is_empty(), "%d buildings, each solid, out of the water, clear of the camp, the altar, the way out %s" % [ruins.size(), str(bad)])
+	var models := view.find_children("RuinModel*", "MeshInstance3D", true, false)
+	var shaped := models.filter(func(m): return (m as MeshInstance3D).mesh.get_faces().size() > 0)
+	check(models.size() == ruins.size() and shaped.size() == models.size(), "each building with its model (%d)" % models.size())
+	# (what's left in the streets: cars, lamps - a few still lit - out of the buildings and the water)
+	var props := get_tree().get_nodes_in_group("street_props")
+	var lit := props.filter(func(q): return (q as StreetProp).lit)
+	var misplaced := []
+	for q in props:
+		var sp := q as StreetProp
+		for r in ruins:
+			if MapGenerator._rect_distance((r as Ruin).rect(), sp.global_position) < 4.0:
+				misplaced.append(sp.name)
+		for z in get_tree().get_nodes_in_group("water_zones"):
+			if (z as WaterZone).contains(sp.global_position):
+				misplaced.append(sp.name)
+	check(props.any(func(q): return (q as StreetProp).kind == "car") and props.any(func(q): return (q as StreetProp).kind == "lamp")
+		and lit.size() <= 3 and misplaced.is_empty() and props.all(func(q): return (q as Node).is_in_group("solids")),
+		"cars and street lamps in the streets (%d, %d lit), none in a building or the water %s" % [props.size(), lit.size(), str(misplaced)])
+	check(view.find_children("StreetPropModel*", "Node3D", true, false).size() == props.size()
+		and view.find_children("LampLight*", "OmniLight3D", true, false).size() == lit.size(), "each with its shape; the lit lamps shine")
+	var grass_tex: Texture2D = view._ground_mat.get_shader_parameter("grass_tex")
+	var path_tex: Texture2D = view._ground_mat.get_shader_parameter("path_tex")
+	check(grass_tex != null and grass_tex.resource_path.contains("asphalt") and path_tex.resource_path.contains("sidewalk"),
+		"the ground asphalt, the pavement paving")
+	await frames(5)
+	var hero: Vector3 = view._ruin_mat.get_shader_parameter("hero")
+	check(hero.distance_to(view.pivot.global_position) < 1.5, "the buildings seen through round the traveller")
+	var pool: Array = FishData.pool_for("city", "rare", "rare")
+	check(pool.has("flowerhorn") and pool.has("koi") and pool.has("guppy") and FishData.pool_for("city", "common", "epic").has("asian_arowana"),
+		"the city's own fish and 7-1's guppy in its water, the golden arowana its rarest")

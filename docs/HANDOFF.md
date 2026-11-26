@@ -67,6 +67,12 @@
 - 用在魚身上的道具（恢復活性的藥劑等）：選魚時點魚會先跳出這條魚的資訊卡（稀有度、大小、價值、活性、時間、詞綴），
   並說明能不能用；按「使用」才真的用，「返回」可以換一條。不能用的魚也能點開看原因。
 
+### 11. 荒廢人類世界：第 7 章「荒廢都市」（暫代版）
+- 使用者要求：開始做「荒廢人類世界」地圖（城市、鄉村、部落、日式、中國風、英式，各自分支），解釋商人為什麼有現代物品；
+  先做一般都市。設計、分支、魚、**需要使用者提供的素材清單**都在 `docs/RUINED_WORLD.md`。
+- 已做：主題 `city`（街廓、廢棄建築、柏油與人行道、汽車、路燈）、第 7 章五個分支、10 種都市魚（暫代模型）。
+  建築擋住玩家時會變透明。細節與「還沒做」的清單見 `docs/RUINED_WORLD.md` 第五節。
+
 ## 三、已定案（使用者決定的，不用再問）
 ### 劇情與分支
 1. 每張地圖分 4～5 支，每支是一個劇情關卡；共 6 章 26 關。地圖順序：湖畔森林 → 秋林 → 雪地森林 → 沙漠綠洲 → 沙灘海岸 → 海崖。
@@ -119,11 +125,18 @@
 | 鱷魚先生：帽子尺寸 | 帽體底部每邊比頭多留 1.6 cm、內側至少 0.8 cm、高度 85%（至少高過頭 2 cm）；帽簷寬：紳士帽、牛仔帽 11 cm，遮陽帽 15 cm | `tools/make_croc_props.py` 的 `EASE`、`EASE_IN`、`CLEAR`、`HATS`（改完重跑工具） |
 | 鱷魚先生：頭上的 3D 卷軸 | 長 0.62 m、離地 2.2 m、上下浮動 0.05 m、橫向面對鏡頭左右擺動 ±0.4 弧度、有可交委託時暖光 0.6 | `CampCroc.SCROLL_LEN`、`SCROLL_UP`、`SCROLL_BOB`、`SCROLL_SWAY`、`SCROLL_TURN`、`SCROLL_GLOW` |
 | 星座硬幣 | 成功逃離時 1% 多給一枚（12 種機率相同）；商人收購 800 金幣 | `Zodiac.CHANCE`、`PRICE` |
+| 第 7 章荒廢都市 | 五個分支的大小、額度、時間、小鬼、天氣、獨有魚、首通獎勵（220～500 金幣） | `Campaign.LEVELS` 的 7-1～7-5 |
+| 都市的街道與建築 | 街道寬 180 px、街廓 380～600 × 340～520 px、每街廓 2～3 塊地、空地 10%、倒塌 15%、離水 60 px、每張圖 1 棟大樓；7-2 公園空地 45% | `MapGenerator.THEMES.city.ruins`、7-2 的 `mods` |
+| 都市的樓層 | 店面 1～2 層、公寓 2～3 層、大樓 5～7 層，每層 3 m | `Ruin.STOREYS`、`STOREY` |
+| 都市的街道物件 | 每個基準面積 9 輛車、10 盞路燈；30% 的車橫在路中間；路燈 30% 會亮、最多 3 盞 | `MapGenerator.THEMES.city.street` |
+| 都市的魚 | 主題魚 4 種＋金龍魚；各分支獨有魚見 `docs/RUINED_WORLD.md`；價值、大小在魚的資料表 | `FishData.FISH`、`STYLE_FISH.city`、`LENGTH_CM` |
 
 ## 五、待辦與需要使用者決定的事
 1. **鱷魚先生**已做（規則都是我先訂的，見第四節）：可同時多個委託、魚要真的交出去、可分批交。
    使用者說過「先暫定」專屬委託是某張地圖的夢幻魚，目前用 1-5 的鱷雀鱔（鱷魚找鱷雀鱔）。
 2. **發佈前**把 `Campaign.dev_all_open` 改成 `false`（它也讓所有角色都能選）。
+10. **荒廢都市等使用者的素材**（清單在 `docs/RUINED_WORLD.md` 第四節：建築、汽車、路燈、街道小物、野狗、老鼠、鴿子、魚的照片）。
+    還沒做：運河（7-3）、地鐵坑（7-4）、海岸港口（7-5）、撿拾點（提案）、自由模式的都市地圖卡片。
 3. 月光鰺目前和浪人鰺同一個模型形狀；更細長的版本已寫好算圖設定（`tools/render_fish.py` 的 moon_jack），要有 Blender（bpy）才能重算。
 4. 沙灘海岸的地形設定裡列了「螃蟹」，但遊戲沒有螃蟹這個物種（`shore_critter_count` 為 0，所以不會生成）。**使用者之後會給螃蟹美術。**
 5. 背包會被帶回來的魚骨慢慢塞滿——已加提醒（見第二節 8）。
@@ -139,7 +152,7 @@
 - 測試：見 CLAUDE.md。跟這段工作最相關的測試：`test_campaign_levels_build`（26 關的地圖、水域、鬼、額度）、
   `test_campaign_unlocks_and_achievements`、`test_story_lessons`、`test_tutorials_completable`、`test_branch_fish`、
   `test_free_branches_and_nights`、`test_level_guide_and_results`、`test_weathers`（含雨打水面）、`test_journey_page`、
-  `test_bag_full_reminders`、`test_character_unlocks`、`test_croc_quests`、`test_croc_errands_on_run`、`test_zodiac_coins`。
+  `test_bag_full_reminders`、`test_character_unlocks`、`test_croc_quests`、`test_croc_errands_on_run`、`test_zodiac_coins`、`test_city_map`。
 - `tools/verify/verify.gd`（用法寫在檔案開頭）：
   - `tool=bot`：機器人用真實操作（拋竿、揚竿、搏魚、獻祭、逃離）逐關玩，輸出每關用時、額度、漁獲、獨有魚、教學進度、失敗原因。
   - `tool=play`：關掉開發者全開，依序通關 26 關，檢查解鎖順序、星數、首次通關獎勵。
@@ -167,6 +180,7 @@
 | 3D 場景（海、崖、湖、天氣、燈光） | `scripts/run_view_3d.gd` |
 | 角色解鎖條件 | `scripts/campaign.gd`：`CHARACTER_JOIN`、`character_open()`、`check_characters()`；畫面：`scripts/character_page.gd` |
 | 鱷魚先生（委託、出現、專屬委託） | `scripts/croc_quests.gd`；營地散步與台詞：`scripts/camp_croc.gd`；衣服與帽子：`scripts/croc_look.gd`；頭上 3D 卷軸：`scripts/camp_croc.gd` 的 `_make_scroll()`；模型轉換：`tools/make_croc_props.py`；對話視窗：`scripts/croc_talk.gd`；卷軸圖示：`scripts/quest_scroll.gd`；左側委託清單：`scripts/quest_tracker.gd`；頭上泡泡：`scripts/title_screen.gd` 的 `_croc_over()` |
+| 荒廢都市（第 7 章） | 主題：`scripts/map_generator.gd` 的 `THEMES.city`、`_place_ruins()`、`_place_street_props()`；建築：`scripts/ruin.gd`；街道物件：`scripts/street_prop.gd`；3D 外觀與透明：`scripts/city_build.gd`；設計與素材清單：`docs/RUINED_WORLD.md` |
 | 十二星座硬幣 | `scripts/zodiac.gd`（`CHANCE`、`PRICE`、`roll()`）；給予：`scripts/game_state.gd` 的 `escape()`；轉換工具：`tools/make_zodiac_coins.py` |
 | 商城收購 | `scripts/shop.gd`：`_fill_sell_pane()`、`_sell_drag()`、`SellBoard` |
 | 用在魚身上的道具的選魚視窗 | `scripts/fish_pick_panel.gd`：`show_fish()` |

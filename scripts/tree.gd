@@ -44,6 +44,9 @@ const THEME_KINDS := {
 	# User request (the sandy beach - its plants from the user's uploads, made ours by
 	# tools/make_coast_plants.py): coconut palms, leaning their own ways.
 	"coast": ["coco_a", "coco_b", "coco_c"],
+	# User request (the ruined human world - the city): trees breaking through the empty city - bare
+	# and dying most, one still in leaf now and then, a pine.
+	"city": ["dead_c", "dead_d", "dead_e", "dead_c", "autumn_a", "pine_c"],
 }
 ## The desert's trees out on the dunes, away from the water (MapGenerator._place_tree): dead ones,
 ## bare (dead_d and dead_e keep a few autumn leaves - the autumn wood's, not the sand's).

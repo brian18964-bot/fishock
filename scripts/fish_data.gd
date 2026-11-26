@@ -175,6 +175,30 @@ const FISH := {
 		"colors": [Color(0.7, 0.2, 0.12), Color(0.85, 0.45, 0.3), Color(0.4, 0.1, 0.08)], "pattern": "plain", "body": "crayfish"},
 	"two_headed_carp": {"name": "雙頭變異鯉", "value": 5.5, "trait": "wild", "habit": "", "reach": ["mid", "far"],
 		"colors": [Color(0.5, 0.55, 0.3), Color(0.8, 0.8, 0.55), Color(0.6, 0.8, 0.3)], "pattern": "blotch", "body": "carp"},
+	# User request (the ruined human world - the city, docs/RUINED_WORLD.md): the fish people kept -
+	# pets let go, a park's pond, a pet shop's tanks - living on in the empty city's water, grown big.
+	# Its own four and its rarest (the golden arowana); each branch's own besides. (Modelled here till
+	# the user's photos come - tools/fish_from_photo.py.)
+	"flowerhorn": {"name": "羅漢魚", "value": 1.8, "trait": "normal", "habit": "", "reach": ["near", "mid"],
+		"colors": [Color(0.72, 0.25, 0.22), Color(0.95, 0.7, 0.62), Color(0.12, 0.1, 0.1)], "pattern": "blotch", "body": "tilapia"},
+	"koi": {"name": "錦鯉", "value": 1.7, "trait": "calm", "habit": "", "reach": ["near", "mid"],
+		"colors": [Color(0.95, 0.94, 0.9), Color(1.0, 0.98, 0.95), Color(0.9, 0.25, 0.12)], "pattern": "koi", "body": "carp"},
+	"blood_parrot": {"name": "血鸚鵡", "value": 1.6, "trait": "calm", "habit": "", "reach": ["near"],
+		"colors": [Color(0.95, 0.42, 0.18), Color(1.0, 0.68, 0.42), Color(0.88, 0.3, 0.12)], "pattern": "gradient", "body": "bream"},
+	"discus": {"name": "七彩神仙", "value": 1.9, "trait": "calm", "habit": "", "reach": ["near"],
+		"colors": [Color(0.2, 0.55, 0.6), Color(0.85, 0.55, 0.35), Color(0.85, 0.3, 0.15)], "pattern": "stripe", "body": "bream"},
+	"asian_arowana": {"name": "金龍魚", "value": 5.5, "trait": "wild", "habit": "jumper", "reach": ["mid", "far"],
+		"colors": [Color(0.9, 0.7, 0.25), Color(1.0, 0.86, 0.5), Color(0.85, 0.55, 0.2)], "pattern": "scales", "body": "arowana"},
+	"guppy": {"name": "孔雀魚", "value": 1.3, "trait": "normal", "habit": "", "reach": ["near"],
+		"colors": [Color(0.55, 0.56, 0.5), Color(0.85, 0.82, 0.75), Color(0.2, 0.5, 0.95)], "pattern": "spots", "body": "betta"},
+	"clown_knifefish": {"name": "小丑刀", "value": 1.9, "trait": "normal", "habit": "cover", "reach": ["mid"],
+		"colors": [Color(0.6, 0.62, 0.6), Color(0.86, 0.86, 0.82), Color(0.08, 0.08, 0.08)], "pattern": "spots", "body": "ribbon_short"},
+	"redtail_catfish": {"name": "紅尾鯰", "value": 2.2, "trait": "wild", "habit": "cover", "reach": ["mid", "far"],
+		"colors": [Color(0.18, 0.18, 0.18), Color(0.92, 0.88, 0.78), Color(0.9, 0.3, 0.15)], "pattern": "gradient", "body": "catfish"},
+	"electric_eel": {"name": "電鰻", "value": 5.5, "trait": "wild", "habit": "cover", "reach": ["mid", "far"],
+		"colors": [Color(0.22, 0.24, 0.2), Color(0.75, 0.55, 0.35), Color(0.3, 0.3, 0.25)], "pattern": "plain", "body": "eel"},
+	"tarpon": {"name": "大海鰱", "value": 5.0, "trait": "wild", "habit": "jumper", "reach": ["far"],
+		"colors": [Color(0.7, 0.74, 0.78), Color(0.95, 0.95, 0.95), Color(0.45, 0.5, 0.58)], "pattern": "scales", "body": "trevally"},
 	# User request (the desert of bones): an oasis's fish - the pupfish of
 	# desert springs, the doctor fish, the sucker and the bonytail of
 	# desert rivers; the rarest, the Devils Hole pupfish of one desert pool.
@@ -260,6 +284,7 @@ const STYLE_FISH := {
 	"autumn": [["sockeye", "pike", "perch", "channel_cat"], "golden_koi"],
 	"ruins": [["pleco", "silver_carp", "giant_goldfish", "crayfish"], "two_headed_carp"],
 	"desert": [["pupfish", "garra", "desert_sucker", "bonytail"], "devils_pupfish"],
+	"city": [["flowerhorn", "koi", "blood_parrot", "discus"], "asian_arowana"],
 }
 const SEA_COMMON := ["mackerel", "sardine", "horse_mackerel", "saury", "herring", "sea_bream", "sea_bass",
 	"flounder", "cod", "puffer", "cutlassfish", "grouper", "mullet", "croaker", "yellowtail", "mahi", "conger",
@@ -275,7 +300,7 @@ const THEME_WATERS := {
 	"deadwood": "deadwood", "rocky": "rocky", "stone_forest": "rocky", "savanna": "rocky",
 	"tropical": "tropical", "jungle": "tropical", "prehistoric": "prehistoric", "swamp": "swamp",
 	"snow": "snow", "snow_pine": "snow", "snow_lowpoly": "snow", "autumn": "autumn", "autumn_lowpoly": "autumn",
-	"ruins": "ruins", "beach_rocky": "sea", "beach_sandy": "sea", "desert": "desert", "coast": "sea", "coast_cliff": "sea",
+	"ruins": "ruins", "beach_rocky": "sea", "beach_sandy": "sea", "desert": "desert", "coast": "sea", "coast_cliff": "sea", "city": "city",
 }
 ## This map's waters (MapGenerator sets it from the theme).
 static var waters := "forest"
@@ -504,6 +529,8 @@ const LENGTH_CM := {
 	"croaker": [25, 60], "yellowtail": [50, 120], "mahi": [60, 150], "conger": [60, 150], "scorpionfish": [12, 30],
 	"trevally": [60, 150], "moon_jack": [30, 70], "napoleon": [80, 200], "sunfish": [120, 300], "sailfish": [170, 300],
 	"hammerhead": [180, 400], "swordfish": [150, 350], "bluefin": [120, 280],
+	"flowerhorn": [15, 35], "koi": [35, 90], "blood_parrot": [12, 25], "discus": [12, 22], "asian_arowana": [45, 90],
+	"guppy": [3, 6], "clown_knifefish": [30, 80], "redtail_catfish": [50, 130], "electric_eel": [80, 220], "tarpon": [80, 220],
 }
 const WEIGHT_K := {
 	"carp": 0.014, "tilapia": 0.018, "bass": 0.013, "trout": 0.011, "catfish": 0.009, "eel": 0.0022, "goby": 0.011,
@@ -530,15 +557,16 @@ const TANK_TRAITS := {
 ## a mind of its own (INDIVIDUAL_CHANCE) and rolls another.
 const TRAIT_OF := {
 	"fierce": ["bass", "snakehead", "bowfin", "pike", "piranha", "arowana", "arapaima", "alligator_gar", "taimen", "wels",
-		"betta", "oscar", "grouper", "hammerhead", "trevally", "cutlassfish", "conger", "ghost_fish", "two_headed_carp"],
+		"betta", "oscar", "grouper", "hammerhead", "trevally", "cutlassfish", "conger", "ghost_fish", "two_headed_carp",
+		"flowerhorn", "asian_arowana", "electric_eel"],
 	"school": ["moon_jack", "sardine", "herring", "horse_mackerel", "saury", "mackerel", "smelt", "minnow", "ayu", "whitefish",
-		"bluegill", "crucian", "perch", "croaker"],
+		"bluegill", "crucian", "perch", "croaker", "guppy"],
 	"bottom": ["catfish", "black_catfish", "channel_cat", "walking_catfish", "loach", "goby", "sculpin", "flounder",
-		"sturgeon", "pleco", "burbot", "crayfish", "scorpionfish", "cod"],
-	"shy": ["eel", "swamp_eel", "cavefish", "angelfish", "bichir", "coelacanth", "puffer"],
-	"lazy": ["lungfish", "sunfish", "giant_goldfish", "paddlefish", "napoleon"],
-	"jumper": ["sailfish", "swordfish", "silver_carp", "mullet"],
-	"glutton": ["carp", "grass_carp", "tilapia", "golden_koi"],
+		"sturgeon", "pleco", "burbot", "crayfish", "scorpionfish", "cod", "redtail_catfish"],
+	"shy": ["eel", "swamp_eel", "cavefish", "angelfish", "bichir", "coelacanth", "puffer", "discus", "clown_knifefish"],
+	"lazy": ["lungfish", "sunfish", "giant_goldfish", "paddlefish", "napoleon", "blood_parrot"],
+	"jumper": ["sailfish", "swordfish", "silver_carp", "mullet", "tarpon"],
+	"glutton": ["carp", "grass_carp", "tilapia", "golden_koi", "koi"],
 }
 const INDIVIDUAL_CHANCE := 0.2
 
@@ -579,16 +607,18 @@ const GIANT_FROM := 0.85
 const GATE_MAIN := {
 	"react": ["brown_trout", "brook_trout", "grayling", "ayu", "golden_trout", "char", "minnow", "crucian",
 		"smelt", "sardine", "saury", "pupfish", "devils_pupfish", "angelfish", "cavefish", "loach",
-		"tilapia", "mahi", "mullet", "croaker", "rainbow_trout", "sea_bream", "silver_carp", "moon_jack"],
+		"tilapia", "mahi", "mullet", "croaker", "rainbow_trout", "sea_bream", "silver_carp", "moon_jack",
+		"guppy", "discus", "blood_parrot"],
 	"might": ["carp", "wels", "paddlefish", "lungfish", "golden_koi", "giant_goldfish", "coelacanth", "arapaima",
-		"napoleon", "sunfish", "bichir", "catfish", "cod", "bonytail"],
+		"napoleon", "sunfish", "bichir", "catfish", "cod", "bonytail", "koi", "redtail_catfish"],
 	"resil": ["horse_mackerel", "bluegill", "sculpin", "goby", "crayfish", "puffer", "garra", "betta", "bass",
 		"snakehead", "bowfin", "ghost_fish", "piranha", "oscar", "pike", "taimen", "alligator_gar",
 		"cutlassfish", "conger", "scorpionfish", "two_headed_carp", "hammerhead", "trevally", "arowana",
-		"flounder", "channel_cat", "pleco", "walking_catfish", "arctic_char"],
+		"flounder", "channel_cat", "pleco", "walking_catfish", "arctic_char", "flowerhorn", "clown_knifefish",
+		"asian_arowana"],
 	"endure": ["herring", "mackerel", "perch", "climbing_perch", "whitefish", "desert_sucker", "eel", "swamp_eel",
 		"sea_bass", "yellowtail", "sockeye", "sailfish", "swordfish", "bluefin", "grass_carp", "sturgeon",
-		"burbot", "black_catfish", "grouper"],
+		"burbot", "black_catfish", "grouper", "electric_eel", "tarpon"],
 }
 ## The second (and third) stats the epic and legend fish ask besides their main.
 const GATE_EXTRA := {
@@ -597,6 +627,7 @@ const GATE_EXTRA := {
 	"two_headed_carp": ["might"], "devils_pupfish": ["endure"], "trevally": ["react"], "napoleon": ["endure"],
 	"sunfish": ["react"], "sailfish": ["react"], "hammerhead": ["endure"],
 	"swordfish": ["resil", "react"], "bluefin": ["might", "react"],
+	"asian_arowana": ["react"], "electric_eel": ["might"], "tarpon": ["react"],
 }
 
 

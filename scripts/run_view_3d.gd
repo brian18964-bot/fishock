@@ -471,6 +471,10 @@ var _coast := false
 ## sheer into the water (_cliff_ground), the cliff's rock face all along it (_cliff_face), the
 ## surf at its foot; no beach, no waves running up.
 var _cliff := false
+## User request (the ruined human world - MapGenerator's "city"): its buildings (CityBuild) and
+## their shared material (its see-through kept round the traveller each frame).
+var _city := false
+var _ruin_mat: ShaderMaterial
 ## (the coast: the sea's depth (px, + out in the water) at each of the ground grid's points - the sea
 ## surface's depth texture and where the edge's pines may stand)
 var _sea_grid := PackedFloat32Array()
@@ -525,6 +529,7 @@ func _ready() -> void:
 	_desert = MapGenerator.current_theme.begins_with("desert")
 	_coast = MapGenerator.current_theme.begins_with("coast")
 	_cliff = MapGenerator.current_theme.begins_with("coast_cliff")
+	_city = MapGenerator.current_theme.begins_with("city")
 	Foliage.set_wind(Foliage.WIND)
 	_rng.seed = 11
 	player = main.get_node("Player")
@@ -586,6 +591,11 @@ func _build() -> void:
 		add_child(_flock)
 		_flock.setup(self, map_style())
 	_trees_and_rocks()
+	if _city:
+		_ruin_mat = CityBuild.build(self, get_tree().get_nodes_in_group("ruins"), land_y)
+		CityBuild.props(self, get_tree().get_nodes_in_group("street_props"), land_y)
+		_ruin_mat.set_shader_parameter("fade_min", FADE_NEAR)
+		_ruin_mat.set_shader_parameter("fade_max", FADE_FAR)
 	if _cliff:
 		_cliff_face()
 	_start_camp()
@@ -1786,6 +1796,8 @@ func _ground() -> void:
 		for sj in shore_n.y:
 			for si in shore_n.x:
 				shores[sj * shore_n.x + si] = _sea_depth(Vector2(lo.x + si * SHORE_STEP * CELL, lo.y + sj * SHORE_STEP * CELL) * PX)
+	# (the city: the pavement round its buildings)
+	var walks := CityBuild.walks(get_tree().get_nodes_in_group("ruins"), lo, n, CELL) if _city else PackedFloat32Array()
 	if _desert:
 		shores.resize(shore_n.x * shore_n.y)
 		for sj in shore_n.y:
@@ -1845,6 +1857,18 @@ func _ground() -> void:
 				colors[j * n.x + i] = paint
 				continue
 			y += 1.4 * smoothstep(0.0, MARGIN, out)
+			if _city:
+				# r: the pavement round the buildings, g: soil broken through, b: the mud at the
+				# water, a: weeds (their texture and their blades - patches of them breaking
+				# through, fewer on the pavement; else the asphalt)
+				var walk := walks[j * n.x + i]
+				var mud_c := 1.0 - smoothstep(0.0, 60.0 + noise.get_noise_2d(x, z) * 25.0, -d)
+				var weeds := smoothstep(0.3, 0.62, noise.get_noise_2d(x * 0.3 + 70.0, z * 0.3)) * (1.0 - walk * 0.8)
+				weeds = maxf(weeds, smoothstep(0.0, 4.0, out))
+				var soil := smoothstep(0.45, 0.75, noise.get_noise_2d(x * 0.5 + 140.0, z * 0.5)) * (1.0 - walk) * 0.8
+				heights[j * n.x + i] = y
+				colors[j * n.x + i] = Color(walk, soil, mud_c, weeds)
+				continue
 			var wob := noise.get_noise_2d(x, z)
 			# r: (no paths here) g: (no stone) b: the mud shore, a: the
 			# forest floor (else grass)
@@ -8723,6 +8747,8 @@ func _process(delta: float) -> void:
 		_leaf_fx.global_position = pivot.global_position + Vector3(0.0, 5.5, 0.0)
 	if not built:
 		return
+	if _ruin_mat != null and pivot != null:
+		CityBuild.update(_ruin_mat, pivot.global_position + Vector3(0.0, 1.0, 0.0))
 	_time += delta
 	# What came into the 2D world since (critters, splashes, drops).
 	for n in _pending:

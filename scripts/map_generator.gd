@@ -228,6 +228,32 @@ const THEMES := {
 		"shore_critter_count": 0,
 		"shore_critters": ["crab"],
 		"water": {"base": Color(0.06, 0.3, 0.42), "deep": Color(0.02, 0.1, 0.22)},
+	},
+	# User request (the ruined human world - its first map, the city): a city left empty - cracked
+	# asphalt and paving (RunView3D's "floor3d": the streets' asphalt, the pavements round the
+	# buildings, weeds and soil breaking through), the empty buildings along streets no longer kept
+	# ("ruins" - Ruin, _place_ruins: the streets' width, a block's size, lots a block, the alleys
+	# between them, how many blocks lie empty, how many buildings have fallen to rubble, how far from
+	# the water they keep), the water where the road has sunk and flooded - murky. A few trees
+	# breaking through (MapTree's "city"); none of the forest's animals.
+	"city": {
+		"look": "detailed",
+		"floor": ["grass", "grass", 0.3],
+		"floor3d": {"grass": "asphalt", "forest": "grass", "path": "sidewalk", "stone": "moss_soil", "mud": "mud"},
+		"trees": 10, "rocks": 2, "bushes": 3, "ground": 0,
+		"tree_families": {"pine": 1.0},
+		"rock_pool": [0, 1, 2],
+		"ruins": {"road": 180.0, "block_min": Vector2(380, 340), "block_max": Vector2(600, 520), "lots": Vector2i(2, 3),
+			"alley": 60.0, "setback": 20.0, "vacant": 0.1, "fallen": 0.15, "water_gap": 60.0, "towers": 1},
+		# (what's left in the streets - StreetProp: cars and street lamps a base map's area, the share of
+		# the cars slewed across the road rather than by the kerb, the lamps still lit (at most so many))
+		"street": {"cars": 9, "lamps": 10, "slewed": 0.3, "lit": 0.3, "lit_most": 3},
+		"animal_count": 0,
+		"animals": {},
+		"shore": {"grass": 0.04, "shrub": 0.03, "pebbles": 0.06},
+		"shore_extras": {"reeds": 0.05, "lilypad": 0.0, "driftwood": 0.0},
+		"shore_critters": ["frog", "spider"],
+		"water": {"base": Color(0.1, 0.19, 0.18), "deep": Color(0.03, 0.08, 0.08)},
 	},}
 ## User feedback: the water's edge is grass, small shrubs, pebbles and
 ## boardwalks (no big trees or boulders there), with bugs and frogs about.
@@ -297,6 +323,8 @@ func _ready() -> void:
 	_place_docks()
 	_place_altar_and_escape()
 	_take_fixed_points()
+	_place_ruins()
+	_place_street_props()
 	_place_fossils()
 	if theme.get("cliff", false):
 		_place_coast_rocks()
@@ -879,6 +907,254 @@ const FOSSIL_SHORE := {"dino": 90.0, "mammoth": 90.0, "elephant": 90.0, "crocodi
 ## The cacti are plants: (user request) only near the water - in the oasis's margin, no further out
 ## from a shore than this (px; the green reaches some 160-280) - nothing green out in the desert.
 const FOSSIL_SHORE_MAX := {"saguaro": 300.0, "cholla": 270.0}
+
+
+## User request (the ruined human world - the city, a style with "ruins"): its buildings along
+## streets no longer kept. A grid of blocks, its streets "road" px wide, each block its own size
+## (block_min..block_max) and the grid's start somewhere new each game, so no two maps are alike;
+## each block split along its length into a few lots ("lots", "alley" px between them, set back
+## from the street by up to "setback"), each a building - a shop, a block of flats - some blocks
+## left empty ("vacant": weeds and trees), some buildings fallen to rubble ("fallen"); the biggest
+## lot well away from the start the tall office block ("towers"), to find one's way by. None in
+## the water or within "water_gap" px of it, on the camp, the altar, the way out or the cage, on a
+## dock's way or by the start: a lot that won't fit shrinks, else is left empty. What's placed
+## after keeps clear of them (_taken).
+func _place_ruins() -> void:
+	var spec: Dictionary = theme.get("ruins", {})
+	if spec.is_empty():
+		return
+	# (a few layouts of the streets, the best kept - a small map, its start, its camp and its
+	# water taking most of the room, may leave one few lots: at least RUIN_FEW a base map's area)
+	var want := maxi(1, roundi(float(spec.get("few", RUIN_FEW)) * Campaign.area_share()))
+	var best: Array = []
+	for _try in RUIN_TRIES:
+		var got := _ruin_layout(spec)
+		if got.size() > best.size():
+			best = got
+		if best.size() >= want:
+			break
+	var towers := int(spec.get("towers", 0))
+	var made := 0
+	for fitted in best:
+		var rect: Rect2 = fitted
+		var ruin := Ruin.new()
+		ruin.name = "Ruin%d" % made
+		if towers > 0 and rect.get_center().distance_to(SPAWN_POS) > RUIN_TOWER_AWAY and rect.get_area() > RUIN_TOWER_AREA:
+			ruin.kind = "tower"
+			towers -= 1
+		elif randf() < float(spec.fallen):
+			ruin.kind = "rubble"
+		else:
+			ruin.kind = "flat" if rect.get_area() > RUIN_FLAT_AREA and randf() < 0.6 else "shop"
+		var floors: Vector2i = Ruin.STOREYS[ruin.kind]
+		ruin.storeys = randi_range(floors.x, floors.y)
+		ruin.size = rect.size
+		ruin.position = rect.get_center()
+		ruin.seed_value = randi()
+		# (a building's keep-clear circles - marked, so what stands by its walls asks its rectangle)
+		for c in ruin.footprint_circles():
+			_taken.append([c[0], c[1], c[1], true])
+		_ruins.append(rect)
+		get_parent().add_child.call_deferred(ruin)
+		made += 1
+
+
+## One layout of the streets: the lots that are clear (biggest first - the tower's pick).
+func _ruin_layout(spec: Dictionary) -> Array:
+	var road := float(spec.road)
+	var lo: Vector2 = spec.block_min
+	var hi: Vector2 = spec.block_max
+	var lots := []
+	for bx in _street_cuts(Player.WORLD_WIDTH, road, lo.x, hi.x):
+		for by in _street_cuts(Player.WORLD_HEIGHT, road, lo.y, hi.y):
+			if randf() < float(spec.vacant):
+				continue
+			var block := Rect2(bx.x, by.x, bx.y - bx.x, by.y - by.x)
+			var along_x := block.size.x >= block.size.y
+			var length := block.size.x if along_x else block.size.y
+			var alley := float(spec.alley)
+			# (as many lots as asked, or as fit - each at least RUIN_LEAST)
+			var most := maxi(1, int((length + alley) / (RUIN_LEAST + alley)))
+			var n := mini(randi_range(int(spec.lots.x), int(spec.lots.y)), most)
+			var each := (length - alley * float(n - 1)) / float(n)
+			var at := 0.0
+			for i in n:
+				# (each lot its own share of the block, give or take)
+				var cut := each * randf_range(0.8, 1.2) if i < n - 1 else length - at
+				cut = clampf(cut, RUIN_LEAST, length - at)
+				var lot := Rect2(block.position + (Vector2(at, 0.0) if along_x else Vector2(0.0, at)),
+					Vector2(cut, block.size.y) if along_x else Vector2(block.size.x, cut))
+				var back := float(spec.setback)
+				lot = lot.grow_individual(-randf() * back, -randf() * back, -randf() * back, -randf() * back)
+				if lot.size.x >= RUIN_LEAST and lot.size.y >= RUIN_LEAST:
+					lots.append(lot)
+				at += cut + alley
+				if at >= length - RUIN_LEAST:
+					break
+	lots.sort_custom(func(a, b): return (a as Rect2).get_area() > (b as Rect2).get_area())
+	var out := []
+	for lot in lots:
+		var fitted := _ruin_room(lot, float(spec.water_gap))
+		if fitted.size != Vector2.ZERO:
+			out.append(fitted)
+	return out
+
+
+## User request (the city, a style with "street"): its cars and street lamps. A car by the kerb of
+## some building's street (its pavement's width out from the wall, the road's edge), along it -
+## or, now and then, slewed across the road, anywhere; a lamp at a pavement's outer edge. Each
+## where it's clear (the water, the docks' ways, the start, everything placed); some lamps lit.
+func _place_street_props() -> void:
+	var spec: Dictionary = theme.get("street", {})
+	if spec.is_empty() or _ruins.is_empty():
+		return
+	var share := Campaign.area_share()
+	var walk := CityBuild.WALK * Fossil.PX
+	var lit_left := int(spec.get("lit_most", 3))
+	var made := 0
+	for kind in ["car", "lamp"]:
+		var count := maxi(1, roundi(float(spec.get(kind + "s", 0)) * share))
+		for _i in count:
+			for _try in 30:
+				var at := Vector2.INF
+				var yaw := 0.0
+				if kind == "car" and randf() < float(spec.slewed):
+					at = Vector2(randf_range(PROP_MARGIN, Player.WORLD_WIDTH - PROP_MARGIN), randf_range(PROP_MARGIN, Player.WORLD_HEIGHT - PROP_MARGIN))
+					yaw = randf() * TAU
+				else:
+					# (a side of some building: along it, out from it by the pavement - the kerb)
+					var rect: Rect2 = _ruins.pick_random()
+					var side := randi() % 4
+					var t := randf_range(0.1, 0.9)
+					var out := walk + (StreetProp.CAR.y * 0.5 + 8.0 if kind == "car" else 6.0)
+					match side:
+						0: at = Vector2(rect.position.x + rect.size.x * t, rect.position.y - out)
+						1: at = Vector2(rect.end.x + out, rect.position.y + rect.size.y * t)
+						2: at = Vector2(rect.position.x + rect.size.x * t, rect.end.y + out)
+						_: at = Vector2(rect.position.x - out, rect.position.y + rect.size.y * t)
+					yaw = (0.0 if side % 2 == 0 else PI * 0.5) + randf_range(-0.12, 0.12) + (PI if randf() < 0.5 else 0.0)
+				var reach := StreetProp.CAR.x * 0.5 if kind == "car" else StreetProp.LAMP_R + 10.0
+				if at.x < PROP_MARGIN or at.y < PROP_MARGIN or at.x > Player.WORLD_WIDTH - PROP_MARGIN or at.y > Player.WORLD_HEIGHT - PROP_MARGIN:
+					continue
+				if at.distance_to(SPAWN_POS) < PROP_AVOID_SPAWN_RADIUS or _shore_distance(at) < reach + 30.0 or _in_any_water(at):
+					continue
+				if _near_walkway(at, reach + 20.0) or _near_entrance(at, ENTRANCE_CLEARANCE):
+					continue
+				if not _fits_street(at, reach) or _in_ruin(at, reach):
+					continue
+				var prop := StreetProp.new()
+				prop.name = "StreetProp%d" % made
+				prop.kind = kind
+				prop.yaw = yaw
+				prop.position = at
+				prop.seed_value = randi()
+				if kind == "lamp" and lit_left > 0 and randf() < float(spec.lit):
+					prop.lit = true
+					lit_left -= 1
+				_taken.append([at, reach, 0.0])
+				get_parent().add_child.call_deferred(prop)
+				made += 1
+				break
+
+
+## _fits for what stands in the street by the buildings' walls: clear of everything placed but the
+## buildings' keep-clear circles (their rectangles are asked instead - _in_ruin).
+func _fits_street(at: Vector2, base: float) -> bool:
+	for t in _taken:
+		if (t as Array).size() > 3:
+			continue
+		if at.distance_to(t[0]) < base + float(t[1]) + PROP_GAP * 0.5:
+			return false
+	return true
+
+
+## Whether a thing (radius `r`, px) at `at` would stand in a building.
+func _in_ruin(at: Vector2, r: float) -> bool:
+	for rect in _ruins:
+		if _rect_distance(rect, at) < r + 6.0:
+			return true
+	return false
+
+
+## (the least buildings a base map's area - a style's or a level's "few" - and how many layouts are
+## tried for them)
+const RUIN_FEW := 6.0
+const RUIN_TRIES := 6
+## (a building's least side; a block of flats' least ground; the tower's - and how far from the
+## start it stands)
+const RUIN_LEAST := 150.0
+const RUIN_FLAT_AREA := 90000.0
+const RUIN_TOWER_AREA := 120000.0
+const RUIN_TOWER_AWAY := 600.0
+## The buildings placed (their rectangles, px).
+var _ruins: Array = []
+
+
+## The blocks along one side of the map ([start, end] px each): each its own length, the streets
+## between them `road` wide, the first starting somewhere off the map's edge.
+static func _street_cuts(length: float, road: float, least: float, most: float) -> Array:
+	var out := []
+	var at := -randf_range(0.0, most * 0.5)
+	while at < length:
+		var size := randf_range(least, most)
+		var a := maxf(at, PROP_MARGIN)
+		var b := minf(at + size, length - PROP_MARGIN)
+		if b - a >= RUIN_LEAST:
+			out.append(Vector2(a, b))
+		at += size + road
+	return out
+
+
+## Where a building may stand on `lot`: the lot, or the most of it that's clear - a side given up
+## (a lot by the water keeps back from it), or the lot drawn in - clear of the water (`gap` px), the
+## fixed points, the docks' ways and the start; zero if none.
+func _ruin_room(lot: Rect2, gap: float) -> Rect2:
+	var tries: Array = [lot]
+	for f: float in [0.25, 0.45]:
+		var cx := lot.size.x * f
+		var cy := lot.size.y * f
+		tries.append(lot.grow_individual(-cx, 0.0, 0.0, 0.0))
+		tries.append(lot.grow_individual(0.0, -cy, 0.0, 0.0))
+		tries.append(lot.grow_individual(0.0, 0.0, -cx, 0.0))
+		tries.append(lot.grow_individual(0.0, 0.0, 0.0, -cy))
+		tries.append(lot.grow_individual(-cx * 0.5, -cy * 0.5, -cx * 0.5, -cy * 0.5))
+	for rect in tries:
+		var r: Rect2 = rect
+		if r.size.x >= RUIN_LEAST and r.size.y >= RUIN_LEAST and _ruin_clear(r, gap):
+			return r
+	return Rect2()
+
+
+func _ruin_clear(rect: Rect2, gap: float) -> bool:
+	if _rect_distance(rect, SPAWN_POS) < SPAWN_CLEAR_RADIUS:
+		return false
+	for t in _taken:
+		if _rect_distance(rect, t[0]) < float(t[1]) + PROP_GAP:
+			return false
+	for w in _walk_rects:
+		if rect.grow(40.0).intersects(w):
+			return false
+	for e in _entrances:
+		if _rect_distance(rect, e) < ENTRANCE_CLEARANCE:
+			return false
+	# (the water: along its edges and across it, every RUIN_PROBE px)
+	var nx := maxi(2, ceili(rect.size.x / RUIN_PROBE) + 1)
+	var ny := maxi(2, ceili(rect.size.y / RUIN_PROBE) + 1)
+	for i in nx:
+		for j in ny:
+			var p := rect.position + Vector2(rect.size.x * i / float(nx - 1), rect.size.y * j / float(ny - 1))
+			if _in_any_water(p) or _shore_distance(p) < gap:
+				return false
+	return true
+
+
+const RUIN_PROBE := 50.0
+
+
+static func _rect_distance(r: Rect2, p: Vector2) -> float:
+	var dx := maxf(maxf(r.position.x - p.x, 0.0), p.x - r.end.x)
+	var dy := maxf(maxf(r.position.y - p.y, 0.0), p.y - r.end.y)
+	return Vector2(dx, dy).length()
 
 
 func _place_fossils() -> void:
