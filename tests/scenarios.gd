@@ -5519,9 +5519,47 @@ func test_croc_quests() -> void:
 		for i in (mi as MeshInstance3D).get_surface_override_material_count():
 			if (mi as MeshInstance3D).get_surface_override_material(i) is ShaderMaterial:
 				dyed = true
-	check(dyed and camp.croc.rig.find_child("StrawHat", true, false) != null
-		and camp.croc.rig.find_child("StrawHat", true, false).find_children("*", "MeshInstance3D", true, false).size() > 0,
-		"his own outfit: the knit dyed, his hat (our own, from the user's model)")
+	var outfit: Dictionary = camp.croc.outfit
+	var worn: Node = camp.croc.rig.find_child("Hat_*", true, false)
+	check(dyed and CrocLook.OUTFITS.has(outfit) and (worn == null if outfit.hat == "" else
+		worn != null and worn.name == "Hat_" + outfit.hat and worn.find_children("*", "MeshInstance3D", true, false).size() > 0),
+		"his own outfit: the knit dyed, his hat as picked (%s)" % (outfit.hat if outfit.hat != "" else "none"))
+	# User request: any of his three hats or none, his knit's colour going with it; each hat fitted to
+	# his head - its crown narrower than the old hat's 0.3 m but over his head (0.18 m across), its
+	# brim reaching well past it.
+	var kinds := {}
+	var shirts := {}
+	for o in CrocLook.OUTFITS:
+		kinds[o.hat] = true
+		shirts[o.shirt] = true
+		var rig := CharacterRig.new()
+		rig.fixed = CrocQuests.ID
+		rig.hold_gear = false
+		get_tree().root.add_child(rig)
+		CrocLook.dress(rig, o)
+		var dye_ok := false
+		for mi in rig.find_children("*", "MeshInstance3D", true, false):
+			for i in (mi as MeshInstance3D).get_surface_override_material_count():
+				var mat := (mi as MeshInstance3D).get_surface_override_material(i)
+				if mat is ShaderMaterial and (mat as ShaderMaterial).get_shader_parameter("shirt") == o.shirt:
+					dye_ok = true
+		var on: Node3D = rig.find_child("Hat_*", true, false)
+		check(dye_ok and (on == null) == (o.hat == ""), "outfit %s: the knit dyed its colour, %s" % [o.hat, "a hat on" if on != null else "bare-headed"])
+		if on != null:
+			var crown := 0.0
+			var brim := 0.0
+			for mi in on.find_children("*", "MeshInstance3D", true, false):
+				var mesh: Mesh = (mi as MeshInstance3D).mesh
+				for si in mesh.get_surface_count():
+					for v in mesh.surface_get_arrays(si)[Mesh.ARRAY_VERTEX]:
+						# (the crown at his head's sides: up past where a brim's curl reaches)
+						if v.y > 0.045 and v.y < 0.08 and absf(v.z) < 0.04:
+							crown = maxf(crown, absf(v.x))
+						brim = maxf(brim, absf(v.x))
+			check(crown > 0.09 and crown < 0.125 and brim > crown + 0.07,
+				"the %s fitted to his head: crown %.3f m across, brim %.3f" % [o.hat, crown * 2.0, brim * 2.0])
+		rig.queue_free()
+	check(kinds.size() == 4 and kinds.has("") and shirts.size() == 4, "three hats and bare-headed, each with its own knit")
 	var tracker: Control = null
 	for t in title.find_children("QuestTracker", "", true, false):
 		tracker = t

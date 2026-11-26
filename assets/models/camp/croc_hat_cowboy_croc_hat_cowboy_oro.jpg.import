@@ -2,19 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://w0nslr05t7b3"
-path="res://.godot/imported/croc_hat_croc_hat_colour.png-31c865bde780ffca740e6e64143bbfae.ctex"
+uid="uid://ckttg7liph7hm"
+path="res://.godot/imported/croc_hat_cowboy_croc_hat_cowboy_oro.jpg-1578f54ea7e2f215c9f960d80f43e4f9.ctex"
 metadata={
 "vram_texture": false
 }
 generator_parameters={
-"md5": "edc1028534236aeb353f636908a57ac4"
+"md5": "47ee63af82aeff322b33f584f4836092"
 }
 
 [deps]
 
-source_file="res://assets/models/camp/croc_hat_croc_hat_colour.png"
-dest_files=["res://.godot/imported/croc_hat_croc_hat_colour.png-31c865bde780ffca740e6e64143bbfae.ctex"]
+source_file="res://assets/models/camp/croc_hat_cowboy_croc_hat_cowboy_oro.jpg"
+dest_files=["res://.godot/imported/croc_hat_cowboy_croc_hat_cowboy_oro.jpg-1578f54ea7e2f215c9f960d80f43e4f9.ctex"]
 
 [params]
 

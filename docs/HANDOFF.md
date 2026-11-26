@@ -46,6 +46,12 @@
   兩個模型都用我們的工具重製（`tools/make_croc_props.py`）：卷軸來自 `r1.blend`（合併、減面、重新上色成舊羊皮紙＋磚紅繩），
   帽子來自 `Hat.obj`（帽簷加寬、前後微垂、重新染成舊奶油色＋深棕帽帶、加草編紋）。原檔不進版控。
   `parchemin.mb` 是 Maya 二進位檔，這裡沒有 Maya 讀不了，所以用 `r1.blend` 的卷軸。對話視窗和左側清單仍用 2D 卷軸圖示。
+  第五輪（使用者要求）：三頂帽子都用——紳士帽（`Hat.obj`）、寬簷遮陽帽（`3d-model.fbx`）、皮革牛仔帽（`Cowboy hat .fbx`＋貼圖）；
+  每次出現隨機戴其中一頂或不戴，毛衣顏色跟著帽子換（`CrocLook.OUTFITS`）。帽子依他的頭圍做：工具從我們的鱷魚模型
+  量出頭在帽子位置的大小（頭寬約 18 cm、前後約 29 cm），帽體底部照頭的輪廓做（每邊留 1.6 cm，約 21×31 cm，原本約 30×30 cm），
+  帽體高度縮成 85%（至少高過頭 2 cm）；帽體往上收窄的地方如果會碰到頭就局部放寬，帽子內側不會穿頭；
+  帽簷從帽體往外加寬（紳士帽、牛仔帽 11 cm，遮陽帽 15 cm），原本的翹邊、垂邊都保留。三頂都坐在同一個位置（`CrocLook.HAT_AT`、`HAT_TILT`，
+  和工具裡的 `SEAT`、`TILT` 一致）。另一個黑色金帶牛仔帽（`.blend`）沒有用到。
 ### 10. 十二星座硬幣（祭壇的極稀有獎品）
 - 使用者要求：12 星座硬幣是祭品會出現的極稀有獎品，能力先不寫；外形不要那麼圓（不規則）、厚度 ×1.5、拿掉類似星星的圖案。
 - 用 `tools/make_zodiac_coins.py` 從使用者給的 `Zodiac.fbx`＋貼圖重製成我們的資產：把高面數浮雕烘成高度圖，
@@ -109,7 +115,8 @@
 | 鱷魚先生：情境文字 | 各魚種專屬 28 則、通用 6 則、專屬委託 1 則 | `CrocQuests.STORY`、`ANY_STORY`、`DREAM_STORY` |
 | 鱷魚先生：專屬委託 | 完成 30 次後，釣到鱷雀鱔（1-5），500 金幣＋鱷魚加入 | `CrocQuests.JOIN_AFTER`、`DREAM_FISH`、`DREAM_GOLD` |
 | 鱷魚先生：散步與說話 | 散步速度＝走路步速×0.7、每處停 5–11 秒；開場白 1.5 秒後、之後每 14–26 秒一句、每句 4.5 秒；台詞都在 `OPENING`、`IDLE_LINES`、`OFFER_LINES`、`DONE_LINES` | `scripts/camp_croc.gd` |
-| 鱷魚先生：衣服顏色 | 毛衣磚紅；帽子（使用者的紳士帽改的）奶油色、帽帶深棕 | `CrocLook.SHIRT`；帽子顏色在 `tools/make_croc_props.py` 的 `CREAM`、`BAND` |
+| 鱷魚先生：帽子與毛衣搭配 | 每次出現四種機率相同：紳士帽＋磚紅、遮陽帽＋淡海綠、牛仔帽＋芥末黃、不戴帽＋深藍 | `CrocLook.OUTFITS` |
+| 鱷魚先生：帽子尺寸 | 帽體底部每邊比頭多留 1.6 cm、內側至少 0.8 cm、高度 85%（至少高過頭 2 cm）；帽簷寬：紳士帽、牛仔帽 11 cm，遮陽帽 15 cm | `tools/make_croc_props.py` 的 `EASE`、`EASE_IN`、`CLEAR`、`HATS`（改完重跑工具） |
 | 鱷魚先生：頭上的 3D 卷軸 | 長 0.62 m、離地 2.2 m、上下浮動 0.05 m、橫向面對鏡頭左右擺動 ±0.4 弧度、有可交委託時暖光 0.6 | `CampCroc.SCROLL_LEN`、`SCROLL_UP`、`SCROLL_BOB`、`SCROLL_SWAY`、`SCROLL_TURN`、`SCROLL_GLOW` |
 | 星座硬幣 | 成功逃離時 1% 多給一枚（12 種機率相同）；商人收購 800 金幣 | `Zodiac.CHANCE`、`PRICE` |
 

@@ -2,15 +2,30 @@ class_name CrocLook
 extends RefCounted
 
 ## User request: Mr. Croc in an outfit of his own - not the travellers' (every character wears the
-## same white knit and khaki), so nothing about him says he's one of them. His knit dyed SHIRT
-## (the picture's white knit found by its colour - near-white, no hue - on his body below the
-## head, so his teeth and eyes stay as they are; the knit's own stitches and shading kept), and his
-## hat (HAT). Only on the camp's Mr. Croc (CampCroc); his own picture is untouched.
-
-## (the dye, sRGB - mine for now, the user can change it)
-const SHIRT := Color(0.52, 0.16, 0.11)
-## (where the hat sits on the Head bone: up from it and back a little, tilted back)
-const HAT_AT := Vector3(0.0, 0.215, 0.085)
+## same white knit and khaki), so nothing about him says he's one of them. His knit dyed (the
+## picture's white knit found by its colour - near-white, no hue - on his body below the head, so
+## his teeth and eyes stay as they are; the knit's own stitches and shading kept), and a hat. Only on
+## the camp's Mr. Croc (CampCroc); his own picture is untouched.
+##
+## User request: three hats, any of them or none as he turns up, his knit's colour going with the
+## hat - each of OUTFITS a hat ("" bare-headed) and its knit's dye (sRGB), one picked each time he's by
+## the water (pick). The hats our own (tools/make_croc_props.py, from the user's three: a trilby, a
+## wide sun hat, a leather cowboy hat), each fitted to his head - its crown just over it, its brim
+## wide - so all sit the same way on his Head bone (HAT_AT, HAT_TILT: the tool's SEAT and TILT).
+## (all of these mine for now - the user can change any)
+const OUTFITS := [
+	{"hat": "trilby", "shirt": Color(0.52, 0.16, 0.11)},
+	{"hat": "sun", "shirt": Color(0.44, 0.64, 0.52)},
+	{"hat": "cowboy", "shirt": Color(0.66, 0.48, 0.14)},
+	{"hat": "", "shirt": Color(0.17, 0.23, 0.40)},
+]
+const HATS := {
+	"trilby": preload("res://assets/models/camp/croc_hat_trilby.glb"),
+	"sun": preload("res://assets/models/camp/croc_hat_sun.glb"),
+	"cowboy": preload("res://assets/models/camp/croc_hat_cowboy.glb"),
+}
+## (where a hat's brim sits on the Head bone: up from it and forward a little, tipped back)
+const HAT_AT := Vector3(0.0, 0.195, 0.085)
 const HAT_TILT := -0.16
 ## (the model's height (m) below which the knit is dyed - his collar's under it, his teeth over it)
 const DYE_BELOW := 1.34
@@ -53,8 +68,14 @@ void fragment() {
 static var _dye_shader: Shader
 
 
-## Dresses the camp's Mr. Croc (a CharacterRig of the croc): the knit dyed, the hat on.
-static func dress(rig: CharacterRig) -> void:
+## One of OUTFITS, each as likely.
+static func pick() -> Dictionary:
+	return OUTFITS[randi() % OUTFITS.size()]
+
+
+## Dresses the camp's Mr. Croc (a CharacterRig of the croc) in `outfit` (one of OUTFITS): the knit
+## dyed, the hat on (or none).
+static func dress(rig: CharacterRig, outfit: Dictionary) -> void:
 	for mi in rig.find_children("*", "MeshInstance3D", true, false):
 		var m := mi as MeshInstance3D
 		if m.mesh == null:
@@ -62,19 +83,22 @@ static func dress(rig: CharacterRig) -> void:
 		for i in m.mesh.get_surface_count():
 			var src := m.mesh.surface_get_material(i)
 			if src is BaseMaterial3D and (src as BaseMaterial3D).albedo_texture != null and src.resource_name.ends_with("Skin"):
-				m.set_surface_override_material(i, dyed(src as BaseMaterial3D))
-	rig.equip_node("head", hat(), Transform3D(Basis(Vector3.RIGHT, HAT_TILT), HAT_AT))
+				m.set_surface_override_material(i, dyed(src as BaseMaterial3D, outfit.shirt))
+	if outfit.hat != "":
+		rig.equip_node("head", hat(outfit.hat), Transform3D(Basis(Vector3.RIGHT, HAT_TILT), HAT_AT))
+	else:
+		rig.equip("head", null)
 
 
-## His skin's material with the knit dyed SHIRT (its pictures, its roughness, its normals kept).
-static func dyed(src: BaseMaterial3D) -> ShaderMaterial:
+## His skin's material with the knit dyed `shirt` (its pictures, its roughness, its normals kept).
+static func dyed(src: BaseMaterial3D, shirt: Color) -> ShaderMaterial:
 	if _dye_shader == null:
 		_dye_shader = Shader.new()
 		_dye_shader.code = DYE_SHADER
 	var m := ShaderMaterial.new()
 	m.shader = _dye_shader
 	m.set_shader_parameter("albedo_tex", src.albedo_texture)
-	m.set_shader_parameter("shirt", SHIRT)
+	m.set_shader_parameter("shirt", shirt)
 	m.set_shader_parameter("below", DYE_BELOW)
 	m.set_shader_parameter("roughness", src.roughness)
 	if src.normal_enabled and src.normal_texture != null:
@@ -91,19 +115,11 @@ static func dyed(src: BaseMaterial3D) -> ShaderMaterial:
 	return m
 
 
-## His hat: our own (tools/make_croc_props.py - made from a trilby the user gave: its brim drawn
-## out wider and dipped front and back, re-dyed an aged cream with a dark brown band, a straw weave
-## laid in). It stands on its brim at the origin, its long way front to back.
-const HAT := preload("res://assets/models/camp/croc_hat.glb")
-## (how big on his head: its brim about half a metre across)
-const HAT_SCALE := 1.0
-
-
-static func hat() -> Node3D:
+## One of his hats (HATS) - standing on its brim at the origin, its crown's opening there.
+static func hat(kind: String) -> Node3D:
 	var root := Node3D.new()
-	root.name = "StrawHat"
-	var model: Node3D = HAT.instantiate()
-	model.scale = Vector3.ONE * HAT_SCALE
+	root.name = "Hat_" + kind
+	var model: Node3D = (HATS[kind] as PackedScene).instantiate()
 	root.add_child(model)
 	for mi in model.find_children("*", "MeshInstance3D", true, false):
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON

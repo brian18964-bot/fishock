@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://drmqqqiqc2nhx"
-path="res://.godot/imported/croc_hat.glb-6dca0577e1ad85908fdd0db9d52d0980.scn"
+uid="uid://be54qvrnf7rqr"
+path="res://.godot/imported/croc_hat_trilby.glb-d27eac130672f587ec4a33aaf2f0be1f.scn"
 
 [deps]
 
-source_file="res://assets/models/camp/croc_hat.glb"
-dest_files=["res://.godot/imported/croc_hat.glb-6dca0577e1ad85908fdd0db9d52d0980.scn"]
+source_file="res://assets/models/camp/croc_hat_trilby.glb"
+dest_files=["res://.godot/imported/croc_hat_trilby.glb-d27eac130672f587ec4a33aaf2f0be1f.scn"]
 
 [params]
 

@@ -2,7 +2,7 @@ class_name CampCroc
 extends Node3D
 
 ## User request: Mr. Croc (CrocQuests) on the camp's lakeside - our crocodile in an outfit of his own
-## (CrocLook: not the travellers' white knit, a straw hat) - ambling along the shore, stopping a
+## (CrocLook: not the travellers' white knit; one of his hats, or none, each time he's here) - ambling along the shore, stopping a
 ## while to look out over the water or back at the camp, saying a short line now and then
 ## (`line`, shown over his head by TitleScreen: a few words as he turns up - "這裡挺溫暖的……" - then
 ## one every so often). What he wants and what he pays is only told when he's talked to
@@ -52,6 +52,8 @@ const DONE_LINES := ["喔？看你的樣子，事情辦好了？", "過來過來
 
 var stage: CampStage
 var rig: CharacterRig
+## What he's wearing this time (one of CrocLook.OUTFITS).
+var outfit: Dictionary
 ## The scroll over his head (shown while he's something to talk about - CrocQuests.has_news).
 var scroll: Node3D
 var _glow: OmniLight3D
@@ -82,7 +84,8 @@ func _ready() -> void:
 	rig.fixed = CrocQuests.ID
 	rig.hold_gear = false
 	add_child(rig)
-	CrocLook.dress(rig)
+	outfit = CrocLook.pick()
+	CrocLook.dress(rig, outfit)
 	_idle()
 	_wait = _rng.randf_range(STAY.x * 0.6, STAY.y)
 	_make_scroll()
