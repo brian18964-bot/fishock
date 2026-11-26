@@ -26,6 +26,10 @@ const FARM := {"lantern": [7.0, 0.0], "well": [40.0, 0.0], "logs": [16.0, 0.0], 
 	"milk": [6.0, 0.0], "bale": [19.0, 34.0], "fruit": [30.0, 0.0]}
 
 var kind := "car"
+## User request (the human world's villages): which model it is, if its theme names one (the yard's
+## things - MapGenerator's "yard"), and its own solid ground ((radius, length) px; zero: its kind's).
+var model := ""
+var size := Vector2.ZERO
 ## Its heading (rad, on the map: 0 along +x).
 var yaw := 0.0
 ## A lamp still lit at night.
@@ -37,7 +41,7 @@ var _bases: Array = []
 func _ready() -> void:
 	add_to_group("solids")
 	add_to_group("street_props")
-	var shape := shape_of(kind)
+	var shape := size if size != Vector2.ZERO else shape_of(kind)
 	if shape.y > 0.0:
 		# (two circles along its length)
 		var along := Vector2(cos(yaw), sin(yaw)) * (shape.y * 0.5 - shape.x)
@@ -66,6 +70,8 @@ func solids() -> Array:
 
 ## How far it reaches from its middle (px) - kept clear by what's placed round it.
 func reach() -> float:
+	if size != Vector2.ZERO:
+		return maxf(size.x, size.y * 0.5)
 	return reach_of(kind)
 
 

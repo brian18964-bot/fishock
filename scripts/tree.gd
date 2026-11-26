@@ -51,6 +51,10 @@ const THEME_KINDS := {
 	# the fields and the ponds turning, pines among them (the orchard's fruit trees are the farm's own:
 	# StreetProp "fruit").
 	"countryside": ["autumn_a", "autumn_b", "autumn_c", "autumn_d", "pine_b", "pine_c", "pine_b"],
+	# User request (the human world's other villages): the Japanese village's black pines and maples
+	# turning; the English village's oaks turning and a few pines.
+	"japan": ["pine_b", "pine_c", "pine_b", "autumn_a", "autumn_c", "autumn_d"],
+	"england": ["autumn_a", "autumn_b", "autumn_c", "autumn_d", "pine_b", "pine_c"],
 }
 ## The desert's trees out on the dunes, away from the water (MapGenerator._place_tree): dead ones,
 ## bare (dead_d and dead_e keep a few autumn leaves - the autumn wood's, not the sand's).

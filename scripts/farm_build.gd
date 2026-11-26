@@ -29,6 +29,24 @@ const FENCE_POST := 2.2
 const FENCE_HIGH := 1.15
 const FENCE_RAILS := [0.45, 0.88]
 const FENCE_WOOD := Color(0.36, 0.29, 0.21)
+## (the Japanese village's bamboo fences: a post this often, m; their height; the rails' heights; a
+## cane this often; the dried bamboo's colour)
+const BAMBOO_POST := 1.8
+const BAMBOO_HIGH := 1.2
+const BAMBOO_RAILS := [0.35, 0.68, 0.98]
+const BAMBOO_CANE := 0.28
+const BAMBOO := Color(0.6, 0.56, 0.34)
+## (the English village's dry-stone walls: their height, courses, thickness at the foot, a stone's
+## length (m), their grey; its hedges: their height, thickness, a lump's length, their green)
+const WALL_HIGH := 0.78
+const WALL_COURSES := 3
+const WALL_THICK := 0.55
+const WALL_STONE := Vector2(0.32, 0.7)
+const WALL_GREY := Color(0.44, 0.42, 0.38)
+const HEDGE_HIGH := 1.15
+const HEDGE_THICK := 0.85
+const HEDGE_LUMP := Vector2(0.7, 1.3)
+const HEDGE_GREEN := Color(0.11, 0.2, 0.065)
 ## (a round bale: its radius and length, m; its straw)
 const BALE_R := 0.72
 const BALE_LONG := 1.25
@@ -41,6 +59,9 @@ const LANTERN_RANGE := 7.0
 const MODELS := {"lantern": ["farm_lantern"], "well": ["farm_well_1", "farm_well_2"], "logs": ["farm_logs_1"],
 	"lumber": ["farm_logs_2"], "barrel": ["farm_barrel"], "wagon": ["farm_wagon"], "barrow": ["farm_barrow"],
 	"trough": ["farm_trough"], "milk": ["farm_milk"], "fruit": ["farm_fruit_1", "farm_fruit_2", "farm_fruit_3"]}
+
+## (what grows - each its own size a little)
+const GROWN := ["fruit", "bamboo"]
 
 static var _wood_mat: StandardMaterial3D
 static var _glow_mat: StandardMaterial3D
@@ -83,6 +104,9 @@ static func fields_grid(fields: Array, lo: Vector2, n: Vector2i, cell: float) ->
 		var field := f as FarmField
 		var a := field.rect.position / PX
 		var b := field.rect.end / PX
+		if field.crop == "pasture":
+			# (a pasture's grass the meadow's own)
+			continue
 		var into := stubble if field.crop == "stubble" else plough
 		var i0 := maxi(0, int((a.x - FIELD_FADE - lo.x) / cell))
 		var i1 := mini(n.x - 1, int((b.x + FIELD_FADE - lo.x) / cell) + 1)
@@ -112,18 +136,21 @@ static func props(holder: Node3D, list: Array, land_y: Callable) -> void:
 		var node := Node3D.new()
 		if sp.kind == "bale":
 			node.add_child(_bale(rng))
-		elif MODELS.has(sp.kind):
-			var names: Array = MODELS[sp.kind]
-			var name: String = names[rng.randi() % names.size()]
+		elif sp.model != "" or MODELS.has(sp.kind):
+			# (its theme's model for it, or its kind's)
+			var name := sp.model
+			if name == "":
+				var names: Array = MODELS[sp.kind]
+				name = names[rng.randi() % names.size()]
 			var model := CityBuild._model(Ruin.path_of(name), "Model", shade, true)
 			# (its long way along the prop's heading - the way its solid ground lies)
 			var size: Array = Ruin.info(name).get("size", [1, 1, 1])
 			if float(size[1]) > float(size[0]):
 				model.rotation.y = PI * 0.5
-			if sp.kind == "fruit":
+			if sp.kind in GROWN:
 				model.scale = Vector3.ONE * rng.randf_range(0.95, 1.2)
 			node.add_child(model)
-			if sp.kind == "lantern" and sp.lit:
+			if sp.lit:
 				_light(node, name)
 		else:
 			continue
@@ -207,7 +234,8 @@ static func _bale_at(x: float, a: float) -> Vector3:
 	return Vector3(x, y, cos(a) * BALE_R)
 
 
-## Every fence as posts and rails - one mesh, its wood weathered piece by piece.
+## Every fence - one mesh, each of its kind (Fence.style): the countryside's posts and rails, its wood
+## weathered piece by piece; the Japanese village's bamboo; the English dry-stone walls and hedges.
 static func fences(holder: Node3D, list: Array, land_y: Callable) -> void:
 	if list.is_empty():
 		return
@@ -221,31 +249,140 @@ static func fences(holder: Node3D, list: Array, land_y: Callable) -> void:
 		var ends := fence.ends()
 		var a: Vector2 = ends[0]
 		var b: Vector2 = ends[1]
-		var length := a.distance_to(b) / PX
-		var posts := maxi(1, ceili(length / FENCE_POST))
-		var tops := []
-		for i in posts + 1:
-			var p2 := a.lerp(b, float(i) / float(posts))
-			var y := float(land_y.call(p2))
-			var at := Vector3(p2.x / PX, y, p2.y / PX)
-			var high := FENCE_HIGH * rng.randf_range(0.93, 1.05)
-			var wood := FENCE_WOOD * rng.randf_range(0.8, 1.12)
-			wood.a = 1.0
-			var lean := Vector3(rng.randf_range(-0.04, 0.04), 0.0, rng.randf_range(-0.04, 0.04))
-			_beam(st, at, at + Vector3(0.0, high, 0.0) + lean, 0.065, wood)
-			tops.append(at + lean * 0.5)
-		for i in posts:
-			for h: float in FENCE_RAILS:
-				var wood := FENCE_WOOD * rng.randf_range(0.85, 1.15)
-				wood.a = 1.0
-				var p0: Vector3 = tops[i] + Vector3(0.0, h + rng.randf_range(-0.03, 0.03), 0.0)
-				var p1: Vector3 = tops[i + 1] + Vector3(0.0, h + rng.randf_range(-0.03, 0.03), 0.0)
-				_beam(st, p0, p1, 0.04, wood)
+		match fence.style:
+			"bamboo":
+				_bamboo_fence(st, a, b, land_y, rng)
+			"stone":
+				_stone_wall(st, a, b, land_y, rng)
+			"hedge":
+				_hedge(st, a, b, land_y, rng)
+			_:
+				_wood_fence(st, a, b, land_y, rng)
 	var mi := MeshInstance3D.new()
 	mi.name = "Fences"
 	mi.mesh = st.commit()
 	mi.material_override = _wood_mat
 	holder.add_child(mi)
+
+
+## (a point along a fence from `a` to `b` (px), `t` of the way, at its ground - m)
+static func _along(a: Vector2, b: Vector2, t: float, land_y: Callable) -> Vector3:
+	var p2 := a.lerp(b, t)
+	return Vector3(p2.x / PX, float(land_y.call(p2)), p2.y / PX)
+
+
+static func _wood_fence(st: SurfaceTool, a: Vector2, b: Vector2, land_y: Callable, rng: RandomNumberGenerator) -> void:
+	var length := a.distance_to(b) / PX
+	var posts := maxi(1, ceili(length / FENCE_POST))
+	var tops := []
+	for i in posts + 1:
+		var at := _along(a, b, float(i) / float(posts), land_y)
+		var high := FENCE_HIGH * rng.randf_range(0.93, 1.05)
+		var wood := _shade(FENCE_WOOD, rng, 0.8, 1.12)
+		var lean := Vector3(rng.randf_range(-0.04, 0.04), 0.0, rng.randf_range(-0.04, 0.04))
+		_beam(st, at, at + Vector3(0.0, high, 0.0) + lean, 0.065, wood)
+		tops.append(at + lean * 0.5)
+	for i in posts:
+		for h: float in FENCE_RAILS:
+			var p0: Vector3 = tops[i] + Vector3(0.0, h + rng.randf_range(-0.03, 0.03), 0.0)
+			var p1: Vector3 = tops[i + 1] + Vector3(0.0, h + rng.randf_range(-0.03, 0.03), 0.0)
+			_beam(st, p0, p1, 0.04, _shade(FENCE_WOOD, rng, 0.85, 1.15))
+
+
+## A bamboo fence (the Japanese village's four-eyed fence): thick bamboo posts, thin canes upright
+## close along it, three rails across them, the bamboo dried pale and yellowing.
+static func _bamboo_fence(st: SurfaceTool, a: Vector2, b: Vector2, land_y: Callable, rng: RandomNumberGenerator) -> void:
+	var length := a.distance_to(b) / PX
+	var posts := maxi(1, ceili(length / BAMBOO_POST))
+	for i in posts + 1:
+		var at := _along(a, b, float(i) / float(posts), land_y)
+		_beam(st, at, at + Vector3(0.0, BAMBOO_HIGH * rng.randf_range(0.97, 1.03), 0.0), 0.05, _shade(BAMBOO, rng, 0.85, 1.05))
+	var canes := maxi(2, ceili(length / BAMBOO_CANE))
+	var side := Vector3(-(b - a).normalized().y, 0.0, (b - a).normalized().x) * 0.03
+	for i in canes + 1:
+		var at := _along(a, b, float(i) / float(canes), land_y) + side * (1.0 if i % 2 == 0 else -1.0)
+		_beam(st, at, at + Vector3(0.0, BAMBOO_HIGH * 0.88, 0.0), 0.02, _shade(BAMBOO, rng, 0.8, 1.1))
+	for h: float in BAMBOO_RAILS:
+		for i in posts:
+			var p0 := _along(a, b, float(i) / float(posts), land_y) + Vector3(0.0, h, 0.0)
+			var p1 := _along(a, b, float(i + 1) / float(posts), land_y) + Vector3(0.0, h, 0.0)
+			_beam(st, p0, p1, 0.024, _shade(BAMBOO, rng, 0.75, 0.95))
+
+
+## A dry-stone wall (the English village's): courses of rough stones of their own lengths and greys,
+## a row of capstones on edge along its top.
+static func _stone_wall(st: SurfaceTool, a: Vector2, b: Vector2, land_y: Callable, rng: RandomNumberGenerator) -> void:
+	var length := a.distance_to(b) / PX
+	var dir2 := (b - a).normalized()
+	var along := Vector3(dir2.x, 0.0, dir2.y)
+	var course := WALL_HIGH / float(WALL_COURSES)
+	for c in WALL_COURSES:
+		var at := rng.randf_range(0.0, 0.25) if c % 2 == 1 else 0.0
+		var thick := lerpf(WALL_THICK, WALL_THICK * 0.8, float(c) / float(WALL_COURSES))
+		while at < length - 0.05:
+			var stone := minf(rng.randf_range(WALL_STONE.x, WALL_STONE.y), length - at)
+			var mid := _along(a, b, (at + stone * 0.5) / length, land_y)
+			mid.y += course * (float(c) + 0.5) + rng.randf_range(-0.02, 0.02)
+			_slab(st, mid, along, Vector3(stone - 0.03, course - 0.02, thick + rng.randf_range(-0.04, 0.04)), _shade(WALL_GREY, rng, 0.8, 1.18), rng)
+			at += stone
+	var at := 0.0
+	while at < length - 0.05:
+		var cap := minf(rng.randf_range(0.16, 0.28), length - at)
+		var mid := _along(a, b, (at + cap * 0.5) / length, land_y)
+		mid.y += WALL_HIGH + 0.08
+		_slab(st, mid, along, Vector3(cap - 0.02, 0.18 + rng.randf_range(-0.03, 0.03), WALL_THICK * 0.75), _shade(WALL_GREY, rng, 0.75, 1.1), rng)
+		at += cap
+
+
+## A hedge (the English village's): lumps of clipped green along it, each its own size and shade,
+## lighter on top.
+static func _hedge(st: SurfaceTool, a: Vector2, b: Vector2, land_y: Callable, rng: RandomNumberGenerator) -> void:
+	var length := a.distance_to(b) / PX
+	var dir2 := (b - a).normalized()
+	var along := Vector3(dir2.x, 0.0, dir2.y)
+	var at := 0.0
+	var across := along.cross(Vector3.UP).normalized()
+	while at < length - 0.1:
+		var lump := minf(rng.randf_range(HEDGE_LUMP.x, HEDGE_LUMP.y), length - at)
+		var high := HEDGE_HIGH * rng.randf_range(0.85, 1.1)
+		var mid := _along(a, b, (at + lump * 0.5) / length, land_y)
+		mid.y += high * 0.5
+		var turn := along.rotated(Vector3.UP, rng.randf_range(-0.12, 0.12))
+		_slab(st, mid, turn, Vector3(lump + 0.15, high, HEDGE_THICK * rng.randf_range(0.85, 1.05)), _shade(HEDGE_GREEN, rng, 0.8, 1.1), rng, 1.2)
+		# (smaller tufts over it and out its sides - not a clipped box)
+		for _k in 3:
+			var tuft := rng.randf_range(0.3, 0.55)
+			var off := across * rng.randf_range(-HEDGE_THICK * 0.45, HEDGE_THICK * 0.45) + along * rng.randf_range(-lump * 0.4, lump * 0.4)
+			var top := mid + off + Vector3(0.0, high * 0.5 - tuft * 0.25 + rng.randf_range(-0.05, 0.12), 0.0)
+			_slab(st, top, along.rotated(Vector3.UP, rng.randf() * PI), Vector3(tuft, tuft * 0.7, tuft), _shade(HEDGE_GREEN, rng, 0.9, 1.25), rng, 1.15)
+		at += lump
+
+
+## A colour a shade of its own (`lo`..`hi` of it).
+static func _shade(col: Color, rng: RandomNumberGenerator, lo: float, hi: float) -> Color:
+	var c := col * rng.randf_range(lo, hi)
+	c.a = 1.0
+	return c
+
+
+## A box (`size`: along, up, across) with its middle at `at`, its length along `along`; its top
+## `top` times its colour.
+static func _slab(st: SurfaceTool, at: Vector3, along: Vector3, size: Vector3, col: Color, rng: RandomNumberGenerator, top := 1.0) -> void:
+	var u := along.normalized() * size.x * 0.5
+	var v := Vector3.UP * size.y * 0.5
+	var w := along.normalized().cross(Vector3.UP).normalized() * size.z * 0.5
+	var lit := col * top
+	lit.a = 1.0
+	var faces := [[v, u, w, lit], [-v, u, -w, col * 0.8], [u, v, -w, col], [-u, v, w, col], [w, u, v, col], [-w, u, -v, col]]
+	for f in faces:
+		var n: Vector3 = f[0]
+		var e1: Vector3 = f[1]
+		var e2: Vector3 = f[2]
+		var c: Color = f[3]
+		c.a = 1.0
+		var o := at + n
+		_tri(st, o - e1 - e2, o + e1 - e2, o + e1 + e2, n.normalized(), c)
+		_tri(st, o - e1 - e2, o + e1 + e2, o - e1 + e2, n.normalized(), c)
 
 
 ## A square beam from `a` to `b`, `r` m from its middle to its sides.

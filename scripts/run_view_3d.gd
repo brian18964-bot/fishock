@@ -474,7 +474,7 @@ var _cliff := false
 ## User request (the ruined human world - MapGenerator's "city"): its buildings (CityBuild) and
 ## their shared material (its see-through kept round the traveller each frame).
 var _city := false
-## User request (the human world's countryside): its farms - FarmBuild.
+## User request (the human world's countryside, and its other villages): its farms - FarmBuild.
 var _farm := false
 var _ruin_mat: ShaderMaterial
 ## (the coast: the sea's depth (px, + out in the water) at each of the ground grid's points - the sea
@@ -532,7 +532,8 @@ func _ready() -> void:
 	_coast = MapGenerator.current_theme.begins_with("coast")
 	_cliff = MapGenerator.current_theme.begins_with("coast_cliff")
 	_city = MapGenerator.current_theme.begins_with("city")
-	_farm = MapGenerator.current_theme.begins_with("countryside")
+	# (and the other villages laid out the same way - the Japanese, the English: a style with "farm")
+	_farm = (MapGenerator.THEMES.get(MapGenerator.current_theme, {}) as Dictionary).has("farm")
 	Foliage.set_wind(Foliage.WIND)
 	_rng.seed = 11
 	player = main.get_node("Player")

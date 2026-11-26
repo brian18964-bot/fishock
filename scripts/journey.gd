@@ -98,10 +98,10 @@ func _build_story() -> void:
 	for c in Campaign.CHAPTERS:
 		var n: int = c.id
 		var open := Campaign.chapter_open(n)
-		# (the tab its number and name, its stars under them - two lines, narrow enough for all the
-		# chapters across (seven now, user request: the ruined human world's city) - the chapter's
-		# 第X章 in the card's line below)
-		var words := "%d %s\n" % [n, c.name]
+		# (the tab its name, its stars under them - two lines, narrow enough for all the chapters across
+		# (ten now, user request: the human world's city, countryside, Japanese and English villages; up
+		# to twelve) - the chapter's 第X章 in its tooltip and the card's line below)
+		var words := "%s\n" % c.name
 		words += "★%d/%d" % [Campaign.chapter_stars(n), Campaign.levels_of(n).size() * 3] if open else "★%d 解鎖" % int(c.stars)
 		var b := UiKit.button(words, 13)
 		b.name = "Chapter%d" % n

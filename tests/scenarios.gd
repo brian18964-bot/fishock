@@ -164,6 +164,7 @@ const TESTS := [
 	"test_zodiac_coins",
 	"test_city_map",
 	"test_countryside_map",
+	"test_japan_and_england_maps",
 	"test_bag_card_closes",
 	"test_altar_this_run_only",
 	"test_locks",
@@ -6401,8 +6402,8 @@ func test_campaign_unlocks_and_achievements() -> void:
 	reset_progress()
 	# (user decision - the maps' branches: one after another in a map, the next map once the whole of
 	# this one's done; six maps, 26 levels - and, user request, the human world's after them: the
-	# ruined city, then the countryside: eight maps, 36 levels)
-	check(camp().CHAPTERS.size() == 8 and camp().LEVELS.size() == 36, "eight maps, 36 branches")
+	# ruined city, the countryside, the Japanese and the English villages: ten maps, 46 levels)
+	check(camp().CHAPTERS.size() == 10 and camp().LEVELS.size() == 46, "ten maps, 46 branches")
 	# (the achievements brought to the chapters: each after the first its own; "all the stars" of the
 	# journey across the lake - its six chapters' - and the curses after its last)
 	var journey_ids: Array = camp().ACHIEVEMENTS.map(func(a): return str(a[0]))
@@ -13720,7 +13721,7 @@ func test_countryside_map() -> void:
 		"the countryside's own fish in its water, the mandarin fish its rarest")
 	# (a level changes only what it names of the farms - the rest the style's)
 	var orchard: Dictionary = camp().LEVELS.filter(func(l): return l.id == "8-3")[0].rules.mods.yard
-	check(orchard.size() == 1, "8-3 names only its orchards")
+	check(orchard.size() == 1 and orchard.has("groves"), "8-3 names only its orchards")
 	Campaign.dev_all_open = true
 	seed(11)
 	await play_level("8-3")
@@ -13733,7 +13734,7 @@ func test_countryside_map() -> void:
 	check(view != null and view.built and MapGenerator.current_theme == "countryside" and FishData.waters == "countryside",
 		"8-3 opens on the countryside map, its water the countryside's")
 	var gen = main.get_node("MapGenerator")
-	check(int(gen.theme.yard.orchards) == 2 and int(gen.theme.yard.lanterns) == int(MapGenerator.THEMES.countryside.yard.lanterns)
+	check(int(gen.theme.yard.groves[0].count) == 2 and (gen.theme.yard.things as Array).size() == (MapGenerator.THEMES.countryside.yard.things as Array).size()
 		and gen.theme.farm.has("houses"), "8-3's two orchards over the style's yard, its farms the style's")
 	# The farms: houses and barns (the user's farm set, made ours), solid, out of the water, clear of the
 	# camp, the altar, the way out; each with its model.
@@ -13828,6 +13829,90 @@ func test_countryside_map() -> void:
 		var r2 := get_tree().get_nodes_in_group("ruins")
 		var f2 := get_tree().get_nodes_in_group("farm_fields")
 		check(r2.size() >= 1 and f2.size() >= 1, "%s: %d farm buildings, %d fields" % [level, r2.size(), f2.size()])
+
+
+func test_japan_and_england_maps() -> void:
+	# User request (the human world's other villages, made as ordinary places - the two whose models the
+	# user sent): chapter 9, the Japanese village, and chapter 10, the English, laid out as the
+	# countryside is, each its own buildings, fences, things and fish.
+	var villages := [
+		{"chapter": 9, "theme": "japan", "name": "日式山村", "level": "9-3", "small": "9-1", "prefix": "jp_", "fences": ["bamboo"],
+			"fish": ["yamame", "ugui", "kawamutsu", "goldfish", "biwa_catfish", "amago", "sakura_masu", "hasu", "nigoro", "biwa_trout", "akame"]},
+		{"chapter": 10, "theme": "england", "name": "英式村莊", "level": "10-3", "small": "10-1", "prefix": "eng_", "fences": ["stone", "hedge"],
+			"fish": ["roach", "rudd", "tench", "dace", "atlantic_salmon", "gudgeon", "chub", "barbel", "zander", "sea_trout", "ferox_trout"]},
+	]
+	Campaign.dev_all_open = true
+	for v: Dictionary in villages:
+		var levels: Array = camp().LEVELS.filter(func(l): return int(l.chapter) == int(v.chapter))
+		check(levels.size() == 5 and levels.all(func(l): return str(l.rules.theme) == v.theme)
+			and levels.map(func(l): return str(l.rules.map)) == ["S", "M", "L", "L", "XL"]
+			and camp().chapter(int(v.chapter)).name == v.name, "chapter %d, %s: five branches, small to extra large" % [v.chapter, v.name])
+		var fish_ok := true
+		for id in v.fish:
+			fish_ok = fish_ok and FishData.FISH.has(id) and FishData.LENGTH_CM.has(id) and FishModel.has_model(id) \
+				and ResourceLoader.exists("res://assets/sprites/fish/%s.png" % id) and not FishData.gate_stats(id).is_empty()
+		var style: Array = FishData.STYLE_FISH[v.theme]
+		check(fish_ok and FishData.waters_for_theme(v.theme) == v.theme and FishData.pool_for(v.theme, "rare", "rare").has(style[0][0])
+			and FishData.pool_for(v.theme, "common", "epic").has(style[1]), "%s: its eleven fish, its own in its water" % v.theme)
+		seed(11)
+		await play_level(v.level)
+		var view: RunView3D = null
+		for _i in 600:
+			view = RunView3D.active
+			if view != null and view.built:
+				break
+			await frames(1)
+		check(view != null and view.built and MapGenerator.current_theme == v.theme and FishData.waters == v.theme,
+			"%s opens on its map, its water its own" % v.level)
+		var waters := get_tree().get_nodes_in_group("water_zones")
+		var wet := func(p: Vector2) -> bool:
+			return waters.any(func(z): return (z as WaterZone).contains(p))
+		var ruins := get_tree().get_nodes_in_group("ruins")
+		var bad := []
+		for r in ruins:
+			var ruin := r as Ruin
+			if not (ResourceLoader.exists(ruin.model_path()) and not wet.call(ruin.position) and ruin.is_in_group("solids")):
+				bad.append([ruin.name, ruin.model])
+		var own := ruins.filter(func(r): return (r as Ruin).model.begins_with(v.prefix))
+		check(own.size() >= 3 and bad.is_empty(), "%s: %d buildings of its own (%s), out of the water %s" % [v.theme, own.size(), str(own.map(func(r): return r.model)), str(bad)])
+		# (their colours on: the Japanese set's are its vertex colours)
+		var coloured := true
+		for m in view.find_children("RuinModel*", "Node3D", true, false):
+			for mi in (m as Node).find_children("*", "MeshInstance3D", true, false):
+				var mat := (mi as MeshInstance3D).get_surface_override_material(0) as ShaderMaterial
+				if mat != null and not mat.get_shader_parameter("use_colour"):
+					coloured = false
+		check(coloured, "%s: each building its own colours" % v.theme)
+		var fences := get_tree().get_nodes_in_group("fences")
+		check(fences.all(func(f): return (f as Fence).style in v.fences), "%s: its fences %s" % [v.theme, str(v.fences)])
+		var props := get_tree().get_nodes_in_group("street_props")
+		var lit := props.filter(func(q): return (q as StreetProp).lit)
+		check(view.find_children("FarmProp*", "Node3D", true, false).size() == props.size()
+			and view.find_children("LampLight", "OmniLight3D", true, false).size() == lit.size()
+			and lit.size() <= int(MapGenerator.THEMES[v.theme].yard.lit_most), "%s: its things drawn, %d lanterns lit" % [v.theme, lit.size()])
+		var tex: Texture2D = view._ground_mat.get_shader_parameter("path_tex")
+		check(tex != null and tex.resource_path.contains(str(MapGenerator.THEMES[v.theme].floor3d.path)), "%s: its paths' ground" % v.theme)
+		if v.theme == "japan":
+			# (a torii astride a path near its house: the path between its posts, its posts off it)
+			var gen = main.get_node("MapGenerator")
+			var torii := props.filter(func(q): return (q as StreetProp).kind == "torii")
+			var astride := true
+			for q in torii:
+				var sp := q as StreetProp
+				var along := Vector2(cos(sp.yaw), sin(sp.yaw)) * (sp.size.y * 0.5 - sp.size.x)
+				astride = astride and gen._on_track(sp.global_position, 0.0) and not gen._on_track(sp.global_position + along, 0.0) \
+					and not gen._on_track(sp.global_position - along, 0.0)
+			check(torii.size() >= 1 and astride, "the torii astride the paths (%d)" % torii.size())
+			check(props.any(func(q): return (q as StreetProp).kind == "bamboo"), "a bamboo grove")
+		else:
+			check(ruins.any(func(r): return (r as Ruin).model == "eng_chapel"), "the chapel, the village's landmark")
+		# A small map: a farm and a field still.
+		seed(5)
+		await play_level(str(v.small))
+		await frames(4)
+		var r2 := get_tree().get_nodes_in_group("ruins")
+		var f2 := get_tree().get_nodes_in_group("farm_fields")
+		check(r2.size() >= 1 and f2.size() >= 1, "%s: %d buildings, %d fields" % [v.small, r2.size(), f2.size()])
 
 
 func test_city_map() -> void:

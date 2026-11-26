@@ -8,13 +8,18 @@ extends StaticBody2D
 ##
 ## Solids (the ghosts, the willow - they move by hand) see it as a row of small circles.
 
-## (its thickness, px; how far apart the circles Solids see along it)
+## (its thickness, px - a post-and-rail fence's; how far apart the circles Solids see along it)
 const THICK := 8.0
 const STEP := 14.0
+## User request (the human world's other villages): its kinds - a wooden post-and-rail fence (the
+## countryside), a bamboo fence (the Japanese village), a dry-stone wall or a hedge (the English) - and
+## each one's thickness (px).
+const STYLES := {"wood": 8.0, "bamboo": 8.0, "stone": 14.0, "hedge": 22.0}
 
-## Half its length (px) and its heading (rad, on the map: 0 along +x).
+## Half its length (px) and its heading (rad, on the map: 0 along +x); its kind.
 var half := 60.0
 var yaw := 0.0
+var style := "wood"
 var seed_value := 0
 var _bases: Array = []
 
@@ -23,7 +28,8 @@ func _ready() -> void:
 	add_to_group("solids")
 	add_to_group("fences")
 	var shape := RectangleShape2D.new()
-	shape.size = Vector2(half * 2.0, THICK)
+	var thick := thick_of(style)
+	shape.size = Vector2(half * 2.0, thick)
 	var col := CollisionShape2D.new()
 	col.shape = shape
 	col.rotation = yaw
@@ -32,7 +38,7 @@ func _ready() -> void:
 	var n := maxi(1, ceili(half * 2.0 / STEP))
 	for i in n + 1:
 		var t := float(i) / float(n) - 0.5
-		_bases.append([along * (t * half * 2.0), Vector2(THICK * 0.6, THICK * 0.6)])
+		_bases.append([along * (t * half * 2.0), Vector2(thick * 0.6, thick * 0.6)])
 
 
 func solids() -> Array:
@@ -40,6 +46,11 @@ func solids() -> Array:
 	for b in _bases:
 		out.append([global_position + (b[0] as Vector2), b[1]])
 	return out
+
+
+## A kind of fence's thickness (px).
+static func thick_of(which: String) -> float:
+	return float(STYLES.get(which, THICK))
 
 
 ## Its two ends (px, world).

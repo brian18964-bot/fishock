@@ -617,6 +617,25 @@ def stubble(rng):
     return col, normal_from_height(h, 5.0)
 
 
+def shrine_gravel(rng):
+    """User request (the Japanese village): the pale gravel of a shrine's paths and yards - small
+    rounded stones, grey-white with a few darker, bedded close, a little earth between."""
+    f1, f2, ident = voronoi(rng, 10, 0.95)
+    tone = np.random.default_rng(int(rng.integers(1 << 30))).random(ident.max() + 1)[ident]
+    g = 0.5 + tone * 0.22
+    dark = np.random.default_rng(int(rng.integers(1 << 30))).random(ident.max() + 1)[ident] < 0.12
+    g = np.where(dark, g * 0.6, g)
+    col = np.stack([g * 1.01, g * 1.0, g * 0.96], -1)
+    edge = np.clip((f2 - f1) / 3.0, 0, 1)
+    dome = np.clip(1.0 - (f1 / 6.0) ** 2, 0, 1)
+    h = dome * edge ** 0.5
+    col = col * (0.55 + 0.45 * edge[..., None] ** 0.5)
+    grit = periodic_noise(rng, 2.5)
+    col = col * (0.92 + grit[..., None] * 0.16)
+    col = np.where((edge < 0.12)[..., None], np.array([0.22, 0.2, 0.17]), col)
+    return col, normal_from_height(blur(h, 0.6) + grit * 0.04, 8.0)
+
+
 # (the ploughed fields' and the stubble's rows a tile - about one every 0.6 m in the game)
 FURROWS = 7
 
@@ -682,6 +701,8 @@ MAKERS = {
     # (the countryside's: a ploughed field, a field's stubble after the harvest)
     "furrow": furrow,
     "stubble": stubble,
+    # (the Japanese village's paths)
+    "shrine_gravel": shrine_gravel,
 }
 
 

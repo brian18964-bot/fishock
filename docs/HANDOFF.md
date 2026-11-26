@@ -79,6 +79,15 @@
   有缺口的木籬笆、從農家通到地圖邊的土路與提燈、果園、水井、柴堆、木桶、推車）、第 8 章五個分支、11 種鄉村魚（暫代模型）。
   細節見 `docs/RUINED_WORLD.md` 第七節。
 
+### 13. 人類世界：第 9 章「日式山村」、第 10 章「英式村莊」（正常的村子）
+- 使用者要求（11/26 晚，去睡前）：連續做兩個主題，並把尚缺的物件模組列出來，一口氣去找。
+- 先做已經有素材的日式（神社套件）和英式（木構屋、教堂、小石塔）；章節改成 9 日式、10 英式，部落、中國風往後（我先訂的、可以改）。
+- 鄉村的擺放系統改成各主題共用：院子物件改成資料清單（模型、數量、放在路邊／跨在路上／建築旁／院子／空地）、
+  圍籬有四種樣式（木、竹、乾砌石牆、樹籬）、林叢通用（果園、竹林）、每張圖一個地標建築（日式大殿、英式教堂）。
+- 修正：模型建築的頂點色之前沒有套上（鄉村農舍底部的泥土髒污其實一直沒顯示），現在有了。
+- 章節分頁拿掉數字（只留名稱和星數），10～12 章都放得下。
+- **缺件清單**：`docs/ASSET_WISHLIST.md`（所有主題一次列齊，含魚的照片）。細節見 `docs/RUINED_WORLD.md` 第八、九節。
+
 ## 三、已定案（使用者決定的，不用再問）
 ### 劇情與分支
 1. 每張地圖分 4～5 支，每支是一個劇情關卡；共 6 章 26 關。地圖順序：湖畔森林 → 秋林 → 雪地森林 → 沙漠綠洲 → 沙灘海岸 → 海崖。
@@ -146,6 +155,11 @@
 | 鄉村的院子與路 | 每個基準面積 6 支提燈（50% 會亮、最多 3 支）、水井 1、柴堆 3、木材 2、木桶 4、水槽 2、牛奶桶 3、乾草車 2、手推車 2；每張圖 1 座果園（3～4 排 × 3～4 棵，間隔 105 px）；土路寬 64 px | `THEMES.countryside.yard`、`MapGenerator.TRACK_HALF`、`TRACK_WANDER` |
 | 鄉村的作物與籬笆外觀 | 南瓜 0.4～0.57 m、每 1.4～2.3 m 一顆（隔一排）；菜每 0.85～1.15 m；籬笆每 2.2 m 一根柱子、高 1.15 m；乾草捆半徑 0.72 m；提燈亮度 2.2、範圍 7 m | `FarmBuild` 的 `PUMPKIN_*`、`GREENS_*`、`FENCE_*`、`BALE_*`、`LANTERN_*` |
 | 鄉村的魚 | 主題魚 青鱂魚、溪哥、鰟鮍、黃顙魚＋鱖魚；分支獨有魚見 `docs/RUINED_WORLD.md` 第七節 | `FishData.FISH`、`STYLE_FISH.countryside`、`LENGTH_CM` |
+| 第 9 章日式、第 10 章英式 | 各五個分支的大小、額度、時間、小鬼、天氣、獨有魚、首通獎勵（260～560 金幣）；9-2 竹林 5 片、10-2 圍牆 95%、10-3 每戶小石塔、9-4／10-4 狼 | `Campaign.LEVELS` 的 9-1～10-5 |
+| 日式山村的擺放 | 每個基準面積 3 戶、院子寬 150 px、3 塊菜田（75% 竹籬）；鳥居 2 座、石燈籠 7（60% 亮、最多 4 盞）、木燈籠 3、繪馬架 1、長椅 2、手水缽 2、竹籃 3；竹林 3 片（2～3 × 3～5 叢，間隔 120 px） | `MapGenerator.THEMES.japan` 的 `farm`、`yard` |
+| 英式村莊的擺放 | 每個基準面積 3 戶、院子寬 160 px、5 塊田（牧場 1.4、犁過 0.8、收割 0.8、菜 0.3；85% 圍石牆或樹籬，石牆:樹籬 = 1:0.7）；提燈 5、水井 1、柴堆 3、木材 2、水槽 2、乾草車 2、手推車 2；蘋果園 1 座 | `THEMES.england` 的 `farm`、`yard` |
+| 竹籬、石牆、樹籬外觀 | 竹籬高 1.2 m、柱距 1.8 m；石牆高 0.78 m、三層、厚 0.55 m；樹籬高 1.15 m、厚 0.85 m | `FarmBuild` 的 `BAMBOO_*`、`WALL_*`、`HEDGE_*`；碰撞厚度 `Fence.STYLES` |
+| 日式、英式的魚 | 日式主題魚 山女魚、珠星三塊魚、河鱲、金魚＋琵琶湖大鯰；英式 擬鯉、紅眼魚、丁鱥、歐洲鰷＋大西洋鮭 | `FishData.STYLE_FISH.japan`、`.england` |
 
 ## 五、待辦與需要使用者決定的事
 1. **鱷魚先生**已做（規則都是我先訂的，見第四節）：可同時多個委託、魚要真的交出去、可分批交。
@@ -155,6 +169,8 @@
     還沒做：運河（7-3）、地鐵坑（7-4）、海岸港口（7-5）、撿拾點（提案）、自由模式的都市地圖卡片。
 11. **鄉村**（第 8 章）已可玩；還沒做：農場動物（雞、牛、羊——沒有素材，目前只有鹿和狐狸，8-4 有狼）、溝渠／大河（8-5 現在是一般池塘）、
     自由模式的鄉村地圖卡片。11 種鄉村魚是暫代模型，有照片再換。
+12. **部落、中國風**等使用者的素材（`docs/ASSET_WISHLIST.md`）；日式、英式缺的動物、樹、橋等也在清單裡。
+    使用者這次傳的埃及土屋比較適合另開「沙漠／中東」主題（要不要做由使用者決定）。
 3. 月光鰺目前和浪人鰺同一個模型形狀；更細長的版本已寫好算圖設定（`tools/render_fish.py` 的 moon_jack），要有 Blender（bpy）才能重算。
 4. 沙灘海岸的地形設定裡列了「螃蟹」，但遊戲沒有螃蟹這個物種（`shore_critter_count` 為 0，所以不會生成）。**使用者之後會給螃蟹美術。**
 5. 背包會被帶回來的魚骨慢慢塞滿——已加提醒（見第二節 8）。
@@ -171,7 +187,7 @@
   `test_campaign_unlocks_and_achievements`、`test_story_lessons`、`test_tutorials_completable`、`test_branch_fish`、
   `test_free_branches_and_nights`、`test_level_guide_and_results`、`test_weathers`（含雨打水面）、`test_journey_page`、
   `test_bag_full_reminders`、`test_character_unlocks`、`test_croc_quests`、`test_croc_errands_on_run`、`test_zodiac_coins`、`test_city_map`、
-  `test_countryside_map`。
+  `test_countryside_map`、`test_japan_and_england_maps`。
 - `tools/verify/verify.gd`（用法寫在檔案開頭）：
   - `tool=bot`：機器人用真實操作（拋竿、揚竿、搏魚、獻祭、逃離）逐關玩，輸出每關用時、額度、漁獲、獨有魚、教學進度、失敗原因。
   - `tool=play`：關掉開發者全開，依序通關 26 關，檢查解鎖順序、星數、首次通關獎勵。
@@ -201,6 +217,7 @@
 | 鱷魚先生（委託、出現、專屬委託） | `scripts/croc_quests.gd`；營地散步與台詞：`scripts/camp_croc.gd`；衣服與帽子：`scripts/croc_look.gd`；頭上 3D 卷軸：`scripts/camp_croc.gd` 的 `_make_scroll()`；模型轉換：`tools/make_croc_props.py`；對話視窗：`scripts/croc_talk.gd`；卷軸圖示：`scripts/quest_scroll.gd`；左側委託清單：`scripts/quest_tracker.gd`；頭上泡泡：`scripts/title_screen.gd` 的 `_croc_over()` |
 | 荒廢都市（第 7 章） | 主題：`scripts/map_generator.gd` 的 `THEMES.city`、`_place_ruins()`、`_place_street_props()`；建築：`scripts/ruin.gd`；街道物件：`scripts/street_prop.gd`；3D 外觀與透明、模型建築、天際線：`scripts/city_build.gd`；使用者素材再製：`tools/make_city_assets.py`（輸出 `assets/models/city/`）；設計與素材清單：`docs/RUINED_WORLD.md` |
 | 鄉村（第 8 章） | 主題：`scripts/map_generator.gd` 的 `THEMES.countryside`、`_place_farms()`（農家、土路、田、籬笆、院子的東西、果園）；農舍穀倉沿用 `scripts/ruin.gd`（模型名 `farm_*`）；田：`scripts/farm_field.gd`；籬笆：`scripts/fence.gd`；院子的東西：`scripts/street_prop.gd` 的 `FARM`；3D（地面、道具、籬笆、作物）：`scripts/farm_build.gd`；地面貼圖 `furrow`、`stubble`：`tools/make_ground.py`；使用者素材再製：`tools/make_farm_assets.py`（輸出 `assets/models/farm/`） |
+| 日式、英式（第 9、10 章） | 主題：`THEMES.japan`、`THEMES.england`（和鄉村共用 `_place_farms()`、`_place_yard_things()`、`_place_grove()`）；圍籬樣式：`scripts/fence.gd` 的 `STYLES`、`scripts/farm_build.gd` 的 `_bamboo_fence`、`_stone_wall`、`_hedge`；素材再製：`tools/make_japan_assets.py`（`assets/models/jp/`）、`tools/make_england_assets.py`（`assets/models/eng/`）；碎石地面 `shrine_gravel`：`tools/make_ground.py`；缺件清單：`docs/ASSET_WISHLIST.md` |
 | 十二星座硬幣 | `scripts/zodiac.gd`（`CHANCE`、`PRICE`、`roll()`）；給予：`scripts/game_state.gd` 的 `escape()`；轉換工具：`tools/make_zodiac_coins.py` |
 | 商城收購 | `scripts/shop.gd`：`_fill_sell_pane()`、`_sell_drag()`、`SellBoard` |
 | 用在魚身上的道具的選魚視窗 | `scripts/fish_pick_panel.gd`：`show_fish()` |

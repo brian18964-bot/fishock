@@ -285,13 +285,96 @@ const THEMES := {
 			"fields": 5, "field_min": Vector2(340, 260), "field_max": Vector2(760, 520),
 			"crops": {"plough": 1.0, "stubble": 1.2, "pumpkin": 0.7, "greens": 0.5},
 			"fenced": 0.6, "gate": Vector2(80, 130), "bales": Vector2i(2, 5)},
-		"yard": {"lanterns": 6, "lit": 0.5, "lit_most": 3, "wells": 1, "logs": 3, "lumber": 2, "barrels": 4, "troughs": 2,
-			"milk": 3, "wagons": 2, "barrows": 2, "orchards": 1, "orchard": Vector2i(3, 4), "orchard_gap": 105.0},
+		"yard": {"lit_most": 3, "things": [
+			{"kind": "lantern", "models": ["farm_lantern"], "count": 6, "where": "track", "lit": 0.5},
+			{"kind": "well", "models": ["farm_well_1", "farm_well_2"], "count": 1},
+			{"kind": "logs", "models": ["farm_logs_1"], "count": 3},
+			{"kind": "lumber", "models": ["farm_logs_2"], "count": 2, "turn": "square"},
+			{"kind": "barrel", "models": ["farm_barrel"], "count": 4},
+			{"kind": "trough", "models": ["farm_trough"], "count": 2, "turn": "square"},
+			{"kind": "milk", "models": ["farm_milk"], "count": 3},
+			{"kind": "wagon", "models": ["farm_wagon"], "count": 2, "turn": "square"},
+			{"kind": "barrow", "models": ["farm_barrow"], "count": 2, "turn": "square"}],
+			"groves": [{"kind": "fruit", "models": ["farm_fruit_1", "farm_fruit_2", "farm_fruit_3"], "count": 1,
+				"rows": Vector2i(2, 3), "cols": Vector2i(3, 4), "gap": 105.0, "jitter": 8.0}]},
 		"animal_count": 1,
 		"animals": {"deer": 1.0, "fox": 1.0},
 		"shore": {"grass": 0.06, "shrub": 0.04, "pebbles": 0.02},
 		"shore_extras": {"reeds": 0.14, "lilypad": 0.06, "driftwood": 0.02},
 		"water": {"base": Color(0.12, 0.24, 0.18), "deep": Color(0.04, 0.11, 0.09)},
+	},
+	# User request (the human world's other villages, made as ordinary places): the Japanese village -
+	# laid out as the countryside is ("farm", "yard"), its own: houses with a shrine or a shed across the
+	# yard, now and then a roofed gate, an ema stand, a big hall as its landmark ("landmark"); vegetable
+	# plots behind bamboo fences; pale gravel paths (RunView3D's "floor3d") from each house out to the
+	# map's edge, a vermilion torii astride each near its house, stone lanterns along them (a few lit
+	# at night); tall wooden lanterns, benches, stone basins and baskets by the houses; bamboo groves
+	# (the user's shrine set, made ours - tools/make_japan_assets.py). Moss where the grass thins; black
+	# pines and maples turning; deer and foxes about.
+	"japan": {
+		"look": "detailed",
+		"floor": ["grass", "grass", 0.3],
+		"floor3d": {"grass": "moss_soil", "forest": "grass", "path": "shrine_gravel", "stone": "furrow", "mud": "mud"},
+		"trees": 16, "rocks": 3, "bushes": 4, "ground": 0,
+		"tree_families": {"pine": 1.0},
+		"rock_pool": [0, 1, 2],
+		"farm": {"steads": 3, "landmark": "jp_house_2", "houses": ["jp_house_1"], "barns": ["jp_shrine", "jp_house_1", "jp_shed"],
+			"extras": ["jp_gate", "jp_ema_1", "jp_shrine", "jp_shed"], "extra": Vector2i(0, 2),
+			"scale": Vector2(0.85, 1.0), "yard": 150.0, "water_gap": 70.0,
+			"fields": 3, "field_min": Vector2(300, 220), "field_max": Vector2(620, 420),
+			"crops": {"greens": 1.0, "plough": 0.6}, "fenced": 0.75, "fences": {"bamboo": 1.0},
+			"gate": Vector2(80, 120), "bales": Vector2i(0, 0)},
+		"yard": {"lit_most": 4, "things": [
+			{"kind": "torii", "models": ["jp_torii"], "count": 2, "where": "across", "size": Vector2(10, 155)},
+			{"kind": "lantern", "models": ["jp_toro"], "count": 7, "where": "track", "lit": 0.6, "size": Vector2(12, 0)},
+			{"kind": "lamp", "models": ["jp_lamp"], "count": 3, "lit": 0.4, "size": Vector2(9, 0)},
+			{"kind": "ema", "models": ["jp_ema_2"], "count": 1, "turn": "square", "size": Vector2(20, 57)},
+			{"kind": "bench", "models": ["jp_bench"], "count": 2, "where": "yard", "size": Vector2(9, 54)},
+			{"kind": "basin", "models": ["jp_basin"], "count": 2, "size": Vector2(11, 0)},
+			{"kind": "basket", "models": ["jp_basket"], "count": 3, "size": Vector2(9, 0)}],
+			"groves": [{"kind": "bamboo", "models": ["jp_bamboo"], "count": 3, "rows": Vector2i(2, 3), "cols": Vector2i(3, 5),
+				"gap": 120.0, "jitter": 30.0, "fill": 0.5, "size": Vector2(40, 0)}]},
+		"animal_count": 1,
+		"animals": {"deer": 1.4, "fox": 1.0},
+		"shore": {"grass": 0.06, "shrub": 0.04, "pebbles": 0.04},
+		"shore_extras": {"reeds": 0.1, "lilypad": 0.1, "driftwood": 0.0},
+		"water": {"base": Color(0.09, 0.24, 0.24), "deep": Color(0.03, 0.1, 0.12)},
+	},
+	# User request (the human world's other villages, made as ordinary places): the English village -
+	# its timber-framed houses in pairs about a yard, the chapel with its spire its landmark, now and
+	# then the small stone tower or a shelter beside a house (the user's medieval set and tower, made
+	# ours - tools/make_england_assets.py); pastures and fields behind dry-stone walls and hedges, the
+	# stubble with its bales; dirt lanes out to the map's edge with lantern posts; wells, logs, wagons
+	# and an apple orchard (the farm set's, made ours). Oaks turning and pines; deer and foxes.
+	"england": {
+		"look": "detailed",
+		"floor": ["grass", "grass", 0.3],
+		"floor3d": {"grass": "stubble", "forest": "grass", "path": "dirt", "stone": "furrow", "mud": "mud"},
+		"trees": 14, "rocks": 3, "bushes": 4, "ground": 0,
+		"tree_families": {"pine": 1.0},
+		"rock_pool": [0, 1, 2],
+		"farm": {"steads": 3, "landmark": "eng_chapel", "houses": ["eng_house_1", "eng_house_2", "eng_house_3", "eng_house_4"],
+			"barns": ["eng_house_1", "eng_house_2", "eng_house_3", "eng_house_4", "farm_barn_1"],
+			"extras": ["eng_tower", "farm_shelter"], "extra": Vector2i(0, 1),
+			"scale": Vector2(0.8, 0.95), "yard": 160.0, "water_gap": 70.0,
+			"fields": 5, "field_min": Vector2(340, 260), "field_max": Vector2(760, 520),
+			"crops": {"pasture": 1.4, "plough": 0.8, "stubble": 0.8, "greens": 0.3}, "fenced": 0.85,
+			"fences": {"stone": 1.0, "hedge": 0.7}, "gate": Vector2(80, 120), "bales": Vector2i(2, 4)},
+		"yard": {"lit_most": 3, "things": [
+			{"kind": "lantern", "models": ["farm_lantern"], "count": 5, "where": "track", "lit": 0.5},
+			{"kind": "well", "models": ["farm_well_1"], "count": 1},
+			{"kind": "logs", "models": ["farm_logs_1"], "count": 3},
+			{"kind": "lumber", "models": ["farm_logs_2"], "count": 2, "turn": "square"},
+			{"kind": "trough", "models": ["farm_trough"], "count": 2, "turn": "square"},
+			{"kind": "wagon", "models": ["farm_wagon"], "count": 2, "turn": "square"},
+			{"kind": "barrow", "models": ["farm_barrow"], "count": 2, "turn": "square"}],
+			"groves": [{"kind": "fruit", "models": ["farm_fruit_1", "farm_fruit_2", "farm_fruit_3"], "count": 1,
+				"rows": Vector2i(2, 3), "cols": Vector2i(3, 4), "gap": 105.0, "jitter": 8.0}]},
+		"animal_count": 1,
+		"animals": {"deer": 1.0, "fox": 1.2},
+		"shore": {"grass": 0.06, "shrub": 0.04, "pebbles": 0.04},
+		"shore_extras": {"reeds": 0.14, "lilypad": 0.04, "driftwood": 0.03},
+		"water": {"base": Color(0.1, 0.2, 0.17), "deep": Color(0.035, 0.09, 0.08)},
 	},}
 ## User feedback: the water's edge is grass, small shrubs, pebbles and
 ## boardwalks (no big trees or boulders there), with bugs and frogs about.
@@ -1264,6 +1347,14 @@ func _place_farms() -> void:
 	var steads := maxi(1, roundi(float(spec.steads) * share))
 	var fields := maxi(1, roundi(float(spec.fields) * share))
 	var farms := 0
+	if spec.has("landmark"):
+		# (the village's landmark first - the English chapel, the Japanese hall - on its own, where it fits)
+		var mark := spec.duplicate()
+		mark.houses = [spec.landmark]
+		mark.extra = Vector2i(0, 0)
+		var yard := _farmstead(mark, false)
+		if yard != Vector2.INF:
+			_farm_track(yard, TRACK_HALF * 2.0)
 	for i in maxi(steads, fields):
 		if i < steads:
 			var yard := _farmstead(spec, true)
@@ -1457,7 +1548,7 @@ func _farm_field(spec: Dictionary) -> void:
 		_fields.append(rect)
 		get_parent().add_child.call_deferred(field)
 		if randf() < float(spec.fenced):
-			_fence_field(rect, spec.gate)
+			_fence_field(rect, spec.gate, _weighted(spec.get("fences", {"wood": 1.0})))
 		if field.crop == "stubble":
 			var bales: Vector2i = spec.bales
 			for _b in randi_range(bales.x, bales.y):
@@ -1465,7 +1556,7 @@ func _farm_field(spec: Dictionary) -> void:
 					var inner := rect.grow(-45.0)
 					var at := inner.position + Vector2(randf() * inner.size.x, randf() * inner.size.y)
 					if _fits_street(at, StreetProp.reach_of("bale") + 12.0):
-						_add_farm_prop("bale", at, randf() * TAU)
+						_add_farm_prop({"kind": "bale"}, at, randf() * TAU)
 						break
 		return
 
@@ -1499,9 +1590,9 @@ func _field_clear(rect: Rect2, gap: float) -> bool:
 	return true
 
 
-## The fence round a field: along each side but now and then one, with a gap (`gate` px wide,
-## somewhere along it) to walk through; runs too short left out.
-func _fence_field(rect: Rect2, gate: Vector2) -> void:
+## The fence round a field (of `style` - Fence.STYLES): along each side but now and then one, with a
+## gap (`gate` px wide, somewhere along it) to walk through; runs too short left out.
+func _fence_field(rect: Rect2, gate: Vector2, style: String) -> void:
 	var corners := [rect.position, Vector2(rect.end.x, rect.position.y), rect.end, Vector2(rect.position.x, rect.end.y)]
 	for k in 4:
 		if randf() < FENCE_OPEN_SIDE:
@@ -1524,79 +1615,106 @@ func _fence_field(rect: Rect2, gate: Vector2) -> void:
 			fence.position = (p0 + p1) * 0.5
 			fence.half = (r1 - r0) * 0.5
 			fence.yaw = (p1 - p0).angle()
+			fence.style = style
 			fence.seed_value = randi()
 			get_parent().add_child.call_deferred(fence)
 			var steps := maxi(1, ceili((r1 - r0) / 40.0))
 			for i in steps + 1:
-				_taken.append([p0.lerp(p1, float(i) / float(steps)), Fence.THICK, 0.0])
+				_taken.append([p0.lerp(p1, float(i) / float(steps)), Fence.thick_of(style), 0.0])
 
 
-## What stands about the farms (`theme` "yard"): lantern posts along the tracks; wells, logs, lumber,
-## barrels, troughs, milk cans, wagons and barrows by the farm buildings (so many a base map's area);
-## the orchards (so many a map, whatever its size).
+## What stands about the farms (`theme` "yard" - its "things", each a StreetProp `kind` with its
+## `models` (one picked each), so many a base map's area ("count"), its solid ground ("size" -
+## [radius, length] px; StreetProp.FARM's else) and where it goes ("where": "track" beside the tracks,
+## "across" astride a track near its farm - a gate - "building" by the farm buildings' walls, "yard"
+## about the farms' yards, "open" anywhere); "lit" of the lanterns at night, at most "lit_most"); its
+## "groves" - an orchard's trees in rows, a bamboo grove - so many a map whatever its size.
 func _place_yard_things() -> void:
 	var spec: Dictionary = theme.get("yard", {})
 	if spec.is_empty():
 		return
 	var share := Campaign.area_share()
 	var lit_left := int(spec.get("lit_most", 3))
-	# (the lanterns: beside the tracks, now one side, now the other)
-	var lanterns := 0 if farm_tracks.is_empty() else maxi(1, roundi(float(spec.get("lanterns", 0)) * share))
-	for _i in lanterns:
-		for _t in 20:
-			var line := farm_tracks.pick_random() as PackedVector2Array
-			var i := randi() % maxi(1, line.size() - 1)
-			var dir := (line[mini(i + 1, line.size() - 1)] - line[i]).normalized()
-			var at := line[i] + dir.orthogonal() * (_track_half + 16.0) * (1.0 if randf() < 0.5 else -1.0)
-			var lantern := _add_farm_prop("lantern", at, dir.angle() + PI * 0.5, true)
-			if lantern != null:
-				if lit_left > 0 and randf() < float(spec.lit):
-					lantern.lit = true
-					lit_left -= 1
-				break
-	# (the rest: by a farm building's walls, or about the yard)
-	var near := {"wells": "well", "logs": "logs", "lumber": "lumber", "barrels": "barrel", "troughs": "trough",
-		"milk": "milk", "wagons": "wagon", "barrows": "barrow"}
-	for key: String in near:
-		var kind: String = near[key]
-		if float(spec.get(key, 0)) <= 0.0:
+	for thing: Dictionary in spec.get("things", []):
+		var where := str(thing.get("where", "building"))
+		if (where == "track" or where == "across") and farm_tracks.is_empty():
 			continue
-		for _i in maxi(1, roundi(float(spec.get(key, 0)) * share)):
+		if float(thing.get("count", 0)) <= 0.0:
+			continue
+		for _i in maxi(1, roundi(float(thing.count) * share)):
 			for _t in 25:
 				var at := Vector2.INF
-				if not _ruins.is_empty():
-					var rect: Rect2 = _ruins.pick_random()
-					var side := randi() % 4
-					var t := randf_range(0.1, 0.9)
-					var out := StreetProp.shape_of(kind).x + randf_range(14.0, 50.0)
-					match side:
-						0: at = Vector2(rect.position.x + rect.size.x * t, rect.position.y - out)
-						1: at = Vector2(rect.end.x + out, rect.position.y + rect.size.y * t)
-						2: at = Vector2(rect.position.x + rect.size.x * t, rect.end.y + out)
-						_: at = Vector2(rect.position.x - out, rect.position.y + rect.size.y * t)
+				var yaw := randf() * TAU if str(thing.get("turn", "free")) == "free" else float(randi() % 4) * PI * 0.5 + randf_range(-0.2, 0.2)
+				var reach := _thing_shape(thing).x
+				match where:
+					"track", "across":
+						var line := farm_tracks.pick_random() as PackedVector2Array
+						# (a gate near its farm - the track's first stretch; a lantern anywhere along it)
+						var i := randi() % maxi(1, (line.size() - 1) / 3 if where == "across" else line.size() - 1)
+						i = maxi(i, 2) if where == "across" else i
+						i = mini(i, line.size() - 2)
+						var dir := (line[i + 1] - line[i]).normalized()
+						yaw = dir.angle() + PI * 0.5
+						at = line[i] if where == "across" else line[i] + dir.orthogonal() * (_track_half + reach + 8.0) * (1.0 if randf() < 0.5 else -1.0)
+					"yard":
+						if not _yards.is_empty():
+							at = (_yards.pick_random() as Vector2) + Vector2.RIGHT.rotated(randf() * TAU) * randf_range(50.0, 160.0)
+					"open":
+						at = Vector2(randf_range(PROP_MARGIN, Player.WORLD_WIDTH - PROP_MARGIN), randf_range(PROP_MARGIN, Player.WORLD_HEIGHT - PROP_MARGIN))
+					_:
+						if not _ruins.is_empty():
+							var rect: Rect2 = _ruins.pick_random()
+							var side := randi() % 4
+							var t := randf_range(0.1, 0.9)
+							var out := reach + randf_range(14.0, 50.0)
+							match side:
+								0: at = Vector2(rect.position.x + rect.size.x * t, rect.position.y - out)
+								1: at = Vector2(rect.end.x + out, rect.position.y + rect.size.y * t)
+								2: at = Vector2(rect.position.x + rect.size.x * t, rect.end.y + out)
+								_: at = Vector2(rect.position.x - out, rect.position.y + rect.size.y * t)
 				if at == Vector2.INF:
 					break
-				var yaw := randf() * TAU if kind in ["logs", "barrel", "milk", "well"] else (float(randi() % 2) * PI * 0.5 + randf_range(-0.2, 0.2))
-				if _add_farm_prop(kind, at, yaw) != null:
+				var prop := _add_farm_prop(thing, at, yaw, where)
+				if prop != null:
+					if lit_left > 0 and randf() < float(thing.get("lit", 0.0)):
+						prop.lit = true
+						lit_left -= 1
 					break
-	# (an orchard: its fruit trees in rows, where most of them fit)
-	var grid: Vector2i = spec.get("orchard", Vector2i(3, 4))
-	var gap := float(spec.get("orchard_gap", 105.0))
-	for _o in int(spec.get("orchards", 0)):
+	for grove: Dictionary in spec.get("groves", []):
+		_place_grove(grove)
+
+
+## A grove (`grove`: an orchard's trees in rows "rows" x "cols", "gap" px apart, each off its place by
+## up to "jitter") where at least "fill" of it fits, "count" of them.
+func _place_grove(grove: Dictionary) -> void:
+	var rows_span: Vector2i = grove.get("rows", Vector2i(2, 3))
+	var cols_span: Vector2i = grove.get("cols", Vector2i(3, 4))
+	var gap := float(grove.get("gap", 105.0))
+	var jitter := float(grove.get("jitter", 8.0))
+	var reach := _thing_shape(grove).x
+	for _o in int(grove.get("count", 0)):
 		for _t in 30:
-			var rows := randi_range(2, grid.x)
-			var cols := randi_range(3, grid.y)
+			var rows := randi_range(rows_span.x, rows_span.y)
+			var cols := randi_range(cols_span.x, cols_span.y)
 			var origin := Vector2(randf_range(PROP_MARGIN, Player.WORLD_WIDTH - PROP_MARGIN - gap * cols), randf_range(PROP_MARGIN, Player.WORLD_HEIGHT - PROP_MARGIN - gap * rows))
 			var spots := []
 			for r in rows:
 				for q in cols:
-					var p := origin + Vector2(q * gap + randf_range(-8.0, 8.0), r * gap + randf_range(-8.0, 8.0))
-					if _yard_spot_ok(p, StreetProp.reach_of("fruit")) and _fits(p, StreetProp.reach_of("fruit"), 0.0):
+					var p := origin + Vector2(q * gap + randf_range(-jitter, jitter), r * gap + randf_range(-jitter, jitter))
+					if _yard_spot_ok(p, reach) and _fits(p, reach, 0.0):
 						spots.append(p)
-			if spots.size() >= int(rows * cols * 0.7):
+			if spots.size() >= int(rows * cols * float(grove.get("fill", 0.7))):
 				for p in spots:
-					_add_farm_prop("fruit", p, randf() * TAU)
+					_add_farm_prop(grove, p, randf() * TAU, "grove")
 				break
+
+
+## A yard thing's solid ground: (radius, length) px - its own "size", else its kind's.
+static func _thing_shape(thing: Dictionary) -> Vector2:
+	if thing.has("size"):
+		var s = thing.size
+		return Vector2(float(s[0]), float(s[1])) if s is Array else s as Vector2
+	return StreetProp.shape_of(str(thing.get("kind", "")))
 
 
 ## Whether a yard thing (radius `reach`, px) may stand at `at`: on the map, off the start, the water,
@@ -1611,26 +1729,48 @@ func _yard_spot_ok(at: Vector2, reach: float) -> bool:
 	return not _in_ruin(at, reach) and not _on_track(at, reach + 4.0)
 
 
-## A farm thing (StreetProp `kind`) at `at` if it may stand there (outside the fields but for the
-## bales; `by_track`: the lanterns stand right beside a track); the prop, or null.
-func _add_farm_prop(kind: String, at: Vector2, yaw: float, by_track := false) -> StreetProp:
-	var reach := StreetProp.reach_of(kind)
+## A yard thing (`thing`: its kind, its models, its size) at `at` if it may stand there - outside the
+## fields but for the bales; `where` "track": right beside a track, "across": astride one, its two
+## ends off it - the prop, or null.
+func _add_farm_prop(thing: Dictionary, at: Vector2, yaw: float, where := "") -> StreetProp:
+	var kind := str(thing.get("kind", ""))
+	var shape := _thing_shape(thing)
+	var reach := maxf(shape.x, shape.y * 0.5)
 	if kind != "bale":
-		if not _yard_spot_ok(at, 0.0 if by_track else reach) or not _fits_street(at, reach):
-			return null
-		if by_track and _on_track(at, 0.0):
-			return null
-		for f in _fields:
-			if _rect_distance(f, at) < reach + 10.0:
+		if where == "across":
+			# (a gate: each of its two posts clear, the track running between them)
+			var along := Vector2(cos(yaw), sin(yaw)) * (shape.y * 0.5 - shape.x)
+			for post in [at + along, at - along]:
+				if not _yard_spot_ok(post, 0.0) or _on_track(post, shape.x) or not _fits_street(post, shape.x):
+					return null
+				for f in _fields:
+					if _rect_distance(f, post) < shape.x + 10.0:
+						return null
+		else:
+			if not _yard_spot_ok(at, 0.0 if where == "track" else reach) or not _fits_street(at, reach):
 				return null
+			if where == "track" and _on_track(at, 0.0):
+				return null
+			for f in _fields:
+				if _rect_distance(f, at) < reach + 10.0:
+					return null
 	var prop := StreetProp.new()
 	prop.name = "StreetProp%d" % _farm_props
 	_farm_props += 1
 	prop.kind = kind
+	var models: Array = thing.get("models", [])
+	prop.model = str(models.pick_random()) if not models.is_empty() else ""
+	if thing.has("size"):
+		prop.size = shape
 	prop.yaw = yaw
 	prop.position = at
 	prop.seed_value = randi()
-	_taken.append([at, reach, 0.0])
+	if where == "across":
+		var along := Vector2(cos(yaw), sin(yaw)) * (shape.y * 0.5 - shape.x)
+		_taken.append([at + along, shape.x, 0.0])
+		_taken.append([at - along, shape.x, 0.0])
+	else:
+		_taken.append([at, reach, 0.0])
 	get_parent().add_child.call_deferred(prop)
 	return prop
 

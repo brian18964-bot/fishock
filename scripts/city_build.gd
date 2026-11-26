@@ -258,7 +258,9 @@ static func build(holder: Node3D, ruins: Array, land_y: Callable) -> ShaderMater
 		rng.seed = ruin.seed_value
 		var at: Vector2 = ruin.global_position
 		if ruin.model != "":
-			var built := _model(ruin.model_path(), "RuinModel%d" % k, shade)
+			# (its vertex colour on too: the farm set's dirt low down, the Japanese set's colours - white
+			# where a model has none)
+			var built := _model(ruin.model_path(), "RuinModel%d" % k, shade, true)
 			built.position = Vector3(at.x / PX, float(land_y.call(at)), at.y / PX)
 			built.rotation.y = ruin.model_yaw
 			built.scale = Vector3.ONE * ruin.model_scale
