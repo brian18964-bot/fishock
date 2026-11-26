@@ -474,6 +474,8 @@ var _cliff := false
 ## User request (the ruined human world - MapGenerator's "city"): its buildings (CityBuild) and
 ## their shared material (its see-through kept round the traveller each frame).
 var _city := false
+## User request (the human world's countryside): its farms - FarmBuild.
+var _farm := false
 var _ruin_mat: ShaderMaterial
 ## (the coast: the sea's depth (px, + out in the water) at each of the ground grid's points - the sea
 ## surface's depth texture and where the edge's pines may stand)
@@ -530,6 +532,7 @@ func _ready() -> void:
 	_coast = MapGenerator.current_theme.begins_with("coast")
 	_cliff = MapGenerator.current_theme.begins_with("coast_cliff")
 	_city = MapGenerator.current_theme.begins_with("city")
+	_farm = MapGenerator.current_theme.begins_with("countryside")
 	Foliage.set_wind(Foliage.WIND)
 	_rng.seed = 11
 	player = main.get_node("Player")
@@ -596,6 +599,15 @@ func _build() -> void:
 		CityBuild.props(self, get_tree().get_nodes_in_group("street_props"), land_y)
 		var sky: Array = MapGenerator.THEMES[MapGenerator.current_theme].get("ruins", {}).get("skyline", [])
 		CityBuild.skyline(self, sky, _map_rect(), land_y, _rng)
+		_ruin_mat.set_shader_parameter("fade_min", FADE_NEAR)
+		_ruin_mat.set_shader_parameter("fade_max", FADE_FAR)
+	if _farm:
+		# (the farmhouses and barns as the city's buildings are shown - seen through round the
+		# traveller; what stands about, the fences and the crops: FarmBuild)
+		_ruin_mat = CityBuild.build(self, get_tree().get_nodes_in_group("ruins"), land_y)
+		FarmBuild.props(self, get_tree().get_nodes_in_group("street_props"), land_y)
+		FarmBuild.fences(self, get_tree().get_nodes_in_group("fences"), land_y)
+		FarmBuild.crops(self, get_tree().get_nodes_in_group("farm_fields"), land_y, low_end())
 		_ruin_mat.set_shader_parameter("fade_min", FADE_NEAR)
 		_ruin_mat.set_shader_parameter("fade_max", FADE_FAR)
 	if _cliff:
@@ -1799,7 +1811,15 @@ func _ground() -> void:
 			for si in shore_n.x:
 				shores[sj * shore_n.x + si] = _sea_depth(Vector2(lo.x + si * SHORE_STEP * CELL, lo.y + sj * SHORE_STEP * CELL) * PX)
 	# (the city: the pavement round its buildings)
-	var walks := CityBuild.walks(get_tree().get_nodes_in_group("ruins"), lo, n, CELL) if _city else PackedFloat32Array()
+	var walks := PackedFloat32Array()
+	if _city:
+		walks = CityBuild.walks(get_tree().get_nodes_in_group("ruins"), lo, n, CELL)
+	elif _farm:
+		# (the countryside: the ground worn bare round its farm buildings - narrower, its edge soft)
+		walks = CityBuild.walks(get_tree().get_nodes_in_group("ruins"), lo, n, CELL, FarmBuild.YARD_WORN, FarmBuild.YARD_FADE)
+	# (the countryside: its tracks and its fields)
+	var tracks := FarmBuild.tracks_grid(MapGenerator.farm_tracks, MapGenerator.TRACK_HALF, lo, n, CELL) if _farm else PackedFloat32Array()
+	var tilled: Array = FarmBuild.fields_grid(get_tree().get_nodes_in_group("farm_fields"), lo, n, CELL) if _farm else []
 	if _desert:
 		shores.resize(shore_n.x * shore_n.y)
 		for sj in shore_n.y:
@@ -1870,6 +1890,22 @@ func _ground() -> void:
 				var soil := smoothstep(0.45, 0.75, noise.get_noise_2d(x * 0.5 + 140.0, z * 0.5)) * (1.0 - walk) * 0.8
 				heights[j * n.x + i] = y
 				colors[j * n.x + i] = Color(walk, soil, mud_c, weeds)
+				continue
+			if _farm:
+				# r: the dirt of the tracks and the yards round the farm buildings (worn ragged at
+				# its edge), g: the ploughed earth, b: the mud at the water, a: the meadow's grass
+				# (its texture and its blades) - else the stubble: in the harvested fields, and in dry
+				# patches about
+				var wob := noise.get_noise_2d(x * 1.3, z * 1.3)
+				var worn := walks[j * n.x + i] * clampf(0.75 + noise.get_noise_2d(x * 0.7 + 30.0, z * 0.7) * 0.9, 0.0, 1.0)
+				var dirt := clampf(maxf(worn, tracks[j * n.x + i]) * (1.0 + wob * 0.35), 0.0, 1.0)
+				var plough: float = (tilled[0] as PackedFloat32Array)[j * n.x + i]
+				var stub: float = (tilled[1] as PackedFloat32Array)[j * n.x + i]
+				var mud_f := 1.0 - smoothstep(0.0, 70.0 + wob * 30.0, -d)
+				var dry := smoothstep(0.38, 0.72, noise.get_noise_2d(x * 0.25 + 90.0, z * 0.25)) * 0.6
+				var meadow := maxf(clampf(1.0 - stub - dry, 0.0, 1.0), smoothstep(0.0, 4.0, out))
+				heights[j * n.x + i] = y
+				colors[j * n.x + i] = Color(dirt * (1.0 - plough), plough, mud_f, meadow)
 				continue
 			var wob := noise.get_noise_2d(x, z)
 			# r: (no paths here) g: (no stone) b: the mud shore, a: the

@@ -15,6 +15,15 @@ const LAMP_R := 8.0
 ## each is (px) - a bench two circles along its length)
 const ROUND := {"drum": 10.0, "crate": 16.0, "bench": 10.0}
 const BENCH_LONG := 37.0
+## User request (the countryside - an ordinary place; the user's farm set, made ours by
+## tools/make_farm_assets.py): what stands about its farms - a lantern post by the tracks (a few lit
+## at night), a well, a pile of logs or a stack of lumber, a barrel, a hay wagon, a wheelbarrow, a
+## trough, a milk can, a round hay bale lying in a field after the harvest, a fruit tree of an
+## orchard (its low branches in the way). Each [radius, length] (px; a long one two circles along
+## its length, 0 a round one) - about its model's size.
+const FARM := {"lantern": [7.0, 0.0], "well": [40.0, 0.0], "logs": [16.0, 0.0], "lumber": [15.0, 86.0],
+	"barrel": [9.0, 0.0], "wagon": [20.0, 119.0], "barrow": [15.0, 68.0], "trough": [10.0, 54.0],
+	"milk": [6.0, 0.0], "bale": [19.0, 34.0], "fruit": [30.0, 0.0]}
 
 var kind := "car"
 ## Its heading (rad, on the map: 0 along +x).
@@ -28,15 +37,14 @@ var _bases: Array = []
 func _ready() -> void:
 	add_to_group("solids")
 	add_to_group("street_props")
-	if kind == "car" or kind == "bench":
+	var shape := shape_of(kind)
+	if shape.y > 0.0:
 		# (two circles along its length)
-		var r := CAR.y * 0.5 if kind == "car" else float(ROUND.bench)
-		var long := CAR.x if kind == "car" else BENCH_LONG
-		var along := Vector2(cos(yaw), sin(yaw)) * (long * 0.5 - r)
+		var along := Vector2(cos(yaw), sin(yaw)) * (shape.y * 0.5 - shape.x)
 		for at in [along, -along]:
-			_add_circle(at, r)
+			_add_circle(at, shape.x)
 	else:
-		_add_circle(Vector2.ZERO, float(ROUND.get(kind, LAMP_R)))
+		_add_circle(Vector2.ZERO, shape.x)
 
 
 func _add_circle(at: Vector2, r: float) -> void:
@@ -62,11 +70,19 @@ func reach() -> float:
 
 
 static func reach_of(which: String) -> float:
+	var shape := shape_of(which)
+	return maxf(shape.x, shape.y * 0.5)
+
+
+## Its solid ground: (radius, length) px - a length 0 for a round one.
+static func shape_of(which: String) -> Vector2:
 	match which:
 		"car":
-			return CAR.x * 0.5
+			return Vector2(CAR.y * 0.5, CAR.x)
 		"bench":
-			return BENCH_LONG * 0.5
+			return Vector2(float(ROUND.bench), BENCH_LONG)
 		"lamp":
-			return LAMP_R
-	return float(ROUND.get(which, LAMP_R))
+			return Vector2(LAMP_R, 0.0)
+	if FARM.has(which):
+		return Vector2(float(FARM[which][0]), float(FARM[which][1]))
+	return Vector2(float(ROUND.get(which, LAMP_R)), 0.0)

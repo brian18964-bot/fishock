@@ -13,6 +13,11 @@ extends StaticBody2D
 ## one of the low buildings instead (`model`: a strip of shops, a long house, houses with porches):
 ## its footprint the model's, turned `model_yaw` (a quarter turn or more) and scaled `model_scale`
 ## to the block (MODEL_SCALE) - model_footprint().
+##
+## User request (the countryside - an ordinary place, not a ruin): its farmhouses, barns, water
+## towers and silos (the user's farm set, made ours - tools/make_farm_assets.py) stand on the map the
+## same way - a "model" of this kind, its name's first word saying whose they are ("city_house_1",
+## "farm_barn_2": assets/models/<that word>/), nothing about them broken.
 
 ## The kinds: a shop of a storey or two, a block of flats, the tall office block (one a map, to
 ## find one's way by), a heap where one fell.
@@ -24,7 +29,7 @@ const STOREYS := {"shop": Vector2i(1, 2), "flat": Vector2i(2, 3), "tower": Vecto
 ## traveller; the models' footprints and heights, m - tools/make_city_assets.py)
 const MODEL_SCALE := Vector2(0.6, 0.85)
 const MODELS_DIR := "res://assets/models/city/"
-const MODELS_INFO := "res://assets/models/city/city_assets.json"
+## (the models' sizes, by whose: "city", "farm" - info())
 static var _info: Dictionary = {}
 ## (a heap's height, m)
 const RUBBLE_HIGH := 1.4
@@ -76,12 +81,20 @@ func height() -> float:
 	return RUBBLE_HIGH if kind == "rubble" else float(storeys) * STOREY
 
 
-## The city's models' sizes (m: across, deep, high - as made, before turning or scaling).
+## A model's sizes (m: across, deep, high - as made, before turning or scaling) and the like: the
+## city's (city_assets.json) or the countryside's (farm_assets.json) - whose its name says.
 static func info(name: String) -> Dictionary:
-	if _info.is_empty() and FileAccess.file_exists(MODELS_INFO):
-		var got = JSON.parse_string(FileAccess.get_file_as_string(MODELS_INFO))
-		_info = got if got is Dictionary else {}
-	return _info.get(name, {})
+	var whose := name.get_slice("_", 0)
+	if not _info.has(whose):
+		var path := "res://assets/models/%s/%s_assets.json" % [whose, whose]
+		var got = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null
+		_info[whose] = got if got is Dictionary else {}
+	return (_info[whose] as Dictionary).get(name, {})
+
+
+## Where a model is (its name's first word its folder: city_..., farm_...).
+static func path_of(name: String) -> String:
+	return "res://assets/models/%s/%s.glb" % [name.get_slice("_", 0), name]
 
 
 ## A model's footprint (px) turned `yaw` (quarter turns) and scaled `scale`.
@@ -94,7 +107,7 @@ static func model_footprint(name: String, yaw: float, scale: float) -> Vector2:
 
 
 func model_path() -> String:
-	return MODELS_DIR + model + ".glb"
+	return path_of(model)
 
 
 ## The rectangle it stands on (px, world).

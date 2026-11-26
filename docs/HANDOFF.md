@@ -73,6 +73,12 @@
 - 已做：主題 `city`（街廓、廢棄建築、柏油與人行道、汽車、路燈）、第 7 章五個分支、10 種都市魚（暫代模型）。
   建築擋住玩家時會變透明。細節與「還沒做」的清單見 `docs/RUINED_WORLD.md` 第五節。
 
+### 12. 人類世界：第 8 章「鄉村」（正常的農村，不是荒廢的）
+- 使用者要求：接著做鄉村地圖；素材用使用者上傳的農場包，經我們的工具再製（`tools/make_farm_assets.py`）。
+- 已做：主題 `countryside`（農舍＋穀倉的農家、偶爾有水塔／瞭望台／棚子／筒倉、農田（犁過的、收割後有乾草捆、南瓜、菜）、
+  有缺口的木籬笆、從農家通到地圖邊的土路與提燈、果園、水井、柴堆、木桶、推車）、第 8 章五個分支、11 種鄉村魚（暫代模型）。
+  細節見 `docs/RUINED_WORLD.md` 第七節。
+
 ## 三、已定案（使用者決定的，不用再問）
 ### 劇情與分支
 1. 每張地圖分 4～5 支，每支是一個劇情關卡；共 6 章 26 關。地圖順序：湖畔森林 → 秋林 → 雪地森林 → 沙漠綠洲 → 沙灘海岸 → 海崖。
@@ -135,6 +141,11 @@
 | 都市的街道物件 | 每個基準面積 9 輛車、10 盞路燈、7 個油桶、5 個木箱、3 張長椅；30% 的車橫在路中間；路燈 30% 會亮、最多 3 盞 | `MapGenerator.THEMES.city.street` |
 | 都市的模型建築與天際線 | 55% 的街廓（放得下時）整塊放一棟平房／長條店，縮放 0.6～0.85 倍；天際線高樓離邊緣 6～12 m、間隔 16～30 m、縮放 0.4～0.58 倍、只在上方和兩側（兩側到 75% 高） | `THEMES.city.ruins` 的 `model_share`、`Ruin.MODEL_SCALE`、`CityBuild.SKY_OUT`、`SKY_GAP`、`SKY_SCALE`、`SKY_SIDES` |
 | 都市的魚 | 主題魚 4 種＋金龍魚；各分支獨有魚見 `docs/RUINED_WORLD.md`；價值、大小在魚的資料表 | `FishData.FISH`、`STYLE_FISH.city`、`LENGTH_CM` |
+| 第 8 章鄉村 | 五個分支的大小、額度、時間、小鬼、天氣、獨有魚、首通獎勵（240～520 金幣）；8-2 多收割過的田、8-3 兩座果園、8-4 籬笆 90% 與狼 | `Campaign.LEVELS` 的 8-1～8-5（`mods` 只改有寫到的項目） |
+| 鄉村的農家與田 | 每個基準面積 3 戶農家（房子＋穀倉，0～2 棟附屬建築）、建築縮放 0.8～0.95、院子寬 170 px、離水 70 px；每個基準面積 5 塊田，340～760 × 260～520 px（放不下會縮小）、作物比重（犁過 1、收割 1.2、南瓜 0.7、菜 0.5）、60% 有籬笆（每邊 15% 不圍、缺口 80～130 px）、收割過的田 2～5 個乾草捆 | `MapGenerator.THEMES.countryside.farm`、`FIELD_GAP`、`FENCE_OPEN_SIDE` |
+| 鄉村的院子與路 | 每個基準面積 6 支提燈（50% 會亮、最多 3 支）、水井 1、柴堆 3、木材 2、木桶 4、水槽 2、牛奶桶 3、乾草車 2、手推車 2；每張圖 1 座果園（3～4 排 × 3～4 棵，間隔 105 px）；土路寬 64 px | `THEMES.countryside.yard`、`MapGenerator.TRACK_HALF`、`TRACK_WANDER` |
+| 鄉村的作物與籬笆外觀 | 南瓜 0.4～0.57 m、每 1.4～2.3 m 一顆（隔一排）；菜每 0.85～1.15 m；籬笆每 2.2 m 一根柱子、高 1.15 m；乾草捆半徑 0.72 m；提燈亮度 2.2、範圍 7 m | `FarmBuild` 的 `PUMPKIN_*`、`GREENS_*`、`FENCE_*`、`BALE_*`、`LANTERN_*` |
+| 鄉村的魚 | 主題魚 青鱂魚、溪哥、鰟鮍、黃顙魚＋鱖魚；分支獨有魚見 `docs/RUINED_WORLD.md` 第七節 | `FishData.FISH`、`STYLE_FISH.countryside`、`LENGTH_CM` |
 
 ## 五、待辦與需要使用者決定的事
 1. **鱷魚先生**已做（規則都是我先訂的，見第四節）：可同時多個委託、魚要真的交出去、可分批交。
@@ -142,6 +153,8 @@
 2. **發佈前**把 `Campaign.dev_all_open` 改成 `false`（它也讓所有角色都能選）。
 10. **荒廢都市等使用者的素材**（清單在 `docs/RUINED_WORLD.md` 第四節：建築、汽車、路燈、街道小物、野狗、老鼠、鴿子、魚的照片）。
     還沒做：運河（7-3）、地鐵坑（7-4）、海岸港口（7-5）、撿拾點（提案）、自由模式的都市地圖卡片。
+11. **鄉村**（第 8 章）已可玩；還沒做：農場動物（雞、牛、羊——沒有素材，目前只有鹿和狐狸，8-4 有狼）、溝渠／大河（8-5 現在是一般池塘）、
+    自由模式的鄉村地圖卡片。11 種鄉村魚是暫代模型，有照片再換。
 3. 月光鰺目前和浪人鰺同一個模型形狀；更細長的版本已寫好算圖設定（`tools/render_fish.py` 的 moon_jack），要有 Blender（bpy）才能重算。
 4. 沙灘海岸的地形設定裡列了「螃蟹」，但遊戲沒有螃蟹這個物種（`shore_critter_count` 為 0，所以不會生成）。**使用者之後會給螃蟹美術。**
 5. 背包會被帶回來的魚骨慢慢塞滿——已加提醒（見第二節 8）。
@@ -157,7 +170,8 @@
 - 測試：見 CLAUDE.md。跟這段工作最相關的測試：`test_campaign_levels_build`（26 關的地圖、水域、鬼、額度）、
   `test_campaign_unlocks_and_achievements`、`test_story_lessons`、`test_tutorials_completable`、`test_branch_fish`、
   `test_free_branches_and_nights`、`test_level_guide_and_results`、`test_weathers`（含雨打水面）、`test_journey_page`、
-  `test_bag_full_reminders`、`test_character_unlocks`、`test_croc_quests`、`test_croc_errands_on_run`、`test_zodiac_coins`、`test_city_map`。
+  `test_bag_full_reminders`、`test_character_unlocks`、`test_croc_quests`、`test_croc_errands_on_run`、`test_zodiac_coins`、`test_city_map`、
+  `test_countryside_map`。
 - `tools/verify/verify.gd`（用法寫在檔案開頭）：
   - `tool=bot`：機器人用真實操作（拋竿、揚竿、搏魚、獻祭、逃離）逐關玩，輸出每關用時、額度、漁獲、獨有魚、教學進度、失敗原因。
   - `tool=play`：關掉開發者全開，依序通關 26 關，檢查解鎖順序、星數、首次通關獎勵。
@@ -186,6 +200,7 @@
 | 角色解鎖條件 | `scripts/campaign.gd`：`CHARACTER_JOIN`、`character_open()`、`check_characters()`；畫面：`scripts/character_page.gd` |
 | 鱷魚先生（委託、出現、專屬委託） | `scripts/croc_quests.gd`；營地散步與台詞：`scripts/camp_croc.gd`；衣服與帽子：`scripts/croc_look.gd`；頭上 3D 卷軸：`scripts/camp_croc.gd` 的 `_make_scroll()`；模型轉換：`tools/make_croc_props.py`；對話視窗：`scripts/croc_talk.gd`；卷軸圖示：`scripts/quest_scroll.gd`；左側委託清單：`scripts/quest_tracker.gd`；頭上泡泡：`scripts/title_screen.gd` 的 `_croc_over()` |
 | 荒廢都市（第 7 章） | 主題：`scripts/map_generator.gd` 的 `THEMES.city`、`_place_ruins()`、`_place_street_props()`；建築：`scripts/ruin.gd`；街道物件：`scripts/street_prop.gd`；3D 外觀與透明、模型建築、天際線：`scripts/city_build.gd`；使用者素材再製：`tools/make_city_assets.py`（輸出 `assets/models/city/`）；設計與素材清單：`docs/RUINED_WORLD.md` |
+| 鄉村（第 8 章） | 主題：`scripts/map_generator.gd` 的 `THEMES.countryside`、`_place_farms()`（農家、土路、田、籬笆、院子的東西、果園）；農舍穀倉沿用 `scripts/ruin.gd`（模型名 `farm_*`）；田：`scripts/farm_field.gd`；籬笆：`scripts/fence.gd`；院子的東西：`scripts/street_prop.gd` 的 `FARM`；3D（地面、道具、籬笆、作物）：`scripts/farm_build.gd`；地面貼圖 `furrow`、`stubble`：`tools/make_ground.py`；使用者素材再製：`tools/make_farm_assets.py`（輸出 `assets/models/farm/`） |
 | 十二星座硬幣 | `scripts/zodiac.gd`（`CHANCE`、`PRICE`、`roll()`）；給予：`scripts/game_state.gd` 的 `escape()`；轉換工具：`tools/make_zodiac_coins.py` |
 | 商城收購 | `scripts/shop.gd`：`_fill_sell_pane()`、`_sell_drag()`、`SellBoard` |
 | 用在魚身上的道具的選魚視窗 | `scripts/fish_pick_panel.gd`：`show_fish()` |

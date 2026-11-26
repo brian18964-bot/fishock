@@ -123,13 +123,15 @@ const KIND_OF := {
 	"hardy": ["carp", "crucian", "catfish", "black_catfish", "walking_catfish", "channel_cat", "eel", "swamp_eel", "loach",
 		"goby", "lungfish", "bichir", "bowfin", "snakehead", "climbing_perch", "pleco", "betta", "giant_goldfish",
 		"crayfish", "pupfish", "devils_pupfish", "garra", "desert_sucker", "bonytail", "tilapia",
-		"flowerhorn", "koi", "blood_parrot", "guppy", "clown_knifefish"],
+		"flowerhorn", "koi", "blood_parrot", "guppy", "clown_knifefish", "medaka", "paradise_fish", "yellow_catfish"],
 	"delicate": ["rainbow_trout", "brown_trout", "brook_trout", "golden_trout", "grayling", "ayu", "char", "arctic_char",
-		"sockeye", "whitefish", "sculpin", "minnow", "bluegill", "perch", "discus"],
+		"sockeye", "whitefish", "sculpin", "minnow", "bluegill", "perch", "discus", "pale_chub", "bitterling", "bream",
+		"culter"],
 	"fragile": ["sardine", "herring", "saury", "smelt", "horse_mackerel"],
 	"giant": ["wels", "arapaima", "alligator_gar", "taimen", "sturgeon", "paddlefish", "arowana", "two_headed_carp",
 		"golden_koi", "napoleon", "sunfish", "swordfish", "bluefin", "sailfish", "hammerhead",
-		"asian_arowana", "redtail_catfish", "electric_eel", "tarpon"],
+		"asian_arowana", "redtail_catfish", "electric_eel", "tarpon", "mandarin_fish", "bighead_carp", "black_carp",
+		"yellowcheek"],
 	"undying": ["ghost_fish", "coelacanth"],
 }
 

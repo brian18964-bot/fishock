@@ -553,6 +553,74 @@ def red_earth(rng):
     return col, normal_from_height(h, 5.0)
 
 
+def furrow(rng):
+    """User request (the countryside - a field ploughed): dark turned earth in long ridges, clods
+    and old straw in the troughs. The ridges run across the tile (the game's world x - every field
+    ploughed the same way), FURROWS of them a tile so it wraps, each wavering a little."""
+    n = periodic_noise(rng, 70)
+    ys, xs = np.mgrid[0:N, 0:N].astype(np.float32) / DENSITY
+    warp = (periodic_noise(rng, 120) - 0.5) * 9.0 + (periodic_noise(rng, 25) - 0.5) * 2.0
+    phase = (ys + warp) / TILE * FURROWS
+    ridge = 0.5 - 0.5 * np.cos(2 * np.pi * phase)
+    ridge = ridge ** 0.8
+    col = lerp((0.11, 0.08, 0.05), (0.28, 0.2, 0.13), ridge * 0.7 + n * 0.3)
+    damp = np.clip((periodic_noise(rng, 40) - 0.55) * 4.0, 0, 1) * (1 - ridge)
+    col = col * (1 - damp[..., None] * 0.35)
+    cv = Canvas()
+    for _ in range(900):  # clods on the ridges
+        x = rng.random() * TILE
+        k = rng.integers(FURROWS)
+        y = (k + 0.5 + rng.normal(0, 0.12)) * TILE / FURROWS
+        g = rng.uniform(0.18, 0.3)
+        cv.ellipse(x, y, rng.uniform(2, 4.5), rng.uniform(1.5, 3.5), rng.random() * 3,
+                   jitter_color(rng, (g, g * 0.78, g * 0.55)), 230, 7)
+    for _ in range(260):  # straw left in the troughs
+        x = rng.random() * TILE
+        y = (rng.integers(FURROWS) + rng.normal(0, 0.08)) * TILE / FURROWS
+        a, ln = rng.normal(0, 0.5), rng.uniform(6, 14)
+        cv.line((x, y), (x + math.cos(a) * ln, y + math.sin(a) * ln * SQUASH),
+                jitter_color(rng, (0.5, 0.42, 0.22), 0.15), 1, 170)
+    lc, la, lh = cv.layers()
+    col = over(col, lc, la)
+    h = ridge * 0.7 + blur(n, 2) * 0.1 + lh * 0.3
+    return col, normal_from_height(h, 7.0)
+
+
+def stubble(rng):
+    """User request (the countryside - a field after the harvest, its hay rolled into bales): the
+    cut stalks short and golden in rows (FURROWS a tile, as the ploughed fields'), loose straw over
+    them, the earth showing between."""
+    n = periodic_noise(rng, 60)
+    ys, xs = np.mgrid[0:N, 0:N].astype(np.float32) / DENSITY
+    warp = (periodic_noise(rng, 110) - 0.5) * 8.0
+    row = 0.5 - 0.5 * np.cos(2 * np.pi * (ys + warp) / TILE * FURROWS)
+    col = lerp((0.24, 0.19, 0.1), (0.42, 0.34, 0.17), n * 0.5 + row * 0.5)
+    bare = np.clip((periodic_noise(rng, 18) - 0.62) * 4.0, 0, 1) * (1 - row)
+    col = col * (1 - bare[..., None]) + np.array([0.16, 0.12, 0.08]) * bare[..., None]
+    cv = Canvas()
+    straw = [(0.62, 0.52, 0.27), (0.7, 0.6, 0.33), (0.54, 0.44, 0.22), (0.66, 0.55, 0.3)]
+    for _ in range(3800):  # the cut stalks, up in their rows
+        x = rng.random() * TILE
+        y = (rng.integers(FURROWS) + 0.5 + rng.normal(0, 0.1)) * TILE / FURROWS
+        ln = rng.uniform(2, 5)
+        a = -math.pi / 2 + rng.uniform(-0.3, 0.3)
+        cv.line((x, y), (x + math.cos(a) * ln, y + math.sin(a) * ln * SQUASH),
+                jitter_color(rng, straw[rng.integers(len(straw))]), 1, int(rng.uniform(170, 255)))
+    for _ in range(700):  # loose straw lying over them
+        x, y = rng.random() * TILE, rng.random() * TILE
+        a, ln = rng.random() * math.pi, rng.uniform(8, 18)
+        cv.line((x, y), (x + math.cos(a) * ln, y + math.sin(a) * ln * SQUASH),
+                jitter_color(rng, straw[rng.integers(len(straw))], 0.1), 1, int(rng.uniform(120, 220)))
+    lc, la, lh = cv.layers()
+    col = over(col, lc, la)
+    h = row * 0.3 + blur(n, 2) * 0.15 + lh * 0.55
+    return col, normal_from_height(h, 5.0)
+
+
+# (the ploughed fields' and the stubble's rows a tile - about one every 0.6 m in the game)
+FURROWS = 7
+
+
 def facets(rng, base, alt, cell=36, patch=140, shade=0.03, tilt=0.1, speck=None):
     """User request: the simple, flat-coloured (low-poly) map styles get a
     ground to match instead of the painted textures - faceted terrain: the
@@ -611,6 +679,9 @@ MAKERS = {
     "dune_sand": dune_sand,
     "wet_sand": wet_sand,
     "oasis_grass": oasis_grass,
+    # (the countryside's: a ploughed field, a field's stubble after the harvest)
+    "furrow": furrow,
+    "stubble": stubble,
 }
 
 

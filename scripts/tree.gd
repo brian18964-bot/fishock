@@ -47,6 +47,10 @@ const THEME_KINDS := {
 	# User request (the ruined human world - the city): trees breaking through the empty city - bare
 	# and dying most, one still in leaf now and then, a pine.
 	"city": ["dead_c", "dead_d", "dead_e", "dead_c", "autumn_a", "pine_c"],
+	# User request (the human world's countryside - an ordinary place): harvest time - the trees by
+	# the fields and the ponds turning, pines among them (the orchard's fruit trees are the farm's own:
+	# StreetProp "fruit").
+	"countryside": ["autumn_a", "autumn_b", "autumn_c", "autumn_d", "pine_b", "pine_c", "pine_b"],
 }
 ## The desert's trees out on the dunes, away from the water (MapGenerator._place_tree): dead ones,
 ## bare (dead_d and dead_e keep a few autumn leaves - the autumn wood's, not the sand's).

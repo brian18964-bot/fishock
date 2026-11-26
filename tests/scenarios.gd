@@ -163,6 +163,7 @@ const TESTS := [
 	"test_croc_errands_on_run",
 	"test_zodiac_coins",
 	"test_city_map",
+	"test_countryside_map",
 	"test_bag_card_closes",
 	"test_altar_this_run_only",
 	"test_locks",
@@ -6399,9 +6400,9 @@ func test_campaign_curses() -> void:
 func test_campaign_unlocks_and_achievements() -> void:
 	reset_progress()
 	# (user decision - the maps' branches: one after another in a map, the next map once the whole of
-	# this one's done; six maps, 26 levels - and, user request, the ruined human world's city after
-	# them: seven maps, 31 levels)
-	check(camp().CHAPTERS.size() == 7 and camp().LEVELS.size() == 31, "seven maps, 31 branches")
+	# this one's done; six maps, 26 levels - and, user request, the human world's after them: the
+	# ruined city, then the countryside: eight maps, 36 levels)
+	check(camp().CHAPTERS.size() == 8 and camp().LEVELS.size() == 36, "eight maps, 36 branches")
 	# (the achievements brought to the chapters: each after the first its own; "all the stars" of the
 	# journey across the lake - its six chapters' - and the curses after its last)
 	var journey_ids: Array = camp().ACHIEVEMENTS.map(func(a): return str(a[0]))
@@ -13700,6 +13701,135 @@ func test_slide_amounts() -> void:
 ## water, the camp, the altar and the way out, each with its model (CityBuild) - seen through
 ## round the traveller; the pavement and asphalt; the city's own fish in its water, each with its
 ## picture and model.
+func test_countryside_map() -> void:
+	# User request (the human world's countryside - an ordinary place, not a ruin): chapter 8, five
+	# branches on the countryside map, its own fish.
+	var farm: Array = camp().LEVELS.filter(func(l): return int(l.chapter) == 8)
+	check(farm.size() == 5 and farm.all(func(l): return str(l.rules.theme) == "countryside")
+		and farm.map(func(l): return str(l.rules.map)) == ["S", "M", "L", "L", "XL"]
+		and camp().chapter(8).name == "鄉村", "chapter 8, 鄉村: five branches on the countryside map, small to extra large")
+	var new_fish := ["medaka", "pale_chub", "bitterling", "yellow_catfish", "mandarin_fish", "paradise_fish", "bream",
+		"culter", "bighead_carp", "black_carp", "yellowcheek"]
+	var fish_ok := true
+	for id in new_fish:
+		fish_ok = fish_ok and FishData.FISH.has(id) and FishData.LENGTH_CM.has(id) and FishModel.has_model(id) \
+			and ResourceLoader.exists("res://assets/sprites/fish/%s.png" % id) and not FishData.gate_stats(id).is_empty()
+	check(fish_ok, "the countryside's eleven fish: their data, lengths, stats, pictures and models")
+	var pool: Array = FishData.pool_for("countryside", "rare", "rare")
+	check(pool.has("medaka") and pool.has("yellow_catfish") and FishData.pool_for("countryside", "common", "epic").has("mandarin_fish"),
+		"the countryside's own fish in its water, the mandarin fish its rarest")
+	# (a level changes only what it names of the farms - the rest the style's)
+	var orchard: Dictionary = camp().LEVELS.filter(func(l): return l.id == "8-3")[0].rules.mods.yard
+	check(orchard.size() == 1, "8-3 names only its orchards")
+	Campaign.dev_all_open = true
+	seed(11)
+	await play_level("8-3")
+	var view: RunView3D = null
+	for _i in 600:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	check(view != null and view.built and MapGenerator.current_theme == "countryside" and FishData.waters == "countryside",
+		"8-3 opens on the countryside map, its water the countryside's")
+	var gen = main.get_node("MapGenerator")
+	check(int(gen.theme.yard.orchards) == 2 and int(gen.theme.yard.lanterns) == int(MapGenerator.THEMES.countryside.yard.lanterns)
+		and gen.theme.farm.has("houses"), "8-3's two orchards over the style's yard, its farms the style's")
+	# The farms: houses and barns (the user's farm set, made ours), solid, out of the water, clear of the
+	# camp, the altar, the way out; each with its model.
+	var ruins := get_tree().get_nodes_in_group("ruins")
+	var fixed := []
+	for name in ["Altar", "EscapePoint", "FuelStation", "GhostCage"]:
+		var n := main.get_node_or_null(name) as Node2D
+		if n != null:
+			fixed.append(n.global_position)
+	var waters := get_tree().get_nodes_in_group("water_zones")
+	var wet := func(p: Vector2) -> bool:
+		return waters.any(func(z): return (z as WaterZone).contains(p))
+	var bad := []
+	for r in ruins:
+		var ruin := r as Ruin
+		var rect := ruin.rect()
+		var dry := true
+		for i in 5:
+			for j in 5:
+				if wet.call(rect.position + rect.size * Vector2(i / 4.0, j / 4.0)):
+					dry = false
+		var clear := fixed.all(func(f): return MapGenerator._rect_distance(rect, f) > 40.0)
+		if not (ruin.model.begins_with("farm_") and dry and clear and ruin.is_in_group("solids") and ResourceLoader.exists(ruin.model_path())):
+			bad.append([ruin.name, ruin.model, dry, clear])
+	var houses := ruins.filter(func(r): return (r as Ruin).model.begins_with("farm_house"))
+	var barns := ruins.filter(func(r): return (r as Ruin).model.begins_with("farm_barn"))
+	check(houses.size() >= 2 and barns.size() >= 2 and bad.is_empty(), "%d farmhouses and %d barns, each solid, out of the water, clear of the fixed points %s" % [houses.size(), barns.size(), str(bad)])
+	var models := view.find_children("RuinModel*", "Node3D", true, false)
+	check(models.size() == ruins.size(), "each farm building with its model (%d)" % models.size())
+	# The fields: out of the water and the farms, not crossing each other; fences along some, with gaps.
+	var fields := get_tree().get_nodes_in_group("farm_fields")
+	var field_bad := []
+	for f in fields:
+		var field := f as FarmField
+		var rect := field.rect
+		for i in 4:
+			for j in 4:
+				if wet.call(rect.position + rect.size * Vector2(i / 3.0, j / 3.0)):
+					field_bad.append([field.name, "wet"])
+		for r in ruins:
+			if (r as Ruin).rect().intersects(rect):
+				field_bad.append([field.name, "farm"])
+		for g in fields:
+			if g != f and (g as FarmField).rect.intersects(rect):
+				field_bad.append([field.name, "field"])
+		if not field.crop in FarmField.CROPS:
+			field_bad.append([field.name, field.crop])
+	check(fields.size() >= 2 and field_bad.is_empty(), "%d fields %s, clear of the water, the farms and each other %s" % [fields.size(), str(fields.map(func(f): return f.crop)), str(field_bad)])
+	var fences := get_tree().get_nodes_in_group("fences")
+	var fence_ok := fences.all(func(f): return (f as Fence).is_in_group("solids") and (f as Fence).half * 2.0 >= MapGenerator.FENCE_LEAST - 0.5)
+	check(fence_ok and (fences.is_empty() or view.find_children("Fences", "MeshInstance3D", true, false).size() == 1), "the fences solid, each run long enough, drawn (%d)" % fences.size())
+	# (nothing else stands in a field but its bales; nothing on a track)
+	var in_field := []
+	for n in get_tree().get_nodes_in_group("solids"):
+		if not n is Node2D or n is Fence or n is Ruin:
+			continue
+		var at: Vector2 = (n as Node2D).global_position
+		var bale := n is StreetProp and (n as StreetProp).kind == "bale"
+		for f in fields:
+			if (f as FarmField).rect.grow(-4.0).has_point(at) and not bale:
+				in_field.append(n.name)
+	check(in_field.is_empty(), "no tree, rock or yard thing in a field %s" % str(in_field))
+	check(not MapGenerator.farm_tracks.is_empty() and MapGenerator.farm_tracks.all(func(t): return (t as PackedVector2Array).size() >= 3),
+		"a dirt track from a farm out to the map's edge (%d)" % MapGenerator.farm_tracks.size())
+	# What stands about: lanterns (a few lit), the yard's things, the orchard's trees - each drawn.
+	var props := get_tree().get_nodes_in_group("street_props")
+	var kinds := {}
+	for q in props:
+		kinds[(q as StreetProp).kind] = int(kinds.get((q as StreetProp).kind, 0)) + 1
+	var lit := props.filter(func(q): return (q as StreetProp).lit)
+	var wet_props := props.filter(func(q): return wet.call((q as StreetProp).global_position))
+	check(kinds.has("lantern") and kinds.has("fruit") and int(kinds.get("fruit", 0)) >= 4 and lit.size() >= 1 and lit.size() <= 3
+		and wet_props.is_empty(), "lanterns (%d lit), the yard's things and an orchard %s, none in the water" % [lit.size(), str(kinds)])
+	check(view.find_children("FarmProp*", "Node3D", true, false).size() == props.size()
+		and view.find_children("LampLight", "OmniLight3D", true, false).size() == lit.size(), "each with its shape; the lit lanterns shine")
+	# The ground: the meadow, the stubble, the tracks' dirt, the ploughed earth; the crops in rows.
+	var tex := func(slot: String) -> String:
+		var t: Texture2D = view._ground_mat.get_shader_parameter(slot + "_tex")
+		return t.resource_path if t != null else ""
+	check(tex.call("grass").contains("stubble") and tex.call("forest").contains("grass") and tex.call("stone").contains("furrow")
+		and tex.call("path").contains("dirt"), "the ground: stubble, the meadow, the ploughed earth, the tracks' dirt")
+	var rows := fields.filter(func(f): return (f as FarmField).crop in ["pumpkin", "greens"])
+	check(rows.is_empty() or view.find_children("Crops*", "MultiMeshInstance3D", true, false).size() >= rows.size(), "the crops in their rows")
+	await frames(5)
+	var hero: Vector3 = view._ruin_mat.get_shader_parameter("hero")
+	check(hero.distance_to(view.pivot.global_position) < 1.5, "the farm buildings seen through round the traveller")
+	# A small map and an extra large one: their farms, fields and fences come, nothing odd.
+	for level in ["8-1", "8-5"]:
+		seed(5)
+		await play_level(level)
+		await frames(4)
+		var r2 := get_tree().get_nodes_in_group("ruins")
+		var f2 := get_tree().get_nodes_in_group("farm_fields")
+		check(r2.size() >= 1 and f2.size() >= 1, "%s: %d farm buildings, %d fields" % [level, r2.size(), f2.size()])
+
+
 func test_city_map() -> void:
 	var city: Array = camp().LEVELS.filter(func(l): return int(l.chapter) == 7)
 	check(city.size() == 5 and city.all(func(l): return str(l.rules.theme) == "city")

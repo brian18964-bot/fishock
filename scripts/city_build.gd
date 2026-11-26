@@ -214,7 +214,7 @@ const SKY_SIDES := 0.75
 
 ## The pavement round the buildings, over the ground's grid (`lo` its corner, m; `n` its size;
 ## `cell` m apart): 0..1 each point, as the ground's path paint.
-static func walks(ruins: Array, lo: Vector2, n: Vector2i, cell: float) -> PackedFloat32Array:
+static func walks(ruins: Array, lo: Vector2, n: Vector2i, cell: float, walk := WALK, fade := WALK_FADE) -> PackedFloat32Array:
 	var out := PackedFloat32Array()
 	out.resize(n.x * n.y)
 	for r in ruins:
@@ -224,10 +224,10 @@ static func walks(ruins: Array, lo: Vector2, n: Vector2i, cell: float) -> Packed
 		var rect := ruin.rect()
 		var a := Vector2(rect.position.x / PX, rect.position.y / PX)
 		var b := Vector2(rect.end.x / PX, rect.end.y / PX)
-		var i0 := maxi(0, int((a.x - WALK - lo.x) / cell))
-		var i1 := mini(n.x - 1, int((b.x + WALK - lo.x) / cell) + 1)
-		var j0 := maxi(0, int((a.y - WALK - lo.y) / cell))
-		var j1 := mini(n.y - 1, int((b.y + WALK - lo.y) / cell) + 1)
+		var i0 := maxi(0, int((a.x - walk - lo.x) / cell))
+		var i1 := mini(n.x - 1, int((b.x + walk - lo.x) / cell) + 1)
+		var j0 := maxi(0, int((a.y - walk - lo.y) / cell))
+		var j1 := mini(n.y - 1, int((b.y + walk - lo.y) / cell) + 1)
 		for j in range(j0, j1 + 1):
 			var z := lo.y + j * cell
 			var dz := maxf(maxf(a.y - z, 0.0), z - b.y)
@@ -235,7 +235,7 @@ static func walks(ruins: Array, lo: Vector2, n: Vector2i, cell: float) -> Packed
 				var x := lo.x + i * cell
 				var dx := maxf(maxf(a.x - x, 0.0), x - b.x)
 				var d := sqrt(dx * dx + dz * dz)
-				var k := 1.0 - smoothstep(WALK - WALK_FADE, WALK, d)
+				var k := 1.0 - smoothstep(walk - fade, walk, d)
 				if k > out[j * n.x + i]:
 					out[j * n.x + i] = k
 	return out

@@ -258,6 +258,40 @@ const THEMES := {
 		"shore_extras": {"reeds": 0.05, "lilypad": 0.0, "driftwood": 0.0},
 		"shore_critters": ["frog", "spider"],
 		"water": {"base": Color(0.1, 0.19, 0.18), "deep": Color(0.03, 0.08, 0.08)},
+	},
+	# User request (the human world's countryside - an ordinary place, not a ruin: user decision):
+	# farms among meadows. Its farmsteads ("farm" - _place_farms: so many a base map's area, each a
+	# farmhouse and its barn about a yard, now and then a water tower, a lookout, a shelter or a row
+	# of silos - the user's farm set, made ours: Ruin models "farm_*", scaled "scale"), its fields
+	# (FarmField - ploughed, in stubble with round bales after the harvest, in pumpkins or greens;
+	# "fenced" of them with a wooden fence along most sides, a gap in each to walk through - Fence),
+	# a dirt track from each farm out to the map's edge, and what stands about ("yard" - StreetProp's
+	# farm kinds: lantern posts along the tracks - "lit" of them at night, at most "lit_most" - a
+	# well, log piles and lumber, barrels, troughs, milk cans, wagons and barrows by the buildings,
+	# an orchard of fruit trees). The ground (RunView3D's "floor3d"): the meadow's grass, the
+	# stubble, the tracks' and yards' dirt, the ploughed earth, the ponds' mud. Its farm ponds
+	# brown-green; a deer or a fox about - none of the forest's wolves.
+	"countryside": {
+		"look": "detailed",
+		"floor": ["grass", "grass", 0.3],
+		"floor3d": {"grass": "stubble", "forest": "grass", "path": "dirt", "stone": "furrow", "mud": "mud"},
+		"trees": 14, "rocks": 2, "bushes": 4, "ground": 0,
+		"tree_families": {"pine": 1.0},
+		"rock_pool": [0, 1, 2],
+		"farm": {"steads": 3, "houses": ["farm_house_1", "farm_house_2", "farm_house_3", "farm_house_4", "farm_house_5", "farm_house_6"],
+			"barns": ["farm_barn_1", "farm_barn_2", "farm_barn_3", "farm_barn_4"],
+			"extras": ["farm_tower_1", "farm_tower_2", "farm_lookout", "farm_shelter", "farm_silos"], "extra": Vector2i(0, 2),
+			"scale": Vector2(0.8, 0.95), "yard": 170.0, "water_gap": 70.0,
+			"fields": 5, "field_min": Vector2(340, 260), "field_max": Vector2(760, 520),
+			"crops": {"plough": 1.0, "stubble": 1.2, "pumpkin": 0.7, "greens": 0.5},
+			"fenced": 0.6, "gate": Vector2(80, 130), "bales": Vector2i(2, 5)},
+		"yard": {"lanterns": 6, "lit": 0.5, "lit_most": 3, "wells": 1, "logs": 3, "lumber": 2, "barrels": 4, "troughs": 2,
+			"milk": 3, "wagons": 2, "barrows": 2, "orchards": 1, "orchard": Vector2i(3, 4), "orchard_gap": 105.0},
+		"animal_count": 1,
+		"animals": {"deer": 1.0, "fox": 1.0},
+		"shore": {"grass": 0.06, "shrub": 0.04, "pebbles": 0.02},
+		"shore_extras": {"reeds": 0.14, "lilypad": 0.06, "driftwood": 0.02},
+		"water": {"base": Color(0.12, 0.24, 0.18), "deep": Color(0.04, 0.11, 0.09)},
 	},}
 ## User feedback: the water's edge is grass, small shrubs, pebbles and
 ## boardwalks (no big trees or boulders there), with bugs and frogs about.
@@ -304,7 +338,15 @@ func _ready() -> void:
 	theme = THEMES[theme_name].duplicate(true)
 	# (user request - the maps' branches: a level's own changes to its map - its trees, animals,
 	# shore life and the like - over the style's)
-	theme.merge((Campaign.rules.get("mods", {}) as Dictionary).duplicate(true), true)
+	var mods: Dictionary = Campaign.rules.get("mods", {})
+	theme.merge(mods.duplicate(true), true)
+	# (the countryside's farms and yards: a level changes only what it names of them - its fences, its
+	# crops, its orchards - the rest the style's)
+	for key: String in ["farm", "yard"]:
+		if mods.has(key) and (THEMES[theme_name] as Dictionary).has(key):
+			var whole: Dictionary = (THEMES[theme_name][key] as Dictionary).duplicate(true)
+			whole.merge((mods[key] as Dictionary).duplicate(true), true)
+			theme[key] = whole
 	_fit_theme()
 	# User request (the campaign): maps of three sizes - the floor, the
 	# camp and the player's start go where this one's middle is.
@@ -329,6 +371,7 @@ func _ready() -> void:
 	_take_fixed_points()
 	_place_ruins()
 	_place_street_props()
+	_place_farms()
 	_place_fossils()
 	if theme.get("cliff", false):
 		_place_coast_rocks()
@@ -1207,6 +1250,430 @@ static func _rect_distance(r: Rect2, p: Vector2) -> float:
 	return Vector2(dx, dy).length()
 
 
+## User request (the countryside, a style with "farm"): its farmsteads, the tracks from them out to
+## the map's edge, its fields (some fenced, the stubble with its bales) and what stands about (the
+## "yard" - StreetProp's farm kinds). The farms first - the biggest things - then the tracks, then the
+## fields clear of both, then the rest round them.
+func _place_farms() -> void:
+	farm_tracks = []
+	var spec: Dictionary = theme.get("farm", {})
+	if spec.is_empty():
+		return
+	var share := Campaign.area_share()
+	# (a farm, its track, a field, in turn - so a crowded map still has some of each)
+	var steads := maxi(1, roundi(float(spec.steads) * share))
+	var fields := maxi(1, roundi(float(spec.fields) * share))
+	var farms := 0
+	for i in maxi(steads, fields):
+		if i < steads:
+			var yard := _farmstead(spec, true)
+			if yard == Vector2.INF and farms == 0:
+				# (no room for the first farm and its barn: a farmhouse on its own, a little smaller)
+				var alone := spec.duplicate()
+				alone.scale = Vector2((spec.scale as Vector2).x * 0.85, (spec.scale as Vector2).x)
+				yard = _farmstead(alone, false)
+			if yard != Vector2.INF:
+				_farm_track(yard, TRACK_HALF * 2.0)
+				farms += 1
+		if i < fields:
+			_farm_field(spec)
+	_place_yard_things()
+
+
+## One farmstead: a farmhouse and its barn (`with_barn`; else the house alone) either side of a yard
+## (`spec` "yard" px across), now and then a tower, lookout, shelter or silos beside it ("extra" of
+## them) - each clear as a city building is (_ruin_clear); its yard's middle, or INF if none would
+## fit.
+func _farmstead(spec: Dictionary, with_barn: bool) -> Vector2:
+	var yard_w := float(spec.yard)
+	var gap := float(spec.water_gap)
+	var scale: Vector2 = spec.scale
+	# (the yard's middle in from the map's edges - its buildings reach out from it)
+	var inset := Vector2(minf(STEAD_INSET, Player.WORLD_WIDTH * 0.25), minf(STEAD_INSET, Player.WORLD_HEIGHT * 0.25))
+	for _try in STEAD_TRIES:
+		var c := Vector2(randf_range(inset.x, Player.WORLD_WIDTH - inset.x), randf_range(inset.y, Player.WORLD_HEIGHT - inset.y))
+		if c.distance_to(SPAWN_POS) < SPAWN_CLEAR_RADIUS or _in_any_water(c) or _shore_distance(c) < gap + yard_w * 0.5:
+			continue
+		# (the house one side of the yard, the barn the other - along x or y, whichever way they fit;
+		# the extras across)
+		var dirs := [Vector2.RIGHT, Vector2.LEFT, Vector2.DOWN, Vector2.UP]
+		dirs.shuffle()
+		var dir := Vector2.ZERO
+		var placed := []
+		for d: Vector2 in dirs:
+			placed = []
+			for pick in ([[spec.houses, -d], [spec.barns, d]] if with_barn else [[spec.houses, -d]]):
+				var got := _farm_building((pick[0] as Array).pick_random(), c, pick[1], yard_w * 0.5, scale, gap, placed)
+				if got.is_empty():
+					break
+				placed.append(got)
+			if placed.size() == (2 if with_barn else 1):
+				dir = d
+				break
+		if dir == Vector2.ZERO:
+			continue
+		var across := Vector2(-dir.y, dir.x)
+		# (the extras across the yard: out past the house and the barn's sides, somewhere along them)
+		var extras: Vector2i = spec.extra
+		var want := randi_range(extras.x, extras.y)
+		var sides := [across, -across]
+		sides.shuffle()
+		for k in mini(want, 2):
+			var side: Vector2 = sides[k]
+			var past := 0.0
+			for entry in placed:
+				var r: Rect2 = entry.rect
+				past = maxf(past, maxf((r.position - c).dot(side), (r.end - c).dot(side)))
+			for _t in 4:
+				var anchor := c + dir * randf_range(-yard_w * 1.5, yard_w * 1.5)
+				var got := _farm_building((spec.extras as Array).pick_random(), anchor, side, past + yard_w * 0.4, scale, gap, placed)
+				if not got.is_empty():
+					placed.append(got)
+					break
+		for entry in placed:
+			var rect: Rect2 = entry.rect
+			var ruin := Ruin.new()
+			ruin.name = "Ruin%d" % _ruins.size()
+			ruin.kind = "model"
+			ruin.model = entry.model
+			ruin.model_yaw = entry.yaw
+			ruin.model_scale = entry.scale
+			ruin.storeys = 1
+			ruin.size = rect.size
+			ruin.position = rect.get_center()
+			ruin.seed_value = randi()
+			for circle in ruin.footprint_circles():
+				_taken.append([circle[0], circle[1], circle[1], true])
+			_ruins.append(rect)
+			get_parent().add_child.call_deferred(ruin)
+		# (the yard itself kept open)
+		_taken.append([c, yard_w * 0.4, 0.0])
+		_yards.append(c)
+		return c
+	return Vector2.INF
+
+
+## A farm building (`name`, scaled within `scale`, a quarter turn either way) by the yard: out along
+## `side` from `c` by `away` px and half itself; {rect, model, yaw, scale} if it's clear of the water
+## (`gap`), of everything placed and of the farm's others (`placed`, FARM_APART apart), else {}.
+func _farm_building(name: String, c: Vector2, side: Vector2, away: float, scale: Vector2, gap: float, placed: Array) -> Dictionary:
+	if Ruin.info(name).is_empty():
+		return {}
+	var yaw := float(randi() % 4) * PI * 0.5
+	var k := randf_range(scale.x, scale.y)
+	var size := Ruin.model_footprint(name, yaw, k)
+	var out := (absf(side.x) * size.x + absf(side.y) * size.y) * 0.5 + away
+	var rect := Rect2(c + side * out - size * 0.5, size)
+	if rect.position.x < PROP_MARGIN or rect.position.y < PROP_MARGIN or rect.end.x > Player.WORLD_WIDTH - PROP_MARGIN or rect.end.y > Player.WORLD_HEIGHT - PROP_MARGIN:
+		return {}
+	for other in placed:
+		if (other.rect as Rect2).grow(FARM_APART).intersects(rect):
+			return {}
+	# (clear of the fields and the tracks already laid - the farms and the fields go down in turn)
+	for f in _fields:
+		if (f as Rect2).grow(FARM_APART).intersects(rect):
+			return {}
+	for line in farm_tracks:
+		for q in (line as PackedVector2Array):
+			if rect.grow(_track_half + 10.0).has_point(q):
+				return {}
+	if not _ruin_clear(rect, gap):
+		return {}
+	return {"rect": rect, "model": name, "yaw": yaw, "scale": k}
+
+
+## A dirt track from a farm's yard (`from`) out to the map's edge - the nearest edge it can reach
+## without crossing the water, a building or the camp - wandering a little; `width` px. None if no
+## edge can be reached so.
+func _farm_track(from: Vector2, width: float) -> void:
+	var edges := [Vector2(0.0, from.y), Vector2(Player.WORLD_WIDTH, from.y), Vector2(from.x, 0.0), Vector2(from.x, Player.WORLD_HEIGHT)]
+	edges.sort_custom(func(a, b): return from.distance_to(a) < from.distance_to(b))
+	var tries := []
+	for end in edges:
+		for k in TRACK_TRIES:
+			# (straight-ish first, then wandering further - round a pond in its way)
+			tries.append([end, TRACK_WANDER * float(k) / float(TRACK_TRIES - 1) * (1.0 if randf() < 0.5 else -1.0)])
+	for attempt in tries:
+		var end: Vector2 = attempt[0]
+		var length := from.distance_to(end)
+		var n := maxi(2, ceili(length / TRACK_STEP))
+		var side := (end - from).normalized().orthogonal()
+		var amp: float = attempt[1]
+		var waves := randf_range(0.6, 1.4)
+		var phase := randf() * TAU
+		var line := PackedVector2Array()
+		var ok := true
+		for i in n + 1:
+			var t := float(i) / float(n)
+			var p := from.lerp(end, t) + side * amp * sin(t * PI) * (0.6 + 0.4 * sin(t * PI * waves + phase))
+			# (past the yard: clear of the water, the buildings and the camp)
+			if t * length > float((theme.farm as Dictionary).yard) * 0.6:
+				if _in_any_water(p) or _shore_distance(p) < width * 0.5 + 30.0 or _in_ruin(p, width * 0.5) or p.distance_to(SPAWN_POS) < SPAWN_CLEAR_RADIUS:
+					ok = false
+					break
+				for w in _walk_rects:
+					if (w as Rect2).grow(width * 0.5).has_point(p):
+						ok = false
+				if not ok:
+					break
+			line.append(p)
+		if ok:
+			farm_tracks.append(line)
+			return
+
+
+## Whether a thing (radius `r`, px) at `at` would stand on one of the tracks.
+func _on_track(at: Vector2, r: float) -> bool:
+	for line in farm_tracks:
+		var pts := line as PackedVector2Array
+		for i in pts.size() - 1:
+			if Geometry2D.get_closest_point_to_segment(at, pts[i], pts[i + 1]).distance_to(at) < r + _track_half:
+				return true
+	return false
+
+
+## One field (its size within `spec` "field_min".."field_max" - as big as there's room for - its crop
+## by "crops"' weights) where
+## there's room - clear of the water, the farms, the tracks, the camp and the other fields; some
+## fenced ("fenced"), the stubble with its bales ("bales").
+func _farm_field(spec: Dictionary) -> void:
+	var lo: Vector2 = spec.field_min
+	var hi: Vector2 = spec.field_max
+	for attempt in FIELD_TRIES:
+		# (big ones tried first, smaller as they fail - the room left between the ponds and the farms)
+		var t := float(attempt) / float(FIELD_TRIES - 1)
+		var size := hi.lerp(lo, t) * Vector2(randf_range(0.8, 1.0), randf_range(0.8, 1.0))
+		size = size.max(lo)
+		var rect := Rect2(Vector2(randf_range(PROP_MARGIN, Player.WORLD_WIDTH - PROP_MARGIN - size.x),
+			randf_range(PROP_MARGIN, Player.WORLD_HEIGHT - PROP_MARGIN - size.y)), size)
+		if not _field_clear(rect, float(spec.water_gap)):
+			continue
+		var field := FarmField.new()
+		field.name = "FarmField%d" % _fields.size()
+		field.rect = rect
+		field.position = rect.get_center()
+		field.crop = _weighted(spec.crops)
+		field.seed_value = randi()
+		_fields.append(rect)
+		get_parent().add_child.call_deferred(field)
+		if randf() < float(spec.fenced):
+			_fence_field(rect, spec.gate)
+		if field.crop == "stubble":
+			var bales: Vector2i = spec.bales
+			for _b in randi_range(bales.x, bales.y):
+				for _t in 12:
+					var inner := rect.grow(-45.0)
+					var at := inner.position + Vector2(randf() * inner.size.x, randf() * inner.size.y)
+					if _fits_street(at, StreetProp.reach_of("bale") + 12.0):
+						_add_farm_prop("bale", at, randf() * TAU)
+						break
+		return
+
+
+func _field_clear(rect: Rect2, gap: float) -> bool:
+	if _rect_distance(rect, SPAWN_POS) < SPAWN_CLEAR_RADIUS:
+		return false
+	for f in _fields:
+		if (f as Rect2).grow(FIELD_GAP).intersects(rect):
+			return false
+	for t in _taken:
+		if _rect_distance(rect, t[0]) < float(t[1]) + 20.0:
+			return false
+	for w in _walk_rects:
+		if rect.grow(40.0).intersects(w):
+			return false
+	for e in _entrances:
+		if _rect_distance(rect, e) < ENTRANCE_CLEARANCE:
+			return false
+	for line in farm_tracks:
+		for p in (line as PackedVector2Array):
+			if _rect_distance(rect, p) < _track_half + 16.0:
+				return false
+	var nx := maxi(2, ceili(rect.size.x / RUIN_PROBE) + 1)
+	var ny := maxi(2, ceili(rect.size.y / RUIN_PROBE) + 1)
+	for i in nx:
+		for j in ny:
+			var p := rect.position + Vector2(rect.size.x * i / float(nx - 1), rect.size.y * j / float(ny - 1))
+			if _in_any_water(p) or _shore_distance(p) < gap:
+				return false
+	return true
+
+
+## The fence round a field: along each side but now and then one, with a gap (`gate` px wide,
+## somewhere along it) to walk through; runs too short left out.
+func _fence_field(rect: Rect2, gate: Vector2) -> void:
+	var corners := [rect.position, Vector2(rect.end.x, rect.position.y), rect.end, Vector2(rect.position.x, rect.end.y)]
+	for k in 4:
+		if randf() < FENCE_OPEN_SIDE:
+			continue
+		var a: Vector2 = corners[k]
+		var b: Vector2 = corners[(k + 1) % 4]
+		var length := a.distance_to(b)
+		var width := minf(randf_range(gate.x, gate.y), length * 0.5)
+		var at := randf_range(length * 0.2, length * 0.8 - width)
+		for run in [[0.0, at], [at + width, length]]:
+			var r0: float = run[0]
+			var r1: float = run[1]
+			if r1 - r0 < FENCE_LEAST:
+				continue
+			var p0 := a.lerp(b, r0 / length)
+			var p1 := a.lerp(b, r1 / length)
+			var fence := Fence.new()
+			fence.name = "Fence%d" % _fence_count
+			_fence_count += 1
+			fence.position = (p0 + p1) * 0.5
+			fence.half = (r1 - r0) * 0.5
+			fence.yaw = (p1 - p0).angle()
+			fence.seed_value = randi()
+			get_parent().add_child.call_deferred(fence)
+			var steps := maxi(1, ceili((r1 - r0) / 40.0))
+			for i in steps + 1:
+				_taken.append([p0.lerp(p1, float(i) / float(steps)), Fence.THICK, 0.0])
+
+
+## What stands about the farms (`theme` "yard"): lantern posts along the tracks; wells, logs, lumber,
+## barrels, troughs, milk cans, wagons and barrows by the farm buildings (so many a base map's area);
+## the orchards (so many a map, whatever its size).
+func _place_yard_things() -> void:
+	var spec: Dictionary = theme.get("yard", {})
+	if spec.is_empty():
+		return
+	var share := Campaign.area_share()
+	var lit_left := int(spec.get("lit_most", 3))
+	# (the lanterns: beside the tracks, now one side, now the other)
+	var lanterns := 0 if farm_tracks.is_empty() else maxi(1, roundi(float(spec.get("lanterns", 0)) * share))
+	for _i in lanterns:
+		for _t in 20:
+			var line := farm_tracks.pick_random() as PackedVector2Array
+			var i := randi() % maxi(1, line.size() - 1)
+			var dir := (line[mini(i + 1, line.size() - 1)] - line[i]).normalized()
+			var at := line[i] + dir.orthogonal() * (_track_half + 16.0) * (1.0 if randf() < 0.5 else -1.0)
+			var lantern := _add_farm_prop("lantern", at, dir.angle() + PI * 0.5, true)
+			if lantern != null:
+				if lit_left > 0 and randf() < float(spec.lit):
+					lantern.lit = true
+					lit_left -= 1
+				break
+	# (the rest: by a farm building's walls, or about the yard)
+	var near := {"wells": "well", "logs": "logs", "lumber": "lumber", "barrels": "barrel", "troughs": "trough",
+		"milk": "milk", "wagons": "wagon", "barrows": "barrow"}
+	for key: String in near:
+		var kind: String = near[key]
+		if float(spec.get(key, 0)) <= 0.0:
+			continue
+		for _i in maxi(1, roundi(float(spec.get(key, 0)) * share)):
+			for _t in 25:
+				var at := Vector2.INF
+				if not _ruins.is_empty():
+					var rect: Rect2 = _ruins.pick_random()
+					var side := randi() % 4
+					var t := randf_range(0.1, 0.9)
+					var out := StreetProp.shape_of(kind).x + randf_range(14.0, 50.0)
+					match side:
+						0: at = Vector2(rect.position.x + rect.size.x * t, rect.position.y - out)
+						1: at = Vector2(rect.end.x + out, rect.position.y + rect.size.y * t)
+						2: at = Vector2(rect.position.x + rect.size.x * t, rect.end.y + out)
+						_: at = Vector2(rect.position.x - out, rect.position.y + rect.size.y * t)
+				if at == Vector2.INF:
+					break
+				var yaw := randf() * TAU if kind in ["logs", "barrel", "milk", "well"] else (float(randi() % 2) * PI * 0.5 + randf_range(-0.2, 0.2))
+				if _add_farm_prop(kind, at, yaw) != null:
+					break
+	# (an orchard: its fruit trees in rows, where most of them fit)
+	var grid: Vector2i = spec.get("orchard", Vector2i(3, 4))
+	var gap := float(spec.get("orchard_gap", 105.0))
+	for _o in int(spec.get("orchards", 0)):
+		for _t in 30:
+			var rows := randi_range(2, grid.x)
+			var cols := randi_range(3, grid.y)
+			var origin := Vector2(randf_range(PROP_MARGIN, Player.WORLD_WIDTH - PROP_MARGIN - gap * cols), randf_range(PROP_MARGIN, Player.WORLD_HEIGHT - PROP_MARGIN - gap * rows))
+			var spots := []
+			for r in rows:
+				for q in cols:
+					var p := origin + Vector2(q * gap + randf_range(-8.0, 8.0), r * gap + randf_range(-8.0, 8.0))
+					if _yard_spot_ok(p, StreetProp.reach_of("fruit")) and _fits(p, StreetProp.reach_of("fruit"), 0.0):
+						spots.append(p)
+			if spots.size() >= int(rows * cols * 0.7):
+				for p in spots:
+					_add_farm_prop("fruit", p, randf() * TAU)
+				break
+
+
+## Whether a yard thing (radius `reach`, px) may stand at `at`: on the map, off the start, the water,
+## the docks' ways, the buildings and the tracks.
+func _yard_spot_ok(at: Vector2, reach: float) -> bool:
+	if at.x < PROP_MARGIN or at.y < PROP_MARGIN or at.x > Player.WORLD_WIDTH - PROP_MARGIN or at.y > Player.WORLD_HEIGHT - PROP_MARGIN:
+		return false
+	if at.distance_to(SPAWN_POS) < PROP_AVOID_SPAWN_RADIUS or _shore_distance(at) < reach + 30.0 or _in_any_water(at):
+		return false
+	if _near_walkway(at, reach + 20.0) or _near_entrance(at, ENTRANCE_CLEARANCE):
+		return false
+	return not _in_ruin(at, reach) and not _on_track(at, reach + 4.0)
+
+
+## A farm thing (StreetProp `kind`) at `at` if it may stand there (outside the fields but for the
+## bales; `by_track`: the lanterns stand right beside a track); the prop, or null.
+func _add_farm_prop(kind: String, at: Vector2, yaw: float, by_track := false) -> StreetProp:
+	var reach := StreetProp.reach_of(kind)
+	if kind != "bale":
+		if not _yard_spot_ok(at, 0.0 if by_track else reach) or not _fits_street(at, reach):
+			return null
+		if by_track and _on_track(at, 0.0):
+			return null
+		for f in _fields:
+			if _rect_distance(f, at) < reach + 10.0:
+				return null
+	var prop := StreetProp.new()
+	prop.name = "StreetProp%d" % _farm_props
+	_farm_props += 1
+	prop.kind = kind
+	prop.yaw = yaw
+	prop.position = at
+	prop.seed_value = randi()
+	_taken.append([at, reach, 0.0])
+	get_parent().add_child.call_deferred(prop)
+	return prop
+
+
+## A key of `weights` ({key: weight}) drawn by its weight.
+static func _weighted(weights: Dictionary) -> String:
+	var total := 0.0
+	for k in weights:
+		total += float(weights[k])
+	var roll := randf() * total
+	for k in weights:
+		roll -= float(weights[k])
+		if roll <= 0.0:
+			return str(k)
+	return str(weights.keys().back())
+
+
+## The countryside's tracks this map (px polylines, from a farm's yard to the map's edge) - for
+## RunView3D's ground.
+static var farm_tracks: Array = []
+## (the tracks' half width, px; how far apart their points; how far they wander from straight)
+const TRACK_HALF := 32.0
+var _track_half := TRACK_HALF
+const TRACK_STEP := 40.0
+const TRACK_WANDER := 260.0
+const TRACK_TRIES := 4
+## (fields: how far apart; how likely a side is left unfenced; a fence's least run, px)
+const FIELD_GAP := 70.0
+const FIELD_TRIES := 60
+## (where a farm might stand: so many tried, its yard's middle this far in from the map's edges, px)
+const STEAD_TRIES := 120
+const STEAD_INSET := 300.0
+## (a farm's buildings: at least this far apart, px)
+const FARM_APART := 50.0
+const FENCE_OPEN_SIDE := 0.15
+const FENCE_LEAST := 40.0
+## The fields placed (their rectangles, px); the farms' yards (px).
+var _fields: Array = []
+var _yards: Array = []
+var _fence_count := 0
+var _farm_props := 0
+
+
 func _place_fossils() -> void:
 	var want: Dictionary = theme.get("fossils", {})
 	var share := Campaign.area_share()
@@ -1643,6 +2110,12 @@ func _pick_prop_position(base: float, reach: float) -> Vector2:
 ## Whether a thing at `pos` (base radius, branch reach; px) keeps clear of
 ## everything placed: bases PROP_GAP apart; branches clear of branches.
 func _fits(pos: Vector2, base: float, reach: float) -> bool:
+	# (the countryside: nothing stands in its fields or on its tracks)
+	for f in _fields:
+		if _rect_distance(f, pos) < base + 12.0:
+			return false
+	if _on_track(pos, base + 6.0):
+		return false
 	for t in _taken:
 		var d := pos.distance_to(t[0])
 		if d < base + float(t[1]) + PROP_GAP:

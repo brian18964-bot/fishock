@@ -61,6 +61,7 @@ const CHAPTERS := [
 	# User request (the ruined human world - docs/RUINED_WORLD.md): the human world fallen empty, the
 	# travellers going on through the ferry stones to what's left of it; its first map the city.
 	{"id": 7, "name": "荒廢都市", "stars": 0, "blurb": "人類的城市空了。龜裂的街道、空蕩的大樓，積水裡游著人類留下的魚。"},
+	{"id": 8, "name": "鄉村", "stars": 0, "blurb": "安靜的農村，正是秋收。收割過的田、穀倉和果園之間，灌溉水塘裡游著田間的魚。"},
 ]
 ## The levels: each map's branches, in order (user request - one level a branch; a map's
 ## branches open one after another, the next map once the whole of this one's done). stars:
@@ -231,6 +232,40 @@ const LEVELS := [
 		"rules": {"theme": "city", "map": "XL", "ponds": [5, 1], "day": 360.0, "quota": 38.0, "ghosts": 3, "meddle": 5, "big_ghost": true, "weather": "stormy", "critters": 3, "fish": [], "fish_epic": ["tarpon"]},
 		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到大海鰱"}, {"stat": "storm", "text": "在暴風雨中撐過去", "min": 1}],
 		"reward": {"gold": 500, "items": {"lure_rainbow": 2}}},
+	# User request (the human world's countryside - an ordinary place, not a ruin: user decision): its
+	# branches - the paddies' pond, the farm with its barns, the orchard in the fog, the pasture the
+	# wolves come down to, the village by the big river - each with its own fish. All of the numbers
+	# mine for now, the user's to change.
+	{"id": "8-1", "chapter": 8, "name": "稻田水塘", "teach": "第一次到鄉村：田、籬笆和農舍，繞過去找水",
+		"intro": "渡石把你帶到一片農田邊。田邊挖了灌溉用的水塘，田裡的小魚游進了塘裡。",
+		"rules": {"night_fails": true, "theme": "countryside", "map": "S", "ponds": [2, 0], "day": 270.0, "quota": 14.0, "ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear", "critters": 8, "escalate": false, "evil": false, "fish": ["paradise_fish"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到蓋斑鬥魚"}, {"stat": "time_left", "text": "還剩 60 秒以上就達標離開", "min": 60}],
+		"reward": {"gold": 240}},
+	{"id": "8-2", "chapter": 8, "name": "穀倉與魚塭", "teach": "收割過的田、乾草捆擋路",
+		"intro": "幾戶農家和穀倉，田剛收割完，乾草捆成一卷一卷躺在田裡。農家的魚塭還有魚。",
+		"rules": {"night_fails": true, "theme": "countryside", "map": "M", "ponds": [3, 0], "day": 300.0, "quota": 22.0, "ghosts": 1, "meddle": 3, "big_ghost": false, "weather": "mild", "critters": 6, "escalate": false,
+			"mods": {"farm": {"crops": {"plough": 0.4, "stubble": 3.0, "pumpkin": 0.4, "greens": 0.2}}},
+			"fish": ["bream"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到武昌魚"}, {"stat": "catch_rare", "text": "一晚釣到 2 條稀有魚", "min": 2}],
+		"reward": {"gold": 280}},
+	{"id": "8-3", "chapter": 8, "name": "霧中果園", "teach": "起霧的果園與水鬼",
+		"intro": "果園裡的果子沒人摘，落了一地。起霧的晚上，池塘裡有東西在動。",
+		"rules": {"theme": "countryside", "map": "L", "ponds": [5, 1], "day": 330.0, "quota": 28.0, "ghosts": 2, "meddle": 3, "big_ghost": true, "water_ghost": 1.6, "weather": "foggy", "critters": 5,
+			"mods": {"yard": {"orchards": 2}},
+			"fish": ["culter", "bighead_carp"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到翹嘴鮊或鱅魚"}, {"stat": "species_both", "text": "兩種獨有魚都釣到", "min": 2}],
+		"reward": {"gold": 320}},
+	{"id": "8-4", "chapter": 8, "name": "山腳牧場", "teach": "狼群下山",
+		"intro": "靠山的牧場，柵欄圍著空蕩的草地。天黑以後，狼從山上下來。",
+		"rules": {"theme": "countryside", "map": "L", "ponds": [3, 1], "day": 330.0, "quota": 30.0, "ghosts": 2, "meddle": 4, "big_ghost": true, "weather": {"FOG": 0.2, "DRIZZLE": 0.25}, "critters": 4,
+			"mods": {"animals": {"wolf": 1.5, "deer": 0.6}, "farm": {"fenced": 0.9}}, "fish": [], "fish_epic": ["black_carp"]},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到青魚"}, {"stat": "animal_hit", "text": "沒被野獸撲到", "max": 0}],
+		"reward": {"gold": 360}},
+	{"id": "8-5", "chapter": 8, "name": "大河村落", "teach": "鄉村的終點",
+		"intro": "大河邊的村落，田一路種到河岸。暴風雨的晚上，河裡的大魚游進了溝渠和池塘。",
+		"rules": {"theme": "countryside", "map": "XL", "ponds": [5, 1], "day": 360.0, "quota": 38.0, "ghosts": 3, "meddle": 5, "big_ghost": true, "weather": "stormy", "critters": 4, "fish": [], "fish_epic": ["yellowcheek"]},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到鱤魚"}, {"stat": "storm", "text": "在暴風雨中撐過去", "min": 1}],
+		"reward": {"gold": 520, "items": {"lure_minnow": 4}}},
 ]
 
 
@@ -270,6 +305,7 @@ const ACHIEVEMENTS := [
 	["chapter_6", "旅程", "崖頂夜釣客", "通過第六章，渡湖紀行完結", 300, {"chapter": 6}],
 	# (user request - the ruined human world: its maps' chapters, each its own)
 	["chapter_7", "旅程", "城市拾荒者", "通過第七章「荒廢都市」", 300, {"chapter": 7}],
+	["chapter_8", "旅程", "田園釣客", "通過第八章「鄉村」", 300, {"chapter": 8}],
 	["stars_45", "旅程", "滿天星", "收集 45 顆星", 200, {"stars": 45}],
 	["stars_75", "旅程", "渡湖紀行", "收集全部 78 顆星", 500, {"stars": 78}],
 	["catch_100", "釣技", "百尾", "總共釣到 100 條魚", 100, {"life": "catch", "min": 100}],
