@@ -231,6 +231,21 @@ static func summary(won: bool, short := false) -> Control:
 			name += "（%s）" % UiKit.rarity_name(Bones.rarity(id))
 		bone.add_child(UiKit.label("帶回：%s（%d 金幣）" % [name, Bones.price(id)], 15, Color(0.45, 0.3, 0.02), true, 0))
 		col.add_child(bone)
+	# (user request: the zodiac coin the altar gave besides, if it did - its own line, in the legend's colour)
+	if won and GameState.run_coin != "":
+		var cid := GameState.run_coin
+		var coin := HBoxContainer.new()
+		coin.name = "Coin"
+		coin.alignment = BoxContainer.ALIGNMENT_CENTER
+		coin.add_theme_constant_override("separation", 8)
+		var cpic := TextureRect.new()
+		cpic.texture = Items.square_icon(cid)
+		cpic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		cpic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		cpic.custom_minimum_size = Vector2(SUMMARY_SLOT + 6.0, SUMMARY_SLOT + 6.0)
+		coin.add_child(cpic)
+		coin.add_child(UiKit.label("祭壇深處還有：%s！" % Zodiac.name_of(cid), 15, UiKit.rarity_color("legend").darkened(0.35), true, 0))
+		col.add_child(coin)
 	var res: Dictionary = Campaign.result
 	var gold := int(res.get("gold", 0)) + int(res.get("curse_gold", 0))
 	for a in res.get("achievements", []):

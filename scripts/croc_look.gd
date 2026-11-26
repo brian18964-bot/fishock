@@ -4,13 +4,11 @@ extends RefCounted
 ## User request: Mr. Croc in an outfit of his own - not the travellers' (every character wears the
 ## same white knit and khaki), so nothing about him says he's one of them. His knit dyed SHIRT
 ## (the picture's white knit found by its colour - near-white, no hue - on his body below the
-## head, so his teeth and eyes stay as they are; the knit's own stitches and shading kept), and a
-## straw hat on his head. Only on the camp's Mr. Croc (CampCroc); his own picture is untouched.
+## head, so his teeth and eyes stay as they are; the knit's own stitches and shading kept), and his
+## hat (HAT). Only on the camp's Mr. Croc (CampCroc); his own picture is untouched.
 
-## (the dye, sRGB; the hat's straw and its band - mine for now, the user can change them)
+## (the dye, sRGB - mine for now, the user can change it)
 const SHIRT := Color(0.52, 0.16, 0.11)
-const STRAW := Color(0.80, 0.66, 0.38)
-const BAND := Color(0.30, 0.12, 0.08)
 ## (where the hat sits on the Head bone: up from it and back a little, tilted back)
 const HAT_AT := Vector3(0.0, 0.215, 0.085)
 const HAT_TILT := -0.16
@@ -93,54 +91,20 @@ static func dyed(src: BaseMaterial3D) -> ShaderMaterial:
 	return m
 
 
-## A straw hat: a round crown with a dark band, a wide brim (a little longer front to back, over
-## his long head).
+## His hat: our own (tools/make_croc_props.py - made from a trilby the user gave: its brim drawn
+## out wider and dipped front and back, re-dyed an aged cream with a dark brown band, a straw weave
+## laid in). It stands on its brim at the origin, its long way front to back.
+const HAT := preload("res://assets/models/camp/croc_hat.glb")
+## (how big on his head: its brim about half a metre across)
+const HAT_SCALE := 1.0
+
+
 static func hat() -> Node3D:
 	var root := Node3D.new()
 	root.name = "StrawHat"
-	var straw := StandardMaterial3D.new()
-	straw.albedo_color = STRAW
-	straw.roughness = 0.92
-	straw.rim_enabled = true
-	straw.rim = 0.2
-	var band := StandardMaterial3D.new()
-	band.albedo_color = BAND
-	band.roughness = 0.8
-	var brim := MeshInstance3D.new()
-	brim.name = "Brim"
-	var bm := CylinderMesh.new()
-	bm.top_radius = 0.25
-	bm.bottom_radius = 0.26
-	bm.height = 0.014
-	bm.radial_segments = 28
-	brim.mesh = bm
-	brim.material_override = straw
-	brim.scale = Vector3(1.0, 1.0, 1.12)
-	root.add_child(brim)
-	var crown := MeshInstance3D.new()
-	crown.name = "Crown"
-	var cm := CylinderMesh.new()
-	cm.top_radius = 0.105
-	cm.bottom_radius = 0.135
-	cm.height = 0.11
-	cm.radial_segments = 24
-	crown.mesh = cm
-	crown.material_override = straw
-	crown.position = Vector3(0, 0.062, 0)
-	crown.scale = Vector3(1.0, 1.0, 1.1)
-	root.add_child(crown)
-	var ring := MeshInstance3D.new()
-	ring.name = "Band"
-	var rm := CylinderMesh.new()
-	rm.top_radius = 0.128
-	rm.bottom_radius = 0.137
-	rm.height = 0.03
-	rm.radial_segments = 24
-	ring.mesh = rm
-	ring.material_override = band
-	ring.position = Vector3(0, 0.024, 0)
-	ring.scale = Vector3(1.0, 1.0, 1.1)
-	root.add_child(ring)
-	for c in root.get_children():
-		(c as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	var model: Node3D = HAT.instantiate()
+	model.scale = Vector3.ONE * HAT_SCALE
+	root.add_child(model)
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	return root

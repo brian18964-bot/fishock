@@ -113,6 +113,8 @@ var carried_fish: Array = []
 var run_catches: Array = []
 var run_offered := 0
 var run_bone := ""
+## User request: the zodiac coin the altar gave besides the bone ("" none) - the night's results show it.
+var run_coin := ""
 ## User request: the fish in the oxygenated fish box (Profile.OXY_SLOTS of
 ## them) - their vitality doesn't run down; the run's, like what's carried.
 var oxy_fish: Array = []
@@ -522,6 +524,17 @@ func escape() -> void:
 		var id: String = Bones.make_glow(str(picked.glow)) if picked.has("glow") else str(picked.get("bone", BASELINE_BONE))
 		message = "成功逃離！祭壇給了你" + _take_bone(id)
 		offering_pool_updated.emit(offering_pool, evil_count)
+	# User request: now and then - very seldom - one of the twelve zodiac coins besides (Zodiac).
+	var coin := Zodiac.roll()
+	if coin != "":
+		run_coin = coin
+		match Profile.give_bone(coin):
+			"bag":
+				message += "。祭壇深處還閃著一枚%s，放進了背包！" % Zodiac.name_of(coin)
+			"storage":
+				message += "。祭壇深處還閃著一枚%s，送回了倉庫！" % Zodiac.name_of(coin)
+			_:
+				message += "。祭壇深處還閃著一枚%s，背包和倉庫都滿了，直接賣了 %d 金幣" % [Zodiac.name_of(coin), Zodiac.PRICE]
 
 	end_run(true, message)
 
@@ -535,6 +548,7 @@ func reset_run() -> void:
 	run_catches.clear()
 	run_offered = 0
 	run_bone = ""
+	run_coin = ""
 	oxy_fish.clear()
 	lure_uid = -1
 	day_over = false

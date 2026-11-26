@@ -161,6 +161,7 @@ const TESTS := [
 	"test_character_unlocks",
 	"test_croc_quests",
 	"test_croc_errands_on_run",
+	"test_zodiac_coins",
 	"test_bag_card_closes",
 	"test_altar_this_run_only",
 	"test_locks",
@@ -5518,7 +5519,9 @@ func test_croc_quests() -> void:
 		for i in (mi as MeshInstance3D).get_surface_override_material_count():
 			if (mi as MeshInstance3D).get_surface_override_material(i) is ShaderMaterial:
 				dyed = true
-	check(dyed and camp.croc.rig.find_child("StrawHat", true, false) != null, "his own outfit: the knit dyed, a straw hat")
+	check(dyed and camp.croc.rig.find_child("StrawHat", true, false) != null
+		and camp.croc.rig.find_child("StrawHat", true, false).find_children("*", "MeshInstance3D", true, false).size() > 0,
+		"his own outfit: the knit dyed, his hat (our own, from the user's model)")
 	var tracker: Control = null
 	for t in title.find_children("QuestTracker", "", true, false):
 		tracker = t
@@ -5527,10 +5530,15 @@ func test_croc_quests() -> void:
 		"the errand taken listed down the left (%s)" % CrocQuests.count_text(other))
 	await seconds(CampCroc.FIRST_AT + 0.6)
 	check(camp.croc.line in CampCroc.OPENING, "his first words a short opening line (%s)" % camp.croc.line)
-	var mark: Control = title.find_child("CrocMark", true, false)
 	var bubble: Control = title.find_child("CrocBubble", true, false)
-	check(mark != null and mark.visible and bubble != null and bubble.visible
-		and not (bubble.get_node("Said") as Label).text.contains("金幣"), "over him: his words, and the scroll (an errand on offer)")
+	# User request: a real scroll floating over his head (our own, from the user's model)
+	var scroll_up: Node3D = camp.croc.scroll
+	check(scroll_up != null and scroll_up.visible and scroll_up.find_children("*", "MeshInstance3D", true, false).size() > 0
+		and scroll_up.global_position.y > camp.croc.head_point().y + 0.5 and bubble != null and bubble.visible
+		and not (bubble.get_node("Said") as Label).text.contains("金幣"), "over him: his words, and the scroll floating (an errand on offer)")
+	# (its long way across the camera, swaying a little - never seen end on, as a coin)
+	var across := absf(scroll_up.global_basis.x.normalized().dot(camp.camera.global_basis.x.normalized()))
+	check(across > cos(CampCroc.SCROLL_SWAY + 0.05), "the scroll broadside to the camera (%.2f)" % across)
 	var was: Vector3 = camp.croc.position
 	camp.croc._wait = 0.0
 	await seconds(1.5)
@@ -5543,8 +5551,9 @@ func test_croc_quests() -> void:
 	var talk: CrocTalk = title._croc_talk()
 	await frames(2)
 	var offered: Array = CrocQuests.offered()
+	await frames(2)
 	check(talk.find_child("Quest_%d" % int(other.id), true, false) != null and not offered.is_empty()
-		and talk.find_child("Quest_%d" % int(offered[0].id), true, false) != null and not mark.visible,
+		and talk.find_child("Quest_%d" % int(offered[0].id), true, false) != null and not scroll_up.visible,
 		"his window lists his errands (the scroll down while he talks)")
 	talk.show_quest(int(offered[0].id))
 	await frames(2)
@@ -5600,6 +5609,48 @@ func test_croc_errands_on_run() -> void:
 	await seconds(0.8)
 	check(not tracker.visible and QuestTracker.run_bottom() == 0.0, "no errands: nothing listed")
 	Profile.croc = keep
+
+
+## User request: the twelve zodiac coins - the altar's very rare reward, our own models (not so round,
+## 1.5 times as thick, no little stars) - each a thing with its name, pictures and model, worth a lot to
+## the merchant; given now and then besides the night's bone, and shown on the night's results.
+func test_zodiac_coins() -> void:
+	var ok := true
+	var widths := []
+	for id in Zodiac.all():
+		var d := Items.def(id)
+		var model: PackedScene = load(Items.model_path(id))
+		ok = ok and not d.is_empty() and str(d.name).ends_with("座硬幣") and Items.icon(id) != null and Items.square_icon(id) != null \
+			and model != null and UiKit.item_rarity(id) == "legend" and Profile.buyback_price(id) == Zodiac.PRICE
+		if model != null:
+			var inst: Node3D = model.instantiate()
+			var box := AABB()
+			for mi in inst.find_children("*", "MeshInstance3D", true, false):
+				box = (mi as MeshInstance3D).get_aabb()
+			widths.append([box.size.x, box.size.z, box.size.y])
+			inst.free()
+	check(ok and Zodiac.all().size() == 12, "twelve coins, each with its name, pictures, model, the legend's colour, its price")
+	var w: Array = widths[0]
+	check(widths.all(func(s): return s[2] / maxf(s[0], s[1]) > 0.035 and s[2] / maxf(s[0], s[1]) < 0.05)
+		and widths.any(func(s): return absf(s[0] - s[1]) / maxf(s[0], s[1]) > 0.01),
+		"thick (1.5x: %.3f of its width) and not quite round (%.3f x %.3f)" % [w[2] / maxf(w[0], w[1]), w[0], w[1]])
+	# The altar: now and then a coin besides the bone.
+	var saved := Profile.snapshot()
+	Zodiac.chance = 1.0
+	gs.offering_pool = [{"rarity": "rare", "is_evil": false, "value": 80, "taken": false, "bone": "bone_whole_m"}]
+	gs.evil_count = 0
+	gs.day_phase = GameState.DayPhase.ESCAPE
+	gs.run_over = false
+	var said := [""]
+	var heard := func(_ok, msg): said[0] = str(msg)
+	gs.run_ended.connect(heard)
+	gs.escape()
+	gs.run_ended.disconnect(heard)
+	Zodiac.chance = Zodiac.CHANCE
+	var coin: String = gs.run_coin
+	check(Zodiac.is_coin(coin) and (Profile.bag.any(func(e): return e.id == coin) or Profile.stored(coin) > 0)
+		and said[0].contains(Zodiac.name_of(coin)), "a night got away from: the bone and a %s besides (%s)" % [Zodiac.name_of(coin), said[0]])
+	Profile.load_data(saved)
 
 
 func test_backpack_grid() -> void:

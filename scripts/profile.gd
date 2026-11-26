@@ -1538,7 +1538,7 @@ func give_bone(id: String) -> String:
 		_store(id, 1)
 		_changed()
 		return "storage"
-	add_gold(Bones.price(id))
+	add_gold(Zodiac.PRICE if Zodiac.is_coin(id) else Bones.price(id))
 	glow_bones.erase(id)
 	return "sold"
 
@@ -1618,6 +1618,8 @@ func buy_back(i: int) -> String:
 func buyback_ok(id: String) -> bool:
 	if Bones.is_bone(id):
 		return Bones.price(id) > 0
+	if Zodiac.is_coin(id):
+		return true
 	if id.begins_with("rod_") or id == "lamp" or Items.def(id).is_empty() or bool(Items.def(id).get("fixed", false)):
 		return false
 	return shop_cost(id) > 0
@@ -1630,6 +1632,8 @@ func buyback_price(id: String) -> int:
 		return 0
 	if Bones.is_bone(id):
 		return Bones.price(id)
+	if Zodiac.is_coin(id):
+		return Zodiac.PRICE
 	var rate := BUYBACK if not (USABLES.has(id) and not bool(USABLES[id].get("sold", true))) else BUYBACK_FOUND
 	var worn := 1.0
 	var most := max_durability(id)

@@ -55,7 +55,6 @@ var _press_spot := ""
 var _spot_label: Label
 var _near_label: Label
 var _croc_bubble: PanelContainer
-var _croc_mark: Control
 var _near := ""
 ## The page a tap asked for, opened when the character's done its bit
 ## there (CampLife.act_on) - or at once, tapped again.
@@ -332,9 +331,8 @@ func _build() -> void:
 	_near_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_near_label.visible = false
 	_home.add_child(_near_label)
-	# User request: Mr. Croc's words over his head as he says them, and over it a list's sign while
-	# he's something to talk about (an errand on offer, or one done) - what it is only told when
-	# he's talked to.
+	# User request: Mr. Croc's words over his head as he says them (the scroll over him that says
+	# he's something to talk about is in the 3D - CampCroc); what it is only told when he's talked to.
 	_croc_bubble = PanelContainer.new()
 	_croc_bubble.name = "CrocBubble"
 	_croc_bubble.add_theme_stylebox_override("panel", UiKit.tooltip_box())
@@ -345,12 +343,6 @@ func _build() -> void:
 	said.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_croc_bubble.add_child(said)
 	_home.add_child(_croc_bubble)
-	_croc_mark = CrocMark.new()
-	_croc_mark.name = "CrocMark"
-	_croc_mark.size = CrocMark.SIZE
-	_croc_mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_croc_mark.visible = false
-	_home.add_child(_croc_mark)
 	# User request: the errands taken listed down the left (QuestTracker), under the traveller's card.
 	var errands := QuestTracker.new(false)
 	errands.position = Vector2(12, 74)
@@ -495,42 +487,22 @@ func _process(_delta: float) -> void:
 	_croc_over()
 
 
-## Mr. Croc's words and his list's sign, over his head (none while a page or a window's open, nor
-## while he's off screen).
+## Mr. Croc's words over him (over his scroll while it's up - CampCroc), none while a page or a
+## window's open, nor while he's off screen.
 func _croc_over() -> void:
 	if _croc_bubble == null:
 		return
 	var croc: CampCroc = _stage.croc if _stage != null else null
 	var shown := croc != null and is_instance_valid(croc) and croc.is_visible_in_tree() and _home.visible and _page == null \
-		and find_child("CrocTalk", false, false) == null and not _stage.camera.is_position_behind(croc.head_point())
-	var news := shown and CrocQuests.has_news()
-	_croc_mark.visible = news
+		and find_child("CrocTalk", false, false) == null and not _stage.camera.is_position_behind(croc.words_point())
 	_croc_bubble.visible = shown and croc.line != "" and croc.line_alpha > 0.0
-	if not shown:
+	if not _croc_bubble.visible:
 		return
-	var head := _stage.camera.unproject_position(croc.head_point() + Vector3(0, 0.42, 0)) / RENDER_SCALE
-	var top := head.y
-	if news:
-		var bob := sin(Time.get_ticks_msec() / 1000.0 * 2.6) * 3.0
-		_croc_mark.position = Vector2(head.x - CrocMark.SIZE.x * 0.5, head.y - CrocMark.SIZE.y + bob)
-		(_croc_mark as CrocMark).done = CrocQuests.ready_to_hand_in()
-		_croc_mark.queue_redraw()
-		top = _croc_mark.position.y - 4.0
-	if _croc_bubble.visible:
-		(_croc_bubble.get_node("Said") as Label).text = croc.line
-		_croc_bubble.reset_size()
-		_croc_bubble.modulate.a = croc.line_alpha
-		_croc_bubble.position = Vector2(head.x - _croc_bubble.size.x * 0.5, top - _croc_bubble.size.y - 2.0)
-
-
-## Over Mr. Croc's head while he's something to talk about: a rolled scroll (QuestScroll - user
-## request, after a picture of one) - with a tick in a green ring when there are fish to hand him.
-class CrocMark extends Control:
-	const SIZE := Vector2(34, 40)
-	var done := false
-
-	func _draw() -> void:
-		QuestScroll.draw(self, Rect2(Vector2.ZERO, SIZE), Color.WHITE, done)
+	var at := _stage.camera.unproject_position(croc.words_point()) / RENDER_SCALE
+	(_croc_bubble.get_node("Said") as Label).text = croc.line
+	_croc_bubble.reset_size()
+	_croc_bubble.modulate.a = croc.line_alpha
+	_croc_bubble.position = Vector2(at.x - _croc_bubble.size.x * 0.5, at.y - _croc_bubble.size.y - 2.0)
 
 
 ## What the character's near (NEAR_REACH): its name popped up over it,

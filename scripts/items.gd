@@ -50,6 +50,8 @@ static var _icons := {}
 static func def(id: String) -> Dictionary:
 	if Bones.is_bone(id):
 		return Bones.def(id)
+	if Zodiac.is_coin(id):
+		return Zodiac.def(id)
 	if id.begins_with("rod_"):
 		var tier := int(id.substr(4))
 		if tier < 0 or tier >= Profile.ROD_TIERS.size():
@@ -157,6 +159,8 @@ const LIVE_MODELS := {"worm": "worm", "cricket": "grasshopper", "shrimp": "shrim
 static func model_path(id: String) -> String:
 	if Bones.is_bone(id):
 		return Bones.model_path(id)
+	if Zodiac.is_coin(id):
+		return Zodiac.model_path(id)
 	if id.begins_with("rod_"):
 		return "res://assets/models/fishing_rod_lvl%d.glb" % (int(id.substr(4)) + 1)
 	match id:
@@ -187,6 +191,8 @@ const SQUARE_ICONS := "res://assets/sprites/icons/%s.png"
 static func square_icon(id: String) -> Texture2D:
 	if Bones.is_bone(id):
 		return texture(Bones.square_icon_path(id))
+	if Zodiac.is_coin(id):
+		return texture(Zodiac.square_icon_path(id))
 	var key := ""
 	if id.begins_with("rod_") or id in ["flashlight", "battery", "lamp", "tea", "roll", "loaf", "cheese", "ammo",
 			"knife", "hatchet", "machete", "glock", "potion_vigor", "potion_ward", "eyeball", "eye_altar", "eye_ghost",

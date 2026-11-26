@@ -443,6 +443,8 @@ static func rarity_name(key: String) -> String:
 static func item_rarity(id: String) -> String:
 	if Bones.is_bone(id):
 		return Bones.rarity(id)
+	if Zodiac.is_coin(id):
+		return "legend"
 	if id.begins_with("rod_"):
 		return RARITY_ORDER[clampi(int(id.substr(4)), 0, RARITY_ORDER.size() - 1)]
 	if id == "flashlight" or id == "net":

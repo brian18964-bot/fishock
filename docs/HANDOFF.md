@@ -41,6 +41,21 @@
   → 交給鱷魚先生 5 條鯉魚 → 150 金幣），魚要真的交出去、可以分批交（2/5）；對話視窗像 MMO 任務 NPC：
   先列出委託（可交付／新的／進行中），點進去看情境、目標、獎勵，再接受、交出或放棄（`scripts/croc_talk.gd`）。
   接了委託後，營地和夜釣畫面左邊會列出委託清單與進度，夜釣中另外顯示身上帶了幾條（`scripts/quest_tracker.gd`）。
+  第四輪（使用者要求，素材來自 GitHub release「Des」）：頭上的 2D 卷軸太亮太突兀 → 改成真的 3D 卷軸模型飄在頭上
+  （上下浮動、橫向面對鏡頭輕輕擺動，有可交的委託時發出暖光；比原本圖示小 15%）；他的帽子換成使用者給的紳士帽改成的草帽。
+  兩個模型都用我們的工具重製（`tools/make_croc_props.py`）：卷軸來自 `r1.blend`（合併、減面、重新上色成舊羊皮紙＋磚紅繩），
+  帽子來自 `Hat.obj`（帽簷加寬、前後微垂、重新染成舊奶油色＋深棕帽帶、加草編紋）。原檔不進版控。
+  `parchemin.mb` 是 Maya 二進位檔，這裡沒有 Maya 讀不了，所以用 `r1.blend` 的卷軸。對話視窗和左側清單仍用 2D 卷軸圖示。
+### 10. 十二星座硬幣（祭壇的極稀有獎品）
+- 使用者要求：12 星座硬幣是祭品會出現的極稀有獎品，能力先不寫；外形不要那麼圓（不規則）、厚度 ×1.5、拿掉類似星星的圖案。
+- 用 `tools/make_zodiac_coins.py` 從使用者給的 `Zodiac.fbx`＋貼圖重製成我們的資產：把高面數浮雕烘成高度圖，
+  用浮雕偵測找出小星星（排除主圖案和外圈），把顏色和高度都補平，重新調成舊金色，再做法線貼圖；
+  硬幣本體是我們自己生成的不規則低面數外形（厚度是原本的 1.5 倍）。輸出：`assets/models/items/zodiac_01..12.glb`、
+  `assets/sprites/items/zodiac_NN.png`（背包圖示）、`assets/sprites/icons/zodiac_NN.png`（方形圖示）。01 白羊座 … 12 雙魚座。
+- 遊戲裡（`scripts/zodiac.gd`）：成功逃離時，除了祭壇的骨頭，還有 1% 機率多給一枚隨機星座硬幣（放進背包，滿了進倉庫），
+  通關結算會顯示；稀有度算「傳說」；商人收購 800 金幣。
+- 重做資產需要 Blender 的 Python 模組：`python3 -m venv bpyenv && bpyenv/bin/pip install bpy "numpy<2" opencv-python-headless==4.10.0.84 "scipy<1.15"`
+  （`bpyenv/` 不進版控，裡面放了 `.gdignore` 讓 Godot 不掃描）；RAR 用 `bsdtar` 解（apt 的 libarchive-tools）。
 ### 9. 商城收購的拖曳、藥劑選魚看資訊
 - 商城「收購」：倉庫、魚缸、魚桶的卡片也能拖到商人視窗賣（原本只有包包能拖），點一下照舊跳出販賣視窗。
 - 用在魚身上的道具（恢復活性的藥劑等）：選魚時點魚會先跳出這條魚的資訊卡（稀有度、大小、價值、活性、時間、詞綴），
@@ -94,18 +109,19 @@
 | 鱷魚先生：情境文字 | 各魚種專屬 28 則、通用 6 則、專屬委託 1 則 | `CrocQuests.STORY`、`ANY_STORY`、`DREAM_STORY` |
 | 鱷魚先生：專屬委託 | 完成 30 次後，釣到鱷雀鱔（1-5），500 金幣＋鱷魚加入 | `CrocQuests.JOIN_AFTER`、`DREAM_FISH`、`DREAM_GOLD` |
 | 鱷魚先生：散步與說話 | 散步速度＝走路步速×0.7、每處停 5–11 秒；開場白 1.5 秒後、之後每 14–26 秒一句、每句 4.5 秒；台詞都在 `OPENING`、`IDLE_LINES`、`OFFER_LINES`、`DONE_LINES` | `scripts/camp_croc.gd` |
-| 鱷魚先生：衣服顏色 | 毛衣磚紅、草帽、帽帶深棕 | `CrocLook.SHIRT`、`STRAW`、`BAND` |
+| 鱷魚先生：衣服顏色 | 毛衣磚紅；帽子（使用者的紳士帽改的）奶油色、帽帶深棕 | `CrocLook.SHIRT`；帽子顏色在 `tools/make_croc_props.py` 的 `CREAM`、`BAND` |
+| 鱷魚先生：頭上的 3D 卷軸 | 長 0.62 m、離地 2.2 m、上下浮動 0.05 m、橫向面對鏡頭左右擺動 ±0.4 弧度、有可交委託時暖光 0.6 | `CampCroc.SCROLL_LEN`、`SCROLL_UP`、`SCROLL_BOB`、`SCROLL_SWAY`、`SCROLL_TURN`、`SCROLL_GLOW` |
+| 星座硬幣 | 成功逃離時 1% 多給一枚（12 種機率相同）；商人收購 800 金幣 | `Zodiac.CHANCE`、`PRICE` |
 
 ## 五、待辦與需要使用者決定的事
-1. **鱷魚先生**已做（規則都是我先訂的，見第四節）：一次一個委託；算「接下委託後累計釣到」的數量，不用交出實魚。
+1. **鱷魚先生**已做（規則都是我先訂的，見第四節）：可同時多個委託、魚要真的交出去、可分批交。
    使用者說過「先暫定」專屬委託是某張地圖的夢幻魚，目前用 1-5 的鱷雀鱔（鱷魚找鱷雀鱔）。
 2. **發佈前**把 `Campaign.dev_all_open` 改成 `false`（它也讓所有角色都能選）。
 3. 月光鰺目前和浪人鰺同一個模型形狀；更細長的版本已寫好算圖設定（`tools/render_fish.py` 的 moon_jack），要有 Blender（bpy）才能重算。
 4. 沙灘海岸的地形設定裡列了「螃蟹」，但遊戲沒有螃蟹這個物種（`shore_critter_count` 為 0，所以不會生成）。**使用者之後會給螃蟹美術。**
 5. 背包會被帶回來的魚骨慢慢塞滿——已加提醒（見第二節 8）。
-9. **帽子模型與 12 星座硬幣**：使用者說放在「des」，但雲端容器和 repo 裡都找不到，需要使用者上傳或分享資料夾。
-   硬幣的要求：祭品會出現的極稀有獎品（能力先不寫）、外形不要那麼圓（不規則）、厚度 ×1.5、拿掉類似星星的圖案；
-   要用我們自己的工具轉成我們的資產，原檔不進版控。
+9. **星座硬幣的能力**：使用者說先不寫，目前只是收藏品（可賣 800）。之後要加能力時在 `scripts/zodiac.gd`。
+   使用者給的 `parchemin.mb`（Maya 檔）讀不了；如果想用那個卷軸，請匯出成 FBX／OBJ。
 8. 之後的多人模式：使用者構想在某張地圖裡突然遇到角色、一起逃出，進而開啟多人玩法並解鎖該角色（尚未做）。
 6. 屬性門檻（使用者已接受「卡關」）：海水稀有魚（浪人鰺、蘇眉、翻車魚、雨傘旗魚、鎚頭鯊）和 1-4 巨型鯰魚、1-5 鱷雀鱔算史詩，
    要兩項屬性約 49–57；傳說（劍旗魚、藍鰭鮪）三項約 81–95；新角色只有力量 6、韌性 7、反應 10、耐力 8。
@@ -116,7 +132,7 @@
 - 測試：見 CLAUDE.md。跟這段工作最相關的測試：`test_campaign_levels_build`（26 關的地圖、水域、鬼、額度）、
   `test_campaign_unlocks_and_achievements`、`test_story_lessons`、`test_tutorials_completable`、`test_branch_fish`、
   `test_free_branches_and_nights`、`test_level_guide_and_results`、`test_weathers`（含雨打水面）、`test_journey_page`、
-  `test_bag_full_reminders`、`test_character_unlocks`、`test_croc_quests`、`test_croc_errands_on_run`。
+  `test_bag_full_reminders`、`test_character_unlocks`、`test_croc_quests`、`test_croc_errands_on_run`、`test_zodiac_coins`。
 - `tools/verify/verify.gd`（用法寫在檔案開頭）：
   - `tool=bot`：機器人用真實操作（拋竿、揚竿、搏魚、獻祭、逃離）逐關玩，輸出每關用時、額度、漁獲、獨有魚、教學進度、失敗原因。
   - `tool=play`：關掉開發者全開，依序通關 26 關，檢查解鎖順序、星數、首次通關獎勵。
@@ -143,6 +159,7 @@
 | 地圖生成（主題、水域、碼頭、動物、蘑菇、魚氧樹） | `scripts/map_generator.gd` |
 | 3D 場景（海、崖、湖、天氣、燈光） | `scripts/run_view_3d.gd` |
 | 角色解鎖條件 | `scripts/campaign.gd`：`CHARACTER_JOIN`、`character_open()`、`check_characters()`；畫面：`scripts/character_page.gd` |
-| 鱷魚先生（委託、出現、專屬委託） | `scripts/croc_quests.gd`；營地散步與台詞：`scripts/camp_croc.gd`；衣服：`scripts/croc_look.gd`；對話視窗：`scripts/croc_talk.gd`；卷軸圖示：`scripts/quest_scroll.gd`；左側委託清單：`scripts/quest_tracker.gd`；頭上泡泡與圖示：`scripts/title_screen.gd` 的 `_croc_over()` |
+| 鱷魚先生（委託、出現、專屬委託） | `scripts/croc_quests.gd`；營地散步與台詞：`scripts/camp_croc.gd`；衣服與帽子：`scripts/croc_look.gd`；頭上 3D 卷軸：`scripts/camp_croc.gd` 的 `_make_scroll()`；模型轉換：`tools/make_croc_props.py`；對話視窗：`scripts/croc_talk.gd`；卷軸圖示：`scripts/quest_scroll.gd`；左側委託清單：`scripts/quest_tracker.gd`；頭上泡泡：`scripts/title_screen.gd` 的 `_croc_over()` |
+| 十二星座硬幣 | `scripts/zodiac.gd`（`CHANCE`、`PRICE`、`roll()`）；給予：`scripts/game_state.gd` 的 `escape()`；轉換工具：`tools/make_zodiac_coins.py` |
 | 商城收購 | `scripts/shop.gd`：`_fill_sell_pane()`、`_sell_drag()`、`SellBoard` |
 | 用在魚身上的道具的選魚視窗 | `scripts/fish_pick_panel.gd`：`show_fish()` |

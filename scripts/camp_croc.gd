@@ -27,6 +27,19 @@ const LINE_EVERY := Vector2(14.0, 26.0)
 const LINE_HOLD := 4.5
 const LINE_FADE := 0.4
 const VISIT_TIMEOUT := 40.0
+## User request: the sign that he's something to talk about a real scroll floating over his head (our
+## own - tools/make_croc_props.py, made from a scroll the user gave; the 2D sign was too bright and
+## too much): how long it is (m - 15% smaller than the old sign showed), how high over his feet,
+## how far it bobs; how far it sways about (rad) and how fast - always broadside to the camera, as a
+## turned-round scroll seen end on reads as a coin; a warm glow about it when there are fish to
+## hand him.
+const SCROLL := preload("res://assets/models/camp/quest_scroll.glb")
+const SCROLL_LEN := 0.62
+const SCROLL_UP := 2.2
+const SCROLL_BOB := 0.05
+const SCROLL_SWAY := 0.4
+const SCROLL_TURN := 0.6
+const SCROLL_GLOW := 0.6
 ## (all of these are mine for now - the user can change any of them)
 const OPENING := ["這裡挺溫暖的……", "喔，火燒得正旺。", "今晚的水，聞起來不錯。", "嗯……又是個好夜晚。"]
 const IDLE_LINES := ["火光映在水面上，真好看。", "年輕時，我能在這湖裡游上一整夜。", "嗯……有魚在跳。",
@@ -39,6 +52,9 @@ const DONE_LINES := ["喔？看你的樣子，事情辦好了？", "過來過來
 
 var stage: CampStage
 var rig: CharacterRig
+## The scroll over his head (shown while he's something to talk about - CrocQuests.has_news).
+var scroll: Node3D
+var _glow: OmniLight3D
 ## What he's saying now ("" nothing), and how far it's shown (0..1).
 var line := ""
 var line_alpha := 0.0
@@ -69,6 +85,39 @@ func _ready() -> void:
 	CrocLook.dress(rig)
 	_idle()
 	_wait = _rng.randf_range(STAY.x * 0.6, STAY.y)
+	_make_scroll()
+
+
+func _make_scroll() -> void:
+	scroll = Node3D.new()
+	scroll.name = "QuestScroll"
+	scroll.position = Vector3(0, SCROLL_UP, 0)
+	add_child(scroll)
+	var model: Node3D = SCROLL.instantiate()
+	model.scale = Vector3.ONE * SCROLL_LEN
+	# (tipped a little, as if hung in the air)
+	model.rotation = Vector3(0.0, 0.0, 0.18)
+	scroll.add_child(model)
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		for i in m.mesh.get_surface_count():
+			var src := m.mesh.surface_get_material(i)
+			if src is StandardMaterial3D:
+				# (its parchment's aging - the vertex colours - and a faint light of its own, so it's
+				# seen at night without standing out)
+				var own := (src as StandardMaterial3D).duplicate() as StandardMaterial3D
+				own.vertex_color_use_as_albedo = true
+				own.emission_enabled = true
+				own.emission = own.albedo_color * 0.5
+				own.emission_energy_multiplier = 0.6
+				m.set_surface_override_material(i, own)
+	_glow = OmniLight3D.new()
+	_glow.light_color = Color(1.0, 0.78, 0.4)
+	_glow.light_energy = 0.0
+	_glow.omni_range = 1.4
+	_glow.shadow_enabled = false
+	scroll.add_child(_glow)
 
 
 ## The shore at `x`: the lake's edge there, SHORE_IN in from the water.
@@ -121,6 +170,7 @@ func release() -> void:
 
 func _process(delta: float) -> void:
 	_lines(delta)
+	_float_scroll(delta)
 	if stage != null and stage.hotspots.has("croc"):
 		for part in stage.hotspots.croc.parts:
 			part[1] = global_position + Vector3(0, 0.9, 0)
@@ -152,6 +202,30 @@ func _process(delta: float) -> void:
 		return
 	rotation.y = lerp_angle(rotation.y, atan2(way.x, way.z), minf(delta * 5.0, 1.0))
 	position += way.normalized() * speed * delta
+
+
+## The scroll: over him while there's something to talk about (not while he's talked to), bobbing,
+## swaying gently on its own (not turning with him), glowing warm with fish to hand him.
+func _float_scroll(delta: float) -> void:
+	if scroll == null:
+		return
+	scroll.visible = visitor == null and CrocQuests.has_news()
+	if not scroll.visible:
+		return
+	var t := Time.get_ticks_msec() / 1000.0
+	scroll.position.y = SCROLL_UP + sin(t * 2.0) * SCROLL_BOB
+	# (its long way across whichever camera is looking - the camp's, or one drawn in close)
+	var cam := get_viewport().get_camera_3d()
+	var face := cam.global_rotation.y if cam != null else 0.0
+	scroll.rotation.y = face + sin(t * SCROLL_TURN) * SCROLL_SWAY - global_rotation.y
+	_glow.light_energy = move_toward(_glow.light_energy, SCROLL_GLOW if CrocQuests.ready_to_hand_in() else 0.0, delta)
+
+
+## Where the words over him go (world): over the scroll while it's up, else over his head.
+func words_point() -> Vector3:
+	if scroll != null and scroll.visible:
+		return scroll.global_position + Vector3(0, 0.3, 0)
+	return head_point() + Vector3(0, 0.42, 0)
 
 
 func _turn_to(at: Vector3, delta: float, rate: float) -> void:
