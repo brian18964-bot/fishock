@@ -6035,9 +6035,12 @@ func test_fishing_hold_every_character() -> void:
 		var line: float = p.fight.distance
 		# User report (the owl's left hand in its chest as a fish was first held): looked at both
 		# ways a fish is reeled - the strike's first pull held against (the crank still, the body
-		# leaning to it; kept on while it's looked at), then the crank going round, once round it.
+		# in its stance for it, Fish_Hold; kept on while it's looked at), then, the first pull
+		# over, the crank going round (Fish_Reel), once round it.
 		for held in [true, false]:
 			worst = {"r": 0.0, "l": 0.0}
+			if not held:
+				p.fight.opening_left = 0.0
 			for i in 60:
 				if p.state != Player.State.REELING or p.fight == null:
 					break
