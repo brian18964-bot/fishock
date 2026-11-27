@@ -12,6 +12,8 @@ extends Control
 ## for the walk out to the stone.
 
 const CH_NUM := ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二"]
+## (the chapter tabs' lettering, smaller sizes tried in turn while their row's wider than the page)
+const TAB_SIZES := [12, 11, 10]
 const MAP_SIZE := Vector2(500, 318)
 ## The five stops along the path (in the map's box), left to right.
 const STOPS := [Vector2(70, 230), Vector2(170, 110), Vector2(270, 220), Vector2(370, 100), Vector2(460, 210)]
@@ -121,6 +123,14 @@ func _build_story() -> void:
 			_show_tab("story"))
 		chapters.add_child(b)
 	_body.add_child(chapters)
+	# (user request, "中國風第 11 章": eleven chapters now, up to twelve - the tabs' lettering a size
+	# smaller, and smaller again, while the row is wider than the page; measured once on the page, its
+	# lettering's font then known)
+	for size in TAB_SIZES:
+		if chapters.get_combined_minimum_size().x <= _body.custom_minimum_size.x:
+			break
+		for b in chapters.get_children():
+			(b as Button).add_theme_font_size_override("font_size", size)
 	var blurb := UiKit.label("第%s章 %s　%s" % [CH_NUM[chapter - 1], Campaign.chapter(chapter).name, Campaign.chapter(chapter).blurb], 13, UiKit.DIM)
 	blurb.position = Vector2(4, 40)
 	blurb.custom_minimum_size = Vector2(880, 0)
