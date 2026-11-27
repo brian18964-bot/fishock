@@ -120,6 +120,30 @@ const SPECIES := {
 	"camel": {"body": 32.0, "label": "駱駝", "ambient": true, "frames": 16, "cols": 42,
 		"clips": 3, "offset": Vector2(0, -19.1), "move_fps": 13.71, "idle_fps": 2.67,
 		"wander_speed": 40.0, "flee_speed": 0.0, "idle_time": Vector2(4, 10)},
+	# User request ("綿羊、烏鴉、雞的動畫" - the user's models, their moves ours: tools/make_farm_animals.py):
+	# the villages' farm animals and birds. The sheep and the calf graze, mind the traveller little and
+	# amble off when crowded; the chickens peck about and scurry off; the crow pecks, hops, and flies
+	# off low when you come near.
+	"sheep": {"body": 14.0, "label": "綿羊", "ambient": true, "frames": 16, "cols": 42,
+		"clips": 3, "offset": Vector2(0, -12.0), "move_fps": 13.71, "idle_fps": 2.67,
+		"flee_fps": 24.0, "flee_clip": 2, "flee_radius": 55.0, "calm_radius": 110.0,
+		"wander_speed": 20.0, "flee_speed": 60.0, "idle_time": Vector2(5, 12)},
+	"calf": {"body": 17.0, "label": "小牛", "ambient": true, "frames": 16, "cols": 42,
+		"clips": 3, "offset": Vector2(0, -15.0), "move_fps": 13.71, "idle_fps": 2.67,
+		"flee_fps": 24.0, "flee_clip": 2, "flee_radius": 45.0, "calm_radius": 100.0,
+		"wander_speed": 22.0, "flee_speed": 55.0, "idle_time": Vector2(6, 14)},
+	"chicken": {"body": 7.0, "label": "母雞", "ambient": true, "frames": 16, "cols": 64,
+		"clips": 3, "offset": Vector2(0, -6.0), "move_fps": 15.36, "idle_fps": 4.8,
+		"flee_fps": 29.54, "flee_clip": 2, "flee_radius": 70.0, "calm_radius": 140.0,
+		"wander_speed": 22.0, "flee_speed": 100.0, "idle_time": Vector2(2, 6)},
+	"rooster": {"body": 8.0, "label": "公雞", "ambient": true, "frames": 16, "cols": 64,
+		"clips": 3, "offset": Vector2(0, -7.0), "move_fps": 15.36, "idle_fps": 4.8,
+		"flee_fps": 29.54, "flee_clip": 2, "flee_radius": 60.0, "calm_radius": 130.0,
+		"wander_speed": 22.0, "flee_speed": 100.0, "idle_time": Vector2(2, 6)},
+	"crow": {"body": 7.0, "label": "烏鴉", "ambient": true, "frames": 16, "cols": 64,
+		"clips": 3, "offset": Vector2(0, -6.0), "move_fps": 15.36, "idle_fps": 4.8,
+		"flee_fps": 29.54, "flee_clip": 2, "flee_radius": 90.0, "calm_radius": 200.0,
+		"wander_speed": 18.0, "flee_speed": 150.0, "idle_time": Vector2(2, 7)},
 	# The iguana (the user's, in a desert hide): basks, and darts off when you come near.
 	"iguana": {"body": 9.0, "label": "鬣蜥", "ambient": true, "frames": 16, "cols": 73,
 		"clips": 3, "offset": Vector2(0, -7.87), "move_fps": 15.36, "idle_fps": 4.8,

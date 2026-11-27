@@ -14,7 +14,8 @@ const KINDS := {"pine_b": 0.8, "pine_c": 0.94,
 	"autumn_a": 0.47, "autumn_b": 0.49, "autumn_c": 0.47, "autumn_d": 0.42, "dead_a": 1.05, "dead_b": 1.41,
 	"dead_c": 0.57, "dead_d": 0.67, "dead_e": 0.57,
 	"palm_a": 0.47, "palm_b": 0.47, "palm_c": 0.47, "palm_d": 0.65,
-	"coco_a": 0.42, "coco_b": 0.49, "coco_c": 0.37}
+	"coco_a": 0.42, "coco_b": 0.49, "coco_c": 0.37,
+	"willow_a": 0.45, "willow_b": 0.42, "cherry_a": 0.32, "maple_a": 0.36, "gmaple_a": 0.36, "birch_a": 0.3}
 const SCALE := Vector2(0.78, 1.0)
 ## (pine_b's lowest branches are at 2.87 m: not under 0.9, so they clear
 ## the big ghost's 2.3 m; dead_b's at 2.39 m: not under 1.0; dead_d's 2.14 m: not under 1.1)
@@ -23,13 +24,16 @@ const SCALE_OF := {"pine_b": Vector2(0.9, 1.0), "pine_c": Vector2(0.78, 1.0),
 	"autumn_d": Vector2(0.8, 0.95), "dead_a": Vector2(0.85, 1.0), "dead_b": Vector2(1.0, 1.1),
 	"dead_c": Vector2(0.85, 1.0), "dead_d": Vector2(1.1, 1.2), "dead_e": Vector2(0.85, 1.05),
 	"palm_a": Vector2(0.85, 1.05), "palm_b": Vector2(0.9, 1.1), "palm_c": Vector2(0.8, 1.0), "palm_d": Vector2(0.9, 1.05),
-	"coco_a": Vector2(0.85, 1.1), "coco_b": Vector2(0.85, 1.05), "coco_c": Vector2(0.9, 1.1)}
+	"coco_a": Vector2(0.85, 1.1), "coco_b": Vector2(0.85, 1.05), "coco_c": Vector2(0.9, 1.1),
+	"willow_a": Vector2(0.85, 1.0), "willow_b": Vector2(0.9, 1.05), "cherry_a": Vector2(0.85, 1.05),
+	"maple_a": Vector2(0.85, 1.05), "gmaple_a": Vector2(0.85, 1.05), "birch_a": Vector2(0.85, 1.0)}
 ## Its branches' reach (m, at scale 1).
 const CANOPY := {"pine_b": 3.44, "pine_c": 3.26,
 	"autumn_a": 4.54, "autumn_b": 3.98, "autumn_c": 4.39, "autumn_d": 5.84, "dead_a": 2.47, "dead_b": 2.85,
 	"dead_c": 4.1, "dead_d": 4.2, "dead_e": 3.78,
 	"palm_a": 4.44, "palm_b": 5.42, "palm_c": 5.08, "palm_d": 5.0,
-	"coco_a": 3.58, "coco_b": 2.69, "coco_c": 3.62}
+	"coco_a": 3.58, "coco_b": 2.69, "coco_c": 3.62,
+	"willow_a": 3.9, "willow_b": 3.5, "cherry_a": 4.3, "maple_a": 3.7, "gmaple_a": 3.4, "birch_a": 4.3}
 ## User request (the autumn map - bare, dead trees, few with their last leaves): its own trees
 ## (tools/make_autumn_trees.py; the camp's two dead ones and, user request, three more made from
 ## them - tools/make_dead_variants.py, two with the autumn trees' leaves), the bare ones likelier.
@@ -53,9 +57,17 @@ const THEME_KINDS := {
 	"countryside": ["autumn_a", "autumn_b", "autumn_c", "autumn_d", "pine_b", "pine_c", "pine_b"],
 	# User request (the human world's other villages): the Japanese village's black pines and maples
 	# turning; the English village's oaks turning and a few pines.
-	"japan": ["pine_b", "pine_c", "pine_b", "autumn_a", "autumn_c", "autumn_d"],
-	"england": ["autumn_a", "autumn_b", "autumn_c", "autumn_d", "pine_b", "pine_c"],
+	# User request ("補強日式"): the user's tree pack made ours (tools/make_village_trees.py) - its red
+	# maples and a cherry among the black pines.
+	"japan": ["pine_b", "pine_c", "maple_a", "maple_a", "cherry_a", "autumn_c"],
+	"england": ["autumn_a", "autumn_b", "autumn_c", "autumn_d", "pine_b", "pine_c", "birch_a"],
+	# User request ("中國風第 11 章"): the Chinese village's willows - by the water (MapGenerator's
+	# "oasis_trees", as the desert's palms); OPEN_KINDS its trees away from it.
+	"china": ["willow_a", "willow_b"],
 }
+## A style whose THEME_KINDS grow by the water ("oasis_trees"): its trees out away from it, and along
+## the map's edge (RunView3D) - the desert's dead trees, the Chinese village's green maples and pines.
+const OPEN_KINDS := {"china": ["gmaple_a", "pine_b", "gmaple_a", "pine_c"]}
 ## The desert's trees out on the dunes, away from the water (MapGenerator._place_tree): dead ones,
 ## bare (dead_d and dead_e keep a few autumn leaves - the autumn wood's, not the sand's).
 const DESERT_OPEN := ["dead_c", "dead_a"]
@@ -97,6 +109,11 @@ func _ready() -> void:
 ## The trees a map style grows (the pines, but for THEME_KINDS's).
 static func kinds_for(theme: String) -> Array:
 	return THEME_KINDS.get(theme, PINES)
+
+
+## A style's trees away from the water, if its own grow by it (the desert's dead ones by default).
+static func open_for(theme: String) -> Array:
+	return OPEN_KINDS.get(theme, DESERT_OPEN)
 
 
 ## Which tree and how big (from `roll`, any number) - one of this map's (kinds_for).

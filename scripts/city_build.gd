@@ -296,6 +296,7 @@ static func update(mat: ShaderMaterial, hero: Vector3) -> void:
 
 ## One of the user's models, made ours (`path`, a .glb): its own pictures, seen through as the rest
 ## (TEX_SHADER); its shadow cast by a plain twin of each part (`shade`). Named `name`.
+static var _tex_cut_shader: Shader
 static func _model(path: String, name: String, shade: Material, colour := false) -> Node3D:
 	if _tex_shader == null:
 		_tex_shader = Shader.new()
@@ -307,7 +308,14 @@ static func _model(path: String, name: String, shade: Material, colour := false)
 		for i in m.mesh.get_surface_count():
 			var src := m.mesh.surface_get_material(i) as BaseMaterial3D
 			var own := ShaderMaterial.new()
-			own.shader = _tex_shader
+			# (a cut-out surface - the bamboo's leafy sprigs: its picture's clear parts cut away, seen
+			# from both sides - TEX_CUT_SHADER)
+			var cut := src != null and src.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED
+			if cut and _tex_cut_shader == null:
+				_tex_cut_shader = Shader.new()
+				_tex_cut_shader.code = TEX_SHADER.replace("render_mode cull_back;", "render_mode cull_disabled;") \
+					.replace("ALBEDO = c;", "ALBEDO = c;\n\tALPHA = texture(albedo_tex, UV).a;\n\tALPHA_SCISSOR_THRESHOLD = 0.45;")
+			own.shader = _tex_cut_shader if cut else _tex_shader
 			if src != null:
 				own.set_shader_parameter("albedo_tex", src.albedo_texture)
 				own.set_shader_parameter("roughness", src.roughness)

@@ -636,6 +636,32 @@ def shrine_gravel(rng):
     return col, normal_from_height(blur(h, 0.6) + grit * 0.04, 8.0)
 
 
+def flagstone(rng):
+    """User request (the Chinese village, "中國風第 11 章"): its lanes and yards paved with flagstones -
+    big irregular grey slabs, each its own shade and worn smooth in the middle, set in earth with moss
+    in the joints, a few cracked."""
+    f1, f2, ident = voronoi(rng, 46, 0.85)
+    cells = ident.max() + 1
+    tone = np.random.default_rng(int(rng.integers(1 << 30))).random(cells)[ident]
+    warm = np.random.default_rng(int(rng.integers(1 << 30))).random(cells)[ident]
+    g = 0.36 + tone * 0.12
+    col = np.stack([g * (1.0 + warm * 0.04), g * 1.0, g * (0.96 - warm * 0.03)], -1)
+    edge = np.clip((f2 - f1) / 4.0, 0, 1)
+    wear = np.clip(1.0 - f1 / 26.0, 0, 1)
+    grit = periodic_noise(rng, 1.6)
+    stain = periodic_noise(rng, 70)
+    col = col * (0.9 + wear[..., None] * 0.12) * (0.9 + grit[..., None] * 0.14) * (0.9 + stain[..., None] * 0.14)
+    joint = edge < 0.18
+    moss = joint & (periodic_noise(rng, 30) > 0.45)
+    col = np.where(joint[..., None], np.array([0.17, 0.15, 0.12]), col)
+    col = np.where(moss[..., None], np.array([0.13, 0.2, 0.07]), col)
+    fa, fb, _ = voronoi(rng, 90, 1.0)
+    crack = np.clip(1.0 - (fb - fa) / 0.9, 0, 1) * (periodic_noise(rng, 60) > 0.62) * (~joint)
+    col = col * (1 - crack[..., None] * 0.5)
+    h = np.clip(edge * 3.0, 0, 1) * 0.6 + wear * 0.15 - crack * 0.3 + grit * 0.05
+    return col, normal_from_height(blur(h, 0.8), 4.0)
+
+
 # (the ploughed fields' and the stubble's rows a tile - about one every 0.6 m in the game)
 FURROWS = 7
 
@@ -703,6 +729,8 @@ MAKERS = {
     "stubble": stubble,
     # (the Japanese village's paths)
     "shrine_gravel": shrine_gravel,
+    # (the Chinese village's lanes and yards)
+    "flagstone": flagstone,
 }
 
 

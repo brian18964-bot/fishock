@@ -10,8 +10,12 @@ extends RefCounted
 ## (the leaves cut out by their alpha).
 
 const DIR := "res://assets/models/camp/"
+## User request (the human world's villages - "中國風第 11 章、補強日式"): the user's tree pack made ours
+## (tools/make_village_trees.py) - the Chinese village's willows and green maples, the Japanese
+## village's cherry and red maples, the English village's birch.
 const TREE_FAMILY := {"pine": "pine", "dead": "dead_tree", "twisted": "twisted_tree", "autumn": "autumn_tree",
-	"palm": "palm", "coco": "coco_palm"}
+	"palm": "palm", "coco": "coco_palm", "willow": "willow_tree", "cherry": "cherry_tree", "maple": "maple_tree",
+	"gmaple": "green_maple_tree", "birch": "birch_tree"}
 ## Tree families whose leaves are another's picture (user request: the dead trees' variants with
 ## the autumn trees' turned leaves - tools/make_dead_variants.py).
 const SHARED_LEAVES := {"dead_tree": "autumn_tree"}

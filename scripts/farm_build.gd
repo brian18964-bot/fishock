@@ -47,6 +47,18 @@ const HEDGE_HIGH := 1.15
 const HEDGE_THICK := 0.85
 const HEDGE_LUMP := Vector2(0.7, 1.3)
 const HEDGE_GREEN := Color(0.11, 0.2, 0.065)
+## User request ("中國風第 11 章"): the Chinese village's wall - white plaster (TILE_WALL_WHITE) on a grey
+## stone footing, under a ridge of dark tiles (TILE_WALL_TILE) that overhangs it each side; its
+## height, thickness and footing (m); the plaster stained a shade each span (TILE_WALL_SPAN m).
+const TILE_WALL_HIGH := 1.3
+const TILE_WALL_THICK := 0.4
+const TILE_WALL_FOOT := 0.25
+const TILE_WALL_CAP := 0.24
+const TILE_WALL_EAVE := 0.14
+const TILE_WALL_SPAN := 2.4
+const TILE_WALL_WHITE := Color(0.84, 0.82, 0.76)
+const TILE_WALL_STONE := Color(0.42, 0.41, 0.39)
+const TILE_WALL_TILE := Color(0.14, 0.145, 0.155)
 ## (a round bale: its radius and length, m; its straw)
 const BALE_R := 0.72
 const BALE_LONG := 1.25
@@ -256,6 +268,8 @@ static func fences(holder: Node3D, list: Array, land_y: Callable) -> void:
 				_stone_wall(st, a, b, land_y, rng)
 			"hedge":
 				_hedge(st, a, b, land_y, rng)
+			"tile_wall":
+				_tile_wall(st, a, b, land_y, rng)
 			_:
 				_wood_fence(st, a, b, land_y, rng)
 	var mi := MeshInstance3D.new()
@@ -332,6 +346,45 @@ static func _stone_wall(st: SurfaceTool, a: Vector2, b: Vector2, land_y: Callabl
 		mid.y += WALL_HIGH + 0.08
 		_slab(st, mid, along, Vector3(cap - 0.02, 0.18 + rng.randf_range(-0.03, 0.03), WALL_THICK * 0.75), _shade(WALL_GREY, rng, 0.75, 1.1), rng)
 		at += cap
+
+
+## The Chinese village's wall: span by span along it, a grey stone footing, the white plaster wall
+## on it (each span its own faint stain), and over it a ridge of dark tiles sloping down each side past
+## the wall, ridged along its top.
+static func _tile_wall(st: SurfaceTool, a: Vector2, b: Vector2, land_y: Callable, rng: RandomNumberGenerator) -> void:
+	var length := a.distance_to(b) / PX
+	var dir2 := (b - a).normalized()
+	var along := Vector3(dir2.x, 0.0, dir2.y)
+	var side := along.cross(Vector3.UP).normalized()
+	var spans := maxi(1, ceili(length / TILE_WALL_SPAN))
+	var span := length / float(spans)
+	for i in spans:
+		var mid := _along(a, b, (float(i) + 0.5) / float(spans), land_y)
+		var foot := mid + Vector3(0.0, TILE_WALL_FOOT * 0.5, 0.0)
+		_slab(st, foot, along, Vector3(span + 0.01, TILE_WALL_FOOT, TILE_WALL_THICK + 0.06), _shade(TILE_WALL_STONE, rng, 0.85, 1.12), rng)
+		var body := mid + Vector3(0.0, TILE_WALL_FOOT + (TILE_WALL_HIGH - TILE_WALL_FOOT) * 0.5, 0.0)
+		_slab(st, body, along, Vector3(span + 0.01, TILE_WALL_HIGH - TILE_WALL_FOOT, TILE_WALL_THICK), _shade(TILE_WALL_WHITE, rng, 0.9, 1.03), rng)
+		# (the tiles: two slopes from the ridge out past each face, and the ridge along the top)
+		var p0 := _along(a, b, float(i) / float(spans), land_y)
+		var p1 := _along(a, b, float(i + 1) / float(spans), land_y)
+		var top := TILE_WALL_HIGH + TILE_WALL_CAP
+		var eave := TILE_WALL_THICK * 0.5 + TILE_WALL_EAVE
+		var tile := _shade(TILE_WALL_TILE, rng, 0.85, 1.15)
+		var under := tile * 0.7
+		under.a = 1.0
+		for s: float in [-1.0, 1.0]:
+			var r0 := p0 + Vector3(0.0, top, 0.0)
+			var r1 := p1 + Vector3(0.0, top, 0.0)
+			var e0 := p0 + side * (eave * s) + Vector3(0.0, TILE_WALL_HIGH - 0.02, 0.0)
+			var e1 := p1 + side * (eave * s) + Vector3(0.0, TILE_WALL_HIGH - 0.02, 0.0)
+			var n := (side * s * TILE_WALL_CAP + Vector3.UP * eave).normalized()
+			_tri(st, r0, r1, e1, n, tile)
+			_tri(st, r0, e1, e0, n, tile)
+			# (the slope's underside, seen from below the eave)
+			_tri(st, r0, e1, r1, -n, under)
+			_tri(st, r0, e0, e1, -n, under)
+		var ridge := (p0 + p1) * 0.5 + Vector3(0.0, top + 0.04, 0.0)
+		_slab(st, ridge, along, Vector3(span + 0.02, 0.09, 0.12), tile * 0.9, rng)
 
 
 ## A hedge (the English village's): lumps of clipped green along it, each its own size and shade,

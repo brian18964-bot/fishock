@@ -64,6 +64,9 @@ const CHAPTERS := [
 	{"id": 8, "name": "鄉村", "stars": 0, "blurb": "安靜的農村，正是秋收。收割過的田、穀倉和果園之間，灌溉水塘裡游著田間的魚。"},
 	{"id": 9, "name": "日式山村", "stars": 0, "blurb": "竹林、鳥居和石燈籠之間的山村。神社的池子和山溪裡，游著日本的魚。"},
 	{"id": 10, "name": "英式村莊", "stars": 0, "blurb": "木構屋、石牆和小教堂的村莊。牧場邊的池塘和河灣裡，游著英國的魚。"},
+	# User request ("開始做中國風第 11 章"): the Chinese village - its temple hall, grey stone houses and
+	# red pavilions, willows by the water, bamboo, lanterns; the fish of its ponds and the great river.
+	{"id": 11, "name": "中式古鎮", "stars": 0, "blurb": "灰瓦石屋、紅柱涼亭和古殿的小鎮。柳樹垂在水邊，池塘和大河裡游著中國的魚。"},
 ]
 ## The levels: each map's branches, in order (user request - one level a branch; a map's
 ## branches open one after another, the next map once the whole of this one's done). stars:
@@ -282,7 +285,7 @@ const LEVELS := [
 	{"id": "9-2", "chapter": 9, "name": "竹林小徑", "teach": "竹林擋住視線，沿著小徑找水",
 		"intro": "竹林一片接著一片，風吹過沙沙作響。竹林深處的水塘有櫻鱒。",
 		"rules": {"night_fails": true, "theme": "japan", "map": "M", "ponds": [3, 0], "day": 300.0, "quota": 23.0, "ghosts": 1, "meddle": 3, "big_ghost": false, "weather": "mild", "critters": 6, "escalate": false,
-			"mods": {"yard": {"groves": [{"kind": "bamboo", "models": ["jp_bamboo"], "count": 5, "rows": Vector2i(2, 3), "cols": Vector2i(3, 5), "gap": 120.0, "jitter": 30.0, "fill": 0.5, "size": Vector2(40, 0)}]}},
+			"mods": {"yard": {"groves": [{"kind": "bamboo", "models": ["cn_bamboo"], "count": 5, "rows": Vector2i(2, 3), "cols": Vector2i(3, 5), "gap": 120.0, "jitter": 30.0, "fill": 0.5, "size": Vector2(40, 0)}]}},
 			"fish": ["sakura_masu"], "fish_epic": []},
 		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到櫻鱒"}, {"stat": "catch_rare", "text": "一晚釣到 2 條稀有魚", "min": 2}],
 		"reward": {"gold": 300}},
@@ -331,6 +334,39 @@ const LEVELS := [
 		"rules": {"theme": "england", "map": "XL", "ponds": [5, 1], "day": 360.0, "quota": 39.0, "ghosts": 3, "meddle": 5, "big_ghost": true, "weather": "stormy", "critters": 4, "fish": [], "fish_epic": ["ferox_trout"]},
 		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到巨型褐鱒"}, {"stat": "storm", "text": "在暴風雨中撐過去", "min": 1}],
 		"reward": {"gold": 560, "items": {"lure_rainbow": 2}}},
+	# User request ("開始做中國風第 11 章"): the Chinese village's five branches (the numbers mine for now,
+	# to change).
+	{"id": "11-1", "chapter": 11, "name": "柳岸池塘", "teach": "第一次到中式古鎮：石屋、涼亭和柳樹",
+		"intro": "古殿前的池塘邊，柳條垂到水面。石屋的院子裡擺著水缸，紅燈籠沿著石板路一路亮到林邊。",
+		"rules": {"night_fails": true, "theme": "china", "map": "S", "ponds": [2, 0], "day": 270.0, "quota": 16.0, "ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear", "critters": 8, "escalate": false, "evil": false, "fish": ["spotted_steed"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到花䱻"}, {"stat": "time_left", "text": "還剩 60 秒以上就達標離開", "min": 60}],
+		"reward": {"gold": 300}},
+	{"id": "11-2", "chapter": 11, "name": "涼亭水榭", "teach": "白牆圍起的菜園，找門進出",
+		"intro": "池塘邊一座接一座的涼亭，菜園都圍著白牆，只開著小小的門。初夏的鰣魚游進了池子。",
+		"rules": {"night_fails": true, "theme": "china", "map": "M", "ponds": [3, 0], "day": 300.0, "quota": 24.0, "ghosts": 1, "meddle": 3, "big_ghost": false, "weather": "mild", "critters": 6, "escalate": false,
+			"mods": {"farm": {"fenced": 0.95, "fields": 5}}, "fish": ["reeves_shad"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到鰣魚"}, {"stat": "catch_rare", "text": "一晚釣到 2 條稀有魚", "min": 2}],
+		"reward": {"gold": 340}},
+	{"id": "11-3", "chapter": 11, "name": "霧鎖樓閣", "teach": "起霧的河灣與水鬼",
+		"intro": "雙層的樓閣在霧裡只看得到屋簷。河灣深處，刀鱭成群游過，還有長嘴的鯮魚在追。",
+		"rules": {"theme": "china", "map": "L", "ponds": [5, 1], "day": 330.0, "quota": 30.0, "ghosts": 2, "meddle": 3, "big_ghost": true, "water_ghost": 1.6, "weather": "foggy", "critters": 5,
+			"mods": {"farm": {"extras": ["cn_tower"], "extra": Vector2i(1, 1)}}, "fish": ["coilia", "luciobrama"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到刀鱭或鯮魚"}, {"stat": "species_both", "text": "兩種獨有魚都釣到", "min": 2}],
+		"reward": {"gold": 380}},
+	{"id": "11-4", "chapter": 11, "name": "竹林狼影", "teach": "狼群穿過竹林",
+		"intro": "鎮外的竹林越來越密。天黑以後，狼從竹林裡出來。深潭裡住著巨魾。",
+		"rules": {"theme": "china", "map": "L", "ponds": [3, 1], "day": 330.0, "quota": 32.0, "ghosts": 2, "meddle": 4, "big_ghost": true, "weather": {"FOG": 0.25, "DRIZZLE": 0.3}, "critters": 4,
+			"mods": {"animals": {"wolf": 1.5, "deer": 0.8, "fox": 1.0}, "yard": {"groves": [{"kind": "bamboo", "models": ["cn_bamboo"], "count": 5,
+				"rows": Vector2i(2, 3), "cols": Vector2i(3, 5), "gap": 120.0, "jitter": 30.0, "fill": 0.55, "size": Vector2(40, 0)}]}}, "fish": [], "fish_epic": ["goonch"]},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到巨魾"}, {"stat": "animal_hit", "text": "沒被野獸撲到", "max": 0}],
+		"reward": {"gold": 420}},
+	{"id": "11-5", "chapter": 11, "name": "古鎮雷雨", "teach": "中式古鎮的終點",
+		"intro": "雷雨的晚上，大河漲水，鎮上的新街也泡在雨裡。中華鱘從大河游進了鎮外的深潭。",
+		"rules": {"theme": "china", "map": "XL", "ponds": [5, 1], "day": 360.0, "quota": 40.0, "ghosts": 3, "meddle": 5, "big_ghost": true, "weather": "stormy", "critters": 4,
+			"mods": {"farm": {"houses": ["cn_house", "cn_shop_1", "cn_shop_2", "cn_shop_3", "cn_shop_4"],
+				"barns": ["cn_shop_1", "cn_shop_2", "cn_shop_3", "cn_shop_4", "cn_house"]}}, "fish": [], "fish_epic": ["chinese_sturgeon"]},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到中華鱘"}, {"stat": "storm", "text": "在暴風雨中撐過去", "min": 1}],
+		"reward": {"gold": 580, "items": {"lure_rainbow": 2}}},
 ]
 
 
@@ -373,6 +409,7 @@ const ACHIEVEMENTS := [
 	["chapter_8", "旅程", "田園釣客", "通過第八章「鄉村」", 300, {"chapter": 8}],
 	["chapter_9", "旅程", "竹林釣客", "通過第九章「日式山村」", 300, {"chapter": 9}],
 	["chapter_10", "旅程", "村莊釣客", "通過第十章「英式村莊」", 300, {"chapter": 10}],
+	["chapter_11", "旅程", "古鎮釣客", "通過第十一章「中式古鎮」", 300, {"chapter": 11}],
 	["stars_45", "旅程", "滿天星", "收集 45 顆星", 200, {"stars": 45}],
 	["stars_75", "旅程", "渡湖紀行", "收集全部 78 顆星", 500, {"stars": 78}],
 	["catch_100", "釣技", "百尾", "總共釣到 100 條魚", 100, {"life": "catch", "min": 100}],

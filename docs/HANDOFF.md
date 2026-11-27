@@ -88,6 +88,23 @@
 - 章節分頁拿掉數字（只留名稱和星數），10～12 章都放得下。
 - **缺件清單**：`docs/ASSET_WISHLIST.md`（所有主題一次列齊，含魚的照片）。細節見 `docs/RUINED_WORLD.md` 第八、九節。
 
+### 14. 中國風第 11 章「中式古鎮」、補強日式、農場動物的動畫（11/27）
+- 使用者要求：「開始做中國風第 11 章、補強日式，綿羊、烏鴉、雞的動畫」；「貼圖檔我找不到，你先用現有的資料參考配色去自己上色」。
+- **第 11 章「中式古鎮」**（主題 `china`）：古殿當地標、灰磚石屋、紅柱涼亭（偶爾雙層樓閣）、白牆黛瓦的菜園圍牆（新圍籬樣式 `tile_wall`）、
+  石板路（新地面 `flagstone`）、路邊紅燈籠柱（晚上幾盞會亮）、石燈籠、水缸、石桌石凳、水井、竹林；垂柳長在水邊、
+  離水遠的是青楓和松。五個分支、11 種中國魚（暫代模型）、成就「古鎮釣客」。11-5 是鎮上的新街（香港風公寓包改成的街屋）。
+- 素材再製（`tools/make_china_assets.py`，輸出 `assets/models/cn/`）：殿堂、涼亭有貼圖（縮小、調色）；石屋是 119 萬面的掃描檔、
+  由 1.8 萬個碎片組成無法直接減面，改成「體素重建＋把原本 5 張貼圖烘焙上去」，變成 8668 面；雙層樓閣和燈籠目錄**沒有貼圖**，
+  依每個零件原本貼圖的名字（屋瓦、木牆、地板、石材…）用我們的配色上色；公寓包依 `.mtl` 的顏色上色；紅燈籠柱、水缸、石桌、水井是我們自己做的。
+  竹子用使用者的刺竹，葉片改成「一張卡上蓋十幾片竹葉」的葉叢貼圖（日式的竹林也換成這個）。
+- **樹**（`tools/make_village_trees.py`，使用者的 Trees.fbx）：垂柳 2 款、櫻花、紅楓、青楓、白樺。樹枝原本是幾千根獨立小管子，
+  減面會壓扁，所以每根夠長的枝條用低面數管子沿原本走向重做；葉片保留一部分、放大，貼圖換成我們做的葉叢。
+  日式山村換上紅楓和櫻花，英式加白樺，中式水邊種垂柳。
+- **補強日式**（`tools/make_japan_extras.py`）：苔蘚石燈籠、春日燈籠、兩座多層石塔（掃描模型減到約 2 千面）。紅色拱橋還沒做（要做可以走上去的橋，見待辦）。
+- **動物**（`tools/make_farm_animals.py`，輸出 `assets/models/run3d/`）：綿羊（用牠自己的骨架）、烏鴉（自己的骨架，翅膀收到身側）、
+  母雞、公雞、小牛（沒有骨架，我們綁的）。動作全是我們做的：待機（綿羊和小牛低頭吃草、雞和烏鴉啄地）、走路（烏鴉是跳）、跑（烏鴉是低飛）。
+  鄉村有小牛、綿羊、雞；英式以綿羊為主；日式有烏鴉；中式有雞。細節見 `docs/RUINED_WORLD.md` 第十節。
+
 ## 三、已定案（使用者決定的，不用再問）
 ### 劇情與分支
 1. 每張地圖分 4～5 支，每支是一個劇情關卡；共 6 章 26 關。地圖順序：湖畔森林 → 秋林 → 雪地森林 → 沙漠綠洲 → 沙灘海岸 → 海崖。
@@ -160,6 +177,12 @@
 | 英式村莊的擺放 | 每個基準面積 3 戶、院子寬 160 px、5 塊田（牧場 1.4、犁過 0.8、收割 0.8、菜 0.3；85% 圍石牆或樹籬，石牆:樹籬 = 1:0.7）；提燈 5、水井 1、柴堆 3、木材 2、水槽 2、乾草車 2、手推車 2；蘋果園 1 座 | `THEMES.england` 的 `farm`、`yard` |
 | 竹籬、石牆、樹籬外觀 | 竹籬高 1.2 m、柱距 1.8 m；石牆高 0.78 m、三層、厚 0.55 m；樹籬高 1.15 m、厚 0.85 m | `FarmBuild` 的 `BAMBOO_*`、`WALL_*`、`HEDGE_*`；碰撞厚度 `Fence.STYLES` |
 | 日式、英式的魚 | 日式主題魚 山女魚、珠星三塊魚、河鱲、金魚＋琵琶湖大鯰；英式 擬鯉、紅眼魚、丁鱥、歐洲鰷＋大西洋鮭 | `FishData.STYLE_FISH.japan`、`.england` |
+| 第 11 章中式古鎮 | 五個分支的大小、額度、時間、小鬼、天氣、獨有魚、首通獎勵（300～580 金幣）；11-2 圍牆 95%、11-3 雙層樓閣、11-4 竹林 5 片＋狼、11-5 街屋 | `Campaign.LEVELS` 的 11-1～11-5 |
+| 中式古鎮的擺放 | 每個基準面積 3 戶、院子 160 px、3 塊菜田（80% 圍牆：白牆 1、竹籬 0.3）；紅燈籠柱 7（60% 亮、最多 4 盞）、石燈籠 4、水缸 4、石桌 2、水井 1；竹林 2 片；一半的樹是水邊垂柳（離岸 70～240 px） | `THEMES.china` 的 `farm`、`yard`、`oasis_trees`、`oasis_band` |
+| 中國的魚 | 主題魚 鯪魚、赤眼鱒、中華沙鰍、黃河鯉＋胭脂魚；獨有魚 花䱻、鰣魚、刀鱭、鯮魚、巨魾（史詩）、中華鱘（史詩） | `FishData.STYLE_FISH.china` |
+| 白牆黛瓦圍牆 | 高 1.3 m、厚 0.4 m、石基 0.25 m、瓦頂高 0.24 m、出簷 0.14 m | `FarmBuild` 的 `TILE_WALL_*` |
+| 農場動物的數量 | 鄉村每個基準面積 3 隻（小牛 1.2、綿羊 1、母雞 1.2、公雞 0.4、鹿 0.4、狐 0.5）；英式 3 隻（綿羊 1.6、小牛 0.6…）；日式 2 隻（烏鴉 1.4、鹿 1.4、狐 1）；中式 2 隻（母雞 1.2…） | `THEMES.*.animal_count`、`animals` |
+| 農場動物的行為 | 綿羊／小牛被靠近到 55／45 px 才慢慢走開；雞 70 px 跑開；烏鴉 90 px 飛走；大小：綿羊 0.95 m、小牛 1.15 m、母雞 0.42 m、公雞 0.55 m、烏鴉 0.42 m | `Critter.SPECIES`、`RunView3D.CREATURES` |
 
 ## 五、待辦與需要使用者決定的事
 1. **鱷魚先生**已做（規則都是我先訂的，見第四節）：可同時多個委託、魚要真的交出去、可分批交。
@@ -169,7 +192,11 @@
     還沒做：運河（7-3）、地鐵坑（7-4）、海岸港口（7-5）、撿拾點（提案）、自由模式的都市地圖卡片。
 11. **鄉村**（第 8 章）已可玩；還沒做：農場動物（雞、牛、羊——沒有素材，目前只有鹿和狐狸，8-4 有狼）、溝渠／大河（8-5 現在是一般池塘）、
     自由模式的鄉村地圖卡片。11 種鄉村魚是暫代模型，有照片再換。
-12. **部落、中國風**等使用者的素材（`docs/ASSET_WISHLIST.md`）；日式、英式缺的動物、樹、橋等也在清單裡。
+12. **部落**等使用者的素材（`docs/ASSET_WISHLIST.md`）。
+13. **中式古鎮**（第 11 章）已可玩；還沒做：荷花、石拱橋、牌樓、月洞門；11 種中國魚是暫代模型。
+14. **日式的紅色拱橋**：要讓池塘上有可以走上去的橋（目前碼頭只從岸邊伸進水裡），需要新的地圖機制，還沒做。
+    卡通風的櫻花樹（Tree.zip）風格和其他寫實素材不搭，先沒用。
+15. 動物：烏鴉的翅膀是用旋轉把展開的翅膀收到身側（原檔是展翅姿勢），近看羽毛會有一點散；牛（Cow.zip 的 .max）仍打不開，目前用小牛。
     使用者這次傳的埃及土屋比較適合另開「沙漠／中東」主題（要不要做由使用者決定）。
 3. 月光鰺目前和浪人鰺同一個模型形狀；更細長的版本已寫好算圖設定（`tools/render_fish.py` 的 moon_jack），要有 Blender（bpy）才能重算。
 4. 沙灘海岸的地形設定裡列了「螃蟹」，但遊戲沒有螃蟹這個物種（`shore_critter_count` 為 0，所以不會生成）。**使用者之後會給螃蟹美術。**
@@ -218,6 +245,8 @@
 | 荒廢都市（第 7 章） | 主題：`scripts/map_generator.gd` 的 `THEMES.city`、`_place_ruins()`、`_place_street_props()`；建築：`scripts/ruin.gd`；街道物件：`scripts/street_prop.gd`；3D 外觀與透明、模型建築、天際線：`scripts/city_build.gd`；使用者素材再製：`tools/make_city_assets.py`（輸出 `assets/models/city/`）；設計與素材清單：`docs/RUINED_WORLD.md` |
 | 鄉村（第 8 章） | 主題：`scripts/map_generator.gd` 的 `THEMES.countryside`、`_place_farms()`（農家、土路、田、籬笆、院子的東西、果園）；農舍穀倉沿用 `scripts/ruin.gd`（模型名 `farm_*`）；田：`scripts/farm_field.gd`；籬笆：`scripts/fence.gd`；院子的東西：`scripts/street_prop.gd` 的 `FARM`；3D（地面、道具、籬笆、作物）：`scripts/farm_build.gd`；地面貼圖 `furrow`、`stubble`：`tools/make_ground.py`；使用者素材再製：`tools/make_farm_assets.py`（輸出 `assets/models/farm/`） |
 | 日式、英式（第 9、10 章） | 主題：`THEMES.japan`、`THEMES.england`（和鄉村共用 `_place_farms()`、`_place_yard_things()`、`_place_grove()`）；圍籬樣式：`scripts/fence.gd` 的 `STYLES`、`scripts/farm_build.gd` 的 `_bamboo_fence`、`_stone_wall`、`_hedge`；素材再製：`tools/make_japan_assets.py`（`assets/models/jp/`）、`tools/make_england_assets.py`（`assets/models/eng/`）；碎石地面 `shrine_gravel`：`tools/make_ground.py`；缺件清單：`docs/ASSET_WISHLIST.md` |
+| 中式古鎮（第 11 章） | 主題：`THEMES.china`（共用 `_place_farms()`；水邊垂柳用 `oasis_trees`，離水的樹 `MapTree.OPEN_KINDS`）；白牆黛瓦：`scripts/farm_build.gd` 的 `_tile_wall`；竹葉透空：`scripts/city_build.gd` 的 `_tex_cut_shader`；石板地面 `flagstone`：`tools/make_ground.py`；素材再製：`tools/make_china_assets.py`（`assets/models/cn/`） |
+| 村莊的樹、日式新物件、農場動物 | 樹：`tools/make_village_trees.py`（`assets/models/camp/<kind>.glb`，`CampModel.TREE_FAMILY`、`MapTree.KINDS`/`CANOPY`/`THEME_KINDS`）；日式燈籠石塔：`tools/make_japan_extras.py`；動物：`tools/make_farm_animals.py`（`assets/models/run3d/`，`Critter.SPECIES`、`RunView3D.CREATURES`） |
 | 十二星座硬幣 | `scripts/zodiac.gd`（`CHANCE`、`PRICE`、`roll()`）；給予：`scripts/game_state.gd` 的 `escape()`；轉換工具：`tools/make_zodiac_coins.py` |
 | 商城收購 | `scripts/shop.gd`：`_fill_sell_pane()`、`_sell_drag()`、`SellBoard` |
 | 用在魚身上的道具的選魚視窗 | `scripts/fish_pick_panel.gd`：`show_fish()` |

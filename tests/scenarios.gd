@@ -165,6 +165,7 @@ const TESTS := [
 	"test_city_map",
 	"test_countryside_map",
 	"test_japan_and_england_maps",
+	"test_farm_animals",
 	"test_bag_card_closes",
 	"test_altar_this_run_only",
 	"test_locks",
@@ -6402,8 +6403,8 @@ func test_campaign_unlocks_and_achievements() -> void:
 	reset_progress()
 	# (user decision - the maps' branches: one after another in a map, the next map once the whole of
 	# this one's done; six maps, 26 levels - and, user request, the human world's after them: the
-	# ruined city, the countryside, the Japanese and the English villages: ten maps, 46 levels)
-	check(camp().CHAPTERS.size() == 10 and camp().LEVELS.size() == 46, "ten maps, 46 branches")
+	# ruined city, the countryside, the Japanese, English and Chinese villages: eleven maps, 51 levels)
+	check(camp().CHAPTERS.size() == 11 and camp().LEVELS.size() == 51, "eleven maps, 51 branches")
 	# (the achievements brought to the chapters: each after the first its own; "all the stars" of the
 	# journey across the lake - its six chapters' - and the curses after its last)
 	var journey_ids: Array = camp().ACHIEVEMENTS.map(func(a): return str(a[0]))
@@ -13834,12 +13835,17 @@ func test_countryside_map() -> void:
 func test_japan_and_england_maps() -> void:
 	# User request (the human world's other villages, made as ordinary places - the two whose models the
 	# user sent): chapter 9, the Japanese village, and chapter 10, the English, laid out as the
-	# countryside is, each its own buildings, fences, things and fish.
+	# countryside is, each its own buildings, fences, things and fish; and (user request, "中國風第 11
+	# 章") chapter 11, the Chinese village.
 	var villages := [
 		{"chapter": 9, "theme": "japan", "name": "日式山村", "level": "9-3", "small": "9-1", "prefix": "jp_", "fences": ["bamboo"],
 			"fish": ["yamame", "ugui", "kawamutsu", "goldfish", "biwa_catfish", "amago", "sakura_masu", "hasu", "nigoro", "biwa_trout", "akame"]},
 		{"chapter": 10, "theme": "england", "name": "英式村莊", "level": "10-3", "small": "10-1", "prefix": "eng_", "fences": ["stone", "hedge"],
 			"fish": ["roach", "rudd", "tench", "dace", "atlantic_salmon", "gudgeon", "chub", "barbel", "zander", "sea_trout", "ferox_trout"]},
+		# (user request, "中國風第 11 章": the Chinese village)
+		{"chapter": 11, "theme": "china", "name": "中式古鎮", "level": "11-3", "small": "11-1", "prefix": "cn_", "fences": ["tile_wall", "bamboo"],
+			"fish": ["mud_carp", "red_eye_trout", "sand_loach", "yellow_river_carp", "chinese_sucker", "spotted_steed", "reeves_shad",
+				"coilia", "luciobrama", "goonch", "chinese_sturgeon"]},
 	]
 	Campaign.dev_all_open = true
 	for v: Dictionary in villages:
@@ -13903,9 +13909,36 @@ func test_japan_and_england_maps() -> void:
 				astride = astride and gen._on_track(sp.global_position, 0.0) and not gen._on_track(sp.global_position + along, 0.0) \
 					and not gen._on_track(sp.global_position - along, 0.0)
 			check(torii.size() >= 1 and astride, "the torii astride the paths (%d)" % torii.size())
-			check(props.any(func(q): return (q as StreetProp).kind == "bamboo"), "a bamboo grove")
-		else:
+			check(props.any(func(q): return (q as StreetProp).kind == "bamboo" and (q as StreetProp).model == "cn_bamboo"), "a bamboo grove (the user's bamboo)")
+			# (user request, "補強日式": the user's mossy lanterns and stone towers, its maples and cherry)
+			check(props.any(func(q): return (q as StreetProp).kind == "stupa") and props.any(func(q): return (q as StreetProp).model in ["jp_toro_moss", "jp_kasuga"]),
+				"the mossy stone lanterns and the stone towers")
+			var kinds := get_tree().get_nodes_in_group("trees").map(func(t): return str(t.kind))
+			check(kinds.has("maple_a") and kinds.has("cherry_a"), "its red maples and a cherry")
+		elif v.theme == "england":
 			check(ruins.any(func(r): return (r as Ruin).model == "eng_chapel"), "the chapel, the village's landmark")
+		else:
+			# (the temple hall its landmark; its walls white under dark tiles; its bamboo the user's, its
+			# leafy sprigs cut out; its willows by the water - the rest of its trees away from it)
+			var gen = main.get_node("MapGenerator")
+			check(ruins.any(func(r): return (r as Ruin).model == "cn_hall"), "the temple hall, the village's landmark")
+			check(fences.any(func(f): return (f as Fence).style == "tile_wall"), "white walls under dark tiles")
+			var bamboo := props.filter(func(q): return (q as StreetProp).kind == "bamboo")
+			var cut := false
+			for m in view.find_children("FarmProp*", "Node3D", true, false):
+				for mi in (m as Node).find_children("*", "MeshInstance3D", true, false):
+					for i in (mi as MeshInstance3D).mesh.get_surface_count():
+						var mat := (mi as MeshInstance3D).get_surface_override_material(i) as ShaderMaterial
+						if mat != null and mat.shader.code.contains("ALPHA_SCISSOR_THRESHOLD"):
+							cut = true
+			check(bamboo.size() >= 3 and bamboo.all(func(q): return (q as StreetProp).model == "cn_bamboo") and cut,
+				"bamboo groves (%d clumps), their leaves cut out" % bamboo.size())
+			var trees := get_tree().get_nodes_in_group("trees")
+			var willows := trees.filter(func(t): return str(t.kind).begins_with("willow_"))
+			var by_water := willows.all(func(t): return gen._shore_distance(t.global_position) < 260.0)
+			var open := trees.filter(func(t): return not str(t.kind).begins_with("willow_"))
+			check(willows.size() >= 4 and by_water and open.all(func(t): return str(t.kind) in MapTree.open_for("china")),
+				"willows by the water (%d), maples and pines away from it (%d)" % [willows.size(), open.size()])
 		# A small map: a farm and a field still.
 		seed(5)
 		await play_level(str(v.small))
@@ -13913,6 +13946,54 @@ func test_japan_and_england_maps() -> void:
 		var r2 := get_tree().get_nodes_in_group("ruins")
 		var f2 := get_tree().get_nodes_in_group("farm_fields")
 		check(r2.size() >= 1 and f2.size() >= 1, "%s: %d buildings, %d fields" % [v.small, r2.size(), f2.size()])
+
+
+func test_farm_animals() -> void:
+	# User request ("綿羊、烏鴉、雞的動畫" - and the calf the user sent for the cows): the villages' animals,
+	# the user's models with moves of ours (tools/make_farm_animals.py) - each one's model and its three
+	# clips, about the villages that keep them, built in 3D as it comes into view and moving as it goes.
+	var kinds := ["sheep", "calf", "chicken", "rooster", "crow"]
+	var ok := true
+	for k in kinds:
+		var path: String = RunView3D.CREATURE_DIR + str(k) + ".glb"
+		var clips := []
+		if ResourceLoader.exists(path):
+			var n: Node = (load(path) as PackedScene).instantiate()
+			var aps := n.find_children("*", "AnimationPlayer", true, false)
+			if not aps.is_empty():
+				clips = Array((aps[0] as AnimationPlayer).get_animation_list())
+			n.free()
+		var has := Critter.SPECIES.has(k) and bool(Critter.SPECIES[k].get("ambient", false)) and RunView3D.CREATURES.has(k) \
+			and clips.has("Idle") and clips.has("Walk") and clips.has("Run")
+		check(has, "%s: an ambient animal, its model's clips %s" % [k, str(clips)])
+		ok = ok and has
+	var homes := {"countryside": ["sheep", "calf", "chicken", "rooster"], "england": ["sheep", "calf"], "japan": ["crow"], "china": ["chicken", "rooster"]}
+	for theme in homes:
+		var w: Dictionary = MapGenerator.THEMES[theme].animals
+		check((homes[theme] as Array).all(func(k): return w.has(k)), "%s keeps %s" % [theme, str(homes[theme])])
+	Campaign.dev_all_open = true
+	seed(3)
+	await play_level("8-3")
+	var view: RunView3D = null
+	for _i in 600:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	var farm := []
+	for n in main.get_children():
+		if n is Critter and (n as Critter).ambient and (n as Critter).species in kinds:
+			farm.append(n)
+	check(farm.size() >= 2, "8-3: farm animals about (%s)" % str(farm.map(func(c): return c.species)))
+	if farm.is_empty():
+		return
+	# (one of them in view: its model built, playing a clip of its own)
+	var c: Critter = farm[0]
+	player().global_position = c.global_position + Vector2(0, 200)
+	await frames(30)
+	var made: Dictionary = view._creatures.get(c, {})
+	check(not made.is_empty() and made.anim != null and str(made.clip) in ["Idle", "Walk", "Run"],
+		"its model built, playing %s" % str(made.get("clip", "-")))
 
 
 func test_city_map() -> void:

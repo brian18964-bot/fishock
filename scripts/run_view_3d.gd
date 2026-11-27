@@ -2699,9 +2699,10 @@ func _trees_and_rocks() -> void:
 			pines.append(k)
 	if pines == MapTree.PINES:
 		pines = ["pine_a", "pine_b", "pine_c"]
-	if _desert:
-		# (out on the desert's edge, dead trees - its palms by the water)
-		pines = MapTree.DESERT_OPEN.duplicate()
+	if _desert or MapTree.OPEN_KINDS.has(MapGenerator.current_theme):
+		# (out on the desert's edge, dead trees - its palms by the water; the Chinese village's edge its
+		# maples and pines, its willows by the water)
+		pines = MapTree.open_for(MapGenerator.current_theme).duplicate()
 	var meshes := {}
 	var spots := {}
 	for p in pines:
@@ -4186,6 +4187,10 @@ const CREATURES := {
 	"ghost": [1.1, "h", 0.9], "dragon": [2.76, "h", 0.0], "water_ghost": [1.6, "h", 0.0], "willow": [1.2, "h", 0.0],
 	# (the desert's: tools/make_desert_animals.py)
 	"hyena": [1.05, "h", 0.0], "camel": [2.4, "h", 0.0], "iguana": [0.85, "l", 0.0], "scorpion": [0.5, "l", 0.0],
+	# (the villages' farm animals and birds: tools/make_farm_animals.py - the crow's height its standing
+	# one; it flies off low in its own Run clip)
+	"sheep": [0.95, "h", 0.0], "calf": [1.15, "h", 0.0], "chicken": [0.42, "h", 0.0], "rooster": [0.55, "h", 0.0],
+	"crow": [0.42, "h", 0.0],
 }
 const CREATURE_DIR := "res://assets/models/run3d/"
 const BY_SCRIPT := {"ghost.gd": "ghost", "big_ghost.gd": "dragon", "water_ghost.gd": "water_ghost", "willow.gd": "willow"}

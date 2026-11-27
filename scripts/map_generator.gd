@@ -96,6 +96,9 @@ const BUSH_SCENE := preload("res://scenes/bush.tscn")
 const THEME := "forest_pine"
 ## The style this run's map has (set as the map is made; RunView3D dresses it by it).
 static var current_theme := "forest_pine"
+## The Chinese village's bamboo grove (a level may ask for more, thicker ones - its "yard" "groves").
+const CHINA_BAMBOO := {"kind": "bamboo", "models": ["cn_bamboo"], "count": 2, "rows": Vector2i(2, 3), "cols": Vector2i(3, 5),
+	"gap": 120.0, "jitter": 30.0, "fill": 0.5, "size": Vector2(40, 0)}
 const THEMES := {
 	"forest_pine": {
 		"look": "detailed",
@@ -297,8 +300,10 @@ const THEMES := {
 			{"kind": "barrow", "models": ["farm_barrow"], "count": 2, "turn": "square"}],
 			"groves": [{"kind": "fruit", "models": ["farm_fruit_1", "farm_fruit_2", "farm_fruit_3"], "count": 1,
 				"rows": Vector2i(2, 3), "cols": Vector2i(3, 4), "gap": 105.0, "jitter": 8.0}]},
-		"animal_count": 1,
-		"animals": {"deer": 1.0, "fox": 1.0},
+		# (user request: its farm animals - the calves and sheep grazing, the chickens about the yards;
+		# a deer or a fox now and then - tools/make_farm_animals.py)
+		"animal_count": 3,
+		"animals": {"calf": 1.2, "sheep": 1.0, "chicken": 1.2, "rooster": 0.4, "deer": 0.4, "fox": 0.5},
 		"shore": {"grass": 0.06, "shrub": 0.04, "pebbles": 0.02},
 		"shore_extras": {"reeds": 0.14, "lilypad": 0.06, "driftwood": 0.02},
 		"water": {"base": Color(0.12, 0.24, 0.18), "deep": Color(0.04, 0.11, 0.09)},
@@ -326,16 +331,20 @@ const THEMES := {
 			"gate": Vector2(80, 120), "bales": Vector2i(0, 0)},
 		"yard": {"lit_most": 4, "things": [
 			{"kind": "torii", "models": ["jp_torii"], "count": 2, "where": "across", "size": Vector2(10, 155)},
-			{"kind": "lantern", "models": ["jp_toro"], "count": 7, "where": "track", "lit": 0.6, "size": Vector2(12, 0)},
+			# (user request, "補強日式": the user's mossy stone lanterns among the shrine set's - tools/
+			# make_japan_extras.py - and its tiered stone towers)
+			{"kind": "lantern", "models": ["jp_toro", "jp_toro_moss", "jp_kasuga"], "count": 7, "where": "track", "lit": 0.6, "size": Vector2(13, 0)},
 			{"kind": "lamp", "models": ["jp_lamp"], "count": 3, "lit": 0.4, "size": Vector2(9, 0)},
+			{"kind": "stupa", "models": ["jp_stupa_1", "jp_stupa_2"], "count": 2, "size": Vector2(16, 0)},
 			{"kind": "ema", "models": ["jp_ema_2"], "count": 1, "turn": "square", "size": Vector2(20, 57)},
 			{"kind": "bench", "models": ["jp_bench"], "count": 2, "where": "yard", "size": Vector2(9, 54)},
 			{"kind": "basin", "models": ["jp_basin"], "count": 2, "size": Vector2(11, 0)},
 			{"kind": "basket", "models": ["jp_basket"], "count": 3, "size": Vector2(9, 0)}],
-			"groves": [{"kind": "bamboo", "models": ["jp_bamboo"], "count": 3, "rows": Vector2i(2, 3), "cols": Vector2i(3, 5),
+			"groves": [{"kind": "bamboo", "models": ["cn_bamboo"], "count": 3, "rows": Vector2i(2, 3), "cols": Vector2i(3, 5),
 				"gap": 120.0, "jitter": 30.0, "fill": 0.5, "size": Vector2(40, 0)}]},
-		"animal_count": 1,
-		"animals": {"deer": 1.4, "fox": 1.0},
+		# (user request: crows pecking about and flying off - tools/make_farm_animals.py)
+		"animal_count": 2,
+		"animals": {"crow": 1.4, "deer": 1.4, "fox": 1.0},
 		"shore": {"grass": 0.06, "shrub": 0.04, "pebbles": 0.04},
 		"shore_extras": {"reeds": 0.1, "lilypad": 0.1, "driftwood": 0.0},
 		"water": {"base": Color(0.09, 0.24, 0.24), "deep": Color(0.03, 0.1, 0.12)},
@@ -370,11 +379,49 @@ const THEMES := {
 			{"kind": "barrow", "models": ["farm_barrow"], "count": 2, "turn": "square"}],
 			"groves": [{"kind": "fruit", "models": ["farm_fruit_1", "farm_fruit_2", "farm_fruit_3"], "count": 1,
 				"rows": Vector2i(2, 3), "cols": Vector2i(3, 4), "gap": 105.0, "jitter": 8.0}]},
-		"animal_count": 1,
-		"animals": {"deer": 1.0, "fox": 1.2},
+		# (user request: its sheep in the pastures, a calf or two - tools/make_farm_animals.py)
+		"animal_count": 3,
+		"animals": {"sheep": 1.6, "calf": 0.6, "deer": 0.6, "fox": 0.8},
 		"shore": {"grass": 0.06, "shrub": 0.04, "pebbles": 0.04},
 		"shore_extras": {"reeds": 0.14, "lilypad": 0.04, "driftwood": 0.03},
 		"water": {"base": Color(0.1, 0.2, 0.17), "deep": Color(0.035, 0.09, 0.08)},
+	},
+	# User request ("開始做中國風第 11 章"): the Chinese village - laid out as the other villages are
+	# ("farm", "yard"): its grey stone houses about their yards, a red pavilion or the two-storey
+	# pavilion across from them, the temple hall its landmark (the user's uploads, made ours -
+	# tools/make_china_assets.py); vegetable plots behind white walls under dark tiles (Fence's
+	# "tile_wall"); flagstone lanes (RunView3D's "floor3d") out to the map's edge, red lantern posts
+	# along them (a few lit at night); stone garden lanterns, water jars, stone tables and wells by the
+	# houses; bamboo groves; willows by the water (MapTree's "china"). Deer and foxes about.
+	"china": {
+		"look": "detailed",
+		"floor": ["grass", "grass", 0.3],
+		"floor3d": {"grass": "grass", "forest": "moss_soil", "path": "flagstone", "stone": "furrow", "mud": "mud"},
+		"trees": 16, "rocks": 3, "bushes": 4, "ground": 0,
+		"tree_families": {"pine": 1.0},
+		"rock_pool": [0, 1, 2],
+		"farm": {"steads": 3, "landmark": "cn_hall", "houses": ["cn_house"], "barns": ["cn_pavilion", "cn_house", "cn_pavilion"],
+			"extras": ["cn_pavilion", "cn_tower"], "extra": Vector2i(0, 1),
+			"scale": Vector2(0.85, 1.0), "yard": 160.0, "water_gap": 70.0,
+			"fields": 3, "field_min": Vector2(300, 220), "field_max": Vector2(620, 420),
+			"crops": {"greens": 1.0, "plough": 0.7}, "fenced": 0.8, "fences": {"tile_wall": 1.0, "bamboo": 0.3},
+			"gate": Vector2(80, 120), "bales": Vector2i(0, 0)},
+		"yard": {"lit_most": 4, "things": [
+			{"kind": "lantern", "models": ["cn_red_lantern"], "count": 7, "where": "track", "lit": 0.6, "size": Vector2(8, 0)},
+			{"kind": "lamp", "models": ["cn_lamp_1", "cn_lamp_2", "cn_lamp_3", "cn_lamp_4"], "count": 4, "lit": 0.4, "size": Vector2(14, 0)},
+			{"kind": "jar", "models": ["cn_jar"], "count": 4, "where": "building", "size": Vector2(15, 0)},
+			{"kind": "table", "models": ["cn_table"], "count": 2, "where": "yard", "size": Vector2(26, 0)},
+			{"kind": "well", "models": ["cn_well"], "count": 1, "size": Vector2(20, 0)}],
+			"groves": [CHINA_BAMBOO]},
+		"animal_count": 2,
+		"animals": {"chicken": 1.2, "rooster": 0.4, "crow": 0.4, "deer": 0.6, "fox": 0.6},
+		"shore": {"grass": 0.06, "shrub": 0.04, "pebbles": 0.04},
+		"shore_extras": {"reeds": 0.12, "lilypad": 0.14, "driftwood": 0.0},
+		# (the willows by the water: half the trees, their trunks this far from the shore (px) -
+		# their hanging leaves over the bank, high over the rod; the rest out away from it)
+		"oasis_trees": 0.5,
+		"oasis_band": [70.0, 240.0],
+		"water": {"base": Color(0.1, 0.23, 0.2), "deep": Color(0.035, 0.1, 0.09)},
 	},}
 ## User feedback: the water's edge is grass, small shrubs, pebbles and
 ## boardwalks (no big trees or boulders there), with bugs and frogs about.
@@ -1986,7 +2033,7 @@ func _by_water(base: float, reach: float) -> Vector2:
 func _place_tree(tree: MapTree) -> Vector2:
 	var roll := randi()
 	if randf() >= float(theme.oasis_trees):
-		tree.pick_from(roll, MapTree.DESERT_OPEN)
+		tree.pick_from(roll, MapTree.open_for(theme_name))
 		var size := _footprint(tree)
 		return _pick_prop_position(size[0], size[1])
 	tree.pick_from(roll, MapTree.kinds_for(theme_name))
