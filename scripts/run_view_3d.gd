@@ -279,7 +279,7 @@ var _sprites := {}
 var _lights := {}
 ## New nodes to look at next frame.
 var _pending: Array = []
-var _walk: Array = []  # [Rect2 (2D), deck height]
+var _walk: Array = []  # [Rect2 (2D), deck height(, a bridge's deck: _bridge)]
 var _raised: Array = []
 var _flip_rocks := {}
 ## User request: the glow mushrooms (GlowMushroom) - each its model, its
@@ -476,6 +476,9 @@ var _cliff := false
 var _city := false
 ## User request (the human world's countryside, and its other villages): its farms - FarmBuild.
 var _farm := false
+## User request (the adobe village - "換成土屋主題"): a village in dry land - its green (the meadow paint,
+## its grass blades) only by the water, as the oasis's, the rest sand ("oasis_meadow").
+var _dry_farm := false
 var _ruin_mat: ShaderMaterial
 ## (the coast: the sea's depth (px, + out in the water) at each of the ground grid's points - the sea
 ## surface's depth texture and where the edge's pines may stand)
@@ -534,6 +537,7 @@ func _ready() -> void:
 	_city = MapGenerator.current_theme.begins_with("city")
 	# (and the other villages laid out the same way - the Japanese, the English: a style with "farm")
 	_farm = (MapGenerator.THEMES.get(MapGenerator.current_theme, {}) as Dictionary).has("farm")
+	_dry_farm = bool((MapGenerator.THEMES.get(MapGenerator.current_theme, {}) as Dictionary).get("oasis_meadow", false))
 	Foliage.set_wind(Foliage.WIND)
 	_rng.seed = 11
 	player = main.get_node("Player")
@@ -765,7 +769,8 @@ func ground_y(p: Vector2) -> float:
 			return LAND_Y + float(r[2])
 	for w in _walk:
 		if (w[0] as Rect2).has_point(p):
-			return float(w[1])
+			# (a bridge's: up its arch - _bridge)
+			return float(w[1]) + (_deck_rise(w[2], p) if w.size() > 2 else 0.0)
 	if (_desert or _coast) and not _ground_grid.is_empty():
 		# (the dunes - the desert's, the beach's: the ground as it was made - its grid - so who walks
 		# them walks on them)
@@ -1905,6 +1910,12 @@ func _ground() -> void:
 				var mud_f := 1.0 - smoothstep(0.0, 70.0 + wob * 30.0, -d)
 				var dry := smoothstep(0.38, 0.72, noise.get_noise_2d(x * 0.25 + 90.0, z * 0.25)) * 0.6
 				var meadow := maxf(clampf(1.0 - stub - dry, 0.0, 1.0), smoothstep(0.0, 4.0, out))
+				if _dry_farm:
+					# (dry land: green only near the water, thinning out in patches - the rest sand; none
+					# at the map's edge)
+					var green := 1.0 - smoothstep(OASIS_GREEN.x, OASIS_GREEN.y + wob * 70.0, -d)
+					green *= clampf(0.75 + noise.get_noise_2d(x * 0.8 + 210.0, z * 0.8) * 1.2, 0.0, 1.0)
+					meadow = clampf(green - stub, 0.0, 1.0) * (1.0 - smoothstep(0.0, 4.0, out))
 				heights[j * n.x + i] = y
 				colors[j * n.x + i] = Color(dirt * (1.0 - plough), plough, mud_f, meadow)
 				continue
@@ -2624,6 +2635,9 @@ func _docks() -> void:
 		var dock := n as Dock
 		if dock == null:
 			continue
+		if dock.bridge != "":
+			_bridge(dock, wood, dark)
+			continue
 		if dock._is_boat:
 			var boat := CampModel.make("boat")
 			if boat != null:
@@ -2686,6 +2700,185 @@ func _docks() -> void:
 				post.position = centre + (Vector3(side * across, -0.45, a) if vertical else Vector3(a, -0.45, side * across))
 				add_child(post)
 		_walk.append([r, DECK_Y])
+
+
+## User request: "可以走上去的橋" - a bridge over the water, bank to bank (Dock.setup_bridge; the
+## map's narrowest fitting crossing): the remade red arch ("jp_bridge" - its length and its deck's
+## heights along it in jp_assets.json, stretched to the crossing, its arch with it up to
+## BRIDGE_UP_MOST, as wide as BRIDGE_WIDE; arches end to end over a long one), or one of our own on
+## an arch BRIDGE_RISE of its length high (at most BRIDGE_TOP): planks on two stringers, posts and a
+## handrail each side, piles down into the water ("wood"); thick stone slabs between low parapets, a
+## stone foot at each bank ("stone"). Walked as it's built: its _walk entry carries its deck's heights end to end, so
+## ground_y takes whoever crosses up the arch and down again (the map's rails keep them on it).
+const BRIDGE_WIDE := 2.6
+const BRIDGE_UP_MOST := 1.25
+const BRIDGE_ARCH_MOST := 1.6
+const BRIDGE_RISE := 0.075
+const BRIDGE_TOP := 1.1
+## (our own bridges: how many deck heights are kept end to end; plank, slab and post spacing (m);
+## the rail's and parapet's height (m))
+const BRIDGE_STEPS := 21
+const BRIDGE_PLANK := 0.3
+const BRIDGE_SLAB := 0.6
+const BRIDGE_POST := 1.5
+const BRIDGE_RAIL := 0.95
+const BRIDGE_PARAPET := 0.55
+
+
+func _bridge(dock: Dock, wood: Material, dark: Material) -> void:
+	var a: Vector2 = dock.bridge_ends[0]
+	var b: Vector2 = dock.bridge_ends[1]
+	var long := a.distance_to(b) / PX
+	var vertical := absf(b.y - a.y) > absf(b.x - a.x)
+	# (its own frame: along z, from the first end at -long/2 to the other at +long/2)
+	var holder := Node3D.new()
+	holder.name = "Bridge"
+	holder.position = to3((a + b) * 0.5, LAND_Y)
+	holder.rotation.y = 0.0 if vertical else PI * 0.5
+	add_child(holder)
+	var heights := PackedFloat32Array()
+	if dock.bridge == "jp_bridge":
+		# (a long crossing - a big pond's - two or more arches end to end, each about as long as made
+		# up to BRIDGE_ARCH_MOST times, so its boards and rails aren't stretched past looking like them)
+		var info := Ruin.info("jp_bridge")
+		var deck: Dictionary = info.get("deck", {})
+		var made: Array = deck.get("profile", [0.0, 0.0])
+		var made_long := float(deck.get("long", 9.0))
+		var arches := maxi(1, ceili(long / (made_long * BRIDGE_ARCH_MOST)))
+		var each := long / arches
+		var k := each / made_long
+		var up := minf(k, BRIDGE_UP_MOST)
+		for i in arches:
+			var model: Node3D = (load(Ruin.path_of("jp_bridge")) as PackedScene).instantiate()
+			model.scale = Vector3(BRIDGE_WIDE / float((info.get("size", [3.5]) as Array)[0]), up, k)
+			model.position.z = -long * 0.5 + each * (i + 0.5)
+			holder.add_child(model)
+			for j in made.size():
+				if i == 0 or j > 0:
+					heights.append(float(made[j]) * up)
+	else:
+		var rise := minf(long * BRIDGE_RISE, BRIDGE_TOP)
+		for i in BRIDGE_STEPS:
+			var t := float(i) / (BRIDGE_STEPS - 1)
+			heights.append(rise * 4.0 * t * (1.0 - t))
+		if dock.bridge == "stone":
+			_stone_bridge(holder, long, heights)
+		else:
+			_wood_bridge(holder, long, heights, wood, dark)
+	_walk.append([dock.walk_rect, LAND_Y, {"from": a, "to": b, "heights": heights}])
+
+
+## The deck's height over its ends at `p` (2D) - along the bridge, between its kept heights.
+static func _deck_rise(deck: Dictionary, p: Vector2) -> float:
+	var a: Vector2 = deck.from
+	var b: Vector2 = deck.to
+	var h: PackedFloat32Array = deck.heights
+	var t := clampf((p - a).dot(b - a) / maxf((b - a).length_squared(), 1.0), 0.0, 1.0)
+	var f := t * (h.size() - 1)
+	var i := mini(int(f), h.size() - 2)
+	return lerpf(h[i], h[i + 1], f - i)
+
+
+## A point on a bridge's deck in its own frame (`z` along it, m; `heights` end to end).
+static func _deck_at(z: float, long: float, heights: PackedFloat32Array) -> float:
+	var f := clampf(z / long + 0.5, 0.0, 1.0) * (heights.size() - 1)
+	var i := mini(int(f), heights.size() - 2)
+	return lerpf(heights[i], heights[i + 1], f - i)
+
+
+## A box from `p` to `q` (the bridge's frame), `w` across and `h` thick below the line between them.
+func _bridge_beam(holder: Node3D, p: Vector3, q: Vector3, w: float, h: float, mat: Material) -> void:
+	var mi := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	var d := q - p
+	box.size = Vector3(w, h, Vector2(d.z, d.y).length())
+	mi.mesh = box
+	mi.material_override = mat
+	mi.position = (p + q) * 0.5 - Vector3(0, h * 0.5, 0)
+	mi.rotation.x = -atan2(d.y, d.z)
+	holder.add_child(mi)
+
+
+func _wood_bridge(holder: Node3D, long: float, heights: PackedFloat32Array, wood: Material, dark: Material) -> void:
+	var half := BRIDGE_WIDE * 0.5
+	var n := maxi(int(long / BRIDGE_PLANK), 8)
+	for k in n:
+		var z0 := -long * 0.5 + long * k / n
+		var z1 := z0 + long / n * 0.9
+		_bridge_beam(holder, Vector3(0, _deck_at(z0, long, heights), z0), Vector3(0, _deck_at(z1, long, heights), z1),
+				BRIDGE_WIDE - _rng.randf_range(0.0, 0.12), 0.06, wood if k % 3 != 1 else dark)
+	var segs := maxi(int(long / BRIDGE_SLAB), 6)
+	var posts := maxi(int(round(long / BRIDGE_POST)), 3)
+	for side in [-1.0, 1.0]:
+		var x: float = side * (half - 0.12)
+		# (the stringers under the planks, the handrail on its posts)
+		for k in segs:
+			var z0 := -long * 0.5 + long * k / segs
+			var z1 := z0 + long / segs
+			_bridge_beam(holder, Vector3(x, _deck_at(z0, long, heights) - 0.06, z0),
+					Vector3(x, _deck_at(z1, long, heights) - 0.06, z1), 0.14, 0.2, dark)
+		for k in posts:
+			var z0 := -long * 0.5 + 0.15 + (long - 0.3) * k / (posts - 1)
+			var z1 := -long * 0.5 + 0.15 + (long - 0.3) * (k + 1) / (posts - 1)
+			var y0 := _deck_at(z0, long, heights)
+			var post := MeshInstance3D.new()
+			var box := BoxMesh.new()
+			box.size = Vector3(0.1, BRIDGE_RAIL, 0.1)
+			post.mesh = box
+			post.material_override = dark
+			post.position = Vector3(x, y0 + BRIDGE_RAIL * 0.5, z0)
+			holder.add_child(post)
+			if k < posts - 1:
+				_bridge_beam(holder, Vector3(x, y0 + BRIDGE_RAIL, z0), Vector3(x, _deck_at(z1, long, heights) + BRIDGE_RAIL, z1),
+						0.08, 0.08, wood)
+				var zm := (z0 + z1) * 0.5
+				_bridge_beam(holder, Vector3(x, y0 + BRIDGE_RAIL * 0.5, z0), Vector3(x, _deck_at(z1, long, heights) + BRIDGE_RAIL * 0.5, z1),
+						0.05, 0.05, dark)
+				# (the piles: down into the water under the middle of the span, not on the banks)
+				if absf(zm) < long * 0.32:
+					var pile := MeshInstance3D.new()
+					var c := CylinderMesh.new()
+					c.top_radius = 0.08
+					c.bottom_radius = 0.09
+					var top := _deck_at(zm, long, heights) - 0.2
+					c.height = top - (WATER_Y - LAND_Y) + 1.2
+					pile.mesh = c
+					pile.material_override = dark
+					pile.position = Vector3(x, top - c.height * 0.5, zm)
+					holder.add_child(pile)
+
+
+func _stone_bridge(holder: Node3D, long: float, heights: PackedFloat32Array) -> void:
+	var stone := StandardMaterial3D.new()
+	stone.albedo_texture = load("res://assets/sprites/ground/flagstone_albedo.png")
+	stone.normal_enabled = true
+	stone.normal_texture = load("res://assets/sprites/ground/flagstone_normal.png")
+	stone.uv1_triplanar = true
+	stone.uv1_world_triplanar = true
+	stone.uv1_scale = Vector3.ONE * 0.5
+	stone.roughness = 0.95
+	var wall := stone.duplicate() as StandardMaterial3D
+	wall.albedo_color = Color(0.78, 0.76, 0.72)
+	var half := BRIDGE_WIDE * 0.5
+	var n := maxi(int(long / BRIDGE_SLAB), 8)
+	for k in n:
+		var z0 := -long * 0.5 + long * k / n
+		var z1 := z0 + long / n
+		var y0 := _deck_at(z0, long, heights)
+		var y1 := _deck_at(z1, long, heights)
+		_bridge_beam(holder, Vector3(0, y0, z0), Vector3(0, y1, z1), BRIDGE_WIDE, 0.38, stone)
+		for side in [-1.0, 1.0]:
+			_bridge_beam(holder, Vector3(side * (half - 0.1), y0 + BRIDGE_PARAPET, z0),
+					Vector3(side * (half - 0.1), y1 + BRIDGE_PARAPET, z1), 0.22, BRIDGE_PARAPET, wall)
+	# (a stone foot on each bank, down into the ground and the water's edge)
+	for end in [-1.0, 1.0]:
+		var foot := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		box.size = Vector3(BRIDGE_WIDE + 0.3, 1.2, 1.4)
+		foot.mesh = box
+		foot.material_override = wall
+		foot.position = Vector3(0, -0.62, end * (long * 0.5 - 0.5))
+		holder.add_child(foot)
 
 
 ## The map's trees as the camp's pines; its rocks, bushes and turning
@@ -7947,7 +8140,7 @@ var _trail_t := 0.0
 func _lay_grass() -> void:
 	if _snow or _ground_grid.is_empty():
 		return
-	var style := "autumn" if _autumn else ("desert" if _desert else ("cliff" if _cliff else ("coast" if _coast else "")))
+	var style := "autumn" if _autumn else ("desert" if _desert or _dry_farm else ("cliff" if _cliff else ("coast" if _coast else "")))
 	var g := GrassField.new()
 	g.name = "Grass"
 	g.grows = _grass_at

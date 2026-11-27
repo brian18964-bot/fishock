@@ -4,7 +4,7 @@
 
 ## 一、目前狀態
 - 所有工作都在 `claude/focused-fermi-96pp3r` 分支，它也是這個 repo 的預設分支；最後一次推送的 CI（Web build）通過並已部署。
-- 本機全套測試：5610 項、0 失敗（`tests/run_tests.gd`）。
+- 本機全套測試：6150 項、0 失敗（`tests/run_tests.gd`）。
 - 遊戲：Godot 4.7.2，3D 夜釣（俯視鏡頭、夜間、煤燈），手機觸控為主，也支援鍵盤。
 
 ## 二、這段期間做了什麼（依時間）
@@ -105,6 +105,16 @@
   母雞、公雞、小牛（沒有骨架，我們綁的）。動作全是我們做的：待機（綿羊和小牛低頭吃草、雞和烏鴉啄地）、走路（烏鴉是跳）、跑（烏鴉是低飛）。
   鄉村有小牛、綿羊、雞；英式以綿羊為主；日式有烏鴉；中式有雞。細節見 `docs/RUINED_WORLD.md` 第十節。
 
+### 15. 第 12 章「土屋聚落」（取代部落）、可以走上去的橋（11/27）
+- 使用者要求：「部落風取消，換成土屋主題，先做這個，做完沒問題再換歐洲田野」、「可以走上去的橋，新增這項機制」、
+  「有哪些布景是你自己用程式生成的，列出來讓我知道」（第三點已在對話中回答）。
+- **第 12 章「土屋聚落」**（主題 `adobe`）：埃及土屋包再製的 9 棟土屋（`tools/make_adobe_assets.py`）、矮土牆（新圍籬 `mud_wall`）、
+  水缸、陶罐、麵包窯、棚架、水井（我們做的）；沙地為底，只有水邊是綠的、長草；水邊椰棗、沙地上枯樹；駱駝、雞、烏鴉。
+  五個分支、11 種非洲／尼羅河的魚（暫代模型）、成就「綠洲釣客」。細節見 `docs/RUINED_WORLD.md` 第十二節。
+- **可以走上去的橋**：五個村莊主題每張圖在池塘最窄處架一座橋（日式紅拱橋＝使用者模型再製；中式石橋、其他木橋＝我們做的），
+  從兩端上下、兩側欄杆、走上去沿拱形升降，可以在橋上釣魚。橋在村子擺好之後才找位置，不會擠掉田地。
+- 歐洲田野（下一個主題）等使用者確認土屋沒問題再開始（素材：EU01_AcerCampestre 田野楓）。
+
 ## 三、已定案（使用者決定的，不用再問）
 ### 劇情與分支
 1. 每張地圖分 4～5 支，每支是一個劇情關卡；共 6 章 26 關。地圖順序：湖畔森林 → 秋林 → 雪地森林 → 沙漠綠洲 → 沙灘海岸 → 海崖。
@@ -127,6 +137,8 @@
 - 渡石逃離後的通關視窗不能貼底，拿掉不必要的備註。
 ### 人類世界（第 7 章起）
 1. 人類世界的六種主題：城市、鄉村、部落、日式、中國風、英式，各自再分支；先做都市。
+   **11/27：部落取消，換成土屋主題（第 12 章）；土屋做完沒問題再做歐洲田野。**
+4. 池塘上要有**可以走上去的橋**（11/27 新機制，五個村莊主題都有）。
 2. **只有都市是荒廢的主題**，其他人類世界的地圖照正常的樣子做（11/26）。
 3. 沙漠圓頂屋（TATOOINE 那包）不用；西部小鎮的模型使用者會再找。
 ### 自由夜釣
@@ -182,6 +194,11 @@
 | 中國的魚 | 主題魚 鯪魚、赤眼鱒、中華沙鰍、黃河鯉＋胭脂魚；獨有魚 花䱻、鰣魚、刀鱭、鯮魚、巨魾（史詩）、中華鱘（史詩） | `FishData.STYLE_FISH.china` |
 | 白牆黛瓦圍牆 | 高 1.3 m、厚 0.4 m、石基 0.25 m、瓦頂高 0.24 m、出簷 0.14 m | `FarmBuild` 的 `TILE_WALL_*` |
 | 農場動物的數量 | 鄉村每個基準面積 3 隻（小牛 1.2、綿羊 1、母雞 1.2、公雞 0.4、鹿 0.4、狐 0.5）；英式 3 隻（綿羊 1.6、小牛 0.6…）；日式 2 隻（烏鴉 1.4、鹿 1.4、狐 1）；中式 2 隻（母雞 1.2…） | `THEMES.*.animal_count`、`animals` |
+| 第 12 章土屋聚落 | 五個分支的大小、額度、時間、小鬼、天氣、獨有魚、首通獎勵（320～600 金幣）；12-2 田 6 塊、圍牆 95%；12-3 沙塵暴 30%＋濃霧 15%、水鬼 1.6 倍；12-4 鬣狗 | `Campaign.LEVELS` 的 12-1～12-5 |
+| 土屋聚落的擺放 | 每個基準面積 3 戶、院子 150 px、4 塊田（菜 1、犁過 0.7、收割 0.6；75% 圍土牆）；提燈 5（50% 亮、最多 3 盞）、水缸 5、陶罐 3、麵包窯 2、水井 1；七成的樹是水邊椰棗（離岸 24～230 px）；動物每個基準面積 2 隻（駱駝 0.8、母雞 1.2、公雞 0.4、烏鴉 0.5、狐 0.3） | `THEMES.adobe` |
+| 土屋的魚 | 主題魚 尼羅吳郭魚、鮑尼鲃、尖齒胡鯰、象鼻魚＋尼羅河鱸；獨有魚 尼羅野鯪、電鯰、虎魚、倒游鯰、巨虎魚（史詩）、裸臀魚（史詩） | `FishData.STYLE_FISH.adobe` |
+| 矮土牆 | 高 1.05 m、厚 0.45 m、每 1.6 m 一段 | `FarmBuild` 的 `MUD_WALL_*`；碰撞厚度 `Fence.STYLES.mud_wall` |
+| 可以走上去的橋 | 每張村莊地圖最多 1 座；橫跨水面 90～340 px（大地圖最多 2 倍）、兩端上岸 34 px、可走寬度 52 px、中段兩側都要在水上、橋中央離岸至少半個跨距的一半；橋寬 2.6 m、我們的橋拱高＝長度 7.5%（最高 1.1 m）、紅橋拱高最多 1.25 倍、紅橋每座最長 1.6 倍原長（更長就兩座拱接起來） | `MapGenerator.BRIDGE_*`、`THEMES.*.bridge`；`RunView3D.BRIDGE_*` |
 | 農場動物的行為 | 綿羊／小牛被靠近到 55／45 px 才慢慢走開；雞 70 px 跑開；烏鴉 90 px 飛走；大小：綿羊 0.95 m、小牛 1.15 m、母雞 0.42 m、公雞 0.55 m、烏鴉 0.42 m | `Critter.SPECIES`、`RunView3D.CREATURES` |
 
 ## 五、待辦與需要使用者決定的事
@@ -192,12 +209,12 @@
     還沒做：運河（7-3）、地鐵坑（7-4）、海岸港口（7-5）、撿拾點（提案）、自由模式的都市地圖卡片。
 11. **鄉村**（第 8 章）已可玩；還沒做：農場動物（雞、牛、羊——沒有素材，目前只有鹿和狐狸，8-4 有狼）、溝渠／大河（8-5 現在是一般池塘）、
     自由模式的鄉村地圖卡片。11 種鄉村魚是暫代模型，有照片再換。
-12. **部落**等使用者的素材（`docs/ASSET_WISHLIST.md`）。
+12. **土屋聚落**（第 12 章，取代部落）已可玩；還沒做：沙地上的沙丘起伏（目前平地）、駱駝以外的牲口；11 種魚是暫代模型。
+    **下一個是歐洲田野**——使用者說土屋「做完沒問題再換」，等使用者看過土屋。
 13. **中式古鎮**（第 11 章）已可玩；還沒做：荷花、石拱橋、牌樓、月洞門；11 種中國魚是暫代模型。
-14. **日式的紅色拱橋**：要讓池塘上有可以走上去的橋（目前碼頭只從岸邊伸進水裡），需要新的地圖機制，還沒做。
+14. **可以走上去的橋**已做（第二節 15）；目前只在五個村莊主題。其他主題（森林、秋林…）要不要也有橋、一張圖要不要不只一座，由使用者決定。
     卡通風的櫻花樹（Tree.zip）風格和其他寫實素材不搭，先沒用。
 15. 動物：烏鴉的翅膀是用旋轉把展開的翅膀收到身側（原檔是展翅姿勢），近看羽毛會有一點散；牛（Cow.zip 的 .max）仍打不開，目前用小牛。
-    使用者這次傳的埃及土屋比較適合另開「沙漠／中東」主題（要不要做由使用者決定）。
 3. 月光鰺目前和浪人鰺同一個模型形狀；更細長的版本已寫好算圖設定（`tools/render_fish.py` 的 moon_jack），要有 Blender（bpy）才能重算。
 4. 沙灘海岸的地形設定裡列了「螃蟹」，但遊戲沒有螃蟹這個物種（`shore_critter_count` 為 0，所以不會生成）。**使用者之後會給螃蟹美術。**
 5. 背包會被帶回來的魚骨慢慢塞滿——已加提醒（見第二節 8）。
@@ -246,7 +263,9 @@
 | 鄉村（第 8 章） | 主題：`scripts/map_generator.gd` 的 `THEMES.countryside`、`_place_farms()`（農家、土路、田、籬笆、院子的東西、果園）；農舍穀倉沿用 `scripts/ruin.gd`（模型名 `farm_*`）；田：`scripts/farm_field.gd`；籬笆：`scripts/fence.gd`；院子的東西：`scripts/street_prop.gd` 的 `FARM`；3D（地面、道具、籬笆、作物）：`scripts/farm_build.gd`；地面貼圖 `furrow`、`stubble`：`tools/make_ground.py`；使用者素材再製：`tools/make_farm_assets.py`（輸出 `assets/models/farm/`） |
 | 日式、英式（第 9、10 章） | 主題：`THEMES.japan`、`THEMES.england`（和鄉村共用 `_place_farms()`、`_place_yard_things()`、`_place_grove()`）；圍籬樣式：`scripts/fence.gd` 的 `STYLES`、`scripts/farm_build.gd` 的 `_bamboo_fence`、`_stone_wall`、`_hedge`；素材再製：`tools/make_japan_assets.py`（`assets/models/jp/`）、`tools/make_england_assets.py`（`assets/models/eng/`）；碎石地面 `shrine_gravel`：`tools/make_ground.py`；缺件清單：`docs/ASSET_WISHLIST.md` |
 | 中式古鎮（第 11 章） | 主題：`THEMES.china`（共用 `_place_farms()`；水邊垂柳用 `oasis_trees`，離水的樹 `MapTree.OPEN_KINDS`）；白牆黛瓦：`scripts/farm_build.gd` 的 `_tile_wall`；竹葉透空：`scripts/city_build.gd` 的 `_tex_cut_shader`；石板地面 `flagstone`：`tools/make_ground.py`；素材再製：`tools/make_china_assets.py`（`assets/models/cn/`） |
-| 村莊的樹、日式新物件、農場動物 | 樹：`tools/make_village_trees.py`（`assets/models/camp/<kind>.glb`，`CampModel.TREE_FAMILY`、`MapTree.KINDS`/`CANOPY`/`THEME_KINDS`）；日式燈籠石塔：`tools/make_japan_extras.py`；動物：`tools/make_farm_animals.py`（`assets/models/run3d/`，`Critter.SPECIES`、`RunView3D.CREATURES`） |
+| 村莊的樹、日式新物件、農場動物 | 樹：`tools/make_village_trees.py`（`assets/models/camp/<kind>.glb`，`CampModel.TREE_FAMILY`、`MapTree.KINDS`/`CANOPY`/`THEME_KINDS`）；日式燈籠石塔、紅橋：`tools/make_japan_extras.py`（`ONLY=bridge` 只做橋）；動物：`tools/make_farm_animals.py`（`assets/models/run3d/`，`Critter.SPECIES`、`RunView3D.CREATURES`） |
+| 土屋聚落（第 12 章） | 主題：`THEMES.adobe`（`oasis_meadow` → 只有水邊綠：`RunView3D._dry_farm`）；矮土牆：`scripts/farm_build.gd` 的 `_mud_wall`；素材再製：`tools/make_adobe_assets.py`（`assets/models/adb/`） |
+| 可以走上去的橋 | 位置：`MapGenerator._place_bridges()`、`_bridge_fits()`（在 `_place_farms()` 之後）；資料：`Dock.setup_bridge()`（`bridge`、`bridge_ends`，欄杆 `add_walls`）；外觀與行走高度：`RunView3D._bridge()`、`_wood_bridge()`、`_stone_bridge()`、`_deck_rise()`（`ground_y` 用它走拱形）；測試 `test_bridges` |
 | 十二星座硬幣 | `scripts/zodiac.gd`（`CHANCE`、`PRICE`、`roll()`）；給予：`scripts/game_state.gd` 的 `escape()`；轉換工具：`tools/make_zodiac_coins.py` |
 | 商城收購 | `scripts/shop.gd`：`_fill_sell_pane()`、`_sell_drag()`、`SellBoard` |
 | 用在魚身上的道具的選魚視窗 | `scripts/fish_pick_panel.gd`：`show_fish()` |

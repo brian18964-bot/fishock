@@ -59,6 +59,13 @@ const TILE_WALL_SPAN := 2.4
 const TILE_WALL_WHITE := Color(0.84, 0.82, 0.76)
 const TILE_WALL_STONE := Color(0.42, 0.41, 0.39)
 const TILE_WALL_TILE := Color(0.14, 0.145, 0.155)
+## User request (the adobe village - "換成土屋主題"): its wall of mud brick - plastered, its top rounded
+## off by the rain, a shade lighter where the sun's bleached it, each span (MUD_WALL_SPAN m) a little its
+## own height and lean; its height and thickness (m).
+const MUD_WALL_HIGH := 1.05
+const MUD_WALL_THICK := 0.45
+const MUD_WALL_SPAN := 1.6
+const MUD_WALL := Color(0.55, 0.42, 0.29)
 ## (a round bale: its radius and length, m; its straw)
 const BALE_R := 0.72
 const BALE_LONG := 1.25
@@ -270,6 +277,8 @@ static func fences(holder: Node3D, list: Array, land_y: Callable) -> void:
 				_hedge(st, a, b, land_y, rng)
 			"tile_wall":
 				_tile_wall(st, a, b, land_y, rng)
+			"mud_wall":
+				_mud_wall(st, a, b, land_y, rng)
 			_:
 				_wood_fence(st, a, b, land_y, rng)
 	var mi := MeshInstance3D.new()
@@ -385,6 +394,29 @@ static func _tile_wall(st: SurfaceTool, a: Vector2, b: Vector2, land_y: Callable
 			_tri(st, r0, e0, e1, -n, under)
 		var ridge := (p0 + p1) * 0.5 + Vector3(0.0, top + 0.04, 0.0)
 		_slab(st, ridge, along, Vector3(span + 0.02, 0.09, 0.12), tile * 0.9, rng)
+
+
+## The adobe village's mud-brick wall: span by span along it, a plastered block a little its own
+## height, darker at its foot; its top a rounded cap of mud, paler.
+static func _mud_wall(st: SurfaceTool, a: Vector2, b: Vector2, land_y: Callable, rng: RandomNumberGenerator) -> void:
+	var length := a.distance_to(b) / PX
+	var dir2 := (b - a).normalized()
+	var along := Vector3(dir2.x, 0.0, dir2.y)
+	var spans := maxi(1, ceili(length / MUD_WALL_SPAN))
+	var span := length / float(spans)
+	for i in spans:
+		var mid := _along(a, b, (float(i) + 0.5) / float(spans), land_y)
+		var high := MUD_WALL_HIGH * rng.randf_range(0.9, 1.06)
+		var mud := _shade(MUD_WALL, rng, 0.88, 1.08)
+		var foot := mud * 0.78
+		foot.a = 1.0
+		_slab(st, mid + Vector3(0.0, 0.15, 0.0), along, Vector3(span + 0.02, 0.3, MUD_WALL_THICK + 0.04), foot, rng)
+		_slab(st, mid + Vector3(0.0, 0.3 + (high - 0.3) * 0.5, 0.0), along, Vector3(span + 0.02, high - 0.3, MUD_WALL_THICK), mud, rng, 1.08)
+		# (the cap: two narrowing courses, the top one paler)
+		var cap := mud * 1.1
+		cap.a = 1.0
+		_slab(st, mid + Vector3(0.0, high + 0.05, 0.0), along, Vector3(span + 0.02, 0.1, MUD_WALL_THICK * 0.85), cap, rng, 1.1)
+		_slab(st, mid + Vector3(0.0, high + 0.13, 0.0), along, Vector3(span, 0.07, MUD_WALL_THICK * 0.55), cap, rng, 1.15)
 
 
 ## A hedge (the English village's): lumps of clipped green along it, each its own size and shade,

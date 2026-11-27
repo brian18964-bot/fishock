@@ -67,6 +67,8 @@ const CHAPTERS := [
 	# User request ("開始做中國風第 11 章"): the Chinese village - its temple hall, grey stone houses and
 	# red pavilions, willows by the water, bamboo, lanterns; the fish of its ponds and the great river.
 	{"id": 11, "name": "中式古鎮", "stars": 0, "blurb": "灰瓦石屋、紅柱涼亭和古殿的小鎮。柳樹垂在水邊，池塘和大河裡游著中國的魚。"},
+	# User request (the tribal theme dropped - "換成土屋主題"): the adobe village by its oasis waters.
+	{"id": 12, "name": "土屋聚落", "stars": 0, "blurb": "泥磚砌的土屋和矮土牆，椰棗樹沿著水邊長。綠洲的池塘和大河裡，游著尼羅河的魚。"},
 ]
 ## The levels: each map's branches, in order (user request - one level a branch; a map's
 ## branches open one after another, the next map once the whole of this one's done). stars:
@@ -367,6 +369,36 @@ const LEVELS := [
 				"barns": ["cn_shop_1", "cn_shop_2", "cn_shop_3", "cn_shop_4", "cn_house"]}}, "fish": [], "fish_epic": ["chinese_sturgeon"]},
 		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到中華鱘"}, {"stat": "storm", "text": "在暴風雨中撐過去", "min": 1}],
 		"reward": {"gold": 580, "items": {"lure_rainbow": 2}}},
+	# User request ("換成土屋主題"): the adobe village's five branches (the numbers mine for now, to change).
+	{"id": "12-1", "chapter": 12, "name": "綠洲土屋", "teach": "第一次到土屋聚落：土屋、矮土牆和椰棗樹",
+		"intro": "綠洲邊上幾戶土屋，屋頂搭著棕櫚棚子。椰棗樹沿著池塘長，水裡游著尼羅野鯪。",
+		"rules": {"night_fails": true, "theme": "adobe", "map": "S", "ponds": [2, 0], "day": 270.0, "quota": 17.0, "ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear", "critters": 8, "escalate": false, "evil": false, "fish": ["labeo"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到尼羅野鯪"}, {"stat": "time_left", "text": "還剩 60 秒以上就達標離開", "min": 60}],
+		"reward": {"gold": 320}},
+	{"id": "12-2", "chapter": 12, "name": "河畔田園", "teach": "土牆圍起的田，找缺口進出",
+		"intro": "河邊的田都圍著矮土牆，只留著小小的缺口。灌溉水塘裡，電鯰在泥底埋伏。",
+		"rules": {"night_fails": true, "theme": "adobe", "map": "M", "ponds": [3, 0], "day": 300.0, "quota": 25.0, "ghosts": 1, "meddle": 3, "big_ghost": false, "weather": "mild", "critters": 6, "escalate": false,
+			"mods": {"farm": {"fenced": 0.95, "fields": 6}}, "fish": ["electric_catfish"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到電鯰"}, {"stat": "catch_rare", "text": "一晚釣到 2 條稀有魚", "min": 2}],
+		"reward": {"gold": 360}},
+	{"id": "12-3", "chapter": 12, "name": "沙霧水渠", "teach": "沙塵和霧裡的水鬼",
+		"intro": "風一起，沙塵就蓋過了土屋的屋頂。水渠深處，虎魚咬著倒游鯰的群。",
+		"rules": {"theme": "adobe", "map": "L", "ponds": [5, 1], "day": 330.0, "quota": 31.0, "ghosts": 2, "meddle": 3, "big_ghost": true, "water_ghost": 1.6, "weather": {"SANDSTORM": 0.3, "FOG": 0.15}, "critters": 5,
+			"fish": ["tigerfish", "synodontis"], "fish_epic": []},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到虎魚或倒游鯰"}, {"stat": "species_both", "text": "兩種獨有魚都釣到", "min": 2}],
+		"reward": {"gold": 400}},
+	{"id": "12-4", "chapter": 12, "name": "鬣狗出沒", "teach": "鬣狗從沙地那頭過來",
+		"intro": "聚落外的沙地上，天黑以後鬣狗結群出沒。大湖深處住著巨虎魚。",
+		"rules": {"theme": "adobe", "map": "L", "ponds": [3, 1], "day": 330.0, "quota": 33.0, "ghosts": 2, "meddle": 4, "big_ghost": true, "weather": {"SANDSTORM": 0.2, "FOG": 0.15}, "critters": 4,
+			"mods": {"animals": {"hyena": 1.5, "camel": 0.8, "fox": 0.5}}, "fish": [], "fish_epic": ["goliath_tigerfish"]},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到巨虎魚"}, {"stat": "animal_hit", "text": "沒被野獸撲到", "max": 0}],
+		"reward": {"gold": 440}},
+	{"id": "12-5", "chapter": 12, "name": "大河雷雨", "teach": "土屋聚落的終點",
+		"intro": "雷雨打在土屋的平屋頂上，大河暴漲。裸臀魚從河底游進了聚落旁的深潭。",
+		"rules": {"theme": "adobe", "map": "XL", "ponds": [5, 1], "day": 360.0, "quota": 41.0, "ghosts": 3, "meddle": 5, "big_ghost": true, "weather": "stormy", "critters": 4,
+			"fish": [], "fish_epic": ["gymnarchus"]},
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到裸臀魚"}, {"stat": "storm", "text": "在暴風雨中撐過去", "min": 1}],
+		"reward": {"gold": 600, "items": {"lure_rainbow": 2}}},
 ]
 
 
@@ -410,6 +442,7 @@ const ACHIEVEMENTS := [
 	["chapter_9", "旅程", "竹林釣客", "通過第九章「日式山村」", 300, {"chapter": 9}],
 	["chapter_10", "旅程", "村莊釣客", "通過第十章「英式村莊」", 300, {"chapter": 10}],
 	["chapter_11", "旅程", "古鎮釣客", "通過第十一章「中式古鎮」", 300, {"chapter": 11}],
+	["chapter_12", "旅程", "綠洲釣客", "通過第十二章「土屋聚落」", 300, {"chapter": 12}],
 	["stars_45", "旅程", "滿天星", "收集 45 顆星", 200, {"stars": 45}],
 	["stars_75", "旅程", "渡湖紀行", "收集全部 78 顆星", 500, {"stars": 78}],
 	["catch_100", "釣技", "百尾", "總共釣到 100 條魚", 100, {"life": "catch", "min": 100}],

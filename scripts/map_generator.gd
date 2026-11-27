@@ -77,6 +77,18 @@ const SECOND_DOCK_CHANCE := 0.5
 const DOCK_SHORE_MARGIN := 60.0
 const DOCK_STAIRS_CHANCE := 0.5
 const DOCK_BOAT_CHANCE := 0.4
+## User request: "可以走上去的橋" - one bridge over a pond on the villages' maps (a style's "bridge":
+## how it's built). The water it crosses (px, bank to bank - a pond's waist, or across a small one;
+## the longest with the ponds on a bigger map, up to BRIDGE_SPAN_GROW times), how far each end
+## reaches up onto the bank (px), its walkable half width (px), how many crossings are tried on each
+## pond; and how far into the water its middle must be against half its span (more a waist than a
+## chord across a little bay at the pond's edge).
+const BRIDGE_SPAN := Vector2(90.0, 340.0)
+const BRIDGE_SPAN_GROW := 2.0
+const BRIDGE_LAND := 34.0
+const BRIDGE_HALF_WIDTH := 26.0
+const BRIDGE_TRIES := 80
+const BRIDGE_WAIST := 0.5
 
 const GROUND_COVER_SCENE := preload("res://scenes/ground_cover.tscn")
 const GROUND_SHADER := preload("res://shaders/ground.gdshader")
@@ -276,6 +288,8 @@ const THEMES := {
 	# brown-green; a deer or a fox about - none of the forest's wolves.
 	"countryside": {
 		"look": "detailed",
+		# (user request: a bridge to walk over the water - Dock.setup_bridge, its build)
+		"bridge": "wood",
 		"floor": ["grass", "grass", 0.3],
 		"floor3d": {"grass": "stubble", "forest": "grass", "path": "dirt", "stone": "furrow", "mud": "mud"},
 		"trees": 14, "rocks": 2, "bushes": 4, "ground": 0,
@@ -318,6 +332,8 @@ const THEMES := {
 	# pines and maples turning; deer and foxes about.
 	"japan": {
 		"look": "detailed",
+		# (user request: a bridge to walk over the water - Dock.setup_bridge, its build)
+		"bridge": "jp_bridge",
 		"floor": ["grass", "grass", 0.3],
 		"floor3d": {"grass": "moss_soil", "forest": "grass", "path": "shrine_gravel", "stone": "furrow", "mud": "mud"},
 		"trees": 16, "rocks": 3, "bushes": 4, "ground": 0,
@@ -357,6 +373,8 @@ const THEMES := {
 	# and an apple orchard (the farm set's, made ours). Oaks turning and pines; deer and foxes.
 	"england": {
 		"look": "detailed",
+		# (user request: a bridge to walk over the water - Dock.setup_bridge, its build)
+		"bridge": "wood",
 		"floor": ["grass", "grass", 0.3],
 		"floor3d": {"grass": "stubble", "forest": "grass", "path": "dirt", "stone": "furrow", "mud": "mud"},
 		"trees": 14, "rocks": 3, "bushes": 4, "ground": 0,
@@ -395,6 +413,8 @@ const THEMES := {
 	# houses; bamboo groves; willows by the water (MapTree's "china"). Deer and foxes about.
 	"china": {
 		"look": "detailed",
+		# (user request: a bridge to walk over the water - Dock.setup_bridge, its build)
+		"bridge": "stone",
 		"floor": ["grass", "grass", 0.3],
 		"floor3d": {"grass": "grass", "forest": "moss_soil", "path": "flagstone", "stone": "furrow", "mud": "mud"},
 		"trees": 16, "rocks": 3, "bushes": 4, "ground": 0,
@@ -422,6 +442,48 @@ const THEMES := {
 		"oasis_trees": 0.5,
 		"oasis_band": [70.0, 240.0],
 		"water": {"base": Color(0.1, 0.23, 0.2), "deep": Color(0.035, 0.1, 0.09)},
+	},
+	# User request (the tribal theme dropped - "換成土屋主題"): the adobe village by its oasis waters - laid
+	# out as the other villages are ("farm", "yard"): its mud-brick houses about their yards (the
+	# user's Egyptian houses, made ours - tools/make_adobe_assets.py: earthen or lime-washed), now and
+	# then a shade of palm fronds or a bread oven beside them, the tallest house its landmark; plots of
+	# greens and wheat behind low mud walls (Fence's "mud_wall"); dirt lanes out to the map's edge with
+	# lantern posts; water jars, pots, ovens and wells about the yards; date palms thick by the water
+	# ("oasis_trees", as the desert's), dead trees and a palm or two out on the sand (MapTree's
+	# OPEN_KINDS). Camels, chickens and crows about.
+	"adobe": {
+		"look": "detailed",
+		# (user request: a bridge to walk over the water - Dock.setup_bridge, its build)
+		"bridge": "wood",
+		"floor": ["dune_sand", "oasis_grass", 0.3],
+		"floor3d": {"grass": "dune_sand", "forest": "oasis_grass", "path": "dirt", "stone": "furrow", "mud": "wet_sand"},
+		"trees": 16, "rocks": 3, "bushes": 3, "ground": 0,
+		"tree_families": {"pine": 1.0},
+		"rock_pool": [0, 1, 2],
+		"farm": {"steads": 3, "landmark": "adb_house_9", "houses": ["adb_house_1", "adb_house_2", "adb_house_4", "adb_house_5", "adb_house_7"],
+			"barns": ["adb_house_3", "adb_house_6", "adb_house_8", "adb_house_2"],
+			"extras": ["adb_shade", "adb_oven"], "extra": Vector2i(0, 2),
+			"scale": Vector2(0.95, 1.05), "yard": 150.0, "water_gap": 70.0,
+			"fields": 4, "field_min": Vector2(300, 220), "field_max": Vector2(640, 440),
+			"crops": {"greens": 1.0, "plough": 0.7, "stubble": 0.6}, "fenced": 0.75, "fences": {"mud_wall": 1.0},
+			"gate": Vector2(80, 120), "bales": Vector2i(0, 2)},
+		"yard": {"lit_most": 3, "things": [
+			{"kind": "lantern", "models": ["farm_lantern"], "count": 5, "where": "track", "lit": 0.5},
+			{"kind": "jar", "models": ["adb_jar"], "count": 5, "where": "building", "size": Vector2(12, 0)},
+			{"kind": "pots", "models": ["adb_pots"], "count": 3, "where": "building", "size": Vector2(16, 0)},
+			{"kind": "oven", "models": ["adb_oven"], "count": 2, "where": "yard", "size": Vector2(24, 0)},
+			{"kind": "well", "models": ["adb_well"], "count": 1, "size": Vector2(22, 0)}],
+			"groves": []},
+		"animal_count": 2,
+		"animals": {"camel": 0.8, "chicken": 1.2, "rooster": 0.4, "crow": 0.5, "fox": 0.3},
+		"shore": {"grass": 0.05, "shrub": 0.03, "pebbles": 0.04},
+		"shore_extras": {"reeds": 0.18, "lilypad": 0.04, "driftwood": 0.0},
+		# (dry land: the green and its grass only by the water - RunView3D's _dry_farm)
+		"oasis_meadow": true,
+		# (the date palms by the water: most of the trees, their trunks this far from the shore (px))
+		"oasis_trees": 0.7,
+		"oasis_band": [24.0, 230.0],
+		"water": {"base": Color(0.13, 0.22, 0.16), "deep": Color(0.05, 0.1, 0.07)},
 	},}
 ## User feedback: the water's edge is grass, small shrubs, pebbles and
 ## boardwalks (no big trees or boulders there), with bugs and frogs about.
@@ -502,6 +564,9 @@ func _ready() -> void:
 	_place_ruins()
 	_place_street_props()
 	_place_farms()
+	# (the bridge after the village: it fits round the houses, the fields and their walls, not they
+	# round it - a small map keeps its farm)
+	_place_bridges()
 	_place_fossils()
 	if theme.get("cliff", false):
 		_place_coast_rocks()
@@ -765,6 +830,110 @@ func _place_docks() -> void:
 			used.get_or_add(zone, []).append(d)
 			break
 
+
+
+## User request: "可以走上去的橋" - a bridge to walk over the water, bank to bank. Crossings straight
+## across or up and down each common pond are tried from points in its water (the rare ones are
+## solid and keep to themselves); one counts when its water's span is BRIDGE_SPAN, its middle is a
+## waist's (BRIDGE_WAIST), its deck's whole width is over that one pond's water between the banks,
+## and both banks are open dry land inside the map, clear of the dock and the village laid out
+## before it (_bridge_fits). The narrowest such crossing gets the bridge (the most natural place for
+## one); none if there's none - no bridge then.
+func _place_bridges() -> void:
+	var style := str(theme.get("bridge", ""))
+	if style == "":
+		return
+	var best := []  # [span, from, to]
+	var longest := BRIDGE_SPAN.y * clampf(_pond_scale(), 1.0, BRIDGE_SPAN_GROW)
+	for zone in water_zones:
+		if zone.is_rare():
+			continue
+		for _try in BRIDGE_TRIES:
+			var c: Vector2 = zone.random_point(12.0)
+			var d: Vector2 = [Vector2.RIGHT, Vector2.DOWN].pick_random()
+			var a := _water_end(zone, c, -d)
+			var b := _water_end(zone, c, d)
+			var span := a.distance_to(b)
+			if span < BRIDGE_SPAN.x or span > longest:
+				continue
+			if not best.is_empty() and span >= float(best[0]):
+				continue
+			if zone.depth((a + b) * 0.5) < span * 0.5 * BRIDGE_WAIST:
+				continue
+			var from := a - d * BRIDGE_LAND
+			var to := b + d * BRIDGE_LAND
+			if _bridge_fits(zone, a, b, from, to, d):
+				best = [span, from, to]
+	if best.is_empty():
+		return
+	var from: Vector2 = best[1]
+	var to: Vector2 = best[2]
+	var dir := (to - from).normalized()
+	var bridge: Dock = DOCK_SCENE.instantiate()
+	bridge.setup_bridge(from, to, BRIDGE_HALF_WIDTH, style)
+	# On and off at either end only - rails along both sides.
+	bridge.add_walls([dir, -dir])
+	_add_entrance(bridge.walk_rect, dir)
+	_add_entrance(bridge.walk_rect, -dir)
+	get_parent().add_child.call_deferred(bridge)
+	_walk_rects.append(bridge.walk_rect)
+
+
+## Where a line from `c` (in `zone`'s water) along `dir` reaches the bank: the last point in it.
+static func _water_end(zone: WaterZone, c: Vector2, dir: Vector2) -> Vector2:
+	var p := c
+	for _i in 200:
+		if not zone.contains(p + dir * 4.0):
+			return p
+		p += dir * 4.0
+	return p
+
+
+## Whether a bridge from `from` to `to` (along `d`; its water from `a` to `b`) fits: the deck's
+## sides over the pond's water along its middle (no spit of land under it), both banks dry open
+## land inside the map (in no water, rare or common) where the ends rest and a little past, and
+## the whole of it clear of the dock and its stairs.
+func _bridge_fits(zone: WaterZone, a: Vector2, b: Vector2, from: Vector2, to: Vector2, d: Vector2) -> bool:
+	var side := d.orthogonal() * BRIDGE_HALF_WIDTH
+	var span := a.distance_to(b)
+	# (its middle - at the banks, a slanting shore can come in under one side: its foot on the bank)
+	var t := span * 0.15
+	while t < span * 0.85:
+		var q := a + d * t
+		if not zone.contains(q + side) or not zone.contains(q - side):
+			return false
+		t += 8.0
+	for end: Array in [[a, -d], [b, d]]:
+		for k in int((BRIDGE_LAND + 40.0) / 8.0):
+			var q: Vector2 = end[0] + end[1] * (8.0 + 8.0 * k)
+			for s in [-1.0, 0.0, 1.0]:
+				var qq: Vector2 = q + side * s
+				if qq.x < DOCK_SHORE_MARGIN or qq.x > Player.WORLD_WIDTH - DOCK_SHORE_MARGIN \
+						or qq.y < DOCK_SHORE_MARGIN or qq.y > Player.WORLD_HEIGHT - DOCK_SHORE_MARGIN:
+					return false
+				if _in_any_water(qq):
+					return false
+	var rect := Rect2(from, Vector2.ZERO).expand(to).grow(BRIDGE_HALF_WIDTH)
+	for w in _walk_rects:
+		if w.grow(40.0).intersects(rect):
+			return false
+	# (clear of the village laid out before it - its buildings, fields, tracks, walls and yard things,
+	# the camp and the fixed points - and room to step on and off at both ends)
+	for r in _ruins + _fields:
+		if (r as Rect2).grow(20.0).intersects(rect):
+			return false
+	var ways := [from - d * 24.0, to + d * 24.0]
+	for solid: Array in _taken:
+		if _rect_distance(rect, solid[0]) < float(solid[1]) + 10.0:
+			return false
+		for e: Vector2 in ways:
+			if e.distance_to(solid[0]) < float(solid[1]) + 24.0:
+				return false
+	for line in farm_tracks:
+		for q in (line as PackedVector2Array):
+			if _rect_distance(rect, q) < _track_half + 6.0:
+				return false
+	return not rect.grow(SPAWN_CLEAR_RADIUS * 0.3).has_point(SPAWN_POS)
 
 
 func _dir_name(v: Vector2) -> String:

@@ -38,6 +38,11 @@ var descend := ""
 ## World-space area the player can walk on over deep water (docks and
 ## stairs; empty for boats).
 var walk_rect := Rect2()
+## User request: "可以走上去的橋" - a bridge over a pond, bank to bank: how it's built ("jp_bridge",
+## the remade red arch; "wood", "stone" - RunView3D's own), and its two ends (world px, on the
+## banks; its deck rises between them). Empty for docks, stairs and boats.
+var bridge := ""
+var bridge_ends: Array[Vector2] = []
 
 
 static func half_length(vertical: bool) -> float:
@@ -83,6 +88,20 @@ func setup_stairs(down: String) -> void:
 	var along := stairs_half_length(vertical)
 	var across := STAIRS_HALF_WIDTH * (1.0 if vertical else sin(deg_to_rad(55.0)))
 	_set_walkway(Vector2(across, along) if vertical else Vector2(along, across), STAIRS_LIFT)
+
+
+## A bridge from bank to bank: `from` and `to` its ends (world px, one straight across or up and
+## down the map), `half` its walkable half width (px). Its middle its position; no lift (the 3D view
+## builds it right where it walks, unlike the old 2D deck renders).
+func setup_bridge(from: Vector2, to: Vector2, half: float, style: String) -> void:
+	bridge = style
+	bridge_ends = [from, to]
+	position = (from + to) * 0.5
+	var along := (to - from).abs() * 0.5
+	var across := Vector2(half, 0.0) if absf(to.x - from.x) < absf(to.y - from.y) else Vector2(0.0, half)
+	var ext := along + across
+	walk_rect = Rect2(position - ext, ext * 2.0)
+	add_to_group("walkways")
 
 
 ## `position` must already be set (map_generator sets it before setup).

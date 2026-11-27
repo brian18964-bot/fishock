@@ -64,10 +64,12 @@ const THEME_KINDS := {
 	# User request ("中國風第 11 章"): the Chinese village's willows - by the water (MapGenerator's
 	# "oasis_trees", as the desert's palms); OPEN_KINDS its trees away from it.
 	"china": ["willow_a", "willow_b"],
+	# User request ("換成土屋主題"): the adobe village's date palms by the water (the desert's own).
+	"adobe": ["palm_a", "palm_b", "palm_c", "palm_d"],
 }
 ## A style whose THEME_KINDS grow by the water ("oasis_trees"): its trees out away from it, and along
 ## the map's edge (RunView3D) - the desert's dead trees, the Chinese village's green maples and pines.
-const OPEN_KINDS := {"china": ["gmaple_a", "pine_b", "gmaple_a", "pine_c"]}
+const OPEN_KINDS := {"china": ["gmaple_a", "pine_b", "gmaple_a", "pine_c"], "adobe": ["dead_c", "palm_b", "dead_a", "palm_c"]}
 ## The desert's trees out on the dunes, away from the water (MapGenerator._place_tree): dead ones,
 ## bare (dead_d and dead_e keep a few autumn leaves - the autumn wood's, not the sand's).
 const DESERT_OPEN := ["dead_c", "dead_a"]

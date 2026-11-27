@@ -304,6 +304,32 @@ const FISH := {
 		"colors": [Color(0.45, 0.38, 0.28), Color(0.82, 0.75, 0.6), Color(0.22, 0.18, 0.12)], "pattern": "speckle", "body": "catfish"},
 	"chinese_sturgeon": {"name": "中華鱘", "value": 5.5, "trait": "wild", "habit": "", "reach": ["far"],
 		"colors": [Color(0.3, 0.32, 0.34), Color(0.88, 0.86, 0.82), Color(0.55, 0.55, 0.52)], "pattern": "plates", "body": "sturgeon"},
+	# User request (the adobe village - "換成土屋主題"): the fish of its oasis waters and the great river
+	# - the Nile tilapia, the bynni barbel, the African catfish, the elephantfish with its trunk of a
+	# snout; the rarest, the Nile perch. Each branch's own: the Nile labeo, the electric catfish, the
+	# tigerfish and the upside-down catfish, the goliath tigerfish, the aba aba. (Modelled here.)
+	"nile_tilapia": {"name": "尼羅吳郭魚", "value": 1.3, "trait": "normal", "habit": "", "reach": ["near", "mid"],
+		"colors": [Color(0.45, 0.47, 0.42), Color(0.86, 0.85, 0.78), Color(0.75, 0.3, 0.25)], "pattern": "bars", "body": "tilapia"},
+	"bynni": {"name": "鮑尼鲃", "value": 1.5, "trait": "normal", "habit": "", "reach": ["near", "mid"],
+		"colors": [Color(0.55, 0.52, 0.38), Color(0.92, 0.88, 0.72), Color(0.6, 0.5, 0.3)], "pattern": "scales", "body": "carp"},
+	"african_catfish": {"name": "尖齒胡鯰", "value": 1.6, "trait": "calm", "habit": "cover", "reach": ["near", "mid"],
+		"colors": [Color(0.3, 0.3, 0.26), Color(0.78, 0.76, 0.68), Color(0.2, 0.2, 0.18)], "pattern": "speckle", "body": "catfish"},
+	"elephantfish": {"name": "象鼻魚", "value": 1.7, "trait": "calm", "habit": "cover", "reach": ["near"],
+		"colors": [Color(0.36, 0.3, 0.28), Color(0.7, 0.62, 0.55), Color(0.25, 0.2, 0.18)], "pattern": "plain", "body": "pike"},
+	"nile_perch": {"name": "尼羅河鱸", "value": 5.0, "trait": "wild", "habit": "", "reach": ["far"],
+		"colors": [Color(0.5, 0.52, 0.48), Color(0.9, 0.9, 0.86), Color(0.85, 0.65, 0.3)], "pattern": "gradient", "body": "bass"},
+	"labeo": {"name": "尼羅野鯪", "value": 1.7, "trait": "normal", "habit": "", "reach": ["near", "mid"],
+		"colors": [Color(0.4, 0.42, 0.42), Color(0.85, 0.85, 0.82), Color(0.3, 0.3, 0.32)], "pattern": "scales", "body": "carp"},
+	"electric_catfish": {"name": "電鯰", "value": 2.0, "trait": "wild", "habit": "cover", "reach": ["mid"],
+		"colors": [Color(0.55, 0.47, 0.36), Color(0.88, 0.82, 0.7), Color(0.2, 0.16, 0.12)], "pattern": "spots", "body": "catfish"},
+	"tigerfish": {"name": "虎魚", "value": 2.2, "trait": "wild", "habit": "jumper", "reach": ["mid"],
+		"colors": [Color(0.55, 0.58, 0.6), Color(0.92, 0.92, 0.9), Color(0.85, 0.25, 0.15)], "pattern": "stripe", "body": "mackerel"},
+	"synodontis": {"name": "倒游鯰", "value": 2.0, "trait": "calm", "habit": "cover", "reach": ["mid"],
+		"colors": [Color(0.55, 0.48, 0.38), Color(0.82, 0.76, 0.64), Color(0.2, 0.16, 0.12)], "pattern": "spots", "body": "catfish"},
+	"goliath_tigerfish": {"name": "巨虎魚", "value": 5.5, "trait": "wild", "habit": "", "reach": ["far"],
+		"colors": [Color(0.5, 0.52, 0.55), Color(0.92, 0.92, 0.9), Color(0.85, 0.2, 0.15)], "pattern": "stripe", "body": "bass"},
+	"gymnarchus": {"name": "裸臀魚", "value": 5.0, "trait": "wild", "habit": "cover", "reach": ["far"],
+		"colors": [Color(0.3, 0.27, 0.24), Color(0.6, 0.55, 0.48), Color(0.18, 0.15, 0.12)], "pattern": "speckle", "body": "eel"},
 	# User request (the desert of bones): an oasis's fish - the pupfish of
 	# desert springs, the doctor fish, the sucker and the bonytail of
 	# desert rivers; the rarest, the Devils Hole pupfish of one desert pool.
@@ -394,6 +420,7 @@ const STYLE_FISH := {
 	"japan": [["yamame", "ugui", "kawamutsu", "goldfish"], "biwa_catfish"],
 	"england": [["roach", "rudd", "tench", "dace"], "atlantic_salmon"],
 	"china": [["mud_carp", "red_eye_trout", "sand_loach", "yellow_river_carp"], "chinese_sucker"],
+	"adobe": [["nile_tilapia", "bynni", "african_catfish", "elephantfish"], "nile_perch"],
 }
 const SEA_COMMON := ["mackerel", "sardine", "horse_mackerel", "saury", "herring", "sea_bream", "sea_bass",
 	"flounder", "cod", "puffer", "cutlassfish", "grouper", "mullet", "croaker", "yellowtail", "mahi", "conger",
@@ -410,7 +437,7 @@ const THEME_WATERS := {
 	"tropical": "tropical", "jungle": "tropical", "prehistoric": "prehistoric", "swamp": "swamp",
 	"snow": "snow", "snow_pine": "snow", "snow_lowpoly": "snow", "autumn": "autumn", "autumn_lowpoly": "autumn",
 	"ruins": "ruins", "beach_rocky": "sea", "beach_sandy": "sea", "desert": "desert", "coast": "sea", "coast_cliff": "sea", "city": "city",
-	"countryside": "countryside", "japan": "japan", "england": "england", "china": "china",
+	"countryside": "countryside", "japan": "japan", "england": "england", "china": "china", "adobe": "adobe",
 }
 ## This map's waters (MapGenerator sets it from the theme).
 static var waters := "forest"
@@ -653,6 +680,9 @@ const LENGTH_CM := {
 	"mud_carp": [15, 35], "red_eye_trout": [20, 45], "sand_loach": [8, 18], "yellow_river_carp": [30, 70],
 	"chinese_sucker": [50, 100], "spotted_steed": [20, 40], "reeves_shad": [30, 55], "coilia": [20, 35],
 	"luciobrama": [50, 110], "goonch": [70, 160], "chinese_sturgeon": [100, 250],
+	"nile_tilapia": [15, 40], "bynni": [25, 60], "african_catfish": [30, 90], "elephantfish": [20, 45],
+	"nile_perch": [60, 180], "labeo": [25, 55], "electric_catfish": [25, 70], "tigerfish": [30, 70],
+	"synodontis": [12, 30], "goliath_tigerfish": [70, 140], "gymnarchus": [80, 160],
 }
 const WEIGHT_K := {
 	"carp": 0.014, "tilapia": 0.018, "bass": 0.013, "trout": 0.011, "catfish": 0.009, "eel": 0.0022, "goby": 0.011,
@@ -681,17 +711,17 @@ const TRAIT_OF := {
 	"fierce": ["bass", "snakehead", "bowfin", "pike", "piranha", "arowana", "arapaima", "alligator_gar", "taimen", "wels",
 		"betta", "oscar", "grouper", "hammerhead", "trevally", "cutlassfish", "conger", "ghost_fish", "two_headed_carp",
 		"flowerhorn", "asian_arowana", "electric_eel", "mandarin_fish", "paradise_fish", "culter", "yellowcheek",
-		"hasu", "akame", "zander", "ferox_trout", "biwa_catfish", "luciobrama", "goonch"],
+		"hasu", "akame", "zander", "ferox_trout", "biwa_catfish", "luciobrama", "goonch", "tigerfish", "goliath_tigerfish", "electric_catfish", "nile_perch"],
 	"school": ["moon_jack", "sardine", "herring", "horse_mackerel", "saury", "mackerel", "smelt", "minnow", "ayu", "whitefish",
 		"bluegill", "crucian", "perch", "croaker", "guppy", "medaka", "pale_chub", "bitterling", "ugui",
-		"kawamutsu", "roach", "rudd", "dace", "mud_carp", "coilia"],
+		"kawamutsu", "roach", "rudd", "dace", "mud_carp", "coilia", "nile_tilapia", "labeo"],
 	"bottom": ["catfish", "black_catfish", "channel_cat", "walking_catfish", "loach", "goby", "sculpin", "flounder",
 		"sturgeon", "pleco", "burbot", "crayfish", "scorpionfish", "cod", "redtail_catfish", "yellow_catfish", "gudgeon", "barbel",
-		"sand_loach", "chinese_sturgeon"],
+		"sand_loach", "chinese_sturgeon", "african_catfish", "synodontis", "elephantfish"],
 	"shy": ["eel", "swamp_eel", "cavefish", "angelfish", "bichir", "coelacanth", "puffer", "discus", "clown_knifefish"],
-	"lazy": ["lungfish", "sunfish", "giant_goldfish", "paddlefish", "napoleon", "blood_parrot", "bighead_carp", "tench", "chinese_sucker"],
+	"lazy": ["lungfish", "sunfish", "giant_goldfish", "paddlefish", "napoleon", "blood_parrot", "bighead_carp", "tench", "chinese_sucker", "gymnarchus"],
 	"jumper": ["sailfish", "swordfish", "silver_carp", "mullet", "tarpon", "sakura_masu", "atlantic_salmon", "sea_trout", "reeves_shad"],
-	"glutton": ["carp", "grass_carp", "tilapia", "golden_koi", "koi", "black_carp", "goldfish", "nigoro", "yellow_river_carp"],
+	"glutton": ["carp", "grass_carp", "tilapia", "golden_koi", "koi", "black_carp", "goldfish", "nigoro", "yellow_river_carp", "bynni"],
 }
 const INDIVIDUAL_CHANCE := 0.2
 
@@ -735,21 +765,21 @@ const GATE_MAIN := {
 		"tilapia", "mahi", "mullet", "croaker", "rainbow_trout", "sea_bream", "silver_carp", "moon_jack",
 		"guppy", "discus", "blood_parrot", "medaka", "pale_chub", "bitterling", "culter",
 		"yamame", "ugui", "kawamutsu", "amago", "hasu", "roach", "rudd", "dace", "gudgeon",
-		"mud_carp", "red_eye_trout", "sand_loach", "spotted_steed", "coilia"],
+		"mud_carp", "red_eye_trout", "sand_loach", "spotted_steed", "coilia", "nile_tilapia", "labeo", "elephantfish"],
 	"might": ["carp", "wels", "paddlefish", "lungfish", "golden_koi", "giant_goldfish", "coelacanth", "arapaima",
 		"napoleon", "sunfish", "bichir", "catfish", "cod", "bonytail", "koi", "redtail_catfish", "bream", "bighead_carp",
 		"black_carp", "goldfish", "nigoro", "biwa_catfish", "tench", "barbel", "yellow_river_carp", "chinese_sucker",
-		"goonch", "chinese_sturgeon"],
+		"goonch", "chinese_sturgeon", "bynni", "african_catfish", "nile_perch"],
 	"resil": ["horse_mackerel", "bluegill", "sculpin", "goby", "crayfish", "puffer", "garra", "betta", "bass",
 		"snakehead", "bowfin", "ghost_fish", "piranha", "oscar", "pike", "taimen", "alligator_gar",
 		"cutlassfish", "conger", "scorpionfish", "two_headed_carp", "hammerhead", "trevally", "arowana",
 		"flounder", "channel_cat", "pleco", "walking_catfish", "arctic_char", "flowerhorn", "clown_knifefish",
 		"asian_arowana", "yellow_catfish", "mandarin_fish", "paradise_fish",
-		"akame", "chub", "zander", "ferox_trout", "luciobrama"],
+		"akame", "chub", "zander", "ferox_trout", "luciobrama", "electric_catfish", "synodontis", "goliath_tigerfish"],
 	"endure": ["herring", "mackerel", "perch", "climbing_perch", "whitefish", "desert_sucker", "eel", "swamp_eel",
 		"sea_bass", "yellowtail", "sockeye", "sailfish", "swordfish", "bluefin", "grass_carp", "sturgeon",
 		"burbot", "black_catfish", "grouper", "electric_eel", "tarpon", "yellowcheek", "sakura_masu", "biwa_trout",
-		"atlantic_salmon", "sea_trout", "reeves_shad"],
+		"atlantic_salmon", "sea_trout", "reeves_shad", "tigerfish", "gymnarchus"],
 }
 ## The second (and third) stats the epic and legend fish ask besides their main.
 const GATE_EXTRA := {
@@ -763,6 +793,7 @@ const GATE_EXTRA := {
 	"biwa_catfish": ["endure"], "biwa_trout": ["react"], "akame": ["might"],
 	"atlantic_salmon": ["react"], "sea_trout": ["react"], "ferox_trout": ["might"],
 	"chinese_sucker": ["endure"], "goonch": ["resil"], "chinese_sturgeon": ["endure"],
+	"nile_perch": ["endure"], "goliath_tigerfish": ["might"], "gymnarchus": ["resil"],
 }
 
 

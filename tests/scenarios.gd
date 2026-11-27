@@ -166,6 +166,7 @@ const TESTS := [
 	"test_countryside_map",
 	"test_japan_and_england_maps",
 	"test_farm_animals",
+	"test_bridges",
 	"test_bag_card_closes",
 	"test_altar_this_run_only",
 	"test_locks",
@@ -6403,8 +6404,9 @@ func test_campaign_unlocks_and_achievements() -> void:
 	reset_progress()
 	# (user decision - the maps' branches: one after another in a map, the next map once the whole of
 	# this one's done; six maps, 26 levels - and, user request, the human world's after them: the
-	# ruined city, the countryside, the Japanese, English and Chinese villages: eleven maps, 51 levels)
-	check(camp().CHAPTERS.size() == 11 and camp().LEVELS.size() == 51, "eleven maps, 51 branches")
+	# ruined city, the countryside, the Japanese, English and Chinese villages and (user request) the
+	# adobe village: twelve maps, 56 levels)
+	check(camp().CHAPTERS.size() == 12 and camp().LEVELS.size() == 56, "twelve maps, 56 branches")
 	# (the achievements brought to the chapters: each after the first its own; "all the stars" of the
 	# journey across the lake - its six chapters' - and the curses after its last)
 	var journey_ids: Array = camp().ACHIEVEMENTS.map(func(a): return str(a[0]))
@@ -13836,7 +13838,7 @@ func test_japan_and_england_maps() -> void:
 	# User request (the human world's other villages, made as ordinary places - the two whose models the
 	# user sent): chapter 9, the Japanese village, and chapter 10, the English, laid out as the
 	# countryside is, each its own buildings, fences, things and fish; and (user request, "中國風第 11
-	# 章") chapter 11, the Chinese village.
+	# 章") chapter 11, the Chinese village; and (user request, "換成土屋主題") chapter 12, the adobe village.
 	var villages := [
 		{"chapter": 9, "theme": "japan", "name": "日式山村", "level": "9-3", "small": "9-1", "prefix": "jp_", "fences": ["bamboo"],
 			"fish": ["yamame", "ugui", "kawamutsu", "goldfish", "biwa_catfish", "amago", "sakura_masu", "hasu", "nigoro", "biwa_trout", "akame"]},
@@ -13846,6 +13848,10 @@ func test_japan_and_england_maps() -> void:
 		{"chapter": 11, "theme": "china", "name": "中式古鎮", "level": "11-3", "small": "11-1", "prefix": "cn_", "fences": ["tile_wall", "bamboo"],
 			"fish": ["mud_carp", "red_eye_trout", "sand_loach", "yellow_river_carp", "chinese_sucker", "spotted_steed", "reeves_shad",
 				"coilia", "luciobrama", "goonch", "chinese_sturgeon"]},
+		# (user request, "換成土屋主題": the adobe village, in the tribal theme's place)
+		{"chapter": 12, "theme": "adobe", "name": "土屋聚落", "level": "12-3", "small": "12-1", "prefix": "adb_", "fences": ["mud_wall"],
+			"fish": ["nile_tilapia", "bynni", "african_catfish", "elephantfish", "nile_perch", "labeo", "electric_catfish", "tigerfish",
+				"synodontis", "goliath_tigerfish", "gymnarchus"]},
 	]
 	Campaign.dev_all_open = true
 	for v: Dictionary in villages:
@@ -13917,6 +13923,22 @@ func test_japan_and_england_maps() -> void:
 			check(kinds.has("maple_a") and kinds.has("cherry_a"), "its red maples and a cherry")
 		elif v.theme == "england":
 			check(ruins.any(func(r): return (r as Ruin).model == "eng_chapel"), "the chapel, the village's landmark")
+		elif v.theme == "adobe":
+			# (its tallest house its landmark; its walls of mud; its date palms by the water, dead trees
+			# and a palm or two out on the sand; its jars, pots, ovens and well about its yards)
+			var gen = main.get_node("MapGenerator")
+			check(ruins.any(func(r): return (r as Ruin).model == "adb_house_9"), "the tallest house, the village's landmark")
+			check(fences.any(func(f): return (f as Fence).style == "mud_wall"), "low walls of mud brick")
+			var kinds := props.map(func(q): return (q as StreetProp).kind)
+			check(kinds.has("jar") and kinds.has("well"), "water jars and a well about its yards")
+			var trees := get_tree().get_nodes_in_group("trees")
+			var palms := trees.filter(func(t): return str(t.kind) in MapTree.kinds_for("adobe"))
+			# (two of the palms' kinds stand out on the sand too: most of the palms by the water, all its
+			# trees its own kinds)
+			var near := palms.filter(func(t): return gen._shore_distance(t.global_position) < 260.0)
+			check(palms.size() >= 4 and near.size() * 2 >= palms.size()
+				and trees.all(func(t): return str(t.kind) in MapTree.kinds_for("adobe") + MapTree.open_for("adobe")),
+				"date palms by the water (%d of %d palms, %d trees)" % [near.size(), palms.size(), trees.size()])
 		else:
 			# (the temple hall its landmark; its walls white under dark tiles; its bamboo the user's, its
 			# leafy sprigs cut out; its willows by the water - the rest of its trees away from it)
@@ -13946,6 +13968,100 @@ func test_japan_and_england_maps() -> void:
 		var r2 := get_tree().get_nodes_in_group("ruins")
 		var f2 := get_tree().get_nodes_in_group("farm_fields")
 		check(r2.size() >= 1 and f2.size() >= 1, "%s: %d buildings, %d fields" % [v.small, r2.size(), f2.size()])
+
+
+func test_bridges() -> void:
+	# User request ("可以走上去的橋，新增這項機制"): a bridge to walk over the water, bank to bank, on the
+	# villages' maps - each style its own (the red arch remade from the user's, our own planks, our own
+	# stone); laid at a pond's narrowest fitting crossing, both ends on open dry land, on and off at
+	# its ends only (rails along its sides), its whole length walkable over the water.
+	var styles := {"countryside": "wood", "japan": "jp_bridge", "england": "wood", "china": "stone", "adobe": "wood"}
+	Campaign.dev_all_open = true
+	var maps := 0
+	var bridged := 0
+	var bad := []
+	for chapter in range(8, 13):
+		for branch in range(1, 6):
+			var id := "%d-%d" % [chapter, branch]
+			seed(chapter * 101 + branch)
+			camp().begin_level(id)
+			gs.last_return = ""
+			get_tree().change_scene_to_file("res://scenes/main.tscn")
+			await frames(3)
+			main = get_tree().current_scene
+			maps += 1
+			var gen = main.get_node("MapGenerator")
+			var p := player()
+			var walkways := get_tree().get_nodes_in_group("walkways")
+			for w: Dock in walkways:
+				if w.bridge == "":
+					continue
+				bridged += 1
+				var a: Vector2 = w.bridge_ends[0]
+				var b: Vector2 = w.bridge_ends[1]
+				var d := (b - a).normalized()
+				var why := []
+				if w.bridge != styles[MapGenerator.current_theme]:
+					why.append("style " + w.bridge)
+				if gen._in_any_water(a - d * 8.0) or gen._in_any_water(b + d * 8.0):
+					why.append("an end in water")
+				var over := get_tree().get_nodes_in_group("water_zones_common").filter(func(z): return z.contains((a + b) * 0.5))
+				if over.is_empty():
+					why.append("not over a pond")
+				var rails := w.get_node_or_null("Rails")
+				if rails == null or rails.get_child_count() != 2:
+					why.append("rails")
+				var t := 0.0
+				while t <= a.distance_to(b):
+					if p._too_deep(a + d * t - Player.FEET):
+						why.append("can't walk at %.0f" % t)
+						break
+					t += 10.0
+				for o: Dock in walkways:
+					if o != w and not o._is_boat and o.walk_rect.intersects(w.walk_rect):
+						why.append("on a dock")
+				if not why.is_empty():
+					bad.append([id, why])
+	check(bad.is_empty() and bridged * 10 >= maps * 7, "a bridge on %d of %d village maps, each well laid %s" % [bridged, maps, str(bad)])
+	# Walked over with the keys: up its arch and down again to the far bank; pushed at its side in the
+	# middle, still on it.
+	seed(5)
+	await play_level("9-1")
+	var view: RunView3D = null
+	for _i in 600:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	var bridge: Dock = null
+	for w: Dock in get_tree().get_nodes_in_group("walkways"):
+		if w.bridge != "":
+			bridge = w
+	check(bridge != null and view.find_children("Bridge", "Node3D", true, false).size() == 1, "9-1: the red bridge built")
+	if bridge == null:
+		return
+	var a: Vector2 = bridge.bridge_ends[0]
+	var b: Vector2 = bridge.bridge_ends[1]
+	var d := (b - a).normalized()
+	var p := player()
+	await put(a - d * 40.0 - Player.FEET)
+	var k: Key = KEY_D if d.x > 0.5 else KEY_S
+	key(k, true)
+	var top := -10.0
+	for _i in 240:
+		await frames(1)
+		top = maxf(top, view.pivot.position.y)
+	key(k, false)
+	var f := p.global_position + Player.FEET
+	await frames(30)
+	check((f - a).dot(d) > a.distance_to(b) and top > RunView3D.LAND_Y + 0.5 and absf(view.pivot.position.y - RunView3D.LAND_Y) < 0.1,
+		"walked over it: up %.2f m at the top, down on the far bank (%.0f of %.0f px)" % [top - RunView3D.LAND_Y, (f - a).dot(d), a.distance_to(b)])
+	await put((a + b) * 0.5 - Player.FEET)
+	var side: Key = KEY_S if d.x > 0.5 else KEY_D
+	key(side, true)
+	await frames(90)
+	key(side, false)
+	check(bridge.walk_rect.has_point(p.global_position + Player.FEET), "not off its side - its rails hold")
 
 
 func test_farm_animals() -> void:

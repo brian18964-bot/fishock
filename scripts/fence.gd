@@ -14,8 +14,8 @@ const STEP := 14.0
 ## User request (the human world's other villages): its kinds - a wooden post-and-rail fence (the
 ## countryside), a bamboo fence (the Japanese village), a dry-stone wall or a hedge (the English) - and
 ## each one's thickness (px). User request ("中國風第 11 章"): the Chinese village's white wall under its
-## dark tiles.
-const STYLES := {"wood": 8.0, "bamboo": 8.0, "stone": 14.0, "hedge": 22.0, "tile_wall": 14.0}
+## dark tiles. User request (the adobe village - "換成土屋主題"): its low wall of mud brick.
+const STYLES := {"wood": 8.0, "bamboo": 8.0, "stone": 14.0, "hedge": 22.0, "tile_wall": 14.0, "mud_wall": 16.0}
 
 ## Half its length (px) and its heading (rad, on the map: 0 along +x); its kind.
 var half := 60.0

@@ -3,15 +3,22 @@
 
   - jp_toro_moss: the mossy stone lantern (Toro.fbx, its pictures in the pack's Textures/Lantern_textures),
     its picture and normal map cut down and toned ours (a little greyer, the moss less vivid);
+  - jp_bridge: the red arched bridge (Japan_Bridge.fbx and its pictures, TEX_Bridge.zip), its arch
+    lowered to BRIDGE_RISE of its length (the upload's drum bridge is too steep to walk the game's
+    way), thinned to BRIDGE_MOST triangles, its two pictures toned ours; its length and its deck's
+    height along it written down (jp_assets.json "deck": {"long": m, "profile": [m, ...]} - PROFILE
+    heights end to end, read straight down onto the boards) so the game walks its arch;
   - jp_kasuga, jp_stupa_1, jp_stupa_2: the three scanned stone lanterns (a Kasuga lantern and two
     tiered stone towers - "Japanese Stone Lanterns.fbx" and its mossy pictures), each thinned from tens
     or hundreds of thousands of triangles (MOST), its picture toned the same way, stood to its height.
 
 Each one mesh, its middle over the origin, standing on z = 0, into OUT_DIR, its footprint (and a
 lantern's lamp) added to OUT_DIR/jp_assets.json beside the shrine set's (tools/make_japan_assets.py).
+ONLY=bridge (or ONLY=lanterns) makes just that part.
 
   bpyenv/bin/python tools/make_japan_extras.py -- toro=Toro.fbx toro_tex=Lantern_textures \
-      lanterns="Japanese Stone Lanterns.fbx" out=assets/models/jp       (the lanterns' pictures in tex/ beside it)
+      lanterns="Japanese Stone Lanterns.fbx" bridge=Japan_Bridge.fbx bridge_tex=TEX_Bridge/Bridge \
+      out=assets/models/jp       (the lanterns' pictures in tex/ beside it)
 """
 import json
 import math
@@ -29,6 +36,13 @@ SCANS = {"jp_kasuga": ("Stone_Lantern_1", "Stone Lantern 1 UV Texture Mossy 2048
          "jp_stupa_1": ("Stone_Lantern_2", "Stone Lantern 2 UV Texture Mossy 2048x2048.jpg", 3.0, 2200, None),
          "jp_stupa_2": ("Stone_Lantern_3", "Stone Lantern 3 UV Texture Mossy 2048x2048.jpg", 3.2, 2400, None)}
 TORO = (1.7, 1500, 0.66)
+# (the bridge: as long as it's made (m) - the game sizes it to its crossing; its deck's rise at the
+# middle, share of its length; its most triangles)
+BRIDGE_LONG = 9.0
+BRIDGE_RISE = 0.09
+BRIDGE_MOST = 6000
+# (how many heights along the deck are written down, ends included)
+PROFILE = 21
 PX = 512
 NRM = 256
 GREY = 0.18
@@ -127,6 +141,15 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     jpath = os.path.join(OUT, "jp_assets.json")
     footprints = json.load(open(jpath)) if os.path.exists(jpath) else {}
+    only = os.environ.get("ONLY", "")
+    if only != "bridge":
+        lanterns(footprints)
+    if "bridge" in ARGS and only in ("", "bridge"):
+        bridge(footprints)
+    json.dump(footprints, open(jpath, "w"), indent=1, sort_keys=True)
+
+
+def lanterns(footprints):
     # The mossy toro.
     clear()
     bpy.ops.import_scene.fbx(filepath=ARGS["toro"])
@@ -153,7 +176,78 @@ def main():
         thin(obj, most)
         dress(obj, name, os.path.join(texdir, pic))
         export(obj, name, footprints, lamp)
-    json.dump(footprints, open(jpath, "w"), indent=1, sort_keys=True)
+
+
+def bridge(footprints):
+    """The red arched bridge, its length along y, its arch lowered, sized BRIDGE_LONG m long."""
+    clear()
+    bpy.ops.import_scene.fbx(filepath=ARGS["bridge"])
+    parts = [o for o in bpy.data.objects if o.type == "MESH"]
+    floor = [o for o in parts if "Floor" in o.name]
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in parts:
+        mw = o.matrix_world.copy()
+        o.parent = None
+        o.matrix_world = mw
+        o.select_set(True)
+    for o in list(bpy.data.objects):
+        if o not in parts:
+            bpy.data.objects.remove(o)
+    bpy.context.view_layer.objects.active = parts[0]
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    fpts = np.array([v.co[:] for o in floor for v in o.data.vertices])
+    rise0 = float(fpts[:, 2].max() - fpts[:, 2].min())
+    flong = float(fpts[:, 1].max() - fpts[:, 1].min())
+    bpy.ops.object.join()
+    obj = bpy.context.view_layer.objects.active
+    obj.name = "jp_bridge"
+    pts = np.array([v.co[:] for v in obj.data.vertices])
+    lo, hi = pts.min(0), pts.max(0)
+    k = BRIDGE_LONG / (hi[1] - lo[1])
+    # (the arch lowered: heights scaled so the deck rises BRIDGE_RISE of the length at the middle)
+    kz = BRIDGE_RISE * flong / max(rise0, 1e-6)
+    mid = Vector(((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, lo[2]))
+    for v in obj.data.vertices:
+        d = v.co - mid
+        v.co = Vector((d.x * k, d.y * k, d.z * k * kz))
+    thin(obj, BRIDGE_MOST)
+    tex = ARGS["bridge_tex"]
+    for i, m in enumerate(obj.data.materials):
+        base = "FloorWood" if "Floor" in m.name else "RedWood"
+        mat = bpy.data.materials.new("jp_bridge_" + base.lower())
+        mat.use_nodes = True
+        nt = mat.node_tree
+        b = nt.nodes["Principled BSDF"]
+        b.inputs["Roughness"].default_value = 0.8
+        t = nt.nodes.new("ShaderNodeTexImage")
+        t.image = picture(os.path.join(tex, "Bridge_Bridge_%s_c_Diffuse.png" % base), PX, True, "jp_bridge_" + base.lower())
+        nt.links.new(t.outputs[0], b.inputs["Base Color"])
+        n = nt.nodes.new("ShaderNodeTexImage")
+        n.image = picture(os.path.join(tex, "Bridge_Bridge_%s_c_Normal.png" % base), NRM, False, "jp_bridge_%s_n" % base.lower())
+        n.image.colorspace_settings.name = "Non-Color"
+        nm = nt.nodes.new("ShaderNodeNormalMap")
+        nt.links.new(n.outputs[0], nm.inputs["Color"])
+        nt.links.new(nm.outputs[0], b.inputs["Normal"])
+        obj.data.materials[i] = mat
+    export(obj, "jp_bridge", footprints, None)
+    footprints["jp_bridge"]["deck"] = {"long": BRIDGE_LONG, "profile": profile(obj)}
+
+
+def profile(obj):
+    """The deck's height (m) at PROFILE points end to end along its middle line - straight down onto
+    the boards, the highest of three lines across (a rail's foot no lower); past the boards, at the
+    very ends, the ground's 0."""
+    out = []
+    half = BRIDGE_LONG / 2
+    for i in range(PROFILE):
+        y = -half + BRIDGE_LONG * i / (PROFILE - 1)
+        top = 0.0
+        for x in (-0.6, 0.0, 0.6):
+            hit, loc, _n, _f = obj.ray_cast(Vector((x, y, 10.0)), Vector((0, 0, -1)))
+            if hit:
+                top = max(top, loc.z)
+        out.append(round(top, 3))
+    return out
 
 
 main()
