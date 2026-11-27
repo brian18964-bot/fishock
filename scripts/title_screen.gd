@@ -148,6 +148,9 @@ func _croc_talk() -> Control:
 	var talk := CrocTalk.new()
 	add_child(talk)
 	Sfx.play("ui_open", -6.0)
+	# (user report: he wandered off with his window still open - he stays while it's up)
+	if _stage != null and is_instance_valid(_stage.croc):
+		_stage.croc.held = true
 	talk.tree_exiting.connect(func():
 		if _stage != null and is_instance_valid(_stage.croc):
 			_stage.croc.release())

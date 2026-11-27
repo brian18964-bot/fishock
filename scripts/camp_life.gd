@@ -82,6 +82,10 @@ const PACE := [0.7, 0.75, 0.85, 1.0]
 const SIT_TIME := [Vector2(60, 90), Vector2(40, 70), Vector2(30, 50), Vector2(25, 40)]
 const FIRE_TIME := [Vector2(25, 40), Vector2(25, 40), Vector2(20, 35), Vector2(18, 30)]
 const REST_TIME := [Vector2(1, 2), Vector2(4, 8), Vector2(4, 8), Vector2(3, 6)]
+## Talking with Mr. Croc: staying by him while his window's open, this long at the most (s); and if
+## it hasn't opened this long after (CampCroc.held), not waiting on it.
+const TALK_MOST := 1800.0
+const TALK_OPENS := 4.0
 ## How long a nap's sleep lasts, by tier.
 const NAP_TIME := [Vector2(30, 50), Vector2(25, 40), Vector2(20, 30), Vector2(15, 25)]
 ## The longest a wave goes on (s; Mixamo's are long).
@@ -236,6 +240,11 @@ func _process(delta: float) -> void:
 			_walk(delta)
 		"face":
 			_face(delta)
+		"until":
+			_t += delta
+			if (_step.fn as Callable).call(_t) or _t >= _len:
+				_step = {}
+				_next()
 		_:
 			_timed(delta)
 
@@ -287,6 +296,11 @@ func _next() -> void:
 				_len = float(_step.time)
 			"hold":
 				rig.anim.pause()
+				_len = float(_step.time)
+			"until":
+				# (standing by, at ease, till its `fn` says so - or `time` at the most)
+				if not seated and down == "":
+					_play(_idle(), 0.3)
 				_len = float(_step.time)
 		return
 	_step = {}
@@ -623,7 +637,11 @@ func act_on(kind: String, part := 0, done := Callable()) -> bool:
 						stage.spots["croc"] = {"at": c.visit_spot(pivot.position), "face": c.global_position}},
 					{"do": "walk", "spot": "croc"}, {"do": "face", "spot": "croc", "node": c},
 					{"do": "call", "fn": func(): c.talk()},
-					{"do": "loop", "clip": "Idle_Talking", "time": 1.4, "at": 0.45, "fn": opens}]
+					{"do": "loop", "clip": "Idle_Talking", "time": 1.4, "at": 0.45, "fn": opens},
+					# User report (the traveller walked off with his window still open): they stay with
+					# him, listening, till it's closed (he's let go) - or, if it never opened, a moment.
+					{"do": "until", "time": TALK_MOST, "fn": func(t: float) -> bool:
+						return c.visitor == null or (t > TALK_OPENS and not c.held)}]
 			activity = "croc"
 		"equipment":
 			# (user request: not in under it - too deep, too long: at its

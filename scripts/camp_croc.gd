@@ -10,7 +10,13 @@ extends Node3D
 ## (TitleScreen's mark: an errand on offer, or one done to hand in).
 ##
 ## Tapped, the traveller comes over (CampLife "croc"): he stops, turns to them (visit), talks (talk)
-## and stays till the talk's closed (release) - or VISIT_TIMEOUT.
+## and stays till the talk's closed (release) - however long his window's open (held); VISIT_TIMEOUT
+## only if it never opens.
+##
+## User request ("鱷魚先生可以設計成有時候只露出頭部，其餘部分沉在水裡，就像真實世界的鱷魚一樣"): now and then,
+## instead of on along the shore, he wades out into the lake and lies in it as a crocodile does - only
+## his head out of the water, the lake's top hiding the rest - drifting a little, then wades back out.
+## Tapped there, he comes out to talk.
 
 ## (how far up the shore he wanders: the lake's edge from x SHORE_X.x to SHORE_X.y, this far in from
 ## the water - clear of the dock and the drums)
@@ -27,6 +33,26 @@ const LINE_EVERY := Vector2(14.0, 26.0)
 const LINE_HOLD := 4.5
 const LINE_FADE := 0.4
 const VISIT_TIMEOUT := 40.0
+## The soak: this share of the times he moves on; how far out into the lake (m) and how far along;
+## how long he lies there (s); how high the water comes on him - this far under his head's root, so
+## his whole head's out (m); how slowly he drifts along there (m/s) and how far either way; the bob.
+## (the lake's top: CampStage's water disc)
+const SOAK_CHANCE := 0.3
+const SOAK_OUT := Vector2(1.2, 1.9)
+const SOAK_ALONG := 0.6
+const SOAK_TIME := Vector2(14.0, 26.0)
+const SOAK_NECK := 0.12
+const SOAK_DRIFT := 0.1
+const SOAK_ROAM := 0.8
+const SOAK_BOB := 0.02
+const WATER_TOP := 0.03
+## (and round him on the water, rings going out - so he's seen there at night): one every RING_EVERY
+## s, out from RING_FROM to RING_TO m across over RING_LIFE s, this bright at first.
+const RING_EVERY := 1.6
+const RING_FROM := 0.35
+const RING_TO := 1.6
+const RING_LIFE := 2.6
+const RING_ALPHA := 0.5
 ## User request: the sign that he's something to talk about a real scroll floating over his head (our
 ## own - tools/make_croc_props.py, made from a scroll the user gave; the 2D sign was too bright and
 ## too much): how long it is (m - 15% smaller than the old sign showed), how high over his feet,
@@ -70,6 +96,22 @@ var _line_left := 0.0
 var _first := true
 var _visit_time := 0.0
 var _rng := RandomNumberGenerator.new()
+## His window's open (TitleScreen._croc_talk): he stays however long it's up.
+var held := false
+## The soak: 0 on the shore, wading out (1), lying in the water (2), wading back (3); where he lies;
+## how much longer; how far down he's sunk (0..1 of the way to his head); his head's height off his
+## feet (m, measured on the shore); the drift's way along.
+var soak := 0
+var _soak_at := Vector3.ZERO
+var _soak_left := 0.0
+var _sunk := 0.0
+var _head_h := 0.0
+var _drift := 1.0
+## (SOAK_CHANCE - a test sets its own)
+var soak_chance := SOAK_CHANCE
+## The rings on the water round him: [[node, age]]; the next in.
+var _rings: Array = []
+var _ring_in := 0.0
 
 
 func _ready() -> void:
@@ -138,37 +180,51 @@ func head_point() -> Vector3:
 	return (rig.skeleton.global_transform * rig.skeleton.get_bone_global_pose(bone)).origin
 
 
-## Someone coming over: he stops where he is and turns to them.
+## Someone coming over: he stops where he is and turns to them (out in the lake, he wades out to the
+## shore first).
 func visit(who: Node3D) -> void:
 	visitor = who
 	_visit_time = 0.0
 	_goal = -1
-	_idle()
+	if soak != 0:
+		_wade_back()
+	else:
+		_idle()
+
+
+## Where he'll be to talk: here, or (in the lake) the shore he went in from.
+func land_point() -> Vector3:
+	return _shore[_at] if soak != 0 else global_position
 
 
 ## Where a visitor stands to talk to him: in front of him, on their side (the camp's).
 func visit_spot(from: Vector3) -> Vector3:
-	var d := from - global_position
+	var at := land_point()
+	var d := from - at
 	d.y = 0.0
 	d = d.normalized() if d.length() > 0.01 else Vector3.BACK
 	# (never out over the water: toward the camp if they'd stand lakeward of him)
 	if d.z < 0.2:
 		d = (d + Vector3(0, 0, 0.8)).normalized()
-	var p := global_position + d * 1.15
+	var p := at + d * 1.15
 	return Vector3(p.x, 0.0, p.z)
 
 
 func talk() -> void:
 	line = ""
 	line_alpha = 0.0
-	_play("Idle_Talking")
+	# (still wading out: he talks once he's on the shore)
+	if soak == 0:
+		_play("Idle_Talking")
 
 
 ## The talk over: a moment, then on along the shore.
 func release() -> void:
 	visitor = null
+	held = false
 	_wait = _rng.randf_range(2.5, 5.0)
-	_idle()
+	if soak == 0:
+		_idle()
 
 
 func _process(delta: float) -> void:
@@ -176,17 +232,27 @@ func _process(delta: float) -> void:
 	_float_scroll(delta)
 	if stage != null and stage.hotspots.has("croc"):
 		for part in stage.hotspots.croc.parts:
-			part[1] = global_position + Vector3(0, 0.9, 0)
+			# (in the lake: where his head is - all that's to be tapped)
+			part[1] = head_point() if _sunk > 0.5 else global_position + Vector3(0, 0.9, 0)
+	if soak != 0:
+		_soaking(delta)
 	if visitor != null:
 		_visit_time += delta
-		if not is_instance_valid(visitor) or _visit_time > VISIT_TIMEOUT:
+		# (his window open, he waits however long it's up - the timeout's for a visit it never came to)
+		if not is_instance_valid(visitor) or (_visit_time > VISIT_TIMEOUT and not held):
 			release()
 			return
-		_turn_to(visitor.global_position, delta, 5.0)
+		if soak == 0:
+			_turn_to(visitor.global_position, delta, 5.0)
+		return
+	if soak != 0:
 		return
 	if _goal < 0:
 		_wait -= delta
 		if _wait <= 0.0:
+			if _rng.randf() < soak_chance:
+				_wade_out()
+				return
 			# (on to another place along the shore - never the one he's at)
 			var next := _rng.randi() % (_shore.size() - 1)
 			_goal = next if next < _at else next + 1
@@ -205,6 +271,103 @@ func _process(delta: float) -> void:
 		return
 	rotation.y = lerp_angle(rotation.y, atan2(way.x, way.z), minf(delta * 5.0, 1.0))
 	position += way.normalized() * speed * delta
+
+
+## Into the lake from where he stands: out to a place a little way along, to lie there.
+func _wade_out() -> void:
+	if _head_h <= 0.0:
+		_head_h = maxf(head_point().y - global_position.y, 0.5)
+	var from: Vector3 = _shore[_at]
+	var x := clampf(from.x + _rng.randf_range(-SOAK_ALONG, SOAK_ALONG), SHORE_X.x - SOAK_ALONG, SHORE_X.y + SOAK_ALONG)
+	_soak_at = Vector3(x, 0.0, from.z - _rng.randf_range(SOAK_OUT.x, SOAK_OUT.y))
+	_soak_left = _rng.randf_range(SOAK_TIME.x, SOAK_TIME.y)
+	_drift = 1.0 if _rng.randf() < 0.5 else -1.0
+	soak = 1
+	_play("Walk")
+
+
+## Back out to the shore he went in from.
+func _wade_back() -> void:
+	soak = 3
+	_play("Walk")
+
+
+## In the lake: wading out (sinking as it deepens), lying there with his head out (drifting, bobbing,
+## facing the camp), wading back (rising) - his feet always on the shore's line out to where he lies.
+func _soaking(delta: float) -> void:
+	var from: Vector3 = _shore[_at]
+	var speed := CharacterArt.walk_pace(CrocQuests.ID, 0.8) * STROLL
+	var flat := Vector3(position.x, 0.0, position.z)
+	match soak:
+		1, 3:
+			var goal := _soak_at if soak == 1 else from
+			var way := goal - flat
+			if way.length() <= speed * delta + 0.01:
+				flat = goal
+				if soak == 1:
+					soak = 2
+					_idle()
+				else:
+					soak = 0
+					_wait = _rng.randf_range(STAY.x, STAY.y)
+					if visitor != null:
+						_play("Idle_Talking" if held else "Idle")
+					else:
+						_idle()
+			else:
+				flat += way.normalized() * speed * delta
+				rotation.y = lerp_angle(rotation.y, atan2(way.x, way.z), minf(delta * 5.0, 1.0))
+		2:
+			_soak_left -= delta
+			# (drifting slowly along, turned to the camp - a crocodile's watch on the bank)
+			flat.x += _drift * SOAK_DRIFT * delta
+			if absf(flat.x - _soak_at.x) > SOAK_ROAM:
+				_drift = -signf(flat.x - _soak_at.x)
+			_turn_to(global_position + Vector3(0, 0, 1), delta, 1.5)
+			if _soak_left <= 0.0 and visitor == null:
+				_wade_back()
+	# (how far in he's waded, of the way out to where he lies: sunk that far - all but his head)
+	var out := clampf((from.z - flat.z) / maxf(from.z - _soak_at.z, 0.1), 0.0, 1.0) if soak != 0 else 0.0
+	_sunk = smoothstep(0.1, 1.0, out)
+	var bob := sin(Time.get_ticks_msec() / 1000.0 * 1.3) * SOAK_BOB * _sunk
+	position = Vector3(flat.x, (WATER_TOP - _head_h + SOAK_NECK) * _sunk + bob, flat.z)
+	_ripple(delta)
+
+
+## The rings on the water round him while he's in it up to his neck.
+func _ripple(delta: float) -> void:
+	_ring_in -= delta
+	if _sunk > 0.6 and _ring_in <= 0.0:
+		_ring_in = RING_EVERY
+		var ring := MeshInstance3D.new()
+		var torus := TorusMesh.new()
+		torus.inner_radius = 0.47
+		torus.outer_radius = 0.5
+		torus.rings = 32
+		torus.ring_segments = 4
+		ring.mesh = torus
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.albedo_color = Color(0.7, 0.78, 0.9, RING_ALPHA)
+		ring.material_override = mat
+		ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		ring.top_level = true
+		add_child(ring)
+		ring.global_position = Vector3(global_position.x, WATER_TOP + 0.01, global_position.z)
+		ring.scale = Vector3(RING_FROM, 0.15, RING_FROM)
+		_rings.append([ring, 0.0])
+	for r in _rings.duplicate():
+		r[1] += delta
+		var k: float = r[1] / RING_LIFE
+		var node: MeshInstance3D = r[0]
+		if k >= 1.0:
+			node.queue_free()
+			_rings.erase(r)
+			continue
+		var across := lerpf(RING_FROM, RING_TO, 1.0 - (1.0 - k) * (1.0 - k))
+		node.scale = Vector3(across, 0.15, across)
+		(node.material_override as StandardMaterial3D).albedo_color.a = RING_ALPHA * (1.0 - k)
 
 
 ## The scroll: over him while there's something to talk about (not while he's talked to), bobbing,

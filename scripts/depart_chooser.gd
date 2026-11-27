@@ -17,6 +17,17 @@ const MAPS := [["", "湖畔森林", "map_forest", "森林中的湖泊與池塘�
 	["desert", "沙漠綠洲", "map_desert", "沙丘間的綠洲與椰棗樹，遠古白骨半埋沙中。"],
 	["coast", "沙灘海岸", "map_coast", "一側是大海，椰子樹下的沙灘與浪花。"],
 	["coast_cliff", "海崖", "map_coast_cliff", "草原台地的盡頭是斷崖，崖下浪花拍打礁石。"]]
+## User report ("今天做的地圖我目前都無法測試"): the ruined human world's maps (chapters 7-12) as well, on a
+## page of their own - the lake's journey and the ruins, six maps each, laid out as the six were (their
+## cards the game's own night there: tools/map_cards.gd).
+const RUIN_MAPS := [["city", "荒廢都市", "map_city", "龜裂的街道與空蕩大樓，積水裡游著人類的魚。"],
+	["countryside", "鄉村", "map_countryside", "收割過的田與穀倉，灌溉水塘裡游著田間的魚。"],
+	["japan", "日式山村", "map_japan", "竹林、鳥居和石燈籠，神社池子裡游著日本魚。"],
+	["england", "英式村莊", "map_england", "木構屋和石牆，牧場邊的池塘裡游著英國的魚。"],
+	["china", "中式古鎮", "map_china", "灰瓦石屋和紅柱涼亭，柳樹垂在水邊。"],
+	["adobe", "土屋聚落", "map_adobe", "泥磚土屋和椰棗樹，綠洲池塘裡游著尼羅河魚。"]]
+## The pages: their names, and the chapters each holds.
+const WORLDS := [["湖的旅程", "第 1～6 章"], ["人類的廢墟", "第 7～12 章"]]
 ## The map cards' width: as wide as they fit side by side (at most this).
 const MAP_CARD_MAX := 400.0
 ## (user request: a fourth map, the desert - the four side by side within the window's inside; a
@@ -34,6 +45,8 @@ const OPEN_GUARD_MS := 450
 var camp: Object
 var step := "mode"
 var map_theme := ""
+## The page of maps shown (WORLDS; -1: the one the map picked is on).
+var world := -1
 ## The story's branch picked to fish in (a level's id), "" a map made at random.
 var branch := ""
 var picked_curses: Array = []
@@ -218,17 +231,35 @@ func _open_story() -> void:
 # ---------------------------------------------------------------- 自由模式：地圖
 
 func _build_maps() -> void:
+	if world < 0:
+		world = 1 if _listed(RUIN_MAPS, map_theme) else 0
+	var maps: Array = MAPS if world == 0 else RUIN_MAPS
+	# (the heading, and beside it the two pages - in the heading's own line, so the window's no taller)
+	var top := HBoxContainer.new()
+	top.name = "MapsHead"
+	top.alignment = BoxContainer.ALIGNMENT_CENTER
+	top.add_theme_constant_override("separation", 12)
+	_body.add_child(top)
 	var head := UiKit.label("自由模式・單人：選擇地圖", 18, UiKit.GOLD, true)
 	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_body.add_child(head)
-	var per := mini(MAPS.size(), MAP_PER_ROW)
+	top.add_child(head)
+	for i in WORLDS.size():
+		var on_page := world == i
+		var tab := UiKit.button("%s%s（%s）" % ["✓ " if on_page else "", WORLDS[i][0], WORLDS[i][1]], 13, "red" if on_page else "gray")
+		tab.name = "World_%d" % i
+		tab.custom_minimum_size = Vector2(0, 32)
+		tab.pressed.connect(func():
+			world = i
+			show_step("maps"))
+		top.add_child(tab)
+	var per := mini(maps.size(), MAP_PER_ROW)
 	var wide := minf(MAP_CARD_MAX, (MAP_ROW - 16.0 * (per - 1)) / per)
-	var flat := 0.5 if MAPS.size() <= per else MAP_PIC_FLAT
+	var flat := 0.5 if maps.size() <= per else MAP_PIC_FLAT
 	# (the curses under them too: flatter still, so the window's buttons stay in it)
 	if Campaign.curses_open():
 		flat = MAP_PIC_FLAT_CURSES
 	var row: HBoxContainer = null
-	for m in MAPS:
+	for m in maps:
 		if row == null or row.get_child_count() >= per:
 			row = HBoxContainer.new()
 			row.name = "MapRow%d" % _body.get_child_count()
@@ -371,12 +402,20 @@ static func branch_open(id: String) -> bool:
 	return id == "" or Campaign.level_done(id) or Campaign.dev_all_open
 
 
-## A map's name (MAPS; the lakeside forest's for "").
+## A map's name (MAPS, RUIN_MAPS; the lakeside forest's for "").
 static func map_name(theme: String) -> String:
-	for m in MAPS:
+	for m in MAPS + RUIN_MAPS:
 		if m[0] == theme:
 			return m[1]
 	return MAPS[0][1]
+
+
+## Whether `theme` is one of `maps`'.
+static func _listed(maps: Array, theme: String) -> bool:
+	for m in maps:
+		if m[0] == theme:
+			return true
+	return false
 
 
 ## Off on the free run picked.

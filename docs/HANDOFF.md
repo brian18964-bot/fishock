@@ -4,7 +4,7 @@
 
 ## 一、目前狀態
 - 所有工作都在 `claude/focused-fermi-96pp3r` 分支，它也是這個 repo 的預設分支；最後一次推送的 CI（Web build）通過並已部署。
-- 本機全套測試：6196 項、0 失敗（`tests/run_tests.gd`）。
+- 本機全套測試：6209 項、0 失敗（`tests/run_tests.gd`）。
 - 遊戲：Godot 4.7.2，3D 夜釣（俯視鏡頭、夜間、煤燈），手機觸控為主，也支援鍵盤。
 
 ## 二、這段期間做了什麼（依時間）
@@ -143,6 +143,17 @@
 - **池塘數順手修**：小地圖要 5 個池塘的關卡（8-3、11-3）在少數亂數下第 5 個池塘縮小兩次仍塞不下就被省略，
   少於關卡規定。現在最多縮小 5 次（最小約原尺寸一半，`MapGenerator.POND_SHRINKS`）才放棄。
 
+### 17. 自由夜釣補上廢墟世界的地圖、鱷魚先生對話與泡水（11/27）
+- 使用者回報：「今天做的地圖我目前都無法測試」——自由夜釣「單人」只列了前 6 張自然地圖，第 7～12 章漏掉了。
+  出發視窗現在分兩頁：**湖的旅程（第 1～6 章）**、**人類的廢墟（第 7～12 章）**，各 6 張、排法跟原本一樣（`DepartChooser.RUIN_MAPS`、`WORLDS`）。
+  新的 6 張卡片圖是遊戲裡實際的夜景（`tools/map_cards.gd`：自動找池塘對岸看得到最多建築／橋的站位，從角色背後拍，再提亮一點）。
+  地圖卡片目前不上鎖（跟原本 6 張一樣）。
+- 使用者回報：「跟鱷魚先生對話時，角色會走掉」——角色走過去、對話視窗打開後一秒多就自己走開去做別的事；鱷魚先生也有 40 秒逾時。
+  現在角色會站在他旁邊一直到視窗關掉（`CampLife` 的 `until` 步驟），鱷魚先生在視窗開著時不逾時（`CampCroc.held`）。
+- 使用者要求：「鱷魚先生可以設計成有時候只露出頭部，其餘部分沉在水裡」——他沿岸走動時有時改成走進湖裡（約三成），
+  越走越深、最後只露出頭（身體被湖面擋住），慢慢漂、頭轉向營地、輕輕上下浮，周圍一圈圈水波往外擴散，過一陣子再走回岸上。
+  在水裡被點時，他先走回下水的岸邊再對話；可點的位置跟著他的頭。
+
 ## 三、已定案（使用者決定的，不用再問）
 ### 劇情與分支
 1. 每張地圖分 4～5 支，每支是一個劇情關卡；共 6 章 26 關。地圖順序：湖畔森林 → 秋林 → 雪地森林 → 沙漠綠洲 → 沙灘海岸 → 海崖。
@@ -230,6 +241,8 @@
 | 歐洲田野楓 | 夏葉 `fmaple_a` 8 m、秋葉 `rmaple_a` 10 m、`rmaple_b` 9 m；鄉村、英式的樹種清單裡各加這三種（約三成）；縮放 0.85～1.05（`rmaple_b` 0.95～1.1，最低的葉子才高過大鬼） | `MapTree.THEME_KINDS`、`KINDS`、`SCALE_OF`、`CANOPY`；`tools/make_village_trees.py` 的 `TREES`、`FILES` |
 | 濕腳印 | 離水邊 8 px 內踩下算踩到水；走 9 m 後腳乾（低於 12% 濕度就不留）；腳印 8 秒後開始變淡、35 秒乾掉；每人最多 24 個濕腳印 | `SnowTracks.WET_DIST`、`WET_LEAST`、`WET_PRINT_HOLD`、`WET_PRINT_FADE`、`WET_PER_WALKER`；`RunView3D.FOOT_WET` |
 | 防穿圖的間距 | 樹冠離建築（只容許葉尖 12 px）；院子物件用模型四角算範圍；路燈燈臂間距 45 px；水邊小動物出生處留 18 px | `MapGenerator.CROWN_BRUSH`、`_model_reach()`、`LAMP_ARM`、`SHORE_CRITTER_ROOM` |
+| 鱷魚先生泡水 | 每次要換地方時 30% 改成下水；離岸 1.2～1.9 m；泡 14～26 秒；水面在頭根下 0.12 m（整顆頭露出）；漂 0.1 m/s、左右 0.8 m；水波每 1.6 秒一圈、2.6 秒擴散到 1.6 m | `CampCroc.SOAK_*`、`RING_*` |
+| 和鱷魚先生對話 | 視窗開著時角色和他都不走（最多 30 分鐘）；視窗 4 秒內沒打開就不等 | `CampLife.TALK_MOST`、`TALK_OPENS`；`CampCroc.held` |
 | 農場動物的行為 | 綿羊／小牛被靠近到 55／45 px 才慢慢走開；雞 70 px 跑開；烏鴉 90 px 飛走；大小：綿羊 0.95 m、小牛 1.15 m、母雞 0.42 m、公雞 0.55 m、烏鴉 0.42 m | `Critter.SPECIES`、`RunView3D.CREATURES` |
 
 ## 五、待辦與需要使用者決定的事
@@ -237,9 +250,9 @@
    使用者說過「先暫定」專屬委託是某張地圖的夢幻魚，目前用 1-5 的鱷雀鱔（鱷魚找鱷雀鱔）。
 2. **發佈前**把 `Campaign.dev_all_open` 改成 `false`（它也讓所有角色都能選）。
 10. **荒廢都市等使用者的素材**（清單在 `docs/RUINED_WORLD.md` 第四節：建築、汽車、路燈、街道小物、野狗、老鼠、鴿子、魚的照片）。
-    還沒做：運河（7-3）、地鐵坑（7-4）、海岸港口（7-5）、撿拾點（提案）、自由模式的都市地圖卡片。
-11. **鄉村**（第 8 章）已可玩；還沒做：農場動物（雞、牛、羊——沒有素材，目前只有鹿和狐狸，8-4 有狼）、溝渠／大河（8-5 現在是一般池塘）、
-    自由模式的鄉村地圖卡片。11 種鄉村魚是暫代模型，有照片再換。
+    還沒做：運河（7-3）、地鐵坑（7-4）、海岸港口（7-5）、撿拾點（提案）。
+11. **鄉村**（第 8 章）已可玩；還沒做：農場動物（雞、牛、羊——沒有素材，目前只有鹿和狐狸，8-4 有狼）、溝渠／大河（8-5 現在是一般池塘）。
+    11 種鄉村魚是暫代模型，有照片再換。
 12. **土屋聚落**（第 12 章，取代部落）已可玩；還沒做：沙地上的沙丘起伏（目前平地）、駱駝以外的牲口；11 種魚是暫代模型。
     使用者會再測試土屋聚落和其他地圖。
 13. **中式古鎮**（第 11 章）已可玩；還沒做：荷花、石拱橋、牌樓、月洞門；11 種中國魚是暫代模型。
@@ -261,7 +274,7 @@
 - 測試：見 CLAUDE.md。跟這段工作最相關的測試：`test_campaign_levels_build`（26 關的地圖、水域、鬼、額度）、
   `test_campaign_unlocks_and_achievements`、`test_story_lessons`、`test_tutorials_completable`、`test_branch_fish`、
   `test_free_branches_and_nights`、`test_level_guide_and_results`、`test_weathers`（含雨打水面）、`test_journey_page`、
-  `test_bag_full_reminders`、`test_character_unlocks`、`test_croc_quests`、`test_croc_errands_on_run`、`test_zodiac_coins`、`test_city_map`、
+  `test_bag_full_reminders`、`test_character_unlocks`、`test_croc_quests`、`test_croc_waits_and_soaks`、`test_free_ruin_maps`、`test_croc_errands_on_run`、`test_zodiac_coins`、`test_city_map`、
   `test_countryside_map`、`test_japan_and_england_maps`、`test_bridges`、`test_field_maples`、`test_wet_footprints`、
   `test_village_sway`、`test_nothing_in_anything`。
 - `tools/verify/verify.gd`（用法寫在檔案開頭）：
@@ -277,7 +290,7 @@
 |---|---|
 | 章節、26 關（規則、星數、獎勵、提醒 `tip`）、預設規則、地圖尺寸 | `scripts/campaign.gd`：`CHAPTERS`、`LEVELS`、`DEFAULT_RULES`、`MAP_SIZES` |
 | 教學內容、操作說明、柳的補充說明、教學關卡 | `scripts/campaign.gd`：`TUTORIALS`、`CONTROLS`、`ASIDES`、`LESSONS`、`taught()` |
-| 自由夜釣（分支、特別夜晚） | `scripts/campaign.gd`：`begin_free()`、`FREE_EVENTS`；畫面：`scripts/depart_chooser.gd` |
+| 自由夜釣（分支、特別夜晚） | `scripts/campaign.gd`：`begin_free()`、`FREE_EVENTS`；畫面：`scripts/depart_chooser.gd`（`MAPS`、`RUIN_MAPS`）；卡片圖：`tools/map_cards.gd` |
 | 成就 | `scripts/campaign.gd`：`ACHIEVEMENTS` |
 | 魚種、獨有魚、魚池、屬性門檻、金色魚 | `scripts/fish_data.gd`：`FISH`、`pool_for()`、`BRANCH_*`、`GATE_*`、`storm_fish`、`icon_of()` |
 | 搏魚箭頭（反甩）開關 | `scripts/fish_fight.gd`：`prompts` |

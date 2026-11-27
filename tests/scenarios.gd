@@ -127,6 +127,7 @@ const TESTS := [
 	"test_autumn_theme",
 	"test_desert_theme",
 	"test_coast_theme",
+	"test_free_ruin_maps",
 	"test_cliff_coast_theme",
 	"test_surf",
 	"test_weathers",
@@ -160,6 +161,7 @@ const TESTS := [
 	"test_bag_full_reminders",
 	"test_character_unlocks",
 	"test_croc_quests",
+	"test_croc_waits_and_soaks",
 	"test_croc_errands_on_run",
 	"test_zodiac_coins",
 	"test_city_map",
@@ -5587,6 +5589,8 @@ func test_croc_quests() -> void:
 	var across := absf(scroll_up.global_basis.x.normalized().dot(camp.camera.global_basis.x.normalized()))
 	check(across > cos(CampCroc.SCROLL_SWAY + 0.05), "the scroll broadside to the camera (%.2f)" % across)
 	var was: Vector3 = camp.croc.position
+	# (on along the shore, not into the lake - test_croc_waits_and_soaks has that)
+	camp.croc.soak_chance = 0.0
 	camp.croc._wait = 0.0
 	await seconds(1.5)
 	check(camp.croc.position.distance_to(was) > 0.3 and absf(camp.croc.position.z - CampCroc.shore_point(camp.croc.position.x).z) < 0.4,
@@ -5610,6 +5614,10 @@ func test_croc_quests() -> void:
 	take.pressed.emit()
 	await frames(2)
 	check(CrocQuests.active().size() == 2, "taken")
+	# User report (he walked off while his window was open): it open, he stays however long it's up.
+	camp.croc._visit_time = CampCroc.VISIT_TIMEOUT + 1.0
+	await frames(3)
+	check(camp.croc.visitor != null and camp.croc.held, "his window still open past the timeout: he's still there")
 	talk.queue_free()
 	await frames(2)
 	check(camp.croc.visitor == null, "the talk closed: he's off along the shore again")
@@ -5637,6 +5645,145 @@ func test_croc_quests() -> void:
 	Profile.pack_fish = keep[8]
 	Profile.stash_fish = keep[9]
 	Profile.fish_box = keep[10]
+
+
+## User report ("跟鱷魚先生對話時，角色會走掉，設計成對話結束（關掉視窗）角色才會走掉"): the traveller gone over
+## to Mr. Croc stays by him, listening, while his window's open - however long - and he stays too;
+## the window closed, both go about the camp again. User request ("有時候只露出頭部，其餘部分沉在水裡"):
+## now and then he lies in the lake as a crocodile does, only his head out of the water - tapped
+## there, he wades out to talk.
+func test_croc_waits_and_soaks() -> void:
+	var keep := [Profile.campaign.duplicate(true), Profile.records.duplicate(true), Profile.achievements.duplicate(true),
+		Profile.croc.duplicate(true), CrocQuests.here_roll]
+	reset_progress()
+	Profile.croc = {"done": 0, "quests": [], "serial": 0}
+	Profile.record_level("1-1", [true, false, false], 100.0)
+	CrocQuests.here_roll = 1
+	var title: TitleScreen = load("res://scenes/title_screen.tscn").instantiate()
+	get_tree().root.add_child(title)
+	await frames(3)
+	var camp: CampStage = title.find_child("Camp", true, false)
+	var croc: CampCroc = camp.croc if camp != null else null
+	check(croc != null, "Mr. Croc on the shore")
+	if croc != null:
+		croc.soak_chance = 0.0
+		# Over to him, his window up.
+		camp.life.act_on("croc", 0, func(): title._croc_talk())
+		var talk: CrocTalk = null
+		for _i in 900:
+			var open := title.find_children("*", "CrocTalk", true, false)
+			if not open.is_empty():
+				talk = open[0]
+				break
+			await frames(1)
+		check(talk != null and croc.held and croc.visitor != null, "over to him: his window open, he's held")
+		# (long past the traveller's own rest between things, and past his timeout)
+		croc._visit_time = CampCroc.VISIT_TIMEOUT + 1.0
+		var stood: Vector3 = camp.character_pivot.global_position
+		await seconds(12.0)
+		check(croc.visitor != null and camp.character_pivot.global_position.distance_to(stood) < 0.15
+			and camp.life._step.get("do", "") == "until",
+			"his window still open: the traveller stays by him (%.2f m off), and he stays" % camp.character_pivot.global_position.distance_to(stood))
+		if talk != null:
+			talk.queue_free()
+		await frames(3)
+		check(croc.visitor == null and not croc.held and camp.life._step.get("do", "") != "until", "the window closed: both go on about the camp")
+		# Into the lake: wading out, sinking as it deepens - lying there, only his head out of the water.
+		await seconds(1.0)
+		croc._wade_out()
+		for _i in 900:
+			if croc.soak == 2:
+				break
+			await frames(1)
+		await seconds(1.0)
+		var head := croc.head_point().y
+		var chest := (croc.rig.skeleton.global_transform * croc.rig.skeleton.get_bone_global_pose(croc.rig.skeleton.find_bone("Spine02") if croc.rig.skeleton.find_bone("Spine02") >= 0 else 0)).origin.y
+		check(croc.soak == 2 and camp._in_lake(croc.global_position, -0.5) and head > CampCroc.WATER_TOP - 0.02 and head < CampCroc.WATER_TOP + 0.3
+			and chest < CampCroc.WATER_TOP and croc.global_position.y < -0.5,
+			"lying in the lake: his head at the water (%.2f m), the rest under it (chest %.2f, feet %.2f)" % [head, chest, croc.global_position.y])
+		# (where he's tapped: his head, all that's out)
+		var spot: Vector3 = camp.hotspots.croc.parts[0][1]
+		check(spot.distance_to(croc.head_point()) < 0.05, "tapped at his head")
+		# Tapped there: he wades out to the shore he went in from, and talks there.
+		var land := croc.land_point()
+		camp.life.act_on("croc", 0, func(): title._croc_talk())
+		for _i in 900:
+			if croc.soak == 0 and not title.find_children("*", "CrocTalk", true, false).is_empty():
+				break
+			await frames(1)
+		check(croc.soak == 0 and croc.global_position.distance_to(land) < 0.05 and absf(croc.global_position.y) < 0.01
+			and croc.visitor != null, "tapped in the lake: he wades out and talks on the shore")
+		for t in title.find_children("*", "CrocTalk", true, false):
+			t.queue_free()
+		await frames(3)
+	title.queue_free()
+	await frames(2)
+	Campaign.dev_all_open = true
+	Profile.campaign = keep[0]
+	Profile.records = keep[1]
+	Profile.achievements = keep[2]
+	Profile.croc = keep[3]
+	CrocQuests.here_roll = keep[4]
+
+
+## User report ("今天做的地圖我目前都無法測試"): the ruined human world's six maps in the free night's
+## window too, on a page of their own - each with its card - and one picked goes out on that map.
+func test_free_ruin_maps() -> void:
+	var chooser := DepartChooser.open(self)
+	chooser.show_step("maps")
+	await frames(2)
+	check(chooser.world == 0 and chooser.find_child("Map_coast", true, false) != null and chooser.find_child("Map_city", true, false) == null,
+		"first, the lake's journey's six maps")
+	var tab := chooser.find_child("World_1", true, false) as Button
+	check(tab != null, "a page for the ruins")
+	if tab == null:
+		chooser.queue_free()
+		return
+	tab.pressed.emit()
+	await frames(2)
+	var found := 0
+	for m in DepartChooser.RUIN_MAPS:
+		var card := chooser.find_child("Map_" + str(m[0]), true, false)
+		if card != null and load(DepartChooser.ART + str(m[2]) + ".png") != null:
+			found += 1
+	var go := chooser.find_child("GoFree", true, false) as Button
+	var fits := go != null and go.get_global_rect().end.y <= chooser.get_viewport_rect().size.y + 0.5
+	check(found == 6 and _map_rows_width_of(chooser, DepartChooser.RUIN_MAPS) < 900.0 and fits,
+		"the ruins' page: the city, the countryside, the Japanese, English and Chinese villages and the adobe village, each its card, all on screen (%d)" % found)
+	(chooser.find_child("Map_adobe", true, false) as Button).pressed.emit()
+	await frames(2)
+	var branches := chooser.find_child("Branches", true, false)
+	check(chooser.map_theme == "adobe" and chooser.world == 1 and (chooser.find_child("GoFree", true, false) as Button).text.contains("土屋聚落")
+		and branches != null and branches.find_child("Branch_12-1", true, false) != null, "the adobe village picked, its branches under it")
+	chooser.queue_free()
+	await frames(2)
+	# Out on it: the adobe village's own map.
+	seed(7)
+	camp().clear()
+	gs.reset_run()
+	gs.last_return = ""
+	camp().begin_free([], "adobe")
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	await frames(3)
+	main = get_tree().current_scene
+	gs.start_run()
+	await frames(3)
+	check(MapGenerator.current_theme == "adobe", "out on the adobe village's map (%s)" % MapGenerator.current_theme)
+	camp().clear()
+
+
+## The widest of the depart window's rows of `maps`' cards (px) - 9999 if one has no card.
+func _map_rows_width_of(chooser: DepartChooser, maps: Array) -> float:
+	var widest := 0.0
+	for row in chooser.find_children("MapRow*", "HBoxContainer", true, false):
+		var w := 0.0
+		for c in (row as HBoxContainer).get_children():
+			w += (c as Control).size.x
+		widest = maxf(widest, w)
+	for m in maps:
+		if chooser.find_child("Map_" + str(m[0]), true, false) == null:
+			return 9999.0
+	return widest
 
 
 ## User request: Mr. Croc's errands taken listed down the left on a run too - how many handed over,
