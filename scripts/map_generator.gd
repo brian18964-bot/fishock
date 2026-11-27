@@ -77,8 +77,8 @@ const SECOND_DOCK_CHANCE := 0.5
 const DOCK_SHORE_MARGIN := 60.0
 const DOCK_STAIRS_CHANCE := 0.5
 const DOCK_BOAT_CHANCE := 0.4
-## User request: "可以走上去的橋" - one bridge over a pond on the villages' maps (a style's "bridge":
-## how it's built). The water it crosses (px, bank to bank - a pond's waist, or across a small one;
+## User request: "可以走上去的橋" - bridges over the ponds on the villages' maps (a style's "bridge":
+## how they're built; user decision: none on the forest, autumn and other maps that aren't villages). The water it crosses (px, bank to bank - a pond's waist, or across a small one;
 ## the longest with the ponds on a bigger map, up to BRIDGE_SPAN_GROW times), how far each end
 ## reaches up onto the bank (px), its walkable half width (px), how many crossings are tried on each
 ## pond; and how far into the water its middle must be against half its span (more a waist than a
@@ -89,6 +89,8 @@ const BRIDGE_LAND := 34.0
 const BRIDGE_HALF_WIDTH := 26.0
 const BRIDGE_TRIES := 80
 const BRIDGE_WAIST := 0.5
+## (the most on one map: one a base map's area - a small map one, a big one three)
+const BRIDGE_MOST := 3
 
 const GROUND_COVER_SCENE := preload("res://scenes/ground_cover.tscn")
 const GROUND_SHADER := preload("res://shaders/ground.gdshader")
@@ -838,45 +840,50 @@ func _place_docks() -> void:
 ## waist's (BRIDGE_WAIST), its deck's whole width is over that one pond's water between the banks,
 ## and both banks are open dry land inside the map, clear of the dock and the village laid out
 ## before it (_bridge_fits). The narrowest such crossing gets the bridge (the most natural place for
-## one); none if there's none - no bridge then.
+## one); none if there's none - no bridge then. A bigger map gets more, each on a pond of its own.
 func _place_bridges() -> void:
 	var style := str(theme.get("bridge", ""))
 	if style == "":
 		return
-	var best := []  # [span, from, to]
+	# (user decision: more than one to a map is fine - one a base map's area, never two on one pond)
+	var count := clampi(roundi(Campaign.area_share()), 1, BRIDGE_MOST)
 	var longest := BRIDGE_SPAN.y * clampf(_pond_scale(), 1.0, BRIDGE_SPAN_GROW)
-	for zone in water_zones:
-		if zone.is_rare():
-			continue
-		for _try in BRIDGE_TRIES:
-			var c: Vector2 = zone.random_point(12.0)
-			var d: Vector2 = [Vector2.RIGHT, Vector2.DOWN].pick_random()
-			var a := _water_end(zone, c, -d)
-			var b := _water_end(zone, c, d)
-			var span := a.distance_to(b)
-			if span < BRIDGE_SPAN.x or span > longest:
+	var bridged := []
+	for _n in count:
+		var best := []  # [span, from, to, zone]
+		for zone in water_zones:
+			if zone.is_rare() or zone in bridged:
 				continue
-			if not best.is_empty() and span >= float(best[0]):
-				continue
-			if zone.depth((a + b) * 0.5) < span * 0.5 * BRIDGE_WAIST:
-				continue
-			var from := a - d * BRIDGE_LAND
-			var to := b + d * BRIDGE_LAND
-			if _bridge_fits(zone, a, b, from, to, d):
-				best = [span, from, to]
-	if best.is_empty():
-		return
-	var from: Vector2 = best[1]
-	var to: Vector2 = best[2]
-	var dir := (to - from).normalized()
-	var bridge: Dock = DOCK_SCENE.instantiate()
-	bridge.setup_bridge(from, to, BRIDGE_HALF_WIDTH, style)
-	# On and off at either end only - rails along both sides.
-	bridge.add_walls([dir, -dir])
-	_add_entrance(bridge.walk_rect, dir)
-	_add_entrance(bridge.walk_rect, -dir)
-	get_parent().add_child.call_deferred(bridge)
-	_walk_rects.append(bridge.walk_rect)
+			for _try in BRIDGE_TRIES:
+				var c: Vector2 = zone.random_point(12.0)
+				var d: Vector2 = [Vector2.RIGHT, Vector2.DOWN].pick_random()
+				var a := _water_end(zone, c, -d)
+				var b := _water_end(zone, c, d)
+				var span := a.distance_to(b)
+				if span < BRIDGE_SPAN.x or span > longest:
+					continue
+				if not best.is_empty() and span >= float(best[0]):
+					continue
+				if zone.depth((a + b) * 0.5) < span * 0.5 * BRIDGE_WAIST:
+					continue
+				var from := a - d * BRIDGE_LAND
+				var to := b + d * BRIDGE_LAND
+				if _bridge_fits(zone, a, b, from, to, d):
+					best = [span, from, to, zone]
+		if best.is_empty():
+			return
+		var from: Vector2 = best[1]
+		var to: Vector2 = best[2]
+		bridged.append(best[3])
+		var dir := (to - from).normalized()
+		var bridge: Dock = DOCK_SCENE.instantiate()
+		bridge.setup_bridge(from, to, BRIDGE_HALF_WIDTH, style)
+		# On and off at either end only - rails along both sides.
+		bridge.add_walls([dir, -dir])
+		_add_entrance(bridge.walk_rect, dir)
+		_add_entrance(bridge.walk_rect, -dir)
+		get_parent().add_child.call_deferred(bridge)
+		_walk_rects.append(bridge.walk_rect)
 
 
 ## Where a line from `c` (in `zone`'s water) along `dir` reaches the bank: the last point in it.

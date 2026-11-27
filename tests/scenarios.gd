@@ -167,6 +167,7 @@ const TESTS := [
 	"test_japan_and_england_maps",
 	"test_farm_animals",
 	"test_bridges",
+	"test_field_maples",
 	"test_bag_card_closes",
 	"test_altar_this_run_only",
 	"test_locks",
@@ -13979,6 +13980,7 @@ func test_bridges() -> void:
 	Campaign.dev_all_open = true
 	var maps := 0
 	var bridged := 0
+	var several := 0
 	var bad := []
 	for chapter in range(8, 13):
 		for branch in range(1, 6):
@@ -13993,10 +13995,23 @@ func test_bridges() -> void:
 			var gen = main.get_node("MapGenerator")
 			var p := player()
 			var walkways := get_tree().get_nodes_in_group("walkways")
+			# (user decision: more than one to a map - one a base map's area, at most three, each on a
+			# pond of its own)
+			var bridges := walkways.filter(func(w): return (w as Dock).bridge != "")
+			if not bridges.is_empty():
+				bridged += 1
+			if bridges.size() > 1:
+				several += 1
+			var ponds := {}
+			for w: Dock in bridges:
+				for z in get_tree().get_nodes_in_group("water_zones_common"):
+					if z.contains(w.position):
+						ponds[z] = int(ponds.get(z, 0)) + 1
+			if bridges.size() > clampi(roundi(Campaign.area_share()), 1, MapGenerator.BRIDGE_MOST) or ponds.values().any(func(n): return n > 1):
+				bad.append([id, "%d bridges on %d ponds" % [bridges.size(), ponds.size()]])
 			for w: Dock in walkways:
 				if w.bridge == "":
 					continue
-				bridged += 1
 				var a: Vector2 = w.bridge_ends[0]
 				var b: Vector2 = w.bridge_ends[1]
 				var d := (b - a).normalized()
@@ -14022,7 +14037,8 @@ func test_bridges() -> void:
 						why.append("on a dock")
 				if not why.is_empty():
 					bad.append([id, why])
-	check(bad.is_empty() and bridged * 10 >= maps * 7, "a bridge on %d of %d village maps, each well laid %s" % [bridged, maps, str(bad)])
+	check(bad.is_empty() and bridged * 10 >= maps * 7 and several >= 3,
+		"bridges on %d of %d village maps (%d with more than one), each well laid %s" % [bridged, maps, several, str(bad)])
 	# Walked over with the keys: up its arch and down again to the far bank; pushed at its side in the
 	# middle, still on it.
 	seed(5)
@@ -14062,6 +14078,38 @@ func test_bridges() -> void:
 	await frames(90)
 	key(side, false)
 	check(bridge.walk_rect.has_point(p.global_position + Player.FEET), "not off its side - its rails hold")
+
+
+func test_field_maples() -> void:
+	# User request ("歐洲田野"): the user's European field maples made ours (tools/make_village_trees.py)
+	# - one in summer leaf, two turning - growing in the countryside and the English village: each
+	# model with its bark and its leaves (cut out), its lowest leaves over the big ghost's head however
+	# small it's drawn, its trunk and reach known; and on a real map, there.
+	var kinds := ["fmaple_a", "rmaple_a", "rmaple_b"]
+	for k: String in kinds:
+		var mi := CampModel.make(k)
+		var ok := mi != null and mi.mesh.get_surface_count() == 2 and MapTree.KINDS.has(k) and MapTree.CANOPY.has(k) \
+			and MapTree.SCALE_OF.has(k)
+		var lowest := INF
+		var cut := false
+		if ok:
+			for i in 2:
+				var mat := mi.get_surface_override_material(i) as StandardMaterial3D
+				if mat != null and mat.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR:
+					cut = mat.albedo_texture != null
+					for v: Vector3 in mi.mesh.surface_get_arrays(i)[Mesh.ARRAY_VERTEX]:
+						lowest = minf(lowest, v.y)
+			mi.free()
+		var low_drawn := lowest * float((MapTree.SCALE_OF[k] as Vector2).x) if ok else 0.0
+		check(ok and cut and low_drawn > 2.3, "%s: bark and cut-out leaves, lowest leaf %.2f m at its smallest" % [k, low_drawn])
+	check(kinds.all(func(k): return k in MapTree.kinds_for("countryside") and k in MapTree.kinds_for("england")),
+		"the countryside and the English village grow them")
+	Campaign.dev_all_open = true
+	seed(4)
+	await play_level("10-3")
+	await frames(4)
+	var grown := get_tree().get_nodes_in_group("trees").filter(func(t): return str(t.kind) in kinds)
+	check(grown.size() >= 2, "10-3: field maples about (%d)" % grown.size())
 
 
 func test_farm_animals() -> void:

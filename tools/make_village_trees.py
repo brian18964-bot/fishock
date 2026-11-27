@@ -21,6 +21,16 @@ pictures <family>_bark.png and <family>_leaves.png made here too.
 
 writes assets/models/camp/<kind>.glb and the families' pictures, and prints each tree's trunk radius at
 the ground, its reach and its lowest leaf (for MapTree.KINDS, CANOPY).
+
+User request ("歐洲田野" - the European field maples, EU01_AcerCampestre_FBX.zip): the same for the
+field maples, one tree to a file (FILES), given their folder instead:
+
+  bpyenv/bin/python tools/make_village_trees.py -- EU01_AcerCampestre_FBX
+
+Their trees stand on an empty, their trunks' feet off the origin and above the ground (each tree's
+foot: its bark's lowest point); their leaves' clear parts are a picture of their own (the "Alpha"
+one), put into the spray's leaves; each of their leaf meshes one kind of leaf - summer's (Leaf01-03)
+or autumn's (Leaf04-07) - and a kind keeps only its family's.
 """
 import math
 import os
@@ -45,7 +55,14 @@ TREES = {
     "maple_a": ("Red_Maple", "maple_tree", 9.0, 3000, 13, False),
     "gmaple_a": ("Green_Maple", "green_maple_tree", 9.0, 3000, 17, False),
     "birch_a": ("White_Birch", "birch_tree", 11.0, 2800, 19, False),
+    # (the field maples: a green one in summer leaf; two turning red and gold)
+    "fmaple_a": ("FBX_EU01_AcerCampestre_5", "field_maple_tree", 8.0, 2600, 23, False),
+    "rmaple_a": ("FBX_EU01_AcerCampestre_4", "field_maple_red_tree", 10.0, 1700, 29, False),
+    "rmaple_b": ("FBX_EU01_AcerCampestre_3", "field_maple_red_tree", 9.0, 1600, 31, True),
 }
+# (the field maples' files, in the folder given)
+FILES = {"fmaple_a": "FBX_EU01_AcerCampestre_5.fbx", "rmaple_a": "FBX_EU01_AcerCampestre_4.fbx",
+         "rmaple_b": "FBX_EU01_AcerCampestre_3.fbx"}
 # Each family's leaves: which of the pack's leaf pictures go into its spray (by the pack's material),
 # how many stamps a card, the stamps' size (share of the card), whether they hang; its tone (a tint
 # over the pack's, how much less saturated).
@@ -60,6 +77,10 @@ SPRAYS = {
                          "tint": (0.94, 1.0, 0.9), "grey": 0.12},
     "birch_tree": {"mats": ["LeavesCherry"], "stamps": 16, "size": (0.22, 0.34), "droop": False,
                    "tint": (0.96, 1.0, 0.88), "grey": 0.1},
+    "field_maple_tree": {"mats": ["Leaf01", "Leaf02", "Leaf03"], "stamps": 16, "size": (0.24, 0.36), "droop": False,
+                         "tint": (0.95, 1.0, 0.9), "grey": 0.12},
+    "field_maple_red_tree": {"mats": ["Leaf04", "Leaf05", "Leaf06", "Leaf07"], "stamps": 16, "size": (0.24, 0.36), "droop": False,
+                             "tint": (1.0, 0.94, 0.88), "grey": 0.1},
 }
 TWIG_SPAN = 1.6
 TRUNK_ROOM = 0.9
@@ -69,6 +90,13 @@ LONG_SPAN = 3.0
 # far too thick as tubes)
 BOUGH_GIRTH = 0.02
 BOUGHS = {"willow_tree": (1.8, 0.25)}
+# (the field maples stand on a flare of roots - a dozen short pieces from the ground up into the
+# trunk's foot, which read as spindly legs once made tubes: they go, and the trunk is carried down to
+# the ground, ROOT_FLARE times as thick there; a root: a piece lower than the trunk's foot, ending
+# no more than ROOT_OVER m above it)
+FLARED = {"field_maple_tree", "field_maple_red_tree"}
+ROOT_OVER = 0.6
+ROOT_FLARE = 1.4
 LONG_SEGS = 5
 LONG_SIDES = 6
 SHORT_SEGS = 2
@@ -84,11 +112,11 @@ LOWEST = 2.6
 _made_pictures = set()
 
 
-def clear_and_load():
+def clear_and_load(kind):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     import io_scene_fbx.import_fbx as fi
     fi.blen_read_light = lambda tmpl, obj, settings: bpy.data.lights.new(name="Light", type="POINT")
-    bpy.ops.import_scene.fbx(filepath=SRC)
+    bpy.ops.import_scene.fbx(filepath=os.path.join(SRC, FILES[kind]) if os.path.isdir(SRC) else SRC)
     bpy.context.view_layer.update()
 
 
@@ -99,12 +127,26 @@ def pixels(img):
     return px.reshape(h, w, 4)
 
 
-def base_picture(m):
-    """The picture feeding a material's base colour."""
+def base_picture(m, socket="Base Color"):
+    """The picture feeding a material's base colour (or another of its inputs)."""
     for n in m.node_tree.nodes:
-        if n.type == "TEX_IMAGE" and n.image and any(l.to_socket.name == "Base Color" for l in n.outputs[0].links):
+        if n.type == "TEX_IMAGE" and n.image and any(l.to_socket.name == socket for l in n.outputs[0].links):
             return n.image
     return None
+
+
+def leaf_pixels(m):
+    """A leaf material's picture with its clear parts: its own alpha, or (the field maples') the
+    picture feeding its "Alpha" - its grey put in as the alpha."""
+    img = base_picture(m)
+    a = pixels(img).copy()
+    clear = base_picture(m, "Alpha")
+    if clear is not None:
+        clear = clear.copy()
+        clear.scale(img.size[0], img.size[1])
+        a[..., 3] = pixels(clear)[..., 0]
+        bpy.data.images.remove(clear)
+    return a
 
 
 def save_rgba(arr, path):
@@ -168,14 +210,25 @@ def thin(obj, most):
             break
 
 
+def used_materials(o):
+    """The names of the materials a mesh's faces use (a field maple's meshes list every material)."""
+    me = o.data
+    return {me.materials[i].name for i in {p.material_index for p in me.polygons} if me.materials[i]}
+
+
 def tree(kind):
     src, family, high, cards, seed, mirrored = TREES[kind]
     print("tree", kind, flush=True)
-    clear_and_load()
+    clear_and_load(kind)
     print("  loaded", flush=True)
     root = bpy.data.objects[src]
     origin = root.matrix_world.translation.copy()
-    parts = [root] + [o for o in bpy.data.objects if o.parent is root and o.type == "MESH"]
+    kids = [o for o in bpy.data.objects if o.parent is root and o.type == "MESH"]
+    # (the pack's trees are their bark, their leaves its children; a field maple an empty, its bark
+    # and its leaves its children)
+    on_empty = root.type != "MESH"
+    bark = [o for o in kids if o.name.startswith("Bark")][0] if on_empty else root
+    parts = [bark] + [o for o in kids if o is not bark]
     spec = SPRAYS[family]
     # (the family's pictures, once: the spray from the pack's leaves, the bark toned)
     if family not in _made_pictures:
@@ -185,9 +238,9 @@ def tree(kind):
                 if m and any(m.name.startswith(k) for k in spec["mats"]):
                     img = base_picture(m)
                     if img is not None and all(img.name != l[0] for l in leaves):
-                        leaves.append((img.name, pixels(img).copy()))
+                        leaves.append((img.name, leaf_pixels(m)))
         spray_picture(family, [l[1] for l in leaves])
-        bark_picture(family, base_picture(root.data.materials[0]))
+        bark_picture(family, base_picture(bark.data.materials[0]))
         _made_pictures.add(family)
     for o in list(bpy.context.scene.objects):
         if o not in parts:
@@ -199,11 +252,10 @@ def tree(kind):
     bpy.ops.object.select_all(action="DESELECT")
     for o in parts:
         o.select_set(True)
-    bpy.context.view_layer.objects.active = root
+    bpy.context.view_layer.objects.active = bark
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     # The bark alone, thinned; the leaves' cards (one object), a share of them kept.
-    bark = root
-    leaf_objs = [o for o in parts[1:] if spec["mats"] and any(m and any(m.name.startswith(k) for k in spec["mats"]) for m in o.data.materials)]
+    leaf_objs = [o for o in parts[1:] if any(any(n.startswith(k) for k in spec["mats"]) for n in used_materials(o))]
     for o in parts[1:]:
         if o not in leaf_objs:
             bpy.data.objects.remove(o)
@@ -214,10 +266,16 @@ def tree(kind):
     if len(leaf_objs) > 1:
         bpy.ops.object.join()
     leaf = bpy.context.view_layer.objects.active
-    # (the trunk's foot: the pack's tree's own origin - its place, on the ground; scaled to its height)
+    # (the trunk's foot: the pack's tree's own origin - its place, on the ground; a field maple's its
+    # bark's lowest point, the middle of the trunk there; scaled to its height)
     pts = np.array([v.co[:] for v in bark.data.vertices])
-    mid = Vector((origin.x, origin.y, 0.0))
-    top = max(pts[:, 2].max(), max(v.co.z for v in leaf.data.vertices))
+    if not on_empty:
+        mid = Vector((origin.x, origin.y, 0.0))
+    else:
+        low = pts[:, 2].min()
+        foot = pts[pts[:, 2] < low + 0.08]
+        mid = Vector((float(foot[:, 0].mean()), float(foot[:, 1].mean()), float(low)))
+    top = max(pts[:, 2].max(), max(v.co.z for v in leaf.data.vertices)) - mid.z
     k = high / top
     for o in (bark, leaf):
         for v in o.data.vertices:
@@ -284,10 +342,32 @@ def rebuild_bark(bark, family):
     order = np.argsort(roots)
     cuts = np.flatnonzero(np.diff(roots[order])) + 1
     groups = np.split(order, cuts)
+    # (a flared tree's roots, and its trunk - the lowest piece above them standing at its foot)
+    flared = family in FLARED
+    gone = set()
+    stem = -1
+    if flared:
+        # (the trunk's foot: the biggest piece standing at the tree's foot in its lower half - the
+        # roots are many smaller ones; the roots: whatever lies lower and ends there)
+        tall = float(pts_all[:, 2].max())
+        most = 0
+        for i, idx in enumerate(groups):
+            pts = pts_all[idx]
+            span = float(np.linalg.norm(pts.max(0) - pts.min(0)))
+            if span >= TWIG_SPAN and pts[:, 2].min() < tall * 0.5 and len(idx) > most \
+                    and float(np.hypot(*pts[np.argmin(pts[:, 2])][:2])) < TRUNK_ROOM:
+                most, stem = len(idx), i
+        stem_low = float(pts_all[groups[stem]][:, 2].min()) if stem >= 0 else 0.0
+        for i, idx in enumerate(groups):
+            pts = pts_all[idx]
+            if i != stem and pts[:, 2].min() < stem_low and pts[:, 2].max() < stem_low + ROOT_OVER:
+                gone.add(i)
     bm = bmesh.new()
     uv = bm.loops.layers.uv.new("UVMap")
     made = 0
-    for idx in groups:
+    for i, idx in enumerate(groups):
+        if i in gone:
+            continue
         pts = pts_all[idx]
         span = float(np.linalg.norm(pts.max(0) - pts.min(0)))
         if span < TWIG_SPAN:
@@ -297,7 +377,7 @@ def rebuild_bark(bark, family):
             continue
         # (the trunk: the piece standing on the ground at the tree's foot - its girth as it is; the
         # rest each as slim as the tree's kind has them, never thicker than its length allows)
-        trunk = low < 0.3 and float(np.hypot(*pts[np.argmin(pts[:, 2])][:2])) < TRUNK_ROOM
+        trunk = i == stem if flared else low < 0.3 and float(np.hypot(*pts[np.argmin(pts[:, 2])][:2])) < TRUNK_ROOM
         c = pts.mean(0)
         w, vecs = np.linalg.eigh(np.cov((pts - c).T))
         axis = vecs[:, -1]
@@ -320,6 +400,11 @@ def rebuild_bark(bark, family):
             if not trunk:
                 r = min(r * slim, BOUGH_GIRTH * span + 0.02)
             rings.append((mid, max(r, 0.015)))
+        if trunk and flared and rings[0][0][2] > 0.02:
+            # (carried down to the ground where its roots were, wider at the foot)
+            foot = rings[0][0].copy()
+            foot[2] = 0.0
+            rings.insert(0, (foot, rings[0][1] * ROOT_FLARE))
         # (the frame round the tube's axis)
         ref = np.array([0.0, 0.0, 1.0]) if abs(axis[2]) < 0.9 else np.array([1.0, 0.0, 0.0])
         u = np.cross(axis, ref)
@@ -331,7 +416,7 @@ def rebuild_bark(bark, family):
                           for a in [j / sides * math.tau for j in range(sides)]])
         girth = max(sum(r for _m, r in rings) / len(rings) * math.tau, 0.05)
         along = 0.0
-        for k in range(segs):
+        for k in range(len(rings) - 1):
             step = float(np.linalg.norm(rings[k + 1][0] - rings[k][0]))
             for j in range(sides):
                 f = bm.faces.new((verts[k][j], verts[k][(j + 1) % sides], verts[k + 1][(j + 1) % sides], verts[k + 1][j]))
@@ -438,5 +523,8 @@ def measure(kind, o):
 
 for kind in TREES:
     if ONLY and kind not in ONLY:
+        continue
+    # (a folder: the field maples', one file each; a file: the pack's)
+    if (kind in FILES) != os.path.isdir(SRC):
         continue
     tree(kind)

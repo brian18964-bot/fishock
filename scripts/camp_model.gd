@@ -15,7 +15,7 @@ const DIR := "res://assets/models/camp/"
 ## village's cherry and red maples, the English village's birch.
 const TREE_FAMILY := {"pine": "pine", "dead": "dead_tree", "twisted": "twisted_tree", "autumn": "autumn_tree",
 	"palm": "palm", "coco": "coco_palm", "willow": "willow_tree", "cherry": "cherry_tree", "maple": "maple_tree",
-	"gmaple": "green_maple_tree", "birch": "birch_tree"}
+	"gmaple": "green_maple_tree", "birch": "birch_tree", "fmaple": "field_maple_tree", "rmaple": "field_maple_red_tree"}
 ## Tree families whose leaves are another's picture (user request: the dead trees' variants with
 ## the autumn trees' turned leaves - tools/make_dead_variants.py).
 const SHARED_LEAVES := {"dead_tree": "autumn_tree"}
