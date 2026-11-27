@@ -65,6 +65,20 @@ const ANIMALS := {
 }
 ## An animal's foot swinging less than this (m) isn't stepping.
 const SWING_M := 0.02
+## User request ("角色有靠近水邊並踩到水，角色再走回地面要有明顯的水漬腳印，再慢慢變淡，走一定距離後，水漬
+## 腳印就不需要呈現，模擬腳被沾濕後的真實情況"): feet that have been in the water leave wet prints on the
+## ground after them - dark with the water, as wet as the feet still are: wet through where a foot
+## came down in the water (`in_water`), drier with every metre walked after (WET_DIST m and they
+## leave none; under WET_LEAST, none either), and each print drying away where it lies (whole
+## WET_PRINT_HOLD s, gone over WET_PRINT_FADE s). On ground that keeps no print of its own - grass,
+## earth, a deck or a bridge (`stain_only`) - these are all the prints there are; in the sand they're
+## the damp sand's own, crisp and dark. Where they're all the prints, each one walking keeps
+## WET_PER_WALKER of them (a wet trail's whole length); on the snow and the sand, PER_WALKER as ever.
+const WET_DIST := 9.0
+const WET_LEAST := 0.12
+const WET_PRINT_HOLD := 8.0
+const WET_PRINT_FADE := 35.0
+const WET_PER_WALKER := 24
 
 static var _soles: Dictionary = {}
 
@@ -80,6 +94,17 @@ var wet: Callable
 var washed: Callable
 var hold := HOLD
 var fade := FADE
+## (wet prints only - the ground keeps no print of its own; and whether a foot coming down is in the
+## water - Callable: Vector3 -> bool)
+var stain_only := false
+var in_water: Callable
+## How wet the traveller's feet are now (1 just out of the water .. 0 dry), and how far they've
+## walked since (m).
+var feet_wet := 0.0
+var dry_walk := 0.0
+var _last_step := Vector3.INF
+## (a foot just came down in the water - the 3D view's ripple)
+signal splashed(at: Vector3)
 ## A print made: where, and how fast its maker was going (m/s) - the desert kicks up a little sand.
 signal printed(at: Vector3, speed: float)
 ## (the player's feet, wherever they are - open ground or not: the wading's, SurfWade) a foot has
@@ -109,8 +134,9 @@ var _landing := {"_l": false, "_r": false}
 var _last_h := {"_l": 0.0, "_r": 0.0}
 ## Prints of each foot (for tests: the feet take turns).
 var steps := {"_l": 0, "_r": 0}
-## Prints made (all time), for tests.
+## Prints made (all time), and of them by wet feet, for tests.
 var made := 0
+var wet_made := 0
 ## Whose each print is (a walker's key: "player" or an animal's instance id), and each walker's
 ## prints, oldest first (PER_WALKER).
 var _owner_of := []
@@ -125,6 +151,9 @@ func _ready() -> void:
 	if sand:
 		hold = SAND_HOLD
 		fade = SAND_FADE
+	if stain_only:
+		hold = WET_PRINT_HOLD
+		fade = WET_PRINT_FADE
 	_mm = MultiMesh.new()
 	_mm.transform_format = MultiMesh.TRANSFORM_3D
 	_mm.use_custom_data = true
@@ -135,6 +164,7 @@ func _ready() -> void:
 	_mat.set_shader_parameter("soles", load(SOLES_PNG))
 	_mat.set_shader_parameter("rows", float(ROWS))
 	_mat.set_shader_parameter("sand", sand)
+	_mat.set_shader_parameter("stain", stain_only)
 	quad.material = _mat
 	_mm.mesh = quad
 	_mm.instance_count = MAX
@@ -218,13 +248,32 @@ func feel(skel: Skeleton3D, ground: Callable, open: Callable, speed: float) -> v
 				_landing[side] = false
 				var along := Vector2(toe.x - ankle.x, toe.z - ankle.z)
 				if along.length() > 0.0001:
-					landed.emit(side, Vector3(ankle.x, floor_y, ankle.z), along.normalized(), speed)
-					if open.call(ankle):
-						_print_foot(sole, side, Vector3(ankle.x, floor_y + LIFT_Y, ankle.z), along.normalized(), length, speed, ground)
+					var foot_at := Vector3(ankle.x, floor_y, ankle.z)
+					landed.emit(side, foot_at, along.normalized(), speed)
+					if in_water.is_valid() and bool(in_water.call(foot_at)):
+						# (in the water: the feet wet through)
+						feet_wet = 1.0
+						dry_walk = 0.0
+						_last_step = foot_at
+						splashed.emit(foot_at)
+					else:
+						_walk_dry(foot_at)
+						if open.call(ankle) and (not stain_only or feet_wet > 0.0):
+							_print_foot(sole, side, Vector3(ankle.x, floor_y + LIFT_Y, ankle.z), along.normalized(), length, speed, ground)
 		elif h < lo + DOWN * swing:
 			_down[side] = true
 			_landing[side] = true
 	_at += 1
+
+
+## A step on land (a foot down at `at`): the feet drier by the way walked since the last.
+func _walk_dry(at: Vector3) -> void:
+	if _last_step.is_finite():
+		dry_walk += Vector2(at.x - _last_step.x, at.z - _last_step.z).length()
+	_last_step = at
+	feet_wet = clampf(1.0 - dry_walk / WET_DIST, 0.0, 1.0)
+	if feet_wet < WET_LEAST:
+		feet_wet = 0.0
 
 
 ## A print of foot `side` (its ankle at `at`, pointing `fwd` - x, z) `length` long.
@@ -254,9 +303,22 @@ func _print_foot(sole: Dictionary, side: String, at: Vector3, fwd: Vector2, leng
 	if sand:
 		# (a print in dry sand spreads wider than the foot - the sand slides in round it)
 		basis = basis.scaled_local(Vector3(1.3, 1.0, 1.15))
+	elif stain_only:
+		# (a wet print spreads wider than the foot - the water runs out round it)
+		basis = basis.scaled_local(Vector3(1.4, 1.0, 1.3))
+	if stain_only:
+		# (a wet print: as wet as the feet are - the shader's darkness)
+		_deep[i] = feet_wet
 	_mm.set_instance_transform(i, Transform3D(_on_slope(basis, centre, ground), centre))
 	_mm.set_instance_custom_data(i, Color(1.0, _cell[i].x, _cell[i].y, _deep[i]))
-	_claim(i, "player")
+	if feet_wet > 0.0:
+		wet_made += 1
+	# (on the snow and the sand a wet print is one of the walker's last PER_WALKER as any is; where
+	# the ground keeps no print of its own, a wet trail its own WET_PER_WALKER)
+	if stain_only:
+		_claim(i, "player_wet", WET_PER_WALKER)
+	else:
+		_claim(i, "player")
 	made += 1
 	steps[side] += 1
 	printed.emit(centre, speed)
@@ -272,12 +334,16 @@ func _sand_depth(i: int, at: Vector3, deep: float) -> float:
 	if wet.is_valid() and bool(wet.call(at)):
 		_rate[i] = 1.0 / WET_HOLD
 		return -maxf(deep, 0.05)
+	if feet_wet > 0.0:
+		# (wet feet on the dry sand: damp prints, the drier the feet the lighter)
+		_rate[i] = 1.0 / WET_HOLD
+		return -maxf(deep * (0.45 + 0.55 * feet_wet), 0.05)
 	return deep * 0.8
 
 
 ## (the sand's) a print's flat quad laid along the ground's slope under it - a dune's side.
 func _on_slope(basis: Basis, at: Vector3, ground: Callable) -> Basis:
-	if not sand or not ground.is_valid():
+	if not (sand or stain_only) or not ground.is_valid():
 		return basis
 	var e := 0.25
 	var hx: float = float(ground.call(at + Vector3(e, 0, 0))) - float(ground.call(at - Vector3(e, 0, 0)))
@@ -289,8 +355,8 @@ func _on_slope(basis: Basis, at: Vector3, ground: Callable) -> Basis:
 	return Basis(q) * basis
 
 
-## Print `i` is `key`'s now: the walker's oldest past PER_WALKER fades out.
-func _claim(i: int, key) -> void:
+## Print `i` is `key`'s now: the walker's oldest past PER_WALKER (`most`) fades out.
+func _claim(i: int, key, most := PER_WALKER) -> void:
 	var was = _owner_of[i]
 	if was != null and _owned.has(was):
 		(_owned[was] as Array).erase(i)
@@ -299,7 +365,7 @@ func _claim(i: int, key) -> void:
 		_owned[key] = []
 	var mine: Array = _owned[key]
 	mine.append(i)
-	while mine.size() > PER_WALKER:
+	while mine.size() > most:
 		var old: int = mine.pop_front()
 		_owner_of[old] = null
 		if _age[old] >= 0.0:

@@ -81,6 +81,8 @@ const MODELS := {"lantern": ["farm_lantern"], "well": ["farm_well_1", "farm_well
 
 ## (what grows - each its own size a little)
 const GROWN := ["fruit", "bamboo"]
+## (the crops that bend in the wind - the pumpkins lie still)
+const SWAYING_CROPS := ["farm_greens"]
 
 static var _wood_mat: StandardMaterial3D
 static var _glow_mat: StandardMaterial3D
@@ -161,7 +163,7 @@ static func props(holder: Node3D, list: Array, land_y: Callable) -> void:
 			if name == "":
 				var names: Array = MODELS[sp.kind]
 				name = names[rng.randi() % names.size()]
-			var model := CityBuild._model(Ruin.path_of(name), "Model", shade, true)
+			var model := _swaying(Ruin.path_of(name)) if sp.kind in GROWN else CityBuild._model(Ruin.path_of(name), "Model", shade, true)
 			# (its long way along the prop's heading - the way its solid ground lies)
 			var size: Array = Ruin.info(name).get("size", [1, 1, 1])
 			if float(size[1]) > float(size[0]):
@@ -178,6 +180,26 @@ static func props(holder: Node3D, list: Array, land_y: Callable) -> void:
 		node.position = Vector3(at.x / PX, float(land_y.call(at)), at.y / PX)
 		node.rotation.y = -sp.yaw
 		holder.add_child(node)
+
+
+## User request ("風吹動態"): what grows in the yards - the bamboo clumps, the fruit trees - bends in
+## the wind as the map's trees do (Foliage: its own pictures, its foot still, its top leaning, its
+## leaves fluttering - cut out by their picture's alpha), not standing stiff as the buildings do.
+static func _swaying(path: String) -> Node3D:
+	var node: Node3D = (load(path) as PackedScene).instantiate()
+	node.name = "Model"
+	for mi in node.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		var src := m.mesh
+		var dressed := Foliage.dress(src)
+		for s in dressed.get_surface_count():
+			var was := src.surface_get_material(s) as BaseMaterial3D
+			var mat := dressed.surface_get_material(s) as ShaderMaterial
+			if was != null and mat != null and was.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
+				mat.set_shader_parameter("scissor", true)
+				mat.set_shader_parameter("scissor_cut", 0.45)
+		m.mesh = dressed
+	return node
 
 
 ## A lit lantern: its lamp glowing, its light on the track round it.
@@ -569,6 +591,7 @@ static func _crop_mesh(name: String) -> Mesh:
 	if not found.is_empty():
 		var src := (found[0] as MeshInstance3D).mesh
 		mesh = src.duplicate() as Mesh
+		var tall := mesh.get_aabb().end.y
 		for s in mesh.get_surface_count():
 			var from := mesh.surface_get_material(s) as BaseMaterial3D
 			var mat := StandardMaterial3D.new()
@@ -576,7 +599,13 @@ static func _crop_mesh(name: String) -> Mesh:
 				mat.albedo_texture = from.albedo_texture
 			mat.vertex_color_use_as_albedo = true
 			mat.roughness = 0.8
-			mesh.surface_set_material(s, mat)
+			if name in SWAYING_CROPS:
+				# (user request "風吹動態": the leafy rows bend in the wind as the plants do)
+				var sway := Foliage.material(mat, tall, Foliage.PLANT)
+				sway.set_shader_parameter("use_vcol", true)
+				mesh.surface_set_material(s, sway)
+			else:
+				mesh.surface_set_material(s, mat)
 	node.free()
 	return mesh
 

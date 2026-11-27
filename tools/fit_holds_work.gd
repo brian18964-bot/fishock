@@ -9,6 +9,13 @@ const OUT := [0.0, 0.5, 1.0]
 const CLEAR := 0.02
 ## Looks at the reeling hand per place: 5 frames apart, once round the crank.
 const REEL_LOOKS := 9
+## User report (the owl's left hand in its chest as a fish was first held): reeling, the crank
+## isn't always going round - the strike's first pull is held against (FishFight.opening_left),
+## the body leaning to it - and there the body takes the plain hold while the left hand waits on
+## the reel. So each place for it is looked at this many times more in a fresh first pull, held
+## (after HELD_SETTLE frames for the body to come to the hold), the worst of all of them kept.
+const HELD_LOOKS := 3
+const HELD_SETTLE := 24
 ## Each share of the left forearm and hand in the body past CLEAR costs this (m): any of it
 ## worse than any way off the reel's place.
 const BURIED_COST := 30.0
@@ -22,10 +29,15 @@ var _check: HoldCheck
 var _empty := 0
 var _zone: Node
 var _line := 0.0
+## (the profile's character before the fitting, put back as it ends)
+var _was := ""
 
 
 func _run() -> void:
 	var who := OS.get_cmdline_user_args()[0] if OS.get_cmdline_user_args().size() > 0 else Profile.character
+	# (the profile's own character put back however the fitting ends - it's the real profile, and
+	# the tests that follow play whoever it holds: _quit())
+	_was = Profile.character
 	Profile.choose_character(who)
 	gs = get_tree().root.get_node("GameState")
 	RunView3D.intro = false
@@ -62,7 +74,7 @@ func _run() -> void:
 	await frames(60)
 	if p.state != Player.State.WAITING:
 		push_error("fit_holds: %s isn't waiting on a bite (%d)" % [who, p.state])
-		get_tree().quit(1)
+		_quit(1)
 		return
 	_check = HoldCheck.new(rv.rig, 2)
 	if OS.has_environment("FIT_DEBUG"):
@@ -82,7 +94,14 @@ func _run() -> void:
 			var got := await _look(rv, true)
 			line += " %.2f/%.2f[%.2f c%d]" % [got.get("r", -1.0), got.get("l", -1.0), fmod(rv._crank, TAU), rv._visual.clip]
 		print("BURY %-7s reeling r/l every 5 frames:%s" % [who, line])
-		get_tree().quit()
+		p.fight.open(p.fight.heft)
+		await _keep(HELD_SETTLE, false)
+		line = ""
+		for i in 12:
+			var got := await _look(rv, true, false, true)
+			line += " %.2f/%.2f[c%d]" % [got.get("r", -1.0), got.get("l", -1.0), rv._visual.clip]
+		print("BURY %-7s the first pull held r/l every 5 frames:%s" % [who, line])
+		_quit()
 		return
 	if OS.has_environment("SEEN_ONLY"):
 		# (how much of each hand the camera sees as it's held now, waiting and reeling)
@@ -90,35 +109,20 @@ func _run() -> void:
 		await _hook()
 		var r := await _look(rv, true, true)
 		print("SEEN %-7s waiting R %.2f L %.2f (L in the body %.3f) | reeling R %.2f L %.2f (L in the body %.3f)" % [who, w.seen_r, w.seen_l, w.l, r.get("seen_r", -1.0), r.get("seen_l", -1.0), r.get("l", -1.0)])
-		get_tree().quit()
+		_quit()
 		return
-	# The right hand's places, waiting: how much of the forearm and hand is in the body.
-	var waiting := await _try_grips(rv, false)
-	if waiting.is_empty():
-		push_error("fit_holds: %s stopped waiting on a bite before the places were tried" % who)
-		get_tree().quit(1)
-		return
-	# (a fish on, reeled: the fight kept as it is while the places are tried)
-	await _hook()
-	var reeling := await _try_grips(rv, true)
-	if reeling.is_empty():
-		push_error("fit_holds: %s lost its fish before the places were tried" % who)
-		get_tree().quit(1)
-		return
-	# The place: clear of the body and in reach both waiting and reeling, the nearest the
-	# middle.
+	var path := "res://assets/sprites/player/%s/fit.json" % who
+	var fit: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
 	var best := {}
-	var least := INF
-	for i in waiting.size():
-		var w: Dictionary = waiting[i]
-		var r: Dictionary = reeling[i]
-		var g: Array = w.grip
-		var cost: float = 60.0 * (maxf(w.r - CLEAR, 0.0) + maxf(r.r - CLEAR, 0.0)) \
-			+ 2.0 * (maxf(w.strain - 1.0, 0.0) + maxf(r.strain - 1.0, 0.0)) \
-			+ 0.25 * absf(g[0]) + 0.15 * absf(g[1] + 0.55) + 0.1 * (g[2] - 0.45) + 0.12 * float(w.out)
-		if cost < least:
-			least = cost
-			best = {"grip": g, "out": w.out, "in_wait": w.r, "in_reel": r.r, "strain": maxf(w.strain, r.strain)}
+	if OS.has_environment("LEFT_ONLY") and fit.has("hold"):
+		# (the right hand's place kept as it was fitted: only the left hand's fitted again)
+		best = {"grip": fit.hold.grip, "out": fit.hold.out, "in_wait": -1.0, "in_reel": -1.0, "strain": -1.0}
+		await _hook()
+	else:
+		best = await _fit_grip(rv)
+		if best.is_empty():
+			_quit(1)
+			return
 	# Then the left hand's place, the nearest the reel's (under the rod, just up it from the
 	# grip) that's clear of the body and in reach: reeling, and (the fish let go, the float out
 	# again) waiting.
@@ -148,10 +152,8 @@ func _run() -> void:
 		push_warning("fit_holds: %s didn't get its float out again (%d): the left hand kept as reeling" % [who, p.state])
 	if _empty > 0:
 		push_error("fit_holds: %s - %d looks found the float in (a bite, a ghost at it): nothing written" % [who, _empty])
-		get_tree().quit(1)
+		_quit(1)
 		return
-	var path := "res://assets/sprites/player/%s/fit.json" % who
-	var fit: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
 	fit.erase("torso")
 	fit.hold = {"grip": best.grip, "left": left_wait.at, "left_reel": left_reel.at, "out": best.out}
 	var f := FileAccess.open(path, FileAccess.WRITE)
@@ -160,7 +162,40 @@ func _run() -> void:
 	print("HOLD %-7s grip %s out %.1f | right arm in the body %.3f waiting %.3f reeling, reach %.2f | left %s (in %.3f, %.2f m off the reel, seen %.2f) reeling %s (in %.3f, %.2f m off, seen %.2f)  (%d s)" % [
 		who, best.grip, best.out, best.in_wait, best.in_reel, best.strain,
 		left_wait.at, left_wait.l, left_wait.off, left_wait.seen, left_reel.at, left_reel.l, left_reel.off, left_reel.seen, (Time.get_ticks_msec() - t0) / 1000])
-	get_tree().quit()
+	_quit()
+
+
+## The right hand's place: each tried waiting on a bite, then (a fish hooked, kept on) reeling -
+## how much of the forearm and hand is in the body. The one clear of it and in reach both ways,
+## the nearest the middle: {grip, out, in_wait, in_reel, strain} ({} if the float or the fish
+## was lost before they'd all been tried).
+func _fit_grip(rv: RunView3D) -> Dictionary:
+	var waiting := await _try_grips(rv, false)
+	if waiting.is_empty():
+		push_error("fit_holds: %s stopped waiting on a bite before the places were tried" % Profile.character)
+		return {}
+	# (a fish on, reeled: the fight kept as it is while the places are tried)
+	await _hook()
+	var reeling := await _try_grips(rv, true)
+	if reeling.is_empty():
+		push_error("fit_holds: %s lost its fish before the places were tried" % Profile.character)
+		return {}
+	# The place: clear of the body and in reach both waiting and reeling, the nearest the
+	# middle.
+	var best := {}
+	var least := INF
+	for i in waiting.size():
+		var w: Dictionary = waiting[i]
+		var r: Dictionary = reeling[i]
+		var g: Array = w.grip
+		var cost: float = 60.0 * (maxf(w.r - CLEAR, 0.0) + maxf(r.r - CLEAR, 0.0)) \
+			+ 2.0 * (maxf(w.strain - 1.0, 0.0) + maxf(r.strain - 1.0, 0.0)) \
+			+ 0.25 * absf(g[0]) + 0.15 * absf(g[1] + 0.55) + 0.1 * (g[2] - 0.45) + 0.12 * float(w.out)
+		if cost < least:
+			least = cost
+			best = {"grip": g, "out": w.out, "in_wait": w.r, "in_reel": r.r, "strain": maxf(w.strain, r.strain)}
+	return best
+
 
 
 func _hook() -> void:
@@ -182,9 +217,9 @@ func _hook() -> void:
 
 
 ## One look: how much of each forearm and hand is in the body, and each arm's reach.
-func _look(rv: RunView3D, reeling: bool, with_seen := false) -> Dictionary:
+func _look(rv: RunView3D, reeling: bool, with_seen := false, held := false) -> Dictionary:
 	if reeling:
-		if not await _keep(4):
+		if not await _keep(4, not held):
 			return {}
 	else:
 		# (kept waiting: no bite comes while it's looked at - one taken and lost would have the
@@ -259,13 +294,21 @@ func _try_left(rv: RunView3D, hold: Dictionary, reeling: bool) -> Dictionary:
 				var worst := 0.0
 				var far := 0.0
 				var shown := 1.0
-				# (reeling, the hand goes round the crank: looked at all the way round it, the worst kept)
-				for pass_n in (REEL_LOOKS if reeling else 2):
-					var got := await _look(rv, reeling, pass_n == 0)
+				# (reeling, the hand goes round the crank: looked at all the way round it, then with the
+				# crank let go - the worst kept)
+				for pass_n in (REEL_LOOKS + HELD_LOOKS if reeling else 2):
+					var held := reeling and pass_n >= REEL_LOOKS
+					if held and pass_n == REEL_LOOKS:
+						player().fight.open(player().fight.heft)
+						await _keep(HELD_SETTLE, false)
+					var got := await _look(rv, reeling, pass_n == 0, held)
 					worst = maxf(worst, float(got.get("l", 1.0)))
 					far = maxf(far, float(got.get("sl", 9.0)))
 					if pass_n == 0:
 						shown = float(got.get("seen_l", 0.0))
+				if reeling:
+					# (cranking again before the next place's first look)
+					await _keep(HELD_SETTLE)
 				var cost := off + BURIED_COST * maxf(worst - CLEAR, 0.0) + 2.0 * maxf(far - 1.0, 0.0) + SEEN_COST * maxf(SEEN_MIN - shown, 0.0)
 				if OS.has_environment("FIT_DEBUG"):
 					print("TRY %s %s in %.3f off %.2f reach %.2f seen %.2f cost %.2f" % ["reel" if reeling else "wait", str(at), worst, off, far, shown, cost])
@@ -276,8 +319,9 @@ func _try_left(rv: RunView3D, hold: Dictionary, reeling: bool) -> Dictionary:
 	return best
 
 
-## A fish kept on, reeled, as it was (the fight's not played): `n` frames.
-func _keep(n: int) -> bool:
+## A fish kept on, reeled, as it was (the fight's not played): `n` frames - the crank going
+## round, or (`cranking` false) the line held against the strike's first pull, kept on.
+func _keep(n: int, cranking := true) -> bool:
 	var p := player()
 	for _i in n:
 		if p.state != Player.State.REELING or p.fight == null:
@@ -287,7 +331,16 @@ func _keep(n: int) -> bool:
 		f.progress = minf(f.progress, 0.3)
 		f.distance = _line
 		p._snap_at = -1.0
+		if not cranking:
+			f.opening_left = maxf(f.opening_left, 0.1)
 		key(KEY_SPACE, true)
-		key(KEY_SHIFT, f.opening_left <= 0.0)
+		# (cranked only once the first pull's over: into it, the line snaps - FishFight "rush")
+		key(KEY_SHIFT, cranking and f.opening_left <= 0.0)
 		await frames(1)
 	return true
+
+
+func _quit(code := 0) -> void:
+	if _was != "":
+		Profile.choose_character(_was)
+	get_tree().quit(code)

@@ -580,7 +580,6 @@ var _flee_turn_time := 0.0
 
 
 func _pick_target(fleeing: bool) -> void:
-	var pad := float(_data.get("body", 6.0)) + 2.0
 	if fleeing and _player != null:
 		var away := (global_position - _player.global_position).normalized()
 		if away == Vector2.ZERO:
@@ -590,14 +589,14 @@ func _pick_target(fleeing: bool) -> void:
 			away = away.rotated(_flee_turn)
 		for angle in [0.0, 0.6, -0.6, 1.2, -1.2, PI / 2.0, -PI / 2.0]:
 			var candidate: Vector2 = global_position + away.rotated(angle) * 60.0
-			if not _in_water(candidate) and Solids.is_free(get_tree(), candidate, pad):
+			if not _in_water(candidate) and _spot_free(candidate) and _way_dry(candidate):
 				_target = candidate
 				return
 		_target = global_position + away * 60.0
 		return
 	for _try in range(10):
 		var candidate := _keep_off_edge(global_position + Vector2.RIGHT.rotated(randf() * TAU) * randf_range(30.0, WANDER_RADIUS))
-		if not _in_water(candidate) and Solids.is_free(get_tree(), candidate, pad):
+		if not _in_water(candidate) and _spot_free(candidate) and _way_dry(candidate):
 			_target = candidate
 			return
 	_target = global_position
@@ -691,17 +690,20 @@ func _respawn() -> void:
 	if _data.get("shore_only", false):
 		_respawn_on_shore()
 		return
+	# User request ("動物們也不能被物件卡住跟穿圖"): what it comes back as first, then a place with room
+	# for all of it - out of the water and clear of everything solid and every building (it came back
+	# inside a car or a house before, and stood stuck in it).
+	set_species(_pick_species())
 	var pos := global_position
-	for _try in range(20):
+	for _try in range(40):
 		var m := maxf(MARGIN, _edge_band() + 20.0)
 		pos = Vector2(
 			randf_range(m, Player.WORLD_WIDTH - m),
 			randf_range(m, Player.WORLD_HEIGHT - m)
 		)
-		if not _in_water(pos) and (_player == null or pos.distance_to(_player.global_position) > 300.0):
+		if not _in_water(pos) and _spot_free(pos) and (_player == null or pos.distance_to(_player.global_position) > 300.0):
 			break
 	global_position = pos
-	set_species(_pick_species())
 	velocity = Vector2.ZERO
 	active = true
 	visible = true
@@ -730,7 +732,7 @@ func _respawn_on_shore() -> void:
 			continue
 		var sample: Array = samples.pick_random()
 		var pos: Vector2 = sample[0] + sample[1] * randf_range(14.0, 30.0)
-		if not _in_water(pos) and (_player == null or pos.distance_to(_player.global_position) > 300.0):
+		if not _in_water(pos) and _spot_free(pos) and (_player == null or pos.distance_to(_player.global_position) > 300.0):
 			global_position = pos
 			break
 	velocity = Vector2.ZERO
@@ -738,6 +740,43 @@ func _respawn_on_shore() -> void:
 	visible = true
 	catch_area.monitoring = true
 	_enter_idle()
+
+
+## Room for all of it at `pos`: clear of every solid's base and every building's walls (a building's
+## own keep-clear circles leave its corners out).
+func _spot_free(pos: Vector2) -> bool:
+	var pad := float(_data.get("body", 6.0)) + 4.0
+	if not Solids.is_free(get_tree(), pos, pad):
+		return false
+	for r in get_tree().get_nodes_in_group("ruins"):
+		if (r as Ruin).rect().grow(pad).has_point(pos):
+			return false
+	# (nor by a dock's or a bridge's rails - their land ends stand up on the bank)
+	for w in get_tree().get_nodes_in_group("walkways"):
+		var box: Rect2 = w.walk_rect
+		if box.size != Vector2.ZERO and box.grow(pad).has_point(pos):
+			return false
+	return true
+
+
+## (user report: a wasp pinned on a bank for seconds, the place it meant to go across a bay's
+## corner - every step into the water undone; a frog walking into a bridge's rails where they stand on
+## the bank, again and again) the straight way to `to` kept out of the water and off the docks and
+## bridges.
+func _way_dry(to: Vector2) -> bool:
+	var pad := float(_data.get("body", 6.0)) * 0.6
+	# (one it's on already it may walk off along)
+	var ways := get_tree().get_nodes_in_group("walkways").filter(
+		func(w): return not (w.walk_rect as Rect2).grow(pad).has_point(global_position))
+	for k in range(1, 6):
+		var q := global_position.lerp(to, k / 6.0)
+		if _in_water(q):
+			return false
+		for w in ways:
+			var box: Rect2 = w.walk_rect
+			if box.size != Vector2.ZERO and box.grow(pad).has_point(q):
+				return false
+	return true
 
 
 func _in_water(pos: Vector2) -> bool:

@@ -20,6 +20,11 @@ uniform vec3 sand_pressed : source_color = vec3(0.3, 0.22, 0.13);
 uniform vec3 sand_rim : source_color = vec3(0.86, 0.72, 0.52);
 uniform vec3 wet_pressed : source_color = vec3(0.17, 0.13, 0.09);
 uniform vec3 wet_rim : source_color = vec3(0.36, 0.28, 0.19);
+// User request (wet feet: SnowTracks.stain_only - grass, earth, a deck): no dip, the ground just
+// darkened with the water in the sole's shape - soft at its edge where the water spread, darkest
+// at the heel and the ball (the sole's lowest), as wet as the foot was (w) and drying away (x).
+uniform bool stain = false;
+uniform vec3 stain_dark : source_color = vec3(0.03, 0.026, 0.022);
 
 varying float left;
 varying vec2 cell;
@@ -54,7 +59,21 @@ float sole_soft(vec2 uv, float b) {
 }
 
 void fragment() {
-	if (sand) {
+	if (stain) {
+		// (the quad's 1.4 x 1.3 the sole's box - SnowTracks: the water spreads out round the sole; a
+		// faint wet halo round the print, as much as the foot was wet)
+		vec2 wuv = (UV - 0.5) * vec2(1.4, 1.3) + 0.5;
+		float wd = clamp(deep, 0.0, 1.0);
+		float ws = sole_soft(wuv, 0.04);
+		float wbody = smoothstep(0.05, 0.4, ws) * (0.8 + 0.2 * ws);
+		float halo = clamp(smoothstep(0.02, 0.2, sole_soft(wuv, 0.13)) - wbody, 0.0, 1.0);
+		ALBEDO = stain_dark;
+		ROUGHNESS = 0.35;
+		ALPHA = (wbody * (0.5 + 0.45 * wd) + halo * 0.3 * wd) * left;
+		if (ALPHA < 0.01) {
+			discard;
+		}
+	} else if (sand) {
 		bool damp = deep < 0.0;
 		float dd = abs(deep);
 		// (dry: soft from the first, blurring further as it fills; damp: nearly crisp)

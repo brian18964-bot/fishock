@@ -4,7 +4,7 @@
 
 ## 一、目前狀態
 - 所有工作都在 `claude/focused-fermi-96pp3r` 分支，它也是這個 repo 的預設分支；最後一次推送的 CI（Web build）通過並已部署。
-- 本機全套測試：6155 項、0 失敗（`tests/run_tests.gd`）。
+- 本機全套測試：6196 項、0 失敗（`tests/run_tests.gd`）。
 - 遊戲：Godot 4.7.2，3D 夜釣（俯視鏡頭、夜間、煤燈），手機觸控為主，也支援鍵盤。
 
 ## 二、這段期間做了什麼（依時間）
@@ -118,6 +118,28 @@
   用 `tools/make_village_trees.py` 再製，種在鄉村和英式村莊。
 - **一張圖多座橋**：每個基準面積一座（小 1、中 2、大／特大 3），每座在不同池塘。
 
+### 16. 驗證：穿圖、卡圖、動物、風吹、濕腳印（11/27）
+- 使用者要求：「所有物件不可以有穿圖、卡圖的情況，動物們也不能被物件卡住跟穿圖」「風吹動態跟腳印」
+  「角色有靠近水邊並踩到水，角色再走回地面要有明顯的水漬腳印，再慢慢變淡，走一定距離後，水漬腳印就不需要呈現」。
+- **穿圖驗證工具**（`tools/verify/verify.gd tool=overlap`，幾何在 `tests/overlap_audit.gd`）：56 關逐關載入 3D 世界，
+  用每個 3D 模型實際的外框（含屋簷、棚架、鳥居橫樑）檢查建築、院子物件、樹幹、樹冠（只算比最低葉子高的建築）、石頭、圍牆、橋、碼頭互相穿插，
+  物件泡在水裡；再讓動物跑一分鐘，看有沒有走進物件、走進水裡或卡住。第一次跑出 867 處（大多是海崖刻意放在海裡的礁石），
+  真正的問題修掉後重驗（結果見下）。
+- 修掉的：日式鳥居橫樑插進民家（鳥居兩端整條橫樑都要離開建築）、院子物件用模型實際大小（四角）避開牆（紅燈籠柱、水缸、水井、提燈）、
+  都市路燈的燈臂互相交叉、椰棗／垂柳／楓樹的樹冠伸進建築（樹冠要離建築，只容許葉尖輕碰 12 px）、
+  動物重生和閒晃的目的地避開所有物件和建築範圍（之前會生在車子、房子裡卡住）、水邊的青蛙／蜘蛛先佔好位置（之前樹後來種在牠身上）、
+  動物選目的地時直線路徑不穿過水和碼頭／橋（之前一直撞橋伸上岸的欄杆）、中心偏掉的建築模型（掃描的灰磚石屋偏 0.8 m）擺放時以模型中心對齊。
+- **風吹**：原本就會搖的有地圖上的樹、草、水邊植物；這次補上竹叢、果樹、田裡的蔬菜（`FarmBuild._swaying`、`SWAYING_CROPS`）。
+- **濕腳印**（`SnowTracks` 的 `in_water`、`feet_wet`、`stain_only`）：腳在水邊踩到水（離水邊 8 px 內、或沙灘的浪上）就濕透，
+  有小漣漪；走回陸地每一步留下深色水漬腳印（比腳大一點，水往外滲），越走越乾、越淡，走 9 m 後不再留下；
+  每個腳印 8 秒後開始變淡，35 秒乾掉。草地、泥土、碼頭、橋上都有；沙漠和沙灘是濕沙腳印；雪地照舊。
+- **握竿順手修**：全套測試抓到貓頭鷹剛上魚、撐住第一波拉扯（還沒轉把手、身體往魚那邊傾）時左手陷進胸口一點點。
+  握竿擬合工具（`tools/fit_holds.gd`）原本只量轉把手的時候，現在左手的每個候選位置也在「撐住第一波拉扯」時量
+  （`HELD_LOOKS`），並加了 `LEFT_ONLY=1`（右手不動、只重新擬合左手）；貓頭鷹的左手用新規則重新擬合。
+  `test_fishing_hold_every_character` 改成固定量這兩種狀態（撐住拉扯、轉把手一圈），不再看抽樣時機。
+- **池塘數順手修**：小地圖要 5 個池塘的關卡（8-3、11-3）在少數亂數下第 5 個池塘縮小兩次仍塞不下就被省略，
+  少於關卡規定。現在最多縮小 5 次（最小約原尺寸一半，`MapGenerator.POND_SHRINKS`）才放棄。
+
 ## 三、已定案（使用者決定的，不用再問）
 ### 劇情與分支
 1. 每張地圖分 4～5 支，每支是一個劇情關卡；共 6 章 26 關。地圖順序：湖畔森林 → 秋林 → 雪地森林 → 沙漠綠洲 → 沙灘海岸 → 海崖。
@@ -203,6 +225,8 @@
 | 矮土牆 | 高 1.05 m、厚 0.45 m、每 1.6 m 一段 | `FarmBuild` 的 `MUD_WALL_*`；碰撞厚度 `Fence.STYLES.mud_wall` |
 | 可以走上去的橋 | 每張村莊地圖每個基準面積 1 座、最多 3 座，每座在不同池塘；橫跨水面 90～340 px（大地圖最多 2 倍）、兩端上岸 34 px、可走寬度 52 px、中段兩側都要在水上、橋中央離岸至少半個跨距的一半；橋寬 2.6 m、我們的橋拱高＝長度 7.5%（最高 1.1 m）、紅橋拱高最多 1.25 倍、紅橋每座最長 1.6 倍原長（更長就兩座拱接起來） | `MapGenerator.BRIDGE_*`、`THEMES.*.bridge`；`RunView3D.BRIDGE_*` |
 | 歐洲田野楓 | 夏葉 `fmaple_a` 8 m、秋葉 `rmaple_a` 10 m、`rmaple_b` 9 m；鄉村、英式的樹種清單裡各加這三種（約三成）；縮放 0.85～1.05（`rmaple_b` 0.95～1.1，最低的葉子才高過大鬼） | `MapTree.THEME_KINDS`、`KINDS`、`SCALE_OF`、`CANOPY`；`tools/make_village_trees.py` 的 `TREES`、`FILES` |
+| 濕腳印 | 離水邊 8 px 內踩下算踩到水；走 9 m 後腳乾（低於 12% 濕度就不留）；腳印 8 秒後開始變淡、35 秒乾掉；每人最多 24 個濕腳印 | `SnowTracks.WET_DIST`、`WET_LEAST`、`WET_PRINT_HOLD`、`WET_PRINT_FADE`、`WET_PER_WALKER`；`RunView3D.FOOT_WET` |
+| 防穿圖的間距 | 樹冠離建築（只容許葉尖 12 px）；院子物件用模型四角算範圍；路燈燈臂間距 45 px；水邊小動物出生處留 18 px | `MapGenerator.CROWN_BRUSH`、`_model_reach()`、`LAMP_ARM`、`SHORE_CRITTER_ROOM` |
 | 農場動物的行為 | 綿羊／小牛被靠近到 55／45 px 才慢慢走開；雞 70 px 跑開；烏鴉 90 px 飛走；大小：綿羊 0.95 m、小牛 1.15 m、母雞 0.42 m、公雞 0.55 m、烏鴉 0.42 m | `Critter.SPECIES`、`RunView3D.CREATURES` |
 
 ## 五、待辦與需要使用者決定的事
@@ -235,7 +259,8 @@
   `test_campaign_unlocks_and_achievements`、`test_story_lessons`、`test_tutorials_completable`、`test_branch_fish`、
   `test_free_branches_and_nights`、`test_level_guide_and_results`、`test_weathers`（含雨打水面）、`test_journey_page`、
   `test_bag_full_reminders`、`test_character_unlocks`、`test_croc_quests`、`test_croc_errands_on_run`、`test_zodiac_coins`、`test_city_map`、
-  `test_countryside_map`、`test_japan_and_england_maps`。
+  `test_countryside_map`、`test_japan_and_england_maps`、`test_bridges`、`test_field_maples`、`test_wet_footprints`、
+  `test_village_sway`、`test_nothing_in_anything`。
 - `tools/verify/verify.gd`（用法寫在檔案開頭）：
   - `tool=bot`：機器人用真實操作（拋竿、揚竿、搏魚、獻祭、逃離）逐關玩，輸出每關用時、額度、漁獲、獨有魚、教學進度、失敗原因。
   - `tool=play`：關掉開發者全開，依序通關 26 關，檢查解鎖順序、星數、首次通關獎勵。
@@ -269,6 +294,7 @@
 | 中式古鎮（第 11 章） | 主題：`THEMES.china`（共用 `_place_farms()`；水邊垂柳用 `oasis_trees`，離水的樹 `MapTree.OPEN_KINDS`）；白牆黛瓦：`scripts/farm_build.gd` 的 `_tile_wall`；竹葉透空：`scripts/city_build.gd` 的 `_tex_cut_shader`；石板地面 `flagstone`：`tools/make_ground.py`；素材再製：`tools/make_china_assets.py`（`assets/models/cn/`） |
 | 村莊的樹、日式新物件、農場動物 | 樹：`tools/make_village_trees.py`（`assets/models/camp/<kind>.glb`，`CampModel.TREE_FAMILY`、`MapTree.KINDS`/`CANOPY`/`THEME_KINDS`）；田野楓也是它（給 EU01 的資料夾）；日式燈籠石塔、紅橋：`tools/make_japan_extras.py`（`ONLY=bridge` 只做橋）；動物：`tools/make_farm_animals.py`（`assets/models/run3d/`，`Critter.SPECIES`、`RunView3D.CREATURES`） |
 | 土屋聚落（第 12 章） | 主題：`THEMES.adobe`（`oasis_meadow` → 只有水邊綠：`RunView3D._dry_farm`）；矮土牆：`scripts/farm_build.gd` 的 `_mud_wall`；素材再製：`tools/make_adobe_assets.py`（`assets/models/adb/`） |
+| 穿圖／卡圖驗證 | 全部關卡：`tools/verify/verify.gd tool=overlap`（`tools/verify/overlap_work.gd`，幾何 `tests/overlap_audit.gd`）；卡點：`tools/map_audit.gd`；測試 `test_nothing_in_anything`、`test_wet_footprints`、`test_village_sway` |
 | 可以走上去的橋 | 位置：`MapGenerator._place_bridges()`、`_bridge_fits()`（在 `_place_farms()` 之後）；資料：`Dock.setup_bridge()`（`bridge`、`bridge_ends`，欄杆 `add_walls`）；外觀與行走高度：`RunView3D._bridge()`、`_wood_bridge()`、`_stone_bridge()`、`_deck_rise()`（`ground_y` 用它走拱形）；測試 `test_bridges` |
 | 十二星座硬幣 | `scripts/zodiac.gd`（`CHANCE`、`PRICE`、`roll()`）；給予：`scripts/game_state.gd` 的 `escape()`；轉換工具：`tools/make_zodiac_coins.py` |
 | 商城收購 | `scripts/shop.gd`：`_fill_sell_pane()`、`_sell_drag()`、`SellBoard` |

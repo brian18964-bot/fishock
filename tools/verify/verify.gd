@@ -15,6 +15,12 @@ extends SceneTree
 ##              level's own weather, and from high over the map (shots_work.gd) - needs a display:
 ##              xvfb-run -a -s "-screen 0 1280x720x24" godot --rendering-driver opengl3 --resolution 1280x720 ...
 ##              then tools/verify/sheet.py OUT lv_ sheet.png OUT/catch_sim.tsv 4 (contact sheets)
+##   overlap    every level built in 3D and gone over for things drawn in one another (buildings',
+##              yard things' outlines read from their models, trunks, crowns over buildings, stones,
+##              fences, bridges, docks, things in the water) and its animals followed for a minute
+##              (in anything, in the water, stuck) (overlap_work.gd, tests/overlap_audit.gd) ->
+##              OUT/overlap.tsv, OUT/overlap.txt; LEVELS=9-3,12-3 for some; CAMERA=1 (with a display)
+##              draws each trouble's place
 ## The weathers' odds per level: tools/verify/weather_odds.py (no Godot).
 
 

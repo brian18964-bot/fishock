@@ -497,6 +497,8 @@ const SHORE_ODDS := {"grass": 0.0, "shrub": 0.0, "pebbles": 0.0}
 const SHORE_EXTRAS := {"reeds": 0.0, "lilypad": 0.05, "driftwood": 0.0}
 const SHORE_HIDE_BUSH_CHANCE := 0.25  # of shrubs: a bush you can hide in
 const SHORE_CRITTERS := ["frog", "frog", "spider", "wasp"]
+## (the room kept round one where it starts, px - the biggest of them, a snake's body)
+const SHORE_CRITTER_ROOM := 18.0
 const SHORE_CRITTER_COUNT := 5
 
 const SHORE_SPACING := 26.0
@@ -731,14 +733,20 @@ func _make_lobes(radius: float, count_range: Vector2i) -> Array[Vector3]:
 	return lobes
 
 
+## Tries for a pond that doesn't fit, each 0.85 the size of the last (the last about half the size).
+const POND_SHRINKS := 5
+
+
 func _spawn_zone(type: int, radius: float, lobe_range: Vector2i) -> void:
 	var lobes := _make_lobes(radius, lobe_range)
 	# User bug report: the spawn point ended up under water (about 1 map in
 	# 25) - when no spot was found, the last random one was used anyway. Now
 	# a pond that doesn't fit shrinks and tries again, and is left out if it
-	# still doesn't.
+	# still doesn't. (A smaller map with five ponds, 8-3 and 11-3, now and then
+	# had no room for its last one even at 0.85^2 its size and went a pond
+	# short of its rules - so it shrinks further first, POND_SHRINKS times.)
 	var pos := Vector2.INF
-	for _shrink in 3:
+	for _shrink in POND_SHRINKS:
 		var bounds := radius
 		for lobe in lobes:
 			bounds = maxf(bounds, Vector2(lobe.x, lobe.y).length() + lobe.z)
@@ -1439,7 +1447,8 @@ func _place_street_props() -> void:
 					continue
 				if _near_walkway(at, reach + 20.0) or _near_entrance(at, ENTRANCE_CLEARANCE):
 					continue
-				if not _fits_street(at, reach) or _in_ruin(at, reach):
+				# (a street lamp's arm reaches out LAMP_ARM px along the wall: two lamps' arms kept apart)
+				if not _fits_street(at, reach + (LAMP_ARM if kind == "lamp" else 0.0)) or _in_ruin(at, reach):
 					continue
 				var prop := StreetProp.new()
 				prop.name = "StreetProp%d" % made
@@ -1454,6 +1463,9 @@ func _place_street_props() -> void:
 				get_parent().add_child.call_deferred(prop)
 				made += 1
 				break
+
+
+const LAMP_ARM := 45.0
 
 
 ## _fits for what stands in the street by the buildings' walls: clear of everything placed but the
@@ -1872,8 +1884,10 @@ func _place_yard_things() -> void:
 				match where:
 					"track", "across":
 						var line := farm_tracks.pick_random() as PackedVector2Array
-						# (a gate near its farm - the track's first stretch; a lantern anywhere along it)
-						var i := randi() % maxi(1, (line.size() - 1) / 3 if where == "across" else line.size() - 1)
+						# (a gate near its farm - the track's first stretch, further along it if there's no room
+						# for all of it there (its beam clear of the buildings); a lantern anywhere along it)
+						var first := (line.size() - 1) / 3 if _t < 10 else (line.size() - 1) * 2 / 3
+						var i := randi() % maxi(1, first if where == "across" else line.size() - 1)
 						i = maxi(i, 2) if where == "across" else i
 						i = mini(i, line.size() - 2)
 						var dir := (line[i + 1] - line[i]).normalized()
@@ -1959,9 +1973,16 @@ func _add_farm_prop(thing: Dictionary, at: Vector2, yaw: float, where := "") -> 
 	var kind := str(thing.get("kind", ""))
 	var shape := _thing_shape(thing)
 	var reach := maxf(shape.x, shape.y * 0.5)
+	var models: Array = thing.get("models", [])
+	var model := str(models.pick_random()) if not models.is_empty() else ""
+	# User request ("所有物件不可以有穿圖"): kept clear by all of its model as drawn - a lantern post's
+	# hanging lanterns, a gate's top beam out past its posts - not just its foot (what grows aside: its
+	# leaves may meet, its stems kept apart).
+	var drawn := _model_reach(model) if not kind in FarmBuild.GROWN else 0.0
 	if kind != "bale":
 		if where == "across":
-			# (a gate: each of its two posts clear, the track running between them)
+			# (a gate: each of its two posts clear, the track running between them; its beam's ends -
+			# all of the model's length - clear of the buildings too)
 			var along := Vector2(cos(yaw), sin(yaw)) * (shape.y * 0.5 - shape.x)
 			for post in [at + along, at - along]:
 				if not _yard_spot_ok(post, 0.0) or _on_track(post, shape.x) or not _fits_street(post, shape.x):
@@ -1969,10 +1990,15 @@ func _add_farm_prop(thing: Dictionary, at: Vector2, yaw: float, where := "") -> 
 				for f in _fields:
 					if _rect_distance(f, post) < shape.x + 10.0:
 						return null
+			var span := Vector2(cos(yaw), sin(yaw)) * maxf(drawn, along.length())
+			for end in [at + span, at - span, at + span * 0.5, at - span * 0.5]:
+				if _in_ruin(end, 4.0):
+					return null
 		else:
+			reach = maxf(reach, drawn)
 			if not _yard_spot_ok(at, 0.0 if where == "track" else reach) or not _fits_street(at, reach):
 				return null
-			if where == "track" and _on_track(at, 0.0):
+			if where == "track" and (_on_track(at, 0.0) or _in_ruin(at, reach)):
 				return null
 			for f in _fields:
 				if _rect_distance(f, at) < reach + 10.0:
@@ -1981,8 +2007,7 @@ func _add_farm_prop(thing: Dictionary, at: Vector2, yaw: float, where := "") -> 
 	prop.name = "StreetProp%d" % _farm_props
 	_farm_props += 1
 	prop.kind = kind
-	var models: Array = thing.get("models", [])
-	prop.model = str(models.pick_random()) if not models.is_empty() else ""
+	prop.model = model
 	if thing.has("size"):
 		prop.size = shape
 	prop.yaw = yaw
@@ -1996,6 +2021,17 @@ func _add_farm_prop(thing: Dictionary, at: Vector2, yaw: float, where := "") -> 
 		_taken.append([at, reach, 0.0])
 	get_parent().add_child.call_deferred(prop)
 	return prop
+
+
+## How far a yard thing's model reaches from its middle as drawn (px: to its corners on the ground,
+## whichever way it's turned); 0 for one without a model.
+static func _model_reach(model: String) -> float:
+	if model == "":
+		return 0.0
+	var size: Array = Ruin.info(model).get("size", [])
+	if size.size() < 2:
+		return 0.0
+	return Vector2(float(size[0]), float(size[1])).length() * 0.5 * Fossil.PX
 
 
 ## A key of `weights` ({key: weight}) drawn by its weight.
@@ -2249,9 +2285,22 @@ func _place_tree(tree: MapTree) -> Vector2:
 			continue
 		if _near_entrance(pos, ENTRANCE_CLEARANCE) or _near_walkway(pos, 30.0):
 			continue
-		if _fits(pos, base, reach):
+		# (a grove's crowns may meet - but none grows into a building: its whole crown kept clear)
+		if _fits(pos, base, reach) and _crown_clear(pos, size[1]):
 			return pos
 	return Vector2(-1, -1)
+
+
+## User request ("所有物件不可以有穿圖"): a tree's crown (`crown` px out from its trunk) clear of
+## every building's walls and roof - but CROWN_BRUSH px (the tips of its leaves may brush).
+const CROWN_BRUSH := 12.0
+
+
+func _crown_clear(pos: Vector2, crown: float) -> bool:
+	for rect in _ruins:
+		if _rect_distance(rect, pos) < crown - CROWN_BRUSH:
+			return false
+	return true
 
 
 ## The theme's extra trees, rocks and bushes, spaced like the scene props.
@@ -2337,9 +2386,14 @@ func _add_shore_critters() -> void:
 		var pos: Vector2 = sample[0] + sample[1] * randf_range(14.0, 30.0)
 		if _shore_distance(pos) < 6.0 or pos.distance_to(SPAWN_POS) < SHORE_CLEAR_OF_SPAWN:
 			continue
+		# (user report "動物們也不能被物件卡住跟穿圖": a frog left standing in a palm's trunk, a spider
+		# boxed in by what was placed round it after - room kept for it, as for anything placed)
+		if not _fits(pos, SHORE_CRITTER_ROOM, 0.0) or _near_walkway(pos, SHORE_CRITTER_ROOM):
+			continue
 		var critter: Critter = CRITTER_SCENE.instantiate()
 		critter.species = theme.get("shore_critters", SHORE_CRITTERS).pick_random()
 		critter.position = pos
+		_taken.append([pos, SHORE_CRITTER_ROOM, 0.0])
 		get_parent().add_child.call_deferred(critter)
 
 
@@ -2485,4 +2539,5 @@ func _fits(pos: Vector2, base: float, reach: float) -> bool:
 			return false
 		if reach > 0.0 and float(t[2]) > 0.0 and d < reach + float(t[2]):
 			return false
-	return true
+	# (a crown clear of the buildings' corners too - their keep-clear circles leave them out)
+	return reach <= 0.0 or _crown_clear(pos, reach)

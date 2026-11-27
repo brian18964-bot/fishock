@@ -685,6 +685,14 @@ func _build() -> void:
 			_wade.set_sea(_ground_mat.get_shader_parameter("sea_tex"), _ground_mat.get_shader_parameter("sea_box"), _ground_mat.get_shader_parameter("sea_range"))
 		_tracks.landed.connect(_wade.landed)
 		_tracks.lifted.connect(_wade.lifted)
+	if _tracks == null:
+		# (user request: wet feet's prints everywhere - grass, earth, a deck: SnowTracks.stain_only)
+		_tracks = SnowTracks.new()
+		_tracks.stain_only = true
+		_tracks.character = rig.character if rig != null else Profile.character
+		add_child(_tracks)
+	_tracks.in_water = _foot_in_water
+	_tracks.splashed.connect(_step_ripple)
 	# (birds of prey circling high, their shadows wheeling: the desert's vultures, the others' hawk
 	# or eagle)
 	_sky_birds()
@@ -741,7 +749,37 @@ func _ground_at(at: Vector3) -> float:
 	return ground_y(to2(at))
 
 
+## User request (wet feet - SnowTracks.in_water): a foot coming down in the water - within
+## FOOT_WET px of a pond's edge (the bank there is at the water's own height; the traveller goes no
+## further in), or where the sea's water is (a wave over the sand, or below the sea's line); never up
+## on a deck or a bridge.
+const FOOT_WET := 8.0
+
+
+func _foot_in_water(at: Vector3) -> bool:
+	var q := to2(at)
+	if _on_walk(q):
+		return false
+	if _coast and not _cliff:
+		return _beach_washed(at) or _sea_at(q) > 0.0
+	return _depth(q, _zones()) > -FOOT_WET
+
+
+## (a foot just came down in the water: a ripple round it - the beach's own wading does its own)
+func _step_ripple(at: Vector3) -> void:
+	if _wade != null:
+		return
+	_ring_at(Vector3(at.x, WATER_Y + 0.01, at.z))
+
+
 func _open_snow(at: Vector3) -> bool:
+	if _tracks != null and _tracks.stain_only:
+		# (wet prints: anywhere up out of the water - a deck and a bridge too - but the altar's stone)
+		var w := to2(at)
+		for r in _raised:
+			if (r[0] as Vector2).distance_to(w) < float(r[1]):
+				return false
+		return _on_walk(w) or ground_y(w) > WATER_Y + 0.02
 	if _coast and not _cliff:
 		# (the beach: on its sand - not its grass, a deck or the altar's stone - up out of the water)
 		var q := to2(at)

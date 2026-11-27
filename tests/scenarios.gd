@@ -168,6 +168,9 @@ const TESTS := [
 	"test_farm_animals",
 	"test_bridges",
 	"test_field_maples",
+	"test_wet_footprints",
+	"test_village_sway",
+	"test_nothing_in_anything",
 	"test_bag_card_closes",
 	"test_altar_this_run_only",
 	"test_locks",
@@ -6030,26 +6033,36 @@ func test_fishing_hold_every_character() -> void:
 		p.fish_id = "carp"
 		p.fight.plan("medium", "normal")
 		var line: float = p.fight.distance
-		worst = {"r": 0.0, "l": 0.0}
-		for i in 90:
-			if p.state != Player.State.REELING or p.fight == null:
-				break
-			p.fight.tension = 0.4
-			p.fight.progress = minf(p.fight.progress, 0.3)
-			p.fight.distance = line
-			p._snap_at = -1.0
-			key(KEY_SPACE, true)
-			key(KEY_SHIFT, p.fight.opening_left <= 0.0)
-			if i >= 40 and i % 10 == 0:
-				var got := await _buried_now(rv, look)
-				worst.r = maxf(worst.r, got.r)
-				worst.l = maxf(worst.l, got.l)
-			else:
-				await frames(1)
+		# User report (the owl's left hand in its chest as a fish was first held): looked at both
+		# ways a fish is reeled - the strike's first pull held against (the crank still, the body
+		# leaning to it; kept on while it's looked at), then the crank going round, once round it.
+		for held in [true, false]:
+			worst = {"r": 0.0, "l": 0.0}
+			for i in 60:
+				if p.state != Player.State.REELING or p.fight == null:
+					break
+				p.fight.tension = 0.4
+				p.fight.progress = minf(p.fight.progress, 0.3)
+				p.fight.distance = line
+				p._snap_at = -1.0
+				if held:
+					p.fight.opening_left = maxf(p.fight.opening_left, 0.1)
+				key(KEY_SPACE, true)
+				# (cranked only once the first pull's over: into it, the line snaps - FishFight "rush")
+				key(KEY_SHIFT, not held and p.fight.opening_left <= 0.0)
+				if i >= 24 and i % 4 == 0:
+					var got := await _buried_now(rv, look)
+					# (not a look at the fish let go or landed meanwhile)
+					if p.state == Player.State.REELING:
+						worst.r = maxf(worst.r, got.r)
+						worst.l = maxf(worst.l, got.l)
+				else:
+					await frames(1)
+			check(p.state == Player.State.REELING, "%s: the fish kept on (%d)" % [id, p.state])
+			check(worst.r <= HOLD_IN_MAX and worst.l <= HOLD_IN_MAX, "%s reeling, %s: neither forearm nor hand in the body (%.3f, %.3f of them)" % [
+				id, "the first pull held" if held else "the crank going round", worst.r, worst.l])
 		key(KEY_SPACE, false)
 		key(KEY_SHIFT, false)
-		check(p.state == Player.State.REELING, "%s: the fish kept on (%d)" % [id, p.state])
-		check(worst.r <= HOLD_IN_MAX and worst.l <= HOLD_IN_MAX, "%s reeling: neither forearm nor hand in the body (%.3f, %.3f of them)" % [id, worst.r, worst.l])
 	Profile.choose_character(was)
 
 
@@ -8089,8 +8102,12 @@ func test_run_intro_and_eye_guide() -> void:
 	var rig: DragonRig = c.get("rig")
 	check(c.get("clip") == "Idle_Lamp" and (c.node as Node3D).find_children("*", "EarTailSway", true, false).size() == 1
 		and rig != null and rig.spread == 0.0, "standing, the traveller near: the lantern held up, its tail swaying, its wings folded")
-	# (user request: the lantern down at its side when no one's near)
+	# (user request: the lantern down at its side when no one's near - the animals too, kept away)
 	bg.global_position = player().global_position + Vector2(-RunView3D.DRAGON_NOTICE * RunView3D.PX - 120, 0)
+	for n in main.get_children():
+		if n is Critter and (n as Node2D).global_position.distance_to(bg.global_position) < (RunView3D.DRAGON_NOTICE_ANY + 4.0) * RunView3D.PX:
+			(n as Critter).set_physics_process(false)
+			(n as Critter).global_position = bg.global_position + Vector2(0, (RunView3D.DRAGON_NOTICE_ANY + 6.0) * RunView3D.PX)
 	await seconds(1.5)
 	check(c.clip == "Idle", "no one near: the lantern down (%s)" % c.clip)
 	bg.global_position = player().global_position + Vector2(-110, -40)
@@ -11399,8 +11416,8 @@ func test_cliff_coast_theme() -> void:
 	var gmat := view._ground_mat as ShaderMaterial
 	var docks := main.get_children().filter(func(c): return c is Dock)
 	var swash = gmat.get_shader_parameter("coast")
-	check((swash == null or float(swash) < 0.5) and docks.is_empty() and view._beach_grass.is_empty() and view._wetness == null and view._tracks == null,
-		"no beach, no swash, no docks")
+	check((swash == null or float(swash) < 0.5) and docks.is_empty() and view._beach_grass.is_empty() and view._wetness == null
+		and (view._tracks == null or view._tracks.stain_only), "no beach, no swash, no docks")
 	var oxy_in_sea := 0
 	for n in main.get_children():
 		if n is OxyTree and sea_zones.any(func(z): return (z as WaterZone).contains(n.global_position)):
@@ -13947,15 +13964,16 @@ func test_japan_and_england_maps() -> void:
 			check(ruins.any(func(r): return (r as Ruin).model == "cn_hall"), "the temple hall, the village's landmark")
 			check(fences.any(func(f): return (f as Fence).style == "tile_wall"), "white walls under dark tiles")
 			var bamboo := props.filter(func(q): return (q as StreetProp).kind == "bamboo")
+			# (user request "風吹動態": bending in the wind as the trees do - Foliage's sway, its leaves cut out)
 			var cut := false
 			for m in view.find_children("FarmProp*", "Node3D", true, false):
 				for mi in (m as Node).find_children("*", "MeshInstance3D", true, false):
 					for i in (mi as MeshInstance3D).mesh.get_surface_count():
-						var mat := (mi as MeshInstance3D).get_surface_override_material(i) as ShaderMaterial
-						if mat != null and mat.shader.code.contains("ALPHA_SCISSOR_THRESHOLD"):
+						var mat := (mi as MeshInstance3D).mesh.surface_get_material(i) as ShaderMaterial
+						if mat != null and mat.shader.code.contains("foliage_wind") and bool(mat.get_shader_parameter("scissor")):
 							cut = true
 			check(bamboo.size() >= 3 and bamboo.all(func(q): return (q as StreetProp).model == "cn_bamboo") and cut,
-				"bamboo groves (%d clumps), their leaves cut out" % bamboo.size())
+				"bamboo groves (%d clumps), swaying, their leaves cut out" % bamboo.size())
 			var trees := get_tree().get_nodes_in_group("trees")
 			var willows := trees.filter(func(t): return str(t.kind).begins_with("willow_"))
 			var by_water := willows.all(func(t): return gen._shore_distance(t.global_position) < 260.0)
@@ -14040,19 +14058,22 @@ func test_bridges() -> void:
 	check(bad.is_empty() and bridged * 10 >= maps * 7 and several >= 3,
 		"bridges on %d of %d village maps (%d with more than one), each well laid %s" % [bridged, maps, several, str(bad)])
 	# Walked over with the keys: up its arch and down again to the far bank; pushed at its side in the
-	# middle, still on it.
-	seed(5)
-	await play_level("9-1")
+	# middle, still on it (the first 9-1 laid out with a bridge).
 	var view: RunView3D = null
-	for _i in 600:
-		view = RunView3D.active
-		if view != null and view.built:
-			break
-		await frames(1)
 	var bridge: Dock = null
-	for w: Dock in get_tree().get_nodes_in_group("walkways"):
-		if w.bridge != "":
-			bridge = w
+	for s in range(5, 15):
+		seed(s)
+		await play_level("9-1")
+		for _i in 600:
+			view = RunView3D.active
+			if view != null and view.built:
+				break
+			await frames(1)
+		for w: Dock in get_tree().get_nodes_in_group("walkways"):
+			if w.bridge != "":
+				bridge = w
+		if bridge != null:
+			break
 	check(bridge != null and view.find_children("Bridge", "Node3D", true, false).size() == 1, "9-1: the red bridge built")
 	if bridge == null:
 		return
@@ -14078,6 +14099,163 @@ func test_bridges() -> void:
 	await frames(90)
 	key(side, false)
 	check(bridge.walk_rect.has_point(p.global_position + Player.FEET), "not off its side - its rails hold")
+
+
+func test_wet_footprints() -> void:
+	# User request ("角色有靠近水邊並踩到水，角色再走回地面要有明顯的水漬腳印，再慢慢變淡，走一定距離後，水漬腳印
+	# 就不需要呈現"): walked into a pond's edge and back out onto the forest's ground - the feet wet
+	# (a ripple where they came down in it), wet prints after on the dry ground, each lighter than the
+	# one before as the feet dry, none once they're dry (WET_DIST on), and the prints drying away.
+	Campaign.dev_all_open = true
+	seed(5)
+	await play_level("1-2")
+	var view: RunView3D = null
+	for _i in 600:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	var t: SnowTracks = view._tracks
+	check(t != null and t.stain_only and t.in_water.is_valid() and t.splashed.is_connected(view._step_ripple),
+		"wet prints laid on ground that keeps no prints of its own")
+	if t == null:
+		return
+	var splashes := [0]
+	t.splashed.connect(func(_at): splashes[0] += 1)
+	var p := player()
+	# (a shore with open dry land behind it, far enough to walk the feet dry)
+	var edge := Vector2.INF
+	var out := Vector2.ZERO
+	for zone in get_tree().get_nodes_in_group("water_zones_common"):
+		for d: Vector2 in [Vector2.RIGHT, Vector2.LEFT, Vector2.DOWN, Vector2.UP, Vector2(1, 1).normalized(), Vector2(-1, 1).normalized(),
+				Vector2(1, -1).normalized(), Vector2(-1, -1).normalized()]:
+			var e: Vector2 = zone.shore_point(d)
+			var ok := true
+			for k in range(1, 32):
+				var q := e + d * (k * 14.0)
+				if q.x < 80.0 or q.y < 80.0 or q.x > Player.WORLD_WIDTH - 80.0 or q.y > Player.WORLD_HEIGHT - 80.0 \
+						or p._too_deep(q - Player.FEET) or not Solids.is_free(get_tree(), q, 18.0) or Dock.on_walkway(get_tree(), q):
+					ok = false
+					break
+			if ok:
+				edge = e
+				out = d
+				break
+		if edge.is_finite():
+			break
+	check(edge.is_finite(), "(a shore with open land behind it)")
+	if not edge.is_finite():
+		return
+	await put(edge + out * 50.0 - Player.FEET)
+	await frames(10)
+	p._move_joystick.output = -out
+	await seconds(1.6)
+	p._move_joystick.output = Vector2.ZERO
+	await seconds(0.4)
+	check(t.feet_wet > 0.9 and splashes[0] > 0, "into the water's edge: the feet wet (%d steps in it, %.2f wet)" % [splashes[0], t.feet_wet])
+	p._move_joystick.output = out
+	await seconds(3.4)
+	var wet: Array = (t._owned.get("player_wet", []) as Array).duplicate()
+	var depths := wet.map(func(i): return float(t._deep[i]))
+	var lighter := true
+	for k in range(1, depths.size()):
+		lighter = lighter and float(depths[k]) <= float(depths[k - 1]) + 0.001
+	check(wet.size() >= 6 and lighter and float(depths[0]) > 0.85 and float(depths[-1]) < float(depths[0]) - 0.3,
+		"back out on the ground: wet prints, each lighter than the last (%s)" % str(depths.map(func(v): return snappedf(v, 0.01))))
+	var walked := t.dry_walk
+	var made := t.wet_made
+	await seconds(1.2)
+	p._move_joystick.output = Vector2.ZERO
+	check(t.feet_wet == 0.0 and t.wet_made == made and walked >= SnowTracks.WET_DIST * 0.9,
+		"dry again past %.0f m: no more (%.1f m walked, %d wet prints)" % [SnowTracks.WET_DIST, t.dry_walk, made])
+	check(t.count_of("player_wet") == wet.size(), "they stay a while")
+	t._process(SnowTracks.WET_PRINT_HOLD + SnowTracks.WET_PRINT_FADE * 0.5)
+	var half := 0.0
+	for i in wet:
+		half = maxf(half, t.left(t._age[i]))
+	check(t.count() > 0 and half > 0.3 and half < 0.7, "drying away: half gone (%.2f left)" % half)
+	t._process(SnowTracks.WET_PRINT_FADE)
+	check(t.count() == 0, "and then dry, gone")
+
+
+func test_nothing_in_anything() -> void:
+	# User request ("所有物件不可以有穿圖、卡圖的情況，動物們也不能被物件卡住跟穿圖"): a few of the villages as
+	# they're drawn (tests/overlap_audit.gd - every level: tools/verify tool=overlap): no building,
+	# yard thing, trunk, stone, fence, bridge or dock in another; no crown in a building; nothing in
+	# the water; and the animals, followed a while, never in anything, never in the water, never
+	# stuck meaning to go somewhere.
+	var audit := preload("res://tests/overlap_audit.gd")
+	Campaign.dev_all_open = true
+	for lv: String in ["9-3", "11-4", "12-3", "7-2"]:
+		seed(7)
+		await play_level(lv)
+		var view: RunView3D = null
+		for _i in 900:
+			view = RunView3D.active
+			if view != null and view.built:
+				break
+			await frames(1)
+		await frames(6)
+		var st := main.get_node_or_null("FuelStation") as Node2D
+		var camp_at := st.global_position if st != null else MapGenerator.SPAWN_POS
+		var things := audit.things(get_tree(), view)
+		var found: Array = audit.each_other(things, camp_at) + audit.crowns(things) + audit.in_water(get_tree(), things)
+		check(found.is_empty(), "%s: nothing in anything (%d things) %s" % [lv, things.size(), str(found.slice(0, 3).map(func(r): return r[1]))])
+		var w := audit.animal_watch(things)
+		Engine.time_scale = 3.0
+		var t := 0.0
+		while t < 24.0:
+			await get_tree().physics_frame
+			var dt := get_physics_process_delta_time() * 3.0
+			t += dt
+			audit.animal_step(get_tree(), main, w, dt)
+		Engine.time_scale = 1.0
+		var trouble: Array = w.inside.values() + w.water.values() + w.stuck.values()
+		check(w.seen.size() > 0 and trouble.is_empty(), "%s: %d animals, none in anything or stuck %s" % [lv, w.seen.size(),
+			str(trouble.slice(0, 3).map(func(r): return r[1]))])
+
+
+func test_village_sway() -> void:
+	# User request ("風吹動態"): everything growing in a village bends in the wind as the forest's trees
+	# do - its trees (the field maples among them), the orchards' fruit trees, the fields' greens and
+	# the grass - the one wind they all share blowing.
+	Campaign.dev_all_open = true
+	seed(3)
+	await play_level("8-3")
+	var view: RunView3D = null
+	for _i in 600:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	var sways := func(mesh: Mesh) -> bool:
+		if mesh == null:
+			return false
+		for i in mesh.get_surface_count():
+			var m := mesh.surface_get_material(i) as ShaderMaterial
+			if m != null and m.shader.code.contains("foliage_wind") and float(m.get_shader_parameter("sway")) > 0.0:
+				return true
+		return false
+	var trees_ok := not view._trees.is_empty()
+	for pair in view._trees:
+		trees_ok = trees_ok and sways.call((pair[1] as MeshInstance3D).mesh)
+	check(trees_ok, "its trees sway (%d)" % view._trees.size())
+	var props := get_tree().get_nodes_in_group("street_props")
+	var fruit := 0
+	var fruit_sway := 0
+	for k in props.size():
+		if (props[k] as StreetProp).kind != "fruit":
+			continue
+		fruit += 1
+		var node := view.get_node_or_null("FarmProp%d" % k)
+		if node != null and node.find_children("*", "MeshInstance3D", true, false).any(func(mi): return sways.call((mi as MeshInstance3D).mesh)):
+			fruit_sway += 1
+	check(fruit > 0 and fruit_sway == fruit, "the orchards' fruit trees sway (%d of %d)" % [fruit_sway, fruit])
+	var greens := view.find_children("Crops*", "MultiMeshInstance3D", true, false).filter(
+		func(m): return sways.call((m as MultiMeshInstance3D).multimesh.mesh))
+	check(not greens.is_empty(), "the fields' greens sway")
+	check(view._grass != null and view._grass.material.shader.code.contains("foliage_wind"), "the grass bends to the same wind")
+	check(view.wind > 0.0, "a wind blowing (%.2f)" % view.wind)
 
 
 func test_field_maples() -> void:

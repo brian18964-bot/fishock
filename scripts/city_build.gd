@@ -261,9 +261,13 @@ static func build(holder: Node3D, ruins: Array, land_y: Callable) -> ShaderMater
 			# (its vertex colour on too: the farm set's dirt low down, the Japanese set's colours - white
 			# where a model has none)
 			var built := _model(ruin.model_path(), "RuinModel%d" % k, shade, true)
-			built.position = Vector3(at.x / PX, float(land_y.call(at)), at.y / PX)
 			built.rotation.y = ruin.model_yaw
 			built.scale = Vector3.ONE * ruin.model_scale
+			# (user report "所有物件不可以有穿圖": a model whose own middle isn't over its origin - the
+			# scanned grey-brick house, 0.8 m off - stood with its middle on its place, where its
+			# footprint and its solid ground are; what stood by its walls stood in them)
+			var mid := _middle(built)
+			built.position = Vector3(at.x / PX, float(land_y.call(at)), at.y / PX) - built.basis * Vector3(mid.x, 0.0, mid.z)
 			holder.add_child(built)
 			continue
 		var mesh := _rubble(ruin, rng) if ruin.kind == "rubble" else _shell(ruin, rng)
@@ -283,6 +287,27 @@ static func build(holder: Node3D, ruins: Array, land_y: Callable) -> ShaderMater
 		caster.position = mi.position
 		holder.add_child(caster)
 	return mat
+
+
+## The middle of a model's meshes (in its own frame, before it's turned or scaled).
+static func _middle(node: Node3D) -> Vector3:
+	var lo := Vector3(INF, INF, INF)
+	var hi := -lo
+	for mi in node.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		if m.mesh == null or m.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY:
+			continue
+		var t := Transform3D.IDENTITY
+		var n: Node = m
+		while n != null and n != node:
+			t = (n as Node3D).transform * t
+			n = n.get_parent()
+		var bb := m.get_aabb()
+		for i in 8:
+			var p: Vector3 = t * bb.get_endpoint(i)
+			lo = lo.min(p)
+			hi = hi.max(p)
+	return (lo + hi) * 0.5 if lo.is_finite() else Vector3.ZERO
 
 
 ## The see-through round the traveller (at `hero`, world).

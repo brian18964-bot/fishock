@@ -18,6 +18,8 @@ uniform float cover = 0.0;
 uniform float dust = 0.0;
 uniform vec3 snow_color : source_color = vec3(0.92, 0.95, 1.0);
 uniform float rough = 0.9;
+// (a model coloured by its vertices - the fields' greens: their colour times the picture)
+uniform bool use_vcol = false;
 
 // the model's own height (m, before its scale) and how far its top leans, a share of that height,
 // in an ordinary wind; the parts out from the trunk bob this much a metre out; the leaves' flutter (m)
@@ -60,6 +62,9 @@ void vertex() {
 
 void fragment() {
 	vec4 t = texture(albedo_tex, UV) * tint;
+	if (use_vcol) {
+		t.rgb *= COLOR.rgb;
+	}
 	if (scissor && t.a < scissor_cut) {
 		discard;
 	}

@@ -11,6 +11,8 @@ extends SceneTree
 ##
 ##   for c in cat owl dog bear deer sheep bear2 dog3 deer2 owl2 croc sheep2; do
 ##     godot --headless --fixed-fps 60 --path . -s "$PWD/tools/fit_holds.gd" -- $c; done
+## LEFT_ONLY=1 keeps each one's right hand where it was fitted and fits the left hand again;
+## BURY_TIME=1 only prints how much of each arm is in the body, moment by moment, as it's held now.
 ## (the fitting's in fit_holds_work.gd, loaded once the game's autoloads are up)
 
 
