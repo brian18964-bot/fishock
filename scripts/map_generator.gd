@@ -1875,7 +1875,7 @@ func _place_farms() -> void:
 				_farm_track(yard, TRACK_HALF * 2.0)
 				farms += 1
 		if i < fields:
-			_farm_field(spec)
+			_farm_field(spec, ceili(float(fields) * FIELD_LEAST))
 	_place_yard_things()
 
 
@@ -2034,8 +2034,9 @@ func _on_track(at: Vector2, r: float) -> bool:
 ## One field (its size within `spec` "field_min".."field_max" - as big as there's room for - its crop
 ## by "crops"' weights) where
 ## there's room - clear of the water, the farms, the tracks, the camp and the other fields; some
-## fenced ("fenced"), the stubble with its bales ("bales").
-func _farm_field(spec: Dictionary) -> void:
+## fenced ("fenced"), the stubble with its bales ("bales"). Looked for over the whole map while the map
+## has fewer than `at_least`.
+func _farm_field(spec: Dictionary, at_least := 1) -> void:
 	var lo: Vector2 = spec.field_min
 	var hi: Vector2 = spec.field_max
 	var tries := []
@@ -2047,10 +2048,16 @@ func _farm_field(spec: Dictionary) -> void:
 		tries.append(Rect2(Vector2(randf_range(PROP_MARGIN, Player.WORLD_WIDTH - PROP_MARGIN - size.x),
 			randf_range(PROP_MARGIN, Player.WORLD_HEIGHT - PROP_MARGIN - size.y)), size))
 	# (user request - the river: on a small map, what's left beside it, the ponds and the farms has
-	# room for a field in only a few places, which random tries can all miss - so the map's first
-	# field, if they do, the smallest one tried at every FIELD_SCAN px over the map, each way round,
-	# in no order)
-	if _fields.is_empty():
+	# room for a field in only a few places, which random tries can all miss - so a field, if they do,
+	# the smallest one tried at every FIELD_SCAN px over the map, each way round, in no order. Not only
+	# the first: the river takes a third of a map's room, and 9-2's walled pastures and 7-2's riverside
+	# fields had gone down to one or two - so up to `at_least` of them (FIELD_LEAST of the map's, about
+	# as many as random tries found before there were rivers; looked for to the last one, the biggest
+	# maps were packed with small fields). Once a scan finds no room, there's none for the fields after
+	# it either - _no_room - and they're not looked for again.)
+	var scanned := false
+	if not _no_room and _fields.size() < at_least:
+		scanned = true
 		var scan := []
 		var least := minf(lo.x, lo.y)
 		var y := PROP_MARGIN
@@ -2088,6 +2095,8 @@ func _farm_field(spec: Dictionary) -> void:
 						_add_farm_prop({"kind": "bale"}, at, randf() * TAU)
 						break
 		return
+	if scanned:
+		_no_room = true
 
 
 func _field_clear(rect: Rect2, gap: float) -> bool:
@@ -2358,6 +2367,8 @@ const TRACK_TRIES := 4
 const FIELD_GAP := 70.0
 const FIELD_TRIES := 60
 const FIELD_SCAN := 60.0
+## (how many of a map's fields are looked for over the whole map when random tries miss - _farm_field)
+const FIELD_LEAST := 0.5
 ## (where a farm might stand: so many tried, its yard's middle this far in from the map's edges, px)
 const STEAD_TRIES := 120
 const STEAD_INSET := 300.0
@@ -2367,6 +2378,8 @@ const FENCE_OPEN_SIDE := 0.15
 const FENCE_LEAST := 40.0
 ## The fields placed (their rectangles, px); the farms' yards (px).
 var _fields: Array = []
+## (a scan of the whole map has found no room for another field - _farm_field)
+var _no_room := false
 var _yards: Array = []
 var _fence_count := 0
 var _farm_props := 0

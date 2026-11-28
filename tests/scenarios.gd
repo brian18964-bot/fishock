@@ -175,6 +175,7 @@ const TESTS := [
 	"test_shop_category_list",
 	"test_human_world_era_order",
 	"test_buildings_aged",
+	"test_river_maps_keep_their_fields",
 	"test_field_maples",
 	"test_wet_footprints",
 	"test_village_sway",
@@ -14695,6 +14696,24 @@ func test_buildings_aged() -> void:
 			break
 		await frames(1)
 	check(CityBuild.aged.is_empty(), "a forest map: nothing weathered")
+
+## The river took a third of a village map's room, and random tries for a field missed what was left:
+## 9-2's walled pastures ("石牆圍起的牧場，找缺口進出") came down to one field and no wall at all, 7-2's
+## riverside fields to one or two. A field the tries miss is looked for over the whole map until the
+## map has half of its fields (MapGenerator.FIELD_LEAST) - about as many as before there were rivers.
+func test_river_maps_keep_their_fields() -> void:
+	Campaign.dev_all_open = true
+	for v in [{"level": "9-2", "seed": 1, "least": 3}, {"level": "9-2", "seed": 4, "least": 3}, {"level": "7-2", "seed": 4, "least": 4}]:
+		seed(v.seed)
+		await play_level(v.level)
+		await frames(2)
+		var gen = main.get_node("MapGenerator")
+		var fields := get_tree().get_nodes_in_group("farm_fields")
+		var walls := get_tree().get_nodes_in_group("fences").filter(func(f): return (f as Fence).style != "wood")
+		var wanted := maxi(1, roundi(float(gen.theme.farm.fields) * Campaign.area_share()))
+		check(gen.river_zones.size() > 0 and fields.size() >= int(v.least) and not walls.is_empty(),
+			"%s (seed %d): beside its river, %d of its %d fields, %d walls round them" % [v.level, v.seed, fields.size(), wanted, walls.size()])
+
 
 func test_wet_footprints() -> void:
 	# User request ("角色有靠近水邊並踩到水，角色再走回地面要有明顯的水漬腳印，再慢慢變淡，走一定距離後，水漬腳印
