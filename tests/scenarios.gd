@@ -14608,6 +14608,8 @@ func test_human_world_era_order() -> void:
 ## 廢墟系列是會有破損生鏽的物件"): every human-world style weathers its buildings and the things
 ## about them (its "aged"), the ruined city hardest and rusted, the adobe village's mud brick faded
 ## toward sand; the forest's maps have none to weather and leave CityBuild.aged empty.
+## User request ("圍牆籬笆也一起做舊"): the walls and fences too, less than the buildings and without
+## rust; the English hedges stay green.
 func test_buildings_aged() -> void:
 	for theme in ["city", "countryside", "japan", "england", "china", "adobe"]:
 		var a: Dictionary = MapGenerator.THEMES[theme].get("aged", {})
@@ -14655,6 +14657,37 @@ func test_buildings_aged() -> void:
 		if v.theme == "adobe":
 			var to: Variant = mats[0].get_shader_parameter("fade_to") if not mats.is_empty() else null
 			check(to is Vector3 and (to as Vector3).x > (to as Vector3).z + 0.15, "the mud brick faded toward sand, not grey (%s)" % str(to))
+	# The walls and fences: the adobe village's mud walls, the English stone walls beside the hedges.
+	for v in [{"level": "7-2", "theme": "adobe", "seed": 4}, {"level": "9-3", "theme": "england", "seed": 7}]:
+		seed(v.seed)
+		await play_level(v.level)
+		var view: RunView3D = null
+		for _i in 900:
+			view = RunView3D.active
+			if view != null and view.built:
+				break
+			await frames(1)
+		var drawn := view.find_children("Fences", "MeshInstance3D", true, false) if view != null else []
+		var styles := {}
+		for f in get_tree().get_nodes_in_group("fences"):
+			styles[(f as Fence).style] = true
+		var walls_mat: ShaderMaterial = null
+		var green: Material = null
+		if drawn.size() == 1:
+			var mesh := (drawn[0] as MeshInstance3D).mesh
+			for si in mesh.get_surface_count():
+				var mat := mesh.surface_get_material(si)
+				if mat is ShaderMaterial and (mat as ShaderMaterial).shader.code == CityBuild.VCOL_SHADER:
+					walls_mat = mat
+				else:
+					green = mat
+		var a: Dictionary = MapGenerator.THEMES[v.theme].aged
+		check(walls_mat != null and is_equal_approx(float(walls_mat.get_shader_parameter("age")), float(a.age) * CityBuild.FENCE_AGE)
+			and float(walls_mat.get_shader_parameter("age")) < float(a.age) and float(walls_mat.get_shader_parameter("rust")) == 0.0
+			and is_equal_approx(float(walls_mat.get_shader_parameter("moss")), float(a.moss)),
+			"%s: its walls and fences weathered, less than its buildings, no rust (%s)" % [v.level, str(styles.keys())])
+		if v.theme == "england":
+			check(styles.has("hedge") and green != null and not (green is ShaderMaterial), "the hedges green, as they grow")
 	seed(3)
 	await play_level("1-2")
 	for _i in 900:

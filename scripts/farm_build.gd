@@ -277,12 +277,19 @@ static func _bale_at(x: float, a: float) -> Vector3:
 
 ## Every fence - one mesh, each of its kind (Fence.style): the countryside's posts and rails, its wood
 ## weathered piece by piece; the Japanese village's bamboo; the English dry-stone walls and hedges.
+## User request ("圍牆籬笆也一起做舊"): the walls and fences old as the map's buildings are
+## (CityBuild.vcol_material); the hedges are living green, clipped, and stay as they grow - their own
+## part of the mesh.
 static func fences(holder: Node3D, list: Array, land_y: Callable) -> void:
 	if list.is_empty():
 		return
 	_materials()
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var green := SurfaceTool.new()
+	green.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var walls := 0
+	var hedges := 0
 	for f in list:
 		var fence := f as Fence
 		var rng := RandomNumberGenerator.new()
@@ -296,17 +303,27 @@ static func fences(holder: Node3D, list: Array, land_y: Callable) -> void:
 			"stone":
 				_stone_wall(st, a, b, land_y, rng)
 			"hedge":
-				_hedge(st, a, b, land_y, rng)
+				_hedge(green, a, b, land_y, rng)
 			"tile_wall":
 				_tile_wall(st, a, b, land_y, rng)
 			"mud_wall":
 				_mud_wall(st, a, b, land_y, rng)
 			_:
 				_wood_fence(st, a, b, land_y, rng)
+		if fence.style == "hedge":
+			hedges += 1
+		else:
+			walls += 1
+	var mesh := ArrayMesh.new()
+	if walls > 0:
+		st.commit(mesh)
+		mesh.surface_set_material(mesh.get_surface_count() - 1, CityBuild.vcol_material(_wood_mat.roughness))
+	if hedges > 0:
+		green.commit(mesh)
+		mesh.surface_set_material(mesh.get_surface_count() - 1, _wood_mat)
 	var mi := MeshInstance3D.new()
 	mi.name = "Fences"
-	mi.mesh = st.commit()
-	mi.material_override = _wood_mat
+	mi.mesh = mesh
 	holder.add_child(mi)
 
 

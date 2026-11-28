@@ -48,6 +48,8 @@ uniform float rust = 0.0;
 uniform vec3 grime = vec3(0.18, 0.15, 0.11);
 // (what the colours fade toward - a weathered grey-brown; the sun-baked mud's sand in a dry land)
 uniform vec3 fade_to = vec3(0.4, 0.37, 0.32);
+// (how high the grime comes up from the ground against a building's: a low wall's only at its foot)
+uniform float foot = 1.0;
 float hash2(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 }
@@ -88,7 +90,7 @@ vec3 weather(vec3 c, vec3 wn) {
 	float streak = smoothstep(0.5, 0.82, fbm(vec2(along * 2.4, up * 0.3) + 7.3)) * (1.0 - lying);
 	c *= 1.0 - age * 0.6 * streak;
 	// (grime up from the ground)
-	float low = 1.0 - smoothstep(0.0, 1.8 + 0.7 * vnoise(vec2(along * 1.7, 0.0)), up);
+	float low = 1.0 - smoothstep(0.0, (1.8 + 0.7 * vnoise(vec2(along * 1.7, 0.0))) * foot, up);
 	c = mix(c, grime, low * age * 0.85);
 	// (moss on what faces up - roofs, sills - and at the foot)
 	float green = moss * smoothstep(0.35, 0.6, fbm(wp.xz * 0.9 + vec2(up * 0.8))) * (smoothstep(0.5, 0.9, wn.y) * 1.1 + low * 0.6);
@@ -227,6 +229,7 @@ void fragment() {
 
 static var _shader: Shader
 static var _tex_shader: Shader
+static var _vcol_shader: Shader
 ## Every see-through material made this map (update keeps their `hero`).
 static var _seen: Array = []
 
@@ -283,6 +286,33 @@ void fragment() {
 	}
 }
 """
+## User request ("圍牆籬笆也一起做舊"): what's drawn in its vertex colours - FarmBuild's walls and
+## fences - weathered as the buildings are (vcol_material).
+const VCOL_SHADER := """
+shader_type spatial;
+render_mode cull_back;
+uniform float roughness = 0.88;
+varying vec3 wp;
+varying vec4 vcol;
+void vertex() {
+	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	vcol = COLOR;
+}
+""" + WEATHER + """
+void fragment() {
+	vec3 c = vcol.rgb;
+	if (age > 0.0 || rust > 0.0 || moss > 0.0) {
+		c = weather(c, normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz));
+	}
+	ALBEDO = c;
+	ROUGHNESS = min(1.0, roughness + age * 0.08);
+}
+"""
+## (a wall's or fence's grime up from the ground, against a building's - FENCE_FOOT of its height;
+## how old, of the buildings' - a low wall is all foot and top, and at the buildings' age the Chinese
+## white wall went brown: it still reads as white, gone dull)
+const FENCE_FOOT := 0.3
+const FENCE_AGE := 0.6
 ## (the skyline: how far out from the map's edge the towers stand (m), how far apart (m), how big
 ## against their own size; how much of the map's sides, from the top, they line)
 const SKY_OUT := Vector2(6.0, 12.0)
@@ -415,6 +445,23 @@ static func _weathered(mat: ShaderMaterial) -> void:
 		if aged.has(key):
 			var g: Color = aged[key]
 			mat.set_shader_parameter(key, Vector3(g.r, g.g, g.b))
+
+
+## User request ("圍牆籬笆也一起做舊"): a material for what's drawn in its vertex colours (FarmBuild's
+## walls and fences, `roughness`), weathered as the map's buildings are - no rust (wood, bamboo,
+## stone, plaster and mud have no iron in them), the grime up from the ground only at a wall's foot.
+static func vcol_material(roughness: float) -> ShaderMaterial:
+	if _vcol_shader == null:
+		_vcol_shader = Shader.new()
+		_vcol_shader.code = VCOL_SHADER
+	var mat := ShaderMaterial.new()
+	mat.shader = _vcol_shader
+	mat.set_shader_parameter("roughness", roughness)
+	_weathered(mat)
+	mat.set_shader_parameter("age", float(aged.get("age", 0.0)) * FENCE_AGE)
+	mat.set_shader_parameter("rust", 0.0)
+	mat.set_shader_parameter("foot", FENCE_FOOT)
+	return mat
 
 
 ## One of the user's models, made ours (`path`, a .glb): its own pictures, seen through as the rest
