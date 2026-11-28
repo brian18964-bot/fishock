@@ -4,7 +4,7 @@
 
 ## 一、目前狀態
 - 所有工作都在 `claude/focused-fermi-96pp3r` 分支，它也是這個 repo 的預設分支；最後一次推送的 CI（Web build）通過並已部署。
-- 本機全套測試：6209 項、0 失敗（`tests/run_tests.gd`）。
+- 本機全套測試：6219 項、0 失敗（`tests/run_tests.gd`）。
 - 遊戲：Godot 4.7.2，3D 夜釣（俯視鏡頭、夜間、煤燈），手機觸控為主，也支援鍵盤。
 
 ## 二、這段期間做了什麼（依時間）
@@ -154,6 +154,20 @@
   越走越深、最後只露出頭（身體被湖面擋住），慢慢漂、頭轉向營地、輕輕上下浮，周圍一圈圈水波往外擴散，過一陣子再走回岸上。
   在水裡被點時，他先走回下水的岸邊再對話；可點的位置跟著他的頭。
 
+### 18. 使用者 11/28 的意見：菜園、橋、車子、樹種（第 5 點的出發視窗和第 2 點的河流等使用者確認）
+- **菜園**：只留鄉村、中式。日式改成收割後的稻田（不放乾草捆）和犁過的田，英式拿掉菜園（牧草地為主），
+  土屋改成收割後的麥田和犁過的田（`MapGenerator.THEMES` 各主題的 `farm.crops`）。
+- **橋**：只蓋在大水域上——池塘最長跨度要 620 px（約 23 m）以上，橋下水面至少 150 px（約 5.5 m）
+  （`MapGenerator.BRIDGE_POND_MIN`、`BRIDGE_SPAN`）。25 張村莊地圖現在約 10 張有橋（都是大地圖）。
+  使用者提議加河流把地圖切開、橋才有必要，方案已提出，等確認（見第五節）。
+- **車子**：都市建築的「透視」效果（靠近角色、靠近鏡頭的部分用網點挖空）也套到車子上，車子在燈籠旁就出現網點、像破掉。
+  街上的矮物件（車、油桶、木箱、長椅）不再套用（`CityBuild._prop_model`、`_model` 的 `see`）。
+- **樹種**：竹林和果園的整片範圍內不再長別的樹或灌木（`MapGenerator._grove_areas`）；樹種依季節分（`MapTree.SEASON_KINDS`）：
+  日式春（櫻花、青楓、黑松）／夏（青楓、黑松）／秋（紅楓、黑松），英式夏（綠葉田野楓、白樺、松）／秋（秋葉闊葉樹、紅黃田野楓、白樺、松）；
+  鄉村依章節設定是秋收，拿掉夏天的綠楓。分支的季節寫在關卡規則的 `season`，自由夜釣隨機（`MapGenerator.current_season`）。
+  其他主題清點過：森林、雪地、海崖是松；秋林是秋葉和枯樹；沙漠、土屋是水邊椰棗、沙地枯樹；沙灘是椰子樹；
+  都市是枯樹為主夾一棵秋葉樹和松；中式是水邊垂柳、其他青楓和松——都沒有季節或地區衝突。
+
 ## 三、已定案（使用者決定的，不用再問）
 ### 劇情與分支
 1. 每張地圖分 4～5 支，每支是一個劇情關卡；共 6 章 26 關。地圖順序：湖畔森林 → 秋林 → 雪地森林 → 沙漠綠洲 → 沙灘海岸 → 海崖。
@@ -180,6 +194,10 @@
 4. 池塘上要有**可以走上去的橋**（11/27 新機制）：只有村莊主題有，森林、秋林等非村莊的不放；一張圖可以不只一座。
 2. **只有都市是荒廢的主題**，其他人類世界的地圖照正常的樣子做（11/26）。
 3. 沙漠圓頂屋（TATOOINE 那包）不用；西部小鎮的模型使用者會再找。
+5. **菜園只出現在鄉村和中式**地圖（11/28）；日式是收割後的稻田、英式是牧草地、土屋是收割後的麥田。
+6. **橋只蓋在河流或夠大的水域**，小池塘不蓋（11/28）。
+7. **樹種不要不合理地混用**（11/28）：竹林、果園裡不長別的樹；人類世界用建築分風格，樹種可以用來表現季節或區域
+   （日式、英式每個分支一個季節，自由夜釣隨機）。
 ### 自由夜釣
 - 除了隨機生成的風格地圖，要能**自由選擇去哪一支分支釣**（收集各分支的獨有魚）。
 - 隨機地圖可以有主題夜晚（使用者舉例「鯉魚風暴」：整張圖都是鯉魚、有機會出現金色鯉魚；其餘自由發想）。
@@ -242,6 +260,8 @@
 | 濕腳印 | 離水邊 8 px 內踩下算踩到水；走 9 m 後腳乾（低於 12% 濕度就不留）；腳印 8 秒後開始變淡、35 秒乾掉；每人最多 24 個濕腳印 | `SnowTracks.WET_DIST`、`WET_LEAST`、`WET_PRINT_HOLD`、`WET_PRINT_FADE`、`WET_PER_WALKER`；`RunView3D.FOOT_WET` |
 | 防穿圖的間距 | 樹冠離建築（只容許葉尖 12 px）；院子物件用模型四角算範圍；路燈燈臂間距 45 px；水邊小動物出生處留 18 px | `MapGenerator.CROWN_BRUSH`、`_model_reach()`、`LAMP_ARM`、`SHORE_CRITTER_ROOM` |
 | 鱷魚先生泡水 | 每次要換地方時 30% 改成下水；離岸 1.2～1.9 m；泡 14～26 秒；水面在頭根下 0.12 m（整顆頭露出）；漂 0.1 m/s、左右 0.8 m；水波每 1.6 秒一圈、2.6 秒擴散到 1.6 m | `CampCroc.SOAK_*`、`RING_*` |
+| 建橋門檻 | 池塘最長跨度 620 px（約 23 m）以上才建；橋下水面 150～340 px | `MapGenerator.BRIDGE_POND_MIN`、`BRIDGE_SPAN` |
+| 分支季節 | 9-1 春；9-2、9-5 夏；9-3、9-4 秋；10-1、10-2 夏；10-3～10-5 秋 | `scripts/campaign.gd` 各關 `rules.season`；樹種 `MapTree.SEASON_KINDS` |
 | 和鱷魚先生對話 | 視窗開著時角色和他都不走（最多 30 分鐘）；視窗 4 秒內沒打開就不等 | `CampLife.TALK_MOST`、`TALK_OPENS`；`CampCroc.held` |
 | 農場動物的行為 | 綿羊／小牛被靠近到 55／45 px 才慢慢走開；雞 70 px 跑開；烏鴉 90 px 飛走；大小：綿羊 0.95 m、小牛 1.15 m、母雞 0.42 m、公雞 0.55 m、烏鴉 0.42 m | `Critter.SPECIES`、`RunView3D.CREATURES` |
 
@@ -256,7 +276,10 @@
 12. **土屋聚落**（第 12 章，取代部落）已可玩；還沒做：沙地上的沙丘起伏（目前平地）、駱駝以外的牲口；11 種魚是暫代模型。
     使用者會再測試土屋聚落和其他地圖。
 13. **中式古鎮**（第 11 章）已可玩；還沒做：荷花、石拱橋、牌樓、月洞門；11 種中國魚是暫代模型。
-14. **可以走上去的橋**已做（第二節 15）；只在五個村莊主題（使用者決定非村莊不放），一張圖最多 3 座。
+14. **可以走上去的橋**已做（第二節 15）；只在五個村莊主題（使用者決定非村莊不放），一張圖最多 3 座，只蓋在大水域（第二節 18）。
+16. **等使用者確認**（11/28）：
+    - 出發視窗改成左側列出 12 種地圖（往下捲動），點一張右側出現它的大圖、說明和分支（我畫的示意圖已給使用者，問「下拉」是捲動清單還是下拉式選單）。
+    - 河流：人類世界的地圖加一條從地圖一邊到另一邊的彎曲河流，把地圖切成兩邊，橋蓋在河上當通道（建議鄉村、日式、英式、中式、土屋是河，都市是運河）。
     卡通風的櫻花樹（Tree.zip）風格和其他寫實素材不搭，先沒用。
 15. 動物：烏鴉的翅膀是用旋轉把展開的翅膀收到身側（原檔是展翅姿勢），近看羽毛會有一點散；牛（Cow.zip 的 .max）仍打不開，目前用小牛。
 3. 月光鰺目前和浪人鰺同一個模型形狀；更細長的版本已寫好算圖設定（`tools/render_fish.py` 的 moon_jack），要有 Blender（bpy）才能重算。
@@ -274,7 +297,7 @@
 - 測試：見 CLAUDE.md。跟這段工作最相關的測試：`test_campaign_levels_build`（26 關的地圖、水域、鬼、額度）、
   `test_campaign_unlocks_and_achievements`、`test_story_lessons`、`test_tutorials_completable`、`test_branch_fish`、
   `test_free_branches_and_nights`、`test_level_guide_and_results`、`test_weathers`（含雨打水面）、`test_journey_page`、
-  `test_bag_full_reminders`、`test_character_unlocks`、`test_croc_quests`、`test_croc_waits_and_soaks`、`test_free_ruin_maps`、`test_croc_errands_on_run`、`test_zodiac_coins`、`test_city_map`、
+  `test_bag_full_reminders`、`test_character_unlocks`、`test_croc_quests`、`test_croc_waits_and_soaks`、`test_free_ruin_maps`、`test_village_trees_fields_and_cars`、`test_croc_errands_on_run`、`test_zodiac_coins`、`test_city_map`、
   `test_countryside_map`、`test_japan_and_england_maps`、`test_bridges`、`test_field_maples`、`test_wet_footprints`、
   `test_village_sway`、`test_nothing_in_anything`。
 - `tools/verify/verify.gd`（用法寫在檔案開頭）：

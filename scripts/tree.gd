@@ -60,8 +60,10 @@ const THEME_KINDS := {
 	# StreetProp "fruit").
 	# User request ("歐洲田野"): the user's European field maples made ours (tools/make_village_trees.py)
 	# - one in summer leaf, two turning red and gold - by the fields here and in the English village.
+	# User report ("風格地圖的樹種不要混用"): harvest time all through (the chapter's own words, "正是秋收") -
+	# the field maples turning red and gold, not the one in summer leaf among them.
 	"countryside": ["autumn_a", "autumn_b", "autumn_c", "autumn_d", "pine_b", "pine_c", "pine_b",
-		"fmaple_a", "rmaple_a", "rmaple_b"],
+		"rmaple_a", "rmaple_b"],
 	# User request (the human world's other villages): the Japanese village's black pines and maples
 	# turning; the English village's oaks turning and a few pines.
 	# User request ("補強日式"): the user's tree pack made ours (tools/make_village_trees.py) - its red
@@ -74,6 +76,19 @@ const THEME_KINDS := {
 	"china": ["willow_a", "willow_b"],
 	# User request ("換成土屋主題"): the adobe village's date palms by the water (the desert's own).
 	"adobe": ["palm_a", "palm_b", "palm_c", "palm_d"],
+}
+## User report ("風格地圖的樹種不要混用...人類系列是用建築物來區分風格，這時候就可以用樹的種類來豐富季節或是區域
+##特色"): a style's trees by season where its trees tell one - a level's its own (its rules' "season"), a
+## free night's at random (MapGenerator.current_season) - so a map never has spring's cherry blossom by
+## autumn's red maples, or a summer field maple among oaks turned for autumn. (The rest: THEME_KINDS.)
+const SEASON_KINDS := {
+	"japan": {
+		"spring": ["cherry_a", "cherry_a", "gmaple_a", "pine_b", "pine_c"],
+		"summer": ["gmaple_a", "gmaple_a", "pine_b", "pine_c", "pine_b"],
+		"autumn": ["maple_a", "maple_a", "maple_a", "pine_b", "pine_c"]},
+	"england": {
+		"summer": ["fmaple_a", "fmaple_a", "birch_a", "pine_b", "pine_c"],
+		"autumn": ["autumn_a", "autumn_b", "autumn_c", "autumn_d", "rmaple_a", "rmaple_b", "birch_a", "pine_b"]},
 }
 ## A style whose THEME_KINDS grow by the water ("oasis_trees"): its trees out away from it, and along
 ## the map's edge (RunView3D) - the desert's dead trees, the Chinese village's green maples and pines.
@@ -116,9 +131,19 @@ func _ready() -> void:
 		n.queue_free()
 
 
-## The trees a map style grows (the pines, but for THEME_KINDS's).
-static func kinds_for(theme: String) -> Array:
+## The trees a map style grows (the pines, but for THEME_KINDS's) - in its season, if its trees tell
+## one (SEASON_KINDS; `season` "" - the map's own, MapGenerator.current_season).
+static func kinds_for(theme: String, season := "") -> Array:
+	if SEASON_KINDS.has(theme):
+		var by: Dictionary = SEASON_KINDS[theme]
+		var s := season if season != "" else MapGenerator.current_season
+		return by.get(s, by.values()[0])
 	return THEME_KINDS.get(theme, PINES)
+
+
+## The seasons a style's trees may be in ([] - one look the year round).
+static func seasons_of(theme: String) -> Array:
+	return (SEASON_KINDS[theme] as Dictionary).keys() if SEASON_KINDS.has(theme) else []
 
 
 ## A style's trees away from the water, if its own grow by it (the desert's dead ones by default).

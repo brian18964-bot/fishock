@@ -322,7 +322,9 @@ static func update(mat: ShaderMaterial, hero: Vector3) -> void:
 ## One of the user's models, made ours (`path`, a .glb): its own pictures, seen through as the rest
 ## (TEX_SHADER); its shadow cast by a plain twin of each part (`shade`). Named `name`.
 static var _tex_cut_shader: Shader
-static func _model(path: String, name: String, shade: Material, colour := false) -> Node3D:
+## `see`: seen through round the traveller and near the camera (a building, a tower); false for a low
+## thing about the street that's never between the camera and them (a car, a drum, a bench).
+static func _model(path: String, name: String, shade: Material, colour := false, see := true) -> Node3D:
 	if _tex_shader == null:
 		_tex_shader = Shader.new()
 		_tex_shader.code = TEX_SHADER
@@ -349,7 +351,13 @@ static func _model(path: String, name: String, shade: Material, colour := false)
 					own.set_shader_parameter("has_normal", true)
 			own.set_shader_parameter("use_colour", colour)
 			m.set_surface_override_material(i, own)
-			_seen.append(own)
+			if see:
+				_seen.append(own)
+			else:
+				# (no see-through holes: neither round the traveller nor near the camera)
+				own.set_shader_parameter("cut", 0.0)
+				own.set_shader_parameter("fade_min", -2.0)
+				own.set_shader_parameter("fade_max", -1.0)
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		var caster := MeshInstance3D.new()
 		caster.mesh = m.mesh
@@ -598,6 +606,9 @@ static func props(holder: Node3D, list: Array, land_y: Callable) -> void:
 
 ## A car (one of the remade jeeps, at random), an oil drum, a crate, a bench - the user's models,
 ## made ours - their dirt and rust in their vertex colour; a car leant a little on a flat tyre.
+## User report ("車子被燈光照射的呈現沒有做好"): drawn whole by the lamp's light - the buildings' see-through
+## dots (round the traveller, near the camera) cut holes in a car beside them; these are low things,
+## never between the camera and the traveller, so they're not seen through.
 static func _prop_model(sp: StreetProp, rng: RandomNumberGenerator) -> Node3D:
 	var name := "city_" + sp.kind
 	if sp.kind == "car":
@@ -607,7 +618,7 @@ static func _prop_model(sp: StreetProp, rng: RandomNumberGenerator) -> Node3D:
 	var shade := StandardMaterial3D.new()
 	shade.albedo_color = Color(0.3, 0.3, 0.3)
 	var holder := Node3D.new()
-	var model := _model(Ruin.MODELS_DIR + name + ".glb", "Model", shade, true)
+	var model := _model(Ruin.MODELS_DIR + name + ".glb", "Model", shade, true, false)
 	holder.add_child(model)
 	if sp.kind == "car":
 		model.rotation = Vector3(rng.randf_range(-0.04, 0.04), 0.0, rng.randf_range(-0.03, 0.03))

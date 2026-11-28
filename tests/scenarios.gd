@@ -128,6 +128,7 @@ const TESTS := [
 	"test_desert_theme",
 	"test_coast_theme",
 	"test_free_ruin_maps",
+	"test_village_trees_fields_and_cars",
 	"test_cliff_coast_theme",
 	"test_surf",
 	"test_weathers",
@@ -5770,6 +5771,75 @@ func test_free_ruin_maps() -> void:
 	await frames(3)
 	check(MapGenerator.current_theme == "adobe", "out on the adobe village's map (%s)" % MapGenerator.current_theme)
 	camp().clear()
+
+
+## User reports: vegetable plots only in the countryside and the Chinese village ("菜園只應該出現在鄉村或是
+## 中式地圖"); a style's trees not mixed unreasonably - no other tree in a bamboo grove, spring's cherry
+## blossom never by autumn's red maples ("風格地圖的樹種不要混用...用樹的種類來豐富季節"); the cars drawn whole
+## in the lamp's light ("車子被燈光照射的呈現沒有做好").
+func test_village_trees_fields_and_cars() -> void:
+	for theme in ["countryside", "japan", "england", "china", "adobe"]:
+		var crops: Dictionary = MapGenerator.THEMES[theme].farm.crops
+		check(crops.has("greens") == (theme in ["countryside", "china"]), "%s: vegetable plots %s (%s)" % [theme,
+			"among its fields" if theme in ["countryside", "china"] else "none", str(crops.keys())])
+	var spring := MapTree.kinds_for("japan", "spring")
+	var autumn := MapTree.kinds_for("japan", "autumn")
+	check(spring.has("cherry_a") and not spring.has("maple_a") and autumn.has("maple_a") and not autumn.has("cherry_a")
+		and not MapTree.kinds_for("countryside").has("fmaple_a"), "each season its own trees - never cherry blossom by red maples")
+	Campaign.dev_all_open = true
+	# A branch's season: the shrine pond in spring.
+	seed(3)
+	await play_level("9-1")
+	var kinds := get_tree().get_nodes_in_group("trees").map(func(t): return str(t.kind))
+	check(MapGenerator.current_season == "spring" and kinds.has("cherry_a") and not kinds.has("maple_a"),
+		"9-1 in spring: cherry blossom, no red maples (%s)" % str(kinds))
+	# The bamboo path: nothing else growing in its groves.
+	seed(3)
+	await play_level("9-2")
+	var gen: MapGenerator = main.get_node("MapGenerator")
+	var inside := []
+	for t: MapTree in get_tree().get_nodes_in_group("trees"):
+		for g in gen._grove_areas:
+			if g.grow(-4.0).has_point(t.global_position):
+				inside.append(t.kind)
+	check(not gen._grove_areas.is_empty() and inside.is_empty(), "9-2: its bamboo groves bamboo only (%d groves; trees in them: %s)" % [gen._grove_areas.size(), str(inside)])
+	# A free night's: one of its seasons, not always the same.
+	var seen := {}
+	for k in 6:
+		seed(40 + k)
+		camp().clear()
+		gs.reset_run()
+		gs.last_return = ""
+		camp().begin_free([], "england")
+		get_tree().change_scene_to_file("res://scenes/main.tscn")
+		await frames(3)
+		main = get_tree().current_scene
+		seen[MapGenerator.current_season] = true
+	check(seen.size() == 2 and seen.has("summer") and seen.has("autumn"), "a free night in the English village: summer or autumn (%s)" % str(seen.keys()))
+	camp().clear()
+	# The city's cars: no see-through holes cut in them by the lamp's light round the traveller.
+	seed(3)
+	await play_level("7-2")
+	for _i in 900:
+		if RunView3D.active != null and RunView3D.active.built:
+			break
+		await frames(1)
+	var cars := 0
+	var holed := 0
+	var view: RunView3D = RunView3D.active
+	for k in get_tree().get_nodes_in_group("street_props").size():
+		var sp := get_tree().get_nodes_in_group("street_props")[k] as StreetProp
+		if sp == null or sp.kind != "car":
+			continue
+		cars += 1
+	for node in view.find_children("StreetPropModel*", "Node3D", false, false):
+		for mi in node.find_children("*", "MeshInstance3D", true, false):
+			for i in (mi as MeshInstance3D).get_surface_override_material_count():
+				var m := (mi as MeshInstance3D).get_surface_override_material(i) as ShaderMaterial
+				var cut: Variant = m.get_shader_parameter("cut") if m != null else null
+				if cut != null and float(cut) > 0.0:
+					holed += 1
+	check(cars > 0 and holed == 0, "7-2: its cars and the street's things drawn whole, no see-through holes (%d cars)" % cars)
 
 
 ## The widest of the depart window's rows of `maps`' cards (px) - 9999 if one has no card.
@@ -14088,7 +14158,10 @@ func test_japan_and_england_maps() -> void:
 			check(props.any(func(q): return (q as StreetProp).kind == "stupa") and props.any(func(q): return (q as StreetProp).model in ["jp_toro_moss", "jp_kasuga"]),
 				"the mossy stone lanterns and the stone towers")
 			var kinds := get_tree().get_nodes_in_group("trees").map(func(t): return str(t.kind))
-			check(kinds.has("maple_a") and kinds.has("cherry_a"), "its red maples and a cherry")
+			# (user report "風格地圖的樹種不要混用": its trees in its branch's season - the misty torii's autumn red
+			# maples, not spring's cherry blossom beside them)
+			check(MapGenerator.current_season == "autumn" and kinds.has("maple_a") and not kinds.has("cherry_a"),
+				"%s in autumn: its red maples, no cherry blossom" % v.level)
 		elif v.theme == "england":
 			check(ruins.any(func(r): return (r as Ruin).model == "eng_chapel"), "the chapel, the village's landmark")
 		elif v.theme == "adobe":
@@ -14191,6 +14264,9 @@ func test_bridges() -> void:
 				var over := get_tree().get_nodes_in_group("water_zones_common").filter(func(z): return z.contains((a + b) * 0.5))
 				if over.is_empty():
 					why.append("not over a pond")
+				# (user report "很多小水域你也設計了橋樑，是多餘的": only over a big water, a long crossing)
+				elif MapGenerator._zone_extent(over[0]) < MapGenerator.BRIDGE_POND_MIN or a.distance_to(b) < MapGenerator.BRIDGE_SPAN.x - 1.0:
+					why.append("over a small pond (%.0f px across, %.0f long)" % [MapGenerator._zone_extent(over[0]), a.distance_to(b)])
 				var rails := w.get_node_or_null("Rails")
 				if rails == null or rails.get_child_count() != 2:
 					why.append("rails")
@@ -14205,15 +14281,15 @@ func test_bridges() -> void:
 						why.append("on a dock")
 				if not why.is_empty():
 					bad.append([id, why])
-	check(bad.is_empty() and bridged * 10 >= maps * 7 and several >= 3,
-		"bridges on %d of %d village maps (%d with more than one), each well laid %s" % [bridged, maps, several, str(bad)])
+	check(bad.is_empty() and bridged * 10 >= maps * 3 and several >= 2,
+		"bridges on %d of %d village maps (%d with more than one), each well laid over a big water %s" % [bridged, maps, several, str(bad)])
 	# Walked over with the keys: up its arch and down again to the far bank; pushed at its side in the
-	# middle, still on it (the first 9-1 laid out with a bridge).
+	# middle, still on it (the first 9-3 laid out with a bridge - a big map, its big waters bridged).
 	var view: RunView3D = null
 	var bridge: Dock = null
 	for s in range(5, 15):
 		seed(s)
-		await play_level("9-1")
+		await play_level("9-3")
 		for _i in 600:
 			view = RunView3D.active
 			if view != null and view.built:
@@ -14224,7 +14300,8 @@ func test_bridges() -> void:
 				bridge = w
 		if bridge != null:
 			break
-	check(bridge != null and view.find_children("Bridge", "Node3D", true, false).size() == 1, "9-1: the red bridge built")
+	var bridge_count := get_tree().get_nodes_in_group("walkways").filter(func(w): return (w as Dock).bridge != "").size()
+	check(bridge != null and not view.find_children("*Bridge*", "Node3D", false, false).is_empty(), "9-3: the red bridges built (%d)" % bridge_count)
 	if bridge == null:
 		return
 	var a: Vector2 = bridge.bridge_ends[0]
@@ -14235,9 +14312,12 @@ func test_bridges() -> void:
 	var k: Key = KEY_D if d.x > 0.5 else KEY_S
 	key(k, true)
 	var top := -10.0
-	for _i in 240:
+	# (time enough for a long one: a big water's crossing)
+	for _i in 240 + int(a.distance_to(b) * 0.6):
 		await frames(1)
 		top = maxf(top, view.pivot.position.y)
+		if (p.global_position + Player.FEET - a).dot(d) > a.distance_to(b) + 60.0:
+			break
 	key(k, false)
 	var f := p.global_position + Player.FEET
 	await frames(30)
@@ -14430,8 +14510,12 @@ func test_field_maples() -> void:
 			mi.free()
 		var low_drawn := lowest * float((MapTree.SCALE_OF[k] as Vector2).x) if ok else 0.0
 		check(ok and cut and low_drawn > 2.3, "%s: bark and cut-out leaves, lowest leaf %.2f m at its smallest" % [k, low_drawn])
-	check(kinds.all(func(k): return k in MapTree.kinds_for("countryside") and k in MapTree.kinds_for("england")),
-		"the countryside and the English village grow them")
+	# (user report "風格地圖的樹種不要混用": in season - the countryside at harvest time and the English
+	# village in autumn the turning ones, the English village in summer the green one)
+	check(MapTree.kinds_for("countryside").has("rmaple_a") and not MapTree.kinds_for("countryside").has("fmaple_a")
+		and MapTree.kinds_for("england", "summer").has("fmaple_a") and not MapTree.kinds_for("england", "summer").has("rmaple_a")
+		and MapTree.kinds_for("england", "autumn").has("rmaple_b") and not MapTree.kinds_for("england", "autumn").has("fmaple_a"),
+		"the countryside and the English village grow them, each in its season")
 	Campaign.dev_all_open = true
 	seed(4)
 	await play_level("10-3")

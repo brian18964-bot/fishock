@@ -83,7 +83,10 @@ const DOCK_BOAT_CHANCE := 0.4
 ## reaches up onto the bank (px), its walkable half width (px), how many crossings are tried on each
 ## pond; and how far into the water its middle must be against half its span (more a waist than a
 ## chord across a little bay at the pond's edge).
-const BRIDGE_SPAN := Vector2(90.0, 340.0)
+const BRIDGE_SPAN := Vector2(150.0, 340.0)
+## User report ("很多小水域你也設計了橋樑，是多餘的"): a bridge only over a big water - a pond this long
+## at its longest (px) or more - never a small one, walked round in a moment.
+const BRIDGE_POND_MIN := 620.0
 const BRIDGE_SPAN_GROW := 2.0
 const BRIDGE_LAND := 34.0
 const BRIDGE_HALF_WIDTH := 26.0
@@ -110,6 +113,9 @@ const BUSH_SCENE := preload("res://scenes/bush.tscn")
 const THEME := "forest_pine"
 ## The style this run's map has (set as the map is made; RunView3D dresses it by it).
 static var current_theme := "forest_pine"
+## The season the map's trees are in (MapTree.SEASON_KINDS - the level's own, a free night's at
+## random; "" for a style whose trees look one way the year round).
+static var current_season := ""
 ## The Chinese village's bamboo grove (a level may ask for more, thicker ones - its "yard" "groves").
 const CHINA_BAMBOO := {"kind": "bamboo", "models": ["cn_bamboo"], "count": 2, "rows": Vector2i(2, 3), "cols": Vector2i(3, 5),
 	"gap": 120.0, "jitter": 30.0, "fill": 0.5, "size": Vector2(40, 0)}
@@ -326,8 +332,8 @@ const THEMES := {
 	},
 	# User request (the human world's other villages, made as ordinary places): the Japanese village -
 	# laid out as the countryside is ("farm", "yard"), its own: houses with a shrine or a shed across the
-	# yard, now and then a roofed gate, an ema stand, a big hall as its landmark ("landmark"); vegetable
-	# plots behind bamboo fences; pale gravel paths (RunView3D's "floor3d") from each house out to the
+	# yard, now and then a roofed gate, an ema stand, a big hall as its landmark ("landmark"); rice
+	# fields behind bamboo fences; pale gravel paths (RunView3D's "floor3d") from each house out to the
 	# map's edge, a vermilion torii astride each near its house, stone lanterns along them (a few lit
 	# at night); tall wooden lanterns, benches, stone basins and baskets by the houses; bamboo groves
 	# (the user's shrine set, made ours - tools/make_japan_assets.py). Moss where the grass thins; black
@@ -345,7 +351,9 @@ const THEMES := {
 			"extras": ["jp_gate", "jp_ema_1", "jp_shrine", "jp_shed"], "extra": Vector2i(0, 2),
 			"scale": Vector2(0.85, 1.0), "yard": 150.0, "water_gap": 70.0,
 			"fields": 3, "field_min": Vector2(300, 220), "field_max": Vector2(620, 420),
-			"crops": {"greens": 1.0, "plough": 0.6}, "fenced": 0.75, "fences": {"bamboo": 1.0},
+			# User report ("菜園只應該出現在鄉村或是中式地圖"): no vegetable plots here - its rice fields
+			# after the harvest (their stubble, no bales) and turned earth.
+			"crops": {"stubble": 1.0, "plough": 0.6}, "fenced": 0.75, "fences": {"bamboo": 1.0},
 			"gate": Vector2(80, 120), "bales": Vector2i(0, 0)},
 		"yard": {"lit_most": 4, "things": [
 			{"kind": "torii", "models": ["jp_torii"], "count": 2, "where": "across", "size": Vector2(10, 155)},
@@ -387,7 +395,8 @@ const THEMES := {
 			"extras": ["eng_tower", "farm_shelter"], "extra": Vector2i(0, 1),
 			"scale": Vector2(0.8, 0.95), "yard": 160.0, "water_gap": 70.0,
 			"fields": 5, "field_min": Vector2(340, 260), "field_max": Vector2(760, 520),
-			"crops": {"pasture": 1.4, "plough": 0.8, "stubble": 0.8, "greens": 0.3}, "fenced": 0.85,
+			# (user report: vegetable plots only in the countryside and the Chinese village - pastures here)
+			"crops": {"pasture": 1.4, "plough": 0.8, "stubble": 0.8}, "fenced": 0.85,
 			"fences": {"stone": 1.0, "hedge": 0.7}, "gate": Vector2(80, 120), "bales": Vector2i(2, 4)},
 		"yard": {"lit_most": 3, "things": [
 			{"kind": "lantern", "models": ["farm_lantern"], "count": 5, "where": "track", "lit": 0.5},
@@ -448,8 +457,8 @@ const THEMES := {
 	# User request (the tribal theme dropped - "換成土屋主題"): the adobe village by its oasis waters - laid
 	# out as the other villages are ("farm", "yard"): its mud-brick houses about their yards (the
 	# user's Egyptian houses, made ours - tools/make_adobe_assets.py: earthen or lime-washed), now and
-	# then a shade of palm fronds or a bread oven beside them, the tallest house its landmark; plots of
-	# greens and wheat behind low mud walls (Fence's "mud_wall"); dirt lanes out to the map's edge with
+	# then a shade of palm fronds or a bread oven beside them, the tallest house its landmark; wheat
+	# fields behind low mud walls (Fence's "mud_wall"); dirt lanes out to the map's edge with
 	# lantern posts; water jars, pots, ovens and wells about the yards; date palms thick by the water
 	# ("oasis_trees", as the desert's), dead trees and a palm or two out on the sand (MapTree's
 	# OPEN_KINDS). Camels, chickens and crows about.
@@ -467,7 +476,9 @@ const THEMES := {
 			"extras": ["adb_shade", "adb_oven"], "extra": Vector2i(0, 2),
 			"scale": Vector2(0.95, 1.05), "yard": 150.0, "water_gap": 70.0,
 			"fields": 4, "field_min": Vector2(300, 220), "field_max": Vector2(640, 440),
-			"crops": {"greens": 1.0, "plough": 0.7, "stubble": 0.6}, "fenced": 0.75, "fences": {"mud_wall": 1.0},
+			# (user report: vegetable plots only in the countryside and the Chinese village - its wheat
+			# after the harvest and turned earth by the water here)
+			"crops": {"stubble": 1.0, "plough": 0.8}, "fenced": 0.75, "fences": {"mud_wall": 1.0},
 			"gate": Vector2(80, 120), "bales": Vector2i(0, 2)},
 		"yard": {"lit_most": 3, "things": [
 			{"kind": "lantern", "models": ["farm_lantern"], "count": 5, "where": "track", "lit": 0.5},
@@ -531,6 +542,10 @@ func _ready() -> void:
 	var pick := str(Campaign.rules.get("theme", ""))
 	theme_name = pick if THEMES.has(pick) else THEME
 	current_theme = theme_name
+	var seasons := MapTree.seasons_of(theme_name)
+	current_season = str(Campaign.rules.get("season", ""))
+	if not current_season in seasons:
+		current_season = str(seasons[randi() % seasons.size()]) if not seasons.is_empty() else ""
 	theme = THEMES[theme_name].duplicate(true)
 	# (user request - the maps' branches: a level's own changes to its map - its trees, animals,
 	# shore life and the like - over the style's)
@@ -860,7 +875,7 @@ func _place_bridges() -> void:
 	for _n in count:
 		var best := []  # [span, from, to, zone]
 		for zone in water_zones:
-			if zone.is_rare() or zone in bridged:
+			if zone.is_rare() or zone in bridged or _zone_extent(zone) < BRIDGE_POND_MIN:
 				continue
 			for _try in BRIDGE_TRIES:
 				var c: Vector2 = zone.random_point(12.0)
@@ -892,6 +907,16 @@ func _place_bridges() -> void:
 		_add_entrance(bridge.walk_rect, -dir)
 		get_parent().add_child.call_deferred(bridge)
 		_walk_rects.append(bridge.walk_rect)
+
+
+## How long a pond is at its longest (px): across its lobes' box.
+static func _zone_extent(zone: WaterZone) -> float:
+	var lo := Vector2(INF, INF)
+	var hi := -lo
+	for l in zone.world_lobes():
+		lo = lo.min(Vector2(l.x - l.z, l.y - l.z))
+		hi = hi.max(Vector2(l.x + l.z, l.y + l.z))
+	return maxf(hi.x - lo.x, hi.y - lo.y) if lo.is_finite() else 0.0
 
 
 ## Where a line from `c` (in `zone`'s water) along `dir` reaches the bank: the last point in it.
@@ -1941,8 +1966,12 @@ func _place_grove(grove: Dictionary) -> void:
 					if _yard_spot_ok(p, reach) and _fits(p, reach, 0.0):
 						spots.append(p)
 			if spots.size() >= int(rows * cols * float(grove.get("fill", 0.7))):
+				var area := Rect2(spots[0], Vector2.ZERO)
 				for p in spots:
 					_add_farm_prop(grove, p, randf() * TAU, "grove")
+					area = area.expand(p)
+				# (the grove's ground, its clumps' or rows' reach round it: kept to itself)
+				_grove_areas.append(area.grow(reach + gap * 0.25))
 				break
 
 
@@ -2211,6 +2240,8 @@ func _place_fossil(kind: String, form: String, n: int, within: Rect2) -> Fossil:
 ## tree's kind and where it goes ((-1, -1): nowhere). The palms' crowns are high over the rod, so
 ## they may stand nearer the bank than the pines' branches.
 var _groves := {}
+## The bamboo groves' and orchards' ground (px): no other tree grows in it (_fits).
+var _grove_areas: Array[Rect2] = []
 
 
 ## (a style with "plant_band") a spot near some pool for a plant: out from its shore within the band
@@ -2531,6 +2562,12 @@ func _fits(pos: Vector2, base: float, reach: float) -> bool:
 	for f in _fields:
 		if _rect_distance(f, pos) < base + 12.0:
 			return false
+	# User report ("竹林裡出現綠樹"): nothing with a crown - a tree, a bush - in a bamboo grove or an
+	# orchard, between its own clumps and rows
+	if reach > 0.0:
+		for g in _grove_areas:
+			if _rect_distance(g, pos) < reach * 0.5:
+				return false
 	if _on_track(pos, base + 6.0):
 		return false
 	for t in _taken:
