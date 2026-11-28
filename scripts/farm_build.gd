@@ -74,6 +74,27 @@ const BALE_STRAW := Color(0.66, 0.53, 0.28)
 const LANTERN_LIGHT := Color(1.0, 0.78, 0.48)
 const LANTERN_ENERGY := 2.2
 const LANTERN_RANGE := 7.0
+## User request ("燈籠要亮在燈籠中，微微的紅色燈色、時不時還會稍微暗一些些；路燈也沒有亮在燈罩中，也是要隨機暗
+## 一些"): the glow in a lit lamp (sRGB, how bright) - a warm flame's, the red paper lanterns' faint red - and
+## the red lanterns' light (sRGB, energy, reach m); mine for now.
+const LAMP_GLOW := Color(1.0, 0.6, 0.28)
+const LAMP_GLOW_ENERGY := 1.6
+const RED_GLOW := Color(1.0, 0.22, 0.1)
+const RED_GLOW_ENERGY := 1.2
+const RED_LIGHT := Color(1.0, 0.45, 0.32)
+const RED_ENERGY := 1.3
+const RED_RANGE := 6.0
+## Where in a lit lamp its glow is (each, from its model's "lamp" - Ruin.info), how big (its radii, m),
+## whether it's a red paper lantern, how it dims (LampFlicker.STYLES): the countryside's post's lamp
+## hangs from its arm ("lamp" its bottom) and dims as a street lamp does; the red post's two paper
+## lanterns hang either side of it; the Japanese paper lamp is lit all through; a stone lantern's fire box
+## (the rest) glows only through its openings.
+const LAMP_LOOKS := {
+	"farm_lantern": {"at": [Vector3(0.0, 0.17, 0.0)], "size": Vector3(0.16, 0.21, 0.16), "red": false, "flicker": "lamp"},
+	"cn_red_lantern": {"at": [Vector3(-0.75, 0.0, 0.0), Vector3(0.75, 0.0, 0.0)], "size": Vector3(0.28, 0.31, 0.28), "red": true, "flicker": "lantern"},
+	"jp_lamp": {"at": [Vector3.ZERO], "size": Vector3(0.24, 0.3, 0.24), "red": false, "flicker": "lantern"},
+}
+const STONE_LAMP := {"at": [Vector3.ZERO], "size": Vector3(0.17, 0.15, 0.17), "red": false, "flicker": "lantern"}
 ## The yard things' models (StreetProp kinds; several - one picked by its own dice).
 const MODELS := {"lantern": ["farm_lantern"], "well": ["farm_well_1", "farm_well_2"], "logs": ["farm_logs_1"],
 	"lumber": ["farm_logs_2"], "barrel": ["farm_barrel"], "wagon": ["farm_wagon"], "barrow": ["farm_barrow"],
@@ -85,7 +106,6 @@ const GROWN := ["fruit", "bamboo"]
 const SWAYING_CROPS := ["farm_greens"]
 
 static var _wood_mat: StandardMaterial3D
-static var _glow_mat: StandardMaterial3D
 static var _bale_mesh: ArrayMesh
 
 
@@ -172,7 +192,7 @@ static func props(holder: Node3D, list: Array, land_y: Callable) -> void:
 				model.scale = Vector3.ONE * rng.randf_range(0.95, 1.2)
 			node.add_child(model)
 			if sp.lit:
-				_light(node, name)
+				_light(model, name, sp.seed_value)
 		else:
 			continue
 		node.name = "FarmProp%d" % k
@@ -202,28 +222,32 @@ static func _swaying(path: String) -> Node3D:
 	return node
 
 
-## A lit lantern: its lamp glowing, its light on the track round it.
-static func _light(node: Node3D, name: String) -> void:
+## A lit lantern: its lamp glowing, its light on the track round it. In its `model` (`name`) - turned
+## and set as the model is, so the glow is in the lamp whichever way the model faces (user report: the
+## countryside posts' light hung in the air beside their lamps, the red posts' lit the post between
+## their lanterns, white); dimmed now and then on its own dice (`seed_value`: LampFlicker).
+static func _light(model: Node3D, name: String, seed_value: int) -> void:
 	var lamp: Array = Ruin.info(name).get("lamp", [0.0, 2.1, 0.5])
 	var at := Vector3(float(lamp[0]), float(lamp[1]), float(lamp[2]))
-	var glow := MeshInstance3D.new()
-	glow.name = "LanternGlow"
-	var ball := SphereMesh.new()
-	ball.radius = 0.11
-	ball.height = 0.26
-	glow.mesh = ball
-	glow.material_override = _glow_mat
-	glow.position = at + Vector3(0.0, 0.12, 0.0)
-	glow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	node.add_child(glow)
+	var look: Dictionary = LAMP_LOOKS.get(name, STONE_LAMP)
+	var red := bool(look.red)
+	var glows := []
+	var mid := Vector3.ZERO
+	for off: Vector3 in look.at:
+		glows.append(LampFlicker.glow(model, at + off, look.size, RED_GLOW if red else LAMP_GLOW,
+			RED_GLOW_ENERGY if red else LAMP_GLOW_ENERGY))
+		mid += (at + off) / float(look.at.size())
 	var light := OmniLight3D.new()
 	light.name = "LampLight"
-	light.light_color = LANTERN_LIGHT
-	light.light_energy = LANTERN_ENERGY
-	light.omni_range = LANTERN_RANGE
+	light.light_color = RED_LIGHT if red else LANTERN_LIGHT
+	light.light_energy = RED_ENERGY if red else LANTERN_ENERGY
+	light.omni_range = RED_RANGE if red else LANTERN_RANGE
 	light.shadow_enabled = false
-	light.position = at
-	node.add_child(light)
+	light.position = mid
+	model.add_child(light)
+	var flicker := LampFlicker.new()
+	flicker.setup(str(look.flicker), light, glows, seed_value)
+	model.add_child(flicker)
 
 
 ## A round hay bale lying on its side (our own): its straw wound round - darker bands about it, the
@@ -632,8 +656,3 @@ static func _materials() -> void:
 		_wood_mat = StandardMaterial3D.new()
 		_wood_mat.vertex_color_use_as_albedo = true
 		_wood_mat.roughness = 0.88
-		_glow_mat = StandardMaterial3D.new()
-		_glow_mat.albedo_color = LANTERN_LIGHT
-		_glow_mat.emission_enabled = true
-		_glow_mat.emission = LANTERN_LIGHT
-		_glow_mat.emission_energy_multiplier = 3.0

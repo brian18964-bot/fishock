@@ -176,6 +176,7 @@ const TESTS := [
 	"test_human_world_era_order",
 	"test_buildings_aged",
 	"test_river_maps_keep_their_fields",
+	"test_lamps_lit_within",
 	"test_field_maples",
 	"test_wet_footprints",
 	"test_village_sway",
@@ -14713,6 +14714,104 @@ func test_river_maps_keep_their_fields() -> void:
 		var wanted := maxi(1, roundi(float(gen.theme.farm.fields) * Campaign.area_share()))
 		check(gen.river_zones.size() > 0 and fields.size() >= int(v.least) and not walls.is_empty(),
 			"%s (seed %d): beside its river, %d of its %d fields, %d walls round them" % [v.level, v.seed, fields.size(), wanted, walls.size()])
+
+
+## User report ("路邊有設計一些燈具，燈籠要亮在燈籠中，微微的紅色燈色、時不時還會稍微暗一些些；路燈也沒有亮在
+## 燈罩中，也是要隨機暗一些，製造無人詭異的感覺"): a lit lamp's glow is in its lamp whichever way its model
+## faces - the countryside post's in the lamp hanging from its arm (it hung in the air beside it), the red
+## post's in each of its two paper lanterns, faint red (it lit the post between them, white) - and every
+## lit lamp dims now and then on its own dice: a lantern softly, a lamp post in stutters and brown-outs.
+func test_lamps_lit_within() -> void:
+	# The dimming itself: a lantern's and a lamp post's over a minute.
+	var light := OmniLight3D.new()
+	light.light_energy = 2.0
+	var holder := Node3D.new()
+	var glow := LampFlicker.glow(holder, Vector3.ZERO, Vector3.ONE * 0.2, Color.RED, 1.5)
+	var runs := {}
+	for kind in ["lantern", "lamp"]:
+		var f := LampFlicker.new()
+		f.setup(kind, light, [glow], 7)
+		var lo := 1.0
+		var hi := 0.0
+		var bright := 0
+		var steps := 1800
+		for _i in steps:
+			var v := f.step(1.0 / 30.0)
+			lo = minf(lo, v)
+			hi = maxf(hi, v)
+			if v > 0.9:
+				bright += 1
+		runs[kind] = [lo, hi, float(bright) / steps, light.light_energy, float(glow.get_shader_parameter("energy"))]
+		f.free()
+	check(runs.lantern[0] < 0.88 and runs.lantern[0] > 0.5 and runs.lantern[1] <= 1.0 and runs.lantern[2] > 0.8,
+		"a lantern sinks a little now and then, mostly full (lowest %.2f, full %.0f%% of the time)" % [runs.lantern[0], runs.lantern[2] * 100.0])
+	check(runs.lamp[0] < 0.62 and runs.lamp[1] <= 1.0 and runs.lamp[2] > 0.75,
+		"a lamp post drops lower, in stutters (lowest %.2f, full %.0f%% of the time)" % [runs.lamp[0], runs.lamp[2] * 100.0])
+	var a := LampFlicker.new()
+	var b := LampFlicker.new()
+	a.setup("lamp", null, [], 1)
+	b.setup("lamp", null, [], 2)
+	var apart := 0
+	for _i in 900:
+		if absf(a.step(1.0 / 30.0) - b.step(1.0 / 30.0)) > 0.1:
+			apart += 1
+	check(apart > 0, "each lamp on its own dice")
+	a.free()
+	b.free()
+	light.free()
+	holder.free()
+	Campaign.dev_all_open = true
+	# On the maps: the countryside's posts, the Chinese red posts, the city's street lamps.
+	for v in [{"level": "11-1", "seed": 4, "model": "farm_lantern"}, {"level": "8-1", "seed": 4, "model": "cn_red_lantern"},
+			{"level": "12-1", "seed": 4, "model": ""}]:
+		seed(v.seed)
+		await play_level(v.level)
+		var view: RunView3D = null
+		for _i in 900:
+			view = RunView3D.active
+			if view != null and view.built:
+				break
+			await frames(1)
+		var flickers := view.find_children("LampFlicker", "", true, false)
+		var lights := view.find_children("LampLight", "OmniLight3D", true, false)
+		check(lights.size() >= 1 and flickers.size() == lights.size(), "%s: every lit lamp dims on its own (%d)" % [v.level, flickers.size()])
+		if v.model == "":
+			# (the street lamp: lit under its iron shade, not a box of light)
+			var ok := true
+			for f in flickers:
+				var lamp := (f as Node).get_parent() as Node3D
+				var halo := lamp.get_node_or_null("LanternGlow") as Node3D
+				ok = ok and halo != null and halo.position.y < 4.41 and (f as LampFlicker).style == "lamp"
+			check(ok, "the city's lamps lit under their shades, stuttering")
+			continue
+		var lamp: Array = Ruin.info(v.model).get("lamp", [])
+		var at := Vector3(float(lamp[0]), float(lamp[1]), float(lamp[2]))
+		var look: Dictionary = FarmBuild.LAMP_LOOKS[v.model]
+		var inside := true
+		var models := 0
+		for f in flickers:
+			var model := (f as Node).get_parent() as Node3D
+			if model.scene_file_path != Ruin.path_of(v.model):
+				continue
+			var glows := model.find_children("LanternGlow*", "MeshInstance3D", false, false)
+			models += 1
+			inside = inside and glows.size() == (look.at as Array).size() and (f as LampFlicker).style == str(look.flicker)
+			for i in glows.size():
+				var want: Vector3 = model.global_transform * (at + (look.at as Array)[i])
+				inside = inside and (glows[i] as Node3D).global_position.distance_to(want) < 0.01
+				var post := model.global_position
+				# (out from the post: the countryside's lamp hangs from its arm, the red lanterns either side)
+				inside = inside and Vector2(want.x - post.x, want.z - post.z).length() > 0.4
+		check(models >= 1 and inside, "%s: each %s's glow in its lamp, turned with it (%d)" % [v.level, v.model, models])
+		if v.model == "cn_red_lantern":
+			var red: Node3D = null
+			for f in flickers:
+				if ((f as Node).get_parent() as Node3D).scene_file_path == Ruin.path_of(v.model):
+					red = (f as Node).get_parent()
+			var l := red.get_node("LampLight") as OmniLight3D
+			var g := (red.get_node("LanternGlow") as MeshInstance3D).material_override as ShaderMaterial
+			var c: Color = g.get_shader_parameter("colour")
+			check(l.light_color.r > l.light_color.g + 0.4 and c.r > c.g * 3.0, "the red lanterns' light faint red, their glow red")
 
 
 func test_wet_footprints() -> void:

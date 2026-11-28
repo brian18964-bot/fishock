@@ -810,22 +810,26 @@ static func _lamp(sp: StreetProp, rng: RandomNumberGenerator) -> Node3D:
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	_box(st, Vector3(0.0, 2.3, 0.0), Vector3(0.13, 4.6, 0.13), IRON, rng)
 	_box(st, Vector3(0.62, 4.56, 0.0), Vector3(1.3, 0.08, 0.08), IRON, rng)
-	if not sp.lit:
-		_box(st, Vector3(1.2, 4.48, 0.0), Vector3(0.5, 0.14, 0.26), IRON.lightened(0.15), rng)
+	_box(st, Vector3(1.2, 4.48, 0.0), Vector3(0.5, 0.14, 0.26), IRON.lightened(0.15), rng)
 	var holder := Node3D.new()
 	var mi := MeshInstance3D.new()
 	mi.mesh = st.commit()
 	mi.material_override = _prop_mat
 	holder.add_child(mi)
 	if sp.lit:
+		# (user request "路燈也沒有亮在燈罩中，也是要隨機暗一些，製造無人詭異的感覺": lit under its iron shade -
+		# the lamp's pane under it glowing, the light spilling below it - not the whole head a box of light;
+		# its own, so it dims on its own - a street lamp's stutter, LampFlicker)
 		var head := MeshInstance3D.new()
 		var box := BoxMesh.new()
-		box.size = Vector3(0.5, 0.14, 0.26)
+		box.size = Vector3(0.42, 0.02, 0.2)
 		head.mesh = box
-		head.material_override = _glow_mat
-		head.position = Vector3(1.2, 4.48, 0.0)
+		var lit := _glow_mat.duplicate() as StandardMaterial3D
+		head.material_override = lit
+		head.position = Vector3(1.2, 4.4, 0.0)
 		head.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		holder.add_child(head)
+		var halo := LampFlicker.glow(holder, Vector3(1.2, 4.36, 0.0), Vector3(0.34, 0.1, 0.2), LAMP_LIGHT, 1.2)
 		var light := OmniLight3D.new()
 		light.name = "LampLight"
 		light.light_color = LAMP_LIGHT
@@ -834,6 +838,9 @@ static func _lamp(sp: StreetProp, rng: RandomNumberGenerator) -> Node3D:
 		light.shadow_enabled = false
 		light.position = Vector3(1.2, 4.1, 0.0)
 		holder.add_child(light)
+		var flicker := LampFlicker.new()
+		flicker.setup("lamp", light, [lit, halo], sp.seed_value)
+		holder.add_child(flicker)
 	else:
 		# (a dead one leans, now and then)
 		if rng.randf() < 0.35:
