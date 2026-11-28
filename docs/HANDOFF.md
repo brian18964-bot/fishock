@@ -4,7 +4,7 @@
 
 ## 一、目前狀態
 - 所有工作都在 `claude/focused-fermi-96pp3r` 分支，它也是這個 repo 的預設分支；最後一次推送的 CI（Web build）通過並已部署。
-- 本機全套測試：6263 項、0 失敗（`tests/run_tests.gd`）。
+- 本機全套測試：6269 項、0 失敗（`tests/run_tests.gd`）。
 - 遊戲：Godot 4.7.2，3D 夜釣（俯視鏡頭、夜間、煤燈），手機觸控為主，也支援鍵盤。
 
 ## 二、這段期間做了什麼（依時間）
@@ -201,7 +201,13 @@
   油漆／灰泥剝落的斑塊、水漬沿牆往下流、牆腳往上的污垢、屋頂和窗台與牆腳的青苔、鏽斑和鏽水痕（屋頂上少）。
   用世界座標的雜訊，每面牆都不一樣。都市（唯一的廢墟）最舊、鏽最多；鄉村的農舍有一點鏽；日式、英式、中式是風化的木頭、石頭、瓦片加青苔，
   不生鏽；土屋是曬褪的泥磚，褪向沙色、牆腳有沙塵，沒有青苔和鏽（兩個 shader 共用的 `CityBuild.WEATHER` 的 `weather()`、`MapGenerator.THEMES.*.aged`）。
-  圍牆、籬笆、石牆、土牆（`FarmBuild` 畫的）還沒做舊，見第五節 18。
+- **圍牆、籬笆也做舊**（使用者：「圍牆籬笆也一起做舊」）：中式白牆黛瓦、土屋土牆、英式石牆、竹籬、木籬笆用同一套做舊
+  （`CityBuild.VCOL_SHADER`、`vcol_material()`），程度是建築的 6 成、牆腳污垢只到牆腳、不生鏽（木、竹、石、灰泥、泥都沒有鐵）；
+  英式樹籬是活的綠籬，維持原本的綠色（同一個 mesh 的另一個部分，用原本的材質）。
+- **河流地圖的田變少，已修**：截圖時發現 9-2「石牆牧場」有時只有 1 塊田、完全沒有石牆，7-2「河畔田園」只剩 1～2 塊。
+  跟加河流前的版本逐關比對（每關 4 個亂數種子）：多數關少一點，中型地圖的田主題關少一半左右（9-2 平均 2.75→1.75、7-2 3.75→1.75）。
+  原因是河佔掉三分之一的空間，隨機找田的位置常常全部落空。現在隨機找不到時，會掃描整張地圖找空位，直到田數達到關卡要求的一半
+  （`MapGenerator.FIELD_LEAST`）；掃描找不到就不再掃。修正後 7-2 每次 5 塊、9-2 有 3～5 塊，每關都不少於加河流前。
 
 ## 三、已定案（使用者決定的，不用再問）
 ### 劇情與分支
@@ -238,7 +244,7 @@
 7. **樹種不要不合理地混用**（11/28）：竹林、果園裡不長別的樹；人類世界用建築分風格，樹種可以用來表現季節或區域
    （日式、英式每個分支一個季節，自由夜釣隨機）。
 9. **第 7～12 章依時代排序**（11/28）：土屋聚落 → 中式古鎮 → 英式村莊 → 日式山村 → 鄉村 → 荒廢都市，之後劇情照這個順序推進。
-10. **人類世界的建築要舊、有年代感**（11/28）；不是廢墟的地圖只是舊，廢墟（都市）要有破損生鏽的物件。
+10. **人類世界的建築要舊、有年代感**（11/28）；不是廢墟的地圖只是舊，廢墟（都市）要有破損生鏽的物件。圍牆、籬笆也一起做舊。
 ### 自由夜釣
 - 除了隨機生成的風格地圖，要能**自由選擇去哪一支分支釣**（收集各分支的獨有魚）。
 - 隨機地圖可以有主題夜晚（使用者舉例「鯉魚風暴」：整張圖都是鯉魚、有機會出現金色鯉魚；其餘自由發想）。
@@ -311,6 +317,8 @@
 | 3-1 的第二顆星 | 營火的油剩一半以上（開場的油的 50%）離開 | `Campaign.LEVELS` 的 3-1 `stars`、統計 `fire_left` |
 | 商店的左側清單 | 清單寬 108 px、每列高 62 px、列距 8 px、清單和商品間距 8 px；商品卡寬 204 px（收購頁照舊）；分類圖示：裝備＝釣竿、餌＝活蜘蛛、道具＝電池、強化＝煤燈、收購＝金幣 | `scripts/shop.gd` 的 `LIST_W`、`ROW_H`、`ROW_GAP`、`LIST_GAP`、`CARD_W`、`TAB_ICONS` |
 | 建築做舊的程度 | 都市 舊 1.0、青苔 0.35、鏽 0.7；鄉村 0.8、0.3、0.3；日式 0.8、0.5、0；英式 0.85、0.55、0；中式 0.85、0.45、0；土屋 0.75、0、0（污垢與褪色偏沙色）；做舊的細節比例（褪色 60%、斑塊暗 45%、水漬暗 60%、牆腳污垢 1.8～2.5 m 高）在 shader 裡 | `MapGenerator.THEMES.*.aged`；`CityBuild.WEATHER` 的 `weather()` |
+| 圍牆、籬笆做舊 | 程度＝建築的 60%；牆腳污垢高度＝建築的 30%；不生鏽；樹籬不做舊 | `CityBuild.FENCE_AGE`、`FENCE_FOOT` |
+| 田的補位掃描 | 隨機找不到位置時，掃描整張地圖（每 60 px 一格）補到關卡要求田數的一半 | `MapGenerator.FIELD_LEAST`、`FIELD_SCAN` |
 | 農場動物的行為 | 綿羊／小牛被靠近到 55／45 px 才慢慢走開；雞 70 px 跑開；烏鴉 90 px 飛走；大小：綿羊 0.95 m、小牛 1.15 m、母雞 0.42 m、公雞 0.55 m、烏鴉 0.42 m | `Critter.SPECIES`、`RunView3D.CREATURES` |
 
 ## 五、待辦與需要使用者決定的事
@@ -331,8 +339,6 @@
     （`StreetProp.FARM` 的尺寸、`Solids`），小動物避開營地的範圍再放大一點。
 16. 出發視窗的清單和河流已做（第二節 19）。河目前幾乎都是上下貫穿（營地在正中間、地圖是橫的），要橫的河就得讓河離營地近一點或把營地移開。
     卡通風的櫻花樹（Tree.zip）風格和其他寫實素材不搭，先沒用。
-18. **圍牆還沒做舊**（11/28）：建築和物件已經做舊，但 `FarmBuild` 畫的圍牆、籬笆（中式白牆黛瓦、土屋土牆、英式石牆和樹籬、竹籬、木籬笆）
-    還是新的顏色，白牆在舊房子旁邊會顯得比較乾淨。要做的話把它們的材質（目前是頂點顏色的 `StandardMaterial3D`）換成套用 `CityBuild.WEATHER` 的 shader。
 15. 動物：烏鴉的翅膀是用旋轉把展開的翅膀收到身側（原檔是展翅姿勢），近看羽毛會有一點散；牛（Cow.zip 的 .max）仍打不開，目前用小牛。
 3. 月光鰺目前和浪人鰺同一個模型形狀；更細長的版本已寫好算圖設定（`tools/render_fish.py` 的 moon_jack），要有 Blender（bpy）才能重算。
 4. 沙灘海岸的地形設定裡列了「螃蟹」，但遊戲沒有螃蟹這個物種（`shore_critter_count` 為 0，所以不會生成）。**使用者之後會給螃蟹美術。**
@@ -352,7 +358,7 @@
   `test_bag_full_reminders`、`test_character_unlocks`、`test_croc_quests`、`test_croc_waits_and_soaks`、`test_free_ruin_maps`、`test_village_trees_fields_and_cars`、`test_croc_errands_on_run`、`test_zodiac_coins`、`test_city_map`、
   `test_countryside_map`、`test_japan_and_england_maps`、`test_bridges`、`test_field_maples`、`test_wet_footprints`、
   `test_village_sway`、`test_nothing_in_anything`、`test_rivers`、`test_no_oil_drum`、`test_shop_category_list`、
-  `test_human_world_era_order`、`test_buildings_aged`。
+  `test_human_world_era_order`、`test_buildings_aged`、`test_river_maps_keep_their_fields`。
 - `tools/verify/verify.gd`（用法寫在檔案開頭）：
   - `tool=bot`：機器人用真實操作（拋竿、揚竿、搏魚、獻祭、逃離）逐關玩，輸出每關用時、額度、漁獲、獨有魚、教學進度、失敗原因。
   - `tool=play`：關掉開發者全開，依序通關 26 關，檢查解鎖順序、星數、首次通關獎勵。
@@ -392,5 +398,5 @@
 | 十二星座硬幣 | `scripts/zodiac.gd`（`CHANCE`、`PRICE`、`roll()`）；給予：`scripts/game_state.gd` 的 `escape()`；轉換工具：`tools/make_zodiac_coins.py` |
 | 商店（左側分類清單、收購） | `scripts/shop.gd`：`_category_row()`、`_style_row()`、`_show_tab()`、`_fill_sell_pane()`、`_sell_drag()`、`SellBoard` |
 | 人類世界的章節順序與舊存檔搬移 | `scripts/campaign.gd` 的 `ERA_MOVED`、`CHAPTERS`、`LEVELS`；`scripts/profile.gd` 的 `_move_eras()`（`era_order`）；自由夜釣清單 `DepartChooser.RUIN_MAPS` |
-| 建築做舊 | `scripts/city_build.gd` 的 `WEATHER`（`weather()`、`age`、`moss`、`rust`、`grime`、`fade_to`；`SHADER`、`TEX_SHADER` 都引用它）、`_weathered()`、`CityBuild.aged`（`RunView3D._build()` 依主題設定）；各風格強度 `MapGenerator.THEMES.*.aged` |
+| 建築、圍牆做舊 | 圍牆、籬笆：`scripts/farm_build.gd` 的 `fences()`（樹籬另一個 surface）、`CityBuild.VCOL_SHADER`、`vcol_material()`；建築：`scripts/city_build.gd` 的 `WEATHER`（`weather()`、`age`、`moss`、`rust`、`grime`、`fade_to`；`SHADER`、`TEX_SHADER` 都引用它）、`_weathered()`、`CityBuild.aged`（`RunView3D._build()` 依主題設定）；各風格強度 `MapGenerator.THEMES.*.aged` |
 | 用在魚身上的道具的選魚視窗 | `scripts/fish_pick_panel.gd`：`show_fish()` |
