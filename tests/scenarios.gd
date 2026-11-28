@@ -14614,8 +14614,9 @@ func test_buildings_aged() -> void:
 		check(float(a.get("age", 0.0)) >= 0.7, "%s: its buildings old (%s)" % [theme, str(a)])
 	check(float(MapGenerator.THEMES.city.aged.rust) > float(MapGenerator.THEMES.countryside.aged.rust)
 		and float(MapGenerator.THEMES.city.aged.age) >= 1.0, "the ruined city the most worn and rusted")
-	check(CityBuild.TEX_SHADER.contains("c = weather(c,") and CityBuild.TEX_SHADER.contains("uniform float rust"),
-		"the buildings' shader weathers them")
+	check(CityBuild.TEX_SHADER.contains("c = weather(c,") and CityBuild.TEX_SHADER.contains("uniform float rust")
+		and CityBuild.SHADER.contains("weather(col,") and CityBuild.SHADER.contains("uniform float rust"),
+		"both the buildings' shaders weather them (the user's models, the city's own)")
 	Campaign.dev_all_open = true
 	for v in [{"level": "12-1", "theme": "city"}, {"level": "7-1", "theme": "adobe"}]:
 		seed(3)
@@ -14634,15 +14635,23 @@ func test_buildings_aged() -> void:
 		var mats := []
 		for m in view.find_children("RuinModel*", "Node3D", true, false) + view.find_children("FarmProp*", "Node3D", true, false) \
 				+ view.find_children("StreetProp*", "Node3D", true, false):
-			for mi in (m as Node).find_children("*", "MeshInstance3D", true, false):
-				var mat := (mi as MeshInstance3D).get_surface_override_material(0) as ShaderMaterial
-				if mat != null and mat.shader != null and mat.shader.code == CityBuild.TEX_SHADER:
-					mats.append(mat)
+			for mi in (m as Node).find_children("*", "MeshInstance3D", true, false) + ([m] if m is MeshInstance3D else []):
+				var m3 := mi as MeshInstance3D
+				# (the city's own buildings: one material over the lot)
+				var own := m3.material_override as ShaderMaterial
+				if own != null and own.shader != null and own.shader.code == CityBuild.SHADER and not mats.has(own):
+					mats.append(own)
+				for si in m3.mesh.get_surface_count() if m3.mesh != null else 0:
+					var mat := m3.get_surface_override_material(si) as ShaderMaterial
+					if mat != null and mat.shader != null and mat.shader.code == CityBuild.TEX_SHADER:
+						mats.append(mat)
 		var right := true
 		for mat: ShaderMaterial in mats:
 			for key in ["age", "rust", "moss"]:
 				right = right and is_equal_approx(float(mat.get_shader_parameter(key)), float(a[key]))
 		check(mats.size() >= 6 and right, "%s: %d of its buildings' and things' surfaces weathered as its style" % [v.level, mats.size()])
+		if v.theme == "city":
+			check(mats.any(func(mat): return mat.shader.code == CityBuild.SHADER), "the city's own buildings weathered too")
 		if v.theme == "adobe":
 			var to: Variant = mats[0].get_shader_parameter("fade_to") if not mats.is_empty() else null
 			check(to is Vector3 and (to as Vector3).x > (to as Vector3).z + 0.15, "the mud brick faded toward sand, not grey (%s)" % str(to))

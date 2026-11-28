@@ -34,140 +34,10 @@ const COLOURS := [Color(0.42, 0.41, 0.39), Color(0.52, 0.47, 0.39), Color(0.44, 
 	Color(0.31, 0.39, 0.38), Color(0.52, 0.42, 0.39), Color(0.36, 0.35, 0.34)]
 const PX := 27.108
 
-const SHADER := """
-shader_type spatial;
-render_mode cull_back;
-uniform vec3 hero = vec3(0.0, -100.0, 0.0);
-uniform float cut = 2.8;
-uniform float fade_min = 5.5;
-uniform float fade_max = 8.6;
-varying vec3 wp;
-varying vec4 tint;
-varying vec2 face;
-void vertex() {
-	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	tint = COLOR;
-	face = UV2;
-}
-float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float noise(vec2 p) {
-	vec2 i = floor(p);
-	vec2 f = fract(p);
-	f = f * f * (3.0 - 2.0 * f);
-	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
-}
-float bayer4(vec2 p) {
-	ivec2 q = ivec2(mod(p, 4.0));
-	int i = q.x + q.y * 4;
-	float m[16] = float[](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
-	return (m[i] + 0.5) / 16.0;
-}
-void fragment() {
-	// (seen through: round the line from the camera to the traveller, in front of them; and very
-	// near the camera)
-	vec3 cam = CAMERA_POSITION_WORLD;
-	vec3 to_hero = hero - cam;
-	float len = length(to_hero);
-	vec3 dir = to_hero / max(len, 0.001);
-	vec3 rel = wp - cam;
-	float t = dot(rel, dir);
-	float off = length(rel - dir * t);
-	float hide = t < len - 0.4 ? 1.0 - smoothstep(cut * 0.55, cut, off) : 0.0;
-	hide = max(hide, 1.0 - smoothstep(fade_min, fade_max, length(rel)));
-	if (hide > 0.0 && hide >= bayer4(FRAGCOORD.xy)) {
-		discard;
-	}
-	vec2 uv = UV;
-	float seed = tint.a * 97.0;
-	vec3 base = tint.rgb;
-	float n1 = noise(uv * 1.3 + seed);
-	float n2 = noise(uv * 6.0 + seed * 3.0);
-	vec3 col = base * (0.85 + 0.25 * n1) * (0.92 + 0.12 * n2);
-	float rough = 0.92;
-	if (face.x < 0.5) {
-		// The outside of a wall: storeys, bays, windows; a shop's front.
-		float storey = floor(uv.y / 3.0);
-		float in_s = uv.y - storey * 3.0;
-		col *= 1.0 - 0.2 * (1.0 - smoothstep(0.0, 0.14, in_s)) * step(0.5, storey);
-		col *= mix(0.55, 1.0, smoothstep(0.0, 1.3, uv.y));
-		float streak = noise(vec2(uv.x * 3.0, uv.y * 0.15) + seed);
-		col *= 1.0 - 0.28 * smoothstep(0.55, 0.85, streak);
-		float bay_w = 2.6;
-		float bay = floor(uv.x / bay_w);
-		float bx = uv.x - bay * bay_w;
-		float r = hash(vec2(bay, storey) + seed);
-		if (storey < 0.5 && face.y < 0.5) {
-			float open = step(0.25, bx) * step(bx, bay_w - 0.25) * step(0.05, in_s) * step(in_s, 2.4);
-			if (open > 0.5) {
-				if (r < 0.55) {
-					float rib = 0.5 + 0.5 * sin(in_s * 40.0);
-					vec3 sh = vec3(0.3, 0.29, 0.28) * (0.8 + 0.2 * rib) * (0.8 + 0.4 * noise(uv * 4.0 + seed));
-					sh = mix(sh, vec3(0.33, 0.17, 0.08), smoothstep(0.5, 0.9, noise(uv * 2.0 + seed + 5.0)) * 0.6);
-					col = sh;
-					rough = 0.6;
-				} else {
-					col = vec3(0.014);
-					rough = 1.0;
-				}
-			}
-			float band = step(2.55, in_s) * step(in_s, 2.95);
-			if (band > 0.5) {
-				vec3 sc = 0.5 + 0.5 * cos(6.2831 * (hash(vec2(floor(uv.x / 7.8), seed)) + vec3(0.0, 0.33, 0.67)));
-				col = mix(col, sc * 0.42 * (0.7 + 0.5 * n2), 0.8);
-			}
-		} else {
-			float win = step(0.7, bx) * step(bx, 1.9) * step(0.9, in_s) * step(in_s, 2.3);
-			float frame = step(0.6, bx) * step(bx, 2.0) * step(0.8, in_s) * step(in_s, 2.4) - win;
-			col = mix(col, col * 1.18, frame);
-			if (win > 0.5) {
-				if (r < 0.15) {
-					col = vec3(0.3, 0.22, 0.14) * (0.75 + 0.35 * noise(vec2(uv.x * 9.0, in_s * 1.5)));
-				} else if (r < 0.35) {
-					col = vec3(0.05, 0.06, 0.07);
-					rough = 0.25;
-				} else {
-					col = vec3(0.012);
-					rough = 1.0;
-				}
-			}
-		}
-	} else if (face.x < 1.5) {
-		// Inside, where the walls are broken open.
-		col = base * 0.3 * (0.8 + 0.3 * n1);
-	} else if (face.x < 2.5) {
-		// A roof, a broken wall's top: stained, mossy.
-		col = base * 0.72 * (0.9 + 0.14 * n1) * (0.92 + 0.1 * n2);
-		col *= 1.0 - 0.15 * smoothstep(0.65, 0.9, noise(uv * 0.5 + seed));
-		col = mix(col, vec3(0.13, 0.16, 0.08), smoothstep(0.72, 0.9, noise(uv * 0.6 + seed + 3.0)) * 0.3);
-	} else {
-		// Rubble: broken concrete, bits of brick.
-		col = base * (0.62 + 0.5 * n2);
-		col = mix(col, vec3(0.42, 0.24, 0.16), smoothstep(0.6, 0.8, noise(uv * 2.5 + seed)) * 0.7);
-	}
-	ALBEDO = col;
-	ROUGHNESS = rough;
-}
-"""
-
-static var _shader: Shader
-static var _tex_shader: Shader
-## Every see-through material made this map (update keeps their `hero`).
-static var _seen: Array = []
-
-## The see-through for the models: their own pictures (and normal maps), their vertex colour
-## (the cars' dirt and rust) if asked - the same hiding as SHADER's.
-const TEX_SHADER := """
-shader_type spatial;
-render_mode cull_back;
-uniform sampler2D albedo_tex : source_color, filter_linear_mipmap, repeat_enable;
-uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap, repeat_enable;
-uniform bool has_normal = false;
-uniform bool use_colour = false;
-uniform float roughness = 0.88;
-uniform vec3 hero = vec3(0.0, -100.0, 0.0);
-uniform float cut = 2.8;
-uniform float fade_min = 5.5;
-uniform float fade_max = 8.6;
+## User request ("人類地圖的建築物配色，目前看起來不要這麼乾淨，雖然不是廢墟系列，但是至少要舊的、有年代感的；
+## 廢墟系列是會有破損生鏽的物件"): the weathering both the buildings' shaders share (SHADER's, the
+## city's own; TEX_SHADER's, the user's models) - `weather()` on a surface's colour, by `aged`.
+const WEATHER := """
 // (user request: the human world's buildings old, of their years - the ruined city's broken and
 // rusted: CityBuild.aged) how weathered: faded and darkened, grime up from the ground, water stains
 // down the walls; moss on roofs and at the foot; rust in patches and run down below them; the
@@ -178,12 +48,6 @@ uniform float rust = 0.0;
 uniform vec3 grime = vec3(0.18, 0.15, 0.11);
 // (what the colours fade toward - a weathered grey-brown; the sun-baked mud's sand in a dry land)
 uniform vec3 fade_to = vec3(0.4, 0.37, 0.32);
-varying vec3 wp;
-varying vec4 vcol;
-void vertex() {
-	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	vcol = COLOR;
-}
 float hash2(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 }
@@ -235,7 +99,158 @@ vec3 weather(vec3 c, vec3 wn) {
 	c = mix(c, vec3(0.34, 0.16, 0.07) * (0.7 + 0.6 * vnoise(wp.xz * 9.0 + up * 3.0)), clamp(rust * max(patch, runs) * (1.0 - 0.65 * lying), 0.0, 0.85));
 	return c;
 }
+"""
+
+const SHADER := """
+shader_type spatial;
+render_mode cull_back;
+uniform vec3 hero = vec3(0.0, -100.0, 0.0);
+uniform float cut = 2.8;
+uniform float fade_min = 5.5;
+uniform float fade_max = 8.6;
+varying vec3 wp;
+varying vec4 tint;
+varying vec2 face;
+void vertex() {
+	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	tint = COLOR;
+	face = UV2;
+}
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+""" + WEATHER + """
 float bayer4(vec2 p) {
+	ivec2 q = ivec2(mod(p, 4.0));
+	int i = q.x + q.y * 4;
+	float m[16] = float[](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+	return (m[i] + 0.5) / 16.0;
+}
+void fragment() {
+	// (seen through: round the line from the camera to the traveller, in front of them; and very
+	// near the camera)
+	vec3 cam = CAMERA_POSITION_WORLD;
+	vec3 to_hero = hero - cam;
+	float len = length(to_hero);
+	vec3 dir = to_hero / max(len, 0.001);
+	vec3 rel = wp - cam;
+	float t = dot(rel, dir);
+	float off = length(rel - dir * t);
+	float hide = t < len - 0.4 ? 1.0 - smoothstep(cut * 0.55, cut, off) : 0.0;
+	hide = max(hide, 1.0 - smoothstep(fade_min, fade_max, length(rel)));
+	if (hide > 0.0 && hide >= bayer4(FRAGCOORD.xy)) {
+		discard;
+	}
+	vec2 uv = UV;
+	float seed = tint.a * 97.0;
+	vec3 base = tint.rgb;
+	float n1 = noise(uv * 1.3 + seed);
+	float n2 = noise(uv * 6.0 + seed * 3.0);
+	vec3 col = base * (0.85 + 0.25 * n1) * (0.92 + 0.12 * n2);
+	float rough = 0.92;
+	// (what weathers: not the dark of an open doorway or a window, nor the glass)
+	float bare = 1.0;
+	if (face.x < 0.5) {
+		// The outside of a wall: storeys, bays, windows; a shop's front.
+		float storey = floor(uv.y / 3.0);
+		float in_s = uv.y - storey * 3.0;
+		col *= 1.0 - 0.2 * (1.0 - smoothstep(0.0, 0.14, in_s)) * step(0.5, storey);
+		col *= mix(0.55, 1.0, smoothstep(0.0, 1.3, uv.y));
+		float streak = noise(vec2(uv.x * 3.0, uv.y * 0.15) + seed);
+		col *= 1.0 - 0.28 * smoothstep(0.55, 0.85, streak);
+		float bay_w = 2.6;
+		float bay = floor(uv.x / bay_w);
+		float bx = uv.x - bay * bay_w;
+		float r = hash(vec2(bay, storey) + seed);
+		if (storey < 0.5 && face.y < 0.5) {
+			float open = step(0.25, bx) * step(bx, bay_w - 0.25) * step(0.05, in_s) * step(in_s, 2.4);
+			if (open > 0.5) {
+				if (r < 0.55) {
+					float rib = 0.5 + 0.5 * sin(in_s * 40.0);
+					vec3 sh = vec3(0.3, 0.29, 0.28) * (0.8 + 0.2 * rib) * (0.8 + 0.4 * noise(uv * 4.0 + seed));
+					sh = mix(sh, vec3(0.33, 0.17, 0.08), smoothstep(0.5, 0.9, noise(uv * 2.0 + seed + 5.0)) * 0.6);
+					col = sh;
+					rough = 0.6;
+				} else {
+					col = vec3(0.014);
+					rough = 1.0;
+					bare = 0.0;
+				}
+			}
+			float band = step(2.55, in_s) * step(in_s, 2.95);
+			if (band > 0.5) {
+				vec3 sc = 0.5 + 0.5 * cos(6.2831 * (hash(vec2(floor(uv.x / 7.8), seed)) + vec3(0.0, 0.33, 0.67)));
+				col = mix(col, sc * 0.42 * (0.7 + 0.5 * n2), 0.8);
+			}
+		} else {
+			float win = step(0.7, bx) * step(bx, 1.9) * step(0.9, in_s) * step(in_s, 2.3);
+			float frame = step(0.6, bx) * step(bx, 2.0) * step(0.8, in_s) * step(in_s, 2.4) - win;
+			col = mix(col, col * 1.18, frame);
+			if (win > 0.5) {
+				if (r < 0.15) {
+					col = vec3(0.3, 0.22, 0.14) * (0.75 + 0.35 * noise(vec2(uv.x * 9.0, in_s * 1.5)));
+				} else if (r < 0.35) {
+					col = vec3(0.05, 0.06, 0.07);
+					rough = 0.25;
+					bare = 0.0;
+				} else {
+					col = vec3(0.012);
+					rough = 1.0;
+					bare = 0.0;
+				}
+			}
+		}
+	} else if (face.x < 1.5) {
+		// Inside, where the walls are broken open.
+		col = base * 0.3 * (0.8 + 0.3 * n1);
+	} else if (face.x < 2.5) {
+		// A roof, a broken wall's top: stained, mossy.
+		col = base * 0.72 * (0.9 + 0.14 * n1) * (0.92 + 0.1 * n2);
+		col *= 1.0 - 0.15 * smoothstep(0.65, 0.9, noise(uv * 0.5 + seed));
+		col = mix(col, vec3(0.13, 0.16, 0.08), smoothstep(0.72, 0.9, noise(uv * 0.6 + seed + 3.0)) * 0.3);
+	} else {
+		// Rubble: broken concrete, bits of brick.
+		col = base * (0.62 + 0.5 * n2);
+		col = mix(col, vec3(0.42, 0.24, 0.16), smoothstep(0.6, 0.8, noise(uv * 2.5 + seed)) * 0.7);
+	}
+	if (age > 0.0 || rust > 0.0 || moss > 0.0) {
+		col = mix(col, weather(col, normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz)), bare);
+	}
+	ALBEDO = col;
+	ROUGHNESS = min(1.0, rough + age * 0.08 * bare);
+}
+"""
+
+static var _shader: Shader
+static var _tex_shader: Shader
+## Every see-through material made this map (update keeps their `hero`).
+static var _seen: Array = []
+
+## The see-through for the models: their own pictures (and normal maps), their vertex colour
+## (the cars' dirt and rust) if asked - the same hiding as SHADER's.
+const TEX_SHADER := """
+shader_type spatial;
+render_mode cull_back;
+uniform sampler2D albedo_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap, repeat_enable;
+uniform bool has_normal = false;
+uniform bool use_colour = false;
+uniform float roughness = 0.88;
+uniform vec3 hero = vec3(0.0, -100.0, 0.0);
+uniform float cut = 2.8;
+uniform float fade_min = 5.5;
+uniform float fade_max = 8.6;
+varying vec3 wp;
+varying vec4 vcol;
+void vertex() {
+	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	vcol = COLOR;
+}
+""" + WEATHER + """float bayer4(vec2 p) {
 	ivec2 q = ivec2(mod(p, 4.0));
 	int i = q.x + q.y * 4;
 	float m[16] = float[](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
@@ -313,6 +328,7 @@ static func build(holder: Node3D, ruins: Array, land_y: Callable) -> ShaderMater
 		_shader.code = SHADER
 	var mat := ShaderMaterial.new()
 	mat.shader = _shader
+	_weathered(mat)
 	_seen = [mat]
 	var shade := StandardMaterial3D.new()
 	shade.albedo_color = Color(0.3, 0.3, 0.3)
@@ -383,14 +399,26 @@ static func update(mat: ShaderMaterial, hero: Vector3) -> void:
 			(m as ShaderMaterial).set_shader_parameter("hero", hero)
 
 
-## One of the user's models, made ours (`path`, a .glb): its own pictures, seen through as the rest
-## (TEX_SHADER); its shadow cast by a plain twin of each part (`shade`). Named `name`.
 static var _tex_cut_shader: Shader
 ## User request ("人類地圖的建築物配色，目前看起來不要這麼乾淨，雖然不是廢墟系列，但是至少要舊的、有年代感的；
 ## 廢墟系列是會有破損生鏽的物件"): how weathered the map's buildings and the things about them are -
 ## the style's "aged" (MapGenerator.THEMES): {age, moss, rust: 0..1, grime, fade_to: Color} - set before they're
 ## built (RunView3D); empty, as they were made.
 static var aged: Dictionary = {}
+
+
+## (a material of either shader weathered as the map's style says)
+static func _weathered(mat: ShaderMaterial) -> void:
+	for key in ["age", "moss", "rust"]:
+		mat.set_shader_parameter(key, float(aged.get(key, 0.0)))
+	for key in ["grime", "fade_to"]:
+		if aged.has(key):
+			var g: Color = aged[key]
+			mat.set_shader_parameter(key, Vector3(g.r, g.g, g.b))
+
+
+## One of the user's models, made ours (`path`, a .glb): its own pictures, seen through as the rest
+## (TEX_SHADER); its shadow cast by a plain twin of each part (`shade`). Named `name`.
 ## `see`: seen through round the traveller and near the camera (a building, a tower); false for a low
 ## thing about the street that's never between the camera and them (a car, a drum, a bench).
 static func _model(path: String, name: String, shade: Material, colour := false, see := true) -> Node3D:
@@ -419,12 +447,7 @@ static func _model(path: String, name: String, shade: Material, colour := false,
 					own.set_shader_parameter("normal_tex", src.normal_texture)
 					own.set_shader_parameter("has_normal", true)
 			own.set_shader_parameter("use_colour", colour)
-			for key in ["age", "moss", "rust"]:
-				own.set_shader_parameter(key, float(aged.get(key, 0.0)))
-			for key in ["grime", "fade_to"]:
-				if aged.has(key):
-					var g: Color = aged[key]
-					own.set_shader_parameter(key, Vector3(g.r, g.g, g.b))
+			_weathered(own)
 			m.set_surface_override_material(i, own)
 			if see:
 				_seen.append(own)
