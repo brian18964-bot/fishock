@@ -36,7 +36,7 @@ const MERCHANT_ROOM := 0.55
 
 ## The menu along the bottom: [page, its name].
 ## (user request: 出發 is a button of its own beside it now, not one of these)
-const QUICK := [["shop", "商城"], ["warehouse", "倉庫"], ["equipment", "裝備"], ["fish_tank", "魚缸"]]
+const QUICK := [["shop", "商店"], ["warehouse", "倉庫"], ["equipment", "裝備"], ["fish_tank", "魚缸"]]
 
 var _joystick: Control
 ## A page opened from the menu: the camp stays live under it, the character

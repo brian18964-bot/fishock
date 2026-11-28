@@ -172,6 +172,7 @@ const TESTS := [
 	"test_bridges",
 	"test_rivers",
 	"test_no_oil_drum",
+	"test_shop_category_list",
 	"test_field_maples",
 	"test_wet_footprints",
 	"test_village_sway",
@@ -14518,6 +14519,46 @@ func test_no_oil_drum() -> void:
 		"the star: under half the fire's oil left, not got; over half, got")
 	var said := " ".join((camp().TUTORIALS.oil as Array).map(func(step): return str(step[0])))
 	check(said.contains("營火") and not said.contains("油箱"), "its lesson: the camp fire's oil, no drum")
+
+
+## User request ("商城改成商店 / 也用地圖這種清單方式，把分類放在視窗左邊，方便玩家點選" - the user's pick of
+## the two drawn: the five sections as they are): the shop's sections listed down the vendor's
+## window's left, a row each with its picture, the one shown ringed in gold, the wares beside them
+## two to a row (收購's bag on the right as before); named 商店 at the top of every page, on the main
+## screen and in the camp.
+func test_shop_category_list() -> void:
+	var shop: Control = load("res://scenes/shop.tscn").instantiate()
+	get_tree().root.add_child(shop)
+	await frames(4)
+	var rows: Array = []
+	for t in shop.TABS:
+		rows.append(shop.find_child("Tab_" + str(t[0]), true, false))
+	var list: Control = shop.find_child("Categories", true, false)
+	var scroll: Control = shop.find_child("WareScroll", true, false)
+	var vendor: Control = shop.find_child("VendorWindow", true, false)
+	var down := rows.size() == 5 and not rows.has(null)
+	for i in range(1, rows.size()):
+		down = down and rows[i] != null and rows[i - 1] != null and (rows[i] as Control).global_position.y > (rows[i - 1] as Control).global_position.y + 20.0 \
+			and absf((rows[i] as Control).global_position.x - (rows[0] as Control).global_position.x) < 1.0
+	check(down and list != null and list.get_global_rect().end.x <= scroll.global_position.x + 1.0,
+		"the five sections listed down the window's left, the wares beside them")
+	check((rows[0] as Control).get_node("Ring").visible and not (rows[1] as Control).get_node("Ring").visible, "釣具 shown, ringed")
+	(rows[1] as Button).pressed.emit()
+	await frames(4)
+	var cards: Array = shop._grid.get_children()
+	# (across: all of each in the window - down, the list scrolls)
+	var win: Rect2 = vendor.get_global_rect()
+	var inside := cards.all(func(c): return (c as Control).global_position.x >= win.position.x and (c as Control).get_global_rect().end.x <= win.end.x)
+	check(shop._tab == "bait" and (rows[1] as Control).get_node("Ring").visible and not (rows[0] as Control).get_node("Ring").visible
+		and shop._grid.columns == 2 and cards.size() > 2 and inside, "魚餌 picked: its wares two to a row, all in the window (%d)" % cards.size())
+	(rows[4] as Button).pressed.emit()
+	await frames(4)
+	check(shop._tab == "sell" and shop.find_child("BagPane", true, false).visible and list.visible
+		and list.get_global_rect().end.x <= scroll.global_position.x + 1.0, "收購: the bag on the right, the sections still listed")
+	var nav: Button = shop.find_child("Go_shop", true, false)
+	check(UiKit.NAV[0][1] == "商店" and (nav == null or nav.text.contains("商店")), "named 商店 at the top")
+	shop.queue_free()
+	check(load("res://scripts/camp3d.gd").QUICK[0][1] == "商店", "and in the camp's menu")
 
 
 func test_wet_footprints() -> void:

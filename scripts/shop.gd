@@ -1,15 +1,16 @@
 extends Control
 
-## The shop (from the main screen's 商城). User request: in sections -
+## The shop (from the main screen's 商店 - user request: "商城改成商店"). User request: in sections -
 ## 釣具 (rods, lights and weapons), 魚餌 (live baits and lures), 道具
 ## (batteries, rounds, the potions, the eyeball and the binoculars, the
 ## merchant's food and tea), 升級 - each
 ## thing a card with its picture; tapping one shows what it is (and, for
 ## sale, how many and where it goes: equip, bag or warehouse).
 ## Dressed as an MMO vendor (user request): the vendor's window on the left
-## - its sections as tabs, the wares two to a row, each name in its
-## rarity's colour with its price - and the chosen thing's tooltip on the
-## right with the buying (how many, where to) under it.
+## - its sections listed down its left side (user request: "也用地圖這種清單方式，把分類放在視窗
+## 左邊" - as the free night's maps are, each a row with its picture, the one shown ringed in gold),
+## the wares beside them two to a row, each name in its rarity's colour with its price - and the
+## chosen thing's tooltip on the right with the buying (how many, where to) under it.
 ## User request: 收購 - the merchant buys back everything but the rods and the
 ## base bait, fish included, at half the new price times the uses left; the
 ## bag is on the right to drag from onto the vendor's window.
@@ -32,9 +33,18 @@ const UPGRADE_DESC := {
 	"reel_power": "收線時魚的體力掉得更快",
 }
 const LAMP_ICON := "res://assets/sprites/items/oil_lamp.png"
+## The sections' list down the vendor's window's left: its width, each row's height and the gap
+## between rows, and between the list and the wares (px); each section's picture.
+const LIST_W := 108.0
+const ROW_H := 62.0
+const ROW_GAP := 8
+const LIST_GAP := 8
+const TAB_ICONS := {"gear": "rod_2", "bait": "live_spider", "item": "battery", "upgrade": "up", "sell": "coin"}
 ## User request: the wares bigger to tap - and the list scrolled under a
 ## finger from anywhere on it (DragScroll).
 const CARD := Vector2(262, 84)
+## (beside the sections' list the wares two to a row are this wide; 收購's one to a row, CARD's)
+const CARD_W := 204.0
 ## 收購: the bag's cells (big: it's what's dragged from).
 const SELL_CELL := 57.0
 
@@ -80,34 +90,40 @@ func _build() -> void:
 	vendor.position = Vector2(14, 56)
 	vendor.custom_minimum_size = Vector2(566, 474)
 	vendor.size = vendor.custom_minimum_size
-	var tabs := HBoxContainer.new()
-	tabs.add_theme_constant_override("separation", 6)
-	tabs.alignment = BoxContainer.ALIGNMENT_CENTER
+	var body := HBoxContainer.new()
+	body.name = "ShopBody"
+	body.add_theme_constant_override("separation", LIST_GAP)
+	col.add_child(body)
+	var list := VBoxContainer.new()
+	list.name = "Categories"
+	list.custom_minimum_size.x = LIST_W
+	list.add_theme_constant_override("separation", ROW_GAP)
+	body.add_child(list)
 	for t in TABS:
-		var b := UiKit.button(t[1], 16)
-		b.name = "Tab_" + t[0]
-		b.custom_minimum_size = Vector2(74, 40)
 		var key: String = t[0]
+		var b := _category_row(key, t[1])
 		b.pressed.connect(func(): _show_tab(key))
-		tabs.add_child(b)
+		list.add_child(b)
 		_tabs[key] = b
-	col.add_child(tabs)
+	var wares := VBoxContainer.new()
+	wares.name = "Wares"
+	body.add_child(wares)
 	_sell_hint = UiKit.label("把背包裡的東西拖過來賣；下面是倉庫和魚桶的，點一下賣。", 13, UiKit.DIM)
 	_sell_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_sell_hint.custom_minimum_size.x = 394
+	_sell_hint.custom_minimum_size.x = 394 - LIST_W - LIST_GAP
 	_sell_hint.visible = false
-	col.add_child(_sell_hint)
+	wares.add_child(_sell_hint)
 	var scroll := DragScroll.new()
 	scroll.name = "WareScroll"
 	_ware_scroll = scroll
-	scroll.custom_minimum_size = Vector2(530, 364)
+	scroll.custom_minimum_size = Vector2(530 - LIST_W - LIST_GAP, 364)
 	_grid = GridContainer.new()
 	_grid.name = "Cards"
 	_grid.columns = 2
 	_grid.add_theme_constant_override("h_separation", 6)
 	_grid.add_theme_constant_override("v_separation", 6)
 	scroll.add_child(_grid)
-	col.add_child(scroll)
+	wares.add_child(scroll)
 	add_child(vendor)
 
 	var detail := UiKit.tooltip_panel()
@@ -144,10 +160,64 @@ func _build() -> void:
 	add_child(_toast)
 
 
+## One section's row in the list: its picture and its name in a slot's frame; picked, ringed in
+## gold (its name bright) - _style_row.
+func _category_row(key: String, title: String) -> Button:
+	var b := Button.new()
+	b.name = "Tab_" + key
+	b.focus_mode = Control.FOCUS_NONE
+	b.flat = true
+	b.custom_minimum_size = Vector2(LIST_W, ROW_H)
+	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	var frame := PanelContainer.new()
+	frame.add_theme_stylebox_override("panel", UiKit.slot_box())
+	frame.set_anchors_preset(Control.PRESET_FULL_RECT)
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(frame)
+	var line := HBoxContainer.new()
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.add_theme_constant_override("separation", 6)
+	frame.add_child(line)
+	var pic := TextureRect.new()
+	pic.name = "Pic"
+	var icon: String = TAB_ICONS.get(key, "")
+	# (the wares' own square pictures, as on their cards; 升級 the lamp, 收購 a coin)
+	pic.texture = UiKit.tex("coin") if icon == "coin" else (load(LAMP_ICON) if icon == "up" else Items.square_icon(icon))
+	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	pic.custom_minimum_size = Vector2(ROW_H - 18.0, ROW_H - 18.0)
+	pic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.add_child(pic)
+	var name_l := UiKit.label(title, 17, UiKit.TEXT, true)
+	name_l.name = "Name"
+	name_l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	name_l.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	name_l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.add_child(name_l)
+	var ring := ReferenceRect.new()
+	ring.name = "Ring"
+	ring.border_color = UiKit.GOLD_BRIGHT
+	ring.border_width = 2.0
+	ring.editor_only = false
+	ring.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ring.visible = false
+	b.add_child(ring)
+	return b
+
+
+func _style_row(b: Button, on: bool) -> void:
+	(b.get_node("Ring") as ReferenceRect).visible = on
+	var name_l := b.find_child("Name", true, false) as Label
+	name_l.add_theme_color_override("font_color", UiKit.GOLD_BRIGHT if on else UiKit.TEXT)
+	(b.find_child("Pic", true, false) as TextureRect).modulate = Color.WHITE if on else Color(0.62, 0.62, 0.66)
+
+
 func _show_tab(key: String) -> void:
 	_tab = key
 	for k in _tabs:
-		UiKit.style_tab(_tabs[k], k == key)
+		_style_row(_tabs[k], k == key)
 	_selected = ""
 	# (user report: the last tab's description lingered - the pane is emptied
 	# on every change, and 收購 has the bag in its place)
@@ -267,7 +337,7 @@ func _card(id: String, tex: Texture2D, title: String, sub: String, price: int, o
 	var b := Button.new()
 	b.name = "Card_" + id
 	b.focus_mode = Control.FOCUS_NONE
-	b.custom_minimum_size = CARD if into == null else Vector2(228, 84)
+	b.custom_minimum_size = (Vector2(CARD_W, CARD.y) if _tab != "sell" else CARD) if into == null else Vector2(228, 84)
 	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	var chosen := id == _selected
 	var box := StyleBoxFlat.new()
@@ -497,14 +567,17 @@ func _upgrade_dialog(key: String) -> void:
 ## and what's been sold this visit. What can be sold is on the right, by
 ## where it is: 包包 / 倉庫 / 魚缸 / 魚桶.
 func _sell_cards() -> void:
+	# (as wide as the room beside the sections' list, wrapped)
+	var room := 394.0 - LIST_W - LIST_GAP - 12.0
 	var drop := UiKit.label("把東西拖到這裡，賣給商人", 20, UiKit.GOLD_BRIGHT, true)
 	drop.name = "DropHere"
 	drop.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	drop.custom_minimum_size = Vector2(360, 70)
+	drop.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	drop.custom_minimum_size = Vector2(room, 70)
 	_grid.add_child(drop)
 	var how := UiKit.label("右邊先選東西在哪裡（包包、倉庫、魚缸、魚桶），再拖過來，或點一下它。魚的價錢跟魚缸裡的販售一樣。", 14, UiKit.DIM)
 	how.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	how.custom_minimum_size = Vector2(360, 0)
+	how.custom_minimum_size = Vector2(room, 0)
 	_grid.add_child(how)
 	# User request: what's been sold shown as itself (its picture), not words -
 	# and sold by mistake, bought back at what it fetched (Profile.sold_back).
@@ -681,9 +754,11 @@ func _sell_layout(on: bool) -> void:
 	_vendor.custom_minimum_size.x = wide + 36.0
 	# (the window shrinks to what it holds once the contents have reflowed)
 	_vendor.set_deferred("size", Vector2(wide + 36.0, 474.0))
-	_ware_scroll.custom_minimum_size = Vector2(wide, 326.0 if on else 364.0)
+	# (the wares beside the sections' list)
+	var beside := wide - LIST_W - LIST_GAP
+	_ware_scroll.custom_minimum_size = Vector2(beside, 326.0 if on else 364.0)
 	_grid.columns = 1 if on else 2
-	_sell_hint.custom_minimum_size.x = wide
+	_sell_hint.custom_minimum_size.x = beside
 	_zone.size = Vector2(wide + 36.0, 474.0)
 
 

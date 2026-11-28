@@ -2636,7 +2636,7 @@ func _handle_interaction(delta: float) -> void:
 				dig(frost_flower_here())
 		"需要鏟子":
 			if use_pressed:
-				GameState.push_message("要把鏟子裝備在副手，才挖得動冷凍花下的土（商城有賣）")
+				GameState.push_message("要把鏟子裝備在副手，才挖得動冷凍花下的土（商店有賣）")
 		"砍樹":
 			if use_pressed:
 				swing("chop")

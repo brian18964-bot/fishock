@@ -36,7 +36,7 @@ const ENTRIES := [
 	["equipment", "裝備", ""],
 	["bag", "背包", ""],
 	["fish_tank", "魚缸", ""],
-	["shop", "商城", "res://assets/sprites/icons/lamp.png"],
+	["shop", "商店", "res://assets/sprites/icons/lamp.png"],
 ]
 
 var _stage: CampStage
