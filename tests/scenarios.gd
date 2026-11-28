@@ -170,6 +170,7 @@ const TESTS := [
 	"test_japan_and_england_maps",
 	"test_farm_animals",
 	"test_bridges",
+	"test_rivers",
 	"test_field_maples",
 	"test_wet_footprints",
 	"test_village_sway",
@@ -6067,10 +6068,13 @@ func test_campaign_levels_build() -> void:
 		check(FishData.branch_fish == r.get("fish", []) and FishData.branch_epic == r.get("fish_epic", [])
 			and (r.get("fish", []) + r.get("fish_epic", [])).size() >= 1, "%s: its own fish %s" % [l.id, r.get("fish", []) + r.get("fish_epic", [])])
 		var rare := get_tree().get_nodes_in_group("water_zones_rare").size()
-		var common := get_tree().get_nodes_in_group("water_zones_common").size()
+		# (a river's stretches - test_rivers - not ponds)
+		var common := get_tree().get_nodes_in_group("water_zones_common").filter(func(z): return not z.river).size()
 		check(rare == int(r.ponds[1]), "%s: %d dark pond(s), got %d" % [l.id, int(r.ponds[1]), rare])
 		if not gen.theme.get("sea", false) and int(r.ponds[0]) >= 0:
-			check(common == int(r.ponds[0]), "%s: %d pond(s), got %d" % [l.id, int(r.ponds[0]), common])
+			# (the river a big water: it stands for a third of the ponds - MapGenerator.river_ponds)
+			var want := MapGenerator.river_ponds(int(r.ponds[0])) if not gen.river_zones.is_empty() else int(r.ponds[0])
+			check(common == want, "%s: %d pond(s), got %d" % [l.id, want, common])
 		check(gs.quota_target == float(r.quota) and is_equal_approx(gs.day_duration, float(r.day) * (gs.DAY_PACE if r.get("night_fails", false) else gs.HUNT_PACE)), "%s: quota and day" % l.id)
 		var big: Node = main.get_node("BigGhost")
 		check((big.process_mode != Node.PROCESS_MODE_DISABLED) == r.big_ghost, "%s: the big ghost %s" % [l.id, "in" if r.big_ghost else "out"])
@@ -14250,7 +14254,8 @@ func test_bridges() -> void:
 			var ponds := {}
 			for w: Dock in bridges:
 				for z in get_tree().get_nodes_in_group("water_zones_common"):
-					if z.contains(w.position):
+					# (user request - the river: its bridges all over it, the map's only ones - test_rivers)
+					if z.contains(w.position) and not z.river:
 						ponds[z] = int(ponds.get(z, 0)) + 1
 			if bridges.size() > clampi(roundi(Campaign.area_share()), 1, MapGenerator.BRIDGE_MOST) or ponds.values().any(func(n): return n > 1):
 				bad.append([id, "%d bridges on %d ponds" % [bridges.size(), ponds.size()]])
@@ -14269,7 +14274,7 @@ func test_bridges() -> void:
 				if over.is_empty():
 					why.append("not over a pond")
 				# (user report "很多小水域你也設計了橋樑，是多餘的": only over a big water, a long crossing)
-				elif MapGenerator._zone_extent(over[0]) < MapGenerator.BRIDGE_POND_MIN or a.distance_to(b) < MapGenerator.BRIDGE_SPAN.x - 1.0:
+				elif (not over[0].river and MapGenerator._zone_extent(over[0]) < MapGenerator.BRIDGE_POND_MIN) or a.distance_to(b) < MapGenerator.BRIDGE_SPAN.x - 1.0:
 					why.append("over a small pond (%.0f px across, %.0f long)" % [MapGenerator._zone_extent(over[0]), a.distance_to(b)])
 				var rails := w.get_node_or_null("Rails")
 				if rails == null or rails.get_child_count() != 2:
@@ -14333,6 +14338,167 @@ func test_bridges() -> void:
 	await frames(90)
 	key(side, false)
 	check(bridge.walk_rect.has_point(p.global_position + Player.FEET), "not off its side - its rails hold")
+
+
+## User request ("是不是該把地圖也加入河流元素，把地圖用河流水域切割，這樣橋體的必要性就很高"; "河流依照你的
+## 建議"): the ruined human world's maps split by a water running right across them, edge to edge -
+## the city's a canal (straight, even banks, concrete bridges), the villages' a winding river (the
+## adobe village's broad) - clear of the camp; bridges across it, the only ways over: one on a small
+## map, two on a bigger one, three on the biggest, each square across it, both ends on dry land on
+## opposite banks, walkable all along; the river standing for a third of the level's ponds, the
+## dock on a pond. One water to a fish on the line and to the binoculars; the fishing ground somewhere
+## on the map. Walked over: from the start, both banks, every bridge's ends, the altar, the escape
+## stone and the camp can be got to (tests/map_audit.gd). In 3D: one surface for the whole river, the
+## land's frame open where it runs out past the map's edge, the canal walled.
+func test_rivers() -> void:
+	Campaign.dev_all_open = true
+	var bad := []
+	var maps := 0
+	var ways := {}
+	for chapter in range(7, 13):
+		for branch in [1, 3, 5]:
+			var id := "%d-%d" % [chapter, branch]
+			seed(chapter * 31 + branch)
+			camp().begin_level(id)
+			gs.last_return = ""
+			get_tree().change_scene_to_file("res://scenes/main.tscn")
+			await frames(3)
+			main = get_tree().current_scene
+			maps += 1
+			var gen = main.get_node("MapGenerator")
+			var r: Dictionary = camp().rules_for(id)
+			var why := []
+			var line := MapGenerator.river_line
+			var axis := MapGenerator.river_axis
+			if gen.river_zones.size() < 3 or line.size() < 2 or axis == Vector2.ZERO:
+				bad.append([id, "no river"])
+				continue
+			ways[axis] = int(ways.get(axis, 0)) + 1
+			var along := Player.WORLD_WIDTH if axis == Vector2.RIGHT else Player.WORLD_HEIGHT
+			if line[0].dot(axis) > -100.0 or line[line.size() - 1].dot(axis) < along + 100.0:
+				why.append("not edge to edge")
+			if MapGenerator.river_canal != (gen.theme_name == "city"):
+				why.append("canal %s" % str(MapGenerator.river_canal))
+			var k := MapGenerator._pond_scale()
+			for i in line.size():
+				if line[i].distance_to(MapGenerator.SPAWN_POS) < MapGenerator.SPAWN_CLEAR_RADIUS * k + MapGenerator.river_half[i]:
+					why.append("by the camp")
+					break
+			# (it splits the map: land on both sides of it)
+			var across := Player.WORLD_HEIGHT if axis == Vector2.RIGHT else Player.WORLD_WIDTH
+			var lo := INF
+			var hi := -INF
+			for i in line.size():
+				var c: float = line[i].dot(axis.orthogonal().abs())
+				lo = minf(lo, c - MapGenerator.river_half[i])
+				hi = maxf(hi, c + MapGenerator.river_half[i])
+			if lo < across * 0.08 or hi > across * 0.92:
+				why.append("hugs the edge (%.0f-%.0f of %.0f)" % [lo, hi, across])
+			# (the river a big water: it stands for a third of the level's ponds, at least one left)
+			var ponds := get_tree().get_nodes_in_group("water_zones_common").filter(func(z): return not z.river)
+			if ponds.size() != MapGenerator.river_ponds(int(r.ponds[0])):
+				why.append("%d ponds, not %d" % [ponds.size(), MapGenerator.river_ponds(int(r.ponds[0]))])
+			var share := Campaign.area_share()
+			var want := 1 if share < MapGenerator.RIVER_BRIDGES.x else (2 if share < MapGenerator.RIVER_BRIDGES.y else 3)
+			var walkways := get_tree().get_nodes_in_group("walkways")
+			var bridges := walkways.filter(func(w): return (w as Dock).bridge != "")
+			if bridges.size() != want:
+				why.append("%d bridges, not %d" % [bridges.size(), want])
+			var style := "concrete" if gen.theme_name == "city" else str(gen.theme.bridge)
+			var p := player()
+			for w: Dock in bridges:
+				var a: Vector2 = w.bridge_ends[0]
+				var b: Vector2 = w.bridge_ends[1]
+				var d := (b - a).normalized()
+				if w.bridge != style:
+					why.append("style " + w.bridge)
+				if absf(d.dot(axis)) > 0.01:
+					why.append("not square across")
+				if gen._in_any_water(a - d * 8.0) or gen._in_any_water(b + d * 8.0):
+					why.append("an end in water")
+				if not gen._in_river((a + b) * 0.5):
+					why.append("not over the river")
+				var t := 0.0
+				while t <= a.distance_to(b):
+					if p._too_deep(a + d * t - Player.FEET):
+						why.append("can't walk at %.0f" % t)
+						break
+					t += 10.0
+			for w: Dock in walkways:
+				if w.bridge == "" and not w._is_boat and gen._in_river(w.position):
+					why.append("a dock in the river")
+			if not why.is_empty():
+				bad.append([id, why])
+	check(bad.is_empty() and maps == 18, "a river or canal across each of %d human-world maps, its bridges well laid %s" % [maps, str(bad)])
+	# One water: a fish on the line in one stretch goes on into the next (not turned back as at a
+	# bank); stood by the river, the binoculars look past it to a pond - not to another stretch of
+	# it; the fishing ground on the map, in the water.
+	seed(5)
+	await play_level("8-1")
+	var gen2 = main.get_node("MapGenerator")
+	var zones: Array = gen2.river_zones
+	var pond: WaterZone = gen2.water_zones.filter(func(z): return not z.river and not z.is_rare())[0]
+	var onward := Vector2.INF
+	for q in MapGenerator.river_line:
+		if not (zones[1] as WaterZone).contains(q) and (zones[2] as WaterZone).contains(q):
+			onward = q
+			break
+	check(onward != Vector2.INF and (zones[1] as WaterZone).holds(onward) and not pond.holds(onward),
+		"one water: a stretch of the river holds the next one's water, a pond doesn't")
+	var mid: Vector2 = MapGenerator.river_line[MapGenerator.river_line.size() / 2]
+	var d := Vector2.DOWN if MapGenerator.river_axis == Vector2.RIGHT else Vector2.RIGHT
+	var p := player()
+	await put(gen2._river_end(mid, -d) - d * 40.0 - Player.FEET)
+	var seen: Dictionary = p.nearest_water()
+	var off := INF
+	for z: WaterZone in zones:
+		off = minf(off, z.distance_to_edge(seen.get("at", mid)))
+	check(not seen.is_empty() and off > 20.0, "stood by the river, the binoculars find the next water past it (%.0f px from the river)" % off)
+	var spot: Node2D = main.get_node("Hotspot")
+	var stray := 0
+	for _i in 30:
+		spot._relocate()
+		var at := spot.global_position
+		if not Rect2(Vector2.ZERO, Vector2(Player.WORLD_WIDTH, Player.WORLD_HEIGHT)).grow(-40.0).has_point(at) or Ripple.water_at(get_tree(), at) == null:
+			stray += 1
+	check(stray == 0, "the fishing ground always in the water on the map (%d of 30 astray)" % stray)
+	# In 3D: the river one surface, the ponds one each; past the map's edge where it runs out the land
+	# low about it (its frame's rise is either side); the canal walled, the river not.
+	var view: RunView3D = RunView3D.active
+	for _i in 600:
+		view = RunView3D.active
+		if view != null and view.built:
+			break
+		await frames(1)
+	var planes := view.find_children("Water*", "MeshInstance3D", false, false).size()
+	check(view.get_node_or_null("RiverWater") != null and planes == gen2.water_zones.size() - zones.size() and view.get_node_or_null("CanalWalls") == null,
+		"8-1 in 3D: one surface for the river, one for each of its %d ponds (%d), no walls" % [gen2.water_zones.size() - zones.size(), planes])
+	var out := Vector2.INF
+	var out_half := 0.0
+	for i in MapGenerator.river_line.size():
+		var q: Vector2 = MapGenerator.river_line[i]
+		if q.dot(MapGenerator.river_axis) > -340.0 and q.dot(MapGenerator.river_axis) < -260.0:
+			out = q
+			out_half = MapGenerator.river_half[i]
+	var aside := out + d * (out_half + 600.0)
+	var low := view._grid_y(out.x / RunView3D.PX, out.y / RunView3D.PX)
+	var high := view._grid_y(aside.x / RunView3D.PX, aside.y / RunView3D.PX)
+	check(low < RunView3D.WATER_Y and high > RunView3D.LAND_Y + 0.8,
+		"the river runs on out past the map's edge: its bed %.2f m, the frame beside it %.2f m" % [low, high])
+	# Walked: from the start both banks, every bridge's ends, the altar, the escape stone and the camp
+	# (a small map of each kind of water: the canal, a river, the broad one).
+	for id in ["7-1", "8-1", "12-1"]:
+		seed(5)
+		await play_level(id)
+		for _i in 600:
+			view = RunView3D.active
+			if view != null and view.built:
+				break
+			await frames(1)
+		if id == "7-1":
+			check(view.get_node_or_null("CanalWalls") != null and view.get_node_or_null("RiverWater") != null, "7-1 in 3D: the canal walled")
+		var got: Dictionary = preload("res://tests/map_audit.gd").audit(player(), main)
+		check(got.unreached.is_empty() and got.traps.is_empty(), "%s: over the river, everything can be walked to, nowhere to get stuck (%s, %d traps)" % [id, str(got.unreached), got.traps.size()])
 
 
 func test_wet_footprints() -> void:

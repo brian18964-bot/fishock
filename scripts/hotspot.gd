@@ -74,7 +74,24 @@ func _relocate() -> void:
 		return
 
 	var zone: WaterZone = common_zones[randi() % common_zones.size()]
-	global_position = zone.random_point(40.0)
+	var river := common_zones.filter(func(z): return (z as WaterZone).river)
+	var at := Vector2.INF
+	if not river.is_empty():
+		# (a river - MapGenerator's, many zones in a row - is one water: as likely as a pond, and
+		# somewhere on the map, not off past its edge where it runs on)
+		var waters := []
+		waters.append_array(common_zones.filter(func(z): return not (z as WaterZone).river))
+		waters.append(river)
+		var pick = waters.pick_random()
+		zone = pick.pick_random() if pick is Array else pick
+		if zone.river:
+			for _try in 40:
+				zone = river.pick_random()
+				var p := zone.random_point(40.0)
+				if Rect2(Vector2.ONE * SEA_MARGIN, Vector2(Player.WORLD_WIDTH, Player.WORLD_HEIGHT) - Vector2.ONE * SEA_MARGIN * 2.0).has_point(p):
+					at = p
+					break
+	global_position = zone.random_point(40.0) if at == Vector2.INF else at
 	if zone.sea:
 		# (the sea: its zones reach off the map and a long way out - somewhere a cast from the
 		# beach reaches, on the map)

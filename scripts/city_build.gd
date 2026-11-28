@@ -371,7 +371,7 @@ static func _model(path: String, name: String, shade: Material, colour := false,
 ## The skyline: the towers (`names`, the remade high-rises) outside the map (`rect`, px) along its
 ## top and the upper part of its sides - not its foot, where they'd stand between the camera and
 ## the traveller - SKY_GAP apart, SKY_OUT out from the edge, each its own size and turn.
-static func skyline(holder: Node3D, names: Array, rect: Rect2, land_y: Callable, rng: RandomNumberGenerator) -> int:
+static func skyline(holder: Node3D, names: Array, rect: Rect2, land_y: Callable, rng: RandomNumberGenerator, clear := Callable()) -> int:
 	if names.is_empty():
 		return 0
 	var shade := StandardMaterial3D.new()
@@ -393,6 +393,9 @@ static func skyline(holder: Node3D, names: Array, rect: Rect2, land_y: Callable,
 			at += rng.randf_range(SKY_GAP.x, SKY_GAP.y)
 	var made := 0
 	for p in spots:
+		# (none where the canal runs out under them - `clear`, at their foot (px))
+		if clear.is_valid() and not bool(clear.call(p * PX)):
+			continue
 		var name: String = names[rng.randi() % names.size()]
 		var tower := _model(Ruin.MODELS_DIR + name + ".glb", "SkylineTower%d" % made, shade)
 		# (its foot where the map's edge is - the ground rises out there; sunk a little)

@@ -96,6 +96,8 @@ const BORDER_TREES_DESERT := 0
 const BORDER_SCALE := Vector2(1.7, 2.6)
 const BORDER_DEPTH := 9.0
 const BORDER_IN := 1.2
+## (the edge's trees this far back (px) from a river running out through it)
+const RIVER_TREES_BACK := 70.0
 const EDGE := 90.0
 ## User request: the map and its ponds 2-3 times as big as the 2D run's
 ## (each way: 1.6 - 2.56 times the area).
@@ -484,6 +486,10 @@ var _ruin_mat: ShaderMaterial
 ## surface's depth texture and where the edge's pines may stand)
 var _sea_grid := PackedFloat32Array()
 var _sea_zones: Array = []
+## User request (a river across the map - MapGenerator._generate_river): its stretches (one water,
+## _river_surface), and whether it's the city's canal (walled - _canal_walls).
+var _river_zones: Array = []
+var _canal := false
 var _sea_rect := Rect2()
 ## (the ground's material: its snow's paleness follows the evening's light - _update_light)
 var _ground_mat: ShaderMaterial
@@ -603,7 +609,8 @@ func _build() -> void:
 		_ruin_mat = CityBuild.build(self, get_tree().get_nodes_in_group("ruins"), land_y)
 		CityBuild.props(self, get_tree().get_nodes_in_group("street_props"), land_y)
 		var sky: Array = MapGenerator.THEMES[MapGenerator.current_theme].get("ruins", {}).get("skyline", [])
-		CityBuild.skyline(self, sky, _map_rect(), land_y, _rng)
+		CityBuild.skyline(self, sky, _map_rect(), land_y, _rng,
+			func(p: Vector2) -> bool: return _river_zones.is_empty() or _depth(p, _river_zones) < -RIVER_TREES_BACK * 2.0)
 		_ruin_mat.set_shader_parameter("fade_min", FADE_NEAR)
 		_ruin_mat.set_shader_parameter("fade_max", FADE_FAR)
 	if _farm:
@@ -813,6 +820,11 @@ func ground_y(p: Vector2) -> float:
 		# (the dunes - the desert's, the beach's: the ground as it was made - its grid - so who walks
 		# them walks on them)
 		return maxf(_grid_y(p.x / PX, p.y / PX), WATER_Y)
+	if _canal:
+		# (the canal's quay: flat to the wall)
+		var dc := _depth(p, _river_zones)
+		if dc > -CANAL_LIP and dc < 0.0:
+			return LAND_Y
 	return maxf(_height_at(_depth(p, _zones())), WATER_Y)
 
 
@@ -1001,6 +1013,13 @@ func _shore_depth(p: Vector2, zones: Array) -> float:
 	return best
 
 
+## (a river through the land's frame past the map's edge: the frame's rise starts this far (px)
+## from its bank; the canal's: the land flat to its wall this far out (px), the water this deep (m)
+## at once under it, its quay paved this far out (px))
+const RIVER_VALLEY := 220.0
+const CANAL_LIP := 30.0
+const CANAL_DROP := 0.6
+const CANAL_PAVE := 70.0
 ## (past this far from a pond (px) its shore makes no difference to the desert's ground)
 const SHORE_FAR := DUNE_CLEAR.y * 27.108 + 40.0
 ## (_ground: the shore's distance worked out every this many cells, read between; within this
@@ -1811,6 +1830,8 @@ func _sea_at(p: Vector2) -> float:
 
 func _ground() -> void:
 	var zones := _zones()
+	_river_zones = zones.filter(func(z): return (z as WaterZone).river)
+	_canal = MapGenerator.river_canal and not _river_zones.is_empty()
 	for z in zones:
 		var zone: WaterZone = z
 		var box := Rect2()
@@ -1879,6 +1900,13 @@ func _ground() -> void:
 			# Past the map's edge the forest rises a little: a frame.
 			var out := Vector2(maxf(maxf(rect.position.x - p2.x, p2.x - rect.end.x), 0.0),
 				maxf(maxf(rect.position.y - p2.y, p2.y - rect.end.y), 0.0)).length() / PX
+			# (the canal: its banks walled - the land flat right to the wall, the water deep at once)
+			var dc := _depth(p2, _river_zones) if _canal else -1000.0
+			if dc > -CANAL_LIP:
+				y = LAND_Y if dc < 0.0 else WATER_Y - CANAL_DROP - 0.5 * smoothstep(0.0, 70.0, dc)
+			# (a river runs on out through the frame: the land rises either side of it, not over it)
+			if out > 0.0 and not _river_zones.is_empty():
+				out *= smoothstep(0.0, RIVER_VALLEY, -_depth(p2, _river_zones))
 			if _coast:
 				var si := i / SHORE_STEP
 				var sj := j / SHORE_STEP
@@ -1929,6 +1957,10 @@ func _ground() -> void:
 				# through, fewer on the pavement; else the asphalt)
 				var walk := walks[j * n.x + i]
 				var mud_c := 1.0 - smoothstep(0.0, 60.0 + noise.get_noise_2d(x, z) * 25.0, -d)
+				if dc > -CANAL_PAVE:
+					# (along the canal its quay: paved to the wall, no mud)
+					walk = maxf(walk, 1.0 - smoothstep(CANAL_PAVE * 0.6, CANAL_PAVE, -dc))
+					mud_c = 0.0
 				var weeds := smoothstep(0.3, 0.62, noise.get_noise_2d(x * 0.3 + 70.0, z * 0.3)) * (1.0 - walk * 0.8)
 				weeds = maxf(weeds, smoothstep(0.0, 4.0, out))
 				var soil := smoothstep(0.45, 0.75, noise.get_noise_2d(x * 0.5 + 140.0, z * 0.5)) * (1.0 - walk) * 0.8
@@ -2053,10 +2085,12 @@ func _water() -> void:
 	t.bump_strength = 6.0
 	if _coast:
 		_sea_surface(sh, t)
+	if not _river_zones.is_empty():
+		_river_surface(sh, t)
 	for z in _zones():
 		var zone: WaterZone = z
-		# (the sea's zones drawn as one: _sea_surface)
-		if _coast and zone.sea:
+		# (the sea's zones drawn as one: _sea_surface; the river's: _river_surface)
+		if (_coast and zone.sea) or zone.river:
 			continue
 		var box: Rect2 = zone.get_meta("bounds")
 		var mat := ShaderMaterial.new()
@@ -2082,6 +2116,127 @@ func _water() -> void:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(mi)
 		i += 1
+
+
+## User request (the river - MapGenerator._generate_river): its stretches drawn as one water - one
+## surface over the whole of it, its depth at each texel (RIVER_TEXEL px) the deepest of theirs
+## (each stretch's own box gone over alone) - not a surface each, overlapping, the shore's foam
+## drawn across the water where one stretch ends inside the next. Out past the map's edges as far as
+## it runs. The city's canal walled (_canal_walls).
+const RIVER_TEXEL := 8.0
+
+
+func _river_surface(sh: Shader, waves: Texture2D) -> void:
+	var box := Rect2()
+	for k in _river_zones.size():
+		var b: Rect2 = (_river_zones[k] as WaterZone).get_meta("bounds")
+		box = b if k == 0 else box.merge(b)
+	var w := clampi(int(box.size.x / RIVER_TEXEL), 8, 2048)
+	var h := clampi(int(box.size.y / RIVER_TEXEL), 8, 2048)
+	var cell := box.size / Vector2(w, h)
+	var vals := PackedByteArray()
+	vals.resize(w * h)
+	for z in _river_zones:
+		var zone: WaterZone = z
+		var b: Rect2 = zone.get_meta("bounds")
+		var reach := zone.radius - DEPTH_RANGE.x
+		var x0 := clampi(int((b.position.x - box.position.x) / cell.x), 0, w - 1)
+		var x1 := clampi(int((b.end.x - box.position.x) / cell.x), 0, w - 1)
+		var y0 := clampi(int((b.position.y - box.position.y) / cell.y), 0, h - 1)
+		var y1 := clampi(int((b.end.y - box.position.y) / cell.y), 0, h - 1)
+		for y in range(y0, y1 + 1):
+			for x in range(x0, x1 + 1):
+				var p := box.position + (Vector2(x, y) + Vector2(0.5, 0.5)) * cell
+				if p.distance_squared_to(zone.global_position) > reach * reach:
+					continue
+				var v := int(clampf((zone.depth(p) - DEPTH_RANGE.x) / (DEPTH_RANGE.y - DEPTH_RANGE.x), 0.0, 1.0) * 255.0)
+				if v > vals[y * w + x]:
+					vals[y * w + x] = v
+	var mat := ShaderMaterial.new()
+	mat.shader = sh
+	_water_mats.append(mat)
+	mat.set_shader_parameter("wave_tex", waves)
+	mat.set_shader_parameter("moon_dir", MOON_DIR)
+	mat.set_shader_parameter("ice", 1.0 if _snow else 0.0)
+	mat.set_shader_parameter("rain_layers", RAIN_LAYERS_LOW if low_end() else 4)
+	mat.set_shader_parameter("depth_tex", ImageTexture.create_from_image(Image.create_from_data(w, h, false, Image.FORMAT_L8, vals)))
+	mat.set_shader_parameter("box", Vector4(box.position.x / PX, box.position.y / PX, box.size.x / PX, box.size.y / PX))
+	var q := PlaneMesh.new()
+	q.size = box.size / PX
+	var mi := MeshInstance3D.new()
+	mi.name = "RiverWater"
+	mi.mesh = q
+	mi.material_override = mat
+	mi.position = to3(box.get_center(), WATER_Y)
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+	if _canal:
+		_canal_walls()
+
+
+## The canal's walls (user request - "人工運河"): along both its banks, as far as the ground goes, a
+## concrete wall down into the water, its top a kerb CANAL_KERB wide just over the quay - one mesh.
+const CANAL_KERB := 0.36
+const CANAL_KERB_UP := 0.07
+const CANAL_FOOT := 0.55
+
+
+func _canal_walls() -> void:
+	var line := MapGenerator.river_line
+	if line.size() < 2:
+		return
+	var land: Rect2 = _map_rect().grow(MARGIN * PX)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var top := LAND_Y + CANAL_KERB_UP
+	var foot := WATER_Y - CANAL_FOOT
+	for side in [-1.0, 1.0]:
+		# (the bank: out from the middle, square to it, to where the water ends)
+		var bank := PackedVector2Array()
+		var outs := PackedVector2Array()
+		for i in line.size():
+			var along := (line[mini(i + 1, line.size() - 1)] - line[maxi(i - 1, 0)]).normalized()
+			var n: Vector2 = along.orthogonal() * side
+			var p := line[i]
+			for _k in 300:
+				if _depth(p + n * 2.0, _river_zones) < 0.0:
+					break
+				p += n * 2.0
+			bank.append(p)
+			outs.append(n)
+		for i in bank.size() - 1:
+			if not land.has_point(bank[i]) and not land.has_point(bank[i + 1]):
+				continue
+			var a := bank[i]
+			var b := bank[i + 1]
+			var na := outs[i] * CANAL_KERB * PX
+			var nb := outs[i + 1] * CANAL_KERB * PX
+			# (its face down into the water, its kerb's top, its land side down to the quay)
+			_quad(st, to3(a, top), to3(b, top), to3(b, foot), to3(a, foot))
+			_quad(st, to3(a + na, top), to3(b + nb, top), to3(b, top), to3(a, top))
+			_quad(st, to3(a + na, LAND_Y - 0.05), to3(b + nb, LAND_Y - 0.05), to3(b + nb, top), to3(a + na, top))
+	st.generate_normals()
+	var mi := MeshInstance3D.new()
+	mi.name = "CanalWalls"
+	mi.mesh = st.commit()
+	var concrete := StandardMaterial3D.new()
+	concrete.albedo_texture = load("res://assets/sprites/ground/sidewalk_albedo.png")
+	concrete.normal_enabled = true
+	concrete.normal_texture = load("res://assets/sprites/ground/sidewalk_normal.png")
+	concrete.uv1_triplanar = true
+	concrete.uv1_world_triplanar = true
+	concrete.uv1_scale = Vector3.ONE * 0.6
+	concrete.albedo_color = Color(0.82, 0.82, 0.8)
+	concrete.roughness = 0.92
+	concrete.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mi.material_override = concrete
+	add_child(mi)
+
+
+## A quad a-b-c-d (its corners in turn) into `st`.
+static func _quad(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:
+	for v in [a, b, c, a, c, d]:
+		st.add_vertex(v)
 
 
 ## User request (the seaside): the sea - one surface for all of it, out past the map's edge on its
@@ -2799,8 +2954,8 @@ func _bridge(dock: Dock, wood: Material, dark: Material) -> void:
 		for i in BRIDGE_STEPS:
 			var t := float(i) / (BRIDGE_STEPS - 1)
 			heights.append(rise * 4.0 * t * (1.0 - t))
-		if dock.bridge == "stone":
-			_stone_bridge(holder, long, heights)
+		if dock.bridge == "stone" or dock.bridge == "concrete":
+			_stone_bridge(holder, long, heights, dock.bridge == "concrete")
 		else:
 			_wood_bridge(holder, long, heights, wood, dark)
 	_walk.append([dock.walk_rect, LAND_Y, {"from": a, "to": b, "heights": heights}])
@@ -2886,17 +3041,20 @@ func _wood_bridge(holder: Node3D, long: float, heights: PackedFloat32Array, wood
 					holder.add_child(pile)
 
 
-func _stone_bridge(holder: Node3D, long: float, heights: PackedFloat32Array) -> void:
+func _stone_bridge(holder: Node3D, long: float, heights: PackedFloat32Array, concrete := false) -> void:
+	# (the city canal's ("concrete"): the same shape in poured concrete - its deck the pavement's
+	# slabs, its parapets plain and pale)
+	var surface := "sidewalk" if concrete else "flagstone"
 	var stone := StandardMaterial3D.new()
-	stone.albedo_texture = load("res://assets/sprites/ground/flagstone_albedo.png")
+	stone.albedo_texture = load("res://assets/sprites/ground/%s_albedo.png" % surface)
 	stone.normal_enabled = true
-	stone.normal_texture = load("res://assets/sprites/ground/flagstone_normal.png")
+	stone.normal_texture = load("res://assets/sprites/ground/%s_normal.png" % surface)
 	stone.uv1_triplanar = true
 	stone.uv1_world_triplanar = true
 	stone.uv1_scale = Vector3.ONE * 0.5
 	stone.roughness = 0.95
 	var wall := stone.duplicate() as StandardMaterial3D
-	wall.albedo_color = Color(0.78, 0.76, 0.72)
+	wall.albedo_color = Color(0.86, 0.86, 0.84) if concrete else Color(0.78, 0.76, 0.72)
 	var half := BRIDGE_WIDE * 0.5
 	var n := maxi(int(long / BRIDGE_SLAB), 8)
 	for k in n:
@@ -2974,6 +3132,9 @@ func _trees_and_rocks() -> void:
 			continue
 		# (by the sea: none on the beach or in the water; on the cliff right to its edge)
 		if _coast and _sea_at(p) > (-60.0 if _cliff else -(COAST_BEACH.y + 80.0)):
+			continue
+		# (none in the river running on out through the frame, nor right on its banks)
+		if not _river_zones.is_empty() and _depth(p, _river_zones) > -RIVER_TREES_BACK:
 			continue
 		made += 1
 		var out := Vector2(maxf(maxf(rect.position.x - p.x, p.x - rect.end.x), 0.0),

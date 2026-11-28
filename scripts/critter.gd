@@ -727,12 +727,16 @@ func _respawn_on_shore() -> void:
 	for _try in range(20):
 		if zones.is_empty():
 			break
-		var samples: Array = zones.pick_random().shore_samples(60.0)
+		var zone: WaterZone = zones.pick_random()
+		var samples: Array = zone.shore_samples(60.0)
 		if samples.is_empty():
 			continue
 		var sample: Array = samples.pick_random()
 		var pos: Vector2 = sample[0] + sample[1] * randf_range(14.0, 30.0)
-		if not _in_water(pos) and _spot_free(pos) and (_player == null or pos.distance_to(_player.global_position) > 300.0):
+		# (a river's stretch - MapGenerator's - runs on off the map: on the map only, not where it runs
+		# out between the edge's trees)
+		var on_map := not zone.river or Rect2(Vector2.ZERO, Vector2(Player.WORLD_WIDTH, Player.WORLD_HEIGHT)).grow(-MapGenerator.RIVER_CRITTER_IN).has_point(pos)
+		if on_map and not _in_water(pos) and _spot_free(pos) and (_player == null or pos.distance_to(_player.global_position) > 300.0):
 			global_position = pos
 			break
 	velocity = Vector2.ZERO

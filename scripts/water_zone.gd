@@ -56,6 +56,10 @@ const NOISE_SIZE := 256
 ## Grid (px) the outline is traced on, for shoreline samples and the rare
 ## zone's solid collision.
 const OUTLINE_CELL := 4.0
+## (the trace: blocks of this many cells a side, and the most the depth changes a px - see
+## _trace_outline)
+const TRACE_BLOCK := 4
+const TRACE_SLOPE := 3.0
 
 static var _shore_noise: Image
 static var _shore_noise_tex: ImageTexture
@@ -72,6 +76,14 @@ var field_texel := FIELD_TEXEL
 var sea := false
 ## A sea's depth gradient reaches this far out from the shore (px).
 const SEA_FIELD_FAR := 420.0
+## Part of a river (MapGenerator, a style with "river"): a stretch of it, overlapping the next -
+## drawn as one in 3D (RunView3D._river_surface), one water to a fish on the line (holds()) and to
+## the binoculars (set before setup()).
+var river := false
+## Its shore not wandering (a canal's straight, walled banks): no shore_warp (set before setup()).
+var smooth := false
+## The rest of the water it's one with (a river's other stretches - MapGenerator sets them).
+var joined: Array = []
 ## Bounding radius around the zone's origin (covers every lobe).
 var radius: float = 200.0
 var lobes: Array[Vector3] = []
@@ -111,6 +123,8 @@ func setup(type: int, r: float, pos: Vector2, extra: Array[Vector3] = []) -> voi
 
 	add_to_group("water_zones")
 	add_to_group("water_zones_rare" if is_rare() else "water_zones_common")
+	if river:
+		add_to_group("water_zones_river")
 
 	_build_surface()
 
@@ -133,7 +147,7 @@ func depth(point: Vector2) -> float:
 	for lobe in lobes:
 		var c := global_position + Vector2(lobe.x, lobe.y)
 		best = _smax(best, lobe.z - c.distance_to(point), SHORE_BLEND)
-	return best + shore_warp(point)
+	return best if smooth else best + shore_warp(point)
 
 
 static func _smax(a: float, b: float, k: float) -> float:
@@ -183,10 +197,27 @@ func _trace_outline() -> void:
 	var origin := global_position - Vector2(n, n) * OUTLINE_CELL * 0.5
 	var bits := BitMap.new()
 	bits.create(Vector2i(n, n))
-	for y in n:
-		for x in n:
-			var p := origin + (Vector2(x, y) + Vector2(0.5, 0.5)) * OUTLINE_CELL
-			bits.set_bit(x, y, contains(p))
+	# (a river's many long stretches - and every pond - traced faster: the depth worked out once for
+	# each block of TRACE_BLOCK cells, and every cell of it only where the shore may run through it.
+	# The depth changes no faster than TRACE_SLOPE px a px (the lobes' distance 1, the shore's wander
+	# at most 1.8 - measured over its noise), so a block whose middle is further than that times its
+	# furthest cell's middle from the shore is all one or the other - the same outline, cell for
+	# cell, as working out each)
+	var reach := (TRACE_BLOCK - 1) * OUTLINE_CELL * 0.5 * sqrt(2.0) * TRACE_SLOPE
+	for by in range(0, n, TRACE_BLOCK):
+		for bx in range(0, n, TRACE_BLOCK):
+			var x1 := mini(bx + TRACE_BLOCK, n)
+			var y1 := mini(by + TRACE_BLOCK, n)
+			var mid := origin + Vector2(bx + x1, by + y1) * 0.5 * OUTLINE_CELL
+			var d := depth(mid)
+			if absf(d) > reach:
+				if d > 0.0:
+					bits.set_bit_rect(Rect2i(bx, by, x1 - bx, y1 - by), true)
+				continue
+			for y in range(by, y1):
+				for x in range(bx, x1):
+					var p := origin + (Vector2(x, y) + Vector2(0.5, 0.5)) * OUTLINE_CELL
+					bits.set_bit(x, y, contains(p))
 	outline.clear()
 	for poly in bits.opaque_to_polygons(Rect2i(0, 0, n, n), 1.0):
 		var world := PackedVector2Array()
@@ -197,7 +228,20 @@ func _trace_outline() -> void:
 
 
 func contains(point: Vector2) -> bool:
+	# (nowhere past its bounding radius - the shore's wander and the lobes' blend in it)
+	if point.distance_squared_to(global_position) > radius * radius:
+		return false
 	return depth(point) >= 0.0
+
+
+## Whether `point` is in this water - this zone, or another stretch of the river it's part of.
+func holds(point: Vector2) -> bool:
+	if contains(point):
+		return true
+	for z in joined:
+		if (z as WaterZone).contains(point):
+			return true
+	return false
 
 
 ## At least `margin` px in from the shore.
@@ -212,6 +256,14 @@ func distance_to_edge(point: Vector2) -> float:
 
 ## A random point at least `margin` px in from the shore.
 func random_point(margin: float) -> Vector2:
+	if river:
+		# (a long thin stretch: about one of its lobes - its bounding square is mostly land)
+		for _try in 40:
+			var l: Vector3 = lobes.pick_random()
+			var p := global_position + Vector2(l.x, l.y) + Vector2.from_angle(randf() * TAU) * l.z * sqrt(randf())
+			if is_deep(p, margin):
+				return p
+		return global_position
 	for _try in 40:
 		var p := global_position + Vector2(randf_range(-radius, radius), randf_range(-radius, radius))
 		if is_deep(p, margin):

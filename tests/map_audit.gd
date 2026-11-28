@@ -5,7 +5,7 @@ extends RefCounted
 ## the steps):
 ##   - where the traveller can stand: a grid, CELL px a side, from where it starts on;
 ##   - whether the altar, the escape stone, the fuel station and every common water's shore
-##     are among those places;
+##     are among those places (a river's shore anywhere along it, and both ends of its bridges);
 ##   - the places walked between by the game's own steps (a lattice LATTICE px apart: from each
 ##     one near something, the stick pushed each of WAYS ways for a lattice step, and where that
 ##     got to noted): any place that can be walked to from the start but not back from is a
@@ -69,6 +69,8 @@ static func audit(p: Player, main: Node) -> Dictionary:
 			places.append([n, node.global_position])
 	for st in p.get_tree().get_nodes_in_group("fuel_stations"):
 		places.append(["FuelStation", (st as Node2D).global_position])
+	var river := 0
+	var river_reached := false
 	for z in p.get_tree().get_nodes_in_group("water_zones_common"):
 		var best := Vector2.INF
 		for k in 24:
@@ -76,8 +78,22 @@ static func audit(p: Player, main: Node) -> Dictionary:
 			if _reached(comp, cols, rows, main_id, sp, REACH * 0.6):
 				best = sp
 				break
+		if (z as WaterZone).river:
+			# (a river - MapGenerator's, one water in many stretches, running on off the map: its shore
+			# got to at any of them)
+			river += 1
+			river_reached = river_reached or best != Vector2.INF
+			continue
 		if best == Vector2.INF:
 			out.unreached.append(["shore of the water at %s" % str((z as Node2D).global_position.round())])
+	if river > 0:
+		if not river_reached:
+			out.unreached.append(["the river's shore"])
+		# (and over it: both ends of every bridge - each on its own bank)
+		for w in p.get_tree().get_nodes_in_group("walkways"):
+			if (w as Dock).bridge != "":
+				for e: Vector2 in (w as Dock).bridge_ends:
+					places.append(["a bridge's end", e])
 	for pl in places:
 		if not _reached(comp, cols, rows, main_id, pl[1], REACH):
 			out.unreached.append(["%s at %s" % [pl[0], str((pl[1] as Vector2).round())]])

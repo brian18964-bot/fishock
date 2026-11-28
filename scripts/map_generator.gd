@@ -261,6 +261,9 @@ const THEMES := {
 	# breaking through (MapTree's "city"); none of the forest's animals.
 	"city": {
 		"look": "detailed",
+		# (user request: water splitting the map, bridges over it - the city's a canal: straight, its
+		# banks walled, crossed by concrete bridges - _generate_river)
+		"river": {"half": Vector2(80.0, 80.0), "canal": true, "bridge": "concrete"},
 		"floor": ["grass", "grass", 0.3],
 		"floor3d": {"grass": "asphalt", "forest": "grass", "path": "sidewalk", "stone": "moss_soil", "mud": "mud"},
 		"trees": 10, "rocks": 2, "bushes": 3, "ground": 0,
@@ -298,6 +301,8 @@ const THEMES := {
 		"look": "detailed",
 		# (user request: a bridge to walk over the water - Dock.setup_bridge, its build)
 		"bridge": "wood",
+		# (user request: a river across the map, winding between the farms - _generate_river)
+		"river": {"half": Vector2(90.0, 110.0), "wind": 0.12, "bends": Vector2(1100.0, 1600.0)},
 		"floor": ["grass", "grass", 0.3],
 		"floor3d": {"grass": "stubble", "forest": "grass", "path": "dirt", "stone": "furrow", "mud": "mud"},
 		"trees": 14, "rocks": 2, "bushes": 4, "ground": 0,
@@ -342,6 +347,8 @@ const THEMES := {
 		"look": "detailed",
 		# (user request: a bridge to walk over the water - Dock.setup_bridge, its build)
 		"bridge": "jp_bridge",
+		# (user request: a river across the map - a mountain stream's winding - _generate_river)
+		"river": {"half": Vector2(80.0, 100.0), "wind": 0.14, "bends": Vector2(900.0, 1300.0)},
 		"floor": ["grass", "grass", 0.3],
 		"floor3d": {"grass": "moss_soil", "forest": "grass", "path": "shrine_gravel", "stone": "furrow", "mud": "mud"},
 		"trees": 16, "rocks": 3, "bushes": 4, "ground": 0,
@@ -385,6 +392,8 @@ const THEMES := {
 		"look": "detailed",
 		# (user request: a bridge to walk over the water - Dock.setup_bridge, its build)
 		"bridge": "wood",
+		# (user request: a river across the map, its meanders - _generate_river)
+		"river": {"half": Vector2(90.0, 110.0), "wind": 0.13, "bends": Vector2(1000.0, 1500.0)},
 		"floor": ["grass", "grass", 0.3],
 		"floor3d": {"grass": "stubble", "forest": "grass", "path": "dirt", "stone": "furrow", "mud": "mud"},
 		"trees": 14, "rocks": 3, "bushes": 4, "ground": 0,
@@ -426,6 +435,8 @@ const THEMES := {
 		"look": "detailed",
 		# (user request: a bridge to walk over the water - Dock.setup_bridge, its build)
 		"bridge": "stone",
+		# (user request: a river across the map, broad and slow - _generate_river)
+		"river": {"half": Vector2(100.0, 125.0), "wind": 0.1, "bends": Vector2(1200.0, 1700.0)},
 		"floor": ["grass", "grass", 0.3],
 		"floor3d": {"grass": "grass", "forest": "moss_soil", "path": "flagstone", "stone": "furrow", "mud": "mud"},
 		"trees": 16, "rocks": 3, "bushes": 4, "ground": 0,
@@ -466,6 +477,8 @@ const THEMES := {
 		"look": "detailed",
 		# (user request: a bridge to walk over the water - Dock.setup_bridge, its build)
 		"bridge": "wood",
+		# (user request: a great broad river across the map, its Nile - _generate_river)
+		"river": {"half": Vector2(150.0, 180.0), "wind": 0.07, "bends": Vector2(1500.0, 2200.0)},
 		"floor": ["dune_sand", "oasis_grass", 0.3],
 		"floor3d": {"grass": "dune_sand", "forest": "oasis_grass", "path": "dirt", "stone": "furrow", "mud": "wet_sand"},
 		"trees": 16, "rocks": 3, "bushes": 3, "ground": 0,
@@ -576,10 +589,15 @@ func _ready() -> void:
 	WaterZone.theme_water = theme.get("water", {})
 	FishData.waters = FishData.waters_for_theme(theme_name)
 	GameState.night_fell.connect(_on_night_fell)
+	# (the last map's tracks gone before anything's laid against them - the river's bridges are)
+	farm_tracks = []
 	_generate_water_zones()
 	_place_docks()
 	_place_altar_and_escape()
 	_take_fixed_points()
+	# (the river's bridges before the village: the ways over it, which the houses, fields and walls
+	# keep clear of)
+	_place_river_bridges()
 	_place_ruins()
 	_place_street_props()
 	_place_farms()
@@ -661,6 +679,8 @@ func _generate_water_zones() -> void:
 	sea_side = Vector2.ZERO
 	if theme.get("sea", false):
 		_generate_sea()
+	# (a river first: the biggest thing, right across the map - the ponds keep clear of it)
+	_generate_river()
 	# The rare one first: it's smaller and solid, so it gets its pick.
 	var ponds: Array = Campaign.rules.ponds
 	var k := _pond_scale()
@@ -673,6 +693,8 @@ func _generate_water_zones() -> void:
 	var commons := int(ponds[0])
 	if commons < 0:
 		commons = randi_range(COMMON_ZONE_COUNT.x, COMMON_ZONE_COUNT.y)
+	if not river_zones.is_empty():
+		commons = river_ponds(commons)
 	for _i in range(commons):
 		_spawn_zone(WaterZone.ZoneType.COMMON, randf_range(COMMON_RADIUS_MIN, COMMON_RADIUS_MAX) * k, COMMON_EXTRA_LOBES)
 
@@ -748,6 +770,156 @@ func _make_lobes(radius: float, count_range: Vector2i) -> Array[Vector3]:
 	return lobes
 
 
+## User request ("是不是該把地圖也加入河流元素，把地圖用河流水域切割，這樣橋體的必要性就很高"; "河流依照你的
+## 建議"): a style with "river" has a water running right across its map, edge to edge, splitting it
+## in two - the countryside's and the Japanese, English and Chinese villages' a winding river, the
+## adobe village's a great broad one (its Nile), the city's a canal: straight, a jog now and then
+## (CANAL_JOG), its banks even (WaterZone.smooth - walled in RunView3D). Left to right or top to
+## bottom, wherever there's room for it clear of the camp (SPAWN_CLEAR_RADIUS and RIVER_CAMP_GAP
+## more) with land enough beyond it (RIVER_FAR_SIDE of the map across) - a wider room likelier;
+## half as wide as "half" (px - with the ponds' size on a bigger map, _pond_scale), a little wider
+## and narrower along it; winding "wind" of the map across (less where there's less room), its
+## bends "bends" px long. Made as the sea is, of common zones in a row: each a stretch of
+## RIVER_LOBES lobes along its middle, RIVER_SPACING of its half width apart, the next overlapping
+## it by RIVER_SHARE, running on RIVER_OVER px past the map's edges (out under the land's frame).
+const RIVER_OVER := 520.0
+const RIVER_FAR_SIDE := 0.12
+const RIVER_CAMP_GAP := 40.0
+const RIVER_LOBES := 9
+const RIVER_SHARE := 2
+const RIVER_SPACING := 0.45
+const RIVER_FIELD_TEXEL := 2.0
+const CANAL_JOG := 0.5
+## (the shore's creatures on a river's bank this far (px) in from the map's edge at least)
+const RIVER_CRITTER_IN := 160.0
+## (the share of a map's ponds a river stands for - see river_ponds)
+const RIVER_PONDS := 1.0 / 3.0
+
+
+## How many ponds a map whose level asks for `asked` has with its river: the river a big water, it
+## stands for a third of them (rounded up), at least one left - or the village has no room left
+## round it, the river and the ponds (its farms crowded in by the camp, their tracks shut in).
+static func river_ponds(asked: int) -> int:
+	return maxi(asked - ceili(asked * RIVER_PONDS), 1)
+const CANAL_JOG_LEAST := 160.0
+## The river's middle line and its half width along it (px), which way it runs (RIGHT: across the
+## map, DOWN: top to bottom; ZERO: no river) and whether it's a canal.
+static var river_line := PackedVector2Array()
+static var river_half := PackedFloat32Array()
+static var river_axis := Vector2.ZERO
+static var river_canal := false
+var river_zones: Array = []
+
+
+func _generate_river() -> void:
+	river_line = PackedVector2Array()
+	river_half = PackedFloat32Array()
+	river_axis = Vector2.ZERO
+	river_canal = false
+	river_zones = []
+	var spec: Dictionary = theme.get("river", {})
+	if spec.is_empty():
+		return
+	var k := _pond_scale()
+	var halves: Vector2 = spec.half * k
+	var canal := bool(spec.get("canal", false))
+	var room := halves.y * (1.0 if canal else 1.12) + WaterZone.SHORE_BLEND * 0.25 \
+		+ (0.0 if canal else WaterZone.WARP_AMP_A + WaterZone.WARP_AMP_B)
+	var near := SPAWN_CLEAR_RADIUS * k + room + RIVER_CAMP_GAP
+	# (each way it could run, and the bands across the map its middle may keep within - one each side
+	# of the camp)
+	var ways := []
+	var total := 0.0
+	for axis: Vector2 in [Vector2.RIGHT, Vector2.DOWN]:
+		var across := Player.WORLD_HEIGHT if axis == Vector2.RIGHT else Player.WORLD_WIDTH
+		var me := SPAWN_POS.y if axis == Vector2.RIGHT else SPAWN_POS.x
+		var edge := across * RIVER_FAR_SIDE + room
+		for band: Vector2 in [Vector2(edge, me - near), Vector2(me + near, across - edge)]:
+			if band.y > band.x:
+				ways.append([axis, band, across])
+				total += band.y - band.x
+	if ways.is_empty():
+		return
+	var roll := randf() * total
+	var way: Array = ways[-1]
+	for w: Array in ways:
+		roll -= (w[1] as Vector2).y - (w[1] as Vector2).x
+		if roll <= 0.0:
+			way = w
+			break
+	var axis: Vector2 = way[0]
+	var band: Vector2 = way[1]
+	var along := Player.WORLD_WIDTH if axis == Vector2.RIGHT else Player.WORLD_HEIGHT
+	var wind := 0.0 if canal else minf(float(spec.get("wind", 0.1)) * float(way[2]), (band.y - band.x) * 0.5)
+	var base := randf_range(band.x + wind, band.y - wind)
+	var bends: Vector2 = spec.get("bends", Vector2(1200.0, 1600.0)) * k
+	var long1 := randf_range(bends.x, bends.y)
+	var long2 := long1 * randf_range(0.32, 0.42)
+	var phases := [randf() * TAU, randf() * TAU, randf() * TAU]
+	var half := randf_range(halves.x, halves.y)
+	var jog := 0.0
+	var jog_at := 0.0
+	if canal and randf() < CANAL_JOG:
+		var to := randf_range(band.x, band.y)
+		if absf(to - base) >= CANAL_JOG_LEAST:
+			jog = to - base
+			jog_at = randf_range(along * 0.25, along * 0.75 - absf(jog))
+	var t := -RIVER_OVER
+	while t <= along + RIVER_OVER:
+		var c := base
+		if jog != 0.0:
+			c += jog * clampf((t - jog_at) / absf(jog), 0.0, 1.0)
+		elif not canal:
+			c += wind * (0.7 * sin(TAU * t / long1 + phases[0]) + 0.3 * sin(TAU * t / long2 + phases[1]))
+		river_line.append(Vector2(t, c) if axis == Vector2.RIGHT else Vector2(c, t))
+		river_half.append(half if canal else half * (1.0 + 0.12 * sin(TAU * t / (long1 * 0.6) + phases[2])))
+		t += halves.x * RIVER_SPACING
+	river_axis = axis
+	river_canal = canal
+	# The zones: RIVER_LOBES points of it each, the next starting RIVER_SHARE back.
+	var i := 0
+	while i < river_line.size() - 1:
+		var j := mini(i + RIVER_LOBES, river_line.size())
+		var mid := (i + j - 1) / 2
+		var origin := river_line[mid]
+		var lobes: Array[Vector3] = []
+		for q in range(i, j):
+			if q != mid:
+				var off := river_line[q] - origin
+				lobes.append(Vector3(off.x, off.y, river_half[q]))
+		var zone: WaterZone = WATER_ZONE_SCENE.instantiate()
+		zone.river = true
+		zone.smooth = canal
+		zone.field_texel = RIVER_FIELD_TEXEL
+		zone.setup(WaterZone.ZoneType.COMMON, river_half[mid], origin, lobes)
+		get_parent().add_child.call_deferred(zone)
+		water_zones.append(zone)
+		river_zones.append(zone)
+		if j >= river_line.size():
+			break
+		i = j - RIVER_SHARE
+	for zone: WaterZone in river_zones:
+		zone.joined = river_zones.filter(func(z): return z != zone)
+
+
+## Whether `p` is in the river.
+func _in_river(p: Vector2) -> bool:
+	for zone: WaterZone in river_zones:
+		if zone.contains(p):
+			return true
+	return false
+
+
+## Where a line from `c` (in the river) along `dir` reaches its bank: the last point in it.
+func _river_end(c: Vector2, dir: Vector2) -> Vector2:
+	var p := c
+	for _i in 400:
+		if not _in_river(p + dir * 4.0):
+			return p
+		p += dir * 4.0
+	return p
+
+
 ## Tries for a pond that doesn't fit, each 0.85 the size of the last (the last about half the size).
 const POND_SHRINKS := 5
 
@@ -803,6 +975,10 @@ func _place_docks() -> void:
 	if not theme.get("docks", true):
 		return
 	var commons: Array = water_zones.filter(func(z): return not z.is_rare())
+	# (on a pond rather than out into the river, which has its bridges)
+	var ponds := commons.filter(func(z): return not z.river)
+	if not ponds.is_empty():
+		commons = ponds
 	# User request: one dock, on the biggest water - not one on every pond.
 	commons.sort_custom(func(a, b): return _zone_area(a) > _zone_area(b))
 	var jobs := commons.slice(0, 1)
@@ -866,7 +1042,8 @@ func _place_docks() -> void:
 ## one); none if there's none - no bridge then. A bigger map gets more, each on a pond of its own.
 func _place_bridges() -> void:
 	var style := str(theme.get("bridge", ""))
-	if style == "":
+	# (a map with a river: its bridges are the river's - _place_river_bridges)
+	if style == "" or not river_zones.is_empty():
 		return
 	# (user decision: more than one to a map is fine - one a base map's area, never two on one pond)
 	var count := clampi(roundi(Campaign.area_share()), 1, BRIDGE_MOST)
@@ -891,22 +1068,77 @@ func _place_bridges() -> void:
 					continue
 				var from := a - d * BRIDGE_LAND
 				var to := b + d * BRIDGE_LAND
-				if _bridge_fits(zone, a, b, from, to, d):
+				if _bridge_fits(zone.contains, a, b, from, to, d):
 					best = [span, from, to, zone]
 		if best.is_empty():
 			return
-		var from: Vector2 = best[1]
-		var to: Vector2 = best[2]
 		bridged.append(best[3])
-		var dir := (to - from).normalized()
-		var bridge: Dock = DOCK_SCENE.instantiate()
-		bridge.setup_bridge(from, to, BRIDGE_HALF_WIDTH, style)
-		# On and off at either end only - rails along both sides.
-		bridge.add_walls([dir, -dir])
-		_add_entrance(bridge.walk_rect, dir)
-		_add_entrance(bridge.walk_rect, -dir)
-		get_parent().add_child.call_deferred(bridge)
-		_walk_rects.append(bridge.walk_rect)
+		_lay_bridge(best[1], best[2], style)
+
+
+## A bridge of `style` from `from` to `to`: on and off at either end only - rails along both sides.
+func _lay_bridge(from: Vector2, to: Vector2, style: String) -> void:
+	var dir := (to - from).normalized()
+	var bridge: Dock = DOCK_SCENE.instantiate()
+	bridge.setup_bridge(from, to, BRIDGE_HALF_WIDTH, style)
+	bridge.add_walls([dir, -dir])
+	_add_entrance(bridge.walk_rect, dir)
+	_add_entrance(bridge.walk_rect, -dir)
+	get_parent().add_child.call_deferred(bridge)
+	_walk_rects.append(bridge.walk_rect)
+
+
+## User request (the river - "這樣橋體的必要性就很高"): bridges across it, the only ways over (no one
+## wades into a river: Player._too_deep) - one on a small map, two on a bigger one, three on the
+## biggest (RIVER_BRIDGES: under these shares of the base map's area), each in its own stretch of
+## the river along the map (RIVER_BRIDGE_END px in from the map's ends), straight across it (the
+## bridges lie square to the map - over a river running left to right, up and down) where it's
+## narrowest and nearest the middle of its stretch (RIVER_BRIDGE_MID px of span counted for each px
+## off it), both banks open dry land clear of the camp, the altar, the way out and the dock. Laid
+## before the village, which keeps clear of them and their ends. Its style the river's "bridge" (the
+## city's concrete), else the map's.
+const RIVER_BRIDGES := Vector2(1.0, 3.0)
+const RIVER_BRIDGE_END := 280.0
+const RIVER_BRIDGE_MID := 0.15
+
+
+func _place_river_bridges() -> void:
+	if river_zones.is_empty():
+		return
+	var style := str((theme.river as Dictionary).get("bridge", theme.get("bridge", "wood")))
+	var share := Campaign.area_share()
+	var count := 1 if share < RIVER_BRIDGES.x else (2 if share < RIVER_BRIDGES.y else 3)
+	var d := Vector2.DOWN if river_axis == Vector2.RIGHT else Vector2.RIGHT
+	var along := Player.WORLD_WIDTH if river_axis == Vector2.RIGHT else Player.WORLD_HEIGHT
+	for part in count:
+		var t0 := lerpf(RIVER_BRIDGE_END, along - RIVER_BRIDGE_END, float(part) / count)
+		var t1 := lerpf(RIVER_BRIDGE_END, along - RIVER_BRIDGE_END, float(part + 1) / count)
+		var best := []
+		var least := INF
+		for c in river_line:
+			var at := c.dot(river_axis)
+			if at < t0 or at > t1:
+				continue
+			# (out to where the water ends under both its sides too - where the river bends, its bank
+			# runs slantwise under the deck's end)
+			var near := 0.0
+			var far := 0.0
+			for s in [-1.0, 0.0, 1.0]:
+				var on: Vector2 = c + d.orthogonal() * BRIDGE_HALF_WIDTH * s
+				near = maxf(near, (on - _river_end(on, -d)).length())
+				far = maxf(far, (_river_end(on, d) - on).length())
+			var a := c - d * near
+			var b := c + d * far
+			var score := a.distance_to(b) + absf(at - (t0 + t1) * 0.5) * RIVER_BRIDGE_MID
+			if score >= least:
+				continue
+			var from := a - d * BRIDGE_LAND
+			var to := b + d * BRIDGE_LAND
+			if _bridge_fits(_in_river, a, b, from, to, d):
+				least = score
+				best = [from, to]
+		if not best.is_empty():
+			_lay_bridge(best[0], best[1], style)
 
 
 ## How long a pond is at its longest (px): across its lobes' box.
@@ -930,17 +1162,17 @@ static func _water_end(zone: WaterZone, c: Vector2, dir: Vector2) -> Vector2:
 
 
 ## Whether a bridge from `from` to `to` (along `d`; its water from `a` to `b`) fits: the deck's
-## sides over the pond's water along its middle (no spit of land under it), both banks dry open
-## land inside the map (in no water, rare or common) where the ends rest and a little past, and
-## the whole of it clear of the dock and its stairs.
-func _bridge_fits(zone: WaterZone, a: Vector2, b: Vector2, from: Vector2, to: Vector2, d: Vector2) -> bool:
+## sides over the water it crosses (`inside` - the pond's, the river's) along its middle (no spit
+## of land under it), both banks dry open land inside the map (in no water, rare or common) where
+## the ends rest and a little past, and the whole of it clear of the dock and its stairs.
+func _bridge_fits(inside: Callable, a: Vector2, b: Vector2, from: Vector2, to: Vector2, d: Vector2) -> bool:
 	var side := d.orthogonal() * BRIDGE_HALF_WIDTH
 	var span := a.distance_to(b)
 	# (its middle - at the banks, a slanting shore can come in under one side: its foot on the bank)
 	var t := span * 0.15
 	while t < span * 0.85:
 		var q := a + d * t
-		if not zone.contains(q + side) or not zone.contains(q - side):
+		if not inside.call(q + side) or not inside.call(q - side):
 			return false
 		t += 8.0
 	for end: Array in [[a, -d], [b, d]]:
@@ -995,6 +1227,9 @@ func _pick_zone_position(radius: float) -> Vector2:
 		var overlaps := false
 		for zone in water_zones:
 			if pos.distance_to(zone.global_position) < radius + zone.radius + ZONE_MIN_GAP:
+				# (a river's long stretch: kept that far from its bank, not from the stretch's middle)
+				if zone.river and zone.depth(pos) < -(radius + ZONE_MIN_GAP):
+					continue
 				overlaps = true
 				break
 		if not overlaps:
@@ -1051,6 +1286,10 @@ func _pick_fixed_point_position(avoid: Array) -> Vector2:
 func _shore_distance(pos: Vector2) -> float:
 	var best := INF
 	for zone in water_zones:
+		# (a zone surely further than the nearest so far - past its bounding radius by that - skipped:
+		# a river is many)
+		if pos.distance_to(zone.global_position) - zone.radius >= best:
+			continue
 		best = minf(best, zone.distance_to_edge(pos))
 	return best
 
@@ -1790,13 +2029,34 @@ func _on_track(at: Vector2, r: float) -> bool:
 func _farm_field(spec: Dictionary) -> void:
 	var lo: Vector2 = spec.field_min
 	var hi: Vector2 = spec.field_max
+	var tries := []
 	for attempt in FIELD_TRIES:
 		# (big ones tried first, smaller as they fail - the room left between the ponds and the farms)
 		var t := float(attempt) / float(FIELD_TRIES - 1)
 		var size := hi.lerp(lo, t) * Vector2(randf_range(0.8, 1.0), randf_range(0.8, 1.0))
 		size = size.max(lo)
-		var rect := Rect2(Vector2(randf_range(PROP_MARGIN, Player.WORLD_WIDTH - PROP_MARGIN - size.x),
-			randf_range(PROP_MARGIN, Player.WORLD_HEIGHT - PROP_MARGIN - size.y)), size)
+		tries.append(Rect2(Vector2(randf_range(PROP_MARGIN, Player.WORLD_WIDTH - PROP_MARGIN - size.x),
+			randf_range(PROP_MARGIN, Player.WORLD_HEIGHT - PROP_MARGIN - size.y)), size))
+	# (user request - the river: on a small map, what's left beside it, the ponds and the farms has
+	# room for a field in only a few places, which random tries can all miss - so the map's first
+	# field, if they do, the smallest one tried at every FIELD_SCAN px over the map, each way round,
+	# in no order)
+	if _fields.is_empty():
+		var scan := []
+		var least := minf(lo.x, lo.y)
+		var y := PROP_MARGIN
+		while y <= Player.WORLD_HEIGHT - PROP_MARGIN - least:
+			var x := PROP_MARGIN
+			while x <= Player.WORLD_WIDTH - PROP_MARGIN - least:
+				scan.append(Rect2(Vector2(x, y), lo))
+				scan.append(Rect2(Vector2(x, y), Vector2(lo.y, lo.x)))
+				x += FIELD_SCAN
+			y += FIELD_SCAN
+		scan.shuffle()
+		tries.append_array(scan)
+	for rect: Rect2 in tries:
+		if rect.end.x > Player.WORLD_WIDTH - PROP_MARGIN or rect.end.y > Player.WORLD_HEIGHT - PROP_MARGIN:
+			continue
 		if not _field_clear(rect, float(spec.water_gap)):
 			continue
 		var field := FarmField.new()
@@ -2088,6 +2348,7 @@ const TRACK_TRIES := 4
 ## (fields: how far apart; how likely a side is left unfenced; a fence's least run, px)
 const FIELD_GAP := 70.0
 const FIELD_TRIES := 60
+const FIELD_SCAN := 60.0
 ## (where a farm might stand: so many tried, its yard's middle this far in from the map's edges, px)
 const STEAD_TRIES := 120
 const STEAD_INSET := 300.0
@@ -2416,6 +2677,10 @@ func _add_shore_critters() -> void:
 		var sample: Array = samples.pick_random()
 		var pos: Vector2 = sample[0] + sample[1] * randf_range(14.0, 30.0)
 		if _shore_distance(pos) < 6.0 or pos.distance_to(SPAWN_POS) < SHORE_CLEAR_OF_SPAWN:
+			continue
+		# (a river's stretch runs on off the map: its shore there not a place for one - nor where it
+		# runs out between the edge's trees)
+		if zone.river and not _inside_map(pos, RIVER_CRITTER_IN):
 			continue
 		# (user report "動物們也不能被物件卡住跟穿圖": a frog left standing in a palm's trunk, a spider
 		# boxed in by what was placed round it after - room kept for it, as for anything placed)

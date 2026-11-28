@@ -1364,6 +1364,7 @@ func nearest_ghost() -> Node2D:
 ## past the water you're standing at when there's another; {} for none.
 func nearest_water() -> Dictionary:
 	var finds := []
+	var river := {}
 	for zone in get_tree().get_nodes_in_group("water_zones"):
 		var best := Vector2.ZERO
 		var best_d := INF
@@ -1372,10 +1373,21 @@ func nearest_water() -> Dictionary:
 				var q := Geometry2D.get_closest_point_to_segment(global_position, poly[i], poly[(i + 1) % poly.size()])
 				var d := global_position.distance_to(q)
 				if d < best_d:
+					# (a river's stretch: its outline's ends lie out in the next one's water - not a shore)
+					if zone.river and zone.joined.any(func(z): return z.depth(q) > 2.0):
+						continue
 					best = q
 					best_d = d
-		if best_d < INF:
-			finds.append({"at": best, "d": best_d, "name": "稀有水域" if zone.is_rare() else "水域"})
+		if best_d == INF:
+			continue
+		if zone.river:
+			# (the river one water, however many stretches: its nearest shore)
+			if best_d < float(river.get("d", INF)):
+				river = {"at": best, "d": best_d, "name": "水域"}
+			continue
+		finds.append({"at": best, "d": best_d, "name": "稀有水域" if zone.is_rare() else "水域"})
+	if not river.is_empty():
+		finds.append(river)
 	if finds.is_empty():
 		return {}
 	finds.sort_custom(func(a, b): return a.d < b.d)
@@ -3214,7 +3226,8 @@ func _follow_line(line_dir: Vector2, delta: float) -> void:
 		# (orthogonal() is a quarter turn back: across it, the other way round)
 		dir = line_dir.rotated(-fight.lateral * delta / fight.distance)
 	var at := global_position + dir * fight.distance * PX_PER_M
-	if cast_water_zone == null or cast_water_zone.contains(at):
+	# (a river's other stretches the same water - WaterZone.holds)
+	if cast_water_zone == null or cast_water_zone.holds(at):
 		cast_target = at
 	else:
 		fight.turn_back()

@@ -4,7 +4,7 @@
 
 ## 一、目前狀態
 - 所有工作都在 `claude/focused-fermi-96pp3r` 分支，它也是這個 repo 的預設分支；最後一次推送的 CI（Web build）通過並已部署。
-- 本機全套測試：6219 項、0 失敗（`tests/run_tests.gd`）。
+- 本機全套測試：6228 項、0 失敗（`tests/run_tests.gd`）。
 - 遊戲：Godot 4.7.2，3D 夜釣（俯視鏡頭、夜間、煤燈），手機觸控為主，也支援鍵盤。
 
 ## 二、這段期間做了什麼（依時間）
@@ -145,7 +145,7 @@
 
 ### 17. 自由夜釣補上廢墟世界的地圖、鱷魚先生對話與泡水（11/27）
 - 使用者回報：「今天做的地圖我目前都無法測試」——自由夜釣「單人」只列了前 6 張自然地圖，第 7～12 章漏掉了。
-  出發視窗現在分兩頁：**湖的旅程（第 1～6 章）**、**人類的廢墟（第 7～12 章）**，各 6 張、排法跟原本一樣（`DepartChooser.RUIN_MAPS`、`WORLDS`）。
+  出發視窗補上第 7～12 章的 6 張地圖（`DepartChooser.RUIN_MAPS`；之後改成左側 12 張的清單，見第 19 節）。
   新的 6 張卡片圖是遊戲裡實際的夜景（`tools/map_cards.gd`：自動找池塘對岸看得到最多建築／橋的站位，從角色背後拍，再提亮一點）。
   地圖卡片目前不上鎖（跟原本 6 張一樣）。
 - 使用者回報：「跟鱷魚先生對話時，角色會走掉」——角色走過去、對話視窗打開後一秒多就自己走開去做別的事；鱷魚先生也有 40 秒逾時。
@@ -154,12 +154,12 @@
   越走越深、最後只露出頭（身體被湖面擋住），慢慢漂、頭轉向營地、輕輕上下浮，周圍一圈圈水波往外擴散，過一陣子再走回岸上。
   在水裡被點時，他先走回下水的岸邊再對話；可點的位置跟著他的頭。
 
-### 18. 使用者 11/28 的意見：菜園、橋、車子、樹種（第 5 點的出發視窗和第 2 點的河流等使用者確認）
+### 18. 使用者 11/28 的意見：菜園、橋、車子、樹種（第 5 點出發視窗、第 2 點河流見第 19 節）
 - **菜園**：只留鄉村、中式。日式改成收割後的稻田（不放乾草捆）和犁過的田，英式拿掉菜園（牧草地為主），
   土屋改成收割後的麥田和犁過的田（`MapGenerator.THEMES` 各主題的 `farm.crops`）。
 - **橋**：只蓋在大水域上——池塘最長跨度要 620 px（約 23 m）以上，橋下水面至少 150 px（約 5.5 m）
   （`MapGenerator.BRIDGE_POND_MIN`、`BRIDGE_SPAN`）。25 張村莊地圖現在約 10 張有橋（都是大地圖）。
-  使用者提議加河流把地圖切開、橋才有必要，方案已提出，等確認（見第五節）。
+  使用者提議加河流把地圖切開、橋才有必要——已做，見第 19 節（有河的地圖不再在池塘上蓋橋）。
 - **車子**：都市建築的「透視」效果（靠近角色、靠近鏡頭的部分用網點挖空）也套到車子上，車子在燈籠旁就出現網點、像破掉。
   街上的矮物件（車、油桶、木箱、長椅）不再套用（`CityBuild._prop_model`、`_model` 的 `see`）。
 - **樹種**：竹林和果園的整片範圍內不再長別的樹或灌木（`MapGenerator._grove_areas`）；樹種依季節分（`MapTree.SEASON_KINDS`）：
@@ -167,6 +167,23 @@
   鄉村依章節設定是秋收，拿掉夏天的綠楓。分支的季節寫在關卡規則的 `season`，自由夜釣隨機（`MapGenerator.current_season`）。
   其他主題清點過：森林、雪地、海崖是松；秋林是秋葉和枯樹；沙漠、土屋是水邊椰棗、沙地枯樹；沙灘是椰子樹；
   都市是枯樹為主夾一棵秋葉樹和松；中式是水邊垂柳、其他青楓和松——都沒有季節或地區衝突。
+
+### 19. 出發視窗的 12 張地圖清單、人類世界的河流（11/28，使用者確認「用捲動清單，12 張一眼就看得到」「河流依照你的建議」）
+- **出發視窗**（自由夜釣・單人）：左側是 12 張地圖的捲動清單，依章節排（6 張自然地圖、6 張人類世界），每列編號、名稱、小圖，
+  12 列一眼都看得到；點一列，右側出現它的大圖、名稱、說明和分支按鈕（太多就換行），再下面是選到的分支說明、詛咒（有開時）。
+  原本的兩個分頁和卡片格拿掉（`scripts/depart_chooser.gd` 的 `_build_maps()`：`MapList`、`MapRows`、`MapDetail`）。
+- **河流**：人類世界 6 種地圖都有一條水從地圖一邊貫穿到另一邊，把地圖切成兩半——鄉村、日式、英式、中式是彎曲的河，
+  土屋是又寬又緩的大河（尼羅河），都市是**運河**（筆直、偶爾斜轉一段、兩岸是水泥牆和鋪面的河岸、水泥橋）。
+  河的位置避開營地，兩邊都留地；因為營地在地圖正中、地圖是橫的，實際上幾乎都是**上下貫穿**（把地圖切成左右兩半）。
+  河從地圖邊緣再往外流 520 px，3D 裡邊緣那圈升高的地面和樹在河的位置讓開（河谷）。
+- **河上的橋**：過河唯一的路（河不能涉水）。小地圖 1 座、中大地圖 2 座、特大 3 座，沿河分段各找最窄、正對河的位置，
+  兩端都上到乾地；橋在村子之前先放，房子、田、圍籬都會避開橋頭。風格照主題（都市是新的水泥橋）。
+  有河的地圖不再在池塘上蓋橋；碼頭放在池塘不放在河上。
+- **河算大水域**：有河的地圖池塘比關卡規則少三分之一（無條件進位、最少留 1 個：2→1、3→2、5→3），不然村子的田、房子、
+  土路都擠在營地旁邊放不下。
+- 一條河在程式裡是一串互相重疊的水域（跟海一樣）；釣到的魚可以從一段游到下一段、望遠鏡把整條河當一個水域、
+  釣點（熱點）把整條河當一個水域且只出現在地圖內；3D 畫成一整片水面（`RunView3D._river_surface`）。
+- 順手：水域外形的計算改成先粗後細（結果完全一樣，快約 4 倍）；地圖一塊田都放不下時，改用整張地圖逐格找第一塊田的位置。
 
 ## 三、已定案（使用者決定的，不用再問）
 ### 劇情與分支
@@ -188,6 +205,7 @@
 ### 介面
 - 柳的提示不要一直卡在畫面中間：一段時間後淡出，只留指引箭頭。
 - 渡石逃離後的通關視窗不能貼底，拿掉不必要的備註。
+- 出發視窗（自由夜釣）：左側 12 張地圖的捲動清單、12 張一眼都看得到，點了右側出現分支（11/28）。
 ### 人類世界（第 7 章起）
 1. 人類世界的六種主題：城市、鄉村、部落、日式、中國風、英式，各自再分支；先做都市。
    **11/27：部落取消，換成土屋主題（第 12 章）；接著做歐洲田野楓（已做，種在鄉村、英式）。**
@@ -196,6 +214,7 @@
 3. 沙漠圓頂屋（TATOOINE 那包）不用；西部小鎮的模型使用者會再找。
 5. **菜園只出現在鄉村和中式**地圖（11/28）；日式是收割後的稻田、英式是牧草地、土屋是收割後的麥田。
 6. **橋只蓋在河流或夠大的水域**，小池塘不蓋（11/28）。
+8. **人類世界的地圖用河流切開**（11/28）：鄉村、日式、英式、中式是河，土屋是大河，都市是運河；橋蓋在河上當通道。
 7. **樹種不要不合理地混用**（11/28）：竹林、果園裡不長別的樹；人類世界用建築分風格，樹種可以用來表現季節或區域
    （日式、英式每個分支一個季節，自由夜釣隨機）。
 ### 自由夜釣
@@ -261,6 +280,10 @@
 | 防穿圖的間距 | 樹冠離建築（只容許葉尖 12 px）；院子物件用模型四角算範圍；路燈燈臂間距 45 px；水邊小動物出生處留 18 px | `MapGenerator.CROWN_BRUSH`、`_model_reach()`、`LAMP_ARM`、`SHORE_CRITTER_ROOM` |
 | 鱷魚先生泡水 | 每次要換地方時 30% 改成下水；離岸 1.2～1.9 m；泡 14～26 秒；水面在頭根下 0.12 m（整顆頭露出）；漂 0.1 m/s、左右 0.8 m；水波每 1.6 秒一圈、2.6 秒擴散到 1.6 m | `CampCroc.SOAK_*`、`RING_*` |
 | 建橋門檻 | 池塘最長跨度 620 px（約 23 m）以上才建；橋下水面 150～340 px | `MapGenerator.BRIDGE_POND_MIN`、`BRIDGE_SPAN` |
+| 河流的寬度與彎曲 | 半寬（px，大地圖再乘池塘的放大倍數，大約×1.6、特大×1.9）：鄉村 90～110、日式 80～100、英式 90～110、中式 100～125、土屋 150～180、都市運河 80；彎曲幅度＝地圖寬的 12%／14%／13%／10%／7%（放不下就小一點）；彎的長度 900～2200 px；寬度沿河 ±12%；運河 50% 有一段斜轉；離營地多留 40 px、對岸至少留地圖寬 12% 的地；流出地圖外 520 px | `MapGenerator.THEMES.*.river`、`RIVER_*`、`CANAL_*` |
+| 河上的橋 | 地圖面積小於基準 1 倍：1 座；小於 3 倍：2 座；其他 3 座；離地圖兩端 280 px 內不放；每偏離該段中點 1 px 算多 0.15 px 跨距 | `MapGenerator.RIVER_BRIDGES`、`RIVER_BRIDGE_END`、`RIVER_BRIDGE_MID` |
+| 河算幾個池塘 | 有河的地圖池塘少三分之一（無條件進位，最少 1 個）：2→1、3→2、5→3 | `MapGenerator.RIVER_PONDS`、`river_ponds()` |
+| 運河的牆 | 牆頂高出地面 0.07 m、寬 0.36 m、往水下 0.55 m；岸邊鋪面 70 px；水一靠牆就深 0.6 m | `RunView3D.CANAL_*` |
 | 分支季節 | 9-1 春；9-2、9-5 夏；9-3、9-4 秋；10-1、10-2 夏；10-3～10-5 秋 | `scripts/campaign.gd` 各關 `rules.season`；樹種 `MapTree.SEASON_KINDS` |
 | 和鱷魚先生對話 | 視窗開著時角色和他都不走（最多 30 分鐘）；視窗 4 秒內沒打開就不等 | `CampLife.TALK_MOST`、`TALK_OPENS`；`CampCroc.held` |
 | 農場動物的行為 | 綿羊／小牛被靠近到 55／45 px 才慢慢走開；雞 70 px 跑開；烏鴉 90 px 飛走；大小：綿羊 0.95 m、小牛 1.15 m、母雞 0.42 m、公雞 0.55 m、烏鴉 0.42 m | `Critter.SPECIES`、`RunView3D.CREATURES` |
@@ -270,16 +293,18 @@
    使用者說過「先暫定」專屬委託是某張地圖的夢幻魚，目前用 1-5 的鱷雀鱔（鱷魚找鱷雀鱔）。
 2. **發佈前**把 `Campaign.dev_all_open` 改成 `false`（它也讓所有角色都能選）。
 10. **荒廢都市等使用者的素材**（清單在 `docs/RUINED_WORLD.md` 第四節：建築、汽車、路燈、街道小物、野狗、老鼠、鴿子、魚的照片）。
-    還沒做：運河（7-3）、地鐵坑（7-4）、海岸港口（7-5）、撿拾點（提案）。
-11. **鄉村**（第 8 章）已可玩；還沒做：農場動物（雞、牛、羊——沒有素材，目前只有鹿和狐狸，8-4 有狼）、溝渠／大河（8-5 現在是一般池塘）。
+    運河已做（每張都市地圖都有，第二節 19）；還沒做：地鐵坑（7-4）、海岸港口（7-5）、撿拾點（提案）。
+11. **鄉村**（第 8 章）已可玩；還沒做：農場動物（雞、牛、羊——沒有素材，目前只有鹿和狐狸，8-4 有狼）。每張鄉村地圖都有河了（第二節 19）。
     11 種鄉村魚是暫代模型，有照片再換。
 12. **土屋聚落**（第 12 章，取代部落）已可玩；還沒做：沙地上的沙丘起伏（目前平地）、駱駝以外的牲口；11 種魚是暫代模型。
     使用者會再測試土屋聚落和其他地圖。
 13. **中式古鎮**（第 11 章）已可玩；還沒做：荷花、石拱橋、牌樓、月洞門；11 種中國魚是暫代模型。
-14. **可以走上去的橋**已做（第二節 15）；只在五個村莊主題（使用者決定非村莊不放），一張圖最多 3 座，只蓋在大水域（第二節 18）。
-16. **等使用者確認**（11/28）：
-    - 出發視窗改成左側列出 12 種地圖（往下捲動），點一張右側出現它的大圖、說明和分支（我畫的示意圖已給使用者，問「下拉」是捲動清單還是下拉式選單）。
-    - 河流：人類世界的地圖加一條從地圖一邊到另一邊的彎曲河流，把地圖切成兩邊，橋蓋在河上當通道（建議鄉村、日式、英式、中式、土屋是河，都市是運河）。
+14. **可以走上去的橋**已做（第二節 15）；只在人類世界（使用者決定森林等不放），一張圖最多 3 座；現在都蓋在河上（第二節 19）。
+17. 穿圖驗證（11/28，河流加入後地圖重新排過）：30 關每輪只剩 1 處小動物的小狀況，跟河無關、之前就有的類型——
+    最後一輪是老鼠擠進營地燃料站的模型 7 px（10-1）；前幾輪看過蜜蜂飛進水槽模型邊緣 8 px（細長的院子物件碰撞只有一個小圓，
+    模型比較長）、黑蜘蛛在田的圍籬和地圖邊之間卡 4 秒才出來。之後可把細長物件的碰撞改成跟模型一樣的長方形
+    （`StreetProp.FARM` 的尺寸、`Solids`），小動物避開營地的範圍再放大一點。
+16. 出發視窗的清單和河流已做（第二節 19）。河目前幾乎都是上下貫穿（營地在正中間、地圖是橫的），要橫的河就得讓河離營地近一點或把營地移開。
     卡通風的櫻花樹（Tree.zip）風格和其他寫實素材不搭，先沒用。
 15. 動物：烏鴉的翅膀是用旋轉把展開的翅膀收到身側（原檔是展翅姿勢），近看羽毛會有一點散；牛（Cow.zip 的 .max）仍打不開，目前用小牛。
 3. 月光鰺目前和浪人鰺同一個模型形狀；更細長的版本已寫好算圖設定（`tools/render_fish.py` 的 moon_jack），要有 Blender（bpy）才能重算。
@@ -299,7 +324,7 @@
   `test_free_branches_and_nights`、`test_level_guide_and_results`、`test_weathers`（含雨打水面）、`test_journey_page`、
   `test_bag_full_reminders`、`test_character_unlocks`、`test_croc_quests`、`test_croc_waits_and_soaks`、`test_free_ruin_maps`、`test_village_trees_fields_and_cars`、`test_croc_errands_on_run`、`test_zodiac_coins`、`test_city_map`、
   `test_countryside_map`、`test_japan_and_england_maps`、`test_bridges`、`test_field_maples`、`test_wet_footprints`、
-  `test_village_sway`、`test_nothing_in_anything`。
+  `test_village_sway`、`test_nothing_in_anything`、`test_rivers`。
 - `tools/verify/verify.gd`（用法寫在檔案開頭）：
   - `tool=bot`：機器人用真實操作（拋竿、揚竿、搏魚、獻祭、逃離）逐關玩，輸出每關用時、額度、漁獲、獨有魚、教學進度、失敗原因。
   - `tool=play`：關掉開發者全開，依序通關 26 關，檢查解鎖順序、星數、首次通關獎勵。
@@ -313,7 +338,7 @@
 |---|---|
 | 章節、26 關（規則、星數、獎勵、提醒 `tip`）、預設規則、地圖尺寸 | `scripts/campaign.gd`：`CHAPTERS`、`LEVELS`、`DEFAULT_RULES`、`MAP_SIZES` |
 | 教學內容、操作說明、柳的補充說明、教學關卡 | `scripts/campaign.gd`：`TUTORIALS`、`CONTROLS`、`ASIDES`、`LESSONS`、`taught()` |
-| 自由夜釣（分支、特別夜晚） | `scripts/campaign.gd`：`begin_free()`、`FREE_EVENTS`；畫面：`scripts/depart_chooser.gd`（`MAPS`、`RUIN_MAPS`）；卡片圖：`tools/map_cards.gd` |
+| 自由夜釣（分支、特別夜晚） | `scripts/campaign.gd`：`begin_free()`、`FREE_EVENTS`；畫面：`scripts/depart_chooser.gd`（`MAPS`、`RUIN_MAPS`、`all_maps()`、`_build_maps()`）；卡片圖：`tools/map_cards.gd` |
 | 成就 | `scripts/campaign.gd`：`ACHIEVEMENTS` |
 | 魚種、獨有魚、魚池、屬性門檻、金色魚 | `scripts/fish_data.gd`：`FISH`、`pool_for()`、`BRANCH_*`、`GATE_*`、`storm_fish`、`icon_of()` |
 | 搏魚箭頭（反甩）開關 | `scripts/fish_fight.gd`：`prompts` |
@@ -334,7 +359,8 @@
 | 村莊的樹、日式新物件、農場動物 | 樹：`tools/make_village_trees.py`（`assets/models/camp/<kind>.glb`，`CampModel.TREE_FAMILY`、`MapTree.KINDS`/`CANOPY`/`THEME_KINDS`）；田野楓也是它（給 EU01 的資料夾）；日式燈籠石塔、紅橋：`tools/make_japan_extras.py`（`ONLY=bridge` 只做橋）；動物：`tools/make_farm_animals.py`（`assets/models/run3d/`，`Critter.SPECIES`、`RunView3D.CREATURES`） |
 | 土屋聚落（第 12 章） | 主題：`THEMES.adobe`（`oasis_meadow` → 只有水邊綠：`RunView3D._dry_farm`）；矮土牆：`scripts/farm_build.gd` 的 `_mud_wall`；素材再製：`tools/make_adobe_assets.py`（`assets/models/adb/`） |
 | 穿圖／卡圖驗證 | 全部關卡：`tools/verify/verify.gd tool=overlap`（`tools/verify/overlap_work.gd`，幾何 `tests/overlap_audit.gd`）；卡點：`tools/map_audit.gd`；測試 `test_nothing_in_anything`、`test_wet_footprints`、`test_village_sway` |
-| 可以走上去的橋 | 位置：`MapGenerator._place_bridges()`、`_bridge_fits()`（在 `_place_farms()` 之後）；資料：`Dock.setup_bridge()`（`bridge`、`bridge_ends`，欄杆 `add_walls`）；外觀與行走高度：`RunView3D._bridge()`、`_wood_bridge()`、`_stone_bridge()`、`_deck_rise()`（`ground_y` 用它走拱形）；測試 `test_bridges` |
+| 河流、運河 | 生成：`MapGenerator._generate_river()`（`river_line`、`river_half`、`river_axis`、`river_canal`、`river_zones`）；河上的橋：`_place_river_bridges()`（在村子之前）；水域：`WaterZone.river`、`smooth`（運河岸不彎）、`joined`、`holds()`；3D：`RunView3D._river_surface()`、`_canal_walls()`、邊緣河谷 `RIVER_VALLEY`；測試 `test_rivers` |
+| 可以走上去的橋 | 位置：`MapGenerator._place_bridges()`、`_bridge_fits()`（在 `_place_farms()` 之後；有河的地圖改用 `_place_river_bridges()`）；資料：`Dock.setup_bridge()`（`bridge`、`bridge_ends`，欄杆 `add_walls`）；外觀與行走高度：`RunView3D._bridge()`、`_wood_bridge()`、`_stone_bridge()`、`_deck_rise()`（`ground_y` 用它走拱形）；測試 `test_bridges` |
 | 十二星座硬幣 | `scripts/zodiac.gd`（`CHANCE`、`PRICE`、`roll()`）；給予：`scripts/game_state.gd` 的 `escape()`；轉換工具：`tools/make_zodiac_coins.py` |
 | 商城收購 | `scripts/shop.gd`：`_fill_sell_pane()`、`_sell_drag()`、`SellBoard` |
 | 用在魚身上的道具的選魚視窗 | `scripts/fish_pick_panel.gd`：`show_fish()` |
