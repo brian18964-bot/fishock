@@ -4,7 +4,7 @@
 
 ## 一、目前狀態
 - 所有工作都在 `claude/focused-fermi-96pp3r` 分支，它也是這個 repo 的預設分支；最後一次推送的 CI（Web build）通過並已部署。
-- 本機全套測試：6262 項、0 失敗（`tests/run_tests.gd`）。
+- 本機全套測試：6263 項、0 失敗（`tests/run_tests.gd`）。
 - 遊戲：Godot 4.7.2，3D 夜釣（俯視鏡頭、夜間、煤燈），手機觸控為主，也支援鍵盤。
 
 ## 二、這段期間做了什麼（依時間）
@@ -197,10 +197,11 @@
   7-1 開場白說這是渡石第一次帶你到人類世界、很久很久以前，12-1 說是最後一站。
   舊存檔載入時，第 7～12 章的星數、章節獎勵、成就會自動搬到新編號，只搬一次（`Profile._move_eras()`、`era_order`）。
   順手修了新玩家存檔的一個潛在問題：新存檔原本沒有 `branches` 標記，第二次載入時進度會被當成舊 25 關重置。
-- **建築做舊**：人類世界的建築、天際線高樓、街上和院子的物件都會依地圖風格「變舊」（作物不變）：顏色褪向灰褐、白色泛黃、
+- **建築做舊**：人類世界的建築（使用者的模型和都市程式產生的建築都有）、天際線高樓、街上和院子的物件都會依地圖風格「變舊」（作物不變；門窗的暗處和玻璃不變）：顏色褪向灰褐、白色泛黃、
   油漆／灰泥剝落的斑塊、水漬沿牆往下流、牆腳往上的污垢、屋頂和窗台與牆腳的青苔、鏽斑和鏽水痕（屋頂上少）。
   用世界座標的雜訊，每面牆都不一樣。都市（唯一的廢墟）最舊、鏽最多；鄉村的農舍有一點鏽；日式、英式、中式是風化的木頭、石頭、瓦片加青苔，
-  不生鏽；土屋是曬褪的泥磚，褪向沙色、牆腳有沙塵，沒有青苔和鏽（`CityBuild.TEX_SHADER` 的 `weather()`、`MapGenerator.THEMES.*.aged`）。
+  不生鏽；土屋是曬褪的泥磚，褪向沙色、牆腳有沙塵，沒有青苔和鏽（兩個 shader 共用的 `CityBuild.WEATHER` 的 `weather()`、`MapGenerator.THEMES.*.aged`）。
+  圍牆、籬笆、石牆、土牆（`FarmBuild` 畫的）還沒做舊，見第五節 18。
 
 ## 三、已定案（使用者決定的，不用再問）
 ### 劇情與分支
@@ -309,7 +310,7 @@
 | 和鱷魚先生對話 | 視窗開著時角色和他都不走（最多 30 分鐘）；視窗 4 秒內沒打開就不等 | `CampLife.TALK_MOST`、`TALK_OPENS`；`CampCroc.held` |
 | 3-1 的第二顆星 | 營火的油剩一半以上（開場的油的 50%）離開 | `Campaign.LEVELS` 的 3-1 `stars`、統計 `fire_left` |
 | 商店的左側清單 | 清單寬 108 px、每列高 62 px、列距 8 px、清單和商品間距 8 px；商品卡寬 204 px（收購頁照舊）；分類圖示：裝備＝釣竿、餌＝活蜘蛛、道具＝電池、強化＝煤燈、收購＝金幣 | `scripts/shop.gd` 的 `LIST_W`、`ROW_H`、`ROW_GAP`、`LIST_GAP`、`CARD_W`、`TAB_ICONS` |
-| 建築做舊的程度 | 都市 舊 1.0、青苔 0.35、鏽 0.7；鄉村 0.8、0.3、0.3；日式 0.8、0.5、0；英式 0.85、0.55、0；中式 0.85、0.45、0；土屋 0.75、0、0（污垢與褪色偏沙色）；做舊的細節比例（褪色 60%、斑塊暗 45%、水漬暗 60%、牆腳污垢 1.8～2.5 m 高）在 shader 裡 | `MapGenerator.THEMES.*.aged`；`CityBuild.TEX_SHADER` 的 `weather()` |
+| 建築做舊的程度 | 都市 舊 1.0、青苔 0.35、鏽 0.7；鄉村 0.8、0.3、0.3；日式 0.8、0.5、0；英式 0.85、0.55、0；中式 0.85、0.45、0；土屋 0.75、0、0（污垢與褪色偏沙色）；做舊的細節比例（褪色 60%、斑塊暗 45%、水漬暗 60%、牆腳污垢 1.8～2.5 m 高）在 shader 裡 | `MapGenerator.THEMES.*.aged`；`CityBuild.WEATHER` 的 `weather()` |
 | 農場動物的行為 | 綿羊／小牛被靠近到 55／45 px 才慢慢走開；雞 70 px 跑開；烏鴉 90 px 飛走；大小：綿羊 0.95 m、小牛 1.15 m、母雞 0.42 m、公雞 0.55 m、烏鴉 0.42 m | `Critter.SPECIES`、`RunView3D.CREATURES` |
 
 ## 五、待辦與需要使用者決定的事
@@ -330,6 +331,8 @@
     （`StreetProp.FARM` 的尺寸、`Solids`），小動物避開營地的範圍再放大一點。
 16. 出發視窗的清單和河流已做（第二節 19）。河目前幾乎都是上下貫穿（營地在正中間、地圖是橫的），要橫的河就得讓河離營地近一點或把營地移開。
     卡通風的櫻花樹（Tree.zip）風格和其他寫實素材不搭，先沒用。
+18. **圍牆還沒做舊**（11/28）：建築和物件已經做舊，但 `FarmBuild` 畫的圍牆、籬笆（中式白牆黛瓦、土屋土牆、英式石牆和樹籬、竹籬、木籬笆）
+    還是新的顏色，白牆在舊房子旁邊會顯得比較乾淨。要做的話把它們的材質（目前是頂點顏色的 `StandardMaterial3D`）換成套用 `CityBuild.WEATHER` 的 shader。
 15. 動物：烏鴉的翅膀是用旋轉把展開的翅膀收到身側（原檔是展翅姿勢），近看羽毛會有一點散；牛（Cow.zip 的 .max）仍打不開，目前用小牛。
 3. 月光鰺目前和浪人鰺同一個模型形狀；更細長的版本已寫好算圖設定（`tools/render_fish.py` 的 moon_jack），要有 Blender（bpy）才能重算。
 4. 沙灘海岸的地形設定裡列了「螃蟹」，但遊戲沒有螃蟹這個物種（`shore_critter_count` 為 0，所以不會生成）。**使用者之後會給螃蟹美術。**
@@ -389,5 +392,5 @@
 | 十二星座硬幣 | `scripts/zodiac.gd`（`CHANCE`、`PRICE`、`roll()`）；給予：`scripts/game_state.gd` 的 `escape()`；轉換工具：`tools/make_zodiac_coins.py` |
 | 商店（左側分類清單、收購） | `scripts/shop.gd`：`_category_row()`、`_style_row()`、`_show_tab()`、`_fill_sell_pane()`、`_sell_drag()`、`SellBoard` |
 | 人類世界的章節順序與舊存檔搬移 | `scripts/campaign.gd` 的 `ERA_MOVED`、`CHAPTERS`、`LEVELS`；`scripts/profile.gd` 的 `_move_eras()`（`era_order`）；自由夜釣清單 `DepartChooser.RUIN_MAPS` |
-| 建築做舊 | `scripts/city_build.gd` 的 `TEX_SHADER`（`weather()`、`age`、`moss`、`rust`、`grime`、`fade_to`）、`CityBuild.aged`（`RunView3D._build()` 依主題設定）；各風格強度 `MapGenerator.THEMES.*.aged` |
+| 建築做舊 | `scripts/city_build.gd` 的 `WEATHER`（`weather()`、`age`、`moss`、`rust`、`grime`、`fade_to`；`SHADER`、`TEX_SHADER` 都引用它）、`_weathered()`、`CityBuild.aged`（`RunView3D._build()` 依主題設定）；各風格強度 `MapGenerator.THEMES.*.aged` |
 | 用在魚身上的道具的選魚視窗 | `scripts/fish_pick_panel.gd`：`show_fish()` |
