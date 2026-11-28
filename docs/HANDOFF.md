@@ -4,7 +4,7 @@
 
 ## 一、目前狀態
 - 所有工作都在 `claude/focused-fermi-96pp3r` 分支，它也是這個 repo 的預設分支；最後一次推送的 CI（Web build）通過並已部署。
-- 本機全套測試：6269 項、0 失敗（`tests/run_tests.gd`）。
+- 本機全套測試：6279 項、0 失敗（`tests/run_tests.gd`）。
 - 遊戲：Godot 4.7.2，3D 夜釣（俯視鏡頭、夜間、煤燈），手機觸控為主，也支援鍵盤。
 
 ## 二、這段期間做了什麼（依時間）
@@ -209,6 +209,15 @@
   原因是河佔掉三分之一的空間，隨機找田的位置常常全部落空。現在隨機找不到時，會掃描整張地圖找空位，直到田數達到關卡要求的一半
   （`MapGenerator.FIELD_LEAST`）；掃描找不到就不再掃。修正後 7-2 每次 5 塊、9-2 有 3～5 塊，每關都不少於加河流前。
 
+### 21. 燈具亮在燈罩／燈籠裡、隨機變暗（11/28，使用者附截圖：「燈籠要亮在燈籠中，微微的紅色燈色、時不時還會稍微暗一些些；路燈也沒有亮在燈罩中，也是要隨機暗一些，製造無人詭異的感覺」）
+- 原因：亮著的燈的光點（白色亮球）和光源放在燈具上，但沒跟著模型轉向——鄉村燈柱的模型轉了 90 度，光點就飄在手臂上那盞燈的旁邊；
+  中式紅燈籠柱的「燈的位置」是兩個燈籠中間的柱子，所以柱頂亮白光；石燈籠的白球也凸出火袋。
+- 現在光點和光源放進模型裡、跟著轉，光點改成「從裡面透出來的柔光」（`LampFlicker.GLOW_SHADER`，疊加在燈罩上）：
+  鄉村燈柱亮在掛著的燈裡、紅燈籠柱兩個燈籠各自亮紅光（光源是淡紅色）、日式紙燈整個亮、石燈籠只從火袋的開口透光
+  （`FarmBuild.LAMP_LOOKS`、`STONE_LAMP`）。都市路燈保留鐵燈罩，燈罩底下的燈面發光、光往下灑，不再是整塊發光方塊。
+- 每盞燈各自隨機變暗（`scripts/lamp_flicker.gd`）：燈籠（火光）平常微微晃動，偶爾柔和地暗到 60～85%；
+  路燈（鄉村燈柱、都市路燈）平常穩定，偶爾一連閃 1～3 下暗到 25～60%，或整個暗到 40～60% 撐一陣子。
+
 ## 三、已定案（使用者決定的，不用再問）
 ### 劇情與分支
 1. 每張地圖分 4～5 支，每支是一個劇情關卡；共 6 章 26 關。地圖順序：湖畔森林 → 秋林 → 雪地森林 → 沙漠綠洲 → 沙灘海岸 → 海崖。
@@ -230,6 +239,7 @@
 - 柳的提示不要一直卡在畫面中間：一段時間後淡出，只留指引箭頭。
 - 渡石逃離後的通關視窗不能貼底，拿掉不必要的備註。
 - 出發視窗（自由夜釣）：左側 12 張地圖的捲動清單、12 張一眼都看得到，點了右側出現分支（11/28）。
+- 燈具要亮在燈罩／燈籠裡；紅燈籠是微微的紅光；燈會隨機變暗，製造無人的詭異感（11/28）。
 - 「商城」改叫**商店**，分類放在視窗左側的清單（選 A：裝備、餌、道具、強化、收購 5 類）（11/28）。
 - **地圖上不放補充油桶**（11/28）。
 ### 人類世界（第 7 章起）
@@ -319,6 +329,8 @@
 | 建築做舊的程度 | 都市 舊 1.0、青苔 0.35、鏽 0.7；鄉村 0.8、0.3、0.3；日式 0.8、0.5、0；英式 0.85、0.55、0；中式 0.85、0.45、0；土屋 0.75、0、0（污垢與褪色偏沙色）；做舊的細節比例（褪色 60%、斑塊暗 45%、水漬暗 60%、牆腳污垢 1.8～2.5 m 高）在 shader 裡 | `MapGenerator.THEMES.*.aged`；`CityBuild.WEATHER` 的 `weather()` |
 | 圍牆、籬笆做舊 | 程度＝建築的 60%；牆腳污垢高度＝建築的 30%；不生鏽；樹籬不做舊 | `CityBuild.FENCE_AGE`、`FENCE_FOOT` |
 | 田的補位掃描 | 隨機找不到位置時，掃描整張地圖（每 60 px 一格）補到關卡要求田數的一半 | `MapGenerator.FIELD_LEAST`、`FIELD_SCAN` |
+| 燈籠與路燈的光 | 暖光光點 (1.0, 0.6, 0.28)、亮度 1.6；紅燈籠光點 (1.0, 0.22, 0.1)、亮度 1.2，光源 (1.0, 0.45, 0.32)、1.3、範圍 6 m；各燈的光點位置和大小 | `FarmBuild.LAMP_GLOW*`、`RED_*`、`LAMP_LOOKS`、`STONE_LAMP` |
+| 燈的隨機變暗 | 燈籠：晃動 5%、每 3～9 秒暗一次到 60～85%、0.18～0.6 秒；路燈：每 2.5～8 秒閃 1～3 下到 25～60%、每下 0.05～0.16 秒，20% 改成暗到 40～60% 撐 0.6～1.6 秒 | `LampFlicker.STYLES` |
 | 農場動物的行為 | 綿羊／小牛被靠近到 55／45 px 才慢慢走開；雞 70 px 跑開；烏鴉 90 px 飛走；大小：綿羊 0.95 m、小牛 1.15 m、母雞 0.42 m、公雞 0.55 m、烏鴉 0.42 m | `Critter.SPECIES`、`RunView3D.CREATURES` |
 
 ## 五、待辦與需要使用者決定的事
@@ -358,7 +370,7 @@
   `test_bag_full_reminders`、`test_character_unlocks`、`test_croc_quests`、`test_croc_waits_and_soaks`、`test_free_ruin_maps`、`test_village_trees_fields_and_cars`、`test_croc_errands_on_run`、`test_zodiac_coins`、`test_city_map`、
   `test_countryside_map`、`test_japan_and_england_maps`、`test_bridges`、`test_field_maples`、`test_wet_footprints`、
   `test_village_sway`、`test_nothing_in_anything`、`test_rivers`、`test_no_oil_drum`、`test_shop_category_list`、
-  `test_human_world_era_order`、`test_buildings_aged`、`test_river_maps_keep_their_fields`。
+  `test_human_world_era_order`、`test_buildings_aged`、`test_river_maps_keep_their_fields`、`test_lamps_lit_within`。
 - `tools/verify/verify.gd`（用法寫在檔案開頭）：
   - `tool=bot`：機器人用真實操作（拋竿、揚竿、搏魚、獻祭、逃離）逐關玩，輸出每關用時、額度、漁獲、獨有魚、教學進度、失敗原因。
   - `tool=play`：關掉開發者全開，依序通關 26 關，檢查解鎖順序、星數、首次通關獎勵。
@@ -398,5 +410,6 @@
 | 十二星座硬幣 | `scripts/zodiac.gd`（`CHANCE`、`PRICE`、`roll()`）；給予：`scripts/game_state.gd` 的 `escape()`；轉換工具：`tools/make_zodiac_coins.py` |
 | 商店（左側分類清單、收購） | `scripts/shop.gd`：`_category_row()`、`_style_row()`、`_show_tab()`、`_fill_sell_pane()`、`_sell_drag()`、`SellBoard` |
 | 人類世界的章節順序與舊存檔搬移 | `scripts/campaign.gd` 的 `ERA_MOVED`、`CHAPTERS`、`LEVELS`；`scripts/profile.gd` 的 `_move_eras()`（`era_order`）；自由夜釣清單 `DepartChooser.RUIN_MAPS` |
+| 燈具的光與隨機變暗 | `scripts/lamp_flicker.gd`（`STYLES`、`GLOW_SHADER`、`glow()`、`step()`）；村莊的燈：`FarmBuild._light()`、`LAMP_LOOKS`；都市路燈：`CityBuild._lamp()` |
 | 建築、圍牆做舊 | 圍牆、籬笆：`scripts/farm_build.gd` 的 `fences()`（樹籬另一個 surface）、`CityBuild.VCOL_SHADER`、`vcol_material()`；建築：`scripts/city_build.gd` 的 `WEATHER`（`weather()`、`age`、`moss`、`rust`、`grime`、`fade_to`；`SHADER`、`TEX_SHADER` 都引用它）、`_weathered()`、`CityBuild.aged`（`RunView3D._build()` 依主題設定）；各風格強度 `MapGenerator.THEMES.*.aged` |
 | 用在魚身上的道具的選魚視窗 | `scripts/fish_pick_panel.gd`：`show_fish()` |
