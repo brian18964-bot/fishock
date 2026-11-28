@@ -12,13 +12,12 @@ extends Control
 
 const ART := "res://assets/ui/depart/"
 const MAPS := [["", "湖畔森林", "map_forest", "森林中的湖泊與池塘，熟悉的夜晚。"],
-	["snow_pine", "雪地森林", "map_snow", "覆雪的松林與結冰的池緣，冷冽的夜。"],
 	["autumn", "秋林", "map_autumn", "枯樹與落葉，林間只剩零星的野獸。"],
+	["snow_pine", "雪地森林", "map_snow", "覆雪的松林與結冰的池緣，冷冽的夜。"],
 	["desert", "沙漠綠洲", "map_desert", "沙丘間的綠洲與椰棗樹，遠古白骨半埋沙中。"],
 	["coast", "沙灘海岸", "map_coast", "一側是大海，椰子樹下的沙灘與浪花。"],
 	["coast_cliff", "海崖", "map_coast_cliff", "草原台地的盡頭是斷崖，崖下浪花拍打礁石。"]]
-## User report ("今天做的地圖我目前都無法測試"): the ruined human world's maps (chapters 7-12) as well, on a
-## page of their own - the lake's journey and the ruins, six maps each, laid out as the six were (their
+## User report ("今天做的地圖我目前都無法測試"): the ruined human world's maps (chapters 7-12) as well (their
 ## cards the game's own night there: tools/map_cards.gd).
 const RUIN_MAPS := [["city", "荒廢都市", "map_city", "龜裂的街道與空蕩大樓，積水裡游著人類的魚。"],
 	["countryside", "鄉村", "map_countryside", "收割過的田與穀倉，灌溉水塘裡游著田間的魚。"],
@@ -26,27 +25,23 @@ const RUIN_MAPS := [["city", "荒廢都市", "map_city", "龜裂的街道與空�
 	["england", "英式村莊", "map_england", "木構屋和石牆，牧場邊的池塘裡游著英國的魚。"],
 	["china", "中式古鎮", "map_china", "灰瓦石屋和紅柱涼亭，柳樹垂在水邊。"],
 	["adobe", "土屋聚落", "map_adobe", "泥磚土屋和椰棗樹，綠洲池塘裡游著尼羅河魚。"]]
-## The pages: their names, and the chapters each holds.
-const WORLDS := [["湖的旅程", "第 1～6 章"], ["人類的廢墟", "第 7～12 章"]]
-## The map cards' width: as wide as they fit side by side (at most this).
-const MAP_CARD_MAX := 400.0
-## (user request: a fourth map, the desert - the four side by side within the window's inside; a
-## fifth, the seaside, beside them; then the seaside two of its own (the sandy beach, the sea
-## cliff) - the six in rows of MAP_PER_ROW)
-const MAP_ROW := 868.0
-const MAP_PER_ROW := 3
-## (in more than one row, the cards' pictures flatter - this share of their width - so the rows and
-## the window's buttons fit its height)
-const MAP_PIC_FLAT := 0.22
-const MAP_PIC_FLAT_CURSES := 0.14
+## User request ("地圖目前12風格，在選擇視窗的左側呈現出來 ... 點擊後會出現各自的分支"; "用捲動清單，12 張
+## 一眼就看得到"): the twelve maps listed down the window's left, by chapter - each a row with its little
+## picture - scrolled if a screen's too short for them all; the one picked on the right, its picture,
+## its words and its branches. The list's width and height (px), a row's height and the gap between
+## rows; the picture's height on the right (flatter with the curses under it).
+const LIST_W := 230.0
+const LIST_H := 322.0
+const ROW_H := 25.0
+const ROW_GAP := 2
+const BIG_H := 150.0
+const BIG_H_CURSES := 110.0
 ## A tap that soon after it opened is the opening tap's echo (a phone sends it twice): not a close.
 const OPEN_GUARD_MS := 450
 
 var camp: Object
 var step := "mode"
 var map_theme := ""
-## The page of maps shown (WORLDS; -1: the one the map picked is on).
-var world := -1
 ## The story's branch picked to fish in (a level's id), "" a map made at random.
 var branch := ""
 var picked_curses: Array = []
@@ -231,96 +226,103 @@ func _open_story() -> void:
 # ---------------------------------------------------------------- 自由模式：地圖
 
 func _build_maps() -> void:
-	if world < 0:
-		world = 1 if _listed(RUIN_MAPS, map_theme) else 0
-	var maps: Array = MAPS if world == 0 else RUIN_MAPS
-	# (the heading, and beside it the two pages - in the heading's own line, so the window's no taller)
-	var top := HBoxContainer.new()
-	top.name = "MapsHead"
-	top.alignment = BoxContainer.ALIGNMENT_CENTER
-	top.add_theme_constant_override("separation", 12)
-	_body.add_child(top)
 	var head := UiKit.label("自由模式・單人：選擇地圖", 18, UiKit.GOLD, true)
 	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	top.add_child(head)
-	for i in WORLDS.size():
-		var on_page := world == i
-		var tab := UiKit.button("%s%s（%s）" % ["✓ " if on_page else "", WORLDS[i][0], WORLDS[i][1]], 13, "red" if on_page else "gray")
-		tab.name = "World_%d" % i
-		tab.custom_minimum_size = Vector2(0, 32)
-		tab.pressed.connect(func():
-			world = i
-			show_step("maps"))
-		top.add_child(tab)
-	var per := mini(maps.size(), MAP_PER_ROW)
-	var wide := minf(MAP_CARD_MAX, (MAP_ROW - 16.0 * (per - 1)) / per)
-	var flat := 0.5 if maps.size() <= per else MAP_PIC_FLAT
-	# (the curses under them too: flatter still, so the window's buttons stay in it)
-	if Campaign.curses_open():
-		flat = MAP_PIC_FLAT_CURSES
-	var row: HBoxContainer = null
-	for m in maps:
-		if row == null or row.get_child_count() >= per:
-			row = HBoxContainer.new()
-			row.name = "MapRow%d" % _body.get_child_count()
-			row.alignment = BoxContainer.ALIGNMENT_CENTER
-			row.add_theme_constant_override("separation", 16)
-			_body.add_child(row)
+	_body.add_child(head)
+	var pane := HBoxContainer.new()
+	pane.name = "MapsPane"
+	pane.add_theme_constant_override("separation", 14)
+	_body.add_child(pane)
+	# (left: the twelve, one under another by chapter)
+	var scroll := ScrollContainer.new()
+	scroll.name = "MapList"
+	scroll.custom_minimum_size = Vector2(LIST_W, LIST_H)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	pane.add_child(scroll)
+	var col := VBoxContainer.new()
+	col.name = "MapRows"
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", ROW_GAP)
+	scroll.add_child(col)
+	var maps := all_maps()
+	for i in maps.size():
+		var m: Array = maps[i]
 		var key: String = m[0]
-		var card := Button.new()
-		card.name = "Map_" + (key if key != "" else "forest")
-		card.focus_mode = Control.FOCUS_NONE
-		card.flat = true
-		card.custom_minimum_size = Vector2(wide, wide * flat + (80.0 if flat >= 0.5 else 62.0))
 		var on := map_theme == key
+		var row := Button.new()
+		row.name = "Map_" + (key if key != "" else "forest")
+		row.focus_mode = Control.FOCUS_NONE
+		row.flat = true
+		row.custom_minimum_size = Vector2(LIST_W - 14.0, ROW_H)
 		var frame := PanelContainer.new()
-		frame.add_theme_stylebox_override("panel", UiKit.slot_box())
+		# (the slot frame, its top and bottom margins thinned so a row stays ROW_H tall and the twelve
+		# fit the list without scrolling)
+		var box := UiKit.slot_box()
+		box.content_margin_top = 2.0
+		box.content_margin_bottom = 2.0
+		frame.add_theme_stylebox_override("panel", box)
 		frame.set_anchors_preset(Control.PRESET_FULL_RECT)
 		frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		card.add_child(frame)
-		var col := VBoxContainer.new()
-		col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		frame.add_child(col)
+		row.add_child(frame)
+		var line := HBoxContainer.new()
+		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		line.add_theme_constant_override("separation", 8)
+		frame.add_child(line)
 		var pic := TextureRect.new()
 		pic.texture = load(ART + str(m[2]) + ".png")
 		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-		pic.custom_minimum_size = Vector2(wide - 16.0, (wide - 16.0) * flat)
+		pic.custom_minimum_size = Vector2((ROW_H - 6.0) * 16.0 / 9.0, ROW_H - 6.0)
 		pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		if not on:
 			pic.modulate = Color(0.62, 0.62, 0.66)
-		col.add_child(pic)
-		var name_l := UiKit.label(("✓ " if on else "") + str(m[1]), 18 if flat >= 0.5 else 16, UiKit.GOLD_BRIGHT if on else UiKit.TEXT, true)
-		name_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		line.add_child(pic)
+		var name_l := UiKit.label("%d　%s" % [i + 1, m[1]], 14, UiKit.GOLD_BRIGHT if on else UiKit.TEXT, on)
+		name_l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		name_l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		col.add_child(name_l)
-		var about := UiKit.label(str(m[3]).trim_suffix("。"), 13 if flat >= 0.5 else 12, UiKit.DIM)
-		about.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		# (wrapped within the card - two lines at most - so a longer line doesn't push it wider)
-		about.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
-		about.custom_minimum_size = Vector2(wide - 12.0, 0)
-		about.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		col.add_child(about)
+		line.add_child(name_l)
 		if on:
 			var ring := ReferenceRect.new()
 			ring.border_color = UiKit.GOLD_BRIGHT
-			ring.border_width = 3.0
+			ring.border_width = 2.0
 			ring.editor_only = false
 			ring.set_anchors_preset(Control.PRESET_FULL_RECT)
 			ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			card.add_child(ring)
-		card.pressed.connect(func():
+			row.add_child(ring)
+		row.pressed.connect(func():
 			if map_theme != key:
 				branch = ""
 			map_theme = key
 			show_step("maps"))
-		row.add_child(card)
-	_branch_row()
+		col.add_child(row)
+	# (all twelve in sight: the list as tall as its rows come to, should a font make them taller)
+	scroll.custom_minimum_size.y = maxf(LIST_H, col.get_combined_minimum_size().y)
+	# (right: the one picked - its picture, its name and words, its branches)
+	var detail := VBoxContainer.new()
+	detail.name = "MapDetail"
+	detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	detail.add_theme_constant_override("separation", 6)
+	pane.add_child(detail)
+	var picked := _map_of(map_theme)
+	var big := TextureRect.new()
+	big.name = "MapPicture"
+	big.texture = load(ART + str(picked[2]) + ".png")
+	big.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	big.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	big.custom_minimum_size = Vector2(0, BIG_H_CURSES if Campaign.curses_open() else BIG_H)
+	detail.add_child(big)
+	var title := UiKit.label(str(picked[1]), 20, UiKit.GOLD_BRIGHT, true)
+	title.name = "MapName"
+	detail.add_child(title)
+	var words := UiKit.label(str(picked[3]), 13, UiKit.DIM)
+	words.name = "MapWords"
+	detail.add_child(words)
+	_branch_row(detail)
 	# After the last chapter: curses, for more gold.
 	if Campaign.curses_open():
 		var grid := GridContainer.new()
 		grid.name = "Curses"
-		grid.columns = Campaign.CURSE_ORDER.size()
+		grid.columns = 3
 		grid.add_theme_constant_override("h_separation", 12)
 		for key in Campaign.CURSE_ORDER:
 			var c: Dictionary = Campaign.CURSES[key]
@@ -337,7 +339,7 @@ func _build_maps() -> void:
 				elif not on:
 					picked_curses.erase(key))
 			grid.add_child(cb)
-		_body.add_child(grid)
+		detail.add_child(grid)
 	var foot := HBoxContainer.new()
 	foot.alignment = BoxContainer.ALIGNMENT_CENTER
 	foot.add_theme_constant_override("separation", 20)
@@ -361,11 +363,11 @@ func _build_maps() -> void:
 ## map's ways to go - 隨機地圖 (made at random; now and then a night of its own, Campaign.FREE_EVENTS)
 ## or one of its branches in the story, open once cleared there (all, for the developer); and a line
 ## on what the one picked holds.
-func _branch_row() -> void:
-	var row := HBoxContainer.new()
+func _branch_row(into: Control) -> void:
+	var row := HFlowContainer.new()
 	row.name = "Branches"
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", 6)
+	row.add_theme_constant_override("h_separation", 6)
+	row.add_theme_constant_override("v_separation", 6)
 	var options := [["", "隨機地圖"]]
 	for l in Campaign.branches_of(map_theme):
 		options.append([str(l.id), "%s %s" % [l.id, l.name]])
@@ -381,7 +383,7 @@ func _branch_row() -> void:
 			branch = id
 			show_step("maps"))
 		row.add_child(b)
-	_body.add_child(row)
+	into.add_child(row)
 	var words := "隨機生成這種風格的地圖，偶爾會遇上特別的夜晚：魚種風暴、暗潮之夜、巨物之夜"
 	if branch != "":
 		var r := Campaign.rules_for(branch)
@@ -393,8 +395,8 @@ func _branch_row() -> void:
 		words += "　・分支要先在劇情模式通過才能選"
 	var about := UiKit.label(words, 12, UiKit.DIM)
 	about.name = "BranchAbout"
-	about.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_body.add_child(about)
+	about.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
+	into.add_child(about)
 
 
 ## Whether the branch `id` can be fished in freely ("" - a map made at random - always): cleared in the story.
@@ -402,20 +404,22 @@ static func branch_open(id: String) -> bool:
 	return id == "" or Campaign.level_done(id) or Campaign.dev_all_open
 
 
-## A map's name (MAPS, RUIN_MAPS; the lakeside forest's for "").
+## The twelve maps by chapter: [key, name, picture, words] each.
+static func all_maps() -> Array:
+	return MAPS + RUIN_MAPS
+
+
+## A map's [key, name, picture, words] (the lakeside forest's for "" or one not listed).
+static func _map_of(theme: String) -> Array:
+	for m in all_maps():
+		if m[0] == theme:
+			return m
+	return MAPS[0]
+
+
+## A map's name.
 static func map_name(theme: String) -> String:
-	for m in MAPS + RUIN_MAPS:
-		if m[0] == theme:
-			return m[1]
-	return MAPS[0][1]
-
-
-## Whether `theme` is one of `maps`'.
-static func _listed(maps: Array, theme: String) -> bool:
-	for m in maps:
-		if m[0] == theme:
-			return true
-	return false
+	return str(_map_of(theme)[1])
 
 
 ## Off on the free run picked.

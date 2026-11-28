@@ -5732,30 +5732,45 @@ func test_croc_waits_and_soaks() -> void:
 func test_free_ruin_maps() -> void:
 	var chooser := DepartChooser.open(self)
 	chooser.show_step("maps")
-	await frames(2)
-	check(chooser.world == 0 and chooser.find_child("Map_coast", true, false) != null and chooser.find_child("Map_city", true, false) == null,
-		"first, the lake's journey's six maps")
-	var tab := chooser.find_child("World_1", true, false) as Button
-	check(tab != null, "a page for the ruins")
-	if tab == null:
-		chooser.queue_free()
-		return
-	tab.pressed.emit()
-	await frames(2)
-	var found := 0
-	for m in DepartChooser.RUIN_MAPS:
-		var card := chooser.find_child("Map_" + str(m[0]), true, false)
-		if card != null and load(DepartChooser.ART + str(m[2]) + ".png") != null:
-			found += 1
+	await frames(3)
+	# User request ("地圖目前12風格，在選擇視窗的左側呈現出來"; "用捲動清單，12 張一眼就看得到"): the twelve listed
+	# down the left by chapter, every one in sight at once
+	var list := chooser.find_child("MapList", true, false) as Control
+	var rows := chooser.find_child("MapRows", true, false)
+	var maps := DepartChooser.all_maps()
+	var in_sight := 0
+	var in_order := true
+	if list != null and rows != null:
+		var box := list.get_global_rect().grow(0.5)
+		for i in rows.get_child_count():
+			var row := rows.get_child(i) as Control
+			if box.encloses(row.get_global_rect()):
+				in_sight += 1
+			var key := str(maps[i][0]) if i < maps.size() else "?"
+			in_order = in_order and row.name == "Map_" + (key if key != "" else "forest")
+	var cards := 0
+	for m in maps:
+		if load(DepartChooser.ART + str(m[2]) + ".png") != null:
+			cards += 1
 	var go := chooser.find_child("GoFree", true, false) as Button
 	var fits := go != null and go.get_global_rect().end.y <= chooser.get_viewport_rect().size.y + 0.5
-	check(found == 6 and _map_rows_width_of(chooser, DepartChooser.RUIN_MAPS) < 900.0 and fits,
-		"the ruins' page: the city, the countryside, the Japanese, English and Chinese villages and the adobe village, each its card, all on screen (%d)" % found)
-	(chooser.find_child("Map_adobe", true, false) as Button).pressed.emit()
+	check(maps.size() == 12 and in_sight == 12 and in_order and cards == 12 and fits and _map_rows_width(chooser) < 900.0,
+		"the twelve maps listed on the left by chapter, all in sight (%d), each with its picture, the window on screen" % in_sight)
+	# One picked: on the right its picture, name and words, and its own branches.
+	var row := chooser.find_child("Map_adobe", true, false) as Button
+	check(row != null, "the adobe village in the list")
+	if row == null:
+		chooser.queue_free()
+		return
+	row.pressed.emit()
 	await frames(2)
 	var branches := chooser.find_child("Branches", true, false)
-	check(chooser.map_theme == "adobe" and chooser.world == 1 and (chooser.find_child("GoFree", true, false) as Button).text.contains("土屋聚落")
-		and branches != null and branches.find_child("Branch_12-1", true, false) != null, "the adobe village picked, its branches under it")
+	var pic := chooser.find_child("MapPicture", true, false) as TextureRect
+	check(chooser.map_theme == "adobe" and (chooser.find_child("MapName", true, false) as Label).text == "土屋聚落"
+		and pic != null and pic.texture != null and pic.texture.resource_path.ends_with("map_adobe.png")
+		and (chooser.find_child("GoFree", true, false) as Button).text.contains("土屋聚落")
+		and branches != null and branches.find_child("Branch_12-1", true, false) != null and branches.find_child("Branch_11-1", true, false) == null,
+		"the adobe village picked: its picture, name and its own branches on the right")
 	chooser.queue_free()
 	await frames(2)
 	# Out on it: the adobe village's own map.
@@ -5842,18 +5857,12 @@ func test_village_trees_fields_and_cars() -> void:
 	check(cars > 0 and holed == 0, "7-2: its cars and the street's things drawn whole, no see-through holes (%d cars)" % cars)
 
 
-## The widest of the depart window's rows of `maps`' cards (px) - 9999 if one has no card.
+## The depart window's maps (see _map_rows_width) - 9999 if one of `maps` has no row.
 func _map_rows_width_of(chooser: DepartChooser, maps: Array) -> float:
-	var widest := 0.0
-	for row in chooser.find_children("MapRow*", "HBoxContainer", true, false):
-		var w := 0.0
-		for c in (row as HBoxContainer).get_children():
-			w += (c as Control).size.x
-		widest = maxf(widest, w)
 	for m in maps:
-		if chooser.find_child("Map_" + str(m[0]), true, false) == null:
+		if chooser.find_child("Map_" + (str(m[0]) if m[0] != "" else "forest"), true, false) == null:
 			return 9999.0
-	return widest
+	return _map_rows_width(chooser)
 
 
 ## User request: Mr. Croc's errands taken listed down the left on a run too - how many handed over,
@@ -11331,18 +11340,14 @@ func test_desert_theme() -> void:
 	camp().clear()
 
 
-## The depart window's map cards: the widest of their rows (px) - 9999 if a map has no card.
+## The depart window's maps: the width of its list and the one picked beside it (px) - 9999 if a map
+## has no row in the list.
 func _map_rows_width(chooser: DepartChooser) -> float:
-	var widest := 0.0
-	for row in chooser.find_children("MapRow*", "HBoxContainer", true, false):
-		var w := 0.0
-		for c in (row as HBoxContainer).get_children():
-			w += (c as Control).size.x
-		widest = maxf(widest, w)
-	for m in DepartChooser.MAPS:
+	for m in DepartChooser.all_maps():
 		if chooser.find_child("Map_" + (str(m[0]) if m[0] != "" else "forest"), true, false) == null:
 			return 9999.0
-	return widest
+	var pane := chooser.find_child("MapsPane", true, false) as Control
+	return pane.size.x if pane != null else 9999.0
 
 
 ## User request: the seaside - the sea along one side of the map (any side), a sand beach, its wet
@@ -11354,14 +11359,13 @@ func test_coast_theme() -> void:
 	await frames(2)
 	var card := chooser.find_child("Map_coast", true, false) as Button
 	# (the six cards in rows of three, each row within the window, its buttons below them on screen)
-	var found := 0
-	for row in chooser.find_children("MapRow*", "HBoxContainer", true, false):
-		found += (row as HBoxContainer).get_child_count()
+	var rows := chooser.find_child("MapRows", true, false)
+	var found := rows.get_child_count() if rows != null else 0
 	var row_w := _map_rows_width(chooser)
 	var go := chooser.find_child("GoFree", true, false) as Button
 	var fits := go != null and go.get_global_rect().end.y <= chooser.get_viewport_rect().size.y + 0.5
-	check(card != null and found == DepartChooser.MAPS.size() and row_w < 900.0 and fits and load(DepartChooser.ART + "map_coast.png") != null,
-		"the depart window: the sandy beach's card among the six, in rows, all on screen, its picture (%d cards, rows %d px)" % [found, int(row_w)])
+	check(card != null and found == DepartChooser.all_maps().size() and row_w < 900.0 and fits and load(DepartChooser.ART + "map_coast.png") != null,
+		"the depart window: the sandy beach among the twelve listed, all on screen, its picture (%d maps, %d px wide)" % [found, int(row_w)])
 	if card != null:
 		card.pressed.emit()
 		await frames(2)
