@@ -4,7 +4,7 @@
 
 ## 一、目前狀態
 - 所有工作都在 `claude/focused-fermi-96pp3r` 分支，它也是這個 repo 的預設分支；最後一次推送的 CI（Web build）通過並已部署。
-- 本機全套測試：6228 項、0 失敗（`tests/run_tests.gd`）。
+- 本機全套測試：6262 項、0 失敗（`tests/run_tests.gd`）。
 - 遊戲：Godot 4.7.2，3D 夜釣（俯視鏡頭、夜間、煤燈），手機觸控為主，也支援鍵盤。
 
 ## 二、這段期間做了什麼（依時間）
@@ -185,6 +185,23 @@
   釣點（熱點）把整條河當一個水域且只出現在地圖內；3D 畫成一整片水面（`RunView3D._river_surface`）。
 - 順手：水域外形的計算改成先粗後細（結果完全一樣，快約 4 倍）；地圖一塊田都放不下時，改用整張地圖逐格找第一塊田的位置。
 
+### 20. 商店、取消補充油桶、人類世界依時代排序、建築做舊（11/28，使用者：「1.A 2.把地圖的補充油桶取消掉 3.人類地圖的建築物配色……至少要舊的、有年代感的；廢墟系列是會有破損生鏽的物件 4.……用時代時間去把 7-12 重新排列順序」）
+- **商店**（原「商城」，選 A）：商人視窗左側是 5 個分類的清單（裝備、餌、道具、強化、收購），每列一個小圖示和名稱，
+  選到的那列有金框；右側是那一類的商品卡片（`scripts/shop.gd` 的 `_category_row()`、`_style_row()`、`LIST_W`、`ROW_H`、`TAB_ICONS`）。
+  營地選單、標題選單、頂部導覽都改叫「商店」。收購頁的說明文字照右側的寬度換行。
+- **地圖上不再有補充油桶**：油桶（`OilDrum`）、提著走、倒進營火、相關的提示與狀態都拿掉。營火的油就是開場那些，煤燈照舊從營火補。
+  3-1 原本教油桶，改成教營火的油本身（地圖上沒有油可補、補燈會用掉營火的油、湊滿額度就走）；
+  3-1 的第二顆星「幫營火加過燈油」改成「營火的油剩一半以上離開」（新的統計 `fire_left`）。
+- **人類世界依時代排序**：第 7 章土屋聚落（最古老，綠洲邊的土屋）→ 8 中式古鎮 → 9 英式村莊 → 10 日式山村 → 11 鄉村 →
+  12 荒廢都市（人已經不在，放最後）。關卡編號、成就（`chapter_7`～`chapter_12`）、自由夜釣清單一起換；
+  7-1 開場白說這是渡石第一次帶你到人類世界、很久很久以前，12-1 說是最後一站。
+  舊存檔載入時，第 7～12 章的星數、章節獎勵、成就會自動搬到新編號，只搬一次（`Profile._move_eras()`、`era_order`）。
+  順手修了新玩家存檔的一個潛在問題：新存檔原本沒有 `branches` 標記，第二次載入時進度會被當成舊 25 關重置。
+- **建築做舊**：人類世界的建築、天際線高樓、街上和院子的物件都會依地圖風格「變舊」（作物不變）：顏色褪向灰褐、白色泛黃、
+  油漆／灰泥剝落的斑塊、水漬沿牆往下流、牆腳往上的污垢、屋頂和窗台與牆腳的青苔、鏽斑和鏽水痕（屋頂上少）。
+  用世界座標的雜訊，每面牆都不一樣。都市（唯一的廢墟）最舊、鏽最多；鄉村的農舍有一點鏽；日式、英式、中式是風化的木頭、石頭、瓦片加青苔，
+  不生鏽；土屋是曬褪的泥磚，褪向沙色、牆腳有沙塵，沒有青苔和鏽（`CityBuild.TEX_SHADER` 的 `weather()`、`MapGenerator.THEMES.*.aged`）。
+
 ## 三、已定案（使用者決定的，不用再問）
 ### 劇情與分支
 1. 每張地圖分 4～5 支，每支是一個劇情關卡；共 6 章 26 關。地圖順序：湖畔森林 → 秋林 → 雪地森林 → 沙漠綠洲 → 沙灘海岸 → 海崖。
@@ -206,6 +223,8 @@
 - 柳的提示不要一直卡在畫面中間：一段時間後淡出，只留指引箭頭。
 - 渡石逃離後的通關視窗不能貼底，拿掉不必要的備註。
 - 出發視窗（自由夜釣）：左側 12 張地圖的捲動清單、12 張一眼都看得到，點了右側出現分支（11/28）。
+- 「商城」改叫**商店**，分類放在視窗左側的清單（選 A：裝備、餌、道具、強化、收購 5 類）（11/28）。
+- **地圖上不放補充油桶**（11/28）。
 ### 人類世界（第 7 章起）
 1. 人類世界的六種主題：城市、鄉村、部落、日式、中國風、英式，各自再分支；先做都市。
    **11/27：部落取消，換成土屋主題（第 7 章）；接著做歐洲田野楓（已做，種在鄉村、英式）。**
@@ -217,6 +236,8 @@
 8. **人類世界的地圖用河流切開**（11/28）：鄉村、日式、英式、中式是河，土屋是大河，都市是運河；橋蓋在河上當通道。
 7. **樹種不要不合理地混用**（11/28）：竹林、果園裡不長別的樹；人類世界用建築分風格，樹種可以用來表現季節或區域
    （日式、英式每個分支一個季節，自由夜釣隨機）。
+9. **第 7～12 章依時代排序**（11/28）：土屋聚落 → 中式古鎮 → 英式村莊 → 日式山村 → 鄉村 → 荒廢都市，之後劇情照這個順序推進。
+10. **人類世界的建築要舊、有年代感**（11/28）；不是廢墟的地圖只是舊，廢墟（都市）要有破損生鏽的物件。
 ### 自由夜釣
 - 除了隨機生成的風格地圖，要能**自由選擇去哪一支分支釣**（收集各分支的獨有魚）。
 - 隨機地圖可以有主題夜晚（使用者舉例「鯉魚風暴」：整張圖都是鯉魚、有機會出現金色鯉魚；其餘自由發想）。
@@ -286,6 +307,9 @@
 | 運河的牆 | 牆頂高出地面 0.07 m、寬 0.36 m、往水下 0.55 m；岸邊鋪面 70 px；水一靠牆就深 0.6 m | `RunView3D.CANAL_*` |
 | 分支季節 | 10-1 春；10-2、10-5 夏；10-3、10-4 秋；9-1、9-2 夏；9-3～9-5 秋 | `scripts/campaign.gd` 各關 `rules.season`；樹種 `MapTree.SEASON_KINDS` |
 | 和鱷魚先生對話 | 視窗開著時角色和他都不走（最多 30 分鐘）；視窗 4 秒內沒打開就不等 | `CampLife.TALK_MOST`、`TALK_OPENS`；`CampCroc.held` |
+| 3-1 的第二顆星 | 營火的油剩一半以上（開場的油的 50%）離開 | `Campaign.LEVELS` 的 3-1 `stars`、統計 `fire_left` |
+| 商店的左側清單 | 清單寬 108 px、每列高 62 px、列距 8 px、清單和商品間距 8 px；商品卡寬 204 px（收購頁照舊）；分類圖示：裝備＝釣竿、餌＝活蜘蛛、道具＝電池、強化＝煤燈、收購＝金幣 | `scripts/shop.gd` 的 `LIST_W`、`ROW_H`、`ROW_GAP`、`LIST_GAP`、`CARD_W`、`TAB_ICONS` |
+| 建築做舊的程度 | 都市 舊 1.0、青苔 0.35、鏽 0.7；鄉村 0.8、0.3、0.3；日式 0.8、0.5、0；英式 0.85、0.55、0；中式 0.85、0.45、0；土屋 0.75、0、0（污垢與褪色偏沙色）；做舊的細節比例（褪色 60%、斑塊暗 45%、水漬暗 60%、牆腳污垢 1.8～2.5 m 高）在 shader 裡 | `MapGenerator.THEMES.*.aged`；`CityBuild.TEX_SHADER` 的 `weather()` |
 | 農場動物的行為 | 綿羊／小牛被靠近到 55／45 px 才慢慢走開；雞 70 px 跑開；烏鴉 90 px 飛走；大小：綿羊 0.95 m、小牛 1.15 m、母雞 0.42 m、公雞 0.55 m、烏鴉 0.42 m | `Critter.SPECIES`、`RunView3D.CREATURES` |
 
 ## 五、待辦與需要使用者決定的事
@@ -324,7 +348,8 @@
   `test_free_branches_and_nights`、`test_level_guide_and_results`、`test_weathers`（含雨打水面）、`test_journey_page`、
   `test_bag_full_reminders`、`test_character_unlocks`、`test_croc_quests`、`test_croc_waits_and_soaks`、`test_free_ruin_maps`、`test_village_trees_fields_and_cars`、`test_croc_errands_on_run`、`test_zodiac_coins`、`test_city_map`、
   `test_countryside_map`、`test_japan_and_england_maps`、`test_bridges`、`test_field_maples`、`test_wet_footprints`、
-  `test_village_sway`、`test_nothing_in_anything`、`test_rivers`。
+  `test_village_sway`、`test_nothing_in_anything`、`test_rivers`、`test_no_oil_drum`、`test_shop_category_list`、
+  `test_human_world_era_order`、`test_buildings_aged`。
 - `tools/verify/verify.gd`（用法寫在檔案開頭）：
   - `tool=bot`：機器人用真實操作（拋竿、揚竿、搏魚、獻祭、逃離）逐關玩，輸出每關用時、額度、漁獲、獨有魚、教學進度、失敗原因。
   - `tool=play`：關掉開發者全開，依序通關 26 關，檢查解鎖順序、星數、首次通關獎勵。
@@ -362,5 +387,7 @@
 | 河流、運河 | 生成：`MapGenerator._generate_river()`（`river_line`、`river_half`、`river_axis`、`river_canal`、`river_zones`）；河上的橋：`_place_river_bridges()`（在村子之前）；水域：`WaterZone.river`、`smooth`（運河岸不彎）、`joined`、`holds()`；3D：`RunView3D._river_surface()`、`_canal_walls()`、邊緣河谷 `RIVER_VALLEY`；測試 `test_rivers` |
 | 可以走上去的橋 | 位置：`MapGenerator._place_bridges()`、`_bridge_fits()`（在 `_place_farms()` 之後；有河的地圖改用 `_place_river_bridges()`）；資料：`Dock.setup_bridge()`（`bridge`、`bridge_ends`，欄杆 `add_walls`）；外觀與行走高度：`RunView3D._bridge()`、`_wood_bridge()`、`_stone_bridge()`、`_deck_rise()`（`ground_y` 用它走拱形）；測試 `test_bridges` |
 | 十二星座硬幣 | `scripts/zodiac.gd`（`CHANCE`、`PRICE`、`roll()`）；給予：`scripts/game_state.gd` 的 `escape()`；轉換工具：`tools/make_zodiac_coins.py` |
-| 商城收購 | `scripts/shop.gd`：`_fill_sell_pane()`、`_sell_drag()`、`SellBoard` |
+| 商店（左側分類清單、收購） | `scripts/shop.gd`：`_category_row()`、`_style_row()`、`_show_tab()`、`_fill_sell_pane()`、`_sell_drag()`、`SellBoard` |
+| 人類世界的章節順序與舊存檔搬移 | `scripts/campaign.gd` 的 `ERA_MOVED`、`CHAPTERS`、`LEVELS`；`scripts/profile.gd` 的 `_move_eras()`（`era_order`）；自由夜釣清單 `DepartChooser.RUIN_MAPS` |
+| 建築做舊 | `scripts/city_build.gd` 的 `TEX_SHADER`（`weather()`、`age`、`moss`、`rust`、`grime`、`fade_to`）、`CityBuild.aged`（`RunView3D._build()` 依主題設定）；各風格強度 `MapGenerator.THEMES.*.aged` |
 | 用在魚身上的道具的選魚視窗 | `scripts/fish_pick_panel.gd`：`show_fish()` |
