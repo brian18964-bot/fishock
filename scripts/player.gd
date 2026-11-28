@@ -152,10 +152,6 @@ const PARRY_DEBUFF_DURATION := 0.8
 ## Chopping: how close to a trunk.
 const CHOP_REACH := 34.0
 
-## User feedback: carrying the oil drum should slow you down, not just
-## block fishing.
-const OIL_DRUM_SPEED_MULT := 0.65
-
 ## User feedback: a cast shouldn't guarantee a bite - most of the time
 ## something takes it, but sometimes nothing's interested (a bobber just
 ## sits there) or, bobber-only, a fish nibbles the bait clean off early
@@ -215,7 +211,6 @@ var tension: float = 0.0
 var in_altar_zone: bool = false
 var in_escape_zone: bool = false
 var in_fuel_zone: bool = false
-var in_oil_drum_zone: bool = false
 var in_dropped_fish_zone: bool = false
 var in_rock_zone: bool = false
 var in_critter_zone: bool = false
@@ -401,18 +396,12 @@ var reel_power_mult: float = 1.0
 const SACRIFICE_DURATION := 0.6
 var sacrifice_progress: float = 0.0
 
-## Design doc request: the oil drum is carried back to a fuel station by
-## hand instead of refilling the whole map on the spot - see
-## _handle_action_input()'s oil-drum/fuel-station branches.
-var carrying_oil_drum: bool = false
 ## User request: the big ghost drags the player off to its cage. While
 ## held (carried, then caged) the player can't move or fish; whoever holds
 ## them places them (BigGhost).
 var held: bool = false
 
 var _fuel_station: FuelStation
-var _oil_drum: OilDrum
-var _carried_oil_drum: OilDrum
 var _dropped_fish: DroppedFish
 var _rock: FlipRock
 var _critter: Critter
@@ -465,16 +454,6 @@ func _ready() -> void:
 	if cam != null:
 		cam.limit_right = int(WORLD_WIDTH)
 		cam.limit_bottom = int(WORLD_HEIGHT)
-	# The gas can in hand while it's being carried (see OilDrum).
-	# User feedback: held in the hand, swinging with the walk (carried_can.gd).
-	var hand := Node2D.new()
-	hand.name = "CarriedCan"
-	var can := Sprite2D.new()
-	can.name = "Can"
-	hand.add_child(can)
-	hand.set_script(preload("res://scripts/carried_can.gd"))
-	hand.visible = false
-	add_child(hand)
 	# User request: the off hand's thing, in the hand or at the hip.
 	var prop := OffhandProp.new()
 	prop.name = "Offhand"
@@ -511,11 +490,6 @@ func set_in_fuel_station(value: bool, station: FuelStation) -> void:
 	_fuel_station = station if value else null
 	if value and state != State.IDLE:
 		_cancel_cast("fuel_interrupt")
-
-
-func set_in_oil_drum(value: bool, drum: OilDrum) -> void:
-	in_oil_drum_zone = value
-	_oil_drum = drum if value else null
 
 
 func set_in_dropped_fish(value: bool, fish_node: DroppedFish) -> void:
@@ -608,20 +582,6 @@ func reset_gear() -> void:
 	_stick_press = -1.0
 	max_cast_dist = MAX_CAST_DIST + Profile.get_upgrade_bonus("rod_distance")
 	reel_power_mult = 1.0 + Profile.get_upgrade_bonus("reel_power")
-	_force_drop_oil_drum()
-
-
-## Debug-reset safety net (main.gd's Shift+R restarts the run in place,
-## without reloading the scene): without this, an oil drum picked up right
-## before the reset would stay permanently "carried" by a player who no
-## longer has any way to deliver it, vanishing from the map for the rest
-## of the session. Deliver()-ing it sends it back through the normal
-## relocate-after-a-delay flow instead of leaving it stuck.
-func _force_drop_oil_drum() -> void:
-	if carrying_oil_drum and _carried_oil_drum != null:
-		_carried_oil_drum.deliver()
-	_carried_oil_drum = null
-	carrying_oil_drum = false
 
 
 ## Grabbed by the big ghost: whatever was going on is dropped.
@@ -644,7 +604,6 @@ func seize(from := Vector2.ZERO) -> void:
 	charge_time = 0.0
 	if state != State.IDLE:
 		_reset_line(State.IDLE)
-	_force_drop_oil_drum()
 
 
 func release() -> void:
@@ -1231,7 +1190,7 @@ func cancel_channel(why := "") -> void:
 func _tick_channel(delta: float) -> void:
 	if not channeling():
 		return
-	if velocity.length() > CHANNEL_MOVE or state != State.IDLE or held or carrying_oil_drum:
+	if velocity.length() > CHANNEL_MOVE or state != State.IDLE or held:
 		cancel_channel("移動了")
 		return
 	channel_left -= delta
@@ -1408,7 +1367,7 @@ func ghost_confuse(duration: float) -> void:
 ## grip).
 func offhand_in_hand() -> bool:
 	# (the fish box hangs at the hip: nothing to swing)
-	return Profile.offhand() != "" and not Profile.has_oxy_box() and state == State.IDLE and not carrying_oil_drum and not held
+	return Profile.offhand() != "" and not Profile.has_oxy_box() and state == State.IDLE and not held
 
 
 ## The weapon in hand (Profile.WEAPONS entry; {} with none in the off hand,
@@ -2232,15 +2191,13 @@ func _update_movement() -> void:
 		affliction_ratio *= POISON_SPEED_MULT
 	if under_red_lamp():
 		affliction_ratio *= RED_LAMP_SLOW
-	var drum_ratio: float = OIL_DRUM_SPEED_MULT if carrying_oil_drum else 1.0
-	$CarriedCan.visible = carrying_oil_drum
 	# Low spirit: heavier on their feet (Profile.SPIRIT_SPEED).
 	var spirit_ratio: float = Profile.SPIRIT_SPEED[Profile.spirit_penalty()]
 	var vigor_ratio: float = VIGOR_SPEED if vigor_timer > 0.0 else 1.0
 	# (a swing of the off hand's thing is stood to - SWINGS; so is a way asked of the rod)
 	if (swing_left > 0.0 and not _auto_swing) or rod_mode:
 		input_dir = Vector2.ZERO
-	velocity = input_dir * SPEED * carry_ratio * affliction_ratio * drum_ratio * spirit_ratio * vigor_ratio * night_ratio()
+	velocity = input_dir * SPEED * carry_ratio * affliction_ratio * spirit_ratio * vigor_ratio * night_ratio()
 	var before := position
 	move_and_slide()
 	position.x = clamp(position.x, edge, WORLD_WIDTH - edge)
@@ -2566,13 +2523,9 @@ func interaction() -> Dictionary:
 		return _offer(item, item.title(), "撿起", false, -22.0)
 	if in_fuel_zone and _fuel_station != null:
 		var station := "營地油桶 %d/%d" % [int(_fuel_station.total_fuel), int(_fuel_station.max_total_fuel)]
-		if carrying_oil_drum:
-			return _offer(_fuel_station, station, "補充站點", false, -42.0)
 		var lantern: Lantern = get_node("Lantern")
 		if _fuel_station.total_fuel > 0.0 and lantern.fuel < lantern.max_fuel - 0.5:
 			return _offer(_fuel_station, station, "補充", false, -42.0)
-	if in_oil_drum_zone and _oil_drum != null and not carrying_oil_drum:
-		return _offer(_oil_drum, "油箱", "提起", false, -30.0)
 	if in_dropped_fish_zone and is_instance_valid(_dropped_fish):
 		return _offer(_dropped_fish, _dropped_fish.label.text, "撿回", false, -22.0)
 	var critter := reachable_critter()
@@ -2693,24 +2646,12 @@ func _handle_interaction(delta: float) -> void:
 			if use_pressed and _escape_left < 0.0:
 				perform("kneel", ESCAPE_KNEEL + 0.4)
 				_escape_left = ESCAPE_KNEEL
-		"補充站點":
-			if use_pressed:
-				_deliver_oil_drum()
 		"補充":
 			if use_pressed:
 				var lantern: Lantern = get_node("Lantern")
 				if _fuel_station.try_refuel(lantern):
 					Campaign.stat("refuel")
 					GameState.push_message("煤油加滿了！（營地油桶剩 %d/%d）" % [int(_fuel_station.total_fuel), int(_fuel_station.max_total_fuel)])
-		"提起":
-			if use_pressed:
-				_oil_drum.pick_up()
-				_carried_oil_drum = _oil_drum
-				carrying_oil_drum = true
-				in_oil_drum_zone = false
-				_oil_drum = null
-				Campaign.stat("oil_pickup")
-				GameState.push_message("提起了油箱，送回營地吧（提著沒辦法釣魚）")
 		"撿回":
 			if use_pressed:
 				_pick_up_dropped_fish()
@@ -2792,9 +2733,7 @@ func _handle_action_input(delta: float) -> void:
 
 ## Pressed to fish: the cast starts charging - if it can.
 func _try_start_charge() -> void:
-	if carrying_oil_drum:
-		GameState.push_message("提著油箱沒辦法釣魚，先送回營地")
-	elif _nearest_water_edge_distance() > CAST_SHORE_RANGE:
+	if _nearest_water_edge_distance() > CAST_SHORE_RANGE:
 		GameState.push_message("離水邊太遠了，走近岸邊再拋竿")
 		GameState.report("離水邊太遠，靠近再拋竿", "info")
 	elif _can_start_cast():
@@ -2989,19 +2928,6 @@ func shoot_at(beast: Node2D) -> bool:
 	for ghost in get_tree().get_nodes_in_group("big_ghost"):
 		ghost.hear(global_position)
 	return true
-
-
-func _deliver_oil_drum() -> void:
-	var added: float = _fuel_station.add_fuel(OilDrum.FUEL_AMOUNT)
-	if _carried_oil_drum != null:
-		_carried_oil_drum.deliver()
-	_carried_oil_drum = null
-	carrying_oil_drum = false
-	Campaign.stat("oil_delivered")
-	if added > 0.0:
-		GameState.push_message("把油箱倒進營地的油桶了！補充了 %d 燃油" % int(added))
-	else:
-		GameState.push_message("營地的油桶已經是滿的，油箱白提了一趟")
 
 
 func _update_fishing(delta: float) -> void:

@@ -1339,13 +1339,6 @@ func _scatter_props() -> void:
 		size = _footprint(prop)
 		prop.global_position = pos
 		_taken.append([pos, size[0], size[1]])
-	# The fuel can lying about (picked up and carried home).
-	var can := get_parent().get_node_or_null("OilDrum") as Node2D
-	if can != null:
-		var at := _pick_prop_position(16.0, 0.0)
-		if at.x >= 0.0:
-			can.global_position = at
-			_taken.append([at, 16.0, 0.0])
 
 
 ## The camp, the altar (and the willow's walk round it), the rune stones

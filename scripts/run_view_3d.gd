@@ -302,7 +302,6 @@ const MUSHROOM_MODEL := "res://assets/models/items/glow_mushroom.glb"
 const MUSHROOM_SCALE := 1.35
 const MUSHROOM_LIGHT := 1.5
 var _trees := []  # [MapTree, MeshInstance3D]
-var _drum: Node3D
 var _clip := ""
 var _yaw := PI
 var _time := 0.0
@@ -6042,11 +6041,6 @@ func _character() -> void:
 	_beam.visible = false
 	add_child(_beam)
 	_build_flash_aim()
-	_drum = CampModel.make("drum")
-	if _drum != null:
-		_drum.scale = Vector3.ONE * 0.55
-		_drum.visible = false
-		add_child(_drum)
 	_place_traveller(0.0)
 
 
@@ -6174,9 +6168,6 @@ func _pick_clip() -> Array:
 					return ["Hit_Knockback", 1.0, t / 0.4 * 0.3]
 				return ["Scared", 1.0, (t - 0.4) / 0.6 if t >= 0.0 else -1.0]
 		return [name, 1.0, t]
-	if player.carrying_oil_drum:
-		# (the drum held in both arms, walking it home)
-		return ["Walk_Carry", clampf(speed / _walk_pace(), 0.0, 2.0), -1.0]
 	match v.clip:
 		PlayerVisual.CLIP_RUN, PlayerVisual.CLIP_HOLD_RUN:
 			# (user request: stepping back only when walked back during the
@@ -7252,7 +7243,7 @@ func _along(dir: Vector3, at: Vector3, b: Basis) -> Transform3D:
 ## take both (TWO_HANDED) - the things in them hung at the hips then.
 func _gear_state(delta: float) -> void:
 	var rod_out := not _visual.rod_on_back() and not (_visual.clip == PlayerVisual.CLIP_HOLD_RUN
-		and player.state == Player.State.IDLE) and not player.carrying_oil_drum
+		and player.state == Player.State.IDLE)
 	_stow = move_toward(_stow, 0.0 if rod_out else 1.0, delta / STOW_TIME)
 	var both := rod_out or _visual.move in TWO_HANDED or (_visual.acting >= 0 and player.swing_kind in ["chop", "scoop"]) \
 		or (player.move_left > 0.0 and player.move_kind in ["crumble", "gather", "dig"])
@@ -7265,13 +7256,13 @@ func _gear_state(delta: float) -> void:
 	# (user request, round 3: relighting it, it's taken up and lit by hand -
 	# the opening's move; RELIGHT_IN to bring it up, out as it catches)
 	var relighting := lantern != null and not lantern.lit and lantern.relight_progress > 0.0 \
-		and lantern.tool == Lantern.Tool.LAMP and not both and not player.carrying_oil_drum
+		and lantern.tool == Lantern.Tool.LAMP and not both
 	_relight = move_toward(_relight, 1.0 if relighting else 0.0, delta / RELIGHT_IN)
 	if relighting:
 		dark = false
 	elif _relight > 0.0 and lantern != null and lantern.lit:
 		dark = false
-	_lamp_in = move_toward(_lamp_in, 0.0 if both or player.carrying_oil_drum or dark else 1.0, delta / STOW_TIME)
+	_lamp_in = move_toward(_lamp_in, 0.0 if both or dark else 1.0, delta / STOW_TIME)
 	var swinging := _visual.acting >= 0
 	# User request: walking about, only the lamp in hand; the off hand's
 	# thing stays at the hip till it's used (drawn for the swing, put back
@@ -7289,7 +7280,7 @@ func _gear_state(delta: float) -> void:
 		_oxy_still = 0.0
 	else:
 		_oxy_still += delta
-	var carrying := player.state == Player.State.IDLE and not player.carrying_oil_drum and not player.held \
+	var carrying := player.state == Player.State.IDLE and not player.held \
 		and _oxy_still < OXY_REST
 	_oxy_in = move_toward(_oxy_in, 1.0 if carrying else 0.0, delta / 0.45)
 	_sync_offhand()
@@ -9238,18 +9229,6 @@ func _process(delta: float) -> void:
 	_animate()
 	_layer(delta)
 	_aim_rod(delta)
-	if _drum != null:
-		# (user decision: no pictures - the can lying about is the model too)
-		var lying := main.get_node_or_null("OilDrum") as Node2D
-		_drum.visible = player.carrying_oil_drum or (lying != null and lying.visible and _shown(lying))
-		if _drum.visible and not player.carrying_oil_drum:
-			_drum.global_position = to3(lying.global_position, LAND_Y)
-			_drum.global_rotation = Vector3.ZERO
-		elif _drum.visible:
-			# (held in both arms in front, walked home)
-			var b := pivot.global_basis.orthonormalized()
-			_drum.global_position = pivot.global_position + b.z * 0.42 + Vector3(0, 0.55, 0)
-			_drum.global_rotation = Vector3(0, pivot.global_rotation.y, 0)
 	_update_line()
 	_update_fight_fish(delta)
 	_update_guide()

@@ -1,4 +1,4 @@
-[gd_scene load_steps=27 format=3]
+[gd_scene load_steps=26 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="2"]
@@ -13,7 +13,6 @@
 [ext_resource type="PackedScene" path="res://scenes/tree.tscn" id="11"]
 [ext_resource type="PackedScene" path="res://scenes/bush.tscn" id="12"]
 [ext_resource type="PackedScene" path="res://scenes/fuel_station.tscn" id="13"]
-[ext_resource type="PackedScene" path="res://scenes/oil_drum.tscn" id="14"]
 [ext_resource type="Script" path="res://scripts/map_generator.gd" id="16"]
 [ext_resource type="Script" path="res://scripts/lure_visual.gd" id="lure_visual"]
 [ext_resource type="PackedScene" path="res://scenes/ghost_cage.tscn" id="ghost_cage"]
@@ -91,9 +90,6 @@ shape = SubResource("RectangleShape2D_altar")
 
 [node name="FuelStation" parent="." instance=ExtResource("13")]
 position = Vector2(1200, 700)
-
-[node name="OilDrum" parent="." instance=ExtResource("14")]
-position = Vector2(1650, 1200)
 
 [node name="Player" parent="." instance=ExtResource("2")]
 position = Vector2(1200, 700)

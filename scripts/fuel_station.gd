@@ -279,8 +279,8 @@ func try_refuel(lantern: Lantern) -> bool:
 	return true
 
 
-## Design doc request: an oil drum is carried here and dumped in rather
-## than refilling every station on the map at once - see OilDrum.deliver().
+## Oil poured in (user request: no oil drums lie about the map any more - the camp's oil is what it
+## starts the night with; this is for whatever else may fill it).
 func add_fuel(amount: float) -> float:
 	var space: float = max_total_fuel - total_fuel
 	var added: float = min(space, amount)

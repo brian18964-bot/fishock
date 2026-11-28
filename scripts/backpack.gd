@@ -385,7 +385,7 @@ func _rebuild(periodic := false) -> void:
 		box.queue_redraw()
 
 	var using: String = "浮標" if player.fishing_mode == Player.FishingMode.BOBBER else "路亞・" + Profile.LURES[player.current_lure].name
-	_mode.text = "釣法：%s%s" % [using, "　（油箱提在手上，不佔背包）" if player.carrying_oil_drum else ""]
+	_mode.text = "釣法：%s" % using
 	if periodic and _card.visible and _shown == _selected:
 		return
 	_shown = _selected.duplicate()

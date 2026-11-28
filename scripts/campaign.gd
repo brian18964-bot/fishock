@@ -44,7 +44,7 @@ const MAP_NAMES := {"S": "小", "M": "中", "L": "大", "XL": "特大"}
 ## to the map's animals.
 const DEFAULT_RULES := {
 	"map": "L", "theme": "", "ponds": [-1, 1], "day": 300.0, "quota": 30.0,
-	"fuel": -1.0, "drain": 1.0, "oil": true,
+	"fuel": -1.0, "drain": 1.0,
 	"ghosts": 1, "meddle": 4, "big_ghost": true, "big_wake": -1, "water_ghost": 1.0, "heart": 1.0,
 	"hunters": true, "beasts": {}, "weather": "random", "rocks": [8, 10], "critters": 6,
 	"hotspot": true, "bait": -1, "escalate": true, "evil": true, "night_fails": false, "safe": false,
@@ -77,7 +77,7 @@ const CHAPTERS := [
 const LEVELS := [
 	{"id": "1-1", "chapter": 1, "name": "林間淺池", "teach": "走路、拋竿、收線、獻祭、離開",
 		"intro": "林間有兩個小池，魚很多。先釣一條交給祭壇，再從亮起來的渡石回去。",
-		"rules": {"theme": "forest_pine", "map": "S", "ponds": [2, 0], "day": 0.0, "quota": 3.0, "drain": 0.0, "ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear", "rocks": [0, 0], "critters": 8, "hotspot": false, "oil": false, "escalate": false, "evil": false, "safe": true, "tutorial": "first_cast", "hide": ["lure", "quick", "energy", "lamp", "bait"], "mods": {"animal_count": 2, "animals": {"deer": 1.0}}, "fish": ["minnow", "goby"], "fish_epic": []},
+		"rules": {"theme": "forest_pine", "map": "S", "ponds": [2, 0], "day": 0.0, "quota": 3.0, "drain": 0.0, "ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear", "rocks": [0, 0], "critters": 8, "hotspot": false, "escalate": false, "evil": false, "safe": true, "tutorial": "first_cast", "hide": ["lure", "quick", "energy", "lamp", "bait"], "mods": {"animal_count": 2, "animals": {"deer": 1.0}}, "fish": ["minnow", "goby"], "fish_epic": []},
 		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到鱥魚或鰕虎"}, {"stat": "elapsed", "text": "3 分鐘內離開", "max": 180}],
 		"reward": {"gold": 40}},
 	{"id": "1-2", "chapter": 1, "name": "苔石溪潭", "teach": "活餌：翻石頭找蟲、發光蘑菇",
@@ -124,7 +124,7 @@ const LEVELS := [
 	{"id": "3-1", "chapter": 3, "name": "冰緣小潭", "teach": "營火的燈油、冷凍花",
 		"intro": "兩個小池，冰緣很寬，能下竿的水面不多。冷，但很安靜。",
 		"rules": {"night_fails": true, "theme": "snow_pine", "map": "S", "ponds": [2, 0], "day": 240.0, "quota": 12.0, "ghosts": 0, "big_ghost": false, "water_ghost": 0.0, "hunters": false, "weather": "clear", "critters": 2, "rocks": [10, 12], "escalate": false, "evil": false, "tutorial": "oil", "fuel": 260.0, "fish": ["sculpin"], "fish_epic": []},
-		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到杜父魚"}, {"stat": "oil_delivered", "text": "幫營火加過燈油", "min": 1}],
+		"stars": [{"stat": "branch_fish", "min": 1, "text": "釣到杜父魚"}, {"stat": "fire_left", "text": "營火的油剩一半以上離開", "min": 0.5}],
 		"reward": {"gold": 140}},
 	{"id": "3-2", "chapter": 3, "name": "雪松河灣", "teach": "",
 		"intro": "細長的河灣穿過雪松林，偶爾飄雪，狐狸在岸邊。",
@@ -425,7 +425,7 @@ const CHAPTER_GOLD := 200
 
 ## The run stats that are a run's own (not added up into Profile.records).
 const RUN_ONLY := ["elapsed", "time_left", "evil", "species", "species_both", "branch_fish", "oil_left", "streak", "streak_best", "near_water",
-	"light_stage", "quota_met", "big_awake", "mode_lure", "brightness_changed", "carrying_oil",
+	"light_stage", "quota_met", "big_awake", "mode_lure", "brightness_changed", "fire_left",
 	"first_cast_far", "casts", "night", "fish_run", "storm", "fog", "escape_phase"]
 
 ## User request: achievements - [id, category, name, what it takes, gold,
@@ -544,11 +544,11 @@ const TUTORIALS := {
 		["湊滿額度就離開。", {"stat": "quota_met", "min": 1}, ""],
 		["渡石亮了。", {"stat": "escaped", "min": 1}, "escape"],
 	],
+	# (user request: no oil drums on the map any more - the lesson is the camp fire's oil, all there is)
 	"oil": [
-		["營火的油不多了。營火熄了，營地就不再安全。", {"after": 7.0}, ""],
-		["地圖上有油箱。走過去{act}「提起」。", {"stat": "carrying_oil", "min": 1}, "oil"],
-		["提著油箱沒辦法釣魚，先送回營火倒進去。", {"stat": "oil_delivered", "min": 1}, "camp"],
-		["油箱過一陣子會在別處出現。湊滿額度就走。", {"stat": "quota_met", "min": 1}, ""],
+		["營火的油不多了，地圖上也找不到油可以補。營火熄了，營地就不再安全。", {"after": 7.0}, "camp"],
+		["煤燈的油是從營火補的：補一次，營火就少一些。燈夠亮就好，省著點用。", {"after": 9.0}, ""],
+		["湊滿額度就走，別等營火燒完。", {"stat": "quota_met", "min": 1}, ""],
 		["渡石亮了。", {"stat": "escaped", "min": 1}, "escape"],
 	],
 	"big_ghost": [
@@ -988,8 +988,6 @@ func _set_threats() -> void:
 			GameState._spawn_extra_ghost()
 	if not rules.big_ghost:
 		_retire(_main.get_node_or_null("BigGhost"))
-	if not rules.oil:
-		_retire(_main.get_node_or_null("OilDrum"))
 	if not rules.hotspot:
 		var hotspot: Node = _main.get_node_or_null("Hotspot")
 		if hotspot != null:
@@ -1061,6 +1059,11 @@ func value(key: String) -> float:
 			# (the lamp's oil left, of a full one)
 			var lamp: Lantern = _player.get_node_or_null("Lantern") as Lantern if _player != null else null
 			return lamp.fuel / Lantern.MAX_FUEL if lamp != null else 1.0
+		"fire_left":
+			# (the camp fire's oil left, of what it had at the start - user request: no oil drums to
+			# fill it on the map, 3-1's star asks it be kept)
+			var station: FuelStation = _main.get_node_or_null("FuelStation") as FuelStation if _main != null else null
+			return station.total_fuel / maxf(station.max_total_fuel, 1.0) if station != null else 1.0
 	return float(run.get(key, 0.0))
 
 
@@ -1096,8 +1099,6 @@ func _process(delta: float) -> void:
 		set_stat("night", 1.0)
 	if _player.fishing_mode == Player.FishingMode.LURE:
 		set_stat("mode_lure", 1.0)
-	if _player.carrying_oil_drum:
-		set_stat("carrying_oil", 1.0)
 	var big: Node = _main.get_node_or_null("BigGhost")
 	if big != null and big.process_mode != Node.PROCESS_MODE_DISABLED and big.mode != BigGhost.Mode.ASLEEP:
 		set_stat("big_awake", 1.0)
@@ -1228,11 +1229,6 @@ func target(what: String) -> Vector2:
 			return _node_at("FuelStation")
 		"willow":
 			return _node_at("Willow")
-		"oil":
-			var drum: Node2D = _main.get_node_or_null("OilDrum")
-			if drum == null or not drum.visible or _player.carrying_oil_drum:
-				return Vector2.INF
-			return drum.global_position
 		"hotspot":
 			var spot: Node2D = _main.get_node_or_null("Hotspot")
 			if spot == null or not spot.active or not spot.visible:

@@ -390,7 +390,7 @@ func _act() -> bool:
 func _move(delta: float) -> bool:
 	var speed := _player.velocity.length()
 	var moving := speed > 8.0
-	var idle: bool = _player.state == Player.State.IDLE and not _player.carrying_oil_drum and not _player._lure_charging
+	var idle: bool = _player.state == Player.State.IDLE and not _player._lure_charging
 	var name := _player.move_kind if _player.move_left > 0.0 else ""
 	if name != "" and (moving or not idle):
 		# Walked off (or back to fishing): it's cut short.

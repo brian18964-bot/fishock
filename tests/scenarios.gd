@@ -171,6 +171,7 @@ const TESTS := [
 	"test_farm_animals",
 	"test_bridges",
 	"test_rivers",
+	"test_no_oil_drum",
 	"test_field_maples",
 	"test_wet_footprints",
 	"test_village_sway",
@@ -7038,10 +7039,6 @@ func test_run_3d() -> void:
 	player().grab_left = 0.0
 	check(legs and snatched > 0.5, "grabbed on the run: still running, the body snatching (%.2f)" % snatched)
 	await frames(10)
-	player().carrying_oil_drum = true
-	await frames(4)
-	check(view._clip == "Walk_Carry" and view._lamp_in < 1.0, "carrying the oil drum: in both arms")
-	player().carrying_oil_drum = false
 	# On a phone: lighter (no glow, one shadow split, none from the lamp,
 	# the 3D drawn smaller, grass as cards).
 	RunView3D.quality = "low"
@@ -12027,7 +12024,10 @@ func test_tutorials_completable() -> void:
 			"water_ghost":
 				check(first == "STORM" and float(r.water_ghost) > 0.0, "%s: the storm first, the water ghost about (%s)" % [l.id, first])
 			"oil":
-				check(r.oil and float(r.fuel) >= 0.0 and float(r.fuel) < FuelStation.BASE_TOTAL_FUEL, "%s: an oil drum, the camp's oil low" % l.id)
+				# (user request: no oil drum on the map - the lesson is the camp fire's own oil, low)
+				var said := " ".join((camp().TUTORIALS.oil as Array).map(func(step): return str(step[0])))
+				check(float(r.fuel) >= 0.0 and float(r.fuel) < FuelStation.BASE_TOTAL_FUEL and not "油箱" in said,
+					"%s: the camp's oil low, no oil drum spoken of" % l.id)
 			"big_ghost":
 				check(r.big_ghost and float(r.day) > 0.0, "%s: the big ghost, and night to wake it" % l.id)
 	# (an audit of the stars: each asks what its words say - "not pounced on" the beasts' pounces, not the
@@ -14499,6 +14499,25 @@ func test_rivers() -> void:
 			check(view.get_node_or_null("CanalWalls") != null and view.get_node_or_null("RiverWater") != null, "7-1 in 3D: the canal walled")
 		var got: Dictionary = preload("res://tests/map_audit.gd").audit(player(), main)
 		check(got.unreached.is_empty() and got.traps.is_empty(), "%s: over the river, everything can be walked to, nowhere to get stuck (%s, %d traps)" % [id, str(got.unreached), got.traps.size()])
+
+
+## User request ("把地圖的補充油桶取消掉"): no oil drum lies about the map to carry home - the camp
+## fire's oil is what it has at the start. 3-1's lesson is that oil (its fire low, the lamp filled
+## from it, the quota made before it's gone) and its star asks the fire be kept half full.
+func test_no_oil_drum() -> void:
+	check(main.get_node_or_null("OilDrum") == null and not "carrying_oil_drum" in player(), "no oil drum on the map, none to carry")
+	check(not ResourceLoader.exists("res://scenes/oil_drum.tscn"), "the oil drum's scene gone")
+	await play_level("3-1")
+	var star: Dictionary = camp().level("3-1").stars[1]
+	var station: FuelStation = main.get_node("FuelStation")
+	check(star.stat == "fire_left" and is_equal_approx(station.total_fuel, float(camp().rules.fuel)), "3-1: the fire's oil low (%d), its star the fire kept" % int(station.total_fuel))
+	station.total_fuel = station.max_total_fuel * 0.4
+	var kept_low: bool = camp().condition_met(star)
+	station.total_fuel = station.max_total_fuel * 0.6
+	check(not kept_low and camp().condition_met(star) and is_equal_approx(camp().value("fire_left"), 0.6),
+		"the star: under half the fire's oil left, not got; over half, got")
+	var said := " ".join((camp().TUTORIALS.oil as Array).map(func(step): return str(step[0])))
+	check(said.contains("營火") and not said.contains("油箱"), "its lesson: the camp fire's oil, no drum")
 
 
 func test_wet_footprints() -> void:
