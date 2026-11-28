@@ -168,11 +168,72 @@ uniform vec3 hero = vec3(0.0, -100.0, 0.0);
 uniform float cut = 2.8;
 uniform float fade_min = 5.5;
 uniform float fade_max = 8.6;
+// (user request: the human world's buildings old, of their years - the ruined city's broken and
+// rusted: CityBuild.aged) how weathered: faded and darkened, grime up from the ground, water stains
+// down the walls; moss on roofs and at the foot; rust in patches and run down below them; the
+// grime's colour (dust in a dry land)
+uniform float age = 0.0;
+uniform float moss = 0.0;
+uniform float rust = 0.0;
+uniform vec3 grime = vec3(0.18, 0.15, 0.11);
+// (what the colours fade toward - a weathered grey-brown; the sun-baked mud's sand in a dry land)
+uniform vec3 fade_to = vec3(0.4, 0.37, 0.32);
 varying vec3 wp;
 varying vec4 vcol;
 void vertex() {
 	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	vcol = COLOR;
+}
+float hash2(vec2 p) {
+	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+float vnoise(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	vec2 u = f * f * (3.0 - 2.0 * f);
+	return mix(mix(hash2(i), hash2(i + vec2(1.0, 0.0)), u.x), mix(hash2(i + vec2(0.0, 1.0)), hash2(i + vec2(1.0, 1.0)), u.x), u.y);
+}
+float fbm(vec2 p) {
+	float v = 0.0;
+	float a = 0.5;
+	for (int k = 0; k < 3; k++) {
+		v += a * vnoise(p);
+		p *= 2.03;
+		a *= 0.5;
+	}
+	return v;
+}
+vec3 weather(vec3 c, vec3 wn) {
+	// (along a wall, whichever way it faces, and up it; on a roof or sill, across it)
+	float along = wp.x + wp.z;
+	float up = wp.y - 0.05;
+	float lying = smoothstep(0.55, 0.85, abs(wn.y));
+	vec2 pa = mix(vec2(along, up), wp.xz, lying);
+	float g = dot(c, vec3(0.3, 0.59, 0.11));
+	// (faded: the colour gone out of it, dark paint gone chalky and white gone dull - all of it
+	// toward a weathered grey-brown - and the whites yellowed)
+	c = mix(c, vec3(g) * fade_to / max(dot(fade_to, vec3(0.3, 0.59, 0.11)), 0.01), age * 0.6);
+	c = mix(c, fade_to, age * 0.42);
+	c = mix(c, c * vec3(0.95, 0.86, 0.68), age * 0.55 * smoothstep(0.45, 0.85, g));
+	// (blotches where the paint or plaster has gone, paler where it's peeled, and dirt in patches)
+	float blotch = smoothstep(0.42, 0.72, fbm(pa * 0.55 + 1.7));
+	c *= mix(1.0, 0.55, age * blotch);
+	c = mix(c, vec3(0.6, 0.56, 0.48), age * 0.35 * smoothstep(0.6, 0.8, fbm(pa * 1.1 + 9.1)) * (1.0 - lying));
+	c = mix(c, grime, age * 0.25 * smoothstep(0.55, 0.8, fbm(pa * 1.6 + 5.3)));
+	// (water stains running down the walls)
+	float streak = smoothstep(0.5, 0.82, fbm(vec2(along * 2.4, up * 0.3) + 7.3)) * (1.0 - lying);
+	c *= 1.0 - age * 0.6 * streak;
+	// (grime up from the ground)
+	float low = 1.0 - smoothstep(0.0, 1.8 + 0.7 * vnoise(vec2(along * 1.7, 0.0)), up);
+	c = mix(c, grime, low * age * 0.85);
+	// (moss on what faces up - roofs, sills - and at the foot)
+	float green = moss * smoothstep(0.35, 0.6, fbm(wp.xz * 0.9 + vec2(up * 0.8))) * (smoothstep(0.5, 0.9, wn.y) * 1.1 + low * 0.6);
+	c = mix(c, vec3(0.15, 0.21, 0.08) * (0.8 + 0.4 * vnoise(wp.xz * 6.0)), clamp(green, 0.0, 0.8));
+	// (rust: patches, and run down the wall below them - little on a roof, where the dirt lies)
+	float patch = smoothstep(0.6, 0.8, fbm(pa * vec2(1.3, 0.9) + 3.1));
+	float runs = smoothstep(0.6, 0.85, fbm(vec2(along * 3.0, up * 0.18) + 11.7)) * 0.75 * (1.0 - lying);
+	c = mix(c, vec3(0.34, 0.16, 0.07) * (0.7 + 0.6 * vnoise(wp.xz * 9.0 + up * 3.0)), clamp(rust * max(patch, runs) * (1.0 - 0.65 * lying), 0.0, 0.85));
+	return c;
 }
 float bayer4(vec2 p) {
 	ivec2 q = ivec2(mod(p, 4.0));
@@ -197,8 +258,11 @@ void fragment() {
 	if (use_colour) {
 		c *= vcol.rgb;
 	}
+	if (age > 0.0 || rust > 0.0 || moss > 0.0) {
+		c = weather(c, normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz));
+	}
 	ALBEDO = c;
-	ROUGHNESS = roughness;
+	ROUGHNESS = min(1.0, roughness + age * 0.08);
 	if (has_normal) {
 		NORMAL_MAP = texture(normal_tex, UV).rgb;
 	}
@@ -322,6 +386,11 @@ static func update(mat: ShaderMaterial, hero: Vector3) -> void:
 ## One of the user's models, made ours (`path`, a .glb): its own pictures, seen through as the rest
 ## (TEX_SHADER); its shadow cast by a plain twin of each part (`shade`). Named `name`.
 static var _tex_cut_shader: Shader
+## User request ("人類地圖的建築物配色，目前看起來不要這麼乾淨，雖然不是廢墟系列，但是至少要舊的、有年代感的；
+## 廢墟系列是會有破損生鏽的物件"): how weathered the map's buildings and the things about them are -
+## the style's "aged" (MapGenerator.THEMES): {age, moss, rust: 0..1, grime, fade_to: Color} - set before they're
+## built (RunView3D); empty, as they were made.
+static var aged: Dictionary = {}
 ## `see`: seen through round the traveller and near the camera (a building, a tower); false for a low
 ## thing about the street that's never between the camera and them (a car, a drum, a bench).
 static func _model(path: String, name: String, shade: Material, colour := false, see := true) -> Node3D:
@@ -350,6 +419,12 @@ static func _model(path: String, name: String, shade: Material, colour := false,
 					own.set_shader_parameter("normal_tex", src.normal_texture)
 					own.set_shader_parameter("has_normal", true)
 			own.set_shader_parameter("use_colour", colour)
+			for key in ["age", "moss", "rust"]:
+				own.set_shader_parameter(key, float(aged.get(key, 0.0)))
+			for key in ["grime", "fade_to"]:
+				if aged.has(key):
+					var g: Color = aged[key]
+					own.set_shader_parameter(key, Vector3(g.r, g.g, g.b))
 			m.set_surface_override_material(i, own)
 			if see:
 				_seen.append(own)

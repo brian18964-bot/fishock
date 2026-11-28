@@ -174,6 +174,7 @@ const TESTS := [
 	"test_no_oil_drum",
 	"test_shop_category_list",
 	"test_human_world_era_order",
+	"test_buildings_aged",
 	"test_field_maples",
 	"test_wet_footprints",
 	"test_village_sway",
@@ -14602,6 +14603,56 @@ func test_human_world_era_order() -> void:
 	check(Profile.campaign.levels.has("12-2") and Profile.campaign.levels.has("7-1"), "moved once, not again")
 	Profile.load_data(keep)
 
+
+## User request ("人類地圖的建築物配色，目前看起來不要這麼乾淨，雖然不是廢墟系列，但是至少要舊的、有年代感的；
+## 廢墟系列是會有破損生鏽的物件"): every human-world style weathers its buildings and the things
+## about them (its "aged"), the ruined city hardest and rusted, the adobe village's mud brick faded
+## toward sand; the forest's maps have none to weather and leave CityBuild.aged empty.
+func test_buildings_aged() -> void:
+	for theme in ["city", "countryside", "japan", "england", "china", "adobe"]:
+		var a: Dictionary = MapGenerator.THEMES[theme].get("aged", {})
+		check(float(a.get("age", 0.0)) >= 0.7, "%s: its buildings old (%s)" % [theme, str(a)])
+	check(float(MapGenerator.THEMES.city.aged.rust) > float(MapGenerator.THEMES.countryside.aged.rust)
+		and float(MapGenerator.THEMES.city.aged.age) >= 1.0, "the ruined city the most worn and rusted")
+	check(CityBuild.TEX_SHADER.contains("c = weather(c,") and CityBuild.TEX_SHADER.contains("uniform float rust"),
+		"the buildings' shader weathers them")
+	Campaign.dev_all_open = true
+	for v in [{"level": "12-1", "theme": "city"}, {"level": "7-1", "theme": "adobe"}]:
+		seed(3)
+		await play_level(v.level)
+		var view: RunView3D = null
+		for _i in 900:
+			view = RunView3D.active
+			if view != null and view.built:
+				break
+			await frames(1)
+		var a: Dictionary = MapGenerator.THEMES[v.theme].aged
+		check(view != null and view.built and CityBuild.aged == a, "%s: its style's weathering set (%s)" % [v.level, str(CityBuild.aged)])
+		if view == null:
+			continue
+		# (each building and each thing about it drawn weathered as its style says)
+		var mats := []
+		for m in view.find_children("RuinModel*", "Node3D", true, false) + view.find_children("FarmProp*", "Node3D", true, false) \
+				+ view.find_children("StreetProp*", "Node3D", true, false):
+			for mi in (m as Node).find_children("*", "MeshInstance3D", true, false):
+				var mat := (mi as MeshInstance3D).get_surface_override_material(0) as ShaderMaterial
+				if mat != null and mat.shader != null and mat.shader.code == CityBuild.TEX_SHADER:
+					mats.append(mat)
+		var right := true
+		for mat: ShaderMaterial in mats:
+			for key in ["age", "rust", "moss"]:
+				right = right and is_equal_approx(float(mat.get_shader_parameter(key)), float(a[key]))
+		check(mats.size() >= 6 and right, "%s: %d of its buildings' and things' surfaces weathered as its style" % [v.level, mats.size()])
+		if v.theme == "adobe":
+			var to: Variant = mats[0].get_shader_parameter("fade_to") if not mats.is_empty() else null
+			check(to is Vector3 and (to as Vector3).x > (to as Vector3).z + 0.15, "the mud brick faded toward sand, not grey (%s)" % str(to))
+	seed(3)
+	await play_level("1-2")
+	for _i in 900:
+		if RunView3D.active != null and RunView3D.active.built:
+			break
+		await frames(1)
+	check(CityBuild.aged.is_empty(), "a forest map: nothing weathered")
 
 func test_wet_footprints() -> void:
 	# User request ("角色有靠近水邊並踩到水，角色再走回地面要有明顯的水漬腳印，再慢慢變淡，走一定距離後，水漬腳印

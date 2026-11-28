@@ -604,6 +604,8 @@ func _build() -> void:
 		add_child(_flock)
 		_flock.setup(self, map_style())
 	_trees_and_rocks()
+	# (user request: the human world's buildings old, the ruined city's rusted - the style's "aged")
+	CityBuild.aged = (MapGenerator.THEMES.get(MapGenerator.current_theme, {}) as Dictionary).get("aged", {})
 	if _city:
 		_ruin_mat = CityBuild.build(self, get_tree().get_nodes_in_group("ruins"), land_y)
 		CityBuild.props(self, get_tree().get_nodes_in_group("street_props"), land_y)

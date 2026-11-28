@@ -261,6 +261,9 @@ const THEMES := {
 	# breaking through (MapTree's "city"); none of the forest's animals.
 	"city": {
 		"look": "detailed",
+		# (user request: "廢墟系列是會有破損生鏽的物件" - its buildings and what's about the street worn
+		# hard, mossy at the foot, rusted in patches and run down the walls: CityBuild.aged; mine for now)
+		"aged": {"age": 1.0, "moss": 0.35, "rust": 0.7},
 		# (user request: water splitting the map, bridges over it - the city's a canal: straight, its
 		# banks walled, crossed by concrete bridges - _generate_river)
 		"river": {"half": Vector2(80.0, 80.0), "canal": true, "bridge": "concrete"},
@@ -303,6 +306,9 @@ const THEMES := {
 		"bridge": "wood",
 		# (user request: a river across the map, winding between the farms - _generate_river)
 		"river": {"half": Vector2(90.0, 110.0), "wind": 0.12, "bends": Vector2(1100.0, 1600.0)},
+		# (user request: "至少要舊的、有年代感的" - old farm buildings, their metal rusting a little:
+		# CityBuild.aged; mine for now)
+		"aged": {"age": 0.8, "moss": 0.3, "rust": 0.3},
 		"floor": ["grass", "grass", 0.3],
 		"floor3d": {"grass": "stubble", "forest": "grass", "path": "dirt", "stone": "furrow", "mud": "mud"},
 		"trees": 14, "rocks": 2, "bushes": 4, "ground": 0,
@@ -349,6 +355,8 @@ const THEMES := {
 		"bridge": "jp_bridge",
 		# (user request: a river across the map - a mountain stream's winding - _generate_river)
 		"river": {"half": Vector2(80.0, 100.0), "wind": 0.14, "bends": Vector2(900.0, 1300.0)},
+		# (user request: old, of its years - weathered wood, moss in the damp: CityBuild.aged; mine for now)
+		"aged": {"age": 0.8, "moss": 0.5, "rust": 0.0},
 		"floor": ["grass", "grass", 0.3],
 		"floor3d": {"grass": "moss_soil", "forest": "grass", "path": "shrine_gravel", "stone": "furrow", "mud": "mud"},
 		"trees": 16, "rocks": 3, "bushes": 4, "ground": 0,
@@ -394,6 +402,9 @@ const THEMES := {
 		"bridge": "wood",
 		# (user request: a river across the map, its meanders - _generate_river)
 		"river": {"half": Vector2(90.0, 110.0), "wind": 0.13, "bends": Vector2(1000.0, 1500.0)},
+		# (user request: old, of its years - weathered timber and stone, moss on the roofs:
+		# CityBuild.aged; mine for now)
+		"aged": {"age": 0.85, "moss": 0.55, "rust": 0.0},
 		"floor": ["grass", "grass", 0.3],
 		"floor3d": {"grass": "stubble", "forest": "grass", "path": "dirt", "stone": "furrow", "mud": "mud"},
 		"trees": 14, "rocks": 3, "bushes": 4, "ground": 0,
@@ -437,6 +448,8 @@ const THEMES := {
 		"bridge": "stone",
 		# (user request: a river across the map, broad and slow - _generate_river)
 		"river": {"half": Vector2(100.0, 125.0), "wind": 0.1, "bends": Vector2(1200.0, 1700.0)},
+		# (user request: old, of its years - stained walls, moss on the tiles: CityBuild.aged; mine for now)
+		"aged": {"age": 0.85, "moss": 0.45, "rust": 0.0},
 		"floor": ["grass", "grass", 0.3],
 		"floor3d": {"grass": "grass", "forest": "moss_soil", "path": "flagstone", "stone": "furrow", "mud": "mud"},
 		"trees": 16, "rocks": 3, "bushes": 4, "ground": 0,
@@ -479,6 +492,9 @@ const THEMES := {
 		"bridge": "wood",
 		# (user request: a great broad river across the map, its Nile - _generate_river)
 		"river": {"half": Vector2(150.0, 180.0), "wind": 0.07, "bends": Vector2(1500.0, 2200.0)},
+		# (user request: old, of its years - sun-faded mud brick, dust up from the ground:
+		# CityBuild.aged; mine for now)
+		"aged": {"age": 0.75, "moss": 0.0, "rust": 0.0, "grime": Color(0.5, 0.4, 0.28), "fade_to": Color(0.58, 0.47, 0.34)},
 		"floor": ["dune_sand", "oasis_grass", 0.3],
 		"floor3d": {"grass": "dune_sand", "forest": "oasis_grass", "path": "dirt", "stone": "furrow", "mud": "wet_sand"},
 		"trees": 16, "rocks": 3, "bushes": 3, "ground": 0,
