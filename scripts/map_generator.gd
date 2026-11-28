@@ -929,7 +929,7 @@ func _spawn_zone(type: int, radius: float, lobe_range: Vector2i) -> void:
 	# User bug report: the spawn point ended up under water (about 1 map in
 	# 25) - when no spot was found, the last random one was used anyway. Now
 	# a pond that doesn't fit shrinks and tries again, and is left out if it
-	# still doesn't. (A smaller map with five ponds, 8-3 and 11-3, now and then
+	# still doesn't. (A smaller map with five ponds - the countryside's and the Chinese town's third branches - now and then
 	# had no room for its last one even at 0.85^2 its size and went a pond
 	# short of its rules - so it shrinks further first, POND_SHRINKS times.)
 	var pos := Vector2.INF

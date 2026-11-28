@@ -173,6 +173,7 @@ const TESTS := [
 	"test_rivers",
 	"test_no_oil_drum",
 	"test_shop_category_list",
+	"test_human_world_era_order",
 	"test_field_maples",
 	"test_wet_footprints",
 	"test_village_sway",
@@ -322,7 +323,7 @@ func play_level(id: String) -> void:
 ## A clean slate of campaign progress (the profile is the real one).
 func reset_progress() -> void:
 	Campaign.dev_all_open = false
-	Profile.campaign = {"levels": {}, "chapter_bonus": [], "curse_clears": 0, "best_curses": 0, "branches": 1}
+	Profile.campaign = {"levels": {}, "chapter_bonus": [], "curse_clears": 0, "best_curses": 0, "branches": 1, "era_order": 1}
 	Profile.achievements = {}
 	Profile.records = {}
 
@@ -5772,7 +5773,7 @@ func test_free_ruin_maps() -> void:
 	check(chooser.map_theme == "adobe" and (chooser.find_child("MapName", true, false) as Label).text == "土屋聚落"
 		and pic != null and pic.texture != null and pic.texture.resource_path.ends_with("map_adobe.png")
 		and (chooser.find_child("GoFree", true, false) as Button).text.contains("土屋聚落")
-		and branches != null and branches.find_child("Branch_12-1", true, false) != null and branches.find_child("Branch_11-1", true, false) == null,
+		and branches != null and branches.find_child("Branch_7-1", true, false) != null and branches.find_child("Branch_8-1", true, false) == null,
 		"the adobe village picked: its picture, name and its own branches on the right")
 	chooser.queue_free()
 	await frames(2)
@@ -5807,20 +5808,20 @@ func test_village_trees_fields_and_cars() -> void:
 	Campaign.dev_all_open = true
 	# A branch's season: the shrine pond in spring.
 	seed(3)
-	await play_level("9-1")
+	await play_level("10-1")
 	var kinds := get_tree().get_nodes_in_group("trees").map(func(t): return str(t.kind))
 	check(MapGenerator.current_season == "spring" and kinds.has("cherry_a") and not kinds.has("maple_a"),
-		"9-1 in spring: cherry blossom, no red maples (%s)" % str(kinds))
+		"10-1 in spring: cherry blossom, no red maples (%s)" % str(kinds))
 	# The bamboo path: nothing else growing in its groves.
 	seed(3)
-	await play_level("9-2")
+	await play_level("10-2")
 	var gen: MapGenerator = main.get_node("MapGenerator")
 	var inside := []
 	for t: MapTree in get_tree().get_nodes_in_group("trees"):
 		for g in gen._grove_areas:
 			if g.grow(-4.0).has_point(t.global_position):
 				inside.append(t.kind)
-	check(not gen._grove_areas.is_empty() and inside.is_empty(), "9-2: its bamboo groves bamboo only (%d groves; trees in them: %s)" % [gen._grove_areas.size(), str(inside)])
+	check(not gen._grove_areas.is_empty() and inside.is_empty(), "10-2: its bamboo groves bamboo only (%d groves; trees in them: %s)" % [gen._grove_areas.size(), str(inside)])
 	# A free night's: one of its seasons, not always the same.
 	var seen := {}
 	for k in 6:
@@ -5837,7 +5838,7 @@ func test_village_trees_fields_and_cars() -> void:
 	camp().clear()
 	# The city's cars: no see-through holes cut in them by the lamp's light round the traveller.
 	seed(3)
-	await play_level("7-2")
+	await play_level("12-2")
 	for _i in 900:
 		if RunView3D.active != null and RunView3D.active.built:
 			break
@@ -5857,7 +5858,7 @@ func test_village_trees_fields_and_cars() -> void:
 				var cut: Variant = m.get_shader_parameter("cut") if m != null else null
 				if cut != null and float(cut) > 0.0:
 					holed += 1
-	check(cars > 0 and holed == 0, "7-2: its cars and the street's things drawn whole, no see-through holes (%d cars)" % cars)
+	check(cars > 0 and holed == 0, "12-2: its cars and the street's things drawn whole, no see-through holes (%d cars)" % cars)
 
 
 ## The depart window's maps (see _map_rows_width) - 9999 if one of `maps` has no row.
@@ -13953,12 +13954,12 @@ func test_slide_amounts() -> void:
 ## round the traveller; the pavement and asphalt; the city's own fish in its water, each with its
 ## picture and model.
 func test_countryside_map() -> void:
-	# User request (the human world's countryside - an ordinary place, not a ruin): chapter 8, five
+	# User request (the human world's countryside - an ordinary place, not a ruin): chapter 11 (8 before the times' order), five
 	# branches on the countryside map, its own fish.
-	var farm: Array = camp().LEVELS.filter(func(l): return int(l.chapter) == 8)
+	var farm: Array = camp().LEVELS.filter(func(l): return int(l.chapter) == 11)
 	check(farm.size() == 5 and farm.all(func(l): return str(l.rules.theme) == "countryside")
 		and farm.map(func(l): return str(l.rules.map)) == ["S", "M", "L", "L", "XL"]
-		and camp().chapter(8).name == "鄉村", "chapter 8, 鄉村: five branches on the countryside map, small to extra large")
+		and camp().chapter(11).name == "鄉村", "chapter 11, 鄉村: five branches on the countryside map, small to extra large")
 	var new_fish := ["medaka", "pale_chub", "bitterling", "yellow_catfish", "mandarin_fish", "paradise_fish", "bream",
 		"culter", "bighead_carp", "black_carp", "yellowcheek"]
 	var fish_ok := true
@@ -13970,11 +13971,11 @@ func test_countryside_map() -> void:
 	check(pool.has("medaka") and pool.has("yellow_catfish") and FishData.pool_for("countryside", "common", "epic").has("mandarin_fish"),
 		"the countryside's own fish in its water, the mandarin fish its rarest")
 	# (a level changes only what it names of the farms - the rest the style's)
-	var orchard: Dictionary = camp().LEVELS.filter(func(l): return l.id == "8-3")[0].rules.mods.yard
-	check(orchard.size() == 1 and orchard.has("groves"), "8-3 names only its orchards")
+	var orchard: Dictionary = camp().LEVELS.filter(func(l): return l.id == "11-3")[0].rules.mods.yard
+	check(orchard.size() == 1 and orchard.has("groves"), "11-3 names only its orchards")
 	Campaign.dev_all_open = true
 	seed(11)
-	await play_level("8-3")
+	await play_level("11-3")
 	var view: RunView3D = null
 	for _i in 600:
 		view = RunView3D.active
@@ -13982,10 +13983,10 @@ func test_countryside_map() -> void:
 			break
 		await frames(1)
 	check(view != null and view.built and MapGenerator.current_theme == "countryside" and FishData.waters == "countryside",
-		"8-3 opens on the countryside map, its water the countryside's")
+		"11-3 opens on the countryside map, its water the countryside's")
 	var gen = main.get_node("MapGenerator")
 	check(int(gen.theme.yard.groves[0].count) == 2 and (gen.theme.yard.things as Array).size() == (MapGenerator.THEMES.countryside.yard.things as Array).size()
-		and gen.theme.farm.has("houses"), "8-3's two orchards over the style's yard, its farms the style's")
+		and gen.theme.farm.has("houses"), "11-3's two orchards over the style's yard, its farms the style's")
 	# The farms: houses and barns (the user's farm set, made ours), solid, out of the water, clear of the
 	# camp, the altar, the way out; each with its model.
 	var ruins := get_tree().get_nodes_in_group("ruins")
@@ -14072,7 +14073,7 @@ func test_countryside_map() -> void:
 	var hero: Vector3 = view._ruin_mat.get_shader_parameter("hero")
 	check(hero.distance_to(view.pivot.global_position) < 1.5, "the farm buildings seen through round the traveller")
 	# A small map and an extra large one: their farms, fields and fences come, nothing odd.
-	for level in ["8-1", "8-5"]:
+	for level in ["11-1", "11-5"]:
 		seed(5)
 		await play_level(level)
 		await frames(4)
@@ -14083,20 +14084,20 @@ func test_countryside_map() -> void:
 
 func test_japan_and_england_maps() -> void:
 	# User request (the human world's other villages, made as ordinary places - the two whose models the
-	# user sent): chapter 9, the Japanese village, and chapter 10, the English, laid out as the
+	# user sent): chapter 10, the Japanese village, and chapter 9, the English (their times' order), laid out as the
 	# countryside is, each its own buildings, fences, things and fish; and (user request, "中國風第 11
-	# 章") chapter 11, the Chinese village; and (user request, "換成土屋主題") chapter 12, the adobe village.
+	# 章") chapter 8, the Chinese village; and (user request, "換成土屋主題") chapter 7, the adobe village.
 	var villages := [
-		{"chapter": 9, "theme": "japan", "name": "日式山村", "level": "9-3", "small": "9-1", "prefix": "jp_", "fences": ["bamboo"],
+		{"chapter": 10, "theme": "japan", "name": "日式山村", "level": "10-3", "small": "10-1", "prefix": "jp_", "fences": ["bamboo"],
 			"fish": ["yamame", "ugui", "kawamutsu", "goldfish", "biwa_catfish", "amago", "sakura_masu", "hasu", "nigoro", "biwa_trout", "akame"]},
-		{"chapter": 10, "theme": "england", "name": "英式村莊", "level": "10-3", "small": "10-1", "prefix": "eng_", "fences": ["stone", "hedge"],
+		{"chapter": 9, "theme": "england", "name": "英式村莊", "level": "9-3", "small": "9-1", "prefix": "eng_", "fences": ["stone", "hedge"],
 			"fish": ["roach", "rudd", "tench", "dace", "atlantic_salmon", "gudgeon", "chub", "barbel", "zander", "sea_trout", "ferox_trout"]},
 		# (user request, "中國風第 11 章": the Chinese village)
-		{"chapter": 11, "theme": "china", "name": "中式古鎮", "level": "11-3", "small": "11-1", "prefix": "cn_", "fences": ["tile_wall", "bamboo"],
+		{"chapter": 8, "theme": "china", "name": "中式古鎮", "level": "8-3", "small": "8-1", "prefix": "cn_", "fences": ["tile_wall", "bamboo"],
 			"fish": ["mud_carp", "red_eye_trout", "sand_loach", "yellow_river_carp", "chinese_sucker", "spotted_steed", "reeves_shad",
 				"coilia", "luciobrama", "goonch", "chinese_sturgeon"]},
 		# (user request, "換成土屋主題": the adobe village, in the tribal theme's place)
-		{"chapter": 12, "theme": "adobe", "name": "土屋聚落", "level": "12-3", "small": "12-1", "prefix": "adb_", "fences": ["mud_wall"],
+		{"chapter": 7, "theme": "adobe", "name": "土屋聚落", "level": "7-3", "small": "7-1", "prefix": "adb_", "fences": ["mud_wall"],
 			"fish": ["nile_tilapia", "bynni", "african_catfish", "elephantfish", "nile_perch", "labeo", "electric_catfish", "tigerfish",
 				"synodontis", "goliath_tigerfish", "gymnarchus"]},
 	]
@@ -14232,7 +14233,7 @@ func test_bridges() -> void:
 	var bridged := 0
 	var several := 0
 	var bad := []
-	for chapter in range(8, 13):
+	for chapter in range(7, 12):
 		for branch in range(1, 6):
 			var id := "%d-%d" % [chapter, branch]
 			seed(chapter * 101 + branch)
@@ -14294,12 +14295,12 @@ func test_bridges() -> void:
 	check(bad.is_empty() and bridged * 10 >= maps * 3 and several >= 2,
 		"bridges on %d of %d village maps (%d with more than one), each well laid over a big water %s" % [bridged, maps, several, str(bad)])
 	# Walked over with the keys: up its arch and down again to the far bank; pushed at its side in the
-	# middle, still on it (the first 9-3 laid out with a bridge - a big map, its big waters bridged).
+	# middle, still on it (the first 10-3 laid out with a bridge - a big map, its big waters bridged).
 	var view: RunView3D = null
 	var bridge: Dock = null
 	for s in range(5, 15):
 		seed(s)
-		await play_level("9-3")
+		await play_level("10-3")
 		for _i in 600:
 			view = RunView3D.active
 			if view != null and view.built:
@@ -14311,7 +14312,7 @@ func test_bridges() -> void:
 		if bridge != null:
 			break
 	var bridge_count := get_tree().get_nodes_in_group("walkways").filter(func(w): return (w as Dock).bridge != "").size()
-	check(bridge != null and not view.find_children("*Bridge*", "Node3D", false, false).is_empty(), "9-3: the red bridges built (%d)" % bridge_count)
+	check(bridge != null and not view.find_children("*Bridge*", "Node3D", false, false).is_empty(), "10-3: the red bridges built (%d)" % bridge_count)
 	if bridge == null:
 		return
 	var a: Vector2 = bridge.bridge_ends[0]
@@ -14435,7 +14436,7 @@ func test_rivers() -> void:
 	# bank); stood by the river, the binoculars look past it to a pond - not to another stretch of
 	# it; the fishing ground on the map, in the water.
 	seed(5)
-	await play_level("8-1")
+	await play_level("11-1")
 	var gen2 = main.get_node("MapGenerator")
 	var zones: Array = gen2.river_zones
 	var pond: WaterZone = gen2.water_zones.filter(func(z): return not z.river and not z.is_rare())[0]
@@ -14473,7 +14474,7 @@ func test_rivers() -> void:
 		await frames(1)
 	var planes := view.find_children("Water*", "MeshInstance3D", false, false).size()
 	check(view.get_node_or_null("RiverWater") != null and planes == gen2.water_zones.size() - zones.size() and view.get_node_or_null("CanalWalls") == null,
-		"8-1 in 3D: one surface for the river, one for each of its %d ponds (%d), no walls" % [gen2.water_zones.size() - zones.size(), planes])
+		"11-1 in 3D: one surface for the river, one for each of its %d ponds (%d), no walls" % [gen2.water_zones.size() - zones.size(), planes])
 	var out := Vector2.INF
 	var out_half := 0.0
 	for i in MapGenerator.river_line.size():
@@ -14488,7 +14489,7 @@ func test_rivers() -> void:
 		"the river runs on out past the map's edge: its bed %.2f m, the frame beside it %.2f m" % [low, high])
 	# Walked: from the start both banks, every bridge's ends, the altar, the escape stone and the camp
 	# (a small map of each kind of water: the canal, a river, the broad one).
-	for id in ["7-1", "8-1", "12-1"]:
+	for id in ["12-1", "11-1", "7-1"]:
 		seed(5)
 		await play_level(id)
 		for _i in 600:
@@ -14496,8 +14497,8 @@ func test_rivers() -> void:
 			if view != null and view.built:
 				break
 			await frames(1)
-		if id == "7-1":
-			check(view.get_node_or_null("CanalWalls") != null and view.get_node_or_null("RiverWater") != null, "7-1 in 3D: the canal walled")
+		if id == "12-1":
+			check(view.get_node_or_null("CanalWalls") != null and view.get_node_or_null("RiverWater") != null, "12-1 in 3D: the canal walled")
 		var got: Dictionary = preload("res://tests/map_audit.gd").audit(player(), main)
 		check(got.unreached.is_empty() and got.traps.is_empty(), "%s: over the river, everything can be walked to, nowhere to get stuck (%s, %d traps)" % [id, str(got.unreached), got.traps.size()])
 
@@ -14559,6 +14560,47 @@ func test_shop_category_list() -> void:
 	check(UiKit.NAV[0][1] == "商店" and (nav == null or nav.text.contains("商店")), "named 商店 at the top")
 	shop.queue_free()
 	check(load("res://scripts/camp3d.gd").QUICK[0][1] == "商店", "and in the camp's menu")
+
+
+## User request ("你幫我把人類系列的六種，簡單用時代時間去把7-12重新排列順序，之後劇情也比較好推進"): the
+## human world's six maps as chapters 7-12 in the order of their times - the adobe village (the
+## oldest), the Chinese town, the English village, the Japanese mountain village, the countryside,
+## the emptied city last - their levels, achievements and the free night's list with them; the
+## first one's opening says it's the first of the human world, the city's that it's the last. A
+## profile saved before has its stars, bonuses and achievements moved to the new numbers, once.
+func test_human_world_era_order() -> void:
+	var names := ["土屋聚落", "中式古鎮", "英式村莊", "日式山村", "鄉村", "荒廢都市"]
+	var themes := ["adobe", "china", "england", "japan", "countryside", "city"]
+	var ok := true
+	for k in 6:
+		var ch := 7 + k
+		var levels: Array = camp().LEVELS.filter(func(l): return int(l.chapter) == ch)
+		ok = ok and camp().chapter(ch).name == names[k] and levels.size() == 5 \
+			and levels.all(func(l): return str(l.rules.theme) == themes[k] and str(l.id).begins_with("%d-" % ch)) \
+			and str(DepartChooser.RUIN_MAPS[k][0]) == themes[k]
+		var ach: Array = camp().ACHIEVEMENTS.filter(func(a): return a[0] == "chapter_%d" % ch)
+		ok = ok and ach.size() == 1 and str(ach[0][3]).contains(names[k]) and int((ach[0][5] as Dictionary).chapter) == ch
+	check(ok, "chapters 7-12 in the order of their times, their levels, achievements and the free night's list with them")
+	check(str(camp().level("7-1").intro).contains("第一次") and str(camp().level("12-1").intro).contains("最後"),
+		"7-1 the first of the human world, the city's 12-1 the last")
+	# A profile saved before the change: its chapter 7 (the city then) is 12 now, its 12 (the adobe
+	# village then) 7.
+	var keep: Dictionary = Profile.snapshot()
+	var old := keep.duplicate(true)
+	old["campaign"] = {"levels": {"7-2": {"stars": [true, true, false]}, "12-1": {"stars": [true, false, false]}, "3-1": {"stars": [true, false, true]}},
+		"chapter_bonus": [7, 12, 2], "curse_clears": 0, "best_curses": 0, "branches": 1}
+	old["achievements"] = {"chapter_7": true, "chapter_12": true, "first_catch": true}
+	Profile.load_data(old)
+	var moved: Dictionary = Profile.campaign.levels
+	check(moved.has("12-2") and moved.has("7-1") and moved.has("3-1") and not moved.has("7-2") and not moved.has("12-1")
+		and (moved["12-2"].stars as Array)[1] and Profile.campaign.chapter_bonus == [12, 7, 2]
+		and Profile.achievements.has("chapter_12") and Profile.achievements.has("chapter_7") and Profile.achievements.has("first_catch"),
+		"a profile from before: its stars, bonuses and achievements moved with their chapters (%s)" % str(moved.keys()))
+	# (and only once: a profile saved since keeps its numbers)
+	var again := Profile.snapshot()
+	Profile.load_data(again)
+	check(Profile.campaign.levels.has("12-2") and Profile.campaign.levels.has("7-1"), "moved once, not again")
+	Profile.load_data(keep)
 
 
 func test_wet_footprints() -> void:
@@ -14646,7 +14688,7 @@ func test_nothing_in_anything() -> void:
 	# stuck meaning to go somewhere.
 	var audit := preload("res://tests/overlap_audit.gd")
 	Campaign.dev_all_open = true
-	for lv: String in ["9-3", "11-4", "12-3", "7-2"]:
+	for lv: String in ["10-3", "8-4", "7-3", "12-2"]:
 		seed(7)
 		await play_level(lv)
 		var view: RunView3D = null
@@ -14681,7 +14723,7 @@ func test_village_sway() -> void:
 	# the grass - the one wind they all share blowing.
 	Campaign.dev_all_open = true
 	seed(3)
-	await play_level("8-3")
+	await play_level("11-3")
 	var view: RunView3D = null
 	for _i in 600:
 		view = RunView3D.active
@@ -14748,10 +14790,10 @@ func test_field_maples() -> void:
 		"the countryside and the English village grow them, each in its season")
 	Campaign.dev_all_open = true
 	seed(4)
-	await play_level("10-3")
+	await play_level("9-3")
 	await frames(4)
 	var grown := get_tree().get_nodes_in_group("trees").filter(func(t): return str(t.kind) in kinds)
-	check(grown.size() >= 2, "10-3: field maples about (%d)" % grown.size())
+	check(grown.size() >= 2, "9-3: field maples about (%d)" % grown.size())
 
 
 func test_farm_animals() -> void:
@@ -14779,7 +14821,7 @@ func test_farm_animals() -> void:
 		check((homes[theme] as Array).all(func(k): return w.has(k)), "%s keeps %s" % [theme, str(homes[theme])])
 	Campaign.dev_all_open = true
 	seed(3)
-	await play_level("8-3")
+	await play_level("11-3")
 	var view: RunView3D = null
 	for _i in 600:
 		view = RunView3D.active
@@ -14790,7 +14832,7 @@ func test_farm_animals() -> void:
 	for n in main.get_children():
 		if n is Critter and (n as Critter).ambient and (n as Critter).species in kinds:
 			farm.append(n)
-	check(farm.size() >= 2, "8-3: farm animals about (%s)" % str(farm.map(func(c): return c.species)))
+	check(farm.size() >= 2, "11-3: farm animals about (%s)" % str(farm.map(func(c): return c.species)))
 	if farm.is_empty():
 		return
 	# (one of them in view: its model built, playing a clip of its own)
@@ -14803,10 +14845,10 @@ func test_farm_animals() -> void:
 
 
 func test_city_map() -> void:
-	var city: Array = camp().LEVELS.filter(func(l): return int(l.chapter) == 7)
+	var city: Array = camp().LEVELS.filter(func(l): return int(l.chapter) == 12)
 	check(city.size() == 5 and city.all(func(l): return str(l.rules.theme) == "city")
 		and city.map(func(l): return str(l.rules.map)) == ["S", "M", "L", "L", "XL"]
-		and camp().chapter(7).name == "荒廢都市", "chapter 7, 荒廢都市: five branches on the city map, small to extra large")
+		and camp().chapter(12).name == "荒廢都市", "chapter 12, 荒廢都市: five branches on the city map, small to extra large")
 	var new_fish := ["flowerhorn", "koi", "blood_parrot", "discus", "asian_arowana", "guppy", "clown_knifefish",
 		"redtail_catfish", "electric_eel", "tarpon"]
 	var fish_ok := true
@@ -14816,7 +14858,7 @@ func test_city_map() -> void:
 	check(fish_ok, "the city's ten fish: their data, lengths, stats, pictures and models")
 	Campaign.dev_all_open = true
 	seed(11)
-	await play_level("7-1")
+	await play_level("12-1")
 	var view: RunView3D = null
 	for _i in 600:
 		view = RunView3D.active
@@ -14824,7 +14866,7 @@ func test_city_map() -> void:
 			break
 		await frames(1)
 	check(view != null and view.built and MapGenerator.current_theme == "city" and FishData.waters == "city",
-		"7-1 opens on the city map, its water the city's")
+		"12-1 opens on the city map, its water the city's")
 	var ruins := get_tree().get_nodes_in_group("ruins")
 	var fixed := []
 	for name in ["Altar", "EscapePoint", "FuelStation", "GhostCage"]:
@@ -14883,14 +14925,14 @@ func test_city_map() -> void:
 		and CityBuild._seen.size() > towers.size(), "the skyline: %d towers outside the map's top and sides, none at its foot" % towers.size())
 	var pool: Array = FishData.pool_for("city", "rare", "rare")
 	check(pool.has("flowerhorn") and pool.has("koi") and pool.has("guppy") and FishData.pool_for("city", "common", "epic").has("asian_arowana"),
-		"the city's own fish and 7-1's guppy in its water, the golden arowana its rarest")
+		"the city's own fish and 12-1's guppy in its water, the golden arowana its rarest")
 	# A big map: some of its blocks one of the user's low buildings (made ours), each fitted to its
 	# block; drums, crates and benches in its streets.
 	var made_models := 0
 	var fitted := true
 	for sd in [3, 4, 5]:
 		seed(sd)
-		await play_level("7-5")
+		await play_level("12-5")
 		await frames(4)
 		for r in get_tree().get_nodes_in_group("ruins"):
 			var ruin := r as Ruin

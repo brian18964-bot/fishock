@@ -320,7 +320,10 @@ const TENTS := [
 ## User request (the campaign, Campaign): each level's stars [out, ★★,
 ## ★★★], how often it's been cleared and tried, the best time; the
 ## chapters whose every-star bonus is paid; the curse sets cleared.
-var campaign: Dictionary = {"levels": {}, "chapter_bonus": [], "curse_clears": 0, "best_curses": 0}
+## (a new profile's: already of the branches and of the human world's chapters in their times'
+## order - load_data's one-off changes are for older saves, which lack these marks; without them a
+## new player's progress, saved, was wiped when next loaded)
+var campaign: Dictionary = {"levels": {}, "chapter_bonus": [], "curse_clears": 0, "best_curses": 0, "branches": 1, "era_order": 1}
 ## Counts kept for good (Campaign adds each run's into them): catches, far
 ## catches, stuns, escapes at night...
 var records: Dictionary = {}
@@ -2554,6 +2557,12 @@ func load_data(data: Dictionary) -> void:
 	campaign["branches"] = 1
 	records = data.get("records", {})
 	achievements = data.get("achievements", {})
+	# (user request - the human world's chapters put in the order of their times: a profile saved
+	# before has its stars, bonuses and achievements for chapters 7-12 under their old numbers - moved
+	# to the new ones, once)
+	if int(campaign.get("era_order", 0)) < 1:
+		_move_eras()
+	campaign["era_order"] = 1
 	if not data.has("equipped"):
 		var tier := rods_owned
 		equipped = {"rod": "rod_%d" % tier, "light": "flashlight" if data.get("has_flashlight", false) else "", "offhand": ""}
@@ -2573,3 +2582,25 @@ func load_data(data: Dictionary) -> void:
 	relayout_bag()
 	_sync_clasp()
 	ensure_bait()
+
+
+## The human world's chapters 7-12 renumbered (Campaign.ERA_MOVED: each's old number to its new): a
+## saved profile's levels' entries ("7-3" -> "12-3"), its chapters' bonuses and its chapters'
+## achievements ("chapter_7" -> "chapter_12") moved with them.
+func _move_eras() -> void:
+	var moved: Dictionary = Campaign.ERA_MOVED
+	var levels := {}
+	for id: String in campaign.levels:
+		var parts := id.split("-")
+		var ch := int(parts[0])
+		levels[("%d-%s" % [int(moved[ch]), parts[1]]) if moved.has(ch) and parts.size() == 2 else id] = campaign.levels[id]
+	campaign.levels = levels
+	var bonus := []
+	for ch in campaign.chapter_bonus:
+		bonus.append(int(moved.get(int(ch), int(ch))))
+	campaign.chapter_bonus = bonus
+	var earned := {}
+	for key: String in achievements:
+		var ch := int(key.substr(8)) if key.begins_with("chapter_") else 0
+		earned["chapter_%d" % int(moved[ch]) if moved.has(ch) else key] = achievements[key]
+	achievements = earned

@@ -208,7 +208,7 @@
 - 出發視窗（自由夜釣）：左側 12 張地圖的捲動清單、12 張一眼都看得到，點了右側出現分支（11/28）。
 ### 人類世界（第 7 章起）
 1. 人類世界的六種主題：城市、鄉村、部落、日式、中國風、英式，各自再分支；先做都市。
-   **11/27：部落取消，換成土屋主題（第 12 章）；接著做歐洲田野楓（已做，種在鄉村、英式）。**
+   **11/27：部落取消，換成土屋主題（第 7 章）；接著做歐洲田野楓（已做，種在鄉村、英式）。**
 4. 池塘上要有**可以走上去的橋**（11/27 新機制）：只有村莊主題有，森林、秋林等非村莊的不放；一張圖可以不只一座。
 2. **只有都市是荒廢的主題**，其他人類世界的地圖照正常的樣子做（11/26）。
 3. 沙漠圓頂屋（TATOOINE 那包）不用；西部小鎮的模型使用者會再找。
@@ -249,28 +249,28 @@
 | 鱷魚先生：帽子尺寸 | 帽體底部每邊比頭多留 1.6 cm、內側至少 0.8 cm、高度 85%（至少高過頭 2 cm）；帽簷寬：紳士帽、牛仔帽 11 cm，遮陽帽 15 cm | `tools/make_croc_props.py` 的 `EASE`、`EASE_IN`、`CLEAR`、`HATS`（改完重跑工具） |
 | 鱷魚先生：頭上的 3D 卷軸 | 長 0.62 m、離地 2.2 m、上下浮動 0.05 m、橫向面對鏡頭左右擺動 ±0.4 弧度、有可交委託時暖光 0.6 | `CampCroc.SCROLL_LEN`、`SCROLL_UP`、`SCROLL_BOB`、`SCROLL_SWAY`、`SCROLL_TURN`、`SCROLL_GLOW` |
 | 星座硬幣 | 成功逃離時 1% 多給一枚（12 種機率相同）；商人收購 800 金幣 | `Zodiac.CHANCE`、`PRICE` |
-| 第 7 章荒廢都市 | 五個分支的大小、額度、時間、小鬼、天氣、獨有魚、首通獎勵（220～500 金幣） | `Campaign.LEVELS` 的 7-1～7-5 |
-| 都市的街道與建築 | 街道寬 180 px、街廓 380～600 × 340～520 px、每街廓 2～3 塊地、空地 10%、倒塌 15%、離水 60 px、每張圖 1 棟大樓；7-2 公園空地 45% | `MapGenerator.THEMES.city.ruins`、7-2 的 `mods` |
+| 第 12 章荒廢都市 | 五個分支的大小、額度、時間、小鬼、天氣、獨有魚、首通獎勵（220～500 金幣） | `Campaign.LEVELS` 的 12-1～12-5 |
+| 都市的街道與建築 | 街道寬 180 px、街廓 380～600 × 340～520 px、每街廓 2～3 塊地、空地 10%、倒塌 15%、離水 60 px、每張圖 1 棟大樓；12-2 公園空地 45% | `MapGenerator.THEMES.city.ruins`、12-2 的 `mods` |
 | 都市的樓層 | 店面 1～2 層、公寓 2～3 層、大樓 5～7 層，每層 3 m | `Ruin.STOREYS`、`STOREY` |
 | 都市的街道物件 | 每個基準面積 9 輛車、10 盞路燈、7 個油桶、5 個木箱、3 張長椅；30% 的車橫在路中間；路燈 30% 會亮、最多 3 盞 | `MapGenerator.THEMES.city.street` |
 | 都市的模型建築與天際線 | 55% 的街廓（放得下時）整塊放一棟平房／長條店，縮放 0.6～0.85 倍；天際線高樓離邊緣 6～12 m、間隔 16～30 m、縮放 0.4～0.58 倍、只在上方和兩側（兩側到 75% 高） | `THEMES.city.ruins` 的 `model_share`、`Ruin.MODEL_SCALE`、`CityBuild.SKY_OUT`、`SKY_GAP`、`SKY_SCALE`、`SKY_SIDES` |
 | 都市的魚 | 主題魚 4 種＋金龍魚；各分支獨有魚見 `docs/RUINED_WORLD.md`；價值、大小在魚的資料表 | `FishData.FISH`、`STYLE_FISH.city`、`LENGTH_CM` |
-| 第 8 章鄉村 | 五個分支的大小、額度、時間、小鬼、天氣、獨有魚、首通獎勵（240～520 金幣）；8-2 多收割過的田、8-3 兩座果園、8-4 籬笆 90% 與狼 | `Campaign.LEVELS` 的 8-1～8-5（`mods` 只改有寫到的項目） |
+| 第 11 章鄉村 | 五個分支的大小、額度、時間、小鬼、天氣、獨有魚、首通獎勵（240～520 金幣）；11-2 多收割過的田、11-3 兩座果園、11-4 籬笆 90% 與狼 | `Campaign.LEVELS` 的 11-1～11-5（`mods` 只改有寫到的項目） |
 | 鄉村的農家與田 | 每個基準面積 3 戶農家（房子＋穀倉，0～2 棟附屬建築）、建築縮放 0.8～0.95、院子寬 170 px、離水 70 px；每個基準面積 5 塊田，340～760 × 260～520 px（放不下會縮小）、作物比重（犁過 1、收割 1.2、南瓜 0.7、菜 0.5）、60% 有籬笆（每邊 15% 不圍、缺口 80～130 px）、收割過的田 2～5 個乾草捆 | `MapGenerator.THEMES.countryside.farm`、`FIELD_GAP`、`FENCE_OPEN_SIDE` |
 | 鄉村的院子與路 | 每個基準面積 6 支提燈（50% 會亮、最多 3 支）、水井 1、柴堆 3、木材 2、木桶 4、水槽 2、牛奶桶 3、乾草車 2、手推車 2；每張圖 1 座果園（3～4 排 × 3～4 棵，間隔 105 px）；土路寬 64 px | `THEMES.countryside.yard`、`MapGenerator.TRACK_HALF`、`TRACK_WANDER` |
 | 鄉村的作物與籬笆外觀 | 南瓜 0.4～0.57 m、每 1.4～2.3 m 一顆（隔一排）；菜每 0.85～1.15 m；籬笆每 2.2 m 一根柱子、高 1.15 m；乾草捆半徑 0.72 m；提燈亮度 2.2、範圍 7 m | `FarmBuild` 的 `PUMPKIN_*`、`GREENS_*`、`FENCE_*`、`BALE_*`、`LANTERN_*` |
 | 鄉村的魚 | 主題魚 青鱂魚、溪哥、鰟鮍、黃顙魚＋鱖魚；分支獨有魚見 `docs/RUINED_WORLD.md` 第七節 | `FishData.FISH`、`STYLE_FISH.countryside`、`LENGTH_CM` |
-| 第 9 章日式、第 10 章英式 | 各五個分支的大小、額度、時間、小鬼、天氣、獨有魚、首通獎勵（260～560 金幣）；9-2 竹林 5 片、10-2 圍牆 95%、10-3 每戶小石塔、9-4／10-4 狼 | `Campaign.LEVELS` 的 9-1～10-5 |
+| 第 10 章日式、第 9 章英式 | 各五個分支的大小、額度、時間、小鬼、天氣、獨有魚、首通獎勵（260～560 金幣）；10-2 竹林 5 片、9-2 圍牆 95%、9-3 每戶小石塔、10-4／9-4 狼 | `Campaign.LEVELS` 的 10-1～9-5 |
 | 日式山村的擺放 | 每個基準面積 3 戶、院子寬 150 px、3 塊菜田（75% 竹籬）；鳥居 2 座、石燈籠 7（60% 亮、最多 4 盞）、木燈籠 3、繪馬架 1、長椅 2、手水缽 2、竹籃 3；竹林 3 片（2～3 × 3～5 叢，間隔 120 px） | `MapGenerator.THEMES.japan` 的 `farm`、`yard` |
 | 英式村莊的擺放 | 每個基準面積 3 戶、院子寬 160 px、5 塊田（牧場 1.4、犁過 0.8、收割 0.8、菜 0.3；85% 圍石牆或樹籬，石牆:樹籬 = 1:0.7）；提燈 5、水井 1、柴堆 3、木材 2、水槽 2、乾草車 2、手推車 2；蘋果園 1 座 | `THEMES.england` 的 `farm`、`yard` |
 | 竹籬、石牆、樹籬外觀 | 竹籬高 1.2 m、柱距 1.8 m；石牆高 0.78 m、三層、厚 0.55 m；樹籬高 1.15 m、厚 0.85 m | `FarmBuild` 的 `BAMBOO_*`、`WALL_*`、`HEDGE_*`；碰撞厚度 `Fence.STYLES` |
 | 日式、英式的魚 | 日式主題魚 山女魚、珠星三塊魚、河鱲、金魚＋琵琶湖大鯰；英式 擬鯉、紅眼魚、丁鱥、歐洲鰷＋大西洋鮭 | `FishData.STYLE_FISH.japan`、`.england` |
-| 第 11 章中式古鎮 | 五個分支的大小、額度、時間、小鬼、天氣、獨有魚、首通獎勵（300～580 金幣）；11-2 圍牆 95%、11-3 雙層樓閣、11-4 竹林 5 片＋狼、11-5 街屋 | `Campaign.LEVELS` 的 11-1～11-5 |
+| 第 8 章中式古鎮 | 五個分支的大小、額度、時間、小鬼、天氣、獨有魚、首通獎勵（300～580 金幣）；8-2 圍牆 95%、8-3 雙層樓閣、8-4 竹林 5 片＋狼、8-5 街屋 | `Campaign.LEVELS` 的 8-1～8-5 |
 | 中式古鎮的擺放 | 每個基準面積 3 戶、院子 160 px、3 塊菜田（80% 圍牆：白牆 1、竹籬 0.3）；紅燈籠柱 7（60% 亮、最多 4 盞）、石燈籠 4、水缸 4、石桌 2、水井 1；竹林 2 片；一半的樹是水邊垂柳（離岸 70～240 px） | `THEMES.china` 的 `farm`、`yard`、`oasis_trees`、`oasis_band` |
 | 中國的魚 | 主題魚 鯪魚、赤眼鱒、中華沙鰍、黃河鯉＋胭脂魚；獨有魚 花䱻、鰣魚、刀鱭、鯮魚、巨魾（史詩）、中華鱘（史詩） | `FishData.STYLE_FISH.china` |
 | 白牆黛瓦圍牆 | 高 1.3 m、厚 0.4 m、石基 0.25 m、瓦頂高 0.24 m、出簷 0.14 m | `FarmBuild` 的 `TILE_WALL_*` |
 | 農場動物的數量 | 鄉村每個基準面積 3 隻（小牛 1.2、綿羊 1、母雞 1.2、公雞 0.4、鹿 0.4、狐 0.5）；英式 3 隻（綿羊 1.6、小牛 0.6…）；日式 2 隻（烏鴉 1.4、鹿 1.4、狐 1）；中式 2 隻（母雞 1.2…） | `THEMES.*.animal_count`、`animals` |
-| 第 12 章土屋聚落 | 五個分支的大小、額度、時間、小鬼、天氣、獨有魚、首通獎勵（320～600 金幣）；12-2 田 6 塊、圍牆 95%；12-3 沙塵暴 30%＋濃霧 15%、水鬼 1.6 倍；12-4 鬣狗 | `Campaign.LEVELS` 的 12-1～12-5 |
+| 第 7 章土屋聚落 | 五個分支的大小、額度、時間、小鬼、天氣、獨有魚、首通獎勵（320～600 金幣）；7-2 田 6 塊、圍牆 95%；7-3 沙塵暴 30%＋濃霧 15%、水鬼 1.6 倍；7-4 鬣狗 | `Campaign.LEVELS` 的 7-1～7-5 |
 | 土屋聚落的擺放 | 每個基準面積 3 戶、院子 150 px、4 塊田（菜 1、犁過 0.7、收割 0.6；75% 圍土牆）；提燈 5（50% 亮、最多 3 盞）、水缸 5、陶罐 3、麵包窯 2、水井 1；七成的樹是水邊椰棗（離岸 24～230 px）；動物每個基準面積 2 隻（駱駝 0.8、母雞 1.2、公雞 0.4、烏鴉 0.5、狐 0.3） | `THEMES.adobe` |
 | 土屋的魚 | 主題魚 尼羅吳郭魚、鮑尼鲃、尖齒胡鯰、象鼻魚＋尼羅河鱸；獨有魚 尼羅野鯪、電鯰、虎魚、倒游鯰、巨虎魚（史詩）、裸臀魚（史詩） | `FishData.STYLE_FISH.adobe` |
 | 矮土牆 | 高 1.05 m、厚 0.45 m、每 1.6 m 一段 | `FarmBuild` 的 `MUD_WALL_*`；碰撞厚度 `Fence.STYLES.mud_wall` |
@@ -284,7 +284,7 @@
 | 河上的橋 | 地圖面積小於基準 1 倍：1 座；小於 3 倍：2 座；其他 3 座；離地圖兩端 280 px 內不放；每偏離該段中點 1 px 算多 0.15 px 跨距 | `MapGenerator.RIVER_BRIDGES`、`RIVER_BRIDGE_END`、`RIVER_BRIDGE_MID` |
 | 河算幾個池塘 | 有河的地圖池塘少三分之一（無條件進位，最少 1 個）：2→1、3→2、5→3 | `MapGenerator.RIVER_PONDS`、`river_ponds()` |
 | 運河的牆 | 牆頂高出地面 0.07 m、寬 0.36 m、往水下 0.55 m；岸邊鋪面 70 px；水一靠牆就深 0.6 m | `RunView3D.CANAL_*` |
-| 分支季節 | 9-1 春；9-2、9-5 夏；9-3、9-4 秋；10-1、10-2 夏；10-3～10-5 秋 | `scripts/campaign.gd` 各關 `rules.season`；樹種 `MapTree.SEASON_KINDS` |
+| 分支季節 | 10-1 春；10-2、10-5 夏；10-3、10-4 秋；9-1、9-2 夏；9-3～9-5 秋 | `scripts/campaign.gd` 各關 `rules.season`；樹種 `MapTree.SEASON_KINDS` |
 | 和鱷魚先生對話 | 視窗開著時角色和他都不走（最多 30 分鐘）；視窗 4 秒內沒打開就不等 | `CampLife.TALK_MOST`、`TALK_OPENS`；`CampCroc.held` |
 | 農場動物的行為 | 綿羊／小牛被靠近到 55／45 px 才慢慢走開；雞 70 px 跑開；烏鴉 90 px 飛走；大小：綿羊 0.95 m、小牛 1.15 m、母雞 0.42 m、公雞 0.55 m、烏鴉 0.42 m | `Critter.SPECIES`、`RunView3D.CREATURES` |
 
@@ -293,15 +293,15 @@
    使用者說過「先暫定」專屬委託是某張地圖的夢幻魚，目前用 1-5 的鱷雀鱔（鱷魚找鱷雀鱔）。
 2. **發佈前**把 `Campaign.dev_all_open` 改成 `false`（它也讓所有角色都能選）。
 10. **荒廢都市等使用者的素材**（清單在 `docs/RUINED_WORLD.md` 第四節：建築、汽車、路燈、街道小物、野狗、老鼠、鴿子、魚的照片）。
-    運河已做（每張都市地圖都有，第二節 19）；還沒做：地鐵坑（7-4）、海岸港口（7-5）、撿拾點（提案）。
-11. **鄉村**（第 8 章）已可玩；還沒做：農場動物（雞、牛、羊——沒有素材，目前只有鹿和狐狸，8-4 有狼）。每張鄉村地圖都有河了（第二節 19）。
+    運河已做（每張都市地圖都有，第二節 19）；還沒做：地鐵坑（12-4）、海岸港口（12-5）、撿拾點（提案）。
+11. **鄉村**（第 11 章）已可玩；還沒做：農場動物（雞、牛、羊——沒有素材，目前只有鹿和狐狸，11-4 有狼）。每張鄉村地圖都有河了（第二節 19）。
     11 種鄉村魚是暫代模型，有照片再換。
-12. **土屋聚落**（第 12 章，取代部落）已可玩；還沒做：沙地上的沙丘起伏（目前平地）、駱駝以外的牲口；11 種魚是暫代模型。
+12. **土屋聚落**（第 7 章，取代部落）已可玩；還沒做：沙地上的沙丘起伏（目前平地）、駱駝以外的牲口；11 種魚是暫代模型。
     使用者會再測試土屋聚落和其他地圖。
-13. **中式古鎮**（第 11 章）已可玩；還沒做：荷花、石拱橋、牌樓、月洞門；11 種中國魚是暫代模型。
+13. **中式古鎮**（第 8 章）已可玩；還沒做：荷花、石拱橋、牌樓、月洞門；11 種中國魚是暫代模型。
 14. **可以走上去的橋**已做（第二節 15）；只在人類世界（使用者決定森林等不放），一張圖最多 3 座；現在都蓋在河上（第二節 19）。
 17. 穿圖驗證（11/28，河流加入後地圖重新排過）：30 關每輪只剩 1 處小動物的小狀況，跟河無關、之前就有的類型——
-    最後一輪是老鼠擠進營地燃料站的模型 7 px（10-1）；前幾輪看過蜜蜂飛進水槽模型邊緣 8 px（細長的院子物件碰撞只有一個小圓，
+    最後一輪是老鼠擠進營地燃料站的模型 7 px（9-1）；前幾輪看過蜜蜂飛進水槽模型邊緣 8 px（細長的院子物件碰撞只有一個小圓，
     模型比較長）、黑蜘蛛在田的圍籬和地圖邊之間卡 4 秒才出來。之後可把細長物件的碰撞改成跟模型一樣的長方形
     （`StreetProp.FARM` 的尺寸、`Solids`），小動物避開營地的範圍再放大一點。
 16. 出發視窗的清單和河流已做（第二節 19）。河目前幾乎都是上下貫穿（營地在正中間、地圖是橫的），要橫的河就得讓河離營地近一點或把營地移開。
@@ -352,12 +352,12 @@
 | 3D 場景（海、崖、湖、天氣、燈光） | `scripts/run_view_3d.gd` |
 | 角色解鎖條件 | `scripts/campaign.gd`：`CHARACTER_JOIN`、`character_open()`、`check_characters()`；畫面：`scripts/character_page.gd` |
 | 鱷魚先生（委託、出現、專屬委託） | `scripts/croc_quests.gd`；營地散步與台詞：`scripts/camp_croc.gd`；衣服與帽子：`scripts/croc_look.gd`；頭上 3D 卷軸：`scripts/camp_croc.gd` 的 `_make_scroll()`；模型轉換：`tools/make_croc_props.py`；對話視窗：`scripts/croc_talk.gd`；卷軸圖示：`scripts/quest_scroll.gd`；左側委託清單：`scripts/quest_tracker.gd`；頭上泡泡：`scripts/title_screen.gd` 的 `_croc_over()` |
-| 荒廢都市（第 7 章） | 主題：`scripts/map_generator.gd` 的 `THEMES.city`、`_place_ruins()`、`_place_street_props()`；建築：`scripts/ruin.gd`；街道物件：`scripts/street_prop.gd`；3D 外觀與透明、模型建築、天際線：`scripts/city_build.gd`；使用者素材再製：`tools/make_city_assets.py`（輸出 `assets/models/city/`）；設計與素材清單：`docs/RUINED_WORLD.md` |
-| 鄉村（第 8 章） | 主題：`scripts/map_generator.gd` 的 `THEMES.countryside`、`_place_farms()`（農家、土路、田、籬笆、院子的東西、果園）；農舍穀倉沿用 `scripts/ruin.gd`（模型名 `farm_*`）；田：`scripts/farm_field.gd`；籬笆：`scripts/fence.gd`；院子的東西：`scripts/street_prop.gd` 的 `FARM`；3D（地面、道具、籬笆、作物）：`scripts/farm_build.gd`；地面貼圖 `furrow`、`stubble`：`tools/make_ground.py`；使用者素材再製：`tools/make_farm_assets.py`（輸出 `assets/models/farm/`） |
-| 日式、英式（第 9、10 章） | 主題：`THEMES.japan`、`THEMES.england`（和鄉村共用 `_place_farms()`、`_place_yard_things()`、`_place_grove()`）；圍籬樣式：`scripts/fence.gd` 的 `STYLES`、`scripts/farm_build.gd` 的 `_bamboo_fence`、`_stone_wall`、`_hedge`；素材再製：`tools/make_japan_assets.py`（`assets/models/jp/`）、`tools/make_england_assets.py`（`assets/models/eng/`）；碎石地面 `shrine_gravel`：`tools/make_ground.py`；缺件清單：`docs/ASSET_WISHLIST.md` |
-| 中式古鎮（第 11 章） | 主題：`THEMES.china`（共用 `_place_farms()`；水邊垂柳用 `oasis_trees`，離水的樹 `MapTree.OPEN_KINDS`）；白牆黛瓦：`scripts/farm_build.gd` 的 `_tile_wall`；竹葉透空：`scripts/city_build.gd` 的 `_tex_cut_shader`；石板地面 `flagstone`：`tools/make_ground.py`；素材再製：`tools/make_china_assets.py`（`assets/models/cn/`） |
+| 荒廢都市（第 12 章） | 主題：`scripts/map_generator.gd` 的 `THEMES.city`、`_place_ruins()`、`_place_street_props()`；建築：`scripts/ruin.gd`；街道物件：`scripts/street_prop.gd`；3D 外觀與透明、模型建築、天際線：`scripts/city_build.gd`；使用者素材再製：`tools/make_city_assets.py`（輸出 `assets/models/city/`）；設計與素材清單：`docs/RUINED_WORLD.md` |
+| 鄉村（第 11 章） | 主題：`scripts/map_generator.gd` 的 `THEMES.countryside`、`_place_farms()`（農家、土路、田、籬笆、院子的東西、果園）；農舍穀倉沿用 `scripts/ruin.gd`（模型名 `farm_*`）；田：`scripts/farm_field.gd`；籬笆：`scripts/fence.gd`；院子的東西：`scripts/street_prop.gd` 的 `FARM`；3D（地面、道具、籬笆、作物）：`scripts/farm_build.gd`；地面貼圖 `furrow`、`stubble`：`tools/make_ground.py`；使用者素材再製：`tools/make_farm_assets.py`（輸出 `assets/models/farm/`） |
+| 英式、日式（第 9、10 章） | 主題：`THEMES.japan`、`THEMES.england`（和鄉村共用 `_place_farms()`、`_place_yard_things()`、`_place_grove()`）；圍籬樣式：`scripts/fence.gd` 的 `STYLES`、`scripts/farm_build.gd` 的 `_bamboo_fence`、`_stone_wall`、`_hedge`；素材再製：`tools/make_japan_assets.py`（`assets/models/jp/`）、`tools/make_england_assets.py`（`assets/models/eng/`）；碎石地面 `shrine_gravel`：`tools/make_ground.py`；缺件清單：`docs/ASSET_WISHLIST.md` |
+| 中式古鎮（第 8 章） | 主題：`THEMES.china`（共用 `_place_farms()`；水邊垂柳用 `oasis_trees`，離水的樹 `MapTree.OPEN_KINDS`）；白牆黛瓦：`scripts/farm_build.gd` 的 `_tile_wall`；竹葉透空：`scripts/city_build.gd` 的 `_tex_cut_shader`；石板地面 `flagstone`：`tools/make_ground.py`；素材再製：`tools/make_china_assets.py`（`assets/models/cn/`） |
 | 村莊的樹、日式新物件、農場動物 | 樹：`tools/make_village_trees.py`（`assets/models/camp/<kind>.glb`，`CampModel.TREE_FAMILY`、`MapTree.KINDS`/`CANOPY`/`THEME_KINDS`）；田野楓也是它（給 EU01 的資料夾）；日式燈籠石塔、紅橋：`tools/make_japan_extras.py`（`ONLY=bridge` 只做橋）；動物：`tools/make_farm_animals.py`（`assets/models/run3d/`，`Critter.SPECIES`、`RunView3D.CREATURES`） |
-| 土屋聚落（第 12 章） | 主題：`THEMES.adobe`（`oasis_meadow` → 只有水邊綠：`RunView3D._dry_farm`）；矮土牆：`scripts/farm_build.gd` 的 `_mud_wall`；素材再製：`tools/make_adobe_assets.py`（`assets/models/adb/`） |
+| 土屋聚落（第 7 章） | 主題：`THEMES.adobe`（`oasis_meadow` → 只有水邊綠：`RunView3D._dry_farm`）；矮土牆：`scripts/farm_build.gd` 的 `_mud_wall`；素材再製：`tools/make_adobe_assets.py`（`assets/models/adb/`） |
 | 穿圖／卡圖驗證 | 全部關卡：`tools/verify/verify.gd tool=overlap`（`tools/verify/overlap_work.gd`，幾何 `tests/overlap_audit.gd`）；卡點：`tools/map_audit.gd`；測試 `test_nothing_in_anything`、`test_wet_footprints`、`test_village_sway` |
 | 河流、運河 | 生成：`MapGenerator._generate_river()`（`river_line`、`river_half`、`river_axis`、`river_canal`、`river_zones`）；河上的橋：`_place_river_bridges()`（在村子之前）；水域：`WaterZone.river`、`smooth`（運河岸不彎）、`joined`、`holds()`；3D：`RunView3D._river_surface()`、`_canal_walls()`、邊緣河谷 `RIVER_VALLEY`；測試 `test_rivers` |
 | 可以走上去的橋 | 位置：`MapGenerator._place_bridges()`、`_bridge_fits()`（在 `_place_farms()` 之後；有河的地圖改用 `_place_river_bridges()`）；資料：`Dock.setup_bridge()`（`bridge`、`bridge_ends`，欄杆 `add_walls`）；外觀與行走高度：`RunView3D._bridge()`、`_wood_bridge()`、`_stone_bridge()`、`_deck_rise()`（`ground_y` 用它走拱形）；測試 `test_bridges` |

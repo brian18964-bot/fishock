@@ -18,13 +18,14 @@ const MAPS := [["", "湖畔森林", "map_forest", "森林中的湖泊與池塘�
 	["coast", "沙灘海岸", "map_coast", "一側是大海，椰子樹下的沙灘與浪花。"],
 	["coast_cliff", "海崖", "map_coast_cliff", "草原台地的盡頭是斷崖，崖下浪花拍打礁石。"]]
 ## User report ("今天做的地圖我目前都無法測試"): the ruined human world's maps (chapters 7-12) as well (their
-## cards the game's own night there: tools/map_cards.gd).
-const RUIN_MAPS := [["city", "荒廢都市", "map_city", "龜裂的街道與空蕩大樓，積水裡游著人類的魚。"],
-	["countryside", "鄉村", "map_countryside", "收割過的田與穀倉，灌溉水塘裡游著田間的魚。"],
-	["japan", "日式山村", "map_japan", "竹林、鳥居和石燈籠，神社池子裡游著日本魚。"],
-	["england", "英式村莊", "map_england", "木構屋和石牆，牧場邊的池塘裡游著英國的魚。"],
+## cards the game's own night there: tools/map_cards.gd) - in their chapters' order, the order of
+## their times (user request: the adobe village first, the city last).
+const RUIN_MAPS := [["adobe", "土屋聚落", "map_adobe", "泥磚土屋和椰棗樹，綠洲池塘裡游著尼羅河魚。"],
 	["china", "中式古鎮", "map_china", "灰瓦石屋和紅柱涼亭，柳樹垂在水邊。"],
-	["adobe", "土屋聚落", "map_adobe", "泥磚土屋和椰棗樹，綠洲池塘裡游著尼羅河魚。"]]
+	["england", "英式村莊", "map_england", "木構屋和石牆，牧場邊的池塘裡游著英國的魚。"],
+	["japan", "日式山村", "map_japan", "竹林、鳥居和石燈籠，神社池子裡游著日本魚。"],
+	["countryside", "鄉村", "map_countryside", "收割過的田與穀倉，灌溉水塘裡游著田間的魚。"],
+	["city", "荒廢都市", "map_city", "龜裂的街道與空蕩大樓，積水裡游著人類的魚。"]]
 ## User request ("地圖目前12風格，在選擇視窗的左側呈現出來 ... 點擊後會出現各自的分支"; "用捲動清單，12 張
 ## 一眼就看得到"): the twelve maps listed down the window's left, by chapter - each a row with its little
 ## picture - scrolled if a screen's too short for them all; the one picked on the right, its picture,
